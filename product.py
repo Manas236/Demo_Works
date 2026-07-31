@@ -27,6 +27,7 @@ import uuid
 from flask import Blueprint, render_template_string, request, redirect, url_for
 
 # ── Shared imports ────────────────────────────────────────────────────────────
+import branding as B
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
@@ -40,16 +41,18 @@ product_bp = Blueprint("product", __name__, url_prefix="/product")
 
 # Fixed UUIDs so assembly->child references are stable across the seeding call.
 _S = {
-    "kirloskar": "a1000001-beef-4000-8000-000000000001",
-    "dbxe":      "a1000002-beef-4000-8000-000000000002",
+    "main_pump": "a1000001-beef-4000-8000-000000000001",
+    "pump_bare": "a1000002-beef-4000-8000-000000000002",
     "motor75":   "a1000003-beef-4000-8000-000000000003",
-    "db_frame":  "a1000004-beef-4000-8000-000000000004",
-    "kfe":       "a1000005-beef-4000-8000-000000000005",
+    "base_frame":"a1000004-beef-4000-8000-000000000004",
+    "engine":    "a1000005-beef-4000-8000-000000000005",
     "radiator":  "a1000006-beef-4000-8000-000000000006",
     "lub_oil":   "a1000007-beef-4000-8000-000000000007",
     "battery":   "a1000008-beef-4000-8000-000000000008",
     "fuel_tank": "a1000009-beef-4000-8000-000000000009",
     "jockey":    "a100000a-beef-4000-8000-00000000000a",
+    "extng_abc": "a100000b-beef-4000-8000-00000000000b",
+    "hose_reel": "a100000c-beef-4000-8000-00000000000c",
 }
 
 
@@ -61,10 +64,13 @@ def ensure_demo_products() -> None:
     Call this at the top of any route that reads from the product catalog,
     so the list is never empty on first visit without a manual add.
 
-    Seed structure:
-      Assemblies : KIRLOSKAR MAIN ELECTRIC PUMPSET, KFE ENGINE, JOCKEY PUMPSET
-      Support    : DBxe 80/26-83, 75KW/100HP MOTOR, DB 80/26 FRAME
-      Standalone : RADIATOR COOLANT, LUB OIL, BATTERY 180 AMP, FUEL TANK 200 LTR
+    Seed structure (a typical fire pump room, plus two loose line items):
+      Assemblies : MAIN FIRE PUMP SET - ELECTRIC, DIESEL ENGINE DRIVE, JOCKEY PUMP SET
+      Support    : END SUCTION FIRE PUMP, 75KW/100HP MOTOR, PUMP BASE FRAME
+      Standalone : RADIATOR COOLANT, LUB OIL, BATTERY 180 AMP, FUEL TANK 200 LTR,
+                   ABC EXTINGUISHER 6 KG, FIRST-AID HOSE REEL
+
+    ⚠  Demo data only — prices are placeholders, not Samruddhi Fire's rates.
     """
     if STORE["_seeded"]:
         return
@@ -82,34 +88,42 @@ def ensure_demo_products() -> None:
     _seed(_S["fuel_tank"], "FUEL TANK 200 LTR",      "FT-004",  "pcs", 18_000,
           "Mild steel fuel tank, 200L capacity, coated interior.",
           "standalone", [])
+    _seed(_S["extng_abc"], "ABC DRY POWDER EXTINGUISHER 6 KG", "EXT-005", "pcs", 2_450,
+          "IS 15683 stored-pressure ABC extinguisher with wall bracket and hose.",
+          "standalone", [])
+    _seed(_S["hose_reel"], "FIRST-AID HOSE REEL 30 M", "HR-006", "pcs", 9_800,
+          "IS 884 swinging hose reel drum, 20 mm bore rubber hose with shut-off nozzle.",
+          "standalone", [])
 
     # Support items (sub-components; not sold standalone)
-    _seed(_S["dbxe"],     "DBxe 80/26 - 83",         "DBX-010", "set",  125_000,
-          "Horizontal multi-stage centrifugal pump. Flow: 80 m3/hr, Head: 26m.",
+    _seed(_S["pump_bare"],  "END SUCTION FIRE PUMP 80/26", "PMP-010", "set",  125_000,
+          "Horizontal end-suction fire pump. Flow: 80 m3/hr, Head: 26m.",
           "support", [])
-    _seed(_S["motor75"],  "75KW/100HP MOTOR",          "MOT-011", "pcs", 210_000,
+    _seed(_S["motor75"],    "75KW/100HP MOTOR",            "MOT-011", "pcs", 210_000,
           "TEFC squirrel cage induction motor. 75kW, 4-pole, 415V/50Hz.",
           "support", [])
-    _seed(_S["db_frame"], "DB 80/26 FRAME",            "FRM-012", "pcs",  45_000,
-          "Fabricated MS base frame for DB 80/26 pump + motor set.",
+    _seed(_S["base_frame"], "PUMP BASE FRAME 80/26",       "FRM-012", "pcs",  45_000,
+          "Fabricated MS base frame for the 80/26 pump + motor set.",
           "support", [])
 
     # Assemblies (have children; leaf products must be seeded first)
-    _seed(_S["kirloskar"], "KIRLOSKAR MAIN ELECTRIC PUMPSET", "KIR-100", "set", 850_000,
-          "Complete Kirloskar electric pumpset. Pump, motor, and base frame. Factory tested.",
+    _seed(_S["main_pump"], "MAIN FIRE PUMP SET - ELECTRIC", "MFP-100", "set", 850_000,
+          "Complete electric-driven main fire pump set: pump, motor and base frame, "
+          "coupled and factory tested.",
           "assembly", [
-              {"product_id": _S["dbxe"],     "qty": 1},
-              {"product_id": _S["motor75"],  "qty": 1},
-              {"product_id": _S["db_frame"], "qty": 1},
+              {"product_id": _S["pump_bare"],  "qty": 1},
+              {"product_id": _S["motor75"],    "qty": 1},
+              {"product_id": _S["base_frame"], "qty": 1},
           ])
-    _seed(_S["kfe"], "KFE ENGINE", "KFE-200", "set", 380_000,
-          "Diesel engine package. Kirloskar diesel, radiator-cooled, electric start.",
+    _seed(_S["engine"], "DIESEL ENGINE FIRE PUMP DRIVE", "DEP-200", "set", 380_000,
+          "Diesel engine drive package. Radiator-cooled, electric start, "
+          "with fuel tank and first fill.",
           "assembly", [
               {"product_id": _S["radiator"],  "qty": 1},
               {"product_id": _S["lub_oil"],   "qty": 5},
               {"product_id": _S["fuel_tank"], "qty": 1},
           ])
-    _seed(_S["jockey"], "JOCKEY PUMPSET", "JOC-300", "set", 95_000,
+    _seed(_S["jockey"], "JOCKEY PUMP SET", "JKY-300", "set", 95_000,
           "Pressure-maintenance jockey pump. Auto start/stop on pressure drop.",
           "assembly", [
               {"product_id": _S["battery"], "qty": 1},
@@ -785,7 +799,8 @@ def list_products():
     <head>
       <meta charset="UTF-8"/>
       <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-      <title>Products &#8212; QMS</title>
+      <title>{B.page_title("Products")}</title>
+      {B.HEAD_ICON}
       {BASE_STYLES}
       {PRODUCT_STYLES}
     </head>
@@ -806,7 +821,7 @@ def list_products():
         </div>
         {table_html}
         <footer>
-          <p>QMS Platform &nbsp;&#183;&nbsp; Product Module &nbsp;&#183;&nbsp; In-memory store</p>
+          <p>{B.COMPANY_NAME} &nbsp;&#183;&nbsp; {B.APP_SUBTITLE} &nbsp;&#183;&nbsp; product catalogue</p>
         </footer>
       </main>
     </body>
@@ -904,7 +919,8 @@ def view_product(id: str):
     <head>
       <meta charset="UTF-8"/>
       <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-      <title>{product['name']} &#8212; QMS</title>
+      <title>{B.page_title(product['name'])}</title>
+      {B.HEAD_ICON}
       {BASE_STYLES}
       {PRODUCT_STYLES}
       {VIEW_STYLES}
@@ -952,7 +968,7 @@ def view_product(id: str):
         {bom_html}
 
         <footer style="margin-top:2.5rem;">
-          <p>QMS Platform &nbsp;&#183;&nbsp; Product Module &nbsp;&#183;&nbsp; In-memory store</p>
+          <p>{B.COMPANY_NAME} &nbsp;&#183;&nbsp; {B.APP_SUBTITLE} &nbsp;&#183;&nbsp; product catalogue</p>
         </footer>
       </main>
     </body>
@@ -1095,7 +1111,8 @@ def add_product():
     <head>
       <meta charset="UTF-8"/>
       <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-      <title>Add Product &#8212; QMS</title>
+      <title>{B.page_title("Add Product")}</title>
+      {B.HEAD_ICON}
       {BASE_STYLES}
       {PRODUCT_STYLES}
     </head>
@@ -1174,7 +1191,7 @@ def add_product():
         </div>
 
         <footer>
-          <p>QMS Platform &nbsp;&#183;&nbsp; Product Module &nbsp;&#183;&nbsp; In-memory store</p>
+          <p>{B.COMPANY_NAME} &nbsp;&#183;&nbsp; {B.APP_SUBTITLE} &nbsp;&#183;&nbsp; product catalogue</p>
         </footer>
       </main>
 

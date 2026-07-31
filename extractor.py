@@ -4,11 +4,13 @@ extractor.py — The Feature Module
 Blueprint: extractor_bp
 Mounted at: /extractor (url_prefix defined on the Blueprint)
 
-Provides the "News Extractor Analyzer" page — a standalone, visually isolated
-module that can be opened in a new tab from the main dashboard.
+Provides the "Market News" page — a standalone, visually isolated module
+(dark canvas) that can be opened in a new tab from the main dashboard.
 """
 
 from flask import Blueprint, render_template_string, url_for
+
+import branding as B
 
 # ── Blueprint Declaration ─────────────────────────────────────────────────────
 # url_prefix='/extractor' means all routes inside are automatically prefixed.
@@ -93,7 +95,8 @@ def index():
     <head>
       <meta charset="UTF-8"/>
       <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-      <title>News Extractor — QMS</title>
+      <title>{B.page_title("Market News")}</title>
+      {B.HEAD_ICON}
       <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -103,9 +106,9 @@ def index():
           --bg:       #0f172a;
           --surface:  #1e293b;
           --surface2: #273449;
-          --brand:    #818cf8;
-          --brand-dk: #6366f1;
-          --brand-lt: #1e1b4b;
+          --brand:    {B.RED_ON_DARK};
+          --brand-dk: {B.RED_ON_DARK_DK};
+          --brand-lt: {B.RED_TINT_DARK};
           --text:     #e2e8f0;
           --muted:    #94a3b8;
           --border:   #334155;
@@ -359,9 +362,10 @@ def index():
     <body>
       <nav>
         <div class="nav-left">
-          <span class="nav-brand">◆ QMS</span>
+          {B.logo_img(26)}
+          <span class="nav-brand">{B.COMPANY_NAME}</span>
           <div class="nav-divider"></div>
-          <span class="nav-title">News Extractor</span>
+          <span class="nav-title">Market News</span>
         </div>
 
         <!--
@@ -377,8 +381,9 @@ def index():
       <main>
         <header class="page-header">
           <div class="module-badge">📡 Live Feed</div>
-          <h1>News Extractor <span>Analyzer</span></h1>
-          <p>Real-time market signals surfaced and tagged for direct integration into your quotation workflow.</p>
+          <h1>Market <span>News</span></h1>
+          <p>Fire-safety, pump and commodity signals surfaced and tagged, so quotations
+             stay priced against the real market.</p>
         </header>
 
         <div class="filter-bar">
@@ -394,7 +399,7 @@ def index():
         </section>
 
         <footer>
-          <p>News Extractor Module &nbsp;·&nbsp; QMS Platform &nbsp;·&nbsp; Prices and data are simulated</p>
+          <p>{B.COMPANY_NAME} &nbsp;·&nbsp; {B.APP_SUBTITLE} &nbsp;·&nbsp; prices and data are simulated</p>
         </footer>
       </main>
     </body>

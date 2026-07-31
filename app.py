@@ -5,15 +5,51 @@ Entry point for the Quotation Management System.
 Registers all Blueprints and defines global error handling.
 """
 
+import os
+
 from flask import Flask, redirect, url_for
 from dashboard import dashboard_bp
 from extractor import extractor_bp
 from product import product_bp   # Phase 1: product management
 from quotation import quotation_bp  # Phase 2: quotation generation
+from address import address_bp   # Standalone address book
+
+import db                        # MySQL persistence (config from .env)
+from store import STORE
 
 # ── App Initialization ────────────────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = "qms-demo-secret-2024"  # Required for session/flash; swap in prod
+app.secret_key = os.getenv("SECRET_KEY", "qms-demo-secret-2024")
+
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+# Connect, create the schema if absent, and hydrate STORE from MySQL. When the
+# reloader is active this runs in both the watcher and the worker process;
+# everything involved is idempotent, so that is harmless.
+def _boot_persistence() -> None:
+    live = db.init()
+    if live:
+        n = db.load_into(STORE)
+        print(f"  * {db.status()} - {n} record(s) loaded")
+    else:
+        print(f"  * WARNING: {db.status()}")
+        print("  *          data will be lost on restart. Check .env / MySQL.")
+
+
+_boot_persistence()
+
+
+@app.teardown_request
+def _persist(exc):
+    """
+    Mirror STORE back to MySQL after every request.
+
+    Blueprints mutate nested dicts in place, so there is no write to intercept —
+    db.sync() diffs the whole store and writes only what actually changed.
+    teardown_request is used (over after_request) because it runs even when a
+    view raised, so a half-finished mutation is still saved rather than lost.
+    """
+    db.sync(STORE)
 
 
 # ── Blueprint Registration ────────────────────────────────────────────────────
@@ -23,6 +59,7 @@ app.register_blueprint(dashboard_bp)           # Mounted at /
 app.register_blueprint(extractor_bp)           # Mounted at /extractor
 app.register_blueprint(product_bp)            # Mounted at /product
 app.register_blueprint(quotation_bp)          # Mounted at /quotation
+app.register_blueprint(address_bp)            # Mounted at /address
 
 
 # ── Global Error Handling ─────────────────────────────────────────────────────
@@ -43,4 +80,7 @@ def internal_error(error):
 # ── Dev Server ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # debug=True enables auto-reload; NEVER ship this flag to production.
-    app.run(debug=True, port=5000)
+    # reloader_type="stat" avoids the watchdog reloader, which recursively
+    # watches every sys.path dir (incl. site-packages) and reload-storms when
+    # antivirus/indexers touch file attributes there.
+    app.run(debug=True, port=5000, reloader_type="stat")

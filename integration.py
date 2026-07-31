@@ -89,7 +89,7 @@ POST /quotation/create
 
 VIEW (GET /quotation/view/<id>)
   ├─ Read from STORE["quotations"][id]
-  ├─ Render letterhead (static COMPANY_* constants)
+  ├─ Render letterhead (COMPANY_* constants from branding.py)
   ├─ Render address + terms grid from saved fields
   ├─ Render line_items table
   │     header rows → blue tint, no S.No, no price, qty shown as annotation
@@ -117,11 +117,11 @@ Row dict schema:
     "depth":   int,     # 0 = root, +1 per nesting level
   }
 
-Example: KIRLOSKAR MAIN ELECTRIC PUMPSET × 2
-  [header] KIRLOSKAR MAIN ELECTRIC PUMPSET  qty=2
-  [item  ] DBxe 80/26 - 83                  qty=2×1=2   price=125000  total=250000
-  [item  ] 75KW/100HP MOTOR                 qty=2×1=2   price=210000  total=420000
-  [item  ] DB 80/26 FRAME                   qty=2×1=1*  total= 90000
+Example: MAIN FIRE PUMP SET - ELECTRIC × 2
+  [header] MAIN FIRE PUMP SET - ELECTRIC     qty=2
+  [item  ] END SUCTION FIRE PUMP 80/26       qty=2×1=2   price=125000  total=250000
+  [item  ] 75KW/100HP MOTOR                  qty=2×1=2   price=210000  total=420000
+  [item  ] PUMP BASE FRAME 80/26             qty=2×1=1*  total= 90000
   (* child qty=1 in seed; 2×1=2 → total=45000×2=90000)
 
   grand_total = 250000 + 420000 + 90000 = 760000

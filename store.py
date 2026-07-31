@@ -14,12 +14,22 @@ Structure (grows as modules are added):
       # future keys: "assemblies", "quotations", ...
   }
 
-⚠  In-memory only — all data is lost on server restart.
-   Swap STORE reads/writes for a DB layer when moving to production.
+Persistence
+-----------
+STORE is still a plain dict and every blueprint still mutates it directly —
+that contract has not changed. db.py mirrors it to MySQL: app.py loads the
+tables into these dicts at startup and syncs changed records back after each
+request. Nothing here needs to know about that.
+
+If MySQL is unreachable (or DB_ENABLED=false in .env) the app falls back to
+this dict alone and prints a warning at startup — behaviour identical to how
+it worked before, data lost on restart.
 """
 
 STORE: dict = {
-    "products":   {},   # keyed by UUID string → product dict
-    "quotations": {},   # keyed by UUID string → quotation dict
-    "_seeded":    False,  # flipped to True after ensure_demo_products() runs once
+    "products":     {},   # keyed by UUID string → product dict
+    "quotations":   {},   # keyed by UUID string → quotation dict
+    "addresses":    {},   # keyed by UUID string → address dict (address book)
+    "_seeded":      False,  # flipped to True after ensure_demo_products() runs once
+    "_addr_seeded": False,  # flipped to True after ensure_demo_addresses() runs once
 }

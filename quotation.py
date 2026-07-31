@@ -17,6 +17,9 @@ import uuid
 from datetime import date as _date
 from flask import Blueprint, render_template_string, request, redirect, url_for
 
+import branding as B
+import pipeline as P
+from address import INDIAN_STATES, picker_options, picker_payload
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
@@ -27,16 +30,19 @@ quotation_bp = Blueprint("quotation", __name__, url_prefix="/quotation")
 # =============================================================================
 # COMPANY IDENTITY
 # =============================================================================
-COMPANY_NAME      = "SHANBHAG ENGINEERING COMPANY"
-COMPANY_TAGLINE   = "Total Pumping Solutions"
-COMPANY_ADDR      = "B/50 Nand Bhavan Industrial Estate, Mahakali Caves Rd, Andheri (E), Mumbai – 400 093"
-COMPANY_PHONE     = "91 22 4036 5700 / 5711"
-COMPANY_EMAIL     = "info@shanbhags.com"
-COMPANY_WEB       = "www.shanbhags.com"
-COMPANY_GSTIN     = "27AABFS6095A1ZA"
-COMPANY_PAN       = "AABFS6095A"
-COMPANY_BRANCHES  = "Pune, Surat"
-COMPANY_SIGNATORY = "Authorised Signatory"
+# Owned by branding.py — edit it there, not here. Re-exported under the old
+# names so the document templates below stay readable.
+COMPANY_NAME      = B.COMPANY_NAME
+COMPANY_LEGAL     = B.COMPANY_LEGAL
+COMPANY_TAGLINE   = B.COMPANY_TAGLINE
+COMPANY_ADDR      = B.COMPANY_ADDR
+COMPANY_PHONE     = B.COMPANY_PHONE
+COMPANY_EMAIL     = B.COMPANY_EMAIL
+COMPANY_WEB       = B.COMPANY_WEB
+COMPANY_GSTIN     = B.COMPANY_GSTIN
+COMPANY_PAN       = B.COMPANY_PAN
+COMPANY_BRANCHES  = B.COMPANY_BRANCHES
+COMPANY_SIGNATORY = B.COMPANY_SIGNATORY
 
 
 # =============================================================================
@@ -108,7 +114,7 @@ def _build_tnc(q: dict) -> list:
     terms.append(
         f"The above prices are {delivery} assembled unpacked condition."
         if delivery else
-        "The above prices are ex our Panvel Godown assembled unpacked condition."
+        "The above prices are ex our works, assembled unpacked condition."
     )
 
     tax_type = q.get("tax_type", "exempt")
@@ -166,38 +172,39 @@ def _build_tnc(q: dict) -> list:
         "Validity – 15 days from the date of offer submitted."
     )
 
+    # ── Standing clauses ──────────────────────────────────────────────────────
+    # NOTE: these are the trade terms that print on every quotation. They have
+    # been written generically for a fire-protection contractor; have them
+    # checked once against Samruddhi Fire's own commercial policy (warranty
+    # period, commissioning scope, AMC) before the first customer sees them.
     terms += [
-        "KFE engine sets will need to be revalidated if commissioned beyond 3 months from the "
-            "date of our invoice by authorized KBL service engineer. This will involve mandatory "
-            "change of fuel, oil filters & check-up of fuel pump for freeness. If commissioned "
-            "beyond 12 months, air filter change & calibration of fuel pump will also be done. "
-            "Costs borne by customer. Mandatory for engine-set warranty to be valid.",
-        "Any commissioning call will be given minimum 5 working days in advance post check-list "
-            "confirmation. Check list for site readiness to be carefully noted for 100% compliance.",
-        "First visit for supervision of commissioning will be done on FOC basis after confirmation "
-            "of site readiness. Any further visits due to site non-readiness will be charged on "
-            "per man-day basis.",
-        "Any short supplies from our end must be brought to our notice within 3 working days from "
-            "receipt of materials. Delay in such information cannot be accepted for part replacement.",
-        "For any rectifications required for bare pump, motor, monoblock pumps within warranty "
-            "period which requires transport to authorized service centre — the to & fro freight "
-            "costs will be borne by customer.",
-        "Fuel Pipe Inlet / Outlet & Rain Cap along with the Diesel Engine (for silencer) is not "
-            "in KBL Scope of supply.",
-        "Factory-built pump sets commissioned in absence of KBL service engineers are voided of warranty.",
-        "Witness & Inspection – We can offer witnessed performance tests of Electric Motor Driven "
-            "pumpsets (upto 120 hp) & Engine driven pumpsets (Except Monoblock pump, KCIL & KVM) "
-            "at our Panvel Warehouse Test Facility at additional prices as required.",
-        "Warranty – For pumps: 18 months from Invoice Date or 12 months from commissioning date "
-            "whichever is earlier. For boughtouts as mech seal, motors, engines, etc. warranty is "
-            "limited to 12 months from invoice date only. No warranty on electronic components.",
-        "For all motor-driven Pumps – As per KBL Policy, commissioning will be in customer scope "
-            "& it should be as per the standard KBL Checklist.",
+        "Scope – Supply only, unless erection, installation or commissioning is explicitly "
+            "listed in the item description above.",
+        "Any commissioning call will be given minimum 5 working days in advance, post "
+            "check-list confirmation. Site readiness check-list to be complied with 100%.",
+        "First visit for supervision of commissioning will be done free of cost after "
+            "confirmation of site readiness. Further visits arising from site non-readiness "
+            "will be charged on a per man-day basis.",
+        "Any short supply must be brought to our notice within 3 working days of receipt of "
+            "material. Claims raised later cannot be accepted for part replacement.",
+        "Where an item requires transport to an authorised service centre for rectification "
+            "within the warranty period, to & fro freight will be borne by the customer.",
+        "Warranty – 12 months from the date of invoice or 12 months from the date of "
+            "commissioning, whichever is earlier. Bought-out items carry only the original "
+            "manufacturer's warranty. No warranty on electronic components.",
+        "Equipment supplied is warranted for defects in material and workmanship only. "
+            "Damage from incorrect installation, power fluctuation, dry running, "
+            "or lack of prescribed maintenance is not covered.",
+        "Fire-fighting equipment supplied conforms to the relevant IS / BIS specification "
+            "quoted against each item. Statutory approvals from the local fire authority are "
+            "in the customer's scope unless stated otherwise.",
+        "Refilling, servicing and periodic testing after the warranty period are chargeable "
+            "and can be covered under a separate AMC.",
         "Standard Force Majeure clause is applicable.",
-        "Be informed that we will raise a debit note of Rs 900.00 + GST each time your payment "
-            "cheque bounces (for any reason) when presented for clearing. This will mandatorily "
-            "need to be cleared before next supply can be made to you.",
-        "Any statutory deviation in taxes & duties at time of delivery will be to customer's account.",
+        "A debit note of Rs 900.00 + GST will be raised each time a payment cheque is "
+            "returned unpaid on presentation, and must be cleared before the next supply.",
+        "Any statutory deviation in taxes & duties at the time of delivery will be to the "
+            "customer's account.",
     ]
 
     return terms
@@ -216,12 +223,41 @@ def _fmt_qty(q: float) -> str:
     return str(int(q)) if q == int(q) else f"{q:g}"
 
 
-def _mc(label: str, val: str) -> str:
-    v = (val or "").strip()
-    val_html = (f'<span class="mc-val">{v}</span>' if v
-                else '<span class="mc-empty">—</span>')
-    lbl_html = f'<span class="mc-lbl">{label}</span>' if label else ""
-    return f'<div class="meta-cell">{lbl_html}{val_html}</div>'
+def _inr(v: float, dec: int = 2) -> str:
+    """
+    Money in the Indian digit grouping — 13,15,000.00, not 1,315,000.00.
+
+    Python's ``{:,}`` groups in thousands, which is the one number format an
+    Indian customer reads as a typo. Every figure on the printed document goes
+    through here. No currency symbol: the document says INR once, in the
+    amount-in-words line, exactly as the trade does it.
+    """
+    v = float(v or 0.0)
+    neg = v < 0
+    ip, _, fp = f"{abs(v):.{dec}f}".partition(".")
+    if len(ip) > 3:
+        head, tail = ip[:-3], ip[-3:]
+        groups = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            groups.insert(0, head)
+        ip = ",".join(groups + [tail])
+    out = ip + ("." + fp if dec else "")
+    return ("-" + out) if neg else out
+
+
+def _meta(label: str, val: str) -> str:
+    """
+    One label/value pair in the document header.
+
+    A blank value renders as an empty line, never as an em-dash — a grid of
+    "—" reads as an unfinished document. ``.m-val`` carries a min-height so
+    the rows stay on the same rhythm whether or not they are filled.
+    """
+    return (f'<div class="mrow"><span class="m-lbl">{label}</span>'
+            f'<span class="m-val">{(val or "").strip()}</span></div>')
 
 
 def _product_catalog_json() -> str:
@@ -371,6 +407,25 @@ QUOTATION_STYLES = """
   .span-all { grid-column:1/-1; }
 
   .form-group { display:flex; flex-direction:column; gap:.3rem; }
+
+  /* ── Address book picker (Bill To / Ship To) ─────────────────────── */
+  .addr-pick {
+    display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
+    margin-bottom:.8rem; padding-bottom:.8rem;
+    border-bottom:1px dashed var(--border);
+  }
+  .addr-pick select {
+    flex:1 1 260px; min-width:0;
+    font-family:var(--font); font-size:.85rem; padding:.5rem .65rem;
+    border:1px solid var(--border); border-radius:8px;
+    background:var(--bg); color:var(--text);
+  }
+  .addr-pick select:focus { outline:none; border-color:var(--brand); background:var(--surface); }
+  .addr-pick-link {
+    font-size:.76rem; font-weight:600; color:var(--brand);
+    text-decoration:none; white-space:nowrap;
+  }
+  .addr-pick-link:hover { text-decoration:underline; }
 
   label {
     font-size:.72rem; font-weight:700; text-transform:uppercase;
@@ -565,7 +620,27 @@ QUOTATION_STYLES = """
 
 VIEW_DOC_STYLES = """
 <style>
-  .doc-outer { max-width:1080px; margin:0 auto; }
+  /* ══════════════════════════════════════════════════════════════════════
+     THE PRINTED QUOTATION
+
+     Four rules. They are short so that they stay followed — the previous
+     version of this sheet had 3 font families, 9 type sizes and 11 border
+     greys, and read as an accident rather than a document.
+
+       1. ONE typeface — Arial. Money columns get `tabular-nums` instead of
+          a second, monospaced family; digits line up without the switch.
+       2. FIVE sizes — --fs-xs … --fs-xl. Nothing in between.
+       3. THREE rules — --rule-box (heavy frame), --rule (cell grid),
+          --rule-hair (soft internal separator). No other border weight.
+       4. Emphasis is WEIGHT and RULE, never fill. The table head is the one
+          background that carries meaning, and print explicitly forces it
+          through; with backgrounds off the document is unchanged otherwise.
+
+     Layout is in mm, because the output is A4 — not rem, which is a 16px
+     screen unit and has no relationship to a pt-sized page.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  .doc-outer { max-width:210mm; margin:0 auto; }
 
   .screen-acts {
     display:flex; gap:.75rem; margin-bottom:1.2rem; flex-wrap:wrap;
@@ -573,125 +648,191 @@ VIEW_DOC_STYLES = """
   }
 
   .quotation-doc {
-    background:#fff; border:1px solid #c5c5c5;
-    box-shadow:0 4px 32px rgba(0,0,0,.10);
-    font-family:'Times New Roman', Times, serif;
-    font-size:10.5pt; color:#111;
+    --doc-ink:   #000;
+    --doc-soft:  #454545;
+    --doc-faint: #6f6f6f;
+    --rule-box:  1.1pt solid #000;
+    --rule:      0.5pt solid #000;
+    --rule-hair: 0.5pt solid #a8a8a8;
+    --fs-xs: 6.5pt;
+    --fs-sm: 7.5pt;
+    --fs-md: 8.5pt;
+    --fs-lg: 12pt;
+    --fs-xl: 17pt;
+
+    background:#fff; color:var(--doc-ink);
+    font-family:Arial, Helvetica, sans-serif;
+    font-size:var(--fs-sm); line-height:1.35;
+    text-transform:none; letter-spacing:normal;
+    /* On screen, mimic the A4 margin so what you see matches what prints. */
+    padding:9mm 8mm 7mm;
+    border:1px solid #c5c5c5; box-shadow:0 4px 32px rgba(0,0,0,.10);
   }
 
-  .lh-band {
-    border-bottom:2.5px solid #111;
-    padding:12px 20px 10px;
-    display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;
-  }
-  .lh-name    { font-family:Arial,sans-serif; font-size:18pt; font-weight:900; color:#1a1a8c; letter-spacing:.4px; }
-  .lh-tag     { font-family:Arial,sans-serif; font-size:8.5pt; color:#555; margin-top:2px; letter-spacing:.5px; }
-  .lh-right   { text-align:right; font-family:Arial,sans-serif; font-size:7.5pt; color:#333; line-height:1.6; }
-  .lh-regaddr {
-    margin:0 20px; padding:4px 0 5px;
-    border-top:1px solid #bbb;
-    font-family:Arial,sans-serif; font-size:7.5pt; color:#555; text-align:center;
-  }
+  /* ── Page frame ───────────────────────────────────────────────────────
+     The letterhead and the foot strip live in <thead>/<tfoot> of an outer
+     table. That is the only mechanism a browser gives us for repeating a
+     band on every printed page — `position:fixed` does not survive
+     pagination in Chrome. On screen it is an ordinary one-row table.
 
-  .doc-title { text-align:center; font-family:Arial,sans-serif; font-size:13pt; font-weight:700;
-               padding:5px 0 6px; border-bottom:1px solid #111; letter-spacing:.6px; }
+     Because it IS a <table>, the app's bare `table {}` / `thead {}` rules
+     land on it and are inherited by the whole document. Neutralise them here,
+     or the address block silently renders at the app's .88rem and the
+     letterhead picks up the canvas tint. */
+  .page-frame { width:100%; border-collapse:collapse;
+                font-size:var(--fs-sm); background:none; }
+  .page-frame > thead,
+  .page-frame > tfoot { background:none; border:none; }
+  .page-frame > thead > tr > td,
+  .page-frame > tfoot > tr > td,
+  .page-frame > tbody > tr > td { padding:0; border:none; background:none; }
 
-  .doc-header {
-    display:grid; grid-template-columns:35% 25% 40%;
-    border-bottom:1px solid #111;
-  }
-  .dh-to, .dh-acct, .dh-meta { padding:10px 12px; }
-  .dh-to   { border-right:1px solid #aaa; }
-  .dh-acct { border-right:1px solid #aaa; }
-  .dh-lbl  {
-    font-family:Arial,sans-serif; font-weight:700; font-size:7.5pt;
-    color:#555; display:block; margin-bottom:4px; text-transform:uppercase; letter-spacing:.04em;
-  }
-  .dh-val  { font-size:9pt; line-height:1.6; white-space:pre-wrap; font-weight:500; }
+  /* ── Letterhead ───────────────────────────────────────────────────── */
+  .lh { display:flex; justify-content:space-between; align-items:flex-end; gap:8mm; }
+  /* Two-tone exactly as the signboard is painted: SAMRUDDHI red, FIRE navy. */
+  .lh-name      { font-size:var(--fs-xl); font-weight:700; color:var(--brand); letter-spacing:.6px; line-height:1.1; }
+  .lh-name-fire { color:var(--navy); }
+  .lh-tag       { font-size:var(--fs-sm); color:var(--doc-soft); letter-spacing:.3px; margin-top:1px; }
+  .lh-legal     { font-size:var(--fs-xs); color:var(--doc-faint); margin-top:1px; }
+  .lh-mark      { flex-shrink:0; }
+  .lh-rule      { border-top:var(--rule-box); margin-top:3px; }
+  .lh-addr      { font-size:var(--fs-xs); color:var(--doc-soft); padding-top:3px; }
+  .lh-contact   { font-size:var(--fs-sm); color:var(--navy); font-weight:700; padding-bottom:4px; }
+  .lh-contact .sep { color:#9a9a9a; font-weight:400; padding:0 3px; }
+  .lh-foot { border-top:var(--rule-hair); margin-top:4mm; padding-top:2px;
+             font-size:var(--fs-xs); color:var(--doc-faint); }
 
-  .meta-grid { display:grid; grid-template-columns:1fr 1fr; }
-  .meta-cell {
-    padding:4px 8px; border-bottom:1px solid #e0e0e0; border-right:1px solid #e0e0e0;
-    font-size:8pt; line-height:1.4;
-  }
-  .meta-cell:nth-child(even) { border-right:none; }
-  .meta-cell:nth-last-child(-n+2) { border-bottom:none; }
-  .mc-lbl   { font-family:Arial,sans-serif; font-weight:700; font-size:7pt; color:#666; display:block; }
-  .mc-val   { font-size:8.5pt; font-weight:600; color:#111; }
-  .mc-empty { font-size:8.5pt; color:#bbb; }
+  /* ── The framed document body ─────────────────────────────────────── */
+  .doc-box   { border:var(--rule-box); }
+  .doc-title { text-align:center; font-size:var(--fs-lg); font-weight:700;
+               letter-spacing:1.2px; padding:3px 0; border-bottom:var(--rule-box); }
 
+  .doc-header { display:grid; grid-template-columns:42% 29% 29%; border-bottom:var(--rule-box); }
+  .dh-cell            { padding:4px 6px; min-width:0; }
+  .dh-cell + .dh-cell { border-left:var(--rule); }
+
+  .dh-lbl  { font-size:var(--fs-sm); color:var(--doc-soft); display:block; }
+  .dh-name { font-weight:700; }
+  .dh-body { font-size:var(--fs-sm); white-space:pre-wrap; overflow-wrap:break-word; }
+  .dh-ship { margin-top:4px; padding-top:3px; border-top:var(--rule-hair); }
+
+  .mrow  { margin-bottom:2px; }
+  .m-lbl { display:block; font-size:var(--fs-sm); color:var(--doc-soft); line-height:1.25; }
+  /* min-height keeps the two meta columns on the same rhythm when a value is
+     blank. A blank prints as a blank — never as an em-dash. */
+  .m-val { display:block; font-size:var(--fs-sm); font-weight:700; line-height:1.3; min-height:1.3em; }
+
+  /* ── Items table ──────────────────────────────────────────────────── */
+  /* NOTE: BASE_STYLES / PRODUCT_STYLES / QUOTATION_STYLES all ship bare
+     `th`, `td` and `li` rules for the on-screen app, and they load either
+     side of this sheet. A bare `th` beats nothing, so every property the
+     document cares about is declared here explicitly rather than left to
+     inherit — otherwise the column heads come out uppercase and grey. */
   .items-wrap { overflow-x:auto; }
-  .q-table { width:100%; border-collapse:collapse; font-size:9pt; border-top:1px solid #111; }
-  .q-table thead { background:#eee; }
+  .q-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:var(--fs-sm); }
   .q-table th {
-    padding:5px 7px; text-align:left; font-family:Arial,sans-serif;
-    font-size:7.5pt; font-weight:700; border:1px solid #999; white-space:nowrap;
+    background:#c9c9c9; border:var(--rule); padding:3px 4px;
+    font-weight:700; text-align:center;      /* every head centred — one rule */
+    font-family:inherit; font-size:var(--fs-sm); color:var(--doc-ink);
+    text-transform:none; letter-spacing:normal; white-space:normal;
   }
-  .q-table th.r { text-align:right; }
-  .q-table td   { padding:4px 7px; border:1px solid #ccc; vertical-align:top; }
-
-  .row-assembly td { font-weight:700; background:#f5f5f5; }
-  .row-item     td { background:#fff; }
-
-  .c-sno    { width:3rem;   text-align:center; }
-  .c-partno { width:8rem;   font-family:'Courier New',monospace; font-size:7.5pt; word-break:break-all; }
-  .c-desc   { min-width:160px; }
-  .c-hsn    { width:5.5rem; text-align:center; font-size:7.5pt; }
-  .c-qty    { width:3.5rem; text-align:right; }
-  .c-unit   { width:3rem;   text-align:center; }
-  .c-price  { width:8rem;   text-align:right; font-family:'Courier New',monospace; white-space:nowrap; }
-  .c-total  { width:8.5rem; text-align:right; font-family:'Courier New',monospace; font-weight:700; white-space:nowrap; }
-
-  .indent-1 { padding-left:1.4rem !important; }
-  .indent-2 { padding-left:2.6rem !important; }
-
-  .row-subtotal td, .row-tax td {
-    font-family:Arial,sans-serif; font-size:8.5pt; border:1px solid #ccc;
-    padding:4px 7px; background:#fafafa;
-  }
-  .row-total td {
-    font-family:Arial,sans-serif; font-weight:700; font-size:9.5pt;
-    background:#eeeeee; border:1px solid #999; padding:5px 7px;
-  }
-  .row-total .c-total { text-align:right; font-family:'Courier New',monospace; }
-  .row-subtotal .c-total, .row-tax .c-total { text-align:right; font-family:'Courier New',monospace; }
-
-  .amount-words {
-    border:1px solid #ccc; border-top:none;
-    padding:5px 12px; font-size:8.5pt; font-family:Arial,sans-serif; background:#fafafa;
+  .q-table td {
+    border:var(--rule); padding:3px 4px; vertical-align:top;
+    font-family:inherit; font-size:var(--fs-sm); color:var(--doc-ink);
+    text-transform:none; letter-spacing:normal;
   }
 
-  .tnc-section { border-top:2px solid #111; padding:12px 20px 16px; font-family:Arial,sans-serif; font-size:8pt; line-height:1.65; }
-  .tnc-title   { font-weight:700; font-size:9pt; margin-bottom:7px; text-decoration:underline; }
+  /* Hierarchy by weight, not by fill — so it survives a printer with
+     background graphics switched off. */
+  .row-assembly .c-desc  { font-weight:700; }
+  .row-assembly .c-price,
+  .row-assembly .c-total { font-weight:700; }
+  .indent-1 { padding-left:10px !important; }
+  .indent-2 { padding-left:20px !important; }
+
+  .c-sno    { width:9mm;  text-align:center; }
+  .c-partno { width:24mm; text-align:center; font-size:var(--fs-xs); overflow-wrap:anywhere; }
+  .c-desc   { text-align:left; overflow-wrap:break-word; }
+  .c-hsn    { width:16mm; text-align:center; font-size:var(--fs-xs); }
+  .c-qty    { width:12mm; text-align:right; }
+  .c-unit   { width:11mm; text-align:center; }
+  .c-price  { width:22mm; text-align:right; font-variant-numeric:tabular-nums; }
+  .c-total  { width:24mm; text-align:right; font-variant-numeric:tabular-nums; }
+
+  .row-sum .sum-lbl   { text-align:right; }
+  .row-total td       { font-weight:700; font-size:var(--fs-md); border-top:var(--rule-box); }
+
+  .amount-words { border-top:var(--rule-box); padding:3px 6px; font-weight:700; }
+
+  /* ── Terms ────────────────────────────────────────────────────────── */
+  .tnc-section { margin-top:5mm; }
+  .tnc-title   { font-weight:700; font-size:var(--fs-md); margin-bottom:4px; }
   .tnc-ol      { list-style:none; margin:0; padding:0; }
-  .tnc-ol li   { display:flex; gap:5px; margin-bottom:2px; }
-  .tnc-num     { flex-shrink:0; font-weight:700; min-width:18px; }
+  .tnc-ol li   { display:flex; gap:4px; margin-bottom:3px; line-height:1.35;
+                 font-family:inherit; font-size:var(--fs-sm); color:var(--doc-ink); }
+  .tnc-num     { flex-shrink:0; min-width:15px; }
 
-  .sig-block {
-    display:flex; justify-content:space-between; align-items:flex-end;
-    padding:10px 20px 14px; border-top:1px solid #ccc;
-    font-family:Arial,sans-serif; font-size:8pt;
-  }
-  .sig-gstin   { line-height:1.9; }
-  .sig-right   { text-align:right; }
-  .sig-for     { font-weight:700; font-size:9pt; margin-bottom:28px; }
-  .sig-name    { border-top:1px solid #555; padding-top:3px; font-size:8.5pt; text-align:center; }
-  .sig-note    { border-top:1px solid #ddd; padding:4px 20px 5px; font-family:Arial,sans-serif; font-size:7.5pt; color:#666; font-style:italic; text-align:center; }
-  .page-num    { text-align:right; font-size:7pt; color:#999; padding:3px 20px; border-top:1px solid #eee; font-family:Arial,sans-serif; }
+  /* ── Signature ────────────────────────────────────────────────────── */
+  .sig-block { display:flex; justify-content:space-between; align-items:flex-start;
+               gap:10mm; margin-top:6mm; }
+  .sig-kv    { display:grid; grid-template-columns:auto 1fr; gap:2px 4px; }
+  .sig-kv b  { font-weight:700; }
+  .sig-for   { font-weight:700; }
+  /* Deliberate blank space for a wet signature, then the name. No rule above
+     the name — the signature goes in the gap, not under a printed line. */
+  .sig-name  { margin-top:15mm; text-align:center; }
+  .sig-note  { margin-top:6mm; color:var(--doc-soft); }
 
   @media print {
-    nav,.page-top,.screen-acts,footer { display:none !important; }
-    body { background:#fff; margin:0; }
-    .doc-outer { max-width:100%; padding:0; }
-    .quotation-doc { border:none; box-shadow:none; }
-    .q-table th, .q-table td { font-size:8pt; }
+    @page { size:A4 portrait; margin:10mm 9mm 9mm; }
+
+    /* .deal-panel / .alert are internal sales tracking — never part of the
+       document the customer receives. */
+    nav,.page-top,.screen-acts,.deal-panel,.alert,footer { display:none !important; }
+    html, body { background:#fff !important; margin:0 !important; padding:0 !important; }
+    main       { background:none !important; margin:0 !important; padding:0 !important;
+                 max-width:none !important; }
+    .doc-outer { max-width:none; margin:0; padding:0; }
+    .quotation-doc { border:none; box-shadow:none; padding:0; }
+    /* A scroll container clips instead of reflowing when printed. */
+    .items-wrap { overflow:visible !important; }
+
+    /* Repeat the letterhead, the foot strip and the column heads on page 2+. */
+    .page-frame > thead { display:table-header-group; }
+    .page-frame > tfoot { display:table-footer-group; }
+    .q-table    > thead { display:table-header-group; }
+
+    /* The head band is the one fill that carries meaning, so force it through
+       Chrome's default "don't print backgrounds". Everything else reads
+       identically with backgrounds off. */
+    .q-table th { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+    .q-table tr, .tnc-ol li, .sig-block, .amount-words {
+      break-inside:avoid; page-break-inside:avoid;
+    }
+    .tnc-title { break-after:avoid; page-break-after:avoid; }
+
+    /* The blank-identity guard still has to be visible on the document — but a
+       yellow dashed pill on a customer's quotation is worse than the gap it
+       is warning about. Print it as bracketed italics instead. */
+    .todo-chip {
+      background:none !important; border:none !important; color:#555 !important;
+      padding:0 !important; font-style:italic; font-weight:400 !important;
+    }
+    .todo-chip::before { content:"["; }
+    .todo-chip::after  { content:"]"; }
   }
 
-  @media(max-width:700px){
-    .doc-header { grid-template-columns:1fr; }
-    .dh-to,.dh-acct { border-right:none; border-bottom:1px solid #aaa; }
-    .c-price,.c-hsn { display:none; }
-    .lh-band { flex-direction:column; }
+  /* MUST be scoped to `screen`. A4 at 96dpi is ~794px and the printable box is
+     narrower still, so an unscoped max-width breakpoint fires *on paper* and
+     prints the phone layout — stacked header, collapsed letterhead. */
+  @media screen and (max-width:760px){
+    .doc-outer     { max-width:100%; }
+    .quotation-doc { padding:5mm 4mm; }
+    .lh            { flex-direction:column; align-items:flex-start; }
+    .doc-header    { grid-template-columns:1fr; }
+    .dh-cell + .dh-cell { border-left:none; border-top:var(--rule); }
+    .q-table { table-layout:auto; min-width:640px; }
   }
 </style>
 """
@@ -714,9 +855,93 @@ def list_quotations():
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
         alert_html = f'<div class="alert alert-{msg_type}">{icon} {msg}</div>'
 
-    if quotations:
+    # ── Pipeline summary + filtering (all logic lives in pipeline.py) ───
+    summary   = P.summarize(quotations)
+    rows      = P.filter_quotations(quotations, request.args)
+    cur_view  = (request.args.get("view")  or P.DEFAULT_VIEW).strip().lower()
+    cur_stage = (request.args.get("stage") or "").strip()
+    cur_q     = (request.args.get("q")     or "").strip()
+
+    def _rupees(v):
+        return f"&#8377;&nbsp;{v:,.0f}"
+
+    win_rate = (f'{summary["win_rate"]}% win rate' if summary["win_rate"] is not None
+                else "no closed deals yet")
+    won_po   = summary["won"]["po_value"]
+
+    tiles_html = f"""
+    <div class="pipe-tiles">
+      <div class="pipe-tile t-open">
+        <div class="pt-lbl">Open Pipeline</div>
+        <div class="pt-val">{_rupees(summary['open']['value'])}</div>
+        <div class="pt-sub">{summary['open']['count']} live quotation{"s" if summary['open']['count'] != 1 else ""}</div>
+      </div>
+      <div class="pipe-tile">
+        <div class="pt-lbl">PO Expected</div>
+        <div class="pt-val">{_rupees(summary['by_stage'].get('PO Expected', {}).get('value', 0))}</div>
+        <div class="pt-sub">{summary['by_stage'].get('PO Expected', {}).get('count', 0)} awaiting customer PO</div>
+      </div>
+      <div class="pipe-tile t-won">
+        <div class="pt-lbl">Won</div>
+        <div class="pt-val">{_rupees(summary['won']['value'])}</div>
+        <div class="pt-sub">{summary['won']['count']} won &middot; {win_rate}</div>
+      </div>
+      <div class="pipe-tile t-lost">
+        <div class="pt-lbl">Lost</div>
+        <div class="pt-val">{_rupees(summary['lost']['value'])}</div>
+        <div class="pt-sub">{summary['lost']['count']} lost</div>
+      </div>
+    </div>"""
+
+    # PO value only means something once at least one has been recorded.
+    if won_po:
+        tiles_html = tiles_html.replace(
+            f'<div class="pt-sub">{summary["won"]["count"]} won &middot; {win_rate}</div>',
+            f'<div class="pt-sub">{summary["won"]["count"]} won &middot; {win_rate}<br>'
+            f'PO value {_rupees(won_po)}</div>')
+
+    # ── Filter bar ─────────────────────────────────────────────────────
+    view_counts = {
+        "all":  summary["total"]["count"],
+        "open": summary["open"]["count"],
+        "won":  summary["won"]["count"],
+        "lost": summary["lost"]["count"],
+    }
+    tabs_html = ""
+    for key, (label, _pred) in P.VIEWS.items():
+        active = " active" if key == cur_view else ""
+        href   = url_for("quotation.list_quotations", view=key,
+                         **({"stage": cur_stage} if cur_stage else {}),
+                         **({"q": cur_q} if cur_q else {}))
+        tabs_html += f'<a href="{href}" class="filter-tab{active}">{label} ({view_counts[key]})</a>'
+
+    stage_opts = '<option value="">All stages</option>'
+    for s in P.SALES_STAGES:
+        n = summary["by_stage"].get(s, {}).get("count", 0)
+        sel = " selected" if s == cur_stage else ""
+        stage_opts += f'<option value="{P.esc(s)}"{sel}>{P.esc(s)} ({n})</option>'
+
+    clear_html = ""
+    if cur_stage or cur_q or cur_view != P.DEFAULT_VIEW:
+        clear_html = (f'<a href="{url_for("quotation.list_quotations")}" '
+                      f'class="fb-clear">clear filters</a>')
+
+    filter_html = f"""
+    <div class="filter-bar">
+      <div class="filter-tabs">{tabs_html}</div>
+      <form method="GET" action="{url_for("quotation.list_quotations")}">
+        <input type="hidden" name="view" value="{P.esc(cur_view)}"/>
+        <select name="stage" onchange="this.form.submit()">{stage_opts}</select>
+        <input type="search" name="q" value="{P.esc(cur_q)}" placeholder="ref, customer or PO no."/>
+        <button type="submit" class="filter-tab">Search</button>
+        {clear_html}
+      </form>
+    </div>"""
+
+    # ── Table ──────────────────────────────────────────────────────────
+    if rows:
         rows_html = ""
-        for qid, q in reversed(list(quotations.items())):
+        for qid, q in rows:
             view_url = url_for("quotation.view_quotation", id=qid)
             customer = (q.get("account_name") or q.get("to") or "").strip().splitlines()[0] or "—"
             n_root   = sum(1 for r in q["line_items"] if r["depth"] == 0)
@@ -725,7 +950,8 @@ def list_quotations():
               <td class="td-ref">{q['ref']}</td>
               <td class="td-muted">{q['date']}</td>
               <td class="td-cust">{customer}</td>
-              <td class="td-muted col-h">{q.get('sales_stage','—')}</td>
+              <td>{P.stage_badge(P.stage_of(q))}</td>
+              <td class="col-h">{P.po_cell(q)}</td>
               <td class="td-muted col-h">{n_root} line{"s" if n_root!=1 else ""}</td>
               <td style="font-weight:700;color:var(--brand);">&#8377;&nbsp;{q['grand_total']:,.0f}</td>
               <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
@@ -734,11 +960,21 @@ def list_quotations():
         <div class="table-wrap"><table>
           <thead><tr>
             <th>Ref No.</th><th>Date</th><th>Customer</th>
-            <th class="col-h">Stage</th><th class="col-h">Lines</th>
+            <th>Stage</th><th class="col-h">Customer PO</th><th class="col-h">Lines</th>
             <th>Total</th><th></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""
+    elif quotations:
+        # Store has records, but none survive the current filter.
+        table_html = f"""
+        <div class="empty-state">
+          <div style="font-size:2rem;">&#128269;</div><br>
+          <strong>No quotations match this filter</strong>
+          <p style="margin-top:.4rem;font-size:.88rem;">Try a different stage, or clear the filters.</p>
+          <a href="{url_for("quotation.list_quotations")}" class="btn"
+             style="display:inline-block;margin-top:1.1rem;">Show all</a>
+        </div>"""
     else:
         table_html = f"""
         <div class="empty-state">
@@ -750,14 +986,14 @@ def list_quotations():
 
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-    <title>Quotations — QMS</title>{BASE_STYLES}{QUOTATION_STYLES}</head>
+    <title>{B.page_title("Quotations")}</title>{B.HEAD_ICON}{BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}</head>
     <body>{_nav()}
     <main>
       {alert_html}
       <div class="page-top">
         <h1>Quotation <span>Register</span>
           <span style="font-size:.73rem;font-weight:500;color:var(--muted);margin-left:.5rem;">
-            {len(quotations)} total
+            showing {len(rows)} of {len(quotations)}
           </span>
         </h1>
         <div style="display:flex;gap:.7rem;">
@@ -765,21 +1001,26 @@ def list_quotations():
           <a href="{create_url}" class="btn">+ Create Quotation</a>
         </div>
       </div>
+      {tiles_html}
+      {filter_html}
       {table_html}
-      <footer><p>QMS Platform · Quotation Module · In-memory store</p></footer>
+      <footer><p>{COMPANY_NAME} · {B.APP_SUBTITLE} · quotation register</p></footer>
     </main></body></html>"""
     return render_template_string(template)
 
 
 # ── Dropdown option lists ──────────────────────────────────────────────────────
 
-_SALES_STAGES  = ["Budgetary - Stage I", "Budgetary - Stage II", "Technical",
-                   "Commercial", "Negotiation", "PO Expected", "Closed Won", "Closed Lost"]
+# Stage vocabulary is owned by pipeline.py — add or rename stages there and the
+# create form, edit panel and register filters all follow automatically.
+_SALES_STAGES  = P.SALES_STAGES
 _LEAD_SOURCES  = ["Cold Call", "Email Campaign", "Website Enquiry", "Referral",
                    "Exhibition / Trade Show", "Existing Customer", "Tender / Bid", "Walk-in"]
-_LEAD_TYPES    = ["SEC- B AND C", "SEC- A", "Govt / PSU", "Tender", "Export", "Domestic OEM"]
-_LEAD_SUBTYPES = ["STANDARD FIREFIGHTING", "HVAC", "IRRIGATION", "INDUSTRIAL PROCESS",
-                   "WATER SUPPLY", "PRESSURE BOOSTING", "SEWAGE / DRAINAGE", "OTHERS"]
+_LEAD_TYPES    = ["Builder / Developer", "PMC / Consultant", "Industrial", "Govt / PSU",
+                   "Tender", "Housing Society", "Dealer / Sub-contractor"]
+_LEAD_SUBTYPES = ["HYDRANT SYSTEM", "SPRINKLER SYSTEM", "FIRE PUMP ROOM", "FIRE ALARM & DETECTION",
+                   "PORTABLE EXTINGUISHERS", "FIRE DOORS", "AMC / REFILLING",
+                   "WATER SUPPLY", "PRESSURE BOOSTING", "OTHERS"]
 _PAY_TERMS     = ["100% Against Proforma Invoice", "100% Advance",
                    "30% Advance with PO, Balance Against Proforma Invoice Prior to Delivery",
                    "30% Advance, Balance Before Dispatch",
@@ -787,20 +1028,24 @@ _PAY_TERMS     = ["100% Against Proforma Invoice", "100% Advance",
                    "90% Against Proforma, 10% After Installation",
                    "LC at Sight", "LC 30 Days", "45 Days Credit", "60 Days Credit",
                    "90 Days Credit", "Against Delivery (COD)"]
-_DEL_TERMS     = ["Ex-Panvel Godown", "Ex-Works", "Ex-Mumbai Warehouse",
-                   "FOR Destination", "FOB Mumbai", "CIF Destination",
-                   "Door Delivery", "Ex-Factory", "Ex-Stock"]
+_DEL_TERMS     = ["Ex-Works", "Ex-Godown", "Ex-Stock", "FOR Destination",
+                   "FOR Site", "Door Delivery", "FOB Mumbai", "CIF Destination"]
 _DISPATCH      = ["In Clients Scope", "By Road Transport", "By Air Cargo",
                    "By Courier", "By Hand Delivery", "Self Pickup",
                    "VRL Logistics", "TCI Freight", "DTDC Cargo", "Blue Dart"]
 _INCOTERMS     = ["FOR", "EXW", "FOB", "CIF", "CFR", "DAP", "DDP", "FCA"]
 _VALIDITY      = ["7 Days", "10 Days", "15 Days", "30 Days", "45 Days", "60 Days", "90 Days"]
-_BRANCHES      = ["SHANBHAG ENGINEERING COMPANY", "SEC - PUNE", "SEC - SURAT", "SEC - MUMBAI"]
-_REGIONS       = ["SEC-MUMBAI", "SEC-PUNE", "SEC-SURAT", "SEC-GOA", "SEC-NASHIK", "SEC-AURANGABAD"]
-_TYPES         = ["SEC-KBL-Pumps", "MSMO/HYPN/KPY", "KFE Engine Sets", "Spares", "AMC", "Others"]
+# Branch / region lists are placeholders until the client confirms where they
+# actually operate from — see branding.py.
+_BRANCHES      = [B.COMPANY_NAME]
+_REGIONS       = ["Head Office"]
+_TYPES         = ["Fire Fighting System", "Fire Pump Set", "Fire Alarm & Detection",
+                   "Extinguishers", "Spares", "AMC / Refilling", "Others"]
 _COUNTRIES     = ["India", "UAE", "Saudi Arabia", "Oman", "Qatar", "Kuwait", "Other"]
-_STATES_IN     = ["Maharashtra", "Gujarat", "Karnataka", "Tamil Nadu", "Telangana", "Delhi",
-                   "Rajasthan", "Uttar Pradesh", "Madhya Pradesh", "West Bengal", "Other"]
+# Full state list is owned by address.py. Sharing it matters for the address-book
+# picker: a saved address in, say, Kerala has to find a matching <option> here,
+# and the old 10-state shortlist silently dropped most of India on the floor.
+_STATES_IN     = list(INDIAN_STATES) + ["Other"]
 
 
 def _sel_opts(name, options, default, form_val=None):
@@ -954,6 +1199,11 @@ def create_quotation():
                 "selections": sel_data, "line_items": line_items,
                 "to": to_display,
             }
+            # Pipeline fields (stage history, customer PO) — owned by pipeline.py.
+            # ensure_fields() also backfills quotations made before that module
+            # existed, so old and new records behave identically.
+            P.ensure_fields(STORE["quotations"][qid])
+            P.log_event(STORE["quotations"][qid], "Quotation created.")
             return redirect(url_for("quotation.view_quotation", id=qid))
 
     # ── GET / re-render with error ─────────────────────────────────────
@@ -1021,7 +1271,8 @@ def create_quotation():
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>New Quotation — QMS</title>
+  <title>{page_title}</title>
+  {head_icon}
   {base_styles}
   {qtn_styles}
 </head>
@@ -1085,7 +1336,7 @@ def create_quotation():
     <div class="form-group span2">
       <label for="other_ref">Other Ref.</label>
       <input type="text" id="other_ref" name="other_ref" value="{other_ref}"
-             placeholder="e.g. kirloskar fire pump / 2850 LPM @ 104M HEAD"/>
+             placeholder="e.g. fire hydrant system / main pump 2850 LPM @ 104M head"/>
     </div>
     <div class="form-group">
       <label style="visibility:hidden;">Rate Contract</label>
@@ -1118,7 +1369,7 @@ def create_quotation():
   <div class="fg4" style="margin-bottom:.85rem;">
     <div class="form-group">
       <label for="lead_owner">Lead Owner</label>
-      <input type="text" id="lead_owner" name="lead_owner" value="{lead_owner}" placeholder="Sandip Nikam"/>
+      <input type="text" id="lead_owner" name="lead_owner" value="{lead_owner}" placeholder="Name of the sales engineer"/>
     </div>
     <div class="form-group">
       <label for="exp_closing">Exp. Closing Date</label>
@@ -1160,7 +1411,7 @@ def create_quotation():
     </div>
     <div class="form-group">
       <label for="auth_signatory">Auth. Signatory *</label>
-      <input type="text" id="auth_signatory" name="auth_signatory" value="{auth_signatory}" placeholder="Sandip Nikam"/>
+      <input type="text" id="auth_signatory" name="auth_signatory" value="{auth_signatory}" placeholder="Name of the sales engineer"/>
     </div>
     <div class="form-group">
       <label for="region">Region</label>
@@ -1192,6 +1443,12 @@ def create_quotation():
 
   <div class="addr-sub">
     <div class="addr-sub-title">&#128205; Billing Address</div>
+    <div class="addr-pick">
+      <select id="bill_pick" onchange="applyAddr('bill', this)">{addr_options_bill}</select>
+      <a href="{address_url}" target="_blank" rel="noopener" class="addr-pick-link">
+        &#128214; manage address book
+      </a>
+    </div>
     <div class="fg2" style="margin-bottom:.7rem;">
       <div class="form-group span-all">
         <label for="bill_addr">Address</label>
@@ -1244,6 +1501,12 @@ def create_quotation():
       </label>
     </div>
     <div id="ship-fields">
+      <div class="addr-pick">
+        <select id="ship_pick" onchange="applyAddr('ship', this)">{addr_options_ship}</select>
+        <a href="{address_url}" target="_blank" rel="noopener" class="addr-pick-link">
+          &#128214; manage address book
+        </a>
+      </div>
       <div class="fg2" style="margin-bottom:.7rem;">
         <div class="form-group">
           <label for="ship_acct_name">Account Name</label>
@@ -1412,7 +1675,7 @@ def create_quotation():
 </div>
 
 </form>
-<footer><p>QMS Platform · Quotation Module · In-memory store</p></footer>
+<footer><p>{company_name} · {app_subtitle} · new quotation</p></footer>
 </main>
 
 <script>
@@ -1502,6 +1765,67 @@ function onGstRateChange(val) {{
 function toggleShipSame(checked) {{
   var sf = document.getElementById('ship-fields');
   if (sf) sf.style.display = checked ? 'none' : 'block';
+}}
+
+/* ═══ ADDRESS BOOK PICKER ═══════════════════════════════════ */
+/* Saved addresses, embedded so selecting one fills the form with no round
+   trip. Shape comes from address.PICKER_FIELDS. */
+var ADDR_BOOK = {addr_book_json};
+
+/* Set a <select> to a value, adding the option first if it is missing.
+   Guards against a saved address holding a state or country the quotation
+   form's own list does not offer. */
+function setSelectValue(el, value) {{
+  if (!el || !value) return;
+  var found = Array.prototype.some.call(el.options, function(o) {{
+    return o.value === value;
+  }});
+  if (!found) {{
+    var opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = value;
+    el.appendChild(opt);
+  }}
+  el.value = value;
+}}
+
+/* Fill the Bill To or Ship To block from a chosen address book entry.
+   Every field the address supplies is overwritten — picking an address is an
+   explicit act, so it wins over whatever was typed. Fields the address has no
+   value for are left alone. */
+function applyAddr(kind, sel) {{
+  var a = ADDR_BOOK[sel.value];
+  if (!a) return;
+
+  var g   = function(id) {{ return document.getElementById(id); }};
+  var set = function(id, v) {{ var el = g(id); if (el && v) el.value = v; }};
+
+  /* line1 / line2 / landmark collapse into the one address textarea. */
+  var street = [a.line1, a.line2, a.landmark].filter(Boolean).join('\\n');
+  var addrEl = g(kind + '_addr');
+  if (addrEl) addrEl.value = street;
+
+  set(kind + '_city',  a.city);
+  set(kind + '_pin',   a.pincode);
+  set(kind + '_phone', a.phone);
+  set(kind + '_gstin', a.gstin);
+  setSelectValue(g(kind + '_state'),   a.state);
+  setSelectValue(g(kind + '_country'), a.country || 'India');
+
+  if (kind === 'bill') {{
+    set('account_name',   a.company);
+    set('contact_person', a.contact_name);
+  }} else {{
+    set('ship_acct_name', a.company);
+    set('ship_email',     a.email);
+    /* Choosing a delivery address contradicts "same as billing" — untick it
+       so the fields the user just filled are not hidden from them. */
+    var same = g('ship_same_chk');
+    if (same && same.checked) {{
+      same.checked = false;
+      toggleShipSame(false);
+    }}
+  }}
 }}
 
 /* ═══ ADD ROOT PRODUCT ══════════════════════════════════════ */
@@ -1628,7 +1952,7 @@ function renderComp(comp, pidx, cidx) {{
     +   ctrlBlock('Qty',
         '<input type="number" class="ctrl-input w-qty"'
         + ' data-pidx="' + pidx + '" data-cidx="' + cidx + '" data-field="qty"'
-        + ' value="' + comp.qty + '" min="0.001" step="1"'
+        + ' value="' + comp.qty + '" min="0.001" step="any"'
         + ' onchange="onCompFieldChange(this)"/>')
     +   ctrlBlock('Price (&#8377;)',
         '<input type="number" class="ctrl-input w-price"'
@@ -1650,7 +1974,7 @@ function renderAddCompRow(pidx) {{
   var optHtml = document.getElementById('comp-opts-tpl').innerHTML;
   return '<div class="comp-picker">'
     + '<select id="cp-sel-' + pidx + '">' + optHtml + '</select>'
-    + '<input type="number" id="cp-qty-' + pidx + '" value="1" min="1" step="1" placeholder="Qty"/>'
+    + '<input type="number" id="cp-qty-' + pidx + '" value="1" min="0.001" step="any" placeholder="Qty"/>'
     + '<button type="button" class="btn-add-comp" onclick="addComp(' + pidx + ')">&#43; Add Component</button>'
     + '</div>';
 }}
@@ -1772,34 +2096,35 @@ function fillDemoData() {{
 
   setVal('qtn_date',       today);
   setVal('buyer_ref',      'TEST-RFQ-001');
-  setVal('other_ref',      'kirloskar fire pump / 2850 LPM @ 104M HEAD');
+  setVal('other_ref',      'fire hydrant system / main pump 2850 LPM @ 104M HEAD');
   setVal('validity_days',  '15');
-  setVal('lead_owner',     'Sandip Nikam');
+  setVal('lead_owner',     'Sales Engineer');
   setVal('exp_closing',    exp);
-  setVal('auth_signatory', 'Sandip Nikam');
-  setVal('assigned_to',    'Sandip Nikam');
+  setVal('auth_signatory', 'Authorised Signatory');
+  setVal('assigned_to',    'Sales Engineer');
 
   setSel('sales_stage',     'Budgetary - Stage II');
   setSel('lead_source',     'Cold Call');
-  setSel('lead_type',       'SEC- B AND C');
-  setSel('lead_subtype',    'STANDARD FIREFIGHTING');
-  setSel('qtn_type',        'SEC-KBL-Pumps');
-  setSel('company_branch',  'SHANBHAG ENGINEERING COMPANY');
-  setSel('region',          'SEC-MUMBAI');
+  setSel('lead_type',       'Builder / Developer');
+  setSel('lead_subtype',    'HYDRANT SYSTEM');
+  setSel('qtn_type',        'Fire Fighting System');
+  setSel('company_branch',  '{company_name}');
+  setSel('region',          'Head Office');
   setSel('incoterms',       'FOR');
   setSel('payment_terms',   '100% Against Proforma Invoice');
-  setSel('delivery_terms',  'Ex-Panvel Godown');
+  setSel('delivery_terms',  'Ex-Works');
   setSel('dispatch_through','In Clients Scope');
 
-  setVal('account_name',   'M/s. Prudent Teqtis Pvt Ltd');
-  setVal('contact_person', 'Mr. Arun K. Maurya, Purchase');
-  setVal('bill_addr',      '1102, Plot No.14, The Corporate Park,\\n1101, 15, Sector 18, Vashi, Navi Mumbai');
+  setVal('account_name',   'M/s. Sample Builders Pvt Ltd');
+  setVal('contact_person', 'Mr. Sample Name, Purchase');
+  /* Placeholder customer — deliberately not a real firm, address or GSTIN. */
+  setVal('bill_addr',      'Unit 12, Sample Corporate Park,\\nPlot 5, Sector 18');
   setSel('bill_country',   'India');
   setSel('bill_state',     'Maharashtra');
   setVal('bill_city',      'Navi Mumbai');
   setVal('bill_pin',       '400703');
-  setVal('bill_phone',     '9820953464');
-  setVal('bill_gstin',     '27AAKCP0677K1ZX');
+  setVal('bill_phone',     '00000 00000');
+  setVal('bill_gstin',     '27XXXXX0000X1ZX');
 
   var sameChk = document.getElementById('ship_same_chk');
   if (sameChk) {{ sameChk.checked = true; toggleShipSame(true); }}
@@ -1865,6 +2190,10 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         base_styles         = BASE_STYLES,
         qtn_styles          = QUOTATION_STYLES,
         nav                 = _nav(),
+        company_name        = COMPANY_NAME,
+        app_subtitle        = B.APP_SUBTITLE,
+        head_icon           = B.HEAD_ICON,
+        page_title          = B.page_title("New Quotation"),
         list_url            = list_url,
         error_html          = error_html,
         catalog_json        = catalog_json,
@@ -1883,6 +2212,10 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         amend_no            = _fv("amend_no", "Original"),
         account_name        = _fv("account_name"),
         contact_person      = _fv("contact_person"),
+        addr_options_bill   = picker_options("— fill from address book —"),
+        addr_options_ship   = picker_options("— fill from address book —"),
+        addr_book_json      = json.dumps(picker_payload()),
+        address_url         = url_for("address.list_addresses"),
         bill_addr           = _fv("bill_addr"),
         bill_city           = _fv("bill_city"),
         bill_pin            = _fv("bill_pin"),
@@ -1909,17 +2242,17 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         vat_checked         = "checked" if init_tax_type == "vat"       else "",
         exempt_checked      = "checked" if init_tax_type == "exempt"    else "",
         # select dropdowns
-        sel_qtn_type        = _sel_opts("qtn_type",        _TYPES,         "SEC-KBL-Pumps",                      _fv("qtn_type")),
-        sel_sales_stage     = _sel_opts("sales_stage",     _SALES_STAGES,  "Budgetary - Stage II",               _fv("sales_stage")),
+        sel_qtn_type        = _sel_opts("qtn_type",        _TYPES,         "Fire Fighting System",               _fv("qtn_type")),
+        sel_sales_stage     = _sel_opts("sales_stage",     _SALES_STAGES,  P.DEFAULT_STAGE,                      _fv("sales_stage")),
         sel_lead_source     = _sel_opts("lead_source",     _LEAD_SOURCES,  "Cold Call",                          _fv("lead_source")),
-        sel_lead_type       = _sel_opts("lead_type",       _LEAD_TYPES,    "SEC- B AND C",                       _fv("lead_type")),
-        sel_lead_subtype    = _sel_opts("lead_subtype",    _LEAD_SUBTYPES, "STANDARD FIREFIGHTING",              _fv("lead_subtype")),
-        sel_company_branch  = _sel_opts("company_branch",  _BRANCHES,      "SHANBHAG ENGINEERING COMPANY",       _fv("company_branch")),
+        sel_lead_type       = _sel_opts("lead_type",       _LEAD_TYPES,    "Builder / Developer",                _fv("lead_type")),
+        sel_lead_subtype    = _sel_opts("lead_subtype",    _LEAD_SUBTYPES, "HYDRANT SYSTEM",                     _fv("lead_subtype")),
+        sel_company_branch  = _sel_opts("company_branch",  _BRANCHES,      B.COMPANY_NAME,                       _fv("company_branch")),
         sel_incoterms       = _sel_opts("incoterms",       _INCOTERMS,     "FOR",                                _fv("incoterms")),
         sel_payment_terms   = _sel_opts("payment_terms",   _PAY_TERMS,     "100% Against Proforma Invoice",      _fv("payment_terms")),
-        sel_delivery_terms  = _sel_opts("delivery_terms",  _DEL_TERMS,     "Ex-Panvel Godown",                   _fv("delivery_terms")),
+        sel_delivery_terms  = _sel_opts("delivery_terms",  _DEL_TERMS,     "Ex-Works",                           _fv("delivery_terms")),
         sel_dispatch_through= _sel_opts("dispatch_through",_DISPATCH,      "In Clients Scope",                   _fv("dispatch_through")),
-        sel_region          = _sel_opts("region",          _REGIONS,       "SEC-MUMBAI",                         _fv("region")),
+        sel_region          = _sel_opts("region",          _REGIONS,       "Head Office",                        _fv("region")),
         sel_bill_country    = _sel_opts("bill_country",    _COUNTRIES,     "India",                              _fv("bill_country", "India")),
         sel_bill_state      = _sel_opts("bill_state",      _STATES_IN,     "Maharashtra",                        _fv("bill_state",   "Maharashtra")),
         sel_ship_country    = _sel_opts("ship_country",    _COUNTRIES,     "India",                              _fv("ship_country", "India")),
@@ -1932,6 +2265,25 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
 # VIEW ROUTE
 # =============================================================================
 
+@quotation_bp.route("/<id>/update", methods=["POST"])
+def update_quotation(id: str):
+    """
+    Update a quotation's commercial status — stage, customer PO, lost reason.
+
+    Deliberately does NOT touch line items, pricing or addresses: those belong
+    to the document, and a quotation that has already gone out should not have
+    its numbers silently rewritten. All validation lives in pipeline.py.
+    """
+    q = STORE["quotations"].get(id)
+    if not q:
+        return redirect(url_for("quotation.list_quotations",
+                                msg="Quotation not found.", type="error"))
+
+    ok, message = P.apply_update(q, request.form)
+    return redirect(url_for("quotation.view_quotation", id=id,
+                            msg=message, type="success" if ok else "error"))
+
+
 @quotation_bp.route("/view/<id>")
 def view_quotation(id: str):
     q = STORE["quotations"].get(id)
@@ -1941,6 +2293,103 @@ def view_quotation(id: str):
     list_url   = url_for("quotation.list_quotations")
     create_url = url_for("quotation.create_quotation")
     line_items = q["line_items"]
+
+    # ── Deal panel (screen only — hidden by the @media print rule) ──────
+    P.ensure_fields(q)
+    update_url = url_for("quotation.update_quotation", id=id)
+    stage_now  = P.stage_of(q)
+
+    msg        = request.args.get("msg")
+    msg_type   = request.args.get("type", "success")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if msg_type == "success" else "&#10007;"
+        alert_html = f'<div class="alert alert-{msg_type}">{icon} {msg}</div>'
+
+    # PO vs quoted — the gap between what we quoted and what they ordered.
+    po_val, quoted = float(q.get("po_value") or 0.0), float(q.get("grand_total") or 0.0)
+    variance_html = ""
+    if po_val and quoted:
+        diff = po_val - quoted
+        cls  = "up" if diff >= 0 else "down"
+        sign = "+" if diff >= 0 else "&minus;"
+        variance_html = (
+            '<span class="deal-variance">PO vs quoted: '
+            f'<b class="{cls}">{sign}&#8377;&nbsp;{abs(diff):,.0f} '
+            f'({sign}{abs(diff / quoted * 100.0):.1f}%)</b></span>'
+        )
+
+    # Quick actions sit in their own little forms so they stay siblings of the
+    # main form — nesting <form> inside <form> is invalid HTML and silently
+    # drops the inner one in most browsers.
+    def _quick(stage: str, label: str, cls: str) -> str:
+        if stage_now == stage:
+            return ""
+        return (f'<form method="POST" action="{update_url}">'
+                f'<input type="hidden" name="sales_stage" value="{stage}"/>'
+                f'<button type="submit" class="{cls}">{label}</button></form>')
+
+    quick_html = (
+        _quick(P.STAGE_WON,  "&#10003;&nbsp;Mark Won",  "qa-won") +
+        _quick(P.STAGE_LOST, "&#10007;&nbsp;Mark Lost", "qa-lost")
+    )
+
+    # The lost-reason box is only meaningful on a lost deal.
+    lost_html = ""
+    if stage_now == P.STAGE_LOST:
+        lost_html = (
+            '<div class="form-group" style="grid-column:span 2;">'
+            '<label for="lost_reason">Reason Lost</label>'
+            f'<input type="text" id="lost_reason" name="lost_reason" '
+            f'value="{P.esc(q.get("lost_reason"))}" placeholder="Price / timeline / competitor…"/>'
+            '</div>'
+        )
+
+    deal_panel_html = f"""
+<div class="deal-panel">
+  <div class="deal-head">
+    <div>
+      <div class="dh-title">Deal Status</div>
+      <div style="margin-top:.4rem;">{P.stage_badge(stage_now)}</div>
+    </div>
+    <div class="deal-quick">{quick_html}</div>
+  </div>
+
+  <form method="POST" action="{update_url}">
+    <div class="deal-grid">
+      <div class="form-group">
+        <label for="sales_stage">Sales Stage</label>
+        {_sel_opts("sales_stage", _SALES_STAGES, stage_now, stage_now)}
+      </div>
+      <div class="form-group">
+        <label for="po_number">Customer PO No.</label>
+        <input type="text" id="po_number" name="po_number"
+               value="{P.esc(q.get('po_number'))}" placeholder="their PO number"/>
+      </div>
+      <div class="form-group">
+        <label for="po_date">PO Date</label>
+        <input type="date" id="po_date" name="po_date" value="{P.esc(q.get('po_date'))}"/>
+      </div>
+      <div class="form-group">
+        <label for="po_value">PO Value (&#8377;)</label>
+        <input type="text" id="po_value" name="po_value"
+               value="{P.fmt_money(po_val) if po_val else ''}" placeholder="{quoted:,.0f}"/>
+      </div>
+      {lost_html}
+      <div class="form-group" style="grid-column:span 2;">
+        <label for="stage_note">Note <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+        <input type="text" id="stage_note" name="stage_note" placeholder="what changed, and why"/>
+      </div>
+    </div>
+    <div class="deal-actions">
+      <button type="submit" class="btn">Save Status</button>
+      {variance_html}
+    </div>
+  </form>
+
+  {P.history_html(q)}
+</div>
+"""
 
     # ── Line-item rows ─────────────────────────────────────────────────
     sno        = 0
@@ -1955,8 +2404,11 @@ def view_quotation(id: str):
         if depth == 0:
             total_qty += row["qty"]
 
-        price_s = f"{row['price']:,.2f}" if row["price"] else "0.00"
-        total_s = f"{row['total']:,.2f}" if row["total"] else "0.00"
+        # A row priced at 0.00 is the "included, no separate charge"
+        # convention (show_price off) — it prints as 0.00 rather than being
+        # blanked, which is how the trade reads a bundled sub-component.
+        price_s = _inr(row["price"])
+        total_s = _inr(row["total"])
         hsn     = row.get("hsn") or ""
 
         table_rows += f"""
@@ -1976,72 +2428,76 @@ def view_quotation(id: str):
     tax_info  = q.get("tax_info", {"total": 0.0})
     tax_type  = q.get("tax_type", "exempt")
 
-    if tax_type != "exempt" and tax_info.get("total", 0) > 0:
-        # Subtotal row
+    has_tax = tax_type != "exempt" and tax_info.get("total", 0) > 0
+
+    if has_tax:
+        # Subtotal carries no quantity — the qty total belongs on the closing
+        # row only, and summing mixed units (Nos / Mtr / Set) twice on the
+        # same document reads as a mistake.
         table_rows += f"""
-        <tr class="row-subtotal">
-          <td colspan="4" style="text-align:right;font-weight:600;">Subtotal</td>
-          <td class="c-qty">{_fmt_qty(total_qty)}</td>
+        <tr class="row-sum">
+          <td colspan="4" class="sum-lbl">Subtotal</td>
+          <td class="c-qty"></td>
           <td class="c-unit"></td>
           <td class="c-price"></td>
-          <td class="c-total">&#8377;&nbsp;{subtotal:,.2f}</td>
+          <td class="c-total">{_inr(subtotal)}</td>
         </tr>"""
 
         # Individual tax lines — pull rate from tax_info dict directly
-        skip_keys = {"total", "cgst_rate", "sgst_rate", "igst_rate", "vat_rate"}
+        rate_keys  = {"CGST": "cgst_rate", "SGST": "sgst_rate",
+                      "IGST": "igst_rate", "VAT":  "vat_rate"}
+        skip_keys  = {"total", *rate_keys.values()}
         for tname, tamt in tax_info.items():
             if tname in skip_keys:
                 continue
-            # Look up the rate for this tax head
-            rate_label = ""
-            if tname == "CGST":
-                r = tax_info.get("cgst_rate", 0)
-                rate_label = f" @ {r:g}%"
-            elif tname == "SGST":
-                r = tax_info.get("sgst_rate", 0)
-                rate_label = f" @ {r:g}%"
-            elif tname == "IGST":
-                r = tax_info.get("igst_rate", 0)
-                rate_label = f" @ {r:g}%"
-            elif tname == "VAT":
-                r = tax_info.get("vat_rate", 0)
-                rate_label = f" @ {r:g}%"
+            r = tax_info.get(rate_keys.get(tname, ""), 0)
+            rate_label = f" @ {r:g}%" if r else ""
 
             table_rows += f"""
-            <tr class="row-tax">
-              <td colspan="4" style="text-align:right;">{tname}{rate_label}</td>
+            <tr class="row-sum">
+              <td colspan="4" class="sum-lbl">{tname}{rate_label}</td>
               <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
-              <td class="c-total">&#8377;&nbsp;{tamt:,.2f}</td>
+              <td class="c-total">{_inr(tamt)}</td>
             </tr>"""
 
-    # Grand total row
+    # Closing row
     table_rows += f"""
-    <tr class="row-total">
-      <td colspan="4" style="text-align:right;">Grand Total</td>
+    <tr class="row-total row-sum">
+      <td colspan="4" class="sum-lbl">{"Grand Total" if has_tax else "Total"}</td>
       <td class="c-qty">{_fmt_qty(total_qty)}</td>
       <td class="c-unit"></td>
       <td class="c-price"></td>
-      <td class="c-total">&#8377;&nbsp;{q['grand_total']:,.2f}</td>
+      <td class="c-total">{_inr(q['grand_total'])}</td>
     </tr>"""
 
-    # ── Meta grid ──────────────────────────────────────────────────────
-    lt_combined = " / ".join(filter(None, [q.get("lead_type"), q.get("lead_subtype")]))
-    meta_html = (
-        _mc("Quotation No.",        q["ref"]) +
-        _mc("Date",                 q["date"]) +
-        _mc("Buyer Ref. No.",       q.get("buyer_ref")        or "") +
-        _mc("Other Ref.",           q.get("other_ref")        or "") +
-        _mc("Mode/Term of Payment", q.get("payment_terms")    or "") +
-        _mc("Dispatch Through",     q.get("dispatch_through") or "") +
-        _mc("Terms of Delivery",    q.get("delivery_terms")   or "") +
-        _mc("Validity",             (q.get("validity_days") or "") + (" days" if q.get("validity_days") else "")) +
-        _mc("Incoterms",            q.get("incoterms")        or "") +
-        _mc("Sales Stage",          q.get("sales_stage")      or "") +
-        _mc("Lead Type / Sub-Type", lt_combined) +
-        _mc("Auth. Signatory",      q.get("auth_signatory")   or "")
+    # ── Header meta, in two columns ────────────────────────────────────
+    # Deal-desk fields (sales stage, lead type) are deliberately NOT here —
+    # they are our internal pipeline data and have no business on a document
+    # the customer reads. They stay on the deal panel above.
+    validity = q.get("validity_days") or ""
+    meta_col_1 = (
+        _meta("Quotation No.",        q["ref"]) +
+        _meta("Buyer Ref. No.",       q.get("buyer_ref")      or "") +
+        _meta("Mode/Term of Payment", q.get("payment_terms")  or "") +
+        _meta("Terms of Delivery",    q.get("delivery_terms") or "")
+    )
+    meta_col_2 = (
+        _meta("Date",             q["date"]) +
+        _meta("Other Ref.",       q.get("other_ref")        or "") +
+        _meta("Dispatch Through", q.get("dispatch_through") or "") +
+        _meta("Validity",         f"{validity} days" if validity else "") +
+        _meta("Incoterms",        q.get("incoterms")        or "")
     )
 
-    to_display = (q.get("to") or "").strip()
+    # First line of the address block is the customer's name — set it bold, the
+    # way every quotation in the trade does.
+    to_lines   = [ln for ln in (q.get("to") or "").strip().split("\n")]
+    to_display = ""
+    if to_lines and to_lines[0].strip():
+        rest = "\n".join(to_lines[1:]).strip()
+        to_display = f'<span class="dh-name">{to_lines[0]}</span>'
+        if rest:
+            to_display += f'\n{rest}'
 
     ship_parts = []
     if not q.get("ship_same"):
@@ -2053,11 +2509,19 @@ def view_quotation(id: str):
             ship_parts.append(f"{scity} – {q.get('ship_pin','')}".strip(" –"))
         if q.get("ship_phone"): ship_parts.append(f"Ph: {q['ship_phone']}")
         if q.get("ship_gstin"): ship_parts.append(f"GSTIN: {q['ship_gstin']}")
-    ship_display = "\n".join(ship_parts) if ship_parts else "Same as Billing"
+
+    # Ship To only earns space when it actually differs. "Same as Billing" in
+    # its own column is a whole column of nothing.
+    ship_html = ""
+    if ship_parts:
+        ship_html = (
+            '<div class="dh-ship"><span class="dh-lbl">Ship To</span>'
+            f'<div class="dh-body">{chr(10).join(ship_parts)}</div></div>'
+        )
 
     tnc_terms = _build_tnc(q)
     tnc_html  = "".join(
-        f'<li><span class="tnc-num">{i+1}.</span>{t}</li>'
+        f'<li><span class="tnc-num">{i+1}.</span><span>{t}</span></li>'
         for i, t in enumerate(tnc_terms)
     )
 
@@ -2069,8 +2533,9 @@ def view_quotation(id: str):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{q['ref']} — Quotation</title>
-  {BASE_STYLES}{VIEW_DOC_STYLES}
+  <title>{B.page_title(q['ref'] + " Quotation")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}
 </head>
 <body>
 {_nav()}
@@ -2087,67 +2552,81 @@ def view_quotation(id: str):
   </div>
 </div>
 
+{alert_html}
+{deal_panel_html}
+
 <div class="doc-outer">
 <div class="quotation-doc">
 
-  <div class="lh-band">
-    <div>
-      <div class="lh-name">{COMPANY_NAME}</div>
-      <div class="lh-tag">&#8212; {COMPANY_TAGLINE} &#8212;</div>
+  <!-- thead/tfoot of .page-frame are the only way to repeat a band on every
+       printed page; see the note in VIEW_DOC_STYLES. -->
+  <table class="page-frame">
+  <thead><tr><td>
+    <div class="lh">
+      <div>
+        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
+        <div class="lh-tag">&#8212; {COMPANY_TAGLINE} &#8212;</div>
+        {f'<div class="lh-legal">{COMPANY_LEGAL}</div>' if COMPANY_LEGAL else ''}
+      </div>
+      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
     </div>
-    <div class="lh-right">
-      Phone: {COMPANY_PHONE}<br>
-      Email: {COMPANY_EMAIL} &nbsp;|&nbsp; {COMPANY_WEB}<br>
-      Branches: {COMPANY_BRANCHES}
+    <div class="lh-rule"></div>
+    <div class="lh-addr">Registered Address: {B.field(COMPANY_ADDR, "registered address")}</div>
+    <div class="lh-contact">
+      Phone: {B.field(COMPANY_PHONE, "phone")}<span class="sep">|</span>
+      Email: {B.field(COMPANY_EMAIL, "e-mail")}
+      {f'<span class="sep">|</span>Web: {COMPANY_WEB}' if COMPANY_WEB else ''}
+      {f'<span class="sep">|</span>Branches: {COMPANY_BRANCHES}' if COMPANY_BRANCHES else ''}
     </div>
-  </div>
-  <div class="lh-regaddr">Registered Address: {COMPANY_ADDR}</div>
+  </td></tr></thead>
 
-  <div class="doc-title">QUOTATION</div>
+  <tfoot><tr><td>
+    <div class="lh-foot">{COMPANY_LEGAL or COMPANY_NAME} &middot; {COMPANY_TAGLINE}</div>
+  </td></tr></tfoot>
 
-  <div class="doc-header">
-    <div class="dh-to">
-      <span class="dh-lbl">To</span>
-      <div class="dh-val">{to_display}</div>
-    </div>
-    <div class="dh-acct">
-      <span class="dh-lbl">Ship To</span>
-      <div class="dh-val">{ship_display}</div>
-    </div>
-    <div class="dh-meta">
-      <div class="meta-grid">{meta_html}</div>
-    </div>
-  </div>
+  <tbody><tr><td>
 
-  <div class="items-wrap">
-    <table class="q-table">
-      <thead><tr>
-        <th class="c-sno">S.No</th>
-        <th class="c-partno">Part No</th>
-        <th class="c-desc">Description of Goods</th>
-        <th class="c-hsn r">HSN/SAC</th>
-        <th class="c-qty r">Qty</th>
-        <th class="c-unit r">Unit</th>
-        <th class="c-price r">Unit Price</th>
-        <th class="c-total r">Total Price</th>
-      </tr></thead>
-      <tbody>{table_rows}</tbody>
-    </table>
-  </div>
+  <div class="doc-box">
+    <div class="doc-title">QUOTATION</div>
 
-  <div class="amount-words">
-    <strong>Amount Chargeable (in words):</strong>&nbsp;&nbsp;{words}
+    <div class="doc-header">
+      <div class="dh-cell">
+        <span class="dh-lbl">To</span>
+        <div class="dh-body">{to_display}</div>
+        {ship_html}
+      </div>
+      <div class="dh-cell">{meta_col_1}</div>
+      <div class="dh-cell">{meta_col_2}</div>
+    </div>
+
+    <div class="items-wrap">
+      <table class="q-table">
+        <thead><tr>
+          <th class="c-sno">S.No</th>
+          <th class="c-partno">Part No</th>
+          <th class="c-desc">Description of Goods</th>
+          <th class="c-hsn">HSN/SAC</th>
+          <th class="c-qty">Qty</th>
+          <th class="c-unit">Unit</th>
+          <th class="c-price">Unit Price</th>
+          <th class="c-total">Total Price</th>
+        </tr></thead>
+        <tbody>{table_rows}</tbody>
+      </table>
+    </div>
+
+    <div class="amount-words">Amount Chargeable (in words) : {words}</div>
   </div>
 
   <div class="tnc-section">
-    <div class="tnc-title">{COMPANY_NAME.split()[0]} Terms and Conditions</div>
+    <div class="tnc-title">{B.COMPANY_SHORT} Terms and Conditions</div>
     <ol class="tnc-ol">{tnc_html}</ol>
   </div>
 
   <div class="sig-block">
-    <div class="sig-gstin">
-      GSTIN &nbsp;&nbsp;&nbsp;: <b>{COMPANY_GSTIN}</b><br>
-      PAN No. : <b>{COMPANY_PAN}</b>
+    <div class="sig-kv">
+      <span>GSTIN</span><span>: <b>{B.field(COMPANY_GSTIN, "GSTIN")}</b></span>
+      <span>PAN No.</span><span>: <b>{B.field(COMPANY_PAN, "PAN")}</b></span>
     </div>
     <div class="sig-right">
       <div class="sig-for">For {comp_br}</div>
@@ -2155,13 +2634,15 @@ def view_quotation(id: str):
     </div>
   </div>
   <div class="sig-note">This is a Computer Generated Document, no signature required</div>
-  <div class="page-num">Page 1 of 1</div>
+
+  </td></tr></tbody>
+  </table>
 
 </div>
 </div>
 
 <footer style="margin-top:1.75rem;">
-  <p>QMS Platform · Quotation Module · In-memory store</p>
+  <p>{COMPANY_NAME} · {B.APP_SUBTITLE} · quotation document</p>
 </footer>
 </main>
 </body></html>"""
