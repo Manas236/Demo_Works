@@ -12,8 +12,11 @@
 
 A **Flask quotation & catalogue system for Samruddhi Fire**, a fire-protection
 contractor in India. It is a **seller-side** app: we build the catalogue, we
-price it, we issue the quotation, and we record the customer's incoming
-Purchase Order. We never issue POs here.
+price it, we issue the quotation, we raise the proforma invoice against it, and
+we record the customer's incoming Purchase Order. We never issue POs here.
+
+The document chain is **quotation → proforma invoice**. A tax invoice is *not*
+issued by this app; the PI explicitly says so on its face.
 
 Run it:
 
@@ -51,16 +54,17 @@ Consequences you must respect when editing:
 
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 86 | Wiring only. Boots persistence, registers blueprints, error handlers. Never implements features. |
+| [app.py](app.py) | 87 | Wiring only. Boots persistence, registers blueprints, error handlers. Never implements features. |
 | [store.py](store.py) | 35 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 295 | MySQL persistence by snapshot-and-diff. |
-| [branding.py](branding.py) | 232 | Company identity, colour palette, chart palette, logo data URIs. |
-| [dashboard.py](dashboard.py) | 1146 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports**. |
-| [product.py](product.py) | 1272 | Product catalogue + assemblies (BOM). |
-| [quotation.py](quotation.py) | 2517 | Quotation form + printed document. The big one. |
+| [branding.py](branding.py) | 251 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
+| [dashboard.py](dashboard.py) | 1159 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports**. |
+| [product.py](product.py) | 1271 | Product catalogue + assemblies (BOM). |
+| [quotation.py](quotation.py) | 2693 | Quotation form + printed document. The big one. |
+| [proforma.py](proforma.py) | 1043 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [pipeline.py](pipeline.py) | 491 | Sales stages, customer PO, win/loss. Pure logic, no routes. |
 | [address.py](address.py) | 888 | Address book + the picker that quotations use. |
-| [extractor.py](extractor.py) | 408 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
+| [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 131 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 495 | **Dead file.** Stale docs only — see §8. |
 
@@ -72,6 +76,7 @@ app.py
  ├─ product.py ────────────────┤  imports dashboard, branding, store
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
+ ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py imports nothing from the app  ← keep it that way
@@ -79,6 +84,13 @@ branding.py imports nothing from the app  ← keep it that way
 ```
 
 `quotation.py → pipeline.py`, **never** the reverse.
+
+`proforma.py → quotation.py`, **never** the reverse. proforma imports the
+document's formatters and stylesheet (`_inr`, `_fmt_qty`, `_amount_in_words`,
+`_meta`, `VIEW_DOC_STYLES`, `QUOTATION_STYLES`) so the two documents cannot
+drift apart. The quotation view page links *to* proforma with
+`url_for("proforma.…")` and reads `STORE["proformas"]` directly — a `url_for`
+string needs no import, which is what keeps the arrow one-way.
 
 **dashboard.py may import `branding`, `store` and `pipeline`** — none of those
 import anything from the app, so there is no cycle. It must **never** import
@@ -97,6 +109,7 @@ blueprint holds the **same object**, so in-place mutation is visible everywhere:
 STORE = {
     "products":     {},     # uuid -> product
     "quotations":   {},     # uuid -> quotation
+    "proformas":    {},     # uuid -> proforma invoice
     "addresses":    {},     # uuid -> address
     "_seeded":      False,  # product seeder guard
     "_addr_seeded": False,  # address seeder guard
@@ -155,6 +168,40 @@ of its components. There is no recursive expansion at quotation time — the
 browser-side JS flattens the tree before POST. (`integration.py` documents a
 recursive `expand_product()` engine; **that engine does not exist**. See §8.)
 
+### Proforma Invoice
+
+Written in one literal in `proforma.create_proforma()`. It is **derived from a
+quotation, never entered from scratch** — there is no blank-PI form and there
+should not be one.
+
+- **Identity:** `id`, `ref` (`PI-0001`), `date`
+- **Back-link:** `quotation_id`, `quotation_ref`, `quotation_date`
+- **Customer:** copied from the quotation — `account_name`, `contact_person`,
+  `to`, `bill_gstin`, `ship_same`, `ship_*`
+- **Frozen content:** `line_items` (a **copy**, `[dict(r) for r in …]`),
+  `subtotal`, `tax_type`, `tax_info`, `grand_total`, `total_qty`
+- **The invoice's own fields:** `po_number`, `po_date`, `advance_pct`,
+  `amount_due`, `balance_due`, `payment_terms`, `delivery_terms`,
+  `delivery_date`, `dispatch_through`, `incoterms`, `validity_days`, `notes`,
+  `company_branch`, `auth_signatory`
+
+Three properties this shape exists to guarantee:
+
+1. **The snapshot is frozen.** `line_items` is copied, not referenced. A
+   shallow `dict(row)` per line is sufficient — every value in a `line_item` is
+   a scalar. Editing the source quotation afterwards cannot reach an issued
+   invoice, which is the whole reason a PI is its own record.
+2. **`quotation_ref` is stored, not looked up.** The PI still prints correctly
+   as a historical document if the quotation is ever removed.
+3. **`amount_due + balance_due == grand_total`**, always. `amount_due` is the
+   figure the customer actually has to pay now; `advance_pct` is only how it
+   was derived.
+
+Many PIs may point at one quotation (advance, then balance, then a part
+supply). Nothing enforces that their amounts sum to the quoted value — that is
+a judgement call for whoever raises them, and the convert form shows the PIs
+already issued against that quotation so the decision is an informed one.
+
 ### Address
 
 ```python
@@ -182,7 +229,8 @@ every req   app.py @teardown_request → db.sync(STORE)
               → upsert changed, delete missing
 ```
 
-- One table per collection (`products`, `quotations`, `addresses`), each row is
+- One table per collection (`products`, `quotations`, `proformas`,
+  `addresses`), each row is
   `id VARCHAR(64) PK, data JSON, updated_at TIMESTAMP`. The **whole record is a
   JSON document** — chosen because quotation shape is still moving and columns
   would mean a migration per field.
@@ -221,8 +269,10 @@ what is stuck, and what moved" before it offers a link anywhere. Top to bottom:
 5. **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
 6. **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
    the register exactly.
-7. **Module strip** — the old 4-card launcher, now at the foot, carrying live
-   counts instead of prose.
+7. **Module strip** — the old card launcher (5 cards: catalogue, quotations,
+   proforma invoices, address book, market news), now at the foot, carrying
+   live counts instead of prose. The strip is `auto-fit`, so adding a card
+   needs no layout change.
 
 **Everything is computed in `_metrics()`**, one pass, pure. `P.summarize()` does
 the money; this module adds the funnel, the month buckets and the work queue.
@@ -463,6 +513,119 @@ the document body (an issued quotation should not have its numbers silently
 rewritten) — but there is also no revision/amend flow, despite an `amend_no`
 field existing on the record.
 
+**Links out to the proforma invoice.** The view page carries a *Raise Proforma*
+button (`/proforma/from/<id>`) and the deal panel lists the PIs already raised
+against that quotation as `.pi-chip` links. Both are built from
+`STORE["proformas"]` read directly plus `url_for` — `quotation.py` must **not**
+import `proforma.py` (§2). `.pi-block` / `.pi-strip` / `.pi-chip` live in
+`QUOTATION_STYLES`, not in `PROFORMA_STYLES`, because both modules render them.
+
+---
+
+### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
+
+| Route | View |
+|---|---|
+| `GET /proforma/` | `list_proformas` — register |
+| `GET,POST /proforma/from/<qid>` | `create_proforma` — convert a quotation |
+| `GET /proforma/view/<id>` | `view_proforma` — the printed document |
+
+**A proforma invoice is a different instrument from the quotation it comes out
+of**, which is why it is a separate record and not a render mode. A quotation
+is an *offer to sell*; a PI is a *request for money* — it carries its own
+number and date, the customer's accounts department files it against a payment,
+and it can be raised more than once per deal (advance, balance, part supply).
+
+There is **no blank-PI form**. A PI can only be created from a quotation.
+
+#### Convert (`/proforma/from/<qid>`)
+
+Line items, prices, taxes and addresses are **copied verbatim and not editable
+here** — the PI states what was quoted. The form collects only what belongs to
+the invoice: its date, the customer's PO reference, how much of the value is
+being requested now, and the terms that apply to this payment. The frozen items
+are shown read-only underneath so the user sees exactly what they are issuing.
+
+**The terms fields are the same widgets as the quotation form**, not free text:
+`payment_terms`, `delivery_terms`, `dispatch_through` and `incoterms` are
+dropdowns built from `quotation._PAY_TERMS` / `_DEL_TERMS` / `_DISPATCH` /
+`_INCOTERMS` through the shared `_sel_opts()`; `delivery_date` is a date picker
+and `validity_days` a number, matching the quotation exactly. **Import those
+lists, never re-declare them** — a term one form offers and the other does not
+is how the two documents start contradicting each other.
+
+They go through **`_sel_keep()`**, not `_sel_opts()` directly. `_sel_opts` marks
+an option selected only on an exact match, so a stored value absent from the
+list renders as "nothing selected" and the browser then posts the *first*
+option — quietly rewriting a term the customer already saw on the quotation.
+`_sel_keep` prepends an unrecognised value and keeps it selected. It matters
+here and not on the create form because these values arrive from a saved record
+rather than being typed fresh.
+
+Validation, in order: quotation exists → date present → `advance_pct` parses →
+`0 < pct <= 100` → validity is digits. A rejected POST re-renders with the
+user's own input (`_v()` prefers `request.form`, then the quotation's value,
+then the module default), and nothing is written to STORE.
+
+On success it writes the record, calls `P.log_event()` on the **quotation** —
+raising a PI is a real event in the deal's life and belongs on its audit trail,
+though it deliberately does not change the sales stage — and redirects to the
+document.
+
+#### The document (`/proforma/view/<id>`)
+
+The same A4 sheet as the quotation: `VIEW_DOC_STYLES` supplies the frame, the
+repeating letterhead band, the items table and every print rule, and the money
+goes through the same `_inr()`. `PROFORMA_STYLES` layers **after** it, scoped
+inside `.quotation-doc`, and introduces no new font, type size or border weight
+— it only uses the `--fs-*` and `--rule-*` already defined there. Keep it that
+way; that restraint is the reason the two documents look like they came from
+the same office.
+
+What a PI has to say that a quotation does not:
+
+- **`.doc-sub`** — "This is not a Tax Invoice", directly under the title inside
+  the frame. This is the single most important sentence on the page (it is what
+  stops the document being mistaken for a tax invoice), so it prints in the
+  frame rather than being buried at clause 1 of the terms.
+- **`.pay-box`** — Total invoice value → **Amount Payable Now** → balance, then
+  the payable-now figure in words. It is **only rendered when `advance_pct <
+  100`**; when the PI asks for the full value the closing row of the table
+  already says it, and printing the same number twice invites the reader to
+  hunt for a difference. The payable-now figure carries the heavy rule and the
+  `--fs-md` step — the same emphasis the closing total gets, and no more.
+- **`.bank-box`** — the remittance account, from `branding.BANK_*` (§6). Blank
+  fields render as amber `todo-chip`s exactly like the statutory block, so an
+  incomplete PI cannot go out looking finished.
+- **`_build_pi_terms()`** — PI-specific clauses, deliberately **not**
+  `quotation._build_tnc()`. That set is written for an offer (validity, scope,
+  warranty, commissioning); this one carries what makes the document readable
+  as a payment instrument: not-a-tax-invoice, when the tax invoice will follow,
+  that the quotation's terms still govern the supply, retention of title,
+  delivery counted from *credit of the advance*, and bank charges.
+  ⚠ Generic trade terms, **not checked against Samruddhi's actual policy** —
+  same caveat as the quotation's standing clauses.
+
+Unlike `quotation.py`, this module **escapes user input** (`P.esc`) everywhere
+it interpolates, including inside `_build_pi_terms()`. §7.7 is the gap, not the
+pattern to copy.
+
+#### Numbering
+
+`_next_ref()` scans existing refs and takes **max + 1**, not `len() + 1`.
+`len()+1` (what `quotation._next_ref()` still does — §7.5) re-issues a number
+that has already been on a customer's document as soon as one record is
+removed, and a duplicated *invoice* number is materially worse than a
+duplicated quotation number: it is the key the payment is filed against. Still
+not year-scoped — that needs the client's real numbering policy
+(`SF/PI/26-27/0001` is the usual shape).
+
+#### Business rules — module-level constants, not buried in branches
+
+`DEFAULT_ADVANCE_PCT` (100 — asking for less must be deliberate),
+`DEFAULT_PI_VALIDITY` (15 days, shorter than a quotation's on purpose),
+`ADVANCE_PRESETS`, `_REF_PREFIX`.
+
 ---
 
 ### `/address` — Address Book · [address.py](address.py)
@@ -540,7 +703,15 @@ the printed quotation*, so nothing goes out silently wrong:
 ```
 COMPANY_LEGAL · COMPANY_ADDR · COMPANY_WEB
 COMPANY_GSTIN · COMPANY_PAN · COMPANY_BRANCHES
+BANK_NAME · BANK_ACCOUNT_NAME · BANK_ACCOUNT_NO · BANK_IFSC · BANK_BRANCH
 ```
+
+The `BANK_*` block (§1b) exists for the **proforma invoice only**. A PI is a
+request for money, so the remittance account has to print on it — a PI without
+one is not actionable by the customer's accounts department. They are
+deliberately **not** used on the quotation: a quotation is an offer, not a
+demand for payment, and publishing the account number wider than necessary is a
+fraud surface.
 
 The dashboard's amber "identity incomplete" nudge is keyed on
 `COMPANY_ADDR/PHONE/EMAIL` together ([dashboard.py:358](dashboard.py#L358)), so
@@ -584,18 +755,27 @@ Real, verified, and safe to pick up:
    `markupsafe`.
 2. **No product edit route** — delete + re-add only, and delete may be blocked.
 3. **No quotation edit / delete / amend flow**, though `amend_no` is stored.
+   Likewise **no cancel/void route for a proforma invoice** — an issued PI can
+   only be superseded by raising another. A void flow (a `cancelled` flag plus
+   a CANCELLED overprint, never a hard delete, so the number is never reused)
+   is the right shape when it is wanted.
 4. **`hsn` is read in 9 places but never captured** — always empty on the
    document.
-5. **`_next_ref()` = `len(quotations) + 1`** → `QT-0001`. Collides after a
-   deletion, isn't year-scoped, and ignores `COMPANY_SHORT = "SF"`.
+5. **`quotation._next_ref()` = `len(quotations) + 1`** → `QT-0001`. Collides
+   after a deletion, isn't year-scoped, and ignores `COMPANY_SHORT = "SF"`.
+   `proforma._next_ref()` fixes the collision half (max+1); porting that back
+   to `quotation.py` is a two-line change.
 6. **404 and 500 both redirect to the dashboard.** Great for a stakeholder demo,
    painful while developing — a real traceback becomes a silent redirect. Comment
    the handlers out in `app.py` when debugging.
-7. **HTML escaping is inconsistent.** `address.py` and `pipeline.py` escape;
-   `quotation.py` and `product.py` largely don't.
+7. **HTML escaping is inconsistent.** `address.py`, `pipeline.py` and
+   `proforma.py` escape; `quotation.py` and `product.py` largely don't.
 8. **`SECRET_KEY` defaults to `qms-demo-secret-2024`.** Generate a real one
    before any deployment.
-9. **Standing T&C clauses are unreviewed** by the client (§5, view page).
+9. **Standing T&C clauses are unreviewed** by the client — both
+   `quotation._build_tnc()` and `proforma._build_pi_terms()` (§5).
+   The `BANK_*` fields are blank, so every PI currently prints amber
+   "add account number" chips where the remittance details belong.
 10. **Seed prices are placeholders**, not Samruddhi's real rates.
 11. **The printed document has no page numbers.** "Page 1 of 2" needs a page
     counter, and Chrome does not support `@page { @bottom-right { content:

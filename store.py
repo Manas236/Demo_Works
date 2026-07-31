@@ -29,6 +29,7 @@ it worked before, data lost on restart.
 STORE: dict = {
     "products":     {},   # keyed by UUID string → product dict
     "quotations":   {},   # keyed by UUID string → quotation dict
+    "proformas":    {},   # keyed by UUID string → proforma invoice dict (derived from a quotation)
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "_seeded":      False,  # flipped to True after ensure_demo_products() runs once
     "_addr_seeded": False,  # flipped to True after ensure_demo_addresses() runs once

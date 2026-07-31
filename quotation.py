@@ -599,6 +599,25 @@ QUOTATION_STYLES = """
 
   .form-actions { display:flex; gap:.75rem; margin-top:1.4rem; align-items:center; }
 
+  /* ── Proforma links ───────────────────────────────────────────────────
+     Lives here rather than in proforma.py because both sides need it: the
+     deal panel lists the PIs raised against a quotation, and the convert page
+     warns about the ones already issued. Every page that renders a chip
+     already loads QUOTATION_STYLES. */
+  .pi-block { margin-top:1.1rem; padding-top:.9rem; border-top:1px dashed var(--border); }
+  .pi-lbl {
+    font-size:.68rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.07em; color:var(--muted);
+  }
+  .pi-strip { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.5rem; }
+  .pi-chip {
+    font-size:.76rem; font-weight:600; text-decoration:none;
+    border:1px solid var(--border); border-radius:8px;
+    padding:.25rem .6rem; background:var(--surface); color:var(--navy);
+    transition:border-color .13s;
+  }
+  .pi-chip:hover { border-color:var(--navy); }
+
   @media(max-width:800px){
     .fg2,.fg3,.fg4,.fg5 { grid-template-columns:1fr 1fr; }
     .span3,.span4,.span-all { grid-column:1/-1; }
@@ -2294,6 +2313,30 @@ def view_quotation(id: str):
     create_url = url_for("quotation.create_quotation")
     line_items = q["line_items"]
 
+    # ── Proforma invoices raised against this quotation ─────────────────
+    # Read STORE["proformas"] directly rather than importing proforma.py:
+    # that module imports *this* one for the document formatters, so an import
+    # the other way would be a cycle. url_for needs only the endpoint name.
+    pi_url  = url_for("proforma.create_proforma", qid=id)
+    pi_rows = sorted(
+        ((p_id, p) for p_id, p in STORE["proformas"].items()
+         if p.get("quotation_id") == id),
+        key=lambda kv: kv[1].get("ref", ""),
+    )
+    pi_strip_html = ""
+    if pi_rows:
+        chips = "".join(
+            f'<a class="pi-chip" href="{url_for("proforma.view_proforma", id=p_id)}">'
+            f'{P.esc(p.get("ref"))} &middot; {p.get("date", "")} &middot; '
+            f'&#8377;&nbsp;{float(p.get("amount_due") or 0):,.0f}</a>'
+            for p_id, p in pi_rows
+        )
+        pi_strip_html = f"""
+        <div class="pi-block">
+          <span class="pi-lbl">Proforma invoices raised</span>
+          <div class="pi-strip">{chips}</div>
+        </div>"""
+
     # ── Deal panel (screen only — hidden by the @media print rule) ──────
     P.ensure_fields(q)
     update_url = url_for("quotation.update_quotation", id=id)
@@ -2387,6 +2430,7 @@ def view_quotation(id: str):
     </div>
   </form>
 
+  {pi_strip_html}
   {P.history_html(q)}
 </div>
 """
@@ -2545,9 +2589,10 @@ def view_quotation(id: str):
   <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
     Quotation <span style="color:var(--brand);">{q['ref']}</span>
   </h1>
-  <div style="display:flex;gap:.7rem;">
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{list_url}"   class="btn btn-ghost">&#8592; All Quotations</a>
     <a href="{create_url}" class="btn btn-ghost">+ New</a>
+    <a href="{pi_url}"     class="btn btn-ghost">&#129534;&nbsp;Raise Proforma</a>
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>

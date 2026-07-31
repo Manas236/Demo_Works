@@ -1,0 +1,1075 @@
+"""
+proforma.py — Proforma Invoice Module
+=====================================
+Blueprint  : proforma_bp
+Mounted at : /proforma  (registered in app.py)
+
+Routes
+------
+  GET       /proforma/              — register of issued proforma invoices
+  GET,POST  /proforma/from/<qid>    — convert a quotation into a proforma invoice
+  GET       /proforma/view/<id>     — the printed proforma invoice document
+
+Why this is its own module and not a render mode of the quotation
+-----------------------------------------------------------------
+A proforma invoice is a different commercial instrument from the quotation it
+comes out of. It carries its own number and its own date, it is a request for
+money rather than an offer to sell, and the customer's accounts department
+files it against a payment. So it gets its own record and its own numbering
+series (PI-0001) with a `quotation_id` back-link — which also means one
+quotation can raise several PIs over its life (advance, then balance, then a
+part supply) without any of them mutating.
+
+The line items are a **snapshot**, copied at issue time. Once a PI has gone to
+a customer its numbers must not move because someone edited the source later.
+
+What is reused, and from where
+------------------------------
+The printed sheet is the quotation's sheet: `VIEW_DOC_STYLES` gives the A4
+frame, the letterhead band, the items table and the print rules; `_inr`,
+`_fmt_qty`, `_amount_in_words` and `_meta` are the document's own formatters.
+Importing them here (rather than copying) is what keeps the two documents
+looking like they came out of the same office.
+
+Import direction: proforma -> quotation -> dashboard. `quotation.py` must never
+import this module; it links here with `url_for("proforma.…")` and reads
+`STORE["proformas"]` directly, so no cycle exists.
+"""
+
+import uuid
+from datetime import date as _date
+from flask import Blueprint, render_template_string, request, redirect, url_for
+
+import branding as B
+import pipeline as P
+from dashboard import BASE_STYLES, _nav
+from store import STORE
+
+# The document's own formatters and stylesheet — see the module docstring.
+from quotation import (
+    QUOTATION_STYLES,
+    VIEW_DOC_STYLES,
+    _amount_in_words,
+    _fmt_qty,
+    _inr,
+    _meta,
+)
+
+# The same vocabularies the quotation form offers, and the same widget builder.
+# These are shared rather than re-listed on purpose: a term the PI offers but
+# the quotation does not (or vice versa) is how the two documents start
+# contradicting each other. Add a payment term in quotation.py and it appears
+# on both forms.
+from quotation import (
+    _DEL_TERMS,
+    _DISPATCH,
+    _INCOTERMS,
+    _PAY_TERMS,
+    _sel_opts,
+)
+
+proforma_bp = Blueprint("proforma", __name__, url_prefix="/proforma")
+
+
+# =============================================================================
+# BUSINESS RULES — tune here, not in a branch
+# =============================================================================
+_REF_PREFIX = "PI"
+
+# What share of the order value a fresh PI asks for. 100 = the whole thing,
+# which is the safe default: asking for less has to be a deliberate act.
+DEFAULT_ADVANCE_PCT = 100.0
+
+# How long the PI's prices hold. Shorter than a quotation's validity on purpose
+# — a payment request that has been sitting for a month should be re-issued.
+DEFAULT_PI_VALIDITY = "15"
+
+# Common splits, offered as a datalist on the convert form.
+ADVANCE_PRESETS = ["100", "50", "30", "25", "10"]
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+def _today() -> str:
+    return _date.today().strftime("%Y-%m-%d")
+
+
+def _next_ref() -> str:
+    """
+    Next proforma number — PI-0007.
+
+    Scans existing refs for the highest number and adds one, rather than
+    `len(...) + 1` (what `quotation._next_ref()` does — ABOUT.md §7.5). len+1
+    re-issues a number that has already been on a customer's document as soon as
+    one record is removed, and a duplicated *invoice* number is a materially
+    worse failure than a duplicated quotation number: it is the key the
+    customer's accounts department files the payment against.
+
+    Still not year-scoped. That needs the client's actual numbering policy
+    (`SF/PI/26-27/0001` is the usual shape) before it is worth writing.
+    """
+    highest = 0
+    for pi in STORE["proformas"].values():
+        tail = str(pi.get("ref") or "").rpartition("-")[2]
+        if tail.isdigit():
+            highest = max(highest, int(tail))
+    return f"{_REF_PREFIX}-{highest + 1:04d}"
+
+
+def _pct(raw: str, default: float) -> float:
+    """Parse an advance percentage. Lenient about '30%' and blanks."""
+    txt = str(raw or "").strip().replace("%", "").replace(",", "")
+    if not txt:
+        return default
+    try:
+        return float(txt)
+    except ValueError:
+        return -1.0    # signals "unparseable" to the caller's validation
+
+
+def _sel_keep(name: str, options: list, current: str) -> str:
+    """
+    A dropdown that cannot silently change the value it was given.
+
+    `quotation._sel_opts()` marks an option selected only when it matches
+    exactly, so a stored value that is not in the list renders as "nothing
+    selected" — and the browser then posts the *first* option instead, quietly
+    rewriting a term the customer already saw on the quotation. Here the value
+    is carried over from a saved record rather than typed fresh, so anything
+    unrecognised (hand-edited data, or a list that has been edited since) is
+    prepended and kept selected.
+    """
+    cur = (current or "").strip()
+    opts = list(options)
+    if cur and cur not in opts:
+        opts.insert(0, cur)
+    return _sel_opts(name, opts, cur or (opts[0] if opts else ""), cur)
+
+
+def _customer_of(rec: dict) -> str:
+    """First meaningful line of the customer identity, for list views."""
+    name = (rec.get("account_name") or "").strip()
+    if name:
+        return name
+    first = (rec.get("to") or "").strip().splitlines()
+    return first[0].strip() if first else "—"
+
+
+def _proformas_for(quotation_id: str) -> list:
+    """Every PI raised against one quotation, newest number last."""
+    out = [(pid, pi) for pid, pi in STORE["proformas"].items()
+           if pi.get("quotation_id") == quotation_id]
+    out.sort(key=lambda kv: kv[1].get("ref", ""))
+    return out
+
+
+def _build_pi_terms(pi: dict) -> list:
+    """
+    Terms that print on the proforma invoice.
+
+    Deliberately NOT `quotation._build_tnc()`. That set is written for an offer
+    — validity of the offer, scope, warranty, commissioning. A PI is a payment
+    instrument, so it needs the declarations that make it legally readable as
+    one: that it is not a tax invoice, when title passes, what the money buys,
+    and that the quotation's own terms still govern the supply.
+
+    ⚠ Like the quotation's standing clauses, these are generic trade terms for a
+    fire-protection contractor. Have them checked once against Samruddhi Fire's
+    actual commercial policy before the first PI goes to a customer.
+    """
+    terms = [
+        "This is a Proforma Invoice and NOT a Tax Invoice. It is issued for the "
+        "purpose of advance payment / opening of a purchase order or letter of "
+        "credit. No input tax credit can be claimed against this document.",
+        "A Tax Invoice conforming to GST rules will be issued at the time of "
+        "dispatch of goods, and is the only document valid for input tax credit.",
+    ]
+
+    # Everything interpolated below is user-entered on the convert form, so it
+    # is escaped here rather than trusted. (quotation.py's _build_tnc does not
+    # — ABOUT.md §7.7. That is the gap, not the pattern.)
+    src = P.esc(pi.get("quotation_ref")).strip()
+    if src:
+        terms.append(
+            f"This proforma invoice is raised against our Quotation {src}"
+            + (f" dated {P.esc(pi['quotation_date'])}." if pi.get("quotation_date") else ".")
+            + " The technical scope, exclusions and terms of that quotation "
+              "continue to govern this supply in full."
+        )
+
+    pct = float(pi.get("advance_pct") or 0.0)
+    if pct >= 100:
+        terms.append(
+            "Payment — 100% of the invoice value is payable in advance by "
+            "NEFT / RTGS to the account detailed above. Please quote the "
+            "proforma invoice number on the remittance."
+        )
+    else:
+        terms.append(
+            f"Payment — {pct:g}% of the invoice value is payable now by "
+            "NEFT / RTGS to the account detailed above. The balance is payable "
+            "before dispatch, against our intimation of readiness. Please quote "
+            "the proforma invoice number on the remittance."
+        )
+
+    delivery_date = P.esc(pi.get("delivery_date")).strip()
+    terms.append(
+        f"Delivery — by {delivery_date}, counted from the date the advance is "
+        "credited to our account, not from the date of this invoice."
+        if delivery_date else
+        "Delivery — 3–4 weeks from the date the advance is credited to our "
+        "account, not from the date of this invoice."
+    )
+
+    dispatch = P.esc(pi.get("dispatch_through")).strip()
+    if dispatch and dispatch.lower() in ("in clients scope", "self pickup"):
+        terms.append("Transportation — in the customer's scope.")
+    elif dispatch:
+        terms.append(f"Transportation — via {dispatch}; charges extra unless "
+                     f"stated as included in the prices above.")
+
+    vdays = P.esc(pi.get("validity_days")).strip()
+    terms.append(
+        f"Validity — this proforma invoice is valid for {vdays} days from the "
+        "date above. Beyond that a fresh proforma invoice must be requested, as "
+        "material prices and taxes may have moved."
+        if vdays else
+        "Validity — 15 days from the date above."
+    )
+
+    terms += [
+        "Goods remain the property of the seller until payment has been "
+        "realised in full, notwithstanding delivery or transfer of risk.",
+        "Any statutory change in taxes, duties or levies between the date of "
+        "this invoice and the date of dispatch will be to the customer's account.",
+        "Bank charges, if any, on the remittance are to the customer's account. "
+        "Cheques are accepted subject to realisation.",
+        "A debit note of Rs 900.00 + GST will be raised each time a payment "
+        "cheque is returned unpaid on presentation.",
+        "Standard Force Majeure clause is applicable.",
+    ]
+    return terms
+
+
+def _alert(msg: str, msg_type: str) -> str:
+    if not msg:
+        return ""
+    icon = "&#10003;" if msg_type == "success" else "&#10007;"
+    return f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+
+
+# =============================================================================
+# CSS — proforma-only additions
+# =============================================================================
+# Plain string, not an f-string, so the CSS braces are written once. Layered
+# AFTER VIEW_DOC_STYLES and scoped inside .quotation-doc, so it inherits the
+# document's type scale (--fs-*) and rule weights (--rule-*) instead of
+# inventing a second set. Nothing here introduces a new font, size or border
+# weight — that is the whole point of the four rules at the top of that sheet.
+
+PROFORMA_STYLES = """
+<style>
+  /* ── The "not a tax invoice" declaration ──────────────────────────────
+     Sits directly under the title, inside the frame. It is the single most
+     important sentence on the page: it is what stops the document being
+     mistaken for a tax invoice, so it prints at body weight in the frame
+     rather than being buried at clause 1 of the terms. */
+  .quotation-doc .doc-sub {
+    text-align:center; font-size:var(--fs-sm); font-weight:700;
+    padding:2px 6px; border-bottom:var(--rule-box);
+  }
+  .quotation-doc .doc-sub .ds-src { font-weight:400; color:var(--doc-soft); }
+
+  /* ── Payment box ──────────────────────────────────────────────────────
+     Only rendered when the PI asks for part of the order value. The figure
+     the customer actually has to pay is the one number on this document that
+     must not be hunted for, so it gets the heavy rule and the --fs-md step —
+     the same emphasis the closing total gets in the items table, and no more.
+     Emphasis by weight and rule, never by fill. */
+  .quotation-doc .pay-box { border-top:var(--rule-box); }
+  .quotation-doc .pay-row {
+    display:flex; justify-content:space-between; gap:6mm;
+    padding:2px 6px; border-bottom:var(--rule-hair);
+  }
+  .quotation-doc .pay-row:last-child { border-bottom:none; }
+  .quotation-doc .pay-amt {
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .quotation-doc .pay-due {
+    font-weight:700; font-size:var(--fs-md);
+    border-top:var(--rule); border-bottom:var(--rule);
+  }
+  .quotation-doc .pay-words {
+    padding:2px 6px; font-weight:700; border-top:var(--rule-hair);
+  }
+
+  /* ── Bank block ───────────────────────────────────────────────────────
+     A PI is a request for money; the remittance account is the operative
+     detail, so it is framed rather than dropped into the terms as prose. */
+  .quotation-doc .bank-box { border:var(--rule-box); margin-top:5mm; }
+  .quotation-doc .bank-title {
+    font-weight:700; font-size:var(--fs-md); padding:2px 6px;
+    border-bottom:var(--rule);
+  }
+  .quotation-doc .bank-kv {
+    display:grid; grid-template-columns:auto 1fr auto 1fr;
+    gap:2px 6px; padding:4px 6px;
+  }
+  .quotation-doc .bank-kv .bk-l { color:var(--doc-soft); }
+  .quotation-doc .bank-kv .bk-v { font-weight:700; overflow-wrap:anywhere; }
+  .quotation-doc .bank-note {
+    padding:2px 6px; border-top:var(--rule-hair); color:var(--doc-soft);
+  }
+
+  .quotation-doc .pi-note { margin-top:4mm; }
+  .quotation-doc .pi-note .pn-lbl { font-weight:700; }
+
+  @media screen and (max-width:760px){
+    .quotation-doc .bank-kv { grid-template-columns:auto 1fr; }
+  }
+
+  /* ── Screen-only: the convert form and the register ───────────────── */
+  .src-note {
+    background:var(--surface); border:1px solid var(--border);
+    border-left:3px solid var(--brand); border-radius:var(--radius);
+    padding:.9rem 1.2rem; margin-bottom:1.4rem; font-size:.88rem;
+  }
+  .src-note b { color:var(--brand); }
+  .src-note .sn-sub { color:var(--muted); font-size:.82rem; margin-top:.25rem; }
+
+  .frozen-wrap {
+    border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    background:var(--bg);
+  }
+  .frozen-wrap table { font-size:.82rem; }
+  .frozen-wrap td, .frozen-wrap th { padding:.45rem .7rem; }
+  .frozen-wrap .fz-comp td:first-child { padding-left:1.6rem; color:var(--muted); }
+  .frozen-wrap .fz-num { text-align:right; font-variant-numeric:tabular-nums; }
+  .frozen-wrap tfoot td {
+    font-weight:700; background:var(--bg); border-top:1px solid var(--border);
+  }
+  .frozen-hint {
+    font-size:.8rem; color:var(--muted); margin-top:.6rem; line-height:1.5;
+  }
+
+  .adv-row { display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; }
+  .adv-out {
+    font-size:.88rem; color:var(--muted); padding-bottom:.55rem; line-height:1.5;
+  }
+  .adv-out b { color:var(--brand); font-size:1rem; }
+
+  .pi-badge {
+    display:inline-block; font-size:.68rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em;
+    border-radius:10px; padding:.14rem .5rem;
+    background:var(--navy-lt); color:var(--navy);
+  }
+  .pi-badge.part { background:#FFF4D6; color:#8A5A00; }
+
+  /* .pi-strip / .pi-chip are defined in QUOTATION_STYLES — both this module
+     and the quotation's deal panel render them, and every page here already
+     loads that sheet. */
+</style>
+"""
+
+
+# =============================================================================
+# ROUTES
+# =============================================================================
+
+@proforma_bp.route("/")
+def list_proformas():
+    """Register of every proforma invoice raised, newest number first."""
+    proformas = STORE["proformas"]
+    rows = sorted(proformas.items(), key=lambda kv: kv[1].get("ref", ""), reverse=True)
+
+    dash_url = url_for("dashboard.index")
+    qtn_url  = url_for("quotation.list_quotations")
+
+    total_value = sum(float(pi.get("grand_total") or 0.0) for pi in proformas.values())
+    total_due   = sum(float(pi.get("amount_due")  or 0.0) for pi in proformas.values())
+
+    tiles_html = ""
+    if proformas:
+        part = sum(1 for pi in proformas.values() if float(pi.get("advance_pct") or 100) < 100)
+        tiles_html = f"""
+        <div class="pipe-tiles">
+          <div class="pipe-tile t-open">
+            <div class="pt-lbl">Invoiced Value</div>
+            <div class="pt-val">&#8377;&nbsp;{total_value:,.0f}</div>
+            <div class="pt-sub">{len(proformas)} proforma invoice{"s" if len(proformas) != 1 else ""}</div>
+          </div>
+          <div class="pipe-tile">
+            <div class="pt-lbl">Requested Now</div>
+            <div class="pt-val">&#8377;&nbsp;{total_due:,.0f}</div>
+            <div class="pt-sub">{part} part-payment{"s" if part != 1 else ""}
+                &middot; {len(proformas) - part} in full</div>
+          </div>
+        </div>"""
+
+    if rows:
+        rows_html = ""
+        for pid, pi in rows:
+            view_url = url_for("proforma.view_proforma", id=pid)
+            pct      = float(pi.get("advance_pct") or 100.0)
+            badge    = (f'<span class="pi-badge part">{pct:g}% advance</span>'
+                        if pct < 100 else '<span class="pi-badge">full value</span>')
+            src_url  = url_for("quotation.view_quotation", id=pi.get("quotation_id", ""))
+            rows_html += f"""
+            <tr>
+              <td class="td-ref">{P.esc(pi.get('ref'))}</td>
+              <td class="td-muted">{P.esc(pi.get('date'))}</td>
+              <td class="td-cust">{P.esc(_customer_of(pi))}</td>
+              <td class="col-h"><a href="{src_url}" class="btn-view">{P.esc(pi.get('quotation_ref'))}</a></td>
+              <td class="col-h">{badge}</td>
+              <td class="td-muted">&#8377;&nbsp;{float(pi.get('grand_total') or 0):,.0f}</td>
+              <td class="td-total">&#8377;&nbsp;{float(pi.get('amount_due') or 0):,.0f}</td>
+              <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
+            </tr>"""
+        table_html = f"""
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>PI No.</th><th>Date</th><th>Customer</th>
+            <th class="col-h">From Quotation</th><th class="col-h">Ask</th>
+            <th>Invoice Value</th><th>Payable Now</th><th></th>
+          </tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table></div>"""
+    else:
+        table_html = f"""
+        <div class="empty-state">
+          <div style="font-size:2rem;">&#129534;</div><br>
+          <strong>No proforma invoices yet</strong>
+          <p style="margin-top:.4rem;font-size:.88rem;">
+            A proforma invoice is raised from a quotation — open the quotation the
+            customer has agreed to and use <b>Raise Proforma</b>.</p>
+          <a href="{qtn_url}" class="btn" style="display:inline-block;margin-top:1.1rem;">
+            Go to Quotation Register</a>
+        </div>"""
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Proforma Invoices")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      {_alert(request.args.get("msg"), request.args.get("type", "success"))}
+      <div class="page-top">
+        <h1>Proforma <span>Invoices</span>
+          <span style="font-size:.73rem;font-weight:500;color:var(--muted);margin-left:.5rem;">
+            {len(proformas)} issued
+          </span>
+        </h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{dash_url}" class="btn btn-ghost">&#8592; Dashboard</a>
+          <a href="{qtn_url}"  class="btn btn-ghost">Quotations</a>
+        </div>
+      </div>
+      {tiles_html}
+      {table_html}
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice register</p></footer>
+    </main></body></html>"""
+    return render_template_string(template)
+
+
+@proforma_bp.route("/from/<qid>", methods=["GET", "POST"])
+def create_proforma(qid: str):
+    """
+    Raise a proforma invoice from a quotation.
+
+    The line items, prices, taxes and addresses are copied verbatim and are not
+    editable here — the PI states what was quoted. Only the fields that belong
+    to the *invoice* are collected: its date, the customer's PO reference, how
+    much of the value is being asked for now, and the payment/delivery terms
+    that apply to this particular payment.
+    """
+    q = STORE["quotations"].get(qid)
+    if not q:
+        return redirect(url_for("quotation.list_quotations",
+                                msg="Quotation not found.", type="error"))
+
+    f     = request.form
+    error = ""
+
+    if request.method == "POST":
+        pi_date  = (f.get("date") or "").strip()
+        pct      = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
+        validity = (f.get("validity_days") or "").strip()
+
+        if not pi_date:
+            error = "Invoice date is required."
+        elif pct < 0:
+            error = "Advance % must be a number, e.g. 30."
+        elif not (0 < pct <= 100):
+            error = "Advance % must be greater than 0 and no more than 100."
+        elif validity and not validity.isdigit():
+            error = "Validity must be a whole number of days."
+
+        if not error:
+            grand = float(q.get("grand_total") or 0.0)
+            due   = round(grand * pct / 100.0, 2)
+
+            pid = str(uuid.uuid4())
+            pi = {
+                "id":  pid,
+                "ref": _next_ref(),
+                "date": pi_date,
+
+                # ── Back-link to the source. quotation_ref is stored, not
+                #    looked up, so the PI still prints correctly as a historical
+                #    document if the quotation is ever removed.
+                "quotation_id":   qid,
+                "quotation_ref":  q.get("ref", ""),
+                "quotation_date": q.get("date", ""),
+
+                # ── Customer identity, copied ─────────────────────────────
+                "account_name":   q.get("account_name", ""),
+                "contact_person": q.get("contact_person", ""),
+                "to":             q.get("to", ""),
+                "bill_gstin":     q.get("bill_gstin", ""),
+                "ship_same":      q.get("ship_same", ""),
+                "ship_acct_name": q.get("ship_acct_name", ""),
+                "ship_addr":      q.get("ship_addr", ""),
+                "ship_city":      q.get("ship_city", ""),
+                "ship_state":     q.get("ship_state", ""),
+                "ship_pin":       q.get("ship_pin", ""),
+                "ship_phone":     q.get("ship_phone", ""),
+                "ship_gstin":     q.get("ship_gstin", ""),
+
+                # ── Frozen commercial content ─────────────────────────────
+                # dict(row) per line: a shallow copy is enough because every
+                # value in a line_item is a scalar, and it guarantees a later
+                # edit to the quotation cannot reach an issued invoice.
+                "line_items": [dict(r) for r in q.get("line_items", [])],
+                "subtotal":   float(q.get("subtotal") or q.get("grand_total") or 0.0),
+                "tax_type":   q.get("tax_type", "exempt"),
+                "tax_info":   dict(q.get("tax_info") or {"total": 0.0}),
+                "grand_total": grand,
+                "total_qty":   q.get("total_qty", 0),
+
+                # ── The invoice's own fields ──────────────────────────────
+                "po_number":     (f.get("po_number") or "").strip(),
+                "po_date":       (f.get("po_date") or "").strip(),
+                "advance_pct":   pct,
+                "amount_due":    due,
+                "balance_due":   round(grand - due, 2),
+                "payment_terms": (f.get("payment_terms") or "").strip(),
+                "delivery_terms": (f.get("delivery_terms") or "").strip(),
+                "delivery_date": (f.get("delivery_date") or "").strip(),
+                "dispatch_through": (f.get("dispatch_through") or "").strip(),
+                "incoterms":     (f.get("incoterms") or "").strip(),
+                "validity_days": validity,
+                "notes":         (f.get("notes") or "").strip(),
+
+                "company_branch": q.get("company_branch", ""),
+                "auth_signatory": q.get("auth_signatory", ""),
+            }
+            STORE["proformas"][pid] = pi
+
+            # The PI is a real event in the deal's life, so it belongs on the
+            # quotation's audit trail. log_event does not change the stage.
+            P.log_event(q, f"Proforma invoice {pi['ref']} raised for "
+                           f"&#8377;{due:,.0f}"
+                           + (f" ({pct:g}% of quoted value)." if pct < 100 else "."))
+
+            return redirect(url_for("proforma.view_proforma", id=pid,
+                                    msg=f"Proforma invoice {pi['ref']} created.",
+                                    type="success"))
+
+    # ── Field values: the user's own input on a failed POST, else the
+    #    quotation's, else the module default. ───────────────────────────────
+    def _v(name: str, fallback: str = "") -> str:
+        if request.method == "POST":
+            return (f.get(name) or "").strip()
+        return str(fallback or "").strip()
+
+    v_date     = _v("date", _today())
+    v_po_no    = _v("po_number", q.get("po_number", ""))
+    v_po_date  = _v("po_date", q.get("po_date", ""))
+    v_pct      = _v("advance_pct", f"{DEFAULT_ADVANCE_PCT:g}")
+    v_pay      = _v("payment_terms", q.get("payment_terms", ""))
+    v_del_t    = _v("delivery_terms", q.get("delivery_terms", ""))
+    v_del_d    = _v("delivery_date", q.get("delivery_date", ""))
+    v_dispatch = _v("dispatch_through", q.get("dispatch_through", ""))
+    v_inco     = _v("incoterms", q.get("incoterms", ""))
+    v_valid    = _v("validity_days", DEFAULT_PI_VALIDITY)
+    v_notes    = _v("notes")
+
+    grand = float(q.get("grand_total") or 0.0)
+
+    # ── Frozen line-item preview ───────────────────────────────────────────
+    rows_html = ""
+    for r in q.get("line_items", []):
+        comp = " fz-comp" if r.get("depth", 0) == 1 else ""
+        rows_html += f"""
+        <tr class="{comp.strip()}">
+          <td>{P.esc(r.get('name'))}</td>
+          <td class="td-muted">{P.esc(r.get('part_no'))}</td>
+          <td class="fz-num">{_fmt_qty(float(r.get('qty') or 0))} {P.esc(r.get('unit'))}</td>
+          <td class="fz-num">{_inr(r.get('price') or 0)}</td>
+          <td class="fz-num">{_inr(r.get('total') or 0)}</td>
+        </tr>"""
+
+    tax_total = float((q.get("tax_info") or {}).get("total") or 0.0)
+    frozen_html = f"""
+    <div class="frozen-wrap"><table>
+      <thead><tr>
+        <th>Description</th><th>Part No</th>
+        <th class="fz-num">Qty</th><th class="fz-num">Rate</th><th class="fz-num">Amount</th>
+      </tr></thead>
+      <tbody>{rows_html}</tbody>
+      <tfoot>
+        <tr><td colspan="4" class="fz-num">Subtotal</td>
+            <td class="fz-num">{_inr(q.get('subtotal') or grand)}</td></tr>
+        <tr><td colspan="4" class="fz-num">Tax</td>
+            <td class="fz-num">{_inr(tax_total)}</td></tr>
+        <tr><td colspan="4" class="fz-num">Invoice Value</td>
+            <td class="fz-num">{_inr(grand)}</td></tr>
+      </tfoot>
+    </table></div>
+    <p class="frozen-hint">
+      These lines are copied onto the invoice exactly as quoted and are frozen at
+      issue. To invoice different quantities or prices, raise a new quotation first.
+    </p>"""
+
+    existing = _proformas_for(qid)
+    existing_html = ""
+    if existing:
+        chips = "".join(
+            f'<a class="pi-chip" href="{url_for("proforma.view_proforma", id=p_id)}">'
+            f'{P.esc(p.get("ref"))} &middot; &#8377;&nbsp;{float(p.get("amount_due") or 0):,.0f}</a>'
+            for p_id, p in existing
+        )
+        existing_html = (f'<div class="pi-strip">{chips}</div>'
+                         f'<div class="sn-sub">Already raised against this quotation — '
+                         f'check before issuing another.</div>')
+
+    q_view = url_for("quotation.view_quotation", id=qid)
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Raise Proforma Invoice")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Raise <span>Proforma Invoice</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{q_view}" class="btn btn-ghost">&#8592; Back to Quotation</a>
+          <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
+        </div>
+      </div>
+
+      {_alert(error, "error")}
+
+      <div class="src-note">
+        From quotation <b>{P.esc(q.get('ref'))}</b> dated {P.esc(q.get('date'))}
+        &middot; {P.esc(_customer_of(q))}
+        &middot; quoted value <b>&#8377;&nbsp;{grand:,.0f}</b>
+        <div class="sn-sub">The invoice will be numbered {_next_ref()}.</div>
+        {existing_html}
+      </div>
+
+      <form method="POST" action="{url_for("proforma.create_proforma", qid=qid)}">
+
+        <div class="form-section">
+          <div class="section-title">Invoice</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="date">Invoice Date *</label>
+              <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
+            </div>
+            <div class="form-group">
+              <label for="po_number">Customer PO No.</label>
+              <input type="text" id="po_number" name="po_number" value="{P.esc(v_po_no)}"
+                     placeholder="their PO number, if received"/>
+            </div>
+            <div class="form-group">
+              <label for="po_date">Customer PO Date</label>
+              <input type="date" id="po_date" name="po_date" value="{P.esc(v_po_date)}"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Amount Requested</div>
+          <div class="adv-row">
+            <div class="form-group" style="max-width:170px;">
+              <label for="advance_pct">Advance % *</label>
+              <input type="number" id="advance_pct" name="advance_pct" list="adv-presets"
+                     value="{P.esc(v_pct)}" min="0.01" max="100" step="any" required/>
+              <datalist id="adv-presets">
+                {"".join(f'<option value="{p}"></option>' for p in ADVANCE_PRESETS)}
+              </datalist>
+            </div>
+            <div class="adv-out">
+              100 asks for the whole invoice value; 30 asks for a 30% advance and
+              shows the balance as payable before dispatch.<br>
+              Invoice value <b>&#8377;&nbsp;{grand:,.0f}</b>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Terms carried onto this invoice</div>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="payment_terms">Payment Terms</label>
+              {_sel_keep("payment_terms", _PAY_TERMS, v_pay)}
+            </div>
+            <div class="form-group">
+              <label for="delivery_terms">Terms of Delivery</label>
+              {_sel_keep("delivery_terms", _DEL_TERMS, v_del_t)}
+            </div>
+            <div class="form-group">
+              <label for="delivery_date">Delivery Date</label>
+              <input type="date" id="delivery_date" name="delivery_date" value="{P.esc(v_del_d)}"/>
+            </div>
+            <div class="form-group">
+              <label for="dispatch_through">Dispatch Through</label>
+              {_sel_keep("dispatch_through", _DISPATCH, v_dispatch)}
+            </div>
+            <div class="form-group">
+              <label for="incoterms">Incoterms</label>
+              {_sel_keep("incoterms", _INCOTERMS, v_inco)}
+            </div>
+            <div class="form-group">
+              <label for="validity_days">PI Validity (days)</label>
+              <input type="number" id="validity_days" name="validity_days"
+                     value="{P.esc(v_valid)}" min="0" step="1"/>
+            </div>
+            <div class="form-group span2">
+              <label for="notes">Note on the invoice <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <input type="text" id="notes" name="notes" value="{P.esc(v_notes)}"
+                     placeholder="e.g. Against your enquiry dated 12.07.2026 — part supply, first lot"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Items being invoiced &mdash; frozen at issue</div>
+          {frozen_html}
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn">Raise Proforma Invoice</button>
+          <a href="{q_view}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
+    </main></body></html>"""
+    return render_template_string(template)
+
+
+@proforma_bp.route("/view/<id>")
+def view_proforma(id: str):
+    """
+    The printed proforma invoice.
+
+    Same A4 sheet as the quotation (VIEW_DOC_STYLES) — same letterhead band,
+    same items table, same print rules. What differs is what a PI has to say
+    that a quotation does not: the not-a-tax-invoice declaration, the amount
+    actually payable now, and the bank account to pay it into.
+    """
+    pi = STORE["proformas"].get(id)
+    if not pi:
+        return redirect(url_for("proforma.list_proformas",
+                                msg="Proforma invoice not found.", type="error"))
+
+    # ── Line-item rows — identical treatment to the quotation document ─────
+    sno, total_qty, table_rows = 0, 0.0, ""
+    for row in pi.get("line_items", []):
+        sno += 1
+        depth   = row.get("depth", 0)
+        row_cls = "row-assembly" if row.get("type") == "assembly" else "row-item"
+        indent  = "indent-1" if depth == 1 else ("indent-2" if depth >= 2 else "")
+        if depth == 0:
+            total_qty += float(row.get("qty") or 0)
+
+        table_rows += f"""
+        <tr class="{row_cls}">
+          <td class="c-sno">{sno}</td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>
+          <td class="c-desc {indent}">{P.esc(row.get('name'))}</td>
+          <td class="c-hsn">{P.esc(row.get('hsn'))}</td>
+          <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
+          <td class="c-unit">{P.esc(row.get('unit'))}</td>
+          <td class="c-price">{_inr(row.get('price') or 0)}</td>
+          <td class="c-total">{_inr(row.get('total') or 0)}</td>
+        </tr>"""
+
+    subtotal = float(pi.get("subtotal") or pi.get("grand_total") or 0.0)
+    tax_info = pi.get("tax_info") or {"total": 0.0}
+    tax_type = pi.get("tax_type", "exempt")
+    grand    = float(pi.get("grand_total") or 0.0)
+    has_tax  = tax_type != "exempt" and float(tax_info.get("total") or 0) > 0
+
+    if has_tax:
+        table_rows += f"""
+        <tr class="row-sum">
+          <td colspan="4" class="sum-lbl">Subtotal</td>
+          <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
+          <td class="c-total">{_inr(subtotal)}</td>
+        </tr>"""
+
+        rate_keys = {"CGST": "cgst_rate", "SGST": "sgst_rate",
+                     "IGST": "igst_rate", "VAT":  "vat_rate"}
+        skip_keys = {"total", *rate_keys.values()}
+        for tname, tamt in tax_info.items():
+            if tname in skip_keys:
+                continue
+            r = tax_info.get(rate_keys.get(tname, ""), 0)
+            rate_label = f" @ {r:g}%" if r else ""
+            table_rows += f"""
+            <tr class="row-sum">
+              <td colspan="4" class="sum-lbl">{tname}{rate_label}</td>
+              <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
+              <td class="c-total">{_inr(tamt)}</td>
+            </tr>"""
+
+    table_rows += f"""
+    <tr class="row-total row-sum">
+      <td colspan="4" class="sum-lbl">{"Invoice Value" if has_tax else "Total"}</td>
+      <td class="c-qty">{_fmt_qty(total_qty)}</td>
+      <td class="c-unit"></td><td class="c-price"></td>
+      <td class="c-total">{_inr(grand)}</td>
+    </tr>"""
+
+    # ── Header meta ───────────────────────────────────────────────────────
+    validity = P.esc(pi.get("validity_days")).strip()
+    meta_col_1 = (
+        _meta("Proforma Invoice No.",  P.esc(pi.get("ref"))) +
+        _meta("Against Quotation",     P.esc(pi.get("quotation_ref"))) +
+        _meta("Buyer's PO No.",        P.esc(pi.get("po_number"))) +
+        _meta("Mode/Term of Payment",  P.esc(pi.get("payment_terms"))) +
+        _meta("Terms of Delivery",     P.esc(pi.get("delivery_terms")))
+    )
+    meta_col_2 = (
+        _meta("Date",             P.esc(pi.get("date"))) +
+        _meta("Quotation Date",   P.esc(pi.get("quotation_date"))) +
+        _meta("Buyer's PO Date",  P.esc(pi.get("po_date"))) +
+        _meta("Dispatch Through", P.esc(pi.get("dispatch_through"))) +
+        _meta("Validity",         f"{validity} days" if validity else "") +
+        _meta("Incoterms",        P.esc(pi.get("incoterms")))
+    )
+
+    # ── To / Ship To ──────────────────────────────────────────────────────
+    to_lines   = (pi.get("to") or "").strip().split("\n")
+    to_display = ""
+    if to_lines and to_lines[0].strip():
+        rest = "\n".join(to_lines[1:]).strip()
+        to_display = f'<span class="dh-name">{P.esc(to_lines[0])}</span>'
+        if rest:
+            to_display += f"\n{P.esc(rest)}"
+
+    ship_parts = []
+    if not pi.get("ship_same"):
+        sname = pi.get("ship_acct_name") or pi.get("account_name") or ""
+        if sname:                 ship_parts.append(sname)
+        if pi.get("ship_addr"):   ship_parts.append(pi["ship_addr"])
+        scity = ", ".join(filter(None, [pi.get("ship_city", ""), pi.get("ship_state", "")]))
+        if scity or pi.get("ship_pin"):
+            ship_parts.append(f"{scity} – {pi.get('ship_pin', '')}".strip(" –"))
+        if pi.get("ship_phone"):  ship_parts.append(f"Ph: {pi['ship_phone']}")
+        if pi.get("ship_gstin"):  ship_parts.append(f"GSTIN: {pi['ship_gstin']}")
+
+    ship_html = ""
+    if ship_parts:
+        ship_html = ('<div class="dh-ship"><span class="dh-lbl">Ship To</span>'
+                     f'<div class="dh-body">{P.esc(chr(10).join(ship_parts))}</div></div>')
+
+    # ── Payment box ───────────────────────────────────────────────────────
+    # Only earns its space on a part payment. When the PI asks for the whole
+    # value the closing row of the table already says it, and repeating the
+    # same figure twice invites the reader to look for a difference.
+    pct  = float(pi.get("advance_pct") or 100.0)
+    due  = float(pi.get("amount_due") or grand)
+    bal  = float(pi.get("balance_due") or 0.0)
+
+    if pct < 100:
+        pay_box = f"""
+      <div class="pay-box">
+        <div class="pay-row"><span>Total Invoice Value</span>
+             <span class="pay-amt">{_inr(grand)}</span></div>
+        <div class="pay-row pay-due"><span>Amount Payable Now (advance @ {pct:g}%)</span>
+             <span class="pay-amt">{_inr(due)}</span></div>
+        <div class="pay-row"><span>Balance, payable before dispatch</span>
+             <span class="pay-amt">{_inr(bal)}</span></div>
+        <div class="pay-words">Amount Payable Now (in words) : {_amount_in_words(due)}</div>
+      </div>"""
+    else:
+        pay_box = f"""
+      <div class="pay-box">
+        <div class="pay-row pay-due"><span>Amount Payable Now (100% advance)</span>
+             <span class="pay-amt">{_inr(due)}</span></div>
+        <div class="pay-words">Amount Payable Now (in words) : {_amount_in_words(due)}</div>
+      </div>"""
+
+    # ── Bank block ────────────────────────────────────────────────────────
+    bank_html = f"""
+  <div class="bank-box">
+    <div class="bank-title">Bank Details for Remittance</div>
+    <div class="bank-kv">
+      <span class="bk-l">Bank</span>
+      <span class="bk-v">{B.field(B.BANK_NAME, "bank name")}</span>
+      <span class="bk-l">A/C Name</span>
+      <span class="bk-v">{B.field(B.BANK_ACCOUNT_NAME, "account name")}</span>
+      <span class="bk-l">A/C No.</span>
+      <span class="bk-v">{B.field(B.BANK_ACCOUNT_NO, "account number")}</span>
+      <span class="bk-l">IFSC</span>
+      <span class="bk-v">{B.field(B.BANK_IFSC, "IFSC code")}</span>
+      <span class="bk-l">Branch</span>
+      <span class="bk-v">{B.field(B.BANK_BRANCH, "branch")}</span>
+      <span class="bk-l">GSTIN</span>
+      <span class="bk-v">{B.field(B.COMPANY_GSTIN, "GSTIN")}</span>
+    </div>
+    <div class="bank-note">Please quote proforma invoice no.
+      <b>{P.esc(pi.get('ref'))}</b> on the remittance advice.</div>
+  </div>"""
+
+    note_html = ""
+    if pi.get("notes"):
+        note_html = (f'<div class="pi-note"><span class="pn-lbl">Note:</span> '
+                     f'{P.esc(pi["notes"])}</div>')
+
+    tnc_html = "".join(
+        f'<li><span class="tnc-num">{i + 1}.</span><span>{t}</span></li>'
+        for i, t in enumerate(_build_pi_terms(pi))
+    )
+
+    src_line = ""
+    if pi.get("quotation_ref"):
+        src_line = (f'<span class="ds-src"> &middot; against Quotation '
+                    f'{P.esc(pi["quotation_ref"])}</span>')
+
+    comp_br   = P.esc(pi.get("company_branch")) or B.COMPANY_NAME
+    signatory = P.esc(pi.get("auth_signatory")) or B.COMPANY_SIGNATORY
+
+    q_view = (url_for("quotation.view_quotation", id=pi["quotation_id"])
+              if pi.get("quotation_id") in STORE["quotations"] else "")
+    back_q = (f'<a href="{q_view}" class="btn btn-ghost">&#8592; Quotation '
+              f'{P.esc(pi.get("quotation_ref"))}</a>' if q_view else "")
+
+    template = f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(str(pi.get('ref')) + " Proforma Invoice")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+
+<div class="screen-acts">
+  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
+    Proforma Invoice <span style="color:var(--brand);">{P.esc(pi.get('ref'))}</span>
+  </h1>
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
+    {back_q}
+    <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
+    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
+  </div>
+</div>
+
+{_alert(request.args.get("msg"), request.args.get("type", "success"))}
+
+<div class="doc-outer">
+<div class="quotation-doc">
+
+  <table class="page-frame">
+  <thead><tr><td>
+    <div class="lh">
+      <div>
+        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
+        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
+        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
+      </div>
+      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
+    </div>
+    <div class="lh-rule"></div>
+    <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
+    <div class="lh-contact">
+      Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
+      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
+      {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
+      {f'<span class="sep">|</span>Branches: {B.COMPANY_BRANCHES}' if B.COMPANY_BRANCHES else ''}
+    </div>
+  </td></tr></thead>
+
+  <tfoot><tr><td>
+    <div class="lh-foot">{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</div>
+  </td></tr></tfoot>
+
+  <tbody><tr><td>
+
+  <div class="doc-box">
+    <div class="doc-title">PROFORMA INVOICE</div>
+    <div class="doc-sub">This is not a Tax Invoice{src_line}</div>
+
+    <div class="doc-header">
+      <div class="dh-cell">
+        <span class="dh-lbl">To</span>
+        <div class="dh-body">{to_display}</div>
+        {ship_html}
+      </div>
+      <div class="dh-cell">{meta_col_1}</div>
+      <div class="dh-cell">{meta_col_2}</div>
+    </div>
+
+    <div class="items-wrap">
+      <table class="q-table">
+        <thead><tr>
+          <th class="c-sno">S.No</th>
+          <th class="c-partno">Part No</th>
+          <th class="c-desc">Description of Goods</th>
+          <th class="c-hsn">HSN/SAC</th>
+          <th class="c-qty">Qty</th>
+          <th class="c-unit">Unit</th>
+          <th class="c-price">Unit Price</th>
+          <th class="c-total">Total Price</th>
+        </tr></thead>
+        <tbody>{table_rows}</tbody>
+      </table>
+    </div>
+
+    <div class="amount-words">Invoice Value (in words) : {_amount_in_words(grand)}</div>
+    {pay_box}
+  </div>
+
+  {bank_html}
+  {note_html}
+
+  <div class="tnc-section">
+    <div class="tnc-title">Terms and Conditions</div>
+    <ol class="tnc-ol">{tnc_html}</ol>
+  </div>
+
+  <div class="sig-block">
+    <div class="sig-kv">
+      <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
+      <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
+    </div>
+    <div class="sig-right">
+      <div class="sig-for">For {comp_br}</div>
+      <div class="sig-name">{signatory}</div>
+    </div>
+  </div>
+  <div class="sig-note">This is a Computer Generated Document, no signature required</div>
+
+  </td></tr></tbody>
+  </table>
+
+</div>
+</div>
+
+<footer style="margin-top:1.75rem;">
+  <p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p>
+</footer>
+</main>
+</body></html>"""
+    return render_template_string(template)

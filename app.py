@@ -12,6 +12,7 @@ from dashboard import dashboard_bp
 from extractor import extractor_bp
 from product import product_bp   # Phase 1: product management
 from quotation import quotation_bp  # Phase 2: quotation generation
+from proforma import proforma_bp  # Phase 3: proforma invoice (derived from a quotation)
 from address import address_bp   # Standalone address book
 
 import db                        # MySQL persistence (config from .env)
@@ -59,6 +60,7 @@ app.register_blueprint(dashboard_bp)           # Mounted at /
 app.register_blueprint(extractor_bp)           # Mounted at /extractor
 app.register_blueprint(product_bp)            # Mounted at /product
 app.register_blueprint(quotation_bp)          # Mounted at /quotation
+app.register_blueprint(proforma_bp)           # Mounted at /proforma
 app.register_blueprint(address_bp)            # Mounted at /address
 
 

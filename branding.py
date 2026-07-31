@@ -14,6 +14,8 @@ company name, a hex colour or an image path — import from here instead.
 ║  quotation, so nothing can quietly go out wrong:                          ║
 ║      COMPANY_LEGAL · COMPANY_ADDR · COMPANY_WEB · COMPANY_GSTIN           ║
 ║      COMPANY_PAN · COMPANY_BRANCHES                                       ║
+║      BANK_NAME · BANK_ACCOUNT_NAME · BANK_ACCOUNT_NO · BANK_IFSC          ║
+║      BANK_BRANCH                                                          ║
 ║  COMPANY_TAGLINE is an assumption drawn from the trading name — confirm   ║
 ║  the wording the client actually uses on their letterhead.                ║
 ╚══════════════════════════════════════════════════════════════════════════╝
@@ -43,6 +45,23 @@ COMPANY_SHORT     = "SF"
 # The product/quotation app's own name, as the staff will see it.
 APP_NAME          = "Samruddhi Fire"
 APP_SUBTITLE      = "Quotation & Catalogue System"
+
+
+# =============================================================================
+# 1b. BANK DETAILS  (proforma invoice only)
+# =============================================================================
+# A proforma invoice is a request for money, so the remittance account has to
+# print on it — a PI without these is not actionable by the customer's accounts
+# department. Blank fields render as amber "add …" chips through field() exactly
+# like the statutory block above, so an incomplete PI cannot go out looking
+# finished. They are deliberately NOT used on the quotation: a quotation is an
+# offer, not a demand for payment, and publishing the account number wider than
+# necessary is a fraud surface.
+BANK_NAME         = ""    # e.g. "HDFC Bank Ltd."
+BANK_ACCOUNT_NAME = ""    # the name the account is held in (may differ from COMPANY_NAME)
+BANK_ACCOUNT_NO   = ""
+BANK_IFSC         = ""
+BANK_BRANCH       = ""
 
 
 def field(value: str, hint: str) -> str:

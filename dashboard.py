@@ -532,6 +532,7 @@ ICONS = {
     "quotation": """<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>""",
     "news": """<svg viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 0-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>""",
     "address": """<svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>""",
+    "proforma": """<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 11v6"/><path d="M13.8 12.5h-2.6a1.4 1.4 0 0 0 0 2.8h1.6a1.4 1.4 0 0 1 0 2.8h-2.6"/></svg>""",
     "back": """<svg viewBox="0 0 24 24" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>""",
     # Attention-queue reason icons. Status colour never carries meaning alone —
     # every row pairs its tone with one of these plus the reason in words.
@@ -769,6 +770,9 @@ def _metrics():
         "p_assembly":   sum(1 for p in products.values() if p.get("type") == "assembly"),
         "p_support":    sum(1 for p in products.values() if p.get("type") == "support"),
         "a_total":      len(STORE["addresses"]),
+        "pi_total":     len(STORE["proformas"]),
+        "pi_due":       sum(float(p.get("amount_due") or 0.0)
+                            for p in STORE["proformas"].values()),
     }
 
 
@@ -1054,6 +1058,7 @@ def index():
     product_url   = url_for("product.list_products")
     quotation_url = url_for("quotation.list_quotations")
     address_url   = url_for("address.list_addresses")
+    proforma_url  = url_for("proforma.list_proformas")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1109,6 +1114,14 @@ def index():
               <div class="card-title">Quotations</div>
               <div class="card-desc">{m['q_count']} raised ·
                   {m['summary']['open']['count']} still live</div>
+            </div>
+          </a>
+
+          <a href="{proforma_url}" class="card">
+            <div class="card-icon">{ICONS['proforma']}</div>
+            <div class="card-body">
+              <div class="card-title">Proforma Invoices</div>
+              <div class="card-desc">{m['pi_total']} issued{f" · {rupees(m['pi_due'])} requested" if m['pi_due'] else " · raised from a quotation"}</div>
             </div>
           </a>
 
