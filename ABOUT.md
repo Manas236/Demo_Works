@@ -107,10 +107,11 @@ Consequences you must respect when editing:
 | [proforma.py](proforma.py) | 1117 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
-| [spec.py](spec.py) | 1075 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
+| [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 2341 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
 | [demo_data.py](demo_data.py) | 2658 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 300 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
+| `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 285 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
 | [pipeline.py](pipeline.py) | 542 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 951 | Address book + the pickers that quotations and purchase orders use. |
@@ -1423,6 +1424,15 @@ trade-off, stated plainly: there is no traceability from a BOQ line back to the
 library entry it came from. Adding one would mean a field on a contracted shape
 that becomes a lie the moment the line is edited away from the spec.
 
+**The variant editor clones a server-rendered `<template>`**, using
+`purchase.py`'s precedent, rather than building a row in JavaScript. There are
+two ways to get an "add row" button wrong and both are real: building the row
+in JS duplicates the markup somewhere it can silently drift (`product.py`'s BOM
+editor does this and currently matches — nothing guarantees it still will), and
+assigning the server's row HTML into a fresh wrapper `div` nests `.var-row`
+inside `.var-row`, so the inner grid gets one column's width and the inputs
+collapse. Cloning a template has neither failure mode.
+
 **The seeded rates are one project's figures, not a price list.** 56 clauses
 seed from `demo_data.SPECS` via `ensure_demo_specs()`, generated from the
 client's Sify Bangalore workbook. `REFERENCE_NOTE` says so on the register, the
@@ -1507,6 +1517,21 @@ Those fill rules are the one piece of behaviour in this app that only exists in
 JavaScript, so [tests/test_picker_js.py](tests/test_picker_js.py) extracts the
 real functions out of `_BOQ_JS` and runs them under Node against the same
 payload the page gets. It skips when Node is absent.
+
+#### Loading the demo into the form — `?demo=1`
+
+`GET /boq/create?demo=1` fills the editor from the seeded record: 3 sections,
+97 lines, every rate and area quantity, plus the project and terms fields. A
+blue banner says what was loaded and that **nothing has been saved** — a form
+that fills itself with 97 lines otherwise reads as a BOQ that now exists.
+
+It reads the seeded *record*, not `demo_data` directly, so what the form loads
+is exactly what `/boq/view` shows. The round trip is lossless: posting it back
+unchanged reproduces all three section subtotals. There is a test for that,
+because "load" and "save" agreeing is the whole value of the feature.
+
+It exists because a 97-line schedule cannot be hand-built to try the form out,
+and a form that cannot be exercised cannot be reviewed.
 
 #### The demo BOQ
 
@@ -1786,7 +1811,9 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 Real, verified, and safe to pick up:
 
 1. **No `requirements.txt`.** Needs `flask`, `pymysql`, `python-dotenv`,
-   `markupsafe`; `pytest` to run `tests/`.
+   `markupsafe`; `pytest` to run `tests/`, `openpyxl` to regenerate
+   `demo_data.py`. Node is optional — `tests/test_picker_js.py` runs the BOQ
+   picker's real JavaScript when it is installed and skips when it is not.
 2. **No product edit route** — delete + re-add only, and delete may be blocked.
    ⬆ **This got more expensive.** It is now the reason a missing HSN cannot be
    blocked at the tax invoice (a user could not clear the block), and the reason
@@ -1844,6 +1871,44 @@ Real, verified, and safe to pick up:
    validates shape only and does not enforce a length, because it does not know
    the turnover — see `product._valid_hsn()`.
 
+9d. 🔴 **Server-side template injection — OPEN in eight modules.**
+   Every view outside `spec.py` and `boq.py` ends with
+   `render_template_string(template)` on a string that is **already fully
+   interpolated**. Nothing is passed as Jinja context (§1 says so), so the
+   second parse buys nothing — but `pipeline.esc()` escapes `< > & " '` and
+   deliberately **not** braces, so any `{{ … }}` that reached the output from
+   user input is executed.
+
+   Demonstrated on the spec library before it was fixed there: a clause reading
+   `{{ config }}` printed the Flask config **including `SECRET_KEY`**, and one
+   reading `{% for x in y %}` raised a `TemplateSyntaxError` that 500'd every
+   page carrying that text — a stored denial of service, since the BOQ form
+   embeds all 56 clauses.
+
+   **The fix is one line per module**: return the finished string instead of
+   re-rendering it. Flask returns any `str` a view returns.
+
+   ```python
+   -    return render_template_string(template)
+   +    return template
+   ```
+
+   Still open in: `quotation.py`, `product.py`, `proforma.py`, `invoice.py`,
+   `purchase.py`, `address.py`, `settings.py`, `dashboard.py`. Left alone
+   because the quotation chain is live and this is a behavioural change to
+   every page in it; it wants one deliberate pass with the register, the
+   documents and the print output eyeballed afterwards.
+
+9e. 🔴 **User text inside `<script>` — OPEN wherever `json.dumps` is embedded.**
+   `json.dumps` does not escape `<`, so a value containing `</script>` closes
+   the block and everything after it parses as HTML. `boq._json_for_script()`
+   fixes it for the three payloads on the BOQ form (`<` / `>` /
+   `&` are ordinary JSON escapes, so the browser decodes them back
+   unchanged). The same raw pattern is still used by
+   `quotation._product_catalog_json()` and by every
+   `json.dumps(picker_payload())` on the quotation form. Same reason for
+   leaving it, same size of fix.
+
 9c. **No GSTR-1 export and no HSN-wise summary.** The register totals output tax
    but nothing produces the return-shaped extract, and the printed sheet carries
    HSN per line without the consolidated HSN summary a return wants.
@@ -1875,10 +1940,18 @@ Real, verified, and safe to pick up:
     of purchase. `type: "vendor"` in the address book is carrying that whole
     concept.
 
-10. ⚠ **The loaded company identity is SPECIMEN DATA, not Samruddhi's.** A demo
-    record sits in `STORE["settings"]["company"]` so the documents render
-    without amber chips. The statutory identifiers are deliberately template
-    patterns and the bank is named so nobody can mistake them for real:
+10. ⚠ **The seeded company identity is SPECIMEN DATA, not Samruddhi's.**
+    `settings.ensure_demo_settings()` writes a demo record into
+    `STORE["settings"]["company"]` at boot so the documents render without
+    amber chips. The statutory identifiers are deliberately template patterns
+    and the bank is named so nobody can mistake them for real:
+
+    > **Corrected.** This section used to say the identity was *loaded*. It was
+    > not — it had been hand-entered into one working database and never
+    > seeded, so it existed on exactly one machine and dropping that database
+    > took the letterhead, GSTIN, PAN and the whole bank block with it. The
+    > seeder was added in the hardening pass; `DEMO_COMPANY` in `settings.py`
+    > is now the source of the table below.
 
     | Field | Loaded value | Real? |
     |---|---|---|

@@ -62,7 +62,7 @@ import json
 import uuid
 from datetime import date as _date
 
-from flask import Blueprint, redirect, render_template_string, request, url_for
+from flask import Blueprint, redirect, request, url_for
 
 import branding as B
 import demo_data as DD
@@ -80,7 +80,6 @@ from quotation import (
     _fmt_qty,
     _inr,
     _meta,
-    _sel_opts,
     _DEL_TERMS,
     _PAY_TERMS,
 )
@@ -247,6 +246,66 @@ def _derived_rate(base, pct: float):
 # =============================================================================
 # HELPERS — the record
 # =============================================================================
+
+def _json_for_script(obj) -> str:
+    """
+    JSON safe to embed in a <script> block.
+
+    `json.dumps` does not escape `<`, and a spec clause containing the seven
+    characters `</script>` therefore CLOSES the script element early — every
+    byte after it is parsed as HTML, which is script injection through a field
+    a user is invited to paste a specification into. This page embeds 56
+    clauses, the whole address book and the entire editor model, so it happens
+    three times over.
+
+    `<` and friends are ordinary JSON string escapes: the browser decodes
+    them back to the original characters, so nothing about the data changes —
+    only its spelling on the wire. `ensure_ascii` (on by default) has already
+    escaped U+2028/U+2029, the other pair that terminates a JS line.
+
+    ⚠ The same pattern is used by `quotation._product_catalog_json()` and by
+      every `json.dumps(picker_payload())` in the app. They are untouched here
+      because the quotation chain is live — recorded in ABOUT.md §7.
+    """
+    # NOTE the doubled backslashes. The replacement must be the SIX characters
+    # backslash-u-0-0-3-c, not the character U+003C. A single backslash here
+    # compiles to "<" and the replace becomes a silent no-op — which is exactly
+    # what it was on the first attempt at this fix.
+    return (json.dumps(obj)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026"))
+
+
+def _sel_keep(name: str, options, default: str, current=None) -> str:
+    """
+    A dropdown that never silently rewrites a value it does not recognise.
+
+    `quotation._sel_opts()` marks an option selected only on an exact match, so
+    a stored value absent from the list renders as "nothing selected" and the
+    browser then posts the FIRST option. On this form that is not theoretical:
+    the Sify schedule's payment terms are "Material Payment 50% Advance & 50%
+    After Delivery Or as per OEM Conditions." — the client's own wording, and
+    not one of `quotation._PAY_TERMS`. Loading the demo through `_sel_opts`
+    would quietly change it to "100% Against Proforma Invoice".
+
+    So an unrecognised value is prepended and kept selected, exactly as
+    `proforma._sel_keep()` does for the same reason one document further along.
+
+    ⚠ This duplicates that function. `boq.py` may not import `proforma.py`
+    (§3.4), and the shared home is `quotation.py`, which both may import — move
+    it there the next time that file is open, and delete both copies.
+    """
+    cur = current if current is not None else default
+    opts = list(options)
+    if cur and cur not in opts:
+        opts = [cur] + opts
+    inner = "".join(
+        f'<option{" selected" if o == cur else ""}>{P.esc(o)}</option>'
+        for o in opts
+    )
+    return f'<select id="{name}" name="{name}">{inner}</select>'
+
 
 def _sections_of(boq: dict) -> list:
     return boq.get("sections") or []
@@ -637,6 +696,14 @@ BOQ_STYLES = """
     padding:.3rem .75rem; cursor:pointer;
   }
   .btn-row:hover { background:#c7d2fe; }
+  /* The demo-load banner. Blue, not amber: nothing is wrong, but the user has
+     to know that a form which just filled itself has saved nothing. */
+  .demo-banner {
+    background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;
+    padding:.75rem 1rem; font-size:.82rem; color:#1e3a8a;
+    margin-bottom:1.4rem; line-height:1.5;
+  }
+
   /* Bulk insert — a spec expanded into a header row plus one child per size. */
   .bulk-bar {
     display:flex; gap:.7rem; align-items:end; flex-wrap:wrap;
@@ -698,6 +765,31 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
 
     n_supply_cols  = 2 + (1 if show_s_esc else 0)   # base [, esc] , rate
     n_install_cols = 2 + (1 if show_i_esc else 0)
+
+    # ── Column widths ──────────────────────────────────────────────────
+    # An explicit <colgroup>, per section, because the column COUNT is a
+    # property of the section.
+    #
+    # This is not decoration. Under `table-layout:fixed` the browser takes its
+    # widths from `<col>` elements if they exist and otherwise from the cells
+    # of the FIRST row — and the first row here spans the area columns with a
+    # single `colspan` "Area / Floor" head. Without a colgroup, `.b-area`'s
+    # 14mm is divided across however many areas the section declares, so a
+    # two-area section prints its quantity columns at 7mm each. It renders,
+    # it just renders wrong, which is the kind of fault that is only ever
+    # noticed on paper.
+    cols = ['<col style="width:12mm"/>', "<col/>"]                  # Sr., Description
+    cols += ['<col style="width:14mm"/>'] * len(areas)              # one per area
+    cols += ['<col style="width:15mm"/>', '<col style="width:13mm"/>']   # Total Qty, Unit
+    cols += ['<col style="width:16mm"/>']                           # supply base
+    if show_s_esc:
+        cols += ['<col style="width:11mm"/>']
+    cols += ['<col style="width:18mm"/>', '<col style="width:24mm"/>']   # supply rate, amount
+    cols += ['<col style="width:16mm"/>']                           # install base
+    if show_i_esc:
+        cols += ['<col style="width:11mm"/>']
+    cols += ['<col style="width:18mm"/>', '<col style="width:24mm"/>']   # install rate, amount
+    colgroup = "<colgroup>" + "".join(cols) + "</colgroup>"
 
     # ── Column heads ───────────────────────────────────────────────────
     area_ths = "".join(f'<th class="b-area">{P.esc(a)}</th>' for a in areas)
@@ -811,7 +903,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
         <span class="sec-code">{P.esc(code)}</span>{P.esc(sec.get("title"))}
       </div>
       <div class="sec-wrap">
-        <table class="boq-table">{head_html}<tbody>{body}</tbody></table>
+        <table class="boq-table">{colgroup}{head_html}<tbody>{body}</tbody></table>
       </div>
     </div>"""
 
@@ -1029,6 +1121,38 @@ def _to_block(form) -> str:
 
 
 # =============================================================================
+# RENDERING — why these views do not call render_template_string()
+# =============================================================================
+#
+# Every page in this module is a fully interpolated HTML string by the time the
+# view returns it. Nothing is passed as Jinja context — ABOUT.md §1 says so
+# explicitly — so handing the finished string back to Jinja parses it a second
+# time for no benefit and one large cost: any `{{ … }}` or `{% … %}` that
+# reached the output from USER INPUT is then executed as a template.
+#
+# That is not theoretical here. `pipeline.esc()` escapes `< > & " '` and
+# deliberately not braces, so a spec clause reading `{{ config }}` renders the
+# Flask config — including SECRET_KEY — and a clause reading `{% for x in y %}`
+# raises a TemplateSyntaxError that 500s every page carrying that text. The BOQ
+# create form embeds all 56 clauses in its picker payload, so one malformed
+# clause takes the whole form down for everybody.
+#
+# Returning the string directly is what Flask does with any `str` a view
+# returns. It removes the second parse, and with it the injection. HTML
+# escaping still does its own job — this changes nothing about XSS.
+#
+# ⚠ The same hole exists in every other module in this app (quotation, product,
+#   proforma, invoice, purchase, address, settings, dashboard). They are
+#   untouched here because the quotation chain is live; the fix is the same one
+#   line each and it is recorded in ABOUT.md §7.
+# =============================================================================
+
+def _page(html: str) -> str:
+    """A finished page. See the note above — deliberately not Jinja-rendered."""
+    return html
+
+
+# =============================================================================
 # ROUTES
 # =============================================================================
 
@@ -1158,7 +1282,7 @@ def list_boqs():
       {table_html}
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · BOQ register</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
 
 
 @boq_bp.route("/view/<id>")
@@ -1271,16 +1395,20 @@ def view_boq(id: str):
 
     # ── Header meta, two columns ───────────────────────────────────────
     meta_col_1 = (
-        _meta("BOQ No.",       boq.get("ref")) +
-        _meta("Project",       boq.get("project_name")) +
-        _meta("Site",          boq.get("site_location")) +
-        _meta("Payment Terms", boq.get("payment_terms"))
+        # `quotation._meta()` does NOT escape — it belongs to a module that
+        # largely does not (ABOUT.md §7.7), and importing a helper does not
+        # import its discipline. Every value handed to it here is user input
+        # heading for a printed document, so it is escaped at the call site.
+        _meta("BOQ No.",       P.esc(boq.get("ref"))) +
+        _meta("Project",       P.esc(boq.get("project_name"))) +
+        _meta("Site",          P.esc(boq.get("site_location"))) +
+        _meta("Payment Terms", P.esc(boq.get("payment_terms")))
     )
     meta_col_2 = (
-        _meta("Date",              boq.get("date")) +
-        _meta("Revision",          str(boq.get("rev_no") or 0)) +
-        _meta("Rate Basis",        boq.get("rate_basis_label")) +
-        _meta("Terms of Delivery", boq.get("delivery_terms"))
+        _meta("Date",              P.esc(boq.get("date"))) +
+        _meta("Revision",          str(int(_num(boq.get("rev_no"), 0)))) +
+        _meta("Rate Basis",        P.esc(boq.get("rate_basis_label"))) +
+        _meta("Terms of Delivery", P.esc(boq.get("delivery_terms")))
     )
 
     to_lines   = [ln for ln in (boq.get("to") or "").strip().split("\n")]
@@ -1414,7 +1542,7 @@ def view_boq(id: str):
 
 <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
 </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
 
 
 # =============================================================================
@@ -1429,9 +1557,10 @@ def view_boq(id: str):
 #
 # `_BOQ_JS` is a PLAIN string, not an f-string, so its braces are written once
 # — the DASH_STYLES precedent. It is interpolated into the page as a value, so
-# nothing in here needs doubling. Two sequences must still be avoided because
-# `render_template_string` runs Jinja over the result: `{{` and `{%`. Nested
-# object literals are written with a space (`{a: {b:1}}`) to keep it that way.
+# nothing in here needs doubling. It also no longer has to dodge `{{` and `{%`:
+# this module returns finished HTML rather than re-rendering it through Jinja
+# (see "why these views do not call render_template_string" below). The
+# spaced-out object literals are left as they are — they read better anyway.
 # =============================================================================
 
 def _spec_catalog_json() -> str:
@@ -1448,7 +1577,7 @@ def _spec_catalog_json() -> str:
     picker copies values onto a line and the line owns them from then on.
     """
     ensure_demo_specs()
-    return json.dumps({
+    return _json_for_script({
         sid: {
             "code":       s.get("code") or "",
             "title":      s.get("title") or "",
@@ -1467,6 +1596,96 @@ def _spec_catalog_json() -> str:
         }
         for sid, s in STORE["specs"].items()
     })
+
+
+def _demo_form_payload() -> tuple:
+    """
+    The seeded BOQ, shaped for the create form's editor.
+
+    Returns `(boot, prefill)` — the editor's JSON model, and the plain form
+    fields (project, customer, terms) that sit outside it.
+
+    It reads the seeded *record* rather than `demo_data` directly, so what the
+    form loads is exactly what `/boq/view` shows: one source, no second copy of
+    the schedule to drift. The record's line items are converted back into the
+    editor's shape, which is a lossless round trip because the editor's fields
+    are a superset of what a line stores — the one asymmetry is `total_qty`,
+    which the editor derives from the area boxes whenever the section declares
+    areas, so it is only carried across for sections that declare none.
+
+    Nothing is written to STORE. This fills the form; the user still presses
+    Create, and can edit anything first.
+    """
+    ensure_demo_boq()
+    src = STORE["boqs"].get(DD.BOQ_META["id"])
+    if not src:
+        return {"sections": [{"code": "A", "title": "", "areas": []}], "lines": []}, {}
+
+    areas_by_code = {s["code"]: (s.get("areas") or []) for s in src["sections"]}
+
+    def _s(v):
+        """A stored number as the string the editor holds. None stays blank."""
+        if v is None:
+            return ""
+        return f"{v:g}" if isinstance(v, float) else str(v)
+
+    lines = []
+    for li in src["line_items"]:
+        row = {
+            "item_no":        li["item_no"],
+            "parent_item_no": li["parent_item_no"],
+            "section":        li["section"],
+            "is_header":      bool(li["is_header"]),
+            "description":    li["description"],
+            "remark":         li.get("remark", ""),
+            "unit":           li.get("unit", ""),
+            "area_qty":       {k: _s(v) for k, v in (li.get("area_qty") or {}).items()},
+            # Derived from the area boxes when the section has any, so sending
+            # it would be sending a figure the editor is about to recompute.
+            "total_qty":      "" if areas_by_code.get(li["section"]) else _s(li["total_qty"]),
+            "supply_base_rate":      _s(li["supply_base_rate"]),
+            "supply_escalation_pct": _s(li["supply_escalation_pct"]),
+            "supply_rate":           _s(li["supply_rate"]),
+            "supply_hsn":            li.get("supply_hsn", ""),
+            "supply_gst_rate":       _s(li["supply_gst_rate"]),
+            "install_base_rate":      _s(li["install_base_rate"]),
+            "install_escalation_pct": _s(li["install_escalation_pct"]),
+            "install_rate":           _s(li["install_rate"]),
+            "install_sac":            li.get("install_sac", ""),
+            "install_gst_rate":       _s(li["install_gst_rate"]),
+        }
+        if row["is_header"]:
+            # A header carries the clause and nothing else; blanking the rest
+            # keeps the editor's own rule ("a header has no numbers") true of
+            # what it is handed, not just of what it saves.
+            for k in ("unit", "total_qty", "supply_base_rate", "supply_escalation_pct",
+                      "supply_rate", "supply_hsn", "supply_gst_rate",
+                      "install_base_rate", "install_escalation_pct",
+                      "install_rate", "install_sac", "install_gst_rate"):
+                row[k] = ""
+            row["area_qty"] = {}
+        lines.append(row)
+
+    boot = {
+        "sections": [{"code": s["code"], "title": s.get("title", ""),
+                      "areas": list(s.get("areas") or [])} for s in src["sections"]],
+        "lines": lines,
+    }
+
+    prefill = {
+        "project_name":     src.get("project_name", ""),
+        "site_location":    src.get("site_location", ""),
+        "rate_basis_label": src.get("rate_basis_label", ""),
+        "account_name":     src.get("account_name", ""),
+        "contact_person":   src.get("contact_person", ""),
+        "bill_city":        src.get("bill_city", ""),
+        "bill_state":       src.get("bill_state", ""),
+        "bill_gstin":       src.get("bill_gstin", ""),
+        "payment_terms":    src.get("payment_terms", ""),
+        "delivery_terms":   src.get("delivery_terms", ""),
+        "notes":            src.get("notes", ""),
+    }
+    return boot, prefill
 
 
 _BOQ_JS = """
@@ -2096,14 +2315,35 @@ def create_boq():
         sections = raw_sections if isinstance(raw_sections, list) else []
         lines    = raw_lines if isinstance(raw_lines, list) else []
 
+    # Filled by ?demo=1 below. Bound here so `_v` closes over something real
+    # whichever branch runs.
+    prefill: dict = {}
+
     def _v(key: str, default: str = "") -> str:
+        """
+        A form field's value: the user's own input first, then the demo
+        prefill, then the module default. Same precedence idea as
+        `proforma._v()` — what the user typed always wins.
+        """
         if request.method == "POST":
             return P.esc(request.form.get(key, ""))
+        if key in prefill:
+            return P.esc(prefill[key])
         return P.esc(default)
+
+    def _sel(name, options, default):
+        """A dropdown that survives a rejected POST and a demo prefill alike."""
+        cur = None
+        if request.method == "POST":
+            cur = request.form.get(name)
+        elif name in prefill and prefill[name]:
+            cur = prefill[name]
+        return _sel_keep(name, options, default, cur)
 
     alert_html = ""
     if error:
         alert_html = f'<div class="alert alert-error">&#10007; {error}</div>'
+
 
     # A fresh form opens with the shape of a real BOQ already in place — one
     # section and one line — because an empty editor gives no clue what a
@@ -2112,10 +2352,35 @@ def create_boq():
     if not sections and not lines:
         boot = {"sections": [{"code": "A", "title": "", "areas": []}], "lines": []}
 
+    # ?demo=1 loads the whole seeded Sify schedule into the editor — 3 sections,
+    # 97 lines, every rate and area quantity. Nobody can hand-build a BOQ of
+    # that size to try the form out, and a form that cannot be exercised cannot
+    # be reviewed. It fills the EDITOR, not the database: the user still has to
+    # press Create, and can change anything first.
+    prefill = {}
+    if request.method == "GET" and request.args.get("demo"):
+        boot, prefill = _demo_form_payload()
+
+    # Loading the demo has to be visibly a *demo*, and it has to say that
+    # nothing is saved yet — otherwise the obvious reading of a form that just
+    # filled itself with 97 lines is that a BOQ now exists.
+    demo_banner = ""
+    if request.method == "GET" and request.args.get("demo"):
+        n_lines = len(boot.get("lines", []))
+        n_secs  = len(boot.get("sections", []))
+        demo_banner = (
+            '<div class="demo-banner">'
+            f'&#128203; Loaded the <b>Sify Bangalore</b> demo schedule &mdash; '
+            f'{n_secs} sections, {n_lines} lines, with the rates and area '
+            'quantities from the client&rsquo;s own workbook. '
+            '<b>Nothing has been saved.</b> Edit anything you like, then press '
+            'Create BOQ &mdash; or just leave the page.'
+            '</div>')
+
     js = (_BOQ_JS
-          .replace("BOQ_BOOT", json.dumps(boot))
+          .replace("BOQ_BOOT", _json_for_script(boot))
           .replace("BOQ_SPECS", _spec_catalog_json())
-          .replace("BOQ_ADDR", json.dumps(picker_payload())))
+          .replace("BOQ_ADDR", _json_for_script(picker_payload())))
 
     today = _date.today().isoformat()
 
@@ -2134,8 +2399,12 @@ def create_boq():
     <h1>Create <span>BOQ</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
+      <a href="{url_for('boq.create_boq', demo=1)}" class="btn btn-ghost">
+        &#128203;&nbsp;Use demo data
+      </a>
     </div>
   </div>
+  {demo_banner}
 
   <form method="POST" onsubmit="return saveJSON()">
     <input type="hidden" id="boq_json" name="boq_json"/>
@@ -2202,7 +2471,7 @@ def create_boq():
       <div class="fg4" style="margin-top:.7rem;">
         <div class="form-group">
           <label for="bill_state">State</label>
-          {_sel_opts("bill_state", list(INDIAN_STATES), "Maharashtra", request.form.get("bill_state") if request.method == "POST" else None)}
+          {_sel("bill_state", list(INDIAN_STATES), "Maharashtra")}
         </div>
         <div class="form-group">
           <label for="bill_city">City</label>
@@ -2239,7 +2508,7 @@ def create_boq():
           </div>
           <div class="form-group">
             <label for="ship_state">State</label>
-            {_sel_opts("ship_state", list(INDIAN_STATES), "Maharashtra", request.form.get("ship_state") if request.method == "POST" else None)}
+            {_sel("ship_state", list(INDIAN_STATES), "Maharashtra")}
           </div>
           <div class="form-group">
             <label for="ship_city">City</label>
@@ -2305,11 +2574,11 @@ def create_boq():
       <div class="fg2">
         <div class="form-group">
           <label for="payment_terms">Payment Terms</label>
-          {_sel_opts("payment_terms", _PAY_TERMS, _PAY_TERMS[0], request.form.get("payment_terms") if request.method == "POST" else None)}
+          {_sel("payment_terms", _PAY_TERMS, _PAY_TERMS[0])}
         </div>
         <div class="form-group">
           <label for="delivery_terms">Terms of Delivery</label>
-          {_sel_opts("delivery_terms", _DEL_TERMS, "FOR Site", request.form.get("delivery_terms") if request.method == "POST" else None)}
+          {_sel("delivery_terms", _DEL_TERMS, "FOR Site")}
         </div>
         <div class="form-group span-all">
           <label for="notes">Notes</label>
@@ -2338,4 +2607,4 @@ def create_boq():
 </main>
 {js}
 </body></html>"""
-    return render_template_string(template)
+    return _page(template)

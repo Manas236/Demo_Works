@@ -40,4 +40,5 @@ STORE: dict = {
     "_addr_seeded": False,  # flipped to True after ensure_demo_addresses() runs once
     "_spec_seeded": False,  # flipped to True after ensure_demo_specs() runs once
     "_boq_seeded":  False,  # flipped to True after ensure_demo_boq() runs once
+    "_settings_seeded": False,  # flipped to True after ensure_demo_settings() runs once
 }

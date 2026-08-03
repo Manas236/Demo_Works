@@ -1,6 +1,15 @@
 # Secrets — never commit
 .env
 
+# Client workbooks — a customer's priced schedule and their running-account
+# position. Commercial data; it does not belong in a history that gets cloned.
+# The app never reads them at runtime; only tools/gen_demo_data.py and the
+# importer tests do, and those skip when the file is absent.
+# See fixtures/README.md for where to place them.
+sify_boq.xlsx
+annexure.xlsx
+fixtures/*.xlsx
+
 # Python
 __pycache__/
 *.py[cod]

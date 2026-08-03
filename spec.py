@@ -53,7 +53,7 @@ and `demo_data`, none of which import anything from the app. `boq.py` imports
 
 import uuid
 
-from flask import Blueprint, redirect, render_template_string, request, url_for
+from flask import Blueprint, redirect, request, url_for
 
 import branding as B
 import demo_data as DD
@@ -402,15 +402,25 @@ SPEC_STYLES = """
 
 _VARIANT_JS = """
 <script>
-/* The variant editor — the repeating-row pattern from product.py's BOM child
-   editor, not a client-side model. A variant is six flat fields and does not
-   need one. Rows post as parallel lists and blank rows are dropped on save. */
+/* The variant editor — a repeating-row pattern, not a client-side model. A
+   variant is six flat fields and does not need one. Rows post as parallel
+   lists and blank rows are dropped on save.
+
+   The blank row is cloned from a <template> the SERVER rendered, using
+   purchase.py's precedent. That matters: an added row has to be
+   indistinguishable from an existing one, and the two ways to get that wrong
+   are both real. Building the row in JS duplicates the markup in a second
+   place, where it silently drifts (product.py's BOM editor does this and
+   currently matches — nothing guarantees it still will). Assigning
+   `_variant_row()`'s HTML into a fresh wrapper div nests `.var-row` inside
+   `.var-row`, so the inner grid gets one column's width and the inputs
+   collapse — which is exactly the bug this replaced.
+
+   Cloning a template has neither failure mode: there is one copy of the
+   markup, and it is the copy the server already rendered. */
 function addVariantRow() {
-  var box = document.getElementById('var-rows');
-  var row = document.createElement('div');
-  row.className = 'var-row';
-  row.innerHTML = VARIANT_ROW_HTML;
-  box.appendChild(row);
+  var tpl = document.getElementById('var-tpl');
+  document.getElementById('var-rows').appendChild(tpl.content.cloneNode(true));
 }
 
 function delVariantRow(btn) {
@@ -560,21 +570,6 @@ def _validate(form, spec_id: str = None) -> tuple:
 # FORM — rendering
 # =============================================================================
 
-def _js_string(s: str) -> str:
-    """
-    A Python string as a single-quoted JS literal.
-
-    Used for the blank variant row the editor clones. json.dumps would also
-    work, but it emits a double-quoted literal and this HTML is full of double
-    quotes — one escaping style beats two.
-    """
-    out = s.replace("\\", "\\\\")
-    out = out.replace("'", "\\'")
-    out = out.replace("\n", "\\n")
-    out = out.replace("\r", "")
-    return "'" + out + "'"
-
-
 def _opts(name, options, current, placeholder: str = "") -> str:
     inner = f'<option value="">{placeholder}</option>' if placeholder else ""
     for o in options:
@@ -591,8 +586,20 @@ def _variant_row(v: dict = None) -> str:
         unit_opts += f'<option{sel}>{P.esc(u)}</option>'
 
     def val(key):
+        """
+        A stored value as the string the user should see back.
+
+        Floats go through %g so a rate typed as `111` returns as `111` and not
+        `111.0`. A rejected form is supposed to hand back what was typed;
+        quietly reformatting it is a small breach of the same contract, and on
+        a form with nine variant rows it is nine of them.
+        """
         x = v.get(key)
-        return "" if x is None else P.esc(x)
+        if x is None:
+            return ""
+        if isinstance(x, float):
+            return P.esc(f"{x:g}")
+        return P.esc(x)
 
     return (
         '<div class="var-row">'
@@ -639,9 +646,7 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
             f'Delete this spec</a>'
         )
 
-    # The blank row the JS clones is built by the same function that renders a
-    # filled one, so the "+ Add variant" row can never drift from the others.
-    js = _VARIANT_JS.replace("VARIANT_ROW_HTML", _js_string(_variant_row()))
+    js = _VARIANT_JS
 
     return f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -737,6 +742,11 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
       <button type="button" class="btn-row" style="margin-top:.5rem;" onclick="addVariantRow()">
         + Add variant
       </button>
+
+      <!-- The blank row "+ Add variant" clones. Rendered by the same
+           _variant_row() that renders every filled row above, so an added row
+           cannot drift from an existing one. -->
+      <template id="var-tpl">{_variant_row()}</template>
     </div>
 
     <div style="display:flex;gap:.8rem;justify-content:space-between;margin-bottom:2rem;">
@@ -754,10 +764,36 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
 </body></html>"""
 
 
-def _js_string(s: str) -> str:
-    """A Python string as a single-quoted JS literal."""
-    return "'" + (s.replace("\\", "\\\\").replace("'", "\\'")
-                   .replace("\n", "\\n").replace("\r", "")) + "'"
+# =============================================================================
+# RENDERING — why these views do not call render_template_string()
+# =============================================================================
+#
+# Every page in this module is a fully interpolated HTML string by the time the
+# view returns it. Nothing is passed as Jinja context — ABOUT.md §1 says so
+# explicitly — so handing the finished string back to Jinja parses it a second
+# time for no benefit and one large cost: any `{{ … }}` or `{% … %}` that
+# reached the output from USER INPUT is then executed as a template.
+#
+# That is not theoretical here. `pipeline.esc()` escapes `< > & " '` and
+# deliberately not braces, so a spec clause reading `{{ config }}` renders the
+# Flask config — including SECRET_KEY — and a clause reading `{% for x in y %}`
+# raises a TemplateSyntaxError that 500s every page carrying that text. The BOQ
+# create form embeds all 56 clauses in its picker payload, so one malformed
+# clause takes the whole form down for everybody.
+#
+# Returning the string directly is what Flask does with any `str` a view
+# returns. It removes the second parse, and with it the injection. HTML
+# escaping still does its own job — this changes nothing about XSS.
+#
+# ⚠ The same hole exists in every other module in this app (quotation, product,
+#   proforma, invoice, purchase, address, settings, dashboard). They are
+#   untouched here because the quotation chain is live; the fix is the same one
+#   line each and it is recorded in ABOUT.md §7.
+# =============================================================================
+
+def _page(html: str) -> str:
+    """A finished page. See the note above — deliberately not Jinja-rendered."""
+    return html
 
 
 # =============================================================================
@@ -889,7 +925,7 @@ def list_specs():
       {table}
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · specification library</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
 
 
 @spec_bp.route("/view/<id>")
@@ -988,7 +1024,7 @@ def view_spec(id: str):
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · specification library</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
 
 
 @spec_bp.route("/add", methods=["GET", "POST"])

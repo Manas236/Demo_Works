@@ -109,6 +109,73 @@ _UPPER = {"COMPANY_GSTIN", "COMPANY_PAN", "BANK_IFSC"}
 # HELPERS
 # =============================================================================
 
+# =============================================================================
+# SEED — specimen company identity
+# =============================================================================
+#
+# ⚠ EVERY VALUE HERE IS SPECIMEN DATA, NOT SAMRUDDHI'S.
+#   The statutory identifiers are deliberately template patterns and the bank
+#   is named so nobody can mistake them for real. They exist so a fresh install
+#   renders a complete-looking document instead of a page of amber "add …"
+#   chips — and because a half-configured demo is harder to review than a
+#   wrong-but-obviously-fake one.
+#
+#   Replace all of them at /settings before a document goes to a customer.
+#   ABOUT.md §7.10 carries the same table and the same warning.
+#
+#   COMPANY_PHONE and COMPANY_EMAIL are the two REAL values and are therefore
+#   not here: they are already the defaults in branding.py, and settings only
+#   ever stores a value that differs from the default.
+DEMO_COMPANY = {
+    "COMPANY_LEGAL":       "M/s Samruddhi Fire Services",      # unconfirmed guess
+    "COMPANY_ADDR":        ("Unit 7, Ganesh Industrial Estate, "
+                            "Navi Mumbai - 400709, Maharashtra"),  # invented
+    "COMPANY_WEB":         "www.samruddhifire.in",             # unverified
+    "COMPANY_GSTIN":       "27AAAAA0000A1Z5",                  # all-A/all-zero template
+    "COMPANY_PAN":         "AAAAA0000A",                       # template
+    "COMPANY_BRANCHES":    "Navi Mumbai",
+    "BANK_NAME":           "SPECIMEN BANK LTD.",
+    "BANK_ACCOUNT_NAME":   "SAMRUDDHI FIRE SERVICES",
+    "BANK_ACCOUNT_NO":     "50200000000000",                   # trailing zeros
+    "BANK_IFSC":           "SPEC0000000",
+    "BANK_BRANCH":         "Koparkhairne",
+}
+
+
+def ensure_demo_settings() -> None:
+    """
+    Seed the specimen company identity on first call; a no-op afterwards.
+
+    This exists because the identity used to be **hand-entered** into
+    `STORE["settings"]["company"]` and never seeded. It therefore lived only in
+    one working database: dropping that database took the letterhead, the
+    GSTIN, the PAN and the whole bank block with it, and every document started
+    printing amber chips. ABOUT.md §7.10 described the data as "loaded", which
+    was true of that one machine and of nowhere else.
+
+    Called from `app._boot_persistence()` **after** `db.load_into()` and
+    **before** `branding.apply_settings()`, because the letterhead is rendered
+    by the first request and there is no route that reliably runs before it.
+    Guarded by `STORE["_settings_seeded"]`, which is deliberately not persisted
+    — the same contract as every other seeder in this app.
+
+    ⚠ One consequence worth knowing: `edit_settings()` **deletes** the record
+      when every field is left at its default, so "clear everything and
+      restart" brings the specimen row back. That is the same behaviour
+      `ensure_demo_products()` has on an emptied table and it is the price of
+      an unpersisted flag. If a genuinely blank identity is ever wanted, it
+      needs a persisted "deliberately cleared" marker rather than the absence
+      of a record — the absence cannot tell "never set" from "set to nothing".
+    """
+    if STORE.get("_settings_seeded"):
+        return
+    # Only ever fills a gap. An identity somebody has actually entered — or
+    # one loaded back out of MySQL a moment ago — is never overwritten.
+    if RECORD_ID not in STORE["settings"]:
+        STORE["settings"][RECORD_ID] = dict(DEMO_COMPANY)
+    STORE["_settings_seeded"] = True
+
+
 def load_saved() -> dict:
     """The stored overrides. Also the hook app.py calls at boot."""
     return STORE["settings"].get(RECORD_ID) or {}

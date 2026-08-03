@@ -24,7 +24,7 @@ from boq import boq_bp           # BOQ: the priced schedule for a project. Head 
                                  # SECOND sell-side chain — BOQ -> RA bills — parallel
                                  # to quotation -> proforma -> tax invoice, not part of it.
 from address import address_bp   # Standalone address book
-from settings import settings_bp, load_saved  # Company identity & bank details
+from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
 import branding as B             # Runtime overrides are pushed onto this module
 import db                        # MySQL persistence (config from .env)
@@ -48,10 +48,16 @@ def _boot_persistence() -> None:
         print(f"  * WARNING: {db.status()}")
         print("  *          data will be lost on restart. Check .env / MySQL.")
 
+    # The specimen company identity. Seeded here rather than from a route
+    # because the letterhead is rendered by the FIRST request and there is no
+    # route guaranteed to run before it. Only ever fills a gap — an identity
+    # just loaded out of MySQL is left alone.
+    ensure_demo_settings()
+
     # Company identity and bank details saved on /settings override the defaults
-    # in branding.py. This must run AFTER load_into, and before the first
-    # request renders a letterhead. Idempotent, so the reloader running it in
-    # both processes is harmless.
+    # in branding.py. This must run AFTER load_into and after the seeder, and
+    # before the first request renders a letterhead. Idempotent, so the reloader
+    # running it in both processes is harmless.
     B.apply_settings(load_saved())
 
 
