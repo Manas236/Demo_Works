@@ -107,6 +107,7 @@ Consequences you must respect when editing:
 | [proforma.py](proforma.py) | 1117 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
+| [boq.py](boq.py) | 2000 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
 | [settings.py](settings.py) | 285 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
 | [pipeline.py](pipeline.py) | 542 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 951 | Address book + the pickers that quotations and purchase orders use. |
@@ -125,6 +126,7 @@ app.py
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address
+ ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, product
  ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  └─ extractor.py ──────────────┘  imports branding only
 
@@ -174,8 +176,47 @@ purchase.py ──► pipeline.py      fy_of / fy_ref / esc / parse_money
 `purchase.py` must **never** import `proforma.py` or `invoice.py`, and none of
 those may import it. `quotation.py` renders the job-costing block by reading
 `STORE["purchases"]` directly plus `url_for` — the same one-way trick used
-twice already on the sell side. There is a test guarding every one of those six
-import directions.
+twice already on the sell side.
+
+**Every one of those directions is now actually tested** —
+[tests/test_import_directions.py](tests/test_import_directions.py) parses each
+module's AST and asserts the arrow. Until the BOQ chain was added this file
+claimed a test existed when none did; the suite is real now (`python -m pytest
+tests/`). It distinguishes a **module-level** import from one inside a function
+body, because `dashboard.index()` deliberately imports the seeders in the
+function body and a check that could not tell them apart would flag the
+documented design as a violation.
+
+### 2b. The BOQ chain — a second sell-side chain, not a fourth link
+
+```
+SELL SIDE   quotation ──► proforma invoice ──► tax invoice     goods, invoiced in lots
+            BOQ ──────► RA bill 1 ──► RA bill 2 ──► …          a project, billed as it is built
+BUY SIDE    purchase order ──► [vendor lifecycle]
+```
+
+A **quotation** is an offer to sell goods, priced per line and invoiced once or
+a few times against the whole. A **BOQ** is the priced schedule of a *project*:
+one to two hundred lines, grouped into systems (sections A/B/C…), each line's
+quantity broken down by the area or floor it is installed on, and each line
+priced **twice** — once to supply the material and once to install it. It is
+billed progressively through Running Account bills as the work is executed.
+
+That is why it is a separate chain rather than a render mode of the quotation:
+the unit of progress is a **quantity on a line**, not a share of a document
+total, and no field on a quotation can carry that.
+
+```
+boq.py ──► quotation.py     the A4 sheet + formatters, NOT the sales chain
+boq.py ──► address.py       the customer picker
+boq.py ──► pipeline.py      esc / parse_money / fy_of / fy_ref
+boq.py ──► product.py       the spec picker
+```
+
+`boq.py` must **never** import `ra.py`, `proforma.py`, `invoice.py` or
+`purchase.py`. The BOQ view page links out to RA bills with `url_for` and reads
+`STORE["ra_bills"]` directly — the same one-way trick, now used four times.
+A BOQ has no proforma, and it does not link to a purchase order.
 
 **`pipeline.py` is where a helper goes when both pipelines need it.** It already
 held `esc` and `parse_money`; `fy_of` and `fy_ref` joined them when the PO
@@ -203,6 +244,7 @@ STORE = {
     "proformas":    {},     # uuid -> proforma invoice
     "invoices":     {},     # uuid -> GST tax invoice
     "purchases":    {},     # uuid -> purchase order   (BUY side)
+    "boqs":         {},     # uuid -> bill of quantities (head of the BOQ -> RA chain)
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -424,6 +466,81 @@ Four things that differ from the sell side and are easy to get wrong:
 4. **`quotation_id` may be empty and that is normal** — a stock purchase. Any
    code walking purchases must not assume a job.
 
+### Bill of Quantities
+
+Written in one literal in `boq.create_boq()`. **Entered from scratch**, like a
+purchase order and unlike every other sell-side document — there is no upstream
+record to freeze a copy of, because the schedule is the source.
+
+- **Identity:** `id`, `ref` (`SF/BOQ/26-27/0001`), `fy`, `date`, `rev_no`
+- **The project:** `project_name`, `site_location`
+- **Customer:** `account_name` (usually a main contractor), `contact_person`,
+  `to`, `bill_gstin`, `ship_same`, `ship_*`
+- **Pricing basis:** `rate_basis_label` — what the base-rate column is headed
+  on the printed sheet. These schedules are commonly priced off a rate contract
+  agreed on *another* project ("Mohali Rates") and then escalated, so the label
+  is per-BOQ data rather than a constant.
+- **Structure:** `sections` — `[{code, title, areas: [...]}]`
+- **Content:** `line_items`
+- **Money:** `supply_subtotal`, `install_subtotal`, `subtotal`
+- **Other:** `payment_terms`, `delivery_terms`, `notes`, `company_branch`,
+  `auth_signatory`
+
+A `line_item` row:
+
+```python
+{"item_no": "24.b",          # STRING, always
+ "parent_item_no": "24",     # "" for top level
+ "section": "B",
+ "is_header": False,         # True = specification paragraph, no qty or rate
+ "description": str,         # up to ~1500 chars
+ "remark": str,              # their internal note column — captured, not printed
+ "unit": "Mtrs",
+ "area_qty": {"T1": 700.0},  # keys are a subset of the SECTION's areas
+ "total_qty": 700.0,
+ "supply_base_rate": 1760.0, "supply_escalation_pct": 15.0,
+ "supply_rate": 2024.0, "supply_amount": 1416800.0,
+ "supply_hsn": "73090090", "supply_gst_rate": 18.0,
+ "install_base_rate": 1200.0, "install_escalation_pct": 0.0,
+ "install_rate": 1200.0, "install_amount": 840000.0,
+ "install_sac": "995461", "install_gst_rate": 18.0}
+```
+
+Seven properties this shape exists to guarantee:
+
+1. **`item_no` is a STRING, everywhere, always.** The client's workbooks store
+   item 4.1 as `4.0999999999999996`, 4.4 as `4.4000000000000004` and 4.6 as
+   `4.5999999999999996`. A float that reaches the document prints either the
+   wrong number or seventeen digits of binary noise beside a quantity somebody
+   is paid against. `boq._item_no()` is the guard.
+2. **`parent_item_no` is a SPECIFICATION hierarchy, not a BOM depth.** A header
+   line carries the specification and no quantity; the lines under it carry the
+   quantities and the rates. This is deliberately **not**
+   `line_item["depth"]` — that means "component of an assembly", and the two
+   collide the first time a BOQ line is itself an assembly.
+3. **Areas belong to the SECTION, not to the BOQ.** The client's own workbook
+   declares `External` + `L0` for section A, `T1` for section B, and none at
+   all for section C. `area_qty` keys are a subset of that line's *section's*
+   areas; a section may declare none, and then `total_qty` stands alone with
+   nothing to reconcile it against.
+4. **A line may be supply-only or installation-only.** Section C is
+   installation-only; four lines in section B are nil-priced (a quantity, no
+   rate, amount 0) and are valid. Never assume both tracks are populated.
+5. **`supply_rate` is derived on entry but STORED, and stored AS ENTERED.**
+   The printed document must not depend on the escalation never being edited —
+   the same principle as `pos_code` on the tax invoice. And it is never
+   recomputed from `base × (1 + pct)`, because the client's own sheets carry a
+   dozen lines where the agreed rate deliberately differs (a tamper switch at
+   ₹2000/nos, a larger diameter at the Bangalore site). Reporting that
+   disagreement is the importer's job; resolving it is nobody's.
+6. **A `None` base rate is not zero.** It means the rate was negotiated
+   directly rather than escalated — the `-` in the client's cell — and it
+   prints as `-`. Collapsing it to 0.0 would state that the material is free.
+7. **Section subtotals are COMPUTED from `line_items`, never stored.** Only the
+   BOQ-level trio is stored, for the register and the dashboard card, and the
+   document recomputes even those so a printed sheet can never contradict its
+   own lines.
+
 ### Address
 
 ```python
@@ -491,9 +608,10 @@ what is stuck, and what moved" before it offers a link anywhere. Top to bottom:
 5. **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
 6. **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
    the register exactly.
-7. **Module strip** — the old card launcher (7 cards: catalogue, quotations,
-   proforma invoices, tax invoices, purchase orders, address book, market
-   news), now at the foot, carrying live counts instead of prose. The strip is
+7. **Module strip** — the old card launcher (8 cards: catalogue, quotations,
+   proforma invoices, tax invoices, bills of quantities, purchase orders,
+   address book, market news), now at the foot, carrying live counts instead of
+   prose. The strip is
    `auto-fit`, so adding a card needs no layout change. Settings is reached
    from the nav, not from here — it is configuration, not a module you work in.
 
@@ -1201,6 +1319,105 @@ is the key the vendor quotes on their invoice and the key we match it against.
 
 ---
 
+### `/boq` — Bills of Quantities · [boq.py](boq.py)
+
+| Route | View |
+|---|---|
+| `GET /boq/` | `list_boqs` — register |
+| `GET,POST /boq/create` | `create_boq` |
+| `GET /boq/view/<id>` | `view_boq` — the printed schedule |
+
+**Read §2b before editing this file.** A BOQ is the head of its own chain and
+is not a quotation with more columns.
+
+#### Create (`/boq/create`)
+
+Sections first, then lines. **Areas are declared on the section**, as a
+comma-separated list, because one section may break its quantities down by
+floor while the next does not break them down at all.
+
+The line editor is a **browser-side model serialised into one hidden field**
+(`boq_json`) on submit — the quotation's `selections_json` pattern, not
+`purchase.py`'s parallel form-field lists. It has to be: the area quantity
+boxes on a line depend on which section the line is in, so the field set is not
+fixed. Changing a line's section re-renders its area boxes and drops any
+quantity keyed to an area the new section does not declare — visibly, rather
+than silently on save.
+
+`_BOQ_JS` is a **plain string, not an f-string**, so its braces are written
+once (the `DASH_STYLES` precedent). It still has to avoid `{{` and `{%`,
+because `render_template_string` runs Jinja over the output.
+
+Two rate behaviours worth keeping:
+
+- **With an area breakdown, the total IS the breakdown** — `total_qty` is
+  derived and shown read-only. Two independently typed figures that must agree
+  are two figures that can disagree. A section with no areas takes a typed
+  total.
+- **The escalated rate is a suggestion, never imposed.** The form offers
+  `base × (1 + pct)` beside an empty rate box with a *use* link, and when the
+  entered rate differs it says so and keeps what was entered —
+  `purchase.fillRate()` makes exactly the same call about a catalogue price.
+
+Validation, in order: JSON parses → date → project name → account name →
+sections have unique codes → every line's section exists → item number present
+→ description present → quantities and rates parse and are non-negative →
+HSN/SAC shape valid when filled. A rejected POST re-renders from the posted
+JSON, so nothing typed is lost and nothing is written to STORE.
+
+#### The document (`/boq/view/<id>`)
+
+The same A4 sheet — `VIEW_DOC_STYLES` supplies the frame, the repeating
+letterhead and every print rule, money goes through the same `_inr()`, and
+`BOQ_STYLES` layers after it introducing no new font, type size or border
+weight. It changes exactly one thing about the page:
+
+**⚠ It prints LANDSCAPE.** The fixed columns come to ~167mm before a single
+area column or a character of description; A4 portrait gives 192mm. The
+alternative was dropping the area breakdown, which is worse — those columns are
+the only place `total_qty` is substantiated, and a sheet that cannot be checked
+against the workbook it came from is a summary, not a document. `BOQ_STYLES`
+overrides `@page` and `.doc-outer` **as layered overrides, never as edits** to
+`VIEW_DOC_STYLES`; the quotation, PI, TI and PO sheets are untouched and still
+portrait.
+
+**One table per section**, each with its own `colgroup` and column heads,
+mirroring the source workbook. A single table whose column count changes
+halfway down is not a table.
+
+- A **specification header** spans the numeric columns rather than leaving a
+  row of blanks that reads as missing data.
+- A **blank area cell** prints blank, not `0` — the item is not on that floor,
+  which is a different claim from "none of them here".
+- A **`-` base rate** prints as `-`. A **missing rate** prints blank while its
+  amount still prints `0.00`, exactly as the client's own sheet renders a
+  nil-priced line.
+- **Escalation columns are hidden when every line in the BOQ has none**
+  (`HIDE_EMPTY_ESCALATION`) — on a sheet already fighting for width, the
+  description needs the millimetres more than an empty column does. Same
+  judgement as the PI's `.pay-box`.
+- **`remark` does not print** (`PRINT_REMARKS`). It holds internal pricing
+  notes — "2000/nos extra for Tamper switch" — and the same judgement that
+  keeps deal-desk fields off the quotation keeps these off the customer's copy.
+  Flip the constant if the client wants them.
+- **No tax is computed** (`PRINT_TAX`). The client's own summary says "TAXES
+  WILL BE EXTRA" on its face and the liability falls due on the RA bill, which
+  is the tax invoice. `supply_gst_rate` / `install_gst_rate` are captured per
+  line for that, not used here.
+
+Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
+(`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.
+
+#### Numbering
+
+`SF/BOQ/26-27/0001` — FY-scoped and max+1 within the year, sharing
+`pipeline.fy_of` / `fy_ref` with the tax invoice and the purchase order. **No
+16-character cap**: that is Rule 46(b)'s limit on a tax invoice number, and a
+BOQ is a priced schedule, not a statutory record. It still has to be unique and
+non-repeating, because it is the key every RA bill quotes back.
+
+---
+
 ### `/address` — Address Book · [address.py](address.py)
 
 | Route | View |
@@ -1409,7 +1626,7 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 Real, verified, and safe to pick up:
 
 1. **No `requirements.txt`.** Needs `flask`, `pymysql`, `python-dotenv`,
-   `markupsafe`.
+   `markupsafe`; `pytest` to run `tests/`.
 2. **No product edit route** — delete + re-add only, and delete may be blocked.
    ⬆ **This got more expensive.** It is now the reason a missing HSN cannot be
    blocked at the tax invoice (a user could not clear the block), and the reason

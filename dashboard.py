@@ -562,6 +562,10 @@ ICONS = {
     # all page outlines; a purchase order is about material arriving, and it
     # reads as a different kind of thing at a glance because it is one.
     "purchase": """<svg viewBox="0 0 24 24"><path d="M21 8V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>""",
+    # A BOQ is a schedule, not a letter: a clipboard with ruled lines, so it
+    # does not read as another variant of the quotation sheet. It heads its own
+    # chain and the icon says so at a glance.
+    "boq": """<svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="8" y1="19" x2="12" y2="19"/></svg>""",
     "back": """<svg viewBox="0 0 24 24" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>""",
     "settings": """<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>""",
     # Attention-queue reason icons. Status colour never carries meaning alone —
@@ -835,6 +839,14 @@ def _metrics():
                             for p in STORE["purchases"].values()
                             if (p.get("status") or "Draft")
                             not in ("Received", "Cancelled")),
+
+        # BOQ — the head of the second sell-side chain. `subtotal` is the stored
+        # basic value; the printed sheet recomputes it from the lines, but the
+        # card only needs the headline. Read off the record rather than
+        # importing boq.py, for the same reason as the PO statuses above.
+        "boq_total": len(STORE["boqs"]),
+        "boq_value": sum(float(b.get("subtotal") or 0.0)
+                         for b in STORE["boqs"].values()),
     }
 
 
@@ -1123,6 +1135,7 @@ def index():
     proforma_url  = url_for("proforma.list_proformas")
     invoice_url   = url_for("invoice.list_invoices")
     purchase_url  = url_for("purchase.list_purchases")
+    boq_url       = url_for("boq.list_boqs")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1194,6 +1207,14 @@ def index():
             <div class="card-body">
               <div class="card-title">Tax Invoices</div>
               <div class="card-desc">{m['ti_total']} issued{f" · {rupees(m['ti_due'])} outstanding" if m['ti_due'] else " · raised from a proforma"}</div>
+            </div>
+          </a>
+
+          <a href="{boq_url}" class="card">
+            <div class="card-icon">{ICONS['boq']}</div>
+            <div class="card-body">
+              <div class="card-title">Bills of Quantities</div>
+              <div class="card-desc">{m['boq_total']} priced{f" · {rupees(m['boq_value'])} basic value" if m['boq_value'] else " · project schedules, billed by RA"}</div>
             </div>
           </a>
 

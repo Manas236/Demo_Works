@@ -1,0 +1,2000 @@
+"""
+boq.py — Bill of Quantities  (SELL SIDE)
+=========================================
+The head of a second document chain, parallel to quotation → proforma → tax
+invoice and deliberately not part of it:
+
+    BOQ ──► RA bill 1 ──► RA bill 2 ──► …          (ra.py, Phase 3)
+
+A **quotation** is an offer to sell goods, priced per line, invoiced once (or a
+few times) against the whole. A **BOQ** is the priced schedule of a *project*:
+one to two hundred lines, split into systems (sections A/B/C…), each line
+carrying a quantity broken down by the area or floor it is installed on, and
+each line priced twice — once to *supply* the material and once to *install*
+it. It is billed progressively as the work happens, through Running Account
+bills, which is why it needs its own chain rather than a render mode of the
+quotation.
+
+Three things about the shape that are easy to get wrong
+-------------------------------------------------------
+1. **Areas belong to the SECTION, not to the BOQ.** The client's own workbook
+   declares `External` + `L0` for section A, `T1` for section B, and none at
+   all for section C. A BOQ-wide area list cannot represent that, so the
+   printed document renders **one table per section**, each with its own
+   colgroup and column heads.
+2. **`parent_item_no` is a SPECIFICATION hierarchy, not a BOM depth.** A header
+   line carries ~1500 characters of specification and no quantity; the lines
+   under it carry the quantities and the rates. This is not
+   `line_item["depth"]` from the quotation — that means "component of an
+   assembly", and the two will collide the first time a BOQ line is itself an
+   assembly. They are kept as separate fields on purpose.
+3. **`item_no` is a STRING, everywhere, always.** The source workbook stores
+   item 4.1 as `4.0999999999999996` and 4.4 as `4.4000000000000004`. Read one
+   as a float and it prints as either the wrong number or seventeen digits of
+   noise on a document a customer signs.
+
+What is reused, and from where
+-------------------------------
+The printed sheet is the quotation's sheet — `VIEW_DOC_STYLES` gives the A4
+frame, the repeating letterhead band and every print rule, and `_inr` /
+`_fmt_qty` / `_amount_in_words` / `_meta` are the document's own formatters.
+`BOQ_STYLES` layers after it and introduces no new font, type size or border
+weight, exactly as `PROFORMA_STYLES` and `PURCHASE_STYLES` do. It changes
+exactly one thing about the page: **it prints landscape.** See the note above
+`BOQ_STYLES` for why that is forced rather than chosen.
+
+Import direction (§3.4 of the handover — one way, never reversed):
+
+    boq.py ──► quotation.py   document toolkit only
+    boq.py ──► address.py     customer picker
+    boq.py ──► pipeline.py    esc / parse_money / fy_of / fy_ref
+    boq.py ──► dashboard.py   BASE_STYLES / _nav
+    boq.py ──► product.py     spec picker
+
+`boq.py` must **not** import `ra.py` — the view page links out with `url_for`
+and reads `STORE["ra_bills"]` directly, which is the same one-way trick
+`quotation.py` uses for proformas. It must not import `proforma.py` or
+`purchase.py` either: a BOQ has no proforma, and a project bills through RA.
+"""
+
+import json
+import uuid
+from datetime import date as _date
+
+from flask import Blueprint, redirect, render_template_string, request, url_for
+
+import branding as B
+import pipeline as P
+from address import INDIAN_STATES, picker_options, picker_payload
+from dashboard import BASE_STYLES, _nav
+from product import _valid_hsn, ensure_demo_products
+from store import STORE
+
+# The document's own formatters and stylesheet — see the module docstring.
+from quotation import (
+    QUOTATION_STYLES,
+    VIEW_DOC_STYLES,
+    _amount_in_words,
+    _fmt_qty,
+    _inr,
+    _meta,
+    _sel_opts,
+    _DEL_TERMS,
+    _PAY_TERMS,
+)
+
+boq_bp = Blueprint("boq", __name__, url_prefix="/boq")
+
+
+# =============================================================================
+# BUSINESS RULES — tune here, not in a branch
+# =============================================================================
+
+_REF_SERIES = "BOQ"
+
+# No 16-character cap. That is Rule 46(b)'s limit on a *tax invoice* number;
+# a BOQ is a priced schedule, not a statutory record. It still wants an
+# FY-scoped, non-repeating series, because it is the key every RA bill raised
+# against the project quotes back — same reasoning as the purchase order.
+_REF_CAP = 64
+
+# GST on a works contract is 18% for both the goods and the service leg unless
+# the project qualifies for a concessional rate. Captured per line (supply and
+# installation are different supplies and can be taxed differently), defaulted
+# here so 120 lines do not have to be typed one at a time. The BOQ itself does
+# NOT compute tax — see PRINT_TAX below.
+DEFAULT_GST_RATE = 18.0
+
+# The BOQ prints BASIC values only. The client's own summary sheet says "TAXES
+# WILL BE EXTRA" on its face, and the tax actually falls due on the RA bill,
+# which is the tax invoice (Phase 3). Printing a tax total on the schedule
+# would state a liability that does not exist yet.
+PRINT_TAX = False
+
+# The client's remark column (column N in their workbook) holds internal
+# pricing notes — "2000/nos extra for Tamper switch", "Mohali 300 mm dia and
+# Banglore 450 mm dia". They are captured, and they are shown on screen and in
+# the import report, but they do NOT print: the same judgement that keeps the
+# deal-desk fields off the quotation. Flip this if the client wants them on the
+# customer's copy.
+PRINT_REMARKS = False
+
+# A rate column that is zero on every line of the whole BOQ is a column of
+# nothing, and on a landscape sheet already fighting for width the description
+# needs the millimetres more than an empty column does. Same judgement as the
+# PI's `.pay-box`, which breaks the figure down only when there is arithmetic
+# to show.
+HIDE_EMPTY_ESCALATION = True
+
+# Section codes offered by the create form. Free text is still accepted — a
+# project can run to more sections than this — but these are what the client's
+# workbooks actually use.
+_SECTION_CODES = ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+_UNITS = ["Nos", "Nos.", "Mtrs", "Mtrs.", "Kgs.", "Set", "Lot", "Lump Sum",
+          "Sq.Mtrs", "Ltrs", "Job"]
+
+# What the base-rate column is called on the printed sheet. The client's own
+# workbooks price against a rate schedule agreed on another project ("Mohali
+# Rates") and then apply an escalation, so the label is per-BOQ data rather
+# than a constant.
+DEFAULT_RATE_BASIS = "Base Rate"
+
+
+# =============================================================================
+# HELPERS — identity and numbers
+# =============================================================================
+
+def _next_ref(datestr: str) -> str:
+    """
+    Next BOQ number — 'SF/BOQ/26-27/0001'.
+
+    FY-scoped and max+1 within that year, the same shape and the same shared
+    helpers as the tax invoice and the purchase order. Scanning only same-FY
+    records is what lets the series restart each April without colliding, and
+    max+1 (never `len()+1`) is what stops a deleted record re-issuing a number
+    that has already reached a customer.
+    """
+    fy = P.fy_of(datestr)
+    highest = 0
+    for b in STORE["boqs"].values():
+        if b.get("fy") != fy:
+            continue
+        tail = str(b.get("ref") or "").rpartition("/")[2]
+        if tail.isdigit():
+            highest = max(highest, int(tail))
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+
+
+def _item_no(raw) -> str:
+    """
+    An item number, as a STRING — 4.1 stays "4.1" and never becomes 4.0999….
+
+    The source workbooks store these as floats, and the two the client's Sify
+    sheet holds are `4.0999999999999996` and `4.4000000000000004`. A float that
+    reaches the document prints seventeen digits of binary noise next to a
+    quantity somebody is going to be paid against. The form posts strings, so
+    this is a guard rather than a conversion — but it is the guard that stops a
+    hand-written dict or a future importer putting a float in the record.
+    """
+    if isinstance(raw, bool):
+        return ""
+    if isinstance(raw, float):
+        # %.10g is short of a double's 17 significant digits, so the dust is
+        # dropped and 4.0999999999999996 formats back to "4.1".
+        return f"{raw:.10g}"
+    if isinstance(raw, int):
+        return str(raw)
+    return str(raw or "").strip()
+
+
+def _num(raw, default: float = 0.0) -> float:
+    """A number off the form. Blank or unparseable falls back, never raises."""
+    if raw is None:
+        return default
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return float(raw)
+    s = str(raw).strip().replace(",", "")
+    if not s:
+        return default
+    try:
+        return float(s)
+    except ValueError:
+        return default
+
+
+def _opt_num(raw):
+    """
+    A number that is allowed to be absent.
+
+    Returns `None` for a blank cell **and for a literal "-"**. In the client's
+    workbooks a "-" in a base-rate cell does not mean zero and is not an error:
+    it means the rate was negotiated directly rather than escalated off the
+    base schedule. Collapsing that to 0.0 would state that the material is
+    free.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return float(raw)
+    s = str(raw).strip().replace(",", "")
+    if not s or s in ("-", "--", "—", "–"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _derived_rate(base, pct: float):
+    """
+    base × (1 + pct/100) — the rate the escalation implies.
+
+    Only ever a *suggestion*. The stored `supply_rate` is whatever was entered,
+    because the client's own sheets carry a dozen lines where the two disagree
+    for a documented reason (a tamper switch at ₹2000/nos, a larger diameter at
+    the Bangalore site). Recomputing the rate from the escalation would quietly
+    rewrite a price that was agreed — the importer's job is to *report* that
+    disagreement, never to resolve it.
+    """
+    if base is None:
+        return None
+    return float(base) * (1.0 + float(pct or 0.0) / 100.0)
+
+
+# =============================================================================
+# HELPERS — the record
+# =============================================================================
+
+def _sections_of(boq: dict) -> list:
+    return boq.get("sections") or []
+
+
+def _areas_of(boq: dict, code: str) -> list:
+    for s in _sections_of(boq):
+        if s.get("code") == code:
+            return list(s.get("areas") or [])
+    return []
+
+
+def _lines_of(boq: dict, code: str) -> list:
+    return [li for li in boq.get("line_items", []) if li.get("section") == code]
+
+
+def section_totals(boq: dict, code: str) -> tuple:
+    """
+    (supply, installation) for one section — COMPUTED, never stored.
+
+    A stored section subtotal is a second copy of a figure that is already
+    implied by the lines, and the two disagree the first time a line is edited.
+    The record stores only the BOQ-level trio (§4.3), and even those are
+    recomputed here for the document so the printed sheet cannot contradict its
+    own lines.
+    """
+    supply = install = 0.0
+    for li in _lines_of(boq, code):
+        if li.get("is_header"):
+            continue
+        supply  += float(li.get("supply_amount") or 0.0)
+        install += float(li.get("install_amount") or 0.0)
+    return supply, install
+
+
+def boq_totals(boq: dict) -> tuple:
+    """(supply, installation, subtotal) across every section."""
+    supply = install = 0.0
+    for s in _sections_of(boq):
+        sup, ins = section_totals(boq, s.get("code"))
+        supply  += sup
+        install += ins
+    return supply, install, supply + install
+
+
+def _any_escalation(boq: dict, key: str) -> bool:
+    """Does any line in this BOQ actually carry an escalation on this track?"""
+    return any(float(li.get(key) or 0.0) != 0.0
+               for li in boq.get("line_items", []))
+
+
+# =============================================================================
+# THE PRINTED BOQ — stylesheet
+# =============================================================================
+#
+# A plain string, not an f-string, so its CSS braces are written once. Only the
+# HTML below needs doubling. `DASH_STYLES` established this and it is worth
+# copying for any block this size.
+#
+# ── WHY THIS SHEET PRINTS LANDSCAPE ──────────────────────────────────────────
+# The fixed columns — Sr, Total Qty, Unit, base rate, escalation, supply rate,
+# supply amount, install base, install rate, install amount — come to ~167mm
+# before a single area column or a single character of description. A4 portrait
+# gives 192mm of printable width against the app's 9mm side margins. Two area
+# columns take it to 195mm, which is already over, and the description column
+# is the one that has to hold ~1500 characters of specification.
+#
+# The alternative was dropping the area breakdown to fit portrait. That is
+# worse: the area columns are the only place `total_qty` is substantiated, and
+# `sum(area_qty) == total_qty` is the reconciliation the importer exists to
+# run. A sheet that cannot be checked against the workbook it came from is not
+# a document, it is a summary. Landscape also scales — the column count is a
+# property of the *section*, and a project with five floors would break any
+# portrait layout tuned for two.
+#
+# Everything here is an override layered after VIEW_DOC_STYLES, never an edit
+# to it: the quotation, PI, TI and PO sheets are untouched and still portrait.
+# =============================================================================
+
+BOQ_STYLES = """
+<style>
+  /* ── Landscape ─────────────────────────────────────────────────────────
+     Later @page rule of equal specificity wins, so this replaces the
+     `size:A4 portrait` in VIEW_DOC_STYLES for this page only. */
+  @media print {
+    @page { size:A4 landscape; margin:9mm 8mm 8mm; }
+  }
+  .boq-outer { max-width:297mm; }
+
+  /* ── Screen furniture ──────────────────────────────────────────────── */
+  .boq-panel {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:1.3rem 1.5rem;
+    box-shadow:var(--shadow-sm); margin-bottom:1.4rem;
+  }
+  .bp-head {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:1rem; flex-wrap:wrap; margin-bottom:1rem;
+    padding-bottom:.8rem; border-bottom:1px solid var(--border);
+  }
+  .bp-title { font-size:.73rem; font-weight:700; text-transform:uppercase;
+              letter-spacing:.09em; color:var(--brand); }
+  .bp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; }
+  .bp-cell { min-width:0; }
+  .bp-lbl  { font-size:.7rem; font-weight:700; text-transform:uppercase;
+             letter-spacing:.06em; color:var(--muted); }
+  .bp-val  { font-size:1.15rem; font-weight:700; margin-top:.2rem; }
+  .bp-sub  { font-size:.75rem; color:var(--muted); margin-top:.15rem; }
+
+  /* Running Account bills raised against this BOQ. Mirrors .pi-strip on the
+     quotation deal panel — same shape, same purpose, one chain over. */
+  .ra-block { margin-top:1.1rem; padding-top:.9rem; border-top:1px dashed var(--border); }
+  .ra-lbl   { font-size:.7rem; font-weight:700; text-transform:uppercase;
+              letter-spacing:.06em; color:var(--muted); }
+  .ra-strip { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.5rem; }
+  .ra-chip  {
+    font-size:.75rem; font-weight:600; color:var(--navy); background:#eef2ff;
+    border:1px solid #c7d2fe; border-radius:999px; padding:.25rem .7rem;
+    text-decoration:none;
+  }
+  .ra-chip:hover { background:#e0e7ff; }
+
+  /* ── The document ──────────────────────────────────────────────────── */
+  .boq-doc .doc-sub-boq {
+    text-align:center; font-size:var(--fs-sm); color:var(--doc-soft);
+    padding:2px 0 3px; border-bottom:var(--rule-box);
+  }
+
+  /* One table per section. Each carries its own column heads because the area
+     columns are a property of the section, not of the BOQ — a single table
+     whose column count changes halfway down is not a table. */
+  .sec-block { margin-top:4mm; }
+  .sec-block:first-of-type { margin-top:0; }
+
+  .sec-head {
+    border:var(--rule-box); border-bottom:none;
+    padding:3px 5px; font-weight:700; font-size:var(--fs-md);
+  }
+  .sec-code { display:inline-block; min-width:7mm; }
+
+  .boq-table {
+    width:100%; border-collapse:collapse; table-layout:fixed;
+    font-size:var(--fs-xs);
+  }
+  /* Every property the document cares about is declared, never inherited:
+     BASE_STYLES and QUOTATION_STYLES both ship bare `th`/`td` rules and load
+     either side of this sheet. Omitting one is how the heads silently come out
+     uppercase and grey. */
+  .boq-table th {
+    background:#c9c9c9; border:var(--rule); padding:2px 3px;
+    font-weight:700; text-align:center;
+    font-family:inherit; font-size:var(--fs-xs); color:var(--doc-ink);
+    text-transform:none; letter-spacing:normal; white-space:normal;
+    vertical-align:middle;
+  }
+  .boq-table td {
+    border:var(--rule); padding:2px 3px; vertical-align:top;
+    font-family:inherit; font-size:var(--fs-xs); color:var(--doc-ink);
+    text-transform:none; letter-spacing:normal;
+  }
+
+  .b-sno   { width:12mm; text-align:center; }
+  .b-desc  { text-align:left; overflow-wrap:break-word; }
+  .b-area  { width:14mm; text-align:right; font-variant-numeric:tabular-nums; }
+  .b-qty   { width:15mm; text-align:right; font-variant-numeric:tabular-nums; }
+  .b-unit  { width:13mm; text-align:center; }
+  .b-base  { width:16mm; text-align:right; font-variant-numeric:tabular-nums; }
+  .b-esc   { width:11mm; text-align:center; }
+  .b-rate  { width:18mm; text-align:right; font-variant-numeric:tabular-nums; }
+  .b-amt   { width:24mm; text-align:right; font-variant-numeric:tabular-nums; }
+
+  /* Hierarchy by weight and indent, never by fill — it has to survive a
+     printer with background graphics switched off. */
+  .row-spec .b-desc { font-weight:700; }
+  .b-child          { padding-left:8px; }
+
+  .row-secsum td {
+    font-weight:700; font-size:var(--fs-sm);
+    border-top:var(--rule-box); border-bottom:var(--rule-box);
+  }
+  .secsum-lbl { text-align:right; }
+
+  .boq-grand { margin-top:4mm; border:var(--rule-box); }
+  .boq-grand table { width:100%; border-collapse:collapse; }
+  .boq-grand td {
+    border:none; padding:3px 5px; font-weight:700; font-size:var(--fs-md);
+    font-family:inherit; color:var(--doc-ink); text-transform:none;
+  }
+  .bg-lbl { text-align:right; }
+  .bg-amt { width:24mm; text-align:right; font-variant-numeric:tabular-nums; }
+  .bg-tag { width:26mm; text-align:center; font-size:var(--fs-sm); font-weight:400; }
+
+  .boq-words { border-top:var(--rule); padding:3px 5px; font-weight:700;
+               font-size:var(--fs-sm); }
+  .boq-taxnote { padding:3px 5px; font-size:var(--fs-sm); font-weight:700; }
+
+  @media print {
+    /* Repeat the column heads of every section table on page 2+. Without this
+       a 120-line BOQ has three pages of unlabelled numbers. */
+    .boq-table > thead { display:table-header-group; }
+    .boq-table th { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .boq-table tr, .sec-head, .boq-grand { break-inside:avoid; page-break-inside:avoid; }
+    .sec-head { break-after:avoid; page-break-after:avoid; }
+    .boq-outer { max-width:none; }
+  }
+
+  /* MUST stay scoped to `screen`. A4 landscape at 96dpi is ~1123px, so an
+     unscoped max-width breakpoint would fire on paper and print the phone
+     layout — see the same note in VIEW_DOC_STYLES. */
+  @media screen and (max-width:760px) {
+    .boq-outer { max-width:100%; }
+    .boq-table { table-layout:auto; min-width:900px; }
+    .sec-wrap  { overflow-x:auto; }
+  }
+
+  /* ── The line editor ───────────────────────────────────────────────── */
+  .sec-editor { display:flex; flex-direction:column; gap:.6rem; }
+  .sec-row {
+    display:grid; grid-template-columns:80px 1fr 1.2fr 34px; gap:.6rem;
+    align-items:end;
+  }
+  .line-card {
+    border:1px solid var(--border); border-radius:10px;
+    padding:.9rem 1rem; margin-bottom:.8rem; background:var(--bg);
+  }
+  .line-card.is-spec { border-left:3px solid var(--navy); background:#f8fafc; }
+  .lc-head {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.6rem; margin-bottom:.7rem;
+  }
+  .lc-no { font-size:.72rem; font-weight:700; text-transform:uppercase;
+           letter-spacing:.07em; color:var(--muted); }
+  .lc-track {
+    font-size:.68rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--muted); margin:.6rem 0 .35rem;
+  }
+  .lc-areas {
+    display:flex; flex-wrap:wrap; gap:.6rem; align-items:end;
+    padding:.5rem .6rem; border:1px dashed var(--border); border-radius:8px;
+    background:var(--surface);
+  }
+  .lc-area { width:96px; }
+  .lc-none { font-size:.78rem; color:var(--muted); font-style:italic; }
+  .btn-row {
+    font-size:.75rem; font-weight:600; color:var(--brand);
+    background:var(--brand-lt); border:1px solid #c7d2fe; border-radius:6px;
+    padding:.3rem .75rem; cursor:pointer;
+  }
+  .btn-row:hover { background:#c7d2fe; }
+  .btn-del {
+    font-size:.75rem; font-weight:700; color:#991b1b; background:#fef2f2;
+    border:1px solid #fecaca; border-radius:6px; padding:.3rem .6rem;
+    cursor:pointer;
+  }
+  .btn-del:hover { background:#fee2e2; }
+  .derived {
+    font-size:.68rem; color:var(--muted); margin-top:.15rem; min-height:1em;
+  }
+  .derived b { color:var(--navy); }
+</style>
+"""
+
+
+# =============================================================================
+# THE PRINTED BOQ — rendering
+# =============================================================================
+
+def _rate_cell(rate) -> str:
+    """
+    A rate, or a blank cell when the track is not priced on this line.
+
+    Blank, not `0.00`: a line that is installation-only has no supply rate at
+    all, and printing 0.00 there says the material is free. The *amount*
+    column still prints 0.00, because that is a real figure that sums into the
+    subtotal — which is exactly how the client's own workbook renders it.
+    """
+    return _inr(rate) if rate else ""
+
+
+def _base_cell(base) -> str:
+    """
+    A base rate, or "-" when the rate was entered directly.
+
+    "-" is the client's own convention and it carries meaning: this line was
+    negotiated rather than escalated off the base schedule. It is not zero and
+    it is not missing data, so it prints as itself.
+    """
+    return "-" if base is None else _inr(base)
+
+
+def _esc_cell(pct) -> str:
+    pct = float(pct or 0.0)
+    return f"{pct:g}%" if pct else ""
+
+
+def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> str:
+    """One section: its title band, its own column heads, its lines, its subtotal."""
+    code   = sec.get("code") or ""
+    areas  = list(sec.get("areas") or [])
+    lines  = _lines_of(boq, code)
+    basis  = boq.get("rate_basis_label") or DEFAULT_RATE_BASIS
+
+    n_supply_cols  = 2 + (1 if show_s_esc else 0)   # base [, esc] , rate
+    n_install_cols = 2 + (1 if show_i_esc else 0)
+
+    # ── Column heads ───────────────────────────────────────────────────
+    area_ths = "".join(f'<th class="b-area">{P.esc(a)}</th>' for a in areas)
+
+    s_esc_th = '<th class="b-esc">Esc. %</th>' if show_s_esc else ""
+    i_esc_th = '<th class="b-esc">Esc. %</th>' if show_i_esc else ""
+
+    # A section with no area breakdown gets no area columns at all — nothing to
+    # show and nothing to reconcile against.
+    area_group_th = (f'<th class="b-area" colspan="{len(areas)}">Area / Floor</th>'
+                     if areas else "")
+
+    head_html = f"""
+      <thead>
+        <tr>
+          <th class="b-sno" rowspan="2">Sr.</th>
+          <th class="b-desc" rowspan="2">Description</th>
+          {area_group_th}
+          <th class="b-qty" rowspan="2">Total Qty</th>
+          <th class="b-unit" rowspan="2">Unit</th>
+          <th colspan="{n_supply_cols}">Supply</th>
+          <th class="b-amt" rowspan="2">Supply Amount</th>
+          <th colspan="{n_install_cols}">Installation</th>
+          <th class="b-amt" rowspan="2">Installation Amount</th>
+        </tr>
+        <tr>
+          {area_ths}
+          <th class="b-base">{P.esc(basis)}</th>
+          {s_esc_th}
+          <th class="b-rate">U/ Rate</th>
+          <th class="b-base">{P.esc(basis)}</th>
+          {i_esc_th}
+          <th class="b-rate">U/ Rate</th>
+        </tr>
+      </thead>"""
+
+    # ── Lines ──────────────────────────────────────────────────────────
+    body = ""
+    for li in lines:
+        is_header = bool(li.get("is_header"))
+        row_cls   = "row-spec" if is_header else "row-line"
+        # A specification hierarchy, NOT a BOM depth — see the module docstring.
+        child_cls = " b-child" if (li.get("parent_item_no") or "").strip() else ""
+
+        desc = P.esc(li.get("description"))
+        if PRINT_REMARKS and li.get("remark"):
+            desc += f'<br><i>{P.esc(li.get("remark"))}</i>'
+
+        if is_header:
+            # A specification header carries the paragraph and nothing else:
+            # no quantity, no rate, no amount. Spanning the numeric columns is
+            # what makes that visible rather than leaving a row of blanks that
+            # reads as missing data.
+            #   description itself + areas + qty + unit
+            #   + supply(base[,esc],rate) + supply amount
+            #   + install(base[,esc],rate) + install amount
+            span = 1 + len(areas) + 2 + n_supply_cols + 1 + n_install_cols + 1
+            body += f"""
+            <tr class="{row_cls}">
+              <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
+              <td class="b-desc{child_cls}" colspan="{span}">{desc}</td>
+            </tr>"""
+            continue
+
+        area_qty = li.get("area_qty") or {}
+        area_tds = ""
+        for a in areas:
+            v = area_qty.get(a)
+            # A blank cell means the item does not appear on that floor. It is
+            # not a zero, and printing 0 would put an item everywhere.
+            area_tds += f'<td class="b-area">{_fmt_qty(v) if v else ""}</td>'
+
+        s_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("supply_escalation_pct"))}</td>'
+                    if show_s_esc else "")
+        i_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("install_escalation_pct"))}</td>'
+                    if show_i_esc else "")
+
+        body += f"""
+        <tr class="{row_cls}">
+          <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
+          <td class="b-desc{child_cls}">{desc}</td>
+          {area_tds}
+          <td class="b-qty">{_fmt_qty(float(li.get("total_qty") or 0.0))}</td>
+          <td class="b-unit">{P.esc(li.get("unit"))}</td>
+          <td class="b-base">{_base_cell(li.get("supply_base_rate"))}</td>
+          {s_esc_td}
+          <td class="b-rate">{_rate_cell(li.get("supply_rate"))}</td>
+          <td class="b-amt">{_inr(li.get("supply_amount"))}</td>
+          <td class="b-base">{_base_cell(li.get("install_base_rate"))}</td>
+          {i_esc_td}
+          <td class="b-rate">{_rate_cell(li.get("install_rate"))}</td>
+          <td class="b-amt">{_inr(li.get("install_amount"))}</td>
+        </tr>"""
+
+    # ── Section subtotal — COMPUTED, never stored ──────────────────────
+    sup, ins = section_totals(boq, code)
+    # Label spans everything up to the supply amount, exactly as the client's
+    # own sheet merges A:I for its "BASIC VALUE SUBTOTAL (A)" row.
+    sum_span = 2 + len(areas) + 2 + n_supply_cols
+    body += f"""
+    <tr class="row-secsum">
+      <td class="secsum-lbl" colspan="{sum_span}">BASIC VALUE SUBTOTAL ({P.esc(code)}) &gt;&gt;&gt;&gt;</td>
+      <td class="b-amt">{_inr(sup)}</td>
+      <td colspan="{n_install_cols}"></td>
+      <td class="b-amt">{_inr(ins)}</td>
+    </tr>"""
+
+    return f"""
+    <div class="sec-block">
+      <div class="sec-head">
+        <span class="sec-code">{P.esc(code)}</span>{P.esc(sec.get("title"))}
+      </div>
+      <div class="sec-wrap">
+        <table class="boq-table">{head_html}<tbody>{body}</tbody></table>
+      </div>
+    </div>"""
+
+
+# =============================================================================
+# FORM — parsing and validation
+# =============================================================================
+
+def _parse_payload(raw: str) -> tuple:
+    """
+    Read the editor's hidden JSON into (sections, lines, error).
+
+    The line editor is a browser-side model serialised on submit, the same
+    shape of thing as the quotation's `selections_json`. A BOQ line carries
+    seventeen fields and a variable number of area quantities, so parallel
+    form-field lists (purchase.py's pattern) would not survive the area columns
+    changing when the section changes.
+    """
+    if not (raw or "").strip():
+        return [], [], "Add at least one section and one line item."
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return [], [], "The line item data could not be read. Please re-enter the lines."
+
+    sections = data.get("sections") or []
+    lines    = data.get("lines") or []
+    if not isinstance(sections, list) or not isinstance(lines, list):
+        return [], [], "The line item data could not be read. Please re-enter the lines."
+    return sections, lines, ""
+
+
+def _clean_sections(raw_sections: list) -> tuple:
+    """(sections, error) — codes present, unique, and areas de-duplicated in order."""
+    out, seen = [], set()
+    for s in raw_sections:
+        if not isinstance(s, dict):
+            continue
+        code = str(s.get("code") or "").strip()
+        if not code:
+            return [], "Every section needs a code (A, B, C …)."
+        if code in seen:
+            return [], f"Section code &quot;{P.esc(code)}&quot; is used twice."
+        seen.add(code)
+
+        # Ordered and de-duplicated: the order drives the column order on the
+        # printed sheet, and a repeated area name would render two columns that
+        # can never be told apart.
+        areas, seen_a = [], set()
+        for a in (s.get("areas") or []):
+            a = str(a or "").strip()
+            if a and a not in seen_a:
+                seen_a.add(a)
+                areas.append(a)
+
+        out.append({"code": code,
+                    "title": str(s.get("title") or "").strip(),
+                    "areas": areas})
+
+    if not out:
+        return [], "Add at least one section."
+    return out, ""
+
+
+def _clean_lines(raw_lines: list, sections: list) -> tuple:
+    """
+    (line_items, error) — one §4.2 line item per editor row.
+
+    Rates are stored **as entered**, never recomputed from the escalation:
+    see `_derived_rate`. Amounts *are* computed, always, so a stored amount can
+    never disagree with the rate and quantity printed beside it.
+    """
+    by_code = {s["code"]: s for s in sections}
+    out = []
+
+    for idx, li in enumerate(raw_lines, start=1):
+        if not isinstance(li, dict):
+            continue
+
+        code = str(li.get("section") or "").strip()
+        if code not in by_code:
+            return [], f"Line {idx} is in section &quot;{P.esc(code)}&quot;, which is not defined above."
+
+        item_no = _item_no(li.get("item_no"))
+        if not item_no:
+            return [], f"Line {idx} needs an item number."
+
+        description = str(li.get("description") or "").strip()
+        if not description:
+            return [], f"Line {item_no} needs a description."
+
+        is_header = bool(li.get("is_header"))
+
+        # A specification header carries the paragraph and nothing else. Zeroing
+        # here rather than hiding it in the renderer means the record itself is
+        # honest — nothing downstream has to remember to skip these rows.
+        if is_header:
+            out.append({
+                "item_no":        item_no,
+                "parent_item_no": _item_no(li.get("parent_item_no")),
+                "section":        code,
+                "is_header":      True,
+                "description":    description,
+                "remark":         str(li.get("remark") or "").strip(),
+                "unit":           "",
+                "area_qty":       {},
+                "total_qty":      0.0,
+                "supply_base_rate": None, "supply_escalation_pct": 0.0,
+                "supply_rate": 0.0, "supply_amount": 0.0,
+                "supply_hsn": "", "supply_gst_rate": 0.0,
+                "install_base_rate": None, "install_escalation_pct": 0.0,
+                "install_rate": 0.0, "install_amount": 0.0,
+                "install_sac": "", "install_gst_rate": 0.0,
+            })
+            continue
+
+        # ── Quantities ────────────────────────────────────────────────
+        areas = by_code[code]["areas"]
+        raw_aq = li.get("area_qty") or {}
+        area_qty = {}
+        for a in areas:
+            v = _opt_num(raw_aq.get(a))
+            # Only what was actually entered. A blank means "not on this floor",
+            # which is different from "none of them here".
+            if v is not None:
+                area_qty[a] = v
+
+        if areas:
+            # With an area breakdown the total IS the breakdown. Letting the two
+            # be typed independently on a *create* form invites a contradiction
+            # at the moment of entry; a client's workbook that already contains
+            # one is the importer's problem to report (Phase 2), not this
+            # form's to reproduce.
+            total_qty = sum(area_qty.values())
+        else:
+            total_qty = _num(li.get("total_qty"))
+
+        if total_qty < 0:
+            return [], f"Line {item_no} has a negative quantity."
+
+        # ── Rates ─────────────────────────────────────────────────────
+        s_base = _opt_num(li.get("supply_base_rate"))
+        s_pct  = _num(li.get("supply_escalation_pct"))
+        s_rate = _opt_num(li.get("supply_rate"))
+        if s_rate is None:
+            s_rate = _derived_rate(s_base, s_pct) or 0.0
+
+        i_base = _opt_num(li.get("install_base_rate"))
+        i_pct  = _num(li.get("install_escalation_pct"))
+        i_rate = _opt_num(li.get("install_rate"))
+        if i_rate is None:
+            i_rate = _derived_rate(i_base, i_pct) or 0.0
+
+        if s_rate < 0 or i_rate < 0:
+            return [], f"Line {item_no} has a negative rate."
+
+        hsn = str(li.get("supply_hsn") or "").strip()
+        sac = str(li.get("install_sac") or "").strip()
+        # Shape-only, and only when filled — exactly as the catalogue validates
+        # it. A blank is allowed here and flagged downstream, because the BOQ is
+        # priced long before anybody classifies the goods.
+        if hsn and not _valid_hsn(hsn):
+            return [], f"Line {item_no}: HSN must be 4, 6 or 8 digits."
+        if sac and not _valid_hsn(sac):
+            return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits."
+
+        out.append({
+            "item_no":        item_no,
+            "parent_item_no": _item_no(li.get("parent_item_no")),
+            "section":        code,
+            "is_header":      False,
+            "description":    description,
+            "remark":         str(li.get("remark") or "").strip(),
+            "unit":           str(li.get("unit") or "").strip(),
+            "area_qty":       area_qty,
+            "total_qty":      float(total_qty),
+
+            "supply_base_rate":      s_base,
+            "supply_escalation_pct": s_pct,
+            "supply_rate":           float(s_rate),
+            "supply_amount":         float(s_rate) * float(total_qty),
+            "supply_hsn":            hsn,
+            "supply_gst_rate":       _num(li.get("supply_gst_rate"), DEFAULT_GST_RATE),
+
+            "install_base_rate":      i_base,
+            "install_escalation_pct": i_pct,
+            "install_rate":           float(i_rate),
+            "install_amount":         float(i_rate) * float(total_qty),
+            "install_sac":            sac,
+            "install_gst_rate":       _num(li.get("install_gst_rate"), DEFAULT_GST_RATE),
+        })
+
+    if not out:
+        return [], "Add at least one line item."
+    return out, ""
+
+
+def _to_block(form) -> str:
+    """The printable customer address block, same construction as a quotation."""
+    parts = []
+    for key in ("account_name", "bill_addr"):
+        v = (form.get(key) or "").strip()
+        if v:
+            parts.append(v)
+    city  = ", ".join(x for x in [(form.get("bill_city") or "").strip(),
+                                  (form.get("bill_state") or "").strip()] if x)
+    pin   = (form.get("bill_pin") or "").strip()
+    if city or pin:
+        parts.append(f"{city} - {pin}".strip(" -"))
+    if (form.get("bill_phone") or "").strip():
+        parts.append(f"Ph: {form['bill_phone'].strip()}")
+    if (form.get("bill_gstin") or "").strip():
+        parts.append(f"GSTIN: {form['bill_gstin'].strip()}")
+    return "\n".join(parts)
+
+
+# =============================================================================
+# ROUTES
+# =============================================================================
+
+@boq_bp.route("/")
+def list_boqs():
+    boqs     = STORE["boqs"]
+    dash_url = url_for("dashboard.index")
+    new_url  = url_for("boq.create_boq")
+
+    msg      = request.args.get("msg")
+    msg_type = request.args.get("type", "success")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if msg_type == "success" else "&#10007;"
+        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+
+    query = (request.args.get("q") or "").strip().lower()
+    rows  = []
+    for bid, b in boqs.items():
+        if query:
+            hay = " ".join(str(b.get(k) or "") for k in
+                           ("ref", "project_name", "account_name", "site_location")).lower()
+            if query not in hay:
+                continue
+        rows.append((bid, b))
+    rows.sort(key=lambda kv: kv[1].get("ref", ""), reverse=True)
+
+    total_supply = total_install = 0.0
+    for _bid, b in boqs.items():
+        s, i, _t = boq_totals(b)
+        total_supply  += s
+        total_install += i
+
+    tiles_html = f"""
+    <div class="pipe-tiles">
+      <div class="pipe-tile t-open">
+        <div class="pt-lbl">Total BOQ Value</div>
+        <div class="pt-val">&#8377;&nbsp;{total_supply + total_install:,.0f}</div>
+        <div class="pt-sub">{len(boqs)} bill{"s" if len(boqs) != 1 else ""} of quantities · basic value, taxes extra</div>
+      </div>
+      <div class="pipe-tile">
+        <div class="pt-lbl">Supply</div>
+        <div class="pt-val">&#8377;&nbsp;{total_supply:,.0f}</div>
+        <div class="pt-sub">material</div>
+      </div>
+      <div class="pipe-tile">
+        <div class="pt-lbl">Installation</div>
+        <div class="pt-val">&#8377;&nbsp;{total_install:,.0f}</div>
+        <div class="pt-sub">labour &amp; erection</div>
+      </div>
+    </div>"""
+
+    if rows:
+        rows_html = ""
+        for bid, b in rows:
+            sup, ins, tot = boq_totals(b)
+            n_lines = sum(1 for li in b.get("line_items", []) if not li.get("is_header"))
+            n_secs  = len(_sections_of(b))
+            rows_html += f"""
+            <tr>
+              <td class="td-ref">{P.esc(b.get('ref'))}</td>
+              <td class="td-muted">{P.esc(b.get('date'))}</td>
+              <td class="td-cust">{P.esc(b.get('project_name'))}</td>
+              <td>{P.esc(b.get('account_name'))}</td>
+              <td class="td-muted col-h">{n_secs} section{"s" if n_secs != 1 else ""} · {n_lines} line{"s" if n_lines != 1 else ""}</td>
+              <td class="td-muted col-h">&#8377;&nbsp;{sup:,.0f}</td>
+              <td class="td-muted col-h">&#8377;&nbsp;{ins:,.0f}</td>
+              <td style="font-weight:700;color:var(--brand);">&#8377;&nbsp;{tot:,.0f}</td>
+              <td><a href="{url_for('boq.view_boq', id=bid)}" class="btn-view">&#128269; View</a></td>
+            </tr>"""
+        table_html = f"""
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>BOQ No.</th><th>Date</th><th>Project</th><th>Customer</th>
+            <th class="col-h">Size</th><th class="col-h">Supply</th>
+            <th class="col-h">Installation</th><th>Total</th><th></th>
+          </tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table></div>"""
+    elif boqs:
+        table_html = f"""
+        <div class="empty-state">
+          <div style="font-size:2rem;">&#128269;</div><br>
+          <strong>No BOQs match that search</strong>
+          <a href="{url_for('boq.list_boqs')}" class="btn"
+             style="display:inline-block;margin-top:1.1rem;">Show all</a>
+        </div>"""
+    else:
+        table_html = f"""
+        <div class="empty-state">
+          <div style="font-size:2rem;">&#128203;</div><br>
+          <strong>No bills of quantities yet</strong>
+          <p style="margin-top:.4rem;font-size:.88rem;">
+            A BOQ is the priced schedule for a project — sections, areas, and a
+            supply and installation rate per line. It bills through RA bills.
+          </p>
+          <a href="{new_url}" class="btn" style="display:inline-block;margin-top:1.1rem;">+ Create BOQ</a>
+        </div>"""
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Bills of Quantities")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      {alert_html}
+      <div class="page-top">
+        <h1>BOQ <span>Register</span>
+          <span style="font-size:.73rem;font-weight:500;color:var(--muted);margin-left:.5rem;">
+            showing {len(rows)} of {len(boqs)}
+          </span>
+        </h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{dash_url}" class="btn btn-ghost">&#8592; Dashboard</a>
+          <a href="{new_url}" class="btn">+ Create BOQ</a>
+        </div>
+      </div>
+      {tiles_html}
+      <div class="filter-bar">
+        <form method="GET" action="{url_for('boq.list_boqs')}">
+          <input type="search" name="q" value="{P.esc(query)}"
+                 placeholder="BOQ no., project, customer or site"/>
+          <button type="submit" class="filter-tab">Search</button>
+        </form>
+      </div>
+      {table_html}
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · BOQ register</p></footer>
+    </main></body></html>"""
+    return render_template_string(template)
+
+
+@boq_bp.route("/view/<id>")
+def view_boq(id: str):
+    boq = STORE["boqs"].get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
+
+    sup, ins, total = boq_totals(boq)
+
+    # Escalation columns only earn their millimetres when something is actually
+    # escalated — see HIDE_EMPTY_ESCALATION.
+    show_s_esc = (not HIDE_EMPTY_ESCALATION) or _any_escalation(boq, "supply_escalation_pct")
+    show_i_esc = (not HIDE_EMPTY_ESCALATION) or _any_escalation(boq, "install_escalation_pct")
+
+    sections_html = "".join(
+        _section_table(boq, s, show_s_esc, show_i_esc) for s in _sections_of(boq)
+    )
+
+    codes    = " + ".join(P.esc(s.get("code")) for s in _sections_of(boq))
+    grand_lbl = f"TOTAL ({codes}) &gt;&gt;&gt;&gt;" if codes else "TOTAL &gt;&gt;&gt;&gt;"
+
+    tax_note = ""
+    if not PRINT_TAX:
+        tax_note = ('<div class="boq-taxnote">GST EXTRA AS APPLICABLE. '
+                    'Taxes fall due on the Running Account bill raised against this schedule.</div>')
+
+    grand_html = f"""
+    <div class="boq-grand">
+      <table>
+        <tr>
+          <td class="bg-lbl">{grand_lbl}</td>
+          <td class="bg-tag">Supply</td><td class="bg-amt">{_inr(sup)}</td>
+          <td class="bg-tag">Installation</td><td class="bg-amt">{_inr(ins)}</td>
+        </tr>
+        <tr>
+          <td class="bg-lbl">TOTAL BASIC VALUE</td>
+          <td class="bg-tag"></td><td class="bg-amt"></td>
+          <td class="bg-tag"></td><td class="bg-amt">{_inr(total)}</td>
+        </tr>
+      </table>
+      <div class="boq-words">{_amount_in_words(total)}</div>
+      {tax_note}
+    </div>"""
+
+    # ── Running Account bills raised against this BOQ (screen only) ─────
+    # STORE["ra_bills"] is read directly and the link is built with url_for —
+    # `ra.py` imports THIS module, so importing it back would be a cycle. Same
+    # one-way trick quotation.py uses for proformas. The collection does not
+    # exist until Phase 3, hence the defensive .get().
+    ra_rows = sorted(
+        ((rid, r) for rid, r in (STORE.get("ra_bills") or {}).items()
+         if r.get("boq_id") == id),
+        key=lambda kv: int(kv[1].get("ra_no") or 0),
+    )
+    ra_html = ""
+    if ra_rows:
+        chips = "".join(
+            f'<a class="ra-chip" href="{url_for("ra.view_ra", id=rid)}">'
+            f'RA{P.esc(r.get("ra_no"))} &middot; {P.esc(r.get("ref"))} &middot; '
+            f'&#8377;&nbsp;{float(r.get("grand_total") or 0):,.0f}</a>'
+            for rid, r in ra_rows
+        )
+        ra_html = f"""
+        <div class="ra-block">
+          <span class="ra-lbl">Running Account bills raised</span>
+          <div class="ra-strip">{chips}</div>
+        </div>"""
+
+    msg      = request.args.get("msg")
+    msg_type = request.args.get("type", "success")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if msg_type == "success" else "&#10007;"
+        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+
+    n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
+    panel_html = f"""
+    <div class="boq-panel">
+      <div class="bp-head">
+        <div>
+          <div class="bp-title">Project Schedule</div>
+          <div style="margin-top:.35rem;font-weight:700;">{P.esc(boq.get('project_name'))}</div>
+          <div class="bp-sub">{P.esc(boq.get('site_location'))}</div>
+        </div>
+      </div>
+      <div class="bp-grid">
+        <div class="bp-cell">
+          <div class="bp-lbl">Supply</div>
+          <div class="bp-val">&#8377;&nbsp;{sup:,.0f}</div>
+        </div>
+        <div class="bp-cell">
+          <div class="bp-lbl">Installation</div>
+          <div class="bp-val">&#8377;&nbsp;{ins:,.0f}</div>
+        </div>
+        <div class="bp-cell">
+          <div class="bp-lbl">Total Basic Value</div>
+          <div class="bp-val" style="color:var(--brand);">&#8377;&nbsp;{total:,.0f}</div>
+          <div class="bp-sub">taxes extra</div>
+        </div>
+        <div class="bp-cell">
+          <div class="bp-lbl">Size</div>
+          <div class="bp-val">{n_lines}</div>
+          <div class="bp-sub">priced lines in {len(_sections_of(boq))} section(s)</div>
+        </div>
+      </div>
+      {ra_html}
+    </div>"""
+
+    # ── Header meta, two columns ───────────────────────────────────────
+    meta_col_1 = (
+        _meta("BOQ No.",       boq.get("ref")) +
+        _meta("Project",       boq.get("project_name")) +
+        _meta("Site",          boq.get("site_location")) +
+        _meta("Payment Terms", boq.get("payment_terms"))
+    )
+    meta_col_2 = (
+        _meta("Date",              boq.get("date")) +
+        _meta("Revision",          str(boq.get("rev_no") or 0)) +
+        _meta("Rate Basis",        boq.get("rate_basis_label")) +
+        _meta("Terms of Delivery", boq.get("delivery_terms"))
+    )
+
+    to_lines   = [ln for ln in (boq.get("to") or "").strip().split("\n")]
+    to_display = ""
+    if to_lines and to_lines[0].strip():
+        rest = "\n".join(to_lines[1:]).strip()
+        to_display = f'<span class="dh-name">{P.esc(to_lines[0])}</span>'
+        if rest:
+            to_display += f"\n{P.esc(rest)}"
+
+    ship_parts = []
+    if not boq.get("ship_same"):
+        sname = boq.get("ship_acct_name") or boq.get("account_name") or ""
+        if sname:
+            ship_parts.append(sname)
+        if boq.get("ship_addr"):
+            ship_parts.append(boq["ship_addr"])
+        scity = ", ".join(x for x in [boq.get("ship_city", ""), boq.get("ship_state", "")] if x)
+        if scity or boq.get("ship_pin"):
+            ship_parts.append(f"{scity} - {boq.get('ship_pin','')}".strip(" -"))
+    ship_html = ""
+    if ship_parts:
+        ship_html = ('<div class="dh-ship"><span class="dh-lbl">Site / Ship To</span>'
+                     f'<div class="dh-body">{P.esc(chr(10).join(ship_parts))}</div></div>')
+
+    notes_html = ""
+    if (boq.get("notes") or "").strip():
+        notes_html = (f'<div class="tnc-section"><div class="tnc-title">Notes</div>'
+                      f'<div style="white-space:pre-wrap;">{P.esc(boq.get("notes"))}</div></div>')
+
+    comp_br   = boq.get("company_branch") or B.COMPANY_NAME
+    signatory = boq.get("auth_signatory") or B.COMPANY_SIGNATORY
+
+    template = f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(P.esc(boq.get('ref')) + " BOQ")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+
+<div class="screen-acts">
+  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
+    BOQ <span style="color:var(--brand);">{P.esc(boq.get('ref'))}</span>
+  </h1>
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
+    <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
+    <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
+    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print (landscape)</button>
+  </div>
+</div>
+
+{alert_html}
+{panel_html}
+
+<div class="doc-outer boq-outer">
+<div class="quotation-doc boq-doc">
+
+  <table class="page-frame">
+    <thead><tr><td>
+      <div class="lh">
+        <div>
+          <div class="lh-name">{B.name_html("lh-name-fire")}</div>
+          <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
+          {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
+        </div>
+        <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
+      </div>
+      <div class="lh-rule"></div>
+      <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
+      <div class="lh-contact">
+        Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
+        Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
+        {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
+      </div>
+    </td></tr></thead>
+
+    <tfoot><tr><td>
+      <div class="lh-foot">
+        {B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; BOQ {P.esc(boq.get('ref'))}
+        &middot; basic value, taxes extra
+      </div>
+    </td></tr></tfoot>
+
+    <tbody><tr><td>
+
+      <div class="doc-box">
+        <div class="doc-title">BILL OF QUANTITIES</div>
+        <div class="doc-sub-boq">
+          Priced schedule of work &middot; billed progressively through Running Account bills
+        </div>
+
+        <div class="doc-header">
+          <div class="dh-cell">
+            <span class="dh-lbl">To</span>
+            <div class="dh-body">{to_display}</div>
+            {ship_html}
+          </div>
+          <div class="dh-cell">{meta_col_1}</div>
+          <div class="dh-cell">{meta_col_2}</div>
+        </div>
+      </div>
+
+      {sections_html}
+      {grand_html}
+      {notes_html}
+
+      <div class="sig-block">
+        <div>
+          <div class="sig-kv"><b>For</b><span>{P.esc(comp_br)}</span></div>
+        </div>
+        <div>
+          <div class="sig-for">For {P.esc(comp_br)}</div>
+          <div class="sig-name">{P.esc(signatory)}</div>
+        </div>
+      </div>
+      <div class="sig-note">
+        Quantities are provisional and billed as executed. Rates are firm for the
+        duration of the project unless varied in writing.
+      </div>
+
+    </td></tr></tbody>
+  </table>
+
+</div>
+</div>
+
+<footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
+</main></body></html>"""
+    return render_template_string(template)
+
+
+# =============================================================================
+# CREATE — the line editor
+# =============================================================================
+#
+# The editor is a browser-side model serialised into one hidden field on
+# submit, the same shape of thing as the quotation's `selections_json` and for
+# the same reason: the area quantity boxes on a line depend on which section
+# the line is in, so the field set is not fixed and parallel form-field lists
+# (purchase.py's simpler pattern) cannot express it.
+#
+# `_BOQ_JS` is a PLAIN string, not an f-string, so its braces are written once
+# — the DASH_STYLES precedent. It is interpolated into the page as a value, so
+# nothing in here needs doubling. Two sequences must still be avoided because
+# `render_template_string` runs Jinja over the result: `{{` and `{%`. Nested
+# object literals are written with a space (`{a: {b:1}}`) to keep it that way.
+# =============================================================================
+
+def _boq_catalog_json() -> str:
+    """
+    The catalogue, shaped for the spec picker.
+
+    Reads the Phase 4 fields (`spec_text`, `default_supply_rate`,
+    `default_install_rate`, `sac`) through `.get()` so this works today against
+    products that do not have them yet — and keeps working unchanged once they
+    exist. `base_price` is deliberately NOT read: that is what we sell a unit
+    of stock for, and it is not a BOQ supply rate.
+    """
+    ensure_demo_products()
+    return json.dumps({
+        pid: {
+            "name":   p.get("name") or "",
+            "unit":   p.get("unit") or "",
+            "spec":   p.get("spec_text") or p.get("description") or p.get("name") or "",
+            "hsn":    p.get("hsn") or "",
+            "sac":    p.get("sac") or "",
+            "s_rate": p.get("default_supply_rate") or "",
+            "i_rate": p.get("default_install_rate") or "",
+        }
+        for pid, p in STORE["products"].items()
+    })
+
+
+_BOQ_JS = """
+<script>
+/* ═══ THE BOQ EDITOR ════════════════════════════════════════════════════
+   MODEL is the single source of truth. Every input writes into it and the
+   affected block re-renders from it; nothing is ever read back out of the
+   DOM. On submit the whole thing is serialised into #boq_json.
+
+   Re-rendering the whole editor on every keystroke would lose the caret, so
+   only the changes that alter the SHAPE of a row (its section, or whether it
+   is a specification header) trigger a re-render. Plain value edits write
+   into MODEL and stop there. */
+
+var MODEL = BOQ_BOOT;
+var CATALOG = BOQ_CATALOG;
+var ADDR_BOOK = BOQ_ADDR;
+
+function el(id) { return document.getElementById(id); }
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function secByCode(code) {
+  for (var i = 0; i < MODEL.sections.length; i++) {
+    if (MODEL.sections[i].code === code) return MODEL.sections[i];
+  }
+  return null;
+}
+
+function num(v) { var n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? 0 : n; }
+
+/* ── Sections ─────────────────────────────────────────────────────────
+   Areas are typed as a comma-separated list because they are short labels
+   ("External", "L0", "T1") and a repeating-row editor for two of them is
+   more furniture than the job needs. */
+function renderSections() {
+  var h = '';
+  for (var i = 0; i < MODEL.sections.length; i++) {
+    var s = MODEL.sections[i];
+    h += '<div class="sec-row">'
+      +   '<div class="form-group"><label>Code</label>'
+      +     '<input type="text" value="' + esc(s.code) + '" placeholder="A"'
+      +      ' oninput="setSec(' + i + ',&quot;code&quot;,this.value)"/></div>'
+      +   '<div class="form-group"><label>Section Title</label>'
+      +     '<input type="text" value="' + esc(s.title) + '"'
+      +      ' placeholder="WET SPRINKLER SYSTEM, As per Technical Specifications Part-A"'
+      +      ' oninput="setSec(' + i + ',&quot;title&quot;,this.value)"/></div>'
+      +   '<div class="form-group"><label>Areas / Floors (comma separated)</label>'
+      +     '<input type="text" value="' + esc((s.areas || []).join(', ')) + '"'
+      +      ' placeholder="External, L0   &#8212; leave blank for none"'
+      +      ' onchange="setAreas(' + i + ',this.value)"/></div>'
+      +   '<button type="button" class="btn-del" onclick="delSec(' + i + ')">&#10007;</button>'
+      + '</div>';
+  }
+  el('sec-editor').innerHTML = h;
+}
+
+function setSec(i, key, val) {
+  var old = MODEL.sections[i].code;
+  MODEL.sections[i][key] = val.trim();
+  if (key === 'code') {
+    /* Re-point every line that was in the old section, so renaming a section
+       does not orphan the lines that live in it. */
+    for (var j = 0; j < MODEL.lines.length; j++) {
+      if (MODEL.lines[j].section === old) MODEL.lines[j].section = val.trim();
+    }
+    renderLines();
+  }
+}
+
+function setAreas(i, val) {
+  var parts = val.split(','), out = [], seen = {};
+  for (var k = 0; k < parts.length; k++) {
+    var a = parts[k].trim();
+    if (a && !seen[a]) { seen[a] = 1; out.push(a); }
+  }
+  MODEL.sections[i].areas = out;
+  renderLines();   /* the area boxes on every line in this section change */
+}
+
+function addSec() {
+  MODEL.sections.push({code: '', title: '', areas: []});
+  renderSections();
+}
+
+function delSec(i) {
+  MODEL.sections.splice(i, 1);
+  renderSections();
+  renderLines();
+}
+
+/* ── Lines ────────────────────────────────────────────────────────── */
+function blankLine() {
+  var first = MODEL.sections[0];
+  return {
+    item_no: '', parent_item_no: '', section: (first ? first.code : ''),
+    is_header: false, description: '', remark: '', unit: '',
+    area_qty: {}, total_qty: '',
+    supply_base_rate: '', supply_escalation_pct: '', supply_rate: '',
+    supply_hsn: '', supply_gst_rate: '',
+    install_base_rate: '', install_escalation_pct: '', install_rate: '',
+    install_sac: '', install_gst_rate: ''
+  };
+}
+
+function secOptions(cur) {
+  var h = '';
+  for (var i = 0; i < MODEL.sections.length; i++) {
+    var c = MODEL.sections[i].code;
+    h += '<option value="' + esc(c) + '"' + (c === cur ? ' selected' : '') + '>'
+      +  esc(c || '(unnamed)') + '</option>';
+  }
+  return h;
+}
+
+function catOptions() {
+  var h = '<option value="">&#8212; fill from catalogue &#8212;</option>';
+  for (var pid in CATALOG) {
+    h += '<option value="' + esc(pid) + '">' + esc(CATALOG[pid].name) + '</option>';
+  }
+  return h;
+}
+
+function fld(i, key, label, val, ph, cls) {
+  return '<div class="form-group ' + (cls || '') + '"><label>' + label + '</label>'
+    + '<input type="text" value="' + esc(val) + '" placeholder="' + esc(ph || '') + '"'
+    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"/></div>';
+}
+
+function renderLines() {
+  var h = '';
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    var L = MODEL.lines[i];
+    var sec = secByCode(L.section);
+    var areas = (sec && sec.areas) || [];
+
+    h += '<div class="line-card' + (L.is_header ? ' is-spec' : '') + '">'
+      +   '<div class="lc-head">'
+      +     '<span class="lc-no">Line ' + (i + 1)
+      +       (L.item_no ? ' &middot; ' + esc(L.item_no) : '') + '</span>'
+      +     '<button type="button" class="btn-del" onclick="delLine(' + i + ')">Remove</button>'
+      +   '</div>'
+      +   '<div class="fg4">'
+      +     '<div class="form-group"><label>Section</label>'
+      +       '<select onchange="setSection(' + i + ',this.value)">'
+      +         secOptions(L.section) + '</select></div>'
+      +     fld(i, 'item_no', 'Item No.', L.item_no, '4.1')
+      +     fld(i, 'parent_item_no', 'Under Item', L.parent_item_no, '4')
+      +     '<div class="form-group"><label>Row Type</label><div class="check-row">'
+      +       '<input type="checkbox" id="hdr' + i + '"' + (L.is_header ? ' checked' : '')
+      +        ' onchange="setHeader(' + i + ',this.checked)"/>'
+      +       '<label for="hdr' + i + '">Specification header</label></div></div>'
+      +   '</div>';
+
+    h += '<div class="fg2" style="margin-top:.7rem;">'
+      +   '<div class="form-group span-all"><label>Description / Specification</label>'
+      +     '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
+      +      ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)">'
+      +      esc(L.description) + '</textarea></div>'
+      + '</div>';
+
+    h += '<div class="fg3" style="margin-top:.7rem;">'
+      +   '<div class="form-group"><label>Fill from catalogue</label>'
+      +     '<select onchange="fillFromProduct(' + i + ',this)">' + catOptions() + '</select></div>'
+      +   fld(i, 'remark', 'Remark (internal &#8212; does not print)', L.remark,
+              '2000/nos extra for tamper switch')
+      +   fld(i, 'unit', 'Unit', L.unit, 'Mtrs')
+      + '</div>';
+
+    if (!L.is_header) {
+      /* Quantities. With an area breakdown the total IS the breakdown, so it
+         is shown derived rather than typed — two independently typed figures
+         that must agree are two figures that can disagree. */
+      h += '<div class="lc-track">Quantity</div><div class="lc-areas">';
+      if (areas.length) {
+        for (var a = 0; a < areas.length; a++) {
+          var an = areas[a];
+          h += '<div class="form-group lc-area"><label>' + esc(an) + '</label>'
+            +  '<input type="text" value="'
+            +   esc(L.area_qty[an] == null ? '' : L.area_qty[an]) + '"'
+            +  ' oninput="setArea(' + i + ',' + JSON.stringify(an).replace(/"/g, '&quot;')
+            +  ',this.value)"/></div>';
+        }
+        h += '<div class="form-group lc-area"><label>Total Qty</label>'
+          +  '<div class="readonly-field" id="tq' + i + '">'
+          +   esc(totalOf(L, areas)) + '</div></div>';
+      } else {
+        h += '<div class="form-group lc-area"><label>Total Qty</label>'
+          +  '<input type="text" value="' + esc(L.total_qty) + '"'
+          +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"/></div>'
+          +  '<span class="lc-none">This section declares no areas '
+          +  '&#8212; the total stands alone.</span>';
+      }
+      h += '</div>';
+
+      h += '<div class="lc-track">Supply</div><div class="fg5">'
+        +   fld(i, 'supply_base_rate', 'Base Rate', L.supply_base_rate, '1760  or  -')
+        +   fld(i, 'supply_escalation_pct', 'Escalation %', L.supply_escalation_pct, '15')
+        +   '<div class="form-group"><label>Unit Rate</label>'
+        +     '<input type="text" value="' + esc(L.supply_rate) + '" placeholder="2024"'
+        +      ' oninput="setLine(' + i + ',&quot;supply_rate&quot;,this.value)"/>'
+        +     '<div class="derived" id="sd' + i + '"></div></div>'
+        +   fld(i, 'supply_hsn', 'HSN', L.supply_hsn, '73090090')
+        +   fld(i, 'supply_gst_rate', 'GST %', L.supply_gst_rate, '18')
+        + '</div>';
+
+      h += '<div class="lc-track">Installation</div><div class="fg5">'
+        +   fld(i, 'install_base_rate', 'Base Rate', L.install_base_rate, '1200  or  -')
+        +   fld(i, 'install_escalation_pct', 'Escalation %', L.install_escalation_pct, '0')
+        +   '<div class="form-group"><label>Unit Rate</label>'
+        +     '<input type="text" value="' + esc(L.install_rate) + '" placeholder="1200"'
+        +      ' oninput="setLine(' + i + ',&quot;install_rate&quot;,this.value)"/>'
+        +     '<div class="derived" id="id' + i + '"></div></div>'
+        +   fld(i, 'install_sac', 'SAC', L.install_sac, '995461')
+        +   fld(i, 'install_gst_rate', 'GST %', L.install_gst_rate, '18')
+        + '</div>';
+    }
+
+    h += '</div>';
+  }
+  el('line-editor').innerHTML = h;
+  for (var k = 0; k < MODEL.lines.length; k++) hint(k);
+}
+
+function totalOf(L, areas) {
+  var t = 0, any = false;
+  for (var a = 0; a < areas.length; a++) {
+    var v = L.area_qty[areas[a]];
+    if (v !== '' && v != null) { t += num(v); any = true; }
+  }
+  return any ? String(Math.round(t * 1000) / 1000) : '';
+}
+
+/* The escalated rate is a SUGGESTION, never imposed — purchase.py's fillRate()
+   makes the same call about a catalogue price. The client's own sheets carry a
+   dozen lines where the agreed rate deliberately differs from
+   base x (1 + escalation), so overwriting the box would destroy real data. The
+   hint says so rather than correcting it. */
+function hint(i) {
+  var L = MODEL.lines[i];
+  if (!L || L.is_header) return;
+  var pairs = [['sd', 'supply_base_rate', 'supply_escalation_pct', 'supply_rate'],
+               ['id', 'install_base_rate', 'install_escalation_pct', 'install_rate']];
+  for (var p = 0; p < pairs.length; p++) {
+    var box = el(pairs[p][0] + i);
+    if (!box) continue;
+    var base = L[pairs[p][1]], pct = L[pairs[p][2]], rate = L[pairs[p][3]];
+    var txt = '';
+    if (base !== '' && base != null && String(base).trim() !== '-') {
+      var d = Math.round(num(base) * (1 + num(pct) / 100) * 100) / 100;
+      if (rate === '' || rate == null) {
+        txt = 'suggests <b>' + d + '</b> &#8212; <a href="#" onclick="useRate('
+            + i + ',&quot;' + pairs[p][3] + '&quot;,' + d + ');return false;">use</a>';
+      } else if (Math.abs(num(rate) - d) > 0.005) {
+        txt = 'escalation implies ' + d + ' &#8212; rate differs, kept as entered';
+      }
+    }
+    box.innerHTML = txt;
+  }
+}
+
+function useRate(i, key, v) {
+  MODEL.lines[i][key] = String(v);
+  renderLines();
+}
+
+function setLine(i, key, val) {
+  MODEL.lines[i][key] = val;
+  if (key === 'supply_base_rate' || key === 'supply_escalation_pct'
+   || key === 'supply_rate' || key === 'install_base_rate'
+   || key === 'install_escalation_pct' || key === 'install_rate') {
+    hint(i);
+  }
+}
+
+function setArea(i, area, val) {
+  MODEL.lines[i].area_qty[area] = val;
+  var sec = secByCode(MODEL.lines[i].section);
+  var box = el('tq' + i);
+  if (box && sec) box.textContent = totalOf(MODEL.lines[i], sec.areas || []);
+}
+
+function setSection(i, code) {
+  MODEL.lines[i].section = code;
+  /* An area quantity keyed to a name the new section does not declare would be
+     dropped silently on save, so it is dropped here, where the user can see
+     it happen. */
+  var sec = secByCode(code), keep = {};
+  var areas = (sec && sec.areas) || [];
+  for (var a = 0; a < areas.length; a++) {
+    var n = areas[a];
+    if (MODEL.lines[i].area_qty[n] != null) keep[n] = MODEL.lines[i].area_qty[n];
+  }
+  MODEL.lines[i].area_qty = keep;
+  renderLines();
+}
+
+function setHeader(i, on) {
+  MODEL.lines[i].is_header = on;
+  renderLines();
+}
+
+/* Catalogue values fill only EMPTY boxes. A rate in the catalogue is what we
+   usually charge, not what was agreed on this project — purchase.py's
+   fillRate() makes exactly the same call for a vendor's price. */
+function fillFromProduct(i, sel) {
+  var p = CATALOG[sel.value];
+  if (!p) return;
+  var L = MODEL.lines[i];
+  if (!L.description) L.description = p.spec;
+  if (!L.unit) L.unit = p.unit;
+  if (!L.supply_hsn) L.supply_hsn = p.hsn;
+  if (!L.install_sac) L.install_sac = p.sac;
+  if (!L.supply_rate && p.s_rate) L.supply_rate = String(p.s_rate);
+  if (!L.install_rate && p.i_rate) L.install_rate = String(p.i_rate);
+  sel.value = '';
+  renderLines();
+}
+
+function addLine() {
+  MODEL.lines.push(blankLine());
+  renderLines();
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function delLine(i) {
+  MODEL.lines.splice(i, 1);
+  renderLines();
+}
+
+function saveJSON() {
+  el('boq_json').value = JSON.stringify(MODEL);
+  return true;
+}
+
+function toggleShipSame(same) {
+  var box = el('ship-fields');
+  if (box) box.style.display = same ? 'none' : '';
+}
+
+/* ── Address book picker — same behaviour as the quotation form ────── */
+function setSelectValue(e, value) {
+  if (!e || !value) return;
+  var found = Array.prototype.some.call(e.options, function (o) { return o.value === value; });
+  if (!found) {
+    var opt = document.createElement('option');
+    opt.value = value; opt.textContent = value;
+    e.appendChild(opt);
+  }
+  e.value = value;
+}
+
+function applyAddr(kind, sel) {
+  var a = ADDR_BOOK[sel.value];
+  if (!a) return;
+  var set = function (id, v) { var e = el(id); if (e && v) e.value = v; };
+  var street = [a.line1, a.line2, a.landmark].filter(Boolean).join('\\n');
+  var addrEl = el(kind + '_addr');
+  if (addrEl) addrEl.value = street;
+  set(kind + '_city', a.city);
+  set(kind + '_pin', a.pincode);
+  set(kind + '_phone', a.phone);
+  set(kind + '_gstin', a.gstin);
+  setSelectValue(el(kind + '_state'), a.state);
+  if (kind === 'bill') {
+    set('account_name', a.company);
+    set('contact_person', a.contact_name);
+  } else {
+    set('ship_acct_name', a.company);
+    var same = el('ship_same_chk');
+    if (same && same.checked) { same.checked = false; toggleShipSame(false); }
+  }
+}
+
+renderSections();
+renderLines();
+</script>
+"""
+
+
+@boq_bp.route("/create", methods=["GET", "POST"])
+def create_boq():
+    ensure_demo_products()
+
+    error = ""
+    sections: list = []
+    lines: list = []
+
+    if request.method == "POST":
+        form = request.form
+
+        # Validation, in order — nothing is written to STORE until every one
+        # of these passes, so a rejected POST leaves no half-built record.
+        raw_sections, raw_lines, error = _parse_payload(form.get("boq_json", ""))
+
+        if not error and not (form.get("date") or "").strip():
+            error = "The BOQ needs a date."
+        if not error and not (form.get("project_name") or "").strip():
+            error = "The BOQ needs a project name."
+        if not error and not (form.get("account_name") or "").strip():
+            error = "The BOQ needs a customer account name."
+
+        if not error:
+            sections, error = _clean_sections(raw_sections)
+        if not error:
+            lines, error = _clean_lines(raw_lines, sections)
+
+        if not error:
+            datestr = (form.get("date") or "").strip()
+            bid     = str(uuid.uuid4())
+
+            boq = {
+                "id":   bid,
+                "ref":  _next_ref(datestr),
+                "fy":   P.fy_of(datestr),
+                "date": datestr,
+                "rev_no": int(_num(form.get("rev_no"), 0)),
+
+                "project_name":  (form.get("project_name") or "").strip(),
+                "site_location": (form.get("site_location") or "").strip(),
+
+                "account_name":   (form.get("account_name") or "").strip(),
+                "contact_person": (form.get("contact_person") or "").strip(),
+                "to":             _to_block(form),
+                "bill_gstin":     (form.get("bill_gstin") or "").strip(),
+                "ship_same":      bool(form.get("ship_same")),
+                "ship_acct_name": (form.get("ship_acct_name") or "").strip(),
+                "ship_addr":      (form.get("ship_addr") or "").strip(),
+                "ship_city":      (form.get("ship_city") or "").strip(),
+                "ship_state":     (form.get("ship_state") or "").strip(),
+                "ship_pin":       (form.get("ship_pin") or "").strip(),
+
+                "rate_basis_label": (form.get("rate_basis_label") or "").strip() or DEFAULT_RATE_BASIS,
+                "sections":   sections,
+                "line_items": lines,
+
+                # Stored per §4.3 for the register and the dashboard. The
+                # document recomputes them from the lines every render, so a
+                # stored figure can never contradict the sheet it sits on.
+                "supply_subtotal":  0.0,
+                "install_subtotal": 0.0,
+                "subtotal":         0.0,
+
+                "payment_terms":   (form.get("payment_terms") or "").strip(),
+                "delivery_terms":  (form.get("delivery_terms") or "").strip(),
+                "notes":           (form.get("notes") or "").strip(),
+                "company_branch":  (form.get("company_branch") or "").strip(),
+                "auth_signatory":  (form.get("auth_signatory") or "").strip(),
+            }
+            sup, ins, tot = boq_totals(boq)
+            boq["supply_subtotal"]  = sup
+            boq["install_subtotal"] = ins
+            boq["subtotal"]         = tot
+
+            STORE["boqs"][bid] = boq
+            return redirect(url_for("boq.view_boq", id=bid,
+                                    msg=f"BOQ {boq['ref']} created.", type="success"))
+
+        # Rejected: re-render with what the user actually typed, exactly as the
+        # quotation form does. The editor boots from the posted JSON, so no
+        # work is lost.
+        sections = raw_sections if isinstance(raw_sections, list) else []
+        lines    = raw_lines if isinstance(raw_lines, list) else []
+
+    def _v(key: str, default: str = "") -> str:
+        if request.method == "POST":
+            return P.esc(request.form.get(key, ""))
+        return P.esc(default)
+
+    alert_html = ""
+    if error:
+        alert_html = f'<div class="alert alert-error">&#10007; {error}</div>'
+
+    # A fresh form opens with the shape of a real BOQ already in place — one
+    # section and one line — because an empty editor gives no clue what a
+    # section or an area even is here.
+    boot = {"sections": sections, "lines": lines}
+    if not sections and not lines:
+        boot = {"sections": [{"code": "A", "title": "", "areas": []}], "lines": []}
+
+    js = (_BOQ_JS
+          .replace("BOQ_BOOT", json.dumps(boot))
+          .replace("BOQ_CATALOG", _boq_catalog_json())
+          .replace("BOQ_ADDR", json.dumps(picker_payload())))
+
+    today = _date.today().isoformat()
+
+    template = f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Create BOQ")}</title>{B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  {alert_html}
+  <div class="page-top">
+    <h1>Create <span>BOQ</span></h1>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
+    </div>
+  </div>
+
+  <form method="POST" onsubmit="return saveJSON()">
+    <input type="hidden" id="boq_json" name="boq_json"/>
+
+    <div class="form-section">
+      <div class="section-title">&#128203; BOQ Details</div>
+      <div class="fg4">
+        <div class="form-group">
+          <label for="date">Date</label>
+          <input type="date" id="date" name="date" value="{_v('date', today)}" required/>
+        </div>
+        <div class="form-group">
+          <label for="rev_no">Revision No.</label>
+          <input type="text" id="rev_no" name="rev_no" value="{_v('rev_no', '0')}" placeholder="0"/>
+        </div>
+        <div class="form-group span2">
+          <label for="project_name">Project Name</label>
+          <input type="text" id="project_name" name="project_name"
+                 value="{_v('project_name')}" placeholder="Sify Bangalore" required/>
+        </div>
+        <div class="form-group span2">
+          <label for="site_location">Site Location</label>
+          <input type="text" id="site_location" name="site_location"
+                 value="{_v('site_location')}" placeholder="Bangalore, Karnataka"/>
+        </div>
+        <div class="form-group span2">
+          <label for="rate_basis_label">Rate Basis Label</label>
+          <input type="text" id="rate_basis_label" name="rate_basis_label"
+                 value="{_v('rate_basis_label', DEFAULT_RATE_BASIS)}" placeholder="Mohali Rates"/>
+        </div>
+      </div>
+      <p style="margin-top:.7rem;font-size:.78rem;color:var(--muted);">
+        The rate basis is what the base-rate column is headed on the printed sheet.
+        These schedules are commonly priced off a rate contract agreed on another
+        project and then escalated.
+      </p>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">&#127970; Customer</div>
+      <div class="addr-pick">
+        <select id="bill_pick" onchange="applyAddr('bill', this)">{picker_options("— fill from address book —")}</select>
+        <a href="{url_for('address.list_addresses')}" target="_blank" rel="noopener" class="addr-pick-link">
+          &#128214; manage address book
+        </a>
+      </div>
+      <div class="fg2">
+        <div class="form-group">
+          <label for="account_name">Account Name</label>
+          <input type="text" id="account_name" name="account_name"
+                 value="{_v('account_name')}" placeholder="Prudent Teqtis Pvt Ltd" required/>
+        </div>
+        <div class="form-group">
+          <label for="contact_person">Contact Person</label>
+          <input type="text" id="contact_person" name="contact_person"
+                 value="{_v('contact_person')}" placeholder="Mr. Name, Designation"/>
+        </div>
+        <div class="form-group span-all">
+          <label for="bill_addr">Address</label>
+          <textarea id="bill_addr" name="bill_addr"
+                    placeholder="Plot/Door No., Street, Area">{_v('bill_addr')}</textarea>
+        </div>
+      </div>
+      <div class="fg4" style="margin-top:.7rem;">
+        <div class="form-group">
+          <label for="bill_state">State</label>
+          {_sel_opts("bill_state", list(INDIAN_STATES), "Maharashtra", request.form.get("bill_state") if request.method == "POST" else None)}
+        </div>
+        <div class="form-group">
+          <label for="bill_city">City</label>
+          <input type="text" id="bill_city" name="bill_city" value="{_v('bill_city')}" placeholder="Mumbai"/>
+        </div>
+        <div class="form-group">
+          <label for="bill_pin">Pincode</label>
+          <input type="text" id="bill_pin" name="bill_pin" value="{_v('bill_pin')}" placeholder="400001"/>
+        </div>
+        <div class="form-group">
+          <label for="bill_gstin">GSTIN</label>
+          <input type="text" id="bill_gstin" name="bill_gstin" value="{_v('bill_gstin')}"
+                 placeholder="27AABCX1234A1ZX"
+                 style="font-family:'SFMono-Regular',Consolas,monospace;letter-spacing:.04em;"/>
+        </div>
+      </div>
+      <div class="check-row" style="margin-top:.8rem;">
+        <input type="checkbox" name="ship_same" value="1" id="ship_same_chk"
+               onchange="toggleShipSame(this.checked)"/>
+        <label for="ship_same_chk">Site address same as billing</label>
+      </div>
+      <div id="ship-fields">
+        <div class="addr-pick" style="margin-top:.7rem;">
+          <select id="ship_pick" onchange="applyAddr('ship', this)">{picker_options("— fill site address from book —")}</select>
+        </div>
+        <div class="fg4">
+          <div class="form-group span2">
+            <label for="ship_acct_name">Site / Consignee</label>
+            <input type="text" id="ship_acct_name" name="ship_acct_name" value="{_v('ship_acct_name')}"/>
+          </div>
+          <div class="form-group span2">
+            <label for="ship_addr">Site Address</label>
+            <input type="text" id="ship_addr" name="ship_addr" value="{_v('ship_addr')}"/>
+          </div>
+          <div class="form-group">
+            <label for="ship_state">State</label>
+            {_sel_opts("ship_state", list(INDIAN_STATES), "Maharashtra", request.form.get("ship_state") if request.method == "POST" else None)}
+          </div>
+          <div class="form-group">
+            <label for="ship_city">City</label>
+            <input type="text" id="ship_city" name="ship_city" value="{_v('ship_city')}"/>
+          </div>
+          <div class="form-group">
+            <label for="ship_pin">Pincode</label>
+            <input type="text" id="ship_pin" name="ship_pin" value="{_v('ship_pin')}"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">&#128209; Sections &amp; Areas</div>
+      <p style="margin-bottom:1rem;font-size:.82rem;color:var(--muted);">
+        A section is a system (A &mdash; sprinklers, B &mdash; hydrants, C &mdash; pumps).
+        <b>Areas belong to the section, not to the BOQ</b> &mdash; one section may break its
+        quantities down by floor while another does not break them down at all.
+        Leave the area list blank for a section that carries only a total quantity.
+      </p>
+      <div class="sec-editor" id="sec-editor"></div>
+      <button type="button" class="btn-row" style="margin-top:.8rem;" onclick="addSec()">
+        + Add section
+      </button>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">&#128221; Line Items</div>
+      <p style="margin-bottom:1rem;font-size:.82rem;color:var(--muted);">
+        Tick <b>Specification header</b> for a row that carries the specification
+        paragraph and no quantity; put its item number in <b>Under Item</b> on the
+        rows beneath it. A base rate of <b>-</b> means the rate was agreed directly
+        rather than escalated.
+      </p>
+      <div id="line-editor"></div>
+      <button type="button" class="btn-row" style="margin-top:.4rem;" onclick="addLine()">
+        + Add line
+      </button>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">&#128196; Terms</div>
+      <div class="fg2">
+        <div class="form-group">
+          <label for="payment_terms">Payment Terms</label>
+          {_sel_opts("payment_terms", _PAY_TERMS, _PAY_TERMS[0], request.form.get("payment_terms") if request.method == "POST" else None)}
+        </div>
+        <div class="form-group">
+          <label for="delivery_terms">Terms of Delivery</label>
+          {_sel_opts("delivery_terms", _DEL_TERMS, "FOR Site", request.form.get("delivery_terms") if request.method == "POST" else None)}
+        </div>
+        <div class="form-group span-all">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes"
+                    placeholder="Anything that belongs on the schedule itself">{_v('notes')}</textarea>
+        </div>
+        <div class="form-group">
+          <label for="company_branch">Company Branch</label>
+          <input type="text" id="company_branch" name="company_branch" value="{_v('company_branch')}"/>
+        </div>
+        <div class="form-group">
+          <label for="auth_signatory">Authorised Signatory</label>
+          <input type="text" id="auth_signatory" name="auth_signatory" value="{_v('auth_signatory')}"
+                 placeholder="{B.COMPANY_SIGNATORY}"/>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:.8rem;justify-content:flex-end;margin-bottom:2rem;">
+      <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn">Create BOQ</button>
+    </div>
+  </form>
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
+</main>
+{js}
+</body></html>"""
+    return render_template_string(template)
