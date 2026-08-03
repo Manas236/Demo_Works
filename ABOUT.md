@@ -107,7 +107,10 @@ Consequences you must respect when editing:
 | [proforma.py](proforma.py) | 1117 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
-| [boq.py](boq.py) | 2000 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
+| [spec.py](spec.py) | 1075 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
+| [boq.py](boq.py) | 2341 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
+| [demo_data.py](demo_data.py) | 2658 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
+| `tools/gen_demo_data.py` | 300 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | [settings.py](settings.py) | 285 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
 | [pipeline.py](pipeline.py) | 542 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 951 | Address book + the pickers that quotations and purchase orders use. |
@@ -126,13 +129,32 @@ app.py
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address
- ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, product
+ ├─ spec.py ───────────────────┤  imports dashboard, branding, store, pipeline, demo_data
+ ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, spec, demo_data
  ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  └─ extractor.py ──────────────┘  imports branding only
 
-pipeline.py imports nothing from the app  ← keep it that way
-branding.py imports nothing from the app  ← keep it that way
+pipeline.py  imports nothing from the app  ← keep it that way
+branding.py  imports nothing from the app  ← keep it that way
+demo_data.py imports nothing AT ALL        ← keep it that way
 ```
+
+**`demo_data.py` is the third bottom-of-graph module.** It holds the 56 seeded
+specs and the 97-line demo BOQ and imports nothing — not `store`, not
+`branding`, not even `pipeline` — which is exactly what lets `spec.py` and
+`boq.py` both read it with no risk of a cycle. It is separate from those two
+because of scale, not taste: inline, it would leave `spec.py` more data than
+code and push `boq.py` past 2700 lines. `product.py`'s twelve inline seed rows
+are a different order of thing and are fine where they are.
+
+It is **generated, not written**: `python tools/gen_demo_data.py` reads
+`sify_boq.xlsx` and emits it, byte-for-byte reproducibly. Clause text, rates,
+quantities and variant sets are read mechanically; only each spec's short
+title, code and category are a human judgement, and those live in
+`tools/curation.py` keyed by the row that defines the clause. **Regenerate
+rather than hand-editing** — a hand edit is lost the next time anything else
+changes. `tools/` is not imported by the app and `sify_boq.xlsx` is only needed
+to re-run it, never at runtime.
 
 `quotation.py → pipeline.py`, **never** the reverse.
 
@@ -210,13 +232,20 @@ total, and no field on a quotation can carry that.
 boq.py ──► quotation.py     the A4 sheet + formatters, NOT the sales chain
 boq.py ──► address.py       the customer picker
 boq.py ──► pipeline.py      esc / parse_money / fy_of / fy_ref
-boq.py ──► product.py       the spec picker
+boq.py ──► spec.py          the specification library — the line picker
+boq.py ──► demo_data.py     seed data only
+
+spec.py ──► dashboard, branding, store, pipeline, demo_data
 ```
 
 `boq.py` must **never** import `ra.py`, `proforma.py`, `invoice.py` or
 `purchase.py`. The BOQ view page links out to RA bills with `url_for` and reads
 `STORE["ra_bills"]` directly — the same one-way trick, now used four times.
 A BOQ has no proforma, and it does not link to a purchase order.
+
+**`boq.py` must not import `product.py` either**, and `spec.py` must never
+import `boq.py`. The BOQ picker reads the *spec library*: `product.base_price`
+is what we sell a unit of stock for and is not a BOQ supply rate.
 
 **`pipeline.py` is where a helper goes when both pipelines need it.** It already
 held `esc` and `parse_money`; `fy_of` and `fy_ref` joined them when the PO
@@ -244,6 +273,7 @@ STORE = {
     "proformas":    {},     # uuid -> proforma invoice
     "invoices":     {},     # uuid -> GST tax invoice
     "purchases":    {},     # uuid -> purchase order   (BUY side)
+    "specs":        {},     # uuid -> specification library entry (clause + variants)
     "boqs":         {},     # uuid -> bill of quantities (head of the BOQ -> RA chain)
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
@@ -466,6 +496,48 @@ Four things that differ from the sell side and are easy to get wrong:
 4. **`quotation_id` may be empty and that is normal** — a stock purchase. Any
    code walking purchases must not assume a job.
 
+### Specification (the library a BOQ is written from)
+
+```python
+{"id": uuid, "code": "PIPE-MS-C-1239-AG",
+ "title": "MS heavy duty 'C' class pipe, IS 1239 / 3589 — above ground",
+ "spec_text": str,          # the full clause; becomes the BOQ line description
+ "category": "Piping",      # Piping|Valves|Sprinklers|Hydrant|Pumps|Panels|Civil|Other
+ "supply_hsn": "73063090", "install_sac": "995462",
+ "supply_gst_rate": 18.0,  "install_gst_rate": 18.0,
+ "variants": [
+   {"label": "150 mm dia", "dimension": "150", "dim_unit": "mm",
+    "unit": "Mtrs",
+    "default_supply_base_rate": 1760.0,
+    "default_install_base_rate": 1200.0},
+   ...]}
+```
+
+**This is not `product.py` and does not replace it.** `product.py` serves the
+quotation → PI → tax invoice chain, which is live business. An entry there is a
+*thing we sell* at one `base_price` with a BOM; an entry here is a *clause of
+work* with a supply rate and an installation rate.
+
+Five properties this shape exists to guarantee:
+
+1. **`variants` is always a list and never null.** An unsized item — a flow
+   switch, a liaisoning charge — carries **exactly one** variant with an empty
+   label and no dimension, so every consumer has one code path instead of two.
+   Enforced at save in `_clean_variants()`, not left to the caller.
+2. **The variant model is the point.** BOQ item 24 is one paragraph of
+   specification and 24.a–24.i are that clause at nine sizes, each with its own
+   rate and unit. `product.children` is a bill of materials and cannot express
+   that.
+3. **The rates are defaults and only ever *suggested*.** They fill an empty box
+   on the BOQ form and never overwrite a typed one — `purchase.fillRate()`'s
+   precedent. The BOQ stores what was entered.
+4. **Escalation percentages deliberately do not live here.** An escalation
+   belongs to a *project*; on the library it would make one job's negotiation
+   look like a property of the material.
+5. **`spec_text` is COPIED onto a BOQ line, never referenced**, which is why a
+   line item carries no `spec_id` — and why `delete_spec()` needs no dependency
+   guard. See §5's `/spec` section.
+
 ### Bill of Quantities
 
 Written in one literal in `boq.create_boq()`. **Entered from scratch**, like a
@@ -608,10 +680,10 @@ what is stuck, and what moved" before it offers a link anywhere. Top to bottom:
 5. **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
 6. **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
    the register exactly.
-7. **Module strip** — the old card launcher (8 cards: catalogue, quotations,
-   proforma invoices, tax invoices, bills of quantities, purchase orders,
-   address book, market news), now at the foot, carrying live counts instead of
-   prose. The strip is
+7. **Module strip** — the old card launcher (9 cards: catalogue, quotations,
+   proforma invoices, tax invoices, spec library, bills of quantities, purchase
+   orders, address book, market news), now at the foot, carrying live counts
+   instead of prose. The strip is
    `auto-fit`, so adding a card needs no layout change. Settings is reached
    from the nav, not from here — it is configuration, not a module you work in.
 
@@ -1319,6 +1391,52 @@ is the key the vendor quotes on their invoice and the key we match it against.
 
 ---
 
+### `/spec` — Specification Library · [spec.py](spec.py)
+
+| Route | View |
+|---|---|
+| `GET /spec/` | `list_specs` — register, filtered by category |
+| `GET /spec/view/<id>` | `view_spec` — clause + variant table |
+| `GET,POST /spec/add` | `add_spec` |
+| `GET,POST /spec/edit/<id>` | `edit_spec` |
+| `GET /spec/delete/<id>` | `delete_spec` |
+
+**Read the Specification entry in §3 before editing this file**, and do not
+confuse it with `product.py` — the two describe different things and both are
+live.
+
+**Edit exists from day one.** §7.2 calls `product.py`'s missing edit route the
+highest-value gap in the repo; a library of 56 clauses, several of them 1300
+characters, cannot be maintained by delete-and-re-add. `add` and `edit` share
+`_render_form()` and `_validate()` so they cannot drift, and `_validate()`
+**always returns data** — a rejected form re-renders with the user's clause
+intact. That contract comes from `address._validate()`, the one module in this
+repo that already did edit properly.
+
+**Delete has no dependency guard, deliberately.** `product.can_delete_product()`
+blocks removal of anything used as a child in an assembly, because a BOM holds a
+live `product_id`. Nothing equivalent exists here: a BOQ line carries **no
+`spec_id`**, because `spec_text`, the rates, the unit and the tax codes are all
+*copied* onto the line when it is written. A spec therefore has no dependents by
+construction and deleting one cannot reach a BOQ, issued or draft. The
+trade-off, stated plainly: there is no traceability from a BOQ line back to the
+library entry it came from. Adding one would mean a field on a contracted shape
+that becomes a lie the moment the line is edited away from the spec.
+
+**The seeded rates are one project's figures, not a price list.** 56 clauses
+seed from `demo_data.SPECS` via `ensure_demo_specs()`, generated from the
+client's Sify Bangalore workbook. `REFERENCE_NOTE` says so on the register, the
+view page and both forms. There is deliberately **no per-row provenance
+field** — library rates are defaults that get overridden per project anyway, so
+it has not earned its place. It becomes a real question when the client runs
+several projects on different rate bases.
+
+⚠ **The HSN and SAC codes are placeholders**, assigned by category. The source
+workbook carries none. Same caveat as `product._seed()`'s twelve rows, and it
+matters more here because a BOQ line carries two of them.
+
+---
+
 ### `/boq` — Bills of Quantities · [boq.py](boq.py)
 
 | Route | View |
@@ -1364,6 +1482,48 @@ sections have unique codes → every line's section exists → item number prese
 → description present → quantities and rates parse and are non-negative →
 HSN/SAC shape valid when filled. A rejected POST re-renders from the posted
 JSON, so nothing typed is lost and nothing is written to STORE.
+
+#### The spec picker, and inserting a whole size family
+
+The per-line picker reads `/spec`, **not the product catalogue** —
+`product.base_price` is what we sell a unit of stock for and is not a BOQ
+supply rate. Choosing a **spec** fills the description, HSN, SAC and both GST
+rates; choosing a **variant** fills the unit and *suggests* both base rates.
+The unit comes from the variant rather than the spec because that is where it
+lives — for an unsized spec, where no size remains to be chosen, it arrives
+with the spec.
+
+Every one of those fills an **empty box only**. A typed rate, unit or
+description is never overwritten; `hint()` says "escalation implies X — rate
+differs, kept as entered" instead of correcting it.
+
+**"Insert header & variants"** expands a sized spec into the shape the client's
+sheet is actually written in — one header row carrying the clause, then one
+child per variant, numbered `24`, `24.a`, `24.b`… taking the next whole number
+free in that section. An unsized spec inserts a single plain line. Without it,
+item 24 is ten rows of typing.
+
+Those fill rules are the one piece of behaviour in this app that only exists in
+JavaScript, so [tests/test_picker_js.py](tests/test_picker_js.py) extracts the
+real functions out of `_BOQ_JS` and runs them under Node against the same
+payload the page gets. It skips when Node is absent.
+
+#### The demo BOQ
+
+`ensure_demo_boq()` seeds **one complete Sify Bangalore schedule** — three
+sections, 97 lines, `External`+`L0` / `T1` / no areas — built from the seeded
+specs by code, along the same path the picker takes. It exists so the system can
+be shown working without anybody typing 120 lines first.
+
+Both seed flags (`_spec_seeded`, `_boq_seeded`) are **not persisted**, so
+dropping the database and restarting refills them; both records carry fixed
+UUIDs, so re-running never duplicates and never overwrites an edit.
+
+The line rates come from the seed table, **not** re-derived from the library
+defaults: twelve lines in this schedule deliberately differ from
+`base × (1 + escalation)` for a documented commercial reason (a tamper switch
+at ₹2000/nos, a larger diameter at the Bangalore site), and re-deriving them
+would erase those decisions and break the subtotals.
 
 #### The document (`/boq/view/<id>`)
 
@@ -1632,6 +1792,12 @@ Real, verified, and safe to pick up:
    blocked at the tax invoice (a user could not clear the block), and the reason
    `_seed()` has to backfill. An edit route is the highest-value gap on this
    list.
+   ⬆ **Still open, and now also duplicated.** `spec.py` ships an edit route and
+   the `_render_form` / always-return-data pattern that `product.py` wants; port
+   it across when that file can next be touched. `spec._valid_tax_code()` is a
+   deliberate copy of `product._valid_hsn()` for the same reason — the shared
+   home is `pipeline.py`, and moving it means editing `product.py`. Fold the two
+   together in the same pass.
 3. **No quotation edit / delete / amend flow**, though `amend_no` is stored.
    Likewise **no cancel/void route for a proforma invoice** — an issued PI can
    only be superseded by raising another. A void flow (a `cancelled` flag plus

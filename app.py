@@ -16,6 +16,10 @@ from proforma import proforma_bp  # Phase 3: proforma invoice (derived from a qu
 from invoice import invoice_bp   # Phase 4: GST tax invoice (derived from a proforma)
 from purchase import purchase_bp  # Buy side: purchase orders. A SEPARATE pipeline —
                                   # it never links to a proforma or a tax invoice.
+from spec import spec_bp         # Specification library: the vocabulary a BOQ is
+                                 # written in. Clauses with SIZED VARIANTS — not a
+                                 # replacement for product.py, which serves the
+                                 # quotation chain and is untouched.
 from boq import boq_bp           # BOQ: the priced schedule for a project. Head of a
                                  # SECOND sell-side chain — BOQ -> RA bills — parallel
                                  # to quotation -> proforma -> tax invoice, not part of it.
@@ -77,6 +81,7 @@ app.register_blueprint(quotation_bp)          # Mounted at /quotation
 app.register_blueprint(proforma_bp)           # Mounted at /proforma
 app.register_blueprint(invoice_bp)            # Mounted at /invoice
 app.register_blueprint(purchase_bp)           # Mounted at /purchase  (buy side)
+app.register_blueprint(spec_bp)               # Mounted at /spec
 app.register_blueprint(boq_bp)                # Mounted at /boq
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings

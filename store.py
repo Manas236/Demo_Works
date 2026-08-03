@@ -32,9 +32,12 @@ STORE: dict = {
     "proformas":    {},   # keyed by UUID string → proforma invoice dict (derived from a quotation)
     "invoices":     {},   # keyed by UUID string → GST tax invoice dict (derived from a proforma)
     "purchases":    {},   # keyed by UUID string → purchase order dict (BUY side — we are the buyer)
+    "specs":        {},   # keyed by UUID string → specification library entry (clause + sized variants)
     "boqs":         {},   # keyed by UUID string → bill of quantities (head of the BOQ → RA chain)
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "settings":     {},   # single record under the key "company" → branding overrides
     "_seeded":      False,  # flipped to True after ensure_demo_products() runs once
     "_addr_seeded": False,  # flipped to True after ensure_demo_addresses() runs once
+    "_spec_seeded": False,  # flipped to True after ensure_demo_specs() runs once
+    "_boq_seeded":  False,  # flipped to True after ensure_demo_boq() runs once
 }

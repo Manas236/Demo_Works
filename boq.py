@@ -49,7 +49,8 @@ Import direction (§3.4 of the handover — one way, never reversed):
     boq.py ──► address.py     customer picker
     boq.py ──► pipeline.py    esc / parse_money / fy_of / fy_ref
     boq.py ──► dashboard.py   BASE_STYLES / _nav
-    boq.py ──► product.py     spec picker
+    boq.py ──► spec.py        the specification library (the picker)
+    boq.py ──► demo_data.py   seed data only
 
 `boq.py` must **not** import `ra.py` — the view page links out with `url_for`
 and reads `STORE["ra_bills"]` directly, which is the same one-way trick
@@ -64,10 +65,11 @@ from datetime import date as _date
 from flask import Blueprint, redirect, render_template_string, request, url_for
 
 import branding as B
+import demo_data as DD
 import pipeline as P
 from address import INDIAN_STATES, picker_options, picker_payload
 from dashboard import BASE_STYLES, _nav
-from product import _valid_hsn, ensure_demo_products
+from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
 from store import STORE
 
 # The document's own formatters and stylesheet — see the module docstring.
@@ -297,6 +299,147 @@ def _any_escalation(boq: dict, key: str) -> bool:
 
 
 # =============================================================================
+# SEED
+# =============================================================================
+
+def _seed_line(row: dict, sections_by_code: dict) -> dict:
+    """
+    One `demo_data.BOQ_LINES` entry as a §4.2 line item.
+
+    The seed table names a spec and, for a size family, a variant — so the
+    demo BOQ is built along the same path a user takes through the picker
+    rather than by a private back door. The description comes from the library
+    (`spec_text` for a header or an unsized line, the variant label for a
+    child) and is **copied**, which is what a real line does too.
+
+    The rates come off the seed table, not off the spec, and that is
+    deliberate: twelve lines in this schedule differ from
+    base x (1 + escalation) for a documented commercial reason. Re-deriving
+    them from the library defaults would quietly erase those decisions and the
+    subtotals would stop matching the client's sheet.
+    """
+    spec = spec_by_code(row["spec"])
+    code = row["section"]
+
+    if row.get("header"):
+        return {
+            "item_no":        _item_no(row["item_no"]),
+            "parent_item_no": "",
+            "section":        code,
+            "is_header":      True,
+            "description":    spec["spec_text"] if spec else "",
+            "remark":         "",
+            "unit":           "",
+            "area_qty":       {},
+            "total_qty":      0.0,
+            "supply_base_rate": None, "supply_escalation_pct": 0.0,
+            "supply_rate": 0.0, "supply_amount": 0.0,
+            "supply_hsn": "", "supply_gst_rate": 0.0,
+            "install_base_rate": None, "install_escalation_pct": 0.0,
+            "install_rate": 0.0, "install_amount": 0.0,
+            "install_sac": "", "install_gst_rate": 0.0,
+        }
+
+    variant = variant_of(spec, row["variant"]) if spec else None
+    # A child of a size family is described by its variant label; a standalone
+    # line by the clause itself. That is exactly what the picker does.
+    description = (row["variant"] or "").strip()
+    if not description:
+        description = spec["spec_text"] if spec else ""
+
+    qty = float(row.get("total_qty") or 0.0)
+    s_rate = float(row.get("s_rate") or 0.0)
+    i_rate = float(row.get("i_rate") or 0.0)
+
+    return {
+        "item_no":        _item_no(row["item_no"]),
+        "parent_item_no": _item_no(row.get("parent") or ""),
+        "section":        code,
+        "is_header":      False,
+        "description":    description,
+        "remark":         row.get("remark") or "",
+        "unit":           (variant or {}).get("unit", ""),
+        # Only areas the section actually declares, and only where the sheet
+        # carried a figure — a blank cell means the item is not on that floor.
+        "area_qty":       {k: float(v) for k, v in (row.get("areas") or {}).items()
+                           if k in sections_by_code.get(code, [])},
+        "total_qty":      qty,
+
+        "supply_base_rate":      row.get("s_base"),
+        "supply_escalation_pct": float(row.get("s_pct") or 0.0),
+        "supply_rate":           s_rate,
+        "supply_amount":         s_rate * qty,
+        "supply_hsn":            (spec or {}).get("supply_hsn", ""),
+        "supply_gst_rate":       float((spec or {}).get("supply_gst_rate") or DEFAULT_GST_RATE),
+
+        "install_base_rate":      row.get("i_base"),
+        "install_escalation_pct": float(row.get("i_pct") or 0.0),
+        "install_rate":           i_rate,
+        "install_amount":         i_rate * qty,
+        "install_sac":            (spec or {}).get("install_sac", ""),
+        "install_gst_rate":       float((spec or {}).get("install_gst_rate") or DEFAULT_GST_RATE),
+    }
+
+
+def ensure_demo_boq() -> None:
+    """
+    Seed one complete BOQ on first call; a no-op afterwards.
+
+    This is the Sify Bangalore schedule — three sections, 97 lines, the area
+    breakdown each section actually declares — generated from the client's own
+    workbook. It exists so the system can be shown working without anybody
+    typing 120 lines first, and so every downstream phase has something real to
+    run against.
+
+    Guarded by `STORE["_boq_seeded"]`, which is deliberately **not persisted**:
+    dropping the database and restarting refills it. The record carries a fixed
+    UUID, so re-running never produces a second copy and a BOQ the user has
+    since edited is left alone.
+
+    It depends on the library, so `ensure_demo_specs()` runs first — the lines
+    are built from specs by code, the same path the picker takes.
+    """
+    if STORE.get("_boq_seeded"):
+        return
+    ensure_demo_specs()
+
+    bid = DD.BOQ_META["id"]
+    if bid in STORE["boqs"]:
+        STORE["_boq_seeded"] = True
+        return
+
+    sections = [dict(s, areas=list(s["areas"])) for s in DD.BOQ_SECTIONS]
+    areas_by_code = {s["code"]: s["areas"] for s in sections}
+
+    boq = {
+        **DD.BOQ_META,
+        "to": "\n".join(x for x in [
+            DD.BOQ_META.get("account_name"),
+            ", ".join(y for y in [DD.BOQ_META.get("bill_city"),
+                                  DD.BOQ_META.get("bill_state")] if y),
+        ] if x),
+        "ship_same": False,
+        "ship_acct_name": DD.BOQ_META.get("project_name", ""),
+        "ship_addr": DD.BOQ_META.get("site_location", ""),
+        "ship_city": DD.BOQ_META.get("bill_city", ""),
+        "ship_state": DD.BOQ_META.get("bill_state", ""),
+        "ship_pin": "",
+        "sections":   sections,
+        "line_items": [_seed_line(r, areas_by_code) for r in DD.BOQ_LINES],
+        "supply_subtotal": 0.0, "install_subtotal": 0.0, "subtotal": 0.0,
+        "company_branch": "", "auth_signatory": "",
+    }
+
+    # Computed from the lines by the same helper the document uses, so the
+    # stored trio cannot disagree with what prints.
+    sup, ins, tot = boq_totals(boq)
+    boq["supply_subtotal"], boq["install_subtotal"], boq["subtotal"] = sup, ins, tot
+
+    STORE["boqs"][bid] = boq
+    STORE["_boq_seeded"] = True
+
+
+# =============================================================================
 # THE PRINTED BOQ — stylesheet
 # =============================================================================
 #
@@ -494,6 +637,12 @@ BOQ_STYLES = """
     padding:.3rem .75rem; cursor:pointer;
   }
   .btn-row:hover { background:#c7d2fe; }
+  /* Bulk insert — a spec expanded into a header row plus one child per size. */
+  .bulk-bar {
+    display:flex; gap:.7rem; align-items:end; flex-wrap:wrap;
+    padding:.9rem 1rem; border:1px dashed var(--border); border-radius:10px;
+    background:var(--bg);
+  }
   .btn-del {
     font-size:.75rem; font-weight:700; color:#991b1b; background:#fef2f2;
     border:1px solid #fecaca; border-radius:6px; padding:.3rem .6rem;
@@ -824,9 +973,9 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
         # Shape-only, and only when filled — exactly as the catalogue validates
         # it. A blank is allowed here and flagged downstream, because the BOQ is
         # priced long before anybody classifies the goods.
-        if hsn and not _valid_hsn(hsn):
+        if hsn and not _valid_tax_code(hsn):
             return [], f"Line {item_no}: HSN must be 4, 6 or 8 digits."
-        if sac and not _valid_hsn(sac):
+        if sac and not _valid_tax_code(sac):
             return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits."
 
         out.append({
@@ -885,6 +1034,7 @@ def _to_block(form) -> str:
 
 @boq_bp.route("/")
 def list_boqs():
+    ensure_demo_boq()
     boqs     = STORE["boqs"]
     dash_url = url_for("dashboard.index")
     new_url  = url_for("boq.create_boq")
@@ -1013,6 +1163,7 @@ def list_boqs():
 
 @boq_bp.route("/view/<id>")
 def view_boq(id: str):
+    ensure_demo_boq()
     boq = STORE["boqs"].get(id)
     if not boq:
         return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
@@ -1283,28 +1434,38 @@ def view_boq(id: str):
 # object literals are written with a space (`{a: {b:1}}`) to keep it that way.
 # =============================================================================
 
-def _boq_catalog_json() -> str:
+def _spec_catalog_json() -> str:
     """
-    The catalogue, shaped for the spec picker.
+    The specification library, shaped for the picker.
 
-    Reads the Phase 4 fields (`spec_text`, `default_supply_rate`,
-    `default_install_rate`, `sac`) through `.get()` so this works today against
-    products that do not have them yet — and keeps working unchanged once they
-    exist. `base_price` is deliberately NOT read: that is what we sell a unit
-    of stock for, and it is not a BOQ supply rate.
+    Sent whole rather than fetched per keystroke — 56 clauses is a few hundred
+    KB and the app has no API layer; the address book is embedded the same way
+    (`address.picker_payload()`). `variants` comes across in full because the
+    variant dropdown has to repopulate when the spec changes, with no round
+    trip.
+
+    Note what is NOT sent: nothing that would let the browser write back. The
+    picker copies values onto a line and the line owns them from then on.
     """
-    ensure_demo_products()
+    ensure_demo_specs()
     return json.dumps({
-        pid: {
-            "name":   p.get("name") or "",
-            "unit":   p.get("unit") or "",
-            "spec":   p.get("spec_text") or p.get("description") or p.get("name") or "",
-            "hsn":    p.get("hsn") or "",
-            "sac":    p.get("sac") or "",
-            "s_rate": p.get("default_supply_rate") or "",
-            "i_rate": p.get("default_install_rate") or "",
+        sid: {
+            "code":       s.get("code") or "",
+            "title":      s.get("title") or "",
+            "category":   s.get("category") or "Other",
+            "spec_text":  s.get("spec_text") or "",
+            "supply_hsn": s.get("supply_hsn") or "",
+            "install_sac": s.get("install_sac") or "",
+            "supply_gst_rate":  s.get("supply_gst_rate") or "",
+            "install_gst_rate": s.get("install_gst_rate") or "",
+            "variants": [{
+                "label":  v.get("label") or "",
+                "unit":   v.get("unit") or "",
+                "s_base": v.get("default_supply_base_rate"),
+                "i_base": v.get("default_install_base_rate"),
+            } for v in (s.get("variants") or [])],
         }
-        for pid, p in STORE["products"].items()
+        for sid, s in STORE["specs"].items()
     })
 
 
@@ -1321,7 +1482,7 @@ _BOQ_JS = """
    into MODEL and stop there. */
 
 var MODEL = BOQ_BOOT;
-var CATALOG = BOQ_CATALOG;
+var SPECS = BOQ_SPECS;
 var ADDR_BOOK = BOQ_ADDR;
 
 function el(id) { return document.getElementById(id); }
@@ -1365,6 +1526,20 @@ function renderSections() {
       + '</div>';
   }
   el('sec-editor').innerHTML = h;
+  renderPickers();
+}
+
+/* Both bulk-insert dropdowns are built here rather than server-side: the
+   section list is edited in the browser, so a select rendered once on the
+   server goes stale the moment a section is added or renamed. */
+function renderPickers() {
+  var spec = el('bulk-spec'), sec = el('bulk-section');
+  if (spec && !spec.innerHTML) spec.innerHTML = specOptions('');
+  if (sec) {
+    var keep = sec.value;
+    sec.innerHTML = secOptions(keep);
+    if (keep) sec.value = keep;
+  }
 }
 
 function setSec(i, key, val) {
@@ -1425,12 +1600,47 @@ function secOptions(cur) {
   return h;
 }
 
-function catOptions() {
-  var h = '<option value="">&#8212; fill from catalogue &#8212;</option>';
-  for (var pid in CATALOG) {
-    h += '<option value="' + esc(pid) + '">' + esc(CATALOG[pid].name) + '</option>';
+/* ── The spec picker ───────────────────────────────────────────────────
+   PICK holds which spec each row's picker is showing. It is transient UI
+   state, NOT part of the line: a BOQ line carries no spec_id, because
+   spec_text is copied onto it and edited there (see spec.delete_spec). */
+var PICK = {};
+
+function specOptions(cur) {
+  var h = '<option value="">&#8212; fill from spec library &#8212;</option>';
+  var cats = {}, order = [];
+  for (var sid in SPECS) {
+    var c = SPECS[sid].category || 'Other';
+    if (!cats[c]) { cats[c] = []; order.push(c); }
+    cats[c].push(sid);
+  }
+  order.sort();
+  for (var k = 0; k < order.length; k++) {
+    h += '<optgroup label="' + esc(order[k]) + '">';
+    var ids = cats[order[k]];
+    for (var j = 0; j < ids.length; j++) {
+      h += '<option value="' + esc(ids[j]) + '"'
+        +  (ids[j] === cur ? ' selected' : '') + '>'
+        +  esc(SPECS[ids[j]].title) + '</option>';
+    }
+    h += '</optgroup>';
   }
   return h;
+}
+
+function variantOptions(sid) {
+  var sp = SPECS[sid];
+  if (!sp) return '<option value="">&#8212;</option>';
+  var h = '<option value="">&#8212; choose a size &#8212;</option>';
+  for (var v = 0; v < sp.variants.length; v++) {
+    var lab = sp.variants[v].label;
+    h += '<option value="' + esc(lab) + '">' + esc(lab || '(unsized)') + '</option>';
+  }
+  return h;
+}
+
+function isUnsized(sp) {
+  return sp && sp.variants.length === 1 && !sp.variants[0].label;
 }
 
 function fld(i, key, label, val, ph, cls) {
@@ -1471,9 +1681,18 @@ function renderLines() {
       +      esc(L.description) + '</textarea></div>'
       + '</div>';
 
-    h += '<div class="fg3" style="margin-top:.7rem;">'
-      +   '<div class="form-group"><label>Fill from catalogue</label>'
-      +     '<select onchange="fillFromProduct(' + i + ',this)">' + catOptions() + '</select></div>'
+    var picked = PICK[i] || '';
+    var sp = SPECS[picked];
+    h += '<div class="fg4" style="margin-top:.7rem;">'
+      +   '<div class="form-group"><label>Fill from spec library</label>'
+      +     '<select onchange="fillFromSpec(' + i + ',this.value)">'
+      +       specOptions(picked) + '</select></div>'
+      +   '<div class="form-group"><label>Variant</label>'
+      +     (sp && !isUnsized(sp)
+          ? '<select onchange="fillFromVariant(' + i + ',this.value)">'
+            + variantOptions(picked) + '</select>'
+          : '<select disabled><option>' + (sp ? '(unsized)' : '&#8212;') + '</option></select>')
+      +   '</div>'
       +   fld(i, 'remark', 'Remark (internal &#8212; does not print)', L.remark,
               '2000/nos extra for tamper switch')
       +   fld(i, 'unit', 'Unit', L.unit, 'Mtrs')
@@ -1612,21 +1831,124 @@ function setHeader(i, on) {
   renderLines();
 }
 
-/* Catalogue values fill only EMPTY boxes. A rate in the catalogue is what we
-   usually charge, not what was agreed on this project — purchase.py's
-   fillRate() makes exactly the same call for a vendor's price. */
-function fillFromProduct(i, sel) {
-  var p = CATALOG[sel.value];
-  if (!p) return;
+/* Library values fill only EMPTY boxes. A rate in the library is a reference
+   default from another project, not what was agreed on this one —
+   purchase.py's fillRate() makes exactly the same call for a vendor's price,
+   and handover §4.2 rule 4 says the BOQ stores what was entered.
+
+   A spec fills the text and the tax classification. The UNIT lives on the
+   variant, not the spec, so it only comes across here when the spec is
+   unsized and there is therefore no size still to choose. */
+function fillFromSpec(i, sid) {
+  PICK[i] = sid;
+  var sp = SPECS[sid];
+  if (!sp) { renderLines(); return; }
   var L = MODEL.lines[i];
-  if (!L.description) L.description = p.spec;
-  if (!L.unit) L.unit = p.unit;
-  if (!L.supply_hsn) L.supply_hsn = p.hsn;
-  if (!L.install_sac) L.install_sac = p.sac;
-  if (!L.supply_rate && p.s_rate) L.supply_rate = String(p.s_rate);
-  if (!L.install_rate && p.i_rate) L.install_rate = String(p.i_rate);
-  sel.value = '';
+  if (!L.description) L.description = sp.spec_text;
+  if (!L.supply_hsn) L.supply_hsn = sp.supply_hsn;
+  if (!L.install_sac) L.install_sac = sp.install_sac;
+  if (!L.supply_gst_rate) L.supply_gst_rate = String(sp.supply_gst_rate);
+  if (!L.install_gst_rate) L.install_gst_rate = String(sp.install_gst_rate);
+  if (isUnsized(sp)) fillFromVariant(i, '');
   renderLines();
+}
+
+/* A variant fills the unit and SUGGESTS both base rates. Suggests: a typed
+   rate is never overwritten. */
+function fillFromVariant(i, label) {
+  var sp = SPECS[PICK[i]];
+  if (!sp) return;
+  var v = null;
+  for (var k = 0; k < sp.variants.length; k++) {
+    if (sp.variants[k].label === label) { v = sp.variants[k]; break; }
+  }
+  if (!v && isUnsized(sp)) v = sp.variants[0];
+  if (!v) return;
+  var L = MODEL.lines[i];
+  if (!L.unit) L.unit = v.unit;
+  if (!L.supply_base_rate && v.s_base !== null && v.s_base !== '') {
+    L.supply_base_rate = String(v.s_base);
+  }
+  if (!L.install_base_rate && v.i_base !== null && v.i_base !== '') {
+    L.install_base_rate = String(v.i_base);
+  }
+  /* The variant label is what the child row of a size family says on the
+     printed sheet — but only take it when the description is still untouched
+     or still the parent clause, never over something typed. */
+  if (label && (!L.description || L.description === sp.spec_text)) {
+    L.description = label;
+  }
+  renderLines();
+}
+
+/* ── Insert a whole size family ────────────────────────────────────────
+   One click turns a spec into the shape their sheet actually uses: a header
+   row carrying the clause, then one child row per size, numbered N, N.a,
+   N.b … An unsized spec has nothing to expand, so it inserts one plain line.
+   Building item 24 by hand is otherwise ten rows of typing. */
+function insertFamily() {
+  var sid = el('bulk-spec').value;
+  var code = el('bulk-section').value;
+  var sp = SPECS[sid];
+  if (!sp) return;
+
+  var next = nextItemNo(code);
+
+  if (isUnsized(sp)) {
+    var one = blankLine();
+    one.section = code;
+    one.item_no = String(next);
+    one.description = sp.spec_text;
+    applySpecFields(one, sp);
+    applyVariantFields(one, sp.variants[0]);
+    MODEL.lines.push(one);
+  } else {
+    var head = blankLine();
+    head.section = code;
+    head.item_no = String(next);
+    head.is_header = true;
+    head.description = sp.spec_text;
+    MODEL.lines.push(head);
+
+    var letters = 'abcdefghijklmnopqrstuvwxyz';
+    for (var v = 0; v < sp.variants.length; v++) {
+      var kid = blankLine();
+      kid.section = code;
+      kid.item_no = String(next) + '.' + letters.charAt(v);
+      kid.parent_item_no = String(next);
+      kid.description = sp.variants[v].label;
+      applySpecFields(kid, sp);
+      applyVariantFields(kid, sp.variants[v]);
+      MODEL.lines.push(kid);
+    }
+  }
+  el('bulk-spec').value = '';
+  renderLines();
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function applySpecFields(L, sp) {
+  L.supply_hsn = sp.supply_hsn;
+  L.install_sac = sp.install_sac;
+  L.supply_gst_rate = String(sp.supply_gst_rate);
+  L.install_gst_rate = String(sp.install_gst_rate);
+}
+
+function applyVariantFields(L, v) {
+  L.unit = v.unit;
+  if (v.s_base !== null && v.s_base !== '') L.supply_base_rate = String(v.s_base);
+  if (v.i_base !== null && v.i_base !== '') L.install_base_rate = String(v.i_base);
+}
+
+/* The next whole number free in this section — 24 when 1..23 are taken. */
+function nextItemNo(code) {
+  var top = 0;
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    if (MODEL.lines[i].section !== code) continue;
+    var m = /^(\\d+)/.exec(String(MODEL.lines[i].item_no || ''));
+    if (m) top = Math.max(top, parseInt(m[1], 10));
+  }
+  return top + 1;
 }
 
 function addLine() {
@@ -1692,7 +2014,7 @@ renderLines();
 
 @boq_bp.route("/create", methods=["GET", "POST"])
 def create_boq():
-    ensure_demo_products()
+    ensure_demo_specs()
 
     error = ""
     sections: list = []
@@ -1792,7 +2114,7 @@ def create_boq():
 
     js = (_BOQ_JS
           .replace("BOQ_BOOT", json.dumps(boot))
-          .replace("BOQ_CATALOG", _boq_catalog_json())
+          .replace("BOQ_SPECS", _spec_catalog_json())
           .replace("BOQ_ADDR", json.dumps(picker_payload())))
 
     today = _date.today().isoformat()
@@ -1953,6 +2275,25 @@ def create_boq():
         rows beneath it. A base rate of <b>-</b> means the rate was agreed directly
         rather than escalated.
       </p>
+      <div class="bulk-bar">
+        <div class="form-group" style="flex:2 1 320px;">
+          <label for="bulk-spec">Insert a spec as a whole family</label>
+          <select id="bulk-spec"></select>
+        </div>
+        <div class="form-group" style="flex:0 0 90px;">
+          <label for="bulk-section">Into</label>
+          <select id="bulk-section"></select>
+        </div>
+        <button type="button" class="btn-row" onclick="insertFamily()">
+          + Insert header &amp; variants
+        </button>
+      </div>
+      <p style="margin:.5rem 0 1.1rem;font-size:.78rem;color:var(--muted);">
+        A sized spec inserts one <b>header row</b> carrying the clause plus one child
+        row per size, numbered <b>24</b>, <b>24.a</b>, <b>24.b</b>&hellip; &mdash; the
+        shape a BOQ is actually written in. An unsized spec inserts a single line.
+      </p>
+
       <div id="line-editor"></div>
       <button type="button" class="btn-row" style="margin-top:.4rem;" onclick="addLine()">
         + Add line

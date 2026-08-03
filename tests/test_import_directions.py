@@ -75,6 +75,24 @@ FORBIDDEN = [
     ("boq", "invoice",  "any", "the RA bill is the tax invoice, not the BOQ — ra.py imports invoice, boq does not"),
     ("boq", "purchase", "any", "a BOQ does not link to a purchase order"),
     ("boq", "settings", "any", "settings imports quotation; nothing downstream of it may import back"),
+    ("boq", "product",  "any", "the BOQ picker reads the SPEC library. product.py serves the "
+                               "quotation chain and its base_price is not a BOQ supply rate"),
+
+    # ── The spec library ────────────────────────────────────────────────────
+    ("spec", "boq",      "any", "boq.py imports THIS module for the picker; importing back is a cycle"),
+    ("spec", "product",  "any", "spec.py replaces nothing in product.py and must not depend on it"),
+    ("spec", "quotation", "any", "the library is not part of the quotation chain"),
+    ("spec", "ra",       "any", "a spec knows nothing about billing"),
+
+    # ── demo_data is data only and sits at the bottom of the graph ──────────
+    ("demo_data", "store",     "any", "demo_data.py imports NOTHING from the app — that is what "
+                                      "lets spec.py and boq.py both read it without a cycle"),
+    ("demo_data", "spec",      "any", "same"),
+    ("demo_data", "boq",       "any", "same"),
+    ("demo_data", "branding",  "any", "same"),
+    ("demo_data", "pipeline",  "any", "same"),
+    ("demo_data", "dashboard", "any", "same"),
+    ("demo_data", "flask",     "any", "it is a data module, not a Flask one"),
 ]
 
 
@@ -96,10 +114,27 @@ REQUIRED = [
     ("boq", "dashboard", "BASE_STYLES and _nav"),
     ("boq", "pipeline",  "esc / parse_money / fy_of / fy_ref"),
     ("boq", "address",   "the customer picker"),
-    ("boq", "product",   "the spec picker"),
+    ("boq", "spec",      "the specification library — what the line picker is built from"),
+    ("boq", "demo_data", "the seed table behind ensure_demo_boq()"),
     ("boq", "store",     "the shared STORE dict"),
     ("boq", "branding",  "every company string, colour and image"),
+
+    ("spec", "dashboard", "BASE_STYLES and _nav"),
+    ("spec", "pipeline",  "esc"),
+    ("spec", "store",     "the shared STORE dict"),
+    ("spec", "branding",  "every company string, colour and image"),
+    ("spec", "demo_data", "the 56 seeded clauses"),
 ]
+
+
+def test_demo_data_imports_nothing_at_all():
+    """
+    The strongest form of the rule, and the reason the seed data was pulled out
+    of `spec.py` and `boq.py`: a module that imports nothing can be imported by
+    anything, so it sits at the bottom of the graph beside `pipeline.py` and
+    `branding.py` and can never be the cause of a cycle.
+    """
+    assert imports_of("demo_data") == set()
 
 
 @pytest.mark.parametrize("module,required,why", REQUIRED)

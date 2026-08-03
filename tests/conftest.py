@@ -27,8 +27,13 @@ def client():
     import app as app_module
 
     app_module.app.config["TESTING"] = True
-    for key in ("boqs", "quotations", "proformas", "invoices", "purchases"):
+    for key in ("boqs", "specs", "quotations", "proformas", "invoices", "purchases"):
         STORE[key].clear()
+    # Seed flags are per-test too: a test that clears `specs` must be able to
+    # let the seeder refill it, which is exactly the "drop the database and
+    # restart" path the demo data exists to support.
+    STORE["_spec_seeded"] = False
+    STORE["_boq_seeded"] = False
     with app_module.app.test_client() as c:
         yield c
 
