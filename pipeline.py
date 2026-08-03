@@ -23,7 +23,7 @@ separate pipeline and do not belong in this module.
 """
 
 import html
-from datetime import datetime
+from datetime import date, datetime
 
 # =============================================================================
 # STAGE VOCABULARY — single source of truth
@@ -147,6 +147,57 @@ def fmt_money(v: float) -> str:
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+# Indian financial year: 1 April → 31 March.
+FY_START_MONTH = 4
+
+
+def fy_of(datestr) -> str:
+    """
+    The Indian financial year a date falls in, as '26-27'.
+
+    Lives here rather than in a document module because **both pipelines need
+    it and neither may import the other**: `invoice.py` numbers tax invoices
+    `SF/TI/26-27/0001` (Rule 46(b) requires uniqueness per FY) and
+    `purchase.py` numbers POs `SF/PO/26-27/0001`. Buy side and sell side are
+    deliberately independent, so a shared helper cannot sit in either — and
+    `pipeline.py` imports nothing from the app, which is what makes it the safe
+    home. It is the same reasoning that already puts `esc` and `parse_money`
+    here.
+
+    Always taken from the *document's own date*, never from today, so a
+    document back-dated into March files under the closing year and one dated
+    1 April opens the new series.
+
+    A malformed or blank date falls back to today rather than raising — a
+    hand-edited record must not be able to 500 a register.
+    """
+    try:
+        y, m, _d = (int(x) for x in str(datestr).split("-")[:3])
+        if not (1 <= m <= 12):
+            raise ValueError
+    except (ValueError, TypeError):
+        t = date.today()
+        y, m = t.year, t.month
+    start = y if m >= FY_START_MONTH else y - 1
+    return f"{start % 100:02d}-{(start + 1) % 100:02d}"
+
+
+def fy_ref(prefix: str, series: str, fy: str, seq: int, cap: int = 16) -> str:
+    """
+    Build a financial-year-scoped document number — 'SF/TI/26-27/0001'.
+
+    `cap` exists because Rule 46(b) limits a tax invoice number to 16
+    characters, and 'SF/TI/26-27/0001' is exactly 16. If the company short name
+    would push it over, the prefix is dropped rather than issuing an
+    over-length number: a number the GST portal will reject is worse than an
+    unbranded one. Purchase orders have no such statutory cap but use the same
+    shape so the two series read alike.
+    """
+    prefix = (prefix or "").strip()
+    ref = f"{prefix}/{series}/{fy}/{seq:04d}" if prefix else f"{series}/{fy}/{seq:04d}"
+    return ref if len(ref) <= cap else f"{series}/{fy}/{seq:04d}"
 
 
 def esc(v) -> str:

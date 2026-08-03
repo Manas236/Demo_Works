@@ -30,19 +30,14 @@ quotation_bp = Blueprint("quotation", __name__, url_prefix="/quotation")
 # =============================================================================
 # COMPANY IDENTITY
 # =============================================================================
-# Owned by branding.py — edit it there, not here. Re-exported under the old
-# names so the document templates below stay readable.
-COMPANY_NAME      = B.COMPANY_NAME
-COMPANY_LEGAL     = B.COMPANY_LEGAL
-COMPANY_TAGLINE   = B.COMPANY_TAGLINE
-COMPANY_ADDR      = B.COMPANY_ADDR
-COMPANY_PHONE     = B.COMPANY_PHONE
-COMPANY_EMAIL     = B.COMPANY_EMAIL
-COMPANY_WEB       = B.COMPANY_WEB
-COMPANY_GSTIN     = B.COMPANY_GSTIN
-COMPANY_PAN       = B.COMPANY_PAN
-COMPANY_BRANCHES  = B.COMPANY_BRANCHES
-COMPANY_SIGNATORY = B.COMPANY_SIGNATORY
+# Owned by branding.py, and overridable at runtime from /settings.
+#
+# This module used to re-export the values under bare names
+# (`COMPANY_ADDR = B.COMPANY_ADDR`) so the document templates read more
+# cleanly. That binding is made once, at import, so it froze on the defaults
+# and no saved setting could ever reach the letterhead. Always reach through
+# the module — `B.COMPANY_ADDR` — so the value is read at render time.
+# The same applies to any new company field: never copy it to a local.
 
 
 # =============================================================================
@@ -618,6 +613,43 @@ QUOTATION_STYLES = """
   }
   .pi-chip:hover { border-color:var(--navy); }
 
+  /* ── Job costing / purchase-order links ───────────────────────────────
+     Same reasoning as the proforma chips above, one pipeline over: the deal
+     panel here renders what a job is costing on the BUY side, and purchase.py
+     renders the chips too. purchase.py imports *this* module for the document
+     formatters, so the class cannot live there — it would be a cycle. Every
+     page that renders one already loads QUOTATION_STYLES. */
+  .jobcost-grid {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:.7rem; margin-top:.5rem;
+  }
+  .jc-cell {
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:9px; padding:.55rem .7rem;
+  }
+  .jc-lbl {
+    font-size:.68rem; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); font-weight:700;
+  }
+  .jc-val {
+    font-size:1rem; font-weight:700; font-variant-numeric:tabular-nums;
+    margin-top:.15rem;
+  }
+  /* Margin is the one figure here that carries good/bad meaning, so it is the
+     only one that takes colour — and it never carries it alone: the percentage
+     sits under it in words. */
+  .jc-val.good { color:#166534; }
+  .jc-val.bad  { color:var(--brand); }
+  .jc-sub { font-size:.72rem; color:var(--muted); margin-top:.1rem; }
+  .po-strip { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.6rem; }
+  .po-chip {
+    font-size:.76rem; font-weight:600; text-decoration:none;
+    border:1px solid var(--border); border-radius:8px;
+    padding:.25rem .6rem; background:var(--surface); color:var(--navy);
+    transition:border-color .13s;
+  }
+  .po-chip:hover { border-color:var(--navy); }
+
   @media(max-width:800px){
     .fg2,.fg3,.fg4,.fg5 { grid-template-columns:1fr 1fr; }
     .span3,.span4,.span-all { grid-column:1/-1; }
@@ -1023,7 +1055,7 @@ def list_quotations():
       {tiles_html}
       {filter_html}
       {table_html}
-      <footer><p>{COMPANY_NAME} · {B.APP_SUBTITLE} · quotation register</p></footer>
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · quotation register</p></footer>
     </main></body></html>"""
     return render_template_string(template)
 
@@ -2209,7 +2241,7 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         base_styles         = BASE_STYLES,
         qtn_styles          = QUOTATION_STYLES,
         nav                 = _nav(),
-        company_name        = COMPANY_NAME,
+        company_name        = B.COMPANY_NAME,
         app_subtitle        = B.APP_SUBTITLE,
         head_icon           = B.HEAD_ICON,
         page_title          = B.page_title("New Quotation"),
@@ -2318,6 +2350,10 @@ def view_quotation(id: str):
     # that module imports *this* one for the document formatters, so an import
     # the other way would be a cycle. url_for needs only the endpoint name.
     pi_url  = url_for("proforma.create_proforma", qid=id)
+    # Pre-selects this job on the PO form. A query param, not a path segment,
+    # because the link is a convenience — a PO is not *derived* from a
+    # quotation the way a PI is, and it can be raised with no job at all.
+    po_url  = url_for("purchase.create_purchase", quotation_id=id)
     pi_rows = sorted(
         ((p_id, p) for p_id, p in STORE["proformas"].items()
          if p.get("quotation_id") == id),
@@ -2335,6 +2371,60 @@ def view_quotation(id: str):
         <div class="pi-block">
           <span class="pi-lbl">Proforma invoices raised</span>
           <div class="pi-strip">{chips}</div>
+        </div>"""
+
+    # ── Job costing: what this deal is costing us on the BUY side ───────
+    # Purchase orders are a separate pipeline (see purchase.py) and this is the
+    # one place the two meet — at the *job*, never at the document. Read
+    # STORE["purchases"] directly for the same reason as the proformas above:
+    # purchase.py imports this module for the document formatters, so importing
+    # it back would be a cycle. The costing arithmetic lives there, so it is
+    # duplicated nowhere; only the rendering is here.
+    po_rows = sorted(
+        ((po_id, po) for po_id, po in STORE["purchases"].items()
+         if po.get("quotation_id") == id),
+        key=lambda kv: kv[1].get("ref", ""),
+    )
+    jobcost_html = ""
+    if po_rows:
+        committed = sum(float(po.get("grand_total") or 0.0)
+                        for _i, po in po_rows if po.get("status") != "Cancelled")
+        quoted    = float(q.get("grand_total") or 0.0)
+        margin    = quoted - committed
+        # A quotation can legitimately total zero (everything marked "included,
+        # no separate charge"), so the percentage is guarded rather than assumed.
+        pct       = (margin / quoted * 100.0) if quoted else 0.0
+        tone      = "good" if margin >= 0 else "bad"
+
+        po_chips = "".join(
+            f'<a class="po-chip" href="{url_for("purchase.view_purchase", id=po_id)}">'
+            f'{P.esc(po.get("ref"))} &middot; {P.esc(po.get("vendor_name"))} &middot; '
+            f'&#8377;&nbsp;{float(po.get("grand_total") or 0):,.0f}</a>'
+            for po_id, po in po_rows
+        )
+        jobcost_html = f"""
+        <div class="pi-block jobcost">
+          <span class="pi-lbl">Job costing &mdash; buy side</span>
+          <div class="jobcost-grid">
+            <div class="jc-cell">
+              <div class="jc-lbl">Quoted</div>
+              <div class="jc-val">&#8377;&nbsp;{quoted:,.0f}</div>
+            </div>
+            <div class="jc-cell">
+              <div class="jc-lbl">Committed</div>
+              <div class="jc-val">&#8377;&nbsp;{committed:,.0f}</div>
+              <div class="jc-sub">{len(po_rows)} purchase order(s)</div>
+            </div>
+            <div class="jc-cell">
+              <div class="jc-lbl">Gross Margin</div>
+              <div class="jc-val {tone}">&#8377;&nbsp;{margin:,.0f}</div>
+              <div class="jc-sub">{pct:.1f}% of quoted value</div>
+            </div>
+          </div>
+          <div class="po-strip">{po_chips}</div>
+          <div class="jc-sub" style="margin-top:.5rem;">
+            Material only &mdash; excludes labour, overhead and cancelled orders.
+          </div>
         </div>"""
 
     # ── Deal panel (screen only — hidden by the @media print rule) ──────
@@ -2431,6 +2521,7 @@ def view_quotation(id: str):
   </form>
 
   {pi_strip_html}
+  {jobcost_html}
   {P.history_html(q)}
 </div>
 """
@@ -2570,8 +2661,8 @@ def view_quotation(id: str):
     )
 
     words     = _amount_in_words(q["grand_total"])
-    comp_br   = q.get("company_branch") or COMPANY_NAME
-    signatory = q.get("auth_signatory") or COMPANY_SIGNATORY
+    comp_br   = q.get("company_branch") or B.COMPANY_NAME
+    signatory = q.get("auth_signatory") or B.COMPANY_SIGNATORY
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -2593,6 +2684,7 @@ def view_quotation(id: str):
     <a href="{list_url}"   class="btn btn-ghost">&#8592; All Quotations</a>
     <a href="{create_url}" class="btn btn-ghost">+ New</a>
     <a href="{pi_url}"     class="btn btn-ghost">&#129534;&nbsp;Raise Proforma</a>
+    <a href="{po_url}"     class="btn btn-ghost">&#128230;&nbsp;Raise PO</a>
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -2610,23 +2702,23 @@ def view_quotation(id: str):
     <div class="lh">
       <div>
         <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {COMPANY_TAGLINE} &#8212;</div>
-        {f'<div class="lh-legal">{COMPANY_LEGAL}</div>' if COMPANY_LEGAL else ''}
+        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
+        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
       </div>
       <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
     </div>
     <div class="lh-rule"></div>
-    <div class="lh-addr">Registered Address: {B.field(COMPANY_ADDR, "registered address")}</div>
+    <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
     <div class="lh-contact">
-      Phone: {B.field(COMPANY_PHONE, "phone")}<span class="sep">|</span>
-      Email: {B.field(COMPANY_EMAIL, "e-mail")}
-      {f'<span class="sep">|</span>Web: {COMPANY_WEB}' if COMPANY_WEB else ''}
-      {f'<span class="sep">|</span>Branches: {COMPANY_BRANCHES}' if COMPANY_BRANCHES else ''}
+      Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
+      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
+      {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
+      {f'<span class="sep">|</span>Branches: {B.COMPANY_BRANCHES}' if B.COMPANY_BRANCHES else ''}
     </div>
   </td></tr></thead>
 
   <tfoot><tr><td>
-    <div class="lh-foot">{COMPANY_LEGAL or COMPANY_NAME} &middot; {COMPANY_TAGLINE}</div>
+    <div class="lh-foot">{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</div>
   </td></tr></tfoot>
 
   <tbody><tr><td>
@@ -2670,8 +2762,8 @@ def view_quotation(id: str):
 
   <div class="sig-block">
     <div class="sig-kv">
-      <span>GSTIN</span><span>: <b>{B.field(COMPANY_GSTIN, "GSTIN")}</b></span>
-      <span>PAN No.</span><span>: <b>{B.field(COMPANY_PAN, "PAN")}</b></span>
+      <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
+      <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
     </div>
     <div class="sig-right">
       <div class="sig-for">For {comp_br}</div>
@@ -2687,7 +2779,7 @@ def view_quotation(id: str):
 </div>
 
 <footer style="margin-top:1.75rem;">
-  <p>{COMPANY_NAME} · {B.APP_SUBTITLE} · quotation document</p>
+  <p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · quotation document</p>
 </footer>
 </main>
 </body></html>"""

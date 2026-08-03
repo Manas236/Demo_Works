@@ -70,7 +70,10 @@ def ensure_demo_products() -> None:
       Standalone : RADIATOR COOLANT, LUB OIL, BATTERY 180 AMP, FUEL TANK 200 LTR,
                    ABC EXTINGUISHER 6 KG, FIRST-AID HOSE REEL
 
-    ⚠  Demo data only — prices are placeholders, not Samruddhi Fire's rates.
+    ⚠  Demo data only — prices are placeholders, not Samruddhi Fire's rates,
+       and the HSN codes are plausible chapter headings, not a classification
+       Samruddhi's CA has signed off. Both must be replaced before a tax
+       invoice built on these rows goes to a customer.
     """
     if STORE["_seeded"]:
         return
@@ -78,33 +81,33 @@ def ensure_demo_products() -> None:
     # Standalone products (leaf nodes — no children)
     _seed(_S["radiator"],  "RADIATOR COOLANT",      "RAD-001", "L",    8_500,
           "Standard coolant for diesel engines. 10L fill capacity.",
-          "standalone", [])
+          "standalone", [], hsn="38200000")
     _seed(_S["lub_oil"],   "LUB OIL",               "OIL-002", "L",    3_200,
           "15W-40 mineral lubricant. Recommended change: 250 hrs.",
-          "standalone", [])
+          "standalone", [], hsn="27101980")
     _seed(_S["battery"],   "BATTERY 180 AMP",        "BAT-003", "pcs", 12_500,
           "12V / 180 Ah sealed lead-acid. Maintenance-free.",
-          "standalone", [])
+          "standalone", [], hsn="85071000")
     _seed(_S["fuel_tank"], "FUEL TANK 200 LTR",      "FT-004",  "pcs", 18_000,
           "Mild steel fuel tank, 200L capacity, coated interior.",
-          "standalone", [])
+          "standalone", [], hsn="73090090")
     _seed(_S["extng_abc"], "ABC DRY POWDER EXTINGUISHER 6 KG", "EXT-005", "pcs", 2_450,
           "IS 15683 stored-pressure ABC extinguisher with wall bracket and hose.",
-          "standalone", [])
+          "standalone", [], hsn="84241000")
     _seed(_S["hose_reel"], "FIRST-AID HOSE REEL 30 M", "HR-006", "pcs", 9_800,
           "IS 884 swinging hose reel drum, 20 mm bore rubber hose with shut-off nozzle.",
-          "standalone", [])
+          "standalone", [], hsn="84249000")
 
     # Support items (sub-components; not sold standalone)
     _seed(_S["pump_bare"],  "END SUCTION FIRE PUMP 80/26", "PMP-010", "set",  125_000,
           "Horizontal end-suction fire pump. Flow: 80 m3/hr, Head: 26m.",
-          "support", [])
+          "support", [], hsn="84137010")
     _seed(_S["motor75"],    "75KW/100HP MOTOR",            "MOT-011", "pcs", 210_000,
           "TEFC squirrel cage induction motor. 75kW, 4-pole, 415V/50Hz.",
-          "support", [])
+          "support", [], hsn="85015290")
     _seed(_S["base_frame"], "PUMP BASE FRAME 80/26",       "FRM-012", "pcs",  45_000,
           "Fabricated MS base frame for the 80/26 pump + motor set.",
-          "support", [])
+          "support", [], hsn="73089090")
 
     # Assemblies (have children; leaf products must be seeded first)
     _seed(_S["main_pump"], "MAIN FIRE PUMP SET - ELECTRIC", "MFP-100", "set", 850_000,
@@ -114,7 +117,7 @@ def ensure_demo_products() -> None:
               {"product_id": _S["pump_bare"],  "qty": 1},
               {"product_id": _S["motor75"],    "qty": 1},
               {"product_id": _S["base_frame"], "qty": 1},
-          ])
+          ], hsn="84137010")
     _seed(_S["engine"], "DIESEL ENGINE FIRE PUMP DRIVE", "DEP-200", "set", 380_000,
           "Diesel engine drive package. Radiator-cooled, electric start, "
           "with fuel tank and first fill.",
@@ -122,29 +125,125 @@ def ensure_demo_products() -> None:
               {"product_id": _S["radiator"],  "qty": 1},
               {"product_id": _S["lub_oil"],   "qty": 5},
               {"product_id": _S["fuel_tank"], "qty": 1},
-          ])
+          ], hsn="84089090")
     _seed(_S["jockey"], "JOCKEY PUMP SET", "JKY-300", "set", 95_000,
           "Pressure-maintenance jockey pump. Auto start/stop on pressure drop.",
           "assembly", [
               {"product_id": _S["battery"], "qty": 1},
-          ])
+          ], hsn="84137010")
 
     STORE["_seeded"] = True
 
 
-def _seed(pid, name, part_no, unit, base_price, description, ptype, children):
-    """Write one demo product; skips silently if that ID already exists."""
-    if pid not in STORE["products"]:
-        STORE["products"][pid] = {
-            "id":          pid,
-            "name":        name,
-            "part_no":     part_no,
-            "unit":        unit,
-            "base_price":  float(base_price),
-            "description": description,
-            "type":        ptype,
-            "children":    children,
-        }
+def _seed(pid, name, part_no, unit, base_price, description, ptype, children, hsn=""):
+    """
+    Write one demo product; skips silently if that ID already exists.
+
+    The one exception is `hsn`, which is **backfilled onto an existing row when
+    it is blank**. These rows have fixed UUIDs and were seeded before the
+    catalogue captured HSN at all, so a database from an earlier run holds all
+    twelve of them without one — and with no product edit route (§7.2) there is
+    no way for a user to add it by hand. Without this they would put an amber
+    chip on every tax invoice forever.
+
+    It fills a gap and never overwrites: a code someone has already set, here or
+    at /settings-time, is left exactly as it is.
+    """
+    existing = STORE["products"].get(pid)
+    if existing is not None:
+        if hsn and not str(existing.get("hsn") or "").strip():
+            existing["hsn"] = hsn
+        return
+
+    STORE["products"][pid] = {
+        "id":          pid,
+        "name":        name,
+        "part_no":     part_no,
+        "hsn":         hsn,
+        "unit":        unit,
+        "base_price":  float(base_price),
+        "description": description,
+        "type":        ptype,
+        "children":    children,
+    }
+
+
+def backfill_line_item_hsn(store: dict = None) -> dict:
+    """
+    Fill a blank `hsn` on the frozen line items of existing quotations,
+    proformas and tax invoices, matching each row to the catalogue by part_no.
+
+    **This is a one-time data migration, not app behaviour. It is deliberately
+    NOT called at boot.** Read ABOUT.md §3 before running it again.
+
+    Every document in the chain freezes a *copy* of its line items at issue, so
+    that editing a product later cannot rewrite a quotation the customer has
+    already seen. That freeze is load-bearing and this function drives straight
+    through it — which is only defensible because of what it does and does not
+    touch:
+
+    * It fills a field that **did not exist** when those rows were written, so
+      there is no agreed value being overwritten. Records created before the
+      catalogue captured HSN could otherwise never acquire one, and a tax
+      invoice raised from such a proforma prints an amber chip on every line.
+    * It **only ever fills a blank**. A code already on a row — including one
+      that differs from today's catalogue — is left exactly as it is.
+    * It never touches name, qty, unit, price, total or depth. Nothing that
+      carries a commercial agreement moves.
+
+    Run it after adding HSN to the catalogue for products that older documents
+    were built from. Do **not** wire it into startup: once a product's
+    classification is corrected, pushing that correction onto documents already
+    issued is precisely the rewriting the freeze exists to prevent.
+
+    Returns a per-collection count of the rows changed.
+    """
+    store = store if store is not None else STORE
+
+    # part_no -> hsn, from the live catalogue. Part numbers are the stable key
+    # here: names get edited, and a line item does not record the product id.
+    by_part = {}
+    by_name = {}
+    for p in store.get("products", {}).values():
+        code = str(p.get("hsn") or "").strip()
+        if not code:
+            continue
+        if p.get("part_no"):
+            by_part[str(p["part_no"]).strip()] = code
+        if p.get("name"):
+            by_name[str(p["name"]).strip()] = code
+
+    changed = {}
+    for coll in ("quotations", "proformas", "invoices"):
+        n = 0
+        for rec in store.get(coll, {}).values():
+            for row in rec.get("line_items", []) or []:
+                if str(row.get("hsn") or "").strip():
+                    continue
+                code = (by_part.get(str(row.get("part_no") or "").strip())
+                        or by_name.get(str(row.get("name") or "").strip()))
+                if code:
+                    row["hsn"] = code
+                    n += 1
+        changed[coll] = n
+    return changed
+
+
+def _valid_hsn(code: str) -> bool:
+    """
+    Is this a well-formed HSN (goods) or SAC (services) code?
+
+    Digits only, and 4, 6 or 8 of them — the three lengths GST actually issues.
+    How many are *required* depends on the supplier's turnover (4 up to ₹5 cr,
+    6 above it), which this app does not know, so the rule here is shape-only:
+    reject a typo, never dictate a length.
+
+    It cannot tell you the code is the *right* one for the goods — that is a
+    classification judgement, and getting it wrong is the customer's ITC. This
+    only stops "8413-A" and "841" reaching a tax invoice.
+    """
+    code = (code or "").strip()
+    return code.isdigit() and len(code) in (4, 6, 8)
 
 
 # =============================================================================
@@ -401,6 +500,20 @@ PRODUCT_STYLES = """
   .btn-add-child:hover { background: #c7d2fe; }
 
   .no-products-hint { font-size: .85rem; color: var(--muted); font-style: italic; }
+
+  /* Sub-label under a form input. Used where the field's consequence is not
+     obvious from its name — HSN looks optional until you learn it decides
+     whether the customer can claim input tax credit. */
+  .field-hint {
+    display: block; margin-top: .35rem; font-size: .76rem;
+    color: var(--muted); line-height: 1.45; font-weight: 400;
+    text-transform: none; letter-spacing: 0;
+  }
+
+  /* A product with no HSN cannot go on a tax invoice, so the catalogue flags it
+     in place rather than showing an empty cell. It reuses branding.field() and
+     the .todo-chip from CSS_TOKENS — the app already has one visual language
+     for "a statutory detail is still missing", and this is that. */
 
   /* ── Alert ─────────────────────────────────────────────────────────── */
   .alert {
@@ -736,6 +849,7 @@ def list_products():
                 {child_info}
               </td>
               <td class="td-partno">{p['part_no']}</td>
+              <td class="td-partno">{B.field(p.get('hsn'), 'HSN')}</td>
               <td>{_badge(ptype)}</td>
               <td class="td-unit">{p['unit']}</td>
               <td class="td-price">&#8377; {p['base_price']:,.0f}</td>
@@ -763,6 +877,7 @@ def list_products():
               <tr>
                 <th>Name</th>
                 <th>Part No.</th>
+                <th>HSN/SAC</th>
                 <th>Type</th>
                 <th>Unit</th>
                 <th>Base Price</th>
@@ -949,6 +1064,12 @@ def view_product(id: str):
               </span>
             </div>
             <div class="detail-meta-item">
+              <strong>HSN/SAC</strong>
+              <span style="font-family:'SFMono-Regular',Consolas,monospace;font-size:.88rem;">
+                {B.field(product.get('hsn'), 'HSN')}
+              </span>
+            </div>
+            <div class="detail-meta-item">
               <strong>Unit</strong>
               <span>{product['unit']}</span>
             </div>
@@ -991,6 +1112,7 @@ def add_product():
     if request.method == "POST":
         name        = request.form.get("name",        "").strip()
         part_no     = request.form.get("part_no",     "").strip()
+        hsn         = request.form.get("hsn",         "").strip()
         unit        = request.form.get("unit",        "").strip()
         base_price  = request.form.get("base_price",  "").strip()
         description = request.form.get("description", "").strip()
@@ -1003,6 +1125,8 @@ def add_product():
             error = "Name, Part No., Unit, and Base Price are required."
         elif ptype not in ("standalone", "assembly", "support"):
             error = "Invalid product type."
+        elif hsn and not _valid_hsn(hsn):
+            error = "HSN/SAC must be 4, 6 or 8 digits — e.g. 8413, 841370 or 84137010."
         else:
             try:
                 price_val = float(base_price)
@@ -1047,6 +1171,7 @@ def add_product():
                 "id":          new_id,
                 "name":        name,
                 "part_no":     part_no,
+                "hsn":         hsn,
                 "unit":        unit,
                 "base_price":  price_val,
                 "description": description,
@@ -1145,6 +1270,18 @@ def add_product():
                 <input type="text" id="part_no" name="part_no"
                        value="{request.form.get('part_no', '')}"
                        placeholder="e.g. SB-1042" required autocomplete="off"/>
+              </div>
+
+              <div class="form-group">
+                <label for="hsn">HSN / SAC Code</label>
+                <input type="text" id="hsn" name="hsn"
+                       value="{request.form.get('hsn', '')}"
+                       placeholder="e.g. 84137010" inputmode="numeric"
+                       pattern="[0-9]{{4}}|[0-9]{{6}}|[0-9]{{8}}" maxlength="8"
+                       autocomplete="off"/>
+                <small class="field-hint">4, 6 or 8 digits. Carried onto the
+                  quotation, the proforma and the tax invoice — a tax invoice
+                  without it is not valid for the customer's input tax credit.</small>
               </div>
 
               <div class="form-group">

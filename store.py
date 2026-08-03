@@ -30,7 +30,10 @@ STORE: dict = {
     "products":     {},   # keyed by UUID string → product dict
     "quotations":   {},   # keyed by UUID string → quotation dict
     "proformas":    {},   # keyed by UUID string → proforma invoice dict (derived from a quotation)
+    "invoices":     {},   # keyed by UUID string → GST tax invoice dict (derived from a proforma)
+    "purchases":    {},   # keyed by UUID string → purchase order dict (BUY side — we are the buyer)
     "addresses":    {},   # keyed by UUID string → address dict (address book)
+    "settings":     {},   # single record under the key "company" → branding overrides
     "_seeded":      False,  # flipped to True after ensure_demo_products() runs once
     "_addr_seeded": False,  # flipped to True after ensure_demo_addresses() runs once
 }

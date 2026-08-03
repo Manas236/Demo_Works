@@ -64,6 +64,57 @@ BANK_IFSC         = ""
 BANK_BRANCH       = ""
 
 
+# =============================================================================
+# 1c. RUNTIME OVERRIDES  (the /settings page writes these)
+# =============================================================================
+# The values above are the *defaults*. `settings.py` stores the client's real
+# details in STORE["settings"]["company"] and calls apply_settings() to push
+# them onto this module, so the whole app re-themes without anyone editing
+# Python.
+#
+# This only works because consumers read `B.COMPANY_ADDR` at render time, not
+# `from branding import COMPANY_ADDR` at import time — a from-import binds a
+# copy and would freeze at the default forever. Keep it that way: reach for
+# these through the module (`B.X`), never by name.
+#
+# COMPANY_NAME and COMPANY_SHORT are deliberately NOT editable. The name is
+# painted two-tone by name_html(), baked into the logo artwork and used to build
+# the branch list at import; the short form seeds reference numbers. Changing
+# either is a rebrand, not a setting.
+
+SETTINGS_KEYS = (
+    "COMPANY_LEGAL", "COMPANY_TAGLINE", "COMPANY_ADDR", "COMPANY_PHONE",
+    "COMPANY_EMAIL", "COMPANY_WEB", "COMPANY_GSTIN", "COMPANY_PAN",
+    "COMPANY_BRANCHES", "COMPANY_SIGNATORY",
+    "BANK_NAME", "BANK_ACCOUNT_NAME", "BANK_ACCOUNT_NO", "BANK_IFSC",
+    "BANK_BRANCH",
+)
+
+# Snapshot of the import-time values, so a cleared field falls back to the
+# module default rather than to an empty string. Taken once, at import, before
+# anything can have overwritten it.
+DEFAULTS = {k: globals()[k] for k in SETTINGS_KEYS}
+
+
+def apply_settings(saved: dict) -> None:
+    """
+    Push saved settings onto this module. Idempotent; safe to call repeatedly.
+
+    A key that is missing or blank falls back to its DEFAULTS entry, which is
+    what makes "clear the field and save" restore the default instead of
+    leaving a permanent blank.
+    """
+    saved = saved or {}
+    for key in SETTINGS_KEYS:
+        value = str(saved.get(key, "") or "").strip()
+        globals()[key] = value or DEFAULTS[key]
+
+
+def current_settings() -> dict:
+    """The live value of every editable field — what the settings form shows."""
+    return {k: globals()[k] for k in SETTINGS_KEYS}
+
+
 def field(value: str, hint: str) -> str:
     """
     Render an identity field, or a visible placeholder when it is still blank.

@@ -83,16 +83,27 @@ _A = {
     "mumbai":    "b2000001-face-4000-8000-000000000001",
     "pune":      "b2000002-face-4000-8000-000000000002",
     "ahmedabad": "b2000003-face-4000-8000-000000000003",
+    # Vendors — the buy side. purchase.py raises POs on these; without at least
+    # one, the vendor picker on the PO form opens empty and the module looks
+    # broken on a fresh install.
+    "v_pumps":   "b2000004-face-4000-8000-000000000004",
+    "v_fire":    "b2000005-face-4000-8000-000000000005",
+    "v_steel":   "b2000006-face-4000-8000-000000000006",
 }
 
 
 def ensure_demo_addresses() -> None:
     """
-    Seeds three realistic Indian addresses on first call; a no-op afterwards.
+    Seeds six realistic Indian addresses on first call; a no-op afterwards.
     Called at the top of every route that reads the book, so the page is never
     empty on a fresh server.
 
-    ⚠  Demo data — names, GSTINs and phone numbers are illustrative only.
+    Three are customer-side (office / site / delivery) and feed the quotation's
+    Bill To and Ship To pickers. Three are **vendors** and feed the purchase
+    order form — the buy side has to have somebody to buy from.
+
+    ⚠  Demo data — company names, GSTINs and phone numbers are illustrative
+       only. The vendor names are invented; they are not Samruddhi's suppliers.
     """
     if STORE.get("_addr_seeded"):
         return
@@ -129,6 +140,38 @@ def ensure_demo_addresses() -> None:
         city="Ahmedabad", state="Gujarat", pincode="382213",
         phone="+91 79 2664 3010", email="stores.ahd@example.co.in",
         gstin="24AAACT1234R1ZK",
+    )
+
+    # ── Vendors ───────────────────────────────────────────────────────────
+    _seed(
+        _A["v_pumps"], "Vishwakarma Pumps & Motors", "vendor",
+        contact_name="Mr. S. Ramanathan",
+        company="Vishwakarma Pumps & Motors Pvt. Ltd.",
+        line1="Plot 44, SIDCO Industrial Estate",
+        line2="Kurichi",
+        city="Coimbatore", state="Tamil Nadu", pincode="641021",
+        phone="+91 422 267 8890", email="sales@example.co.in",
+        gstin="33AABCV5678M1Z2",
+    )
+    _seed(
+        _A["v_fire"], "Agnirodh Fire Equipment", "vendor",
+        contact_name="Mr. Faiz Shaikh",
+        company="Agnirodh Fire Equipment Co.",
+        line1="Gala 3, Sarvodaya Industrial Estate",
+        line2="LBS Marg, Bhandup West",
+        city="Mumbai", state="Maharashtra", pincode="400078",
+        phone="+91 22 2596 7412", email="orders@example.co.in",
+        gstin="27AAECA9012P1Z8",
+    )
+    _seed(
+        _A["v_steel"], "Sanghvi Steel & Pipes", "vendor",
+        contact_name="Mr. Dharmesh Sanghvi",
+        company="Sanghvi Steel & Pipes",
+        line1="Shed 21, Odhav GIDC",
+        line2="Nikol Road",
+        city="Ahmedabad", state="Gujarat", pincode="382415",
+        phone="+91 79 2287 5566", email="dispatch@example.co.in",
+        gstin="24AAGFS3456K1ZQ",
     )
 
     STORE["_addr_seeded"] = True
@@ -226,35 +269,55 @@ def picker_payload() -> dict:
     }
 
 
-def picker_options(placeholder: str = "— choose from address book —") -> str:
+def picker_options(placeholder: str = "— choose from address book —",
+                   only_types: tuple | list | None = None,
+                   selected: str = "") -> str:
     """
     <option> list grouped by address type, for a picker <select>.
 
     Labelled "<label> — <city>" because that is how someone actually recognises
     a saved address; the full text is filled into the form on selection.
+
+    ``only_types`` narrows the list to those address types — `("vendor",)` for
+    the purchase order form, which must not offer a customer's site as somebody
+    to buy from. Omitted (the default) it returns the whole book, which is what
+    the quotation's Bill To / Ship To pickers want. ``selected`` marks one
+    option, for a form re-rendering after a failed POST.
+
+    Note the orphan group is suppressed when filtering: an address whose type is
+    not in ADDRESS_TYPES is being rescued from disappearing, not offered as a
+    match for a filter it does not satisfy.
     """
     ensure_demo_addresses()
     book = STORE["addresses"]
     html = f'<option value="">{_e(placeholder)}</option>'
 
+    def _opt(aid: str, a: dict, with_city: bool = True) -> str:
+        city = a.get("city") or ""
+        tail = f' — {_e(city)}' if (with_city and city) else ""
+        sel  = " selected" if aid == selected else ""
+        return f'<option value="{_e(aid)}"{sel}>{_e(a.get("label"))}{tail}</option>'
+
+    wanted = tuple(only_types) if only_types else None
+
     for type_key, type_label in ADDRESS_TYPES.items():
+        if wanted and type_key not in wanted:
+            continue
         rows = [(aid, a) for aid, a in book.items() if a.get("type") == type_key]
         if not rows:
             continue
         html += f'<optgroup label="{_e(type_label)}">'
         for aid, a in sorted(rows, key=lambda r: (r[1].get("label") or "").lower()):
-            city = a.get("city") or ""
-            tail = f' — {_e(city)}' if city else ""
-            html += f'<option value="{_e(aid)}">{_e(a.get("label"))}{tail}</option>'
+            html += _opt(aid, a)
         html += "</optgroup>"
 
     # Addresses whose type is not in ADDRESS_TYPES would otherwise vanish.
     orphans = [(aid, a) for aid, a in book.items()
                if a.get("type") not in ADDRESS_TYPES]
-    if orphans:
+    if orphans and not wanted:
         html += '<optgroup label="Other">'
         for aid, a in orphans:
-            html += f'<option value="{_e(aid)}">{_e(a.get("label"))}</option>'
+            html += _opt(aid, a, with_city=False)
         html += "</optgroup>"
 
     return html

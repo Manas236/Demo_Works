@@ -76,9 +76,18 @@ proforma_bp = Blueprint("proforma", __name__, url_prefix="/proforma")
 # =============================================================================
 _REF_PREFIX = "PI"
 
-# What share of the order value a fresh PI asks for. 100 = the whole thing,
-# which is the safe default: asking for less has to be a deliberate act.
+# What share of the order value the FIRST PI on a quotation asks for. 100 = the
+# whole thing, which is the safe default while nothing has been invoiced yet:
+# asking for less has to be a deliberate act.
+#
+# Once earlier PIs exist this default is NOT used — the form opens at whatever
+# is still uninvoiced (see `_remaining_pct`). 100 is the safe default for the
+# first invoice and the dangerous one for the second, so it must not be reused.
 DEFAULT_ADVANCE_PCT = 100.0
+
+# Rupees of rounding dust to forgive before calling a PI set "over-invoiced".
+# Three PIs at 33.34% come to 100.02% of the order and are not a mistake.
+OVER_INVOICE_TOLERANCE = 1.0
 
 # How long the PI's prices hold. Shorter than a quotation's validity on purpose
 # — a payment request that has been sitting for a month should be re-issued.
@@ -96,6 +105,16 @@ def _today() -> str:
     return _date.today().strftime("%Y-%m-%d")
 
 
+def _ref_num(rec: dict) -> int:
+    """
+    Numeric tail of a PI ref (`PI-0007` -> 7), for ordering and for finding the
+    highest issued number. 0 when it cannot be read, so a hand-edited record
+    sorts first rather than raising.
+    """
+    tail = str(rec.get("ref") or "").rpartition("-")[2]
+    return int(tail) if tail.isdigit() else 0
+
+
 def _next_ref() -> str:
     """
     Next proforma number — PI-0007.
@@ -110,11 +129,7 @@ def _next_ref() -> str:
     Still not year-scoped. That needs the client's actual numbering policy
     (`SF/PI/26-27/0001` is the usual shape) before it is worth writing.
     """
-    highest = 0
-    for pi in STORE["proformas"].values():
-        tail = str(pi.get("ref") or "").rpartition("-")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
+    highest = max((_ref_num(pi) for pi in STORE["proformas"].values()), default=0)
     return f"{_REF_PREFIX}-{highest + 1:04d}"
 
 
@@ -161,8 +176,39 @@ def _proformas_for(quotation_id: str) -> list:
     """Every PI raised against one quotation, newest number last."""
     out = [(pid, pi) for pid, pi in STORE["proformas"].items()
            if pi.get("quotation_id") == quotation_id]
-    out.sort(key=lambda kv: kv[1].get("ref", ""))
+    out.sort(key=lambda kv: _ref_num(kv[1]))
     return out
+
+
+def _invoiced_against(quotation_id: str) -> tuple:
+    """
+    How much of a quotation has already been asked for, and on which PIs.
+
+    Returns `(total, [refs])` over every PI already raised against it. This is
+    the number the convert form and the printed balance line are missing
+    without: `advance_pct` is a share of the *order* value, so a second PI left
+    at the default would ask for the whole order a second time, and a
+    `balance_due` computed as `grand - due` alone would state a balance the
+    customer has already settled.
+
+    ⚠ Invoiced, NOT received. Nothing in this app records payment, so this is
+    what has been *asked for*. It keeps the paperwork self-consistent; it is not
+    a receivables position.
+    """
+    prior = _proformas_for(quotation_id)
+    total = round(sum(float(pi.get("amount_due") or 0.0) for _pid, pi in prior), 2)
+    return total, [str(pi.get("ref") or "") for _pid, pi in prior]
+
+
+def _remaining_pct(grand: float, invoiced: float) -> float:
+    """
+    The share of the order still uninvoiced, as a percentage — what the convert
+    form should open at once earlier PIs exist. 0.0 when the order is fully
+    covered, which the form turns into "type it yourself" rather than a default.
+    """
+    if grand <= 0:
+        return 0.0
+    return max(0.0, round((grand - invoiced) / grand * 100.0, 2))
 
 
 def _build_pi_terms(pi: dict) -> list:
@@ -283,11 +329,12 @@ PROFORMA_STYLES = """
   .quotation-doc .doc-sub .ds-src { font-weight:400; color:var(--doc-soft); }
 
   /* ── Payment box ──────────────────────────────────────────────────────
-     Only rendered when the PI asks for part of the order value. The figure
-     the customer actually has to pay is the one number on this document that
-     must not be hunted for, so it gets the heavy rule and the --fs-md step —
-     the same emphasis the closing total gets in the items table, and no more.
-     Emphasis by weight and rule, never by fill. */
+     Always present, but it only breaks the figure down when there is
+     arithmetic to show — a part payment, or earlier PIs already raised
+     against the same order. The figure the customer actually has to pay is
+     the one number on this document that must not be hunted for, so it gets
+     the heavy rule and the --fs-md step — the same emphasis the closing total
+     gets in the items table, and no more. Weight and rule, never fill. */
   .quotation-doc .pay-box { border-top:var(--rule-box); }
   .quotation-doc .pay-row {
     display:flex; justify-content:space-between; gap:6mm;
@@ -354,11 +401,44 @@ PROFORMA_STYLES = """
     font-size:.8rem; color:var(--muted); margin-top:.6rem; line-height:1.5;
   }
 
+  /* ── Running position on the convert form ─────────────────────────────
+     One quotation can carry several PIs (advance, then balance, then a part
+     supply), so the form has to state the arithmetic — quoted, invoiced,
+     what is left — rather than list the earlier PIs as chips and leave the
+     user to add them up against a field pre-filled with 100%.
+     Colours reuse the amber already used by .todo-chip and .pi-badge.part;
+     "fully invoiced" takes --navy rather than introducing a green. */
+  .pi-ledger { margin-top:.75rem; max-width:26rem; }
+  .pi-ledger .pl-row {
+    display:flex; justify-content:space-between; gap:1.2rem;
+    padding:.3rem 0; font-size:.85rem; color:var(--muted);
+  }
+  .pi-ledger .pl-row b {
+    color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .pi-ledger .pl-rem {
+    border-top:1px solid var(--border); font-weight:700; color:var(--text);
+  }
+  .pi-ledger .pl-rem b { color:var(--brand); }
+  .pi-ledger .pl-done, .pi-ledger .pl-done b { color:var(--navy); }
+  .pi-ledger .pl-over, .pi-ledger .pl-over b { color:#8A5A00; }
+
   .adv-row { display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; }
   .adv-out {
     font-size:.88rem; color:var(--muted); padding-bottom:.55rem; line-height:1.5;
   }
   .adv-out b { color:var(--brand); font-size:1rem; }
+
+  /* Over-invoicing is confirmed, never blocked — a PI set that exceeds the
+     quoted value is occasionally right and usually a slip, so it costs one
+     deliberate tick. See OVER_INVOICE_TOLERANCE. */
+  .over-confirm {
+    display:flex; gap:.65rem; align-items:flex-start; margin-top:.9rem;
+    padding:.75rem .9rem; font-size:.85rem; line-height:1.5;
+    background:#FFF4D6; color:#8A5A00;
+    border:1px solid #E0A93B; border-radius:var(--radius);
+  }
+  .over-confirm input { margin-top:.2rem; flex:none; }
 
   .pi-badge {
     display:inline-block; font-size:.68rem; font-weight:700;
@@ -371,6 +451,22 @@ PROFORMA_STYLES = """
   /* .pi-strip / .pi-chip are defined in QUOTATION_STYLES — both this module
      and the quotation's deal panel render them, and every page here already
      loads that sheet. */
+
+  /* ── Tax-invoice chips ────────────────────────────────────────────────
+     One step further down the same chain: these list the tax invoices raised
+     against a proforma. They live here, not in INVOICE_STYLES, because this
+     module's view page renders them and it must not import invoice.py — the
+     link is url_for + a direct read of STORE["invoices"], which is what keeps
+     the proforma -> invoice arrow one-way. invoice.py loads this sheet on
+     every page, so it gets them for free. */
+  .ti-strip { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; }
+  .ti-chip {
+    font-size:.76rem; font-weight:600; text-decoration:none;
+    padding:.22rem .55rem; border-radius:7px;
+    border:1px solid var(--border); background:var(--bg); color:var(--navy);
+  }
+  .ti-chip:hover { border-color:var(--brand); color:var(--brand); }
+  @media print { .ti-strip { display:none; } }
 </style>
 """
 
@@ -493,10 +589,21 @@ def create_proforma(qid: str):
     f     = request.form
     error = ""
 
+    # ── What this quotation has already been invoiced for ──────────────────
+    # Read once, before either branch: the POST path needs it to compute a
+    # truthful balance and to catch over-invoicing, and the GET path needs it
+    # to open the form at the uninvoiced remainder instead of at 100%.
+    grand              = float(q.get("grand_total") or 0.0)
+    invoiced, pri_refs = _invoiced_against(qid)
+    remaining          = round(grand - invoiced, 2)
+    rem_pct            = _remaining_pct(grand, invoiced)
+    needs_confirm      = False
+
     if request.method == "POST":
         pi_date  = (f.get("date") or "").strip()
         pct      = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
         validity = (f.get("validity_days") or "").strip()
+        due      = round(grand * pct / 100.0, 2)
 
         if not pi_date:
             error = "Invoice date is required."
@@ -507,10 +614,24 @@ def create_proforma(qid: str):
         elif validity and not validity.isdigit():
             error = "Validity must be a whole number of days."
 
-        if not error:
-            grand = float(q.get("grand_total") or 0.0)
-            due   = round(grand * pct / 100.0, 2)
+        # ── Over-invoicing: confirm, never block ───────────────────────────
+        # Asking for more than the order value is occasionally right (scope
+        # grew, prices moved) and usually a slip, so it takes a deliberate
+        # second act rather than a refusal. Only reachable when earlier PIs
+        # exist — on the first PI, `pct <= 100` already covers it.
+        over = round(invoiced + due - grand, 2)
+        if not error and over > OVER_INVOICE_TOLERANCE and not f.get("confirm_over"):
+            needs_confirm = True
+            error = (f"This would invoice &#8377;&nbsp;{invoiced + due:,.0f} against a "
+                     f"quoted value of &#8377;&nbsp;{grand:,.0f} — "
+                     f"&#8377;&nbsp;{over:,.0f} more than the order. "
+                     f"{len(pri_refs)} proforma invoice"
+                     f"{'s' if len(pri_refs) != 1 else ''} "
+                     f"({', '.join(pri_refs)}) already account for "
+                     f"&#8377;&nbsp;{invoiced:,.0f}. "
+                     f"Tick the box below to raise it anyway.")
 
+        if not error:
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
@@ -554,7 +675,17 @@ def create_proforma(qid: str):
                 "po_date":       (f.get("po_date") or "").strip(),
                 "advance_pct":   pct,
                 "amount_due":    due,
-                "balance_due":   round(grand - due, 2),
+
+                # ── The running position, frozen at issue ─────────────────
+                # What earlier PIs on this quotation had already asked for.
+                # Frozen like every other figure here: PI-0001 stated a
+                # balance that was true on its date, and issuing PI-0002 must
+                # not rewrite the document already sitting in the customer's
+                # ledger. So the balance is `order - invoiced before this one
+                # - this one`, and a later PI cannot reach back into it.
+                "prior_invoiced": invoiced,
+                "prior_refs":     list(pri_refs),
+                "balance_due":    round(grand - invoiced - due, 2),
                 "payment_terms": (f.get("payment_terms") or "").strip(),
                 "delivery_terms": (f.get("delivery_terms") or "").strip(),
                 "delivery_date": (f.get("delivery_date") or "").strip(),
@@ -570,9 +701,21 @@ def create_proforma(qid: str):
 
             # The PI is a real event in the deal's life, so it belongs on the
             # quotation's audit trail. log_event does not change the stage.
-            P.log_event(q, f"Proforma invoice {pi['ref']} raised for "
-                           f"&#8377;{due:,.0f}"
-                           + (f" ({pct:g}% of quoted value)." if pct < 100 else "."))
+            # The audit trail carries the running position, not just this
+            # invoice — "raised for 7,00,000" alone doesn't tell you whether
+            # the deal is now fully invoiced or double-invoiced.
+            msg = (f"Proforma invoice {pi['ref']} raised for &#8377;{due:,.0f}"
+                   + (f" ({pct:g}% of quoted value)" if pct < 100 else ""))
+            if invoiced:
+                bal = pi["balance_due"]
+                msg += (f". Invoiced to date &#8377;{invoiced + due:,.0f} of "
+                        f"&#8377;{grand:,.0f}"
+                        + (f", &#8377;{bal:,.0f} uninvoiced." if bal > 0 else
+                           " — fully invoiced." if bal == 0 else
+                           f" — &#8377;{-bal:,.0f} OVER the quoted value."))
+            else:
+                msg += "."
+            P.log_event(q, msg)
 
             return redirect(url_for("proforma.view_proforma", id=pid,
                                     msg=f"Proforma invoice {pi['ref']} created.",
@@ -588,7 +731,17 @@ def create_proforma(qid: str):
     v_date     = _v("date", _today())
     v_po_no    = _v("po_number", q.get("po_number", ""))
     v_po_date  = _v("po_date", q.get("po_date", ""))
-    v_pct      = _v("advance_pct", f"{DEFAULT_ADVANCE_PCT:g}")
+    # The advance defaults to whatever is still uninvoiced, not to 100. On the
+    # first PI those are the same number; on the second they are the whole
+    # difference between "ask for the balance" and "bill the order twice".
+    # Fully invoiced already ⇒ open blank, so a further PI has to be typed.
+    if not pri_refs:
+        _pct_default = f"{DEFAULT_ADVANCE_PCT:g}"
+    elif rem_pct > 0:
+        _pct_default = f"{rem_pct:g}"
+    else:
+        _pct_default = ""
+    v_pct      = _v("advance_pct", _pct_default)
     v_pay      = _v("payment_terms", q.get("payment_terms", ""))
     v_del_t    = _v("delivery_terms", q.get("delivery_terms", ""))
     v_del_d    = _v("delivery_date", q.get("delivery_date", ""))
@@ -596,8 +749,6 @@ def create_proforma(qid: str):
     v_inco     = _v("incoterms", q.get("incoterms", ""))
     v_valid    = _v("validity_days", DEFAULT_PI_VALIDITY)
     v_notes    = _v("notes")
-
-    grand = float(q.get("grand_total") or 0.0)
 
     # ── Frozen line-item preview ───────────────────────────────────────────
     rows_html = ""
@@ -634,6 +785,11 @@ def create_proforma(qid: str):
       issue. To invoice different quantities or prices, raise a new quotation first.
     </p>"""
 
+    # ── The running position ───────────────────────────────────────────────
+    # Listing the earlier PIs was never enough: the user still had to add them
+    # up in their head against a form pre-filled with 100%. So state the
+    # arithmetic — quoted, invoiced, what is left — and let the field default
+    # to the last line.
     existing = _proformas_for(qid)
     existing_html = ""
     if existing:
@@ -642,9 +798,59 @@ def create_proforma(qid: str):
             f'{P.esc(p.get("ref"))} &middot; &#8377;&nbsp;{float(p.get("amount_due") or 0):,.0f}</a>'
             for p_id, p in existing
         )
-        existing_html = (f'<div class="pi-strip">{chips}</div>'
-                         f'<div class="sn-sub">Already raised against this quotation — '
-                         f'check before issuing another.</div>')
+        if remaining > OVER_INVOICE_TOLERANCE:
+            rem_cls, rem_lbl = "", "Still uninvoiced"
+        elif remaining >= -OVER_INVOICE_TOLERANCE:
+            rem_cls, rem_lbl = " pl-done", "Fully invoiced — nothing left to bill"
+        else:
+            rem_cls, rem_lbl = " pl-over", "Over-invoiced against the quoted value"
+
+        existing_html = f"""
+        <div class="pi-strip">{chips}</div>
+        <div class="pi-ledger">
+          <div class="pl-row"><span>Quoted value</span>
+               <b>&#8377;&nbsp;{grand:,.0f}</b></div>
+          <div class="pl-row"><span>Already invoiced on
+               {len(existing)} proforma{"s" if len(existing) != 1 else ""}</span>
+               <b>&#8722;&nbsp;&#8377;&nbsp;{invoiced:,.0f}</b></div>
+          <div class="pl-row pl-rem{rem_cls}"><span>{rem_lbl}</span>
+               <b>&#8377;&nbsp;{abs(remaining):,.0f}</b></div>
+        </div>
+        <div class="sn-sub">Invoiced, not received &mdash; this app records what
+          has been asked for, not what has been paid.</div>"""
+
+    # ── Advance field: presets, help text, over-invoice confirmation ───────
+    # The percentage stays a share of the QUOTED value, not of the balance —
+    # that is what "30% advance" means in the trade and what prints on the
+    # document. Only the default and the guidance know about the balance.
+    presets = list(ADVANCE_PRESETS)
+    if pri_refs and rem_pct > 0 and f"{rem_pct:g}" not in presets:
+        presets.insert(0, f"{rem_pct:g}")
+    presets_html = "".join(f'<option value="{p}"></option>' for p in presets)
+
+    if not pri_refs:
+        adv_help = ("100 asks for the whole invoice value; 30 asks for a 30% advance "
+                    "and shows the balance as payable before dispatch.<br>"
+                    f"Invoice value <b>&#8377;&nbsp;{grand:,.0f}</b>")
+    elif rem_pct > 0:
+        adv_help = (f"Pre-filled with <b>{rem_pct:g}%</b> &mdash; the part of this order "
+                    f"not yet invoiced (&#8377;&nbsp;{remaining:,.0f}).<br>"
+                    f"The percentage is of the quoted value "
+                    f"(&#8377;&nbsp;{grand:,.0f}), not of the balance.")
+    else:
+        adv_help = ("This quotation is <b>already fully invoiced</b>, so the field is "
+                    "blank rather than pre-filled.<br>Enter a percentage only if you "
+                    "mean to invoice beyond the order value.")
+
+    confirm_html = ""
+    if needs_confirm:
+        confirm_html = """
+          <label class="over-confirm">
+            <input type="checkbox" name="confirm_over" value="1"/>
+            <span>Yes &mdash; raise this invoice even though it takes the total
+              past the quoted value. The scope or price of this order has
+              changed since it was quoted.</span>
+          </label>"""
 
     q_view = url_for("quotation.view_quotation", id=qid)
 
@@ -701,15 +907,12 @@ def create_proforma(qid: str):
               <input type="number" id="advance_pct" name="advance_pct" list="adv-presets"
                      value="{P.esc(v_pct)}" min="0.01" max="100" step="any" required/>
               <datalist id="adv-presets">
-                {"".join(f'<option value="{p}"></option>' for p in ADVANCE_PRESETS)}
+                {presets_html}
               </datalist>
             </div>
-            <div class="adv-out">
-              100 asks for the whole invoice value; 30 asks for a 30% advance and
-              shows the balance as payable before dispatch.<br>
-              Invoice value <b>&#8377;&nbsp;{grand:,.0f}</b>
-            </div>
+            <div class="adv-out">{adv_help}</div>
           </div>
+          {confirm_html}
         </div>
 
         <div class="form-section">
@@ -882,22 +1085,55 @@ def view_proforma(id: str):
                      f'<div class="dh-body">{P.esc(chr(10).join(ship_parts))}</div></div>')
 
     # ── Payment box ───────────────────────────────────────────────────────
-    # Only earns its space on a part payment. When the PI asks for the whole
-    # value the closing row of the table already says it, and repeating the
-    # same figure twice invites the reader to look for a difference.
-    pct  = float(pi.get("advance_pct") or 100.0)
-    due  = float(pi.get("amount_due") or grand)
-    bal  = float(pi.get("balance_due") or 0.0)
+    # The full breakdown only earns its space when there is arithmetic to show
+    # — a part payment, or an order with earlier PIs against it. A PI that is
+    # the only one and asks for the whole value gets the compact form: the
+    # closing row of the table already states that figure, and repeating it
+    # invites the reader to look for a difference.
+    #
+    # `prior_invoiced` is read off the record, never recomputed. It is what had
+    # been invoiced when THIS document was issued; a PI raised later must not
+    # change what a document already with the customer says.
+    pct    = float(pi.get("advance_pct") or 100.0)
+    due    = float(pi.get("amount_due") or grand)
+    bal    = float(pi.get("balance_due") or 0.0)
+    prior  = float(pi.get("prior_invoiced") or 0.0)
+    p_refs = [r for r in (pi.get("prior_refs") or []) if r]
 
-    if pct < 100:
+    if prior > 0 or pct < 100:
+        # With earlier PIs in play, `grand` is the value of the whole order,
+        # not of this demand — so it is labelled as such.
+        head_lbl = "Total Order Value" if prior > 0 else "Total Invoice Value"
+        due_lbl  = (f"Amount Payable Now ({pct:g}% of order value)" if prior > 0
+                    else f"Amount Payable Now (advance @ {pct:g}%)")
+
+        prior_row = ""
+        if prior > 0:
+            on = f" on {', '.join(P.esc(r) for r in p_refs)}" if p_refs else ""
+            prior_row = (f'<div class="pay-row"><span>Less: already invoiced{on}</span>'
+                         f'<span class="pay-amt">{_inr(prior)}</span></div>')
+
+        # A negative balance means this PI was deliberately raised past the
+        # order value. Printing "Balance 0.00" there would be a false comfort
+        # and printing a negative is not a figure the customer can act on, so
+        # the row is simply omitted and the totals above carry the story.
+        bal_row = ""
+        if bal > 0:
+            bal_row = ('<div class="pay-row"><span>Balance, payable before dispatch</span>'
+                       f'<span class="pay-amt">{_inr(bal)}</span></div>')
+        elif prior > 0 and bal == 0:
+            bal_row = ('<div class="pay-row"><span>Balance on this order after '
+                       'this payment</span>'
+                       f'<span class="pay-amt">{_inr(0)}</span></div>')
+
         pay_box = f"""
       <div class="pay-box">
-        <div class="pay-row"><span>Total Invoice Value</span>
+        <div class="pay-row"><span>{head_lbl}</span>
              <span class="pay-amt">{_inr(grand)}</span></div>
-        <div class="pay-row pay-due"><span>Amount Payable Now (advance @ {pct:g}%)</span>
+        {prior_row}
+        <div class="pay-row pay-due"><span>{due_lbl}</span>
              <span class="pay-amt">{_inr(due)}</span></div>
-        <div class="pay-row"><span>Balance, payable before dispatch</span>
-             <span class="pay-amt">{_inr(bal)}</span></div>
+        {bal_row}
         <div class="pay-words">Amount Payable Now (in words) : {_amount_in_words(due)}</div>
       </div>"""
     else:
@@ -953,6 +1189,30 @@ def view_proforma(id: str):
     back_q = (f'<a href="{q_view}" class="btn btn-ghost">&#8592; Quotation '
               f'{P.esc(pi.get("quotation_ref"))}</a>' if q_view else "")
 
+    # ── Onward to the tax invoice ─────────────────────────────────────────
+    # Built from url_for plus a direct read of STORE["invoices"]. This module
+    # must NOT import invoice.py — invoice.py imports this one (for the shared
+    # stylesheet and _sel_keep), and a url_for string needs no import, which is
+    # what keeps that arrow one-way. Same trick quotation.py uses to reach here.
+    raised = sorted(
+        ((iid, t) for iid, t in STORE["invoices"].items()
+         if t.get("proforma_id") == id),
+        key=lambda kv: kv[1].get("ref", ""),
+    )
+    ti_chips = "".join(
+        f'<a class="ti-chip" href="{url_for("invoice.view_invoice", id=i_id)}">'
+        f'{P.esc(t.get("ref"))}</a>'
+        for i_id, t in raised
+    )
+    ti_strip = f'<div class="ti-strip">{ti_chips}</div>' if ti_chips else ""
+
+    # The button stays available after the first invoice: a part supply is
+    # invoiced in lots, so a second tax invoice against one PI is legitimate.
+    # The convert form lists what already exists so the decision is informed —
+    # the same contract the quotation's "Raise Proforma" button has.
+    raise_ti = (f'<a href="{url_for("invoice.create_invoice", pid=id)}" class="btn">'
+                f'&#129534;&nbsp;{"Raise Another Tax Invoice" if raised else "Raise Tax Invoice"}</a>')
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -969,12 +1229,14 @@ def view_proforma(id: str):
   <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
     Proforma Invoice <span style="color:var(--brand);">{P.esc(pi.get('ref'))}</span>
   </h1>
-  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {back_q}
     <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
+    {raise_ti}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
+{ti_strip}
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
 

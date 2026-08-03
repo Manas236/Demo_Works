@@ -110,6 +110,24 @@ BASE_STYLES = """
     text-transform: uppercase;
   }
 
+  .nav-right { display: flex; align-items: center; gap: .9rem; }
+  .nav-link {
+    display: flex; align-items: center; gap: .3rem;
+    font-size: .8rem; font-weight: 600; color: var(--muted);
+    text-decoration: none; white-space: nowrap;
+  }
+  .nav-link:hover { color: var(--brand); }
+  .nav-link svg {
+    width: 15px; height: 15px; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* Amber dot while any company/bank field is still blank — the documents are
+     printing "add …" chips until it clears, so the nav should say so. */
+  .nav-link .nl-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--saffron); flex-shrink: 0;
+  }
+
   /* ── Main Layout ─────────────────────────────────────────────────── */
   main {
     max-width: 1100px;
@@ -247,6 +265,9 @@ BASE_STYLES = """
   @media (max-width: 580px) {
     nav { padding: 0 1rem; }
     main { padding: 2rem 1rem 4rem; }
+    /* The subtitle pill is decoration; the settings link is a control. On a
+       narrow screen the control keeps the space. */
+    .nav-pill { display: none; }
   }
 </style>
 """
@@ -533,7 +554,16 @@ ICONS = {
     "news": """<svg viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 0-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>""",
     "address": """<svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>""",
     "proforma": """<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 11v6"/><path d="M13.8 12.5h-2.6a1.4 1.4 0 0 0 0 2.8h1.6a1.4 1.4 0 0 1 0 2.8h-2.6"/></svg>""",
+    # A tax invoice is the proforma's document with the statutory seal on it —
+    # same sheet outline, a check mark instead of the rupee glyph, because what
+    # distinguishes it is that the supply actually happened.
+    "invoice": """<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 12"/></svg>""",
+    # Buy side: a carton, not a sheet of paper. The other document cards are
+    # all page outlines; a purchase order is about material arriving, and it
+    # reads as a different kind of thing at a glance because it is one.
+    "purchase": """<svg viewBox="0 0 24 24"><path d="M21 8V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>""",
     "back": """<svg viewBox="0 0 24 24" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>""",
+    "settings": """<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>""",
     # Attention-queue reason icons. Status colour never carries meaning alone —
     # every row pairs its tone with one of these plus the reason in words.
     "overdue": """<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>""",
@@ -546,14 +576,30 @@ ICONS = {
 
 # ── Shared Nav Component ──────────────────────────────────────────────────────
 def _nav():
+    """
+    The shared nav. Rendered on every page, hidden by the print stylesheet.
+
+    The settings link carries an amber dot while any company or bank field is
+    still blank — those pages are printing visible "add …" chips until it
+    clears, so the way to fix them should be one click away from wherever the
+    user noticed.
+    """
     dashboard_url = url_for("dashboard.index")
+    settings_url  = url_for("settings.edit_settings")
+
+    incomplete = not B.has(*B.current_settings().values())
+    dot = '<span class="nl-dot" title="Company details incomplete"></span>' if incomplete else ""
+
     return f"""
     <nav>
       <a href="{dashboard_url}" class="nav-brand">
         {B.logo_img(30)}
         <span class="nb-word">{B.name_html("nb-fire")}</span>
       </a>
-      <span class="nav-pill">{B.APP_SUBTITLE}</span>
+      <div class="nav-right">
+        <a href="{settings_url}" class="nav-link">{dot}{ICONS['settings']}Settings</a>
+        <span class="nav-pill">{B.APP_SUBTITLE}</span>
+      </div>
     </nav>
     """
 
@@ -562,14 +608,15 @@ def _footer_contact() -> str:
     """
     Contact strip for the dashboard footer.
 
-    Until the client's real address / phone / email are entered in branding.py
-    there is nothing honest to print, so we show a setup nudge instead of a
-    half-empty contact line.
+    Until the client's real address / phone / email are entered there is
+    nothing honest to print, so we show a setup nudge instead of a half-empty
+    contact line — and the nudge links to the page that fixes it.
     """
     if not B.has(B.COMPANY_ADDR, B.COMPANY_PHONE, B.COMPANY_EMAIL):
-        return ('<p class="foot-contact">Company details are not filled in yet — '
-                'add address, phone, e-mail, GSTIN and PAN in '
-                '<b>branding.py</b> before issuing a quotation.</p>')
+        return (f'<p class="foot-contact">Company details are not filled in yet — '
+                f'add address, phone, e-mail, GSTIN and PAN in '
+                f'<a href="{url_for("settings.edit_settings")}"><b>Settings</b></a> '
+                f'before issuing a quotation.</p>')
     return (f'<p class="foot-contact">{B.COMPANY_ADDR} &nbsp;·&nbsp; '
             f'<b>{B.COMPANY_PHONE}</b> &nbsp;·&nbsp; {B.COMPANY_EMAIL}</p>')
 
@@ -773,6 +820,21 @@ def _metrics():
         "pi_total":     len(STORE["proformas"]),
         "pi_due":       sum(float(p.get("amount_due") or 0.0)
                             for p in STORE["proformas"].values()),
+        "ti_total":     len(STORE["invoices"]),
+        # Net of advances already adjusted — the figure that is genuinely still
+        # owed, not the headline invoiced value.
+        "ti_due":       sum(float(t.get("net_payable") or 0.0)
+                            for t in STORE["invoices"].values()),
+        # Buy side. Committed spend counts OPEN orders only: a received order is
+        # a cost already landed, a cancelled one was never a cost at all.
+        # Status strings are matched literally rather than importing
+        # purchase.py — dashboard.py is imported BY every module and must stay
+        # at the bottom of the import graph (§2).
+        "po_total":     len(STORE["purchases"]),
+        "po_committed": sum(float(p.get("grand_total") or 0.0)
+                            for p in STORE["purchases"].values()
+                            if (p.get("status") or "Draft")
+                            not in ("Received", "Cancelled")),
     }
 
 
@@ -1059,6 +1121,8 @@ def index():
     quotation_url = url_for("quotation.list_quotations")
     address_url   = url_for("address.list_addresses")
     proforma_url  = url_for("proforma.list_proformas")
+    invoice_url   = url_for("invoice.list_invoices")
+    purchase_url  = url_for("purchase.list_purchases")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1122,6 +1186,22 @@ def index():
             <div class="card-body">
               <div class="card-title">Proforma Invoices</div>
               <div class="card-desc">{m['pi_total']} issued{f" · {rupees(m['pi_due'])} requested" if m['pi_due'] else " · raised from a quotation"}</div>
+            </div>
+          </a>
+
+          <a href="{invoice_url}" class="card">
+            <div class="card-icon">{ICONS['invoice']}</div>
+            <div class="card-body">
+              <div class="card-title">Tax Invoices</div>
+              <div class="card-desc">{m['ti_total']} issued{f" · {rupees(m['ti_due'])} outstanding" if m['ti_due'] else " · raised from a proforma"}</div>
+            </div>
+          </a>
+
+          <a href="{purchase_url}" class="card">
+            <div class="card-icon">{ICONS['purchase']}</div>
+            <div class="card-body">
+              <div class="card-title">Purchase Orders</div>
+              <div class="card-desc">{m['po_total']} raised{f" · {rupees(m['po_committed'])} committed" if m['po_committed'] else " · what we buy, not what we sell"}</div>
             </div>
           </a>
 

@@ -12,11 +12,54 @@
 
 A **Flask quotation & catalogue system for Samruddhi Fire**, a fire-protection
 contractor in India. It is a **seller-side** app: we build the catalogue, we
-price it, we issue the quotation, we raise the proforma invoice against it, and
-we record the customer's incoming Purchase Order. We never issue POs here.
+price it, we issue the quotation, we raise the proforma invoice against it, we
+issue the tax invoice when the goods go out, and we record the customer's
+incoming Purchase Order. We never issue POs here.
 
-The document chain is **quotation → proforma invoice**. A tax invoice is *not*
-issued by this app; the PI explicitly says so on its face.
+The document chain is **quotation → proforma invoice → tax invoice**. Each link
+is derived from the one before it, never entered from scratch, and each freezes
+a copy of the line items at the moment it is issued.
+
+Each of the three is a **different commercial instrument**, which is why each is
+its own module and its own record rather than a render mode of the last:
+
+| | What it is | Creates |
+|---|---|---|
+| Quotation | an offer to sell | nothing binding |
+| Proforma invoice | a request for money | no GST liability, no ITC |
+| **Tax invoice** | **a statutory record of a supply** | **GST liability; the customer's input tax credit** |
+
+That last row is why the tax invoice is the only one bound by **Rule 46 of the
+CGST Rules, 2017** — HSN on every line, place of supply with its State code, a
+reverse-charge declaration, and a serial number unique within the financial
+year. The PI's own document still says "This is not a Tax Invoice" on its face,
+and now names the document that is.
+
+### There are two pipelines, not one chain
+
+Everything above is the **sell side**. `purchase.py` is the **buy side**, and it
+is deliberately a separate pipeline:
+
+```
+SELL SIDE          quotation ──► proforma invoice ──► tax invoice      money IN
+                       ▲
+                       │ optional, soft
+                       ▼
+BUY SIDE           purchase order ──► [vendor lifecycle]               money OUT
+```
+
+**A purchase order never links to a proforma or a tax invoice, and never
+should.** A PI *requests* money from a customer and a TI *records a sale*;
+neither has anything to say about what we paid a vendor. The GST on a PO is
+**input** tax we pay, the opposite side of the ledger from a tax invoice.
+Wiring the two together would be a category error.
+
+The one link that does exist is `purchase.quotation_id` — a **soft, optional**
+reference meaning "this PO is procuring for QT-0012". It is not a parent the
+way a quotation parents a PI: a PO can stand entirely alone, because stock and
+consumables get bought with no deal behind them. That single optional field is
+what buys **job costing** (§5). The two pipelines meet at the *job*, never at
+the document.
 
 Run it:
 
@@ -59,11 +102,14 @@ Consequences you must respect when editing:
 | [db.py](db.py) | 295 | MySQL persistence by snapshot-and-diff. |
 | [branding.py](branding.py) | 251 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
 | [dashboard.py](dashboard.py) | 1159 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports**. |
-| [product.py](product.py) | 1271 | Product catalogue + assemblies (BOM). |
+| [product.py](product.py) | 1347 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
 | [quotation.py](quotation.py) | 2693 | Quotation form + printed document. The big one. |
-| [proforma.py](proforma.py) | 1043 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
-| [pipeline.py](pipeline.py) | 491 | Sales stages, customer PO, win/loss. Pure logic, no routes. |
-| [address.py](address.py) | 888 | Address book + the picker that quotations use. |
+| [proforma.py](proforma.py) | 1117 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
+| [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
+| [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
+| [settings.py](settings.py) | 285 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
+| [pipeline.py](pipeline.py) | 542 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
+| [address.py](address.py) | 951 | Address book + the pickers that quotations and purchase orders use. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 131 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 495 | **Dead file.** Stale docs only — see §8. |
@@ -77,6 +123,9 @@ app.py
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
+ ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
+ ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address
+ ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py imports nothing from the app  ← keep it that way
@@ -85,12 +134,54 @@ branding.py imports nothing from the app  ← keep it that way
 
 `quotation.py → pipeline.py`, **never** the reverse.
 
+**The document chain imports strictly downstream:**
+
+```
+quotation.py  ←──  proforma.py  ←──  invoice.py
+```
+
 `proforma.py → quotation.py`, **never** the reverse. proforma imports the
 document's formatters and stylesheet (`_inr`, `_fmt_qty`, `_amount_in_words`,
 `_meta`, `VIEW_DOC_STYLES`, `QUOTATION_STYLES`) so the two documents cannot
 drift apart. The quotation view page links *to* proforma with
 `url_for("proforma.…")` and reads `STORE["proformas"]` directly — a `url_for`
 string needs no import, which is what keeps the arrow one-way.
+
+`invoice.py → proforma.py → quotation.py`, and **never** the reverse of either.
+invoice imports the same document formatters from `quotation`, plus
+`PROFORMA_STYLES` and `_sel_keep` from `proforma`. The proforma view page links
+*to* the tax invoice with `url_for("invoice.…")` and reads `STORE["invoices"]`
+directly — exactly the same trick, one link further down.
+
+**Where a shared CSS rule lives follows from that.** A class rendered by two
+modules belongs to the sheet of the **upstream** one, because the downstream
+module already loads it and the upstream one cannot import back:
+
+| Class | Defined in | Rendered by |
+|---|---|---|
+| `.pi-chip` / `.pi-strip` | `QUOTATION_STYLES` | quotation deal panel, proforma |
+| `.ti-chip` / `.ti-strip` | `PROFORMA_STYLES` | proforma view page, invoice |
+| `.jc-*` / `.po-chip` / `.po-strip` | `QUOTATION_STYLES` | quotation deal panel, purchase |
+
+**The buy side imports the sell side's document toolkit, and nothing else.**
+
+```
+purchase.py ──► quotation.py     the A4 sheet + formatters, NOT the sales chain
+purchase.py ──► address.py       the vendor picker
+purchase.py ──► pipeline.py      fy_of / fy_ref / esc / parse_money
+```
+
+`purchase.py` must **never** import `proforma.py` or `invoice.py`, and none of
+those may import it. `quotation.py` renders the job-costing block by reading
+`STORE["purchases"]` directly plus `url_for` — the same one-way trick used
+twice already on the sell side. There is a test guarding every one of those six
+import directions.
+
+**`pipeline.py` is where a helper goes when both pipelines need it.** It already
+held `esc` and `parse_money`; `fy_of` and `fy_ref` joined them when the PO
+series needed the same financial-year numbering as the tax invoice. It imports
+nothing from the app, so it is the only place a shared helper can live without
+coupling buy side to sell side.
 
 **dashboard.py may import `branding`, `store` and `pipeline`** — none of those
 import anything from the app, so there is no cycle. It must **never** import
@@ -110,7 +201,10 @@ STORE = {
     "products":     {},     # uuid -> product
     "quotations":   {},     # uuid -> quotation
     "proformas":    {},     # uuid -> proforma invoice
+    "invoices":     {},     # uuid -> GST tax invoice
+    "purchases":    {},     # uuid -> purchase order   (BUY side)
     "addresses":    {},     # uuid -> address
+    "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
     "_addr_seeded": False,  # address seeder guard
 }
@@ -120,7 +214,7 @@ STORE = {
 
 ```python
 {
-  "id": uuid, "name": str, "part_no": str, "unit": str,
+  "id": uuid, "name": str, "part_no": str, "hsn": str, "unit": str,
   "base_price": float, "description": str,
   "type": "standalone" | "assembly" | "support",
   "children": [ {"product_id": uuid, "qty": int}, ... ],   # assemblies only
@@ -131,9 +225,47 @@ STORE = {
   alone. `standalone` = sold on its own. Only the badge and the picker treat
   these differently; nothing enforces that `support` items stay inside
   assemblies.
-- **`hsn` is read but never written.** `quotation.py` reads `p.get("hsn", "")`
-  in 9 places, but the add-product form has no HSN field, so it is always `""`.
-  Adding an HSN input to `add_product()` is a real, small, valuable task.
+- **`hsn` is where every HSN on every document comes from.** It is captured on
+  the add-product form, validated by `_valid_hsn()` (digits only, 4/6/8 — the
+  three lengths GST issues; how many are *required* depends on turnover, which
+  this app does not know, so the rule is shape-only), and carried down
+  unchanged by `_process_selections()` → `line_items` → PI → tax invoice.
+  Optional on the form, **mandatory on a tax invoice** (Rule 46(g)) — a line
+  without one costs the customer the input tax credit on it. Blank renders as
+  the amber `B.field()` chip in the catalogue and on the printed sheet, never
+  as an empty cell.
+- `_seed()` **backfills `hsn` onto an existing seeded row when it is blank**,
+  and only then. Those twelve rows have fixed UUIDs and predate the field, so a
+  database from an earlier run holds them all without one — and with no product
+  edit route (§7.2) a user cannot add it by hand. It fills a gap; it never
+  overwrites a code someone has set.
+
+#### `product.backfill_line_item_hsn()` — a one-time migration, not app behaviour
+
+Filling `hsn` on the *catalogue* does nothing for documents already issued,
+because every document freezes a **copy** of its line items (below). Records
+written before the field existed would therefore stay blank forever, and a tax
+invoice raised from such a proforma prints an amber chip on every line.
+
+`backfill_line_item_hsn()` walks `quotations`, `proformas` and `invoices` and
+fills a blank `hsn` from the catalogue, matching on **part_no** (the stable key
+— a line item does not record the product id, and names get edited). It is
+**deliberately not called at boot.**
+
+It drives through the freeze, which is only defensible because:
+
+- it fills a field that **did not exist** when those rows were written, so no
+  agreed value is overwritten;
+- it **only ever fills a blank** — a code already present, even one that
+  disagrees with today's catalogue, is left alone;
+- it touches nothing carrying a commercial agreement: name, qty, unit, price,
+  total and depth are untouched.
+
+**Applied once to the working database** (4 quotations, 2 proformas — 31 rows
+filled). Run it again only after adding HSN to catalogue rows that older
+documents were built from. Never wire it into startup: once a classification is
+*corrected*, pushing that correction onto issued documents is exactly the
+rewriting the freeze exists to prevent.
 
 ### Quotation
 
@@ -184,8 +316,11 @@ should not be one.
   `amount_due`, `balance_due`, `payment_terms`, `delivery_terms`,
   `delivery_date`, `dispatch_through`, `incoterms`, `validity_days`, `notes`,
   `company_branch`, `auth_signatory`
+- **The running position, frozen at issue:** `prior_invoiced` (float — the sum
+  of `amount_due` over every PI already raised against the same quotation when
+  this one was created) and `prior_refs` (`["PI-0001", …]`, those PIs' numbers).
 
-Three properties this shape exists to guarantee:
+Four properties this shape exists to guarantee:
 
 1. **The snapshot is frozen.** `line_items` is copied, not referenced. A
    shallow `dict(row)` per line is sufficient — every value in a `line_item` is
@@ -193,14 +328,101 @@ Three properties this shape exists to guarantee:
    invoice, which is the whole reason a PI is its own record.
 2. **`quotation_ref` is stored, not looked up.** The PI still prints correctly
    as a historical document if the quotation is ever removed.
-3. **`amount_due + balance_due == grand_total`**, always. `amount_due` is the
-   figure the customer actually has to pay now; `advance_pct` is only how it
-   was derived.
+3. **`prior_invoiced + amount_due + balance_due == grand_total`**, always.
+   `amount_due` is the figure the customer actually has to pay now;
+   `advance_pct` is only how it was derived, and it is always a share of the
+   **quoted value**, never of the balance — that is what "30% advance" means in
+   the trade and what prints on the document.
+4. **`prior_invoiced` is frozen too, and never recomputed at render time.**
+   PI-0001 stated a balance that was true on its date; raising PI-0002 must not
+   rewrite a document already in the customer's ledger. So `balance_due` is
+   `order − invoiced *before* this one − this one`, and a later PI cannot reach
+   back into an earlier one.
 
 Many PIs may point at one quotation (advance, then balance, then a part
-supply). Nothing enforces that their amounts sum to the quoted value — that is
-a judgement call for whoever raises them, and the convert form shows the PIs
-already issued against that quotation so the decision is an informed one.
+supply), which is why the running position is part of the record. Amounts that
+together **exceed** the quoted value are still permitted — scope grows, prices
+move — but take a deliberate confirmation (§5). Both fields default to `0.0` /
+`[]` when absent, so PIs written before they existed render exactly as before.
+
+⚠ **Invoiced, not received.** Nothing in this app records payment. Every figure
+here is what has been *asked for*. It keeps the paperwork self-consistent; it is
+not a receivables position.
+
+### Tax Invoice
+
+Written in one literal in `invoice.create_invoice()`. **Derived from a proforma
+invoice, never entered from scratch** — there is no blank-invoice form and
+there should not be one.
+
+- **Identity:** `id`, `ref` (`SF/TI/26-27/0001`), `fy` (`26-27`), `date`
+- **Back-links:** `proforma_id`, `proforma_ref`, `proforma_date`,
+  `quotation_id`, `quotation_ref` — both refs **stored, not looked up**, so the
+  invoice still prints as a historical document if either source is removed
+- **Customer:** copied from the PI — `account_name`, `contact_person`, `to`,
+  `bill_gstin`, `ship_same`, `ship_*`
+- **Frozen content:** `line_items` (a **copy**, `[dict(r) for r in …]`),
+  `subtotal`, `tax_type`, `tax_info`, `grand_total`, `total_qty`
+- **Statutory — the fields this document is the first in the chain to carry:**
+  `place_of_supply`, `pos_code` (its GST State code), `reverse_charge` (bool)
+- **Settlement:** `advance_received`, `net_payable`
+- **Movement of the goods:** `po_number`, `po_date`, `dispatch_through`,
+  `dispatch_doc_no` (LR/docket), `vehicle_no`, `eway_bill_no`
+- **Other:** `payment_terms`, `notes`, `company_branch`, `auth_signatory`
+
+Four properties this shape exists to guarantee:
+
+1. **The snapshot is frozen**, exactly as the PI's is and for the same reason —
+   a shallow `dict(row)` per line, because every value in a `line_item` is a
+   scalar.
+2. **`advance_received + net_payable == grand_total`**, always. The tax invoice
+   is raised for the **full value of the goods supplied**; what was already paid
+   against the PI is shown as an adjustment, not deducted from the invoice
+   value. Charging GST on a reduced figure because an advance was received is
+   the mistake this shape is built to prevent.
+3. **`ref` is unique within `fy`, not globally.** Rule 46(b) requires
+   uniqueness per financial year and ≤ 16 characters; the series restarts at
+   `0001` each 1 April. `fy` is stored so the register can group without
+   re-parsing dates.
+4. **`pos_code` is stored alongside `place_of_supply`**, not derived at render
+   time, so the printed document does not depend on `GST_STATE_CODES` never
+   being edited.
+
+Many tax invoices may point at one PI — a part supply is invoiced in lots. The
+convert form lists those already raised, and the PI view page carries them as
+`.ti-chip` links, so issuing a second one is a decision rather than an accident.
+
+### Purchase Order  (buy side)
+
+Written in one literal in `purchase.create_purchase()`. Unlike every sell-side
+document it is **entered from scratch, not derived** — there is no upstream
+record to freeze a copy of, because the decision to buy is ours.
+
+- **Identity:** `id`, `ref` (`SF/PO/26-27/0001`), `fy`, `date`
+- **Vendor — who we buy FROM, not a customer:** `vendor_id`, `vendor_name`,
+  `vendor_gstin`, `to` (the printable block), `vendor_ref` (their offer no.)
+- **Soft job link:** `quotation_id`, `quotation_ref` — **both may be `""`**
+- **Content:** `line_items`, `subtotal`, `tax_type`, `tax_info`,
+  `grand_total`, `total_qty`
+- **Where and when:** `delivery_date` (wanted by), `delivery_to`,
+  `payment_terms`, `delivery_terms`, `dispatch_through`, `incoterms`
+- **Lifecycle:** `status`, `status_history[]` (`{at, status, note}`)
+- **Other:** `notes`, `company_branch`, `auth_signatory`
+
+Four things that differ from the sell side and are easy to get wrong:
+
+1. **The line items are NOT frozen from anything** — they are typed on the
+   form. There is no snapshot contract here because there is no source
+   document; the PO *is* the source.
+2. **`line_items` is flat: `depth` is always 0 and assemblies are not
+   expanded.** We buy the thing the vendor sells us. If the components are
+   bought separately they are separate lines, chosen deliberately. That is the
+   exact opposite of the quotation, where a BOM is expanded so the customer can
+   see what is inside.
+3. **The tax is input tax we pay**, not output tax we collect. It uses the same
+   `quotation._tax_lines()`, but it sits on the other side of the ledger.
+4. **`quotation_id` may be empty and that is normal** — a stock purchase. Any
+   code walking purchases must not assume a job.
 
 ### Address
 
@@ -229,8 +451,8 @@ every req   app.py @teardown_request → db.sync(STORE)
               → upsert changed, delete missing
 ```
 
-- One table per collection (`products`, `quotations`, `proformas`,
-  `addresses`), each row is
+- One table per collection (`products`, `quotations`, `proformas`, `invoices`,
+  `purchases`, `addresses`, `settings`), each row is
   `id VARCHAR(64) PK, data JSON, updated_at TIMESTAMP`. The **whole record is a
   JSON document** — chosen because quotation shape is still moving and columns
   would mean a migration per field.
@@ -269,10 +491,28 @@ what is stuck, and what moved" before it offers a link anywhere. Top to bottom:
 5. **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
 6. **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
    the register exactly.
-7. **Module strip** — the old card launcher (5 cards: catalogue, quotations,
-   proforma invoices, address book, market news), now at the foot, carrying
-   live counts instead of prose. The strip is `auto-fit`, so adding a card
-   needs no layout change.
+7. **Module strip** — the old card launcher (7 cards: catalogue, quotations,
+   proforma invoices, tax invoices, purchase orders, address book, market
+   news), now at the foot, carrying live counts instead of prose. The strip is
+   `auto-fit`, so adding a card needs no layout change. Settings is reached
+   from the nav, not from here — it is configuration, not a module you work in.
+
+   The tax-invoice card counts **`net_payable`, not invoiced value** — the
+   figure genuinely still owed, after advances already adjusted. Two cards both
+   labelled with a headline total would double-count the same money, since a PI
+   and its tax invoice describe one supply.
+
+   The purchase card counts **open orders only** (not Received, not Cancelled):
+   a received order is a cost already landed, a cancelled one was never a cost.
+   Its status strings are matched **literally rather than importing
+   `purchase.py`** — `dashboard.py` is imported *by* every module and must stay
+   at the bottom of the import graph (§2). If `PO_STATUSES` is ever renamed,
+   `_metrics()` is the second place to change.
+
+   ⚠ **The hero figure is still sell-side only.** Open pipeline, the funnel and
+   the month columns all describe money coming in; committed spend appears only
+   on its card. A dashboard that nets the two sides is a real piece of work and
+   deliberately not attempted here.
 
 **Everything is computed in `_metrics()`**, one pass, pure. `P.summarize()` does
 the money; this module adds the funnel, the month buckets and the work queue.
@@ -367,9 +607,16 @@ recursively, multiplying `qty` down each level. It guards against cycles
 (`visited` frozenset) and missing children. Indent classes are driven by depth.
 This is where "what's actually inside this assembly" is answered.
 
-**Add page.** Fields: name, part_no, unit (dropdown), base_price, description,
-type. Choosing **Assembly** reveals a vanilla-JS child editor (repeating
-`child_product_id` / `child_qty` rows).
+**Add page.** Fields: name, part_no, **hsn**, unit (dropdown), base_price,
+description, type. Choosing **Assembly** reveals a vanilla-JS child editor
+(repeating `child_product_id` / `child_qty` rows).
+
+**HSN/SAC is optional here and mandatory three documents downstream.** That
+asymmetry is deliberate — blocking the catalogue would strand anyone holding a
+legacy row, because there is no edit route to fix one (below). Instead the list
+page, the detail page and every printed sheet show a blank code as the amber
+`B.field()` chip, so the gap is visible everywhere it matters and invisible
+nowhere.
 
 Validation, in order: required fields → valid type → price ≥ 0 → for each child:
 exists, not duplicated, qty is an int ≥ 1, and `can_add_child()` passes.
@@ -520,6 +767,18 @@ against that quotation as `.pi-chip` links. Both are built from
 import `proforma.py` (§2). `.pi-block` / `.pi-strip` / `.pi-chip` live in
 `QUOTATION_STYLES`, not in `PROFORMA_STYLES`, because both modules render them.
 
+**Links across to the buy side.** A *Raise PO* button
+(`/purchase/create?quotation_id=<id>`) and, once any PO names this job, a
+**job-costing block** on the deal panel: quoted against committed, with the
+gross margin and a `.po-chip` per order. Same one-way trick — `STORE["purchases"]`
+is read directly, never imported (`purchase.py` imports *this* module). The
+`.jc-*` / `.po-chip` classes live in `QUOTATION_STYLES` for the same reason the
+PI ones do.
+
+This block is the **only** place the two pipelines touch on screen, and it
+touches at the *job*, not at a document. It is material cost only — no labour,
+no overhead — and it says so under the figures.
+
 ---
 
 ### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
@@ -562,15 +821,42 @@ option — quietly rewriting a term the customer already saw on the quotation.
 here and not on the create form because these values arrive from a saved record
 rather than being typed fresh.
 
+##### The second PI is the dangerous one
+
+One quotation can carry several PIs, so the form reads the running position
+before it renders anything: `_invoiced_against(qid)` returns
+`(total, [refs])` over the PIs already raised, and `_remaining_pct()` turns the
+uninvoiced part into a percentage. Three behaviours follow, and they exist
+because the arithmetic used to be left entirely to the user:
+
+- **The advance field defaults to what is still uninvoiced, not to 100.**
+  `DEFAULT_ADVANCE_PCT` is the default for the *first* PI only. On a
+  ₹10,00,000 order already invoiced 30%, the form opens at `70`, and 70 is
+  prepended to the `ADVANCE_PRESETS` datalist. **Fully invoiced ⇒ the field
+  opens blank**, so a further PI has to be typed deliberately.
+- **A `.pi-ledger` states the arithmetic** under the existing `.pi-chip`s —
+  quoted value, less already invoiced, still uninvoiced — rather than listing
+  the earlier PIs and leaving the user to add them up.
+- **Over-invoicing is confirmed, never blocked.** If `prior + due` exceeds
+  `grand_total` by more than `OVER_INVOICE_TOLERANCE`, the POST is rejected and
+  re-renders with an `.over-confirm` tick box naming the overage and the PIs
+  that caused it. Ticking it and resubmitting writes the record. Exceeding the
+  quoted value is occasionally right (scope grew, prices moved) and usually a
+  slip, so it costs one deliberate act rather than a refusal.
+
 Validation, in order: quotation exists → date present → `advance_pct` parses →
-`0 < pct <= 100` → validity is digits. A rejected POST re-renders with the
-user's own input (`_v()` prefers `request.form`, then the quotation's value,
-then the module default), and nothing is written to STORE.
+`0 < pct <= 100` → validity is digits → over-invoicing is confirmed. A rejected
+POST re-renders with the user's own input (`_v()` prefers `request.form`, then
+the quotation's value, then the module default), and nothing is written to
+STORE.
 
 On success it writes the record, calls `P.log_event()` on the **quotation** —
 raising a PI is a real event in the deal's life and belongs on its audit trail,
 though it deliberately does not change the sales stage — and redirects to the
-document.
+document. The log line carries the **running** position ("Invoiced to date
+₹10,00,000 of ₹10,00,000 — fully invoiced."), not just this invoice's figure,
+which on its own cannot tell you whether the deal is now covered or billed
+twice.
 
 #### The document (`/proforma/view/<id>`)
 
@@ -588,12 +874,24 @@ What a PI has to say that a quotation does not:
   the frame. This is the single most important sentence on the page (it is what
   stops the document being mistaken for a tax invoice), so it prints in the
   frame rather than being buried at clause 1 of the terms.
-- **`.pay-box`** — Total invoice value → **Amount Payable Now** → balance, then
-  the payable-now figure in words. It is **only rendered when `advance_pct <
-  100`**; when the PI asks for the full value the closing row of the table
-  already says it, and printing the same number twice invites the reader to
-  hunt for a difference. The payable-now figure carries the heavy rule and the
+- **`.pay-box`** — Total value → *(less already invoiced)* → **Amount Payable
+  Now** → balance, then the payable-now figure in words. It **breaks the figure
+  down only when there is arithmetic to show**: a part payment (`advance_pct <
+  100`) or earlier PIs against the same order (`prior_invoiced > 0`). A sole PI
+  for the full value gets the compact form — the closing row of the table
+  already says that figure, and printing it twice invites the reader to hunt
+  for a difference. The payable-now figure carries the heavy rule and the
   `--fs-md` step — the same emphasis the closing total gets, and no more.
+
+  With `prior_invoiced > 0` the head row reads **Total Order Value**, not
+  "Total Invoice Value" — `grand_total` is then the value of the whole order
+  rather than of this demand — and a `Less: already invoiced on PI-0001` row
+  names the earlier PIs, which is what lets the customer's AP team reconcile
+  the set. Both figures come off the record, never recomputed (§3.4).
+
+  A **negative** balance (a confirmed over-invoice) prints **no balance row at
+  all**: "0.00" would be false comfort and a negative is not a figure anyone
+  can act on, so the totals above carry the story.
 - **`.bank-box`** — the remittance account, from `branding.BANK_*` (§6). Blank
   fields render as amber `todo-chip`s exactly like the statutory block, so an
   incomplete PI cannot go out looking finished.
@@ -617,14 +915,289 @@ pattern to copy.
 that has already been on a customer's document as soon as one record is
 removed, and a duplicated *invoice* number is materially worse than a
 duplicated quotation number: it is the key the payment is filed against. Still
-not year-scoped — that needs the client's real numbering policy
-(`SF/PI/26-27/0001` is the usual shape).
+not year-scoped — `invoice._next_ref()` now shows what that looks like
+(`SF/TI/26-27/0001`), and porting it here is a small job. It was done there
+first because for a tax invoice FY-scoping is statutory, not a nicety.
+
+#### Links out to the tax invoice
+
+The view page carries a *Raise Tax Invoice* button (`/invoice/from/<id>`) and
+lists the invoices already raised against that PI as `.ti-chip` links — the
+button relabels itself *Raise Another Tax Invoice* once one exists, because a
+part supply is legitimately invoiced in lots. Both are built from
+`STORE["invoices"]` read directly plus `url_for`; `proforma.py` must **not**
+import `invoice.py` (§2). `.ti-chip` / `.ti-strip` live in `PROFORMA_STYLES`
+for the same reason `.pi-chip` lives in `QUOTATION_STYLES`.
+
+---
+
+### `/invoice` — Tax Invoices · [invoice.py](invoice.py)
+
+| Route | View |
+|---|---|
+| `GET /invoice/` | `list_invoices` — register |
+| `GET,POST /invoice/from/<pid>` | `create_invoice` — convert a proforma |
+| `GET /invoice/view/<id>` | `view_invoice` — the printed Rule 46 document |
+
+**A tax invoice is the only document in this app with statutory force.** It
+creates the GST liability and it is what the customer claims input tax credit
+against, so most of its face is dictated by **Rule 46 of the CGST Rules, 2017**
+rather than by taste. There is **no blank-invoice form** — it can only be
+created from a proforma.
+
+#### Convert (`/invoice/from/<pid>`)
+
+Line items, prices and taxes are **copied verbatim and not editable here**. What
+is collected is only what the *supply* knows and the PI could not: when it
+happened, where it went, how the goods moved, and how much has already been
+received.
+
+**Place of supply** is the field that carries the most weight. It is required,
+it is validated against `GST_STATE_CODES`, and it decides IGST (inter-State)
+against CGST + SGST (intra-State). It defaults to the ship-to State, then the
+source quotation's `bill_state` — *on the form only*. Once posted the answer is
+stored on the invoice, so the printed document never depends on the quotation
+still existing. `_POS_STATES` deliberately drops the quotation list's `"Other"`:
+a foreign supply is an export, which is a different document (LUT/bond, no
+IGST) that this app does not issue.
+
+Terms fields reuse the quotation's vocabularies through `_sel_keep()` — the
+same rule and the same reason as the PI form (§ above). **Import those lists,
+never re-declare them.**
+
+Validation, in order: proforma exists → date present → place of supply present
+→ it is a real GST State → `advance_received` parses → it is not more than the
+invoice value. A rejected POST re-renders with the user's own input and nothing
+is written to STORE.
+
+##### Two warnings, and why neither of them blocks
+
+Both render as an amber `.gst-warn` panel. Amber, not red: nothing is broken,
+but nothing here may go out unread.
+
+1. **Missing HSN** (`_missing_hsn()`) names the exact products. It does not
+   block, because there is no product edit route (§7.2) — a user holding a
+   legacy catalogue row could not clear the block even if they wanted to.
+2. **Tax head vs place of supply** (`_tax_warning()`) fires when an inter-State
+   supply carries CGST+SGST or an intra-State one carries IGST. It compares
+   against `_supplier_state()`, read from the **first two digits of
+   `COMPANY_GSTIN`** rather than stored separately — the GSTIN already carries
+   the State by construction, and two fields that must agree are two fields
+   that can disagree. Blank or specimen GSTIN ⇒ the check stays quiet.
+
+   **It warns and does not correct.** Silently switching the head would move
+   the customer's total after they had already agreed a figure. That is a
+   commercial decision, not a rounding fix.
+
+#### The document (`/invoice/view/<id>`)
+
+The same A4 sheet again: `VIEW_DOC_STYLES` supplies the frame, the repeating
+letterhead, the items table and every print rule; `INVOICE_STYLES` layers after
+`PROFORMA_STYLES`, scoped inside `.quotation-doc`, and introduces **no new
+font, type size or border weight**. Same restraint, same reason.
+
+What a tax invoice must say that neither of the others does:
+
+- **`.copy-mark`** — goods move in triplicate (Rule 48): *Original for
+  Recipient / Duplicate for Transporter / Triplicate for Supplier*. There is no
+  PDF library here, so the caption is a render parameter:
+  **`?copy=original|duplicate|triplicate|all`**, defaulting to `original`. The
+  screen carries a `.copy-switch` segmented control; `?copy=all` emits all three
+  sheets with `page-break-before:always` between them, so the full set comes
+  out of one Ctrl+P. `page-break-before`, not `break-before` — Chrome's print
+  path still honours the legacy property most reliably.
+- **`.gst-strip`** — place of supply, its State code, and the reverse-charge
+  declaration, in a band under the header grid. Rule 46(m) and 46(n) want these
+  on the *face* of the invoice, and they are the first thing the customer's
+  accounts team reads, so they are not mixed into the meta columns.
+  **The reverse-charge line prints either way** — "No" is a required
+  declaration, not an omission.
+- **Per-line HSN via `_hsn_cell()`** → `B.field()`, so a blank prints as the
+  amber chip and, under the `@media print` override in `QUOTATION_STYLES`, as
+  bracketed italics rather than a yellow pill on a customer's document.
+- **`.set-box`** — Total invoice value → less advance received → **Net Amount
+  Payable**, then that figure in words. **Only rendered when an advance was
+  actually adjusted**; with nothing received the closing row of the table is
+  already the amount due, and printing the same figure twice invites the reader
+  to hunt for a difference. Same judgement as the PI's `.pay-box`.
+- **`.desp-box`** — vehicle no., LR/docket, e-way bill. Rendered only when at
+  least one was captured, for the same reason `_meta()` leaves a blank value
+  blank rather than printing an em-dash.
+- **`.certify`** — the "particulars given above are true and correct"
+  declaration above the signature block.
+- **`_build_ti_terms()`** — deliberately neither `quotation._build_tnc()` nor
+  `proforma._build_pi_terms()`. Those are written for an offer and for a payment
+  request; this set carries what belongs to a completed supply: what it was
+  supplied against, the short-supply window, retention of title, interest on
+  overdue amounts, and jurisdiction.
+  ⚠ Generic trade terms, **not checked against Samruddhi's actual policy** —
+  same caveat as the other two.
+
+The closing figure is labelled **"Taxable Value"**, not "Subtotal": on a tax
+invoice that figure is the base the tax was computed on, and that is the term
+both the customer's accounts team and the GST return use for it.
+
+Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
+(`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.
+
+#### Numbering
+
+`_next_ref(date)` is **FY-scoped and max+1 within that FY** — `SF/TI/26-27/0001`,
+exactly 16 characters, which is Rule 46(b)'s cap. Three things it does
+deliberately:
+
+- **The FY comes from the invoice date, not from today** (`_fy_of()`), so
+  back-dating into March files under the closing year and 1 April opens the new
+  series. A malformed date falls back to today rather than raising.
+- **Max+1 within the year**, so deleting a record never re-issues a number that
+  has already reached a customer's GSTR-2B.
+- **If `COMPANY_SHORT` is long enough to push the ref past 16 characters, the
+  prefix is dropped** rather than issuing an over-length number — a number the
+  portal will reject is worse than an unbranded one.
 
 #### Business rules — module-level constants, not buried in branches
 
-`DEFAULT_ADVANCE_PCT` (100 — asking for less must be deliberate),
+⚠ These are **`proforma.py`'s** constants; the block sits here only because the
+`/invoice` section was inserted above it. Move it back under `/proforma` next
+time this file is edited.
+
+`DEFAULT_ADVANCE_PCT` (100 — asking for less must be deliberate). This is the
+default for the **first** PI on a quotation only: once earlier PIs exist the
+form opens at whatever is still uninvoiced, because 100 is the safe default for
+the first invoice and the dangerous one for the second.
+`OVER_INVOICE_TOLERANCE` (₹1 of rounding dust forgiven before a PI set counts
+as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 `DEFAULT_PI_VALIDITY` (15 days, shorter than a quotation's on purpose),
 `ADVANCE_PRESETS`, `_REF_PREFIX`.
+
+---
+
+### `/purchase` — Purchase Orders · [purchase.py](purchase.py) · **BUY SIDE**
+
+| Route | View |
+|---|---|
+| `GET /purchase/` | `list_purchases` — register, filterable by status |
+| `GET,POST /purchase/create` | `create_purchase` — raise a PO on a vendor |
+| `POST /purchase/<id>/update` | `update_purchase` — status only |
+| `GET /purchase/view/<id>` | `view_purchase` — the printed purchase order |
+
+**Read §1 "There are two pipelines" before editing this file.** This is the
+only module where money goes *out*, and it links to no sell-side document.
+
+#### The inversion you must hold in your head
+
+On every other printed document **we are the seller**. Here **we are the
+buyer**, and three things flip:
+
+| | quotation / PI / TI | purchase order |
+|---|---|---|
+| letterhead | us | us |
+| the **"To"** block | the CUSTOMER | the **VENDOR** |
+| delivery block | where we ship **to them** | where they deliver **to us** |
+| the tax | **output** tax we collect | **input** tax we pay |
+
+Getting the "To" block wrong means sending our own address to a supplier as the
+party to invoice. `_vendor_block()` and `_delivery_block()` are named for the
+**roles**, not for their positions on the page, to make that hard to slip.
+
+#### Create (`/purchase/create`)
+
+Entered from scratch. The line editor is the **repeating-row pattern from
+`product.py`'s BOM child editor**, not the quotation's `SEL` JS model — a PO is
+a handful of flat rows and does not need a client-side model. Rows post as
+parallel `line_product_id` / `line_qty` / `line_rate` lists and are read by
+`_parse_lines()`, which **skips blank rows silently** (the editor opens with
+three, and an untouched one is not a mistake).
+
+The catalogue price is **suggested, never imposed**: `fillRate()` fills the rate
+box only when it is empty, because `base_price` is what we *sell* at and what a
+vendor charges us is a different number.
+
+Widgets are shared, not re-declared: the vendor picker is
+`address.picker_options(only_types=("vendor",))` and the terms are the same
+`_PAY_TERMS` / `_DEL_TERMS` / `_DISPATCH` / `_INCOTERMS` the sell-side forms
+offer — "By Road Transport" must mean the same thing whichever way the goods
+move.
+
+Validation, in order: date → vendor chosen → vendor still exists → status valid
+→ job (if given) still exists → lines parse, each with qty > 0 and rate ≥ 0 →
+at least one line. A rejected POST re-renders with the user's rows intact and
+writes nothing.
+
+`?quotation_id=<id>` pre-selects the job, which is how the quotation's **Raise
+PO** button works. It is a query param rather than a path segment on purpose: a
+PO is *not derived* from a quotation the way a PI is, and it can be raised with
+no job at all.
+
+#### The lifecycle — this is the "different procedure"
+
+A sell-side document is issued once and then stands. A PO is a **commitment
+that has to be chased**, which is the substantive reason purchasing is its own
+pipeline rather than a fourth link in the chain.
+
+```
+Draft → Issued → Acknowledged → Partially Received → Received
+                                                   ↘ Cancelled
+```
+
+`PO_STATUSES` is a module-level constant — edit it and the create dropdown, the
+register's filter tabs, the badges and the panel all regenerate.
+`CLOSED_STATUSES` (Received, Cancelled) is the buy-side equivalent of
+`pipeline.OPEN_STAGES`; `CHASE_STATUSES` drives the "issued but never
+acknowledged" tile, which is how a delivery date quietly slips.
+
+`update_purchase()` changes **status only**. The commercial content of an
+issued PO is not editable — a vendor has been told a price and a quantity, and
+changing them behind the document is how a dispute starts. An amendment means a
+fresh PO.
+
+#### Job costing — `job_cost(quotation_id)`
+
+The whole reason the optional link exists. Public, because `quotation.py`
+renders it on the deal panel:
+
+```
+Quoted  ₹10,03,000   Committed  ₹3,10,340   Gross Margin  ₹6,92,660  (69.1%)
+```
+
+- **Cancelled POs are excluded from committed spend** — a withdrawn commitment
+  is not a cost — but are still counted in `count`, so the panel never silently
+  loses a document somebody raised.
+- The margin percentage is **guarded against a zero divisor**: a quotation can
+  legitimately total zero (everything marked "included, no separate charge"),
+  and a `ZeroDivisionError` on the deal panel is a 500 on a page opened daily.
+- It is **material only** — no labour, no overhead — and the panel says so.
+
+#### The document
+
+The same A4 sheet (`VIEW_DOC_STYLES`), so everything leaving this office looks
+like it came from the same place. `PURCHASE_STYLES` layers after it and
+introduces no new font, type size or border weight — same restraint as
+`PROFORMA_STYLES` and `INVOICE_STYLES`. It deliberately does **not** load either
+of those sheets: borrowing a sell-side stylesheet is how the separation would
+quietly rot.
+
+What a PO says that no sell-side document does:
+
+- **`.doc-sub-po`** — "Order placed on supplier", so a vendor cannot mistake it
+  for our quotation.
+- **`.po-status-strip`** — status, required-by date, and "This order is placed
+  by us as buyer" in plain words.
+- **Instructions to Supplier** — quote our PO number on the invoice; **send us a
+  Rule 46 compliant tax invoice** (we cannot claim input tax credit against a
+  deficient one, and lost credit is recovered from their payment); deliver to
+  the stated address by the stated date; goods accepted subject to inspection;
+  prices firm; no amendment on the invoice alone.
+  ⚠ Generic buyer's terms, **not checked against Samruddhi's actual purchasing
+  policy** — same caveat as the other three documents.
+
+#### Numbering
+
+`SF/PO/26-27/0001` — FY-scoped and max+1 within the year, sharing
+`pipeline.fy_of` / `fy_ref` with the tax invoice. **No 16-character cap**: that
+is Rule 46's limit on what we issue *as a supplier*, and here we are the
+customer. A buyer's series still has to be unique and non-repeating, because it
+is the key the vendor quotes on their invoice and the key we match it against.
 
 ---
 
@@ -643,14 +1216,83 @@ contact/company → line1 (building) → line2 (street) → landmark →
 
 `_validate(form)` returns `(data, error)` and **always returns data**, so a
 rejected form re-renders with the user's input intact. Both add and edit share
-`_render_form()`. Three demo addresses (Mumbai / Pune / Ahmedabad) seed on first
-visit via `ensure_demo_addresses()`.
+`_render_form()`. **Six** demo addresses seed on first visit via
+`ensure_demo_addresses()` — three customer-side (Mumbai office / Pune site /
+Ahmedabad delivery) that feed the quotation's Bill To and Ship To pickers, and
+**three vendors** that feed the purchase order form. The buy side has to have
+somebody to buy from; without them the PO vendor picker opens empty and the
+module looks broken on a fresh install.
 
 This module reuses `PRODUCT_STYLES` for its forms and tables — so product CSS
 changes affect address pages too.
 
-**It exports the quotation picker:** `picker_options()` and `picker_payload()`.
-This is a real dependency, despite what its own docstring says (§8).
+**It exports the pickers both other modules use:** `picker_options()` and
+`picker_payload()`. This is a real dependency, despite what its own docstring
+says (§8).
+
+`picker_options(placeholder, only_types=None, selected="")` — `only_types`
+narrows the list to given address types, which is how the PO form offers
+**vendors only** and cannot suggest a customer's site as somebody to buy from.
+Omitted, it returns the whole book, which is what the quotation's pickers want.
+Note the "Other" orphan group is **suppressed when filtering**: an address whose
+type is not in `ADDRESS_TYPES` is being rescued from disappearing, not offered
+as a match for a filter it does not satisfy.
+
+---
+
+### `/settings` — Company Identity & Bank Details · [settings.py](settings.py)
+
+| Route | View |
+|---|---|
+| `GET,POST /settings/` | `edit_settings` |
+
+One form, two sections: **Company Identity** (legal name, tagline, address,
+phone, e-mail, web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank,
+account name, account number, IFSC, branch). Reached from the **Settings link in
+`_nav()`**, so it is one click from anywhere.
+
+`branding.py` values are the **defaults**; this page saves *overrides*.
+
+```
+POST /settings/  →  STORE["settings"]["company"] = {only non-default values}
+                 →  branding.apply_settings(overrides)
+                 →  next render picks them up. No restart.
+
+app.py boot      →  db.load_into(STORE)
+                 →  B.apply_settings(settings.load_saved())
+```
+
+#### The one rule that makes this work
+
+**Read company fields through the module — `B.COMPANY_ADDR`, never
+`from branding import COMPANY_ADDR`.** A from-import binds a copy at import
+time and freezes on the default forever, so no saved setting can ever reach it.
+`quotation.py` did exactly that (a block of `COMPANY_ADDR = B.COMPANY_ADDR`
+re-exports) and was converted when this page was added. If you add a company
+field, do not copy it to a local.
+
+`COMPANY_NAME` and `COMPANY_SHORT` are deliberately **not** editable: the name
+is painted two-tone by `name_html()`, baked into the logo artwork and used to
+build `_BRANCHES` at import; the short form seeds reference numbers. Changing
+either is a rebrand, not a setting.
+
+#### Behaviours worth keeping
+
+- **Every field is optional.** Blank falls back to the `branding.py` default and
+  prints as an amber `todo-chip`. That is the existing, deliberate contract: a
+  missing statutory detail must be *visible*, never silently empty.
+- **Clearing a field restores the default** rather than saving a blank —
+  `apply_settings()` treats blank as "not set".
+- **Only non-default values are stored**, so a later edit to `branding.py` still
+  reaches anyone who never overrode that field. Clear everything and the record
+  is deleted outright.
+- **`_validate()` always returns data**, so a rejected form re-renders with the
+  user's input intact — same contract as `address._validate()`.
+- Validated when non-blank: GSTIN (15-char), PAN (10-char), IFSC (11-char),
+  account number (9–18 digits), e-mail, phone. GSTIN / PAN / IFSC are stored
+  **upper-cased**, because that is how they are issued.
+- The **nav carries an amber dot** while any of the 15 fields is blank, and the
+  dashboard footer nudge links here. Both clear themselves once complete.
 
 ---
 
@@ -692,13 +1334,20 @@ Public surface: `ensure_fields`, `stage_of`, `is_won/lost/closed/open`,
 Everything client-specific lives here. **No other module should hardcode a
 company name, hex colour, or image path.**
 
+⚠ **The identity values here are defaults, not the live values.** `/settings`
+overrides them at runtime (§5). Always read them as `B.COMPANY_ADDR` —
+`from branding import COMPANY_ADDR` binds a copy at import and will never see a
+saved setting. `SETTINGS_KEYS`, `DEFAULTS`, `apply_settings()` and
+`current_settings()` in §1c are that mechanism.
+
 `COMPANY_PHONE` (`8898420303`) and `COMPANY_EMAIL`
 (`samruddhifire@gmail.com`) are filled in — they feed the dashboard footer strip
 and the quotation letterhead contact block
 ([quotation.py:2447-2448](quotation.py#L2447-L2448)).
 
-⚠ **These are still blank** and render as amber "add …" chips on screen *and on
-the printed quotation*, so nothing goes out silently wrong:
+⚠ **These ship blank** and render as amber "add …" chips on screen *and on the
+printed documents*, so nothing goes out silently wrong. They are now fillable
+from **/settings** rather than by editing this file:
 
 ```
 COMPANY_LEGAL · COMPANY_ADDR · COMPANY_WEB
@@ -709,13 +1358,21 @@ BANK_NAME · BANK_ACCOUNT_NAME · BANK_ACCOUNT_NO · BANK_IFSC · BANK_BRANCH
 The `BANK_*` block (§1b) exists for the **proforma invoice only**. A PI is a
 request for money, so the remittance account has to print on it — a PI without
 one is not actionable by the customer's accounts department. They are
-deliberately **not** used on the quotation: a quotation is an offer, not a
-demand for payment, and publishing the account number wider than necessary is a
-fraud surface.
+deliberately **not** used on the quotation or the tax invoice: a quotation is an
+offer, and a tax invoice records a supply that was normally already paid for
+against the PI. Publishing the account number wider than necessary is a fraud
+surface.
 
-The dashboard's amber "identity incomplete" nudge is keyed on
-`COMPANY_ADDR/PHONE/EMAIL` together ([dashboard.py:358](dashboard.py#L358)), so
-it stays visible until the address is filled in too.
+⚠ **`COMPANY_GSTIN` is now load-bearing, not just letterhead decoration.**
+`invoice._supplier_state()` reads its first two digits to work out which State
+we supply from, which is what powers the IGST-vs-CGST warning. A blank or
+specimen GSTIN silently disables that check — it does not fail loudly, because a
+half-configured demo must still render. Set the real one at `/settings` before
+the first tax invoice.
+
+The dashboard's footer nudge is keyed on `COMPANY_ADDR/PHONE/EMAIL` together
+(`_footer_contact()`), and the nav's amber dot on **all 15** settings fields
+(`_nav()`). Both link to `/settings` and clear themselves.
 
 `COMPANY_TAGLINE` ("Fire Protection Systems & Services") is an **assumption**
 drawn from the trading name — confirm the client's actual letterhead wording.
@@ -754,13 +1411,28 @@ Real, verified, and safe to pick up:
 1. **No `requirements.txt`.** Needs `flask`, `pymysql`, `python-dotenv`,
    `markupsafe`.
 2. **No product edit route** — delete + re-add only, and delete may be blocked.
+   ⬆ **This got more expensive.** It is now the reason a missing HSN cannot be
+   blocked at the tax invoice (a user could not clear the block), and the reason
+   `_seed()` has to backfill. An edit route is the highest-value gap on this
+   list.
 3. **No quotation edit / delete / amend flow**, though `amend_no` is stored.
    Likewise **no cancel/void route for a proforma invoice** — an issued PI can
    only be superseded by raising another. A void flow (a `cancelled` flag plus
    a CANCELLED overprint, never a hard delete, so the number is never reused)
    is the right shape when it is wanted.
-4. **`hsn` is read in 9 places but never captured** — always empty on the
-   document.
+
+   ⚠ **For a tax invoice this is no longer just inconvenient.** A wrong tax
+   invoice cannot be corrected by editing it — GST requires a **credit note**
+   (or debit note) referencing the original invoice number, and those are
+   reported separately in GSTR-1. Deleting the record instead would leave a
+   hole in a serial the law requires to be consecutive. **A credit-note flow is
+   the next real piece of work in this chain.**
+4. ~~**`hsn` is read in 9 places but never captured.**~~ **Fixed** — captured on
+   the add-product form, validated, backfilled onto the seeded rows, and
+   carried down the whole chain. What remains: **the seeded HSN codes are
+   placeholders**, plausible chapter headings rather than a classification
+   Samruddhi's CA has signed off. Getting one wrong is the customer's ITC.
+   Have all twelve reviewed before a tax invoice goes out.
 5. **`quotation._next_ref()` = `len(quotations) + 1`** → `QT-0001`. Collides
    after a deletion, isn't year-scoped, and ignores `COMPANY_SHORT = "SF"`.
    `proforma._next_ref()` fixes the collision half (max+1); porting that back
@@ -772,18 +1444,96 @@ Real, verified, and safe to pick up:
    `proforma.py` escape; `quotation.py` and `product.py` largely don't.
 8. **`SECRET_KEY` defaults to `qms-demo-secret-2024`.** Generate a real one
    before any deployment.
-9. **Standing T&C clauses are unreviewed** by the client — both
-   `quotation._build_tnc()` and `proforma._build_pi_terms()` (§5).
-   The `BANK_*` fields are blank, so every PI currently prints amber
-   "add account number" chips where the remittance details belong.
-10. **Seed prices are placeholders**, not Samruddhi's real rates.
-11. **The printed document has no page numbers.** "Page 1 of 2" needs a page
+9. **Standing T&C clauses are unreviewed** by the client — all three of
+   `quotation._build_tnc()`, `proforma._build_pi_terms()` and
+   `invoice._build_ti_terms()` (§5).
+
+9b. **No e-invoicing (IRN + signed QR code).** Mandatory under Rule 48(4) once
+   aggregate turnover crosses **₹5 crore**, and from **1 April 2026** that
+   threshold applies broadly. It means registering each invoice with the
+   Invoice Registration Portal and printing the IRN and the signed QR it
+   returns — an API integration with credentials and a JSON schema, not a page.
+   Until then, an invoice out of this app is a valid manual tax invoice for a
+   below-threshold supplier and **not** valid for one above it. Confirm
+   Samruddhi's turnover before relying on it.
+
+   The same threshold decides **HSN digits** (4 up to ₹5 cr, 6 above). The app
+   validates shape only and does not enforce a length, because it does not know
+   the turnover — see `product._valid_hsn()`.
+
+9c. **No GSTR-1 export and no HSN-wise summary.** The register totals output tax
+   but nothing produces the return-shaped extract, and the printed sheet carries
+   HSN per line without the consolidated HSN summary a return wants.
+
+**Buy side (`purchase.py`), all real and all deliberate for now:**
+
+14. **No goods-receipt note (GRN) and no partial-quantity tracking.** "Partially
+    Received" is a status somebody sets by hand, not a computed state — nothing
+    records *which* lines came in or how many. Per-line received quantities are
+    the natural next step, and are what would make the status honest.
+15. **No supplier-invoice matching.** The classic three-way match (PO ↔ GRN ↔
+    supplier invoice) is the point of a purchasing module in an accounting
+    system, and none of it exists. Input tax credit is claimed off the
+    supplier's invoice, which this app never sees.
+16. **No PO edit, amend or revision.** Status is the only mutable field, by
+    design (an issued PO's numbers should not move behind the vendor). But there
+    is no amendment flow either, so a price change means a fresh PO with no link
+    to the one it supersedes — the same shape of gap as §7.3 on the sell side.
+17. **Free-text line items are not possible.** Every PO line must be a catalogue
+    product. Real purchasing buys consumables, freight and one-off fabrication
+    that will never be in a sales catalogue. An "other — describe it" row is the
+    fix.
+18. **Job costing is material only.** No labour, no overhead, no allocation of a
+    stock purchase across the jobs that consume it. The margin figure on the
+    deal panel is a gross material margin and nothing more; the panel says so,
+    but it is easy to quote at somebody as if it were profit.
+19. **Vendor addresses are the only vendor record.** There is no vendor master —
+    no payment terms, no lead time, no ratings, no GSTIN validation at the point
+    of purchase. `type: "vendor"` in the address book is carrying that whole
+    concept.
+
+10. ⚠ **The loaded company identity is SPECIMEN DATA, not Samruddhi's.** A demo
+    record sits in `STORE["settings"]["company"]` so the documents render
+    without amber chips. The statutory identifiers are deliberately template
+    patterns and the bank is named so nobody can mistake them for real:
+
+    | Field | Loaded value | Real? |
+    |---|---|---|
+    | `COMPANY_GSTIN` | `27AAAAA0000A1Z5` | **no — all-A/all-zero template** |
+    | `COMPANY_PAN` | `AAAAA0000A` | **no — template** |
+    | `BANK_NAME` | `SPECIMEN BANK LTD.` | **no** |
+    | `BANK_ACCOUNT_NO` | `50200000000000` | **no — trailing zeros** |
+    | `BANK_IFSC` | `SPEC0000000` | **no** |
+    | `COMPANY_ADDR` | Unit 7, Ganesh Industrial Estate… | **no — invented** |
+    | `COMPANY_LEGAL` | M/s Samruddhi Fire Services | unconfirmed guess |
+    | `COMPANY_WEB` | www.samruddhifire.in | **unverified — may not exist** |
+    | `COMPANY_PHONE` / `COMPANY_EMAIL` | 8898420303 / samruddhifire@gmail.com | yes |
+
+    **Replace every one of these at `/settings` before a document goes to a
+    customer.** Because the fields are now filled, the amber-chip safety net
+    that used to catch this is switched off — which is exactly why it is
+    recorded here instead.
+
+    ⚠ **A tax invoice raises the stakes on this.** `COMPANY_GSTIN` is a
+    template pattern, so `27AAAAA0000A1Z5` would print as our GSTIN on a
+    statutory document — and its `27` prefix is what
+    `invoice._supplier_state()` currently reads as "Maharashtra". The
+    IGST-vs-CGST warning is therefore being computed from **specimen data**
+    until the real GSTIN is entered.
+11. **Seed prices are placeholders**, not Samruddhi's real rates.
+12. **The printed document has no page numbers.** "Page 1 of 2" needs a page
     counter, and Chrome does not support `@page { @bottom-right { content:
     counter(page) } }`. The old hardcoded `Page 1 of 1` was removed rather than
     left to print a wrong number on every page. Real page numbers, and a
     "Quotation No. / Date" strip on continuation pages, need a server-side
     renderer (WeasyPrint or wkhtmltopdf) instead of browser print.
-12. **`app.run(debug=True)`** with `reloader_type="stat"` — the stat reloader is
+
+    This bites hardest on the tax invoice's `?copy=all`, which is three full
+    sheets in one print run with nothing but the `.copy-mark` caption to tell a
+    reader which copy a loose page belongs to. A server-side renderer would fix
+    the copy captions and the page numbers together, and is the single change
+    that would most improve all three documents.
+13. **`app.run(debug=True)`** with `reloader_type="stat"` — the stat reloader is
     intentional (the watchdog reloader storms on Windows when AV/indexers touch
     `site-packages`). Never ship `debug=True`.
 
@@ -824,6 +1574,10 @@ little less CSS.
 
 - **New feature = new blueprint module**, registered in `app.py`. Keep `app.py`
   as wiring only.
+- **Decide which pipeline it belongs to first.** If it is about money coming in
+  it is sell side and may join the quotation → PI → TI chain. If it is about
+  money going out it is buy side and must not touch a PI or a TI. If both need
+  a helper, it goes in `pipeline.py`, which imports nothing from the app.
 - Import `BASE_STYLES` and `_nav` from `dashboard`, layer your own `<style>`
   block after them.
 - Pull every company string, colour, and image from `branding.py`.

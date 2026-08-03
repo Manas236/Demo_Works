@@ -13,8 +13,13 @@ from extractor import extractor_bp
 from product import product_bp   # Phase 1: product management
 from quotation import quotation_bp  # Phase 2: quotation generation
 from proforma import proforma_bp  # Phase 3: proforma invoice (derived from a quotation)
+from invoice import invoice_bp   # Phase 4: GST tax invoice (derived from a proforma)
+from purchase import purchase_bp  # Buy side: purchase orders. A SEPARATE pipeline —
+                                  # it never links to a proforma or a tax invoice.
 from address import address_bp   # Standalone address book
+from settings import settings_bp, load_saved  # Company identity & bank details
 
+import branding as B             # Runtime overrides are pushed onto this module
 import db                        # MySQL persistence (config from .env)
 from store import STORE
 
@@ -35,6 +40,12 @@ def _boot_persistence() -> None:
     else:
         print(f"  * WARNING: {db.status()}")
         print("  *          data will be lost on restart. Check .env / MySQL.")
+
+    # Company identity and bank details saved on /settings override the defaults
+    # in branding.py. This must run AFTER load_into, and before the first
+    # request renders a letterhead. Idempotent, so the reloader running it in
+    # both processes is harmless.
+    B.apply_settings(load_saved())
 
 
 _boot_persistence()
@@ -61,7 +72,10 @@ app.register_blueprint(extractor_bp)           # Mounted at /extractor
 app.register_blueprint(product_bp)            # Mounted at /product
 app.register_blueprint(quotation_bp)          # Mounted at /quotation
 app.register_blueprint(proforma_bp)           # Mounted at /proforma
+app.register_blueprint(invoice_bp)            # Mounted at /invoice
+app.register_blueprint(purchase_bp)           # Mounted at /purchase  (buy side)
 app.register_blueprint(address_bp)            # Mounted at /address
+app.register_blueprint(settings_bp)           # Mounted at /settings
 
 
 # ── Global Error Handling ─────────────────────────────────────────────────────
