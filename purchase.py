@@ -77,7 +77,7 @@ nothing there imports this.** Keep it that way; it is the whole point.
 
 import uuid
 from datetime import date as _date, datetime as _datetime
-from flask import Blueprint, render_template_string, request, redirect, url_for
+from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
@@ -509,6 +509,38 @@ PURCHASE_STYLES = """
 
 
 # =============================================================================
+# RENDERING — why these views do not call render_template_string()
+# =============================================================================
+#
+# Every page in this module is a fully interpolated HTML string by the time the
+# view returns it. Nothing is passed as Jinja context — ABOUT.md §1 says so
+# explicitly — so handing the finished string back to Jinja parses it a second
+# time for no benefit and one large cost: any `{{ … }}` or `{% … %}` that
+# reached the output from USER INPUT is then executed as a template.
+#
+# That is not theoretical. `pipeline.esc()` escapes `< > & " '` and deliberately
+# not braces, so a PO whose `notes` reads `{{ config }}` prints the Flask config
+# — including SECRET_KEY — onto a document that goes out to a supplier, and one
+# reading `{% for x in y %}` raises a TemplateSyntaxError that 500s the page.
+# Both are stored, and `update_purchase()` changes status only (ABOUT.md §5), so
+# neither can be edited off the record.
+#
+# Returning the string directly is what Flask does with any `str` a view
+# returns. It removes the second parse, and with it the injection. HTML
+# escaping still does its own job — this changes nothing about XSS.
+#
+# ⚠ Still open in `quotation.py` and `product.py`, and this one-liner does not
+#   reach either: quotation.py builds its pages with `.format()` and has
+#   attribute, <script> and option-text sinks besides; product.py does not
+#   escape at all. Each wants its own pass — ABOUT.md §7.9d.
+# =============================================================================
+
+def _page(html: str) -> str:
+    """A finished page. See the note above — deliberately not Jinja-rendered."""
+    return html
+
+
+# =============================================================================
 # ROUTES
 # =============================================================================
 
@@ -643,7 +675,7 @@ def list_purchases():
       {table_html}
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order register</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
 
 
 @purchase_bp.route("/create", methods=["GET", "POST"])
@@ -1027,7 +1059,7 @@ def create_purchase():
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
 
 
 @purchase_bp.route("/<id>/update", methods=["POST"])
@@ -1366,4 +1398,4 @@ def view_purchase(id: str):
 </footer>
 </main>
 </body></html>"""
-    return render_template_string(template)
+    return _page(template)

@@ -1215,10 +1215,12 @@ def _to_block(form) -> str:
 # returns. It removes the second parse, and with it the injection. HTML
 # escaping still does its own job — this changes nothing about XSS.
 #
-# ⚠ The same hole exists in every other module in this app (quotation, product,
-#   proforma, invoice, purchase, address, settings, dashboard). They are
-#   untouched here because the quotation chain is live; the fix is the same one
-#   line each and it is recorded in ABOUT.md §7.
+# ⚠ Six more modules — proforma, invoice, purchase, address, settings, dashboard
+#   — took this same one-line fix in a later pass. It is still OPEN in
+#   `quotation.py` and `product.py`, and the one-liner does not reach either:
+#   quotation.py builds its pages with `.format()` and has attribute, <script>
+#   and option-text sinks besides; product.py does not escape at all. Each wants
+#   its own pass — ABOUT.md §7.9d.
 # =============================================================================
 
 def _page(html: str) -> str:

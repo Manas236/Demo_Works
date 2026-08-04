@@ -83,9 +83,13 @@ Consequences you must respect when editing:
 - HTML lives in **f-strings**, so every literal `{` and `}` in CSS/JS inside
   those strings must be **doubled** (`{{` / `}}`). Getting this wrong is the
   #1 source of breakage in this repo.
-- `render_template_string` still runs Jinja over the result, so `{{ }}` that
-  survives into the output will be interpreted as Jinja. Values are
-  pre-interpolated by Python, not passed as Jinja context.
+- Where a view still calls `render_template_string`, Jinja runs over the
+  finished result, so `{{ }}` that survives into the output is **executed** —
+  including braces that came from user input (§7.9d). Values are
+  pre-interpolated by Python, never passed as Jinja context, so that second
+  parse is pure downside. Eight of the ten page modules now return the string
+  directly through a local `_page()`; only `quotation.py` and `product.py`
+  still re-render. **Do not add a new `render_template_string` call.**
 - User-supplied text is **not** auto-escaped in most places. `address.py` uses
   `markupsafe.escape` via `_e()`; `pipeline.py` uses `esc()`. `quotation.py`
   and `product.py` mostly do not. Treat this as a known gap, not a pattern to
@@ -1965,13 +1969,12 @@ Real, verified, and safe to pick up:
    validates shape only and does not enforce a length, because it does not know
    the turnover — see `product._valid_hsn()`.
 
-9d. 🔴 **Server-side template injection — OPEN in eight modules.**
-   Every view outside `spec.py` and `boq.py` ends with
-   `render_template_string(template)` on a string that is **already fully
-   interpolated**. Nothing is passed as Jinja context (§1 says so), so the
-   second parse buys nothing — but `pipeline.esc()` escapes `< > & " '` and
-   deliberately **not** braces, so any `{{ … }}` that reached the output from
-   user input is executed.
+9d. 🟠 **Server-side template injection — OPEN in two modules.**
+   A view that ends with `render_template_string(template)` on a string that is
+   **already fully interpolated** parses it a second time. Nothing is passed as
+   Jinja context (§1 says so), so that second parse buys nothing — but
+   `pipeline.esc()` escapes `< > & " '` and deliberately **not** braces, so any
+   `{{ … }}` that reached the output from user input is executed.
 
    Demonstrated on the spec library before it was fixed there: a clause reading
    `{{ config }}` printed the Flask config **including `SECRET_KEY`**, and one
@@ -1979,19 +1982,33 @@ Real, verified, and safe to pick up:
    page carrying that text — a stored denial of service, since the BOQ form
    embeds all 56 clauses.
 
-   **The fix is one line per module**: return the finished string instead of
-   re-rendering it. Flask returns any `str` a view returns.
+   **Where the fix reaches, it is one line per module**: return the finished
+   string instead of re-rendering it. Flask returns any `str` a view returns.
+   Each fixed module carries a `_page()` helper whose sole job is to be the
+   place that comment lives.
 
    ```python
    -    return render_template_string(template)
-   +    return template
+   +    return _page(template)          # returns html unchanged
    ```
 
-   Still open in: `quotation.py`, `product.py`, `proforma.py`, `invoice.py`,
-   `purchase.py`, `address.py`, `settings.py`, `dashboard.py`. Left alone
-   because the quotation chain is live and this is a behavioural change to
-   every page in it; it wants one deliberate pass with the register, the
-   documents and the print output eyeballed afterwards.
+   ✅ **Fixed in `spec.py` and `boq.py`** (first pass), and in **`proforma.py`,
+   `invoice.py`, `purchase.py`, `address.py`, `settings.py`, `dashboard.py`**
+   (second pass — 13 call sites, `render_template_string` dropped from all six
+   imports). Guarded by [tests/test_ssti_group1.py](tests/test_ssti_group1.py):
+   per module, a stored `{{ config }}` must render literally and must not leak
+   the app's actual `secret_key`, and a stored `{% for x in y %}` must not take
+   the page down. Every assertion runs against the **rendered page**, and a
+   control test proves the payload genuinely reached it — 18 of those 19 fail
+   against the code as it was.
+
+   🔴 **Still open in `quotation.py` and `product.py`, and the one-liner does
+   not reach either.** `quotation.py` builds its pages with `.format()` rather
+   than f-strings and has attribute, `<script>` and option-text sinks besides;
+   `product.py` has no escaping at all in 1409 lines, so returning the string
+   unrendered fixes the injection and leaves the XSS. Each needs its own pass,
+   and `product.py`'s is really an escaping pass (§7.7) with this fix on the
+   end.
 
 9e. 🔴 **User text inside `<script>` — OPEN wherever `json.dumps` is embedded.**
    `json.dumps` does not escape `<`, so a value containing `</script>` closes

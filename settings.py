@@ -35,7 +35,7 @@ Clearing a field restores the default rather than saving a blank — see
 """
 
 import re
-from flask import Blueprint, render_template_string, request, redirect, url_for
+from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
@@ -255,6 +255,39 @@ SETTINGS_STYLES = """
 
 
 # =============================================================================
+# RENDERING — why this view does not call render_template_string()
+# =============================================================================
+#
+# The page is a fully interpolated HTML string by the time the view returns it.
+# Nothing is passed as Jinja context — ABOUT.md §1 says so explicitly — so
+# handing the finished string back to Jinja parses it a second time for no
+# benefit and one large cost: any `{{ … }}` or `{% … %}` that reached the output
+# from USER INPUT is then executed as a template.
+#
+# That is not theoretical, and it is worst here. `pipeline.esc()` escapes
+# `< > & " '` and deliberately not braces, so a company address saved with
+# `{{ config }}` in it renders the Flask config — including SECRET_KEY — and
+# `{% for x in y %}` raises a TemplateSyntaxError. These fields are pushed onto
+# `branding` by `apply_settings()` and print in the LETTERHEAD, so one bad save
+# used to reach every document and every page in the app at once, and the page
+# needed to correct it was one of the ones that had stopped rendering.
+#
+# Returning the string directly is what Flask does with any `str` a view
+# returns. It removes the second parse, and with it the injection. HTML
+# escaping still does its own job — this changes nothing about XSS.
+#
+# ⚠ Still open in `quotation.py` and `product.py`, and this one-liner does not
+#   reach either: quotation.py builds its pages with `.format()` and has
+#   attribute, <script> and option-text sinks besides; product.py does not
+#   escape at all. Each wants its own pass — ABOUT.md §7.9d.
+# =============================================================================
+
+def _page(html: str) -> str:
+    """A finished page. See the note above — deliberately not Jinja-rendered."""
+    return html
+
+
+# =============================================================================
 # ROUTES
 # =============================================================================
 
@@ -374,4 +407,4 @@ def edit_settings():
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · company settings</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)
