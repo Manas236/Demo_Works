@@ -704,6 +704,75 @@ BOQ_STYLES = """
     margin-bottom:1.4rem; line-height:1.5;
   }
 
+  /* ── Navigating a long schedule ────────────────────────────────────
+     97 lines as stacked panels is unusable. A line shows a one-line
+     summary; the panel opens only for the line being worked on. */
+  .jump-bar {
+    position:sticky; top:60px; z-index:20;
+    display:flex; align-items:center; gap:.4rem; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:.5rem .7rem; margin-bottom:1rem;
+    box-shadow:var(--shadow-sm);
+  }
+  .jb-lbl { font-size:.68rem; font-weight:700; text-transform:uppercase;
+            letter-spacing:.06em; color:var(--muted); margin-right:.2rem; }
+  .jb-btn {
+    font-size:.75rem; font-weight:700; color:var(--navy); background:var(--bg);
+    border:1px solid var(--border); border-radius:6px; padding:.25rem .6rem;
+    cursor:pointer; min-width:28px;
+  }
+  .jb-btn:hover { background:var(--brand-lt); border-color:#c7d2fe; }
+  .jb-sp { flex:1 1 auto; }
+
+  .sec-group { margin-bottom:.9rem; border:1px solid var(--border);
+               border-radius:10px; overflow:hidden; }
+  .sec-bar {
+    display:flex; align-items:center; gap:.6rem; cursor:pointer;
+    padding:.6rem .8rem; background:var(--bg); user-select:none;
+  }
+  .sec-bar:hover { background:#eef2ff; }
+  .sec-bar-warn { background:#fef2f2; cursor:default; }
+  .sec-bar-warn:hover { background:#fef2f2; }
+  .sb-code {
+    font-weight:700; font-size:.8rem; min-width:22px; text-align:center;
+    background:var(--navy); color:#fff; border-radius:5px; padding:.05rem .35rem;
+  }
+  .sec-bar-warn .sb-code { background:#991b1b; }
+  .sb-title { font-weight:600; font-size:.86rem; flex:1 1 auto; min-width:0;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sb-count { font-size:.74rem; color:var(--muted); white-space:nowrap; }
+  .sec-lines { padding:.5rem; background:var(--surface); }
+
+  /* The summary row — the actual deliverable. Scannable at a glance. */
+  .ls-row {
+    display:flex; align-items:center; gap:.6rem; cursor:pointer;
+    padding:.4rem .55rem; border-radius:6px; user-select:none;
+    font-size:.82rem; line-height:1.35;
+  }
+  .ls-row:hover { background:#f1f5f9; }
+  .ls-chev { width:12px; flex:0 0 12px; color:var(--muted); font-size:.7rem; }
+  .ls-no {
+    font-family:'SFMono-Regular',Consolas,monospace; font-weight:700;
+    font-size:.76rem; color:var(--brand); flex:0 0 54px;
+  }
+  .ls-desc { flex:1 1 auto; min-width:0; overflow:hidden;
+             text-overflow:ellipsis; white-space:nowrap; }
+  .ls-qty  { flex:0 0 82px; text-align:right; color:var(--muted);
+             font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ls-rate { flex:0 0 88px; text-align:right;
+             font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ls-tag  { flex:0 0 178px; text-align:right; font-size:.72rem;
+             color:var(--navy); font-weight:600; }
+
+  .line-card { padding:0; margin-bottom:.15rem; background:transparent;
+               border:1px solid transparent; border-radius:8px; }
+  .line-card.is-open { border-color:var(--border); background:var(--bg);
+                       margin-bottom:.7rem; }
+  .line-card.is-spec > .ls-row { font-weight:700; }
+  .line-card.is-spec.is-open { border-left:3px solid var(--navy); }
+  .line-card.is-child > .ls-row { padding-left:1.6rem; }
+  .lc-body { padding:.8rem 1rem 1rem; border-top:1px solid var(--border); }
+
   /* Bulk insert — a spec expanded into a header row plus one child per size. */
   .bulk-bar {
     display:flex; gap:.7rem; align-items:end; flex-wrap:wrap;
@@ -970,7 +1039,12 @@ def _clean_sections(raw_sections: list) -> tuple:
 
 def _clean_lines(raw_lines: list, sections: list) -> tuple:
     """
-    (line_items, error) — one §4.2 line item per editor row.
+    (line_items, error, error_index) — one §4.2 line item per editor row.
+
+    `error_index` is the 0-based position of the offending row, or -1. The
+    editor collapses every line by default, so a rejected POST that only said
+    "line 47 needs a description" would hide the very row it is complaining
+    about. The index is what lets the re-render force that one open.
 
     Rates are stored **as entered**, never recomputed from the escalation:
     see `_derived_rate`. Amounts *are* computed, always, so a stored amount can
@@ -985,15 +1059,15 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
 
         code = str(li.get("section") or "").strip()
         if code not in by_code:
-            return [], f"Line {idx} is in section &quot;{P.esc(code)}&quot;, which is not defined above."
+            return [], f"Line {idx} is in section &quot;{P.esc(code)}&quot;, which is not defined above.", idx - 1
 
         item_no = _item_no(li.get("item_no"))
         if not item_no:
-            return [], f"Line {idx} needs an item number."
+            return [], f"Line {idx} needs an item number.", idx - 1
 
         description = str(li.get("description") or "").strip()
         if not description:
-            return [], f"Line {item_no} needs a description."
+            return [], f"Line {item_no} needs a description.", idx - 1
 
         is_header = bool(li.get("is_header"))
 
@@ -1042,7 +1116,7 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
             total_qty = _num(li.get("total_qty"))
 
         if total_qty < 0:
-            return [], f"Line {item_no} has a negative quantity."
+            return [], f"Line {item_no} has a negative quantity.", idx - 1
 
         # ── Rates ─────────────────────────────────────────────────────
         s_base = _opt_num(li.get("supply_base_rate"))
@@ -1058,7 +1132,7 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
             i_rate = _derived_rate(i_base, i_pct) or 0.0
 
         if s_rate < 0 or i_rate < 0:
-            return [], f"Line {item_no} has a negative rate."
+            return [], f"Line {item_no} has a negative rate.", idx - 1
 
         hsn = str(li.get("supply_hsn") or "").strip()
         sac = str(li.get("install_sac") or "").strip()
@@ -1066,9 +1140,9 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
         # it. A blank is allowed here and flagged downstream, because the BOQ is
         # priced long before anybody classifies the goods.
         if hsn and not _valid_tax_code(hsn):
-            return [], f"Line {item_no}: HSN must be 4, 6 or 8 digits."
+            return [], f"Line {item_no}: HSN must be 4, 6 or 8 digits.", idx - 1
         if sac and not _valid_tax_code(sac):
-            return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits."
+            return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits.", idx - 1
 
         out.append({
             "item_no":        item_no,
@@ -1097,8 +1171,8 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
         })
 
     if not out:
-        return [], "Add at least one line item."
-    return out, ""
+        return [], "Add at least one line item.", -1
+    return out, "", -1
 
 
 def _to_block(form) -> str:
@@ -1799,6 +1873,8 @@ function delSec(i) {
 function blankLine() {
   var first = MODEL.sections[0];
   return {
+    /* A line the user just added is the one they are about to fill in. */
+    _open: true,
     _spec: '', _variant: null, _auto: {},
     item_no: '', parent_item_no: '', section: (first ? first.code : ''),
     is_header: false, description: '', remark: '', unit: '',
@@ -1940,108 +2016,319 @@ function fld(i, key, label, val, ph, cls) {
     + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"/></div>';
 }
 
+/* ── Navigating 97 lines ───────────────────────────────────────────────
+
+   A BOQ is long. Rendered as stacked full-height blocks it is less usable
+   than the spreadsheet it replaces, so the editor renders a **one-line
+   summary** per line — item no, description, quantity, rate — and opens the
+   full panel only for the line being worked on.
+
+   The summary is the point. Collapsing is just what makes it readable.
+
+   Open/closed state lives ON the line (`_open`) and ON the section
+   (`_open`), never in a map keyed by row index: an index-keyed map desyncs
+   the moment a line is deleted, which is exactly the bug the spec picker
+   had. Absent means closed, so a freshly loaded BOQ opens fully collapsed
+   and `_demo_form_payload()` needs to say nothing about it.
+
+   A header row's toggle folds the whole family: item 24 closed takes
+   24.a-24.i with it, because that is how the schedule reads on paper. */
+
+function isOpen(x) { return !!(x && x._open); }
+
+/* The lines belonging to a section, with their MODEL.lines indexes intact —
+   handlers address a line by its real index, not its position in a group. */
+function linesOf(code) {
+  var out = [];
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    if (MODEL.lines[i].section === code) out.push(i);
+  }
+  return out;
+}
+
+/* Children of a header, by index: same section, parent_item_no matches. */
+function childrenOf(i) {
+  var P = MODEL.lines[i], out = [];
+  if (!P.is_header || !P.item_no) return out;
+  for (var j = 0; j < MODEL.lines.length; j++) {
+    var C = MODEL.lines[j];
+    if (j !== i && C.section === P.section && C.parent_item_no === P.item_no) {
+      out.push(j);
+    }
+  }
+  return out;
+}
+
+function money(v) {
+  var n = num(v);
+  if (!n) return '';
+  return n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function trunc(s, n) {
+  /* \\s, doubled: _BOQ_JS is a normal Python string, so a single backslash
+     here would be an invalid Python escape and would not survive. */
+  s = String(s || '').replace(/\\s+/g, ' ').trim();
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+/* The one-line summary — enough to scan a schedule and spot a wrong line. */
+function lineSummary(i, L) {
+  var kids = L.is_header ? childrenOf(i) : [];
+  var qty = L.is_header ? '' : (L.total_qty === '' || L.total_qty == null
+        ? totalOf(L, (secByCode(L.section) || {}).areas || [])
+        : String(L.total_qty));
+  var chev = isOpen(L) ? '▾' : '▸';
+
+  return '<div class="ls-row" onclick="toggleLine(' + i + ')">'
+    +   '<span class="ls-chev">' + chev + '</span>'
+    +   '<span class="ls-no">' + esc(L.item_no || '—') + '</span>'
+    +   '<span class="ls-desc">' + esc(trunc(L.description, 96)) + '</span>'
+    +   (L.is_header
+        ? '<span class="ls-tag">spec' + (kids.length ? ' · ' + kids.length + ' items' : '') + '</span>'
+        : '<span class="ls-qty">' + esc(qty) + (qty ? ' ' + esc(L.unit || '') : '') + '</span>'
+          + '<span class="ls-rate">' + money(L.supply_rate) + '</span>'
+          + '<span class="ls-rate">' + money(L.install_rate) + '</span>')
+    + '</div>';
+}
+
+function lineBody(i, L) {
+  var sec = secByCode(L.section);
+  var areas = (sec && sec.areas) || [];
+  var h = '<div class="lc-body">';
+
+  h += '<div class="lc-head">'
+    +   '<span class="lc-no">Line ' + (i + 1)
+    +     (L.item_no ? ' &middot; ' + esc(L.item_no) : '') + '</span>'
+    +   '<button type="button" class="btn-del" onclick="delLine(' + i + ')">Remove</button>'
+    + '</div>'
+    + '<div class="fg4">'
+    +   '<div class="form-group"><label>Section</label>'
+    +     '<select onchange="setSection(' + i + ',this.value)">'
+    +       secOptions(L.section) + '</select></div>'
+    +   fld(i, 'item_no', 'Item No.', L.item_no, '4.1')
+    +   fld(i, 'parent_item_no', 'Under Item', L.parent_item_no, '4')
+    +   '<div class="form-group"><label>Row Type</label><div class="check-row">'
+    +     '<input type="checkbox" id="hdr' + i + '"' + (L.is_header ? ' checked' : '')
+    +      ' onchange="setHeader(' + i + ',this.checked)"/>'
+    +     '<label for="hdr' + i + '">Specification header</label></div></div>'
+    + '</div>';
+
+  h += '<div class="fg2" style="margin-top:.7rem;">'
+    +   '<div class="form-group span-all"><label>Description / Specification</label>'
+    +     '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
+    +      ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)">'
+    +      esc(L.description) + '</textarea></div>'
+    + '</div>';
+
+  var picked = L._spec || '';
+  var sp = SPECS[picked];
+  h += '<div class="fg4" style="margin-top:.7rem;">'
+    +   '<div class="form-group"><label>Fill from spec library</label>'
+    +     '<select onchange="fillFromSpec(' + i + ',this.value)">'
+    +       specOptions(picked) + '</select></div>'
+    +   '<div class="form-group"><label>Variant</label>'
+    +     (sp && !isUnsized(sp)
+        ? '<select onchange="fillFromVariant(' + i + ',this.value)">'
+          + variantOptions(picked, L._variant) + '</select>'
+        : '<select disabled><option>' + (sp ? '(unsized)' : '&#8212;') + '</option></select>')
+    +   '</div>'
+    +   fld(i, 'remark', 'Remark (internal &#8212; does not print)', L.remark,
+            '2000/nos extra for tamper switch')
+    +   fld(i, 'unit', 'Unit', L.unit, 'Mtrs')
+    + '</div>';
+
+  if (!L.is_header) {
+    /* Quantities. With an area breakdown the total IS the breakdown, so it
+       is shown derived rather than typed — two independently typed figures
+       that must agree are two figures that can disagree. */
+    h += '<div class="lc-track">Quantity</div><div class="lc-areas">';
+    if (areas.length) {
+      for (var a = 0; a < areas.length; a++) {
+        var an = areas[a];
+        h += '<div class="form-group lc-area"><label>' + esc(an) + '</label>'
+          +  '<input type="text" value="'
+          +   esc(L.area_qty[an] == null ? '' : L.area_qty[an]) + '"'
+          +  ' oninput="setArea(' + i + ',' + JSON.stringify(an).replace(/"/g, '&quot;')
+          +  ',this.value)"/></div>';
+      }
+      h += '<div class="form-group lc-area"><label>Total Qty</label>'
+        +  '<div class="readonly-field" id="tq' + i + '">'
+        +   esc(totalOf(L, areas)) + '</div></div>';
+    } else {
+      h += '<div class="form-group lc-area"><label>Total Qty</label>'
+        +  '<input type="text" value="' + esc(L.total_qty) + '"'
+        +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"/></div>'
+        +  '<span class="lc-none">This section declares no areas '
+        +  '&#8212; the total stands alone.</span>';
+    }
+    h += '</div>';
+
+    h += '<div class="lc-track">Supply</div><div class="fg5">'
+      +   fld(i, 'supply_base_rate', 'Base Rate', L.supply_base_rate, '1760  or  -')
+      +   fld(i, 'supply_escalation_pct', 'Escalation %', L.supply_escalation_pct, '15')
+      +   '<div class="form-group"><label>Unit Rate</label>'
+      +     '<input type="text" value="' + esc(L.supply_rate) + '" placeholder="2024"'
+      +      ' oninput="setLine(' + i + ',&quot;supply_rate&quot;,this.value)"/>'
+      +     '<div class="derived" id="sd' + i + '"></div></div>'
+      +   fld(i, 'supply_hsn', 'HSN', L.supply_hsn, '73090090')
+      +   fld(i, 'supply_gst_rate', 'GST %', L.supply_gst_rate, '18')
+      + '</div>';
+
+    h += '<div class="lc-track">Installation</div><div class="fg5">'
+      +   fld(i, 'install_base_rate', 'Base Rate', L.install_base_rate, '1200  or  -')
+      +   fld(i, 'install_escalation_pct', 'Escalation %', L.install_escalation_pct, '0')
+      +   '<div class="form-group"><label>Unit Rate</label>'
+      +     '<input type="text" value="' + esc(L.install_rate) + '" placeholder="1200"'
+      +      ' oninput="setLine(' + i + ',&quot;install_rate&quot;,this.value)"/>'
+      +     '<div class="derived" id="id' + i + '"></div></div>'
+      +   fld(i, 'install_sac', 'SAC', L.install_sac, '995461')
+      +   fld(i, 'install_gst_rate', 'GST %', L.install_gst_rate, '18')
+      + '</div>';
+  }
+
+  return h + '</div>';
+}
+
+function lineCard(i, L, extraClass) {
+  return '<div class="line-card' + (L.is_header ? ' is-spec' : '')
+    + (isOpen(L) ? ' is-open' : '') + (extraClass || '') + '" data-line="' + i + '">'
+    + lineSummary(i, L)
+    + (isOpen(L) ? lineBody(i, L) : '')
+    + '</div>';
+}
+
+function sectionTotals(code) {
+  var s = 0, ins = 0;
+  var idx = linesOf(code);
+  for (var k = 0; k < idx.length; k++) {
+    var L = MODEL.lines[idx[k]];
+    if (L.is_header) continue;
+    var q = num(L.total_qty === '' || L.total_qty == null
+      ? totalOf(L, (secByCode(code) || {}).areas || []) : L.total_qty);
+    s += num(L.supply_rate) * q;
+    ins += num(L.install_rate) * q;
+  }
+  return [s, ins];
+}
+
 function renderLines() {
   var h = '';
-  for (var i = 0; i < MODEL.lines.length; i++) {
-    var L = MODEL.lines[i];
-    var sec = secByCode(L.section);
-    var areas = (sec && sec.areas) || [];
+  var placed = {};
 
-    h += '<div class="line-card' + (L.is_header ? ' is-spec' : '') + '">'
-      +   '<div class="lc-head">'
-      +     '<span class="lc-no">Line ' + (i + 1)
-      +       (L.item_no ? ' &middot; ' + esc(L.item_no) : '') + '</span>'
-      +     '<button type="button" class="btn-del" onclick="delLine(' + i + ')">Remove</button>'
-      +   '</div>'
-      +   '<div class="fg4">'
-      +     '<div class="form-group"><label>Section</label>'
-      +       '<select onchange="setSection(' + i + ',this.value)">'
-      +         secOptions(L.section) + '</select></div>'
-      +     fld(i, 'item_no', 'Item No.', L.item_no, '4.1')
-      +     fld(i, 'parent_item_no', 'Under Item', L.parent_item_no, '4')
-      +     '<div class="form-group"><label>Row Type</label><div class="check-row">'
-      +       '<input type="checkbox" id="hdr' + i + '"' + (L.is_header ? ' checked' : '')
-      +        ' onchange="setHeader(' + i + ',this.checked)"/>'
-      +       '<label for="hdr' + i + '">Specification header</label></div></div>'
+  for (var si = 0; si < MODEL.sections.length; si++) {
+    var S = MODEL.sections[si];
+    var idx = linesOf(S.code);
+    for (var k = 0; k < idx.length; k++) placed[idx[k]] = true;
+    var tot = sectionTotals(S.code);
+
+    h += '<div class="sec-group" id="secgrp-' + si + '">'
+      +   '<div class="sec-bar" onclick="toggleSection(' + si + ')">'
+      +     '<span class="ls-chev">' + (isOpen(S) ? '▾' : '▸') + '</span>'
+      +     '<span class="sb-code">' + esc(S.code || '?') + '</span>'
+      +     '<span class="sb-title">' + esc(trunc(S.title, 74) || '(untitled section)') + '</span>'
+      +     '<span class="sb-count">' + idx.length + ' line' + (idx.length === 1 ? '' : 's') + '</span>'
+      +     '<span class="ls-rate">' + money(tot[0]) + '</span>'
+      +     '<span class="ls-rate">' + money(tot[1]) + '</span>'
       +   '</div>';
 
-    h += '<div class="fg2" style="margin-top:.7rem;">'
-      +   '<div class="form-group span-all"><label>Description / Specification</label>'
-      +     '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
-      +      ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)">'
-      +      esc(L.description) + '</textarea></div>'
-      + '</div>';
-
-    var picked = L._spec || '';
-    var sp = SPECS[picked];
-    h += '<div class="fg4" style="margin-top:.7rem;">'
-      +   '<div class="form-group"><label>Fill from spec library</label>'
-      +     '<select onchange="fillFromSpec(' + i + ',this.value)">'
-      +       specOptions(picked) + '</select></div>'
-      +   '<div class="form-group"><label>Variant</label>'
-      +     (sp && !isUnsized(sp)
-          ? '<select onchange="fillFromVariant(' + i + ',this.value)">'
-            + variantOptions(picked, L._variant) + '</select>'
-          : '<select disabled><option>' + (sp ? '(unsized)' : '&#8212;') + '</option></select>')
-      +   '</div>'
-      +   fld(i, 'remark', 'Remark (internal &#8212; does not print)', L.remark,
-              '2000/nos extra for tamper switch')
-      +   fld(i, 'unit', 'Unit', L.unit, 'Mtrs')
-      + '</div>';
-
-    if (!L.is_header) {
-      /* Quantities. With an area breakdown the total IS the breakdown, so it
-         is shown derived rather than typed — two independently typed figures
-         that must agree are two figures that can disagree. */
-      h += '<div class="lc-track">Quantity</div><div class="lc-areas">';
-      if (areas.length) {
-        for (var a = 0; a < areas.length; a++) {
-          var an = areas[a];
-          h += '<div class="form-group lc-area"><label>' + esc(an) + '</label>'
-            +  '<input type="text" value="'
-            +   esc(L.area_qty[an] == null ? '' : L.area_qty[an]) + '"'
-            +  ' oninput="setArea(' + i + ',' + JSON.stringify(an).replace(/"/g, '&quot;')
-            +  ',this.value)"/></div>';
+    if (isOpen(S)) {
+      h += '<div class="sec-lines">';
+      if (!idx.length) {
+        h += '<div class="lc-none" style="padding:.6rem .8rem;">No lines in this section yet.</div>';
+      }
+      var hidden = {};
+      for (var k2 = 0; k2 < idx.length; k2++) {
+        var i = idx[k2], L = MODEL.lines[i];
+        /* A closed header folds its children away with it. */
+        if (L.is_header && !isOpen(L)) {
+          var kids = childrenOf(i);
+          for (var c = 0; c < kids.length; c++) hidden[kids[c]] = true;
         }
-        h += '<div class="form-group lc-area"><label>Total Qty</label>'
-          +  '<div class="readonly-field" id="tq' + i + '">'
-          +   esc(totalOf(L, areas)) + '</div></div>';
-      } else {
-        h += '<div class="form-group lc-area"><label>Total Qty</label>'
-          +  '<input type="text" value="' + esc(L.total_qty) + '"'
-          +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"/></div>'
-          +  '<span class="lc-none">This section declares no areas '
-          +  '&#8212; the total stands alone.</span>';
+      }
+      for (var k3 = 0; k3 < idx.length; k3++) {
+        var i2 = idx[k3], L2 = MODEL.lines[i2];
+        if (hidden[i2]) continue;
+        var cls = L2.parent_item_no ? ' is-child' : '';
+        h += lineCard(i2, L2, cls);
       }
       h += '</div>';
-
-      h += '<div class="lc-track">Supply</div><div class="fg5">'
-        +   fld(i, 'supply_base_rate', 'Base Rate', L.supply_base_rate, '1760  or  -')
-        +   fld(i, 'supply_escalation_pct', 'Escalation %', L.supply_escalation_pct, '15')
-        +   '<div class="form-group"><label>Unit Rate</label>'
-        +     '<input type="text" value="' + esc(L.supply_rate) + '" placeholder="2024"'
-        +      ' oninput="setLine(' + i + ',&quot;supply_rate&quot;,this.value)"/>'
-        +     '<div class="derived" id="sd' + i + '"></div></div>'
-        +   fld(i, 'supply_hsn', 'HSN', L.supply_hsn, '73090090')
-        +   fld(i, 'supply_gst_rate', 'GST %', L.supply_gst_rate, '18')
-        + '</div>';
-
-      h += '<div class="lc-track">Installation</div><div class="fg5">'
-        +   fld(i, 'install_base_rate', 'Base Rate', L.install_base_rate, '1200  or  -')
-        +   fld(i, 'install_escalation_pct', 'Escalation %', L.install_escalation_pct, '0')
-        +   '<div class="form-group"><label>Unit Rate</label>'
-        +     '<input type="text" value="' + esc(L.install_rate) + '" placeholder="1200"'
-        +      ' oninput="setLine(' + i + ',&quot;install_rate&quot;,this.value)"/>'
-        +     '<div class="derived" id="id' + i + '"></div></div>'
-        +   fld(i, 'install_sac', 'SAC', L.install_sac, '995461')
-        +   fld(i, 'install_gst_rate', 'GST %', L.install_gst_rate, '18')
-        + '</div>';
     }
-
     h += '</div>';
   }
+
+  /* Lines whose section no longer exists would otherwise be invisible — and
+     an invisible line still posts and still counts. Show them. */
+  var orphans = [];
+  for (var o = 0; o < MODEL.lines.length; o++) if (!placed[o]) orphans.push(o);
+  if (orphans.length) {
+    h += '<div class="sec-group orphan-group">'
+      +  '<div class="sec-bar sec-bar-warn">'
+      +    '<span class="sb-code">!</span>'
+      +    '<span class="sb-title">' + orphans.length + ' line(s) in a section that no longer exists'
+      +    ' &mdash; give them a section or remove them</span></div>'
+      +  '<div class="sec-lines">';
+    for (var o2 = 0; o2 < orphans.length; o2++) {
+      h += lineCard(orphans[o2], MODEL.lines[orphans[o2]], '');
+    }
+    h += '</div></div>';
+  }
+
   el('line-editor').innerHTML = h;
-  for (var k = 0; k < MODEL.lines.length; k++) hint(k);
+  renderJump();
+  for (var k4 = 0; k4 < MODEL.lines.length; k4++) {
+    if (isOpen(MODEL.lines[k4])) hint(k4);
+  }
+}
+
+/* ── Open / close ─────────────────────────────────────────────────────── */
+
+function toggleLine(i) {
+  var L = MODEL.lines[i];
+  L._open = !isOpen(L);
+  renderLines();
+}
+
+function toggleSection(si) {
+  var S = MODEL.sections[si];
+  S._open = !isOpen(S);
+  renderLines();
+}
+
+function setAllOpen(open) {
+  for (var s = 0; s < MODEL.sections.length; s++) MODEL.sections[s]._open = open;
+  for (var i = 0; i < MODEL.lines.length; i++) MODEL.lines[i]._open = open;
+  renderLines();
+}
+
+function expandAll() { setAllOpen(true); }
+function collapseAll() { setAllOpen(false); }
+
+/* Jump to a section: open it, render, then scroll to it. */
+function jumpTo(si) {
+  if (si === '' || si === null) return;
+  si = parseInt(si, 10);
+  var S = MODEL.sections[si];
+  if (!S) return;
+  S._open = true;
+  renderLines();
+  var node = el('secgrp-' + si);
+  if (node && node.scrollIntoView) node.scrollIntoView({block: 'start'});
+}
+
+function renderJump() {
+  var box = el('jump-bar');
+  if (!box) return;
+  var h = '<span class="jb-lbl">Jump to</span>';
+  for (var s = 0; s < MODEL.sections.length; s++) {
+    var S = MODEL.sections[s];
+    h += '<button type="button" class="jb-btn" onclick="jumpTo(' + s + ')">'
+      +  esc(S.code || '?') + '</button>';
+  }
+  h += '<span class="jb-sp"></span>'
+    +  '<button type="button" class="jb-btn" onclick="expandAll()">Expand all</button>'
+    +  '<button type="button" class="jb-btn" onclick="collapseAll()">Collapse all</button>';
+  box.innerHTML = h;
 }
 
 function totalOf(L, areas) {
@@ -2200,9 +2487,15 @@ function insertFamily() {
   if (!sp) return;
 
   var next = nextItemNo(code);
+  /* Land the family somewhere visible: open its section, and open the header
+     so its children show as summaries. The children themselves stay closed —
+     ten expanded panels is the problem this is here to avoid. */
+  var S = secByCode(code);
+  if (S) S._open = true;
 
   if (isUnsized(sp)) {
     var one = blankLine();
+    one._open = false;
     one.section = code;
     one.item_no = String(next);
     setAuto(one, 'description', sp.spec_text);
@@ -2214,6 +2507,7 @@ function insertFamily() {
     head.section = code;
     head.item_no = String(next);
     head.is_header = true;
+    head._open = true;
     head._spec = sid;
     setAuto(head, 'description', sp.spec_text);
     MODEL.lines.push(head);
@@ -2221,6 +2515,7 @@ function insertFamily() {
     var letters = 'abcdefghijklmnopqrstuvwxyz';
     for (var v = 0; v < sp.variants.length; v++) {
       var kid = blankLine();
+      kid._open = false;
       kid.section = code;
       kid.item_no = String(next) + '.' + letters.charAt(v);
       kid.parent_item_no = String(next);
@@ -2262,7 +2557,12 @@ function nextItemNo(code) {
 }
 
 function addLine() {
-  MODEL.lines.push(blankLine());
+  var L = blankLine();
+  MODEL.lines.push(L);
+  /* Adding a line to a section the user has collapsed would put it somewhere
+     they cannot see. */
+  var S = secByCode(L.section);
+  if (S) S._open = true;
   renderLines();
   window.scrollTo(0, document.body.scrollHeight);
 }
@@ -2272,22 +2572,20 @@ function delLine(i) {
   renderLines();
 }
 
-/* The picker's own bookkeeping is UI state and must not reach the record — a
-   BOQ line carries no spec_id (handover §4.2). Stripped on the way out rather
-   than kept in a parallel structure, because living on the line is what makes
-   it survive a row being deleted. */
+/* The editor's own bookkeeping — `_spec`, `_variant`, `_auto`, `_open` — is UI
+   state and must never reach the record: a BOQ line carries no spec_id
+   (handover §4.2) and certainly no scroll position.
+
+   It IS posted, though, and deliberately. The record is kept clean on the
+   SERVER, by construction: `_clean_lines()` and `_clean_sections()` build a
+   fresh dict out of named keys, so an underscore key cannot get in whatever
+   the browser sends, and `test_no_ui_state_reaches_the_record` asserts it.
+   Stripping here as well would throw the state away on a rejected POST — the
+   user would get their input back with every line slammed shut and the
+   picker's typed/auto memory wiped, which is the opposite of the
+   always-return-the-user's-input contract this form is held to. */
 function saveJSON() {
-  var clean = {
-    sections: MODEL.sections,
-    lines: MODEL.lines.map(function (L) {
-      var out = {};
-      for (var k in L) {
-        if (k !== '_spec' && k !== '_variant' && k !== '_auto') out[k] = L[k];
-      }
-      return out;
-    })
-  };
-  el('boq_json').value = JSON.stringify(clean);
+  el('boq_json').value = JSON.stringify(MODEL);
   return true;
 }
 
@@ -2349,6 +2647,7 @@ def create_boq():
 
         # Validation, in order — nothing is written to STORE until every one
         # of these passes, so a rejected POST leaves no half-built record.
+        err_idx = -1
         raw_sections, raw_lines, error = _parse_payload(form.get("boq_json", ""))
 
         if not error and not (form.get("date") or "").strip():
@@ -2361,7 +2660,7 @@ def create_boq():
         if not error:
             sections, error = _clean_sections(raw_sections)
         if not error:
-            lines, error = _clean_lines(raw_lines, sections)
+            lines, error, err_idx = _clean_lines(raw_lines, sections)
 
         if not error:
             datestr = (form.get("date") or "").strip()
@@ -2416,9 +2715,19 @@ def create_boq():
 
         # Rejected: re-render with what the user actually typed, exactly as the
         # quotation form does. The editor boots from the posted JSON, so no
-        # work is lost.
+        # work is lost — including which rows were open.
         sections = raw_sections if isinstance(raw_sections, list) else []
         lines    = raw_lines if isinstance(raw_lines, list) else []
+
+        # …and force the offending row open. Every line is collapsed by
+        # default, so a complaint about line 47 that leaves line 47 shut is
+        # worse than no validation at all.
+        if 0 <= err_idx < len(lines) and isinstance(lines[err_idx], dict):
+            lines[err_idx]["_open"] = True
+            bad_section = lines[err_idx].get("section")
+            for sec in sections:
+                if isinstance(sec, dict) and sec.get("code") == bad_section:
+                    sec["_open"] = True
 
     # Filled by ?demo=1 below. Bound here so `_v` closes over something real
     # whichever branch runs.
@@ -2668,6 +2977,7 @@ def create_boq():
         shape a BOQ is actually written in. An unsized spec inserts a single line.
       </p>
 
+      <div class="jump-bar" id="jump-bar"></div>
       <div id="line-editor"></div>
       <button type="button" class="btn-row" style="margin-top:.4rem;" onclick="addLine()">
         + Add line

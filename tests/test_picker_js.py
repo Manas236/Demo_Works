@@ -77,6 +77,17 @@ function variantValues(i) {
   return out;
 }
 
+/* Open a row by firing its rendered summary toggle. A collapsed row has no
+   controls at all — that is the point of the collapse — so anything driving a
+   control has to open the row first, exactly as a user would. */
+function openLine(i) {
+  if (MODEL.lines[i]._open) return;
+  var m = new RegExp('onclick="(toggleLine\\\\(' + i + '\\\\))"')
+            .exec(STUB['line-editor'].innerHTML);
+  if (!m) throw new Error('no rendered toggle for row ' + i);
+  eval(m[1]);
+}
+
 /* Type into a field, the way an oninput handler would. */
 function typeInto(i, key, value) { setLine(i, key, value); }
 
@@ -337,20 +348,43 @@ def test_deleting_a_row_does_not_shift_the_others_spec(seeded):
     assert res["desc"].startswith("Design, Fabrication")
 
 
-def test_picker_state_never_reaches_the_record(seeded):
-    """_spec / _variant / _auto are UI bookkeeping. A BOQ line has no spec_id."""
+def test_picker_state_is_posted_but_never_reaches_the_record(seeded, client):
+    """
+    `_spec` / `_variant` / `_auto` are UI bookkeeping, and a BOQ line has no
+    spec_id. They ARE posted, deliberately: stripping them in the browser would
+    also throw them away on a rejected POST, and the user would get their input
+    back with the picker's typed/auto memory wiped. The record is kept clean on
+    the SERVER instead — `_clean_lines()` builds a fresh dict from named keys,
+    so an underscore key cannot get in whatever the browser sends.
+    """
+    import json as _json
+
+    from store import STORE
+
     res = _session(f"""
         addLine();
+        typeInto(0, 'item_no', '4.1');
+        typeInto(0, 'total_qty', '4');
         fireSelect(0, 'spec', '{_sid(PIPE)}');
         fireSelect(0, 'variant', '0');
         saveJSON();
         console.log(STUB['boq_json'].value);
     """)
     line = res["lines"][0]
-    for key in ("_spec", "_variant", "_auto"):
-        assert key not in line, f"{key} was submitted"
+    assert line["_spec"] and line["_variant"] == 0 and line["_auto"]
     assert line["description"] == "150mm dia     ISI"
     assert line["supply_base_rate"] == "1760"
+
+    before = set(STORE["boqs"])
+    r = client.post("/boq/create", data={
+        "date": "2026-06-15", "project_name": "P", "account_name": "A",
+        "boq_json": _json.dumps(res)})
+    assert r.status_code == 302, r.get_data(as_text=True)[:300]
+    new = [b for k, b in STORE["boqs"].items() if k not in before][0]
+    stored = new["line_items"][0]
+    assert not any(k.startswith("_") for k in stored), sorted(stored)
+    assert stored["description"] == "150mm dia     ISI"
+    assert stored["supply_base_rate"] == 1760.0
 
 
 # ═══ Bulk insert ═══════════════════════════════════════════════════════════
@@ -381,6 +415,7 @@ def test_insert_family_rows_are_still_re_pickable(seeded):
         STUB['bulk-spec'].value = '{_sid("PIPE-MS-C-1239-AG")}';
         STUB['bulk-section'].value = 'A';
         insertFamily();
+        openLine(1);
         fireSelect(1, 'spec', '{_sid(AXE)}');
         dumpLine(1);
     """)

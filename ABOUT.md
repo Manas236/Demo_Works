@@ -1503,6 +1503,55 @@ The unit comes from the variant rather than the spec because that is where it
 lives — for an unsized spec, where no size remains to be chosen, it arrives
 with the spec.
 
+##### Navigating 97 lines
+
+A BOQ is long, and rendered as stacked full-height panels the form is less
+usable than the spreadsheet it replaces. So the editor shows a **one-line
+summary** per line — item no · description · qty · supply rate · install rate —
+and opens the full panel only for the line being worked on.
+
+**The summary is the deliverable.** Collapsing is how it becomes readable.
+
+- **Sections** collapse to a bar carrying the line count and that section's own
+  supply and installation totals.
+- **A closed header folds its family**: item 24 shut takes 24.a–24.i with it,
+  because that is how the schedule reads on paper. Its summary says
+  `spec · 9 items`.
+- **A jump bar** (sticky) offers one button per section plus expand-all and
+  collapse-all. Jumping opens the section it lands on.
+- **Newly added and newly edited lines stay open**; adding into a collapsed
+  section opens that section, because a new line the user cannot see is worse
+  than no new line.
+- **Bulk insert opens the header only** — ten expanded panels is the problem
+  this exists to avoid.
+- **Orphan lines get their own band.** A line whose section no longer exists
+  was previously invisible while still posting and still counting; it now shows
+  under a red bar telling the user to give it a section or remove it.
+
+Open/closed state lives on the line (`_open`) and on the section (`_open`),
+**never in a map keyed by row index** — that is the class of bug the spec
+picker's `PICK` map fell into, where deleting a line made every row below it
+show the previous row's state. Absent means closed, so a loaded BOQ opens fully
+collapsed and `_demo_form_payload()` says nothing about it.
+
+##### UI state is posted, and the server is what keeps it out of the record
+
+`_open`, `_spec`, `_variant` and `_auto` are all posted inside `boq_json`. That
+is deliberate. Stripping them in `saveJSON()` would also throw them away on a
+**rejected** POST, and the user would get their input back with every line
+slammed shut and the picker's typed/auto memory wiped — the opposite of the
+always-return-the-user's-input contract this form is held to.
+
+The record stays clean **by construction on the server**: `_clean_lines()` and
+`_clean_sections()` build a fresh dict out of named keys, so an underscore key
+cannot get in whatever the browser sends. `test_no_ui_state_reaches_the_record`
+asserts exactly that, end to end.
+
+**A rejected POST forces the offending line open.** `_clean_lines()` returns
+the failing row's index alongside the message, and the re-render opens that
+line and its section. Every line is collapsed by default, so a complaint about
+line 47 that leaves line 47 shut is worse than no validation.
+
 ##### What a pick does to a row — the rule
 
 Every field on a line is in exactly one of three states:
