@@ -1799,6 +1799,7 @@ function delSec(i) {
 function blankLine() {
   var first = MODEL.sections[0];
   return {
+    _spec: '', _variant: null, _auto: {},
     item_no: '', parent_item_no: '', section: (first ? first.code : ''),
     is_header: false, description: '', remark: '', unit: '',
     area_qty: {}, total_qty: '',
@@ -1820,10 +1821,73 @@ function secOptions(cur) {
 }
 
 /* ── The spec picker ───────────────────────────────────────────────────
-   PICK holds which spec each row's picker is showing. It is transient UI
-   state, NOT part of the line: a BOQ line carries no spec_id, because
-   spec_text is copied onto it and edited there (see spec.delete_spec). */
-var PICK = {};
+
+   WHAT A PICK DOES TO A ROW — the rule, stated once.
+
+   Every field on a line is in exactly one of three states:
+
+     empty   nothing in it
+     auto    what is in it was put there by the picker
+     typed   the user edited it by hand
+
+   and the picker obeys one sentence: **a pick overwrites empty and auto, and
+   never overwrites typed.**
+
+   From which:
+
+     1. Choosing a SPEC fills description, HSN, SAC and both GST rates.
+     2. Choosing a spec also RESETS the variant: unit and the two base rates
+        belonged to a variant of the *previous* spec, so any of them still
+        marked auto is cleared. Anything typed survives.
+     3. Choosing a VARIANT fills unit, both base rates, and sets the
+        description to the variant's label.
+     4. An UNSIZED spec (one blank-labelled variant) applies its variant
+        immediately — there is no size left to choose.
+     5. Typing in a field marks it typed for good. Later picks leave it alone.
+
+   Before this was specified, every fill was "only if the box is empty", which
+   is right for a blank row and wrong for a re-selection: once a row had been
+   populated once, changing the spec did nothing and choosing a variant did
+   nothing, so a row could sit there showing one spec in the picker and another
+   spec's description and unit. The `_auto` map is what tells a value the
+   picker put there from a value a human chose.
+
+   `_spec`, `_variant` and `_auto` live ON the line — not in a lookup keyed by
+   row index, which is what they used to be. An index-keyed map silently
+   desyncs the moment a line is deleted: every row below it inherits the
+   previous row's spec. They are stripped in saveJSON(), so none of it reaches
+   the record — a BOQ line still carries no spec_id (see spec.delete_spec). */
+
+function autoMap(L) {
+  if (!L._auto) L._auto = {};
+  return L._auto;
+}
+
+/* Write a value AND remember the picker was the one that wrote it. */
+function setAuto(L, key, value) {
+  L[key] = value;
+  autoMap(L)[key] = true;
+}
+
+/* May a pick write here? Empty or previously auto-filled: yes. Typed: no. */
+function canFill(L, key) {
+  var v = L[key];
+  return v === '' || v === null || v === undefined || !!autoMap(L)[key];
+}
+
+/* Undo the picker's own fills for these fields, leaving typed values alone. */
+function clearAuto(L, keys) {
+  var a = autoMap(L);
+  for (var k = 0; k < keys.length; k++) {
+    if (a[keys[k]]) {
+      L[keys[k]] = '';
+      delete a[keys[k]];
+    }
+  }
+}
+
+/* Fields a VARIANT owns — cleared when the spec changes under them. */
+var VARIANT_FIELDS = ['unit', 'supply_base_rate', 'install_base_rate'];
 
 function specOptions(cur) {
   var h = '<option value="">&#8212; fill from spec library &#8212;</option>';
@@ -1847,13 +1911,21 @@ function specOptions(cur) {
   return h;
 }
 
-function variantOptions(sid) {
+/* Options carry the variant's INDEX, not its label. Five of the seeded labels
+   are multi-line pump specifications; matching those back by string through an
+   HTML attribute is fragile for no benefit, and an index cannot be mangled by
+   escaping, whitespace or newline normalisation. */
+function variantOptions(sid, chosen) {
   var sp = SPECS[sid];
   if (!sp) return '<option value="">&#8212;</option>';
   var h = '<option value="">&#8212; choose a size &#8212;</option>';
   for (var v = 0; v < sp.variants.length; v++) {
     var lab = sp.variants[v].label;
-    h += '<option value="' + esc(lab) + '">' + esc(lab || '(unsized)') + '</option>';
+    /* A label may be several lines long; the dropdown wants one. */
+    var shown = String(lab || '(unsized)').replace(/\\s+/g, ' ');
+    if (shown.length > 70) shown = shown.slice(0, 68) + '\\u2026';
+    h += '<option value="' + v + '"' + (v === chosen ? ' selected' : '') + '>'
+      +  esc(shown) + '</option>';
   }
   return h;
 }
@@ -1900,7 +1972,7 @@ function renderLines() {
       +      esc(L.description) + '</textarea></div>'
       + '</div>';
 
-    var picked = PICK[i] || '';
+    var picked = L._spec || '';
     var sp = SPECS[picked];
     h += '<div class="fg4" style="margin-top:.7rem;">'
       +   '<div class="form-group"><label>Fill from spec library</label>'
@@ -1909,7 +1981,7 @@ function renderLines() {
       +   '<div class="form-group"><label>Variant</label>'
       +     (sp && !isUnsized(sp)
           ? '<select onchange="fillFromVariant(' + i + ',this.value)">'
-            + variantOptions(picked) + '</select>'
+            + variantOptions(picked, L._variant) + '</select>'
           : '<select disabled><option>' + (sp ? '(unsized)' : '&#8212;') + '</option></select>')
       +   '</div>'
       +   fld(i, 'remark', 'Remark (internal &#8212; does not print)', L.remark,
@@ -2015,7 +2087,12 @@ function useRate(i, key, v) {
 }
 
 function setLine(i, key, val) {
-  MODEL.lines[i][key] = val;
+  var L = MODEL.lines[i];
+  L[key] = val;
+  /* The user has now had their say about this field. Rule 5: a later pick
+     leaves it alone. Deleting the flag rather than setting a "typed" one keeps
+     the map small and makes `canFill` a single lookup. */
+  delete autoMap(L)[key];
   if (key === 'supply_base_rate' || key === 'supply_escalation_pct'
    || key === 'supply_rate' || key === 'install_base_rate'
    || key === 'install_escalation_pct' || key === 'install_rate') {
@@ -2050,54 +2127,65 @@ function setHeader(i, on) {
   renderLines();
 }
 
-/* Library values fill only EMPTY boxes. A rate in the library is a reference
-   default from another project, not what was agreed on this one —
-   purchase.py's fillRate() makes exactly the same call for a vendor's price,
-   and handover §4.2 rule 4 says the BOQ stores what was entered.
+/* Choosing a SPEC. See "WHAT A PICK DOES TO A ROW" above.
 
-   A spec fills the text and the tax classification. The UNIT lives on the
-   variant, not the spec, so it only comes across here when the spec is
-   unsized and there is therefore no size still to choose. */
+   A rate in the library is a reference default from another project, not what
+   was agreed on this one — purchase.py's fillRate() makes the same call about
+   a vendor's price, and handover §4.2 rule 4 says the BOQ stores what was
+   entered. "Never overwrites typed" is that rule; "overwrites auto" is what
+   makes changing your mind work. */
 function fillFromSpec(i, sid) {
-  PICK[i] = sid;
+  var L = MODEL.lines[i];
+  L._spec = sid;
+  L._variant = null;
+
   var sp = SPECS[sid];
   if (!sp) { renderLines(); return; }
-  var L = MODEL.lines[i];
-  if (!L.description) L.description = sp.spec_text;
-  if (!L.supply_hsn) L.supply_hsn = sp.supply_hsn;
-  if (!L.install_sac) L.install_sac = sp.install_sac;
-  if (!L.supply_gst_rate) L.supply_gst_rate = String(sp.supply_gst_rate);
-  if (!L.install_gst_rate) L.install_gst_rate = String(sp.install_gst_rate);
-  if (isUnsized(sp)) fillFromVariant(i, '');
+
+  /* Whatever a variant of the PREVIOUS spec left behind is no longer true of
+     this row. Typed values are the user's and stay. */
+  clearAuto(L, VARIANT_FIELDS);
+
+  if (canFill(L, 'description'))      setAuto(L, 'description', sp.spec_text);
+  if (canFill(L, 'supply_hsn'))       setAuto(L, 'supply_hsn', sp.supply_hsn);
+  if (canFill(L, 'install_sac'))      setAuto(L, 'install_sac', sp.install_sac);
+  if (canFill(L, 'supply_gst_rate'))  setAuto(L, 'supply_gst_rate', String(sp.supply_gst_rate));
+  if (canFill(L, 'install_gst_rate')) setAuto(L, 'install_gst_rate', String(sp.install_gst_rate));
+
+  /* Nothing left to choose, so apply it now. */
+  if (isUnsized(sp)) { applyVariant(i, 0); }
+
   renderLines();
 }
 
-/* A variant fills the unit and SUGGESTS both base rates. Suggests: a typed
-   rate is never overwritten. */
-function fillFromVariant(i, label) {
-  var sp = SPECS[PICK[i]];
-  if (!sp) return;
-  var v = null;
-  for (var k = 0; k < sp.variants.length; k++) {
-    if (sp.variants[k].label === label) { v = sp.variants[k]; break; }
-  }
-  if (!v && isUnsized(sp)) v = sp.variants[0];
-  if (!v) return;
-  var L = MODEL.lines[i];
-  if (!L.unit) L.unit = v.unit;
-  if (!L.supply_base_rate && v.s_base !== null && v.s_base !== '') {
-    L.supply_base_rate = String(v.s_base);
-  }
-  if (!L.install_base_rate && v.i_base !== null && v.i_base !== '') {
-    L.install_base_rate = String(v.i_base);
-  }
-  /* The variant label is what the child row of a size family says on the
-     printed sheet — but only take it when the description is still untouched
-     or still the parent clause, never over something typed. */
-  if (label && (!L.description || L.description === sp.spec_text)) {
-    L.description = label;
-  }
+/* Choosing a VARIANT, by index. */
+function fillFromVariant(i, idx) {
+  if (idx === '' || idx === null || idx === undefined) return;
+  applyVariant(i, parseInt(idx, 10));
   renderLines();
+}
+
+function applyVariant(i, idx) {
+  var L = MODEL.lines[i];
+  var sp = SPECS[L._spec];
+  if (!sp) return;
+  var v = sp.variants[idx];
+  if (!v) return;
+
+  L._variant = idx;
+  if (canFill(L, 'unit')) setAuto(L, 'unit', v.unit);
+  if (canFill(L, 'supply_base_rate') && v.s_base !== null && v.s_base !== '') {
+    setAuto(L, 'supply_base_rate', String(v.s_base));
+  }
+  if (canFill(L, 'install_base_rate') && v.i_base !== null && v.i_base !== '') {
+    setAuto(L, 'install_base_rate', String(v.i_base));
+  }
+  /* On the printed sheet the child row of a size family says the variant
+     label, and the header above it carries the clause. An unsized spec has no
+     label, so its description stays the clause itself. */
+  if (v.label && canFill(L, 'description')) {
+    setAuto(L, 'description', v.label);
+  }
 }
 
 /* ── Insert a whole size family ────────────────────────────────────────
@@ -2117,16 +2205,17 @@ function insertFamily() {
     var one = blankLine();
     one.section = code;
     one.item_no = String(next);
-    one.description = sp.spec_text;
-    applySpecFields(one, sp);
-    applyVariantFields(one, sp.variants[0]);
+    setAuto(one, 'description', sp.spec_text);
+    applySpecFields(one, sp, sid);
+    applyVariantFields(one, sp.variants[0], 0);
     MODEL.lines.push(one);
   } else {
     var head = blankLine();
     head.section = code;
     head.item_no = String(next);
     head.is_header = true;
-    head.description = sp.spec_text;
+    head._spec = sid;
+    setAuto(head, 'description', sp.spec_text);
     MODEL.lines.push(head);
 
     var letters = 'abcdefghijklmnopqrstuvwxyz';
@@ -2135,9 +2224,9 @@ function insertFamily() {
       kid.section = code;
       kid.item_no = String(next) + '.' + letters.charAt(v);
       kid.parent_item_no = String(next);
-      kid.description = sp.variants[v].label;
-      applySpecFields(kid, sp);
-      applyVariantFields(kid, sp.variants[v]);
+      setAuto(kid, 'description', sp.variants[v].label);
+      applySpecFields(kid, sp, sid);
+      applyVariantFields(kid, sp.variants[v], v);
       MODEL.lines.push(kid);
     }
   }
@@ -2146,17 +2235,19 @@ function insertFamily() {
   window.scrollTo(0, document.body.scrollHeight);
 }
 
-function applySpecFields(L, sp) {
-  L.supply_hsn = sp.supply_hsn;
-  L.install_sac = sp.install_sac;
-  L.supply_gst_rate = String(sp.supply_gst_rate);
-  L.install_gst_rate = String(sp.install_gst_rate);
+function applySpecFields(L, sp, sid) {
+  L._spec = sid;
+  setAuto(L, 'supply_hsn', sp.supply_hsn);
+  setAuto(L, 'install_sac', sp.install_sac);
+  setAuto(L, 'supply_gst_rate', String(sp.supply_gst_rate));
+  setAuto(L, 'install_gst_rate', String(sp.install_gst_rate));
 }
 
-function applyVariantFields(L, v) {
-  L.unit = v.unit;
-  if (v.s_base !== null && v.s_base !== '') L.supply_base_rate = String(v.s_base);
-  if (v.i_base !== null && v.i_base !== '') L.install_base_rate = String(v.i_base);
+function applyVariantFields(L, v, idx) {
+  L._variant = idx;
+  setAuto(L, 'unit', v.unit);
+  if (v.s_base !== null && v.s_base !== '') setAuto(L, 'supply_base_rate', String(v.s_base));
+  if (v.i_base !== null && v.i_base !== '') setAuto(L, 'install_base_rate', String(v.i_base));
 }
 
 /* The next whole number free in this section — 24 when 1..23 are taken. */
@@ -2181,8 +2272,22 @@ function delLine(i) {
   renderLines();
 }
 
+/* The picker's own bookkeeping is UI state and must not reach the record — a
+   BOQ line carries no spec_id (handover §4.2). Stripped on the way out rather
+   than kept in a parallel structure, because living on the line is what makes
+   it survive a row being deleted. */
 function saveJSON() {
-  el('boq_json').value = JSON.stringify(MODEL);
+  var clean = {
+    sections: MODEL.sections,
+    lines: MODEL.lines.map(function (L) {
+      var out = {};
+      for (var k in L) {
+        if (k !== '_spec' && k !== '_variant' && k !== '_auto') out[k] = L[k];
+      }
+      return out;
+    })
+  };
+  el('boq_json').value = JSON.stringify(clean);
   return true;
 }
 

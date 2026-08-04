@@ -400,14 +400,21 @@ def test_unsized_spec_exposes_its_single_variant(seeded, client):
 
 
 def test_create_page_ships_the_library_and_the_bulk_insert(seeded, client):
+    """
+    Structure only — that the page carries the library and the controls.
+
+    What the picker *does* with a value is tested by running the real
+    JavaScript in tests/test_picker_js.py. This used to assert on source
+    strings like `if (!L.supply_base_rate`, which is how a test keeps passing
+    while the feature is broken: the string was still there, and the rule it
+    encoded was the wrong rule.
+    """
     html = client.get("/boq/create").get_data(as_text=True)
     assert "var SPECS = " in html
     assert "insertFamily()" in html
     assert 'id="bulk-spec"' in html and 'id="bulk-section"' in html
-    # fill-if-empty is the contract on every value the picker suggests
-    assert "if (!L.supply_base_rate" in html
-    assert "if (!L.unit) L.unit = v.unit;" in html
-    assert "if (!L.description) L.description = sp.spec_text;" in html
+    assert "function fillFromSpec" in html
+    assert "function fillFromVariant" in html
 
 
 def test_create_page_no_longer_offers_the_sales_catalogue(seeded, client):

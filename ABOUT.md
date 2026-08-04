@@ -1503,9 +1503,45 @@ The unit comes from the variant rather than the spec because that is where it
 lives — for an unsized spec, where no size remains to be chosen, it arrives
 with the spec.
 
-Every one of those fills an **empty box only**. A typed rate, unit or
-description is never overwritten; `hint()` says "escalation implies X — rate
-differs, kept as entered" instead of correcting it.
+##### What a pick does to a row — the rule
+
+Every field on a line is in exactly one of three states:
+
+| state | meaning |
+|---|---|
+| **empty** | nothing in it |
+| **auto** | what is in it was put there by the picker |
+| **typed** | the user edited it by hand |
+
+**A pick overwrites empty and auto, and never overwrites typed.** From that:
+
+1. Choosing a **spec** fills description, HSN, SAC and both GST rates.
+2. Choosing a spec also **resets the variant** — unit and the two base rates
+   belonged to a variant of the *previous* spec, so any still marked auto are
+   cleared. Anything typed survives.
+3. Choosing a **variant** fills unit, both base rates, and sets the description
+   to the variant's label.
+4. An **unsized** spec applies its single variant immediately; there is no size
+   left to choose.
+5. Typing in a field marks it typed for good. Later picks leave it alone.
+6. `hint()` still says "escalation implies X — rate differs, kept as entered"
+   rather than correcting a rate.
+
+⚠ **This was the bug.** The original rule was just "fill an empty box", which
+is right for a blank row and wrong for a re-selection: once a row had been
+populated, changing the spec did nothing and choosing a variant did nothing, so
+a row could sit showing one spec in its picker and another spec's description
+and unit. The `_auto` map is what distinguishes a value the picker wrote from
+one a human chose.
+
+`_spec`, `_variant` and `_auto` live **on the line**, not in a map keyed by row
+index. An index-keyed map desyncs the moment a line is deleted — every row
+below inherits the previous row's spec. They are stripped in `saveJSON()`, so a
+BOQ line still carries no `spec_id`.
+
+Variant options carry the variant's **index**, not its label: five seeded
+labels are multi-line pump specifications, and matching those back through an
+HTML attribute is fragile for no benefit.
 
 **"Insert header & variants"** expands a sized spec into the shape the client's
 sheet is actually written in — one header row carrying the clause, then one
@@ -1514,9 +1550,18 @@ free in that section. An unsized spec inserts a single plain line. Without it,
 item 24 is ten rows of typing.
 
 Those fill rules are the one piece of behaviour in this app that only exists in
-JavaScript, so [tests/test_picker_js.py](tests/test_picker_js.py) extracts the
-real functions out of `_BOQ_JS` and runs them under Node against the same
-payload the page gets. It skips when Node is absent.
+JavaScript, so [tests/test_picker_js.py](tests/test_picker_js.py) runs the real
+`_BOQ_JS` under Node against the real payload. It skips when Node is absent.
+
+⚠ **That file lied once and the reasons are worth knowing**, because they are
+how any JS harness lies. It (a) called the handlers directly instead of firing
+the rendered `<select onchange=…>`, so the wiring was never under test; (b)
+started every case from a fresh blank row, which was the one input where the
+broken fill rule still worked; and (c) ran each case in its own process, so no
+state carried between actions and an index-keyed desync could not appear. It
+now fires the rendered control, runs multi-step sequences in one process, and
+asserts on behaviour rather than on source strings. Twelve of its tests fail
+against the code it used to pass.
 
 #### Loading the demo into the form — `?demo=1`
 

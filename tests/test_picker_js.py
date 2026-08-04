@@ -1,16 +1,32 @@
 """
-The BOQ picker's fill rules, executed.
+The BOQ picker's fill rules, executed — through the rendered controls.
 
-Everything else in this suite tests Python. The rule that matters most on this
-form — **a catalogue rate fills an empty box and never overwrites a typed
-one** — lives in JavaScript, and asserting that a string appears in the page
-source only proves the code shipped, not that it behaves.
+WHY THIS FILE WAS REWRITTEN
+---------------------------
+The previous version passed while the feature was broken in the browser. Three
+reasons, all of them worth remembering because they are how any JS harness
+lies:
 
-So this file pulls the real `fillFromSpec` / `fillFromVariant` /
-`insertFamily` out of `boq._BOQ_JS`, injects the same payload the page gets
-from `_spec_catalog_json()`, and runs them under Node. If Node is not
-installed the file skips rather than failing — it is a sharper test, not a
-required toolchain.
+1. **It called the functions directly.** `fillFromVariant(0, '150 mm dia')`
+   exercises a function; it does not exercise the `<select onchange=…>` that
+   is supposed to call it, nor the option `value` the DOM would actually hand
+   over. A handler could be unwired, mis-argumented or never rendered and the
+   test would not notice. This version pulls the `onchange` attribute out of
+   the **rendered row** and fires it with `this.value` set to a real option
+   value, so the wiring is under test too.
+
+2. **Every case started from a fresh `blankLine()`.** The old fill rule was
+   "write only if the box is empty", so a blank row was the one input where it
+   worked. The reported bug — pick a spec, pick a variant, then change the spec
+   — needs *two* picks to show up, and nothing tested two. Every test below
+   that matters now runs a sequence.
+
+3. **Each case ran in its own Node process**, so no state survived between
+   actions and index-keyed bookkeeping could not desync. `delLine` corrupting
+   the row→spec map was invisible for exactly that reason.
+
+The rule under test is stated in full above the picker in `boq.py`: a pick
+overwrites **empty** and **auto**, and never overwrites **typed**.
 """
 
 import json
@@ -24,41 +40,81 @@ import pytest
 pytestmark = pytest.mark.skipif(shutil.which("node") is None,
                                 reason="node not installed")
 
+# Injected into the harness: fires a rendered control the way a browser would.
+_DRIVER = """
+function rowHtml(i) {
+  var parts = STUB['line-editor'].innerHTML.split('<div class="line-card');
+  if (!parts[i + 1]) throw new Error('no row ' + i + ' rendered');
+  return parts[i + 1];
+}
 
-def _run(script: str, seeded_client):
-    """Execute the page's own JS with a stub DOM, and return its result."""
+/* Pull the onchange attribute off the rendered <select> for row `i` and run
+   it with `this.value` set to `value` — which is what the browser does. If the
+   control was never rendered, or its handler is not wired, this throws. */
+function fireSelect(i, which, value) {
+  var html = rowHtml(i);
+  var re = which === 'spec' ? /onchange="(fillFromSpec\\([^"]*)"/
+                            : /onchange="(fillFromVariant\\([^"]*)"/;
+  var m = re.exec(html);
+  if (!m) throw new Error('row ' + i + ' has no wired ' + which + ' select');
+  var code = m[1].replace(/&quot;/g, '"').replace(/this\\./g, 'SELF.');
+  var SELF = { value: value };
+  /* Direct eval, not `new Function`: a browser resolves an inline handler
+     against the global scope, and on the real page these functions ARE global
+     because _BOQ_JS is a plain <script> block. Node module-scopes them, which
+     is an artifact of running the file here — direct eval sees the same scope
+     chain the page would. */
+  eval(code);
+}
+
+/* The option values the rendered variant dropdown is offering. */
+function variantValues(i) {
+  var html = rowHtml(i);
+  var sel = /<select onchange="fillFromVariant[^>]*>([\\s\\S]*?)<\\/select>/.exec(html);
+  if (!sel) return null;
+  var out = [], re = /<option value="([^"]*)"/g, m;
+  while ((m = re.exec(sel[1])) !== null) out.push(m[1]);
+  return out;
+}
+
+/* Type into a field, the way an oninput handler would. */
+function typeInto(i, key, value) { setLine(i, key, value); }
+
+function dump() { console.log(JSON.stringify(MODEL.lines)); }
+function dumpLine(i) { console.log(JSON.stringify(MODEL.lines[i])); }
+"""
+
+
+def _session(script: str):
+    """
+    Run a SEQUENCE of actions against the page's real JS in one process.
+
+    One process, so state carries across actions — which is the only way a
+    desync bug can surface.
+    """
     import boq
 
     payload = boq._spec_catalog_json()
-
-    # The page's JS, with the two hooks it needs from a browser stubbed. Only
-    # the DOM is faked; every function under test is the shipped source.
     harness = (
         "var BOQ_SPECS_JSON = " + payload + ";\n"
-        "var document = { body: {}, getElementById: function(id) "
-        "{ return STUB[id] || null; } };\n"
-        "var window = { scrollTo: function(){}, confirm: function(){ return true; } };\n"
         "var STUB = { 'bulk-spec': {value:'', innerHTML:''}, "
         "'bulk-section': {value:'A', innerHTML:''}, "
-        "'line-editor': {innerHTML:''}, 'sec-editor': {innerHTML:''} };\n"
+        "'line-editor': {innerHTML:''}, 'sec-editor': {innerHTML:''}, "
+        "'boq_json': {value:''} };\n"
+        "var document = { body: {}, getElementById: function(id) "
+        "{ return STUB[id] || null; } };\n"
+        "var window = { scrollTo: function(){} };\n"
     )
-
-    js = boq._BOQ_JS
-    js = js.replace("<script>", "").replace("</script>", "")
+    js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = js.replace("BOQ_SPECS", "BOQ_SPECS_JSON")
     js = js.replace("BOQ_BOOT", json.dumps(
         {"sections": [{"code": "A", "title": "Sprinklers", "areas": ["L0"]}],
          "lines": []}))
     js = js.replace("BOQ_ADDR", "{}")
-    # The two render passes at the foot of the file need a DOM; the stub has
-    # the elements they write into, so they run as-is.
 
-    # Written to a file rather than passed to `node -e`: the payload is 56
-    # clauses, several over a kilobyte, and Windows caps a command line at
-    # 32767 characters.
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
                                      encoding="utf8") as fh:
-        fh.write(harness + js + "\n" + script)
+        fh.write(harness + js + _DRIVER + "\n" + script)
         path = fh.name
     try:
         out = subprocess.run(["node", path], capture_output=True,
@@ -75,140 +131,288 @@ def seeded(client):
     return client
 
 
-def _spec_id(code):
+def _sid(code):
     import boq
-    return [sid for sid, s in json.loads(boq._spec_catalog_json()).items()
-            if s["code"] == code][0]
+    return [k for k, v in json.loads(boq._spec_catalog_json()).items()
+            if v["code"] == code][0]
 
 
-def test_picking_a_spec_fills_text_and_tax_classification(seeded):
-    sid = _spec_id("PIPE-MS-C-1239-AG")
-    res = _run(f"""
-        MODEL.lines.push(blankLine());
-        fillFromSpec(0, '{sid}');
-        console.log(JSON.stringify(MODEL.lines[0]));
-    """, seeded)
-    assert len(res["description"]) > 1000          # the full clause
+PIPE = "PIPE-MS-C-1239-SPR"      # 8 sized variants
+PANEL = "PNL-LT-FIRE-BOARD"      # 2 sized variants
+AXE = "HYD-FIREMANS-AXE"         # unsized
+PUMP = "PMP-ELEC-END-SUCT"       # 4 variants with MULTI-LINE labels
+
+
+# ═══ The wiring itself ═════════════════════════════════════════════════════
+
+def test_both_selects_are_rendered_and_wired(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        var html = rowHtml(0);
+        console.log(JSON.stringify({{
+          hasSpecHandler: /onchange="fillFromSpec\\(0,this\\.value\\)"/.test(html),
+          hasVariantHandler: /onchange="fillFromVariant\\(0,this\\.value\\)"/.test(html),
+          variantValues: variantValues(0)
+        }}));
+    """)
+    assert res["hasSpecHandler"], "the spec select is not wired to fillFromSpec"
+    assert res["hasVariantHandler"], "the variant select is not wired"
+    # A blank prompt plus one option per variant, carrying INDEXES.
+    assert res["variantValues"] == ["", "0", "1", "2", "3", "4", "5", "6", "7"]
+
+
+def test_multiline_variant_labels_are_selectable(seeded):
+    """
+    Five seeded labels are multi-line pump specifications. Matching those back
+    by string through an HTML attribute is fragile; options carry the index.
+    """
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PUMP)}');
+        fireSelect(0, 'variant', '2');
+        dumpLine(0);
+    """)
+    assert res["_variant"] == 2
+    assert res["description"].startswith("Sprinkler Jockey Pump")
+    assert res["unit"] == "Nos."
+
+
+# ═══ A single pick on a blank row ══════════════════════════════════════════
+
+def test_spec_fills_text_and_tax_classification(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        dumpLine(0);
+    """)
+    assert len(res["description"]) > 1000
     assert res["supply_hsn"] == "73063090"
     assert res["install_sac"] == "995462"
     assert res["supply_gst_rate"] == "18"
     assert res["install_gst_rate"] == "18"
-    # A sized spec leaves the unit alone — it lives on the variant.
-    assert res["unit"] == ""
+    assert res["unit"] == "", "unit lives on the variant, not the spec"
 
 
-def test_picking_a_variant_fills_unit_and_suggests_both_base_rates(seeded):
-    sid = _spec_id("PIPE-MS-C-1239-AG")
-    res = _run(f"""
-        MODEL.lines.push(blankLine());
-        fillFromSpec(0, '{sid}');
-        fillFromVariant(0, '150 mm dia');
-        console.log(JSON.stringify(MODEL.lines[0]));
-    """, seeded)
-    assert res["unit"] == "Mtrs"
+def test_variant_fills_unit_and_both_base_rates(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '0');
+        dumpLine(0);
+    """)
+    assert res["unit"] == "Mtrs."
     assert res["supply_base_rate"] == "1760"
     assert res["install_base_rate"] == "1200"
-    assert res["description"] == "150 mm dia"      # the child row's own text
+    assert res["description"] == "150mm dia     ISI"
 
 
-def test_an_unsized_spec_fills_its_unit_immediately(seeded):
-    """With no size still to choose there is nothing to wait for."""
-    sid = _spec_id("HYD-FIREMANS-AXE")
-    res = _run(f"""
-        MODEL.lines.push(blankLine());
-        fillFromSpec(0, '{sid}');
-        console.log(JSON.stringify(MODEL.lines[0]));
-    """, seeded)
+def test_unsized_spec_applies_its_variant_immediately(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(AXE)}');
+        dumpLine(0);
+    """)
     assert res["unit"] == "Nos."
     assert "firemans axe" in res["description"]
 
 
-def test_a_typed_rate_is_never_overwritten(seeded):
+# ═══ RE-SELECTION — the case the old harness never ran ═════════════════════
+
+def test_changing_the_spec_replaces_everything_it_filled(seeded):
     """
-    THE rule. purchase.py's fillRate precedent, handover §4.2 rule 4: the
-    project's rate basis is the truth and the library only suggests.
+    THE REPORTED BUG. Pick pipe, pick a size, then change to the fire panel:
+    the row must not keep the pipe's description and unit.
     """
-    sid = _spec_id("PIPE-MS-C-1239-AG")
-    res = _run(f"""
-        MODEL.lines.push(blankLine());
-        MODEL.lines[0].supply_base_rate = '999';
-        MODEL.lines[0].unit = 'Rmt';
-        fillFromSpec(0, '{sid}');
-        fillFromVariant(0, '150 mm dia');
-        console.log(JSON.stringify(MODEL.lines[0]));
-    """, seeded)
-    assert res["supply_base_rate"] == "999"        # kept
-    assert res["unit"] == "Rmt"                    # kept
-    assert res["install_base_rate"] == "1200"      # was empty, so filled
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '0');
+        fireSelect(0, 'spec', '{_sid(PANEL)}');
+        dumpLine(0);
+    """)
+    assert res["description"].startswith("Design, Fabrication, Supply")
+    assert "150mm dia" not in res["description"]
+    assert res["supply_hsn"] == "85371000"          # panel, not pipe
+    # Unit and base rates belonged to a variant of the OLD spec.
+    assert res["unit"] == ""
+    assert res["supply_base_rate"] == ""
+    assert res["install_base_rate"] == ""
+    assert res["_variant"] is None
 
 
-def test_a_typed_description_is_never_overwritten(seeded):
-    sid = _spec_id("PIPE-MS-C-1239-AG")
-    res = _run(f"""
-        MODEL.lines.push(blankLine());
-        MODEL.lines[0].description = 'our own wording';
-        fillFromSpec(0, '{sid}');
-        fillFromVariant(0, '150 mm dia');
-        console.log(JSON.stringify(MODEL.lines[0]));
-    """, seeded)
+def test_choosing_a_second_variant_replaces_the_first(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '0');
+        fireSelect(0, 'variant', '3');
+        dumpLine(0);
+    """)
+    assert res["description"] == "65mm dia     ISI"
+    assert res["supply_base_rate"] == "750"
+    assert res["install_base_rate"] == "700"
+
+
+def test_a_full_reselection_cycle_lands_on_the_last_choice(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '2');
+        fireSelect(0, 'spec', '{_sid(PANEL)}');
+        fireSelect(0, 'variant', '1');
+        fireSelect(0, 'spec', '{_sid(AXE)}');
+        dumpLine(0);
+    """)
+    assert "firemans axe" in res["description"]
+    assert res["unit"] == "Nos."
+    assert res["supply_hsn"] == "84241000"
+
+
+# ═══ Typed values are never overwritten ════════════════════════════════════
+
+def test_typed_values_survive_every_later_pick(seeded):
+    res = _session(f"""
+        addLine();
+        typeInto(0, 'unit', 'Rmt');
+        typeInto(0, 'supply_base_rate', '999');
+        typeInto(0, 'description', 'our own wording');
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '0');
+        fireSelect(0, 'spec', '{_sid(PANEL)}');
+        dumpLine(0);
+    """)
+    assert res["unit"] == "Rmt"
+    assert res["supply_base_rate"] == "999"
     assert res["description"] == "our own wording"
+    # …while the fields the user never touched still follow the picker.
+    assert res["supply_hsn"] == "85371000"
 
+
+def test_typing_after_a_pick_pins_the_value(seeded):
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '0');
+        typeInto(0, 'supply_base_rate', '1850');
+        fireSelect(0, 'variant', '1');
+        dumpLine(0);
+    """)
+    assert res["supply_base_rate"] == "1850", "an edited rate was overwritten"
+    assert res["description"] == "100mm dia     ISI", "the un-edited field should follow"
+
+
+def test_a_rate_the_variant_does_not_carry_is_left_alone(seeded):
+    """24.a's base rate is "-" in the source — negotiated directly, so there is
+    nothing to suggest and the box stays empty rather than gaining a zero."""
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid("PIPE-MS-C-1239-AG")}');
+        fireSelect(0, 'variant', '0');
+        dumpLine(0);
+    """)
+    assert res["supply_base_rate"] == ""
+    assert res["unit"] == "Mtrs"
+
+
+# ═══ State must belong to the row, not to its position ════════════════════
+
+def test_deleting_a_row_does_not_shift_the_others_spec(seeded):
+    """
+    `PICK` used to be keyed by array index, so deleting a line left every row
+    below it showing the previous row's spec.
+    """
+    res = _session(f"""
+        addLine();
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(1, 'spec', '{_sid(PANEL)}');
+        delLine(0);
+        console.log(JSON.stringify({{
+          spec: SPECS[MODEL.lines[0]._spec].code,
+          desc: MODEL.lines[0].description.slice(0, 28)
+        }}));
+    """)
+    assert res["spec"] == PANEL
+    assert res["desc"].startswith("Design, Fabrication")
+
+
+def test_picker_state_never_reaches_the_record(seeded):
+    """_spec / _variant / _auto are UI bookkeeping. A BOQ line has no spec_id."""
+    res = _session(f"""
+        addLine();
+        fireSelect(0, 'spec', '{_sid(PIPE)}');
+        fireSelect(0, 'variant', '0');
+        saveJSON();
+        console.log(STUB['boq_json'].value);
+    """)
+    line = res["lines"][0]
+    for key in ("_spec", "_variant", "_auto"):
+        assert key not in line, f"{key} was submitted"
+    assert line["description"] == "150mm dia     ISI"
+    assert line["supply_base_rate"] == "1760"
+
+
+# ═══ Bulk insert ═══════════════════════════════════════════════════════════
 
 def test_insert_family_builds_a_header_and_one_child_per_size(seeded):
-    sid = _spec_id("PIPE-MS-C-1239-AG")
-    res = _run(f"""
-        STUB['bulk-spec'].value = '{sid}';
+    res = _session(f"""
+        STUB['bulk-spec'].value = '{_sid("PIPE-MS-C-1239-AG")}';
         STUB['bulk-section'].value = 'A';
         insertFamily();
-        console.log(JSON.stringify(MODEL.lines));
-    """, seeded)
-    assert len(res) == 10                          # 1 header + 9 sizes
-    head = res[0]
-    assert head["is_header"] is True
-    assert head["item_no"] == "1"
+        dump();
+    """)
+    assert len(res) == 10
+    head, kids = res[0], res[1:]
+    assert head["is_header"] is True and head["item_no"] == "1"
     assert len(head["description"]) > 1000
-    kids = res[1:]
     assert [k["item_no"] for k in kids] == [
         "1.a", "1.b", "1.c", "1.d", "1.e", "1.f", "1.g", "1.h", "1.i"]
     assert all(k["parent_item_no"] == "1" for k in kids)
-    assert kids[0]["unit"] == "Mtrs"
-    assert all(not k["is_header"] for k in kids)
-
-    # 24.a (200 mm dia) carries "-" as its base rate in the source — the rate
-    # was negotiated directly rather than escalated — so there is nothing to
-    # suggest and the box is left empty rather than filled with a zero.
-    assert kids[0]["supply_base_rate"] == ""
-    # 24.b (150 mm dia) does have one, and it comes across.
+    assert kids[0]["supply_base_rate"] == ""      # "-" in the source
     assert kids[1]["supply_base_rate"] == "1760"
     assert kids[1]["install_base_rate"] == "1200"
 
 
+def test_insert_family_rows_are_still_re_pickable(seeded):
+    """A bulk-inserted row must behave like a hand-picked one — its values are
+    auto, so changing its spec replaces them."""
+    res = _session(f"""
+        STUB['bulk-spec'].value = '{_sid("PIPE-MS-C-1239-AG")}';
+        STUB['bulk-section'].value = 'A';
+        insertFamily();
+        fireSelect(1, 'spec', '{_sid(AXE)}');
+        dumpLine(1);
+    """)
+    assert "firemans axe" in res["description"]
+    assert res["unit"] == "Nos."
+    assert res["supply_hsn"] == "84241000"
+
+
 def test_insert_family_numbers_after_what_is_already_there(seeded):
-    """N is the next whole number free in that section — 24 after 1..23."""
-    sid = _spec_id("PIPE-MS-C-1239-AG")
-    res = _run(f"""
+    res = _session(f"""
         for (var n = 1; n <= 23; n++) {{
           var L = blankLine(); L.section = 'A'; L.item_no = String(n);
           MODEL.lines.push(L);
         }}
-        STUB['bulk-spec'].value = '{sid}';
+        renderLines();
+        STUB['bulk-spec'].value = '{_sid("PIPE-MS-C-1239-AG")}';
         STUB['bulk-section'].value = 'A';
         insertFamily();
-        console.log(JSON.stringify(MODEL.lines.slice(23).map(function(l){{
+        console.log(JSON.stringify(MODEL.lines.slice(23).map(function (l) {{
           return l.item_no; }})));
-    """, seeded)
+    """)
     assert res == ["24", "24.a", "24.b", "24.c", "24.d", "24.e",
                    "24.f", "24.g", "24.h", "24.i"]
 
 
 def test_insert_family_on_an_unsized_spec_makes_one_plain_line(seeded):
-    sid = _spec_id("HYD-FIREMANS-AXE")
-    res = _run(f"""
-        STUB['bulk-spec'].value = '{sid}';
+    res = _session(f"""
+        STUB['bulk-spec'].value = '{_sid(AXE)}';
         STUB['bulk-section'].value = 'A';
         insertFamily();
-        console.log(JSON.stringify(MODEL.lines));
-    """, seeded)
+        dump();
+    """)
     assert len(res) == 1
     assert res[0]["is_header"] is False
     assert res[0]["parent_item_no"] == ""

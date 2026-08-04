@@ -22,3 +22,6 @@ venv/
 .idea/
 Thumbs.db
 desktop.ini
+
+# Database dumps — confidential, and large
+backups/
