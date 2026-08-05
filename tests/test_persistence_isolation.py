@@ -37,6 +37,7 @@ from store import STORE
 # ── The fake connection ─────────────────────────────────────────────────────
 
 _TABLE = re.compile(r"`(\w+)`")
+_FROM  = re.compile(r"FROM `(\w+)`")
 
 
 class _FakeCursor:
@@ -48,6 +49,15 @@ class _FakeCursor:
 
     def __exit__(self, *exc):
         return False
+
+    def execute(self, sql):
+        # `_TABLE` grabs the first backticked token, which is the table in an
+        # INSERT/DELETE but is `id` in "SELECT `id`, `data` FROM `boqs`".
+        table = _FROM.search(sql).group(1)
+        self._result = list(self.conn.rows.get(table, {}).items())
+
+    def fetchall(self):
+        return self._result
 
     def executemany(self, sql, params):
         table = _TABLE.search(sql).group(1)
@@ -377,6 +387,33 @@ def test_what_reaches_mysql_is_the_json_not_the_digest(fake_db):
 
     written = fake_db.rows["boqs"]["boqs-1"]
     assert json.loads(written) == {"id": "boqs-1", "n": 1}
+
+
+def test_load_into_primes_digests_that_sync_agrees_with(fake_db):
+    """
+    The one path the rest of this file cannot reach, and the expensive way to
+    get the digest change wrong.
+
+    load_into() primes the cache at boot so an untouched record is not rewritten
+    on the very first sync. If its priming disagreed with what sync() computes —
+    one hashing the record and the other the blob, say — then every record would
+    look changed and the first request after every restart would rewrite the
+    whole database, silently and forever.
+    """
+    fake_db.rows["boqs"] = {
+        "b-1": json.dumps({"id": "b-1", "ref": "SF/BOQ/26-27/0001", "rev_no": 0}),
+    }
+    store = {c: {} for c in db.COLLECTIONS}
+
+    assert db.load_into(store) == 1
+    assert store["boqs"]["b-1"]["ref"] == "SF/BOQ/26-27/0001"
+
+    # Nothing touched the record, so nothing should be written.
+    assert db.sync(store)["written"] == 0
+
+    # And an edit after a load is still caught.
+    store["boqs"]["b-1"]["rev_no"] = 1
+    assert db.sync(store)["written"] == 1
 
 
 def test_a_deleted_record_still_deletes(fake_db):
