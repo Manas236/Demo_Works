@@ -664,6 +664,39 @@ every req   app.py @teardown_request → db.sync(STORE)
 - `sync()` **never raises**. A persistence hiccup must not turn a working page
   into a 500.
 
+#### `_digests` holds a sha256, not the record
+
+`_digests[collection][id]` is a 64-character hex digest of the record's
+canonical JSON, whatever the record's size. It held the **full JSON string**
+until this was changed, which meant the process carried a second complete copy
+of the entire database purely to answer "did this change?" — a question a hash
+answers exactly as well, because `!=` against the current value is the only
+operation ever performed on the cached one.
+
+Measured through `db.py`'s own code path, RSS held by `_digests`:
+
+| Store | JSON | before | after |
+|---|---|---|---|
+| 1 BOQ (57 records) | 128 KB | 176 KB | 258 KB |
+| 50 BOQs (106 records) | 3.78 MB | 7.64 MB | **0.96 MB** |
+| 200 BOQs (256 records) | 14.96 MB | 30.02 MB | **0.73 MB** |
+
+The one-BOQ row is allocator noise, not a regression — at 57 records the
+retained data is 3.6 KB either way and the figure is arenas the interpreter has
+not returned to the OS. The change is worth nothing at the seeded size and
+worth ~98% as the database grows, which is the shape you would expect.
+
+It also makes the **retry loop** cheap: a permanently failing collection is
+re-diffed on every request (above), and comparing 64 bytes is not comparing the
+74 KB a demo BOQ serialises to.
+
+**sha256 rather than a faster non-cryptographic hash**: a collision silently
+skips a write, which is indistinguishable from data loss and would surface
+months later. The hashing is not the bottleneck — the JSON serialisation that
+precedes it is, and that was always happening. `_blob`'s `sort_keys` is what
+makes the digest stable; without it a dict rebuilt in a different key order
+would hash differently and every request would rewrite the whole database.
+
 #### Failure is per-collection, per-request, and visible
 
 Each of the nine collections is written inside **its own** try/except, and a

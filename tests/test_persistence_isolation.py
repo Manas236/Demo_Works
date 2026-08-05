@@ -24,6 +24,7 @@ schema the app does not have. What the fake stands in for is narrow — cursor()
 executemany() and ping() — and the SQL it receives is asserted on.
 """
 
+import json
 import re
 
 import pytest
@@ -282,6 +283,112 @@ def test_an_unchanged_record_is_still_not_rewritten(fake_db):
     store = a_store()
     assert db.sync(store)["written"] == len(db.COLLECTIONS)
     assert db.sync(store)["written"] == 0
+
+
+# ── _digests holds a hash, and the diff is unchanged by that ────────────────
+#
+# The cache used to hold every record's full JSON, so the process carried a
+# second complete copy of the database to answer "did this change?" — a question
+# a hash answers exactly as well, because `!=` is the only thing ever done to
+# the cached value. These tests pin the diff semantics that must NOT have moved.
+
+def test_the_cache_holds_a_digest_and_not_the_record(fake_db):
+    store = a_store()
+    store["boqs"]["boqs-1"]["project_name"] = "Sify Bangalore"
+    db.sync(store)
+
+    cached = db._digests["boqs"]["boqs-1"]
+    assert len(cached) == 64
+    assert all(c in "0123456789abcdef" for c in cached)
+    assert "Sify Bangalore" not in cached
+
+
+def test_a_changed_record_still_syncs(fake_db):
+    """Half the contract: an edit must still reach MySQL."""
+    store = a_store()
+    db.sync(store)
+
+    store["boqs"]["boqs-1"]["project_name"] = "Sify Bangalore"
+    result = db.sync(store)
+
+    assert result["written"] == 1
+    assert "Sify Bangalore" in fake_db.rows["boqs"]["boqs-1"]
+
+
+def test_a_nested_in_place_mutation_is_still_caught(fake_db):
+    """
+    The reason this module snapshots and diffs at all: blueprints mutate nested
+    dicts in place, and only the outermost __setitem__ would be observable to a
+    write-through wrapper. Hashing must not weaken that.
+    """
+    store = a_store()
+    store["boqs"]["boqs-1"]["line_items"] = [{"item_no": "4.1", "total_qty": 700.0}]
+    db.sync(store)
+
+    store["boqs"]["boqs-1"]["line_items"][0]["total_qty"] = 701.0
+    result = db.sync(store)
+
+    assert result["written"] == 1
+    assert "701" in fake_db.rows["boqs"]["boqs-1"]
+
+
+def test_an_unchanged_record_still_does_not_sync(fake_db):
+    """The other half: no edit, no write, however many requests go by."""
+    store = a_store()
+    db.sync(store)
+
+    for _ in range(5):
+        assert db.sync(store)["written"] == 0
+
+    assert [s for s in fake_db.statements if s[0] == "boqs"] == [("boqs", "INSERT", 1)]
+
+
+def test_rebuilding_a_record_with_the_same_content_is_not_a_change(fake_db):
+    """
+    `_blob`'s sort_keys is what makes the digest stable. Without it a dict built
+    in a different key order would hash differently and every request would
+    rewrite the whole database.
+    """
+    store = a_store()
+    store["boqs"]["boqs-1"] = {"id": "boqs-1", "ref": "SF/BOQ/26-27/0001", "rev_no": 0}
+    db.sync(store)
+
+    # Same content, different insertion order.
+    store["boqs"]["boqs-1"] = {"rev_no": 0, "id": "boqs-1", "ref": "SF/BOQ/26-27/0001"}
+
+    assert db.sync(store)["written"] == 0
+
+
+def test_reverting_an_edit_within_one_request_is_not_a_change(fake_db):
+    """A digest is content-addressed, so an edit and its undo cancel out."""
+    store = a_store()
+    db.sync(store)
+
+    store["boqs"]["boqs-1"]["project_name"] = "typo"
+    del store["boqs"]["boqs-1"]["project_name"]
+
+    assert db.sync(store)["written"] == 0
+
+
+def test_what_reaches_mysql_is_the_json_not_the_digest(fake_db):
+    """The obvious way to get this change wrong."""
+    store = a_store()
+    db.sync(store)
+
+    written = fake_db.rows["boqs"]["boqs-1"]
+    assert json.loads(written) == {"id": "boqs-1", "n": 1}
+
+
+def test_a_deleted_record_still_deletes(fake_db):
+    store = a_store()
+    db.sync(store)
+
+    del store["boqs"]["boqs-1"]
+    result = db.sync(store)
+
+    assert result["deleted"] == 1
+    assert "boqs-1" not in fake_db.rows["boqs"]
+    assert "boqs-1" not in db._digests["boqs"]
 
 
 # ── failure_note() ──────────────────────────────────────────────────────────
