@@ -141,14 +141,14 @@ def a_store():
 
 # ── 1. Isolation ────────────────────────────────────────────────────────────
 
-def test_one_refused_collection_leaves_the_other_eight_persisting(fake_db):
-    """The headline property. Nine collections, one refuses, eight land."""
+def test_one_refused_collection_leaves_every_other_one_persisting(fake_db):
+    """The headline property. One collection refuses, all the rest land."""
     fake_db.refuse = {"boqs"}
 
     result = db.sync(a_store())
 
     assert result["failed"] == ["boqs"]
-    assert result["written"] == len(db.COLLECTIONS) - 1 == 8
+    assert result["written"] == len(db.COLLECTIONS) - 1
 
     landed = {t for t, rows in fake_db.rows.items() if rows}
     assert landed == set(db.COLLECTIONS) - {"boqs"}
@@ -181,7 +181,7 @@ def test_every_collection_can_fail_alone(fake_db):
         result = db.sync(a_store())
 
         assert result["failed"] == [coll], coll
-        assert result["written"] == 8, coll
+        assert result["written"] == len(db.COLLECTIONS) - 1, coll
 
 
 def test_deletes_are_isolated_too(fake_db):
@@ -197,7 +197,7 @@ def test_deletes_are_isolated_too(fake_db):
     result = db.sync(store)
 
     assert result["failed"] == ["boqs"]
-    assert result["deleted"] == 8
+    assert result["deleted"] == len(db.COLLECTIONS) - 1
     assert fake_db.rows["boqs"]                       # still there, refused
     assert not fake_db.rows["quotations"]             # gone, as asked
 

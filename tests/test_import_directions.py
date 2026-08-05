@@ -78,6 +78,17 @@ FORBIDDEN = [
     ("boq", "product",  "any", "the BOQ picker reads the SPEC library. product.py serves the "
                                "quotation chain and its base_price is not a BOQ supply rate"),
 
+    # ── RA billing (Phase 4) ────────────────────────────────────────────────
+    ("ra", "proforma", "any", "an RA bill is a claim against a BOQ; the PI belongs to "
+                              "the quotation chain and has nothing to say about it"),
+    ("ra", "invoice",  "any", "an RA bill is a CLAIM DOCUMENT, not a tax invoice — "
+                              "PHASE4_RA_DESIGN.md section 5, decided and scoped"),
+    ("ra", "purchase", "any", "the buy side is a separate pipeline"),
+    ("ra", "product",  "any", "a BOQ line is a clause of work, not a catalogue item; "
+                              "base_price is not a claim rate"),
+    ("ra", "spec",     "any", "the spec library is what a BOQ is WRITTEN from; a claim "
+                              "is measured against the BOQ, which already copied it"),
+
     # ── The spec library ────────────────────────────────────────────────────
     ("spec", "boq",      "any", "boq.py imports THIS module for the picker; importing back is a cycle"),
     ("spec", "product",  "any", "spec.py replaces nothing in product.py and must not depend on it"),
@@ -121,6 +132,11 @@ REQUIRED = [
 
     ("dashboard", "db", "_nav() renders the persistence-failure strip, and _nav() is "
                         "the only thing in this app that is on every page"),
+
+    ("ra", "boq",      "the schedule a claim is measured against, plus _item_no / _num"),
+    ("ra", "pipeline", "esc / parse_money / fy_of / fy_ref"),
+    ("ra", "store",    "the shared STORE dict"),
+    ("ra", "branding", "COMPANY_SHORT for the document series"),
 
     ("spec", "dashboard", "BASE_STYLES and _nav"),
     ("spec", "pipeline",  "esc"),

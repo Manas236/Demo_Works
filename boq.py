@@ -107,9 +107,15 @@ _REF_CAP = 64
 DEFAULT_GST_RATE = 18.0
 
 # The BOQ prints BASIC values only. The client's own summary sheet says "TAXES
-# WILL BE EXTRA" on its face, and the tax actually falls due on the RA bill,
-# which is the tax invoice (Phase 3). Printing a tax total on the schedule
-# would state a liability that does not exist yet.
+# WILL BE EXTRA" on its face, and the liability falls due as the work is
+# billed, not when the schedule is agreed. Printing a tax total here would
+# state a liability that does not exist yet.
+#
+# ⚠ Corrected: this used to say the tax falls due on "the RA bill, which is the
+#   tax invoice". An RA bill is a CLAIM document and is deliberately not a tax
+#   invoice — no Rule 46 fields, no place of supply, no e-invoicing
+#   (PHASE4_RA_DESIGN.md §5). The project tax-invoice chain is a separate
+#   module later, and it is what will carry the liability.
 PRINT_TAX = False
 
 # The client's remark column (column N in their workbook) holds internal
@@ -2765,6 +2771,17 @@ def create_boq():
                 "fy":   P.fy_of(datestr),
                 "date": datestr,
                 "rev_no": int(_num(form.get("rev_no"), 0)),
+
+                # The previous BOQ id this one supersedes, or "" for an
+                # original. A revision is a NEW record rather than an edit,
+                # because RA bills are measured against a specific revision and
+                # an issued claim's basis must never move under it. `ra.py`
+                # walks this field to sum a line's claims across the whole
+                # chain — without that, a revision would reset every line's
+                # claimed quantity to zero and defeat the over-claim block.
+                # Nothing writes a non-empty value yet; the revision route is
+                # not built. See PHASE4_RA_DESIGN.md §4.
+                "supersedes": (form.get("supersedes") or "").strip(),
 
                 "project_name":  (form.get("project_name") or "").strip(),
                 "site_location": (form.get("site_location") or "").strip(),

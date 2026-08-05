@@ -113,6 +113,7 @@ Consequences you must respect when editing:
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 2704 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
+| [ra.py](ra.py) | 438 | **Running Account bills.** Claims against a BOQ revision. Logic only so far — no routes yet. **Not a tax invoice.** |
 | [demo_data.py](demo_data.py) | 2658 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 300 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
@@ -248,6 +249,28 @@ spec.py ──► dashboard, branding, store, pipeline, demo_data
 `STORE["ra_bills"]` directly — the same one-way trick, now used four times.
 A BOQ has no proforma, and it does not link to a purchase order.
 
+**`ra.py` exists as of Phase 4 step 1** — record shape, the revision chain and
+the over-claim block, with no routes yet. The arrow runs one way:
+
+```
+ra.py ──► boq.py        the schedule a claim is measured against, plus
+                        _item_no / _num / _fmt_qty
+ra.py ──► pipeline.py   esc / parse_money / fy_of / fy_ref
+ra.py ──► store, branding
+```
+
+and it must **never** import `proforma.py`, `invoice.py`, `purchase.py`,
+`product.py` or `spec.py`. The `invoice.py` prohibition is the load-bearing one:
+**an RA bill is a claim document, not a tax invoice**
+(`PHASE4_RA_DESIGN.md` §5). All of these are asserted in
+[tests/test_import_directions.py](tests/test_import_directions.py).
+
+⚠ **Until the RA routes land, `/boq/view/<id>` will fail if an `ra_bills`
+record exists** — [boq.py:1493-1510](boq.py#L1493-L1510) builds
+`url_for("ra.view_ra", …)` and there is no `ra` blueprint yet. Nothing can
+create one (there is no form), so it is unreachable today; step 2 registers the
+blueprint and closes it.
+
 **`boq.py` must not import `product.py` either**, and `spec.py` must never
 import `boq.py`. The BOQ picker reads the *spec library*: `product.base_price`
 is what we sell a unit of stock for and is not a BOQ supply rate.
@@ -284,6 +307,7 @@ STORE = {
     "purchases":    {},     # uuid -> purchase order   (BUY side)
     "specs":        {},     # uuid -> specification library entry (clause + variants)
     "boqs":         {},     # uuid -> bill of quantities (head of the BOQ -> RA chain)
+    "ra_bills":     {},     # uuid -> Running Account claim against a BOQ revision
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -564,6 +588,11 @@ record to freeze a copy of, because the schedule is the source.
 - **Structure:** `sections` — `[{code, title, areas: [...]}]`
 - **Content:** `line_items`
 - **Money:** `supply_subtotal`, `install_subtotal`, `subtotal`
+- **Revision link:** `supersedes` — the previous BOQ id this one replaces, or
+  `""` for an original. A revision is a **new record**, never an edit, because
+  RA bills are measured against a specific revision and an issued claim's basis
+  must not move. `ra.py` walks this to sum claims across the chain. Nothing
+  writes a non-empty value yet; the revision route is not built.
 - **Other:** `payment_terms`, `delivery_terms`, `notes`, `company_branch`,
   `auth_signatory`
 
@@ -621,6 +650,90 @@ Seven properties this shape exists to guarantee:
    BOQ-level trio is stored, for the register and the dashboard card, and the
    document recomputes even those so a printed sheet can never contradict its
    own lines.
+
+### RA Bill  (Running Account claim)
+
+Written by `ra.py`. **A claim against a specific BOQ revision — not a tax
+invoice.** No Rule 46 fields, no place of supply, no e-invoicing, and
+`quotation._tax_lines()` is deliberately never imported
+(`PHASE4_RA_DESIGN.md` §5, asserted by `tests/test_ra_record.py`).
+
+- **Identity:** `id`, `ref` (`SF/RA/26-27/0004` — *our* document number, not a
+  statutory serial), `fy`, `date`
+- **Back-link:** `boq_id` (a **specific revision**), `boq_ref`, `boq_rev_no` —
+  refs stored, not looked up
+- **Position in the run:** `ra_no` (int, the client's own sequence within the
+  project), `leg` ∈ `supply | installation`
+- **Copied from the BOQ at issue:** `project_name`, `site_location`,
+  `account_name`, `contact_person`, `to`, `bill_gstin`
+- **Content:** `claims`
+- **Money:** `claim_subtotal`, `deductions[]`, `deduction_total`, `net_payable`
+- **Other:** `notes`, `company_branch`, `auth_signatory`
+
+A `claim` row:
+
+```python
+{"item_no": "24.b", "section": "B", "description": str, "unit": "Mtrs",
+ "approved_qty": 700.0, "approved_rate": 2024.0,   # frozen at issue
+ "prev_qty": 120.0,                                 # cumulative BEFORE this bill
+ "qty": 80.0, "rate": 2024.0, "amount": 161920.0,
+ "balance_qty": 500.0, "rate_varies": False}
+```
+
+Five properties this shape exists to guarantee:
+
+1. **The figures are frozen.** `approved_qty`, `approved_rate`, `prev_qty` and
+   `balance_qty` are stored, never recomputed at render. RA3 stated a balance
+   that was true on its date and issuing RA5 must not rewrite a document the
+   client has already certified — exactly `proforma.prior_invoiced`'s rule.
+   **The guard at entry uses live figures; the document uses frozen ones.**
+2. **`rate` is stored as entered and may disagree with `approved_rate`** — it
+   does on ten cells of the client's own annexure, because rates legitimately
+   move on approved variations. So it **warns and never blocks**, and
+   `rate_varies` is a stored fact about the issued bill rather than a
+   re-derivation. A rate silently disagreeing with the approved BOQ is one of
+   the two failure modes this module was sold to catch.
+3. **`deductions` is bill-level and exists from day one, empty.** Retention,
+   mobilisation-advance recovery and cess all fit one shape
+   (`{code, label, basis, pct, amount}`). `amount` is **always stored** —
+   computed once from `pct × claim_subtotal` when the basis is a percentage —
+   so a certified bill cannot change its own figures when a constant moves.
+4. **`net_payable == claim_subtotal − deduction_total`, always**, including on
+   every bill with an empty deductions list.
+5. **`ra_no` is unique across the whole REVISION CHAIN**, not per record, so a
+   revision cannot restart the client's sequence at RA1. It is assigned by the
+   server and never typed, which is what makes "RA5 before RA4" and "two RA6s"
+   *impossible* rather than merely rejected — there is no input to reject.
+
+#### The over-claim block
+
+**A cumulative claim across every RA bill must not exceed the approved BOQ
+quantity for that line.** It is a hard block with **no override anywhere in the
+UI**; `ra.OVERCLAIM_TOLERANCE` is the only dial and defaults to `0.0`, where the
+behaviour is exactly a hard block. When non-zero it applies to the **cumulative**
+claim and never per bill — 1% per bill compounds to 9% across the client's nine
+RA runs and becomes the over-claim it exists to prevent.
+
+Separately, and not a commercial tolerance: the comparison rounds at `1e-6` so
+that `1.1 + 2.2 + 8.7 == 12.000000000000002` is not reported as an over-claim of
+two femtometres against an approved 12.
+
+#### The revision chain
+
+Because the block is hard, a **BOQ revision** is the only way through it when
+the approved schedule genuinely changes — a new BOQ record carrying
+`supersedes`, never an edit, so an issued claim's basis cannot move under it.
+
+`ra.claimed_by_line()` therefore sums **across the whole chain**, and that is
+the subtlest requirement in the module: without it a revision resets every
+line's claimed quantity to zero and the block guards nothing. It is **derived,
+not stored** — a maintained counter must be updated on every create, revision
+and delete, and any path that misses one leaves the guard silently wrong, which
+is worse than no guard because it is trusted. It costs a pass over ~620 claim
+rows at the client's volume and stays cheap to ~50,000, about 80× that.
+
+`approved_by_line()` reads the **latest** revision, because a revision exists
+precisely to change what is approved.
 
 ### Address
 
@@ -1873,9 +1986,15 @@ halfway down is not a table.
   keeps deal-desk fields off the quotation keeps these off the customer's copy.
   Flip the constant if the client wants them.
 - **No tax is computed** (`PRINT_TAX`). The client's own summary says "TAXES
-  WILL BE EXTRA" on its face and the liability falls due on the RA bill, which
-  is the tax invoice. `supply_gst_rate` / `install_gst_rate` are captured per
-  line for that, not used here.
+  WILL BE EXTRA" on its face and the liability falls due as the work is billed,
+  not when the schedule is agreed. `supply_gst_rate` / `install_gst_rate` are
+  captured per line for whatever raises it, not used here.
+
+  > **Corrected.** This used to read "the liability falls due on the RA bill,
+  > which is the tax invoice". **An RA bill is a claim document and is
+  > deliberately not a tax invoice** — no Rule 46 fields, no place of supply,
+  > no e-invoicing (`PHASE4_RA_DESIGN.md` §5). The project tax-invoice chain is
+  > a separate module later and is what will carry the liability.
 
 Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
 (`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.
