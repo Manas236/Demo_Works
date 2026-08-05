@@ -127,7 +127,7 @@ Consequences you must respect when editing:
 
 ```
 app.py
- ├─ dashboard.py ──────────────┐  (BASE_STYLES, _nav) imports branding, store, pipeline
+ ├─ dashboard.py ──────────────┐  (BASE_STYLES, _nav) imports branding, store, pipeline, db
  ├─ product.py ────────────────┤  imports dashboard, branding, store
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
@@ -258,8 +258,12 @@ series needed the same financial-year numbering as the tax invoice. It imports
 nothing from the app, so it is the only place a shared helper can live without
 coupling buy side to sell side.
 
-**dashboard.py may import `branding`, `store` and `pipeline`** — none of those
-import anything from the app, so there is no cycle. It must **never** import
+**dashboard.py may import `branding`, `store`, `pipeline` and `db`** — none of
+those import anything from the app, so there is no cycle. `db` is on that list
+because `_nav()` renders the persistence-failure strip (§4) and `_nav()` is the
+only thing in this app that is on every page; db.py imports pymysql, dotenv and
+the standard library and nothing of ours, so it sits at the bottom of the graph
+beside branding.py and pipeline.py. dashboard.py must **never** import
 `product`, `quotation` or `address` at module level, because those import *it*.
 `index()` pulls `ensure_demo_products` / `ensure_demo_addresses` in **inside the
 function body** for exactly that reason; that is deliberate, not an oversight.
@@ -641,8 +645,10 @@ writes — it **snapshots and diffs**.
 ```
 startup     app.py → db.init() → creates DB + tables → db.load_into(STORE)
 every req   app.py @teardown_request → db.sync(STORE)
-              serialise each record → compare to last-written digest
-              → upsert changed, delete missing
+              for each of the 9 collections, INDEPENDENTLY:
+                serialise each record → compare to last-written digest
+                → upsert changed, delete missing
+                → on error: record it, leave the digests alone, carry on
 ```
 
 - One table per collection (`products`, `quotations`, `proformas`, `invoices`,
@@ -655,8 +661,58 @@ every req   app.py @teardown_request → db.sync(STORE)
   the JSON stays authoritative.
 - `teardown_request` (not `after_request`) so a half-finished mutation is saved
   even when a view raised.
-- `sync()` **never raises**. On failure it flips to in-memory and prints
-  `!! persistence lost:`. If data stops saving, look for that line.
+- `sync()` **never raises**. A persistence hiccup must not turn a working page
+  into a 500.
+
+#### Failure is per-collection, per-request, and visible
+
+Each of the nine collections is written inside **its own** try/except, and a
+failure is recorded against that collection in `db._failures` rather than
+flipping a global flag. Three properties follow, and each replaces a real
+defect:
+
+1. **One collection failing cannot stop the other eight.** All nine used to sit
+   in a single `try`, and `COLLECTIONS` order decided the blast radius: `boqs`
+   is 7th, so one oversized BOQ took `addresses` and `settings` with it on the
+   same request.
+2. **A failure is retried on the next request, not fatal until restart.** The
+   old code set `_state["ok"] = False` on any exception, and `sync()`'s
+   early-return guard then made every later call a no-op — one transient error
+   took persistence dark app-wide for the life of the process. The digest cache
+   is advanced **only after** the statement that wrote those rows returned, so
+   a failed batch still looks changed and the next request retries exactly it.
+   Upserts and deletes are both idempotent, so re-running a batch that half
+   landed is safe. A dropped connection heals on the next `_conn()` ping.
+3. **The user is told.** `failure_note()` renders as a red `.db-down` strip
+   under the nav on **every page**, via `dashboard._nav()` — see §5. A `print`
+   to stdout is not a signal anyone working in a browser will ever see. The
+   strip clears itself the moment a retry lands; nothing has to be dismissed.
+
+`failure_note()` covers **two** conditions, and the difference matters because
+the advice differs:
+
+| Condition | `_state["ok"]` | Note | Strip says |
+|---|---|---|---|
+| a write failed | True | names the collections + the error | *Every request retries.* |
+| MySQL unreachable at boot, `DB_STRICT` off | False | names the connection error | *Restart the app once MySQL is reachable.* |
+| `DB_ENABLED=false` | False | **none** | — |
+
+The boot case is the one `_failures` cannot see on its own: `sync()` returns
+early, so no collection ever fails and an empty `_failures` would report that
+everything is fine while the app runs entirely in RAM. It is also never
+retried, so telling that user to wait would be a lie. `DB_ENABLED=false` is
+deliberately silent — a chosen configuration with a startup banner of its own,
+and painting every dev run and every test red is how a warning stops being read.
+
+`_state["ok"]` now means "persistence was initialised", set by `init()` and
+never cleared by a failing write. `is_live()` answers that question and **not**
+"is everything currently saving" — `failures()` / `failure_note()` answer that.
+`sync()` returns `{"written", "deleted", "failed"}`, `failed` being the list of
+collection names.
+
+Guarded by [tests/test_persistence_isolation.py](tests/test_persistence_isolation.py)
+— 19 tests over a fake connection that refuses a *chosen* collection, which is
+the one experiment a real MySQL cannot easily be made to run.
 - Seed flags are deliberately **not** persisted, so emptying a table refills it.
 - Config in `.env` (gitignored; copy `.env.example`): `DB_ENABLED`, `DB_STRICT`,
   `DB_HOST/PORT/NAME/USER/PASSWORD`, `SECRET_KEY`.
@@ -765,6 +821,29 @@ Module-specific CSS is layered *after* `BASE_STYLES` in each module
 
 `DASH_STYLES` is a **plain string, not an f-string**, so its CSS braces are
 written once — only the HTML f-strings below it need doubling.
+
+##### `_nav()` carries the two app-wide warnings
+
+Both ride in `_nav()` for the same reason: it is the only surface that is
+genuinely on every page, so a user working inside `/boq/create` for an hour
+without loading `/` still sees them. Both clear themselves; neither is
+dismissable.
+
+| | Signal | Means | Colour |
+|---|---|---|---|
+| `.nl-dot` | 7px dot on the Settings link | a company or bank field is blank | amber `--saffron` |
+| `.db-down` | full-width strip under the nav | **a collection is not persisting** (§4) | red `--brand` |
+
+The severity gap is deliberate. Amber in this app means *incomplete but
+working* — a blank GSTIN prints a chip and the document still goes out. The
+strip means *nothing you type is being saved*, and a dot cannot carry that.
+
+`_persistence_strip()` escapes its text with `P.esc`: MySQL quotes the
+offending value back in a truncation or duplicate-key message, so user input
+reaches that string. Its CSS lives in `BASE_STYLES` (it is on every page), and
+it ships **its own `@media print` hide** rather than joining the `nav,…` print
+rule — that rule lives in `quotation.py`'s `VIEW_DOC_STYLES`, and a page that
+does not happen to load that sheet must still not print app chrome.
 
 Colours come from `branding.CSS_TOKENS` as CSS custom properties
 (`--brand` red `#D5121A`, `--navy` `#2A086E`, `--saffron`); chart colours come

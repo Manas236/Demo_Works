@@ -119,12 +119,28 @@ REQUIRED = [
     ("boq", "store",     "the shared STORE dict"),
     ("boq", "branding",  "every company string, colour and image"),
 
+    ("dashboard", "db", "_nav() renders the persistence-failure strip, and _nav() is "
+                        "the only thing in this app that is on every page"),
+
     ("spec", "dashboard", "BASE_STYLES and _nav"),
     ("spec", "pipeline",  "esc"),
     ("spec", "store",     "the shared STORE dict"),
     ("spec", "branding",  "every company string, colour and image"),
     ("spec", "demo_data", "the 56 seeded clauses"),
 ]
+
+
+def test_db_imports_nothing_from_the_app():
+    """
+    What makes `dashboard.py -> db.py` safe.
+
+    dashboard.py sits at the bottom of the graph and is imported BY every other
+    module, so anything it imports must import nothing of ours. db.py qualifies
+    — pymysql, dotenv and the standard library — and it has to keep qualifying,
+    because the persistence strip in `_nav()` is now on every page in the app.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"db"}
+    assert imports_of("db") & ours == set()
 
 
 def test_demo_data_imports_nothing_at_all():

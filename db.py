@@ -43,6 +43,20 @@ Configuration — .env in the project root (see .env.example)
 If MySQL is unreachable and DB_STRICT is false, the app still runs in memory —
 but prints a loud banner, because silently losing data is exactly the confusion
 this module exists to end.
+
+When a write fails
+------------------
+Failure is per-collection and per-request, never global and never permanent:
+
+    one collection refuses  ->  that collection is recorded in `_failures`
+                            ->  its digests are NOT advanced
+                            ->  the other eight still persist
+                            ->  the next request retries it
+                            ->  success clears the entry, silently
+
+and `failure_note()` is what `dashboard._nav()` renders as a red strip under the
+nav on every page, so the condition reaches the person whose work is not being
+saved rather than only stdout.
 """
 
 import json
@@ -87,9 +101,24 @@ CONFIG = {
     "password": os.getenv("DB_PASSWORD", ""),
 }
 
-# Runtime state. `ok` is the single flag the rest of the app checks.
+# Runtime state. `ok` means "persistence was initialised and the connection is
+# ours to use" — it is set by init() and NOT cleared by a failing write. A write
+# that fails is a per-collection, per-request condition (see `_failures`), not a
+# reason to stop trying for the lifetime of the process.
 _state = {"ok": False, "error": None, "conn": None}
 _lock = threading.Lock()
+
+# Collections whose last sync attempt failed: {collection: "ErrorType: message"}.
+#
+# This is the runtime health signal, and it is deliberately transient. A record
+# MySQL refuses leaves its collection listed here and its digest un-advanced, so
+# the NEXT request retries exactly the rows that did not land. An entry clears
+# itself the moment that retry succeeds. Nothing here survives a restart and
+# nothing here needs to — the digests are rebuilt from the database at boot.
+#
+# `failure_note()` turns this into the line the nav strip prints, which is how a
+# user finds out their work is not being saved without reading stdout.
+_failures: dict = {}
 
 # digest[collection][id] = the JSON string most recently written for that row.
 _digests: dict = {c: {} for c in COLLECTIONS}
@@ -169,6 +198,7 @@ def init() -> bool:
         _ensure_schema()
         _state["ok"] = True
         _state["error"] = None
+        _failures.clear()
         return True
     except Exception as exc:                      # pymysql raises many shapes
         _state["ok"] = False
@@ -184,12 +214,58 @@ def is_live() -> bool:
     return bool(_state["ok"])
 
 
+def failures() -> dict:
+    """
+    A copy of {collection: error} for every collection whose last sync failed.
+
+    Empty is the healthy answer. A copy rather than the dict itself, because a
+    caller iterating this while a request thread syncs would otherwise be
+    walking a dict that is being mutated under it.
+    """
+    return dict(_failures)
+
+
+def failure_note() -> str:
+    """
+    One line naming what is not persisting, or "" when everything is.
+
+    This is what the nav strip prints. Two conditions produce a note, and the
+    distinction between them is the whole reason this is not just `not is_live()`:
+
+    - **MySQL was unreachable at boot** with DB_STRICT off. The app is running
+      in memory by fallback, not by choice. `sync()` returns early so no
+      collection ever fails, which means `_failures` stays empty and would say
+      everything is fine — the worst possible answer.
+    - **A write failed** after a successful boot. Then the collections are
+      named, because "your bills of quantities are not saving" is actionable
+      and "something went wrong" is not. The underlying error follows, since it
+      is the only thing that says whether this is a dead server or one
+      oversized record.
+
+    `DB_ENABLED=false` deliberately produces **no note**. That is a chosen
+    configuration with a startup banner of its own, and painting every dev run
+    and every test red is how a warning stops being read.
+    """
+    if not CONFIG["enabled"]:
+        return ""
+    if not _state["ok"]:
+        return (f"MySQL is not connected, so nothing is being saved "
+                f"({_state['error'] or 'not initialised'})")
+    if not _failures:
+        return ""
+    names = [c for c in COLLECTIONS if c in _failures]
+    detail = _failures[names[0]]
+    return (f"{len(names)} of {len(COLLECTIONS)} collections failed to persist "
+            f"({', '.join(names)} - {detail})")
+
+
 def status() -> str:
     """One-line human summary, used for the startup banner."""
     # ASCII only: the Windows console is cp1252 and turns em-dashes into mojibake.
     if _state["ok"]:
-        return (f"MySQL {CONFIG['user']}@{CONFIG['host']}:{CONFIG['port']}"
+        base = (f"MySQL {CONFIG['user']}@{CONFIG['host']}:{CONFIG['port']}"
                 f"/{CONFIG['name']} - persistence ON")
+        return f"{base} ({failure_note()})" if _failures else base
     return f"in-memory only - {_state['error'] or 'not initialised'}"
 
 
@@ -226,58 +302,125 @@ def load_into(store: dict) -> int:
     return loaded
 
 
+def _sync_collection(conn, store: dict, coll: str) -> tuple:
+    """
+    Write one collection's changes. Returns (written, deleted). May raise.
+
+    The digest cache is advanced **only after** the statement that wrote those
+    rows returned. A batch that raises therefore leaves every row in it looking
+    changed, which is precisely what makes the next request retry them. Upserts
+    and deletes are both idempotent, so re-running a batch that half-landed is
+    safe.
+    """
+    current = store.get(coll) or {}
+    cache   = _digests[coll]
+    written = deleted = 0
+
+    upserts = []
+    for rid, record in current.items():
+        blob = _blob(record)
+        if cache.get(rid) != blob:
+            upserts.append((rid, blob))
+
+    gone = [rid for rid in cache if rid not in current]
+
+    if upserts:
+        with conn.cursor() as cur:
+            cur.executemany(
+                f"INSERT INTO `{coll}` (`id`, `data`) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE `data` = VALUES(`data`)",
+                upserts,
+            )
+        for rid, blob in upserts:
+            cache[rid] = blob
+        written = len(upserts)
+
+    if gone:
+        with conn.cursor() as cur:
+            cur.executemany(
+                f"DELETE FROM `{coll}` WHERE `id` = %s",
+                [(rid,) for rid in gone],
+            )
+        for rid in gone:
+            cache.pop(rid, None)
+        deleted = len(gone)
+
+    return written, deleted
+
+
+def _note_failure(coll: str, exc: Exception) -> str:
+    """Record a collection's failure, printing only when the message changes."""
+    note = f"{type(exc).__name__}: {exc}"
+    if _failures.get(coll) != note:
+        # Only on change: teardown_request runs on EVERY request, and a
+        # permanently oversized record would otherwise print this line a
+        # hundred times a minute and bury the one that mattered.
+        print(f"  !! persistence failed on '{coll}' - {note}")
+    _failures[coll] = note
+    return note
+
+
+def _note_recovery(coll: str) -> None:
+    if _failures.pop(coll, None) is not None:
+        print(f"  * persistence recovered on '{coll}'")
+
+
 def sync(store: dict) -> dict:
     """
     Persist everything that changed since the last sync.
 
-    Returns {"written": n, "deleted": n} — handy in tests and logs.
-    Never raises: a persistence hiccup must not turn a working page into a 500.
+    Returns {"written": n, "deleted": n, "failed": [collection, ...]} — handy
+    in tests and logs. Never raises: a persistence hiccup must not turn a
+    working page into a 500.
+
+    Two properties this function exists to guarantee, both of which it did NOT
+    have before and both of which cost real data:
+
+    1. **A failing collection is isolated.** Each of the nine is written inside
+       its own try/except, so one record MySQL refuses — a `data` blob past
+       `max_allowed_packet`, a constraint, a truncation — stops that collection
+       and only that one. It used to wrap all nine in a single try, so a single
+       bad BOQ took products, quotations, invoices and addresses down with it.
+
+    2. **A failure is retried, not fatal.** The old code set `_state["ok"] =
+       False` on any exception, which made every later sync return immediately:
+       persistence went dark app-wide, until somebody restarted the process, on
+       the strength of one transient error. Now the failure is recorded against
+       its collection and the next request tries again. A dropped connection
+       heals itself on the next `_conn()` ping; an oversized record keeps
+       failing and keeps saying so.
+
+    The user-visible half of this lives in `failure_note()`, which the nav strip
+    renders. A `print` to stdout is not a signal anybody working in a browser
+    will ever see.
     """
-    result = {"written": 0, "deleted": 0}
+    result = {"written": 0, "deleted": 0, "failed": []}
     if not _state["ok"]:
         return result
 
     with _lock:
+        # One ping per request, not one per collection. If the connection
+        # itself is gone then nothing can be written, so every collection is
+        # marked failed — and the next request's ping(reconnect=True) is what
+        # brings them all back without a restart.
         try:
             conn = _conn()
-            for coll in COLLECTIONS:
-                current = store.get(coll) or {}
-                cache   = _digests[coll]
-
-                upserts = []
-                for rid, record in current.items():
-                    blob = _blob(record)
-                    if cache.get(rid) != blob:
-                        upserts.append((rid, blob))
-
-                gone = [rid for rid in cache if rid not in current]
-
-                if upserts:
-                    with conn.cursor() as cur:
-                        cur.executemany(
-                            f"INSERT INTO `{coll}` (`id`, `data`) VALUES (%s, %s) "
-                            "ON DUPLICATE KEY UPDATE `data` = VALUES(`data`)",
-                            upserts,
-                        )
-                    for rid, blob in upserts:
-                        cache[rid] = blob
-                    result["written"] += len(upserts)
-
-                if gone:
-                    with conn.cursor() as cur:
-                        cur.executemany(
-                            f"DELETE FROM `{coll}` WHERE `id` = %s",
-                            [(rid,) for rid in gone],
-                        )
-                    for rid in gone:
-                        cache.pop(rid, None)
-                    result["deleted"] += len(gone)
         except Exception as exc:
-            # Degrade to in-memory rather than break the request. The banner
-            # already told the user persistence was on, so say it broke.
-            _state["ok"] = False
-            _state["error"] = f"sync failed — {type(exc).__name__}: {exc}"
-            print(f"  !! persistence lost: {_state['error']}")
+            for coll in COLLECTIONS:
+                _note_failure(coll, exc)
+            result["failed"] = list(COLLECTIONS)
+            return result
+
+        for coll in COLLECTIONS:
+            try:
+                written, deleted = _sync_collection(conn, store, coll)
+            except Exception as exc:      # pymysql raises many shapes
+                _note_failure(coll, exc)
+                result["failed"].append(coll)
+            else:
+                result["written"] += written
+                result["deleted"] += deleted
+                _note_recovery(coll)
 
     return result
 
@@ -286,6 +429,7 @@ def reset(store: dict = None) -> None:
     """Drop every row in every collection. Used by tests; never by the app."""
     if not _state["ok"]:
         return
+    _failures.clear()
     conn = _conn()
     with conn.cursor() as cur:
         for coll in COLLECTIONS:

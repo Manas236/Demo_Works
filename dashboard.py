@@ -21,10 +21,15 @@ note above `_page()`.
 
 Import direction
 ----------------
-This module may import `branding`, `store` and `pipeline` (none of them import
-anything from the app, so there is no cycle). It must **never** import
+This module may import `branding`, `store`, `pipeline` and `db` (none of them
+import anything from the app, so there is no cycle). It must **never** import
 `product`, `quotation` or `address` at module level — those import *us*. The
 demo seeders are pulled in inside the view function for that reason.
+
+`db` is on that list because `_nav()` renders the persistence-failure strip, and
+`_nav()` is the only thing in this app that is on every page. db.py imports
+pymysql, dotenv and the standard library and nothing of ours, so it sits at the
+bottom of the graph beside branding.py and pipeline.py.
 
 Charts
 ------
@@ -39,6 +44,7 @@ from datetime import date, datetime
 from flask import Blueprint, url_for
 
 import branding as B
+import db
 import pipeline as P
 from store import STORE
 
@@ -128,6 +134,49 @@ BASE_STYLES = """
   .nav-link .nl-dot {
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--saffron); flex-shrink: 0;
+  }
+
+  /* ── Persistence-down strip ──────────────────────────────────────── */
+  /* Rendered by _nav(), so every page in the app carries it and no module has
+     to remember to wire it up.
+
+     Red, not the settings dot's amber, and a strip rather than a dot. Amber in
+     this app means "incomplete but working" — a blank GSTIN prints a chip and
+     the document still goes out. This means *nothing you type is being saved*,
+     and a 7px dot cannot carry that. It clears itself the moment a retry
+     succeeds, the same self-clearing contract the settings dot holds to. */
+  .db-down {
+    background: var(--brand);
+    color: #fff;
+    padding: .55rem 2rem;
+    font-size: .82rem;
+    line-height: 1.45;
+    display: flex;
+    align-items: baseline;
+    gap: .6rem;
+    position: sticky;
+    top: 60px;          /* directly under the 60px nav, and sticky with it */
+    z-index: 99;        /* below nav's 100, above the page */
+  }
+  .db-down-tag {
+    flex-shrink: 0;
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    border: 1px solid rgba(255,255,255,.55);
+    border-radius: 3px;
+    padding: .05rem .4rem;
+  }
+  .db-down code { font-size: .78rem; opacity: .92; }
+
+  /* App chrome, never part of a printed document. The rule that hides `nav` on
+     paper lives in quotation.py's VIEW_DOC_STYLES; this strip ships its own so
+     it cannot print on a sheet whose page did not happen to load that one. */
+  @media print { .db-down { display: none !important; } }
+
+  @media (max-width: 580px) {
+    .db-down { padding: .5rem 1rem; flex-direction: column; gap: .25rem; }
   }
 
   /* ── Main Layout ─────────────────────────────────────────────────── */
@@ -585,6 +634,43 @@ ICONS = {
 
 
 # ── Shared Nav Component ──────────────────────────────────────────────────────
+def _persistence_strip() -> str:
+    """
+    A red strip under the nav while anything is failing to persist.
+
+    Why this is in the chrome rather than on the dashboard: a user can work for
+    an hour inside `/boq/create` without ever loading `/`. The only surface that
+    is genuinely on every page is this nav, so the only honest place to say "the
+    last twenty minutes of your work exists in RAM and nowhere else" is here.
+
+    It is empty and costs nothing while persistence is healthy, and it clears
+    itself the moment a retry lands — db.sync() drops the collection out of
+    `_failures` on success, so no acknowledgement or dismissal is needed.
+
+    The error text is escaped: it comes from MySQL and a truncation or duplicate
+    -key message quotes the offending value straight back, which means user
+    input can reach this string.
+    """
+    note = db.failure_note()
+    if not note:
+        return ""
+    # What to do about it differs by condition, and getting this wrong would be
+    # worse than saying nothing. A failed *write* is retried on every request,
+    # so the user should keep working and watch for the strip to clear. MySQL
+    # unreachable at *boot* is never retried — sync() returns early — so the
+    # only thing that fixes it is a restart, and telling that user to wait
+    # would be a lie.
+    tail = ("Every request retries." if db.is_live()
+            else "Restart the app once MySQL is reachable.")
+    return (
+        '<div class="db-down" role="alert">'
+        '<span class="db-down-tag">Not saving</span>'
+        f'<span>{P.esc(note)} &nbsp;Changes are being kept in memory only and '
+        f'will be lost on restart. {tail}</span>'
+        '</div>'
+    )
+
+
 def _nav():
     """
     The shared nav. Rendered on every page, hidden by the print stylesheet.
@@ -593,6 +679,9 @@ def _nav():
     still blank — those pages are printing visible "add …" chips until it
     clears, so the way to fix them should be one click away from wherever the
     user noticed.
+
+    The persistence strip rides along underneath for the same reason, one
+    severity up: see `_persistence_strip()`.
     """
     dashboard_url = url_for("dashboard.index")
     settings_url  = url_for("settings.edit_settings")
@@ -611,6 +700,7 @@ def _nav():
         <span class="nav-pill">{B.APP_SUBTITLE}</span>
       </div>
     </nav>
+    {_persistence_strip()}
     """
 
 
