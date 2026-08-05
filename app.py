@@ -8,6 +8,7 @@ Registers all Blueprints and defines global error handling.
 import os
 
 from flask import Flask, redirect, url_for
+import dashboard                  # too_large_page() for the 413 handler
 from dashboard import dashboard_bp
 from extractor import extractor_bp
 from product import product_bp   # Phase 1: product management
@@ -106,6 +107,29 @@ def page_not_found(error):
 def internal_error(error):
     """Redirect server errors to dashboard; log in production instead."""
     return redirect(url_for("dashboard.index")), 302
+
+
+@app.errorhandler(413)
+def payload_too_large(error):
+    """
+    A POST past MAX_FORM_MEMORY_SIZE (500,000 bytes, Flask's default).
+
+    Deliberately NOT a redirect like the two above. A 404 is a mistyped URL and
+    nobody's work; a 413 is a form somebody spent an afternoon filling in, and
+    bouncing them to the dashboard would look exactly like the app discarding it
+    without comment. Werkzeug rejects the body before the form is parsed, so
+    there is genuinely nothing left to re-render — the page says so, and points
+    at the Back button, which may still hold it.
+
+    This is a **backstop**, not the defence. The line cap in
+    `boq._clean_lines()` is what keeps a real BOQ from ever reaching it; this
+    catches the paths that bypass the form, and the case of 600 legal lines that
+    happen to serialise past the limit.
+
+    The status stays 413 — a 302 would tell the browser and the logs that the
+    request succeeded.
+    """
+    return dashboard.too_large_page(), 413
 
 
 # ── Dev Server ────────────────────────────────────────────────────────────────

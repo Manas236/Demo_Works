@@ -101,18 +101,18 @@ Consequences you must respect when editing:
 
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 87 | Wiring only. Boots persistence, registers blueprints, error handlers. Never implements features. |
+| [app.py](app.py) | 115 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
 | [store.py](store.py) | 35 | The `STORE` dict. Single shared object, imported everywhere. |
-| [db.py](db.py) | 295 | MySQL persistence by snapshot-and-diff. |
+| [db.py](db.py) | 407 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 251 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [dashboard.py](dashboard.py) | 1159 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports**. |
+| [dashboard.py](dashboard.py) | 1302 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
 | [product.py](product.py) | 1347 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
 | [quotation.py](quotation.py) | 2693 | Quotation form + printed document. The big one. |
 | [proforma.py](proforma.py) | 1117 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
-| [boq.py](boq.py) | 2341 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
+| [boq.py](boq.py) | 2704 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
 | [demo_data.py](demo_data.py) | 2658 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 300 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
@@ -1584,10 +1584,40 @@ Two rate behaviours worth keeping:
   `purchase.fillRate()` makes exactly the same call about a catalogue price.
 
 Validation, in order: JSON parses → date → project name → account name →
-sections have unique codes → every line's section exists → item number present
-→ description present → quantities and rates parse and are non-negative →
-HSN/SAC shape valid when filled. A rejected POST re-renders from the posted
-JSON, so nothing typed is lost and nothing is written to STORE.
+sections have unique codes → **line count within `MAX_LINES`** → every line's
+section exists → item number present → description present → quantities and
+rates parse and are non-negative → HSN/SAC shape valid when filled. A rejected
+POST re-renders from the posted JSON, so nothing typed is lost and nothing is
+written to STORE.
+
+##### The 600-line cap — `MAX_LINES`
+
+A *persistence* limit wearing a validation hat. The whole BOQ is one JSON
+document in one MySQL column (§4), so a schedule large enough to be refused by
+the server is a record that **can never be written** — and because a failed
+sync now retries every request instead of giving up, that record would be
+re-offered and re-refused forever, keeping the persistence strip lit and
+burning a round trip per request. The cap is what stops it existing.
+
+600 against a real schedule of 97: the client's largest workbook is under 150
+lines, and a project needing four times that is two projects. It is a
+deliberate limit, not a guess at a technical ceiling.
+
+It is checked **first**, before any per-line rule — validating 5000 rows to
+then reject the lot for being 5000 rows is work nobody asked for, and "line 12
+needs a description" is the wrong complaint about a schedule 400 lines too
+long. It reports **the first line past the limit** as the offender, so the
+re-render opens the row where the BOQ stopped being acceptable rather than the
+last one added, and it holds to the same contract as every other rule here:
+nothing lost, the line named, that line and its section forced open.
+
+⚠ **A line cap does not by itself guarantee the POST stays under
+`MAX_FORM_MEMORY_SIZE`** (500,000 bytes, Flask's default). The demo's 97 lines
+serialise at ~701 bytes each, so 600 typical lines is ~420 KB and fits — but
+600 lines all carrying full 1500-character specification paragraphs would not.
+`test_600_realistic_lines_fit_inside_the_form_limit` asserts that headroom
+rather than trusting it, and that residual case is the one place the 413
+handler (§7.6) is doing real work rather than only catching a bypass.
 
 #### The spec picker, and inserting a whole size family
 
@@ -2040,6 +2070,19 @@ Real, verified, and safe to pick up:
 6. **404 and 500 both redirect to the dashboard.** Great for a stakeholder demo,
    painful while developing — a real traceback becomes a silent redirect. Comment
    the handlers out in `app.py` when debugging.
+
+   **413 deliberately does not.** A 404 is a mistyped URL and nobody's work; a
+   413 is a form somebody spent an afternoon on, and bouncing them to the
+   landing page would look exactly like the app discarding it without comment.
+   `dashboard.too_large_page()` renders a real page — app.py wires it and does
+   not build it, as ever — with the nav still on it, an honest statement that
+   the input could not be recovered (Werkzeug rejects the body *before* the
+   form is parsed, so `request.form` is empty by construction), and a pointer
+   at the Back button, which may still hold it. **The status stays 413**: a 302
+   would tell the browser, the logs and any future API client that an oversize
+   POST succeeded. It imports `boq.MAX_LINES` *inside the function* — boq.py
+   imports dashboard.py, so a module-level import is a cycle — rather than
+   hardcoding 600 where it would drift from the constant that enforces it.
 7. **HTML escaping is inconsistent.** `address.py`, `pipeline.py` and
    `proforma.py` escape; `quotation.py` and `product.py` largely don't.
 8. **`SECRET_KEY` defaults to `qms-demo-secret-2024`.** Generate a real one

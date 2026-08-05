@@ -1241,6 +1241,76 @@ def _page(html: str) -> str:
     return html
 
 
+def too_large_page() -> str:
+    """
+    The body of the 413 handler. Wired in app.py, which only ever wires.
+
+    A 413 is different from the 404 and 500 handlers next to it, and must not
+    copy them. Those redirect to the dashboard, which is right for a demo: a
+    mistyped URL is nobody's work. A 413 is somebody's work — a form they spent
+    an afternoon on — and a silent redirect to the landing page would look
+    exactly like the app throwing it away without comment.
+
+    It cannot give the work back. Werkzeug rejects the body *before* the form is
+    parsed, so `request.form` is empty by construction and there is nothing left
+    to re-render; this is precisely why the 600-line cap in `boq._clean_lines()`
+    is the primary defence and this is only the backstop. What the page can do
+    is say what happened, say plainly that the input is gone, and say what to do
+    differently — and keep the browser's Back button useful, which is the one
+    thing that may still hold the user's data.
+
+    Status stays 413. Redirecting with a 302 would tell the browser, the logs
+    and any future API client that the request succeeded.
+
+    `boq` is imported **inside the function**, the same escape hatch `index()`
+    uses for the seeders and for the same reason: boq.py imports this module, so
+    a top-level import would be a cycle. The alternative was hardcoding 600 in a
+    second place, where it would drift from the constant that enforces it.
+    """
+    from boq import MAX_LINES as BOQ_MAX_LINES
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>{B.page_title("Too large to accept")}</title>
+      {B.HEAD_ICON}
+      {BASE_STYLES}
+    </head>
+    <body>
+      {_nav()}
+      <main>
+        <div class="alert alert-error">
+          &#10007; That form was too large for the server to accept.
+        </div>
+        <div class="card" style="margin-top:1.25rem">
+          <div class="card-body">
+            <div class="card-title">The page was not saved</div>
+            <p class="card-desc">
+              The request was rejected before the server read it, so what you
+              typed could not be recovered here.
+              <b>Use your browser's Back button</b> — the form is usually still
+              filled in behind this page, and you can save it in smaller pieces
+              from there.
+            </p>
+            <p class="card-desc" style="margin-top:.75rem">
+              A bill of quantities is limited to {BOQ_MAX_LINES} lines. A
+              schedule larger than that belongs in a second BOQ — the register
+              lists them side by side.
+            </p>
+          </div>
+        </div>
+        <p style="margin-top:1.5rem">
+          <a href="{url_for('dashboard.index')}" class="btn btn-ghost">Back to dashboard</a>
+        </p>
+      </main>
+    </body>
+    </html>
+    """
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @dashboard_bp.route("/")

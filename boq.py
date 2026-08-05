@@ -127,6 +127,28 @@ PRINT_REMARKS = False
 # to show.
 HIDE_EMPTY_ESCALATION = True
 
+# The most lines one BOQ may carry.
+#
+# This is a *persistence* limit wearing a validation hat. The whole record is
+# stored as one JSON document in a single MySQL column (ABOUT.md §4), so a BOQ
+# large enough to be refused by the server is a record that can never be
+# written — and since a failed sync now retries on every request rather than
+# giving up (§4), such a record would be re-offered and re-refused forever. The
+# cap is what stops it existing in the first place.
+#
+# 600 against a real schedule of 97: the client's largest workbook is under 150
+# lines, and a project big enough to need four times that is two projects. It
+# is a deliberate limit, not a guess at a technical ceiling — the technical
+# ceiling is higher and is not the reason for the number.
+#
+# ⚠ A line-count cap does not by itself guarantee the POST stays under Flask's
+#   MAX_FORM_MEMORY_SIZE (500,000 bytes). The demo's 97 lines serialise at ~701
+#   bytes each, so 600 typical lines is ~420 KB and fits; 600 lines all
+#   carrying full 1500-character specification paragraphs would not. That case
+#   is what the 413 handler in app.py catches, and it is the one path where the
+#   backstop is doing real work rather than only catching a bypass.
+MAX_LINES = 600
+
 # Section codes offered by the create form. Free text is still accepted — a
 # project can run to more sections than this — but these are what the client's
 # workbooks actually use.
@@ -1050,6 +1072,21 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
     see `_derived_rate`. Amounts *are* computed, always, so a stored amount can
     never disagree with the rate and quantity printed beside it.
     """
+    # The line cap is checked FIRST, before any per-line work. Every other rule
+    # here describes one row; this one describes the schedule, and validating
+    # 5000 rows to then reject the lot for being 5000 rows is work nobody asked
+    # for. It reports the first line past the limit as the offender, so the
+    # re-render opens the row where the BOQ stopped being acceptable rather
+    # than the last one the user happened to add.
+    if len(raw_lines) > MAX_LINES:
+        over = len(raw_lines) - MAX_LINES
+        return ([],
+                f"This BOQ has {len(raw_lines)} lines and the limit is "
+                f"{MAX_LINES}. Line {MAX_LINES + 1} is the first one over it — "
+                f"remove {over} line{'s' if over != 1 else ''}, or split the "
+                f"schedule into a second BOQ.",
+                MAX_LINES)
+
     by_code = {s["code"]: s for s in sections}
     out = []
 
