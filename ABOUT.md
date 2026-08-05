@@ -693,9 +693,19 @@ the advice differs:
 
 | Condition | `_state["ok"]` | Note | Strip says |
 |---|---|---|---|
-| a write failed | True | names the collections + the error | *Every request retries.* |
-| MySQL unreachable at boot, `DB_STRICT` off | False | names the connection error | *Restart the app once MySQL is reachable.* |
+| a write failed | True | names the affected work, in words | *Every request retries.* |
+| MySQL unreachable at boot, `DB_STRICT` off | False | "the database is not connected" | *Restart the app once MySQL is reachable.* |
 | `DB_ENABLED=false` | False | **none** | — |
+
+**The note carries no exception text.** `failure_note()` is a plain sentence
+naming the user's work — *"Bills of quantities are not being saved. Everything
+else is saving normally."* — built from `db.LABELS`, which maps each collection
+to what a human calls it. The office staff reading it cannot act on a MySQL
+column error, and furniture full of them is furniture people learn to ignore.
+`failure_detail()` is the other half: one `table: error` line per failed
+collection, which the strip hangs off its `title=` so it costs a hover to read
+and still lands in a screenshot. The startup banner and `status()` take the
+detail, not the sentence — whoever reads a console is looking after the server.
 
 The boot case is the one `_failures` cannot see on its own: `sync()` returns
 early, so no collection ever fails and an empty `_failures` would report that
@@ -838,9 +848,12 @@ The severity gap is deliberate. Amber in this app means *incomplete but
 working* — a blank GSTIN prints a chip and the document still goes out. The
 strip means *nothing you type is being saved*, and a dot cannot carry that.
 
-`_persistence_strip()` escapes its text with `P.esc`: MySQL quotes the
+`_persistence_strip()` escapes **both** halves with `P.esc`: MySQL quotes the
 offending value back in a truncation or duplicate-key message, so user input
-reaches that string. Its CSS lives in `BASE_STYLES` (it is on every page), and
+reaches both strings, and the detail lands in an *attribute*, where a bare `"`
+is what breaks out rather than a `<`. `P.esc` is `html.escape` at its default
+`quote=True`, which is what makes it safe there. Its CSS lives in
+`BASE_STYLES` (it is on every page), and
 it ships **its own `@media print` hide** rather than joining the `nav,…` print
 rule — that rule lives in `quotation.py`'s `VIEW_DOC_STYLES`, and a page that
 does not happen to load that sheet must still not print app chrome.

@@ -647,9 +647,16 @@ def _persistence_strip() -> str:
     itself the moment a retry lands — db.sync() drops the collection out of
     `_failures` on success, so no acknowledgement or dismissal is needed.
 
-    The error text is escaped: it comes from MySQL and a truncation or duplicate
-    -key message quotes the offending value straight back, which means user
-    input can reach this string.
+    **The visible text carries no exception.** The person reading this strip is
+    office staff pricing a fire system, and a MySQL column error is noise they
+    cannot act on. The raw error goes in `title=` instead, where it costs a
+    hover to read and still lands in a screenshot — which is the form in which
+    this will actually be reported.
+
+    Both halves are escaped. MySQL quotes the offending value back in a
+    truncation or duplicate-key message, so user input reaches both strings,
+    and `P.esc` escapes quotes as well as angle brackets — which is what makes
+    it safe in an attribute and not only in text.
     """
     note = db.failure_note()
     if not note:
@@ -662,10 +669,12 @@ def _persistence_strip() -> str:
     # would be a lie.
     tail = ("Every request retries." if db.is_live()
             else "Restart the app once MySQL is reachable.")
+    detail = db.failure_detail()
+    title = f' title="{P.esc(detail)}"' if detail else ""
     return (
-        '<div class="db-down" role="alert">'
+        f'<div class="db-down" role="alert"{title}>'
         '<span class="db-down-tag">Not saving</span>'
-        f'<span>{P.esc(note)} &nbsp;Changes are being kept in memory only and '
+        f'<span>{P.esc(note)} Changes are being kept in memory only and '
         f'will be lost on restart. {tail}</span>'
         '</div>'
     )

@@ -291,14 +291,54 @@ def test_failure_note_is_empty_when_healthy(fake_db):
     assert db.failure_note() == ""
 
 
-def test_failure_note_names_the_collection_and_the_error(fake_db):
+def test_failure_note_names_the_work_in_words_and_carries_no_exception(fake_db):
+    """
+    The split. The sentence a user reads names their work; the exception is not
+    in it. Office staff pricing a fire system cannot act on a MySQL column
+    error, and putting one in the page furniture only teaches people to ignore
+    the strip.
+    """
     fake_db.refuse = {"boqs"}
     db.sync(a_store())
 
     note = db.failure_note()
-    assert "boqs" in note
-    assert "1 of 9" in note
-    assert "Data too long" in note
+    assert note == ("Bills of quantities are not being saved. "
+                    "Everything else is saving normally.")
+    assert "DataError" not in note
+    assert "Data too long" not in note
+    assert "boqs" not in note          # the table name is not a user-facing word
+
+
+def test_failure_detail_carries_the_exception_the_note_dropped(fake_db):
+    """The half a developer needs, keyed by table name to match server logs."""
+    fake_db.refuse = {"boqs"}
+    db.sync(a_store())
+
+    detail = db.failure_detail()
+    assert detail.startswith("boqs: ")
+    assert "Data too long" in detail
+
+
+def test_detail_has_one_line_per_failed_collection(fake_db):
+    fake_db.refuse = {"boqs", "specs"}
+    db.sync(a_store())
+
+    lines = db.failure_detail().splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("specs: ")     # COLLECTIONS order, not set order
+    assert lines[1].startswith("boqs: ")
+
+
+def test_note_drops_the_reassurance_when_nothing_is_saving(fake_db):
+    """
+    "Everything else is saving normally" is true and worth saying — right up
+    until nothing else is, when it would be a lie.
+    """
+    fake_db.refuse = set(db.COLLECTIONS)
+    db.sync(a_store())
+
+    note = db.failure_note()
+    assert "Everything else" not in note
 
 
 def test_failure_note_reports_mysql_unreachable_at_boot(fake_db):
@@ -311,11 +351,10 @@ def test_failure_note_reports_mysql_unreachable_at_boot(fake_db):
     the app is running entirely in memory.
     """
     db._state["ok"] = False
-    db._state["error"] = "OperationalError: (2003, 'Can't connect to MySQL')"
+    db._state["error"] = "OperationalError: (2003, 'Cannot connect to MySQL')"
 
-    note = db.failure_note()
-    assert "not connected" in note
-    assert "2003" in note
+    assert db.failure_note() == "Nothing is being saved - the database is not connected."
+    assert "2003" in db.failure_detail()     # the exception, on the other side of the split
 
 
 def test_db_enabled_false_is_silent(fake_db):
@@ -329,6 +368,7 @@ def test_db_enabled_false_is_silent(fake_db):
     db.CONFIG["enabled"] = False
     try:
         assert db.failure_note() == ""
+        assert db.failure_detail() == ""
     finally:
         db.CONFIG["enabled"] = True
 
@@ -362,9 +402,8 @@ def test_failure_note_names_every_failed_collection(fake_db):
     db.sync(a_store())
 
     note = db.failure_note()
-    assert "3 of 9" in note
-    for coll in ("boqs", "specs", "invoices"):
-        assert coll in note
+    assert note == ("Tax invoices, specifications and bills of quantities "
+                    "are not being saved. Everything else is saving normally.")
 
 
 # ── 3. The visible signal, on a rendered page ───────────────────────────────
@@ -396,8 +435,28 @@ def test_the_strip_appears_on_a_rendered_page(client, fake_db):
 
     assert 'class="db-down"' in html
     assert "Not saving" in html
-    assert "boqs" in html
+    assert "Bills of quantities are not being saved." in html
     assert "will be lost on restart" in html
+
+
+def test_the_strip_keeps_the_exception_out_of_sight_but_in_the_page(client, fake_db):
+    """
+    The split, on the rendered page: a user reads a sentence about their work,
+    a developer hovers (or screenshots) and gets the MySQL error.
+    """
+    fake_db.refuse = {"boqs"}
+    client.get("/boq/")
+    html = client.get("/").get_data(as_text=True)
+
+    strip = html[html.index('class="db-down"'):]
+    strip = strip[:strip.index("</div>")]
+
+    visible = strip[strip.index("<span>"):]
+    assert "Data too long" not in visible
+    assert "DataError" not in visible
+
+    assert 'title="boqs: ' in strip
+    assert "Data too long" in strip
 
 
 def test_the_strip_is_chrome_and_appears_away_from_the_dashboard(client, fake_db):
@@ -430,14 +489,20 @@ def test_the_strip_clears_itself_when_the_write_lands(client, fake_db):
 def test_the_strip_escapes_the_error_text(client, fake_db):
     """
     MySQL quotes the offending value back in a truncation or duplicate-key
-    message, so user input can reach this string.
+    message, so user input can reach this string — and it now lands in an
+    ATTRIBUTE, where a bare `"` is the thing that breaks out, not a `<`.
     """
-    db._failures["boqs"] = "DataError: Duplicate entry '<script>alert(1)</script>'"
+    db._failures["boqs"] = (
+        'DataError: Duplicate entry \'<script>alert(1)</script>\' '
+        'and a " quote')
 
     html = client.get("/").get_data(as_text=True)
 
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+    # The quote that would otherwise close title=" and let the rest of the
+    # message become markup.
+    assert 'and a &quot; quote' in html
 
 
 def test_the_strip_never_prints(client, fake_db):

@@ -225,22 +225,54 @@ def failures() -> dict:
     return dict(_failures)
 
 
+# What a collection is called when a human is being told about it. A strip that
+# says "boqs" is telling the user the name of a MySQL table; one that says
+# "bills of quantities" is telling them which of their work is at risk.
+LABELS = {
+    "products":   "products",
+    "quotations": "quotations",
+    "proformas":  "proforma invoices",
+    "invoices":   "tax invoices",
+    "purchases":  "purchase orders",
+    "specs":      "specifications",
+    "boqs":       "bills of quantities",
+    "addresses":  "addresses",
+    "settings":   "company settings",
+}
+
+
+def _join(items: list) -> str:
+    """'a', 'a and b', 'a, b and c'."""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _failed_names() -> list:
+    """Failed collections in COLLECTIONS order, so the wording is stable."""
+    return [c for c in COLLECTIONS if c in _failures]
+
+
 def failure_note() -> str:
     """
-    One line naming what is not persisting, or "" when everything is.
+    A plain sentence saying what is not being saved, or "" when all is well.
 
-    This is what the nav strip prints. Two conditions produce a note, and the
-    distinction between them is the whole reason this is not just `not is_live()`:
+    **No exception text.** This is the sentence the nav strip shows a user, and
+    the person reading it is a fire-contractor's office staff, not a DBA — a
+    MySQL column error in the page furniture is noise they cannot act on. The
+    raw error is still one hover away in `failure_detail()`, which is what the
+    strip hangs off its `title=`, so a screenshot still carries it.
+
+    Two conditions produce a note, and the distinction is the whole reason this
+    is not just `not is_live()`:
 
     - **MySQL was unreachable at boot** with DB_STRICT off. The app is running
       in memory by fallback, not by choice. `sync()` returns early so no
       collection ever fails, which means `_failures` stays empty and would say
-      everything is fine — the worst possible answer.
+      everything is fine — the worst available answer.
     - **A write failed** after a successful boot. Then the collections are
-      named, because "your bills of quantities are not saving" is actionable
-      and "something went wrong" is not. The underlying error follows, since it
-      is the only thing that says whether this is a dead server or one
-      oversized record.
+      named — in words, via `LABELS` — because "your bills of quantities are
+      not being saved" is actionable and "something went wrong" is not.
 
     `DB_ENABLED=false` deliberately produces **no note**. That is a chosen
     configuration with a startup banner of its own, and painting every dev run
@@ -249,14 +281,34 @@ def failure_note() -> str:
     if not CONFIG["enabled"]:
         return ""
     if not _state["ok"]:
-        return (f"MySQL is not connected, so nothing is being saved "
-                f"({_state['error'] or 'not initialised'})")
-    if not _failures:
+        return "Nothing is being saved - the database is not connected."
+    names = _failed_names()
+    if not names:
         return ""
-    names = [c for c in COLLECTIONS if c in _failures]
-    detail = _failures[names[0]]
-    return (f"{len(names)} of {len(COLLECTIONS)} collections failed to persist "
-            f"({', '.join(names)} - {detail})")
+    what = _join([LABELS.get(c, c) for c in names])
+    # Always "are": every label is a plural noun phrase, so the verb follows the
+    # words and not the number of collections. "Bills of quantities is" is one
+    # collection and still wrong.
+    rest = ("" if len(names) == len(COLLECTIONS)
+            else " Everything else is saving normally.")
+    return f"{what.capitalize()} are not being saved.{rest}"
+
+
+def failure_detail() -> str:
+    """
+    The raw error text behind `failure_note()`, or "" when there is none.
+
+    This is the half a developer needs and a user does not: the strip carries it
+    in `title=` rather than in the visible text, so it survives a screenshot
+    without putting a `DataError` in front of somebody quoting a fire system.
+    One line per failed collection, keyed by the MySQL table name rather than
+    the friendly label, because that is what matches the server's own logs.
+    """
+    if not CONFIG["enabled"]:
+        return ""
+    if not _state["ok"]:
+        return _state["error"] or "not initialised"
+    return "\n".join(f"{c}: {_failures[c]}" for c in _failed_names())
 
 
 def status() -> str:
@@ -265,7 +317,11 @@ def status() -> str:
     if _state["ok"]:
         base = (f"MySQL {CONFIG['user']}@{CONFIG['host']}:{CONFIG['port']}"
                 f"/{CONFIG['name']} - persistence ON")
-        return f"{base} ({failure_note()})" if _failures else base
+        # The console gets the raw errors, not the friendly sentence: this line
+        # is read by whoever is looking after the server.
+        if _failures:
+            return f"{base} - FAILING: {'; '.join(failure_detail().splitlines())}"
+        return base
     return f"in-memory only - {_state['error'] or 'not initialised'}"
 
 
