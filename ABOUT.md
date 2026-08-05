@@ -1617,8 +1617,8 @@ Two rate behaviours worth keeping:
   `purchase.fillRate()` makes exactly the same call about a catalogue price.
 
 Validation, in order: JSON parses → date → project name → account name →
-sections have unique codes → **line count within `MAX_LINES`** → every line's
-section exists → item number present → description present → quantities and
+sections have unique codes → **line count within `MAX_LINES`** → **payload
+within `MAX_JSON_BYTES`** → every line's section exists → item number present → description present → quantities and
 rates parse and are non-negative → HSN/SAC shape valid when filled. A rejected
 POST re-renders from the posted JSON, so nothing typed is lost and nothing is
 written to STORE.
@@ -1644,13 +1644,47 @@ re-render opens the row where the BOQ stopped being acceptable rather than the
 last one added, and it holds to the same contract as every other rule here:
 nothing lost, the line named, that line and its section forced open.
 
-⚠ **A line cap does not by itself guarantee the POST stays under
-`MAX_FORM_MEMORY_SIZE`** (500,000 bytes, Flask's default). The demo's 97 lines
-serialise at ~701 bytes each, so 600 typical lines is ~420 KB and fits — but
-600 lines all carrying full 1500-character specification paragraphs would not.
-`test_600_realistic_lines_fit_inside_the_form_limit` asserts that headroom
-rather than trusting it, and that residual case is the one place the 413
-handler (§7.6) is doing real work rather than only catching a bypass.
+##### `MAX_JSON_BYTES` — the cap that actually binds
+
+> **Corrected.** This section previously said 600 lines is ~420 KB and fits
+> under `MAX_FORM_MEMORY_SIZE`. That compared the **decoded JSON** against a
+> limit which applies to the **URL-encoded body**, and the wire is bigger than
+> the payload — `application/x-www-form-urlencoded` percent-escapes every
+> quote, brace, comma, colon, space and newline, and JSON is made of those.
+
+Measured expansion:
+
+| shape | JSON | on the wire | ratio |
+|---|---|---|---|
+| real demo BOQ, 97 lines | 701 B/line | **955 B/line** | 1.36 |
+| terse synthetic lines | 455 B/line | 685 B/line | 1.51 |
+
+At 955 encoded bytes a line a **real**-shaped BOQ reaches 500,000 bytes at
+~523 lines — *below* `MAX_LINES`. A 524-line schedule would therefore 413
+before any validation ran, losing the editor, which is the exact failure the
+cap exists to prevent.
+
+So `_clean_lines()` also takes the byte length of the posted `boq_json` and
+rejects past **`MAX_JSON_BYTES = 300,000`**. 300,000 × the worst observed 1.51
+expansion is 453,000 on the wire, leaving ~47 KB for the twenty other form
+fields (`notes` is the only one that can be large), so the check always fires
+first. Its `err_idx` is **-1** and its message blames the schedule rather than a
+line — no single row is at fault, and forcing one open would point the user at
+a row that is not the problem.
+
+**The two caps bind on different schedules and both are needed:** `MAX_LINES`
+catches many terse lines, `MAX_JSON_BYTES` catches fewer verbose ones. For the
+client's real data shape the byte cap binds first, at ~428 lines. The line cap
+is reported first when both are breached, because "remove 40 lines" is
+actionable and "too large" is the fallback.
+
+⚠ **Not a security boundary.** A hostile payload of nothing but escaped quotes
+expands 3× and would still 413. `MAX_FORM_MEMORY_SIZE` stays at 500,000 and
+remains the real limit, with the 413 handler (§7.6) behind it. This is a
+*usability* boundary: it keeps an honest BOQ from ever hitting that wall.
+`test_no_realistic_boq_shape_can_reach_a_413_through_the_form` asserts the
+property against every line shape the app has seen, and names the shape that
+broke it if a future one expands worse.
 
 #### The spec picker, and inserting a whole size family
 

@@ -149,6 +149,42 @@ HIDE_EMPTY_ESCALATION = True
 #   backstop is doing real work rather than only catching a bypass.
 MAX_LINES = 600
 
+# The most bytes of `boq_json` one BOQ may post, measured on the DECODED string
+# as `request.form` hands it back.
+#
+# This is the cap that actually binds, and it exists because MAX_LINES alone
+# cannot keep the request under Flask's MAX_FORM_MEMORY_SIZE (500,000 bytes).
+# Two facts make that so:
+#
+#   1. The form limit applies to the **URL-encoded body on the wire**, not to
+#      the JSON. `application/x-www-form-urlencoded` percent-escapes every
+#      quote, brace, comma, colon, space and newline, and JSON is made of those.
+#   2. So the wire is bigger than the payload, by a factor that depends on the
+#      content. Measured:
+#
+#        real demo BOQ (97 lines)  701 B/line JSON  ->  955 B/line encoded (1.36x)
+#        terse synthetic lines     455 B/line JSON  ->  685 B/line encoded (1.51x)
+#
+# At 955 encoded bytes a line, a real-shaped BOQ reaches 500,000 bytes at ~523
+# lines — BELOW MAX_LINES. A 524-line schedule would therefore 413 before any
+# validation ran, losing the editor, which is exactly what the cap exists to
+# prevent.
+#
+# 300,000 decoded x the worst observed 1.51 expansion = 453,000 bytes on the
+# wire, leaving ~47 KB for the twenty other form fields (`notes` is a textarea
+# and is the only one that can be large). The check therefore always fires
+# before Werkzeug does, for any content shape this app has seen.
+#
+# The two caps bind on different schedules and both are needed: MAX_LINES
+# catches many terse lines, this catches fewer verbose ones. For the client's
+# real data shape this one binds first, at ~428 lines.
+#
+# ⚠ Not a security boundary. A hostile payload of nothing but escaped quotes
+#   expands 3x and would still 413 — MAX_FORM_MEMORY_SIZE stays at 500,000 and
+#   remains the real limit, with the 413 handler behind it. This is a
+#   usability boundary: it keeps an HONEST BOQ from ever hitting that wall.
+MAX_JSON_BYTES = 300_000
+
 # Section codes offered by the create form. Free text is still accepted — a
 # project can run to more sections than this — but these are what the client's
 # workbooks actually use.
@@ -1059,7 +1095,7 @@ def _clean_sections(raw_sections: list) -> tuple:
     return out, ""
 
 
-def _clean_lines(raw_lines: list, sections: list) -> tuple:
+def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tuple:
     """
     (line_items, error, error_index) — one §4.2 line item per editor row.
 
@@ -1086,6 +1122,18 @@ def _clean_lines(raw_lines: list, sections: list) -> tuple:
                 f"remove {over} line{'s' if over != 1 else ''}, or split the "
                 f"schedule into a second BOQ.",
                 MAX_LINES)
+
+    # …and the size cap, which binds on a schedule of few but very long lines
+    # where the line count never does. `err_idx` is -1 deliberately: no single
+    # line is at fault, so forcing one open would point the user at a row that
+    # is not the problem. See MAX_JSON_BYTES for why the limit is where it is.
+    if payload_bytes > MAX_JSON_BYTES:
+        return ([],
+                f"This schedule is too large to save — {payload_bytes // 1024} KB "
+                f"of line data against a limit of {MAX_JSON_BYTES // 1024} KB. "
+                f"No single line is at fault; it is the schedule as a whole. "
+                f"Shorten the longest descriptions, or split it into a second BOQ.",
+                -1)
 
     by_code = {s["code"]: s for s in sections}
     out = []
@@ -2687,7 +2735,8 @@ def create_boq():
         # Validation, in order — nothing is written to STORE until every one
         # of these passes, so a rejected POST leaves no half-built record.
         err_idx = -1
-        raw_sections, raw_lines, error = _parse_payload(form.get("boq_json", ""))
+        raw_json = form.get("boq_json", "")
+        raw_sections, raw_lines, error = _parse_payload(raw_json)
 
         if not error and not (form.get("date") or "").strip():
             error = "The BOQ needs a date."
@@ -2699,7 +2748,12 @@ def create_boq():
         if not error:
             sections, error = _clean_sections(raw_sections)
         if not error:
-            lines, error, err_idx = _clean_lines(raw_lines, sections)
+            # The byte length of what was POSTed, not of a re-serialisation of
+            # it: whitespace and key order in the browser's own JSON are part of
+            # what has to fit on the wire, and re-dumping it here would measure
+            # a string nobody sent.
+            lines, error, err_idx = _clean_lines(
+                raw_lines, sections, len(raw_json.encode("utf-8")))
 
         if not error:
             datestr = (form.get("date") or "").strip()

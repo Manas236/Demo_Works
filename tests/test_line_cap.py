@@ -22,6 +22,7 @@ Two layers, and the difference between them matters:
 """
 
 import json
+from urllib.parse import urlencode
 
 import pytest
 
@@ -181,22 +182,189 @@ def test_the_cap_is_reported_ahead_of_a_per_line_fault(client):
 
 # ── Size, measured rather than assumed ──────────────────────────────────────
 
-def test_600_realistic_lines_fit_inside_the_form_limit(client):
+def encoded_size(data: dict) -> int:
     """
-    The cap is only the primary defence if a capped BOQ actually gets through.
-    The demo's 97 real lines serialise at ~701 bytes each; this asserts the
-    headroom rather than trusting it, and will fail loudly if the line shape
-    grows enough to push a legal BOQ into 413 territory.
+    What actually goes on the wire.
+
+    MAX_FORM_MEMORY_SIZE is checked against the URL-ENCODED body, not against
+    the JSON. `application/x-www-form-urlencoded` percent-escapes every quote,
+    brace, comma, colon, space and newline, and JSON is made of those — the real
+    demo BOQ expands 1.36x, terser lines 1.51x. Measuring the decoded string
+    against the limit understates the wire by a third and is how a "there is
+    plenty of headroom" conclusion gets reached for a request that 413s.
+    """
+    return len(urlencode(data).encode())
+
+
+def test_the_byte_cap_is_below_the_form_limit_at_the_worst_observed_expansion():
+    """
+    The property the whole cap rests on: it must fire before Werkzeug does.
+
+    1.51 is the worst expansion measured across the real demo schedule and the
+    terse synthetic lines here. The margin left over is for the twenty other
+    form fields, of which only `notes` can be large.
     """
     import app as app_module
+    import boq
 
     limit = app_module.app.config["MAX_FORM_MEMORY_SIZE"]
-    size = len(json.dumps(payload(MAX)).encode())
+    worst_case_wire = boq.MAX_JSON_BYTES * 1.51
 
-    assert size < limit, (
-        f"600 lines now serialise to {size} bytes, past the {limit}-byte form "
-        f"limit — a legal BOQ would 413. Raise MAX_FORM_MEMORY_SIZE or lower "
-        f"MAX_LINES.")
+    assert worst_case_wire < limit, (
+        f"MAX_JSON_BYTES={boq.MAX_JSON_BYTES} expands to {worst_case_wire:.0f} "
+        f"bytes at 1.51x, past the {limit}-byte form limit.")
+    assert limit - worst_case_wire > 40_000, "too little room for the other fields"
+
+
+def test_no_realistic_boq_shape_can_reach_a_413_through_the_form():
+    """
+    The requirement, stated as a property rather than as one example.
+
+    For every line shape this app has seen — the client's real 97-line schedule
+    and the terse synthetic one — a payload sitting exactly ON the byte cap must
+    still fit on the wire. If a future line shape expands worse than 1.51x this
+    fails, and it names the shape that broke it.
+    """
+    import app as app_module
+    import boq
+    import spec
+
+    limit = app_module.app.config["MAX_FORM_MEMORY_SIZE"]
+
+    spec.ensure_demo_specs()
+    boq.ensure_demo_boq()
+    real_boot, _ = boq._demo_form_payload()
+
+    shapes = {
+        "real demo schedule": real_boot,
+        "terse synthetic": payload(97),
+    }
+
+    for name, boot in shapes.items():
+        js = json.dumps(boot)
+        ratio = encoded_size(dict(FORM, boq_json=js)) / len(js.encode())
+        at_cap = boq.MAX_JSON_BYTES * ratio
+
+        assert at_cap < limit, (
+            f"{name}: expands {ratio:.2f}x, so a payload at the "
+            f"{boq.MAX_JSON_BYTES}-byte cap is {at_cap:.0f} bytes on the wire "
+            f"— past the {limit}-byte form limit. Lower MAX_JSON_BYTES.")
+
+
+def test_a_payload_just_under_the_byte_cap_is_accepted(client):
+    import boq
+
+    data = payload(1)
+    # One line, padded to just under the cap. Line count is irrelevant here —
+    # this is the schedule the byte cap exists for and the line cap cannot see.
+    head = len(json.dumps(data).encode())
+    data["lines"][0]["description"] = "D" * (boq.MAX_JSON_BYTES - head - 100)
+    js = json.dumps(data)
+    assert len(js.encode()) < boq.MAX_JSON_BYTES
+
+    r = client.post("/boq/create", data=dict(FORM, boq_json=js))
+
+    assert r.status_code == 302, r.get_data(as_text=True)[:2000]
+    assert len(STORE["boqs"]) == 1
+
+
+def test_a_payload_just_over_the_byte_cap_is_rejected(client):
+    import boq
+
+    data = payload(1)
+    head = len(json.dumps(data).encode())
+    data["lines"][0]["description"] = "D" * (boq.MAX_JSON_BYTES - head + 500)
+    js = json.dumps(data)
+    assert len(js.encode()) > boq.MAX_JSON_BYTES
+
+    r = client.post("/boq/create", data=dict(FORM, boq_json=js))
+
+    assert r.status_code == 200          # rejected, not 413, not written
+    assert r.status_code != 413
+    assert STORE["boqs"] == {}
+
+
+def test_the_byte_cap_message_blames_the_schedule_not_a_line(client):
+    """
+    The one place this differs from every other rule in _clean_lines: no single
+    line is at fault, so naming one would point the user at a row that is not
+    the problem.
+    """
+    import boq
+
+    data = payload(1)
+    head = len(json.dumps(data).encode())
+    data["lines"][0]["description"] = "D" * (boq.MAX_JSON_BYTES - head + 500)
+    html = client.post("/boq/create",
+                       data=dict(FORM, boq_json=json.dumps(data))).get_data(as_text=True)
+
+    assert "This schedule is too large to save" in html
+    assert "No single line is at fault" in html
+    assert "293 KB" in html               # MAX_JSON_BYTES // 1024
+    assert "is the first one over it" not in html
+
+
+def test_the_byte_cap_rejection_loses_nothing(client):
+    """Same contract as every other rejection: the editor comes back intact."""
+    import boq
+
+    data = payload(30)
+    data["sections"][0]["title"] = "Sprinkler system"
+    head = len(json.dumps(data).encode())
+    data["lines"][0]["description"] = "D" * (boq.MAX_JSON_BYTES - head + 500)
+
+    r = client.post("/boq/create", data=dict(FORM, boq_json=json.dumps(data)))
+    boot = boot_of(r.get_data(as_text=True))
+
+    assert len(boot["lines"]) == 30
+    assert boot["lines"][29]["description"].startswith("Line 30 -")
+    assert boot["lines"][5]["supply_rate"] == "1100"
+    assert boot["sections"][0]["title"] == "Sprinkler system"
+    assert "Sify Bangalore" in r.get_data(as_text=True)
+
+
+def test_the_byte_cap_opens_no_line(client):
+    """err_idx is -1, so nothing is forced open — there is no offending row."""
+    import boq
+
+    data = payload(30)
+    head = len(json.dumps(data).encode())
+    data["lines"][0]["description"] = "D" * (boq.MAX_JSON_BYTES - head + 500)
+
+    boot = boot_of(client.post(
+        "/boq/create", data=dict(FORM, boq_json=json.dumps(data))).get_data(as_text=True))
+
+    assert not any(li.get("_open") for li in boot["lines"])
+
+
+def test_the_line_cap_is_reported_ahead_of_the_byte_cap(client):
+    """
+    Both can be breached at once. "Remove 40 lines" is actionable; "the
+    schedule is too large" is the fallback for when no line count explains it.
+    """
+    data = payload(MAX + 40)
+    html = client.post("/boq/create",
+                       data=dict(FORM, boq_json=json.dumps(data))).get_data(as_text=True)
+
+    assert "640 lines and the limit is 600" in html
+    assert "This schedule is too large to save" not in html
+
+
+def test_the_real_demo_schedule_still_round_trips(client):
+    """
+    The regression the byte cap could plausibly cause: the client's own 97-line
+    workbook is the largest real payload in the app, and it must stay well
+    inside both caps.
+    """
+    import boq
+
+    boq.ensure_demo_specs()
+    boq.ensure_demo_boq()
+    boot, _prefill = boq._demo_form_payload()
+    js = json.dumps(boot)
+
+    assert len(js.encode()) < boq.MAX_JSON_BYTES
+    assert len(boot["lines"]) < boq.MAX_LINES
 
 
 # ── The 413 backstop ────────────────────────────────────────────────────────
