@@ -233,15 +233,28 @@ BOQ rev 1  ──►  RA5 … RA9          (later bills measure against rev 1)
 
 ### Three rules a revision must obey, and why
 
-1. **It may not renumber `item_no`.** That string is the key the claim history
-   is matched on across revisions. A revision may change quantity, rate,
-   description and unit, and may **add** lines. Renumbering silently detaches a
-   line from everything already claimed against it.
+1. ~~**It may not renumber `item_no`.**~~ **[AMENDED — step 1.5] Withdrawn. A
+   revision may renumber freely.** This rule existed because the claim history
+   was matched on `item_no`, and that turned out to be unworkable for a reason
+   that had nothing to do with revisions: **`item_no` is not unique inside a
+   single BOQ.** It restarts per section, and the client's own section A
+   carries item `17` twice. Matching on it collapsed 87 priced lines into 77
+   and broke the guard in both directions at once — ₹1,99,122.50 of over-claim
+   permitted, ₹84,071.00 of legitimate claim refused.
+
+   Lines now carry an opaque server-minted **`line_id`** (ABOUT.md §3), which a
+   revision carries forward unchanged for every surviving line. The claim
+   history follows the id, so renumbering detaches nothing. A revision may
+   change quantity, rate, description, unit **and item number**, and may add
+   lines.
 2. **It may not remove a line with claims against it.** There is nowhere for
-   that history to go.
+   that history to go. **[step 1.5] Implemented** as
+   `boq.revision_blockers()`, which names the line and the RA numbers that
+   claimed it. Removing an unclaimed line is free.
 3. **It may not lower a line's quantity below what is already claimed.** That
    would manufacture a retroactive over-claim on bills already issued and
    certified. Blocked at revision time, naming the line and the shortfall.
+   **Still to build** — it belongs with the revision route.
 
 ### Why not a per-claim override
 
@@ -377,9 +390,14 @@ Listed before you find them.
 4. **No measurement sheet.** A claimed quantity is asserted, not substantiated.
    Real RA billing backs each figure with an abstract of measurements, which is
    what the client's engineer signs against.
-5. **The revision chain is matched on `item_no`.** Robust while items are not
-   renumbered, and §4 blocks renumbering — but that is a restriction the client
-   may resent the first time a section is reorganised.
+5. **[AMENDED — step 1.5, resolved] The revision chain is matched on
+   `item_no`.** It was, and it was wrong — not only across revisions but
+   *within a single BOQ*, because `item_no` is not unique there either. The
+   client's section A carries item `17` twice, item numbers restart per
+   section, and the guard silently collapsed ten lines. Lines now carry an
+   opaque `line_id` and both `approved_by_line()` and `claimed_by_line()` key
+   on it. The renumbering restriction this entry worried about is withdrawn —
+   see §4.
 6. **Concurrency.** Two simultaneous RA creations against one BOQ can both read
    the same `max(ra_no)`. `STORE` is a plain dict with no lock (only `db._lock`
    guards sync), so this is a pre-existing property of the app shared by every
@@ -411,7 +429,21 @@ re-open them.
 
 ### Still open, deliberately
 
-Everything else in §6 — the value guard (§6.2), measurement sheets (§6.4), the
-`item_no` renumbering restriction (§6.5), concurrency (§6.6), the absence of a
-void flow (§6.7) and one-rate-per-line (§6.8) — is unresolved and recorded
-rather than solved.
+Everything else in §6 — the value guard (§6.2), measurement sheets (§6.4),
+concurrency (§6.6), the absence of a void flow (§6.7) and one-rate-per-line
+(§6.8) — is unresolved and recorded rather than solved.
+
+### Step 1.5 · 2026-08-06 — the stable line identifier
+
+Inserted between steps 1 and 2 after the `item_no` key was found to be
+ambiguous inside a single BOQ, not merely across revisions.
+
+| Question | Decision |
+|---|---|
+| What key does a claim match on? | **`line_id`** — opaque, server-minted (`uuid4().hex[:12]`), unique within one BOQ record. Not positional, not derived from any displayed field. §4, §6.5 |
+| Uniqueness scope | **Within a BOQ record only.** Claims are already scoped to a parent BOQ, so a cross-record collision is harmless and there is no global registry. |
+| What happens to a posted id | Well-formed and unused → kept verbatim. Missing → minted. Duplicated in one post → first kept, rest minted (a copy-pasted row). Malformed → minted, never echoed. |
+| Existing records | `boq.backfill_line_ids()` via `tools/backfill_line_ids.py` — explicit, idempotent, fills blanks only. Claims predating the field are **counted, never guessed back**. |
+| May a revision renumber? | **Yes**, now that the id carries the history. §4 rule 1 withdrawn. |
+| May a revision delete a claimed line? | **No** — `boq.revision_blockers()`, naming the line and the RA numbers. Unclaimed lines delete freely. |
+| The client's duplicate item 17 | **In their source workbook, left exactly as it is.** The seed is a faithful copy of their real schedule. The BOQ form gains a non-blocking amber band flagging repeated item numbers within a section. |
