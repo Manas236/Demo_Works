@@ -706,7 +706,7 @@ def test_the_form_carries_the_duplicate_item_number_band(client):
     h = client.get("/boq/create").get_data(as_text=True)
     assert 'id="dup-warn"' in h
     assert "function renderDupWarn" in h
-    assert ".dup-warn {" in h
+    assert ".form-hint {" in h
     # Amber, per ABOUT.md §5's severity rule — this is "incomplete but
     # working", not "nothing is being saved".
     assert "--saffron" in h.split("function renderDupWarn")[0]
@@ -722,6 +722,74 @@ def test_the_band_says_billing_is_unaffected(client):
     band = h.split("function renderDupWarn")[1].split("function renderJump")[0]
     assert "does not affect billing" in band
     assert "Saving is not blocked" in band
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE ZERO-QUANTITY HINT — form only, never the printed sheet
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_the_form_carries_the_zero_quantity_hint(client):
+    h = client.get("/boq/create").get_data(as_text=True)
+    assert 'id="zeroqty-hint"' in h
+    assert "function renderZeroQty" in h
+    assert "renderZeroQty();" in h          # actually called from renderLines
+
+
+def test_the_zero_quantity_hint_does_not_count_specification_headers(client):
+    """
+    A header carries the clause and no quantity by design (§4.2). Counting it
+    would flag correct rows and train the user to ignore the band.
+
+    SF/BOQ/26-27/0004 is the real case: it reads as three lines totalling
+    0.00, but only ONE of them is priced — the other two are headers.
+    """
+    h = client.get("/boq/create").get_data(as_text=True)
+    body = h.split("function renderZeroQty")[1].split("function renderJump")[0]
+    assert "if (L.is_header) continue;" in body
+    assert "priced++" in body
+
+
+def test_the_zero_quantity_hint_says_it_is_valid_and_names_the_ra_consequence(client):
+    """
+    It is a hint, not an error: quantities are provisional and billed as
+    executed, so a line awaiting measurement is correct. The RA consequence is
+    the part worth knowing at entry time — a line approved at 0 has nothing to
+    claim against, so every RA claim on it is refused.
+    """
+    h = client.get("/boq/create").get_data(as_text=True)
+    body = h.split("function renderZeroQty")[1].split("function renderJump")[0]
+    assert "valid state" in body
+    assert "billed as executed" in body
+    assert "cannot claim against a line approved at 0" in body
+
+
+def test_neither_advisory_band_reaches_the_printed_sheet(client, seeded):
+    """
+    The print is the client-facing document. A band on it would assert a defect
+    in his schedule where there is none — a repeated item number and a
+    provisional quantity are both legitimate.
+
+    The shared stylesheet rule rides along on the view page because
+    `BOQ_STYLES` is one sheet; what must not appear is any MARKUP.
+    """
+    v = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
+
+    assert 'class="form-hint"' not in v
+    assert 'id="dup-warn"' not in v
+    assert 'id="zeroqty-hint"' not in v
+    assert "renderZeroQty" not in v
+    assert "renderDupWarn" not in v
+
+
+def test_a_priced_line_with_zero_quantity_still_saves():
+    """The hint is advisory. Nothing about qty 0 blocks a save."""
+    lines, err, idx = BQ._clean_lines(
+        [posted("1", total_qty="0", supply_rate="9775")], SECTIONS)
+
+    assert err == "" and idx == -1
+    assert lines[0]["total_qty"] == 0.0
+    assert lines[0]["supply_rate"] == 9775.0
+    assert lines[0]["supply_amount"] == 0.0
 
 
 def test_boq_does_not_import_ra_to_ask_about_claims():

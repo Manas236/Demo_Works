@@ -966,18 +966,24 @@ BOQ_STYLES = """
   .jb-btn:hover { background:var(--brand-lt); border-color:#c7d2fe; }
   .jb-sp { flex:1 1 auto; }
 
-  /* Amber, not red. Amber in this app means "incomplete but working"
-     (ABOUT.md §5) and that is exactly right here: a repeated item number is
-     an ambiguity on the printed sheet, not a billing fault — claims key on
-     the line's own id, so two lines sharing a number stay separate. */
-  .dup-warn {
+  /* Form-only advisory bands. Amber, not red: amber in this app means
+     "incomplete but working" (ABOUT.md §5), which is exactly what both of
+     these are. A repeated item number is an ambiguity on the printed sheet,
+     not a billing fault — claims key on the line's own id, so two lines
+     sharing a number stay separate. A priced line at quantity 0 is a line
+     awaiting measurement, which is a legitimate state.
+
+     Neither ever reaches the printed sheet. The print is the client-facing
+     document and a band on it would assert a defect in his schedule where
+     there is none. */
+  .form-hint {
     display:flex; gap:.55rem; align-items:flex-start;
     background:#fffbeb; border:1px solid #fcd34d; border-left:3px solid var(--saffron);
     border-radius:8px; padding:.6rem .8rem; margin-bottom:1rem;
     font-size:.78rem; line-height:1.5; color:#78350f;
   }
-  .dw-icon { color:var(--saffron); font-size:.95rem; line-height:1.3; }
-  .dw-sec { color:#92400e; font-weight:600; }
+  .fh-icon { color:var(--saffron); font-size:.95rem; line-height:1.3; }
+  .fh-sec { color:#92400e; font-weight:600; }
 
   .sec-group { margin-bottom:.9rem; border:1px solid var(--border);
                border-radius:10px; overflow:hidden; }
@@ -2600,6 +2606,7 @@ function renderLines() {
   el('line-editor').innerHTML = h;
   renderJump();
   renderDupWarn();
+  renderZeroQty();
   for (var k4 = 0; k4 < MODEL.lines.length; k4++) {
     if (isOpen(MODEL.lines[k4])) hint(k4);
   }
@@ -2675,16 +2682,72 @@ function renderDupWarn() {
   var list = '';
   for (var d = 0; d < dupes.length; d++) {
     list += (d ? ', ' : '') + esc(dupes[d].ino)
-         +  ' <span class="dw-sec">(section ' + esc(dupes[d].sec || '?') + ')</span>';
+         +  ' <span class="fh-sec">(section ' + esc(dupes[d].sec || '?') + ')</span>';
   }
   box.innerHTML =
-    '<div class="dup-warn">'
-  +   '<span class="dw-icon">&#9888;</span>'
+    '<div class="form-hint">'
+  +   '<span class="fh-icon">&#9888;</span>'
   +   '<span><b>Repeated item number' + (dupes.length === 1 ? '' : 's') + ':</b> ' + list
   +   '. Two lines in the same section share a number, so they will print alike '
   +   'and be hard to tell apart on a measurement sheet. '
   +   '<b>This does not affect billing</b> &mdash; each line is tracked separately '
   +   'and claims cannot run together. Saving is not blocked.</span>'
+  + '</div>';
+}
+
+/* ── Priced lines carrying no quantity — a HINT, never an error ─────────
+
+   A line with a base rate, an escalation and a unit rate but Total Qty 0
+   contributes 0.00 to the amount and 0.00 to the subtotal. A schedule made
+   only of those shows a full set of rates against a grand total of zero, and
+   nothing on the page says why — which reads as a broken form rather than as
+   what it is.
+
+   It is a hint and not an error because quantity 0 is a LEGITIMATE state: BOQ
+   quantities are provisional and billed as executed (the printed footer
+   already says so), so a line awaiting site measurement is correct, not
+   incomplete.
+
+   HEADERS ARE NOT COUNTED. A specification header carries the clause and no
+   quantity by design (§4.2), so flagging it would be pure noise and would
+   train the user to ignore the band.
+
+   The RA consequence is the part worth knowing at entry time rather than
+   later: `ra.approved_by_line()` reads `total_qty`, so a line approved at 0
+   has nothing to claim against and EVERY RA claim on it is refused by the
+   over-claim block. Better learned here than when the first RA bill will not
+   save. */
+function renderZeroQty() {
+  var box = el('zeroqty-hint');
+  if (!box) return;
+
+  var n = 0, priced = 0;
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    var L = MODEL.lines[i];
+    if (L.is_header) continue;
+    priced++;
+    /* The same resolution `lineSummary()` and `sectionTotals()` use: with an
+       area breakdown the total IS the breakdown, so read it from the boxes. */
+    var qty = (L.total_qty === '' || L.total_qty == null)
+      ? totalOf(L, (secByCode(L.section) || {}).areas || [])
+      : L.total_qty;
+    if (num(qty) === 0) n++;
+  }
+
+  if (!n || !priced) { box.innerHTML = ''; return; }
+
+  var isAll = (n === priced);
+  box.innerHTML =
+    '<div class="form-hint">'
+  +   '<span class="fh-icon">&#9888;</span>'
+  +   '<span><b>' + (isAll ? 'Every priced line has' : n + ' priced line'
+        + (n === 1 ? ' has' : 's have')) + ' a quantity of 0.</b> '
+  +   'They carry rates but contribute <b>nothing</b> to the total'
+  +   (isAll ? ', which is why it reads 0.00' : '') + '. '
+  +   'That is a valid state for work awaiting site measurement &mdash; '
+  +   'quantities are provisional and billed as executed. '
+  +   'Note that an RA bill cannot claim against a line approved at 0.'
+  +   '</span>'
   + '</div>';
 }
 
@@ -3368,6 +3431,7 @@ def create_boq():
 
       <div class="jump-bar" id="jump-bar"></div>
       <div id="dup-warn"></div>
+      <div id="zeroqty-hint"></div>
       <div id="line-editor"></div>
       <button type="button" class="btn-row" style="margin-top:.4rem;" onclick="addLine()">
         + Add line

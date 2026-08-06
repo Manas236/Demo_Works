@@ -1909,6 +1909,19 @@ and opens the full panel only for the line being worked on.
 - **Orphan lines get their own band.** A line whose section no longer exists
   was previously invisible while still posting and still counting; it now shows
   under a red bar telling the user to give it a section or remove it.
+- **Priced lines with no quantity get an amber band** (`renderZeroQty()`).
+  A line carrying a base rate, an escalation and a unit rate but Total Qty 0
+  contributes 0.00 to the subtotal; a schedule made only of those shows a full
+  set of rates against a grand total of zero with nothing saying why, which
+  reads as a broken form. It is a **hint, not an error** — quantities are
+  provisional and billed as executed (the printed footer says so), so a line
+  awaiting site measurement is correct. **Specification headers are not
+  counted**: a header carries the clause and no quantity by design, and
+  flagging it would be noise. The band also names the RA consequence, which is
+  the part worth knowing at entry time rather than later —
+  `ra.approved_by_line()` reads `total_qty`, so a line approved at 0 has
+  nothing to claim against and every RA claim on it is refused by the
+  over-claim block.
 - **Repeated item numbers get an amber band** (`renderDupWarn()`), live as the
   user types. Two lines in the same section sharing an item number will print
   alike and be hard to tell apart on a measurement sheet — worth saying. It
