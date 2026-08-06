@@ -38,7 +38,8 @@ single place anything asks the question.
 
 Import direction
 ----------------
-    ra.py ──► boq.py        _item_no, _num, _opt_num — the schedule's own guards
+    ra.py ──► boq.py        _line_id, _item_no, _num, _opt_num — the schedule's
+                            own guards, and the key a claim is matched on
     ra.py ──► dashboard.py  BASE_STYLES / _nav
     ra.py ──► pipeline.py   esc / parse_money / fy_of / fy_ref
     ra.py ──► store, branding
@@ -139,7 +140,9 @@ _REF_CAP = 64
 #
 # A claim row:
 #
-#   {"item_no": "24.b", "section": "B",
+#   {"line_id": "a3f19c0b7e42",  # THE MATCH KEY — opaque, from the BOQ line
+#    "item_no": "24.b",          # the DISPLAY label; not unique, never matched on
+#    "section": "B",
 #    "description": str, "unit": "Mtrs",
 #    "approved_qty": 700.0,      # frozen: the BOQ quantity when this was issued
 #    "approved_rate": 2024.0,    # frozen
@@ -170,6 +173,12 @@ _REF_CAP = 64
 #    every bill with an empty deductions list.
 # 5. **`ra_no` is unique across the whole REVISION CHAIN**, not per record. A
 #    revision must not restart the client's sequence at RA1.
+# 6. **`line_id` is what a claim is matched on, and `item_no` never is.** Item
+#    numbers restart per section and the client's own schedule repeats one
+#    inside a section, so matching on them collapsed ten lines together and
+#    broke the guard in both directions at once. The id is opaque, minted by
+#    `boq._new_line_id()`, and carried forward unchanged across revisions —
+#    which is what lets a revision renumber freely without detaching history.
 
 
 # =============================================================================
@@ -239,10 +248,18 @@ def latest_revision(boq_id: str) -> str:
 
 def approved_by_line(boq_id: str) -> dict:
     """
-    {(item_no, leg): approved_qty} from the LATEST revision in the chain.
+    {(line_id, leg): approved_qty} from the LATEST revision in the chain.
 
-    The latest, not the one billed against: a revision exists precisely to
-    change what is approved, and the block has to be measured against what is
+    **Keyed on `line_id`, not `item_no`.** `item_no` is a display label and is
+    not unique: it restarts per section, and the client's own section A carries
+    item `17` twice on two different items priced eight times apart. Keying
+    here collapsed 87 priced lines into 77 guard entries and made the block both
+    too loose and too tight on the same schedule — Rs 1,99,122.50 of over-claim
+    permitted and Rs 84,071.00 of legitimate claim refused. `boq._new_line_id()`
+    is what fixed it; `tests/test_boq_line_ids.py` holds the arithmetic.
+
+    The latest revision, not the one billed against: a revision exists precisely
+    to change what is approved, and the block has to be measured against what is
     approved *now*. What each issued bill was measured against is frozen on its
     own claim rows.
 
@@ -260,17 +277,17 @@ def approved_by_line(boq_id: str) -> dict:
     for li in boq.get("line_items") or []:
         if li.get("is_header"):
             continue
-        item = BQ._item_no(li.get("item_no"))
-        if not item:
+        lid = BQ._line_id(li.get("line_id"))
+        if not lid:
             continue
         qty = float(li.get("total_qty") or 0.0)
         for leg in LEGS:
-            out[(item, leg)] = qty
+            out[(lid, leg)] = qty
     return out
 
 
 def approved_rates(boq_id: str) -> dict:
-    """{(item_no, leg): approved_rate} from the latest revision."""
+    """{(line_id, leg): approved_rate} from the latest revision."""
     latest = latest_revision(boq_id)
     if not latest:
         return {}
@@ -280,17 +297,37 @@ def approved_rates(boq_id: str) -> dict:
     for li in boq.get("line_items") or []:
         if li.get("is_header"):
             continue
-        item = BQ._item_no(li.get("item_no"))
-        if not item:
+        lid = BQ._line_id(li.get("line_id"))
+        if not lid:
             continue
-        out[(item, "supply")] = float(li.get("supply_rate") or 0.0)
-        out[(item, "installation")] = float(li.get("install_rate") or 0.0)
+        out[(lid, "supply")] = float(li.get("supply_rate") or 0.0)
+        out[(lid, "installation")] = float(li.get("install_rate") or 0.0)
+    return out
+
+
+def approved_labels(boq_id: str) -> dict:
+    """
+    {line_id: item_no} from the latest revision — the DISPLAY label.
+
+    The guard keys on `line_id`; every message a human reads still says
+    "Item 24.d", because that is what is written on the measurement sheet in
+    their hand. Nothing outside the code ever sees a line id.
+    """
+    latest = latest_revision(boq_id)
+    if not latest:
+        return {}
+    boq = (STORE.get("boqs") or {}).get(latest) or {}
+    out = {}
+    for li in boq.get("line_items") or []:
+        lid = BQ._line_id(li.get("line_id"))
+        if lid:
+            out[lid] = BQ._item_no(li.get("item_no"))
     return out
 
 
 def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
     """
-    {(item_no, leg): qty} summed over every RA bill in the revision chain.
+    {(line_id, leg): qty} summed over every RA bill in the revision chain.
 
     **This is the single place anything asks how much has been claimed**, and it
     is derived rather than stored on purpose. A maintained counter has to be
@@ -304,6 +341,12 @@ def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
 
     `exclude_ra_id` leaves one bill out, so an edit can ask "what would the
     cumulative be without my own current figures in it".
+
+    **Keyed on `line_id`.** A claim row carrying no id matches nothing and is
+    skipped rather than falling back to `item_no` — a fallback would resurrect
+    exactly the collapse this key exists to end, on the lines where item numbers
+    are ambiguous, and would do it silently. `boq.backfill_line_ids()` counts
+    such rows so they are visible instead.
     """
     ids = set(revision_chain(boq_id))
     if not ids:
@@ -317,8 +360,38 @@ def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
             continue
         leg = bill.get("leg")
         for c in bill.get("claims") or []:
-            key = (BQ._item_no(c.get("item_no")), leg)
+            lid = BQ._line_id(c.get("line_id"))
+            if not lid:
+                continue
+            key = (lid, leg)
             out[key] = out.get(key, 0.0) + float(c.get("qty") or 0.0)
+    return out
+
+
+def claims_by_line_id(boq_id: str) -> dict:
+    """
+    {line_id: [ra_no, …]} — which bills have claimed against each line.
+
+    Built for `boq.revision_blockers()`, which must refuse to delete a line that
+    already carries a claim. It is passed *in* to that function rather than
+    imported by it, because boq.py may never import this module (ABOUT.md §2b).
+    """
+    ids = set(revision_chain(boq_id))
+    if not ids:
+        return {}
+
+    out = {}
+    for _rid, bill in (STORE.get("ra_bills") or {}).items():
+        if str(bill.get("boq_id") or "") not in ids:
+            continue
+        ra_no = int(bill.get("ra_no") or 0)
+        for c in bill.get("claims") or []:
+            lid = BQ._line_id(c.get("line_id"))
+            if not lid or float(c.get("qty") or 0.0) <= 0:
+                continue
+            out.setdefault(lid, [])
+            if ra_no not in out[lid]:
+                out[lid].append(ra_no)
     return out
 
 
@@ -404,20 +477,32 @@ def overclaims(boq_id: str, leg: str, claims: list,
 
     The comparison rounds at `_QTY_EPSILON` to kill float noise. With
     `OVERCLAIM_TOLERANCE` at 0.0 this is exactly `cumulative > approved`.
+
+    Matching is on `line_id`; `item_no` is carried into the message as the
+    label the operator reads off their measurement sheet. A claim posted with
+    no id, or an id absent from the approved revision, is `"not_in_boq"` — the
+    same answer, because in both cases there is no approved quantity to claim
+    against.
     """
     approved = approved_by_line(boq_id)
     prior = claimed_by_line(boq_id, exclude_ra_id=exclude_ra_id)
+    labels = approved_labels(boq_id)
 
     out = []
     for c in claims or []:
-        item = BQ._item_no(c.get("item_no"))
+        lid = BQ._line_id(c.get("line_id"))
         qty = float(c.get("qty") or 0.0)
-        if not item or qty <= 0:
+        if qty <= 0:
             continue
 
-        key = (item, leg)
-        if key not in approved:
-            out.append({"item_no": item, "leg": leg, "reason": "not_in_boq",
+        # The label the human sees: the approved revision's item number where
+        # the line is known, otherwise whatever the claim carried.
+        item = labels.get(lid) or BQ._item_no(c.get("item_no"))
+
+        key = (lid, leg)
+        if not lid or key not in approved:
+            out.append({"item_no": item, "line_id": lid, "leg": leg,
+                        "reason": "not_in_boq",
                         "approved": 0.0, "previously": prior.get(key, 0.0),
                         "this": qty, "cumulative": qty, "allowed": 0.0,
                         "over": qty})
@@ -428,7 +513,8 @@ def overclaims(boq_id: str, leg: str, claims: list,
         cumulative = previously + qty
         allowed = app * (1.0 + OVERCLAIM_TOLERANCE)
         if round(cumulative - allowed, 6) > _QTY_EPSILON:
-            out.append({"item_no": item, "leg": leg, "reason": "overclaim",
+            out.append({"item_no": item, "line_id": lid, "leg": leg,
+                        "reason": "overclaim",
                         "approved": app, "previously": previously,
                         "this": qty, "cumulative": cumulative,
                         "allowed": allowed, "over": cumulative - allowed})
@@ -499,6 +585,10 @@ def build_claim(boq_line: dict, qty, rate, prev_qty: float,
     r = float(BQ._num(rate, 0.0))
     approved_qty = float(boq_line.get("total_qty") or 0.0)
     return {
+        # The match key, copied off the BOQ line it was raised against. Stored
+        # on the claim so the sum survives the line's item number being edited
+        # or renumbered by a later revision.
+        "line_id":       BQ._line_id(boq_line.get("line_id")),
         "item_no":       BQ._item_no(boq_line.get("item_no")),
         "section":       str(boq_line.get("section") or ""),
         "description":   str(boq_line.get("description") or ""),

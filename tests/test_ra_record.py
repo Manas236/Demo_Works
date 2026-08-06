@@ -25,9 +25,33 @@ from store import STORE
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
+def fixture_lid(item_no, section="A") -> str:
+    """
+    A stable line id for a fixture line, derived from (section, item_no).
+
+    **A test convenience and nothing the app does.** Production ids are opaque
+    and random (`boq._new_line_id()`); deriving one from the item number here
+    only gives these tests a way to say "the same line, one revision later"
+    without threading ids through every helper. It is safe precisely because
+    fixture item numbers are unique within each test — which is the property
+    the client's real schedule does NOT have, and the reason the id exists.
+
+    `tests/test_boq_line_ids.py` is where the real, non-derived behaviour is
+    tested, against the seeded 97-line BOQ.
+    """
+    import hashlib
+    return hashlib.sha256(f"{section}/{item_no}".encode()).hexdigest()[:12]
+
+
+def key(item_no, leg, section="A"):
+    """The guard's key for a fixture line — it keys on line_id, not item_no."""
+    return (fixture_lid(item_no, section), leg)
+
+
 def boq_line(item_no, qty, s_rate=100.0, i_rate=50.0, section="A",
-             header=False, unit="Mtrs"):
+             header=False, unit="Mtrs", line_id=None):
     return {
+        "line_id": line_id or fixture_lid(item_no, section),
         "item_no": item_no, "parent_item_no": "", "section": section,
         "is_header": header, "description": f"Line {item_no}", "remark": "",
         "unit": unit, "area_qty": {}, "total_qty": float(qty),
@@ -228,16 +252,16 @@ def test_approved_comes_from_the_latest_revision(store):
     make_boq("b2", [boq_line("1", 150)], rev_no=1, supersedes="b1")
 
     approved = ra.approved_by_line("b1")     # asked of the OLD id
-    assert approved[("1", "supply")] == 150.0
-    assert approved[("1", "installation")] == 150.0
+    assert approved[key("1", "supply")] == 150.0
+    assert approved[key("1", "installation")] == 150.0
 
 
 def test_specification_headers_are_not_billable(store):
     make_boq("b1", [boq_line("4", 0, header=True), boq_line("4.1", 100)])
 
     approved = ra.approved_by_line("b1")
-    assert ("4", "supply") not in approved
-    assert ("4.1", "supply") in approved
+    assert key("4", "supply") not in approved
+    assert key("4.1", "supply") in approved
 
 
 def test_both_legs_are_approved_against_the_same_quantity(store):
@@ -247,8 +271,8 @@ def test_both_legs_are_approved_against_the_same_quantity(store):
     """
     make_boq("b1", [boq_line("1", 700)])
     approved = ra.approved_by_line("b1")
-    assert approved[("1", "supply")] == 700.0
-    assert approved[("1", "installation")] == 700.0
+    assert approved[key("1", "supply")] == 700.0
+    assert approved[key("1", "installation")] == 700.0
 
 
 # ── claimed_by_line ─────────────────────────────────────────────────────────
@@ -258,7 +282,7 @@ def test_claims_sum_across_bills(store):
     make_bill("r1", "b1", 1, "supply", [claim("1", 30)])
     make_bill("r2", "b1", 2, "supply", [claim("1", 25)])
 
-    assert ra.claimed_by_line("b1")[("1", "supply")] == 55.0
+    assert ra.claimed_by_line("b1")[key("1", "supply")] == 55.0
 
 
 def test_the_two_legs_are_summed_separately(store):
@@ -267,8 +291,8 @@ def test_the_two_legs_are_summed_separately(store):
     make_bill("r2", "b1", 2, "installation", [claim("1", 40)])
 
     claimed = ra.claimed_by_line("b1")
-    assert claimed[("1", "supply")] == 30.0
-    assert claimed[("1", "installation")] == 40.0
+    assert claimed[key("1", "supply")] == 30.0
+    assert claimed[key("1", "installation")] == 40.0
 
 
 def test_claims_sum_across_the_whole_revision_chain(store):
@@ -284,8 +308,8 @@ def test_claims_sum_across_the_whole_revision_chain(store):
     make_boq("b2", [boq_line("1", 150)], rev_no=1, supersedes="b1")
     make_bill("r3", "b2", 3, "supply", [claim("1", 20)])
 
-    assert ra.claimed_by_line("b2")[("1", "supply")] == 75.0
-    assert ra.claimed_by_line("b1")[("1", "supply")] == 75.0
+    assert ra.claimed_by_line("b2")[key("1", "supply")] == 75.0
+    assert ra.claimed_by_line("b1")[key("1", "supply")] == 75.0
 
 
 def test_a_revision_does_not_reset_the_claimed_quantity(store):
@@ -295,7 +319,7 @@ def test_a_revision_does_not_reset_the_claimed_quantity(store):
 
     make_boq("b2", [boq_line("1", 100)], rev_no=1, supersedes="b1")
 
-    assert ra.claimed_by_line("b2")[("1", "supply")] == 90.0
+    assert ra.claimed_by_line("b2")[key("1", "supply")] == 90.0
     # …and the block still sees it.
     assert ra.overclaims("b2", "supply", [claim("1", 20)])
 
@@ -306,7 +330,7 @@ def test_another_projects_bills_are_not_counted(store):
     make_bill("r1", "b1", 1, "supply", [claim("1", 30)])
     make_bill("r2", "other", 1, "supply", [claim("1", 80)])
 
-    assert ra.claimed_by_line("b1")[("1", "supply")] == 30.0
+    assert ra.claimed_by_line("b1")[key("1", "supply")] == 30.0
 
 
 def test_exclude_ra_id_leaves_one_bill_out(store):
@@ -314,7 +338,7 @@ def test_exclude_ra_id_leaves_one_bill_out(store):
     make_bill("r1", "b1", 1, "supply", [claim("1", 30)])
     make_bill("r2", "b1", 2, "supply", [claim("1", 25)])
 
-    assert ra.claimed_by_line("b1", exclude_ra_id="r2")[("1", "supply")] == 30.0
+    assert ra.claimed_by_line("b1", exclude_ra_id="r2")[key("1", "supply")] == 30.0
 
 
 # ── The hard block ──────────────────────────────────────────────────────────
@@ -381,7 +405,7 @@ def test_float_noise_is_not_an_overclaim(store):
     make_bill("r1", "b1", 1, "supply", [claim("1", 1.1)])
     make_bill("r2", "b1", 2, "supply", [claim("1", 2.2)])
 
-    assert ra.claimed_by_line("b1")[("1", "supply")] == pytest.approx(3.3)
+    assert ra.claimed_by_line("b1")[key("1", "supply")] == pytest.approx(3.3)
     assert ra.overclaims("b1", "supply", [claim("1", 8.7)]) == []
 
 
@@ -447,7 +471,7 @@ def test_the_tolerance_applies_to_the_cumulative_and_never_per_bill(store,
     for n in range(1, 9):                       # eight bills of 1.01 = 8.08
         make_bill(f"r{n}", "b1", n, "supply", [claim("1", 1.01)])
 
-    assert ra.claimed_by_line("b1")[("1", "supply")] == pytest.approx(8.08)
+    assert ra.claimed_by_line("b1")[key("1", "supply")] == pytest.approx(8.08)
 
     # The ninth takes the cumulative to 9.09, past 9 x 1.01 = 9.09... exactly at
     # the line; 1.02 is unambiguously past it.

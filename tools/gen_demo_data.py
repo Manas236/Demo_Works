@@ -158,7 +158,18 @@ for s, r, ino in rows:
         if m and (s, m.group(1)) in fams:
             parent = m.group(1)
 
-    entry = {"item_no": ino, "parent": parent, "section": s, "spec": code}
+    # The opaque key an RA claim is matched on (boq._line_id). uuid5 off the
+    # fixed namespace and the line's SOURCE COORDINATE — section + worksheet
+    # row — rather than uuid4, because this file has to stay byte-for-byte
+    # reproducible: a random id would rewrite all 97 lines on every
+    # regeneration and, worse, a re-seeded demo BOQ would no longer match the
+    # claims raised against it.
+    #
+    # Deliberately NOT keyed on item_no. Section A carries item 17 twice, so an
+    # item_no key would collide here in the generator too — which is the whole
+    # reason the identifier exists. The row number is unique by construction.
+    entry = {"line_id": uuid.uuid5(NS, f"boqline:{s}:{r}").hex[:12],
+             "item_no": ino, "parent": parent, "section": s, "spec": code}
     if is_header:
         entry["header"] = True
     else:

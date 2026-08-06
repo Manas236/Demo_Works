@@ -59,6 +59,7 @@ and reads `STORE["ra_bills"]` directly, which is the same one-way trick
 """
 
 import json
+import re
 import uuid
 from datetime import date as _date
 
@@ -251,6 +252,60 @@ def _item_no(raw) -> str:
     if isinstance(raw, int):
         return str(raw)
     return str(raw or "").strip()
+
+
+# =============================================================================
+# THE LINE IDENTIFIER
+# =============================================================================
+#
+# `line_id` is the key an RA claim is matched on. It is OPAQUE and
+# SERVER-MINTED, and both halves of that are load-bearing:
+#
+#   * **Opaque.** It is not derived from `item_no`, `section`, `description` or
+#     any other displayed field. Those are values the client's staff edit
+#     freely, and a key made of editable fields re-attributes every claim
+#     against a line the moment somebody fixes a typo in it.
+#   * **Not positional.** An index would re-attribute every claim below any
+#     inserted line — the same defect wearing a different hat.
+#
+# It exists because `item_no` cannot do this job and never could. In the
+# client's own 97-line Sify schedule, 87 priced lines carry only 77 distinct
+# item numbers: item numbers restart per section (item `4` is in both A and B),
+# and section A carries item `17` **twice**, on a flexible sprinkler drop at
+# Rs 1,800 and a 150 mm butterfly valve at Rs 14,572.50. Keying the over-claim
+# guard on `item_no` collapsed those ten lines together, which both waved
+# Rs 1,99,122.50 of over-claim through and blocked Rs 84,071.00 of legitimate
+# claim. See `tests/test_boq_line_ids.py`.
+#
+# Uniqueness is required WITHIN one BOQ record only. Claims are always scoped to
+# a parent BOQ, so a collision across records is harmless and there is
+# deliberately no global registry to keep.
+#
+# Nothing outside the code ever needs to read it: it is not shown on the form,
+# not printed on the document, and not part of any reference the client quotes
+# back. `item_no` remains the display label everywhere it already appeared.
+_LINE_ID_LEN = 12
+_LINE_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+def _new_line_id() -> str:
+    """A fresh opaque line key — 12 hex characters from uuid4."""
+    return uuid.uuid4().hex[:_LINE_ID_LEN]
+
+
+def _line_id(raw) -> str:
+    """
+    A posted line id, or "" if it is absent or malformed.
+
+    "" means *mint one*. A malformed id is never echoed back and never
+    trusted — it is treated exactly as a missing one, because a browser that
+    sent something this shape does not match is a browser whose id we have no
+    reason to believe.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+        return ""
+    s = str(raw).strip().lower()
+    return s if _LINE_ID_RE.match(s) else ""
 
 
 def _num(raw, default: float = 0.0) -> float:
@@ -446,6 +501,10 @@ def _seed_line(row: dict, sections_by_code: dict) -> dict:
 
     if row.get("header"):
         return {
+            # Deterministic, from the generator — see demo_data's line_id note.
+            # A regenerated seed must produce the same ids or a re-seed would
+            # orphan every claim raised against the demo BOQ.
+            "line_id":        _line_id(row.get("line_id")) or _new_line_id(),
             "item_no":        _item_no(row["item_no"]),
             "parent_item_no": "",
             "section":        code,
@@ -475,6 +534,7 @@ def _seed_line(row: dict, sections_by_code: dict) -> dict:
     i_rate = float(row.get("i_rate") or 0.0)
 
     return {
+        "line_id":        _line_id(row.get("line_id")) or _new_line_id(),
         "item_no":        _item_no(row["item_no"]),
         "parent_item_no": _item_no(row.get("parent") or ""),
         "section":        code,
@@ -560,6 +620,124 @@ def ensure_demo_boq() -> None:
 
     STORE["boqs"][bid] = boq
     STORE["_boq_seeded"] = True
+
+
+def backfill_line_ids(store: dict = None) -> dict:
+    """
+    Mint `line_id` on every BOQ line that predates the field. One-time, explicit.
+
+    Returns `{"boqs", "lines", "claims_without_ids"}` — records touched, lines
+    filled, and RA claim rows that carry no `line_id` and therefore match
+    nothing.
+
+    **Explicit and idempotent, not lazy-on-read.** A lazy mint would hand out a
+    different id every time a record was loaded without being saved, which is
+    the one behaviour that would be worse than no id at all. Run this once;
+    running it again fills nothing and reports zero.
+
+    It only ever fills a **blank**. An id already on a line is never replaced —
+    that id may already have claims matched against it, and reissuing it is
+    exactly the orphaning this whole change exists to prevent. Uniqueness is
+    enforced within each record, so a record that somehow carries the same id
+    twice gets the duplicate re-minted.
+
+    ⚠ **It cannot repair RA claims that predate the field**, and deliberately
+    does not try. Matching an existing claim back to a line would have to go
+    through `item_no` — and `item_no` is ambiguous on exactly the lines that
+    matter (the client's section A carries item `17` twice), so a guess would
+    silently attach a claim to the wrong item at the wrong rate. Those rows are
+    counted and reported instead. At the time this migration was written there
+    were **zero** RA bills in existence — there is no route that creates one
+    yet — so the count is expected to be 0 and a non-zero answer means someone
+    needs to look before trusting the guard.
+    """
+    store = store if store is not None else STORE
+    touched_boqs = 0
+    filled = 0
+
+    for boq in (store.get("boqs") or {}).values():
+        seen = set()
+        touched_here = False
+        for li in boq.get("line_items") or []:
+            if not isinstance(li, dict):
+                continue
+            lid = _line_id(li.get("line_id"))
+            if not lid or lid in seen:
+                lid = _new_line_id()
+                while lid in seen:
+                    lid = _new_line_id()
+                li["line_id"] = lid
+                filled += 1
+                touched_here = True
+            seen.add(lid)
+        if touched_here:
+            touched_boqs += 1
+
+    orphan_claims = 0
+    for bill in (store.get("ra_bills") or {}).values():
+        for c in bill.get("claims") or []:
+            if not _line_id(c.get("line_id")):
+                orphan_claims += 1
+
+    return {"boqs": touched_boqs, "lines": filled,
+            "claims_without_ids": orphan_claims}
+
+
+# =============================================================================
+# REVISIONS — carrying ids forward, and what a revision may not remove
+# =============================================================================
+
+def revision_blockers(prev_lines: list, new_lines: list,
+                      claims_by_line_id: dict) -> list:
+    """
+    Lines a revision would delete that already carry RA claims. Empty is a pass.
+
+    A revision creates a **new BOQ record** and posts the previous revision's
+    lines with their ids, so a surviving line keeps its id by the ordinary
+    `_clean_lines()` round trip and a genuinely new line mints one. That is the
+    whole point of the identifier: an RA bill raised against revision 1 still
+    matches its lines after revision 2, even if every item number moved.
+
+    What needs a guard is **deletion**. Dropping a line that has been claimed
+    against leaves a claim with no approved quantity behind it — the balance
+    arithmetic has nothing to hold, and a bill already submitted to the main
+    contractor becomes unbacked. If the work genuinely is not happening, the
+    correction belongs in a claim, not in the schedule the claim was measured
+    against. Deleting an **unclaimed** line stays free.
+
+    Pure by design, and that is an import-direction decision rather than a
+    stylistic one: `claims_by_line_id` is passed in ({line_id: [ra_no, …]},
+    which `ra.claims_by_line_id()` builds) because **boq.py must never import
+    ra.py** (ABOUT.md §2b). The revision route, when it is built, reads
+    `STORE["ra_bills"]` directly — the same one-way trick `view_boq()` already
+    uses for the RA chips.
+    """
+    surviving = {_line_id(li.get("line_id")) for li in new_lines or []}
+    surviving.discard("")
+
+    out = []
+    for li in prev_lines or []:
+        lid = _line_id(li.get("line_id"))
+        if not lid or lid in surviving:
+            continue
+        ra_nos = claims_by_line_id.get(lid) or []
+        if not ra_nos:
+            continue                       # unclaimed: deleting it is free
+        out.append({"line_id": lid,
+                    "item_no": _item_no(li.get("item_no")),
+                    "section": str(li.get("section") or ""),
+                    "description": str(li.get("description") or ""),
+                    "ra_nos": sorted(ra_nos)})
+    return out
+
+
+def revision_blocker_message(v: dict) -> str:
+    """One blocked deletion, in words the person revising it can act on."""
+    bills = ", ".join(f"RA{n}" for n in v["ra_nos"])
+    plural = "bills" if len(v["ra_nos"]) != 1 else "bill"
+    return (f"Item {v['item_no']} (section {v['section']}) cannot be removed — "
+            f"it has already been claimed on {plural} {bills}. Reduce its "
+            f"quantity instead, or correct the position in the next claim.")
 
 
 # =============================================================================
@@ -787,6 +965,19 @@ BOQ_STYLES = """
   }
   .jb-btn:hover { background:var(--brand-lt); border-color:#c7d2fe; }
   .jb-sp { flex:1 1 auto; }
+
+  /* Amber, not red. Amber in this app means "incomplete but working"
+     (ABOUT.md §5) and that is exactly right here: a repeated item number is
+     an ambiguity on the printed sheet, not a billing fault — claims key on
+     the line's own id, so two lines sharing a number stay separate. */
+  .dup-warn {
+    display:flex; gap:.55rem; align-items:flex-start;
+    background:#fffbeb; border:1px solid #fcd34d; border-left:3px solid var(--saffron);
+    border-radius:8px; padding:.6rem .8rem; margin-bottom:1rem;
+    font-size:.78rem; line-height:1.5; color:#78350f;
+  }
+  .dw-icon { color:var(--saffron); font-size:.95rem; line-height:1.3; }
+  .dw-sec { color:#92400e; font-weight:600; }
 
   .sec-group { margin-bottom:.9rem; border:1px solid var(--border);
                border-radius:10px; overflow:hidden; }
@@ -1144,6 +1335,21 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
     by_code = {s["code"]: s for s in sections}
     out = []
 
+    # THE LINE-ID ROUND TRIP — the one thing in this function that, if it
+    # breaks, breaks silently and destroys claim history.
+    #
+    # This function builds a fresh dict out of named keys by construction, which
+    # is what keeps the editor's `_open` / `_spec` UI state out of the record.
+    # The same property means an id that is not explicitly carried across is an
+    # id that is DROPPED — and a dropped id is re-minted on the next save, which
+    # orphans every RA claim against that BOQ with no error anywhere. So the id
+    # is read off the posted line and preserved verbatim.
+    #
+    # `used` enforces uniqueness within this one record. A duplicate is NOT a
+    # rejection: it is what a copy-pasted row in the editor looks like, which is
+    # a legitimate action producing a genuinely new line. First occurrence keeps
+    # the id, the rest are minted fresh.
+    used = set()
     for idx, li in enumerate(raw_lines, start=1):
         if not isinstance(li, dict):
             continue
@@ -1160,6 +1366,17 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
         if not description:
             return [], f"Line {item_no} needs a description.", idx - 1
 
+        # Keep a well-formed, not-yet-used id verbatim; mint in every other
+        # case. Headers get one too: they carry no quantity and nothing claims
+        # against them, but a revision has to carry every surviving line
+        # forward and a uniform rule is one fewer thing to get wrong.
+        lid = _line_id(li.get("line_id"))
+        if not lid or lid in used:
+            lid = _new_line_id()
+            while lid in used:                    # uuid4 collision; never seen
+                lid = _new_line_id()
+        used.add(lid)
+
         is_header = bool(li.get("is_header"))
 
         # A specification header carries the paragraph and nothing else. Zeroing
@@ -1167,6 +1384,7 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
         # honest — nothing downstream has to remember to skip these rows.
         if is_header:
             out.append({
+                "line_id":        lid,
                 "item_no":        item_no,
                 "parent_item_no": _item_no(li.get("parent_item_no")),
                 "section":        code,
@@ -1236,6 +1454,7 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits.", idx - 1
 
         out.append({
+            "line_id":        lid,
             "item_no":        item_no,
             "parent_item_no": _item_no(li.get("parent_item_no")),
             "section":        code,
@@ -1799,6 +2018,10 @@ def _demo_form_payload() -> tuple:
     lines = []
     for li in src["line_items"]:
         row = {
+            # Carried so the editor posts it back and `_clean_lines()` keeps it.
+            # Without this the prefilled form re-mints every id on save and
+            # every claim against the demo BOQ is orphaned.
+            "line_id":        li.get("line_id", ""),
             "item_no":        li["item_no"],
             "parent_item_no": li["parent_item_no"],
             "section":        li["section"],
@@ -1969,6 +2192,13 @@ function blankLine() {
     /* A line the user just added is the one they are about to fill in. */
     _open: true,
     _spec: '', _variant: null, _auto: {},
+    /* Blank means "the server mints one". The browser never invents a line id:
+       the server is the only authority on it, so a new line, a copied row and
+       a hand-edited payload all take the same path. Lines loaded into the
+       editor from an existing BOQ arrive carrying theirs, and it rides back
+       untouched inside MODEL on submit — that round trip is what keeps RA
+       claims attached across an edit. */
+    line_id: '',
     item_no: '', parent_item_no: '', section: (first ? first.code : ''),
     is_header: false, description: '', remark: '', unit: '',
     area_qty: {}, total_qty: '',
@@ -2369,6 +2599,7 @@ function renderLines() {
 
   el('line-editor').innerHTML = h;
   renderJump();
+  renderDupWarn();
   for (var k4 = 0; k4 < MODEL.lines.length; k4++) {
     if (isOpen(MODEL.lines[k4])) hint(k4);
   }
@@ -2407,6 +2638,54 @@ function jumpTo(si) {
   renderLines();
   var node = el('secgrp-' + si);
   if (node && node.scrollIntoView) node.scrollIntoView({block: 'start'});
+}
+
+/* ── Duplicate item numbers — a WARNING, never a block ──────────────────
+
+   The client's own Sify schedule has one: section A carries item 17 twice, on
+   a flexible sprinkler drop and a 150 mm butterfly valve. It is in THEIR
+   source workbook, not something this app introduced, and it is theirs to
+   decide about — so this surfaces the ambiguity and refuses to act on it.
+
+   It cannot break anything, because a claim is matched on the line's opaque
+   `line_id` and never on the item number. That is exactly why this is a
+   warning: before the identifier existed, two lines sharing an item number
+   silently collapsed into one in the over-claim guard. Now they do not, and
+   the only remaining cost is that two rows on the printed sheet read alike —
+   which is a thing to tell somebody, not a thing to refuse to save. */
+function renderDupWarn() {
+  var box = el('dup-warn');
+  if (!box) return;
+
+  var seen = {}, dupes = [];
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    var L = MODEL.lines[i];
+    var ino = String(L.item_no || '').trim();
+    if (!ino) continue;
+    var k = String(L.section || '') + '\\u0000' + ino;
+    if (seen[k]) {
+      if (seen[k] === 1) { dupes.push({sec: L.section, ino: ino}); seen[k] = 2; }
+    } else {
+      seen[k] = 1;
+    }
+  }
+
+  if (!dupes.length) { box.innerHTML = ''; return; }
+
+  var list = '';
+  for (var d = 0; d < dupes.length; d++) {
+    list += (d ? ', ' : '') + esc(dupes[d].ino)
+         +  ' <span class="dw-sec">(section ' + esc(dupes[d].sec || '?') + ')</span>';
+  }
+  box.innerHTML =
+    '<div class="dup-warn">'
+  +   '<span class="dw-icon">&#9888;</span>'
+  +   '<span><b>Repeated item number' + (dupes.length === 1 ? '' : 's') + ':</b> ' + list
+  +   '. Two lines in the same section share a number, so they will print alike '
+  +   'and be hard to tell apart on a measurement sheet. '
+  +   '<b>This does not affect billing</b> &mdash; each line is tracked separately '
+  +   'and claims cannot run together. Saving is not blocked.</span>'
+  + '</div>';
 }
 
 function renderJump() {
@@ -3088,6 +3367,7 @@ def create_boq():
       </p>
 
       <div class="jump-bar" id="jump-bar"></div>
+      <div id="dup-warn"></div>
       <div id="line-editor"></div>
       <button type="button" class="btn-row" style="margin-top:.4rem;" onclick="addLine()">
         + Add line

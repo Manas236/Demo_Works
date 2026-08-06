@@ -112,10 +112,11 @@ Consequences you must respect when editing:
 | [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
-| [boq.py](boq.py) | 2704 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. |
-| [ra.py](ra.py) | 438 | **Running Account bills.** Claims against a BOQ revision. Logic only so far — no routes yet. **Not a tax invoice.** |
-| [demo_data.py](demo_data.py) | 2658 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
-| `tools/gen_demo_data.py` | 300 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
+| [boq.py](boq.py) | 3415 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
+| [ra.py](ra.py) | 608 | **Running Account bills.** Claims against a BOQ revision. Logic only so far — no routes yet. **Not a tax invoice.** |
+| [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
+| `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
+| `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 285 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
 | [pipeline.py](pipeline.py) | 542 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
@@ -599,7 +600,8 @@ record to freeze a copy of, because the schedule is the source.
 A `line_item` row:
 
 ```python
-{"item_no": "24.b",          # STRING, always
+{"line_id": "a3f19c0b7e42", # opaque, server-minted — THE KEY A CLAIM MATCHES ON
+ "item_no": "24.b",          # STRING, always — a DISPLAY LABEL, never a key
  "parent_item_no": "24",     # "" for top level
  "section": "B",
  "is_header": False,         # True = specification paragraph, no qty or rate
@@ -616,7 +618,47 @@ A `line_item` row:
  "install_sac": "995461", "install_gst_rate": 18.0}
 ```
 
-Seven properties this shape exists to guarantee:
+Eight properties this shape exists to guarantee:
+
+0. **`line_id` is what an RA claim is matched on, and `item_no` never is.**
+   It is opaque, minted by `boq._new_line_id()` (12 hex characters off
+   `uuid4`), unique **within one BOQ record** — claims are always scoped to a
+   parent BOQ, so there is deliberately no global registry — and nothing
+   outside the code ever reads it. It is not shown on the form, not printed,
+   and not part of any reference the client quotes back.
+
+   It exists because `item_no` cannot do the job and never could. Item numbers
+   **restart per section** (item `4` is in both A and B) and the client's own
+   section A carries item `17` **twice**, on a flexible sprinkler drop at
+   ₹1,800 and a 150 mm butterfly valve at ₹14,572.50. Keying the over-claim
+   guard on `item_no` collapsed 87 priced lines into 77 entries, which waved
+   **₹1,99,122.50** of over-claim through and refused **₹84,071.00** of
+   legitimate claim, on the client's real schedule. It is also **not
+   positional**: an index would re-attribute every claim below any inserted
+   line, and not derived from any displayed field, because a key made of
+   editable text re-attributes claims the moment somebody fixes a typo.
+
+   ⚠ **The round trip is the fragile part.** `_clean_lines()` builds a fresh
+   dict from named keys by construction, so an id that is not explicitly
+   carried across is **dropped and re-minted on the next save**, which orphans
+   every claim against that BOQ with no error anywhere. The editor posts
+   `line_id` per line and `_clean_lines()` preserves it; four paths are
+   defined and each is tested in
+   [tests/test_boq_line_ids.py](tests/test_boq_line_ids.py):
+
+   | posted id | what happens |
+   |---|---|
+   | present, well-formed, unused | kept **verbatim** |
+   | missing or empty | minted — this is a new line |
+   | duplicated within one post | first kept, the rest minted (a copy-pasted row) |
+   | malformed | minted; never trusted, never echoed |
+
+   `boq.backfill_line_ids()` is the one-time migration for records written
+   before the field, driven by `tools/backfill_line_ids.py`. It only ever fills
+   a blank and is idempotent. It **cannot repair RA claims** that predate the
+   field and does not try — matching one back would have to guess through
+   `item_no`, which is ambiguous on exactly the lines that matter — so it
+   counts and reports them instead.
 
 1. **`item_no` is a STRING, everywhere, always.** The client's workbooks store
    item 4.1 as `4.0999999999999996`, 4.4 as `4.4000000000000004` and 4.6 as
@@ -673,14 +715,23 @@ invoice.** No Rule 46 fields, no place of supply, no e-invoicing, and
 A `claim` row:
 
 ```python
-{"item_no": "24.b", "section": "B", "description": str, "unit": "Mtrs",
+{"line_id": "a3f19c0b7e42",   # THE MATCH KEY, copied off the BOQ line
+ "item_no": "24.b",           # the display label; not unique, never matched on
+ "section": "B", "description": str, "unit": "Mtrs",
  "approved_qty": 700.0, "approved_rate": 2024.0,   # frozen at issue
  "prev_qty": 120.0,                                 # cumulative BEFORE this bill
  "qty": 80.0, "rate": 2024.0, "amount": 161920.0,
  "balance_qty": 500.0, "rate_varies": False}
 ```
 
-Five properties this shape exists to guarantee:
+Six properties this shape exists to guarantee:
+
+0. **`line_id` is the key, `item_no` is the label.** Stored on the claim so the
+   cumulative sum survives the line's item number being edited, or renumbered
+   by a later revision. A claim row carrying **no** id matches nothing and is
+   skipped rather than falling back to `item_no` — a fallback would resurrect
+   the collapse the key exists to end, on precisely the ambiguous lines, and
+   would do it silently.
 
 1. **The figures are frozen.** `approved_qty`, `approved_rate`, `prev_qty` and
    `balance_qty` are stored, never recomputed at render. RA3 stated a balance
@@ -734,6 +785,31 @@ rows at the client's volume and stays cheap to ~50,000, about 80× that.
 
 `approved_by_line()` reads the **latest** revision, because a revision exists
 precisely to change what is approved.
+
+Both key on **`line_id`**, not `item_no` — see §3's property 0 for the ₹2.8
+lakh that keying on the item number cost on the client's own schedule.
+
+#### What a revision may and may not do to a line
+
+A revision posts the previous revision's lines **with their ids**, so a
+surviving line keeps its id through the ordinary `_clean_lines()` round trip
+and a genuinely new line mints one. That is the whole point of the identifier:
+an RA bill raised against revision 1 still matches its lines after revision 2,
+**even if every item number moved**. This retires the restriction the design
+recorded at §6.5 — a revision may now renumber freely.
+
+What still needs a guard is **deletion**. `boq.revision_blockers()` refuses to
+drop a line that already carries a claim, naming the line and the RA numbers
+that claimed it: deleting it leaves a claim with no approved quantity behind
+it, so the balance arithmetic has nothing to hold and a bill already submitted
+to the main contractor becomes unbacked. If the work genuinely is not
+happening, the correction belongs in a claim, not in the schedule the claim was
+measured against. Deleting an **unclaimed** line stays free.
+
+It is a **pure function taking the claim map as an argument**, and that is an
+import-direction decision rather than a stylistic one: `boq.py` may never
+import `ra.py`, so `ra.claims_by_line_id()` builds the map and the caller
+passes it in. The revision route itself is not built yet.
 
 ### Address
 
@@ -1833,6 +1909,15 @@ and opens the full panel only for the line being worked on.
 - **Orphan lines get their own band.** A line whose section no longer exists
   was previously invisible while still posting and still counting; it now shows
   under a red bar telling the user to give it a section or remove it.
+- **Repeated item numbers get an amber band** (`renderDupWarn()`), live as the
+  user types. Two lines in the same section sharing an item number will print
+  alike and be hard to tell apart on a measurement sheet — worth saying. It
+  **warns and never blocks**, and it says so on its face: each line is tracked
+  by its own `line_id`, so their claims cannot run together and billing is
+  unaffected. The client's own Sify schedule trips it — section A carries item
+  17 twice, in *their* source workbook — which is why this reports the
+  ambiguity rather than correcting it. Amber, not red, per the severity rule
+  above: incomplete but working.
 
 Open/closed state lives on the line (`_open`) and on the section (`_open`),
 **never in a map keyed by row index** — that is the class of bug the spec
