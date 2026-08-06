@@ -133,10 +133,19 @@ REQUIRED = [
     ("dashboard", "db", "_nav() renders the persistence-failure strip, and _nav() is "
                         "the only thing in this app that is on every page"),
 
-    ("ra", "boq",      "the schedule a claim is measured against, plus _item_no / _num"),
+    ("ra", "boq",      "the schedule a claim is measured against, plus "
+                       "_line_id / _item_no / _num — and _line_id is the key a "
+                       "claim is matched on"),
     ("ra", "pipeline", "esc / parse_money / fy_of / fy_ref"),
     ("ra", "store",    "the shared STORE dict"),
     ("ra", "branding", "COMPANY_SHORT for the document series"),
+    ("ra", "dashboard", "BASE_STYLES and _nav — the entry form is a page in the "
+                        "app, so it carries the same chrome and the same "
+                        "persistence-failure strip as every other page"),
+    ("ra", "quotation", "QUOTATION_STYLES and _inr — the form widgets, so the "
+                        "RA form IS the BOQ form. Emphatically NOT _tax_lines: "
+                        "an RA bill is a claim document, and "
+                        "test_ra_record.py asserts that absence at AST level"),
 
     ("spec", "dashboard", "BASE_STYLES and _nav"),
     ("spec", "pipeline",  "esc"),

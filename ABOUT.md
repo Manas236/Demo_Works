@@ -101,7 +101,7 @@ Consequences you must respect when editing:
 
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 115 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
+| [app.py](app.py) | 149 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
 | [store.py](store.py) | 35 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 407 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 251 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
@@ -113,7 +113,7 @@ Consequences you must respect when editing:
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 3415 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 608 | **Running Account bills.** Claims against a BOQ revision. Logic only so far — no routes yet. **Not a tax invoice.** |
+| [ra.py](ra.py) | 1922 | **Running Account bills.** Claims against a BOQ revision, with the entry form. **Not a tax invoice.** |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -255,7 +255,10 @@ the over-claim block, with no routes yet. The arrow runs one way:
 
 ```
 ra.py ──► boq.py        the schedule a claim is measured against, plus
-                        _item_no / _num / _fmt_qty
+                        _line_id / _item_no / _num / _fmt_qty / BOQ_STYLES
+ra.py ──► quotation.py  QUOTATION_STYLES + _inr — the form widgets, so the RA
+                        form IS the BOQ form. NOT _tax_lines (see below).
+ra.py ──► dashboard.py  BASE_STYLES / _nav — the persistence strip comes free
 ra.py ──► pipeline.py   esc / parse_money / fy_of / fy_ref
 ra.py ──► store, branding
 ```
@@ -266,11 +269,11 @@ and it must **never** import `proforma.py`, `invoice.py`, `purchase.py`,
 (`PHASE4_RA_DESIGN.md` §5). All of these are asserted in
 [tests/test_import_directions.py](tests/test_import_directions.py).
 
-⚠ **Until the RA routes land, `/boq/view/<id>` will fail if an `ra_bills`
-record exists** — [boq.py:1493-1510](boq.py#L1493-L1510) builds
-`url_for("ra.view_ra", …)` and there is no `ra` blueprint yet. Nothing can
-create one (there is no form), so it is unreachable today; step 2 registers the
-blueprint and closes it.
+✅ **Closed at step 2.** `/boq/view/<id>` used to 500 once an `ra_bills` record
+existed, because boq.py builds `url_for("ra.view_ra", …)` and no `ra` blueprint
+was registered. `app.py` now registers it, and
+`test_boq_view_renders_when_an_ra_bill_exists` fails with that same
+`BuildError` if it is ever unregistered.
 
 **`boq.py` must not import `product.py` either**, and `spec.py` must never
 import `boq.py`. The BOQ picker reads the *spec library*: `product.base_price`
@@ -710,6 +713,7 @@ invoice.** No Rule 46 fields, no place of supply, no e-invoicing, and
   `account_name`, `contact_person`, `to`, `bill_gstin`
 - **Content:** `claims`
 - **Money:** `claim_subtotal`, `deductions[]`, `deduction_total`, `net_payable`
+- **Certification:** `status` ∈ `draft | submitted | certified`, `certified_on`
 - **Other:** `notes`, `company_branch`, `auth_signatory`
 
 A `claim` row:
@@ -721,7 +725,8 @@ A `claim` row:
  "approved_qty": 700.0, "approved_rate": 2024.0,   # frozen at issue
  "prev_qty": 120.0,                                 # cumulative BEFORE this bill
  "qty": 80.0, "rate": 2024.0, "amount": 161920.0,
- "balance_qty": 500.0, "rate_varies": False}
+ "balance_qty": 500.0, "rate_varies": False,
+ "certified_qty": None, "certified_rate": None}   # None = NOT YET certified
 ```
 
 Six properties this shape exists to guarantee:
@@ -810,6 +815,61 @@ It is a **pure function taking the claim map as an argument**, and that is an
 import-direction decision rather than a stylistic one: `boq.py` may never
 import `ra.py`, so `ra.claims_by_line_id()` builds the map and the caller
 passes it in. The revision route itself is not built yet.
+
+#### Two edit permissions on one record
+
+The claim freezes. The certificate never does. They are separate questions and
+`ra.py` answers them separately, because in the real world **certification
+lags** — RA3 comes back certified after RA6 has been raised, and a certificate
+frozen with its claim would be unusable exactly when it is needed.
+
+| | Gate | Rule |
+|---|---|---|
+| **The claim** (`qty`, `rate`, `amount`) | `claim_is_frozen()` | editable **only while it is the latest bill** for its BOQ |
+| **The certificate** (`certified_qty`, `certified_rate`, `status`, `certified_on`) | none | editable **always**, including on a frozen bill |
+
+`claimed_by_line()` sums the whole chain, so editing a mid-chain bill silently
+changes every downstream balance — including ones already printed and handed to
+the main contractor. Latest-only bounds the recompute to one bill and keeps
+printed history true.
+
+`apply_certification()` writes **only** the certified pair, the status and the
+date. It never touches `qty`, `rate` or `amount`, which is what makes
+"certifying a frozen bill does not reopen its claim" true by construction
+rather than by a check.
+
+#### Certification — four rules, each a test
+
+1. **The over-claim block runs on CLAIMED quantity, never on certified.** You
+   cannot claim beyond the BOQ; what the contractor then certifies is his
+   decision, not a validation input.
+2. **Uncertified is NOT zero.** `None` means "not yet ruled on" — excluded from
+   certified totals entirely and reported as *n of m*. Summing a blank as zero
+   under-reports receivables, the exact inverse of the error this system was
+   sold to catch. A certified quantity of **0.0 is a ruling** and does count;
+   the two must not collapse into each other.
+3. **Certified above claimed WARNS, never blocks** — the same treatment the
+   rate divergence gets, and for the same reason.
+4. **Deleting a bill carrying any certification data is refused**, with the
+   reason shown rather than the button hidden. It has been out of the building
+   and acknowledged; deleting it destroys the only record of what was allowed
+   against what was claimed.
+
+The **entry UI** for certification is step 3, on the register. Step 2 built the
+record shape, the arithmetic and the tests.
+
+#### `item_no` on a claim row is a SNAPSHOT
+
+Taken by `build_claim()` when the claim is made, and never re-derived. A
+revision may now renumber freely, so a bill printed last month against item 17
+would otherwise silently re-render as item 18 — quietly changing a document
+already submitted to the main contractor. The rule:
+
+- **matching** is always on `line_id`;
+- **a document** — a record of what was sent — prints the snapshot;
+- **a current-state screen** shows the live number, and where the two disagree
+  `/ra/view` shows the snapshot with *(now 18)* beside it rather than replacing
+  it.
 
 ### Address
 
@@ -2104,6 +2164,87 @@ Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
 16-character cap**: that is Rule 46(b)'s limit on a tax invoice number, and a
 BOQ is a priced schedule, not a statutory record. It still has to be unique and
 non-repeating, because it is the key every RA bill quotes back.
+
+---
+
+### `/ra` — Running Account Bills · [ra.py](ra.py)
+
+| Route | View |
+|---|---|
+| `GET,POST /ra/create` | `create_ra` — BOQ picker, then the claim grid |
+| `GET /ra/view/<id>` | `view_ra` — a **working screen**, not the printed sheet |
+| `GET,POST /ra/edit/<id>` | `edit_ra` — gated to the latest bill |
+| `GET,POST /ra/delete/<id>` | `delete_ra` — GET confirms, POST deletes |
+
+⚠ **There is deliberately no `/ra/` register listing and no printed document.**
+Those are steps 3 and 4. `view_ra` is the page you land on after saving and the
+one the BOQ's RA chips point at; it carries no A4 sheet and does not load
+`VIEW_DOC_STYLES`.
+
+**Registering this blueprint is what closes the `/boq/view` 500** (§2b).
+
+#### The claim grid
+
+- **Every line of the approved BOQ is rendered**, in BOQ order, claim quantity
+  defaulting to 0 — never a shortlist. The operator works from a site
+  measurement sheet against item numbers, and hiding an exhausted line hides
+  the fact that it *is* exhausted, which is the state most likely to be
+  mis-claimed. An exhausted line is greyed with its balance called out, not
+  removed. Specification headers render as context and carry no inputs.
+- **Sparse storage, complete display.** A line claimed at zero is dropped on
+  save. It keeps `ra_bills` small, keeps `claimed_by_line()` cheap, and means
+  an untouched line never asserts a claim of zero it never made.
+- Per line: approved qty, cumulative claimed to date, balance, this bill's
+  quantity and rate, amount. The over-claim and rate-divergence styling update
+  **on every keystroke**, so the breach is visible while it is being typed.
+- **The duplicate-item_no band is here too**, for the same reason it is on the
+  BOQ form — the operator sees two rows both labelled 17 and needs telling they
+  are separate items, guarded separately. Computed server-side here, because on
+  this form the line set is fixed and cannot be edited.
+- The **deductions list is rendered and empty**, as designed (§6.3 of the
+  design doc).
+
+#### One leg per bill, by construction
+
+The leg is a property of the *bill*, chosen before any quantity is entered. A
+claim row carries a quantity and a rate and **has no leg field of its own**, so
+there is no shape in which a mixed-leg bill can be expressed. That is a
+stronger guarantee than a UI that merely discourages one. `leg` is not editable
+after creation — changing it would re-base every claim against a different
+approved figure.
+
+`ra_no` is assigned **server-side on save**, which is what makes "RA5 before
+RA4" and "two RA6s" impossible rather than merely rejected: there is no input
+to reject.
+
+#### The caps
+
+Both enforced in `ra.clean_claims()`, **never in the persistence layer** —
+`db.sync()` runs from `teardown_request`, after the response is built, so a cap
+there could not reject anything.
+
+| | | |
+|---|---|---|
+| `MAX_RA_LINES` | `= boq.MAX_LINES` (600) | **derived, not chosen.** The form renders every BOQ line, so a BOQ legal at 600 lines must post an RA bill legal at 600 lines |
+| `MAX_RA_JSON_BYTES` | `150_000` | **measured, not copied.** See below |
+
+Measured against the seeded 97-line Sify BOQ (87 priced lines), every line
+filled: **6,896 bytes decoded = 79.3 B/line**, 11,084 on the wire = 127.4 B/line
+(**1.61× expansion**). A BOQ line is 701 B, so an RA line is ~8.8× smaller — it
+carries no specification text. The expansion is *worse* than the BOQ's
+1.36–1.51× because an RA line is almost all punctuation and short numerals with
+no prose to dilute the percent-escaping, which is exactly why the constant is
+measured rather than scaled. At the line cap that is 46 KB decoded / 75 KB on
+the wire, and 150,000 × 1.61 = 241,500 leaves ~258 KB of Flask's 500,000
+`MAX_FORM_MEMORY_SIZE` for the other fields.
+
+#### Escaping
+
+`_alert()` escapes its own message and **every caller passes plain text**.
+That is the choke point rather than a convention: `overclaim_message()`
+interpolates an item number, and `item_no` is free text typed on the BOQ form,
+so `<script>` in a line's item number reaches this banner. It did, until this
+escaped it — there is a test.
 
 ---
 

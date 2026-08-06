@@ -24,6 +24,10 @@ from spec import spec_bp         # Specification library: the vocabulary a BOQ i
 from boq import boq_bp           # BOQ: the priced schedule for a project. Head of a
                                  # SECOND sell-side chain — BOQ -> RA bills — parallel
                                  # to quotation -> proforma -> tax invoice, not part of it.
+from ra import ra_bp             # RA bills: progressive claims against a BOQ
+                                 # revision. A CLAIM DOCUMENT, not a tax invoice
+                                 # — no Rule 46, no place of supply, no
+                                 # e-invoicing (PHASE4_RA_DESIGN.md §5).
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
@@ -90,6 +94,11 @@ app.register_blueprint(invoice_bp)            # Mounted at /invoice
 app.register_blueprint(purchase_bp)           # Mounted at /purchase  (buy side)
 app.register_blueprint(spec_bp)               # Mounted at /spec
 app.register_blueprint(boq_bp)                # Mounted at /boq
+app.register_blueprint(ra_bp)                 # Mounted at /ra   — REQUIRED by
+                                              # /boq/view, which builds
+                                              # url_for("ra.view_ra") for every
+                                              # RA bill against the BOQ and
+                                              # 500s without this.
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 
