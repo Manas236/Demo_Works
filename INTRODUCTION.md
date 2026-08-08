@@ -1,0 +1,306 @@
+# INTRODUCTION — read this first
+
+> **This file owns:** what the system is, who it serves, the two chains, the
+> document map, the reading order, the working protocol, and the forbidden list.
+>
+> **This file does not own:** the business domain (→ [DOMAIN.md](DOMAIN.md)),
+> current phase state or the work queue (→ [STATE.md](STATE.md)), or anything
+> architectural — module map, import directions, record shapes, per-page
+> behaviour, conventions (→ [ABOUT.md](ABOUT.md)).
+>
+> Every fact in this repository has exactly one home. Where this file needs a
+> fact it does not own, it links. If you find yourself about to restate a rule
+> here that is written down elsewhere, link to it instead.
+
+---
+
+## 1. What this is
+
+A **Flask quotation, schedule and billing system for Samruddhi Fire**, a
+fire-protection **project contractor** in India. Not an AMC business and not an
+extinguisher-servicing shop — their work is large project jobs, executed over
+months and billed to a **main contractor** as the work is completed.
+
+It is a **seller-side** application throughout. We write the schedule, we issue
+the documents, we submit the claims. The customer sends *us* their purchase
+order; we never issue one to a customer. The one place that inverts is
+`purchase.py`, which is us buying from a vendor — see §3.
+
+The stack is Flask, MySQL, roughly 12,000 lines of Python, no front-end build,
+no ORM, no template files. That last part is not an accident and is not
+technical debt; [ABOUT.md §1](ABOUT.md) explains why, and it is the single
+thing most likely to break a page if you forget it.
+
+---
+
+## 2. Who it serves
+
+| | |
+|---|---|
+| **The operator** | Samruddhi's own office staff — a small number of authenticated internal users. They author BOQs, enter site measurements as claims, and print what goes out. |
+| **The recipient** | The **main contractor**, who receives the claim, certifies some or all of it, and pays. |
+| **The end client** | The project owner. Named on the documents; never a user of this system. |
+
+The operator is not an accountant and not a developer. A rule this system
+enforces has to state its reason on the page, in words, at the moment it
+fires — an error that says only "invalid" costs somebody an afternoon.
+
+---
+
+## 3. The two chains
+
+There are two **sell-side** chains, and they are separate records end to end —
+not two render modes of one document.
+
+```
+CHAIN 1   quotation ──► proforma invoice ──► tax invoice
+          goods, offered and then invoiced in lots
+
+CHAIN 2   BOQ ──► RA bill 1 ──► RA bill 2 ──► …
+          a project, priced once and billed progressively as it is built
+
+BUY SIDE  purchase order ──► [vendor lifecycle]
+          a separate pipeline; never links to a proforma or a tax invoice
+```
+
+**Chain 1** sells things. A quotation offers goods at a price; a proforma
+requests money against it; a tax invoice records the supply. Each link freezes a
+copy of the line items at the moment it is issued.
+
+**Chain 2** bills work. A **BOQ** — bill of quantities — is the priced schedule
+of one project, one to two hundred lines. An **RA bill** — running account — is
+a claim against that schedule: how much of each approved line was executed this
+period. There are typically nine or more against one BOQ.
+
+They are separate chains because the unit of progress differs. Chain 1's unit is
+a document; Chain 2's is **a quantity on a line**, and no field on a quotation
+can carry that. [DOMAIN.md](DOMAIN.md) is the full explanation and is the most
+important file in this set — read it before you touch `boq.py` or `ra.py`.
+
+**Your work is in Chain 2.** Chain 1 is older code, it is where the two
+forbidden files live (§7), and nothing you are asked to build needs to reach
+into it.
+
+The two chains do share a toolkit — the A4 sheet, the money formatters, the
+stylesheet — imported strictly one way. [ABOUT.md §2b](ABOUT.md) has the arrows,
+and [tests/test_import_directions.py](tests/test_import_directions.py) fails if
+you reverse one.
+
+---
+
+## 4. The document map — where each fact lives
+
+Read in this order. Do not skip ABOUT.md because it is long; skim §5 by section
+heading and read the rest.
+
+| # | File | Owns | Explicitly does not own |
+|---|---|---|---|
+| 1 | **INTRODUCTION.md** (this) | Orientation, doc map, working protocol, forbidden list | Domain rules, phase state, architecture |
+| 2 | **[DOMAIN.md](DOMAIN.md)** | The business, in plain language. BOQ structure, item numbering, areas, the supply/installation split, RA billing, legs, cumulative claims, certification, the tax-invoice requirement, and the imperfect-data principle | Anything about code |
+| 3 | **[STATE.md](STATE.md)** | What each Phase 4 step shipped, what is open, what is next, in order | Why a rule exists — that is DOMAIN.md |
+| 4 | **[ABOUT.md](ABOUT.md)** | **The architecture.** Module map, import graph, every record shape, persistence, per-page behaviour, branding, code-level gaps, conventions | The business reasoning; the forward queue |
+| 5 | **[CLAUDE.md](CLAUDE.md)** | The three fast facts that stop you breaking a page before you have read anything | Everything else — it points at ABOUT.md |
+| 6 | **[PHASE4_RA_DESIGN.md](PHASE4_RA_DESIGN.md)** | The approved RA billing design and the **decision record** — what was settled on 2026-08-05, what was amended, and what was left open on purpose | Current state — that is STATE.md |
+| 7 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
+
+### The boundary that is easiest to get wrong
+
+**ABOUT.md §7 and STATE.md both list gaps.** The line between them:
+
+- **ABOUT.md §7** owns gaps in **code that already exists** — the missing
+  product edit route, the escaping holes, the absence of e-invoicing.
+- **STATE.md** owns **work not yet started** — the ordered queue, and
+  requirements learned from the client that have no code behind them at all.
+
+So: ABOUT.md §7.1 owns *which dependencies this app needs*. STATE.md owns *that
+writing `requirements.txt` is an immediate task*. Neither restates the other.
+
+### A note on SAMRUDHI_SPEC.md
+
+`SAMRUDHI_SPEC.md` is **untracked** in the working tree and is the draft this
+document set was written from. Its §2 became DOMAIN.md, its §3 and §7 became
+STATE.md, its §0 and §1 became this file plus ABOUT.md. It is superseded and
+should be deleted rather than maintained — keeping it is four homes for facts
+that now have one each. **Do not read it as authoritative and do not update it.**
+
+### Finding your way around ABOUT.md
+
+It is 2,722 lines. Section headings, so you can jump:
+
+| § | What is there |
+|---|---|
+| 1 | What the app is · **the f-string / no-`/templates` rule** — read this one |
+| 2 | Module map, line counts, and the full import-direction graph |
+| 2b | **The BOQ chain** — `boq.py` and `ra.py`, and what each may import |
+| 3 | **Every record shape**, with the properties each shape exists to guarantee |
+| 4 | Persistence — how `db.py` snapshots and diffs, and how failure surfaces |
+| 5 | Page by page, route by route. `/boq` and `/ra` are the ones you need |
+| 6 | Branding, the settings override mechanism, the chart palette |
+| 7 | **Known gaps in existing code** — read before proposing a fix, it is probably here |
+| 8 | Two dead files. `integration.py` and `product_view_additions.py` — do not implement against either |
+| 9 | Conventions for new code |
+
+---
+
+## 5. The working protocol — mandatory
+
+This is a standing rule set, not a suggestion, and it applies to every task on
+this repository.
+
+### 5.1 Plan, then pause
+
+Before writing any code, state **what you intend to change, which files, and
+which tests will prove it**. Then stop and wait for approval.
+
+Do not combine planning and execution in one action. A plan that arrives
+alongside the diff is not a plan — it is a notification.
+
+### 5.2 Stop and report after each numbered step
+
+Work is broken into numbered steps for a reason. Finish one, report what
+happened, wait. **Do not chain steps**, even when the next one looks obvious and
+small.
+
+### 5.3 Back up the database before anything that writes to it
+
+```bash
+python tools/backup_db.py --label <what-you-are-about-to-do>
+```
+
+It reads the same `.env` the app does, so it always dumps the database the app
+is actually using; it writes to `backups/`, and it refuses to call a dump under
+100 bytes a backup ([tools/backup_db.py:51-82](tools/backup_db.py#L51-L82)).
+
+"Anything that writes to it" includes **starting the app**: `db.sync()` runs
+from `teardown_request` on every request ([ABOUT.md §4](ABOUT.md)), so a single
+page load can persist a change. Back up first, then run.
+
+### 5.4 Ask before anything destructive
+
+Deleting records, dropping or altering a column, rewriting stored JSON, running
+a migration, force-pushing — every one of these needs explicit approval before
+you start, backup or no backup.
+
+### 5.5 Never reduce the test count
+
+The baseline is **411 passing** at `fe629d5`, verified. If your first run
+reports anything else, stop and say so before making a change — the discrepancy
+is in your environment, not in the suite.
+
+Run before and after every change, and **report both numbers**:
+
+```bash
+python -m pytest -q          # py -m pytest -q also works
+```
+
+There is no venv in this repo (§5.7). If a test is genuinely wrong, **say why
+and wait**. Deleting or weakening a failing test is never the fix — several
+tests in this suite are deliberate controls that exist to prove another test
+can actually fail, and they look redundant until you understand what they pin.
+
+### 5.6 When code and a document disagree, the code is right
+
+These documents record decisions and constraints. They can go stale. Where a
+document says a function behaves one way and the function behaves another,
+**the code is authoritative — report the drift, do not edit the code to match
+the prose.**
+
+The exception is a requirement explicitly marked as *not yet implemented*.
+Those are written down precisely because the code does not do them yet.
+
+### 5.7 Environment
+
+There is **no `requirements.txt` and no venv**. Writing one is an open task
+tracked in [STATE.md](STATE.md); generate it from the actual imports rather
+than `pip freeze` of a system Python. The dependency list is in
+[ABOUT.md §7.1](ABOUT.md).
+
+---
+
+## 6. Two things about this codebase that will bite you first
+
+Both are covered fully in ABOUT.md. They are repeated here — as pointers, not
+explanations — only because they are what breaks on day one.
+
+1. **HTML lives in Python f-strings**, so every literal `{` and `}` in embedded
+   CSS or JavaScript must be **doubled** (`{{` / `}}`). This is the single most
+   common way to break a page here. [ABOUT.md §1](ABOUT.md).
+2. **`render_template_string` has been removed** from the modules that were
+   fixed, and must not be reintroduced anywhere. A fully-interpolated string
+   parsed a second time executes any `{{ … }}` that came from user input.
+   [ABOUT.md §7.9d](ABOUT.md).
+
+---
+
+## 7. Files you must not touch
+
+- **`product.py`** — carries known unescaped output across its whole surface.
+- **`quotation.py`** — the same, with additional sinks that are not fixed by
+  removing `render_template_string`.
+
+Both belong to Chain 1, the older sell chain. Both are **deliberately deferred**
+and both are **out of scope for you**. Do not "fix" them, do not tidy them, do
+not refactor around them. Editing either expands the blast radius into code that
+has no test coverage for your changes, and the deferral is a decision that has
+already been taken — it is not an oversight you have spotted.
+
+They must be fixed before any white-label deployment. That is not now, and it is
+not your call. [ABOUT.md §7.7 and §7.9d](ABOUT.md) hold the detail.
+
+**Importing from them is fine and expected.** `ra.py` imports
+`QUOTATION_STYLES` and `_inr` from `quotation.py`
+([ra.py:69](ra.py#L69)) so that the RA form is the same form as the BOQ form.
+The prohibition is on *editing* those two files, not on depending on them.
+
+**One import is prohibited as well: `quotation._tax_lines()`.** That is a
+separate rule with its own reason, and it is **not** affected by §8. It is
+document-total arithmetic branching on a `tax_type` it is handed
+([quotation.py:79-98](quotation.py#L79-L98)) — it does not decide which tax
+head applies, it has no per-line concept, and it lives in a file you may not
+edit. `ra.py` grows its own. [DOMAIN.md](DOMAIN.md) carries the full reason.
+
+---
+
+## 8. One rule in this codebase is now known to be wrong
+
+`ra.py` currently asserts, in code and in a test that reads its AST, that **an RA
+bill is not a tax invoice**. The client's real as-submitted bill arrived on
+8 August 2026 and is headed *Tax Invoice*.
+
+That assertion must be **inverted, not deleted** — and it is **not yet
+implemented**. Do not act on this section on your own initiative.
+
+**Inverting it does not unlock `quotation._tax_lines()`.** That prohibition
+(§7) rests on its own reasons and survives this change untouched. The
+assertion being inverted is the one about *what kind of document an RA bill
+is*; several of the absences the same test pins — e-invoicing among them —
+stay asserted. It is one test becoming three, not one flipped boolean.
+
+- The requirement, and everything the client's real document carries, is in
+  [DOMAIN.md](DOMAIN.md).
+- Its position in the work queue is in [STATE.md](STATE.md).
+
+---
+
+## 9. The principle underneath all of it
+
+**The client's own data is imperfect, and it must survive rather than be
+repaired.** Their real documents contain a duplicated item number, raw Excel
+date serials where dates belong, and a supplier sheet carrying the wrong state's
+GSTIN. Every guard in this system **blocks, warns or flags — it never silently
+corrects.**
+
+An agent trying to be helpful by cleaning up the client's data is the specific
+failure mode this document set exists to prevent. [DOMAIN.md](DOMAIN.md) states
+it in full, with what each of those three defects actually cost.
+
+---
+
+## 10. Where you are
+
+**Branch:** `antigravity-dev`, cut from `feature/boq-ra` at `fe629d5`.
+
+`Quote.html` is untracked in the working tree and would ride along in a
+`git add .`. Handling it is an open item in [STATE.md](STATE.md).
+
+Now read [DOMAIN.md](DOMAIN.md).
