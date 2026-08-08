@@ -265,8 +265,8 @@ ra.py ──► store, branding
 
 and it must **never** import `proforma.py`, `invoice.py`, `purchase.py`,
 `product.py` or `spec.py`. The `invoice.py` prohibition is the load-bearing one:
-**an RA bill is a claim document, not a tax invoice**
-(`PHASE4_RA_DESIGN.md` §5). All of these are asserted in
+**the RA bill's tax block is per-line and carries HSN/SAC, while the sell chain's is document-level**,
+and sharing that machinery would couple two chains that were deliberately built parallel. All of these are asserted in
 [tests/test_import_directions.py](tests/test_import_directions.py).
 
 ✅ **Closed at step 2.** `/boq/view/<id>` used to 500 once an `ra_bills` record
@@ -2153,6 +2153,8 @@ halfway down is not a table.
   > deliberately not a tax invoice** — no Rule 46 fields, no place of supply,
   > no e-invoicing (`PHASE4_RA_DESIGN.md` §5). The project tax-invoice chain is
   > a separate module later and is what will carry the liability.
+  >
+  > **Corrected 8 Aug 2026.** The correction above is now itself superseded. The client's actual as-submitted RA bill was obtained and is explicitly headed "TAX INVOICE". The requirement that the RA bill must act as a tax invoice is now owned by [DOMAIN.md §4](DOMAIN.md), which overrides the design document's initial assumption.
 
 Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
 (`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.
@@ -2466,7 +2468,7 @@ Real, verified, and safe to pick up:
    list.
    ⬆ **Still open, and now also duplicated.** `spec.py` ships an edit route and
    the `_render_form` / always-return-data pattern that `product.py` wants; port
-   it across when that file can next be touched. `spec._valid_tax_code()` is a
+   it across when that file can next be touched. *(Note: This condition is not currently met. Editing `product.py` is absolutely forbidden per [INTRODUCTION.md §7](INTRODUCTION.md), so do not attempt to port it across yet.)* `spec._valid_tax_code()` is a
    deliberate copy of `product._valid_hsn()` for the same reason — the shared
    home is `pipeline.py`, and moving it means editing `product.py`. Fold the two
    together in the same pass.
