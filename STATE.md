@@ -123,6 +123,20 @@ Its parts, and where each lands:
 >
 > **Stop Condition:** If your step-3 plan turns out to need line-level HSN on screen, STOP and re-raise the order rather than proceeding and retrofitting.
 
+**Dead-Premise Cleanup Checklist**
+
+The dead premise that "an RA bill is not a tax invoice" exists in the following files and must be removed or corrected when the tax block is built:
+- [x] `ABOUT.md:116` — Module map description (Fixed)
+- [x] `PHASE4_RA_DESIGN.md:308` — Design document scope (Fixed)
+- [ ] `boq.py:115` — Comment describing `PRINT_TAX`
+- [ ] `store.py:37` — Comment on `ra_bills` dictionary
+- [ ] **[ASSERTION]** `tests/test_ra_record.py:126` — Section header/assertion asserting RA bill is not a tax invoice
+- [ ] **[ASSERTION]** `tests/test_import_directions.py:84` — Assertion message
+- [ ] `ra.py:14` — Module docstring
+- [ ] `ra.py:67` — Inline comment
+- [ ] `ra.py:487` — Inline comment
+- [ ] `app.py:28` — Blueprint registration comment
+
 ### 2.2 Steps 3 and 4 remain
 
 - **Step 3 — the RA register.** A list view, plus the certification entry UI

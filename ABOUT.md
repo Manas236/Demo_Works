@@ -113,7 +113,7 @@ Consequences you must respect when editing:
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 3415 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 1922 | **Running Account bills.** Claims against a BOQ revision, with the entry form. **Not a tax invoice.** |
+| [ra.py](ra.py) | 1922 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Does not yet carry a tax block; required to — see DOMAIN.md §4. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -2148,13 +2148,9 @@ halfway down is not a table.
   not when the schedule is agreed. `supply_gst_rate` / `install_gst_rate` are
   captured per line for whatever raises it, not used here.
 
-  > **Corrected.** This used to read "the liability falls due on the RA bill,
-  > which is the tax invoice". **An RA bill is a claim document and is
-  > deliberately not a tax invoice** — no Rule 46 fields, no place of supply,
-  > no e-invoicing (`PHASE4_RA_DESIGN.md` §5). The project tax-invoice chain is
-  > a separate module later and is what will carry the liability.
+  > **[Corrected 8 Aug 2026]** The client's actual as-submitted RA bill was obtained and is explicitly headed "TAX INVOICE". **The requirement that the RA bill must act as a tax invoice is now active**, owned by [DOMAIN.md §4](DOMAIN.md), overriding previous design assumptions.
   >
-  > **Corrected 8 Aug 2026.** The correction above is now itself superseded. The client's actual as-submitted RA bill was obtained and is explicitly headed "TAX INVOICE". The requirement that the RA bill must act as a tax invoice is now owned by [DOMAIN.md §4](DOMAIN.md), which overrides the design document's initial assumption.
+  > *(Superseded history)*: This used to read "the liability falls due on the RA bill, which is the tax invoice". It was then incorrectly changed to assert that an RA bill is a claim document and is deliberately not a tax invoice — no Rule 46 fields, no place of supply, no e-invoicing (`PHASE4_RA_DESIGN.md` §5), under the false premise that the project tax-invoice chain is a separate module later that would carry the liability.
 
 Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
 (`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.

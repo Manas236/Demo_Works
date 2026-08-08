@@ -309,6 +309,13 @@ asserts it. So the reuse is real, not aspirational.
   document, not a tax invoice.** Decided and commercially scoped: the project
   tax-invoice chain is a separate paid module later.
 
+  > **[AMENDED 8 Aug 2026]** The first sentence is superseded: the
+  > client's as-submitted RA bill is headed "Tax Invoice", so the RA
+  > bill itself must carry a tax block — see DOMAIN.md §4. The
+  > commercial scoping is NOT superseded. A separate project
+  > proforma/tax-invoice chain remains a later chargeable module, and
+  > IRN, e-invoice JSON and GSTR-1 filing remain out of scope.
+
   Concretely, `ra.py` must **not** have:
 
   | | |
