@@ -112,11 +112,9 @@ DEFAULT_GST_RATE = 18.0
 # billed, not when the schedule is agreed. Printing a tax total here would
 # state a liability that does not exist yet.
 #
-# ⚠ Corrected: this used to say the tax falls due on "the RA bill, which is the
-#   tax invoice". An RA bill is a CLAIM document and is deliberately not a tax
-#   invoice — no Rule 46 fields, no place of supply, no e-invoicing
-#   (PHASE4_RA_DESIGN.md §5). The project tax-invoice chain is a separate
-#   module later, and it is what will carry the liability.
+# ⚠ Updated per DOMAIN.md §4: An RA bill is headed TAX INVOICE and carries a
+#   per-line tax block for progressive claims. The BOQ itself remains basic
+#   values only (TAXES WILL BE EXTRA).
 PRINT_TAX = False
 
 # The client's remark column (column N in their workbook) holds internal

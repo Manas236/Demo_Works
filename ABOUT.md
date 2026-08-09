@@ -707,21 +707,14 @@ Eight properties this shape exists to guarantee:
 
 ### RA Bill  (Running Account claim)
 
-Written by `ra.py`. **A claim against a specific BOQ revision — not a tax
-invoice.** No Rule 46 fields, no place of supply, no e-invoicing, and
-`quotation._tax_lines()` is deliberately never imported
-(`PHASE4_RA_DESIGN.md` §5, asserted by `tests/test_ra_record.py`).
+Written by `ra.py`. Progressive claim against a specific BOQ revision, carrying a tax block per DOMAIN.md §4 (headed TAX INVOICE). Does not import `quotation._tax_lines()` nor `invoice.py` (asserted by `tests/test_ra_record.py`).
 
-- **Identity:** `id`, `ref` (`SF/RA/26-27/0004` — *our* document number, not a
-  statutory serial), `fy`, `date`
-- **Back-link:** `boq_id` (a **specific revision**), `boq_ref`, `boq_rev_no` —
-  refs stored, not looked up
-- **Position in the run:** `ra_no` (int, the client's own sequence within the
-  project), `leg` ∈ `supply | installation`
-- **Copied from the BOQ at issue:** `project_name`, `site_location`,
-  `account_name`, `contact_person`, `to`, `bill_gstin`
-- **Content:** `claims`
-- **Money:** `claim_subtotal`, `deductions[]`, `deduction_total`, `net_payable`
+- **Identity:** `id`, `ref` (`SF/RA/26-27/0004`), `fy`, `date`, `tax_invoice_ref`, `tax_invoice_date`, `po_ref`, `po_date` (`po_ref` & `po_date` default to previous bill for same BOQ; stored as known duplication)
+- **Back-link:** `boq_id` (a **specific revision**), `boq_ref`, `boq_rev_no` — refs stored, not looked up
+- **Position in the run:** `ra_no` (int, sequence within project), `leg` ∈ `supply | installation`
+- **Copied from BOQ at issue:** `project_name`, `site_location`, `account_name`, `contact_person`, `to`, `bill_gstin`
+- **Content:** `claims` (each claim row snapshots `hsn_sac` and `gst_rate` from BOQ line)
+- **Money & Tax:** `claim_subtotal`, `deductions[]`, `deduction_total`, `net_payable`, `tax_type`, `cgst_rate`, `sgst_rate`, `igst_rate`, `cgst_amount`, `sgst_amount`, `igst_amount`, `tax_amount`, `rounding_off` (computed delta), `grand_total` (frozen at save)
 - **Certification:** `status` ∈ `draft | submitted | certified`, `certified_on`
 - **Other:** `notes`, `company_branch`, `auth_signatory`
 

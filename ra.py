@@ -11,15 +11,15 @@ is a claim against it: for each line, how much of the approved quantity has been
 executed this period, at what rate, and what remains unbilled. The client's own
 annexure is nine of them against one 97-line schedule.
 
-⚠ **AN RA BILL IS A CLAIM DOCUMENT, NOT A TAX INVOICE.**
+⚠ **AN RA BILL IS HEADED TAX INVOICE AND CARRIES A PER-LINE TAX BLOCK (DOMAIN.md §4).**
 
-That is a deliberate, commercially scoped decision (PHASE4_RA_DESIGN.md §5), and
-it is the first thing to know before editing this file. This module must not
-grow Rule 46 fields, a place of supply, a reverse-charge declaration, an
-FY-unique statutory serial, e-invoicing — and it must **not import
-`quotation._tax_lines()`**. The project tax-invoice chain is a separate module
-later. `tests/test_ra_record.py` asserts the absence, because the pull towards
-"it has amounts on it, so it should have tax on it" is strong and wrong.
+It carries party GSTINs, state codes, a tax invoice reference, main contractor's
+PO/WO reference, per-line HSN/SAC codes, CGST/SGST (or IGST) tax amounts, a Rounding Off
+adjustment, and stored monetary totals.
+
+It must **not import `quotation._tax_lines()`** (which is document-level arithmetic)
+nor `invoice.py`. `ra.py` computes its own per-line tax block. `tests/test_ra_record.py`
+asserts this isolation at AST level.
 
 What this module is built around
 --------------------------------
@@ -30,7 +30,7 @@ system was sold to do. The block is hard: there is no override anywhere in the
 UI, and `OVERCLAIM_TOLERANCE` is the only dial, defaulting to zero.
 
 **The revision chain.** Because the block is hard, the only way through it when
-the approved schedule genuinely changes is a BOQ *revision* — a new BOQ record
+the approved schedule genuinely changes is a BOQ *revision* -- a new BOQ record
 carrying `supersedes`. Claims therefore have to be summed across the whole
 chain, or a revision would silently reset every line's claimed quantity to zero
 and the block would guard nothing. `claimed_by_line()` is that sum and is the
@@ -629,8 +629,82 @@ def bill_totals(claims: list, deductions: list) -> tuple:
     return subtotal, rows, total, round(subtotal - total, 2)
 
 
+def compute_rounding_off(unrounded_total: float) -> tuple:
+    """
+    (rounding_off, rounded_grand_total)
+
+    Rounds unrounded_total to nearest whole rupee. Delta is stored as rounding_off.
+    """
+    grand = float(round(unrounded_total))
+    rounding = round(grand - unrounded_total, 2)
+    return rounding, grand
+
+
+def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgst",
+                       cgst_rate: float = 9.0, sgst_rate: float = 9.0,
+                       igst_rate: float = 18.0) -> dict:
+    """
+    Compute claim_subtotal, deductions, net_payable, tax amounts, rounding_off, and grand_total.
+
+    Tax is computed on per-line basis if line rates differ, or on net_payable / claim totals.
+    Identity: grand_total == net_payable + tax_amount + rounding_off.
+    """
+    subtotal, drows, dtotal, net_payable = bill_totals(claims, deductions)
+    tax_type = str(tax_type or "cgst_sgst").strip().lower()
+
+    cgst_total = 0.0
+    sgst_total = 0.0
+    igst_total = 0.0
+
+    for c in claims or []:
+        c_amt = float(c.get("amount") or 0.0)
+        if tax_type == "cgst_sgst":
+            c_cgst = round(c_amt * (cgst_rate / 100.0), 2)
+            c_sgst = round(c_amt * (sgst_rate / 100.0), 2)
+            cgst_total += c_cgst
+            sgst_total += c_sgst
+        elif tax_type == "igst":
+            c_igst = round(c_amt * (igst_rate / 100.0), 2)
+            igst_total += c_igst
+
+    cgst_amount = round(cgst_total, 2)
+    sgst_amount = round(sgst_total, 2)
+    igst_amount = round(igst_total, 2)
+    tax_amount = round(cgst_amount + sgst_amount + igst_amount, 2)
+
+    raw_total = net_payable + tax_amount
+    rounding_off, grand_total = compute_rounding_off(raw_total)
+
+    return {
+        "claim_subtotal": subtotal,
+        "deductions": drows,
+        "deduction_total": dtotal,
+        "net_payable": net_payable,
+        "tax_type": tax_type,
+        "cgst_rate": float(cgst_rate),
+        "sgst_rate": float(sgst_rate),
+        "igst_rate": float(igst_rate),
+        "cgst_amount": cgst_amount,
+        "sgst_amount": sgst_amount,
+        "igst_amount": igst_amount,
+        "tax_amount": tax_amount,
+        "rounding_off": rounding_off,
+        "grand_total": grand_total,
+    }
+
+
+def previous_bill_po_defaults(boq_id: str) -> tuple:
+    """(po_ref, po_date) from the most recent bill for this BOQ, or ('', '')."""
+    rows = bills_of(boq_id)
+    if not rows:
+        return "", ""
+    prev_bill = rows[-1][1]
+    return str(prev_bill.get("po_ref") or ""), str(prev_bill.get("po_date") or "")
+
+
 def build_claim(boq_line: dict, qty, rate, prev_qty: float,
-                approved_rate: float) -> dict:
+                approved_rate: float, leg: str = "supply",
+                hsn_sac: str = None, gst_rate: float = None) -> dict:
     """
     One claim row, with every figure that has to survive on the document frozen.
 
@@ -638,26 +712,25 @@ def build_claim(boq_line: dict, qty, rate, prev_qty: float,
     disagree with the figures printed beside it — `boq._clean_lines()` makes the
     same call about its own amounts.
 
-    **`item_no` is a SNAPSHOT, taken here and never re-derived.** A revision may
-    now renumber freely (PHASE4_RA_DESIGN.md §4 rule 1, withdrawn at step 1.5),
-    so a bill printed last month against item 17 would silently re-render as
-    item 18 after a revision — quietly changing a document already submitted to
-    the main contractor. The claim stores the number as it stood when the claim
-    was made and prints that; matching is always on `line_id`. Where a
-    *current-state* screen shows a number it uses the live one and says so.
+    **`item_no` and `hsn_sac` are SNAPSHOTS, taken here and never re-derived.**
     """
     q = float(BQ._num(qty, 0.0))
     r = float(BQ._num(rate, 0.0))
     approved_qty = float(boq_line.get("total_qty") or 0.0)
+
+    if hsn_sac is None:
+        hsn_sac = str(boq_line.get("install_sac" if leg == "installation" else "supply_hsn") or "").strip()
+    if gst_rate is None:
+        gst_rate = float(boq_line.get("install_gst_rate" if leg == "installation" else "supply_gst_rate") or 18.0)
+
     return {
-        # The match key, copied off the BOQ line it was raised against. Stored
-        # on the claim so the sum survives the line's item number being edited
-        # or renumbered by a later revision.
         "line_id":       BQ._line_id(boq_line.get("line_id")),
         "item_no":       BQ._item_no(boq_line.get("item_no")),
         "section":       str(boq_line.get("section") or ""),
         "description":   str(boq_line.get("description") or ""),
         "unit":          str(boq_line.get("unit") or ""),
+        "hsn_sac":       hsn_sac,
+        "gst_rate":      gst_rate,
         "approved_qty":  approved_qty,
         "approved_rate": float(approved_rate or 0.0),
         "prev_qty":      float(prev_qty or 0.0),
@@ -666,9 +739,6 @@ def build_claim(boq_line: dict, qty, rate, prev_qty: float,
         "amount":        round(q * r, 2),
         "balance_qty":   round(approved_qty - float(prev_qty or 0.0) - q, 6),
         "rate_varies":   rate_varies(r, approved_rate),
-        # None, NOT 0.0 — "not yet certified" is not "certified at nothing".
-        # The entry UI for these is step 3; the shape and the arithmetic are
-        # here from the start so the print format never has to be reopened.
         "certified_qty":  None,
         "certified_rate": None,
     }
@@ -773,8 +843,12 @@ def clean_claims(raw_lines: list, boq: dict, leg: str, prev: dict,
             return ([], f"Item {BQ._item_no(src.get('item_no'))} has a negative "
                         f"rate.", lid)
 
+        hsn_sac = str(src.get("install_sac" if leg == "installation" else "supply_hsn") or "").strip()
+        gst_rate = float(src.get("install_gst_rate" if leg == "installation" else "supply_gst_rate") or 18.0)
+
         out.append(build_claim(src, qty, rate, prev.get((lid, leg), 0.0),
-                               rates.get((lid, leg), 0.0)))
+                               rates.get((lid, leg), 0.0), leg=leg,
+                               hsn_sac=hsn_sac, gst_rate=gst_rate))
 
     if not out:
         return [], "Nothing has been claimed — enter a quantity on at least one line.", ""
@@ -1898,17 +1972,29 @@ def create_ra():
             request.form.get("ra_json", ""), boq, leg, prev)
         entered = _posted(raw_lines)
 
+        tax_invoice_ref = (request.form.get("tax_invoice_ref") or "").strip()
+        def_po_ref, def_po_date = previous_bill_po_defaults(boq_id)
+        po_ref = (request.form.get("po_ref") if request.form.get("po_ref") is not None else def_po_ref).strip()
+        po_date = (request.form.get("po_date") if request.form.get("po_date") is not None else def_po_date).strip()
+        tax_type = (request.form.get("tax_type") or "cgst_sgst").strip()
+        cgst_rate = float(BQ._num(request.form.get("cgst_rate"), 9.0))
+        sgst_rate = float(BQ._num(request.form.get("sgst_rate"), 9.0))
+        igst_rate = float(BQ._num(request.form.get("igst_rate"), 18.0))
+
         if not error:
             rid = new_id()
-            subtotal, drows, dtotal, net = bill_totals(claims, [])
+            tax_info = compute_tax_totals(claims, [], tax_type=tax_type,
+                                          cgst_rate=cgst_rate, sgst_rate=sgst_rate,
+                                          igst_rate=igst_rate)
             STORE["ra_bills"][rid] = {
                 "id": rid,
                 "ref": next_ref(date_val),
                 "fy": P.fy_of(date_val),
                 "date": date_val,
-                # The bill is measured against a SPECIFIC revision, and the ref
-                # and rev are stored rather than looked up, so it still reads
-                # correctly as a historical document if the BOQ is removed.
+                "tax_invoice_ref": tax_invoice_ref,
+                "tax_invoice_date": date_val,
+                "po_ref": po_ref,
+                "po_date": po_date,
                 "boq_id": boq_id,
                 "boq_ref": boq.get("ref", ""),
                 "boq_rev_no": int(boq.get("rev_no") or 0),
@@ -1921,11 +2007,20 @@ def create_ra():
                 "to": boq.get("to", ""),
                 "bill_gstin": boq.get("bill_gstin", ""),
                 "claims": claims,
-                "claim_subtotal": subtotal,
-                "deductions": drows, "deduction_total": dtotal,
-                "net_payable": net,
-                # Certification starts empty, and empty is NOT zero. The entry
-                # UI is step 3; the shape and arithmetic are here from day one.
+                "claim_subtotal": tax_info["claim_subtotal"],
+                "deductions": tax_info["deductions"],
+                "deduction_total": tax_info["deduction_total"],
+                "net_payable": tax_info["net_payable"],
+                "tax_type": tax_info["tax_type"],
+                "cgst_rate": tax_info["cgst_rate"],
+                "sgst_rate": tax_info["sgst_rate"],
+                "igst_rate": tax_info["igst_rate"],
+                "cgst_amount": tax_info["cgst_amount"],
+                "sgst_amount": tax_info["sgst_amount"],
+                "igst_amount": tax_info["igst_amount"],
+                "tax_amount": tax_info["tax_amount"],
+                "rounding_off": tax_info["rounding_off"],
+                "grand_total": tax_info["grand_total"],
                 "status": "draft", "certified_on": "",
                 "notes": notes_val,
                 "company_branch": "", "auth_signatory": "",
@@ -1992,14 +2087,35 @@ def edit_ra(id: str):
         entered = _posted(raw_lines)
 
         if not error:
-            subtotal, drows, dtotal, net = bill_totals(
-                claims, bill.get("deductions") or [])
-            # The claim is rewritten; the CERTIFICATE is not touched here.
+            tax_invoice_ref = (request.form.get("tax_invoice_ref") or bill.get("tax_invoice_ref") or "").strip()
+            po_ref = (request.form.get("po_ref") if request.form.get("po_ref") is not None else bill.get("po_ref", "")).strip()
+            po_date = (request.form.get("po_date") if request.form.get("po_date") is not None else bill.get("po_date", "")).strip()
+            tax_type = (request.form.get("tax_type") or bill.get("tax_type") or "cgst_sgst").strip()
+            cgst_rate = float(BQ._num(request.form.get("cgst_rate"), bill.get("cgst_rate", 9.0)))
+            sgst_rate = float(BQ._num(request.form.get("sgst_rate"), bill.get("sgst_rate", 9.0)))
+            igst_rate = float(BQ._num(request.form.get("igst_rate"), bill.get("igst_rate", 18.0)))
+
+            tax_info = compute_tax_totals(claims, bill.get("deductions") or [],
+                                          tax_type=tax_type, cgst_rate=cgst_rate,
+                                          sgst_rate=sgst_rate, igst_rate=igst_rate)
             bill["claims"] = claims
-            bill["claim_subtotal"] = subtotal
-            bill["deductions"] = drows
-            bill["deduction_total"] = dtotal
-            bill["net_payable"] = net
+            bill["claim_subtotal"] = tax_info["claim_subtotal"]
+            bill["deductions"] = tax_info["deductions"]
+            bill["deduction_total"] = tax_info["deduction_total"]
+            bill["net_payable"] = tax_info["net_payable"]
+            bill["tax_type"] = tax_info["tax_type"]
+            bill["cgst_rate"] = tax_info["cgst_rate"]
+            bill["sgst_rate"] = tax_info["sgst_rate"]
+            bill["igst_rate"] = tax_info["igst_rate"]
+            bill["cgst_amount"] = tax_info["cgst_amount"]
+            bill["sgst_amount"] = tax_info["sgst_amount"]
+            bill["igst_amount"] = tax_info["igst_amount"]
+            bill["tax_amount"] = tax_info["tax_amount"]
+            bill["rounding_off"] = tax_info["rounding_off"]
+            bill["grand_total"] = tax_info["grand_total"]
+            bill["tax_invoice_ref"] = tax_invoice_ref
+            bill["po_ref"] = po_ref
+            bill["po_date"] = po_date
             bill["date"] = date_val
             bill["notes"] = notes_val
             return redirect(url_for("ra.view_ra", id=id,

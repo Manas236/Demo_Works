@@ -72,7 +72,7 @@ FORBIDDEN = [
     ("boq", "ra",       "any", "the BOQ view page links out with url_for and reads STORE['ra_bills'] "
                                "directly — importing ra.py back would be a cycle"),
     ("boq", "proforma", "any", "a BOQ has no proforma; it bills through RA"),
-    ("boq", "invoice",  "any", "the RA bill is the tax invoice, not the BOQ — ra.py imports invoice, boq does not"),
+    ("boq", "invoice",  "any", "the RA bill carries the tax block per DOMAIN.md §4, not the BOQ — boq does not import invoice"),
     ("boq", "purchase", "any", "a BOQ does not link to a purchase order"),
     ("boq", "settings", "any", "settings imports quotation; nothing downstream of it may import back"),
     ("boq", "product",  "any", "the BOQ picker reads the SPEC library. product.py serves the "
@@ -81,8 +81,8 @@ FORBIDDEN = [
     # ── RA billing (Phase 4) ────────────────────────────────────────────────
     ("ra", "proforma", "any", "an RA bill is a claim against a BOQ; the PI belongs to "
                               "the quotation chain and has nothing to say about it"),
-    ("ra", "invoice",  "any", "an RA bill is a CLAIM DOCUMENT, not a tax invoice — "
-                              "PHASE4_RA_DESIGN.md section 5, decided and scoped"),
+    ("ra", "invoice",  "any", "an RA bill computes its own per-line tax block per DOMAIN.md §4; "
+                              "invoice.py is the sell chain's document-level tax and must not be imported"),
     ("ra", "purchase", "any", "the buy side is a separate pipeline"),
     ("ra", "product",  "any", "a BOQ line is a clause of work, not a catalogue item; "
                               "base_price is not a claim rate"),

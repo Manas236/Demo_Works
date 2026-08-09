@@ -321,7 +321,7 @@ asserts it. So the reuse is real, not aspirational.
   | | |
   |---|---|
   | ❌ `quotation._tax_lines()` | do not import it |
-  | ❌ Rule 46 fields | no HSN/SAC on the claim row, no `place_of_supply`, no `pos_code` |
+  | ❌ Rule 46 full tax invoice engine | per-line HSN/SAC is snapshotted per DOMAIN.md §4; no `place_of_supply`, no `pos_code` |
   | ❌ reverse-charge declaration | |
   | ❌ FY-unique *statutory* reference | `ref` is our document number, not a tax-invoice serial; no 16-character cap |
   | ❌ e-invoicing / IRN / signed QR | §7.9b does not apply to this module |

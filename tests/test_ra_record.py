@@ -81,21 +81,29 @@ def make_boq(bid, lines, rev_no=0, supersedes="", ref="SF/BOQ/26-27/0001"):
     return bid
 
 
-def make_bill(rid, boq_id, ra_no, leg, claims, deductions=None):
-    subtotal, drows, dtotal, net = ra.bill_totals(claims, deductions or [])
+def make_bill(rid, boq_id, ra_no, leg, claims, deductions=None, **over):
+    tax_info = ra.compute_tax_totals(claims, deductions or [])
     STORE["ra_bills"][rid] = {
         "id": rid, "ref": f"SF/RA/26-27/{ra_no:04d}", "fy": "26-27",
         "date": "2026-08-05",
+        "tax_invoice_ref": "", "tax_invoice_date": "2026-08-05",
+        "po_ref": "", "po_date": "",
         "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
         "ra_no": ra_no, "leg": leg,
         "project_name": "Sify Bangalore", "site_location": "Bangalore",
         "account_name": "Prudent Teqtis Pvt Ltd", "contact_person": "",
         "to": "", "bill_gstin": "",
         "claims": claims,
-        "claim_subtotal": subtotal,
-        "deductions": drows, "deduction_total": dtotal, "net_payable": net,
+        "claim_subtotal": tax_info["claim_subtotal"],
+        "deductions": tax_info["deductions"], "deduction_total": tax_info["deduction_total"],
+        "net_payable": tax_info["net_payable"],
+        "tax_type": tax_info["tax_type"],
+        "cgst_rate": tax_info["cgst_rate"], "sgst_rate": tax_info["sgst_rate"], "igst_rate": tax_info["igst_rate"],
+        "cgst_amount": tax_info["cgst_amount"], "sgst_amount": tax_info["sgst_amount"], "igst_amount": tax_info["igst_amount"],
+        "tax_amount": tax_info["tax_amount"], "rounding_off": tax_info["rounding_off"], "grand_total": tax_info["grand_total"],
         "notes": "", "company_branch": "", "auth_signatory": "",
     }
+    STORE["ra_bills"][rid].update(over)
     return rid
 
 
@@ -168,18 +176,27 @@ def _ra_code_tokens() -> set:
     return tokens
 
 
-def test_ra_does_not_pull_in_the_tax_machinery():
+# ── Tax Block & AST Prohibitions ─────────────────────────────────────────
+
+def test_ra_carries_tax_invoice_record_shape():
     """
-    A deliberate, commercially scoped decision (PHASE4_RA_DESIGN.md §5), and the
-    pull towards "it has amounts on it, so it should have tax on it" is strong
-    enough to be worth a test rather than a comment.
+    DOMAIN.md §4: RA bill is headed TAX INVOICE and carries tax fields.
     """
     tokens = _ra_code_tokens()
+    for required in ("tax_type", "hsn_sac", "tax_invoice_ref", "cgst_rate",
+                     "sgst_rate", "po_ref", "rounding_off", "grand_total"):
+        assert required in tokens, f"{required} missing from ra.py record shape"
 
+
+def test_ra_forbids_improper_tax_coupling():
+    """
+    _tax_lines, invoice.py, e-invoicing, IRN, and statutory GSTR tokens are out of scope.
+    """
+    tokens = _ra_code_tokens()
     assert "_tax_lines" not in tokens
-    for statutory in ("place_of_supply", "pos_code", "reverse_charge",
-                      "eway_bill_no", "irn"):
-        assert statutory not in tokens, f"{statutory} is not an RA bill's business"
+    assert "invoice" not in tokens
+    for statutory in ("eway_bill_no", "irn", "signed_qr", "einvoice"):
+        assert statutory not in tokens, f"{statutory} is out of scope for RA bills"
 
 
 def test_the_prohibition_test_can_actually_fail():
@@ -613,8 +630,59 @@ def test_deductions_of_both_bases_add_up(store):
 
 
 def test_net_payable_identity_holds_whatever_the_deductions(store):
-    claims = [claim("1", 37, rate=133.33)]
+    claims = [claim("37", 37, rate=133.33)]
     for deds in ([], [{"basis": "percent", "pct": 7.5, "code": "r", "label": "R"}],
                  [{"basis": "amount", "amount": 99.99, "code": "a", "label": "A"}]):
         subtotal, rows, total, net = ra.bill_totals(claims, deds)
         assert round(net, 2) == round(subtotal - total, 2)
+
+
+# ── Task 2: HSN/SAC Record Shape & Tax Totals Invariants ─────────────────
+
+def test_hsn_sac_and_gst_rate_snapshotted_per_claim_row(store):
+    line = boq_line("1", 100, s_rate=100.0, i_rate=50.0)
+    line["supply_hsn"] = "73063090"
+    line["install_sac"] = "995468"
+    line["supply_gst_rate"] = 18.0
+    line["install_gst_rate"] = 18.0
+
+    c_supply = ra.build_claim(line, 10, 100.0, 0.0, 100.0, leg="supply")
+    assert c_supply["hsn_sac"] == "73063090"
+    assert c_supply["gst_rate"] == 18.0
+
+    c_install = ra.build_claim(line, 10, 50.0, 0.0, 50.0, leg="installation")
+    assert c_install["hsn_sac"] == "995468"
+    assert c_install["gst_rate"] == 18.0
+
+
+def test_tax_totals_and_rounding_off_invariant(store):
+    c1 = claim("1", 10, rate=100.0)
+    c1["gst_rate"] = 18.0
+    tax_info = ra.compute_tax_totals([c1], [], tax_type="cgst_sgst", cgst_rate=9.0, sgst_rate=9.0)
+
+    assert tax_info["claim_subtotal"] == 1000.0
+    assert tax_info["net_payable"] == 1000.0
+    assert tax_info["cgst_amount"] == 90.0
+    assert tax_info["sgst_amount"] == 90.0
+    assert tax_info["tax_amount"] == 180.0
+    assert tax_info["grand_total"] == 1180.0
+    assert tax_info["rounding_off"] == 0.0
+
+    # Invariant assertion
+    assert tax_info["grand_total"] == tax_info["net_payable"] + tax_info["tax_amount"] + tax_info["rounding_off"]
+
+
+def test_previous_bill_po_defaults_returns_previous_values(store):
+    make_boq("b1", [boq_line("1", 100)])
+    make_bill("r1", "b1", 1, "supply", [claim("1", 10)], po_ref="PO-12345", po_date="2026-08-01")
+
+    po_ref, po_date = ra.previous_bill_po_defaults("b1")
+    assert po_ref == "PO-12345"
+    assert po_date == "2026-08-01"
+
+
+def test_blank_hsn_sac_stores_empty_string(store):
+    line = boq_line("1", 100)
+    line["supply_hsn"] = ""
+    c = ra.build_claim(line, 10, 100.0, 0.0, 100.0, leg="supply")
+    assert c["hsn_sac"] == ""

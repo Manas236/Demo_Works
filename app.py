@@ -25,9 +25,7 @@ from boq import boq_bp           # BOQ: the priced schedule for a project. Head 
                                  # SECOND sell-side chain — BOQ -> RA bills — parallel
                                  # to quotation -> proforma -> tax invoice, not part of it.
 from ra import ra_bp             # RA bills: progressive claims against a BOQ
-                                 # revision. A CLAIM DOCUMENT, not a tax invoice
-                                 # — no Rule 46, no place of supply, no
-                                 # e-invoicing (PHASE4_RA_DESIGN.md §5).
+                                  # revision. Headed TAX INVOICE per DOMAIN.md §4.
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
