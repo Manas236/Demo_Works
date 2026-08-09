@@ -873,6 +873,11 @@ already submitted to the main contractor. The rule:
   `/ra/view` shows the snapshot with *(now 18)* beside it rather than replacing
   it.
 
+`/ra/view` has always followed this. `/ra/print` — the actual document — did
+not until `tests/test_ra_print_immutability.py` was written; see §5's
+*"`/ra/print/<id>` reads the RECORD, never the live BOQ"* for what it was doing
+instead and what the loop over `boq["line_items"]` cost beyond the item number.
+
 ### Address
 
 ```python
@@ -2183,6 +2188,43 @@ non-repeating, because it is the key every RA bill quotes back.
 
 **Registering this blueprint is what closes the `/boq/view` 500** (§2b).
 
+#### `/ra/print/<id>` reads the RECORD, never the live BOQ
+
+The printed bill is an issued **tax invoice**, so the rule from §3 applies to it
+without exception: **every value on the page comes from `bill`.** Item numbers,
+descriptions, units, quantities, rates, amounts, HSN/SAC codes, the six
+party/project fields, and every total including CGST/SGST/rounding/grand — all
+stored, all read, none recomputed and none looked up.
+
+⚠ **It did not, and the failure was invisible.** The document was built as a
+loop over `boq["line_items"]`, which let three live reads through: the **item
+number** printed the current BOQ's label over the snapshot `/ra/view` correctly
+shows; the **row set and row order** followed the current schedule, so a line
+dropped from the BOQ vanished from the table while its amount stayed inside the
+printed Claim Subtotal — *an invoice whose rows did not add up to its own
+total*; and the buyer/project block fell back to the live BOQ whenever the
+bill's own copy was blank. The suite was green throughout, because every print
+test rendered a bill against a BOQ nobody then touched.
+
+`tests/test_ra_print_immutability.py` is the test that was missing. It issues a
+bill, revises the schedule underneath it — rate, quantity, HSN, item number,
+description, unit, and outright deletion of a claimed line — and asserts the
+rendered page is **byte-identical**. Four of its eight cases fail against the
+pre-fix renderer.
+
+**The one thing read from the live BOQ is the specification-header relation**
+(`parent_item_no` → the header line), because no claim row carries it. The
+header's own paragraph is therefore the single value on the page that still
+tracks the schedule, and it is the single thing that disappears if the BOQ
+record does. Closing that would mean snapshotting the header text onto the bill
+at save — a record-shape change, not made here. Nothing else on the document
+depends on the BOQ existing at all.
+
+A spec header prints only when a line **under it** is claimed, and prints **in
+full** — `boq.view_boq()` prints the same paragraph in full, and an ellipsis
+dropped into the middle of a specification clause on a tax invoice is a
+document saying something other than what was agreed.
+
 #### The claim grid
 
 - **Every line of the approved BOQ is rendered**, in BOQ order, claim quantity
@@ -2191,6 +2233,62 @@ non-repeating, because it is the key every RA bill quotes back.
   the fact that it *is* exhausted, which is the state most likely to be
   mis-claimed. An exhausted line is greyed with its balance called out, not
   removed. Specification headers render as context and carry no inputs.
+
+##### Navigating 97 lines here too — the family fold
+
+Rendered flat, the real Sify schedule is 97 stacked rows of which ten carry
+specification paragraphs of 237–1369 characters. So the grid folds, and it is
+**boq.py's fold ported over** rather than a second design: the same `is-spec` /
+`is-child` class names, the same `.ls-chev` / `.ls-tag` summary furniture, the
+same `cursor:pointer; user-select:none` affordance, the same
+`spec · N items` count, and the same collapsed-on-arrival default. A closed
+header takes its family with it — item 24 shut takes 24.a–24.i — because that
+is how the schedule reads on paper. Forty of the ninety-seven rows are children
+of one of the ten headers.
+
+**One difference from boq.py, in mechanism only, and it is forced.** boq.py
+re-renders its editor from a browser-side model and simply does not emit a
+folded child. This grid is *server-rendered*, and every row carries the two
+`<input>`s that make up the POST body — so a folded row is **hidden**
+(`display:none`), never removed. Folding must not be able to change what saves,
+and `tests/test_ra_collapse_js.py` runs the real toggles under Node against the
+real page and diffs `ra_json` to prove it does not.
+
+Consequences of that mechanism, all of them deliberate:
+
+- Open/closed state lives on the **header row, keyed by its `line_id`** — never
+  in a map keyed by row index. Same lesson as `_open` on a BOQ line, and this
+  grid is where an index key would bite hardest: section A carries item 17
+  twice.
+- `_families()` computes the map **server-side**, for the reason
+  `_duplicate_items()` does — on this form the line set is fixed and there is
+  no browser-side model to consult.
+- A family **opens on arrival when one of its children already carries a
+  figure**. That is boq.py's "a rejected POST forces the offending line open"
+  contract, and it is also what makes `/ra/edit` show the lines the bill
+  actually claimed instead of a wall of shut headers.
+- A header with **no** children is not a fold point — no chevron, no click
+  target.
+- Expand-all / collapse-all sit above the table. boq.py hangs them off its
+  sticky jump bar; there are no sections to jump between here.
+
+##### The description column is NOT nowrap
+
+A claim-entry table is read against a **paper measurement sheet**, one row at a
+time. `white-space: nowrap` with an ellipsis and a hover `title` fails on a
+touch screen and fails again when the two documents are open side by side —
+which is the only way this form is ever used. So:
+
+- **Child and standalone lines wrap to two lines** (`.cl-clamp`,
+  `-webkit-line-clamp: 2`) and carry their **whole** description in the cell.
+  The full text was already on the page in the `title` attribute, so this costs
+  nothing on the wire.
+- **Only the parent header row is clamped to one line** (`.ls-desc`) — it holds
+  a specification paragraph, and a paragraph is not a table row.
+
+The clamp is presentation, top to bottom: every BOQ line still renders, every
+quantity still defaults to 0, every input is still in the POST body whatever is
+folded, and `clean_claims()` still drops the zero-quantity lines on save.
 - **Sparse storage, complete display.** A line claimed at zero is dropped on
   save. It keeps `ra_bills` small, keeps `claimed_by_line()` cheap, and means
   an untouched line never asserts a claim of zero it never made.
@@ -2665,6 +2763,30 @@ Real, verified, and safe to pick up:
 13. **`app.run(debug=True)`** with `reloader_type="stat"` — the stat reloader is
     intentional (the watchdog reloader storms on Windows when AV/indexers touch
     `site-packages`). Never ship `debug=True`.
+14. **The RA bill's tax block is not per-line, despite the record being.**
+    `build_claim()` snapshots `gst_rate` onto every claim row and
+    `compute_tax_totals()` never reads it — it applies the **bill-level**
+    `cgst_rate` / `sgst_rate` / `igst_rate` to every line and sums. On a
+    single-rate bill (all twelve lines of `SF/RA/26-27/0001` are 18%) the answer
+    is right; on a bill mixing 18% goods with 12% or 5% work it is wrong, and
+    wrong on a statutory document. §2b says the load-bearing reason `ra.py` may
+    not import `invoice.py` is that *"the RA bill's tax block is per-line"* —
+    the record shape delivers that and the arithmetic does not yet.
+15. **`/ra/print` hardcodes the supplier's state, and prints no place of
+    supply.** `seller_state = "Punjab (03)"` and a fallback GSTIN of
+    `03AAACS2024F1Z0` are literals in `print_ra()`, contradicting
+    `settings.py`'s own `COMPANY_GSTIN` (whose placeholder is a `27`/
+    Maharashtra pattern — see gap 10). **Place of supply with its State code is
+    a Rule 46 field and is absent from the document entirely.** It is also what
+    decides CGST/SGST versus IGST: the seeded bill is Punjab → Karnataka, an
+    inter-state supply, and it prints CGST+SGST because `tax_type` defaults to
+    `cgst_sgst` and no form offers the choice. `invoice.py` already derives this
+    (`_supplier_state()`, `pos_code`) — but `ra.py` may not import it, so the
+    derivation has to be grown here or lifted into `pipeline.py`.
+16. **`bill_gstin` is blank on the seeded BOQ**, so the customer GSTIN prints as
+    an em dash on `SF/RA/26-27/0001`. Rule 46 requires the recipient's GSTIN
+    where they are registered. This is missing demo data rather than a code
+    fault, but it is missing on the record a demo will be given from.
 
 ---
 

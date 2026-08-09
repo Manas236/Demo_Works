@@ -1146,8 +1146,25 @@ RA_STYLES = """
                     vertical-align:middle; }
   table.claims tr:hover td { background:#f8fafc; }
   .cl-no    { width:70px;  font-weight:700; color:var(--navy); }
-  .cl-desc  { min-width:180px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .ls-desc  { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* The description column of a CLAIM ENTRY table.
+     **Deliberately not nowrap-with-ellipsis.** The operator is holding a paper
+     measurement sheet and matching a row on it to a row here. Hover-to-reveal
+     fails on a touch screen, and fails again when the two documents are being
+     read side by side — which is the only way this form is ever used. Once the
+     specification families fold, the visible rows are few enough to afford two
+     lines each, so child lines wrap and only the parent header is clamped. */
+  .cl-desc  { min-width:180px; max-width:280px; }
+  .cl-desc .cl-clamp {
+    display:-webkit-box; -webkit-box-orient:vertical;
+    -webkit-line-clamp:2; line-clamp:2;
+    overflow:hidden; line-height:1.35; max-height:2.7em;
+  }
+  /* The parent header row IS clamped to one line — it carries a specification
+     paragraph of up to ~1400 characters, and a paragraph is not a table row.
+     Same treatment boq.py's summary row gives it, same class name. */
+  .ls-desc  { display:block; overflow:hidden; text-overflow:ellipsis;
+              white-space:nowrap; }
   .cl-unit  { width:62px;  color:var(--muted); }
   .cl-num   { width:88px;  text-align:right; font-variant-numeric:tabular-nums; }
   .cl-in    { width:104px; }
@@ -1167,8 +1184,35 @@ RA_STYLES = """
   tr.cl-done .cl-no { color:var(--muted); }
   .cl-bal-0 { color:#b45309; font-weight:700; }
 
-  /* A specification header — context, never claimable. */
-  tr.cl-head td { background:#f1f5f9; font-weight:700; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:500px; }
+  /* A specification header — context, never claimable, and the fold point.
+     ────────────────────────────────────────────────────────────────────────
+     The family tree, ported from boq.py's line editor: the same `.ls-row`
+     affordances (`cursor:pointer; user-select:none`), the same `is-spec` /
+     `is-child` class names, the same chevron, the same `spec · N items` tag,
+     and the same collapsed-on-arrival behaviour. Item 4 shut takes 4.1–4.8
+     with it, because that is how the schedule reads on paper — 40 of the
+     Sify BOQ's 97 rows are children of one of its 10 headers.
+
+     ONE difference from boq.py, in MECHANISM only, and it is forced rather
+     than chosen: boq.py re-renders from a browser-side model and simply does
+     not emit a folded child, but this grid is server-rendered and every row
+     carries the two <input>s that make up the POST body. So a folded row is
+     HIDDEN, never removed. Collapsing must not be able to change what saves. */
+  tr.cl-head td { background:#f1f5f9; font-weight:700; color:var(--navy); }
+  tr.cl-head { cursor:pointer; user-select:none; }
+  tr.cl-head:hover td { background:#e2e8f0; }
+  tr.cl-head.is-spec .cl-no { border-left:3px solid var(--navy); }
+  tr.cl-line.is-child .cl-no { padding-left:1.6rem; }
+  .ls-chev { display:inline-block; width:12px; color:var(--muted);
+             font-size:.7rem; }
+  .ls-tag  { float:right; font-size:.72rem; color:var(--navy);
+             font-weight:600; white-space:nowrap; padding-left:.8rem; }
+
+  /* Expand-all / collapse-all. boq.py hangs these off its sticky jump bar;
+     this grid has no sections to jump between, so they stand alone. */
+  .cl-tools { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
+              margin:0 0 .5rem; font-size:.75rem; color:var(--muted); }
+  .cl-tools .sp { flex:1 1 auto; }
 
   .cl-over input { border-color:var(--brand); background:#fef2f2; }
   .cl-warn input { border-color:var(--saffron); background:#fffbeb; }
@@ -1315,9 +1359,60 @@ function total() {
   }
 }
 
+/* ── The specification family tree ──────────────────────────────────────
+   Ported from boq.py: a closed header folds its family away with it, item 4
+   shut takes 4.1-4.8 with it, and everything arrives shut.
+
+   Open/closed state lives on the HEADER ROW, keyed by its line_id — never in
+   a map keyed by row index. That is the desync boq.py's `_open` was moved
+   onto the line to avoid, and a claim grid is exactly where it would bite,
+   because two rows in one section can share an item number.
+
+   `FAMILIES` is computed server-side for the same reason `_duplicate_items()`
+   is: on this form the line set is fixed and cannot be edited.
+
+   A folded row is HIDDEN, not removed. Every <input> stays in the document
+   and therefore in the POST body, open or shut — `saveJSON()` below reads
+   values and never visibility, and there is a test that fires these toggles
+   against the rendered page and diffs the payload. */
+
+function isFamilyOpen(hlid) {
+  var head = el('head_' + hlid);
+  return !!(head && head.getAttribute('data-open') === '1');
+}
+
+function setFamily(hlid, open) {
+  var head = el('head_' + hlid);
+  if (!head) return;
+  head.setAttribute('data-open', open ? '1' : '0');
+  var chev = el('chev_' + hlid);
+  if (chev) chev.textContent = open ? '▾' : '▸';
+  var kids = FAMILIES[hlid] || [];
+  for (var i = 0; i < kids.length; i++) {
+    var row = el('row_' + kids[i]);
+    if (row) row.style.display = open ? '' : 'none';
+  }
+}
+
+function toggleFamily(hlid) { setFamily(hlid, !isFamilyOpen(hlid)); }
+
+function setAllFamilies(open) {
+  for (var hlid in FAMILIES) {
+    if (Object.prototype.hasOwnProperty.call(FAMILIES, hlid)) {
+      setFamily(hlid, open);
+    }
+  }
+}
+
+function expandAll()   { setAllFamilies(true); }
+function collapseAll() { setAllFamilies(false); }
+
 /* Only lines with a quantity are posted. Sparse storage: an untouched line
    must not assert a claim of zero it never made. The server drops zeros too —
-   this is a courtesy to the wire, not the rule. */
+   this is a courtesy to the wire, not the rule.
+
+   Note what this does NOT consult: whether a row is visible. A folded family
+   posts exactly what an open one does. */
 function saveJSON() {
   var lines = [];
   for (var i = 0; i < LINE_IDS.length; i++) {
@@ -1388,6 +1483,44 @@ def _trunc(s: str, n: int = 96) -> str:
     return s[:n-1] + "…" if len(s) > n else s
 
 
+def _families(boq: dict) -> dict:
+    """
+    `{header_line_id: [child_line_id, ...]}` for this BOQ's specification
+    families — boq.py's `childrenOf()`, computed here instead of in JS.
+
+    Server-side for the same reason `_duplicate_items()` is: on this form the
+    line set is fixed. It comes from the approved BOQ and nothing on the page
+    can add to it, remove from it or reorder it, so there is no state for the
+    browser to keep and nothing for it to recompute.
+
+    The match is boq.py's, unchanged — **same section, and `parent_item_no`
+    equal to the header's `item_no`.** Section is part of the key because item
+    numbers restart per section (ABOUT.md §3), so item 4 in A and item 4 in B
+    are different headers and 4.1 in B must not fold under A's.
+    """
+    heads = {}
+    for li in boq.get("line_items") or []:
+        if not li.get("is_header"):
+            continue
+        item = BQ._item_no(li.get("item_no"))
+        lid = BQ._line_id(li.get("line_id"))
+        if item and lid:
+            heads[(str(li.get("section") or ""), item)] = lid
+
+    out = {lid: [] for lid in heads.values()}
+    for li in boq.get("line_items") or []:
+        if li.get("is_header"):
+            continue
+        parent = BQ._item_no(li.get("parent_item_no"))
+        lid = BQ._line_id(li.get("line_id"))
+        if not parent or not lid:
+            continue
+        hlid = heads.get((str(li.get("section") or ""), parent))
+        if hlid:
+            out[hlid].append(lid)
+    return out
+
+
 def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
     """
     Every line of the approved BOQ, in BOQ order, as claim-grid rows.
@@ -1400,24 +1533,60 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
 
     Specification headers are rendered as context and carry no inputs: a header
     holds the clause and no quantity, so there is nothing to claim against it.
+    They are also the **fold point** — see `RA_STYLES` and `_RA_JS`. A family
+    arrives collapsed, and opens on arrival only when one of its children
+    already carries a figure: that is boq.py's "a rejected POST forces the
+    offending line open" contract, and it is also what makes `/ra/edit` show
+    the lines the bill actually claimed rather than a wall of shut headers.
+
+    **Folded is hidden, never dropped.** Every row of the approved BOQ is in
+    the document whatever is open, so the POST body does not depend on what the
+    operator happened to have expanded.
     """
     rates = approved_rates(str(boq.get("id") or ""))
+    families = _families(boq)
+    child_of = {kid: hlid for hlid, kids in families.items() for kid in kids}
+    open_family = {hlid for hlid, kids in families.items()
+                   if any(BQ._num((entered.get(k) or {}).get("qty"), 0.0) > 0
+                          for k in kids)}
     out = []
 
     for li in boq.get("line_items") or []:
         item = _esc(BQ._item_no(li.get("item_no")))
         raw_desc = str(li.get("description") or "")
-        desc_truncated = _esc(_trunc(raw_desc, 96))
 
         if li.get("is_header"):
+            # One line only: this is a specification paragraph, and the fold is
+            # what makes the schedule scannable. The whole text stays in `title`.
+            desc_truncated = _esc(_trunc(raw_desc, 96))
+            hlid = BQ._line_id(li.get("line_id"))
+            kids = families.get(hlid) or []
+            is_open = hlid in open_family
+            tag = (f'<span class="ls-tag">spec &middot; {len(kids)} '
+                   f'item{"" if len(kids) == 1 else "s"}</span>') if kids else \
+                  '<span class="ls-tag">spec</span>'
+            # A header with no family is not a fold point — no chevron, no
+            # click target, nothing to promise the operator that never happens.
+            click = f' id="head_{hlid}" data-open="{"1" if is_open else "0"}"' \
+                    f' onclick="toggleFamily(\'{hlid}\')"' if kids and hlid else ""
+            chev = (f'<span class="ls-chev" id="chev_{hlid}">'
+                    f'{"&#9662;" if is_open else "&#9656;"}</span>') if kids and hlid else ""
             out.append(
-                f'<tr class="cl-head"><td class="cl-no">{item}</td>'
-                f'<td colspan="8" class="ls-desc" title="{_esc(raw_desc)}">{desc_truncated}</td></tr>')
+                f'<tr class="cl-head is-spec"{click}>'
+                f'<td class="cl-no">{chev}{item}</td>'
+                f'<td colspan="8">{tag}'
+                f'<span class="ls-desc" title="{_esc(raw_desc)}">{desc_truncated}</span>'
+                f'</td></tr>')
             continue
 
         lid = BQ._line_id(li.get("line_id"))
         if not lid:
             continue
+
+        parent_lid = child_of.get(lid)
+        child_cls = " is-child" if parent_lid else ""
+        hide = (' style="display:none;"'
+                if parent_lid and parent_lid not in open_family else "")
 
         approved = float(li.get("total_qty") or 0.0)
         claimed = float(prev.get((lid, leg), 0.0))
@@ -1434,10 +1603,10 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
         bal_cls = "cl-num cl-bal-0" if balance <= 1e-6 else "cl-num"
 
         out.append(f"""
-        <tr class="cl-line{done}" id="row_{lid}"
+        <tr class="cl-line{child_cls}{done}" id="row_{lid}"{hide}
             data-approved="{approved:g}" data-prev="{claimed:g}" data-rate="{app_rate:g}">
           <td class="cl-no">{item}</td>
-          <td class="cl-desc ls-desc" title="{_esc(raw_desc)}">{desc_truncated}</td>
+          <td class="cl-desc"><span class="cl-clamp" title="{_esc(raw_desc)}">{_esc(" ".join(raw_desc.split()))}</span></td>
           <td class="cl-unit">{_esc(li.get("unit") or "")}</td>
           <td class="cl-num">{_qty(approved)}</td>
           <td class="cl-num">{_qty(claimed)}</td>
@@ -1456,6 +1625,24 @@ def _claim_ids(boq: dict) -> str:
     ids = [BQ._line_id(li.get("line_id")) for li in boq.get("line_items") or []
            if not li.get("is_header") and BQ._line_id(li.get("line_id"))]
     return json.dumps(ids)
+
+
+def _family_tools(boq: dict) -> str:
+    """The expand-all / collapse-all bar, or nothing when there is no family."""
+    families = {h: k for h, k in _families(boq).items() if k}
+    if not families:
+        return ""
+    n = len(families)
+    rows = sum(len(k) for k in families.values())
+    return f"""
+      <div class="cl-tools">
+        <span>{n} specification famil{"y" if n == 1 else "ies"} &middot;
+        {rows} line{"" if rows == 1 else "s"} folded under {"it" if n == 1 else "them"}.
+        Every line is still on the page and still saves &mdash; folding only hides it.</span>
+        <span class="sp"></span>
+        <button type="button" class="btn-row" onclick="expandAll()">Expand all</button>
+        <button type="button" class="btn-row" onclick="collapseAll()">Collapse all</button>
+      </div>"""
 
 
 def _deductions_block(bill: dict = None) -> str:
@@ -1525,10 +1712,20 @@ def _flash() -> str:
 
 
 def _boq_facts(boq: dict, leg: str, ra_no) -> str:
+    """
+    The five facts above the claim grid.
+
+    `ra_no` is **the integer**, and this function owns the `RA` prefix. It used
+    to be handed the caller's page heading — an already-formatted `"RA3"` from
+    `_entry_form` and a bare `3` from everywhere else — and printed `RARA3`.
+    That was patched by sniffing for a leading `"RA"`, which left one parameter
+    with two contracts and the next caller free to pick the wrong one. The
+    caller passes the number; there is nothing left to sniff.
+    """
     n, m = bills_certified(str(boq.get("id") or ""))
-    label = str(ra_no or "")
-    if not label.startswith("RA"):
-        label = f"RA{label}"
+    label = f"RA{int(ra_no or 0)}"       # int() by intent: a pre-formatted
+                                         # string is now a loud TypeError here
+                                         # rather than a quiet "RARA3" on screen
     return f"""
     <div class="ra-meta">
       <div class="ra-fact"><b>Project</b><span>{_esc(boq.get("project_name"))}</span></div>
@@ -1540,9 +1737,16 @@ def _boq_facts(boq: dict, leg: str, ra_no) -> str:
 
 
 def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
-                action: str, heading: str, back_url: str, date_val: str,
+                action: str, ra_no: int, back_url: str, date_val: str,
                 notes_val: str, submit_label: str, frozen_note: str = "") -> str:
-    """The claim grid, shared by create and edit — one form, two entry points."""
+    """
+    The claim grid, shared by create and edit — one form, two entry points.
+
+    `ra_no` is **the integer**. The page heading is derived from it here; it is
+    not a second parameter that could disagree with it, and it is not what gets
+    handed to `_boq_facts()`.
+    """
+    heading = f"RA{int(ra_no or 0)}"
     return _shell(heading, f"""
   <div class="page-top">
     <h1>{heading}</h1>
@@ -1550,7 +1754,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
   </div>
   {_alert(error)}
   {frozen_note}
-  {_boq_facts(boq, leg, heading)}
+  {_boq_facts(boq, leg, ra_no)}
   {_dup_band(boq)}
   <form method="POST" action="{action}" onsubmit="return saveJSON()">
     <input type="hidden" name="ra_json" id="ra_json"/>
@@ -1566,6 +1770,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
     <div class="form-section">
       <div class="section-title">&#128200; Claim</div>
       <p id="ra-over" class="alert error" style="display:none;"></p>
+      {_family_tools(boq)}
       <div class="cl-wrap">
         <table class="claims">
           <thead><tr>
@@ -1595,7 +1800,8 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
     </div>
     <button type="submit" class="btn">{submit_label}</button>
   </form>
-  <script>var LINE_IDS = {_claim_ids(boq)};</script>
+  <script>var LINE_IDS = {_claim_ids(boq)};
+var FAMILIES = {json.dumps(_families(boq))};</script>
   {_RA_JS}""")
 
 
@@ -2044,7 +2250,7 @@ def create_ra():
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),
-        heading=f"RA{ra_no}",
+        ra_no=ra_no,
         back_url=url_for("boq.view_boq", id=boq_id),
         date_val=date_val, notes_val=notes_val,
         submit_label="Save RA bill")
@@ -2136,7 +2342,7 @@ def edit_ra(id: str):
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.edit_ra", id=id),
-        heading=f"RA{bill.get('ra_no')}",
+        ra_no=bill.get("ra_no"),
         back_url=url_for("ra.view_ra", id=id),
         date_val=date_val, notes_val=notes_val,
         submit_label="Save changes")
@@ -2271,6 +2477,12 @@ def print_ra(id: str):
     Carries TAX INVOICE header, seller & buyer GSTINs, PO/WO references,
     per-line HSN/SAC codes, CGST/SGST/IGST breakdown, Rounding Off,
     Grand Total, Amount in Words, and Bank details.
+
+    **Every value on this page comes from the bill's own record.** That is the
+    whole point of the snapshot: an issued tax invoice must render identically
+    after the BOQ it was measured against is revised. The only thing read from
+    the live BOQ is the specification-header *relation* — see the line table
+    below — and `test_ra_print_immutability.py` asserts the property end to end.
     """
     bill = STORE["ra_bills"].get(id)
     if not bill:
@@ -2298,6 +2510,8 @@ def print_ra(id: str):
     rounding_off = float(bill.get("rounding_off") or 0.0)
     grand_total = float(bill.get("grand_total") or (net_payable + tax_amount + rounding_off))
 
+    # `quotation._amount_in_words()` already returns its own "INR " prefix —
+    # the document printed "INR INR Nine Lakh …" until this stopped adding one.
     words = _amount_in_words(grand_total)
 
     # References
@@ -2306,74 +2520,83 @@ def print_ra(id: str):
     po_ref = bill.get("po_ref") or "&mdash;"
     po_date = bill.get("po_date") or "&mdash;"
 
-    # Company & Customer details
+    # Company & Customer details.
+    #
+    # No `or boq.get(...)` fallback on any of these. `create_ra()` copies all six
+    # onto the bill at issue precisely so the document does not depend on the
+    # schedule still saying the same thing; reading the live BOQ when the copy is
+    # blank reintroduces exactly that dependency, and it does it silently on the
+    # only bills where it can matter. A blank copy prints an em dash and says so.
     seller_gstin = B.COMPANY_GSTIN or "03AAACS2024F1Z0"
     seller_state = "Punjab (03)"
-    buyer_name_disp = _esc(bill.get("account_name") or boq.get("account_name") or "") or "&mdash;"
-    buyer_gstin_disp = _esc(bill.get("bill_gstin") or boq.get("bill_gstin") or "") or "&mdash;"
-    project_name_disp = _esc(bill.get("project_name") or boq.get("project_name") or "") or "&mdash;"
-    site_location_disp = _esc(bill.get("site_location") or boq.get("site_location") or "") or "&mdash;"
-    contact_person_disp = _esc(bill.get("contact_person") or boq.get("contact_person") or "") or "&mdash;"
-    to_address_disp = _esc(bill.get("to") or boq.get("to") or "") or "&mdash;"
+    buyer_name_disp = _esc(bill.get("account_name") or "") or "&mdash;"
+    buyer_gstin_disp = _esc(bill.get("bill_gstin") or "") or "&mdash;"
+    project_name_disp = _esc(bill.get("project_name") or "") or "&mdash;"
+    site_location_disp = _esc(bill.get("site_location") or "") or "&mdash;"
+    contact_person_disp = _esc(bill.get("contact_person") or "") or "&mdash;"
+    to_address_disp = _esc(bill.get("to") or "") or "&mdash;"
     po_ref_disp = _esc(bill.get("po_ref") or "") or "&mdash;"
     po_date_disp = _esc(bill.get("po_date") or "") or "&mdash;"
 
-    # Table rows — including parent spec lines from BOQ
-    claims_by_lid = {BQ._line_id(c.get("line_id")): c for c in claims if c.get("line_id")}
+    # ── The line table ─────────────────────────────────────────────────────
+    #
+    # **Driven by `bill["claims"]`, never by the BOQ's live `line_items`.** This
+    # is an issued tax invoice, and every figure, unit, description, item number
+    # and HSN/SAC on it is the snapshot taken at save (ABOUT.md §3) — the same
+    # rule `/ra/view` already follows. Iterating the BOQ instead made the
+    # document a view of the *current* schedule three ways at once: it printed
+    # the live item number over the snapshot, it reordered with the BOQ, and a
+    # line dropped from the BOQ vanished from the table while its amount stayed
+    # inside the Claim Subtotal — an invoice whose rows did not add up to its
+    # own total.
+    #
+    # The BOQ is consulted for exactly ONE thing: **which specification header a
+    # claimed line sits under.** That is a relation (`parent_item_no`), not a
+    # value, and no claim row carries it. Nothing else is read from there.
+    live_lines = boq.get("line_items") or []
+    live_by_lid, headers_by_key = {}, {}
+    for li in live_lines:
+        if li.get("is_header"):
+            headers_by_key[(str(li.get("section") or ""),
+                            BQ._item_no(li.get("item_no")))] = li
+            continue
+        lid = BQ._line_id(li.get("line_id"))
+        if lid:
+            live_by_lid[lid] = li
+
     table_rows_html = ""
-    idx = 0
+    last_header_key = None
+    for idx, c in enumerate(claims, 1):
+        # The header lookup. Only the relation crosses over — the claim's own
+        # id resolves to its BOQ line, whose `parent_item_no` names the header.
+        src = live_by_lid.get(BQ._line_id(c.get("line_id"))) or {}
+        parent = BQ._item_no(src.get("parent_item_no"))
+        header_key = (str(src.get("section") or ""), parent) if parent else None
+        hdr = headers_by_key.get(header_key) if header_key else None
 
-    boq_lines = boq.get("line_items") or []
-    if boq_lines:
-        for li in boq_lines:
-            item_no = BQ._item_no(li.get("item_no"))
-            raw_desc = (li.get("description") or "").strip()
-
-            if li.get("is_header"):
-                table_rows_html += f"""
+        if hdr is not None and header_key != last_header_key:
+            # Printed in full, never truncated — `boq.view_boq()` prints the
+            # same paragraph in full, and an ellipsis in the middle of a
+            # specification clause on a tax invoice is a document that says
+            # something other than what was agreed.
+            table_rows_html += f"""
                 <tr style="background:#f8fafc;font-weight:700;">
                   <td style="text-align:center;"></td>
-                  <td style="font-weight:700;color:var(--navy);">{_esc(item_no)}</td>
-                  <td colspan="6" style="font-weight:700;color:var(--navy);">{_esc(_trunc(raw_desc, 120))}</td>
+                  <td style="font-weight:700;color:var(--navy);">{_esc(BQ._item_no(hdr.get("item_no")))}</td>
+                  <td colspan="6" style="font-weight:700;color:var(--navy);">{_esc((hdr.get("description") or "").strip())}</td>
                 </tr>"""
-                continue
+        last_header_key = header_key
 
-            lid = BQ._line_id(li.get("line_id"))
-            c = claims_by_lid.get(lid)
-            if not c:
-                continue
+        hsn_sac = (c.get("hsn_sac") or "").strip()
+        hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
+        qty = float(c.get("qty") or 0.0)
+        rate = float(c.get("rate") or 0.0)
+        amt = float(c.get("amount") or (qty * rate))
 
-            idx += 1
-            hsn_sac = (c.get("hsn_sac") or "").strip()
-            hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
-            qty = float(c.get("qty") or 0.0)
-            rate = float(c.get("rate") or 0.0)
-            amt = float(c.get("amount") or (qty * rate))
-
-            table_rows_html += f"""
+        table_rows_html += f"""
             <tr>
               <td style="text-align:center;">{idx}</td>
-              <td style="font-weight:600;">{_esc(item_no)}</td>
-              <td>{_esc(c.get('description'))}</td>
-              <td style="text-align:center;">{hsn_display}</td>
-              <td style="text-align:center;">{_esc(c.get('unit'))}</td>
-              <td style="text-align:right;">{BQ._fmt_qty(qty)}</td>
-              <td style="text-align:right;">&#8377;&nbsp;{rate:,.2f}</td>
-              <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{amt:,.2f}</td>
-            </tr>"""
-    else:
-        for idx, c in enumerate(claims, 1):
-            item_no = BQ._item_no(c.get("item_no"))
-            hsn_sac = (c.get("hsn_sac") or "").strip()
-            hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
-            qty = float(c.get("qty") or 0.0)
-            rate = float(c.get("rate") or 0.0)
-            amt = float(c.get("amount") or (qty * rate))
-
-            table_rows_html += f"""
-            <tr>
-              <td style="text-align:center;">{idx}</td>
-              <td style="font-weight:600;">{_esc(item_no)}</td>
+              <td style="font-weight:600;">{_esc(BQ._item_no(c.get('item_no')))}</td>
               <td>{_esc(c.get('description'))}</td>
               <td style="text-align:center;">{hsn_display}</td>
               <td style="text-align:center;">{_esc(c.get('unit'))}</td>
@@ -2527,7 +2750,7 @@ def print_ra(id: str):
         </table>
 
         <div style="margin-top:1rem;padding:0.8rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem;">
-          <b>Amount in Words:</b> INR {_esc(words)}
+          <b>Amount in Words:</b> {_esc(words)}
         </div>
 
         <div class="doc-summary">
