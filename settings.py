@@ -388,9 +388,9 @@ def edit_settings():
         </div>
 
         <div class="form-section">
-          <div class="section-title">Bank Details &mdash; proforma invoice only</div>
+          <div class="section-title">Bank Details &mdash; proforma invoice &amp; RA bill</div>
           <p class="fld-hint" style="margin:-.5rem 0 1rem;">
-            These print on the proforma invoice, which is a request for payment.
+            These print on the proforma invoice and printed RA tax invoice, which request payment.
             They are deliberately kept off the quotation — that is an offer, not
             a demand for money.
           </p>
