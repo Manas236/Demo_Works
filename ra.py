@@ -66,7 +66,7 @@ from store import STORE
 # two forms are the same form. `_tax_lines` is deliberately NOT among them and
 # never will be — an RA bill is a claim document, not a tax invoice, and
 # `tests/test_ra_record.py` asserts the absence at AST level.
-from quotation import QUOTATION_STYLES, _inr
+from quotation import QUOTATION_STYLES, VIEW_DOC_STYLES, _inr, _amount_in_words
 
 ra_bp = Blueprint("ra", __name__, url_prefix="/ra")
 
@@ -1701,6 +1701,7 @@ def list_ras():
             cert_badge = certification_status_badge(b)
             view_url = url_for("ra.view_ra", id=rid)
             cert_url = url_for("ra.certify_ra", id=rid)
+            print_url = url_for("ra.print_ra", id=rid)
             boq_link = url_for("boq.view_boq", id=boq_id) if boq_id in STORE.get("boqs", {}) else "#"
 
             table_rows_html += f"""
@@ -1716,6 +1717,7 @@ def list_ras():
               <td>
                 <a href="{view_url}" class="btn-view">&#128269; View</a>
                 <a href="{cert_url}" class="btn-view" style="margin-left:0.3rem;">&#9998; Certify</a>
+                <a href="{print_url}" class="btn-view" style="margin-left:0.3rem;">&#128438; Print</a>
               </td>
             </tr>"""
 
@@ -2199,13 +2201,14 @@ def view_ra(id: str):
     edit_btn = ("" if frozen else
                 f'<a class="btn btn-ghost" href="{url_for("ra.edit_ra", id=id)}">Edit claim</a>')
     cert_btn = f'<a class="btn btn-ghost" href="{url_for("ra.certify_ra", id=id)}">&#9998; Certify</a>'
+    print_btn = f'<a class="btn" href="{url_for("ra.print_ra", id=id)}" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Tax Invoice</a>'
 
     return _shell(f"RA{bill.get('ra_no')}", f"""
   <div class="page-top">
     <h1>RA{_esc(bill.get('ra_no'))} <span>&middot; {_esc(bill.get('leg'))}</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.view_boq', id=boq_id)}" class="btn btn-ghost">&#8592; BOQ</a>
-      {edit_btn}{cert_btn}{del_btn}
+      {edit_btn}{cert_btn}{print_btn}{del_btn}
     </div>
   </div>
   {_flash()}
@@ -2245,8 +2248,252 @@ def view_ra(id: str):
     {_deductions_block(bill)}
   </div>
   <p style="font-size:.75rem;color:var(--muted);">
-    This is a working view. The printed RA bill is a later step.
+    This is a working view. <a href="{url_for('ra.print_ra', id=id)}">Click here to view/print the Tax Invoice</a>.
   </p>""")
+
+
+@ra_bp.route("/print/<id>")
+def print_ra(id: str):
+    """
+    The printed RA bill tax invoice document.
+
+    Modeled directly on RA2.pdf (DOMAIN.md §4).
+    Carries TAX INVOICE header, seller & buyer GSTINs, PO/WO references,
+    per-line HSN/SAC codes, CGST/SGST/IGST breakdown, Rounding Off,
+    Grand Total, Amount in Words, and Bank details.
+    """
+    bill = STORE["ra_bills"].get(id)
+    if not bill:
+        return redirect(url_for("ra.list_ras", msg="That RA bill no longer exists.", type="error"))
+
+    boq_id = str(bill.get("boq_id") or "")
+    boq = STORE["boqs"].get(boq_id) or {}
+    claims = bill.get("claims") or []
+
+    # Tax & monetary details (from stored record)
+    tax_type = bill.get("tax_type", "cgst_sgst")
+    cgst_rate = float(bill.get("cgst_rate") or 9.0)
+    sgst_rate = float(bill.get("sgst_rate") or 9.0)
+    igst_rate = float(bill.get("igst_rate") or 18.0)
+
+    cgst_amount = float(bill.get("cgst_amount") or 0.0)
+    sgst_amount = float(bill.get("sgst_amount") or 0.0)
+    igst_amount = float(bill.get("igst_amount") or 0.0)
+    tax_amount = float(bill.get("tax_amount") or (cgst_amount + sgst_amount + igst_amount))
+
+    claim_subtotal = float(bill.get("claim_subtotal") or 0.0)
+    deductions = bill.get("deductions") or []
+    deduction_total = float(bill.get("deduction_total") or 0.0)
+    net_payable = float(bill.get("net_payable") or (claim_subtotal - deduction_total))
+    rounding_off = float(bill.get("rounding_off") or 0.0)
+    grand_total = float(bill.get("grand_total") or (net_payable + tax_amount + rounding_off))
+
+    words = _amount_in_words(grand_total)
+
+    # References
+    tax_inv_ref = bill.get("tax_invoice_ref") or bill.get("ref") or f"SF/RA/{bill.get('fy') or '26-27'}/{int(bill.get('ra_no') or 1):04d}"
+    tax_inv_date = bill.get("tax_invoice_date") or bill.get("date") or ""
+    po_ref = bill.get("po_ref") or "&mdash;"
+    po_date = bill.get("po_date") or "&mdash;"
+
+    # Company & Customer details
+    seller_gstin = B.COMPANY_GSTIN or "03AAACS2024F1Z0"
+    seller_state = "Punjab (03)"
+    buyer_name_disp = _esc(bill.get("account_name") or boq.get("account_name") or "") or "&mdash;"
+    buyer_gstin_disp = _esc(bill.get("bill_gstin") or boq.get("bill_gstin") or "") or "&mdash;"
+    project_name_disp = _esc(bill.get("project_name") or boq.get("project_name") or "") or "&mdash;"
+    site_location_disp = _esc(bill.get("site_location") or boq.get("site_location") or "") or "&mdash;"
+    contact_person_disp = _esc(bill.get("contact_person") or boq.get("contact_person") or "") or "&mdash;"
+    to_address_disp = _esc(bill.get("to") or boq.get("to") or "") or "&mdash;"
+    po_ref_disp = _esc(bill.get("po_ref") or "") or "&mdash;"
+    po_date_disp = _esc(bill.get("po_date") or "") or "&mdash;"
+
+    # Table rows
+    table_rows_html = ""
+    for idx, c in enumerate(claims, 1):
+        item_no = BQ._item_no(c.get("item_no"))
+        hsn_sac = (c.get("hsn_sac") or "").strip()
+        hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
+        qty = float(c.get("qty") or 0.0)
+        rate = float(c.get("rate") or 0.0)
+        amt = float(c.get("amount") or (qty * rate))
+
+        table_rows_html += f"""
+        <tr>
+          <td style="text-align:center;">{idx}</td>
+          <td style="font-weight:600;">{_esc(item_no)}</td>
+          <td>{_esc(c.get('description'))}</td>
+          <td style="text-align:center;">{hsn_display}</td>
+          <td style="text-align:center;">{_esc(c.get('unit'))}</td>
+          <td style="text-align:right;">{BQ._fmt_qty(qty)}</td>
+          <td style="text-align:right;">&#8377;&nbsp;{rate:,.2f}</td>
+          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{amt:,.2f}</td>
+        </tr>"""
+
+    # Deductions block rows
+    deductions_rows_html = ""
+    for d in deductions:
+        lbl = d.get("label") or d.get("code") or "Deduction"
+        damt = float(d.get("amount") or 0.0)
+        deductions_rows_html += f"""
+        <tr>
+          <td colspan="7" style="text-align:right;color:var(--muted);">{_esc(lbl)}:</td>
+          <td style="text-align:right;color:#dc2626;">- &#8377;&nbsp;{damt:,.2f}</td>
+        </tr>"""
+
+    # Tax block rows
+    if tax_type == "igst":
+        tax_rows_html = f"""
+        <tr>
+          <td colspan="7" style="text-align:right;font-weight:500;">IGST @ {igst_rate:g}%:</td>
+          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{igst_amount:,.2f}</td>
+        </tr>"""
+    else:
+        tax_rows_html = f"""
+        <tr>
+          <td colspan="7" style="text-align:right;font-weight:500;">CGST @ {cgst_rate:g}%:</td>
+          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{cgst_amount:,.2f}</td>
+        </tr>
+        <tr>
+          <td colspan="7" style="text-align:right;font-weight:500;">SGST @ {sgst_rate:g}%:</td>
+          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{sgst_amount:,.2f}</td>
+        </tr>"""
+
+    rounding_html = ""
+    if abs(rounding_off) > 1e-4:
+        rounding_html = f"""
+        <tr>
+          <td colspan="7" style="text-align:right;color:var(--muted);">Rounding Off:</td>
+          <td style="text-align:right;font-weight:500;">&#8377;&nbsp;{rounding_off:+.2f}</td>
+        </tr>"""
+
+    # Document html
+    html = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(f"TAX INVOICE — RA{bill.get('ra_no')}")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}
+    <style>
+      @media print {{
+        .no-print {{ display: none !important; }}
+        body {{ background: #fff !important; padding: 0 !important; }}
+        .doc-paper {{ box-shadow: none !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; border: none !important; }}
+      }}
+      .doc-paper {{ background: #fff; max-width: 900px; margin: 1.5rem auto; padding: 2.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: Inter, system-ui, sans-serif; color: #1e293b; }}
+      .doc-header {{ text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 1rem; margin-bottom: 1.5rem; }}
+      .doc-header h1 {{ font-size: 1.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; margin: 0; }}
+      .doc-header p {{ font-size: 0.85rem; color: #475569; margin-top: 0.2rem; }}
+      .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }}
+      .box-card {{ border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; background: #f8fafc; font-size: 0.85rem; line-height: 1.5; }}
+      .box-card b {{ color: #0f172a; display: inline-block; min-width: 110px; }}
+      table.doc-table {{ width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }}
+      table.doc-table th, table.doc-table td {{ border: 1px solid #cbd5e1; padding: 8px 10px; }}
+      table.doc-table th {{ background: #f1f5f9; color: #0f172a; font-weight: 700; text-align: left; }}
+      .doc-summary {{ margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; font-size: 0.85rem; }}
+      .bank-card {{ border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; background: #f8fafc; flex: 1; }}
+      .sig-card {{ text-align: center; width: 220px; border-top: 1px dashed #94a3b8; padding-top: 3.5rem; font-weight: 600; color: #475569; font-size: 0.8rem; }}
+    </style>
+    </head>
+    <body>
+      <div class="no-print" style="max-width:900px;margin:1rem auto 0;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592; Back to RA View</a>
+          <a href="{url_for('ra.list_ras')}" class="btn btn-ghost" style="margin-left:0.4rem;">RA Register</a>
+        </div>
+        <button onclick="window.print()" class="btn" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Save PDF</button>
+      </div>
+
+      <div class="doc-paper">
+        <div class="doc-header">
+          <h1>TAX INVOICE</h1>
+          <p>{B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="box-card">
+            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Billed By (Supplier)</div>
+            <b>Name:</b> {_esc(B.COMPANY_NAME)}<br/>
+            <b>GSTIN:</b> {_esc(seller_gstin)}<br/>
+            <b>State:</b> {_esc(seller_state)}<br/>
+            <b>Address:</b> {_esc(B.COMPANY_ADDR)}
+          </div>
+          <div class="box-card">
+            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Invoice &amp; Bill Details</div>
+            <b>Tax Invoice Ref:</b> {_esc(tax_inv_ref)}<br/>
+            <b>Invoice Date:</b> {_esc(tax_inv_date)}<br/>
+            <b>RA Bill No:</b> RA{_esc(bill.get('ra_no'))} ({_esc(bill.get('leg'))})<br/>
+            <b>PO/WO No &amp; Date:</b> {po_ref_disp} ({po_date_disp})
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="box-card">
+            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Billed To (Customer)</div>
+            <b>Customer:</b> {buyer_name_disp}<br/>
+            <b>GSTIN:</b> {buyer_gstin_disp}<br/>
+            <b>Contact:</b> {contact_person_disp}<br/>
+            <b>Address:</b> {to_address_disp}
+          </div>
+          <div class="box-card">
+            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Project &amp; Site Details</div>
+            <b>Project Name:</b> {project_name_disp}<br/>
+            <b>Site Location:</b> {site_location_disp}<br/>
+            <b>BOQ Ref:</b> {_esc(bill.get('boq_ref'))} (Rev {_esc(bill.get('boq_rev_no'))})
+          </div>
+        </div>
+
+        <table class="doc-table">
+          <thead>
+            <tr>
+              <th style="width:40px;text-align:center;">#</th>
+              <th style="width:70px;">Item No</th>
+              <th>Description of Goods / Work Executed</th>
+              <th style="width:100px;text-align:center;">HSN / SAC</th>
+              <th style="width:60px;text-align:center;">Unit</th>
+              <th style="width:90px;text-align:right;">Claim Qty</th>
+              <th style="width:100px;text-align:right;">Rate</th>
+              <th style="width:120px;text-align:right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {table_rows_html}
+            <tr>
+              <td colspan="7" style="text-align:right;font-weight:600;">Claim Subtotal:</td>
+              <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{claim_subtotal:,.2f}</td>
+            </tr>
+            {deductions_rows_html}
+            <tr>
+              <td colspan="7" style="text-align:right;font-weight:700;background:#f8fafc;">Taxable Net Payable Value:</td>
+              <td style="text-align:right;font-weight:700;background:#f8fafc;">&#8377;&nbsp;{net_payable:,.2f}</td>
+            </tr>
+            {tax_rows_html}
+            {rounding_html}
+            <tr style="font-size:0.95rem;background:#f1f5f9;">
+              <td colspan="7" style="text-align:right;font-weight:800;color:#0f172a;">Grand Total (Inclusive of Taxes):</td>
+              <td style="text-align:right;font-weight:800;color:#0f172a;">&#8377;&nbsp;{grand_total:,.2f}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top:1rem;padding:0.8rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem;">
+          <b>Amount in Words:</b> INR {_esc(words)}
+        </div>
+
+        <div class="doc-summary">
+          <div class="bank-card">
+            <div style="font-weight:700;color:#0f172a;margin-bottom:0.3rem;">Bank Details for Remittance</div>
+            <b>Bank Name:</b> {_esc(B.BANK_NAME)}<br/>
+            <b>A/C No:</b> {_esc(B.BANK_ACCOUNT_NO)}<br/>
+            <b>IFSC Code:</b> {_esc(B.BANK_IFSC)}<br/>
+            <b>Branch:</b> {_esc(B.BANK_BRANCH)}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;">
+            <p style="font-size:0.75rem;color:var(--muted);margin-bottom:2.5rem;">For {_esc(B.COMPANY_NAME)}</p>
+            <div class="sig-card">Authorised Signatory</div>
+          </div>
+        </div>
+      </div>
+    </body></html>"""
+    return html
 
 
 @ra_bp.route("/delete/<id>", methods=["GET", "POST"])

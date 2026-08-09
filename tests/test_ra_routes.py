@@ -756,14 +756,14 @@ def test_no_certification_entry_ui_in_step_2(client, seeded):
         assert 'id="certified_qty"' not in h
 
 
-def test_no_printed_document(client, seeded):
-    """Step 4 is printed document. Step 3 register is present."""
+def test_printed_document_route_exists(client, seeded):
+    """Step 4 lands printed RA bill tax invoice route /ra/print/<id>."""
     import app as app_module
     rules = {r.rule for r in app_module.app.url_map.iter_rules()}
     assert "/ra/" in rules
-    assert "/ra/print/<id>" not in rules
+    assert "/ra/print/<id>" in rules
 
     li = priced(seeded, 1)[0]
     rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
     h = client.get(f"/ra/view/{rid}").get_data(as_text=True)
-    assert "printed RA bill is a later step" in h
+    assert "/ra/print/" in h

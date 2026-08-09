@@ -2173,13 +2173,13 @@ non-repeating, because it is the key every RA bill quotes back.
 |---|---|
 | `GET /ra/` | `list_ras` — RA register listing, grouped/sorted by BOQ |
 | `GET,POST /ra/create` | `create_ra` — BOQ picker, then the claim grid |
-| `GET /ra/view/<id>` | `view_ra` — a **working screen**, not the printed sheet |
+| `GET /ra/view/<id>` | `view_ra` — a working screen, not the printed sheet |
 | `GET,POST /ra/edit/<id>` | `edit_ra` — gated to the latest bill |
 | `GET,POST /ra/certify/<id>` | `certify_ra` — certification entry UI, editable on any bill |
+| `GET /ra/print/<id>` | `print_ra` — printed RA bill tax invoice document (DOMAIN.md §4) |
 | `GET,POST /ra/delete/<id>` | `delete_ra` — GET confirms, POST deletes |
 
-✅ **Step 3 shipped the `/ra/` register and `/ra/certify/<id>` certification entry UI.**
-`view_ra` remains a working screen; printed document is Step 4.
+✅ **Step 4 shipped `/ra/print/<id>` (the printed RA bill tax invoice document).**
 
 **Registering this blueprint is what closes the `/boq/view` 500** (§2b).
 

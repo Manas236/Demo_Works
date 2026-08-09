@@ -140,6 +140,7 @@ def populated(client):
             "/ra/delete/<id>":      rid,
             "/ra/edit/<id>":        rid,
             "/ra/certify/<id>":     rid,
+            "/ra/print/<id>":       rid,
             "/ra/view/<id>":        rid,
             "/spec/edit/<id>":      blank["REG-BLANK-UNSIZED"],
             "/spec/view/<id>":      blank["REG-BLANK-UNSIZED"],
