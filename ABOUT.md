@@ -5,7 +5,8 @@
 > where the landmines are, and what is deliberately unfinished.
 > If you change architecture, a data shape, or a route — update this file in the
 > same commit.
-
+tax on different parts is different
+1 Description
 ---
 
 ## 1. What this is
@@ -67,8 +68,16 @@ Run it:
 python app.py          # http://127.0.0.1:5000
 ```
 
-Dependencies (there is **no requirements.txt** — see §7):
-`flask`, `pymysql`, `python-dotenv`, `markupsafe`.
+Dependencies — `flask`, `pymysql`, `python-dotenv`, `markupsafe`:
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # DB credentials; gitignored
+```
+
+`assets/build_assets.py` additionally needs `numpy`, `Pillow`, `scipy`. It is a
+one-off artwork build script, not a runtime dependency — its output is committed
+under `assets/`, so it is left commented out in `requirements.txt`.
 
 ### The one architectural rule that explains everything
 
@@ -2169,15 +2178,15 @@ non-repeating, because it is the key every RA bill quotes back.
 
 | Route | View |
 |---|---|
+| `GET /ra/` | `list_ras` — RA register listing, grouped/sorted by BOQ |
 | `GET,POST /ra/create` | `create_ra` — BOQ picker, then the claim grid |
 | `GET /ra/view/<id>` | `view_ra` — a **working screen**, not the printed sheet |
 | `GET,POST /ra/edit/<id>` | `edit_ra` — gated to the latest bill |
+| `GET,POST /ra/certify/<id>` | `certify_ra` — certification entry UI, editable on any bill |
 | `GET,POST /ra/delete/<id>` | `delete_ra` — GET confirms, POST deletes |
 
-⚠ **There is deliberately no `/ra/` register listing and no printed document.**
-Those are steps 3 and 4. `view_ra` is the page you land on after saving and the
-one the BOQ's RA chips point at; it carries no A4 sheet and does not load
-`VIEW_DOC_STYLES`.
+✅ **Step 3 shipped the `/ra/` register and `/ra/certify/<id>` certification entry UI.**
+`view_ra` remains a working screen; printed document is Step 4.
 
 **Registering this blueprint is what closes the `/boq/view` 500** (§2b).
 
@@ -2453,10 +2462,12 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 
 Real, verified, and safe to pick up:
 
-1. **No `requirements.txt`.** Needs `flask`, `pymysql`, `python-dotenv`,
-   `markupsafe`; `pytest` to run `tests/`, `openpyxl` to regenerate
-   `demo_data.py`. Node is optional — `tests/test_picker_js.py` runs the BOQ
-   picker's real JavaScript when it is installed and skips when it is not.
+1. **No dependency pinning.** `requirements.txt` carries lower bounds only, and
+   there is no lockfile or virtualenv — installs land in whatever interpreter is
+   on `PATH`. It covers the **runtime only**: `pytest` to run `tests/` and
+   `openpyxl` to regenerate `demo_data.py` are not in it. Node is optional —
+   `tests/test_picker_js.py` runs the BOQ picker's real JavaScript when it is
+   installed and skips when it is not.
 2. **No product edit route** — delete + re-add only, and delete may be blocked.
    ⬆ **This got more expensive.** It is now the reason a missing HSN cannot be
    blocked at the tax invoice (a user could not clear the block), and the reason

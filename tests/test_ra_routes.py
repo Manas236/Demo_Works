@@ -756,11 +756,11 @@ def test_no_certification_entry_ui_in_step_2(client, seeded):
         assert 'id="certified_qty"' not in h
 
 
-def test_no_printed_document_and_no_register_listing(client, seeded):
-    """Steps 3 and 4. The view page is a working screen, not the A4 sheet."""
+def test_no_printed_document(client, seeded):
+    """Step 4 is printed document. Step 3 register is present."""
     import app as app_module
     rules = {r.rule for r in app_module.app.url_map.iter_rules()}
-    assert "/ra/" not in rules                   # no register listing
+    assert "/ra/" in rules
     assert "/ra/print/<id>" not in rules
 
     li = priced(seeded, 1)[0]

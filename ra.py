@@ -1559,6 +1559,272 @@ def _validate(raw: str, boq: dict, leg: str, prev: dict,
     return claims, raw_lines, ""
 
 
+def certification_status_badge(bill: dict) -> str:
+    summary = certification_summary(bill)
+    c, t = summary["certified"], summary["total"]
+    if c == 0:
+        return '<span class="status-badge cert-none" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">None</span>'
+    elif summary["complete"]:
+        return '<span class="status-badge cert-full" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">Full</span>'
+    else:
+        return f'<span class="status-badge cert-partial" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">Partial ({c}/{t})</span>'
+
+
+@ra_bp.route("/")
+def list_ras():
+    """
+    The Running Account Bills register.
+
+    Mirrors the BOQ register's structure, styling, and nav placement.
+    Lists all RA bills grouped/sorted by BOQ and ra_no.
+    """
+    BQ.ensure_demo_boq()
+    bills = STORE.get("ra_bills") or {}
+    dash_url = url_for("dashboard.index")
+    create_url = url_for("ra.create_ra")
+
+    msg = request.args.get("msg")
+    msg_type = request.args.get("type", "success")
+    alert_html = _alert(msg, msg_type) if msg else ""
+
+    query = (request.args.get("q") or "").strip().lower()
+    rows = []
+    for rid, b in bills.items():
+        if query:
+            hay = " ".join(str(b.get(k) or "") for k in
+                           ("ref", "project_name", "account_name", "site_location", "boq_ref")).lower()
+            if query not in hay:
+                continue
+        rows.append((rid, b))
+
+    # Sort so bills for the same BOQ read in ra_no order
+    rows.sort(key=lambda kv: (str(kv[1].get("boq_id") or ""), int(kv[1].get("ra_no") or 0)))
+
+    total_claimed = sum(float(b.get("net_payable") or 0.0) for _rid, b in bills.items())
+    total_certified = sum(certification_summary(b)["amount"] for _rid, b in bills.items())
+
+    tiles_html = f"""
+    <div class="pipe-tiles">
+      <div class="pipe-tile t-open">
+        <div class="pt-lbl">Total Claimed Net Payable</div>
+        <div class="pt-val">&#8377;&nbsp;{total_claimed:,.0f}</div>
+        <div class="pt-sub">{len(bills)} running account bill{"s" if len(bills) != 1 else ""}</div>
+      </div>
+      <div class="pipe-tile">
+        <div class="pt-lbl">Total Certified Amount</div>
+        <div class="pt-val">&#8377;&nbsp;{total_certified:,.0f}</div>
+        <div class="pt-sub">certified across all bills</div>
+      </div>
+    </div>"""
+
+    if rows:
+        table_rows_html = ""
+        for rid, b in rows:
+            boq_id = str(b.get("boq_id") or "")
+            is_latest = is_latest_bill(boq_id, rid)
+            latest_badge = '<span style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;padding:2px 6px;border-radius:10px;font-size:0.7rem;font-weight:600;">Latest</span>' if is_latest else ""
+            summary = certification_summary(b)
+            cert_badge = certification_status_badge(b)
+            view_url = url_for("ra.view_ra", id=rid)
+            cert_url = url_for("ra.certify_ra", id=rid)
+            boq_link = url_for("boq.view_boq", id=boq_id) if boq_id in STORE.get("boqs", {}) else "#"
+
+            table_rows_html += f"""
+            <tr>
+              <td class="td-ref"><a href="{view_url}">RA{_esc(b.get('ra_no'))}</a> <span style="font-size:0.75rem;color:var(--muted);">({_esc(b.get('ref'))})</span></td>
+              <td><span class="fh-sec">{_esc(b.get('leg'))}</span></td>
+              <td class="td-muted">{_esc(b.get('date'))}</td>
+              <td><a href="{boq_link}">{_esc(b.get('boq_ref'))}</a></td>
+              <td class="td-num" style="font-weight:600;">&#8377;&nbsp;{float(b.get('net_payable') or 0.0):,.2f}</td>
+              <td class="td-num">&#8377;&nbsp;{summary['amount']:,.2f}</td>
+              <td>{cert_badge}</td>
+              <td>{latest_badge}</td>
+              <td>
+                <a href="{view_url}" class="btn-view">&#128269; View</a>
+                <a href="{cert_url}" class="btn-view" style="margin-left:0.3rem;">&#9998; Certify</a>
+              </td>
+            </tr>"""
+
+        table_html = f"""
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>RA Bill</th><th>Leg</th><th>Date</th><th>BOQ Ref</th>
+            <th style="text-align:right;">Claimed Net</th><th style="text-align:right;">Certified Amount</th>
+            <th>Certification</th><th>Latest?</th><th></th>
+          </tr></thead>
+          <tbody>{table_rows_html}</tbody>
+        </table></div>"""
+    elif bills:
+        table_html = f"""
+        <div class="empty-state">
+          <div style="font-size:2rem;">&#128269;</div><br>
+          <strong>No RA bills match that search</strong>
+          <a href="{url_for('ra.list_ras')}" class="btn"
+             style="display:inline-block;margin-top:1.1rem;">Show all</a>
+        </div>"""
+    else:
+        table_html = f"""
+        <div class="empty-state">
+          <div style="font-size:2rem;">&#128203;</div><br>
+          <strong>No Running Account bills yet</strong>
+          <p style="margin-top:.4rem;font-size:.88rem;">
+            An RA bill is a progressive claim for work executed against an approved BOQ schedule.
+          </p>
+          <a href="{create_url}" class="btn" style="display:inline-block;margin-top:1.1rem;">+ Create RA Bill</a>
+        </div>"""
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Running Account Bills")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BQ.BOQ_STYLES}{RA_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      {alert_html}
+      <div class="page-top">
+        <h1>RA <span>Register</span>
+          <span style="font-size:.73rem;font-weight:500;color:var(--muted);margin-left:.5rem;">
+            showing {len(rows)} of {len(bills)}
+          </span>
+        </h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{dash_url}" class="btn btn-ghost">&#8592; Dashboard</a>
+          <a href="{create_url}" class="btn">+ Create RA Bill</a>
+        </div>
+      </div>
+      {tiles_html}
+      <div class="filter-bar">
+        <form method="GET" action="{url_for('ra.list_ras')}">
+          <input type="search" name="q" value="{_esc(query)}"
+                 placeholder="RA no., project, customer or site"/>
+          <button type="submit" class="filter-tab">Search</button>
+        </form>
+      </div>
+      {table_html}
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · RA register</p></footer>
+    </main></body></html>"""
+    return BQ._page(template)
+
+
+@ra_bp.route("/certify/<id>", methods=["GET", "POST"])
+def certify_ra(id: str):
+    """
+    Record certification data from the main contractor.
+
+    Editable ALWAYS, including on bills that are not the latest (the contractor
+    certifies late).
+    """
+    bill = STORE["ra_bills"].get(id)
+    if not bill:
+        return redirect(url_for("ra.list_ras", msg="That RA bill no longer exists.", type="error"))
+
+    boq_id = str(bill.get("boq_id") or "")
+    claims = bill.get("claims") or []
+    status_val = bill.get("status") or "draft"
+    cert_on_val = bill.get("certified_on") or ""
+
+    if request.method == "POST":
+        status_val = (request.form.get("status") or status_val).strip()
+        cert_on_val = (request.form.get("certified_on") or "").strip()
+
+        rows = {}
+        for c in claims:
+            lid = c.get("line_id", "")
+            if not lid:
+                continue
+            raw_cq = request.form.get(f"cert_qty_{lid}")
+            raw_cr = request.form.get(f"cert_rate_{lid}")
+            rows[lid] = {
+                "certified_qty": _cert_num(raw_cq),
+                "certified_rate": _cert_num(raw_cr)
+            }
+
+        apply_certification(bill, rows, status=status_val, certified_on=cert_on_val)
+
+        # Check for warnings (certified > claimed)
+        warns = certification_warnings(bill.get("claims") or [])
+        msg = f"Certification saved for RA{bill.get('ra_no')}."
+        msg_type = "success"
+        if warns:
+            warn_txt = " ".join(certification_warning_message(w) for w in warns[:3])
+            msg += f" Note: {warn_txt}"
+
+        return redirect(url_for("ra.view_ra", id=id, msg=msg, type=msg_type))
+
+    # GET form
+    rows_html = ""
+    for c in claims:
+        lid = c.get("line_id", "")
+        snap = BQ._item_no(c.get("item_no"))
+        cq = c.get("certified_qty")
+        cr = c.get("certified_rate")
+        cq_str = "" if cq is None else f"{float(cq):g}"
+        cr_str = "" if cr is None else f"{float(cr):g}"
+        claimed_q = float(c.get("qty") or 0.0)
+        claimed_r = float(c.get("rate") or 0.0)
+
+        # Variance calculation if certified_qty is present
+        diff_str = "&mdash;"
+        if cq is not None:
+            diff = float(cq) - claimed_q
+            diff_str = f"{diff:+.2f}" if abs(diff) > 1e-6 else "="
+
+        rows_html += f"""
+        <tr>
+          <td class="cl-no">{_esc(snap)}</td>
+          <td class="cl-desc">{_esc(c.get("description"))[:140]}</td>
+          <td class="cl-unit">{_esc(c.get("unit"))}</td>
+          <td class="cl-num">{BQ._fmt_qty(claimed_q)}</td>
+          <td class="cl-num">{_inr(claimed_r)}</td>
+          <td class="cl-amt">{_inr(c.get("amount") or 0.0)}</td>
+          <td><input type="text" name="cert_qty_{_esc(lid)}" value="{_esc(cq_str)}" placeholder="blank = uncertified" style="width:110px;padding:3px 6px;font-size:0.85rem;"/></td>
+          <td><input type="text" name="cert_rate_{_esc(lid)}" value="{_esc(cr_str)}" placeholder="blank = claimed rate" style="width:110px;padding:3px 6px;font-size:0.85rem;"/></td>
+          <td class="cl-num" style="font-weight:600;">{diff_str}</td>
+        </tr>"""
+
+    st_opts = "".join(f'<option value="{st}"{" selected" if st == status_val else ""}>{st.title()}</option>' for st in STATUSES)
+
+    return _shell(f"Certify RA{bill.get('ra_no')}", f"""
+  <div class="page-top">
+    <h1>Certify <span>RA{_esc(bill.get('ra_no'))}</span></h1>
+    <div><a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592; View Bill</a></div>
+  </div>
+  <form method="POST" action="{url_for('ra.certify_ra', id=id)}">
+    <div class="ra-meta">
+      <div class="ra-fact"><b>Ref</b><span>{_esc(bill.get('ref'))}</span></div>
+      <div class="ra-fact"><b>BOQ</b><span>{_esc(bill.get('boq_ref'))}</span></div>
+      <div class="ra-fact"><b>Project</b><span>{_esc(bill.get('project_name'))}</span></div>
+      <div class="ra-fact"><b>Status</b>
+        <span><select name="status" style="padding:2px 6px;font-size:0.85rem;">{st_opts}</select></span>
+      </div>
+      <div class="ra-fact"><b>Certified Date</b>
+        <span><input type="date" name="certified_on" value="{_esc(cert_on_val)}" style="padding:2px 6px;font-size:0.85rem;"/></span>
+      </div>
+    </div>
+    <div class="form-section" style="margin-top:1rem;">
+      <div class="section-title">&#9998; Certified Quantities &amp; Rates</div>
+      <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.8rem;">
+        Blank certified quantity means <em>not yet ruled on</em>. A typed <code>0</code> means <em>certified at zero</em>.
+      </p>
+      <div class="cl-wrap"><table class="claims">
+        <thead><tr>
+          <th>Item</th><th>Description</th><th>Unit</th>
+          <th style="text-align:right;">Claimed Qty</th>
+          <th style="text-align:right;">Claimed Rate</th>
+          <th style="text-align:right;">Claimed Amount</th>
+          <th>Certified Qty</th>
+          <th>Certified Rate</th>
+          <th style="text-align:right;">Variance</th>
+        </tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table></div>
+      <div style="margin-top:1.2rem;display:flex;gap:0.8rem;">
+        <button type="submit" class="btn">Save Certification</button>
+        <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </div>
+  </form>""")
+
+
 @ra_bp.route("/create", methods=["GET", "POST"])
 def create_ra():
     """
@@ -1816,13 +2082,14 @@ def view_ra(id: str):
         f'title="{_esc(why)}">Delete</span>')
     edit_btn = ("" if frozen else
                 f'<a class="btn btn-ghost" href="{url_for("ra.edit_ra", id=id)}">Edit claim</a>')
+    cert_btn = f'<a class="btn btn-ghost" href="{url_for("ra.certify_ra", id=id)}">&#9998; Certify</a>'
 
     return _shell(f"RA{bill.get('ra_no')}", f"""
   <div class="page-top">
     <h1>RA{_esc(bill.get('ra_no'))} <span>&middot; {_esc(bill.get('leg'))}</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.view_boq', id=boq_id)}" class="btn btn-ghost">&#8592; BOQ</a>
-      {edit_btn}{del_btn}
+      {edit_btn}{cert_btn}{del_btn}
     </div>
   </div>
   {_flash()}
