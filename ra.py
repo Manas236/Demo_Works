@@ -2517,8 +2517,9 @@ def print_ra(id: str):
     # References
     tax_inv_ref = bill.get("tax_invoice_ref") or bill.get("ref") or f"SF/RA/{bill.get('fy') or '26-27'}/{int(bill.get('ra_no') or 1):04d}"
     tax_inv_date = bill.get("tax_invoice_date") or bill.get("date") or ""
-    po_ref = bill.get("po_ref") or "&mdash;"
-    po_date = bill.get("po_date") or "&mdash;"
+    # (`po_ref` / `po_date` are rendered below as `po_ref_disp` / `po_date_disp`,
+    # which escape as well as defaulting. There is deliberately no second,
+    # unescaped pair of the same name sitting here waiting to be picked up.)
 
     # Company & Customer details.
     #
