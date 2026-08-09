@@ -1146,7 +1146,8 @@ RA_STYLES = """
                     vertical-align:middle; }
   table.claims tr:hover td { background:#f8fafc; }
   .cl-no    { width:70px;  font-weight:700; color:var(--navy); }
-  .cl-desc  { min-width:220px; }
+  .cl-desc  { min-width:180px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ls-desc  { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cl-unit  { width:62px;  color:var(--muted); }
   .cl-num   { width:88px;  text-align:right; font-variant-numeric:tabular-nums; }
   .cl-in    { width:104px; }
@@ -1167,7 +1168,7 @@ RA_STYLES = """
   .cl-bal-0 { color:#b45309; font-weight:700; }
 
   /* A specification header — context, never claimable. */
-  tr.cl-head td { background:#f1f5f9; font-weight:700; color:var(--navy); }
+  tr.cl-head td { background:#f1f5f9; font-weight:700; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:500px; }
 
   .cl-over input { border-color:var(--brand); background:#fef2f2; }
   .cl-warn input { border-color:var(--saffron); background:#fffbeb; }
@@ -1382,6 +1383,11 @@ def _dup_band(boq: dict) -> str:
     </div>"""
 
 
+def _trunc(s: str, n: int = 96) -> str:
+    s = " ".join(str(s or "").split())
+    return s[:n-1] + "…" if len(s) > n else s
+
+
 def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
     """
     Every line of the approved BOQ, in BOQ order, as claim-grid rows.
@@ -1400,12 +1406,13 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
 
     for li in boq.get("line_items") or []:
         item = _esc(BQ._item_no(li.get("item_no")))
-        desc = _esc(li.get("description") or "")
+        raw_desc = str(li.get("description") or "")
+        desc_truncated = _esc(_trunc(raw_desc, 96))
 
         if li.get("is_header"):
             out.append(
                 f'<tr class="cl-head"><td class="cl-no">{item}</td>'
-                f'<td colspan="7">{desc[:300]}</td></tr>')
+                f'<td colspan="8" class="ls-desc" title="{_esc(raw_desc)}">{desc_truncated}</td></tr>')
             continue
 
         lid = BQ._line_id(li.get("line_id"))
@@ -1430,7 +1437,7 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
         <tr class="cl-line{done}" id="row_{lid}"
             data-approved="{approved:g}" data-prev="{claimed:g}" data-rate="{app_rate:g}">
           <td class="cl-no">{item}</td>
-          <td class="cl-desc">{desc[:160]}</td>
+          <td class="cl-desc ls-desc" title="{_esc(raw_desc)}">{desc_truncated}</td>
           <td class="cl-unit">{_esc(li.get("unit") or "")}</td>
           <td class="cl-num">{_qty(approved)}</td>
           <td class="cl-num">{_qty(claimed)}</td>
@@ -1519,12 +1526,15 @@ def _flash() -> str:
 
 def _boq_facts(boq: dict, leg: str, ra_no) -> str:
     n, m = bills_certified(str(boq.get("id") or ""))
+    label = str(ra_no or "")
+    if not label.startswith("RA"):
+        label = f"RA{label}"
     return f"""
     <div class="ra-meta">
       <div class="ra-fact"><b>Project</b><span>{_esc(boq.get("project_name"))}</span></div>
       <div class="ra-fact"><b>BOQ</b><span>{_esc(boq.get("ref"))} &middot; rev {_esc(boq.get("rev_no") or 0)}</span></div>
       <div class="ra-fact"><b>Customer</b><span>{_esc(boq.get("account_name"))}</span></div>
-      <div class="ra-fact"><b>This bill</b><span>RA{_esc(ra_no)} &middot; {_esc(leg)}</span></div>
+      <div class="ra-fact"><b>This bill</b><span>{_esc(label)} &middot; {_esc(leg)}</span></div>
       <div class="ra-fact"><b>Certified so far</b><span>{n} of {m} bills</span></div>
     </div>"""
 
@@ -2308,27 +2318,69 @@ def print_ra(id: str):
     po_ref_disp = _esc(bill.get("po_ref") or "") or "&mdash;"
     po_date_disp = _esc(bill.get("po_date") or "") or "&mdash;"
 
-    # Table rows
+    # Table rows — including parent spec lines from BOQ
+    claims_by_lid = {BQ._line_id(c.get("line_id")): c for c in claims if c.get("line_id")}
     table_rows_html = ""
-    for idx, c in enumerate(claims, 1):
-        item_no = BQ._item_no(c.get("item_no"))
-        hsn_sac = (c.get("hsn_sac") or "").strip()
-        hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
-        qty = float(c.get("qty") or 0.0)
-        rate = float(c.get("rate") or 0.0)
-        amt = float(c.get("amount") or (qty * rate))
+    idx = 0
 
-        table_rows_html += f"""
-        <tr>
-          <td style="text-align:center;">{idx}</td>
-          <td style="font-weight:600;">{_esc(item_no)}</td>
-          <td>{_esc(c.get('description'))}</td>
-          <td style="text-align:center;">{hsn_display}</td>
-          <td style="text-align:center;">{_esc(c.get('unit'))}</td>
-          <td style="text-align:right;">{BQ._fmt_qty(qty)}</td>
-          <td style="text-align:right;">&#8377;&nbsp;{rate:,.2f}</td>
-          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{amt:,.2f}</td>
-        </tr>"""
+    boq_lines = boq.get("line_items") or []
+    if boq_lines:
+        for li in boq_lines:
+            item_no = BQ._item_no(li.get("item_no"))
+            raw_desc = (li.get("description") or "").strip()
+
+            if li.get("is_header"):
+                table_rows_html += f"""
+                <tr style="background:#f8fafc;font-weight:700;">
+                  <td style="text-align:center;"></td>
+                  <td style="font-weight:700;color:var(--navy);">{_esc(item_no)}</td>
+                  <td colspan="6" style="font-weight:700;color:var(--navy);">{_esc(_trunc(raw_desc, 120))}</td>
+                </tr>"""
+                continue
+
+            lid = BQ._line_id(li.get("line_id"))
+            c = claims_by_lid.get(lid)
+            if not c:
+                continue
+
+            idx += 1
+            hsn_sac = (c.get("hsn_sac") or "").strip()
+            hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
+            qty = float(c.get("qty") or 0.0)
+            rate = float(c.get("rate") or 0.0)
+            amt = float(c.get("amount") or (qty * rate))
+
+            table_rows_html += f"""
+            <tr>
+              <td style="text-align:center;">{idx}</td>
+              <td style="font-weight:600;">{_esc(item_no)}</td>
+              <td>{_esc(c.get('description'))}</td>
+              <td style="text-align:center;">{hsn_display}</td>
+              <td style="text-align:center;">{_esc(c.get('unit'))}</td>
+              <td style="text-align:right;">{BQ._fmt_qty(qty)}</td>
+              <td style="text-align:right;">&#8377;&nbsp;{rate:,.2f}</td>
+              <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{amt:,.2f}</td>
+            </tr>"""
+    else:
+        for idx, c in enumerate(claims, 1):
+            item_no = BQ._item_no(c.get("item_no"))
+            hsn_sac = (c.get("hsn_sac") or "").strip()
+            hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
+            qty = float(c.get("qty") or 0.0)
+            rate = float(c.get("rate") or 0.0)
+            amt = float(c.get("amount") or (qty * rate))
+
+            table_rows_html += f"""
+            <tr>
+              <td style="text-align:center;">{idx}</td>
+              <td style="font-weight:600;">{_esc(item_no)}</td>
+              <td>{_esc(c.get('description'))}</td>
+              <td style="text-align:center;">{hsn_display}</td>
+              <td style="text-align:center;">{_esc(c.get('unit'))}</td>
+              <td style="text-align:right;">{BQ._fmt_qty(qty)}</td>
+              <td style="text-align:right;">&#8377;&nbsp;{rate:,.2f}</td>
+              <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{amt:,.2f}</td>
+            </tr>"""
 
     # Deductions block rows
     deductions_rows_html = ""

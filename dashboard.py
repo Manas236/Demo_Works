@@ -617,6 +617,7 @@ ICONS = {
     # does not read as another variant of the quotation sheet. It heads its own
     # chain and the icon says so at a glance.
     "boq": """<svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/><line x1="8" y1="19" x2="12" y2="19"/></svg>""",
+    "ra": """<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><polyline points="10 17 12 17 14 17"/></svg>""",
     # The library a BOQ is written from: stacked layers, because a spec is one
     # clause at several sizes. Deliberately not the BOQ clipboard — one is the
     # vocabulary, the other is the document.
@@ -953,6 +954,9 @@ def _metrics():
         "boq_total": len(STORE["boqs"]),
         "boq_value": sum(float(b.get("subtotal") or 0.0)
                          for b in STORE["boqs"].values()),
+        "ra_total":  len(STORE.get("ra_bills", {})),
+        "ra_value":  sum(float(r.get("net_payable") or 0.0)
+                         for r in STORE.get("ra_bills", {}).values()),
     }
 
 
@@ -1341,6 +1345,7 @@ def index():
     invoice_url   = url_for("invoice.list_invoices")
     purchase_url  = url_for("purchase.list_purchases")
     boq_url       = url_for("boq.list_boqs")
+    ra_url        = url_for("ra.list_ras")
     spec_url      = url_for("spec.list_specs")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
@@ -1429,6 +1434,14 @@ def index():
             <div class="card-body">
               <div class="card-title">Bills of Quantities</div>
               <div class="card-desc">{m['boq_total']} priced{f" · {rupees(m['boq_value'])} basic value" if m['boq_value'] else " · project schedules, billed by RA"}</div>
+            </div>
+          </a>
+
+          <a href="{ra_url}" class="card">
+            <div class="card-icon">{ICONS['ra']}</div>
+            <div class="card-body">
+              <div class="card-title">Running Account Bills</div>
+              <div class="card-desc">{m['ra_total']} raised{f" · {rupees(m['ra_value'])} claimed" if m['ra_value'] else " · interim claims against BOQs"}</div>
             </div>
           </a>
 
