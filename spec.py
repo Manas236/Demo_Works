@@ -862,7 +862,7 @@ def list_specs():
               <td><span class="cat-badge">{P.esc(s.get('category'))}</span></td>
               <td>{vcount}</td>
               <td class="td-muted">{rate_txt}</td>
-              <td class="td-muted">{P.esc(s.get('supply_hsn') or '&mdash;')} / {P.esc(s.get('install_sac') or '&mdash;')}</td>
+              <td class="td-muted">{P.esc(s.get('supply_hsn') or '') or '&mdash;'} / {P.esc(s.get('install_sac') or '') or '&mdash;'}</td>
               <td style="display:flex;gap:.4rem;">
                 <a href="{url_for('spec.view_spec', id=sid)}" class="btn-view">&#128269; View</a>
                 <a href="{url_for('spec.edit_spec', id=sid)}" class="btn-view">&#9998; Edit</a>
@@ -949,7 +949,7 @@ def view_spec(id: str):
         <div class="table-wrap" style="margin-top:.6rem;"><table>
           <thead><tr><th>Measured In</th><th>Supply Base Rate</th><th>Installation Base Rate</th></tr></thead>
           <tbody><tr>
-            <td>{P.esc(v.get('unit') or '&mdash;')}</td>
+            <td>{P.esc(v.get('unit') or '') or '&mdash;'}</td>
             <td>{'&#8377;&nbsp;' + format(sup, ',.2f') if sup is not None else '&mdash;'}</td>
             <td>{'&#8377;&nbsp;' + format(ins, ',.2f') if ins is not None else '&mdash;'}</td>
           </tr></tbody>
@@ -964,7 +964,7 @@ def view_spec(id: str):
             <tr>
               <td class="td-title">{P.esc(v.get('label'))}</td>
               <td class="td-muted">{P.esc(dim) + ' ' + P.esc(v.get('dim_unit') or '') if dim else '&mdash;'}</td>
-              <td>{P.esc(v.get('unit') or '&mdash;')}</td>
+              <td>{P.esc(v.get('unit') or '') or '&mdash;'}</td>
               <td>{'&#8377;&nbsp;' + format(sup, ',.2f') if sup is not None else '&mdash;'}</td>
               <td>{'&#8377;&nbsp;' + format(ins, ',.2f') if ins is not None else '&mdash;'}</td>
             </tr>"""
