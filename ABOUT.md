@@ -2225,6 +2225,29 @@ full** — `boq.view_boq()` prints the same paragraph in full, and an ellipsis
 dropped into the middle of a specification clause on a tax invoice is a
 document saying something other than what was agreed.
 
+#### The seller block is read from `/settings`, and the State is derived
+
+The **buyer** half of the party block is the bill's own snapshot (above). The
+**seller** half is the live company identity, read through `branding` exactly as
+the bank block beneath it is — `B.COMPANY_LEGAL or B.COMPANY_NAME`,
+`B.COMPANY_GSTIN`, `B.COMPANY_ADDR`. That is the correct direction for this
+half: our own GSTIN is not a fact about the claim, it is who we are today, and a
+snapshot of it would go stale the day the registration changes.
+
+⚠ **It carried a hardcoded GSTIN and a hardcoded State until 2026-08-10**, and
+printed both on the face of a tax invoice. The GSTIN sat behind an `or`, so it
+appeared only once the real identity was missing — the one moment nobody is
+checking. There is now **no fallback behind any of the three**: a field blank in
+settings prints an em dash, which is the same "a missing statutory detail must
+be visible" contract §5 `/settings` already states.
+
+**The State is derived from the GSTIN, never stored beside it** —
+`P.gstin_state_label(B.COMPANY_GSTIN)` → `Maharashtra (27)`. Two fields that
+must agree are two fields that can disagree; `invoice._supplier_state()` made
+the same argument first. `tests/test_ra_seller_identity.py` greps the module and
+fails if any State name or any GSTIN-shaped string reappears anywhere in
+`ra.py`, including in a comment.
+
 #### The claim grid
 
 - **Every line of the approved BOQ is rendered**, in BOQ order, claim quantity
@@ -2462,7 +2485,18 @@ Budgetary - Stage I → Budgetary - Stage II (default) → Technical → Commerc
 
 Public surface: `ensure_fields`, `stage_of`, `is_won/lost/closed/open`,
 `apply_update(q, form)`, `filter_quotations`, `summarize`, `log_event`,
-`stage_badge`, `po_cell`, `history_html`, `PIPELINE_STYLES`.
+`stage_badge`, `po_cell`, `history_html`, `PIPELINE_STYLES`,
+plus the shared utilities `esc`, `parse_money`, `fy_of`, `fy_ref`,
+`GST_STATE_CODES`, `state_of_gstin`, `gstin_state_label`.
+
+- `GST_STATE_CODES` / `state_of_gstin()` / `gstin_state_label()` read the State
+  out of a GSTIN's first two digits — `gstin_state_label()` returns it Rule
+  46(n) style, `'Maharashtra (27)'`, or `''` when the GSTIN is blank or
+  unreadable. They live here for the same reason `fy_of` does: **both chains
+  print a party's State and neither may import the other.** `invoice.py` still
+  carries its own copy of the same table (`invoice.GST_STATE_CODES`,
+  `_supplier_state()`); collapsing the two is a one-line change nobody has made
+  yet, and until somebody does, an added State belongs in **both**.
 
 - `apply_update()` **stages** changes and validates before committing, so a
   failure never half-writes. It only touches keys actually present in the form,

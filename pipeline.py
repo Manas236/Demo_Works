@@ -209,6 +209,68 @@ _esc = esc  # internal shorthand used throughout this module
 
 
 # =============================================================================
+# GST STATE CODES — the first two digits of every GSTIN
+# =============================================================================
+#
+# A GSTIN carries the State of registration in its own first two digits, so a
+# document that prints a party's State should *read* it rather than store it
+# beside the GSTIN: two fields that must agree are two fields that can
+# disagree. `invoice._supplier_state()` already made that argument on the sell
+# side; the RA bill's printed tax invoice needs the same answer on the BOQ
+# side, and the two chains must never import each other.
+#
+# This module imports nothing from the app, so it is the only place the table
+# can sit where both chains can reach it — the same reason `fy_of` / `fy_ref`
+# moved here when the PO series needed the tax invoice's numbering.
+#
+# ⚠ `invoice.GST_STATE_CODES` is a second copy of this table, left alone
+#   deliberately (see the commit that added this block). One statutory table in
+#   two places can drift; closing that is a one-line change in invoice.py and
+#   was out of scope here.
+GST_STATE_CODES = {
+    "Jammu and Kashmir": "01", "Himachal Pradesh": "02", "Punjab": "03",
+    "Chandigarh": "04", "Uttarakhand": "05", "Haryana": "06", "Delhi": "07",
+    "Rajasthan": "08", "Uttar Pradesh": "09", "Bihar": "10", "Sikkim": "11",
+    "Arunachal Pradesh": "12", "Nagaland": "13", "Manipur": "14",
+    "Mizoram": "15", "Tripura": "16", "Meghalaya": "17", "Assam": "18",
+    "West Bengal": "19", "Jharkhand": "20", "Odisha": "21",
+    "Chhattisgarh": "22", "Madhya Pradesh": "23", "Gujarat": "24",
+    "Dadra and Nagar Haveli and Daman and Diu": "26", "Maharashtra": "27",
+    "Karnataka": "29", "Goa": "30", "Lakshadweep": "31", "Kerala": "32",
+    "Tamil Nadu": "33", "Puducherry": "34",
+    "Andaman and Nicobar Islands": "35", "Telangana": "36",
+    "Andhra Pradesh": "37", "Ladakh": "38",
+}
+
+_CODE_TO_STATE = {v: k for k, v in GST_STATE_CODES.items()}
+
+
+def state_of_gstin(gstin) -> str:
+    """
+    The State a GSTIN is registered in, or '' if it cannot be read.
+
+    '' covers a blank GSTIN, a short one, and a two-digit prefix that is not an
+    allotted State code (28 and 25 were merged away). A caller printing this on
+    a document should render the blank as an em dash rather than inventing a
+    State: a wrong State on a tax invoice is worse than a missing one.
+    """
+    code = str(gstin or "").strip()[:2]
+    return _CODE_TO_STATE.get(code, "")
+
+
+def gstin_state_label(gstin) -> str:
+    """
+    'Maharashtra (27)' — how a State prints on the face of a tax invoice.
+
+    Rule 46(n) wants the name *and* the code, which is why this returns both
+    rather than leaving each caller to staple them together. Returns '' when
+    `state_of_gstin()` cannot read the GSTIN.
+    """
+    state = state_of_gstin(gstin)
+    return f"{state} ({str(gstin).strip()[:2]})" if state else ""
+
+
+# =============================================================================
 # UPDATE
 # =============================================================================
 

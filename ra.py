@@ -2528,8 +2528,26 @@ def print_ra(id: str):
     # schedule still saying the same thing; reading the live BOQ when the copy is
     # blank reintroduces exactly that dependency, and it does it silently on the
     # only bills where it can matter. A blank copy prints an em dash and says so.
-    seller_gstin = B.COMPANY_GSTIN or "03AAACS2024F1Z0"
-    seller_state = "Punjab (03)"
+    #
+    # The seller half is read from `branding`, which is where `/settings` puts
+    # the company identity — the same module and the same render-time read the
+    # bank block below already uses. It carried a hardcoded GSTIN and a
+    # hardcoded State until this, and printed both on the face of a tax invoice
+    # — a document saying the company supplies from somewhere it has never
+    # traded. `tests/test_ra_seller_identity.py` fails if either comes back,
+    # which is why neither is named here even in a comment.
+    # There is no fallback behind these on purpose: a fallback is how a literal
+    # survives, and an identity this document cannot read is a thing the
+    # operator must see and go fix at /settings.
+    #
+    # The State is DERIVED from the GSTIN rather than stored beside it — the
+    # first two digits are the State of registration by construction, so there
+    # is no second field to disagree with the first. `invoice._supplier_state()`
+    # reaches the same answer the same way on the sell side; the table itself
+    # lives in `pipeline.py` because neither chain may import the other.
+    seller_gstin_disp = _esc(B.COMPANY_GSTIN or "") or "&mdash;"
+    seller_state_disp = _esc(P.gstin_state_label(B.COMPANY_GSTIN)) or "&mdash;"
+    seller_addr_disp = _esc(B.COMPANY_ADDR or "") or "&mdash;"
     buyer_name_disp = _esc(bill.get("account_name") or "") or "&mdash;"
     buyer_gstin_disp = _esc(bill.get("bill_gstin") or "") or "&mdash;"
     project_name_disp = _esc(bill.get("project_name") or "") or "&mdash;"
@@ -2687,10 +2705,10 @@ def print_ra(id: str):
         <div class="grid-2">
           <div class="box-card">
             <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Billed By (Supplier)</div>
-            <b>Name:</b> {_esc(B.COMPANY_NAME)}<br/>
-            <b>GSTIN:</b> {_esc(seller_gstin)}<br/>
-            <b>State:</b> {_esc(seller_state)}<br/>
-            <b>Address:</b> {_esc(B.COMPANY_ADDR)}
+            <b>Name:</b> {_esc(B.COMPANY_LEGAL or B.COMPANY_NAME)}<br/>
+            <b>GSTIN:</b> {seller_gstin_disp}<br/>
+            <b>State:</b> {seller_state_disp}<br/>
+            <b>Address:</b> {seller_addr_disp}
           </div>
           <div class="box-card">
             <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Invoice &amp; Bill Details</div>
