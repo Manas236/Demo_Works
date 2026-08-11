@@ -1838,7 +1838,8 @@ matters more here because a BOQ line carries two of them.
 |---|---|
 | `GET /boq/` | `list_boqs` — register |
 | `GET,POST /boq/create` | `create_boq` |
-| `GET /boq/view/<id>` | `view_boq` — the printed schedule |
+| `GET /boq/view/<id>` | `view_boq` — the schedule on screen, **internal copy** |
+| `GET /boq/print/<id>` | `print_boq` — the issued sheet, **no rate breakup** |
 
 **Read §2b before editing this file.** A BOQ is the head of its own chain and
 is not a quotation with more columns.
@@ -2115,7 +2116,14 @@ defaults: twelve lines in this schedule deliberately differ from
 at ₹2000/nos, a larger diameter at the Bangalore site), and re-deriving them
 would erase those decisions and break the subtotals.
 
-#### The document (`/boq/view/<id>`)
+#### The document (`_document_html()`, rendered by `/boq/view` and `/boq/print`)
+
+**Two routes, one builder.** `_document_html(boq, show_rate_breakup)` builds the
+whole A4 sheet; the routes differ in that one argument and in nothing else.
+`/boq/view` wraps it in the operations panel, the RA chips and the nav and
+passes **True**; `/boq/print` renders it alone behind a `.no-print` action bar
+and passes **False**. Totals, amount in words, letterhead and signature block
+are built once, so the two can never quote different money for one schedule.
 
 The same A4 sheet — `VIEW_DOC_STYLES` supplies the frame, the repeating
 letterhead and every print rule, money goes through the same `_inr()`, and
@@ -2135,17 +2143,96 @@ portrait.
 mirroring the source workbook. A single table whose column count changes
 halfway down is not a table.
 
+##### The column set
+
+Left to right, and this is the authoritative list:
+
+| # | Column | `/boq/view` | `/boq/print` |
+|---|---|---|---|
+| 1 | Sr. | ✓ | ✓ |
+| 2 | Description | ✓ | ✓ |
+| 3… | one per **area** the SECTION declares (0, 1 or 2 here) | ✓ | ✓ |
+| | Total Qty | ✓ | ✓ |
+| | Unit | ✓ | ✓ |
+| | Supply — **base rate**, headed `rate_basis_label` | ✓ | **✗** |
+| | Supply — **Esc. %** | ✓ † | **✗** |
+| | Supply — U/ Rate | ✓ | ✓ |
+| | Supply Amount | ✓ | ✓ |
+| | Installation — **base rate** | ✓ | **✗** |
+| | Installation — **Esc. %** | ✓ † | **✗** |
+| | Installation — U/ Rate | ✓ | ✓ |
+| | Installation Amount | ✓ | ✓ |
+
+† subject to `HIDE_EMPTY_ESCALATION` as well — see below.
+
+On the seeded 97-line Sify schedule that is **13 / 12 / 11** columns for
+sections A / B / C on the view (they declare 2 / 1 / 0 areas, and no line
+carries an installation escalation) against **10 / 9 / 8** on the print.
+
+##### ⚠ Base rate and escalation are deliberately NOT on the issued print
+
+**The client asked for this on 10 Aug 2026.** The escalated U/ Rate is what was
+agreed and what they are billed against; the schedule it was derived from and
+the percentage applied to it are our side of the negotiation, and a sheet that
+shows both invites the next project to be argued from them.
+
+What that changed and what it did not:
+
+- **The record is untouched.** `supply_base_rate`, `supply_escalation_pct`,
+  `install_base_rate` and `install_escalation_pct` are still captured on the
+  form, still stored on every line (§3), still persisted, and still what
+  `_derived_rate` suggests from. Nothing was removed from storage and no
+  arithmetic changed — `supply_rate` / `install_rate` and every amount print
+  exactly as they always did.
+- **`/boq/view` is untouched.** The internal copy still shows all four, because
+  whoever prices the next revision works from them.
+- Only the **print** omits the three columns.
+
+**One thing was deliberately left on the print:** the document header still
+carries `Rate Basis: Mohali Rates` (`rate_basis_label`). It names the schedule
+the pricing was based on without disclosing a rate off it, and the client's
+request was about the figures. It is a one-line removal in `_document_html`'s
+`meta_col_2` if they ask.
+
+`show_rate_breakup` is the single seam. It defaults to **False**, so the issued
+document is what you get unless a caller opts in — an internal-copy variant is
+one argument, not a second template.
+
+**Dropping columns silently breaks every span counted by hand**, which is why
+none of them are: the specification-header span, the `BASIC VALUE SUBTOTAL (A)`
+span and the installation spacer are all derived from `n_supply_cols` /
+`n_install_cols`. Two further consequences, both handled in `_section_table`:
+
+1. With the breakup hidden, **`Supply` and `Installation` have one column each**,
+   so the group heads collapse and the track name moves onto the column itself
+   (`Supply` / `U/ Rate`). A group head spanning one column is furniture.
+2. The **second header row then exists only for the area names**, so a section
+   declaring no areas — the client's own section C — gets a **one-row header**.
+   An empty `<tr>` in that `thead` is not harmless: `.boq-table th` is filled
+   grey, so it prints as a blank band under the heads on every page.
+
+`TOTAL (A+B+C) >>>>` and `TOTAL BASIC VALUE` live in `.boq-grand`, a **separate
+five-column table with no colspans at all**, so they are unaffected by the
+section column count in either variant.
+
+[tests/test_boq_print_columns.py](tests/test_boq_print_columns.py) walks the
+real occupancy grid — colspan **and** rowspan — of every row of every section
+table on both routes and asserts it equals the `colgroup` width. That is the
+test that catches this class of breakage; it fails on a span that is one out,
+which nothing else does until somebody is holding the paper.
+
 - A **specification header** spans the numeric columns rather than leaving a
   row of blanks that reads as missing data.
 - A **blank area cell** prints blank, not `0` — the item is not on that floor,
   which is a different claim from "none of them here".
-- A **`-` base rate** prints as `-`. A **missing rate** prints blank while its
-  amount still prints `0.00`, exactly as the client's own sheet renders a
-  nil-priced line.
+- A **`-` base rate** prints as `-` (view only — the print has no base rate
+  column). A **missing rate** prints blank while its amount still prints
+  `0.00`, exactly as the client's own sheet renders a nil-priced line.
 - **Escalation columns are hidden when every line in the BOQ has none**
   (`HIDE_EMPTY_ESCALATION`) — on a sheet already fighting for width, the
   description needs the millimetres more than an empty column does. Same
-  judgement as the PI's `.pay-box`.
+  judgement as the PI's `.pay-box`. This narrows *within* `show_rate_breakup`;
+  the two compose, so the print drops the column either way.
 - **`remark` does not print** (`PRINT_REMARKS`). It holds internal pricing
   notes — "2000/nos extra for Tamper switch" — and the same judgement that
   keeps deal-desk fields off the quotation keeps these off the customer's copy.

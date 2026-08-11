@@ -129,6 +129,7 @@ def populated(client):
     yield {
         "ids": {
             "/address/edit/<id>":   next(iter(STORE["addresses"])),
+            "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,

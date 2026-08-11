@@ -1084,15 +1084,43 @@ def _esc_cell(pct) -> str:
     return f"{pct:g}%" if pct else ""
 
 
-def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> str:
-    """One section: its title band, its own column heads, its lines, its subtotal."""
+def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
+                   show_rate_breakup: bool = False) -> str:
+    """
+    One section: its title band, its own column heads, its lines, its subtotal.
+
+    `show_rate_breakup` decides whether HOW a rate was arrived at is shown
+    beside the rate itself — the base rate columns and the escalation columns.
+    It is **display only**: `supply_rate` / `install_rate` and every amount are
+    printed exactly as stored either way, so the two variants of this table can
+    never disagree about money.
+
+    It defaults to **False** because the issued document is the common case
+    (§5, the BOQ print) — the client does not want the negotiation basis on the
+    sheet that leaves the building. `/boq/view` passes True, which is what keeps
+    those figures on screen for whoever is pricing the job.
+
+    ⚠ Every colspan below is derived from `n_supply_cols` / `n_install_cols`
+      rather than written as a number, because dropping three columns silently
+      breaks any span that was counted by hand. `test_boq_print_columns.py`
+      asserts every row of every section sums to the header width.
+    """
     code   = sec.get("code") or ""
     areas  = list(sec.get("areas") or [])
     lines  = _lines_of(boq, code)
     basis  = boq.get("rate_basis_label") or DEFAULT_RATE_BASIS
 
-    n_supply_cols  = 2 + (1 if show_s_esc else 0)   # base [, esc] , rate
-    n_install_cols = 2 + (1 if show_i_esc else 0)
+    # The base rate columns and the escalation columns stand or fall together —
+    # an escalation percentage with nothing to apply it to is not a column, it
+    # is a riddle. So the breakup flag gates both, and HIDE_EMPTY_ESCALATION
+    # still narrows further within it.
+    show_base  = show_rate_breakup
+    show_s_esc = show_s_esc and show_rate_breakup
+    show_i_esc = show_i_esc and show_rate_breakup
+
+    # [base] [, esc] , rate — the rate column is the only one always present.
+    n_supply_cols  = 1 + (1 if show_base else 0) + (1 if show_s_esc else 0)
+    n_install_cols = 1 + (1 if show_base else 0) + (1 if show_i_esc else 0)
 
     # ── Column widths ──────────────────────────────────────────────────
     # An explicit <colgroup>, per section, because the column COUNT is a
@@ -1109,11 +1137,13 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
     cols = ['<col style="width:12mm"/>', "<col/>"]                  # Sr., Description
     cols += ['<col style="width:14mm"/>'] * len(areas)              # one per area
     cols += ['<col style="width:15mm"/>', '<col style="width:13mm"/>']   # Total Qty, Unit
-    cols += ['<col style="width:16mm"/>']                           # supply base
+    if show_base:
+        cols += ['<col style="width:16mm"/>']                       # supply base
     if show_s_esc:
         cols += ['<col style="width:11mm"/>']
     cols += ['<col style="width:18mm"/>', '<col style="width:24mm"/>']   # supply rate, amount
-    cols += ['<col style="width:16mm"/>']                           # install base
+    if show_base:
+        cols += ['<col style="width:16mm"/>']                       # install base
     if show_i_esc:
         cols += ['<col style="width:11mm"/>']
     cols += ['<col style="width:18mm"/>', '<col style="width:24mm"/>']   # install rate, amount
@@ -1130,28 +1160,49 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
     area_group_th = (f'<th class="b-area" colspan="{len(areas)}">Area / Floor</th>'
                      if areas else "")
 
+    # Two header SHAPES, and which one is used follows from what is left to
+    # group. With the breakup shown, "Supply" and "Installation" each span two
+    # or three sub-columns and the second row names them. With it hidden each
+    # side is a single U/ Rate column, and a group head spanning one column is
+    # furniture that says nothing — so the grouping collapses into the column
+    # itself, which is where the track name has to go instead.
+    #
+    # The second row then survives only to carry the area names, and a section
+    # declaring no areas (the client's own section C) has nothing left to put in
+    # it. An empty <tr> in a thead is not harmless: `.boq-table th` is filled
+    # grey, so it prints as a blank band under the heads on every page.
+    grouped   = n_supply_cols > 1 or n_install_cols > 1
+    need_row2 = grouped or bool(areas)
+    rs        = ' rowspan="2"' if need_row2 else ""
+
+    if grouped:
+        supply_th  = f'<th colspan="{n_supply_cols}">Supply</th>'
+        install_th = f'<th colspan="{n_install_cols}">Installation</th>'
+        rate_ths   = (f'<th class="b-base">{P.esc(basis)}</th>{s_esc_th}'
+                      f'<th class="b-rate">U/ Rate</th>'
+                      f'<th class="b-base">{P.esc(basis)}</th>{i_esc_th}'
+                      f'<th class="b-rate">U/ Rate</th>')
+    else:
+        supply_th  = f'<th class="b-rate"{rs}>Supply<br/>U/ Rate</th>'
+        install_th = f'<th class="b-rate"{rs}>Installation<br/>U/ Rate</th>'
+        rate_ths   = ""
+
+    row2_html = f"<tr>{area_ths}{rate_ths}</tr>" if need_row2 else ""
+
     head_html = f"""
       <thead>
         <tr>
-          <th class="b-sno" rowspan="2">Sr.</th>
-          <th class="b-desc" rowspan="2">Description</th>
+          <th class="b-sno"{rs}>Sr.</th>
+          <th class="b-desc"{rs}>Description</th>
           {area_group_th}
-          <th class="b-qty" rowspan="2">Total Qty</th>
-          <th class="b-unit" rowspan="2">Unit</th>
-          <th colspan="{n_supply_cols}">Supply</th>
-          <th class="b-amt" rowspan="2">Supply Amount</th>
-          <th colspan="{n_install_cols}">Installation</th>
-          <th class="b-amt" rowspan="2">Installation Amount</th>
+          <th class="b-qty"{rs}>Total Qty</th>
+          <th class="b-unit"{rs}>Unit</th>
+          {supply_th}
+          <th class="b-amt"{rs}>Supply Amount</th>
+          {install_th}
+          <th class="b-amt"{rs}>Installation Amount</th>
         </tr>
-        <tr>
-          {area_ths}
-          <th class="b-base">{P.esc(basis)}</th>
-          {s_esc_th}
-          <th class="b-rate">U/ Rate</th>
-          <th class="b-base">{P.esc(basis)}</th>
-          {i_esc_th}
-          <th class="b-rate">U/ Rate</th>
-        </tr>
+        {row2_html}
       </thead>"""
 
     # ── Lines ──────────────────────────────────────────────────────────
@@ -1172,8 +1223,8 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
             # what makes that visible rather than leaving a row of blanks that
             # reads as missing data.
             #   description itself + areas + qty + unit
-            #   + supply(base[,esc],rate) + supply amount
-            #   + install(base[,esc],rate) + install amount
+            #   + supply([base][,esc],rate) + supply amount
+            #   + install([base][,esc],rate) + install amount
             span = 1 + len(areas) + 2 + n_supply_cols + 1 + n_install_cols + 1
             body += f"""
             <tr class="{row_cls}">
@@ -1190,6 +1241,10 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
             # not a zero, and printing 0 would put an item everywhere.
             area_tds += f'<td class="b-area">{_fmt_qty(v) if v else ""}</td>'
 
+        s_base_td = (f'<td class="b-base">{_base_cell(li.get("supply_base_rate"))}</td>'
+                     if show_base else "")
+        i_base_td = (f'<td class="b-base">{_base_cell(li.get("install_base_rate"))}</td>'
+                     if show_base else "")
         s_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("supply_escalation_pct"))}</td>'
                     if show_s_esc else "")
         i_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("install_escalation_pct"))}</td>'
@@ -1202,11 +1257,11 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool) -> 
           {area_tds}
           <td class="b-qty">{_fmt_qty(float(li.get("total_qty") or 0.0))}</td>
           <td class="b-unit">{P.esc(li.get("unit"))}</td>
-          <td class="b-base">{_base_cell(li.get("supply_base_rate"))}</td>
+          {s_base_td}
           {s_esc_td}
           <td class="b-rate">{_rate_cell(li.get("supply_rate"))}</td>
           <td class="b-amt">{_inr(li.get("supply_amount"))}</td>
-          <td class="b-base">{_base_cell(li.get("install_base_rate"))}</td>
+          {i_base_td}
           {i_esc_td}
           <td class="b-rate">{_rate_cell(li.get("install_rate"))}</td>
           <td class="b-amt">{_inr(li.get("install_amount"))}</td>
@@ -1675,22 +1730,31 @@ def list_boqs():
     return _page(template)
 
 
-@boq_bp.route("/view/<id>")
-def view_boq(id: str):
-    ensure_demo_boq()
-    boq = STORE["boqs"].get(id)
-    if not boq:
-        return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
+def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
+    """
+    The A4 sheet — letterhead, header block, section tables, totals, signature.
 
+    Shared by `/boq/view` and `/boq/print` so the two can never drift apart.
+    They differ in exactly one thing, and it is this argument: the view shows
+    the rate breakup because whoever is pricing the job needs it, and the print
+    does not because it is the copy that goes to the client (§5).
+
+    Everything else — the totals, the amount in words, the letterhead, the
+    signature block — is built once, here. `boq_totals()` recomputes from the
+    lines rather than reading the stored trio, so a printed sheet can never
+    contradict its own lines (§3, property 7).
+    """
     sup, ins, total = boq_totals(boq)
 
     # Escalation columns only earn their millimetres when something is actually
-    # escalated — see HIDE_EMPTY_ESCALATION.
+    # escalated — see HIDE_EMPTY_ESCALATION. `_section_table` ANDs this with
+    # `show_rate_breakup`, so the two narrowings compose rather than fight.
     show_s_esc = (not HIDE_EMPTY_ESCALATION) or _any_escalation(boq, "supply_escalation_pct")
     show_i_esc = (not HIDE_EMPTY_ESCALATION) or _any_escalation(boq, "install_escalation_pct")
 
     sections_html = "".join(
-        _section_table(boq, s, show_s_esc, show_i_esc) for s in _sections_of(boq)
+        _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup)
+        for s in _sections_of(boq)
     )
 
     codes    = " + ".join(P.esc(s.get("code")) for s in _sections_of(boq))
@@ -1717,70 +1781,6 @@ def view_boq(id: str):
       </table>
       <div class="boq-words">{_amount_in_words(total)}</div>
       {tax_note}
-    </div>"""
-
-    # ── Running Account bills raised against this BOQ (screen only) ─────
-    # STORE["ra_bills"] is read directly and the link is built with url_for —
-    # `ra.py` imports THIS module, so importing it back would be a cycle. Same
-    # one-way trick quotation.py uses for proformas. The collection does not
-    # exist until Phase 3, hence the defensive .get().
-    ra_rows = sorted(
-        ((rid, r) for rid, r in (STORE.get("ra_bills") or {}).items()
-         if r.get("boq_id") == id),
-        key=lambda kv: int(kv[1].get("ra_no") or 0),
-    )
-    ra_html = ""
-    if ra_rows:
-        chips = "".join(
-            f'<a class="ra-chip" href="{url_for("ra.view_ra", id=rid)}">'
-            f'RA{P.esc(r.get("ra_no"))} &middot; {P.esc(r.get("ref"))} &middot; '
-            f'&#8377;&nbsp;{float(r.get("grand_total") or 0):,.0f}</a>'
-            for rid, r in ra_rows
-        )
-        ra_html = f"""
-        <div class="ra-block">
-          <span class="ra-lbl">Running Account bills raised</span>
-          <div class="ra-strip">{chips}</div>
-        </div>"""
-
-    msg      = request.args.get("msg")
-    msg_type = request.args.get("type", "success")
-    alert_html = ""
-    if msg:
-        icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
-
-    n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
-    panel_html = f"""
-    <div class="boq-panel">
-      <div class="bp-head">
-        <div>
-          <div class="bp-title">Project Schedule</div>
-          <div style="margin-top:.35rem;font-weight:700;">{P.esc(boq.get('project_name'))}</div>
-          <div class="bp-sub">{P.esc(boq.get('site_location'))}</div>
-        </div>
-      </div>
-      <div class="bp-grid">
-        <div class="bp-cell">
-          <div class="bp-lbl">Supply</div>
-          <div class="bp-val">&#8377;&nbsp;{sup:,.0f}</div>
-        </div>
-        <div class="bp-cell">
-          <div class="bp-lbl">Installation</div>
-          <div class="bp-val">&#8377;&nbsp;{ins:,.0f}</div>
-        </div>
-        <div class="bp-cell">
-          <div class="bp-lbl">Total Basic Value</div>
-          <div class="bp-val" style="color:var(--brand);">&#8377;&nbsp;{total:,.0f}</div>
-          <div class="bp-sub">taxes extra</div>
-        </div>
-        <div class="bp-cell">
-          <div class="bp-lbl">Size</div>
-          <div class="bp-val">{n_lines}</div>
-          <div class="bp-sub">priced lines in {len(_sections_of(boq))} section(s)</div>
-        </div>
-      </div>
-      {ra_html}
     </div>"""
 
     # ── Header meta, two columns ───────────────────────────────────────
@@ -1832,32 +1832,7 @@ def view_boq(id: str):
     comp_br   = boq.get("company_branch") or B.COMPANY_NAME
     signatory = boq.get("auth_signatory") or B.COMPANY_SIGNATORY
 
-    template = f"""<!DOCTYPE html><html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title(P.esc(boq.get('ref')) + " BOQ")}</title>
-  {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
-</head>
-<body>
-{_nav()}
-<main>
-
-<div class="screen-acts">
-  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
-    BOQ <span style="color:var(--brand);">{P.esc(boq.get('ref'))}</span>
-  </h1>
-  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
-    <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
-    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print (landscape)</button>
-  </div>
-</div>
-
-{alert_html}
-{panel_html}
-
+    return f"""
 <div class="doc-outer boq-outer">
 <div class="quotation-doc boq-doc">
 
@@ -1928,9 +1903,176 @@ def view_boq(id: str):
   </table>
 
 </div>
+</div>"""
+
+
+@boq_bp.route("/view/<id>")
+def view_boq(id: str):
+    """
+    The BOQ on screen — the operations panel, the RA chips, and the sheet.
+
+    This is the INTERNAL view, so it passes `show_rate_breakup=True`: the base
+    rate and the escalation percentage stay visible to whoever is pricing or
+    revising the job. `/boq/print` is the copy that leaves the building and
+    passes False. See §5.
+    """
+    ensure_demo_boq()
+    boq = STORE["boqs"].get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
+
+    sup, ins, total = boq_totals(boq)
+
+    # ── Running Account bills raised against this BOQ (screen only) ─────
+    # STORE["ra_bills"] is read directly and the link is built with url_for —
+    # `ra.py` imports THIS module, so importing it back would be a cycle. Same
+    # one-way trick quotation.py uses for proformas. The collection does not
+    # exist until Phase 3, hence the defensive .get().
+    ra_rows = sorted(
+        ((rid, r) for rid, r in (STORE.get("ra_bills") or {}).items()
+         if r.get("boq_id") == id),
+        key=lambda kv: int(kv[1].get("ra_no") or 0),
+    )
+    ra_html = ""
+    if ra_rows:
+        chips = "".join(
+            f'<a class="ra-chip" href="{url_for("ra.view_ra", id=rid)}">'
+            f'RA{P.esc(r.get("ra_no"))} &middot; {P.esc(r.get("ref"))} &middot; '
+            f'&#8377;&nbsp;{float(r.get("grand_total") or 0):,.0f}</a>'
+            for rid, r in ra_rows
+        )
+        ra_html = f"""
+        <div class="ra-block">
+          <span class="ra-lbl">Running Account bills raised</span>
+          <div class="ra-strip">{chips}</div>
+        </div>"""
+
+    msg      = request.args.get("msg")
+    msg_type = request.args.get("type", "success")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if msg_type == "success" else "&#10007;"
+        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+
+    n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
+    panel_html = f"""
+    <div class="boq-panel">
+      <div class="bp-head">
+        <div>
+          <div class="bp-title">Project Schedule</div>
+          <div style="margin-top:.35rem;font-weight:700;">{P.esc(boq.get('project_name'))}</div>
+          <div class="bp-sub">{P.esc(boq.get('site_location'))}</div>
+        </div>
+      </div>
+      <div class="bp-grid">
+        <div class="bp-cell">
+          <div class="bp-lbl">Supply</div>
+          <div class="bp-val">&#8377;&nbsp;{sup:,.0f}</div>
+        </div>
+        <div class="bp-cell">
+          <div class="bp-lbl">Installation</div>
+          <div class="bp-val">&#8377;&nbsp;{ins:,.0f}</div>
+        </div>
+        <div class="bp-cell">
+          <div class="bp-lbl">Total Basic Value</div>
+          <div class="bp-val" style="color:var(--brand);">&#8377;&nbsp;{total:,.0f}</div>
+          <div class="bp-sub">taxes extra</div>
+        </div>
+        <div class="bp-cell">
+          <div class="bp-lbl">Size</div>
+          <div class="bp-val">{n_lines}</div>
+          <div class="bp-sub">priced lines in {len(_sections_of(boq))} section(s)</div>
+        </div>
+      </div>
+      {ra_html}
+    </div>"""
+
+    template = f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(P.esc(boq.get('ref')) + " BOQ")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+
+<div class="screen-acts">
+  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
+    BOQ <span style="color:var(--brand);">{P.esc(boq.get('ref'))}</span>
+  </h1>
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
+    <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
+    <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
+    <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print (landscape)</a>
+  </div>
 </div>
 
+{alert_html}
+{panel_html}
+
+{_document_html(boq, show_rate_breakup=True)}
+
 <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
+</main></body></html>"""
+    return _page(template)
+
+
+@boq_bp.route("/print/<id>")
+def print_boq(id: str):
+    """
+    The issued BOQ — the sheet that goes to the client, and nothing else.
+
+    It renders the same `_document_html()` as `/boq/view` with one difference:
+    `show_rate_breakup=False`, so the base rate columns and the escalation
+    columns are not emitted at all. That is a decision the client made on
+    10 Aug 2026 — the escalated U/ Rate is what was agreed and what they are
+    billed against; how it was arrived at is our side of the negotiation. See
+    ABOUT.md §5.
+
+    **Nothing about the record changes.** `supply_base_rate`,
+    `install_base_rate` and both escalation percentages stay on every line, stay
+    in the database, and stay on `/boq/view`. This route omits three columns
+    from one table; it does not compute anything differently, and
+    `test_boq_print_columns.py` pins the subtotals to prove it.
+
+    No `_nav()` and no operations panel — the `.no-print` bar is the only screen
+    furniture, exactly as `ra.print_ra()` does it one chain over.
+    """
+    ensure_demo_boq()
+    boq = STORE["boqs"].get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
+
+    template = f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(P.esc(boq.get('ref')) + " BOQ")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+  <style>
+    @media print {{ .no-print {{ display:none !important; }} }}
+  </style>
+</head>
+<body>
+<main>
+
+<div class="screen-acts no-print">
+  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
+    BOQ <span style="color:var(--brand);">{P.esc(boq.get('ref'))}</span>
+  </h1>
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
+    <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">&#8592; Back to BOQ</a>
+    <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">All BOQs</a>
+    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print (landscape)</button>
+  </div>
+</div>
+
+{_document_html(boq, show_rate_breakup=False)}
+
 </main></body></html>"""
     return _page(template)
 
