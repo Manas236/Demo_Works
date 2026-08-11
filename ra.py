@@ -640,40 +640,189 @@ def compute_rounding_off(unrounded_total: float) -> tuple:
     return rounding, grand
 
 
+def _declared_rate(tax_type: str, cgst_rate: float, sgst_rate: float,
+                   igst_rate: float) -> float:
+    """
+    The single GST rate the BILL declares, as the form states it.
+
+    Only ever a **fallback** for a claim row that does not carry its own
+    `gst_rate` — see `_gst_rate_of`. Under `cgst_sgst` the declared rate is the
+    two halves added back together, because 9 + 9 is an 18% supply.
+    """
+    if str(tax_type or "").strip().lower() == "igst":
+        return float(igst_rate or 0.0)
+    return float(cgst_rate or 0.0) + float(sgst_rate or 0.0)
+
+
+def _gst_rate_of(claim: dict, fallback: float) -> float:
+    """
+    The rate one claim row is taxed at — its own `gst_rate`, or the bill's.
+
+    `build_claim()` has always snapshotted `gst_rate` off the BOQ line, so every
+    row this app has ever written carries one. The fallback exists for rows that
+    predate the field or were built by hand: they are taxed at the bill-level
+    rate, which is **exactly what they got before this function read the field
+    at all**. That is what lets per-line rates land with no migration and no
+    change to a single stored bill.
+
+    ⚠ A rate of **0.0 that is actually present is honoured as 0%**, not treated
+      as missing. Nil-rated work is a real slab, and `build_claim()` cannot
+      produce a stored 0.0 by accident — it folds a falsy BOQ rate to 18.0 —
+      so a zero here was put there on purpose.
+    """
+    raw = claim.get("gst_rate")
+    if raw is None or raw == "":
+        return fallback
+    try:
+        return round(float(raw), 3)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _head_split(tax_type: str, rate: float) -> tuple:
+    """
+    (cgst_rate, sgst_rate, igst_rate) for one slab — the HEAD, unchanged.
+
+    **This function decides nothing.** Which head applies is `tax_type`, which
+    comes off the bill exactly as it always has; all this does is split one
+    slab's rate across it. An 18% intra-state supply is CGST 9 + SGST 9; the
+    same supply inter-state is IGST 18.
+
+    ⚠ Whether a given bill is intra- or inter-state is **still not derived
+      anywhere** — see ABOUT.md §7 gap 15. `tax_type` defaults to `cgst_sgst`
+      and no form offers the choice. That question is open pending the client's
+      CA and is deliberately untouched here.
+
+    Any other `tax_type` yields no tax at all, which is what the bill-level
+    arithmetic did before this change and is preserved rather than tidied.
+    """
+    tax_type = str(tax_type or "").strip().lower()
+    if tax_type == "cgst_sgst":
+        half = rate / 2.0
+        return half, half, 0.0
+    if tax_type == "igst":
+        return 0.0, 0.0, rate
+    return 0.0, 0.0, 0.0
+
+
+def tax_slabs(claims: list, tax_type: str = "cgst_sgst", cgst_rate: float = 9.0,
+              sgst_rate: float = 9.0, igst_rate: float = 18.0) -> list:
+    """
+    The bill's claim rows grouped by the GST rate each one stores.
+
+    One row per distinct rate, ascending, carrying the taxable value, the head
+    split, the tax, and the distinct HSN/SAC codes that fall in it — which is
+    the shape a rate-wise tax table on the document wants, and the shape a
+    GSTR-1 HSN summary will want later (§7 gap 9c).
+
+    The per-slab amounts here are rounded to the paisa **for display**. The
+    document's own totals are NOT summed from them — `compute_tax_totals()`
+    rounds once, from the unrounded values, so that accumulated per-slab
+    rounding cannot drift the grand total against the claim subtotal.
+    """
+    fallback = _declared_rate(tax_type, cgst_rate, sgst_rate, igst_rate)
+
+    buckets = {}
+    for c in claims or []:
+        rate = _gst_rate_of(c, fallback)
+        b = buckets.setdefault(rate, {"taxable": 0.0, "hsn": set(), "lines": 0})
+        b["taxable"] += float(c.get("amount") or 0.0)
+        b["lines"] += 1
+        code = str(c.get("hsn_sac") or "").strip()
+        if code:
+            b["hsn"].add(code)
+
+    slabs = []
+    for rate in sorted(buckets):
+        b = buckets[rate]
+        taxable = round(b["taxable"], 2)
+        c_r, s_r, i_r = _head_split(tax_type, rate)
+        slabs.append({
+            "gst_rate":      rate,
+            "taxable_value": taxable,
+            "cgst_rate":     c_r,
+            "sgst_rate":     s_r,
+            "igst_rate":     i_r,
+            "cgst_amount":   round(taxable * c_r / 100.0, 2),
+            "sgst_amount":   round(taxable * s_r / 100.0, 2),
+            "igst_amount":   round(taxable * i_r / 100.0, 2),
+            "tax_amount":    round(taxable * (c_r + s_r + i_r) / 100.0, 2),
+            "hsn_sac":       sorted(b["hsn"]),
+            "line_count":    b["lines"],
+        })
+    return slabs
+
+
 def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgst",
                        cgst_rate: float = 9.0, sgst_rate: float = 9.0,
                        igst_rate: float = 18.0) -> dict:
     """
-    Compute claim_subtotal, deductions, net_payable, tax amounts, rounding_off, and grand_total.
+    claim_subtotal, deductions, net_payable, tax, rounding_off and grand_total.
 
-    Tax is computed on per-line basis if line rates differ, or on net_payable / claim totals.
-    Identity: grand_total == net_payable + tax_amount + rounding_off.
+    **Tax is computed per RATE SLAB, off the `gst_rate` each claim row stores.**
+    `build_claim()` has snapshotted that field since the record shape was
+    written; until this function read it, the bill-level `cgst_rate` /
+    `sgst_rate` / `igst_rate` were applied to every line regardless. That was
+    right on a single-rate bill and wrong on one mixing 18% goods with 12% or
+    5% work — wrong on a statutory document (ABOUT.md §7 gap 14).
+
+    What did **not** change, and must not be changed here:
+
+    - **The head.** `tax_type` still decides CGST+SGST versus IGST, still
+      defaults to `cgst_sgst`, and is still not derived from a place of supply.
+      Gap 15 is open pending the client's CA. `_head_split()` only splits a rate
+      across the head it is given.
+    - **Every existing key**, and what it means. `tax_slabs` is added alongside.
+    - **Stored bills.** Nothing here recomputes one; `print_ra()` renders the
+      frozen figures off the record, as it always has.
+
+    ⚠ **Rounded ONCE, at document level.** The per-slab figures in `tax_slabs`
+      are display values; the document's `cgst_amount` / `sgst_amount` /
+      `igst_amount` are each rounded once from the unrounded slab sum. Rounding
+      per slab and then adding drifts paise against the claim subtotal, and the
+      old per-LINE rounding drifted further — 87 lines of accumulated halves.
+      On a bill with two or more slabs the displayed slab column can therefore
+      differ from the document total by up to a paisa per slab; the document
+      total is the correct figure and is what the identity below holds for.
+
+    Identity: `grand_total == net_payable + tax_amount + rounding_off`.
     """
     subtotal, drows, dtotal, net_payable = bill_totals(claims, deductions)
     tax_type = str(tax_type or "cgst_sgst").strip().lower()
 
-    cgst_total = 0.0
-    sgst_total = 0.0
-    igst_total = 0.0
+    slabs = tax_slabs(claims, tax_type, cgst_rate, sgst_rate, igst_rate)
 
-    for c in claims or []:
-        c_amt = float(c.get("amount") or 0.0)
-        if tax_type == "cgst_sgst":
-            c_cgst = round(c_amt * (cgst_rate / 100.0), 2)
-            c_sgst = round(c_amt * (sgst_rate / 100.0), 2)
-            cgst_total += c_cgst
-            sgst_total += c_sgst
-        elif tax_type == "igst":
-            c_igst = round(c_amt * (igst_rate / 100.0), 2)
-            igst_total += c_igst
+    # Unrounded, so the single rounding below is the only one that happens.
+    cgst_raw = sgst_raw = igst_raw = 0.0
+    for s in slabs:
+        taxable = s["taxable_value"]
+        cgst_raw += taxable * s["cgst_rate"] / 100.0
+        sgst_raw += taxable * s["sgst_rate"] / 100.0
+        igst_raw += taxable * s["igst_rate"] / 100.0
 
-    cgst_amount = round(cgst_total, 2)
-    sgst_amount = round(sgst_total, 2)
-    igst_amount = round(igst_total, 2)
+    cgst_amount = round(cgst_raw, 2)
+    sgst_amount = round(sgst_raw, 2)
+    igst_amount = round(igst_raw, 2)
     tax_amount = round(cgst_amount + sgst_amount + igst_amount, 2)
 
     raw_total = net_payable + tax_amount
     rounding_off, grand_total = compute_rounding_off(raw_total)
+
+    # The document-level rates keep their existing meaning: what the tax line on
+    # the sheet is labelled with. On a single-slab bill that is the slab, so a
+    # 12% bill can no longer print "CGST @ 9%" over an amount charged at 6% —
+    # which is what echoing the form back would now do, since the line rate is
+    # the one the amount is computed from. With no slabs, or with more than one,
+    # there is no single rate to state and the declared values stand; the
+    # rate-wise table is what a multi-slab document prints instead.
+    if len(slabs) == 1:
+        out_cgst_rate = slabs[0]["cgst_rate"] or float(cgst_rate)
+        out_sgst_rate = slabs[0]["sgst_rate"] or float(sgst_rate)
+        out_igst_rate = slabs[0]["igst_rate"] or float(igst_rate)
+    else:
+        out_cgst_rate = float(cgst_rate)
+        out_sgst_rate = float(sgst_rate)
+        out_igst_rate = float(igst_rate)
 
     return {
         "claim_subtotal": subtotal,
@@ -681,13 +830,14 @@ def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgs
         "deduction_total": dtotal,
         "net_payable": net_payable,
         "tax_type": tax_type,
-        "cgst_rate": float(cgst_rate),
-        "sgst_rate": float(sgst_rate),
-        "igst_rate": float(igst_rate),
+        "cgst_rate": out_cgst_rate,
+        "sgst_rate": out_sgst_rate,
+        "igst_rate": out_igst_rate,
         "cgst_amount": cgst_amount,
         "sgst_amount": sgst_amount,
         "igst_amount": igst_amount,
         "tax_amount": tax_amount,
+        "tax_slabs": slabs,
         "rounding_off": rounding_off,
         "grand_total": grand_total,
     }
@@ -2237,6 +2387,13 @@ def create_ra():
                 "sgst_amount": tax_info["sgst_amount"],
                 "igst_amount": tax_info["igst_amount"],
                 "tax_amount": tax_info["tax_amount"],
+                # The rate-wise breakdown, frozen with the rest of the bill.
+                # Stored rather than re-derived at print time for the same
+                # reason `cgst_amount` is: the document must not depend on the
+                # BOQ's GST rates never being edited. A bill written before this
+                # field simply has no key, renders exactly as it always did, and
+                # is never backfilled — see ABOUT.md §7 gap 14.
+                "tax_slabs": tax_info["tax_slabs"],
                 "rounding_off": tax_info["rounding_off"],
                 "grand_total": tax_info["grand_total"],
                 "status": "draft", "certified_on": "",
@@ -2329,6 +2486,7 @@ def edit_ra(id: str):
             bill["sgst_amount"] = tax_info["sgst_amount"]
             bill["igst_amount"] = tax_info["igst_amount"]
             bill["tax_amount"] = tax_info["tax_amount"]
+            bill["tax_slabs"] = tax_info["tax_slabs"]
             bill["rounding_off"] = tax_info["rounding_off"]
             bill["grand_total"] = tax_info["grand_total"]
             bill["tax_invoice_ref"] = tax_invoice_ref
@@ -2636,22 +2794,63 @@ def print_ra(id: str):
         </tr>"""
 
     # Tax block rows
+    #
+    # A bill at ONE rate — which is every bill the client has actually sent us —
+    # prints exactly the markup it always has: `CGST @ 9%` over its amount. That
+    # is the format they recognise and it is deliberately not modernised.
+    #
+    # A bill mixing rates cannot state a single one, so it gains a rate-wise
+    # breakdown above the totals and the total lines drop their rate label. The
+    # slabs are read off the RECORD (`tax_slabs`, frozen at save) and never
+    # recomputed here — the same rule as every other figure on this sheet. A
+    # bill written before that field has no key, so `slabs` is empty, `multi` is
+    # False, and it renders byte-for-byte as it did the day it was issued.
+    slabs = bill.get("tax_slabs") or []
+    multi = len(slabs) > 1
+
+    igst_label = "Total IGST" if multi else f"IGST @ {igst_rate:g}%"
+    cgst_label = "Total CGST" if multi else f"CGST @ {cgst_rate:g}%"
+    sgst_label = "Total SGST" if multi else f"SGST @ {sgst_rate:g}%"
+
     if tax_type == "igst":
         tax_rows_html = f"""
         <tr>
-          <td colspan="7" style="text-align:right;font-weight:500;">IGST @ {igst_rate:g}%:</td>
+          <td colspan="7" style="text-align:right;font-weight:500;">{igst_label}:</td>
           <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{igst_amount:,.2f}</td>
         </tr>"""
     else:
         tax_rows_html = f"""
         <tr>
-          <td colspan="7" style="text-align:right;font-weight:500;">CGST @ {cgst_rate:g}%:</td>
+          <td colspan="7" style="text-align:right;font-weight:500;">{cgst_label}:</td>
           <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{cgst_amount:,.2f}</td>
         </tr>
         <tr>
-          <td colspan="7" style="text-align:right;font-weight:500;">SGST @ {sgst_rate:g}%:</td>
+          <td colspan="7" style="text-align:right;font-weight:500;">{sgst_label}:</td>
           <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{sgst_amount:,.2f}</td>
         </tr>"""
+
+    if multi:
+        slab_rows_html = ""
+        for s in slabs:
+            codes = ", ".join(s.get("hsn_sac") or [])
+            hsn_note = f" &middot; {_esc(codes)}" if codes else ""
+            rate_pct = float(s.get("gst_rate") or 0.0)
+            if tax_type == "igst":
+                heads = f"IGST {float(s.get('igst_rate') or 0.0):g}%"
+                head_amt = float(s.get("igst_amount") or 0.0)
+            else:
+                heads = (f"CGST {float(s.get('cgst_rate') or 0.0):g}% + "
+                         f"SGST {float(s.get('sgst_rate') or 0.0):g}%")
+                head_amt = float(s.get("tax_amount") or 0.0)
+            slab_rows_html += f"""
+        <tr>
+          <td colspan="5" style="text-align:right;color:var(--muted);">
+            Taxable @ {rate_pct:g}% ({heads}){hsn_note}:
+          </td>
+          <td colspan="2" style="text-align:right;">&#8377;&nbsp;{float(s.get('taxable_value') or 0.0):,.2f}</td>
+          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{head_amt:,.2f}</td>
+        </tr>"""
+        tax_rows_html = slab_rows_html + tax_rows_html
 
     rounding_html = ""
     if abs(rounding_off) > 1e-4:

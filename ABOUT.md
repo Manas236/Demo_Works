@@ -122,7 +122,7 @@ Consequences you must respect when editing:
 | [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 3415 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 1922 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Does not yet carry a tax block; required to — see DOMAIN.md §4. |
+| [ra.py](ra.py) | 2654 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -714,7 +714,14 @@ Written by `ra.py`. Progressive claim against a specific BOQ revision, carrying 
 - **Position in the run:** `ra_no` (int, sequence within project), `leg` ∈ `supply | installation`
 - **Copied from BOQ at issue:** `project_name`, `site_location`, `account_name`, `contact_person`, `to`, `bill_gstin`
 - **Content:** `claims` (each claim row snapshots `hsn_sac` and `gst_rate` from BOQ line)
-- **Money & Tax:** `claim_subtotal`, `deductions[]`, `deduction_total`, `net_payable`, `tax_type`, `cgst_rate`, `sgst_rate`, `igst_rate`, `cgst_amount`, `sgst_amount`, `igst_amount`, `tax_amount`, `rounding_off` (computed delta), `grand_total` (frozen at save)
+- **Money & Tax:** `claim_subtotal`, `deductions[]`, `deduction_total`, `net_payable`, `tax_type`, `cgst_rate`, `sgst_rate`, `igst_rate`, `cgst_amount`, `sgst_amount`, `igst_amount`, `tax_amount`, `tax_slabs[]` (the rate-wise breakdown — see §5), `rounding_off` (computed delta), `grand_total` (frozen at save)
+
+  ⚠ **`tax_slabs` is optional and is never backfilled.** Bills written before
+  it existed simply have no key; `compute_tax_totals()` produces it for every
+  new save, `print_ra()` falls back to the single-rate layout when it is absent,
+  and nothing recomputes an issued bill. Same contract as `prior_invoiced` /
+  `prior_refs` on a proforma — a new field defaults cleanly rather than forcing
+  a migration.
 - **Certification:** `status` ∈ `draft | submitted | certified`, `certified_on`
 - **Other:** `notes`, `company_branch`, `auth_signatory`
 
@@ -2275,6 +2282,58 @@ non-repeating, because it is the key every RA bill quotes back.
 
 **Registering this blueprint is what closes the `/boq/view` 500** (§2b).
 
+#### Tax is per RATE SLAB, off the `gst_rate` each claim row stores
+
+`compute_tax_totals()` groups the bill's claim rows by their own `gst_rate` and
+taxes each group at its own rate. This closed §7 gap 14; before it, the
+bill-level `cgst_rate` / `sgst_rate` / `igst_rate` were applied to every line
+regardless of what the line stored.
+
+```
+claims ──► tax_slabs()  ──► [{gst_rate, taxable_value, cgst/sgst/igst rate+amount,
+                              tax_amount, hsn_sac[], line_count}, …]  ascending
+        └► compute_tax_totals() ──► the same document-level keys as before,
+                                    plus `tax_slabs`
+```
+
+Five rules, each of which is a test in
+[tests/test_ra_tax_slabs.py](tests/test_ra_tax_slabs.py):
+
+1. **The HEAD is not decided here.** `tax_type` still says CGST+SGST or IGST,
+   still defaults to `cgst_sgst`, and is still not derived from a place of
+   supply. `_head_split()` only splits one slab's rate across the head it is
+   given — 18% intra-state is CGST 9 + SGST 9, the same supply inter-state is
+   IGST 18. **§7 gap 15 is open pending the client's CA; do not encode a guess.**
+2. **Rounded ONCE, at document level.** The document's `cgst_amount` /
+   `sgst_amount` / `igst_amount` are each rounded once from the *unrounded* slab
+   sum. The old code rounded every LINE to the paisa and added 87 of them up;
+   rounding per slab would do the same thing more slowly. Consequence worth
+   knowing: on a bill with two or more slabs the displayed per-slab column can
+   differ from the document total by up to a paisa per slab — **the document
+   total is the correct figure** and is what `grand_total == net_payable +
+   tax_amount + rounding_off` holds for.
+3. **A missing `gst_rate` falls back to the bill's declared rate** (`cgst_rate +
+   sgst_rate`, or `igst_rate`) — which is *exactly* what such a row was taxed at
+   before this function read the field. That is what let per-line rates land
+   with **no migration and no stored bill rewritten**. A `gst_rate` of **0.0
+   that is present is honoured as 0%**: nil-rated work is a real slab, and
+   `build_claim()` folds a falsy BOQ rate to 18.0 so it cannot produce a stored
+   zero by accident.
+4. **`cgst_rate` / `sgst_rate` / `igst_rate` keep their meaning** — what the tax
+   line on the sheet is labelled with. On a single-slab bill they are derived
+   from that slab, so a 12% bill can no longer print "CGST @ 9%" over an amount
+   charged at 6%. With no slabs or more than one there is no single rate to
+   state and the declared values stand.
+5. **Single-rate bills print exactly as they always did.** Every bill the client
+   has actually sent us is single-rate and that is the format they recognise, so
+   the tax block's markup is untouched for them — verified by rendering the same
+   bill against the pre-change module and diffing: 58,658 bytes, zero differing
+   lines. A bill with **two or more slabs** gains a rate-wise table above the
+   totals (`Taxable @ 12% (CGST 6% + SGST 6%) · 995462`) and its total rows drop
+   the rate label to `Total CGST` / `Total SGST`. `print_ra()` reads
+   `bill["tax_slabs"]` off the record; a bill written before that field has no
+   key, so it takes the single-rate path unchanged.
+
 #### `/ra/print/<id>` reads the RECORD, never the live BOQ
 
 The printed bill is an issued **tax invoice**, so the rule from §3 applies to it
@@ -2884,30 +2943,46 @@ Real, verified, and safe to pick up:
 13. **`app.run(debug=True)`** with `reloader_type="stat"` — the stat reloader is
     intentional (the watchdog reloader storms on Windows when AV/indexers touch
     `site-packages`). Never ship `debug=True`.
-14. **The RA bill's tax block is not per-line, despite the record being.**
-    `build_claim()` snapshots `gst_rate` onto every claim row and
-    `compute_tax_totals()` never reads it — it applies the **bill-level**
-    `cgst_rate` / `sgst_rate` / `igst_rate` to every line and sums. On a
-    single-rate bill (all twelve lines of `SF/RA/26-27/0001` are 18%) the answer
-    is right; on a bill mixing 18% goods with 12% or 5% work it is wrong, and
-    wrong on a statutory document. §2b says the load-bearing reason `ra.py` may
-    not import `invoice.py` is that *"the RA bill's tax block is per-line"* —
-    the record shape delivers that and the arithmetic does not yet.
-15. **`/ra/print` hardcodes the supplier's state, and prints no place of
-    supply.** `seller_state = "Punjab (03)"` and a fallback GSTIN of
-    `03AAACS2024F1Z0` are literals in `print_ra()`, contradicting
-    `settings.py`'s own `COMPANY_GSTIN` (whose placeholder is a `27`/
-    Maharashtra pattern — see gap 10). **Place of supply with its State code is
-    a Rule 46 field and is absent from the document entirely.** It is also what
-    decides CGST/SGST versus IGST: the seeded bill is Punjab → Karnataka, an
-    inter-state supply, and it prints CGST+SGST because `tax_type` defaults to
-    `cgst_sgst` and no form offers the choice. `invoice.py` already derives this
+14. ~~**The RA bill's tax block is not per-line, despite the record being.**~~
+    ✅ **Closed.** `compute_tax_totals()` now groups the bill's claim rows by
+    the `gst_rate` each one stores and taxes each slab at its own rate. §2b's
+    load-bearing reason `ra.py` may not import `invoice.py` — *"the RA bill's
+    tax block is per-line"* — is now true of the arithmetic and not only of the
+    record shape. See §5's *"Tax is per RATE SLAB"* for how it works and what it
+    deliberately did not change.
+
+    What was wrong: `build_claim()` had always snapshotted `gst_rate`, and the
+    arithmetic applied the **bill-level** `cgst_rate` / `sgst_rate` /
+    `igst_rate` to every line regardless. Right on a single-rate bill — all 87
+    priced lines of the Sify schedule are 18% — and wrong on one mixing 18%
+    goods with 12% or 5% work, on a document headed TAX INVOICE.
+
+    ⚠ **The tax HEAD is a different question and is still open — see gap 15.**
+    This closed *which rate* applies to a line, not *which head* the bill is
+    under.
+15. 🟠 **`/ra/print` hardcodes the supplier's state, and prints no place of
+    supply — OPEN, and deliberately so.** `seller_state = "Punjab (03)"` and a
+    fallback GSTIN of `03AAACS2024F1Z0` are literals in `print_ra()`,
+    contradicting `settings.py`'s own `COMPANY_GSTIN` (whose placeholder is a
+    `27`/Maharashtra pattern — see gap 10). **Place of supply with its State
+    code is a Rule 46 field and is absent from the document entirely.**
+
+    It is also what decides **CGST/SGST versus IGST**: the seeded bill is
+    Punjab → Karnataka, an inter-state supply, and it prints CGST+SGST because
+    `tax_type` defaults to `cgst_sgst` and no form offers the choice.
+
+    **This is pending the client's CA and must not be guessed at.** Gap 14's fix
+    deliberately stopped at the slab: `ra._head_split()` splits a rate across
+    whichever head the bill already carries and decides nothing. Do not add a
+    place-of-supply field, change the default, or encode a derivation until the
+    CA has ruled. When it is time, `invoice.py` already derives this
     (`_supplier_state()`, `pos_code`) — but `ra.py` may not import it, so the
     derivation has to be grown here or lifted into `pipeline.py`.
-16. **`bill_gstin` is blank on the seeded BOQ**, so the customer GSTIN prints as
-    an em dash on `SF/RA/26-27/0001`. Rule 46 requires the recipient's GSTIN
-    where they are registered. This is missing demo data rather than a code
-    fault, but it is missing on the record a demo will be given from.
+16. 🟠 **`bill_gstin` is blank on the seeded BOQ — OPEN**, so the customer GSTIN
+    prints as an em dash on `SF/RA/26-27/0001`. Rule 46 requires the recipient's
+    GSTIN where they are registered. This is missing demo data rather than a
+    code fault, and gap 14's fix does not touch it: it is a field on the BOQ
+    record, not part of the tax arithmetic.
 
 ---
 
