@@ -729,6 +729,145 @@ def revision_blockers(prev_lines: list, new_lines: list,
     return out
 
 
+def _norm_identity(value) -> str:
+    """Casefolded and whitespace-collapsed — for comparing two typed-in names."""
+    return " ".join(str(value or "").split()).casefold()
+
+
+def boq_identity(boq: dict) -> tuple:
+    """
+    What makes two BOQ records the same PROJECT for the same PARTY.
+
+    `(project_name, account_name)`, both normalised. It is a **text** match
+    because the record carries no foreign key to either: the address picker
+    writes `account_name` and the `bill_*` block onto the BOQ as plain strings
+    and there is no `customer_id` to key on.
+
+    Why this pair and nothing else:
+
+    - **`account_name` alone is too broad.** One main contractor runs many
+      sites at once, so every Prudent Teqtis schedule would be offered as a
+      predecessor for an unrelated project.
+    - **`project_name` alone is too loose the other way.** "Tower B" is not a
+      unique thing in the world; it is only a project when it belongs to
+      somebody.
+    - **`site_location` is deliberately excluded.** It is the field most likely
+      to be typed differently between revisions — "Bangalore" against
+      "Bangalore, Karnataka" — and it discriminates nothing the pair above does
+      not already.
+    - **`bill_gstin` is deliberately excluded.** It is optional and it is blank
+      on the seeded BOQ (ABOUT.md §7 gap 16), so keying on it would offer no
+      candidate at all in precisely the case a demo runs.
+
+    Normalising case and internal whitespace is what makes it survive the
+    realistic failure, which is the same name re-typed slightly differently.
+    """
+    return (_norm_identity(boq.get("project_name")),
+            _norm_identity(boq.get("account_name")))
+
+
+def superseded_ids() -> set:
+    """Every BOQ id that some other BOQ already claims to supersede."""
+    return {str(b.get("supersedes") or "")
+            for b in (STORE.get("boqs") or {}).values()
+            if str(b.get("supersedes") or "")}
+
+
+def revision_candidates(project_name=None, account_name=None) -> list:
+    """
+    `[(id, boq)]` a new BOQ may legitimately supersede — latest revision first.
+
+    Two filters, and both matter:
+
+    1. **Same project and party**, when one is given — see `boq_identity()`.
+       Passing neither returns every eligible BOQ, which is what a blank create
+       form has to render: it does not yet know whose project this is, and the
+       POST is where the match is actually enforced.
+    2. **Not already superseded.** A second revision claiming the same parent
+       forks the chain, and `ra.revision_chain()` says plainly that a fork
+       "should not happen" — it orders the descendants deterministically rather
+       than resolving them, because there is no right answer. Cheap to refuse
+       here; impossible to unpick afterwards.
+
+    Ordered by `rev_no` then date, descending, so the tip of a chain is the
+    first thing offered.
+    """
+    want = None
+    if project_name is not None or account_name is not None:
+        want = (_norm_identity(project_name), _norm_identity(account_name))
+
+    blocked = superseded_ids()
+    rows = []
+    for bid, b in (STORE.get("boqs") or {}).items():
+        if bid in blocked:
+            continue
+        if want is not None and boq_identity(b) != want:
+            continue
+        rows.append((bid, b))
+
+    rows.sort(key=lambda kv: (int(_num(kv[1].get("rev_no"), 0)),
+                              str(kv[1].get("date") or ""),
+                              str(kv[1].get("ref") or "")),
+              reverse=True)
+    return rows
+
+
+def _ancestor_ids(boq_id: str) -> set:
+    """
+    `boq_id` and every revision behind it, walking `supersedes` back to the root.
+
+    **Backward only, and that is sufficient rather than lazy.** `ra.revision_chain()`
+    walks both ways because it is asked about an arbitrary member of an existing
+    chain. This is only ever asked about the record a NEW revision is about to
+    supersede, and `revision_candidates()` refuses anything already superseded —
+    so the id handed here is the tip, and forward has nothing in it.
+
+    Carries a seen-set for the same reason `revision_chain()` does: a
+    `supersedes` cycle is not reachable through any route that exists, and a
+    hand-edited record still must not hang the create form.
+    """
+    boqs = STORE.get("boqs") or {}
+    out, cur = set(), str(boq_id or "")
+    while cur and cur in boqs and cur not in out:
+        out.add(cur)
+        cur = str((boqs.get(cur) or {}).get("supersedes") or "")
+    return out
+
+
+def claims_against_chain(boq_id: str) -> dict:
+    """
+    `{line_id: [ra_no, …]}` over every RA bill raised against this chain.
+
+    The map `revision_blockers()` takes. It is built **here**, reading
+    `STORE["ra_bills"]` directly, because **boq.py may never import ra.py**
+    (ABOUT.md §2b) — the same one-way trick `view_boq()` already uses to render
+    the RA chips, and exactly what §5 said the revision route would do when it
+    was built.
+
+    It agrees with `ra.claims_by_line_id()` by construction: same key, same
+    zero-quantity skip, same chain. `tests/test_boq_revisions.py` asserts the
+    two return the same thing on a real chain, so the duplication cannot drift
+    silently.
+    """
+    ids = _ancestor_ids(boq_id)
+    if not ids:
+        return {}
+
+    out = {}
+    for bill in (STORE.get("ra_bills") or {}).values():
+        if str(bill.get("boq_id") or "") not in ids:
+            continue
+        ra_no = int(_num(bill.get("ra_no"), 0))
+        for c in bill.get("claims") or []:
+            lid = _line_id(c.get("line_id"))
+            if not lid or float(_num(c.get("qty"), 0.0)) <= 0:
+                continue
+            out.setdefault(lid, [])
+            if ra_no not in out[lid]:
+                out[lid].append(ra_no)
+    return out
+
+
 def revision_blocker_message(v: dict) -> str:
     """One blocked deletion, in words the person revising it can act on."""
     bills = ", ".join(f"RA{n}" for n in v["ra_nos"])
@@ -1954,6 +2093,20 @@ def view_boq(id: str):
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
         alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
 
+    # Revising is offered only on the TIP of a chain. A second revision claiming
+    # the same parent forks it, and `ra.revision_chain()` cannot say which
+    # branch a claim belongs to — so the button disappears once this record has
+    # been revised, and says what replaced it instead.
+    revise_btn = ""
+    if id in superseded_ids():
+        newer = next((b for b in STORE["boqs"].values()
+                      if str(b.get("supersedes") or "") == id), None)
+        revise_btn = (f'<span class="btn btn-ghost" style="opacity:.65;cursor:default;">'
+                      f'Revised by {P.esc((newer or {}).get("ref"))}</span>')
+    else:
+        revise_btn = (f'<a href="{url_for("boq.create_boq", revise=id)}" '
+                      f'class="btn btn-ghost">&#8635;&nbsp;Revise</a>')
+
     n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
     panel_html = f"""
     <div class="boq-panel">
@@ -2006,6 +2159,7 @@ def view_boq(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
     <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
+    {revise_btn}
     <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print (landscape)</a>
   </div>
 </div>
@@ -2134,22 +2288,37 @@ def _demo_form_payload() -> tuple:
     """
     The seeded BOQ, shaped for the create form's editor.
 
+    Reads the seeded *record* rather than `demo_data` directly, so what the form
+    loads is exactly what `/boq/view` shows: one source, no second copy of the
+    schedule to drift.
+    """
+    ensure_demo_boq()
+    return _form_payload_from(STORE["boqs"].get(DD.BOQ_META["id"]))
+
+
+def _form_payload_from(src: dict) -> tuple:
+    """
+    Any BOQ record, shaped for the create form's editor.
+
     Returns `(boot, prefill)` — the editor's JSON model, and the plain form
     fields (project, customer, terms) that sit outside it.
 
-    It reads the seeded *record* rather than `demo_data` directly, so what the
-    form loads is exactly what `/boq/view` shows: one source, no second copy of
-    the schedule to drift. The record's line items are converted back into the
-    editor's shape, which is a lossless round trip because the editor's fields
-    are a superset of what a line stores — the one asymmetry is `total_qty`,
-    which the editor derives from the area boxes whenever the section declares
-    areas, so it is only carried across for sections that declare none.
+    The record's line items are converted back into the editor's shape, which is
+    a lossless round trip because the editor's fields are a superset of what a
+    line stores — the one asymmetry is `total_qty`, which the editor derives
+    from the area boxes whenever the section declares areas, so it is only
+    carried across for sections that declare none.
 
     Nothing is written to STORE. This fills the form; the user still presses
     Create, and can edit anything first.
+
+    ⚠ **`line_id` is carried, and that is what makes `?revise=` correct** as
+      well as `?demo=1`. A revision posts the previous revision's lines with
+      their ids, so a surviving line keeps its id through `_clean_lines()` and
+      every RA claim raised against the old revision still matches it. Dropping
+      the id here would re-mint all of them and orphan the whole claim history —
+      silently, which is the whole reason §3 property 0 exists.
     """
-    ensure_demo_boq()
-    src = STORE["boqs"].get(DD.BOQ_META["id"])
     if not src:
         return {"sections": [{"code": "A", "title": "", "areas": []}], "lines": []}, {}
 
@@ -3216,6 +3385,7 @@ def create_boq():
     error = ""
     sections: list = []
     lines: list = []
+    blockers: list = []
 
     if request.method == "POST":
         form = request.form
@@ -3243,6 +3413,61 @@ def create_boq():
             lines, error, err_idx = _clean_lines(
                 raw_lines, sections, len(raw_json.encode("utf-8")))
 
+        # ── The revision link ──────────────────────────────────────────────
+        #
+        # Everything below this comment is what makes a revision a real thing
+        # rather than a field nothing writes. Until it existed, `supersedes`
+        # was always "" — so `ra.claimed_by_line()` walked a chain of one, every
+        # revision reset every line's claimed quantity to zero, and the
+        # over-claim block guarded nothing on precisely the schedules that had
+        # been revised. That failure was **silent**: no error, no warning, just
+        # a guard quietly passing everything.
+        prev_id  = (form.get("supersedes") or "").strip()
+        rev_no   = int(_num(form.get("rev_no"), 0))
+        blockers = []
+
+        # THE assertion. A revision number above zero says "this replaces
+        # something"; with nothing named, the record claims to be a revision and
+        # behaves like an original. Refusing is what turns the silent failure
+        # into a visible one.
+        if not error and rev_no > 0 and not prev_id:
+            error = (f"This is marked Revision {rev_no} but no BOQ was chosen "
+                     f"for it to supersede. A revision must name the schedule "
+                     f"it replaces — RA bills are measured across the whole "
+                     f"chain, and a revision with no link restarts every "
+                     f"line's claimed quantity at zero. Pick the previous BOQ, "
+                     f"or set the revision number back to 0.")
+
+        prev = None
+        if not error and prev_id:
+            prev = STORE["boqs"].get(prev_id)
+            if prev is None:
+                error = "The BOQ this revision supersedes no longer exists."
+            elif prev_id in superseded_ids():
+                error = (f"BOQ {P.esc(prev.get('ref'))} has already been "
+                         f"revised. Revise the latest revision instead — two "
+                         f"revisions of one schedule fork the chain, and the "
+                         f"over-claim guard cannot answer which branch a claim "
+                         f"belongs to.")
+            elif boq_identity(prev) != (_norm_identity(form.get("project_name")),
+                                        _norm_identity(form.get("account_name"))):
+                error = (f"BOQ {P.esc(prev.get('ref'))} is for a different "
+                         f"project or customer "
+                         f"({P.esc(prev.get('project_name'))} — "
+                         f"{P.esc(prev.get('account_name'))}). A revision "
+                         f"replaces a schedule for the same project and the "
+                         f"same party.")
+
+        # A line already claimed against cannot be dropped by a revision. The
+        # rule and its reasoning live in `revision_blockers()`; this is the
+        # call site it was written for and never had.
+        if not error and prev is not None:
+            blockers = revision_blockers(prev.get("line_items") or [], lines,
+                                         claims_against_chain(prev_id))
+            if blockers:
+                error = ("This revision removes lines that have already been "
+                         "claimed against.")
+
         if not error:
             datestr = (form.get("date") or "").strip()
             bid     = str(uuid.uuid4())
@@ -3261,9 +3486,10 @@ def create_boq():
                 # walks this field to sum a line's claims across the whole
                 # chain — without that, a revision would reset every line's
                 # claimed quantity to zero and defeat the over-claim block.
-                # Nothing writes a non-empty value yet; the revision route is
-                # not built. See PHASE4_RA_DESIGN.md §4.
-                "supersedes": (form.get("supersedes") or "").strip(),
+                # Written by the selector on this form, and validated above:
+                # same project and party, not already superseded, and no
+                # claimed line dropped. See PHASE4_RA_DESIGN.md §4.
+                "supersedes": prev_id,
 
                 "project_name":  (form.get("project_name") or "").strip(),
                 "site_location": (form.get("site_location") or "").strip(),
@@ -3367,6 +3593,63 @@ def create_boq():
     if request.method == "GET" and request.args.get("demo"):
         boot, prefill = _demo_form_payload()
 
+    # ?revise=<id> opens the form as the NEXT revision of an existing BOQ: its
+    # lines (with their ids — see `_form_payload_from`), its project and party,
+    # its terms, `rev_no` bumped, and the supersedes selector already pointing
+    # at it. This is the path a revision is actually made through; the bare
+    # selector below is what makes it possible to do by hand.
+    revise_src = None
+    if request.method == "GET" and request.args.get("revise"):
+        revise_src = STORE["boqs"].get(request.args.get("revise"))
+        if revise_src is not None:
+            boot, prefill = _form_payload_from(revise_src)
+            prefill["rev_no"]     = str(int(_num(revise_src.get("rev_no"), 0)) + 1)
+            prefill["supersedes"] = revise_src["id"]
+
+    # ── The supersedes selector ────────────────────────────────────────────
+    #
+    # Candidates are narrowed to the same project and party whenever the form
+    # already knows who that is — a rejected POST carries it, and ?revise= sets
+    # it. A blank form does not know yet, so it lists everything eligible and
+    # the POST is where the match is enforced. Restricting only the dropdown
+    # would be decoration; the check in the handler is the restriction.
+    if request.method == "POST":
+        _proj, _acct = request.form.get("project_name"), request.form.get("account_name")
+    elif prefill.get("project_name") or prefill.get("account_name"):
+        _proj, _acct = prefill.get("project_name"), prefill.get("account_name")
+    else:
+        _proj = _acct = None
+
+    _chosen = (request.form.get("supersedes") if request.method == "POST"
+               else prefill.get("supersedes")) or ""
+
+    _opts = ['<option value="">&#8212; None: this is an original schedule &#8212;</option>']
+    for _cid, _cb in revision_candidates(_proj, _acct):
+        _sel_attr = " selected" if _cid == _chosen else ""
+        _opts.append(
+            f'<option value="{P.esc(_cid)}"{_sel_attr}>'
+            f'{P.esc(_cb.get("ref"))} &middot; rev {int(_num(_cb.get("rev_no"), 0))}'
+            f' &middot; {P.esc(_cb.get("project_name"))}'
+            f' &middot; {P.esc(_cb.get("account_name"))}</option>')
+    supersedes_html = ('<select id="supersedes" name="supersedes">'
+                       + "".join(_opts) + "</select>")
+
+    # A refused revision names every line it would have dropped and the bills
+    # that claimed them. `revision_blocker_message()` writes each one in words
+    # the person revising it can act on — the alert alone would say "some lines"
+    # and leave them to find out which.
+    blockers_html = ""
+    if blockers:
+        _items = "".join(f"<li>{P.esc(revision_blocker_message(v))}</li>"
+                         for v in blockers)
+        blockers_html = f"""
+    <div class="alert alert-error" style="display:block;">
+      <div style="font-weight:700;margin-bottom:.4rem;">
+        &#10007; {len(blockers)} line{'s' if len(blockers) != 1 else ''} cannot be removed by this revision
+      </div>
+      <ul style="margin:.2rem 0 0 1.1rem;padding:0;font-weight:400;">{_items}</ul>
+    </div>"""
+
     # Loading the demo has to be visibly a *demo*, and it has to say that
     # nothing is saved yet — otherwise the obvious reading of a form that just
     # filled itself with 97 lines is that a BOQ now exists.
@@ -3410,6 +3693,7 @@ def create_boq():
       </a>
     </div>
   </div>
+  {blockers_html}
   {demo_banner}
 
   <form method="POST" onsubmit="return saveJSON()">
@@ -3425,6 +3709,10 @@ def create_boq():
         <div class="form-group">
           <label for="rev_no">Revision No.</label>
           <input type="text" id="rev_no" name="rev_no" value="{_v('rev_no', '0')}" placeholder="0"/>
+        </div>
+        <div class="form-group span2">
+          <label for="supersedes">Supersedes</label>
+          {supersedes_html}
         </div>
         <div class="form-group span2">
           <label for="project_name">Project Name</label>
@@ -3446,6 +3734,13 @@ def create_boq():
         The rate basis is what the base-rate column is headed on the printed sheet.
         These schedules are commonly priced off a rate contract agreed on another
         project and then escalated.
+      </p>
+      <p style="margin-top:.5rem;font-size:.78rem;color:var(--muted);">
+        <b>Supersedes</b> links this schedule to the one it replaces. A revision is a
+        new record, never an edit, because RA bills are measured against a specific
+        revision. The link is what lets the over-claim guard sum a line&#39;s claims
+        across the whole chain &mdash; <b>a Revision No. above 0 must name one</b>,
+        or every line&#39;s claimed quantity silently restarts at zero.
       </p>
     </div>
 

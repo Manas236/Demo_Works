@@ -746,7 +746,13 @@ def tax_slabs(claims: list, tax_type: str = "cgst_sgst", cgst_rate: float = 9.0,
             "cgst_amount":   round(taxable * c_r / 100.0, 2),
             "sgst_amount":   round(taxable * s_r / 100.0, 2),
             "igst_amount":   round(taxable * i_r / 100.0, 2),
-            "tax_amount":    round(taxable * (c_r + s_r + i_r) / 100.0, 2),
+            # The slab's own total is its heads ADDED, not the rate applied
+            # again. `round(x * 18/100)` and `2 x round(x * 9/100)` can differ
+            # by a paisa, and if they do it is the printed slab row that stops
+            # footing against the CGST and SGST totals underneath it.
+            "tax_amount":    round(round(taxable * c_r / 100.0, 2)
+                                   + round(taxable * s_r / 100.0, 2)
+                                   + round(taxable * i_r / 100.0, 2), 2),
             "hsn_sac":       sorted(b["hsn"]),
             "line_count":    b["lines"],
         })
@@ -776,14 +782,16 @@ def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgs
     - **Stored bills.** Nothing here recomputes one; `print_ra()` renders the
       frozen figures off the record, as it always has.
 
-    ⚠ **Rounded ONCE, at document level.** The per-slab figures in `tax_slabs`
-      are display values; the document's `cgst_amount` / `sgst_amount` /
-      `igst_amount` are each rounded once from the unrounded slab sum. Rounding
-      per slab and then adding drifts paise against the claim subtotal, and the
-      old per-LINE rounding drifted further — 87 lines of accumulated halves.
-      On a bill with two or more slabs the displayed slab column can therefore
-      differ from the document total by up to a paisa per slab; the document
-      total is the correct figure and is what the identity below holds for.
+    ⚠ **Rounded once PER SLAB, then summed.** `cgst_amount` / `sgst_amount` /
+      `igst_amount` are the sums of the rounded slab figures, so the rate-wise
+      column on the printed sheet adds up to the document total exactly. That
+      is a GSTR-1 requirement, not a preference: the return is filed rate-wise
+      and the document is what those lines are read off. See the note at the
+      arithmetic below for why this beats rounding once at document level.
+
+      It is still exactly **one** rounding per slab. The old per-LINE rounding
+      accumulated 87 of them on the seeded schedule and is what neither scheme
+      may go back to.
 
     Identity: `grand_total == net_payable + tax_amount + rounding_off`.
     """
@@ -792,17 +800,31 @@ def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgs
 
     slabs = tax_slabs(claims, tax_type, cgst_rate, sgst_rate, igst_rate)
 
-    # Unrounded, so the single rounding below is the only one that happens.
-    cgst_raw = sgst_raw = igst_raw = 0.0
-    for s in slabs:
-        taxable = s["taxable_value"]
-        cgst_raw += taxable * s["cgst_rate"] / 100.0
-        sgst_raw += taxable * s["sgst_rate"] / 100.0
-        igst_raw += taxable * s["igst_rate"] / 100.0
-
-    cgst_amount = round(cgst_raw, 2)
-    sgst_amount = round(sgst_raw, 2)
-    igst_amount = round(igst_raw, 2)
+    # ROUND PER SLAB, then sum the ROUNDED slabs — so the rate-wise column on
+    # the printed sheet adds up to the document total, exactly.
+    #
+    # This is the reverse of what this function did when per-slab tax first
+    # landed, and the reason is GSTR-1. The return is filed **rate-wise**: each
+    # slab's taxable value and tax are reported as their own line, and the
+    # document is the source those lines are read off. If the slab figures are
+    # display roundings of numbers the total was never computed from, the
+    # document's own column does not foot — and a tax invoice whose CGST column
+    # does not add to its CGST total is a document that gets queried.
+    #
+    # The paise this gives up are the smaller cost. Rounding once at document
+    # level is arithmetically tighter by up to a paisa per slab, but it is
+    # tighter against a figure nobody files, and it makes the filed figures
+    # inconsistent with the sheet they came from.
+    #
+    # ⚠ It stays exactly ONE rounding per slab. The old per-LINE rounding — 87
+    #   of them accumulating on the seeded schedule — is what this must not go
+    #   back to, and the pinned literals in `tests/test_ra_tax_slabs.py` are
+    #   what hold it. A single-slab bill is arithmetically identical either way
+    #   (one term to round), which is why every figure the client has actually
+    #   been sent is untouched by this change.
+    cgst_amount = round(sum(s["cgst_amount"] for s in slabs), 2)
+    sgst_amount = round(sum(s["sgst_amount"] for s in slabs), 2)
+    igst_amount = round(sum(s["igst_amount"] for s in slabs), 2)
     tax_amount = round(cgst_amount + sgst_amount + igst_amount, 2)
 
     raw_total = net_payable + tax_amount

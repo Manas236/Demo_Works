@@ -604,8 +604,9 @@ record to freeze a copy of, because the schedule is the source.
 - **Revision link:** `supersedes` — the previous BOQ id this one replaces, or
   `""` for an original. A revision is a **new record**, never an edit, because
   RA bills are measured against a specific revision and an issued claim's basis
-  must not move. `ra.py` walks this to sum claims across the chain. Nothing
-  writes a non-empty value yet; the revision route is not built.
+  must not move. `ra.py` walks this to sum claims across the chain. **Written by
+  the Supersedes selector on `/boq/create`** — see §5; a `rev_no` above 0 with
+  nothing named is refused.
 - **Other:** `payment_terms`, `delivery_terms`, `notes`, `company_branch`,
   `auth_signatory`
 
@@ -822,8 +823,13 @@ measured against. Deleting an **unclaimed** line stays free.
 
 It is a **pure function taking the claim map as an argument**, and that is an
 import-direction decision rather than a stylistic one: `boq.py` may never
-import `ra.py`, so `ra.claims_by_line_id()` builds the map and the caller
-passes it in. The revision route itself is not built yet.
+import `ra.py`, so the caller passes the map in.
+
+✅ **It has a caller as of the revision wiring.** `POST /boq/create` calls it
+whenever a predecessor is named, and builds the map with
+`boq.claims_against_chain()` — its own reader over `STORE["ra_bills"]`, because
+the import direction still forbids reaching for `ra.claims_by_line_id()`. The
+two are asserted equal on a real chain. See §5's *"Revisions are reachable"*.
 
 #### Two edit permissions on one record
 
@@ -1844,7 +1850,7 @@ matters more here because a BOQ line carries two of them.
 | Route | View |
 |---|---|
 | `GET /boq/` | `list_boqs` — register |
-| `GET,POST /boq/create` | `create_boq` |
+| `GET,POST /boq/create` | `create_boq` — also `?demo=1` and **`?revise=<id>`** |
 | `GET /boq/view/<id>` | `view_boq` — the schedule on screen, **internal copy** |
 | `GET /boq/print/<id>` | `print_boq` — the issued sheet, **no rate breakup** |
 
@@ -2106,6 +2112,61 @@ because "load" and "save" agreeing is the whole value of the feature.
 It exists because a 97-line schedule cannot be hand-built to try the form out,
 and a form that cannot be exercised cannot be reviewed.
 
+#### Revisions are reachable — `?revise=<id>` and the Supersedes selector
+
+✅ **Wired.** The record has carried `supersedes` since §3 was written and the
+machinery behind it was complete — `ra.revision_chain()`, `ra.claimed_by_line()`
+summing across the chain, `boq.revision_blockers()`. **Nothing called any of
+it.** No form wrote a non-empty value, so every chain was one link long, every
+revision restarted every line's claimed quantity at zero, and the over-claim
+block passed everything on exactly the schedules that had been revised — with no
+error and no warning.
+
+**The path:** `/boq/view` carries a **Revise** button on the tip of a chain,
+which opens `/boq/create?revise=<id>` with the predecessor's lines, project,
+party and terms loaded, `rev_no` bumped, and the Supersedes selector already
+pointing at it. `_form_payload_from()` carries **`line_id` on every line**, so
+surviving lines keep their ids through `_clean_lines()` and every RA claim
+raised against the old revision still matches — dropping the id there would
+orphan the whole claim history silently (§3 property 0).
+
+**What "the same project" means**, since the candidate list is restricted to it:
+`boq_identity()` = **normalised `project_name` + normalised `account_name`**
+(casefolded, whitespace-collapsed). It is a text match because the record holds
+**no foreign key** to either — the address picker writes plain strings and there
+is no `customer_id`. `account_name` alone is too broad (one contractor, many
+sites); `project_name` alone is too loose ("Tower B" belongs to somebody);
+`site_location` is excluded as the field most often re-typed differently between
+revisions; `bill_gstin` is excluded because it is optional and blank on the
+seeded BOQ (§7 gap 16), so it would offer no candidate at all in a demo.
+
+**Four refusals on POST**, and the first is the one that matters:
+
+| Refused | Why |
+|---|---|
+| **`rev_no` > 0 with no predecessor** | The silent failure, made visible. The record claims to replace something, the chain stays one link long, and every line's claimed quantity restarts at zero. |
+| predecessor for a different project/party | A revision replaces a schedule for the same project and the same party. |
+| predecessor already superseded | Two revisions of one schedule fork the chain, and `revision_chain()` says plainly a fork "should not happen" — it orders descendants deterministically rather than resolving them, because there is no right answer. |
+| a claimed line dropped | `revision_blockers()`, finally called. Each blocked line is named on the form with the RA numbers that claimed it, via `revision_blocker_message()`. |
+
+The selector narrows candidates to the same project and party whenever the form
+already knows who that is (a rejected POST carries it; `?revise=` sets it) and
+lists everything eligible on a blank form. **The dropdown is convenience; the
+POST check is the restriction.**
+
+⚠ **`boq.claims_against_chain()` duplicates a slice of
+`ra.claims_by_line_id()`** — deliberately, because **boq.py may never import
+ra.py** (§2b). It reads `STORE["ra_bills"]` directly, the same one-way trick
+`view_boq()` uses for the RA chips and exactly what this section said the
+revision route would do. It walks `supersedes` **backward only**, which is
+sufficient rather than lazy: it is only ever asked about the record a new
+revision is superseding, and that record is the tip because an already-superseded
+one is refused. `tests/test_boq_revisions.py` asserts the two functions return
+the same map on a real chain, so the duplication cannot drift silently.
+
+**Still not built: a BOQ delete route.** Deleting a record mid-chain would
+strand every claim behind it, and nothing needs it yet.
+
 #### The demo BOQ
 
 `ensure_demo_boq()` seeds **one complete Sify Bangalore schedule** — three
@@ -2304,14 +2365,27 @@ Five rules, each of which is a test in
    supply. `_head_split()` only splits one slab's rate across the head it is
    given — 18% intra-state is CGST 9 + SGST 9, the same supply inter-state is
    IGST 18. **§7 gap 15 is open pending the client's CA; do not encode a guess.**
-2. **Rounded ONCE, at document level.** The document's `cgst_amount` /
-   `sgst_amount` / `igst_amount` are each rounded once from the *unrounded* slab
-   sum. The old code rounded every LINE to the paisa and added 87 of them up;
-   rounding per slab would do the same thing more slowly. Consequence worth
-   knowing: on a bill with two or more slabs the displayed per-slab column can
-   differ from the document total by up to a paisa per slab — **the document
-   total is the correct figure** and is what `grand_total == net_payable +
-   tax_amount + rounding_off` holds for.
+2. **Rounded once PER SLAB, then summed — so the printed column foots.**
+   `cgst_amount` / `sgst_amount` / `igst_amount` are the sums of the *rounded*
+   slab figures, and a slab's own `tax_amount` is its head parts added rather
+   than the rate applied again. Every rate-wise column on the sheet therefore
+   adds up exactly to the total beneath it.
+
+   **Why, and why this reversed:** when per-slab tax first landed this rounded
+   once at document level, which is arithmetically tighter by up to a paisa per
+   slab. It is tighter against a figure nobody files. **GSTR-1 is filed
+   rate-wise** — each slab's taxable value and tax are their own line on the
+   return, read off this document — so slab figures that are display roundings
+   of numbers the total was never computed from make the filed lines
+   inconsistent with the sheet they came from, and a tax invoice whose CGST
+   column does not add to its CGST total is a document that gets queried.
+
+   ⚠ It is still exactly **one** rounding per slab. The original per-LINE
+   rounding accumulated 87 of them on the seeded schedule and is what neither
+   scheme may go back to. **A single-slab bill is arithmetically identical
+   either way** (one term to round), which is why every figure the client has
+   actually been sent is untouched — the literals pinned in
+   `tests/test_ra_tax_slabs.py` were captured before any of this and still hold.
 3. **A missing `gst_rate` falls back to the bill's declared rate** (`cgst_rate +
    sgst_rate`, or `igst_rate`) — which is *exactly* what such a row was taxed at
    before this function read the field. That is what let per-line rates land

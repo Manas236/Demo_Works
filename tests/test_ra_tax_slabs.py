@@ -370,6 +370,82 @@ def test_two_slab_print_carries_both_rate_rows(client, seeded):
     assert "CGST @ 9%:" not in html
 
 
+# ═══ 4b. The rate-wise column foots against the document total ═════════════
+#
+# GSTR-1 is filed RATE-WISE: each slab's taxable value and tax are their own
+# line on the return, read off this document. So the slab figures have to be the
+# ones the totals were computed from — `compute_tax_totals()` rounds each slab
+# once and sums the ROUNDED slabs.
+#
+# The fixture below is chosen so the two schemes genuinely disagree. 1000.00 at
+# 5% and 1003.25 at 12% give a CGST column of 25.00 + 60.20 = 85.20, where
+# rounding once from the unrounded sum gives 85.19. If the arithmetic ever goes
+# back to rounding at document level, these fail rather than drifting quietly.
+
+def _footing_claims():
+    """1000.00 @ 5% and 1003.25 @ 12% — where the two rounding schemes differ."""
+    line_5 = {"line_id": "cccccccccccc", "item_no": "1", "section": "A",
+              "description": "Nil-ish rated goods", "unit": "Nos",
+              "total_qty": 100.0, "supply_hsn": "73063090",
+              "supply_gst_rate": 5.0}
+    line_12 = {"line_id": "dddddddddddd", "item_no": "2", "section": "A",
+               "description": "Works contract", "unit": "Sq.Mtrs",
+               "total_qty": 100.0, "supply_hsn": "995462",
+               "supply_gst_rate": 12.0}
+    return [ra.build_claim(line_5, 10, 100.0, 0.0, 100.0, leg="supply"),
+            ra.build_claim(line_12, 25, 40.13, 0.0, 40.13, leg="supply")]
+
+
+def test_the_slab_column_sums_to_the_document_total(store_free):
+    """Every printed rate-wise column adds up to the total beneath it."""
+    t = ra.compute_tax_totals(_footing_claims(), [], tax_type="cgst_sgst",
+                              cgst_rate=9.0, sgst_rate=9.0)
+    slabs = t["tax_slabs"]
+    assert len(slabs) == 2
+
+    assert round(sum(s["cgst_amount"] for s in slabs), 2) == t["cgst_amount"]
+    assert round(sum(s["sgst_amount"] for s in slabs), 2) == t["sgst_amount"]
+    assert round(sum(s["igst_amount"] for s in slabs), 2) == t["igst_amount"]
+    assert round(sum(s["tax_amount"] for s in slabs), 2) == t["tax_amount"]
+    assert round(sum(s["taxable_value"] for s in slabs), 2) == t["claim_subtotal"]
+
+
+def test_the_footing_fixture_really_does_discriminate(store_free):
+    """
+    Without this, the test above would pass under either rounding scheme.
+
+    1000.00 x 2.5% = 25.0000 and 1003.25 x 6% = 60.1950. Summed rounded that is
+    85.20; rounded once from 85.1950 it is 85.19. The document must say 85.20,
+    because 25.00 and 60.20 are the two figures printed above it.
+    """
+    t = ra.compute_tax_totals(_footing_claims(), [], tax_type="cgst_sgst",
+                              cgst_rate=9.0, sgst_rate=9.0)
+    slabs = t["tax_slabs"]
+
+    assert [s["taxable_value"] for s in slabs] == [1000.0, 1003.25]
+    assert [s["cgst_amount"] for s in slabs] == [25.0, 60.2]
+
+    round_once = round(1000.0 * 2.5 / 100.0 + 1003.25 * 6.0 / 100.0, 2)
+    assert round_once == 85.19                    # the scheme NOT chosen
+    assert t["cgst_amount"] == 85.2               # the scheme chosen
+
+
+def test_a_slabs_own_total_foots_from_its_head_parts(store_free):
+    """A slab row's tax is its CGST and SGST added, not the rate applied again."""
+    t = ra.compute_tax_totals(_footing_claims(), [], tax_type="cgst_sgst",
+                              cgst_rate=9.0, sgst_rate=9.0)
+    for s in t["tax_slabs"]:
+        assert s["tax_amount"] == round(
+            s["cgst_amount"] + s["sgst_amount"] + s["igst_amount"], 2)
+
+
+def test_the_grand_total_identity_still_holds_on_the_footing_bill(store_free):
+    t = ra.compute_tax_totals(_footing_claims(), [], tax_type="cgst_sgst",
+                              cgst_rate=9.0, sgst_rate=9.0)
+    assert t["grand_total"] == round(
+        t["net_payable"] + t["tax_amount"] + t["rounding_off"], 2)
+
+
 # ═══ 5. The import direction that made this the right place ════════════════
 
 def test_ra_does_not_import_invoice(store_free):
