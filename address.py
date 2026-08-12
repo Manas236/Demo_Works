@@ -821,8 +821,7 @@ def list_addresses():
                 <button type="button" class="btn-copy"
                         data-address="{copy_text}"
                         onclick="copyAddress(this)">Copy</button>
-                <a href="{delete_url}" class="btn-delete" style="margin-left:auto;"
-                   onclick="return confirm('Delete this address? This cannot be undone.')">
+                <a href="{delete_url}" class="btn-delete" style="margin-left:auto;">
                   Delete
                 </a>
               </div>
@@ -958,17 +957,23 @@ def edit_address(id: str):
     )
 
 
-@address_bp.route("/delete/<id>")
+@address_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_address(id: str):
     """
-    GET /address/delete/<id> — remove an address.
+    Delete an address — **POST for the deletion, GET for the confirmation.**
 
-    Nothing else in the app references addresses, so there is no integrity
-    check to run here (unlike products, which can be locked by an assembly).
+    This used to destroy on GET, guarded only by a browser `confirm()`. A
+    `confirm()` does not run for a link-prefetching browser, a crawler, a chat
+    client unfurling a pasted URL, or a back button — all of which issue a plain
+    GET. `ra.delete_ra()` is the pattern this now matches exactly; see ABOUT.md
+    §7's delete audit.
+
+    Nothing else in the app references addresses, so there is no integrity check
+    to run here (unlike products, which can be locked by an assembly).
     """
     ensure_demo_addresses()
 
-    addr = STORE["addresses"].pop(id, None)
+    addr = STORE["addresses"].get(id)
     if not addr:
         return redirect(url_for(
             "address.list_addresses",
@@ -976,8 +981,49 @@ def delete_address(id: str):
             type="error",
         ))
 
-    return redirect(url_for(
-        "address.list_addresses",
-        msg=f"'{addr.get('label', 'Address')}' deleted.",
-        type="success",
-    ))
+    if request.method == "POST":
+        STORE["addresses"].pop(id, None)
+        return redirect(url_for(
+            "address.list_addresses",
+            msg=f"'{addr.get('label', 'Address')}' deleted.",
+            type="success",
+        ))
+
+    label = addr.get("label") or "this address"
+    who = " &middot; ".join(x for x in [
+        _e(addr.get("company")), _e(addr.get("contact_name")),
+        _e(addr.get("city"))] if x)
+
+    return _page(f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{B.page_title("Delete Address")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{PRODUCT_STYLES}{ADDRESS_STYLES}
+</head>
+<body>
+  {_nav()}
+  <main>
+    <div class="page-top"><h1>Delete <span>Address</span></h1></div>
+    <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;
+                padding:1rem 1.1rem;margin-bottom:1.2rem;">
+      <h2 style="margin:0 0 .5rem;font-size:1rem;color:var(--brand);">
+        &#9888; This cannot be undone
+      </h2>
+      <div style="font-size:.82rem;line-height:1.6;">
+        You are about to delete <b>{_e(label)}</b>{f" &mdash; {who}" if who else ""}.<br/><br/>
+        Quotations and purchase orders already issued keep the address they
+        froze at the time, so nothing already sent changes. It only disappears
+        from the picker.
+      </div>
+    </div>
+    <form method="POST" action="{url_for('address.delete_address', id=id)}"
+          style="display:flex;gap:.7rem;">
+      <button type="submit" class="btn">Delete {_e(label)}</button>
+      <a href="{url_for('address.list_addresses')}" class="btn btn-ghost">Keep it</a>
+    </form>
+  </main>
+</body>
+</html>""")

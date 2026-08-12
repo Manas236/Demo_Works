@@ -3017,9 +3017,17 @@ def delete_ra(id: str):
     Delete an RA bill — the highest-numbered one only, and never a certified one.
 
     **POST-only for the deletion itself.** The GET is a confirmation page that
-    names the bill and shows the claimed total being removed; there is no
-    GET path in this app that destroys anything, because a link that deletes
-    is a link a crawler, a prefetch or a back button can fire.
+    names the bill and shows the claimed total being removed, because a link
+    that deletes is a link a crawler, a prefetch or a back button can fire.
+
+    ⚠ **This docstring used to claim "there is no GET path in this app that
+      destroys anything". That was false when it was written** — `/address/
+      delete`, `/product/delete` and `/spec/delete` all destroyed on GET,
+      guarded only by a browser `confirm()`, which none of those three actors
+      ever sees. All three now follow this route's pattern, so **the claim is
+      true as of that change** and `tests/test_delete_methods.py` is what keeps
+      it true: it walks every registered rule whose path contains "delete" and
+      fails if any of them destroys on GET.
 
     After a delete the next bill takes max(ra_no)+1 from what remains, so the
     sequence stays contiguous and a number the client has already seen on a

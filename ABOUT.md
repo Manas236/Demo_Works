@@ -62,18 +62,44 @@ consumables get bought with no deal behind them. That single optional field is
 what buys **job costing** (§5). The two pipelines meet at the *job*, never at
 the document.
 
-Run it:
+### Cold start — `git clone` to a running app with a seeded database
 
 ```bash
-python app.py          # http://127.0.0.1:5000
+git clone <repo-url> samruddhi-qms
+cd samruddhi-qms
+
+python -m venv .venv                    # optional but recommended; .venv is gitignored
+.venv\Scripts\activate                  # Windows;  source .venv/bin/activate elsewhere
+
+pip install -r requirements.txt         # the 4 runtime deps, pinned
+pip install pytest==9.1.1               # only to run the suite
+
+cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
+python -m pytest -q                     # 519 passed, 1 skipped — runs in-memory, needs no MySQL
+python app.py                           # http://127.0.0.1:5000
 ```
 
-Dependencies — `flask`, `pymysql`, `python-dotenv`, `markupsafe`:
+**There is no migration step and no seed script**, and that is deliberate:
 
-```bash
-pip install -r requirements.txt
-cp .env.example .env   # DB credentials; gitignored
-```
+- `db.init()` issues `CREATE DATABASE IF NOT EXISTS` and `CREATE TABLE IF NOT
+  EXISTS` for all nine collections at boot, so **`python app.py` creates its own
+  schema**. Point `.env` at a MySQL that is running; the database does not have
+  to exist.
+- **Seeding is lazy and idempotent.** `ensure_demo_settings()` runs at boot;
+  `ensure_demo_products` / `ensure_demo_addresses` run inside
+  `dashboard.index()`; `ensure_demo_specs` / `ensure_demo_boq` run on the first
+  `/spec` or `/boq` request. Visiting `/` then `/boq/` fills the catalogue, the
+  address book, the 56-clause spec library and the 97-line Sify BOQ. The seed
+  flags are **not persisted**, so dropping a table refills it on the next run.
+- `DB_ENABLED=false` runs entirely in memory and needs no MySQL at all — that is
+  what the test suite uses (`tests/conftest.py` sets it before importing `app`).
+
+**Two things a clone deliberately does not get**, and neither blocks anything:
+
+| Absent | Consequence |
+|---|---|
+| `.env` (gitignored — holds the DB password) | Copy `.env.example`. Until you do, `DB_ENABLED` is unset and the app runs in memory. |
+| `sify_boq.xlsx` / `annexure.xlsx` (gitignored — the client's commercial data) | Only `tools/gen_demo_data.py` and the importer tests read them, and those **skip** rather than fail. `demo_data.py` is committed, so the seeded BOQ is present regardless. See `fixtures/README.md`. |
 
 `assets/build_assets.py` additionally needs `numpy`, `Pillow`, `scipy`. It is a
 one-off artwork build script, not a runtime dependency — its output is committed
@@ -1182,7 +1208,7 @@ an entry to `ICONS`, `url_for("<bp>.<view>")`. The strip is `auto-fit`.
 | `GET /product/` | `list_products` |
 | `GET /product/view/<id>` | `view_product` — recursive BOM tree |
 | `GET,POST /product/add` | `add_product` |
-| `GET /product/delete/<id>` | `delete_product` |
+| `GET,POST /product/delete/<id>` | `delete_product` — GET confirms, POST deletes |
 
 **Seeding.** `ensure_demo_products()` runs at the top of every product route
 (and from `quotation.create`). It writes 12 fixed-UUID fire-pump-room items and
@@ -1798,7 +1824,7 @@ is the key the vendor quotes on their invoice and the key we match it against.
 | `GET /spec/view/<id>` | `view_spec` — clause + variant table |
 | `GET,POST /spec/add` | `add_spec` |
 | `GET,POST /spec/edit/<id>` | `edit_spec` |
-| `GET /spec/delete/<id>` | `delete_spec` |
+| `GET,POST /spec/delete/<id>` | `delete_spec` — GET confirms, POST deletes |
 
 **Read the Specification entry in §3 before editing this file**, and do not
 confuse it with `product.py` — the two describe different things and both are
@@ -2256,11 +2282,15 @@ What that changed and what it did not:
   whoever prices the next revision works from them.
 - Only the **print** omits the three columns.
 
-**One thing was deliberately left on the print:** the document header still
-carries `Rate Basis: Mohali Rates` (`rate_basis_label`). It names the schedule
-the pricing was based on without disclosing a rate off it, and the client's
-request was about the figures. It is a one-line removal in `_document_html`'s
-`meta_col_2` if they ask.
+**The document header's `Rate Basis` row goes with them.** It was left on the
+print at first, on the reasoning that naming the basis disclosed no rate off it.
+That was the wrong call: printing `Rate Basis: Mohali Rates` on the very sheet
+those figures were removed from tells the client a reference schedule exists and
+what to ask for — it hands back most of what was withheld. It is gated on the
+same `show_rate_breakup` flag in `_document_html`'s `meta_col_2`, so it is
+**absent from `/boq/print` and still present on `/boq/view`**, and
+`test_the_rate_basis_header_line_is_print_only_suppressed` checks both halves in
+one place. `rate_basis_label` is untouched on the record.
 
 `show_rate_breakup` is the single seam. It defaults to **False**, so the issued
 document is what you get unless a caller opts in — an internal-copy variant is
@@ -2596,7 +2626,7 @@ escaped it — there is a test.
 | `GET /address/` | `list_addresses` |
 | `GET,POST /address/add` | `add_address` |
 | `GET,POST /address/edit/<id>` | `edit_address` |
-| `GET /address/delete/<id>` | `delete_address` |
+| `GET,POST /address/delete/<id>` | `delete_address` — GET confirms, POST deletes |
 
 Indian postal format, rendered top-to-bottom by `format_address_lines()`:
 contact/company → line1 (building) → line2 (street) → landmark →
@@ -2807,12 +2837,26 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 
 Real, verified, and safe to pick up:
 
-1. **No dependency pinning.** `requirements.txt` carries lower bounds only, and
-   there is no lockfile or virtualenv — installs land in whatever interpreter is
-   on `PATH`. It covers the **runtime only**: `pytest` to run `tests/` and
-   `openpyxl` to regenerate `demo_data.py` are not in it. Node is optional —
+1. ~~**No dependency pinning.**~~ ✅ **Closed.** `requirements.txt` is now
+   committed and **pinned to exact versions** — the four the app actually
+   imports (`Flask`, `MarkupSafe`, `PyMySQL`, `python-dotenv`) plus Flask's own
+   five, so an install reproduces the environment the suite passes in. The
+   dependency *set* is still derived from the imports rather than a `pip
+   freeze`, per INTRODUCTION.md §5.7; only the *versions* come from the working
+   interpreter (CPython 3.10.11).
+
+   What remains: **there is still no lockfile and no virtualenv**, so installs
+   land in whatever interpreter is on `PATH`. `pytest` and `openpyxl` are
+   documented in the file but deliberately commented out — they are needed to
+   test and to regenerate `demo_data.py`, never to run the app. Node is optional:
    `tests/test_picker_js.py` runs the BOQ picker's real JavaScript when it is
    installed and skips when it is not.
+
+1b. ✅ **`.bak` files are ignored.** Twenty timestamped editor backups
+   (`ABOUT.md.bak.20260809-1305`, `ra.py.bak.…-corr`) sat **untracked but not
+   ignored**, so every `git status` listed them and a `git add -A` would have
+   committed the lot. `.gitignore` now carries `*.bak` and `*.bak.*`. Git
+   history is the revert point; those files are not.
 2. **No product edit route** — delete + re-add only, and delete may be blocked.
    ⬆ **This got more expensive.** It is now the reason a missing HSN cannot be
    blocked at the tax invoice (a user could not clear the block), and the reason
@@ -2933,6 +2977,46 @@ Real, verified, and safe to pick up:
    `quotation._product_catalog_json()` and by every
    `json.dumps(picker_payload())` on the quotation form. Same reason for
    leaving it, same size of fix.
+
+9f. ✅ **The delete audit — no GET in this app destroys anything.**
+   `/address/delete`, `/product/delete` and `/spec/delete` all **destroyed on
+   GET**, guarded only by a browser `confirm()`. That dialog is not a guard: it
+   never runs for a link-prefetching browser, a crawler or security scanner, a
+   chat client unfurling a pasted URL, or the back button. Each of those issues
+   a plain GET and each would have silently destroyed a record.
+
+   `ra.delete_ra()` already had the right shape — **GET renders a confirmation
+   page, POST destroys** — and all three now match it exactly. Its docstring
+   claimed *"there is no GET path in this app that destroys anything"*, which was
+   **false when it was written**; the claim is true as of this change and the
+   docstring now says so rather than asserting it silently.
+
+   | Route | Was | Is |
+   |---|---|---|
+   | `/address/delete/<id>` | GET destroyed | GET confirms, POST destroys |
+   | `/product/delete/<id>` | GET destroyed | GET confirms, POST destroys — assembly-child refusal unchanged |
+   | `/spec/delete/<id>` | GET destroyed | GET confirms, POST destroys |
+   | `/ra/delete/<id>` | already correct | unchanged |
+
+   [tests/test_delete_methods.py](tests/test_delete_methods.py) is what keeps it
+   true. Its load-bearing test walks **`app.url_map`** rather than a hand-written
+   list and fails on any delete route that cannot be POSTed to — so a fourth one
+   added later is covered the day it is registered. The three routes were also
+   **removed from `test_entity_fallbacks.py`'s SKIP list**, where they had been
+   excluded precisely because fetching them destroyed the records the sweep was
+   about to render; they are now swept like every other page.
+
+   ⚠ **`product.py` is on the forbidden list** (INTRODUCTION.md §7, STATE.md
+   §3.5) and this change touched it anyway, deliberately and narrowly. The
+   footprint is the route plus one confirmation page, and it adds **no new
+   exposure to a file full of it**: the page is **returned directly rather than
+   through `render_template_string`**, so nothing on it takes a second Jinja
+   parse and a product name containing `{{ … }}` cannot execute; every
+   interpolated value is escaped with `markupsafe.escape`, imported locally.
+   Removing the old `onclick="return confirm('Delete {p['name']}…')"` from the
+   list page also closed an unescaped-name JS sink on the way past. Nothing else
+   in that module was tidied or refactored, and §7.9d's larger prohibition
+   stands.
 
 9c. **No GSTR-1 export and no HSN-wise summary.** The register totals output tax
    but nothing produces the return-shaped extract, and the printed sheet carries

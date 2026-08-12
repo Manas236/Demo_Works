@@ -1,0 +1,50 @@
+# Samruddhi Fire QMS — runtime dependencies
+#     pip install -r requirements.txt
+#
+# The dependency SET is derived from the app's actual imports, not from a
+# `pip freeze` of a system Python — INTRODUCTION.md §5.7. Only these four are
+# imported by application code:
+#
+#     flask          every module
+#     markupsafe     address.py escapes with markupsafe.escape
+#     pymysql        db.py — MySQL persistence
+#     dotenv         db.py — reads .env
+#
+# The VERSIONS are pinned to the interpreter this app is developed and tested
+# against, so a clone reproduces the environment the 505-test suite passes in
+# rather than whatever PyPI resolves to that morning.
+#
+# Developed on CPython 3.10.11.
+
+Flask==3.1.2
+MarkupSafe==2.1.5      # address.py escapes with markupsafe.escape
+PyMySQL==1.2.0         # db.py — MySQL persistence
+python-dotenv==1.2.2   # db.py — reads .env
+
+# Flask pulls these in itself. Pinned as well so an install is reproducible;
+# nothing in this app imports them directly.
+blinker==1.9.0
+click==8.2.1
+itsdangerous==2.2.0
+Jinja2==3.1.6
+Werkzeug==3.1.3
+
+# ── Not runtime ──────────────────────────────────────────────────────────────
+# Deliberately commented out, the same way the asset builder's deps are: these
+# are needed to develop or regenerate, never to run the app.
+#
+# To run the test suite (`python -m pytest -q`):
+#     pip install pytest==9.1.1
+# pytest==9.1.1
+#
+# To regenerate demo_data.py from the client workbook
+# (`python tools/gen_demo_data.py`, needs sify_boq.xlsx — see fixtures/README.md):
+#     pip install openpyxl
+# openpyxl
+#
+# assets/build_assets.py only. Its output PNGs are committed under assets/, so
+# this is a one-off artwork build, not a dependency of anything at runtime:
+#     pip install numpy Pillow scipy
+# numpy
+# Pillow
+# scipy

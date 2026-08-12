@@ -860,9 +860,7 @@ def list_products():
               <td style="white-space:nowrap;">
                 <div style="display:flex;gap:.4rem;align-items:center;">
                   {view_btn}
-                  <a href="{delete_url}"
-                     class="btn-delete"
-                     onclick="return confirm('Delete {p['name']}? This cannot be undone.')">
+                  <a href="{delete_url}" class="btn-delete">
                     Delete
                   </a>
                 </div>
@@ -1375,13 +1373,34 @@ def add_product():
     return render_template_string(template)
 
 
-@product_bp.route("/delete/<id>")
+@product_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_product(id: str):
     """
-    GET /product/delete/<id>
-    Enforces assembly integrity: blocks if the product is used as a child
-    in any other product. Route signature unchanged from Phase 1.
+    Delete a product — **POST destroys, GET confirms.**
+
+    Previously a GET destroy behind a browser `confirm()`, which never runs for
+    a prefetching browser, a crawler, a link unfurler or a back button. Matches
+    `ra.delete_ra()` exactly; see ABOUT.md §7's delete audit.
+
+    The assembly-integrity refusal is unchanged — `can_delete_product()` still
+    blocks anything used as a child in another product's BOM, and still reports
+    the reason rather than hiding the control.
+
+    ⚠ **This module is otherwise off-limits** (INTRODUCTION.md §7, STATE.md
+      §3.5) because it has no output escaping across ~1,400 lines and still
+      renders through `render_template_string`. This change is deliberately
+      confined to closing the GET destroy and adds **no** new exposure:
+
+      - the confirmation page below is **returned directly**, not passed through
+        `render_template_string`, so nothing on it is parsed as a Jinja template
+        and a product name containing `{{ … }}` cannot execute;
+      - every interpolated value is escaped with `markupsafe.escape`, imported
+        locally rather than as a module-wide convention this file does not have.
+
+      Nothing else here was tidied, refactored or "fixed".
     """
+    from markupsafe import escape as _esc     # local: this module has no escaper
+
     product = STORE["products"].get(id)
 
     if not product:
@@ -1399,11 +1418,48 @@ def delete_product(id: str):
             type="error",
         ))
 
-    name = product["name"]
-    del STORE["products"][id]
+    if request.method == "POST":
+        name = product["name"]
+        del STORE["products"][id]
+        return redirect(url_for(
+            "product.list_products",
+            msg=f"'{name}' deleted.",
+            type="success",
+        ))
 
-    return redirect(url_for(
-        "product.list_products",
-        msg=f"'{name}' deleted.",
-        type="success",
-    ))
+    name = _esc(product.get("name") or "this product")
+    part_no = _esc(product.get("part_no") or "")
+    kind = _esc(product.get("type") or "standalone")
+    n_children = len(product.get("children") or [])
+
+    # Returned directly. NOT render_template_string — see the docstring.
+    return f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Delete Product")}</title>{B.HEAD_ICON}
+  {BASE_STYLES}{PRODUCT_STYLES}
+</head>
+<body>{_nav()}
+<main>
+  <div class="page-top"><h1>Delete <span>{name}</span></h1></div>
+  <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;
+              padding:1rem 1.1rem;margin-bottom:1.2rem;">
+    <h2 style="margin:0 0 .5rem;font-size:1rem;color:var(--brand);">
+      &#9888; This cannot be undone
+    </h2>
+    <div style="font-size:.82rem;line-height:1.6;">
+      You are about to delete <b>{name}</b>{f" ({part_no})" if part_no else ""},
+      a <b>{kind}</b> product{f" with {n_children} component(s)" if n_children else ""}.<br/><br/>
+      Quotations, proforma invoices and tax invoices already issued keep the
+      copy of the line they froze, so no document already sent changes. It only
+      leaves the catalogue &mdash; and there is no edit route, so re-adding it
+      means entering it again.
+    </div>
+  </div>
+  <form method="POST" action="{url_for('product.delete_product', id=id)}"
+        style="display:flex;gap:.7rem;">
+    <button type="submit" class="btn">Delete {name}</button>
+    <a href="{url_for('product.list_products')}" class="btn btn-ghost">Keep it</a>
+  </form>
+</main>
+</body></html>"""

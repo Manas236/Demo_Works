@@ -1933,10 +1933,19 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
         _meta("Site",          P.esc(boq.get("site_location"))) +
         _meta("Payment Terms", P.esc(boq.get("payment_terms")))
     )
+    # "Rate Basis" is INTERNAL-ONLY, for the same reason the base rate and the
+    # escalation columns are (§5). Naming the schedule the pricing was derived
+    # from — "Mohali Rates", another project's rate contract — on the very sheet
+    # where those figures were removed hands back the thing that was withheld:
+    # it tells the client there is a reference schedule and what to ask for.
+    # `rate_basis_label` stays on the record and on `/boq/view`.
+    rate_basis_meta = (_meta("Rate Basis", P.esc(boq.get("rate_basis_label")))
+                       if show_rate_breakup else "")
+
     meta_col_2 = (
         _meta("Date",              P.esc(boq.get("date"))) +
         _meta("Revision",          str(int(_num(boq.get("rev_no"), 0)))) +
-        _meta("Rate Basis",        P.esc(boq.get("rate_basis_label"))) +
+        rate_basis_meta +
         _meta("Terms of Delivery", P.esc(boq.get("delivery_terms")))
     )
 

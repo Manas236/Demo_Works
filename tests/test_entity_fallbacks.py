@@ -40,12 +40,12 @@ BROKEN = "&amp;" + "mdash;"
 # ── Rules that are deliberately not fetched ────────────────────────────────
 
 SKIP = {
-    # Destructive GETs. They mutate and redirect; there is no page body to
-    # check, and fetching them would delete the records the rest of the sweep
-    # is about to render.
-    "/spec/delete/<id>":    "GET deletes the spec and redirects",
-    "/product/delete/<id>": "GET deletes the product and redirects",
-    "/address/delete/<id>": "GET deletes the address and redirects",
+    # ⚠ `/spec/delete`, `/product/delete` and `/address/delete` used to sit here,
+    # skipped because a GET to any of them destroyed the record the rest of the
+    # sweep was about to render. All three are now GET-confirms with POST
+    # destroys, so they render a real page and are swept like everything else —
+    # which is exactly the property their removal from this list asserts.
+    #
     # Flask registers this automatically. ABOUT.md §1: there is no /static
     # folder — every asset is a base64 data URI — so it can only 404.
     "/static/<path:filename>": "no /static folder exists; assets are data URIs",
@@ -126,13 +126,23 @@ def populated(client):
     STORE["ra_bills"].clear()
     rid = _an_ra_bill(bid)
 
+    # `/product/delete` renders its confirmation page only for a product that
+    # may actually be deleted; one locked into an assembly redirects with the
+    # refusal instead, which is the guard working. Pick a deletable one so the
+    # sweep is checking the page rather than the redirect.
+    import product as product_mod
+    deletable_pid = next(pid_ for pid_ in STORE["products"]
+                         if product_mod.can_delete_product(pid_)[0])
+
     yield {
         "ids": {
+            "/address/delete/<id>": next(iter(STORE["addresses"])),
             "/address/edit/<id>":   next(iter(STORE["addresses"])),
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
+            "/product/delete/<id>": deletable_pid,
             "/product/view/<id>":   next(iter(STORE["products"])),
             "/proforma/from/<qid>": qid,
             "/proforma/view/<id>":  pid,
@@ -143,6 +153,7 @@ def populated(client):
             "/ra/certify/<id>":     rid,
             "/ra/print/<id>":       rid,
             "/ra/view/<id>":        rid,
+            "/spec/delete/<id>":    blank["REG-BLANK-UNSIZED"],
             "/spec/edit/<id>":      blank["REG-BLANK-UNSIZED"],
             "/spec/view/<id>":      blank["REG-BLANK-UNSIZED"],
         },

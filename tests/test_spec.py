@@ -200,7 +200,13 @@ def test_delete_has_no_dependency_guard(seeded, client):
     boq = next(iter(STORE["boqs"].values()))
     before = [dict(li) for li in boq["line_items"]]
 
-    r = client.get(f"/spec/delete/{sid}")
+    # POST, because deleting is a POST now — the GET is a confirmation page.
+    # What this test is about is the absence of a DEPENDENCY guard, not the
+    # method; see tests/test_delete_methods.py for the method itself.
+    assert client.get(f"/spec/delete/{sid}").status_code == 200
+    assert sid in STORE["specs"], "the confirmation page must not destroy"
+
+    r = client.post(f"/spec/delete/{sid}")
     assert r.status_code == 302
     assert sid not in STORE["specs"]
     assert boq["line_items"] == before

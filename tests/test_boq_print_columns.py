@@ -157,10 +157,14 @@ def test_print_omits_base_rate_and_escalation_columns(printed):
     # Rates". Asserting only the literal would pass on a sheet still printing
     # every base rate under that heading, so the label is checked too.
     #
-    # It survives once, in the "Rate Basis" line of the document header, which
-    # names the basis without disclosing a rate off it.
-    assert printed.count("Mohali Rates") == 1
-    assert "Rate Basis" in printed
+    # ⚠ It appears NOWHERE on the issued sheet, header included. The document
+    #   header's "Rate Basis" line used to survive here on the reasoning that it
+    #   named the basis without disclosing a rate off it. That was the wrong
+    #   call: naming another project's rate contract on the very sheet those
+    #   figures were removed from tells the client a reference schedule exists
+    #   and what to ask for. It stays on the record and on /boq/view.
+    assert "Mohali Rates" not in printed
+    assert "Rate Basis" not in printed
 
 
 def test_print_keeps_the_rate_and_amount_columns(printed):
@@ -259,6 +263,26 @@ def test_print_and_view_quote_the_same_money(printed, viewed):
 
 
 # ── The app keeps what the client does not get ─────────────────────────────
+
+def test_the_rate_basis_header_line_is_print_only_suppressed(printed, viewed):
+    """
+    The document header's "Rate Basis" row: gone from the print, kept on screen.
+
+    Same flag, same reasoning as the columns — it is the label those hidden
+    figures were derived under. Checked on both renders in one place so the two
+    halves cannot drift apart.
+    """
+    assert "Rate Basis" not in printed
+    assert "Mohali Rates" not in printed
+
+    assert "Rate Basis" in viewed
+    assert "Mohali Rates" in viewed
+
+    # The rows either side of it are untouched, so the header block did not
+    # simply lose its second column.
+    for field in ("Date", "Revision", "Terms of Delivery"):
+        assert field in printed and field in viewed
+
 
 def test_boq_view_still_shows_base_rate_and_escalation(viewed):
     """

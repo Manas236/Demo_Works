@@ -416,7 +416,7 @@ def test_a_spec_with_one_blank_variant_renders_everywhere(seeded, client):
 def test_deleting_a_spec_leaves_the_boq_printable(seeded, client):
     bid = next(iter(STORE["boqs"]))
     for sid in list(STORE["specs"]):
-        client.get(f"/spec/delete/{sid}")
+        client.post(f"/spec/delete/{sid}")      # POST destroys; GET only confirms
     assert not STORE["specs"]
     assert client.get(f"/boq/view/{bid}").status_code == 200
     b = STORE["boqs"][bid]

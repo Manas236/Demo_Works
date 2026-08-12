@@ -26,4 +26,11 @@ desktop.ini
 # Database dumps — confidential, and large
 backups/
 
+# Timestamped editor backups — `ABOUT.md.bak.20260809-1305`, `ra.py.bak.…-corr`.
+# They were untracked but NOT ignored, so every `git status` listed twenty of
+# them and a `git add -A` would have committed the lot. Git history is the
+# revert point; these are not.
+*.bak
+*.bak.*
+
 Quote.html

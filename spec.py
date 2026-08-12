@@ -435,13 +435,10 @@ function delVariantRow(btn) {
   }
 }
 
-function confirmDelete(url, title) {
-  if (window.confirm('Delete "' + title + '" from the library?\\n\\nBOQs already '
-      + 'written from it are unaffected \\u2014 they carry their own copy of the text.')) {
-    window.location.href = url;
-  }
-  return false;
-}
+/* The delete-confirm helper was removed with the GET destroy it guarded.
+   Deleting a spec now opens a confirmation PAGE whose button POSTs — a browser
+   dialog cannot protect a URL that destroys on arrival, because a prefetch, a
+   crawler or a link unfurler never sees the dialog. */
 </script>
 """
 
@@ -640,11 +637,11 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
     delete_html = ""
     if is_edit:
         del_url = url_for("spec.delete_spec", id=spec_id)
-        delete_html = (
-            f'<a class="btn-danger" href="#" '
-            f'onclick="return confirmDelete(\'{del_url}\', \'{P.esc(data.get("title"))}\')">'
-            f'Delete this spec</a>'
-        )
+        # A plain link to the confirmation page. It used to call
+        # `confirmDelete()`, which navigated to a URL that destroyed on arrival —
+        # so the browser dialog was the only thing standing between a prefetch
+        # and a deleted spec. The page it now opens destroys nothing.
+        delete_html = (f'<a class="btn-danger" href="{del_url}">Delete this spec</a>')
 
     js = _VARIANT_JS
 
@@ -1082,10 +1079,16 @@ def edit_spec(id: str):
     return _render_form(dict(s), "", "edit", id)
 
 
-@spec_bp.route("/delete/<id>")
+@spec_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_spec(id: str):
     """
     Delete, with **no dependency guard — deliberately.**
+
+    **POST for the deletion, GET for the confirmation**, matching
+    `ra.delete_ra()`. It used to destroy on GET behind a browser `confirm()`,
+    which does not run for a prefetching browser, a crawler, a link unfurler or
+    a back button. The absence of a *dependency* guard below is the design; the
+    absence of a *method* guard was not, and is what this closes.
 
     `product.can_delete_product()` refuses to remove anything used as a child in
     an assembly, because a BOM holds a live `product_id` and deleting the target
@@ -1105,9 +1108,45 @@ def delete_spec(id: str):
     yet.
     """
     ensure_demo_specs()
-    s = STORE["specs"].pop(id, None)
+    s = STORE["specs"].get(id)
     if not s:
         return redirect(url_for("spec.list_specs", msg="Spec not found.", type="error"))
-    return redirect(url_for("spec.list_specs",
-                            msg=f"Spec {s.get('code')} deleted. BOQs written from it are unaffected.",
-                            type="success"))
+
+    if request.method == "POST":
+        STORE["specs"].pop(id, None)
+        return redirect(url_for("spec.list_specs",
+                                msg=f"Spec {s.get('code')} deleted. BOQs written from it are unaffected.",
+                                type="success"))
+
+    n_variants = len(s.get("variants") or [])
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Delete Spec")}</title>{B.HEAD_ICON}
+  {BASE_STYLES}{SPEC_STYLES}
+</head>
+<body>{_nav()}
+<main>
+  <div class="page-top"><h1>Delete <span>{P.esc(s.get('code'))}</span></h1></div>
+  <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;
+              padding:1rem 1.1rem;margin-bottom:1.2rem;">
+    <h2 style="margin:0 0 .5rem;font-size:1rem;color:var(--brand);">
+      &#9888; This cannot be undone
+    </h2>
+    <div style="font-size:.82rem;line-height:1.6;">
+      You are about to remove <b>{P.esc(s.get('code'))}</b> &mdash;
+      {P.esc(s.get('title'))} &mdash; and its
+      <b>{n_variants} variant{"" if n_variants == 1 else "s"}</b> from the library.<br/><br/>
+      <b>BOQs written from it are unaffected.</b> A BOQ line copies the clause
+      text, the rates, the unit and the tax codes at the moment it is written
+      and carries no <code>spec_id</code>, so nothing downstream points here.
+      Only the picker loses the entry.
+    </div>
+  </div>
+  <form method="POST" action="{url_for('spec.delete_spec', id=id)}"
+        style="display:flex;gap:.7rem;">
+    <button type="submit" class="btn">Delete {P.esc(s.get('code'))}</button>
+    <a href="{url_for('spec.list_specs')}" class="btn btn-ghost">Keep it</a>
+  </form>
+</main>
+</body></html>""")
