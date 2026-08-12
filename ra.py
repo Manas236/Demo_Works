@@ -3025,9 +3025,24 @@ def delete_ra(id: str):
       delete`, `/product/delete` and `/spec/delete` all destroyed on GET,
       guarded only by a browser `confirm()`, which none of those three actors
       ever sees. All three now follow this route's pattern, so **the claim is
-      true as of that change** and `tests/test_delete_methods.py` is what keeps
-      it true: it walks every registered rule whose path contains "delete" and
-      fails if any of them destroys on GET.
+      true of the four delete routes that exist today.**
+
+      Be precise about what holds it true, because this docstring used to lean
+      on the sweep for more than the sweep proves.
+      `test_no_registered_route_destroys_on_get` walks every registered rule
+      whose path contains "delete" and asserts it **accepts POST**. That catches
+      a GET-only delete route — the failure mode that existed — but it cannot
+      catch a route that accepts both methods and still destroys on GET.
+
+      What actually holds the property, per route, is four hand-written tests
+      that issue a real GET and assert the store is unchanged:
+      `test_get_on_address_delete_destroys_nothing`,
+      `test_get_on_spec_delete_destroys_nothing` and
+      `test_get_on_product_delete_destroys_nothing` in
+      `tests/test_delete_methods.py`, and `test_a_get_never_deletes_anything`
+      in `tests/test_ra_routes.py` for this route. **They do not generalise to a
+      fifth route** — a new delete route has to bring its own. See ABOUT.md §7.9f
+      for the standing rule.
 
     After a delete the next bill takes max(ra_no)+1 from what remains, so the
     sequence stays contiguous and a number the client has already seen on a

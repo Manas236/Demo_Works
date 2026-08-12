@@ -10,24 +10,31 @@
 #     pymysql        db.py — MySQL persistence
 #     dotenv         db.py — reads .env
 #
-# The VERSIONS are pinned to the interpreter this app is developed and tested
-# against, so a clone reproduces the environment the 505-test suite passes in
-# rather than whatever PyPI resolves to that morning.
+# The VERSIONS are pinned so a clone reproduces a known-good environment rather
+# than whatever PyPI resolves to that morning. They are the versions the
+# 523-test suite is verified against — `python -m pytest -q` in a .venv built
+# from this file, with openpyxl added (see the dev block below).
 #
-# Developed on CPython 3.10.11.
+# Pins are only ever RAISED to a version the suite has been verified on, never
+# lowered: a pin below the installed version turns `pip install -r` into a
+# silent downgrade of whatever else shares that interpreter.
+#
+# Supported: CPython 3.10 to 3.14. Last verified on CPython 3.14.3 (Windows).
+# A single build number is wrong here — this repo is cloned on two machines
+# with different Pythons, and the app pins no interpreter-specific behaviour.
 
-Flask==3.1.2
-MarkupSafe==2.1.5      # address.py escapes with markupsafe.escape
+Flask==3.1.3
+MarkupSafe==3.0.3      # address.py escapes with markupsafe.escape
 PyMySQL==1.2.0         # db.py — MySQL persistence
 python-dotenv==1.2.2   # db.py — reads .env
 
 # Flask pulls these in itself. Pinned as well so an install is reproducible;
 # nothing in this app imports them directly.
 blinker==1.9.0
-click==8.2.1
+click==8.3.1
 itsdangerous==2.2.0
 Jinja2==3.1.6
-Werkzeug==3.1.3
+Werkzeug==3.1.7
 
 # ── Not runtime ──────────────────────────────────────────────────────────────
 # Deliberately commented out, the same way the asset builder's deps are: these
@@ -41,6 +48,13 @@ Werkzeug==3.1.3
 # (`python tools/gen_demo_data.py`, needs sify_boq.xlsx — see fixtures/README.md):
 #     pip install openpyxl
 # openpyxl
+#
+# ⚠ openpyxl being commented out here is what makes the suite report two
+#   different totals, and neither is wrong. tests/test_fixtures.py sits behind a
+#   module-level `pytest.importorskip("openpyxl")`, so an environment without it
+#   reports **519 passed, 4 skipped** where one with it reports **523 passed**.
+#   It stays commented out because the app never reads a workbook at runtime;
+#   install it in the venv if you want the full 523.
 #
 # assets/build_assets.py only. Its output PNGs are committed under assets/, so
 # this is a one-off artwork build, not a dependency of anything at runtime:

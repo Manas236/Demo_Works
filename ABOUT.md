@@ -68,16 +68,40 @@ the document.
 git clone <repo-url> samruddhi-qms
 cd samruddhi-qms
 
-python -m venv .venv                    # optional but recommended; .venv is gitignored
+python -m venv .venv                    # THE supported way to run this repo
 .venv\Scripts\activate                  # Windows;  source .venv/bin/activate elsewhere
 
-pip install -r requirements.txt         # the 4 runtime deps, pinned
+pip install -r requirements.txt         # the 4 runtime deps + Flask's 5, pinned
 pip install pytest==9.1.1               # only to run the suite
+pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 519 passed, 1 skipped — runs in-memory, needs no MySQL
+python -m pytest -q                     # 523 passed — or 519 passed, 4 skipped; see below
 python app.py                           # http://127.0.0.1:5000
 ```
+
+**Run it in a `.venv`, not on a system interpreter.** That is the supported
+configuration, and the pins are what make it worth having: `requirements.txt`
+pins exact versions, so installing it into a shared system Python *downgrades*
+whatever else lives there the moment that interpreter has anything newer. `.venv`
+is gitignored. **Supported: CPython 3.10 to 3.14**, last verified on 3.14.3
+(Windows) — a range rather than one build number, because this repo is cloned on
+two machines with different Pythons and nothing here pins interpreter behaviour.
+
+**The suite reports two different totals and neither is wrong.**
+`tests/test_fixtures.py` sits behind a module-level
+`pytest.importorskip("openpyxl")`, so its 4 tests skip wherever openpyxl is
+absent:
+
+| Environment | Result |
+|---|---|
+| openpyxl installed | **523 passed** |
+| openpyxl absent (a plain `pip install -r requirements.txt`) | **519 passed, 4 skipped** |
+
+openpyxl stays commented out in `requirements.txt` because the app never reads a
+workbook at runtime. Install it in the venv if you want the full 523. Whether
+the two client workbooks are present changes what those 4 tests *do*, not
+whether they run — see `fixtures/README.md`.
 
 **There is no migration step and no seed script**, and that is deliberate:
 
@@ -2999,24 +3023,60 @@ Real, verified, and safe to pick up:
    | `/ra/delete/<id>` | already correct | unchanged |
 
    [tests/test_delete_methods.py](tests/test_delete_methods.py) is what keeps it
-   true. Its load-bearing test walks **`app.url_map`** rather than a hand-written
-   list and fails on any delete route that cannot be POSTed to — so a fourth one
-   added later is covered the day it is registered. The three routes were also
+   true. Its sweep walks **`app.url_map`** rather than a hand-written list and
+   fails on any delete route that cannot be POSTed to — so a fourth one added
+   later is caught the day it is registered. The three routes were also
    **removed from `test_entity_fallbacks.py`'s SKIP list**, where they had been
    excluded precisely because fetching them destroyed the records the sweep was
    about to render; they are now swept like every other page.
 
-   ⚠ **`product.py` is on the forbidden list** (INTRODUCTION.md §7, STATE.md
-   §3.5) and this change touched it anyway, deliberately and narrowly. The
-   footprint is the route plus one confirmation page, and it adds **no new
+   ⚠ **The sweep proves less than it looks like it proves, so read what it
+   actually asserts:** that every delete rule *accepts POST*. That catches a
+   GET-only delete route, which is the failure mode that existed. It **cannot**
+   catch a route that accepts both methods and still destroys on GET — a route
+   like that passes the sweep. What holds the property for the four routes that
+   exist today is the **four per-route GET tests**
+   (`test_get_on_address_delete_destroys_nothing`,
+   `test_get_on_spec_delete_destroys_nothing`,
+   `test_get_on_product_delete_destroys_nothing`, and
+   `test_a_get_never_deletes_anything` in
+   [tests/test_ra_routes.py](tests/test_ra_routes.py)), each of which issues a
+   real GET and asserts the store is unchanged. Those are hand-written per route
+   and do **not** generalise to a fifth.
+
+   📌 **Standing rule for any NEW delete route.** It must:
+
+   1. accept **POST**, and destroy only inside the POST branch — the GET renders
+      a confirmation page and reads with `.get()`, never `.pop()`;
+   2. **ship its own test** asserting that a GET against it leaves the store
+      unchanged.
+
+   Point 2 is not optional and is not covered by the sweep — see the warning
+   above. A new delete route with no per-route GET test is an untested
+   destructive path however green the suite looks.
+
+   ⚠ **What the `product.py` / `quotation.py` rule actually is.** Those two are
+   **not to be refactored or feature-extended** — that is the prohibition
+   (INTRODUCTION.md §7, STATE.md §3.5), and it stands. It is *not* a rule that
+   the files may never be opened: **narrow security fixes and route-method fixes
+   are permitted, and are to be called out** in the commit that makes them and
+   here. A GET that destroys a record is not a thing to leave in place because
+   the file it lives in is awkward.
+
+   **`9d060ee` is the instance**, and the shape it set is the one to copy. The
+   footprint was the route plus one confirmation page, and it added **no new
    exposure to a file full of it**: the page is **returned directly rather than
    through `render_template_string`**, so nothing on it takes a second Jinja
    parse and a product name containing `{{ … }}` cannot execute; every
    interpolated value is escaped with `markupsafe.escape`, imported locally.
    Removing the old `onclick="return confirm('Delete {p['name']}…')"` from the
-   list page also closed an unescaped-name JS sink on the way past. Nothing else
-   in that module was tidied or refactored, and §7.9d's larger prohibition
-   stands.
+   list page also closed an unescaped-name JS sink on the way past.
+
+   Worth knowing precisely: **those delete-confirmation sinks are the first
+   escaping anywhere in `product.py`.** The rest of the module still has none —
+   so the presence of `markupsafe.escape` in one function is not a convention
+   this file has, and reading it as one would be wrong. Nothing else in that
+   module was tidied or refactored, and §7.9d's larger prohibition stands.
 
 9c. **No GSTR-1 export and no HSN-wise summary.** The register totals output tax
    but nothing produces the return-shaped extract, and the printed sheet carries

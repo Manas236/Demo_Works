@@ -59,6 +59,17 @@ def test_no_registered_route_destroys_on_get(client, seeded):
 
     Read off `app.url_map`, so this covers routes that do not exist yet. A
     GET-only delete route cannot be anything but a destructive GET.
+
+    ⚠ **Read what this asserts, which is less than the name suggests: that every
+      delete rule ACCEPTS POST.** It catches a GET-only delete route — the
+      failure mode that actually existed — but it **cannot** catch a route that
+      accepts both methods and still destroys on GET. Such a route passes here.
+
+      The property is held per route by the four tests below and in
+      `tests/test_ra_routes.py`, each of which issues a real GET and asserts the
+      store is unchanged. Those are hand-written and do **not** extend to a
+      fifth route automatically: **a new delete route must ship its own GET
+      test.** ABOUT.md §7.9f carries that as a standing rule.
     """
     import app as app_module
 
