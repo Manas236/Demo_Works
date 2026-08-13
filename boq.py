@@ -2059,6 +2059,10 @@ def view_boq(id: str):
     """
     The BOQ on screen — the operations panel, the RA chips, and the sheet.
 
+    Also the **entry point to RA billing**: the action bar carries one link per
+    leg into `/ra/create`, offered only on the tip of a revision chain. Both
+    that and `Revise` branch on a single `is_tip`, so they cannot disagree.
+
     This is the INTERNAL view, so it passes `show_rate_breakup=True`: the base
     rate and the escalation percentage stay visible to whoever is pricing or
     revising the job. `/boq/print` is the copy that leaves the building and
@@ -2102,12 +2106,16 @@ def view_boq(id: str):
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
         alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
 
+    # Read ONCE, and both controls below branch on it — so this page cannot
+    # offer to revise a record it refuses to bill, or the other way round.
+    is_tip = id not in superseded_ids()
+
     # Revising is offered only on the TIP of a chain. A second revision claiming
     # the same parent forks it, and `ra.revision_chain()` cannot say which
     # branch a claim belongs to — so the button disappears once this record has
     # been revised, and says what replaced it instead.
     revise_btn = ""
-    if id in superseded_ids():
+    if not is_tip:
         newer = next((b for b in STORE["boqs"].values()
                       if str(b.get("supersedes") or "") == id), None)
         revise_btn = (f'<span class="btn btn-ghost" style="opacity:.65;cursor:default;">'
@@ -2115,6 +2123,38 @@ def view_boq(id: str):
     else:
         revise_btn = (f'<a href="{url_for("boq.create_boq", revise=id)}" '
                       f'class="btn btn-ghost">&#8635;&nbsp;Revise</a>')
+
+    # ── Start an RA bill against this BOQ ────────────────────────────────
+    # A LINK and nothing else. `/ra/create` already builds the whole prefilled
+    # claim grid from this BOQ — approved qty, claimed to date, balance, rate —
+    # so no part of the entry form lives here, and this is the same one-way
+    # `url_for` trick as the RA chips above: `boq.py` may never import `ra.py`
+    # (§2b). Without it the only way in was `/ra`'s own BOQ picker, which meant
+    # leaving the schedule you were looking at to go and find it again.
+    #
+    # **One button per leg**, because a bill covers one leg by construction —
+    # the leg is chosen before any quantity is entered and a claim row has none
+    # of its own. These are the two the picker itself offers.
+    #
+    # Offered only on the TIP, for the reason the picker filters to the latest
+    # revision: a claim is measured against what is approved NOW, and a bill
+    # raised against a superseded revision would be measured against a schedule
+    # that has already been replaced.
+    #
+    # ⚠ The picker filters its listing with `ra.latest_revision()` and this
+    # module cannot call that without importing `ra.py`, so it uses the tip
+    # predicate it already owns. The two agree on every chain reachable through
+    # the form — `revision_candidates()` refuses to fork one — and diverge only
+    # on a hand-edited fork. Not duplicated here on purpose; see ABOUT.md §7
+    # gap 16b for where the shared predicate should live.
+    ra_btns = ""
+    if is_tip:
+        ra_btns = (
+            f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
+            f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>'
+            f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '
+            f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Installation</a>'
+        )
 
     n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
     panel_html = f"""
@@ -2169,6 +2209,7 @@ def view_boq(id: str):
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
     <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
     {revise_btn}
+    {ra_btns}
     <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print (landscape)</a>
   </div>
 </div>

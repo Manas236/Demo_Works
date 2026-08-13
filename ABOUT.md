@@ -2217,6 +2217,38 @@ the same map on a real chain, so the duplication cannot drift silently.
 **Still not built: a BOQ delete route.** Deleting a record mid-chain would
 strand every claim behind it, and nothing needs it yet.
 
+#### RA billing starts here — `+ RA · Supply` / `+ RA · Installation`
+
+✅ **Wired.** `/boq/view` carries one link per leg into
+`/ra/create?boq=<id>&leg=<leg>`, beside **Revise**.
+
+**It is a link and nothing more.** `/ra/create` has always built the whole
+prefilled claim grid from the BOQ — approved qty, claimed to date, balance,
+rate per line, via `_claim_rows()` — and **there is no blank RA entry form in
+this app**: without a `boq` parameter the route renders its BOQ picker instead.
+What was missing was any way to reach it from the schedule on screen. The only
+entry point was `/ra`'s own picker, which meant leaving the BOQ you were
+looking at to go and find it again. Nothing in `ra.py` changed.
+
+**Two buttons because a bill covers one leg by construction** — the leg is a
+property of the bill, chosen before any quantity is entered, and a claim row
+has no leg of its own. These are the same two the picker offers per row.
+
+**Offered only on the tip of a chain**, for the reason the picker filters to the
+latest revision: a claim is measured against what is approved *now*, and a bill
+raised against a superseded revision would be measured against a schedule that
+has already been replaced. `view_boq()` reads `superseded_ids()` **once** into
+`is_tip` and branches both this and **Revise** on it, so the page cannot offer
+to bill a record it will not let you revise.
+
+⚠ **That is not the picker's predicate, and the difference is recorded** —
+§7 gap 16b. It is not duplicated here, unlike `claims_against_chain()` above.
+
+[tests/test_boq_ra_entry.py](tests/test_boq_ra_entry.py) holds it: present on
+the tip, **absent on a superseded revision**, and following it lands on a grid
+prefilled for the right BOQ *and* the right leg. Three of its nine cases fail
+against the code as it was.
+
 #### The demo BOQ
 
 `ensure_demo_boq()` seeds **one complete Sify Bangalore schedule** — three
@@ -2859,6 +2891,41 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 
 ## 7. Known gaps & rough edges
 
+> **This section owns gaps WE found in code that already exists.**
+> Changes the **client** asked for live in
+> [CLIENT_CHANGES.md](CLIENT_CHANGES.md), and that is a different list with a
+> different rule attached: an item there is a **status record, not a work
+> queue**, and anything on it that is **new scope priced into Phase 2** is
+> gated until their quotation is signed. **Defect and reachability fixes
+> against scope already sold are exempt** — which is most of what §7 is, so
+> this section is not gated by that rule and is safe to pick up. An item can
+> legitimately appear on both lists: §7 then owns the technical detail and
+> CLIENT_CHANGES.md owns the client-facing status and links here. Neither
+> restates the other. The forward *queue* is still [STATE.md](STATE.md); see
+> [INTRODUCTION.md §4](INTRODUCTION.md) for the §7-versus-STATE.md boundary,
+> which is unchanged.
+
+##### How these are numbered
+
+**A gap's number is a stable identifier, not its position in a list.** Sixty-odd
+references cite them from code comments, docstrings, tests and four other
+documents (`ABOUT.md §7.9d`, `§7 gap 14`, `§7.2`), and nothing checks those
+links — a renumber would silently point every one of them at the wrong rule.
+So:
+
+- **Numbers are never reused and never renumbered**, including when a gap is
+  closed. A closed gap keeps its number, struck through and marked ✅, because
+  the citations to it are still out there and still want an answer.
+- **An insertion takes a letter suffix** — `1b`, `9b`, `9d`, `16b` — rather than
+  pushing its neighbours along. That is why 16b exists where you would expect 17.
+- **Order is history; the identifier is the reference.** `9c` sits after `9f`
+  because that is when it was written. Do not tidy it.
+- **The buy-side block is a separate namespace, `B1`–`B6`.** It used to run
+  14–19 and collided head-on with the sell-side 14, 15 and 16 — `§7 gap 14`
+  meant two different things depending on which half of the section you were
+  reading. Those six carried no inbound citations, so they were re-lettered
+  rather than left ambiguous; every number that *is* cited kept its identifier.
+
 Real, verified, and safe to pick up:
 
 1. ~~**No dependency pinning.**~~ ✅ **Closed.** `requirements.txt` is now
@@ -3084,30 +3151,30 @@ Real, verified, and safe to pick up:
 
 **Buy side (`purchase.py`), all real and all deliberate for now:**
 
-14. **No goods-receipt note (GRN) and no partial-quantity tracking.** "Partially
-    Received" is a status somebody sets by hand, not a computed state — nothing
-    records *which* lines came in or how many. Per-line received quantities are
-    the natural next step, and are what would make the status honest.
-15. **No supplier-invoice matching.** The classic three-way match (PO ↔ GRN ↔
-    supplier invoice) is the point of a purchasing module in an accounting
-    system, and none of it exists. Input tax credit is claimed off the
-    supplier's invoice, which this app never sees.
-16. **No PO edit, amend or revision.** Status is the only mutable field, by
-    design (an issued PO's numbers should not move behind the vendor). But there
-    is no amendment flow either, so a price change means a fresh PO with no link
-    to the one it supersedes — the same shape of gap as §7.3 on the sell side.
-17. **Free-text line items are not possible.** Every PO line must be a catalogue
-    product. Real purchasing buys consumables, freight and one-off fabrication
-    that will never be in a sales catalogue. An "other — describe it" row is the
-    fix.
-18. **Job costing is material only.** No labour, no overhead, no allocation of a
-    stock purchase across the jobs that consume it. The margin figure on the
-    deal panel is a gross material margin and nothing more; the panel says so,
-    but it is easy to quote at somebody as if it were profit.
-19. **Vendor addresses are the only vendor record.** There is no vendor master —
-    no payment terms, no lead time, no ratings, no GSTIN validation at the point
-    of purchase. `type: "vendor"` in the address book is carrying that whole
-    concept.
+B1. **No goods-receipt note (GRN) and no partial-quantity tracking.** "Partially
+   Received" is a status somebody sets by hand, not a computed state — nothing
+   records *which* lines came in or how many. Per-line received quantities are
+   the natural next step, and are what would make the status honest.
+B2. **No supplier-invoice matching.** The classic three-way match (PO ↔ GRN ↔
+   supplier invoice) is the point of a purchasing module in an accounting
+   system, and none of it exists. Input tax credit is claimed off the
+   supplier's invoice, which this app never sees.
+B3. **No PO edit, amend or revision.** Status is the only mutable field, by
+   design (an issued PO's numbers should not move behind the vendor). But there
+   is no amendment flow either, so a price change means a fresh PO with no link
+   to the one it supersedes — the same shape of gap as §7.3 on the sell side.
+B4. **Free-text line items are not possible.** Every PO line must be a catalogue
+   product. Real purchasing buys consumables, freight and one-off fabrication
+   that will never be in a sales catalogue. An "other — describe it" row is the
+   fix.
+B5. **Job costing is material only.** No labour, no overhead, no allocation of a
+   stock purchase across the jobs that consume it. The margin figure on the
+   deal panel is a gross material margin and nothing more; the panel says so,
+   but it is easy to quote at somebody as if it were profit.
+B6. **Vendor addresses are the only vendor record.** There is no vendor master —
+   no payment terms, no lead time, no ratings, no GSTIN validation at the point
+   of purchase. `type: "vendor"` in the address book is carrying that whole
+   concept.
 
 10. ⚠ **The seeded company identity is SPECIMEN DATA, not Samruddhi's.**
     `settings.ensure_demo_settings()` writes a demo record into
@@ -3201,6 +3268,36 @@ Real, verified, and safe to pick up:
     GSTIN where they are registered. This is missing demo data rather than a
     code fault, and gap 14's fix does not touch it: it is a field on the BOQ
     record, not part of the tax arithmetic.
+
+16b. 🟠 **"Is this BOQ the tip of its chain?" is answered by two different
+   predicates — OPEN.** `boq.superseded_ids()` asks whether any record claims
+   to supersede this one. `ra.latest_revision()` walks the chain and returns
+   its last element. They agree on every chain reachable through the form, and
+   **diverge on a fork**: with root R revised twice into A and B, `A` is not
+   superseded by anything, but `latest_revision()` returns only `B`.
+
+   So `/boq/view` offers its RA links on both branches while `/ra/create`'s
+   picker lists only one. It is bounded — `revision_candidates()` refuses to
+   create a fork (§5), so one only arises from a hand-edited record — and it
+   is not a new hole: **`/ra/create` does not enforce the picker's filter
+   itself.** The picker filters its *listing*; the route accepts any `boq` id
+   that exists, so `/ra/create?boq=<superseded id>` renders a claim grid
+   against a stale revision today and did before the BOQ-side links existed.
+
+   **Where the fix belongs.** `revision_chain()` and `latest_revision()` read
+   only `STORE["boqs"]` and the `supersedes` field — they ask nothing about
+   claims and nothing about bills, so they are **BOQ-shape functions living in
+   the wrong module**. Moving them to `boq.py` is the clean fix: `ra.py`
+   already imports `boq.py` and that direction is permitted (§2b), so both the
+   picker and the view page would share one predicate, and `/ra/create` could
+   then refuse a non-tip BOQ rather than only declining to list it. The
+   alternative — a second chain-walk copied into `boq.py` — is what
+   `claims_against_chain()` had to do and should not be repeated when the
+   import direction makes it unnecessary.
+
+   Deliberately **not** done when the links were added: that change moves a
+   public function every RA route and four test modules call, which is a wider
+   blast radius than a link warrants.
 
 ---
 

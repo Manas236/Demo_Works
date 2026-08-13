@@ -101,19 +101,34 @@ heading and read the rest.
 | 4 | **[ABOUT.md](ABOUT.md)** | **The architecture.** Module map, import graph, every record shape, persistence, per-page behaviour, branding, code-level gaps, conventions | The business reasoning; the forward queue |
 | 5 | **[CLAUDE.md](CLAUDE.md)** | The three fast facts that stop you breaking a page before you have read anything | Everything else — it points at ABOUT.md |
 | 6 | **[PHASE4_RA_DESIGN.md](PHASE4_RA_DESIGN.md)** | The approved RA billing design and the **decision record** — what was settled on 2026-08-05, what was amended, and what was left open on purpose | Current state — that is STATE.md |
-| 7 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
+| 7 | **[CLIENT_CHANGES.md](CLIENT_CHANGES.md)** | What the **client** asked for, one row per request, with its client-facing status; the standing approach those items are built against; the open questions we are waiting on them to answer | Gaps we found ourselves; the ordered queue; anything architectural |
+| 8 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
 
 ### The boundary that is easiest to get wrong
 
-**ABOUT.md §7 and STATE.md both list gaps.** The line between them:
+**ABOUT.md §7, STATE.md and CLIENT_CHANGES.md all list things that are not
+done.** Three lists, three different questions:
 
 - **ABOUT.md §7** owns gaps in **code that already exists** — the missing
-  product edit route, the escaping holes, the absence of e-invoicing.
+  product edit route, the escaping holes, the absence of e-invoicing. Things
+  *we* found.
 - **STATE.md** owns **work not yet started** — the ordered queue, and
   requirements learned from the client that have no code behind them at all.
+- **CLIENT_CHANGES.md** owns **what the client asked for** and where each
+  request stands. Things *they* asked for.
 
 So: ABOUT.md §7.1 owns *which dependencies this app needs*. STATE.md owns *that
-writing `requirements.txt` is an immediate task*. Neither restates the other.
+writing `requirements.txt` is an immediate task*. None of the three restates
+another; where an item belongs on two of them, each entry answers its own
+question and links to the other.
+
+⚠ **CLIENT_CHANGES.md carries a rule the other two do not.** It is a **status
+record, not a work queue**: an unbuilt item listed there is a record of a
+conversation, not a task, and anything on it that is **new scope priced into
+Phase 2** is gated until the client's quotation is signed. **Defect and
+reachability fixes against scope already sold are exempt** — that is what
+ABOUT.md §7 mostly is, so §7 is not gated by this. Read CLIENT_CHANGES.md §0
+before acting on anything in it. The queue is STATE.md.
 
 ### A note on SAMRUDHI_SPEC.md
 
