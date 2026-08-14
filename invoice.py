@@ -116,6 +116,9 @@ COPY_LABELS = {
 # "place of supply" means on the face of the invoice (Rule 46(n) wants the name
 # *and* the code). Keys match `address.INDIAN_STATES` exactly, which is what
 # lets the quotation's state dropdown feed straight into this.
+# 
+# ⚠ This table is duplicated in `pipeline.py`. `tests/test_gst_state_codes.py`
+# asserts the two match.
 GST_STATE_CODES = {
     "Jammu and Kashmir": "01", "Himachal Pradesh": "02", "Punjab": "03",
     "Chandigarh": "04", "Uttarakhand": "05", "Haryana": "06", "Delhi": "07",

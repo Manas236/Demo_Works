@@ -225,8 +225,7 @@ _esc = esc  # internal shorthand used throughout this module
 #
 # ⚠ `invoice.GST_STATE_CODES` is a second copy of this table, left alone
 #   deliberately (see the commit that added this block). One statutory table in
-#   two places can drift; closing that is a one-line change in invoice.py and
-#   was out of scope here.
+#   two places can drift, so `tests/test_gst_state_codes.py` asserts they match.
 GST_STATE_CODES = {
     "Jammu and Kashmir": "01", "Himachal Pradesh": "02", "Punjab": "03",
     "Chandigarh": "04", "Uttarakhand": "05", "Haryana": "06", "Delhi": "07",
