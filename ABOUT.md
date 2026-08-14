@@ -2898,7 +2898,11 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 > [CLIENT_CHANGES.md](CLIENT_CHANGES.md), and that is a different list with a
 > different rule attached: an item there is a **status record, not a work
 > queue**, and anything on it that is **new scope priced into Phase 2** is
-> gated until their quotation is signed. **Defect and reachability fixes
+> gated until their quotation is signed. **That gate was overridden on 14
+> August 2026 by Manas Gawde for item 8 (the receipts ledger) only, with
+> MG/SF/2026-02 still unsigned — the rule stands, the override is recorded in
+> CLIENT_CHANGES.md §0, and every other Pending item is still gated.**
+> **Defect and reachability fixes
 > against scope already sold are exempt** — which is most of what §7 is, so
 > this section is not gated by that rule and is safe to pick up. An item can
 > legitimately appear on both lists: §7 then owns the technical detail and

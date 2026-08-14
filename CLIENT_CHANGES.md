@@ -24,6 +24,33 @@
 started until quotation **MG/SF/2026-02** is signed by the client. That is a
 commercial gate, not an engineering one, and it is not yours to reach a view on.
 
+> ### ⚠ OVERRIDDEN — 14 August 2026, by Manas Gawde
+>
+> **The gate above was overridden, not lifted and not met.** Quotation
+> **MG/SF/2026-02 was still unsigned** on 14 August 2026 when Phase 2 work
+> began. Manas took the decision to proceed anyway and instructed that the
+> override be recorded rather than the rule deleted.
+>
+> **The rule above still stands and is still the default.** It is written in
+> the present tense because it is still the policy; this block is the record
+> that it was consciously set aside on one occasion, by the person entitled to
+> set it aside. It is not evidence that the gate never existed, and it is not a
+> precedent that clears the next item.
+>
+> **What proceeded under the override:** item 8, the receipts ledger, built on
+> 14 August 2026. Anything else Pending is **still gated** and still needs
+> either the signature or its own recorded override.
+>
+> **This does not convert Pending work into no-charge work.** §0's exemption
+> covers defect and reachability fixes against scope already sold under
+> MG/SF/2026-01; it does not cover item 8, which is new scope priced into
+> MG/SF/2026-02 and remains chargeable there. Starting it early changed **when**
+> it was built, not **what it costs** or **who agreed to it**.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, this work was done against an unsigned
+> quotation.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
@@ -34,6 +61,10 @@ Items 1 and 6 are both; wiring the BOQ revision chain was another.
 task.** It is a record of a conversation. Do not open a file because you read
 about one here, and do not treat a Pending row as a specification you have been
 handed. If you think something gated should be built now, say so and stop.
+
+That rule is unchanged by the override above. **An override is a decision the
+client-facing owner takes and records; it is not one you may take, infer, or
+extend.** Item 8 being built early is not licence to start item 2, 3, 4 or 5.
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
