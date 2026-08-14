@@ -158,29 +158,31 @@ Consequences you must respect when editing:
 
 ## 2. Module map
 
+*Note: The line counts below are indicative and will drift as the codebase grows; treat a stale number as expected rather than as evidence the doc is untrustworthy.*
+
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 149 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
-| [store.py](store.py) | 35 | The `STORE` dict. Single shared object, imported everywhere. |
-| [db.py](db.py) | 407 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
-| [branding.py](branding.py) | 251 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [dashboard.py](dashboard.py) | 1302 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
-| [product.py](product.py) | 1347 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
-| [quotation.py](quotation.py) | 2693 | Quotation form + printed document. The big one. |
-| [proforma.py](proforma.py) | 1117 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
-| [invoice.py](invoice.py) | 1349 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
-| [purchase.py](purchase.py) | 1369 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
-| [spec.py](spec.py) | 1096 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
-| [boq.py](boq.py) | 3415 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 2654 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. |
+| [app.py](app.py) | 148 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
+| [store.py](store.py) | 45 | The `STORE` dict. Single shared object, imported everywhere. |
+| [db.py](db.py) | 529 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
+| [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
+| [dashboard.py](dashboard.py) | 1488 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
+| [product.py](product.py) | 1465 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
+| [quotation.py](quotation.py) | 2786 | Quotation form + printed document. The big one. |
+| [proforma.py](proforma.py) | 1368 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
+| [invoice.py](invoice.py) | 1367 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
+| [purchase.py](purchase.py) | 1401 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
+| [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
+| [boq.py](boq.py) | 3964 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
+| [ra.py](ra.py) | 3090 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
-| [settings.py](settings.py) | 285 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
-| [pipeline.py](pipeline.py) | 542 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
-| [address.py](address.py) | 951 | Address book + the pickers that quotations and purchase orders use. |
-| [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
+| [settings.py](settings.py) | 410 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
+| [pipeline.py](pipeline.py) | 604 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
+| [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
+| [extractor.py](extractor.py) | 408 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 131 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 495 | **Dead file.** Stale docs only — see §8. |
 
@@ -2923,8 +2925,9 @@ So:
 - **The buy-side block is a separate namespace, `B1`–`B6`.** It used to run
   14–19 and collided head-on with the sell-side 14, 15 and 16 — `§7 gap 14`
   meant two different things depending on which half of the section you were
-  reading. Those six carried no inbound citations, so they were re-lettered
-  rather than left ambiguous; every number that *is* cited kept its identifier.
+  reading. Five of the six carried no inbound citations; the sixth had one and
+  was repointed to B5, so they were re-lettered rather than left ambiguous;
+  every number that *is* cited kept its identifier.
 
 Real, verified, and safe to pick up:
 
@@ -3054,7 +3057,7 @@ Real, verified, and safe to pick up:
    🔴 **Still open in `quotation.py` and `product.py`, and the one-liner does
    not reach either.** `quotation.py` builds its pages with `.format()` rather
    than f-strings and has attribute, `<script>` and option-text sinks besides;
-   `product.py` has no escaping at all in 1409 lines, so returning the string
+   `product.py` has no escaping at all in 1465 lines, so returning the string
    unrendered fixes the injection and leaves the XSS. Each needs its own pass,
    and `product.py`'s is really an escaping pass (§7.7) with this fix on the
    end.
@@ -3270,19 +3273,16 @@ B6. **Vendor addresses are the only vendor record.** There is no vendor master �
     record, not part of the tax arithmetic.
 
 16b. 🟠 **"Is this BOQ the tip of its chain?" is answered by two different
-   predicates — OPEN.** `boq.superseded_ids()` asks whether any record claims
+   predicates — NARROWED.** `boq.superseded_ids()` asks whether any record claims
    to supersede this one. `ra.latest_revision()` walks the chain and returns
    its last element. They agree on every chain reachable through the form, and
    **diverge on a fork**: with root R revised twice into A and B, `A` is not
    superseded by anything, but `latest_revision()` returns only `B`.
 
    So `/boq/view` offers its RA links on both branches while `/ra/create`'s
-   picker lists only one. It is bounded — `revision_candidates()` refuses to
-   create a fork (§5), so one only arises from a hand-edited record — and it
-   is not a new hole: **`/ra/create` does not enforce the picker's filter
-   itself.** The picker filters its *listing*; the route accepts any `boq` id
-   that exists, so `/ra/create?boq=<superseded id>` renders a claim grid
-   against a stale revision today and did before the BOQ-side links existed.
+   picker lists only one. The gap is narrowed because **`/ra/create` now refuses
+   a superseded BOQ**, so the route itself enforces the guard, but the divergence
+   between the two predicates remains.
 
    **Where the fix belongs.** `revision_chain()` and `latest_revision()` read
    only `STORE["boqs"]` and the `supersedes` field — they ask nothing about

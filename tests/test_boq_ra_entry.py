@@ -10,10 +10,9 @@ existed and to nothing that would start one.
 Three properties, and the middle one is the one worth having:
 
 - the control is there on the tip of a revision chain;
-- **it is NOT there on a superseded revision** — the route it points at does
-  not itself refuse a stale BOQ, so this link is what keeps a user from
-  raising a claim against a schedule that has already been replaced without
-  going near `/ra`'s picker, which filters its own listing;
+- **it is NOT there on a superseded revision** — the route it points at also
+  now refuses a stale BOQ (redirecting with an error), so both the UI and the
+  route enforce that claims can only be raised against the latest revision;
 - following it lands on the prefilled grid for the right BOQ *and the right
   leg*, so the two buttons are not two spellings of one.
 
@@ -148,3 +147,18 @@ def test_the_grid_reached_this_way_still_knows_what_is_already_claimed(
 
     assert "RA2" in html            # the number is assigned, not typed
     assert "60" in html             # the balance left on that line
+
+
+def test_ra_route_rejects_superseded_boq(client, clean):
+    _mkboq("rev0", rev=0)
+    _mkboq("rev1", rev=1, supersedes="rev0")
+
+    # The tip is accepted
+    res = client.get("/ra/create?boq=rev1&leg=supply")
+    assert res.status_code == 200
+
+    # The superseded revision is rejected with a redirect
+    res = client.get("/ra/create?boq=rev0&leg=supply")
+    assert res.status_code == 302
+    assert "/ra/create" in res.headers["Location"]
+    assert "superseded" in res.headers["Location"]

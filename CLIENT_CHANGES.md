@@ -24,8 +24,8 @@
 started until quotation **MG/SF/2026-02** is signed by the client. That is a
 commercial gate, not an engineering one, and it is not yours to reach a view on.
 
-**Exempt: anything already sold under MG/SF/2026-01** — work delivered against
-that scope, and defect or reachability fixes to it. Making something we have
+**Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
+fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
 **Delivered — no charge**, and appear in MG/SF/2026-02 as already delivered.
 Items 1 and 6 are both; wiring the BOQ revision chain was another.

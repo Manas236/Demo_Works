@@ -2316,6 +2316,10 @@ def create_ra():
     # offered: a claim is measured against what is approved now, and raising a
     # bill against a superseded revision would measure it against a schedule
     # that has already been replaced.
+    if boq_id in boqs and boq_id in BQ.superseded_ids():
+        msg = f"BOQ {boqs[boq_id].get('ref')} is superseded. Claims must be raised against the latest revision."
+        return redirect(url_for("ra.create_ra", msg=msg, type="error"))
+
     if boq_id not in boqs:
         latest_ids = {latest_revision(bid) for bid in boqs}
         rows = "".join(
