@@ -58,6 +58,9 @@ CHAIN 1   quotation ──► proforma invoice ──► tax invoice
 
 CHAIN 2   BOQ ──► RA bill 1 ──► RA bill 2 ──► …
           a project, priced once and billed progressively as it is built
+                         │
+                         └──► receipt, receipt, …
+                              money actually received against a bill
 
 BUY SIDE  purchase order ──► [vendor lifecycle]
           a separate pipeline; never links to a proforma or a tax invoice
@@ -147,6 +150,7 @@ It is 2,722 lines. Section headings, so you can jump:
 | 1 | What the app is · **the f-string / no-`/templates` rule** — read this one |
 | 2 | Module map, line counts, and the full import-direction graph |
 | 2b | **The BOQ chain** — `boq.py` and `ra.py`, and what each may import |
+| 2c | **Receipts** — `receipt.py`, and why the balance arithmetic lives upstream in `ra.py` |
 | 3 | **Every record shape**, with the properties each shape exists to guarantee |
 | 4 | Persistence — how `db.py` snapshots and diffs, and how failure surfaces |
 | 5 | Page by page, route by route. `/boq` and `/ra` are the ones you need |
@@ -198,18 +202,24 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **411 passing** at `fe629d5`, verified. If your first run
-reports anything else, stop and say so before making a change — the discrepancy
-is in your environment, not in the suite.
+The baseline is **595 passing** on 14 August 2026, verified in a `.venv` with
+openpyxl and both client workbooks installed. Two lower totals are also
+correct and are not a problem: **592 passed / 3 skipped** without the
+workbooks, **591 passed / 1 skipped** without openpyxl.
+[ABOUT.md §1](ABOUT.md) has the table and explains why the two mechanisms are
+different — a module-level `importorskip` reports **one** skip however many
+tests sit behind it, which is the thing most often got wrong about this suite.
+
+If your first run reports something outside those three, stop and say so before
+making a change.
 
 Run before and after every change, and **report both numbers**:
 
 ```bash
-python -m pytest -q          # py -m pytest -q also works
+.venv\Scripts\python -m pytest -q      # Windows
 ```
 
-There is no venv in this repo (§5.7). If a test is genuinely wrong, **say why
-and wait**. Deleting or weakening a failing test is never the fix — several
+If a test is genuinely wrong, **say why and wait**. Deleting or weakening a failing test is never the fix — several
 tests in this suite are deliberate controls that exist to prove another test
 can actually fail, and they look redundant until you understand what they pin.
 
@@ -225,10 +235,12 @@ Those are written down precisely because the code does not do them yet.
 
 ### 5.7 Environment
 
-There is **no `requirements.txt` and no venv**. Writing one is an open task
-tracked in [STATE.md](STATE.md); generate it from the actual imports rather
-than `pip freeze` of a system Python. The dependency list is in
-[ABOUT.md §7.1](ABOUT.md).
+`requirements.txt` **is committed and pinned**, and a **`.venv` is the
+supported way to run this repo** — not a system interpreter, which the pins
+would downgrade. **Supported: CPython 3.10 to 3.14**, last verified on 3.14.3
+(Windows). The dependency *set* is derived from the actual imports rather than
+a `pip freeze`; [ABOUT.md §1](ABOUT.md) has the cold-start sequence and
+[ABOUT.md §7.1](ABOUT.md) owns the dependency list.
 
 ---
 

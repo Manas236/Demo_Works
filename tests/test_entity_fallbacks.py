@@ -124,7 +124,16 @@ def populated(client):
 
     bid = DD.BOQ_META["id"]
     STORE["ra_bills"].clear()
-    rid = _an_ra_bill(bid)
+    STORE["receipts"].clear()
+    # TWO bills, and the split matters. A bill with money receipted against it
+    # cannot be deleted (`ra.can_delete`) — deleting it would orphan the
+    # payment — so `/ra/delete/<id>` would redirect rather than render if the
+    # only bill were the paid one. RA1 carries the receipt and feeds the
+    # /receipt/* rules; RA2 is the latest and unpaid, which is what makes the
+    # edit and delete confirmations render a page for the sweep to look at.
+    paid_rid = _an_ra_bill(bid, ra_no=1, rid="r1-supply", ref="SF/RA/26-27/0001")
+    rid = _an_ra_bill(bid, ra_no=2, rid="r2-supply", ref="SF/RA/26-27/0002")
+    rcid = _a_receipt(paid_rid, bid)
 
     # `/product/delete` renders its confirmation page only for a product that
     # may actually be deleted; one locked into an assembly redirects with the
@@ -153,6 +162,8 @@ def populated(client):
             "/ra/certify/<id>":     rid,
             "/ra/print/<id>":       rid,
             "/ra/view/<id>":        rid,
+            "/receipt/delete/<id>": rcid,
+            "/receipt/edit/<id>":   rcid,
             "/spec/delete/<id>":    blank["REG-BLANK-UNSIZED"],
             "/spec/edit/<id>":      blank["REG-BLANK-UNSIZED"],
             "/spec/view/<id>":      blank["REG-BLANK-UNSIZED"],
@@ -165,6 +176,7 @@ def populated(client):
     }
 
     STORE["ra_bills"].clear()
+    STORE["receipts"].clear()
 
 
 def _a_quotation() -> str:
@@ -187,22 +199,43 @@ def _a_quotation() -> str:
     return qid
 
 
-def _an_ra_bill(boq_id: str) -> str:
+def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
+                ref: str = "SF/RA/26-27/0001") -> str:
     """One claim against the demo BOQ, so /ra/view and /boq/view have a bill."""
     li = next(li for li in STORE["boqs"][boq_id]["line_items"]
               if not li["is_header"] and li["total_qty"] > 0)
     claims = [ra.build_claim(li, 1.0, li["supply_rate"], 0.0, li["supply_rate"])]
     subtotal, drows, dtotal, net = ra.bill_totals(claims, [])
-    rid = "r1-supply"
     STORE["ra_bills"][rid] = {
-        "id": rid, "ref": "SF/RA/26-27/0001", "fy": "26-27",
+        "id": rid, "ref": ref, "fy": "26-27",
         "date": "2026-08-06", "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001",
-        "boq_rev_no": 0, "ra_no": 1, "leg": "supply", "claims": claims,
+        "boq_rev_no": 0, "ra_no": ra_no, "leg": "supply", "claims": claims,
         "claim_subtotal": subtotal, "deductions": drows,
         "deduction_total": dtotal, "net_payable": net,
         "status": "draft", "certified_on": "", "notes": "",
     }
     return rid
+
+
+def _a_receipt(ra_id: str, boq_id: str) -> str:
+    """
+    One payment against that bill, so /receipt/edit and /receipt/delete render.
+
+    `instrument_ref` is deliberately blank: that cell is exactly where the
+    receipts table falls back to the house em-dash, so a fixture that filled it
+    would let the sweep pass over the branch this file exists to check.
+    """
+    rcid = "rc1"
+    STORE["receipts"][rcid] = {
+        "id": rcid, "ref": "SF/RCPT/26-27/0001", "fy": "26-27",
+        "date": "2026-08-07", "ra_id": ra_id, "ra_ref": "SF/RA/26-27/0001",
+        "ra_no": 1, "leg": "supply", "boq_id": boq_id,
+        "boq_ref": "SF/BOQ/26-27/0001", "project_name": "Sify",
+        "account_name": "Test Contractor Pvt Ltd", "amount": 1000.0,
+        "mode": "neft", "instrument_ref": "", "instrument_date": "",
+        "notes": "",
+    }
+    return rcid
 
 
 def _urls(populated):

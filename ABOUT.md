@@ -76,7 +76,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 523 passed — or 519 passed, 4 skipped; see below
+python -m pytest -q                     # 595 passed — or fewer, with skips; see below
 python app.py                           # http://127.0.0.1:5000
 ```
 
@@ -88,25 +88,37 @@ is gitignored. **Supported: CPython 3.10 to 3.14**, last verified on 3.14.3
 (Windows) — a range rather than one build number, because this repo is cloned on
 two machines with different Pythons and nothing here pins interpreter behaviour.
 
-**The suite reports two different totals and neither is wrong.**
-`tests/test_fixtures.py` sits behind a module-level
-`pytest.importorskip("openpyxl")`, so its 4 tests skip wherever openpyxl is
-absent:
+**The suite reports three different totals and none of them is wrong.** Two
+independent things move the number, and they are often confused for each other:
 
 | Environment | Result |
 |---|---|
-| openpyxl installed | **523 passed** |
-| openpyxl absent (a plain `pip install -r requirements.txt`) | **519 passed, 4 skipped** |
+| openpyxl installed **and** both client workbooks present | **595 passed** |
+| openpyxl installed, workbooks absent (the usual fresh clone) | **592 passed, 3 skipped** |
+| openpyxl absent (a plain `pip install -r requirements.txt`) | **591 passed, 1 skipped** |
 
-openpyxl stays commented out in `requirements.txt` because the app never reads a
-workbook at runtime. Install it in the venv if you want the full 523. Whether
-the two client workbooks are present changes what those 4 tests *do*, not
-whether they run — see `fixtures/README.md`.
+⚠ **A module-level `importorskip` reports ONE skip, not one per test.**
+`tests/test_fixtures.py` holds 4 tests behind a module-level
+`pytest.importorskip("openpyxl")`, which raises during *collection* — so
+without openpyxl those 4 are never collected and pytest prints `1 skipped`.
+This table said "4 skipped" until it was measured; it is the kind of number
+that is only ever wrong in a document, because nobody re-reads it against a
+real run.
+
+The other three skips are a different mechanism entirely: with openpyxl
+installed the module *is* collected, and 3 of its 4 tests then skip
+individually via `conftest.require_fixture()` because `sify_boq.xlsx` and
+`annexure.xlsx` are gitignored and absent from a fresh clone. Whether the
+workbooks are present changes what those tests *do*; whether openpyxl is
+present changes whether they run at all — see `fixtures/README.md`.
+
+openpyxl stays commented out in `requirements.txt` because the app never reads
+a workbook at runtime. Install it in the venv if you want the module collected.
 
 **There is no migration step and no seed script**, and that is deliberate:
 
 - `db.init()` issues `CREATE DATABASE IF NOT EXISTS` and `CREATE TABLE IF NOT
-  EXISTS` for all nine collections at boot, so **`python app.py` creates its own
+  EXISTS` for all ten collections at boot, so **`python app.py` creates its own
   schema**. Point `.env` at a MySQL that is running; the database does not have
   to exist.
 - **Seeding is lazy and idempotent.** `ensure_demo_settings()` runs at boot;
@@ -174,7 +186,8 @@ Consequences you must respect when editing:
 | [purchase.py](purchase.py) | 1401 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 3964 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 3090 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. |
+| [ra.py](ra.py) | 3001 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
+| [receipt.py](receipt.py) | 630 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -325,10 +338,52 @@ ra.py ──► store, branding
 ```
 
 and it must **never** import `proforma.py`, `invoice.py`, `purchase.py`,
-`product.py` or `spec.py`. The `invoice.py` prohibition is the load-bearing one:
+`product.py`, `spec.py` or **`receipt.py`**. The `invoice.py` prohibition is the load-bearing one:
 **the RA bill's tax block is per-line and carries HSN/SAC, while the sell chain's is document-level**,
 and sharing that machinery would couple two chains that were deliberately built parallel. All of these are asserted in
 [tests/test_import_directions.py](tests/test_import_directions.py).
+
+### 2c. Receipts — the one-way trick, used a fifth time
+
+```
+BOQ ──► RA bill 1 ──► RA bill 2 ──► …
+             │
+             └──► receipt, receipt, …        money IN
+```
+
+A **receipt** is money actually received against one RA bill. It gets its own
+top-level collection (§1.3 of CLIENT_CHANGES.md) and its own module:
+
+```
+receipt.py ──► ra.py         the bill, the revision chain, and the balance
+                             arithmetic — received_against / outstanding_of /
+                             previous_balance / prev_balance_drift
+receipt.py ──► boq.py        BOQ_STYLES
+receipt.py ──► quotation.py  QUOTATION_STYLES + _inr — the form widgets, so the
+                             receipt form IS the RA form
+receipt.py ──► dashboard.py  BASE_STYLES / _nav
+receipt.py ──► pipeline.py   esc / parse_money / fy_of / fy_ref
+receipt.py ──► store, branding
+```
+
+`ra.py` must **never** import `receipt.py`, and neither may `boq.py` or
+`spec.py`. `ra.view_ra()` renders a receipts panel by reading
+`STORE["receipts"]` directly and links out with `url_for("receipt.…")` — the
+same one-way trick this codebase already runs between quotation/proforma,
+proforma/invoice, quotation/purchase and boq/ra. This is the fifth.
+
+**The direction is forced, not chosen.** `create_ra()` has to freeze the
+carried balance at the moment a bill is saved, so it needs the figure — which
+means the arithmetic has to sit **upstream** of the module that records the
+payments. Putting `previous_balance()` in `receipt.py` would require
+`ra.py` to import it, and the cycle with it. That is why the money arithmetic
+lives in `ra.py` while the ledger pages live in `receipt.py`, and
+`tests/test_import_directions.py` asserts both halves —
+`test_ra_reads_receipts_without_importing_receipt` and
+`test_the_balance_arithmetic_lives_upstream_in_ra`.
+
+`receipt.py` must not import `invoice.py`, `proforma.py`, `purchase.py`,
+`product.py` or `spec.py`.
 
 ✅ **Closed at step 2.** `/boq/view/<id>` used to 500 once an `ra_bills` record
 existed, because boq.py builds `url_for("ra.view_ra", …)` and no `ra` blueprint
@@ -373,6 +428,7 @@ STORE = {
     "specs":        {},     # uuid -> specification library entry (clause + variants)
     "boqs":         {},     # uuid -> bill of quantities (head of the BOQ -> RA chain)
     "ra_bills":     {},     # uuid -> Running Account claim against a BOQ revision
+    "receipts":     {},     # uuid -> payment RECEIVED against one RA bill
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -775,6 +831,22 @@ Written by `ra.py`. Progressive claim against a specific BOQ revision, carrying 
   and nothing recomputes an issued bill. Same contract as `prior_invoiced` /
   `prior_refs` on a proforma — a new field defaults cleanly rather than forcing
   a migration.
+- **The carried balance, frozen at issue:** `prev_balance` (float — what every
+  *earlier* bill in the same revision chain still had outstanding when this one
+  was created) and `prev_balance_refs` (`["SF/RA/26-27/0001", …]`, the bills it
+  came from). Exactly `proforma.prior_invoiced` / `prior_refs`, one chain over.
+
+  ⚠ **Snapshotted at create and never recomputed** — not on edit, and above all
+  not at print. A receipt entered in October must not rewrite the balance
+  printed on a bill issued in August. Also **optional and never backfilled**:
+  a bill written before the field has no key, prints no memo block at all
+  (not a zero — it never made the statement), and reports no drift. Same
+  contract as `tax_slabs`. See §5 `/ra` and `/receipt`.
+
+  ⚠ **It is a MEMO, not a claim.** Absent from `claim_subtotal`, from every tax
+  figure, from `net_payable`, from `grand_total`, and invisible to the
+  over-claim guard. That rests on an **assumption the client has not
+  confirmed** — CLIENT_CHANGES.md item 8.
 - **Certification:** `status` ∈ `draft | submitted | certified`, `certified_on`
 - **Other:** `notes`, `company_branch`, `auth_signatory`
 
@@ -942,6 +1014,62 @@ already submitted to the main contractor. The rule:
 not until `tests/test_ra_print_immutability.py` was written; see §5's
 *"`/ra/print/<id>` reads the RECORD, never the live BOQ"* for what it was doing
 instead and what the loop over `boq["line_items"]` cost beyond the item number.
+
+### Receipt  (money RECEIVED against an RA bill)
+
+Written by `receipt.py`. **Its own collection**, keyed to the bill it pays —
+never a list on the RA bill and never a list on the BOQ (CLIENT_CHANGES.md
+§1.3; `boq.MAX_JSON_BYTES` is what that rule protects).
+
+```python
+{"id": uuid,
+ "ref": "SF/RCPT/26-27/0001", "fy": "26-27",
+ "date": "2026-08-14",              # the date the MONEY arrived
+ "ra_id": uuid,                     # THE KEY — the bill this pays
+ "ra_ref": "SF/RA/26-27/0004", "ra_no": 4, "leg": "supply",
+ "boq_id": uuid, "boq_ref": "SF/BOQ/26-27/0001",
+ "project_name": str, "account_name": str,
+ "amount": 250000.0,                # always > 0
+ "mode": "neft",                    # one of ra.RECEIPT_MODES
+ "instrument_ref": "UTR12345",      # cheque no / UTR / txn id
+ "instrument_date": "2026-08-13",
+ "notes": str}
+```
+
+Four properties this shape exists to guarantee:
+
+1. **The resulting balance is NOT a field here.** It is derived —
+   `ra.outstanding_of()` for one bill, `ra.previous_balance()` for the chain.
+   Storing it would be a third representation of a number already implied by
+   two others, and the moment an earlier receipt is corrected the stored one
+   disagrees with both. Same argument `print_ra()` makes for deriving the
+   seller's State from the GSTIN rather than storing it alongside.
+
+   **The one place a balance IS frozen is on the RA bill**, because that is a
+   figure printed on a document that has left the building. A ledger row is a
+   current-state screen; a bill is a record of what was sent. Opposite
+   treatment, on purpose.
+
+2. **Keyed to a BILL, not to a BOQ.** Money is received against a claim.
+   `boq_id` is carried for grouping only and is never the match key.
+
+3. **A receipt survives its BOQ being superseded.** `ra.previous_balance()` and
+   `receipt.receipts_of_boq()` both walk the whole **revision chain**, exactly
+   as `claimed_by_line()` does. Summing against one BOQ record would reset the
+   carried balance to zero on every revision — silently, and only on projects
+   that have been revised.
+
+4. **Every back-reference is stored, not looked up** (`ra_ref`, `ra_no`,
+   `boq_ref`, `project_name`), so the ledger still reads as a historical record
+   if the bill is removed. It mostly cannot be: `ra.can_delete()` refuses a
+   bill carrying receipts, because deleting it would leave the money filed
+   against a document that no longer exists.
+
+`amount` must be positive. **A refund is deliberately not expressible** — it is
+a different document with different accounting, and smuggling it in as a
+negative receipt would make every sum in the ledger ambiguous. An
+*over*payment, by contrast, is ordinary: it makes `outstanding_of()` negative
+and carries forward as a credit, and it warns rather than blocking.
 
 ### Address
 
@@ -2667,6 +2795,29 @@ measured rather than scaled. At the line cap that is 46 KB decoded / 75 KB on
 the wire, and 150,000 × 1.61 = 241,500 leaves ~258 KB of Flask's 500,000
 `MAX_FORM_MEMORY_SIZE` for the other fields.
 
+#### The receipts panel, and what it deliberately does NOT do
+
+`/ra/view` carries a **Receipts against this bill** table with the bill's grand
+total, what has been received against it, and what is outstanding — all
+computed **live** from `STORE["receipts"]`. That is right for this page and
+would be wrong on the document: `/ra/view` answers *where does the money stand
+today*, `/ra/print` answers *what did we state when we sent it*.
+
+Beside them sits **Previous balance carried onto this bill**, read off the
+bill's own `prev_balance`. Where the frozen figure and the live one disagree —
+because a receipt was corrected or deleted after this bill was raised —
+`prev_balance_drift()` puts an amber band at the top of the page naming both
+and saying the document is deliberately **not** restated. That is DOMAIN.md §6
+applied to money, and the same treatment `rate_varies` already gets for a claim
+rate that disagrees with the approved BOQ.
+
+**`can_delete()` now refuses a bill with receipts against it**, alongside the
+existing refusals for a certified bill and a non-latest one. Deleting it would
+orphan the payment: the money stays in the ledger pointing at a document that
+no longer exists, and silently stops counting toward the balance carried
+forward. The reason is shown rather than the button hidden, as with the other
+two.
+
 #### Escaping
 
 `_alert()` escapes its own message and **every caller passes plain text**.
@@ -2674,6 +2825,94 @@ That is the choke point rather than a convention: `overclaim_message()`
 interpolates an item number, and `item_no` is free text typed on the BOQ form,
 so `<script>` in a line's item number reaches this banner. It did, until this
 escaped it — there is a test.
+
+---
+
+### `/receipt` — Receipts · [receipt.py](receipt.py)
+
+| Route | View |
+|---|---|
+| `GET /receipt/` | `list_receipts` — the ledger; `?boq=<id>` narrows it to one project's chain |
+| `GET,POST /receipt/new` | `new_receipt` — `?ra=<id>` names the bill; without it, a bill picker |
+| `GET,POST /receipt/edit/<id>` | `edit_receipt` — allowed even after a later bill snapshotted its effect |
+| `GET,POST /receipt/delete/<id>` | `delete_receipt` — GET confirms, POST deletes |
+
+**CLIENT_CHANGES.md item 8.** Records a payment received against an RA bill and
+carries what is still unpaid onto the next bill of the same BOQ chain.
+
+#### The one rule this module exists to protect
+
+**A receipt entered, corrected or deleted today must never change a bill
+printed yesterday.**
+
+`ra.create_ra()` freezes `prev_balance` onto each bill as it is raised, and
+`print_ra()` reads it off that record. Nothing in `receipt.py` writes to an RA
+bill, and nothing in `print_ra()` reads `STORE["receipts"]`.
+`tests/test_receipts.py` renders a bill, then adds a receipt, edits another and
+deletes a third underneath it, and asserts the page is **byte-identical** —
+the same shape `test_ra_print_immutability.py` uses for a revised BOQ.
+
+This is the `print_ra` defect class (§1.2 of CLIENT_CHANGES.md), which shipped
+green once already because every print test rendered against data nobody then
+touched.
+
+#### Editing and deleting a receipt is ALLOWED — and here is why
+
+A payment gets mis-keyed. A ledger that cannot be corrected is a ledger that is
+wrong forever, so both are permitted, and neither touches any bill's stored
+figure. Three things make that safe rather than merely convenient:
+
+- the snapshot is **stored**, so it cannot move — this is a property of the
+  data, not of a check somebody has to remember;
+- the **edit form and the delete confirmation name the later bills** that
+  already froze a balance while this receipt stood, and say plainly that those
+  documents will not change;
+- `/ra/view` then **flags the divergence** on each of them.
+
+The alternative — refusing the correction once a later bill exists — protects a
+document that is already immune and leaves the ledger permanently wrong. That
+is why this differs from `ra.can_delete()`'s refusal on a certified bill: a
+certificate is the main contractor's ruling and the only record of it, while a
+receipt is our own bookkeeping about our own money.
+
+#### The carried balance is a memo, not a claim
+
+The printed bill shows **Previous Balance Outstanding** and **Total Due (this
+bill + previous balance)** below the Grand Total, visually outside the tax
+computation, with a line on its face stating that the arrears are not
+re-claimed and carry no GST here. Both figures come from the record: the memo
+total is `grand_total + prev_balance`, two stored numbers added.
+
+Nothing about it enters `claim_subtotal`, any tax figure, `net_payable`,
+`grand_total`, or the over-claim guard.
+
+⚠ **That is an assumption the client has not confirmed**, recorded in code, in
+CLIENT_CHANGES.md item 8 and in its §3. If they come back and say arrears
+*should* be re-billed, the change is not cosmetic: a re-billed arrear would be
+taxed a second time on a value already taxed once, and would inflate the
+cumulative claim until the over-claim block refused a bill for the wrong
+reason.
+
+#### Everything else
+
+- **Numbering** is `SF/RCPT/26-27/0001` — FY-scoped, max+1 within the year
+  through the same `pipeline.fy_ref` as every other series. Not len+1: a gap
+  left by a deletion must never re-issue a number already quoted on a
+  remittance advice. An edit never reissues the ref.
+- **`amount` must be positive.** A refund is a different document and is out of
+  scope rather than smuggled in as a negative receipt. An **overpayment warns
+  and is still recorded** — a lump sum settling two bills at once is real — and
+  carries forward as a negative outstanding, deliberately not clamped at zero.
+- **The mode is a `<select>`** over `ra.RECEIPT_MODES`, which lives in `ra.py`
+  so this form and the bill's own panel cannot label the same value
+  differently. A free-text box would let `"NEFT "` become a second mode nobody
+  can see.
+- **`_validate()` always returns data**, so a rejected form re-renders with what
+  was typed — `address._validate()`'s contract.
+- **Delete is POST-only behind a GET confirmation**, with its own
+  `test_get_on_receipt_delete_destroys_nothing`. §7.9f is explicit that the
+  `url_map` sweep does not prove this and that every delete route brings its
+  own test.
 
 ---
 

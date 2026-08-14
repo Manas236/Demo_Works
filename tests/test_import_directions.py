@@ -89,6 +89,25 @@ FORBIDDEN = [
     ("ra", "spec",     "any", "the spec library is what a BOQ is WRITTEN from; a claim "
                               "is measured against the BOQ, which already copied it"),
 
+    # ── Receipts (CLIENT_CHANGES.md item 8) ─────────────────────────────────
+    # The load-bearing one is `ra -> receipt`. `receipt.py` imports `ra.py` for
+    # the bill and the balance arithmetic, so importing back is a cycle — and
+    # the arithmetic lives in ra.py precisely because `create_ra()` needs the
+    # carried balance at save time. ra.py's receipts panel reads
+    # STORE["receipts"] directly and links out with url_for instead.
+    ("ra", "receipt",  "any", "receipt.py imports ra.py; ra.py reads STORE['receipts'] "
+                              "directly and links out with url_for, which is what keeps "
+                              "the arrow one-way"),
+    ("boq", "receipt", "any", "a BOQ knows nothing about payments — they are keyed to "
+                              "an RA bill, and boq.py may not import ra.py either"),
+    ("spec", "receipt", "any", "a specification clause knows nothing about money received"),
+    ("receipt", "invoice",  "any", "a receipt settles an RA bill in the BOQ chain; "
+                                   "invoice.py is the sell chain's tax document"),
+    ("receipt", "proforma", "any", "the PI belongs to the quotation chain"),
+    ("receipt", "purchase", "any", "the buy side is a separate pipeline — that is money OUT"),
+    ("receipt", "product",  "any", "a payment has nothing to do with the catalogue"),
+    ("receipt", "spec",     "any", "nor with the specification library"),
+
     # ── The spec library ────────────────────────────────────────────────────
     ("spec", "boq",      "any", "boq.py imports THIS module for the picker; importing back is a cycle"),
     ("spec", "product",  "any", "spec.py replaces nothing in product.py and must not depend on it"),
@@ -147,6 +166,17 @@ REQUIRED = [
                         "an RA bill is a claim document, and "
                         "test_ra_record.py asserts that absence at AST level"),
 
+    ("receipt", "ra",        "the bill a payment is against, the revision chain, and "
+                             "the balance arithmetic — received_against / outstanding_of "
+                             "/ previous_balance, which live in ra.py so that "
+                             "create_ra() can snapshot without importing downstream"),
+    ("receipt", "boq",       "BOQ_STYLES, so the receipt form is the same form"),
+    ("receipt", "quotation", "QUOTATION_STYLES and _inr — the form widgets"),
+    ("receipt", "dashboard", "BASE_STYLES and _nav"),
+    ("receipt", "pipeline",  "esc / parse_money / fy_of / fy_ref"),
+    ("receipt", "store",     "the shared STORE dict"),
+    ("receipt", "branding",  "COMPANY_SHORT for the document series"),
+
     ("spec", "dashboard", "BASE_STYLES and _nav"),
     ("spec", "pipeline",  "esc"),
     ("spec", "store",     "the shared STORE dict"),
@@ -198,3 +228,35 @@ def test_boq_reads_ra_bills_without_importing_ra():
     assert "ra_bills" in src, "boq.py should read STORE['ra_bills'] directly"
     assert 'url_for("ra.' in src, "boq.py should link to RA bills with url_for"
     assert "ra" not in imports_of("boq")
+
+
+def test_ra_reads_receipts_without_importing_receipt():
+    """
+    The one-way trick, one link further down again — now five times over.
+
+    `ra.view_ra()` renders a receipts panel and offers "Record a payment", so it
+    needs both the data and the link. It takes the data straight out of
+    `STORE["receipts"]` and builds the link with `url_for`, which is what lets
+    `receipt.py` import `ra.py` rather than the reverse.
+
+    That direction is not a preference. `create_ra()` has to freeze the carried
+    balance at the moment a bill is saved, so the arithmetic has to sit upstream
+    of the module that records the payments.
+    """
+    src = (REPO / "ra.py").read_text(encoding="utf8")
+    assert "receipts" in src, "ra.py should read STORE['receipts'] directly"
+    assert 'url_for("receipt.' in src, "ra.py should link to receipts with url_for"
+    assert "receipt" not in imports_of("ra")
+
+
+def test_the_balance_arithmetic_lives_upstream_in_ra():
+    """
+    Where the functions live is the thing that makes the import direction
+    possible, so it is asserted rather than left to convention. Moving any of
+    these into receipt.py forces `ra -> receipt` and the cycle with it.
+    """
+    import ra
+
+    for name in ("receipts_for", "received_against", "outstanding_of",
+                 "previous_balance", "prev_balance_drift"):
+        assert hasattr(ra, name), f"ra.{name}() moved — the import direction depends on it"

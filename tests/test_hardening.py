@@ -70,8 +70,10 @@ def test_every_reference_collection_has_a_seeder(client):
     # `ra_bills` belongs here and not above: a BOQ is reference data for a demo,
     # but a Running Account claim is a document somebody certifies and gets paid
     # against. Seeding one would invent a claim.
+    # `receipts` is transactional for the same reason `ra_bills` is, and more
+    # so: seeding one would invent a payment the client never received.
     transactional = {"quotations", "proformas", "invoices", "purchases",
-                     "ra_bills"}
+                     "ra_bills", "receipts"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

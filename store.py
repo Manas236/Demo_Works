@@ -35,6 +35,7 @@ STORE: dict = {
     "specs":        {},   # keyed by UUID string → specification library entry (clause + sized variants)
     "boqs":         {},   # keyed by UUID string → bill of quantities (head of the BOQ → RA chain)
     "ra_bills":     {},   # keyed by UUID string → Running Account bill (progressive claim against a BOQ revision, carries tax block per DOMAIN.md §4)
+    "receipts":     {},   # keyed by UUID string → payment RECEIVED against one RA bill. Its OWN collection, never a list on the bill or the BOQ — CLIENT_CHANGES.md §1.3
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "settings":     {},   # single record under the key "company" → branding overrides
     "_seeded":      False,  # flipped to True after ensure_demo_products() runs once

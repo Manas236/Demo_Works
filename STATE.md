@@ -10,9 +10,21 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** commit `fe629d5`, branch `antigravity-dev`, 8 August 2026.
-**Tests:** **411 passing**, across 14 files in `tests/`.
-**Stack:** Flask, ~12k lines, MySQL. No `requirements.txt` and no venv (§3.1).
+**As of:** branch `antigravity-dev`, 14 August 2026.
+**Tests:** **595 passing** in a venv with openpyxl and both client workbooks
+present; 592 passed / 3 skipped without the workbooks; 591 passed / 1 skipped
+without openpyxl. [ABOUT.md §1](ABOUT.md) explains all three.
+**Stack:** Flask, ~12k lines, MySQL. `requirements.txt` is committed and
+pinned, and `.venv` is the supported way to run this repo (§3.1 is closed).
+
+> ⚠ **§1 below is stale and was not rewritten on 14 August.** It still
+> describes steps 3 and 4 as not started, but `/ra/`, `/ra/certify/<id>` and
+> `/ra/print/<id>` all exist and are documented in
+> [ABOUT.md §5](ABOUT.md). Per [INTRODUCTION.md §5.6](INTRODUCTION.md) the code
+> is authoritative and this is drift being **reported rather than
+> silently rewritten** — nobody now present witnessed which commit shipped
+> what, and inventing that history is worse than flagging it. Trust ABOUT.md §5
+> for what the routes do.
 
 ---
 
@@ -91,6 +103,32 @@ Taken from the commit body of `fe629d5`.
 
 ---
 
+### 1.5 The receipts ledger — CLIENT_CHANGES.md item 8 · ✅ 14 August 2026
+
+Money **received** against an RA bill, and the unpaid balance carried onto the
+next bill of the same BOQ chain as a memo line.
+
+⚠ **Built under the §0 override in [CLIENT_CHANGES.md](CLIENT_CHANGES.md)**,
+with quotation MG/SF/2026-02 still unsigned. New scope, still chargeable there.
+
+- `STORE["receipts"]` — its own collection, in `db.COLLECTIONS`, keyed to the
+  bill it pays. Never embedded on the bill or the BOQ.
+- `receipt.py` — the ledger and the add/edit/delete pages.
+  **`receipt.py ──► ra.py`, never the reverse**; the balance arithmetic lives
+  in `ra.py` because `create_ra()` has to snapshot at save.
+  [ABOUT.md §2c](ABOUT.md).
+- `prev_balance` / `prev_balance_refs` on the RA bill — **frozen at create**,
+  never recomputed at print or on edit, optional and never backfilled.
+- The carried balance is a **memo**: no claim row, no GST, invisible to the
+  over-claim guard. ⚠ **On an assumption the client has not confirmed** —
+  CLIENT_CHANGES.md §3 item 3b.
+- `ra.can_delete()` refuses a bill with receipts against it.
+- `tests/test_receipts.py` — 44 tests, including a byte-identical print
+  assertion across a receipt being added, edited and deleted underneath an
+  issued bill.
+
+---
+
 ## 2. What comes next
 
 ### 2.1 The tax-invoice requirement is the next feature
@@ -151,14 +189,12 @@ The dead premise that "an RA bill is not a tax invoice" exists in the following 
 
 ### 3.1 Immediate
 
-1. **No `requirements.txt` anywhere in the repo, and no venv.** Generate one
-   **from the actual imports** — do not `pip freeze` a system Python into it.
-   The dependency list is in [ABOUT.md §7.1](ABOUT.md), which owns it.
-2. **`Quote.html` is untracked** in the working tree and would ride along in a
-   `git add .`. Gitignore it or delete it.
-3. **`SAMRUDHI_SPEC.md` is untracked and superseded** by this document set.
-   Delete it from the repo root rather than maintaining it
-   ([INTRODUCTION.md §4](INTRODUCTION.md)).
+*All three items that stood here on 8 August are done, and are deleted rather
+than struck through, per §5.* `requirements.txt` is committed and pinned and
+`.venv` is the supported way to run the repo ([ABOUT.md §1](ABOUT.md));
+`Quote.html` is in `.gitignore`; `SAMRUDHI_SPEC.md` is gone from the repo root.
+
+Nothing is outstanding here.
 
 ### 3.2 Specified but not built
 

@@ -26,6 +26,10 @@ from boq import boq_bp           # BOQ: the priced schedule for a project. Head 
                                  # to quotation -> proforma -> tax invoice, not part of it.
 from ra import ra_bp             # RA bills: progressive claims against a BOQ
                                   # revision. Headed TAX INVOICE per DOMAIN.md §4.
+from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
+                                 # Its own collection, never a list on the bill
+                                 # or the BOQ. It imports ra.py; ra.py links
+                                 # back with url_for only.
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
@@ -97,6 +101,10 @@ app.register_blueprint(ra_bp)                 # Mounted at /ra   — REQUIRED by
                                               # url_for("ra.view_ra") for every
                                               # RA bill against the BOQ and
                                               # 500s without this.
+app.register_blueprint(receipt_bp)            # Mounted at /receipt — REQUIRED by
+                                              # /ra/view, which builds
+                                              # url_for("receipt.new_receipt")
+                                              # on every bill and 500s without it.
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 

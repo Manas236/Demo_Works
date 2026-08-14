@@ -160,7 +160,7 @@ carries and decides nothing.
 | 5 | Delivery Challan from a BOQ | 🟠 Pending |
 | 6 | Raise RA1 from the BOQ | ✅ **Delivered — no charge** (§0 exempt) |
 | 7 | Tax Invoice directly from the BOQ | ↩ **Answered differently** |
-| 8 | Record payment received against an RA bill | 🟠 Pending |
+| 8 | Record payment received against an RA bill | ✅ **Delivered** — built 14 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
 | 9 | Employee / miscellaneous charges section | ⏸ Deferred — not scoped |
 | 10 | Project folder grouping BOQs → net profit / loss | ⏸ Deferred — not scoped |
 
@@ -211,9 +211,11 @@ trustworthy as those fields. Two pieces are needed before it:
    produces a register that disagrees with documents already issued and
    certified. `ra.bills_of()` answers whether any exist.
 
-Outstanding depends on item 8 (receipts). Until that lands, this page can show
-billed totals only, and must say so on the page rather than showing a blank
-column.
+Outstanding depended on item 8 (receipts), which has now landed — so the
+outstanding column is buildable. Take the figure from `ra.outstanding_of()`
+rather than recomputing it, and note that it is **live**: a per-client
+outstanding is a current-state screen, not a document, so it is the one place
+the frozen `prev_balance` is *not* the right source.
 
 → [ABOUT.md §7](ABOUT.md) gap 3 for the shape of the missing edit/amend flows
 on the sell chain; [ABOUT.md §5](ABOUT.md) (`/boq`) for revisions.
@@ -347,30 +349,66 @@ tax-invoice requirement.
 
 ---
 
-### 8 · Record payment received against an RA bill — 🟠 Pending
+### 8 · Record payment received against an RA bill — ✅ Delivered
 
 Amount received, balance, and that balance carried onto the next RA bill.
 
-**Approach.** Receipts get **their own collection** (§1.3), keyed to the bill
-they pay.
+⚠ **Built on 14 August 2026 under the §0 override, with MG/SF/2026-02 still
+unsigned.** This is **new scope and remains chargeable** under that quotation —
+it is not a §0 exemption, and starting it early changed when it was built, not
+what it costs. See §0's override block.
 
-**The previous-balance figure must be SNAPSHOTTED into that bill's own stored
-rows and never recomputed from live receipts.** This is the same defect class
-as the `print_ra` bug (§1.2): a receipt entered after RA3 was issued would
-silently rewrite the balance printed on a document the client has already
-received. It is the identical rule to `approved_qty` / `prev_qty` /
-`balance_qty`, which are stored and never recomputed at render, and to
-`proforma.prior_invoiced` before them.
+**Built as specified.** Receipts have **their own collection**, `receipts`,
+keyed to the bill they pay (§1.3) — not embedded on the RA bill and not on the
+BOQ, where they would eat the headroom under `boq.MAX_JSON_BYTES`.
 
-**Assumption, still to be confirmed with the client:** unpaid amounts are
-**not** re-billed as line items on the next RA. The carried balance is a stated
-figure on the bill, not a claim row. Getting this wrong inflates the cumulative
-claim against the approved schedule and would trip the over-claim block for the
-wrong reason. **Do not build on this assumption until they confirm it** — it is
-listed in §3.
+**The previous-balance figure is SNAPSHOTTED** onto each bill by
+`ra.create_ra()` at the moment it is raised, and every renderer reads it off
+that record. It is not recomputed at print, and not recomputed on edit either.
+`tests/test_receipts.py` proves it the strong way: it renders a bill, then adds
+a receipt, corrects another and deletes a third underneath it, and asserts the
+printed page is **byte-identical**.
 
-→ [ABOUT.md §3](ABOUT.md) (RA Bill) for the frozen-figures contract;
-[ABOUT.md §5](ABOUT.md) (`/ra`) for the print immutability rule.
+**Where the frozen figure and the live ledger disagree, both are shown.**
+Editing or deleting a receipt after a later bill has snapshotted its effect is
+**allowed** and never touches that bill; the edit form and the delete
+confirmation name the bills that will not move, and `/ra/view` flags the
+divergence on each of them afterwards. Refusing the correction would protect a
+document that is already immune while leaving the ledger permanently wrong.
+DOMAIN.md §6: surface it, name it, never silently correct it.
+
+**Receipts follow the revision CHAIN, not the BOQ record** — a payment against
+a bill raised on revision 0 still counts once revision 1 is live. Summing
+against one record would reset the carried balance to zero on every revision,
+which is the trap `claimed_by_line()` already exists to avoid.
+
+⚠ **ASSUMPTION, STILL NOT CONFIRMED BY THE CLIENT — and now built on.** Unpaid
+amounts are **not** re-billed as line items on the next RA; the carried balance
+is a memo on the face of the bill, absent from `claim_subtotal`, from every tax
+figure, from `net_payable`, from `grand_total` and from the over-claim guard.
+
+This was previously marked *"do not build on this assumption until they confirm
+it"*. It was built on anyway, on the same 14 August decision as the override
+above, and the assumption is recorded in three places rather than buried: in
+the record shape comment at `ra.create_ra()`, in
+[ABOUT.md §3](ABOUT.md) (RA Bill), and in §3 below, which stays open.
+
+**What changes if they say no.** An arrear re-billed as a claim row would be
+taxed a second time on a value already taxed once, and would inflate the
+cumulative claim against the approved schedule until the over-claim block
+refused a bill for the wrong reason. The test that pins the current behaviour
+(`test_the_carried_balance_is_not_billed_taxed_or_claimed`) names itself as
+pinning an assumption, so it is the first thing a future reader will find.
+
+**Also shipped, not in the original ask:** `ra.can_delete()` refuses to delete
+a bill that has receipts against it — deleting one would leave the money filed
+against a document that no longer exists. `/receipt/delete` is POST-only behind
+a GET confirmation, with its own test that a GET destroys nothing (§7.9f).
+
+→ [ABOUT.md §2c](ABOUT.md) for the import direction and why the arithmetic
+lives in `ra.py`; [ABOUT.md §3](ABOUT.md) (Receipt) for the record shape;
+[ABOUT.md §5](ABOUT.md) (`/receipt`) for the pages;
+[tests/test_receipts.py](tests/test_receipts.py).
 
 ---
 
@@ -419,6 +457,13 @@ inferred from the seeded data.
 3. **Retention % and mobilisation-advance figures.** The `deductions` shape
    exists and is deliberately empty; both fit it. We need their actual terms,
    per project if they differ, before anything is computed rather than typed.
+
+3b. ⚠ **Whether an unpaid amount is re-billed on the next RA, or merely
+   stated.** Item 8 assumes **merely stated** — a memo line carrying no GST and
+   no claim row. **This question is no longer merely open: it has been built
+   on**, on the 14 August decision recorded in §0. Answering it "re-bill them"
+   is a real change, not a display tweak — see item 8 for what it moves. Ask
+   them before the next RA bill goes out.
 
 4. **Five complete BOQs and five as-submitted RA bills, still outstanding
    from them.** Everything above is being designed against one real schedule

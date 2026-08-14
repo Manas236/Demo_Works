@@ -111,6 +111,22 @@ _QTY_EPSILON = 1e-6
 # Rates are money at two decimal places; half a paisa apart is the same rate.
 _RATE_EPSILON = 0.005
 
+# How money arrived. Defined HERE rather than in receipt.py because
+# `view_ra()` renders the mode on the bill's own receipts panel, and receipt.py
+# imports ra.py — putting the list there would need the import reversed.
+#
+# `adjustment` is the one that is not a payment: a credit note, a debit note
+# settled against the bill, or a contra entry. It is on the list because the
+# client's main contractor settles retention and material recoveries that way
+# and the money genuinely stops being outstanding — recording it as `cash`
+# would put a bank movement in the ledger that never happened.
+RECEIPT_MODES = ("neft", "rtgs", "cheque", "upi", "cash", "adjustment")
+
+RECEIPT_MODE_LABELS = {
+    "neft": "NEFT", "rtgs": "RTGS", "cheque": "Cheque",
+    "upi": "UPI", "cash": "Cash", "adjustment": "Adjustment",
+}
+
 # The three states a bill moves through. `draft` is ours, `submitted` means it
 # has gone to the main contractor, `certified` means he has said what he allows.
 # Certification data can arrive on a bill in any of them — see CERTIFICATION.
@@ -459,6 +475,145 @@ def bills_of(boq_id: str) -> list:
             if str(b.get("boq_id") or "") in ids]
     rows.sort(key=lambda kv: int(kv[1].get("ra_no") or 0))
     return rows
+
+
+# =============================================================================
+# RECEIPTS — money actually RECEIVED, and the balance that carries forward
+# =============================================================================
+#
+# A receipt lives in `STORE["receipts"]`, its OWN collection, keyed to the bill
+# it pays. It is never a list on the RA bill and never a list on the BOQ —
+# CLIENT_CHANGES.md §1.3. The BOQ record is the one that binds against
+# `boq.MAX_JSON_BYTES` at ~428 lines, and anything appended to it eats that
+# headroom and pushes the failure into the schedule editor, where the operator
+# loses work that has nothing to do with the thing that grew. `ra_bills` is its
+# own collection for the same reason; this is that rule applied once more.
+#
+# The arithmetic lives HERE, in ra.py, rather than in receipt.py, for an
+# import-direction reason: `create_ra()` has to snapshot the carried balance at
+# the moment a bill is saved, so ra.py needs the figure. If the figure lived in
+# receipt.py, ra.py would have to import it — and receipt.py already imports
+# ra.py for the bill and the chain. `receipt.py ──► ra.py` and never the
+# reverse; that is the same one-way arrangement `boq.py`/`ra.py` already run.
+
+def receipts_for(ra_id: str) -> list:
+    """Every receipt against one bill, oldest first. (id, receipt) pairs."""
+    ra_id = str(ra_id or "")
+    if not ra_id:
+        return []
+    rows = [(rid, r) for rid, r in (STORE.get("receipts") or {}).items()
+            if str(r.get("ra_id") or "") == ra_id]
+    rows.sort(key=lambda kv: (str(kv[1].get("date") or ""), kv[0]))
+    return rows
+
+
+def received_against(ra_id: str) -> float:
+    """Total received against one bill. 0.0 when nothing has been."""
+    return round(sum(float(r.get("amount") or 0.0)
+                     for _rid, r in receipts_for(ra_id)), 2)
+
+
+def outstanding_of(bill: dict) -> float:
+    """
+    What is still unpaid on one bill: its own `grand_total` minus what has
+    been received against it.
+
+    **Signed, and deliberately not clamped at zero.** An overpayment produces a
+    negative outstanding and carries forward as a credit. Clamping it would
+    state that money we are holding is not money we are holding — the same
+    class of silent correction DOMAIN.md §6 forbids everywhere else in this
+    module, and the inverse of the under-reporting `is_certified()` avoids by
+    refusing to read a blank as zero.
+
+    `grand_total` is read off the bill, never recomputed: it is the figure the
+    bill was issued for.
+    """
+    if not bill:
+        return 0.0
+    gross = float(bill.get("grand_total") or 0.0)
+    return round(gross - received_against(str(bill.get("id") or "")), 2)
+
+
+def previous_balance(boq_id: str, before_ra_no: int,
+                     exclude_ra_id: str = None) -> tuple:
+    """
+    (balance, refs) — what is still unpaid on every EARLIER bill of this
+    project, and which bills it came from.
+
+    **Summed across the whole REVISION CHAIN**, not against one BOQ record, and
+    that is the same requirement `claimed_by_line()` carries and for the same
+    reason: a revision is a new record, so a balance summed against the record
+    alone would reset to zero the moment the schedule is revised, and the figure
+    carried onto the next bill would silently understate what the client owes.
+    A receipt against a bill raised on revision 0 still counts once revision 1
+    is the live schedule, because the money was still received.
+
+    "Earlier" is `ra_no <`, never a date and never insertion order. `ra_no` is
+    server-assigned and unique across the chain, so it is the only ordering here
+    that cannot be made ambiguous by two bills sharing a date.
+
+    Returns a **live** figure. The whole point of the caller is that it freezes
+    the answer onto the bill it is creating — see `create_ra()`. Nothing that
+    renders an issued document may call this.
+    """
+    total, refs = 0.0, []
+    for rid, b in bills_of(boq_id):
+        if exclude_ra_id and rid == exclude_ra_id:
+            continue
+        if int(b.get("ra_no") or 0) >= int(before_ra_no or 0):
+            continue
+        out = outstanding_of(b)
+        if abs(out) < 0.005:          # settled in full — nothing to carry
+            continue
+        total += out
+        refs.append(str(b.get("ref") or ""))
+    return round(total, 2), refs
+
+
+def prev_balance_drift(bill: dict) -> tuple:
+    """
+    (stored, live, differs) — has the carried balance moved since it was frozen?
+
+    A receipt that is corrected or removed after a later bill has already
+    snapshotted its effect **does not restate that bill** — the figure is stored
+    on the bill and nothing here writes to it. This function exists so the
+    divergence is *visible* rather than merely harmless: the screen says the
+    document stated one figure and the ledger now computes another, and leaves
+    both standing.
+
+    That is the house stance, not a compromise. `rate_varies` does exactly this
+    for a claim rate that disagrees with the approved BOQ rate, and DOMAIN.md §6
+    is the general rule: surface it, name it, never silently correct it.
+
+    A bill written before the field has no `prev_balance` key. It reports no
+    drift rather than a drift from zero — it never made the statement, so there
+    is nothing to have moved. Same contract as `tax_slabs`.
+    """
+    if not bill or "prev_balance" not in bill:
+        return 0.0, 0.0, False
+    stored = float(bill.get("prev_balance") or 0.0)
+    live, _refs = previous_balance(str(bill.get("boq_id") or ""),
+                                   int(bill.get("ra_no") or 0),
+                                   exclude_ra_id=str(bill.get("id") or ""))
+    return stored, live, abs(stored - live) >= 0.005
+
+
+def bills_snapshotting_after(boq_id: str, ra_no: int) -> list:
+    """
+    Later bills in the chain that already froze a carried balance — the ones a
+    change to this bill's receipts can no longer reach.
+
+    Used to name them on the receipt delete confirmation, so the operator is
+    told what the correction will *not* do before confirming it.
+    """
+    return [b for _rid, b in bills_of(boq_id)
+            if int(b.get("ra_no") or 0) > int(ra_no or 0)
+            and "prev_balance" in b]
+
+
+def receipts_exist_for(ra_id: str) -> int:
+    """How many receipts are filed against this bill."""
+    return len(receipts_for(ra_id))
 
 
 def next_ra_no(boq_id: str) -> int:
@@ -1260,9 +1415,23 @@ def can_delete(bill: dict) -> tuple:
     - **Never one carrying certification data.** It has been out of the
       building and acknowledged; deleting it destroys the only record of what
       was allowed against what was claimed.
+    - **Never one with money receipted against it.** A receipt is keyed to the
+      bill it pays, so deleting the bill orphans the payment: the money stays
+      in the ledger pointing at a document that no longer exists, and it
+      silently stops being counted in the balance carried onto the next bill.
+      Cancel the receipts first, deliberately, or leave the bill standing.
     """
     if not bill:
         return False, "That RA bill no longer exists."
+    n_receipts = receipts_exist_for(str(bill.get("id") or ""))
+    if n_receipts:
+        return False, (
+            f"RA{bill.get('ra_no')} has {n_receipts} "
+            f"receipt{'' if n_receipts == 1 else 's'} recorded against it "
+            f"totalling {_inr(received_against(str(bill.get('id') or '')))}, so it "
+            f"cannot be deleted. Deleting it would leave that money filed "
+            f"against a bill that no longer exists. Remove the receipts first "
+            f"if they were entered in error.")
     if has_certification(bill):
         return False, (
             f"RA{bill.get('ra_no')} carries certification data, so it cannot be "
@@ -2380,6 +2549,23 @@ def create_ra():
             tax_info = compute_tax_totals(claims, [], tax_type=tax_type,
                                           cgst_rate=cgst_rate, sgst_rate=sgst_rate,
                                           igst_rate=igst_rate)
+
+            # THE SNAPSHOT. What earlier bills of this project still owe is
+            # frozen onto this bill HERE, at the moment it is created, and is
+            # never recomputed afterwards — not on edit, and above all not at
+            # print time.
+            #
+            # This is the exact defect class that already shipped once in this
+            # module: `print_ra()` was a loop over the live `boq["line_items"]`,
+            # so revising the schedule silently rewrote a document the client
+            # had already been sent. A previous-balance recomputed from live
+            # receipts is the same bug with a different source — entering a
+            # receipt against RA1 in October would rewrite the balance printed
+            # on RA2 in August. A printed document is driven by its own stored
+            # rows, full stop (CLIENT_CHANGES.md §1.2).
+            this_ra_no = next_ra_no(boq_id)
+            prev_balance, prev_balance_refs = previous_balance(boq_id, this_ra_no)
+
             STORE["ra_bills"][rid] = {
                 "id": rid,
                 "ref": next_ref(date_val),
@@ -2392,7 +2578,7 @@ def create_ra():
                 "boq_id": boq_id,
                 "boq_ref": boq.get("ref", ""),
                 "boq_rev_no": int(boq.get("rev_no") or 0),
-                "ra_no": next_ra_no(boq_id),
+                "ra_no": this_ra_no,
                 "leg": leg,
                 "project_name": boq.get("project_name", ""),
                 "site_location": boq.get("site_location", ""),
@@ -2422,6 +2608,24 @@ def create_ra():
                 "tax_slabs": tax_info["tax_slabs"],
                 "rounding_off": tax_info["rounding_off"],
                 "grand_total": tax_info["grand_total"],
+                # The carried balance, frozen above. It is a MEMO on this
+                # document and nothing more: it is deliberately absent from
+                # `claim_subtotal`, from every tax figure, from `net_payable`
+                # and from `grand_total`, and it is invisible to the over-claim
+                # guard because it is not a quantity on a line.
+                #
+                # ⚠ ASSUMPTION, NOT CONFIRMED BY THE CLIENT: an unpaid amount is
+                #   NOT re-billed as a claim row on the next RA bill. It is
+                #   stated on the face of the bill and left there. If they come
+                #   back and say the arrears should be re-claimed, this is the
+                #   field that changes and the change is not cosmetic — a
+                #   re-billed arrear would enter `claim_subtotal`, be taxed a
+                #   second time on a value already taxed once, and inflate the
+                #   cumulative claim against the approved schedule until the
+                #   over-claim block refused a bill for the wrong reason.
+                #   CLIENT_CHANGES.md item 8 and §3 carry the open question.
+                "prev_balance": prev_balance,
+                "prev_balance_refs": prev_balance_refs,
                 "status": "draft", "certified_on": "",
                 "notes": notes_val,
                 "company_branch": "", "auth_signatory": "",
@@ -2520,6 +2724,14 @@ def edit_ra(id: str):
             bill["po_date"] = po_date
             bill["date"] = date_val
             bill["notes"] = notes_val
+            # `prev_balance` / `prev_balance_refs` are deliberately NOT in this
+            # list and must not be added to it. They were frozen by
+            # `create_ra()` and they are a statement about OTHER bills, so
+            # editing this bill's own claim has no business moving them — and
+            # this bill may already have been printed and sent. Recomputing
+            # here would make "the snapshot never moves" true only until
+            # somebody opened the edit form. `prev_balance_drift()` is how a
+            # stale figure is surfaced instead.
             return redirect(url_for("ra.view_ra", id=id,
                                     msg="RA bill updated.", type="success"))
 
@@ -2603,6 +2815,54 @@ def view_ra(id: str):
     cert_btn = f'<a class="btn btn-ghost" href="{url_for("ra.certify_ra", id=id)}">&#9998; Certify</a>'
     print_btn = f'<a class="btn" href="{url_for("ra.print_ra", id=id)}" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Tax Invoice</a>'
 
+    # ── Receipts against this bill ──────────────────────────────────────────
+    #
+    # A CURRENT-STATE screen, so unlike the printed document it is computed
+    # live. That split is the whole design: `/ra/print` prints what the bill
+    # said, this page shows where the money actually stands today, and
+    # `prev_balance_drift()` below is what makes it visible when the two have
+    # come apart. `url_for("receipt.…")` and a direct read of the receipts
+    # collection keep the arrow one-way — ra.py does not import receipt.py.
+    rc_rows = receipts_for(id)
+    rc_received = received_against(id)
+    rc_outstanding = outstanding_of(bill)
+    rc_body = "".join(
+        f'<tr><td class="cl-no">{_esc(r.get("ref"))}</td>'
+        f'<td class="cl-desc">{_esc(r.get("date"))}</td>'
+        f'<td class="cl-unit">{_esc(RECEIPT_MODE_LABELS.get(str(r.get("mode") or ""), r.get("mode") or ""))}</td>'
+        f'<td class="cl-desc">{_esc(r.get("instrument_ref")) or "&mdash;"}</td>'
+        f'<td class="cl-amt">{_inr(r.get("amount") or 0.0)}</td>'
+        f'<td><a class="btn btn-ghost" href="{url_for("receipt.edit_receipt", id=rid)}">Edit</a> '
+        f'<a class="btn btn-ghost" href="{url_for("receipt.delete_receipt", id=rid)}">Delete</a></td></tr>'
+        for rid, r in rc_rows)
+    rc_empty = ('<tr><td colspan="6" style="color:var(--muted);">'
+                'Nothing received against this bill yet.</td></tr>')
+
+    # The drift notice. A receipt corrected after a later bill froze its effect
+    # does not restate that bill — this says so rather than letting the two
+    # figures disagree in silence. DOMAIN.md §6: surface it, never correct it.
+    stored_pb, live_pb, pb_drifted = prev_balance_drift(bill)
+    drift_note = ""
+    if pb_drifted:
+        drift_note = (
+            f'<div class="form-hint"><span class="fh-icon">&#9888;</span>'
+            f'<span><b>This bill was issued stating a previous balance of '
+            f'{_esc(_inr(stored_pb))}; the ledger now computes '
+            f'{_esc(_inr(live_pb))}.</b> A receipt has been corrected or removed '
+            f'since. The figure printed on the bill is deliberately left as '
+            f'issued &mdash; a document already sent is not restated. Correct '
+            f'the position on the next bill.</span></div>')
+
+    pb_html = ""
+    if "prev_balance" in bill:
+        refs = [str(r) for r in (bill.get("prev_balance_refs") or []) if str(r or "").strip()]
+        pb_html = (
+            f'<span><b>Previous balance carried onto this bill</b> '
+            f'<span class="ra-tot">{_inr(stored_pb)}</span></span>'
+            f'<span style="color:var(--muted);font-size:.72rem;">'
+            f'{_esc(", ".join(refs)) if refs else "nothing outstanding when this bill was raised"}'
+            f'</span>')
+
     return _shell(f"RA{bill.get('ra_no')}", f"""
   <div class="page-top">
     <h1>RA{_esc(bill.get('ra_no'))} <span>&middot; {_esc(bill.get('leg'))}</span></h1>
@@ -2614,6 +2874,7 @@ def view_ra(id: str):
   {_flash()}
   {frozen_html}
   {rate_note}
+  {drift_note}
   <div class="ra-meta">
     <div class="ra-fact"><b>Our reference</b><span>{_esc(bill.get('ref'))}</span></div>
     <div class="ra-fact"><b>Date</b><span>{_esc(bill.get('date'))}</span></div>
@@ -2646,6 +2907,32 @@ def view_ra(id: str):
   <div class="form-section">
     <div class="section-title">&#9986; Deductions</div>
     {_deductions_block(bill)}
+  </div>
+  <div class="form-section">
+    <div class="section-title">&#128176; Receipts against this bill</div>
+    <div class="cl-wrap"><table class="claims">
+      <thead><tr>
+        <th>Receipt</th><th>Received on</th><th>Mode</th><th>Instrument</th>
+        <th style="text-align:right;">Amount</th><th></th>
+      </tr></thead>
+      <tbody>{rc_body or rc_empty}</tbody>
+    </table></div>
+    <div class="ra-foot">
+      <span><b>Bill grand total</b> <span class="ra-tot">{_inr(bill.get('grand_total') or 0.0)}</span></span>
+      <span><b>Received</b> <span class="ra-tot">{_inr(rc_received)}</span></span>
+      <span><b>Outstanding on this bill</b> <span class="ra-tot">{_inr(rc_outstanding)}</span></span>
+      {pb_html}
+    </div>
+    <div style="margin-top:.8rem;">
+      <a class="btn" href="{url_for('receipt.new_receipt', ra=id)}">&#43; Record a payment</a>
+      <a class="btn btn-ghost" href="{url_for('receipt.list_receipts', boq=boq_id)}">Project ledger</a>
+    </div>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:.6rem;">
+      Outstanding is computed live from the receipts ledger. The
+      <b>previous balance printed on a bill</b> is not &mdash; that is frozen on
+      the bill when it is raised, and a receipt entered afterwards never
+      rewrites a document already sent.
+    </p>
   </div>
   <p style="font-size:.75rem;color:var(--muted);">
     This is a working view. <a href="{url_for('ra.print_ra', id=id)}">Click here to view/print the Tax Invoice</a>.
@@ -2693,6 +2980,20 @@ def print_ra(id: str):
     net_payable = float(bill.get("net_payable") or (claim_subtotal - deduction_total))
     rounding_off = float(bill.get("rounding_off") or 0.0)
     grand_total = float(bill.get("grand_total") or (net_payable + tax_amount + rounding_off))
+
+    # The carried balance — read off THIS BILL'S OWN RECORD, never recomputed
+    # from `STORE["receipts"]`. That is the whole contract: entering, editing or
+    # deleting a receipt after this bill was issued must leave the printed page
+    # byte-identical, and `tests/test_receipts.py` asserts exactly that against
+    # the rendered document.
+    #
+    # A bill written before the field has no key and prints no memo block at
+    # all — not a zero. It never made the statement, and printing "Previous
+    # Balance: 0.00" on it would be this document asserting a position it was
+    # never issued with. Same contract as `tax_slabs` above.
+    has_prev_balance = "prev_balance" in bill
+    prev_balance = float(bill.get("prev_balance") or 0.0)
+    total_with_prev = round(grand_total + prev_balance, 2)
 
     # `quotation._amount_in_words()` already returns its own "INR " prefix —
     # the document printed "INR INR Nine Lakh …" until this stopped adding one.
@@ -2878,6 +3179,39 @@ def print_ra(id: str):
         </tr>"""
         tax_rows_html = slab_rows_html + tax_rows_html
 
+    # The previous-balance memo. Rendered BELOW the Grand Total and visually
+    # outside the tax computation, because that is what it is: a statement of
+    # what is still outstanding on earlier bills, not a charge on this one.
+    #
+    # It is not added into any taxable figure, and the "Total Due" beneath it is
+    # arithmetic over two figures both stored on this record — it is not a new
+    # taxable value and carries no tax of its own. The arrears were taxed on the
+    # bill that first claimed them; taxing them again here would charge GST
+    # twice on one supply.
+    #
+    # Nothing prints when the stored balance is nil, and nothing prints at all
+    # on a bill written before the field: silence is the correct rendering of
+    # "this document made no such statement".
+    prev_balance_html = ""
+    if has_prev_balance and abs(prev_balance) >= 0.005:
+        refs = [str(r) for r in (bill.get("prev_balance_refs") or []) if str(r or "").strip()]
+        refs_note = (" &middot; " + _esc(", ".join(refs))) if refs else ""
+        prev_balance_html = f"""
+        <div style="margin-top:1rem;padding:0.8rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;font-size:0.85rem;">
+          <div style="display:flex;justify-content:space-between;gap:1rem;">
+            <span><b>Previous Balance Outstanding</b>{refs_note}</span>
+            <span style="font-weight:700;">&#8377;&nbsp;{prev_balance:,.2f}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:1rem;margin-top:.35rem;padding-top:.35rem;border-top:1px solid #fcd34d;">
+            <span><b>Total Due (this bill + previous balance)</b></span>
+            <span style="font-weight:800;">&#8377;&nbsp;{total_with_prev:,.2f}</span>
+          </div>
+          <div style="margin-top:.45rem;color:#92400e;font-size:0.75rem;">
+            Memorandum only. The previous balance is carried forward for information and is <b>not</b> re-claimed as a line item on this bill.
+            It was claimed and taxed on the bill that raised it, so no GST is charged on it here.
+          </div>
+        </div>"""
+
     rounding_html = ""
     if abs(rounding_off) > 1e-4:
         rounding_html = f"""
@@ -2996,6 +3330,7 @@ def print_ra(id: str):
         <div style="margin-top:1rem;padding:0.8rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem;">
           <b>Amount in Words:</b> {_esc(words)}
         </div>
+        {prev_balance_html}
 
         <div class="doc-summary">
           <div class="bank-card">
