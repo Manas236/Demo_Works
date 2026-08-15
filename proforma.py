@@ -42,6 +42,7 @@ from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
+import docsheet as DS
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
@@ -352,31 +353,11 @@ PROFORMA_STYLES = """
     padding:2px 6px; font-weight:700; border-top:var(--rule-hair);
   }
 
-  /* ── Bank block ───────────────────────────────────────────────────────
-     A PI is a request for money; the remittance account is the operative
-     detail, so it is framed rather than dropped into the terms as prose. */
-  .quotation-doc .bank-box { border:var(--rule-box); margin-top:5mm; }
-  .quotation-doc .bank-title {
-    font-weight:700; font-size:var(--fs-md); padding:2px 6px;
-    border-bottom:var(--rule);
-  }
-  .quotation-doc .bank-kv {
-    display:grid; grid-template-columns:auto 1fr auto 1fr;
-    gap:2px 6px; padding:4px 6px;
-  }
-  .quotation-doc .bank-kv .bk-l { color:var(--doc-soft); }
-  .quotation-doc .bank-kv .bk-v { font-weight:700; overflow-wrap:anywhere; }
-  .quotation-doc .bank-note {
-    padding:2px 6px; border-top:var(--rule-hair); color:var(--doc-soft);
-  }
-
+""" + DS.BANK_CSS + """
   .quotation-doc .pi-note { margin-top:4mm; }
   .quotation-doc .pi-note .pn-lbl { font-weight:700; }
 
-  @media screen and (max-width:760px){
-    .quotation-doc .bank-kv { grid-template-columns:auto 1fr; }
-  }
-
+""" + DS.BANK_CSS_NARROW + """
   /* ── Screen-only: the convert form and the register ───────────────── */
   .src-note {
     background:var(--surface); border:1px solid var(--border);
@@ -1176,26 +1157,11 @@ def view_proforma(id: str):
       </div>"""
 
     # ── Bank block ────────────────────────────────────────────────────────
-    bank_html = f"""
-  <div class="bank-box">
-    <div class="bank-title">Bank Details for Remittance</div>
-    <div class="bank-kv">
-      <span class="bk-l">Bank</span>
-      <span class="bk-v">{B.field(B.BANK_NAME, "bank name")}</span>
-      <span class="bk-l">A/C Name</span>
-      <span class="bk-v">{B.field(B.BANK_ACCOUNT_NAME, "account name")}</span>
-      <span class="bk-l">A/C No.</span>
-      <span class="bk-v">{B.field(B.BANK_ACCOUNT_NO, "account number")}</span>
-      <span class="bk-l">IFSC</span>
-      <span class="bk-v">{B.field(B.BANK_IFSC, "IFSC code")}</span>
-      <span class="bk-l">Branch</span>
-      <span class="bk-v">{B.field(B.BANK_BRANCH, "branch")}</span>
-      <span class="bk-l">GSTIN</span>
-      <span class="bk-v">{B.field(B.COMPANY_GSTIN, "GSTIN")}</span>
-    </div>
-    <div class="bank-note">Please quote proforma invoice no.
-      <b>{P.esc(pi.get('ref'))}</b> on the remittance advice.</div>
-  </div>"""
+    # Shared with the RA bill through `docsheet.py`. Neither module imports the
+    # other; both import the leaf. Only the note under it is this document's.
+    bank_html = DS.bank_block(
+        f"Please quote proforma invoice no.\n      "
+        f"<b>{P.esc(pi.get('ref'))}</b> on the remittance advice.")
 
     note_html = ""
     if pi.get("notes"):

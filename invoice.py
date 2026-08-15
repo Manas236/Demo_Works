@@ -61,14 +61,17 @@ from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
+import docsheet as DS
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
-# The document's own formatters and stylesheet — see the module docstring.
+# The document's own formatters — see the module docstring. The A4 sheet
+# itself now comes from `docsheet.py`, which every printed document in the app
+# renders through; `VIEW_DOC_STYLES` and `QUOTATION_STYLES` arrive inside
+# `DS.SHEET_STYLES` rather than being stacked by hand here.
 from quotation import (
-    QUOTATION_STYLES,
-    VIEW_DOC_STYLES,
-    _amount_in_words,
+    QUOTATION_STYLES,     # the register and the convert form; the SHEET's copy
+    _amount_in_words,     # arrives inside DS.SHEET_STYLES
     _fmt_qty,
     _inr,
     _meta,
@@ -1068,16 +1071,18 @@ def view_invoice(id: str):
     grand    = float(ti.get("grand_total") or 0.0)
     has_tax  = tax_type != "exempt" and float(tax_info.get("total") or 0) > 0
 
+    # The totals ROWS are `docsheet`'s; what goes in them is this chain's.
+    # This block reads a **document-level** `tax_info` dict, which is what the
+    # sell chain computes and is not what the RA chain does — that one taxes
+    # per rate slab off each claim row's own stored rate. Sharing the rows and
+    # not the block is the line ABOUT.md §2b draws, and it is why `ra.py` still
+    # may not import this module.
+    #
     # "Taxable Value", not "Subtotal": on a tax invoice this figure is the base
     # the tax was computed on, and that is the term the customer's accounts
     # team and the GST return both use for it.
     if has_tax:
-        table_rows += f"""
-        <tr class="row-sum">
-          <td colspan="4" class="sum-lbl">Taxable Value</td>
-          <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
-          <td class="c-total">{_inr(subtotal)}</td>
-        </tr>"""
+        table_rows += DS.sum_row("Taxable Value", _inr(subtotal))
 
         rate_keys = {"CGST": "cgst_rate", "SGST": "sgst_rate",
                      "IGST": "igst_rate", "VAT":  "vat_rate"}
@@ -1087,20 +1092,10 @@ def view_invoice(id: str):
                 continue
             r = tax_info.get(rate_keys.get(tname, ""), 0)
             rate_label = f" @ {r:g}%" if r else ""
-            table_rows += f"""
-            <tr class="row-sum">
-              <td colspan="4" class="sum-lbl">{tname}{rate_label}</td>
-              <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
-              <td class="c-total">{_inr(tamt)}</td>
-            </tr>"""
+            table_rows += DS.sum_row(f"{tname}{rate_label}", _inr(tamt), indent=12)
 
-    table_rows += f"""
-    <tr class="row-total row-sum">
-      <td colspan="4" class="sum-lbl">{"Invoice Value" if has_tax else "Total"}</td>
-      <td class="c-qty">{_fmt_qty(total_qty)}</td>
-      <td class="c-unit"></td><td class="c-price"></td>
-      <td class="c-total">{_inr(grand)}</td>
-    </tr>"""
+    table_rows += DS.total_row("Invoice Value" if has_tax else "Total",
+                               _fmt_qty(total_qty), _inr(grand))
 
     # ── Header meta ───────────────────────────────────────────────────────
     meta_col_1 = (
@@ -1119,13 +1114,7 @@ def view_invoice(id: str):
     )
 
     # ── To / Ship To ──────────────────────────────────────────────────────
-    to_lines   = (ti.get("to") or "").strip().split("\n")
-    to_display = ""
-    if to_lines and to_lines[0].strip():
-        rest = "\n".join(to_lines[1:]).strip()
-        to_display = f'<span class="dh-name">{P.esc(to_lines[0])}</span>'
-        if rest:
-            to_display += f"\n{P.esc(rest)}"
+    to_display = DS.name_block(ti.get("to"))
 
     ship_parts = []
     if not ti.get("ship_same"):
@@ -1138,10 +1127,7 @@ def view_invoice(id: str):
         if ti.get("ship_phone"):  ship_parts.append(f"Ph: {ti['ship_phone']}")
         if ti.get("ship_gstin"):  ship_parts.append(f"GSTIN: {ti['ship_gstin']}")
 
-    ship_html = ""
-    if ship_parts:
-        ship_html = ('<div class="dh-ship"><span class="dh-lbl">Ship To</span>'
-                     f'<div class="dh-body">{P.esc(chr(10).join(ship_parts))}</div></div>')
+    ship_html = DS.secondary_block("Ship To", chr(10).join(ship_parts))
 
     # ── The statutory strip: Rule 46(m) and 46(n), on the face of the sheet ──
     pos      = P.esc(ti.get("place_of_supply"))
@@ -1219,65 +1205,19 @@ def view_invoice(id: str):
         return f"""
 <div class="quotation-doc">
 
-  <table class="page-frame">
-  <thead><tr><td>
-    <div class="lh">
-      <div>
-        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
-        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
-      </div>
-      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-    </div>
-    <div class="lh-rule"></div>
-    <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
-    <div class="lh-contact">
-      Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
-      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
-      {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
-      {f'<span class="sep">|</span>GSTIN: {B.COMPANY_GSTIN}' if B.COMPANY_GSTIN else ''}
-    </div>
-  </td></tr></thead>
-
-  <tfoot><tr><td>
-    <div class="lh-foot">{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</div>
-  </td></tr></tfoot>
-
-  <tbody><tr><td>
+{DS.sheet_open()}
 
   <div class="doc-box">
     <div class="copy-mark">{COPY_LABELS[copy_key]}</div>
     <div class="doc-title">TAX INVOICE</div>
 
-    <div class="doc-header">
-      <div class="dh-cell">
-        <span class="dh-lbl">To</span>
-        <div class="dh-body">{to_display}</div>
-        {ship_html}
-      </div>
-      <div class="dh-cell">{meta_col_1}</div>
-      <div class="dh-cell">{meta_col_2}</div>
-    </div>
+{DS.party_block("To", to_display, ship_html, meta_col_1, meta_col_2)}
 
     {gst_strip}
 
-    <div class="items-wrap">
-      <table class="q-table">
-        <thead><tr>
-          <th class="c-sno">S.No</th>
-          <th class="c-partno">Part No</th>
-          <th class="c-desc">Description of Goods</th>
-          <th class="c-hsn">HSN/SAC</th>
-          <th class="c-qty">Qty</th>
-          <th class="c-unit">Unit</th>
-          <th class="c-price">Rate</th>
-          <th class="c-total">Amount</th>
-        </tr></thead>
-        <tbody>{table_rows}</tbody>
-      </table>
-    </div>
+{DS.items_table(DS.SELL_COLUMNS, table_rows)}
 
-    <div class="amount-words">Invoice Value (in words) : {_amount_in_words(grand)}</div>
+{DS.amount_words("Invoice Value (in words)", grand)}
     {set_box}
   </div>
 
@@ -1294,19 +1234,9 @@ def view_invoice(id: str):
     and that there is no flow of additional consideration directly or indirectly
     from the buyer.</div>
 
-  <div class="sig-block">
-    <div class="sig-kv">
-      <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
-      <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
-    </div>
-    <div class="sig-right">
-      <div class="sig-for">For {comp_br}</div>
-      <div class="sig-name">{signatory}</div>
-    </div>
-  </div>
+{DS.sig_block(comp_br, signatory)}
 
-  </td></tr></tbody>
-  </table>
+{DS.sheet_close()}
 
 </div>"""
 
@@ -1338,7 +1268,7 @@ def view_invoice(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(ti.get('ref')) + " Tax Invoice")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}
+  {DS.SHEET_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}
 </head>
 <body>
 {_nav()}

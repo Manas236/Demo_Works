@@ -366,6 +366,15 @@ PO_BLOCKS = {"head":       "91a7e4c4a836e219",
              "items":      "fd759d99cf4b162a",
              "signature":  "5717ca48143d8b6e"}
 
+PI_WHOLE, PI_LEN = "e637583a110820f4", 103617
+PI_BLOCKS = {"head":       "caff49b2b87e06a0",
+             "letterhead": "93c3e6d7afb10731",
+             "foot-strip": "cc51ac98a541aaee",
+             "doc-box":    "77fa68a83f706064",
+             "party":      "9427bbb3e9495dd8",
+             "items":      "ee2126dae594bc30",
+             "signature":  "964248284443ca1b"}
+
 RA_WHOLE, RA_LEN = "88a55e81022ec48a", 53382
 
 
@@ -375,6 +384,21 @@ def test_the_tax_invoice_document_is_unchanged(client, golden):
     assert r.status_code == 200
     _check(r.get_data(as_text=True), TI_WHOLE, TI_LEN, TI_BLOCKS,
            what="tax invoice")
+
+
+def test_the_proforma_document_is_unchanged(client, golden):
+    """
+    `/proforma/view/<id>` — the payment-request sheet.
+
+    Pinned for one specific reason: the **bank block** on this page is the one
+    the RA bill needed, and moving it into `docsheet.py` is the only way both
+    documents can carry the same one without `ra.py` importing `proforma.py`.
+    A relocation that changes the page it came from is not a relocation.
+    """
+    r = client.get(f"/proforma/view/{GOLD_PI}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), PI_WHOLE, PI_LEN, PI_BLOCKS,
+           what="proforma invoice")
 
 
 def test_the_purchase_order_document_is_unchanged(client, golden):

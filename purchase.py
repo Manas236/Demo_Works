@@ -81,14 +81,17 @@ from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
+import docsheet as DS
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
-# The shared A4 document toolkit — the sheet, not the sales chain.
+# The shared A4 document toolkit — the sheet, not the sales chain. The sheet
+# itself is now `docsheet.py`, which the tax invoice renders through as well:
+# neither module imports the other, both import the leaf, and the separation
+# this file's docstring insists on is unaffected.
 from quotation import (
-    QUOTATION_STYLES,
-    VIEW_DOC_STYLES,
-    _amount_in_words,
+    QUOTATION_STYLES,     # the register and the create form; the SHEET's copy
+    _amount_in_words,     # arrives inside DS.SHEET_STYLES
     _fmt_qty,
     _inr,
     _meta,
@@ -1133,13 +1136,12 @@ def view_purchase(id: str):
     grand    = float(po.get("grand_total") or 0.0)
     has_tax  = tax_type != "exempt" and float(tax_info.get("total") or 0) > 0
 
+    # The rows come from `docsheet`; what goes in them stays here. The tax on
+    # this document is **input** tax we pay, the opposite side of the ledger
+    # from a tax invoice, and nothing about that arithmetic is shared with the
+    # sell chain — only the furniture it prints inside.
     if has_tax:
-        table_rows += f"""
-        <tr class="row-sum">
-          <td colspan="4" class="sum-lbl">Taxable Value</td>
-          <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
-          <td class="c-total">{_inr(subtotal)}</td>
-        </tr>"""
+        table_rows += DS.sum_row("Taxable Value", _inr(subtotal))
         rate_keys = {"CGST": "cgst_rate", "SGST": "sgst_rate",
                      "IGST": "igst_rate", "VAT": "vat_rate"}
         skip = {"total", *rate_keys.values()}
@@ -1148,20 +1150,9 @@ def view_purchase(id: str):
                 continue
             r = tax_info.get(rate_keys.get(tname, ""), 0)
             lbl = f" @ {r:g}%" if r else ""
-            table_rows += f"""
-            <tr class="row-sum">
-              <td colspan="4" class="sum-lbl">{tname}{lbl}</td>
-              <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
-              <td class="c-total">{_inr(tamt)}</td>
-            </tr>"""
+            table_rows += DS.sum_row(f"{tname}{lbl}", _inr(tamt), indent=12)
 
-    table_rows += f"""
-    <tr class="row-total row-sum">
-      <td colspan="4" class="sum-lbl">Order Value</td>
-      <td class="c-qty">{_fmt_qty(total_qty)}</td>
-      <td class="c-unit"></td><td class="c-price"></td>
-      <td class="c-total">{_inr(grand)}</td>
-    </tr>"""
+    table_rows += DS.total_row("Order Value", _fmt_qty(total_qty), _inr(grand))
 
     # ── Header meta ───────────────────────────────────────────────────────
     meta_col_1 = (
@@ -1180,18 +1171,11 @@ def view_purchase(id: str):
     )
 
     # ── The vendor block. This is the "To" on a PO — NOT a customer. ───────
-    to_lines = (po.get("to") or "").strip().split("\n")
-    vendor_block = ""
-    if to_lines and to_lines[0].strip():
-        rest = "\n".join(to_lines[1:]).strip()
-        vendor_block = f'<span class="dh-name">{P.esc(to_lines[0])}</span>'
-        if rest:
-            vendor_block += f"\n{P.esc(rest)}"
-
-    delivery_block = ""
-    if (po.get("delivery_to") or "").strip():
-        delivery_block = ('<div class="dh-ship"><span class="dh-lbl">Deliver To</span>'
-                          f'<div class="dh-body">{P.esc(po["delivery_to"])}</div></div>')
+    # `DS.name_block` builds the same shape the tax invoice puts a *customer*
+    # into. The shape is shared; the role is not, which is why these two locals
+    # are named for the role rather than for the position on the page.
+    vendor_block = DS.name_block(po.get("to"))
+    delivery_block = DS.secondary_block("Deliver To", po.get("delivery_to"))
 
     job_line = ""
     if po.get("quotation_ref"):
@@ -1289,7 +1273,7 @@ def view_purchase(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(po.get('ref')) + " Purchase Order")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}
+  {DS.SHEET_STYLES}{PURCHASE_STYLES}
 </head>
 <body>
 {_nav()}
@@ -1312,83 +1296,27 @@ def view_purchase(id: str):
 <div class="doc-outer">
 <div class="quotation-doc">
 
-  <table class="page-frame">
-  <thead><tr><td>
-    <div class="lh">
-      <div>
-        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
-        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
-      </div>
-      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-    </div>
-    <div class="lh-rule"></div>
-    <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
-    <div class="lh-contact">
-      Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
-      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
-      {f'<span class="sep">|</span>GSTIN: {B.COMPANY_GSTIN}' if B.COMPANY_GSTIN else ''}
-    </div>
-  </td></tr></thead>
-
-  <tfoot><tr><td>
-    <div class="lh-foot">{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</div>
-  </td></tr></tfoot>
-
-  <tbody><tr><td>
+{DS.sheet_open(show_web=False)}
 
   <div class="doc-box">
     <div class="doc-title">PURCHASE ORDER</div>
     <div class="doc-sub-po">Order placed on supplier{job_line}</div>
 
-    <div class="doc-header">
-      <div class="dh-cell">
-        <span class="dh-lbl">To (Supplier)</span>
-        <div class="dh-body">{vendor_block}</div>
-        {delivery_block}
-      </div>
-      <div class="dh-cell">{meta_col_1}</div>
-      <div class="dh-cell">{meta_col_2}</div>
-    </div>
+{DS.party_block("To (Supplier)", vendor_block, delivery_block, meta_col_1, meta_col_2)}
 
     {status_strip}
 
-    <div class="items-wrap">
-      <table class="q-table">
-        <thead><tr>
-          <th class="c-sno">S.No</th>
-          <th class="c-partno">Part No</th>
-          <th class="c-desc">Description of Goods</th>
-          <th class="c-hsn">HSN/SAC</th>
-          <th class="c-qty">Qty</th>
-          <th class="c-unit">Unit</th>
-          <th class="c-price">Rate</th>
-          <th class="c-total">Amount</th>
-        </tr></thead>
-        <tbody>{table_rows}</tbody>
-      </table>
-    </div>
+{DS.items_table(DS.SELL_COLUMNS, table_rows)}
 
-    <div class="amount-words">Order Value (in words) : {_amount_in_words(grand)}</div>
+{DS.amount_words("Order Value (in words)", grand)}
   </div>
 
   {instr_html}
   {note_html}
 
-  <div class="sig-block">
-    <div class="sig-kv">
-      <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
-      <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
-    </div>
-    <div class="sig-right">
-      <div class="sig-for">For {comp_br}</div>
-      <div class="sig-name">{signatory}</div>
-    </div>
-  </div>
-  <div class="sig-note">This is a Computer Generated Document, no signature required</div>
+{DS.sig_block(comp_br, signatory, computer_generated=True)}
 
-  </td></tr></tbody>
-  </table>
+{DS.sheet_close()}
 
 </div>
 </div>

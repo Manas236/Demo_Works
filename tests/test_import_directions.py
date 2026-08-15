@@ -77,6 +77,14 @@ FORBIDDEN = [
     ("boq", "settings", "any", "settings imports quotation; nothing downstream of it may import back"),
     ("boq", "product",  "any", "the BOQ picker reads the SPEC library. product.py serves the "
                                "quotation chain and its base_price is not a BOQ supply rate"),
+    ("boq", "po_draft", "any", "the BOQ view page links out with url_for and reads STORE['purchase_orders'] "
+                               "directly — importing po_draft.py back would be a cycle"),
+
+    # ── Draft POs from BOQ (Phase 4 / Item 4) ───────────────────────────────
+    ("po_draft", "purchase", "any", "the buy side PO is a separate pipeline entirely from Draft POs"),
+    ("po_draft", "ra",       "any", "Draft POs do not need to know about Running Account bills"),
+    ("po_draft", "invoice",  "any", "Draft POs have no tax block and no relation to tax invoices"),
+    ("po_draft", "proforma", "any", "Draft POs have no relation to proformas"),
 
     # ── RA billing (Phase 4) ────────────────────────────────────────────────
     ("ra", "proforma", "any", "an RA bill is a claim against a BOQ; the PI belongs to "
@@ -108,11 +116,47 @@ FORBIDDEN = [
     ("receipt", "product",  "any", "a payment has nothing to do with the catalogue"),
     ("receipt", "spec",     "any", "nor with the specification library"),
 
+    # ── Client Segregation (CLIENT_CHANGES.md item 2) ───────────────────────
+    ("boq", "client", "any", "the BOQ knows nothing about client segregation"),
+    ("client", "invoice", "any", "client segregation uses RA claims, not invoices"),
+    ("client", "proforma", "any", "the PI belongs to the quotation chain"),
+    ("client", "purchase", "any", "the buy side is a separate pipeline"),
+    ("client", "product", "any", "a client page has nothing to do with the catalogue"),
+    ("client", "spec", "any", "a client page has nothing to do with the specification library"),
+
     # ── The spec library ────────────────────────────────────────────────────
     ("spec", "boq",      "any", "boq.py imports THIS module for the picker; importing back is a cycle"),
     ("spec", "product",  "any", "spec.py replaces nothing in product.py and must not depend on it"),
     ("spec", "quotation", "any", "the library is not part of the quotation chain"),
     ("spec", "ra",       "any", "a spec knows nothing about billing"),
+
+    # ── The shared document sheet is a LEAF ─────────────────────────────────
+    #
+    # `docsheet.py` holds the printed chrome — letterhead, party block, table
+    # shell, totals rows, bank block, signature — that six documents used to
+    # each write their own copy of. It may import the A4 stylesheet and the
+    # money formatters; it may not import any module that renders a document
+    # through it.
+    #
+    # This is the half that preserves the standing rule. `ra.py` may never
+    # import `invoice.py` (the RA tax block is per line with HSN/SAC, the sell
+    # chain's is document-level) — and after the extraction neither imports the
+    # other. **Both import the leaf.** If `docsheet` were allowed to import
+    # either one, that prohibition would be satisfied on paper and defeated in
+    # practice, because the coupling would simply run through the basement.
+    ("docsheet", "invoice",   "any", "the sheet is a leaf: invoice.py renders THROUGH it"),
+    ("docsheet", "proforma",  "any", "same — proforma.py renders through it"),
+    ("docsheet", "purchase",  "any", "same — purchase.py renders through it"),
+    ("docsheet", "ra",        "any", "same — ra.py renders through it, and this is the "
+                                     "arrow that keeps ra.py and invoice.py apart"),
+    ("docsheet", "boq",       "any", "same"),
+    ("docsheet", "po_draft",  "any", "same"),
+    ("docsheet", "receipt",   "any", "a payment is not a printed document"),
+    ("docsheet", "client",    "any", "nor is a client ledger"),
+    ("docsheet", "product",   "any", "the sheet has nothing to do with the catalogue"),
+    ("docsheet", "spec",      "any", "nor with the specification library"),
+    ("docsheet", "settings",  "any", "settings.py imports quotation; nothing downstream may import back"),
+    ("docsheet", "flask",     "any", "it builds HTML strings and owns no route"),
 
     # ── demo_data is data only and sits at the bottom of the graph ──────────
     ("demo_data", "store",     "any", "demo_data.py imports NOTHING from the app — that is what "
@@ -182,6 +226,31 @@ REQUIRED = [
     ("spec", "store",     "the shared STORE dict"),
     ("spec", "branding",  "every company string, colour and image"),
     ("spec", "demo_data", "the 56 seeded clauses"),
+
+    ("client", "boq",       "boq_identity, BOQ_STYLES"),
+    ("client", "ra",        "bills_of, is_issued, is_cancelled"),
+    ("client", "receipt",   "receipts_of_boq"),
+    ("client", "quotation", "QUOTATION_STYLES and _inr"),
+    ("client", "dashboard", "BASE_STYLES and _nav"),
+    ("client", "pipeline",  "esc / norm_name"),
+    ("client", "store",     "the shared STORE dict"),
+    ("client", "branding",  "every company string, colour and image"),
+
+    # ── The shared document sheet, and everything that renders through it ────
+    ("docsheet", "quotation", "VIEW_DOC_STYLES and the document's own money "
+                              "formatters. quotation.py is frozen against EDITS "
+                              "(INTRODUCTION.md §7), not against being depended "
+                              "on — boq, ra and purchase all import it already"),
+    ("docsheet", "dashboard", "BASE_STYLES, the first sheet in the stack"),
+    ("docsheet", "pipeline",  "esc, and PIPELINE_STYLES for the stack"),
+    ("docsheet", "branding",  "the company identity the letterhead is built from"),
+
+    ("invoice",  "docsheet", "the letterhead, party block, table shell, totals "
+                             "rows and signature — one copy, not four"),
+    ("proforma", "docsheet", "the same sheet, plus the bank block it used to own"),
+    ("purchase", "docsheet", "the same sheet. The buy side shares the CHROME "
+                             "with the sell side and nothing else — no tax "
+                             "arithmetic and no business logic cross this arrow"),
 ]
 
 

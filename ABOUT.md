@@ -76,7 +76,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 595 passed — or fewer, with skips; see below
+python -m pytest -q                     # 611 passed — or fewer, with skips; see below
 python app.py                           # http://127.0.0.1:5000
 ```
 
@@ -93,9 +93,13 @@ independent things move the number, and they are often confused for each other:
 
 | Environment | Result |
 |---|---|
-| openpyxl installed **and** both client workbooks present | **595 passed** |
-| openpyxl installed, workbooks absent (the usual fresh clone) | **592 passed, 3 skipped** |
-| openpyxl absent (a plain `pip install -r requirements.txt`) | **591 passed, 1 skipped** |
+| openpyxl installed **and** both client workbooks present | **634 passed** |
+| openpyxl installed, workbooks absent (the usual fresh clone) | **631 passed, 3 skipped** |
+| openpyxl absent (a plain `pip install -r requirements.txt`) | **630 passed, 1 skipped** |
+
+*All three re-measured on 15 August 2026, each by actually running the suite in
+that configuration rather than by adjusting the previous row by the number of
+tests added.*
 
 ⚠ **A module-level `importorskip` reports ONE skip, not one per test.**
 `tests/test_fixtures.py` holds 4 tests behind a module-level
@@ -178,6 +182,7 @@ Consequences you must respect when editing:
 | [store.py](store.py) | 45 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 529 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
+| [docsheet.py](docsheet.py) | 373 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
 | [dashboard.py](dashboard.py) | 1488 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
 | [product.py](product.py) | 1465 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
 | [quotation.py](quotation.py) | 2786 | Quotation form + printed document. The big one. |
@@ -188,6 +193,7 @@ Consequences you must respect when editing:
 | [boq.py](boq.py) | 3964 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
 | [ra.py](ra.py) | 3001 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 630 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
+| [client.py](client.py) | ~300 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -212,13 +218,21 @@ app.py
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address
  ├─ spec.py ───────────────────┤  imports dashboard, branding, store, pipeline, demo_data
  ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, spec, demo_data
+ ├─ ra.py ─────────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq
+ ├─ receipt.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq, ra
+ ├─ client.py ─────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq, ra, receipt
  ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
 branding.py  imports nothing from the app  ← keep it that way
 demo_data.py imports nothing AT ALL        ← keep it that way
+docsheet.py  imports quotation + the three above, and NOTHING that prints  ← §2d
 ```
+
+`proforma.py`, `invoice.py`, `purchase.py`, `ra.py` and `po_draft.py` each also
+import **`docsheet.py`** for the printed sheet. That arrow is one-way and is
+what §2d is about.
 
 **`demo_data.py` is the third bottom-of-graph module.** It holds the 56 seeded
 specs and the 97-line demo BOQ and imports nothing — not `store`, not
@@ -289,6 +303,75 @@ tests/`). It distinguishes a **module-level** import from one inside a function
 body, because `dashboard.index()` deliberately imports the seeders in the
 function body and a check that could not tell them apart would flag the
 documented design as a violation.
+
+### 2d. `docsheet.py` — one sheet, six documents, and why it is a leaf
+
+Six documents in this app print. Until this module existed each one wrote its
+own copy of the same furniture — the repeating letterhead, the To/party block,
+the items-table shell, the totals rows, the amount in words, the bank block,
+the signature panel — as a fresh f-string. The copies drifted, and the drift is
+what the client sees: documents that do not look like they came from the same
+office. Two concrete instances, both found by writing this module:
+
+- the tax invoice and the purchase order carried **the same letterhead written
+  twice, already differing by one line** — the PO alone omits the web address,
+  and nothing anywhere records that as a decision (§7 gap 18);
+- the RA bill and the draft PO were each written from scratch against a
+  different visual language entirely and matched neither.
+
+So the chrome is now **one module of functions taking data and returning HTML
+strings**, plus the CSS constants.
+
+**What is NOT in it, and this is the load-bearing part:** any tax arithmetic,
+any per-chain business logic, any route. The totals *rows* are furniture and
+live here (`sum_row`, `total_row`); deciding what goes in them does not. The RA
+chain's tax block is **per line, carrying HSN/SAC per claim row**; the sell
+chain's is **document-level** off one `tax_info` dict. That difference is the
+whole reason `ra.py` may not import `invoice.py`, and folding both into a
+shared "tax block" here would have smuggled the coupling back in through the
+basement.
+
+**The import direction is the point:**
+
+```
+docsheet.py ──► quotation.py    VIEW_DOC_STYLES + the money formatters
+docsheet.py ──► dashboard, branding, pipeline
+
+invoice.py ──┐
+proforma.py ─┤
+purchase.py ─┼──► docsheet.py        ← one way, always
+ra.py ───────┤
+po_draft.py ─┘
+```
+
+`docsheet.py` imports **nothing that prints**. It may not import `invoice.py`,
+`proforma.py`, `purchase.py`, `ra.py`, `boq.py`, `po_draft.py`, `receipt.py`,
+`client.py`, `product.py`, `spec.py` or `settings.py`, and it owns no route.
+
+That is what preserves the standing prohibition rather than eroding it:
+**`ra.py` still does not import `invoice.py` and `invoice.py` still does not
+import `ra.py` — both import the leaf.** If the leaf could import either one,
+the rule would be satisfied on paper and defeated in practice. Both halves are
+asserted at AST level in
+[tests/test_import_directions.py](tests/test_import_directions.py).
+
+Importing `quotation.py` is deliberate and is not a loophole: that file is
+frozen against **edits** (INTRODUCTION.md §7), not against being depended on,
+and `boq.py`, `ra.py`, `purchase.py` and `proforma.py` all already import it.
+
+**The extraction changed nothing visible**, and that is a measured claim rather
+than an intention. [tests/test_print_golden.py](tests/test_print_golden.py) was
+written and committed *before* the module existed: it renders the tax invoice,
+the proforma and the purchase order from fixed records and hashes the response
+bytes, splitting each A4 sheet on its structural markers so a failure names
+which block moved. All three are byte-identical across the extraction.
+
+**The bank block's CSS moved here from `PROFORMA_STYLES`** and is spliced back
+into that sheet as `DS.BANK_CSS` / `DS.BANK_CSS_NARROW`, at the character
+positions it always occupied. One definition, and the proforma still renders
+byte-for-byte what it did. It had to move: the RA bill needs the same block and
+`ra.py` may never import `proforma.py`, so leaving it there would have meant a
+second bank block that looked different from the first.
 
 ### 2b. The BOQ chain — a second sell-side chain, not a fourth link
 
@@ -847,7 +930,8 @@ Written by `ra.py`. Progressive claim against a specific BOQ revision, carrying 
   figure, from `net_payable`, from `grand_total`, and invisible to the
   over-claim guard. That rests on an **assumption the client has not
   confirmed** — CLIENT_CHANGES.md item 8.
-- **Certification:** `status` ∈ `draft | submitted | certified`, `certified_on`
+- **Lifecycle:** `status` ∈ `draft | issued | cancelled`, `issued_on`,
+  `cancelled_on`, `cancel_reason` — see *"The lifecycle"* below
 - **Other:** `notes`, `company_branch`, `auth_signatory`
 
 A `claim` row:
@@ -859,9 +943,15 @@ A `claim` row:
  "approved_qty": 700.0, "approved_rate": 2024.0,   # frozen at issue
  "prev_qty": 120.0,                                 # cumulative BEFORE this bill
  "qty": 80.0, "rate": 2024.0, "amount": 161920.0,
- "balance_qty": 500.0, "rate_varies": False,
- "certified_qty": None, "certified_rate": None}   # None = NOT YET certified
+ "balance_qty": 500.0, "rate_varies": False}
 ```
+
+⚠ **`certified_qty` / `certified_rate` are GONE from this row**, along with the
+whole certification feature (CLIENT_CHANGES.md item 3). `build_claim()` does not
+write them, `tools/strip_certification.py` removed them from the stored records,
+and nothing reads them. If you are looking at a claim row that still has them,
+you are looking at a record that predates 15 August 2026 and has not been
+migrated.
 
 Six properties this shape exists to guarantee:
 
@@ -875,7 +965,7 @@ Six properties this shape exists to guarantee:
 1. **The figures are frozen.** `approved_qty`, `approved_rate`, `prev_qty` and
    `balance_qty` are stored, never recomputed at render. RA3 stated a balance
    that was true on its date and issuing RA5 must not rewrite a document the
-   client has already certified — exactly `proforma.prior_invoiced`'s rule.
+   client already holds — exactly `proforma.prior_invoiced`'s rule.
    **The guard at entry uses live figures; the document uses frozen ones.**
 2. **`rate` is stored as entered and may disagree with `approved_rate`** — it
    does on ten cells of the client's own annexure, because rates legitimately
@@ -887,13 +977,16 @@ Six properties this shape exists to guarantee:
    mobilisation-advance recovery and cess all fit one shape
    (`{code, label, basis, pct, amount}`). `amount` is **always stored** —
    computed once from `pct × claim_subtotal` when the basis is a percentage —
-   so a certified bill cannot change its own figures when a constant moves.
+   so an issued bill cannot change its own figures when a constant moves.
 4. **`net_payable == claim_subtotal − deduction_total`, always**, including on
    every bill with an empty deductions list.
 5. **`ra_no` is unique across the whole REVISION CHAIN**, not per record, so a
    revision cannot restart the client's sequence at RA1. It is assigned by the
    server and never typed, which is what makes "RA5 before RA4" and "two RA6s"
    *impossible* rather than merely rejected — there is no input to reject.
+   **It is also never reused**: a cancelled RA3 keeps the number and the next
+   bill is RA4, because `next_ra_no()` takes max+1 over *every* bill in the
+   chain including the cancelled ones.
 
 #### The over-claim block
 
@@ -907,6 +1000,26 @@ RA runs and becomes the over-claim it exists to prevent.
 Separately, and not a commercial tolerance: the comparison rounds at `1e-6` so
 that `1.1 + 2.2 + 8.7 == 12.000000000000002` is not reported as an over-claim of
 two femtometres against an approved 12.
+
+##### Which bills the sum counts
+
+`claimed_by_line()` counts **draft and issued** bills and **excludes
+cancelled** ones. Both halves are load-bearing and neither is obvious:
+
+- **A draft counts.** It is not yet a document, but its quantity is committed
+  the moment it is saved. If drafts were skipped, two of them could each claim a
+  line's whole remaining balance and the guard would see nothing until the
+  second was issued — by which point the first has already been sent.
+- **A cancelled bill does not.** Cancelling releases its quantity back onto
+  every line it claimed, which is the point of having a cancel. Leaving it in
+  the sum would permanently sterilise the quantity of every mistake anybody ever
+  withdrew.
+
+⚠ **`claims_by_line_id()` is the deliberate exception and still counts
+cancelled bills.** It answers a different question — *has this line ever
+appeared on a bill* — for `boq.revision_blockers()`, and a cancelled bill is
+still a document that went out naming the line. Releasing a quantity and erasing
+a history are different acts.
 
 #### The revision chain
 
@@ -955,47 +1068,73 @@ whenever a predecessor is named, and builds the map with
 the import direction still forbids reaching for `ra.claims_by_line_id()`. The
 two are asserted equal on a real chain. See §5's *"Revisions are reachable"*.
 
-#### Two edit permissions on one record
+#### The lifecycle — `draft | issued | cancelled`
 
-The claim freezes. The certificate never does. They are separate questions and
-`ra.py` answers them separately, because in the real world **certification
-lags** — RA3 comes back certified after RA6 has been raised, and a certificate
-frozen with its claim would be unusable exactly when it is needed.
+**This replaced certification, and it is not a rename.** Certification was doing
+two unrelated jobs: it was the main contractor's *ruling* on a claim, and it was
+the only thing stopping an already-submitted bill from being edited or deleted
+(`has_certification()` gated `can_delete()`, and the old
+`draft | submitted | certified` status was the flag). The client asked for the
+ruling to be removed (CLIENT_CHANGES.md item 3). The **lock is not theirs to
+remove and is not the same thing**, so it was rebuilt explicitly.
 
-| | Gate | Rule |
+| State | Edit | Delete | Print | Receipts | In the totals |
+|---|---|---|---|---|---|
+| `draft` | ✅ if latest | ✅ subject to the receipts guard | **DRAFT marker** | ❌ | ✅ counted |
+| `issued` | ❌ | ❌ — cancel it instead | clean | ✅ | ✅ counted |
+| `cancelled` | ❌ | ❌ | **CANCELLED overprint** | ❌ | ❌ excluded |
+
+Six rules, each a test:
+
+1. **`ra_no` is never reused.** A cancelled RA3 stays RA3 and the next bill is
+   RA4 — the same reasoning that stops a GST serial being reissued: the number
+   has been quoted in somebody else's ledger, and a second document bearing it
+   is indistinguishable from the first. True by construction, because
+   `next_ra_no()` is max+1 over every bill in the chain including the cancelled
+   ones. **This is the whole reason cancel exists alongside delete**: a delete
+   frees the number, a cancel spends it.
+2. **A cancellation cannot be undone.** There is no un-cancel route and no
+   re-cancel; either would make the withdrawal something that could be quietly
+   taken back. A cancellation records its **reason and date**, and the reason is
+   required — it is the only thing that will ever explain the gap in the run.
+3. **Cancelling releases the quantity, deleting destroys the record.** A
+   cancelled bill keeps every figure it was issued with and still prints; what
+   changes is that `claimed_by_line()` stops counting it and `outstanding_of()`
+   reports nil against it.
+4. **A receipt may only be recorded against an ISSUED bill** —
+   `ra.can_receipt()`, read by both `receipt._validate()` and the control on
+   `/ra/view` so the two cannot say different things. **Cancelling a bill with
+   receipts is refused**, in the same shape as `can_delete()`'s refusal.
+5. **Every refusal is shown, never hidden.** Each control stays on the page
+   carrying its reason; a button that vanishes teaches nothing about why.
+6. **A status this app does not recognise reads as `issued`** — see below.
+
+##### Two independent gates on the claim
+
+They answer different questions and neither implies the other, which is why
+`can_edit()` asks both:
+
+| | Gate | Refuses because |
 |---|---|---|
-| **The claim** (`qty`, `rate`, `amount`) | `claim_is_frozen()` | editable **only while it is the latest bill** for its BOQ |
-| **The certificate** (`certified_qty`, `certified_rate`, `status`, `certified_on`) | none | editable **always**, including on a frozen bill |
+| **Position** | `claim_is_frozen()` | a later bill exists, and `claimed_by_line()` sums the whole chain — editing here silently restates every downstream balance, including ones already printed |
+| **Status** | `status_of()` | it has been issued (the main contractor holds it) or cancelled (it is withdrawn) |
 
-`claimed_by_line()` sums the whole chain, so editing a mid-chain bill silently
-changes every downstream balance — including ones already printed and handed to
-the main contractor. Latest-only bounds the recompute to one bill and keeps
-printed history true.
+The status reason is reported **first** where both apply: *"you already sent
+this"* is the fact the operator can act on, and *"a later bill exists"* is not
+why they are being stopped.
 
-`apply_certification()` writes **only** the certified pair, the status and the
-date. It never touches `qty`, `rate` or `amount`, which is what makes
-"certifying a frozen bill does not reopen its claim" true by construction
-rather than by a check.
+##### `status_of()` defaults an unknown status to `issued`
 
-#### Certification — four rules, each a test
+A record written before the field has no `status` key, and the two values this
+app used to write — `submitted` and `certified` — both mean *it has gone to the
+main contractor*. Reading any of them as `draft` would silently reopen every
+historical bill to editing and deletion, which is exactly the failure the lock
+exists to prevent. `draft` survives normalisation because it still means what it
+meant.
 
-1. **The over-claim block runs on CLAIMED quantity, never on certified.** You
-   cannot claim beyond the BOQ; what the contractor then certifies is his
-   decision, not a validation input.
-2. **Uncertified is NOT zero.** `None` means "not yet ruled on" — excluded from
-   certified totals entirely and reported as *n of m*. Summing a blank as zero
-   under-reports receivables, the exact inverse of the error this system was
-   sold to catch. A certified quantity of **0.0 is a ruling** and does count;
-   the two must not collapse into each other.
-3. **Certified above claimed WARNS, never blocks** — the same treatment the
-   rate divergence gets, and for the same reason.
-4. **Deleting a bill carrying any certification data is refused**, with the
-   reason shown rather than the button hidden. It has been out of the building
-   and acknowledged; deleting it destroys the only record of what was allowed
-   against what was claimed.
-
-The **entry UI** for certification is step 3, on the register. Step 2 built the
-record shape, the arithmetic and the tests.
+`tools/strip_certification.py` rewrites the stored rows, so nothing relies on
+the default for long — but the default has to be right on its own, because a
+fixture or a hand-edited record never runs a migration.
 
 #### `item_no` on a claim row is a SNAPSHOT
 
@@ -2550,14 +2689,45 @@ non-repeating, because it is the key every RA bill quotes back.
 | `GET /ra/` | `list_ras` — RA register listing, grouped/sorted by BOQ |
 | `GET,POST /ra/create` | `create_ra` — BOQ picker, then the claim grid |
 | `GET /ra/view/<id>` | `view_ra` — a working screen, not the printed sheet |
-| `GET,POST /ra/edit/<id>` | `edit_ra` — gated to the latest bill |
-| `GET,POST /ra/certify/<id>` | `certify_ra` — certification entry UI, editable on any bill |
+| `GET,POST /ra/edit/<id>` | `edit_ra` — gated to a DRAFT that is also the latest bill |
+| `GET,POST /ra/issue/<id>` | `issue_ra` — GET confirms, POST issues |
+| `GET,POST /ra/cancel/<id>` | `cancel_ra` — GET confirms, POST cancels. No un-cancel |
 | `GET /ra/print/<id>` | `print_ra` — printed RA bill tax invoice document (DOMAIN.md §4) |
 | `GET,POST /ra/delete/<id>` | `delete_ra` — GET confirms, POST deletes |
 
 ✅ **Step 4 shipped `/ra/print/<id>` (the printed RA bill tax invoice document).**
 
+⚠ **`/ra/certify/<id>` is GONE**, with the whole certification feature —
+CLIENT_CHANGES.md item 3. The lifecycle routes above are what replaced the edit
+lock it was providing as a side effect; §3's *"The lifecycle"* is the rule set.
+
 **Registering this blueprint is what closes the `/boq/view` 500** (§2b).
+
+#### The lifecycle routes follow `9d060ee`'s shape, and must keep doing so
+
+Both `/ra/issue` and `/ra/cancel` **render a confirmation page on GET and mutate
+only inside the POST branch**, and neither carries a browser `confirm()`
+anywhere. That dialog is not a guard — it never runs for a link-prefetching
+browser, a crawler, a chat client unfurling a pasted URL, or the back button,
+and each of those issues a plain GET.
+
+⚠ **§7.9f's `url_map` sweep does NOT cover either route.** It walks only rules
+whose path contains `"delete"`, so a state-changing route named anything else is
+invisible to it. Each therefore ships its own hand-written test asserting a GET
+leaves the status unchanged — `test_a_get_on_issue_changes_nothing` and
+`test_a_get_on_cancel_changes_nothing`. **A third lifecycle route would need a
+third.**
+
+#### The printed sheet carries the state
+
+Only an **issued** bill prints clean. A draft prints a **DRAFT** watermark and a
+band saying it has not been issued; a cancelled one prints **CANCELLED** with
+its date and reason and a line saying the number is not reissued. Neither sits
+behind a `@media screen`: the entire risk is a working copy or a withdrawn claim
+reaching the main contractor's desk looking like a live tax invoice. The band
+forces its background through with `print-color-adjust:exact`, and the watermark
+is a bordered coloured word rather than a filled block so it still reads when a
+browser prints with backgrounds off.
 
 #### Tax is per RATE SLAB, off the `gst_rate` each claim row stores
 
@@ -2811,12 +2981,22 @@ and saying the document is deliberately **not** restated. That is DOMAIN.md §6
 applied to money, and the same treatment `rate_varies` already gets for a claim
 rate that disagrees with the approved BOQ.
 
-**`can_delete()` now refuses a bill with receipts against it**, alongside the
-existing refusals for a certified bill and a non-latest one. Deleting it would
-orphan the payment: the money stays in the ledger pointing at a document that
-no longer exists, and silently stops counting toward the balance carried
-forward. The reason is shown rather than the button hidden, as with the other
-two.
+**`can_delete()` refuses a bill with receipts against it**, alongside its
+refusals for a cancelled bill, an issued bill and a non-latest one. Deleting it
+would orphan the payment: the money stays in the ledger pointing at a document
+that no longer exists, and silently stops counting toward the balance carried
+forward. The reason is shown rather than the button hidden, as with the others.
+
+That refusal is now **mostly unreachable** — a receipt can only be recorded
+against an issued bill, and an issued bill refuses deletion anyway — and it is
+kept deliberately. A guard that depends on another guard for its correctness is
+one refactor away from being wrong.
+
+**A receipt may only be recorded against an ISSUED bill.** `ra.can_receipt()`
+owns that rule and both sides read it: `receipt._validate()` refuses the POST
+and `/ra/view` disables its own *Record a payment* control with the same
+sentence. It lives in `ra.py` for the same import-direction reason
+`RECEIPT_MODES` does — `receipt.py ──► ra.py`, never the reverse (§2c).
 
 #### Escaping
 
@@ -2871,9 +3051,9 @@ figure. Three things make that safe rather than merely convenient:
 
 The alternative — refusing the correction once a later bill exists — protects a
 document that is already immune and leaves the ledger permanently wrong. That
-is why this differs from `ra.can_delete()`'s refusal on a certified bill: a
-certificate is the main contractor's ruling and the only record of it, while a
-receipt is our own bookkeeping about our own money.
+is why this differs from `ra.can_delete()`'s refusal on an issued bill: a bill
+that has gone out is a document somebody else is holding, while a receipt is our
+own bookkeeping about our own money.
 
 #### The carried balance is a memo, not a claim
 
@@ -3541,6 +3721,61 @@ B6. **Vendor addresses are the only vendor record.** There is no vendor master �
    Deliberately **not** done when the links were added: that change moves a
    public function every RA route and four test modules call, which is a wider
    blast radius than a link warrants.
+
+17. 🔴 **No credit note, and now nowhere to record that a bill was allowed
+   short — OPEN, and this one is new debt taken on deliberately.**
+
+   Certification was removed on 15 August 2026 at the client's request
+   (CLIENT_CHANGES.md item 3), and with it went the only place the system could
+   record **what the main contractor actually allowed** against what was
+   claimed. The claim is still the claim; there is no field, no column and no
+   route that can say he passed less.
+
+   **The consequence is arithmetic, not cosmetic.** `outstanding_of()` is
+   `grand_total − receipts`, and `grand_total` is what we *claimed*. So a bill
+   claimed at ₹10,00,000 and certified down to ₹8,00,000, then paid in full at
+   ₹8,00,000, reports **₹2,00,000 still outstanding forever**. It carries
+   forward through `previous_balance()` onto the next bill's printed memo, and
+   into any per-client outstanding built on top of it — which is exactly what
+   CLIENT_CHANGES.md item 2 is waiting to build. **Outstanding is overstated by
+   the whole of every disallowance**, and nothing on any screen says so.
+
+   The three ways out, none of them built:
+
+   - **A credit note** against the RA bill, which is what GST actually requires
+     for a reduction against an issued tax invoice (§7.3 makes the same point
+     one chain over, for the sell side). It is the correct answer and the
+     largest.
+   - **Cancel and re-raise** at the allowed figure. Possible today —
+     `/ra/cancel/<id>` then a fresh bill — but it spends an `ra_no`, and the
+     next bill's number no longer matches the client's own RA sequence in the
+     way their annexure numbers it.
+   - **Reinstating a certified figure** as a pure record with no lifecycle
+     attached to it. This is what was removed, and it is not to be quietly put
+     back: it is the client's decision, not ours.
+
+   ⚠ **This is now fully exposed:** client-wise segregation (CLIENT_CHANGES.md item 2)
+   was built on 15 August 2026. That page is a per-client outstanding ledger,
+   meaning this overstatement is now a rolled-up number presented for someone to
+   chase a customer for. This gap needs immediate client attention.
+
+18. 🟠 **The purchase order's letterhead omits the web address, and nothing
+   records why — OPEN.** The quotation, the proforma, the tax invoice and the
+   BOQ all print `Web: …` in the letterhead contact line;
+   `purchase.py` alone does not. There is no comment, no commit message and no
+   entry in any document giving a reason, and none of the arguments that keep
+   the **bank block** off a quotation apply — a web address is on the letterhead
+   of every other sheet that leaves this office.
+
+   It reads as an omission rather than a decision, and it is preserved rather
+   than corrected: it was found while extracting `docsheet.py` (§2d), and that
+   pass was under instruction to leave the PO byte-identical.
+   `docsheet.letterhead()` therefore takes a `show_web` flag whose only
+   present purpose is to reproduce this difference, and it says so.
+
+   **The fix is to delete the flag and the branch**, once somebody rules that
+   the vendor should see the same letterhead the customer does. It is one line
+   and one golden digest.
 
 ---
 
