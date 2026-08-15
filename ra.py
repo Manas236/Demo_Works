@@ -593,6 +593,80 @@ def bills_of(boq_id: str) -> list:
 
 
 # =============================================================================
+# THE PARTY LOCK — which bills freeze a BOQ's customer fields
+# =============================================================================
+#
+# ⚠ **This NARROWS a rule set on 10 August 2026, and the narrowing is the
+#   point.** The lock originally counted bills of **any** status, cancelled
+#   included. Because a cancelled bill can never be deleted and can never be
+#   un-cancelled (ABOUT.md §3, "The lifecycle"), one of them froze that BOQ's
+#   customer name **permanently, with no escape** — and a party name that
+#   cannot be corrected keeps that client split across two rows of `/client/`
+#   forever.
+#
+# A cancelled bill is excluded from every total, from `claimed_by_line()`, from
+# outstanding and from the receipts guard *by design*. It should not be the one
+# thing freezing master data.
+#
+# **What does not change:** every bill still carries its own frozen party
+# snapshot, taken at save, and no printed document moves when a BOQ's live
+# fields are edited. The cancelled bill goes on printing the name it was issued
+# with, which is what a withdrawn document is *for*. `party_drift()` below is
+# what surfaces the disagreement afterwards rather than hiding it.
+
+def party_lock_bills(boq_id: str) -> list:
+    """
+    The bills that freeze a BOQ's party fields — **draft and issued only**.
+
+    Same shape as `bills_of()`. A cancelled bill is not here, and one on its own
+    therefore leaves the fields editable. Read by `client.edit_party()` on both
+    the GET and the POST, so the page and the guard cannot say different things
+    — `can_receipt()`'s arrangement, one rule stated once.
+    """
+    return [(rid, b) for rid, b in bills_of(boq_id) if not is_cancelled(b)]
+
+
+# The six fields `create_ra()` copies off the BOQ at save. Named once here so
+# the drift check and the snapshot cannot fall out of step.
+PARTY_FIELDS = (("account_name",  "Customer"),
+                ("contact_person", "Contact person"),
+                ("to",             "Billing address"),
+                ("bill_gstin",     "Customer GSTIN"),
+                ("project_name",   "Project"),
+                ("site_location",  "Site"))
+
+
+def party_drift(bill: dict) -> list:
+    """
+    Where this bill's frozen party snapshot disagrees with the live BOQ.
+
+    Returns `[(label, on_the_bill, on_the_boq), …]`, empty when they agree or
+    when the schedule is gone.
+
+    **Exactly `prev_balance_drift()`'s shape and exactly its reason.** A bill
+    that has gone out states what it stated; editing the BOQ afterwards must
+    never restate it. But a disagreement nobody can see is worse than one
+    everybody can, so `/ra/view` shows both figures and says plainly that the
+    document is deliberately not restated. DOMAIN.md §6: surface it, name it,
+    never silently correct it.
+
+    A field blank on the bill and blank on the BOQ is not drift. A field blank
+    on **one** of them is: that is the case where somebody filled in a GSTIN
+    the issued document went out without.
+    """
+    boq = (STORE.get("boqs") or {}).get(str(bill.get("boq_id") or ""))
+    if not boq:
+        return []
+    out = []
+    for key, label in PARTY_FIELDS:
+        was = str(bill.get(key) or "").strip()
+        now = str(boq.get(key) or "").strip()
+        if was != now:
+            out.append((label, was, now))
+    return out
+
+
+# =============================================================================
 # RECEIPTS — money actually RECEIVED, and the balance that carries forward
 # =============================================================================
 #
@@ -3186,6 +3260,26 @@ def view_ra(id: str):
             f'since. The figure printed on the bill is deliberately left as '
             f'issued &mdash; a document already sent is not restated. Correct '
             f'the position on the next bill.</span></div>')
+
+    # The SAME band, one field over. A BOQ's party fields can now be corrected
+    # while a cancelled bill stands against it (`party_lock_bills()`), so this
+    # is the surface that stops the correction being silent. Deliberately the
+    # receipts band's shape and wording rather than a second design: an
+    # operator who has met one has met both.
+    party_rows = party_drift(bill)
+    if party_rows:
+        pairs = "; ".join(
+            f'{_esc(label)} &mdash; on this bill '
+            f'<b>{_esc(was) or "(blank)"}</b>, on the schedule now '
+            f'<b>{_esc(now) or "(blank)"}</b>'
+            for label, was, now in party_rows)
+        drift_note += (
+            f'<div class="form-hint"><span class="fh-icon">&#9888;</span>'
+            f'<span><b>The schedule\'s customer details have been edited since '
+            f'this bill was issued.</b> {pairs}. The bill carries its own copy, '
+            f'frozen at save, and is deliberately <b>not</b> restated &mdash; a '
+            f'document already sent says what it said. The current details are '
+            f'what a new bill would carry.</span></div>')
 
     pb_html = ""
     if "prev_balance" in bill:

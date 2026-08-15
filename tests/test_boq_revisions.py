@@ -71,7 +71,8 @@ def _mkbill(rid, boq_id, ra_no, claims, leg="supply"):
         "boq_rev_no": 0, "ra_no": ra_no, "leg": leg, "claims": claims,
         "claim_subtotal": subtotal, "deductions": drows,
         "deduction_total": dtotal, "net_payable": net,
-        "status": "draft", "certified_on": "", "notes": "",
+        "status": "draft", "issued_on": "", "cancelled_on": "",
+        "cancel_reason": "", "notes": "",
     }
     return rid
 

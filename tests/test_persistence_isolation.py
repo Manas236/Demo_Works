@@ -612,7 +612,12 @@ def test_the_strip_is_chrome_and_appears_away_from_the_dashboard(client, fake_db
     client.get("/boq/")          # seeds the demo BOQ, so there is a write to refuse
     assert db.failures()
 
-    for path in ("/boq/", "/spec/", "/address/", "/quotation/"):
+    for path in ("/boq/", "/spec/", "/address/", "/quotation/",
+                 # The two newest modules. A page that renders its own chrome
+                 # instead of calling `_nav()` looks right and silently drops
+                 # this strip — which is the one warning that means *nothing
+                 # you type is being saved*.
+                 "/client/", "/po/"):
         html = client.get(path).get_data(as_text=True)
         assert 'class="db-down"' in html, path
 

@@ -131,7 +131,14 @@ def test_ra_bills_is_a_persisted_collection():
     assert "ra_bills" in db.LABELS      # so the failure strip can name it
 
 
-# ── An RA bill is NOT a tax invoice ─────────────────────────────────────────
+# ── An RA bill IS a tax invoice — and what that still does not unlock ───────
+#
+# The banner used to read "An RA bill is NOT a tax invoice". The assertions
+# under it were inverted per DOMAIN.md §4 (the client's as-submitted RA2 is
+# headed TAX INVOICE) but the heading was left behind, so this file read as
+# asserting the opposite of what it asserts. Per DOMAIN.md §4.9 the inversion is
+# per-assertion, not wholesale: `_tax_lines`, `invoice.py` and the e-invoicing
+# tokens stay forbidden, which is what the second test below still holds.
 
 def _ra_code_tokens() -> set:
     """

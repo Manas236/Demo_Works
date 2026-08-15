@@ -1,18 +1,19 @@
 """
-Phase 4 step 2 — the RA entry form.
+The RA entry form, and the lifecycle lock.
 
 The routes that make an RA bill enterable: the blueprint, the create form, the
-edit route gated to the latest bill, and the POST-only delete. Plus the record
-shape and arithmetic for certification, whose entry UI is step 3.
+edit route gated to a draft that is also the latest bill, the POST-only delete,
+and the issue/cancel pair that replaced certification.
 
 Three properties everything here circles:
 
 - **The block is hard, and it is CUMULATIVE.** Per-bill would pass nine times
-  and still end 9% over.
-- **The claim freezes; the certificate never does.** Two edit permissions on
-  one record, because RA3 comes back certified after RA6 has been raised.
-- **Uncertified is not zero.** A blank certified field means "not yet ruled
-  on", and summing it as zero under-reports what is owed.
+  and still end 9% over. It counts drafts and issued bills and excludes
+  cancelled ones.
+- **The claim freezes twice over.** Once by POSITION (a later bill exists) and
+  once by STATUS (it has been issued). Neither implies the other.
+- **A cancelled number is spent.** Cancelled RA3 stays RA3 and the next bill is
+  RA4, the same reasoning that stops a GST serial being reissued.
 """
 
 import json
@@ -57,7 +58,11 @@ def make_bill(boq_id, ra_no, leg="supply", claims=None, **over):
         "boq_rev_no": 0, "ra_no": ra_no, "leg": leg, "claims": claims or [],
         "claim_subtotal": subtotal, "deductions": drows,
         "deduction_total": dtotal, "net_payable": net,
-        "status": "draft", "certified_on": "", "notes": "",
+        # A DRAFT by default, so the edit and delete tests below exercise the
+        # position gate rather than tripping over the status gate first. Tests
+        # that want an issued or cancelled bill pass `status=` through `**over`.
+        "status": "draft", "issued_on": "", "cancelled_on": "",
+        "cancel_reason": "", "notes": "",
     }
     STORE["ra_bills"][rid].update(over)
     return rid
@@ -367,7 +372,7 @@ def test_too_many_lines_is_rejected_by_the_form(seeded):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MUTABILITY — the claim freezes, the certificate never does
+# MUTABILITY — the POSITION gate. The status gate is the next section.
 # ═══════════════════════════════════════════════════════════════════════════
 
 def test_the_latest_bill_can_be_edited(client, seeded):
@@ -430,136 +435,314 @@ def test_the_frozen_reason_names_the_bills_that_froze_it(seeded):
 
     why = ra.frozen_reason(STORE["ra_bills"][first])
     assert "RA2" in why and "RA5" in why
-    assert "certification can still be recorded" in why
+    assert "already sent out" in why
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# CERTIFICATION — record, arithmetic and rules. The UI is step 3.
+# THE LIFECYCLE — the lock that replaced certification
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_a_new_claim_row_starts_uncertified_not_zero(seeded):
-    li = priced(seeded, 1)[0]
-    c = claim_for(li, 5.0)
-    assert c["certified_qty"] is None
-    assert c["certified_rate"] is None
-    assert ra.is_certified(c) is False
-    assert ra.certified_amount(c) is None
-
-
-def test_a_blank_certified_field_is_never_summed_as_zero(seeded):
+def test_issuing_a_bill_shuts_the_claim_and_the_delete(client, seeded):
     """
-    THE receivables error, inverted. Summing an unanswered line as zero
-    under-reports what is owed — the exact opposite of what this system was
-    sold to catch.
+    THE lock. Certification used to provide this as a side effect of being a
+    status; it is now the status's actual job, and both halves have to shut
+    together — an issued bill that could still be deleted would be a document
+    the main contractor holds and we do not.
     """
-    lines = priced(seeded, 3)
-    claims = [claim_for(li, 2.0, rate=100.0) for li in lines]
-    claims[0]["certified_qty"] = 2.0
-    claims[0]["certified_rate"] = 100.0
-    rid = make_bill(seeded, 1, claims=claims)
-
-    s = ra.certification_summary(STORE["ra_bills"][rid])
-    assert s["certified"] == 1 and s["total"] == 3
-    assert s["complete"] is False
-    assert s["amount"] == 200.0          # ONLY the certified line
-
-
-def test_a_certified_quantity_of_zero_is_a_ruling_and_counts(seeded):
-    """0 certified is the contractor saying "I allow nothing" — an answer.
-    Blank is the absence of one. The two must not collapse."""
     li = priced(seeded, 1)[0]
-    c = claim_for(li, 5.0)
-    c["certified_qty"] = 0.0
-    assert ra.is_certified(c) is True
-    assert ra.certified_amount(c) == 0.0
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
+    bill = STORE["ra_bills"][rid]
+
+    assert ra.can_edit(bill)[0] is True         # a draft, and the latest
+    assert ra.can_delete(bill)[0] is True
+
+    r = client.post(f"/ra/issue/{rid}", data={"issued_on": "2026-08-15"})
+    assert r.status_code == 302
+    assert bill["status"] == "issued"
+    assert bill["issued_on"] == "2026-08-15"
+
+    assert ra.can_edit(bill)[0] is False
+    assert ra.can_delete(bill)[0] is False
+
+    # And the routes refuse, not just the predicates.
+    assert client.get(f"/ra/edit/{rid}").status_code == 302
+    client.post(f"/ra/delete/{rid}")
+    assert rid in STORE["ra_bills"]
 
 
-def test_certified_above_claimed_warns_and_does_not_block(seeded):
+def test_issuing_moves_no_figure_on_the_bill(client, seeded):
+    """`apply_issue()` writes two keys and nothing else, so "issuing does not
+    restate a claim" is true by construction rather than by a check."""
     li = priced(seeded, 1)[0]
-    c = claim_for(li, 5.0, rate=100.0)
-    c["certified_qty"] = 7.0
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 2.0, rate=100.0)])
+    bill = STORE["ra_bills"][rid]
+    before = {k: v for k, v in bill.items()
+              if k not in ("status", "issued_on")}
 
-    warns = ra.certification_warnings([c])
-    assert len(warns) == 1
-    assert warns[0]["claimed"] == 5.0 and warns[0]["certified"] == 7.0
-    assert "more than was asked for" in ra.certification_warning_message(warns[0])
+    client.post(f"/ra/issue/{rid}")
+
+    for k, v in before.items():
+        assert bill[k] == v, f"issuing rewrote {k}"
 
 
-def test_the_overclaim_block_never_reads_a_certified_field(seeded):
+def test_a_get_on_issue_changes_nothing(client, seeded):
     """
-    You cannot claim beyond the BOQ; what the contractor then certifies is his
-    decision, not a validation input. Certifying far above the approved
-    quantity must not make a within-quantity claim fail, nor rescue an
-    over-claim.
+    §7.9f's `url_map` sweep only walks rules whose path contains "delete", so it
+    does not cover this route at all. Its own test, per the standing rule.
+    """
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
+
+    r = client.get(f"/ra/issue/{rid}")
+    assert r.status_code == 200                        # the confirmation page
+    assert STORE["ra_bills"][rid]["status"] == "draft"  # untouched
+    assert "confirm(" not in r.get_data(as_text=True)   # no browser dialog
+
+
+def test_a_get_on_cancel_changes_nothing(client, seeded):
+    """Same rule, same reason — and cancelling is the irreversible one."""
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)], status="issued")
+
+    r = client.get(f"/ra/cancel/{rid}")
+    assert r.status_code == 200
+    assert STORE["ra_bills"][rid]["status"] == "issued"
+    assert "confirm(" not in r.get_data(as_text=True)
+
+
+def test_cancelling_needs_a_reason_and_records_it(client, seeded):
+    """
+    A cancelled RA number stays spent forever, so the reason is the only thing
+    that will ever explain the gap in the run.
+    """
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)], status="issued")
+
+    r = client.post(f"/ra/cancel/{rid}", data={"cancel_reason": ""})
+    assert r.status_code == 200                          # re-rendered, refused
+    assert STORE["ra_bills"][rid]["status"] == "issued"
+    assert "Say why" in r.get_data(as_text=True)
+
+    r = client.post(f"/ra/cancel/{rid}", data={"cancel_reason": "remeasured",
+                                               "cancelled_on": "2026-08-15"})
+    assert r.status_code == 302
+    bill = STORE["ra_bills"][rid]
+    assert bill["status"] == "cancelled"
+    assert bill["cancel_reason"] == "remeasured"
+    assert bill["cancelled_on"] == "2026-08-15"
+
+
+def test_a_cancelled_bill_cannot_be_un_cancelled_edited_or_deleted(client, seeded):
+    """There is no route back. An un-cancel would make the withdrawal something
+    that could be quietly taken back."""
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)],
+                    status="cancelled", cancelled_on="2026-08-15",
+                    cancel_reason="keyed twice")
+    bill = STORE["ra_bills"][rid]
+
+    assert ra.can_issue(bill)[0] is False
+    assert ra.can_cancel(bill)[0] is False
+    assert ra.can_edit(bill)[0] is False
+    assert ra.can_delete(bill)[0] is False
+
+    for url in (f"/ra/issue/{rid}", f"/ra/cancel/{rid}", f"/ra/edit/{rid}"):
+        assert client.post(url, data={"cancel_reason": "x"}).status_code == 302
+    client.post(f"/ra/delete/{rid}")
+
+    assert STORE["ra_bills"][rid]["status"] == "cancelled"
+    assert rid in STORE["ra_bills"]
+
+
+def test_the_ra_number_is_never_reused_after_a_cancellation(client, seeded):
+    """
+    Cancelled RA3 stays RA3 and the next bill is RA4 — a GST serial's rule.
+    This is the whole reason cancelling exists alongside deleting: a delete
+    frees the number, a cancel spends it.
+    """
+    lines = priced(seeded, 4)
+    for n in (1, 2, 3):
+        make_bill(seeded, n, claims=[claim_for(lines[n - 1], 1.0)],
+                  status="issued")
+
+    r = client.post("/ra/cancel/r3-supply", data={"cancel_reason": "withdrawn"})
+    assert r.status_code == 302
+    assert STORE["ra_bills"]["r3-supply"]["status"] == "cancelled"
+
+    assert ra.next_ra_no(seeded) == 4        # NOT 3
+
+
+def test_a_draft_prints_with_a_marker_and_an_issued_bill_prints_clean(client, seeded):
+    """
+    The whole risk is a working copy reaching the main contractor's desk looking
+    like a live tax invoice, so the marker is on the printed sheet and not
+    behind a `@media screen`.
+    """
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
+
+    h = client.get(f"/ra/print/{rid}").get_data(as_text=True)
+    assert "DRAFT" in h
+    assert "has not been issued" in h
+
+    client.post(f"/ra/issue/{rid}")
+    h = client.get(f"/ra/print/{rid}").get_data(as_text=True)
+    assert "DRAFT" not in h
+    # The stylesheet still DEFINES .lc-mark — it is one sheet for all three
+    # states. What must be absent is the element.
+    assert '<div class="lc-mark' not in h
+    assert '<div class="lc-band' not in h
+
+
+def test_a_cancelled_bill_still_prints_over_a_cancelled_overprint(client, seeded):
+    """Cancelling is not deleting: the record survives and still prints, because
+    it is the record of what was withdrawn."""
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)],
+                    status="cancelled", cancelled_on="2026-08-15",
+                    cancel_reason="superseded by RA2")
+
+    r = client.get(f"/ra/print/{rid}")
+    assert r.status_code == 200
+    h = r.get_data(as_text=True)
+    assert "CANCELLED" in h
+    assert "superseded by RA2" in h
+    assert "not reissued" in h
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE OVER-CLAIM GUARD UNDER THE NEW STATES
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_two_drafts_claiming_the_same_remaining_quantity_are_both_caught(
+        client, seeded):
+    """
+    THE case that made drafts count. A draft is not yet a document, but its
+    quantity is committed the moment it is saved — if the sum ignored drafts,
+    two of them could each claim the whole remaining balance of a line and the
+    guard would see nothing until the second was issued, by which point the
+    first has already been sent.
     """
     li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
-    c = claim_for(li, li["total_qty"])
-    c["certified_qty"] = li["total_qty"] * 10
-    make_bill(seeded, 1, claims=[c])
+    full = li["total_qty"]
 
-    # Within quantity, wildly over-certified: still no breach from the certificate.
-    assert ra.overclaims(seeded, "supply", [], exclude_ra_id="r1-supply") == []
+    r = client.post(f"/ra/create?boq={seeded}&leg=supply", data={
+        "date": "2026-08-06",
+        "ra_json": payload([(li["line_id"], full, li["supply_rate"])])})
+    assert r.status_code == 302                       # the first one saves
+    first = next(iter(STORE["ra_bills"].values()))
+    assert first["status"] == "draft"                 # still only a draft
 
-    # And one more unit is still refused, on CLAIMED quantity.
-    fresh = claim_for(li, 1.0)
-    breaches = ra.overclaims(seeded, "supply", [fresh])
-    assert len(breaches) == 1
-    assert breaches[0]["previously"] == li["total_qty"]
+    # The second, claiming the same quantity again, is REFUSED — while the
+    # first is still nothing but a draft.
+    r = client.post(f"/ra/create?boq={seeded}&leg=supply", data={
+        "date": "2026-08-06",
+        "ra_json": payload([(li["line_id"], full, li["supply_rate"])])})
+    assert r.status_code == 200                       # re-rendered with the block
+    assert "over" in r.get_data(as_text=True).lower()
+    assert len(STORE["ra_bills"]) == 1                # nothing was written
+
+    # And at the level the guard actually works at:
+    assert ra.claimed_by_line(seeded)[(li["line_id"], "supply")] == full
 
 
-def test_certification_is_editable_on_a_frozen_bill(seeded):
+def test_cancelling_a_bill_releases_its_quantity_back(client, seeded):
     """
-    The critical interaction. Certification lags in the real world — RA3 comes
-    back certified after RA6 has been raised — so freezing the certificate with
-    the claim would make the field unusable exactly when it is needed.
+    The other half. A withdrawn claim is not competing for the approved
+    quantity, so cancelling must put it back — otherwise every mistake anybody
+    ever cancelled would sterilise its quantity forever.
     """
-    lines = priced(seeded, 2)
-    first = make_bill(seeded, 1, claims=[claim_for(lines[0], 2.0, rate=100.0)])
-    make_bill(seeded, 2, claims=[claim_for(lines[1], 1.0)])
+    li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
+    full = li["total_qty"]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, full)], status="issued")
+    key = (li["line_id"], "supply")
 
-    bill = STORE["ra_bills"][first]
-    assert ra.claim_is_frozen(bill) is True       # claim is shut
+    assert ra.claimed_by_line(seeded)[key] == full
+    # Nothing more can be claimed against the line.
+    assert len(ra.overclaims(seeded, "supply", [claim_for(li, 1.0)])) == 1
 
-    lid = bill["claims"][0]["line_id"]
-    ra.apply_certification(bill, {lid: {"certified_qty": 1.5,
-                                        "certified_rate": 90.0}},
-                           status="certified", certified_on="2026-09-01")
+    r = client.post(f"/ra/cancel/{rid}", data={"cancel_reason": "remeasured"})
+    assert r.status_code == 302
 
-    assert bill["claims"][0]["certified_qty"] == 1.5
-    assert bill["status"] == "certified"
-    assert bill["certified_on"] == "2026-09-01"
-
-
-def test_certifying_a_frozen_bill_does_not_reopen_its_claim(seeded):
-    """The two permissions stay separate: writing a certificate must not make
-    the claim editable again, nor alter a single claimed figure."""
-    lines = priced(seeded, 2)
-    first = make_bill(seeded, 1, claims=[claim_for(lines[0], 2.0, rate=100.0)])
-    make_bill(seeded, 2, claims=[claim_for(lines[1], 1.0)])
-
-    bill = STORE["ra_bills"][first]
-    before = {k: bill["claims"][0][k] for k in ("qty", "rate", "amount",
-                                                "approved_qty", "balance_qty")}
-    lid = bill["claims"][0]["line_id"]
-    ra.apply_certification(bill, {lid: {"certified_qty": 99.0}})
-
-    assert ra.claim_is_frozen(bill) is True       # STILL frozen
-    for k, v in before.items():
-        assert bill["claims"][0][k] == v, f"certifying rewrote {k}"
+    assert ra.claimed_by_line(seeded).get(key, 0.0) == 0.0
+    assert ra.overclaims(seeded, "supply", [claim_for(li, full)]) == []
 
 
-def test_certified_totals_are_reported_as_n_of_m_bills(seeded):
-    lines = priced(seeded, 2)
-    done = claim_for(lines[0], 1.0, rate=100.0)
-    done["certified_qty"] = 1.0
-    make_bill(seeded, 1, claims=[done])
-    make_bill(seeded, 2, claims=[claim_for(lines[1], 1.0)])
+def test_a_cancelled_bill_is_outstanding_nothing(seeded):
+    """Excluded from outstanding as well as from the claim sum — carrying its
+    value forward would state a debt on a document we have said is void."""
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 2.0, rate=100.0)],
+                    grand_total=236.0, status="issued")
+    bill = STORE["ra_bills"][rid]
 
-    assert ra.bills_certified(seeded) == (1, 2)
+    assert ra.outstanding_of(bill) == 236.0
+    ra.apply_cancel(bill, "withdrawn", on="2026-08-15")
+    assert ra.outstanding_of(bill) == 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DELETE — latest only, POST only, never a certified bill
+# RECEIPTS — only against an ISSUED bill
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_a_receipt_may_only_be_recorded_against_an_issued_bill(client, seeded):
+    """
+    A draft has not been sent, so there is nothing for the main contractor to
+    have paid; a cancelled bill is owed nothing. Refused at the route, with the
+    reason in words, and the control on `/ra/view` disabled from the same
+    function so the two cannot say different things.
+    """
+    STORE["receipts"].clear()
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 2.0, rate=100.0)],
+                    grand_total=236.0)
+    bill = STORE["ra_bills"][rid]
+
+    assert ra.can_receipt(bill)[0] is False
+    assert "still a draft" in ra.can_receipt(bill)[1]
+
+    r = client.post(f"/receipt/new?ra={rid}", data={
+        "date": "2026-08-15", "amount": "100", "mode": "neft"})
+    assert r.status_code == 200                     # re-rendered, refused
+    assert STORE["receipts"] == {}
+
+    # Issue it, and the same post lands.
+    client.post(f"/ra/issue/{rid}")
+    assert ra.can_receipt(bill)[0] is True
+    r = client.post(f"/receipt/new?ra={rid}", data={
+        "date": "2026-08-15", "amount": "100", "mode": "neft"})
+    assert r.status_code == 302
+    assert len(STORE["receipts"]) == 1
+    STORE["receipts"].clear()
+
+
+def test_cancelling_a_bill_with_receipts_is_refused(client, seeded):
+    """
+    In the same shape as `can_delete()`'s refusal, and for the same reason:
+    cancelling would state that nothing is owed on a document money has already
+    been paid against, and drop that bill out of the ledger's arithmetic.
+    """
+    STORE["receipts"].clear()
+    li = priced(seeded, 1)[0]
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 2.0, rate=100.0)],
+                    grand_total=236.0, status="issued")
+    STORE["receipts"]["rc1"] = {
+        "id": "rc1", "ref": "SF/RCPT/26-27/0001", "fy": "26-27",
+        "date": "2026-08-15", "ra_id": rid, "amount": 100.0, "mode": "neft",
+    }
+
+    allowed, why = ra.can_cancel(STORE["ra_bills"][rid])
+    assert allowed is False
+    assert "receipt" in why.lower()
+
+    r = client.post(f"/ra/cancel/{rid}", data={"cancel_reason": "x"})
+    assert r.status_code == 302
+    assert STORE["ra_bills"][rid]["status"] == "issued"   # unchanged
+    STORE["receipts"].clear()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DELETE — a draft, latest only, POST only
 # ═══════════════════════════════════════════════════════════════════════════
 
 def test_the_latest_bill_can_be_deleted_and_the_number_is_reused(client, seeded):
@@ -614,20 +797,23 @@ def test_a_mid_chain_bill_cannot_be_deleted(client, seeded):
     assert first in STORE["ra_bills"]
 
 
-def test_a_bill_carrying_certification_is_never_deleted(client, seeded):
+def test_an_issued_bill_is_never_deleted(client, seeded):
     """
-    It has been out of the building and acknowledged by the main contractor;
-    deleting it destroys the only record of what was allowed against what was
-    claimed.
+    It has been out of the building. A document that has gone out is withdrawn
+    by CANCELLING it — which keeps the number spent and records why — never by
+    removing it from our own books.
+
+    (This replaces `test_a_bill_carrying_certification_is_never_deleted`, which
+    pinned the same property through the field that used to carry it.)
     """
     li = priced(seeded, 1)[0]
-    c = claim_for(li, 2.0, rate=100.0)
-    c["certified_qty"] = 1.5
-    rid = make_bill(seeded, 1, claims=[c])
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 2.0, rate=100.0)],
+                    status="issued")
 
     allowed, why = ra.can_delete(STORE["ra_bills"][rid])
     assert allowed is False
-    assert "certification" in why.lower()
+    assert "issued" in why.lower()
+    assert "cancel" in why.lower()          # it names the remedy
 
     client.post(f"/ra/delete/{rid}")
     assert rid in STORE["ra_bills"]
@@ -637,20 +823,12 @@ def test_the_delete_refusal_is_shown_not_hidden(client, seeded):
     """Refuse with a message saying why; a control that vanishes teaches
     nothing about why."""
     li = priced(seeded, 1)[0]
-    c = claim_for(li, 2.0, rate=100.0)
-    c["certified_qty"] = 1.5
-    rid = make_bill(seeded, 1, claims=[c])
+    rid = make_bill(seeded, 1, claims=[claim_for(li, 2.0, rate=100.0)],
+                    status="issued")
 
     h = client.get(f"/ra/view/{rid}").get_data(as_text=True)
     assert "Delete" in h                            # the button is still there
     assert "cannot be deleted" in h                 # with the reason on it
-
-
-def test_a_status_of_certified_alone_blocks_the_delete(seeded):
-    li = priced(seeded, 1)[0]
-    rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)], status="certified")
-    assert ra.has_certification(STORE["ra_bills"][rid]) is True
-    assert ra.can_delete(STORE["ra_bills"][rid])[0] is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -745,15 +923,45 @@ def test_the_deductions_block_is_rendered_and_empty(client, seeded):
     assert "No deductions on this bill" in h
 
 
-def test_no_certification_entry_ui_in_step_2(client, seeded):
-    """The record shape, the arithmetic and the tests are step 2. The entry UI
-    is step 3, on the register."""
+def test_certification_is_gone_from_the_module_and_every_page(client, seeded):
+    """
+    "Remove it ENTIRELY, not behind a flag" (CLIENT_CHANGES.md item 3).
+
+    This is the inversion of `test_no_certification_entry_ui_in_step_2`, which
+    asserted the entry UI had not landed *yet*. There is nothing left to land:
+    no route, no field, no helper, no column. Asserted against the module's
+    public surface AND against the rendered pages, because either alone would
+    pass while the other still carried it.
+    """
+    import app as app_module
+
+    rules = {r.rule for r in app_module.app.url_map.iter_rules()}
+    assert not [r for r in rules if "certify" in r]
+
+    assert not [n for n in dir(ra) if "certif" in n.lower()]
+    assert "certified" not in ra.STATUSES
+
+    # No claim row is written with a certified pair any more.
     li = priced(seeded, 1)[0]
+    assert "certified_qty" not in claim_for(li, 1.0)
+    assert "certified_rate" not in claim_for(li, 1.0)
+
+    # Specific tokens, NOT a blanket search for "certif": the client's own
+    # seeded schedule contains the sentence "Vendor shall submitt all the
+    # Manufacturing and Test certifiates with the delivery of pipes" — their
+    # typo, their commercial text, and it must survive untouched (DOMAIN.md §6).
+    # A test that greps for the substring would fail on the client's data and
+    # invite somebody to "fix" it, which is the exact failure mode that document
+    # exists to prevent.
+    GONE = ("certified_qty", "certified_rate", "certified_on", "/ra/certify",
+            "Certify", "Certification", "Certified")
+
     rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
-    for url in (f"/ra/create?boq={seeded}&leg=supply", f"/ra/edit/{rid}"):
+    for url in (f"/ra/create?boq={seeded}&leg=supply", f"/ra/edit/{rid}",
+                f"/ra/view/{rid}", f"/ra/print/{rid}", "/ra/"):
         h = client.get(url).get_data(as_text=True)
-        assert 'name="certified_qty"' not in h
-        assert 'id="certified_qty"' not in h
+        for token in GONE:
+            assert token not in h, f"{url} still carries {token!r}"
 
 
 def test_printed_document_route_exists(client, seeded):

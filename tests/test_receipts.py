@@ -83,6 +83,13 @@ def make_bill(boq_id, ra_no, leg="supply", claims=None, boq_ref="SF/BOQ/26-27/00
     A bill written straight into the store, with its tax block computed the way
     `create_ra()` computes it — so `grand_total` is a real figure and the
     balance arithmetic has something honest to work against.
+
+    **Issued by default**, because a receipt may only be recorded against an
+    issued bill (`ra.can_receipt`) — a draft has not been sent, so there is
+    nothing for the main contractor to have paid. Every bill in this module
+    exists to have money put against it, so a draft here would be a fixture
+    asserting a state the app refuses to produce. Tests that want a draft or a
+    cancelled bill pass `status=` through `**over`.
     """
     rid = f"r{ra_no}-{leg}"
     info = ra.compute_tax_totals(claims or [], [])
@@ -98,7 +105,8 @@ def make_bill(boq_id, ra_no, leg="supply", claims=None, boq_ref="SF/BOQ/26-27/00
         "sgst_amount": info["sgst_amount"], "igst_amount": info["igst_amount"],
         "tax_amount": info["tax_amount"], "tax_slabs": info["tax_slabs"],
         "rounding_off": info["rounding_off"], "grand_total": info["grand_total"],
-        "status": "draft", "certified_on": "", "notes": "",
+        "status": "issued", "issued_on": "2026-08-06", "cancelled_on": "",
+        "cancel_reason": "", "notes": "",
     }
     STORE["ra_bills"][rid].update(over)
     return rid
@@ -223,8 +231,7 @@ def test_an_overpayment_carries_forward_as_a_credit_and_is_not_clamped(client, s
     """
     Signed, deliberately. Clamping a negative outstanding at zero would state
     that money we are holding is not money we are holding — the same silent
-    correction DOMAIN.md §6 forbids, and the inverse of the under-reporting the
-    "uncertified is not zero" rule avoids.
+    correction DOMAIN.md §6 forbids everywhere else in this chain.
     """
     li = big_line(seeded)
     rid = make_bill(seeded, 1, claims=[claim_for(li, 10.0)])
@@ -368,7 +375,11 @@ def test_editing_a_bills_claim_does_not_recompute_its_carried_balance(client, se
     """
     li = big_line(seeded)
     make_bill(seeded, 1, claims=[claim_for(li, 5.0)])
+    # A DRAFT, because `edit_ra` now refuses an issued bill outright — the lock
+    # that replaced certification. What this test is about is what the edit does
+    # to `prev_balance` when it IS permitted, so the bill has to be editable.
     rid2 = make_bill(seeded, 2, claims=[claim_for(li, 5.0, prev=5.0)],
+                     status="draft",
                      prev_balance=777.0, prev_balance_refs=["SF/RA/26-27/0001"])
 
     r = client.post(f"/ra/edit/{rid2}", data={
@@ -633,14 +644,43 @@ def test_a_bill_with_receipts_cannot_be_deleted(client, seeded):
     assert rid in STORE["ra_bills"], "a bill with money against it was deleted"
 
 
-def test_a_bill_becomes_deletable_once_its_receipts_are_gone(client, seeded):
+def test_removing_the_receipts_lifts_the_RECEIPTS_refusal(client, seeded):
+    """
+    The receipts guard is not permanent — it names a condition with a remedy,
+    and clearing the condition clears that refusal.
+
+    ⚠ **This used to assert `allowed is True`, and that is no longer reachable
+      for this bill — deliberately, not by weakening.** A receipt can only be
+      recorded against an ISSUED bill (`ra.can_receipt`), and an issued bill is
+      never deletable at all: it is withdrawn by cancelling, which keeps `ra_no`
+      spent. So the scenario "a bill that had receipts becomes deletable" cannot
+      occur through the app any more, and asserting it would pin a path that
+      does not exist.
+
+      What is still worth pinning, and is asserted below, is that the refusal
+      MOVES: it stops being about the money and becomes the issued refusal,
+      which names cancelling as the remedy. A guard that kept citing receipts
+      after the receipts were gone would be the real defect.
+    """
     li = big_line(seeded)
     rid = make_bill(seeded, 1, claims=[claim_for(li, 5.0)])
     rcid = make_receipt(rid, 1000.0)
 
+    _allowed, why = ra.can_delete(STORE["ra_bills"][rid])
+    assert "receipt" in why.lower()
+
     client.post(f"/receipt/delete/{rcid}")
-    allowed, _why = ra.can_delete(STORE["ra_bills"][rid])
-    assert allowed is True
+
+    allowed, why = ra.can_delete(STORE["ra_bills"][rid])
+    assert allowed is False
+    assert "receipt" not in why.lower(), "still citing money that is gone"
+    assert "issued" in why.lower() and "cancel" in why.lower()
+
+    # And a DRAFT with no receipts is deletable, which is the half of the old
+    # assertion that survives.
+    draft = make_bill(seeded, 2, claims=[claim_for(li, 1.0, prev=5.0)],
+                      status="draft")
+    assert ra.can_delete(STORE["ra_bills"][draft])[0] is True
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -727,8 +767,7 @@ def test_an_overpayment_warns_and_is_still_recorded(client, seeded):
     """
     Warns, never blocks — a lump sum settling two bills at once is a real thing
     the client's main contractor does. Same treatment as a claim rate that
-    diverges from the approved BOQ, and as a certification above what was
-    claimed (DOMAIN.md §6).
+    diverges from the approved BOQ (DOMAIN.md §6).
     """
     li = big_line(seeded)
     rid = make_bill(seeded, 1, claims=[claim_for(li, 10.0)])

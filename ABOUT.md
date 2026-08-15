@@ -3139,6 +3139,99 @@ reason.
 
 ---
 
+### `/client` — Client Register · [client.py](client.py)
+
+| Route | View |
+|---|---|
+| `GET /client/` | `list_clients` — the ledger, one panel per client |
+| `GET,POST /client/edit-party/<id>` | `edit_party` — one BOQ's party block, and nothing else |
+
+**CLIENT_CHANGES.md item 2.** Every BOQ grouped by the party it is billed to,
+with schedule value, issued, received and outstanding across all of it.
+
+#### It is a current-state screen, not a document
+
+Every figure is computed **live** from `STORE`. That is the opposite call from
+`/ra/print`, and both are right: this page answers *where does the client stand
+today*, a bill answers *what did we state when we sent it*. It is the one place
+the frozen `prev_balance` is the wrong source.
+
+⚠ **Issued bills only.** A draft has not been sent and a cancelled one has been
+withdrawn, so neither is money anybody owes — and a cancelled bill is excluded
+from every other total in this app by design. A withdrawn claim inside a
+per-client outstanding is a demand for money that was explicitly retracted,
+presented to somebody about to chase a customer for it.
+`test_outstanding_counts_issued_bills_only` is the guard.
+
+Outstanding is **not clamped at zero**: an overpayment is ordinary — a lump sum
+settling two bills — and shows as a credit, exactly as `ra.outstanding_of()`
+lets it.
+
+⚠ **It inherits §7 gap 17.** `outstanding_of()` is `grand_total − receipts` and
+`grand_total` is what we *claimed*; there is nowhere to record that the main
+contractor allowed less. This page rolls that up per client, which widens where
+the overstatement is visible without changing its size.
+
+#### Near-duplicates are reported, never merged
+
+The grouping key is `pipeline.norm_name(account_name)` — casefolded,
+whitespace-collapsed, **punctuation kept**. There is no `customer_id` anywhere
+in this app: the address picker writes plain strings onto a BOQ, so a name is
+the only key there is.
+
+So `Prudent Teqtis Pvt Ltd` and `Prudent Teqtis Pvt. Ltd.` are **two groups**,
+with an amber band naming them. `client._base_name()` strips punctuation
+*separately* and only to raise that band. Merging them would be this app
+deciding two typed names are one party, which it cannot know — DOMAIN.md §6,
+the same stance the duplicate-`item_no` band takes on the BOQ form.
+
+[tests/test_norm_name.py](tests/test_norm_name.py) pins `norm_name`'s exact
+output over a table of realistic inputs, and pins `boq_identity()` on the
+seeded schedule. That function is **duplicate BOQ detection** — it decides
+which schedules `?revise=` offers and which predecessors `POST /boq/create`
+accepts — and it had been moved out of `boq.py` with nothing checking that the
+behaviour survived. It did: the body moved verbatim.
+
+#### The party edit — minimal, and it must stay minimal
+
+It writes the customer block and **nothing else**: no line item, no rate, no
+quantity, no section, no project name, no reference, no revision number. There
+is no path in the route that could reach them, and
+`test_the_party_edit_does_not_touch_lines_rates_or_project_fields` posts a full
+set of decoys to prove it. CLIENT_CHANGES.md item 2 says in as many words that
+this must not become the general BOQ edit.
+
+##### The lock, narrowed on 15 August 2026
+
+**Draft and issued bills freeze the party fields** — `ra.party_lock_bills()`,
+which is where the rule is stated so the page and the guard cannot disagree
+(`can_receipt()`'s arrangement). An RA bill snapshots the party block at save,
+so editing the BOQ afterwards leaves the register disagreeing with documents
+already issued.
+
+⚠ **A CANCELLED bill alone no longer locks, and that narrows a rule set on
+10 August 2026.** A cancelled bill can never be deleted and never un-cancelled,
+so one of them froze that BOQ's customer name **permanently with no escape** —
+and that client stayed split across two rows of this page forever. A cancelled
+bill is excluded from every total, from `claimed_by_line()`, from outstanding
+and from the receipts guard by design; it should not be the one thing freezing
+master data.
+
+**Nothing printed moves.** Every bill keeps its own frozen party snapshot, and
+where the live BOQ and a bill's copy disagree, `/ra/view` raises an **amber
+band giving both** and saying the document is deliberately not restated —
+`ra.party_drift()`, deliberately the receipts band's shape and wording rather
+than a second design. DOMAIN.md §6: surface it, name it, never silently
+correct it.
+
+⚠ **A GET renders the form READ-ONLY; it does not bounce.** It used to redirect
+on both methods, so a locked schedule's customer details could not even be
+*looked at* — the operator was sent back with an error for opening a page.
+Every control renders `disabled`, the blocking bills are named and linked as
+chips, the save button is absent, and the **POST** is what refuses.
+
+---
+
 ### `/po` — Draft Purchase Orders · [po_draft.py](po_draft.py)
 
 | Route | View |
@@ -3905,8 +3998,8 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    public function every RA route and four test modules call, which is a wider
    blast radius than a link warrants.
 
-17. 🔴 **No credit note, and now nowhere to record that a bill was allowed
-   short — OPEN, and this one is new debt taken on deliberately.**
+17. 🔴 **No credit note, and nowhere to record that a bill was allowed short —
+   OPEN.** New debt, taken on deliberately.
 
    Certification was removed on 15 August 2026 at the client's request
    (CLIENT_CHANGES.md item 3), and with it went the only place the system could
@@ -3914,33 +4007,34 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    claimed. The claim is still the claim; there is no field, no column and no
    route that can say he passed less.
 
-   **The consequence is arithmetic, not cosmetic.** `outstanding_of()` is
-   `grand_total − receipts`, and `grand_total` is what we *claimed*. So a bill
+   **The consequence is arithmetic rather than cosmetic.** `outstanding_of()` is
+   `grand_total − receipts`, and `grand_total` is what we *claimed*. A bill
    claimed at ₹10,00,000 and certified down to ₹8,00,000, then paid in full at
-   ₹8,00,000, reports **₹2,00,000 still outstanding forever**. It carries
-   forward through `previous_balance()` onto the next bill's printed memo, and
-   into any per-client outstanding built on top of it — which is exactly what
-   CLIENT_CHANGES.md item 2 is waiting to build. **Outstanding is overstated by
-   the whole of every disallowance**, and nothing on any screen says so.
+   ₹8,00,000, reports ₹2,00,000 still outstanding indefinitely. That figure
+   carries forward through `previous_balance()` onto the next bill's printed
+   memo, and into the per-client outstanding on `/client/`. Outstanding is
+   therefore overstated by the amount of any disallowance, and nothing on any
+   screen states that it may be.
 
    The three ways out, none of them built:
 
-   - **A credit note** against the RA bill, which is what GST actually requires
-     for a reduction against an issued tax invoice (§7.3 makes the same point
-     one chain over, for the sell side). It is the correct answer and the
-     largest.
+   - **A credit note** against the RA bill, which is what GST requires for a
+     reduction against an issued tax invoice (§7.3 makes the same point one
+     chain over, for the sell side). It is the correct answer and the largest.
    - **Cancel and re-raise** at the allowed figure. Possible today —
      `/ra/cancel/<id>` then a fresh bill — but it spends an `ra_no`, and the
-     next bill's number no longer matches the client's own RA sequence in the
-     way their annexure numbers it.
+     next bill's number then no longer matches the client's own RA sequence in
+     the way their annexure numbers it.
    - **Reinstating a certified figure** as a pure record with no lifecycle
      attached to it. This is what was removed, and it is not to be quietly put
      back: it is the client's decision, not ours.
 
-   ⚠ **This is now fully exposed:** client-wise segregation (CLIENT_CHANGES.md item 2)
-   was built on 15 August 2026. That page is a per-client outstanding ledger,
-   meaning this overstatement is now a rolled-up number presented for someone to
-   chase a customer for. This gap needs immediate client attention.
+   **Scope, as of 15 August 2026:** client-wise segregation
+   (CLIENT_CHANGES.md item 2) is built, so the figure now also appears rolled up
+   per client on `/client/` rather than only per bill. That widens where the
+   overstatement is visible; it does not change its size or its cause. The
+   question the client has to answer is whether they want a credit note, and it
+   is recorded for them in CLIENT_CHANGES.md §3.
 
 18. 🟠 **The purchase order's letterhead omits the web address, and nothing
    records why — OPEN.** The quotation, the proforma, the tax invoice and the

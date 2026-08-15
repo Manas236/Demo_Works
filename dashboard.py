@@ -631,6 +631,7 @@ ICONS = {
     "stale":   """<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>""",
     "nopo":    """<svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>""",
     "plus":    """<svg viewBox="0 0 24 24" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>""",
+    "users":   """<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>""",
 }
 
 
@@ -957,6 +958,28 @@ def _metrics():
         "ra_total":  len(STORE.get("ra_bills", {})),
         "ra_value":  sum(float(r.get("net_payable") or 0.0)
                          for r in STORE.get("ra_bills", {}).values()),
+
+        # Draft POs — the BOQ chain's procurement document. A count only: its
+        # rates are blank by design (ABOUT.md §5, `/po`), so there is no value
+        # to report and a money figure here would be zero on every card.
+        "dpo_total": len(STORE.get("purchase_orders", {})),
+
+        # Client register. **Issued bills only, less receipts** — a draft has
+        # not been sent and a cancelled one was withdrawn, and the same two
+        # exclusions hold on `/client/` itself. Status strings are matched
+        # literally rather than importing `ra.py`, exactly as the PO statuses
+        # above are: dashboard.py is imported BY every module and must stay at
+        # the bottom of the import graph (§2). **If `ra.STATUSES` is ever
+        # renamed, this is the third place to change.**
+        "client_total": len({P.norm_name(b.get("account_name"))
+                             for b in STORE["boqs"].values()
+                             if str(b.get("account_name") or "").strip()}),
+        "client_outstanding": (
+            sum(float(r.get("grand_total") or 0.0)
+                for r in STORE.get("ra_bills", {}).values()
+                if str(r.get("status") or "issued").strip().lower() == "issued")
+            - sum(float(r.get("amount") or 0.0)
+                  for r in STORE.get("receipts", {}).values())),
     }
 
 
@@ -1347,6 +1370,8 @@ def index():
     boq_url       = url_for("boq.list_boqs")
     ra_url        = url_for("ra.list_ras")
     spec_url      = url_for("spec.list_specs")
+    client_url    = url_for("client.list_clients")
+    po_draft_url  = url_for("po_draft.list_pos")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1459,6 +1484,23 @@ def index():
               <div class="card-title">Address Book</div>
               <div class="card-desc">{m['a_total']} saved · feeds the Bill To and
                   Ship To pickers</div>
+            </div>
+          </a>
+
+          <a href="{client_url}" class="card">
+            <div class="card-icon">{ICONS['users']}</div>
+            <div class="card-body">
+              <div class="card-title">Client Register</div>
+              <div class="card-desc">{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}</div>
+            </div>
+          </a>
+
+          <a href="{po_draft_url}" class="card">
+            <div class="card-icon">{ICONS['purchase']}</div>
+            <div class="card-body">
+              <div class="card-title">Draft Purchase Orders</div>
+              <div class="card-desc">{m['dpo_total']} raised · sent to a supplier
+                  to be priced, no rates and no GST</div>
             </div>
           </a>
 
