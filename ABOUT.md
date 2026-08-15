@@ -2718,6 +2718,48 @@ leaves the status unchanged — `test_a_get_on_issue_changes_nothing` and
 `test_a_get_on_cancel_changes_nothing`. **A third lifecycle route would need a
 third.**
 
+#### The printed bill is the same A4 sheet as every other document
+
+`/ra/print` renders through **`docsheet.py`** (§2d): the same repeating
+letterhead, the same three-cell party block, the same eight-column items table,
+the same totals rows, the same bank block and the same signature panel as the
+tax invoice. `RA_DOC_STYLES` layers after it and introduces **no new font, no
+new type size and no new border weight** — the restraint `PROFORMA_STYLES`,
+`INVOICE_STYLES` and `PURCHASE_STYLES` already hold to.
+
+⚠ **It did not, and this was the client-visible half of the same defect §2d
+describes.** The page was a `.doc-paper` card in Inter over a slate palette,
+with its own border weights, its own `table.doc-table`, four `.box-card`
+panels, no letterhead at all, and money in **Western digit grouping with a ₹
+symbol** against §9's rule that a printed document groups in the Indian system
+through `_inr()`. It also defined a `.doc-header` rule that silently overrode
+`VIEW_DOC_STYLES`' class of the same name. Their as-submitted RA2 is headed TAX
+INVOICE; what this app produced looked like nothing else the client receives.
+
+What that changed on the paper — and what it did not:
+
+| | |
+|---|---|
+| **Gained** | the repeating letterhead and the `.page-frame` that carries it onto every page, the foot strip, a signature block with the company GSTIN and PAN, the amber `todo-chip` for a blank HSN/SAC, and the shared bank block |
+| **Moved** | the four panels became the party block; Qty now precedes Unit as on every other sheet; money is `_inr()` — Indian grouping, no symbol |
+| **Unchanged** | **every figure, every item number, every HSN/SAC, and the whole snapshot contract.** `tests/test_ra_print_immutability.py` still holds it |
+
+`tests/test_print_golden.py` measures both halves: it pins the whole page, and
+it asserts that the RA bill's letterhead is **byte-identical to the tax
+invoice's**. They are the same instrument, so they carry the same head.
+
+Everything RA-specific stayed here rather than moving into the shared layer:
+the **two independent series** (Tax Invoice No. and RA Bill No. — §4.2 of
+DOMAIN.md), the **per-line HSN/SAC and the per-slab tax block**, the sparse
+claimed-lines-only table with its parent specification rows, the
+previous-balance memo, and the lifecycle overprint. The per-line tax block in
+particular is the difference the `invoice.py` prohibition rests on, and folding
+it into `docsheet.py` would have defeated that rule rather than served it.
+
+⚠ **Place of supply is still absent**, and rendering the bill on the statutory
+sheet does not change that. It is a Rule 46 field, it decides CGST+SGST against
+IGST, and it is pending the client's CA — §7 gap 15. Do not add it here.
+
 #### The printed sheet carries the state
 
 Only an **issued** bill prints clean. A draft prints a **DRAFT** watermark and a

@@ -64,9 +64,24 @@ from store import STORE
 
 # The form's widgets and page furniture, exactly as boq.py takes them, so the
 # two forms are the same form. `_tax_lines` is deliberately NOT among them and
-# never will be — an RA bill is a claim document, not a tax invoice, and
-# `tests/test_ra_record.py` asserts the absence at AST level.
+# never will be — but **not** because "an RA bill is a claim document, not a tax
+# invoice". That premise is dead: the client's real as-submitted RA2 is headed
+# TAX INVOICE, this module carries its own per-line tax block, and `/ra/print`
+# renders the document as one (DOMAIN.md §4).
+#
+# The prohibition survives that inversion untouched, on its own three reasons
+# (DOMAIN.md §4.9): `_tax_lines` is document-total arithmetic with no per-line
+# concept, it decides no tax head, and it lives in a file that may not be
+# edited. `tests/test_ra_record.py` asserts the absence at AST level.
 from quotation import QUOTATION_STYLES, VIEW_DOC_STYLES, _inr, _amount_in_words
+
+# The printed A4 sheet, shared with every other document this office issues —
+# letterhead, party block, items-table shell, totals rows, bank block,
+# signature. `docsheet.py` is a LEAF: it imports nothing that prints, so this
+# arrow does NOT reopen the `invoice.py` prohibition above. Neither module
+# imports the other; both import the leaf (ABOUT.md §2d).
+import docsheet as DS
+from docsheet import _meta
 
 ra_bp = Blueprint("ra", __name__, url_prefix="/ra")
 
@@ -127,10 +142,33 @@ RECEIPT_MODE_LABELS = {
     "upi": "UPI", "cash": "Cash", "adjustment": "Adjustment",
 }
 
-# The three states a bill moves through. `draft` is ours, `submitted` means it
-# has gone to the main contractor, `certified` means he has said what he allows.
-# Certification data can arrive on a bill in any of them — see CERTIFICATION.
-STATUSES = ("draft", "submitted", "certified")
+# =============================================================================
+# THE LIFECYCLE — three states, and the lock that used to be certification's job
+# =============================================================================
+#
+# Certification was doing two unrelated jobs at once: it was the main
+# contractor's RULING on a claim, and it was the only thing stopping a bill that
+# had already gone out from being silently edited or deleted. The client asked
+# for the ruling to be removed (CLIENT_CHANGES.md item 3). The lock is not
+# theirs to remove and it is not the same thing, so it is rebuilt here as an
+# explicit lifecycle rather than inherited from a field that no longer exists.
+#
+#   draft      ours, not yet sent. Editable, deletable (subject to the receipts
+#              guard), and it PRINTS WITH A DRAFT MARKER so a working copy can
+#              never be mistaken for an issued document.
+#   issued     it has gone to the main contractor. `edit_ra` and `delete_ra`
+#              both refuse; the document prints clean; money may be receipted
+#              against it. This is the state the lock exists for.
+#   cancelled  withdrawn. Locked, carries its reason and date, excluded from
+#              every total and from outstanding, and CANNOT BE UN-CANCELLED —
+#              an un-cancel would make the withdrawal deniable.
+#
+# **`ra_no` is never reused.** A cancelled RA3 stays RA3 and the next bill is
+# RA4, for the reason a GST serial is never reissued: the number has been quoted
+# in somebody else's ledger, and a second document bearing it is indistinguish-
+# able from the first. `next_ra_no()` is max+1 over EVERY bill in the chain
+# including the cancelled ones, which is what makes that true by construction.
+STATUSES = ("draft", "issued", "cancelled")
 
 # The most claim lines one RA bill may post.
 #
@@ -157,14 +195,16 @@ MAX_RA_LINES = BQ.MAX_LINES
 # percent-escaping — which is exactly why the constant is measured rather than
 # scaled from boq's.
 #
-# At the line cap: 600 x 79.3 = 46 KB decoded, 75 KB on the wire. Step 3 adds
-# certified quantity and rate to the posted line, roughly doubling it to
-# ~130 B/line, so ~78 KB decoded at the cap.
+# At the line cap: 600 x 79.3 = 46 KB decoded, 75 KB on the wire.
 #
-# 150,000 is therefore ~3.2x the worst honest payload at today's line cap and
-# ~1.9x it once certification posts, while 150,000 x 1.61 = 241,500 bytes on
-# the wire leaves ~258 KB of Flask's 500,000 MAX_FORM_MEMORY_SIZE for the
-# twenty other form fields. The check always fires before Werkzeug does.
+# 150,000 is therefore ~3.2x the worst honest payload at today's line cap, while
+# 150,000 x 1.61 = 241,500 bytes on the wire leaves ~258 KB of Flask's 500,000
+# MAX_FORM_MEMORY_SIZE for the twenty other form fields. The check always fires
+# before Werkzeug does.
+#
+# (This used to carry a second figure for the certified quantity and rate that a
+# later step was going to add to each posted line. Certification is gone and
+# nothing posts a second pair, so the headroom is the plain 3.2x.)
 #
 # ⚠ Not a security boundary, exactly as boq.MAX_JSON_BYTES is not. It is a
 #   usability boundary: it keeps an honest RA bill from ever hitting the wall
@@ -208,6 +248,12 @@ _REF_CAP = 64
 #   "deduction_total": float,
 #   "net_payable": float,        # claim_subtotal - deduction_total, ALWAYS
 #
+#   # THE LIFECYCLE — see STATUSES above for what each state permits.
+#   "status": "draft" | "issued" | "cancelled",
+#   "issued_on": "2026-08-12",   # "" until it is issued
+#   "cancelled_on": "",          # "" unless cancelled
+#   "cancel_reason": "",         # why, in the operator's own words
+#
 #   "notes": str, "company_branch": str, "auth_signatory": str,
 # }
 #
@@ -231,7 +277,7 @@ _REF_CAP = 64
 # 1. **The figures are frozen.** `approved_qty`, `approved_rate`, `prev_qty` and
 #    `balance_qty` are stored, not recomputed at render. RA3 stated a balance
 #    that was true on its date, and issuing RA5 must not rewrite a document the
-#    client has already certified — exactly `proforma.prior_invoiced`'s rule.
+#    client already holds — exactly `proforma.prior_invoiced`'s rule.
 #    The GUARD at entry uses the live figures; the DOCUMENT uses the frozen ones.
 # 2. **`rate` is stored as entered and may disagree with `approved_rate`.** It
 #    does on 10 cells of the client's own annexure. Rates legitimately move on
@@ -240,18 +286,63 @@ _REF_CAP = 64
 #    system was sold to catch, so `rate_varies` is a stored fact about the bill.
 # 3. **`deductions` is bill-level and exists from day one, empty.** Retention,
 #    mobilisation-advance recovery and cess all fit one shape. `amount` is
-#    always stored — computed from `pct` when the basis is a percentage — so a
-#    certified bill cannot change its own figures later.
+#    always stored — computed from `pct` when the basis is a percentage — so an
+#    issued bill cannot change its own figures later.
 # 4. **`net_payable == claim_subtotal - deduction_total`, always**, including on
 #    every bill with an empty deductions list.
-# 5. **`ra_no` is unique across the whole REVISION CHAIN**, not per record. A
-#    revision must not restart the client's sequence at RA1.
+# 5. **`ra_no` is unique across the whole REVISION CHAIN**, not per record, and
+#    is never reused — a cancelled RA3 keeps the number and RA4 is next. A
+#    revision must not restart the client's sequence at RA1 either.
 # 6. **`line_id` is what a claim is matched on, and `item_no` never is.** Item
 #    numbers restart per section and the client's own schedule repeats one
 #    inside a section, so matching on them collapsed ten lines together and
 #    broke the guard in both directions at once. The id is opaque, minted by
 #    `boq._new_line_id()`, and carried forward unchanged across revisions —
 #    which is what lets a revision renumber freely without detaching history.
+
+
+# =============================================================================
+# LIFECYCLE PREDICATES — the one place a bill's state is read
+# =============================================================================
+
+def status_of(bill) -> str:
+    """
+    This bill's lifecycle state, normalised to one of `STATUSES`.
+
+    **Anything unrecognised reads as `issued`, and that default is the safe
+    one.** A record written before the field existed has no `status` key at all,
+    and the two states this app used to write in its place — `submitted` and
+    `certified` — both mean *it has gone to the main contractor*. Defaulting
+    those to `draft` would silently reopen every historical bill to editing and
+    deletion, which is the exact failure the lock exists to prevent; defaulting
+    them to `issued` locks them, which is what they always were.
+
+    `draft` survives the normalisation because it means the same thing it always
+    did. `tools/strip_certification.py` is what rewrites the stored rows, so no
+    bill relies on this default for long — but the default has to be right on
+    its own, because a fixture or a hand-edited record never runs the migration.
+    """
+    s = str((bill or {}).get("status") or "").strip().lower()
+    return s if s in STATUSES else "issued"
+
+
+def is_draft(bill) -> bool:
+    return status_of(bill) == "draft"
+
+
+def is_issued(bill) -> bool:
+    return status_of(bill) == "issued"
+
+
+def is_cancelled(bill) -> bool:
+    """
+    Has this bill been withdrawn?
+
+    The single predicate every total, every balance and the over-claim guard
+    consult. A cancelled bill is not a bill that claims less — it is a bill that
+    claims nothing, so it is excluded rather than zeroed.
+    """
+    return status_of(bill) == "cancelled"
 
 
 # =============================================================================
@@ -415,6 +506,20 @@ def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
     `exclude_ra_id` leaves one bill out, so an edit can ask "what would the
     cumulative be without my own current figures in it".
 
+    **DRAFT AND ISSUED BILLS BOTH COUNT; CANCELLED ONES DO NOT.** Both halves of
+    that are load-bearing and neither is obvious:
+
+    - **A draft counts.** It is not yet a document, but its quantity is
+      committed the moment it is saved, and two drafts each claiming the whole
+      remaining balance of a line would otherwise both pass — the guard would
+      see nothing until the second was issued, by which point the first has
+      already been sent. Counting drafts is what makes the second one refuse.
+    - **A cancelled bill does not.** Cancelling releases its quantity back onto
+      every line it claimed, which is the entire point of having a cancel: a
+      claim that has been withdrawn is not competing for the approved quantity,
+      and leaving it in the sum would permanently sterilise the quantity of
+      every mistake anybody ever withdrew.
+
     **Keyed on `line_id`.** A claim row carrying no id matches nothing and is
     skipped rather than falling back to `item_no` — a fallback would resurrect
     exactly the collapse this key exists to end, on the lines where item numbers
@@ -431,6 +536,8 @@ def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
             continue
         if str(bill.get("boq_id") or "") not in ids:
             continue
+        if is_cancelled(bill):
+            continue                  # withdrawn — its quantity is released
         leg = bill.get("leg")
         for c in bill.get("claims") or []:
             lid = BQ._line_id(c.get("line_id"))
@@ -448,6 +555,14 @@ def claims_by_line_id(boq_id: str) -> dict:
     Built for `boq.revision_blockers()`, which must refuse to delete a line that
     already carries a claim. It is passed *in* to that function rather than
     imported by it, because boq.py may never import this module (ABOUT.md §2b).
+
+    ⚠ **A CANCELLED bill still counts here, unlike in `claimed_by_line()`**, and
+      the difference is deliberate. That function answers *how much quantity is
+      committed*, so a withdrawn claim must release it. This one answers *has
+      this line ever appeared on a bill*, and a cancelled bill is still a
+      document that went out naming the line — deleting the line out of the
+      schedule would leave it describing something the BOQ no longer contains.
+      Releasing a quantity and erasing a history are different acts.
     """
     ids = set(revision_chain(boq_id))
     if not ids:
@@ -522,13 +637,18 @@ def outstanding_of(bill: dict) -> float:
     negative outstanding and carries forward as a credit. Clamping it would
     state that money we are holding is not money we are holding — the same
     class of silent correction DOMAIN.md §6 forbids everywhere else in this
-    module, and the inverse of the under-reporting `is_certified()` avoids by
-    refusing to read a blank as zero.
+    module.
+
+    **A CANCELLED bill is outstanding 0.00**, not its grand total. It was
+    withdrawn, so nothing is owed on it — carrying its value forward would state
+    a debt on a document we have said is void.
 
     `grand_total` is read off the bill, never recomputed: it is the figure the
     bill was issued for.
     """
     if not bill:
+        return 0.0
+    if is_cancelled(bill):
         return 0.0
     gross = float(bill.get("grand_total") or 0.0)
     return round(gross - received_against(str(bill.get("id") or "")), 2)
@@ -551,6 +671,10 @@ def previous_balance(boq_id: str, before_ra_no: int,
     "Earlier" is `ra_no <`, never a date and never insertion order. `ra_no` is
     server-assigned and unique across the chain, so it is the only ordering here
     that cannot be made ambiguous by two bills sharing a date.
+
+    **Cancelled bills carry nothing forward**, and that falls out of
+    `outstanding_of()` returning 0.00 for one rather than being a second check
+    here: a nil outstanding is already skipped as settled. One rule, one place.
 
     Returns a **live** figure. The whole point of the caller is that it freezes
     the answer onto the bill it is creating — see `create_ra()`. Nothing that
@@ -622,7 +746,13 @@ def next_ra_no(boq_id: str) -> int:
 
     Chain-scoped, so a revision cannot restart the client's sequence at RA1.
     max+1 rather than len+1 is `proforma._next_ref()`'s rule: a gap must never
-    re-issue a number that has already been on a certified claim.
+    re-issue a number that has already been on a claim the client holds.
+
+    **Cancelled bills are counted here, on purpose.** They are the whole reason
+    max+1 is stated rather than assumed: cancelling RA3 must leave RA3 spent, so
+    the next bill is RA4. `bills_of()` returns every bill in the chain and this
+    reads all of them, which is what makes the number un-reusable by
+    construction rather than by a rule somebody has to remember.
 
     The user never types this. That is what makes "RA5 before RA4" and "two
     RA6s" impossible rather than merely rejected — there is no input to reject.
@@ -754,7 +884,7 @@ def compute_deductions(deductions: list, claim_subtotal: float) -> tuple:
     (rows, total) — every deduction with its `amount` resolved.
 
     A percentage deduction's amount is computed **once, here, and stored**, so
-    the printed document never recomputes it and a certified bill cannot change
+    the printed document never recomputes it and an issued bill cannot change
     its own figures when a constant moves later. Same rule as `supply_rate` on a
     BOQ line and `prior_invoiced` on a proforma.
 
@@ -1066,8 +1196,6 @@ def build_claim(boq_line: dict, qty, rate, prev_qty: float,
         "amount":        round(q * r, 2),
         "balance_qty":   round(approved_qty - float(prev_qty or 0.0) - q, 6),
         "rate_varies":   rate_varies(r, approved_rate),
-        "certified_qty":  None,
-        "certified_rate": None,
     }
 
 
@@ -1183,181 +1311,24 @@ def clean_claims(raw_lines: list, boq: dict, leg: str, prev: dict,
 
 
 # =============================================================================
-# CERTIFICATION — what was CLAIMED and what is ALLOWED are different numbers
+# MUTABILITY — two independent gates on one record
 # =============================================================================
 #
-# Every claim row carries `certified_qty` and `certified_rate` beside its
-# claimed pair, and the bill carries `status` and `certified_on`. Tracked from
-# the start rather than deferred, for the reason the deductions array was:
-# splitting claimed from certified after the print format exists means
-# reworking every balance calculation and every document already issued.
+# A bill's claim is closed to edits by EITHER of two unrelated facts, and it is
+# worth keeping them apart in your head because they answer different questions
+# and neither implies the other:
 #
-# Four rules, and each one is a test:
+#   `claim_is_frozen()`  POSITION IN THE CHAIN. A mid-chain bill cannot be
+#                        edited even as a draft, because `claimed_by_line()`
+#                        sums the whole chain and moving a figure here silently
+#                        restates every downstream balance.
+#   `status_of()`        WHETHER IT HAS LEFT THE BUILDING. An issued bill cannot
+#                        be edited even when it is the latest, because it is a
+#                        document somebody else is holding.
 #
-# 1. **The over-claim block runs on CLAIMED quantity, never on certified.** You
-#    cannot claim beyond the BOQ; what the contractor then certifies is his
-#    decision, not a validation input. `overclaims()` never reads a certified
-#    field — see the test that asserts it.
-# 2. **Uncertified is NOT zero.** `None` means "not yet certified": excluded
-#    from certified totals entirely and reported as "n of m certified".
-#    Summing a blank as zero under-reports receivables, which is the exact
-#    inverse of the error this system was sold to catch.
-# 3. **Certified above claimed WARNS, never blocks** — the same treatment the
-#    rate divergence gets, and for the same reason: it is a real fact about the
-#    bill that somebody should see, not an impossibility.
-# 4. **Certification stays editable ALWAYS, including on a frozen bill.**
-#    Certification lags in the real world: RA3 comes back certified after RA6
-#    has been raised. Freezing the certificate with the claim would make the
-#    field unusable. Freeze the claim, not the certificate — two separate edit
-#    permissions on one record.
-
-def _cert_num(raw):
-    """
-    A certified figure, or `None` for "not yet certified".
-
-    Deliberately NOT `_num(raw, 0.0)`. A blank certified quantity means the
-    contractor has not ruled on that line, and calling that zero states that he
-    allowed nothing — which under-reports what is owed and is the single most
-    expensive mistake available in this module.
-    """
-    if raw is None:
-        return None
-    if isinstance(raw, bool):
-        return None
-    if isinstance(raw, (int, float)):
-        return float(raw)
-    s = str(raw).strip().replace(",", "")
-    if not s:
-        return None
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
-def is_certified(claim: dict) -> bool:
-    """Has this line been ruled on? A quantity of 0.0 counts — 0 is a ruling."""
-    return _cert_num(claim.get("certified_qty")) is not None
-
-
-def certified_amount(claim: dict):
-    """
-    certified_qty x certified_rate, or `None` when the line is not certified.
-
-    The rate falls back to the claimed rate when a quantity is certified but no
-    rate is: certifying a quantity without restating the rate means the claimed
-    rate stands, which is what the contractor's own annexure does.
-    """
-    q = _cert_num(claim.get("certified_qty"))
-    if q is None:
-        return None
-    r = _cert_num(claim.get("certified_rate"))
-    if r is None:
-        r = float(claim.get("rate") or 0.0)
-    return round(q * r, 2)
-
-
-def certification_summary(bill: dict) -> dict:
-    """
-    {certified, total, amount, complete} for one bill.
-
-    `amount` sums ONLY the certified lines. `certified`/`total` is the "n of m"
-    the register reports, and it exists precisely so an uncertified line is
-    visible as unanswered rather than silently contributing zero.
-    """
-    claims = bill.get("claims") or []
-    done = [c for c in claims if is_certified(c)]
-    return {"certified": len(done), "total": len(claims),
-            "amount": round(sum(certified_amount(c) or 0.0 for c in done), 2),
-            "complete": bool(claims) and len(done) == len(claims)}
-
-
-def has_certification(bill: dict) -> bool:
-    """
-    Does this bill carry ANY certification data at all?
-
-    The delete guard's question. A bill that has been certified has been out of
-    the building and acknowledged by the main contractor, and deleting it
-    destroys the only record of what was allowed against what was claimed.
-    """
-    if str(bill.get("certified_on") or "").strip():
-        return True
-    if str(bill.get("status") or "") == "certified":
-        return True
-    return any(is_certified(c) or _cert_num(c.get("certified_rate")) is not None
-               for c in bill.get("claims") or [])
-
-
-def certification_warnings(claims: list) -> list:
-    """
-    Lines certified for MORE than was claimed. A warning, never a block.
-
-    Same treatment as the rate divergence: the contractor is free to allow more
-    than was asked for — a remeasurement can go up — but a certificate above
-    the claim is a fact somebody should see rather than discover in a total.
-    """
-    out = []
-    for c in claims or []:
-        q = _cert_num(c.get("certified_qty"))
-        if q is None:
-            continue
-        claimed = float(c.get("qty") or 0.0)
-        if round(q - claimed, 6) > _QTY_EPSILON:
-            out.append({"item_no": c.get("item_no", ""),
-                        "line_id": c.get("line_id", ""),
-                        "claimed": claimed, "certified": q,
-                        "over": round(q - claimed, 6)})
-    return out
-
-
-def certification_warning_message(v: dict) -> str:
-    q = BQ._fmt_qty
-    return (f"Item {v['item_no']}: {q(v['claimed'])} claimed but "
-            f"{q(v['certified'])} certified — {q(v['over'])} more than was "
-            f"asked for. Allowed, but worth checking.")
-
-
-def bills_certified(boq_id: str) -> tuple:
-    """(n, m) — how many of this project's RA bills carry a full certificate."""
-    rows = bills_of(boq_id)
-    done = sum(1 for _rid, b in rows if certification_summary(b)["complete"])
-    return done, len(rows)
-
-
-def apply_certification(bill: dict, rows: dict, status: str = None,
-                        certified_on: str = None) -> dict:
-    """
-    Write certification onto a bill. **Works on a frozen bill by design.**
-
-    `rows` is {line_id: {"certified_qty": ..., "certified_rate": ...}}. This is
-    the second of the record's two edit permissions and it is deliberately not
-    gated on `claim_is_frozen()`: RA3 is certified after RA6 exists, so gating
-    it would make the field unusable exactly when it is needed.
-
-    It touches ONLY the certified pair, the status and the date. `qty`, `rate`
-    and `amount` — the claim — are never written here, which is what keeps
-    "certifying a frozen bill does not reopen its claim" true by construction
-    rather than by a check.
-    """
-    for c in bill.get("claims") or []:
-        row = rows.get(c.get("line_id"))
-        if row is None:
-            continue
-        if "certified_qty" in row:
-            c["certified_qty"] = _cert_num(row.get("certified_qty"))
-        if "certified_rate" in row:
-            c["certified_rate"] = _cert_num(row.get("certified_rate"))
-
-    if status in STATUSES:
-        bill["status"] = status
-    if certified_on is not None:
-        bill["certified_on"] = str(certified_on or "").strip()
-    return bill
-
-
-# =============================================================================
-# MUTABILITY — the claim freezes, the certificate never does
-# =============================================================================
+# The status gate is reported FIRST wherever both apply, because "you already
+# sent this" is the fact the operator can act on and "a later bill exists" is
+# not the reason they are being stopped.
 
 def is_latest_bill(boq_id: str, ra_id: str) -> bool:
     """Is this the highest-numbered bill in the project's chain?"""
@@ -1379,7 +1350,8 @@ def claim_is_frozen(bill: dict) -> bool:
     and handed to the main contractor. Latest-only bounds the recompute to one
     bill and keeps printed history true.
 
-    The certificate is NOT covered by this. See `apply_certification()`.
+    **This is only half the question.** It says nothing about whether the bill
+    has been issued — `can_edit()` is what asks both.
     """
     if not bill:
         return True
@@ -1399,45 +1371,109 @@ def frozen_reason(bill: dict) -> str:
     return (f"RA{bill.get('ra_no')}'s claim is frozen because {names} "
             f"{'has' if len(later) == 1 else 'have'} been raised against this "
             f"BOQ. Every later bill's balance was calculated from this one, so "
-            f"changing it now would rewrite figures already sent out. "
-            f"Its certification can still be recorded.")
+            f"changing it now would rewrite figures already sent out.")
+
+
+def _receipts_refusal(bill: dict, done: str, doing: str) -> str:
+    """
+    The one sentence that refuses an action because money is filed against the
+    bill. Shared by `can_delete()` and `can_cancel()` so the two cannot drift
+    into describing the same fact two different ways.
+
+    `done` / `doing` are the past participle and the gerund — "deleted" /
+    "deleting it" — passed in rather than derived, because a sentence built by
+    string-surgery on a verb is a sentence nobody can read in the source.
+    """
+    n = receipts_exist_for(str(bill.get("id") or ""))
+    return (
+        f"RA{bill.get('ra_no')} has {n} receipt{'' if n == 1 else 's'} recorded "
+        f"against it totalling {_inr(received_against(str(bill.get('id') or '')))}, "
+        f"so it cannot be {done}. Money has been received against this claim, and "
+        f"{doing} would leave that payment filed against a document that no "
+        f"longer stands. Remove the receipts first if they were entered in error.")
+
+
+def can_edit(bill: dict) -> tuple:
+    """
+    (allowed, reason) — may this bill's CLAIM be edited?
+
+    Both gates, in the order a person can act on:
+
+    1. **Cancelled is final.** A withdrawn bill is locked, and there is no
+       un-cancel anywhere in this module.
+    2. **Issued is closed.** The main contractor is holding it. This is the lock
+       certification used to provide as a side effect of being a status; it is
+       now the status's actual job.
+    3. **Mid-chain is closed** — `claim_is_frozen()`, for the separate reason
+       that editing here restates every later bill's balance.
+    """
+    if not bill:
+        return False, "That RA bill no longer exists."
+    if is_cancelled(bill):
+        return False, cancelled_reason(bill)
+    if is_issued(bill):
+        return False, (
+            f"RA{bill.get('ra_no')} has been issued, so its claim can no longer "
+            f"be edited. The main contractor is holding this document and its "
+            f"figures must go on saying what they said when it was sent. "
+            f"Correct the position in the next claim, or cancel this bill and "
+            f"raise a fresh one.")
+    if claim_is_frozen(bill):
+        return False, frozen_reason(bill)
+    return True, ""
+
+
+def cancelled_reason(bill: dict) -> str:
+    """Why a cancelled bill is locked, naming when and why it was withdrawn."""
+    when = str(bill.get("cancelled_on") or "").strip()
+    why = str(bill.get("cancel_reason") or "").strip()
+    return (f"RA{bill.get('ra_no')} was cancelled"
+            f"{' on ' + when if when else ''}"
+            f"{' — ' + why if why else ''}. A cancelled bill is locked and "
+            f"cannot be un-cancelled: the withdrawal is a fact somebody else "
+            f"has been told about. Raise a new bill instead; it will take the "
+            f"next number, not this one.")
 
 
 def can_delete(bill: dict) -> tuple:
     """
     (allowed, reason) — may this bill be deleted?
 
-    Two conditions, both refusing with a sentence rather than hiding a button:
+    Four conditions, each refusing with a sentence rather than hiding a button:
 
-    - **Only the highest-numbered bill.** After a delete the next bill takes
-      max+1 from what remains, so the sequence stays contiguous and a number
-      the client has already seen is never reissued.
-    - **Never one carrying certification data.** It has been out of the
-      building and acknowledged; deleting it destroys the only record of what
-      was allowed against what was claimed.
     - **Never one with money receipted against it.** A receipt is keyed to the
       bill it pays, so deleting the bill orphans the payment: the money stays
       in the ledger pointing at a document that no longer exists, and it
       silently stops being counted in the balance carried onto the next bill.
-      Cancel the receipts first, deliberately, or leave the bill standing.
+      Checked first because it is the most specific fact and the one with an
+      obvious remedy. It is *mostly* unreachable now that a receipt can only be
+      recorded against an issued bill and an issued bill refuses deletion
+      anyway — kept because a guard that depends on another guard for its
+      correctness is one refactor away from being wrong.
+    - **Never a cancelled one.** Cancelling is how a bill is withdrawn without
+      destroying it; deleting it afterwards would throw away the record of the
+      withdrawal and free the number.
+    - **Never an issued one.** It has left the building. Cancel it instead —
+      that is what cancel is for, and it keeps `ra_no` spent.
+    - **Only the highest-numbered bill**, so removing one cannot leave a gap in
+      the sequence or restate a later bill's balance.
     """
     if not bill:
         return False, "That RA bill no longer exists."
-    n_receipts = receipts_exist_for(str(bill.get("id") or ""))
-    if n_receipts:
+    if receipts_exist_for(str(bill.get("id") or "")):
+        return False, _receipts_refusal(bill, "deleted", "deleting it")
+    if is_cancelled(bill):
         return False, (
-            f"RA{bill.get('ra_no')} has {n_receipts} "
-            f"receipt{'' if n_receipts == 1 else 's'} recorded against it "
-            f"totalling {_inr(received_against(str(bill.get('id') or '')))}, so it "
-            f"cannot be deleted. Deleting it would leave that money filed "
-            f"against a bill that no longer exists. Remove the receipts first "
-            f"if they were entered in error.")
-    if has_certification(bill):
+            f"RA{bill.get('ra_no')} was cancelled, so it cannot be deleted. The "
+            f"cancellation is the record of what was withdrawn and why, and "
+            f"RA{bill.get('ra_no')} stays spent either way — deleting it would "
+            f"destroy the first and free the second.")
+    if is_issued(bill):
         return False, (
-            f"RA{bill.get('ra_no')} carries certification data, so it cannot be "
-            f"deleted. It has been out to the main contractor and his ruling on "
-            f"it is the only record of what was allowed against what was "
-            f"claimed. Correct the position in the next claim instead.")
+            f"RA{bill.get('ra_no')} has been issued, so it cannot be deleted. "
+            f"The main contractor is holding it, and a document that has gone "
+            f"out is withdrawn by cancelling it — which keeps the number spent "
+            f"and records why — not by removing it from our own books.")
     if claim_is_frozen(bill):
         later = [int(b.get("ra_no") or 0)
                  for _rid, b in bills_of(str(bill.get("boq_id") or ""))
@@ -1448,6 +1484,102 @@ def can_delete(bill: dict) -> tuple:
             f"removing RA{bill.get('ra_no')} now would leave a gap in the "
             f"sequence and change every later bill's balance.")
     return True, ""
+
+
+def can_issue(bill: dict) -> tuple:
+    """(allowed, reason) — may this draft be issued to the main contractor?"""
+    if not bill:
+        return False, "That RA bill no longer exists."
+    if is_cancelled(bill):
+        return False, cancelled_reason(bill)
+    if is_issued(bill):
+        return False, (
+            f"RA{bill.get('ra_no')} has already been issued"
+            f"{' on ' + str(bill.get('issued_on')) if bill.get('issued_on') else ''}"
+            f". Issuing it a second time would restate its date without changing "
+            f"anything the main contractor holds.")
+    return True, ""
+
+
+def can_cancel(bill: dict) -> tuple:
+    """
+    (allowed, reason) — may this bill be cancelled?
+
+    A draft or an issued bill may both be cancelled. A **cancelled** one may
+    not: there is no un-cancel and no re-cancel, because either would make the
+    withdrawal something that could be quietly taken back.
+
+    **A bill with receipts against it is refused**, in the same shape and for
+    the same reason `can_delete()` refuses one: cancelling it would state that
+    nothing is owed on a document money has already been paid against, and
+    `outstanding_of()` would drop that payment's bill out of the ledger's
+    arithmetic. Reverse the receipts first, deliberately.
+    """
+    if not bill:
+        return False, "That RA bill no longer exists."
+    if is_cancelled(bill):
+        return False, cancelled_reason(bill)
+    if receipts_exist_for(str(bill.get("id") or "")):
+        return False, _receipts_refusal(bill, "cancelled", "cancelling it")
+    return True, ""
+
+
+def can_receipt(bill: dict) -> tuple:
+    """
+    (allowed, reason) — may money be recorded against this bill?
+
+    **Only against an ISSUED one.** A draft has not been sent to anybody, so
+    there is nothing it could have been paid against; recording money against
+    one would be filing a real payment under a document that does not yet
+    exist, and the payment would then block the draft's own deletion. A
+    cancelled bill has been withdrawn and owes nothing.
+
+    It lives HERE rather than in `receipt.py` for the same import-direction
+    reason `RECEIPT_MODES` does: `receipt.py ──► ra.py` and never the reverse,
+    and `/ra/view` renders the control that states this rule beside the button
+    it disables. One rule, one place, both sides of the arrow.
+    """
+    if not bill:
+        return False, "That RA bill no longer exists."
+    if is_cancelled(bill):
+        return False, (
+            f"RA{bill.get('ra_no')} was cancelled, so no payment can be "
+            f"recorded against it. A withdrawn claim is owed nothing. If money "
+            f"did arrive, it belongs against whichever bill replaced this one.")
+    if not is_issued(bill):
+        return False, (
+            f"RA{bill.get('ra_no')} is still a draft, so no payment can be "
+            f"recorded against it — it has not been sent to the main "
+            f"contractor, so there is nothing for him to have paid. Issue it "
+            f"first, then record the receipt.")
+    return True, ""
+
+
+def apply_issue(bill: dict, on: str = "") -> dict:
+    """
+    Mark a bill issued. Writes `status` and `issued_on` and **nothing else** —
+    no figure on the bill moves, which is what makes "issuing does not restate a
+    claim" true by construction rather than by a check.
+    """
+    bill["status"] = "issued"
+    bill["issued_on"] = str(on or "").strip() or _date.today().isoformat()
+    return bill
+
+
+def apply_cancel(bill: dict, reason: str, on: str = "") -> dict:
+    """
+    Withdraw a bill. Writes `status`, `cancelled_on` and `cancel_reason`, and
+    **nothing else** — every claimed figure stays exactly as issued.
+
+    The bill is not emptied and its quantities are not zeroed. A cancelled bill
+    still prints, carrying its CANCELLED overprint, because it is the record of
+    what was withdrawn; what changes is that `claimed_by_line()` stops counting
+    it and `outstanding_of()` reports nil against it.
+    """
+    bill["status"] = "cancelled"
+    bill["cancelled_on"] = str(on or "").strip() or _date.today().isoformat()
+    bill["cancel_reason"] = str(reason or "").strip()
+    return bill
 
 
 # =============================================================================
@@ -1582,6 +1714,87 @@ RA_STYLES = """
              padding:1rem 1.1rem; margin-bottom:1.2rem; }
   .del-box h2 { margin:0 0 .5rem; font-size:1rem; color:var(--brand); }
   .del-line { font-size:.82rem; line-height:1.6; }
+</style>
+"""
+
+
+# =============================================================================
+# THE PRINTED BILL — the sheet's own layer
+# =============================================================================
+#
+# `/ra/print` renders on the shared A4 sheet (`docsheet.py`), so this stylesheet
+# layers *after* it and introduces **no new font, no new type size and no new
+# border weight** — it uses only the `--fs-*` and `--rule-*` `VIEW_DOC_STYLES`
+# already defines. That is the same restraint `PROFORMA_STYLES`,
+# `INVOICE_STYLES` and `PURCHASE_STYLES` hold to, and it is the reason the four
+# documents read as one office's paperwork.
+#
+# It replaced a page that broke every one of those rules: a `.doc-paper` card in
+# Inter over a slate palette, its own border weights, its own table, and a
+# `.doc-header` rule that silently overrode `VIEW_DOC_STYLES`' class of the same
+# name.
+
+# The columns. Deliberately the SAME EIGHT-COLUMN GEOMETRY as the tax invoice
+# and the purchase order, so `docsheet.sum_row()` and `total_row()` line up
+# against it and the three sheets have the same rhythm. Only two labels differ,
+# and both differ because this document says something the others do not:
+# "Item No" is the BOQ's display label (never a key — DOMAIN.md §2.2), and the
+# quantity is *this bill's* claim rather than a quantity supplied.
+RA_COLUMNS = (("c-sno", "S.No"), ("c-partno", "Item No"),
+              ("c-desc", "Description of Work Executed"), ("c-hsn", "HSN/SAC"),
+              ("c-qty", "Claim Qty"), ("c-unit", "Unit"),
+              ("c-price", "Rate"), ("c-total", "Amount"))
+
+RA_DOC_STYLES = """
+<style>
+  .quotation-doc.ra-doc { position:relative; }
+  .quotation-doc .doc-sub-ra {
+    text-align:center; font-size:var(--fs-sm); color:var(--doc-soft);
+    padding-bottom:2mm;
+  }
+
+  /* The lifecycle overprint. A draft or a cancelled bill must never be
+     mistakable for a live tax invoice, on screen OR on paper, so neither rule
+     sits behind a `@media screen`, and the band forces its background through
+     with print-color-adjust. The watermark is a bordered, coloured word rather
+     than a filled block, so it still reads when a browser is printing with
+     backgrounds off. */
+  .quotation-doc .lc-mark {
+    position:absolute; top:45%; left:50%;
+    transform:translate(-50%,-50%) rotate(-24deg);
+    font-size:5.5rem; font-weight:800; letter-spacing:.35rem;
+    border:6px solid currentColor; border-radius:12px;
+    padding:.35rem 2rem; opacity:.18; pointer-events:none;
+    white-space:nowrap; z-index:2;
+  }
+  .quotation-doc .lc-band {
+    margin:0 0 3mm; padding:2mm 3mm;
+    font-size:var(--fs-sm); font-weight:700; text-align:center;
+    border:1px solid currentColor;
+    print-color-adjust:exact; -webkit-print-color-adjust:exact;
+  }
+  .quotation-doc .lc-draft { color:#b45309; }
+  .quotation-doc .lc-band.lc-draft { background:#fffbeb; }
+  .quotation-doc .lc-cancelled { color:#b91c1c; }
+  .quotation-doc .lc-band.lc-cancelled { background:#fef2f2; }
+
+  /* The carried-balance memo. Framed OUTSIDE `.doc-box`, deliberately: it is a
+     statement about earlier bills, not a charge on this one, and it must not
+     read as part of the tax computation it sits under. */
+  .quotation-doc .memo-box {
+    border:var(--rule-box); margin-top:5mm;
+    print-color-adjust:exact; -webkit-print-color-adjust:exact;
+  }
+  .quotation-doc .memo-row {
+    display:flex; justify-content:space-between; gap:6mm;
+    padding:2px 6px; border-bottom:var(--rule-hair);
+  }
+  .quotation-doc .memo-row.memo-due { font-weight:700; border-bottom:none; }
+  .quotation-doc .memo-amt { font-variant-numeric:tabular-nums; font-weight:700; }
+  .quotation-doc .memo-note {
+    padding:2px 6px; border-top:var(--rule); color:var(--doc-soft);
+    font-size:var(--fs-xs);
+  }
 </style>
 """
 
@@ -2063,7 +2276,11 @@ def _boq_facts(boq: dict, leg: str, ra_no) -> str:
     with two contracts and the next caller free to pick the wrong one. The
     caller passes the number; there is nothing left to sniff.
     """
-    n, m = bills_certified(str(boq.get("id") or ""))
+    rows = bills_of(str(boq.get("id") or ""))
+    live = sum(1 for _rid, b in rows if not is_cancelled(b))
+    void = len(rows) - live
+    run = (f"{live} raised" + (f", {void} cancelled" if void else "")) if rows \
+        else "none yet"
     label = f"RA{int(ra_no or 0)}"       # int() by intent: a pre-formatted
                                          # string is now a loud TypeError here
                                          # rather than a quiet "RARA3" on screen
@@ -2073,7 +2290,7 @@ def _boq_facts(boq: dict, leg: str, ra_no) -> str:
       <div class="ra-fact"><b>BOQ</b><span>{_esc(boq.get("ref"))} &middot; rev {_esc(boq.get("rev_no") or 0)}</span></div>
       <div class="ra-fact"><b>Customer</b><span>{_esc(boq.get("account_name"))}</span></div>
       <div class="ra-fact"><b>This bill</b><span>{_esc(label)} &middot; {_esc(leg)}</span></div>
-      <div class="ra-fact"><b>Certified so far</b><span>{n} of {m} bills</span></div>
+      <div class="ra-fact"><b>Bills on this project</b><span>{_esc(run)}</span></div>
     </div>"""
 
 
@@ -2190,15 +2407,26 @@ def _validate(raw: str, boq: dict, leg: str, prev: dict,
     return claims, raw_lines, ""
 
 
-def certification_status_badge(bill: dict) -> str:
-    summary = certification_summary(bill)
-    c, t = summary["certified"], summary["total"]
-    if c == 0:
-        return '<span class="status-badge cert-none" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">None</span>'
-    elif summary["complete"]:
-        return '<span class="status-badge cert-full" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">Full</span>'
-    else:
-        return f'<span class="status-badge cert-partial" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">Partial ({c}/{t})</span>'
+_STATUS_BADGE_STYLE = ("padding:2px 8px;border-radius:12px;font-size:0.75rem;"
+                       "font-weight:600;")
+
+# Amber for draft, green for issued, red for cancelled — the house severity
+# scale (ABOUT.md §5): amber means *incomplete but working*, red means *this is
+# not a live document*. A draft is amber rather than grey because it is a state
+# somebody has to act on, not a neutral one.
+_STATUS_BADGES = {
+    "draft":     ("Draft",     "#fffbeb", "#b45309", "#fde68a"),
+    "issued":    ("Issued",    "#ecfdf5", "#047857", "#a7f3d0"),
+    "cancelled": ("Cancelled", "#fef2f2", "#b91c1c", "#fecaca"),
+}
+
+
+def status_badge(bill: dict) -> str:
+    """The bill's lifecycle state as a chip. One renderer, used everywhere."""
+    label, bg, fg, border = _STATUS_BADGES[status_of(bill)]
+    return (f'<span class="status-badge st-{status_of(bill)}" '
+            f'style="background:{bg};color:{fg};border:1px solid {border};'
+            f'{_STATUS_BADGE_STYLE}">{label}</span>')
 
 
 @ra_bp.route("/")
@@ -2231,20 +2459,27 @@ def list_ras():
     # Sort so bills for the same BOQ read in ra_no order
     rows.sort(key=lambda kv: (str(kv[1].get("boq_id") or ""), int(kv[1].get("ra_no") or 0)))
 
-    total_claimed = sum(float(b.get("net_payable") or 0.0) for _rid, b in bills.items())
-    total_certified = sum(certification_summary(b)["amount"] for _rid, b in bills.items())
+    # **Cancelled bills are excluded from both tiles.** A withdrawn claim is not
+    # a smaller claim, so it contributes nothing rather than contributing its
+    # figures — the same rule `claimed_by_line()` and `outstanding_of()` follow.
+    # The count of them is still shown, because a total that silently drops
+    # records is a total nobody can reconcile against the table beneath it.
+    live = [b for _rid, b in bills.items() if not is_cancelled(b)]
+    n_void = len(bills) - len(live)
+    total_claimed = sum(float(b.get("net_payable") or 0.0) for b in live)
+    total_outstanding = sum(outstanding_of(b) for b in live)
 
     tiles_html = f"""
     <div class="pipe-tiles">
       <div class="pipe-tile t-open">
         <div class="pt-lbl">Total Claimed Net Payable</div>
         <div class="pt-val">&#8377;&nbsp;{total_claimed:,.0f}</div>
-        <div class="pt-sub">{len(bills)} running account bill{"s" if len(bills) != 1 else ""}</div>
+        <div class="pt-sub">{len(live)} live running account bill{"s" if len(live) != 1 else ""}{f" &middot; {n_void} cancelled, excluded" if n_void else ""}</div>
       </div>
       <div class="pipe-tile">
-        <div class="pt-lbl">Total Certified Amount</div>
-        <div class="pt-val">&#8377;&nbsp;{total_certified:,.0f}</div>
-        <div class="pt-sub">certified across all bills</div>
+        <div class="pt-lbl">Total Outstanding</div>
+        <div class="pt-val">&#8377;&nbsp;{total_outstanding:,.0f}</div>
+        <div class="pt-sub">still unpaid across the live bills</div>
       </div>
     </div>"""
 
@@ -2254,26 +2489,31 @@ def list_ras():
             boq_id = str(b.get("boq_id") or "")
             is_latest = is_latest_bill(boq_id, rid)
             latest_badge = '<span style="background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;padding:2px 6px;border-radius:10px;font-size:0.7rem;font-weight:600;">Latest</span>' if is_latest else ""
-            summary = certification_summary(b)
-            cert_badge = certification_status_badge(b)
             view_url = url_for("ra.view_ra", id=rid)
-            cert_url = url_for("ra.certify_ra", id=rid)
             print_url = url_for("ra.print_ra", id=rid)
             boq_link = url_for("boq.view_boq", id=boq_id) if boq_id in STORE.get("boqs", {}) else "#"
 
+            # A cancelled bill's money reads as a dash, not as a figure. Printing
+            # its net payable in the same column as the live ones invites the
+            # reader to add the column up and get a number the tile above does
+            # not agree with.
+            void = is_cancelled(b)
+            net_cell = "&mdash;" if void else \
+                f"&#8377;&nbsp;{float(b.get('net_payable') or 0.0):,.2f}"
+            out_cell = "&mdash;" if void else f"&#8377;&nbsp;{outstanding_of(b):,.2f}"
+
             table_rows_html += f"""
-            <tr>
+            <tr{' style="opacity:.6;"' if void else ''}>
               <td class="td-ref"><a href="{view_url}">RA{_esc(b.get('ra_no'))}</a> <span style="font-size:0.75rem;color:var(--muted);">({_esc(b.get('ref'))})</span></td>
               <td><span class="fh-sec">{_esc(b.get('leg'))}</span></td>
               <td class="td-muted">{_esc(b.get('date'))}</td>
               <td><a href="{boq_link}">{_esc(b.get('boq_ref'))}</a></td>
-              <td class="td-num" style="font-weight:600;">&#8377;&nbsp;{float(b.get('net_payable') or 0.0):,.2f}</td>
-              <td class="td-num">&#8377;&nbsp;{summary['amount']:,.2f}</td>
-              <td>{cert_badge}</td>
+              <td class="td-num" style="font-weight:600;">{net_cell}</td>
+              <td class="td-num">{out_cell}</td>
+              <td>{status_badge(b)}</td>
               <td>{latest_badge}</td>
               <td>
                 <a href="{view_url}" class="btn-view">&#128269; View</a>
-                <a href="{cert_url}" class="btn-view" style="margin-left:0.3rem;">&#9998; Certify</a>
                 <a href="{print_url}" class="btn-view" style="margin-left:0.3rem;">&#128438; Print</a>
               </td>
             </tr>"""
@@ -2282,8 +2522,8 @@ def list_ras():
         <div class="table-wrap"><table>
           <thead><tr>
             <th>RA Bill</th><th>Leg</th><th>Date</th><th>BOQ Ref</th>
-            <th style="text-align:right;">Claimed Net</th><th style="text-align:right;">Certified Amount</th>
-            <th>Certification</th><th>Latest?</th><th></th>
+            <th style="text-align:right;">Claimed Net</th><th style="text-align:right;">Outstanding</th>
+            <th>Status</th><th>Latest?</th><th></th>
           </tr></thead>
           <tbody>{table_rows_html}</tbody>
         </table></div>"""
@@ -2338,122 +2578,169 @@ def list_ras():
     return BQ._page(template)
 
 
-@ra_bp.route("/certify/<id>", methods=["GET", "POST"])
-def certify_ra(id: str):
-    """
-    Record certification data from the main contractor.
+# =============================================================================
+# THE LIFECYCLE ROUTES
+# =============================================================================
+#
+# Both follow `delete_ra()`'s shape exactly, which is the shape `9d060ee` set
+# for every state-changing route in this app: **the GET renders a confirmation
+# page and mutates nothing; the change happens only inside the POST branch.**
+#
+# ⚠ There is deliberately **no `onclick="return confirm(...)"` anywhere here.**
+#   A browser confirm() is not a guard — it never runs for a link-prefetching
+#   browser, a crawler, a chat client unfurling a pasted URL, or the back
+#   button, and each of those issues a plain GET. That is exactly what
+#   `9d060ee` removed from three delete routes, and re-introducing it on a
+#   route that issues or voids a tax invoice would be worse than where it was.
+#
+# ABOUT.md §7.9f's standing rule is written for delete routes and the `url_map`
+# sweep only walks rules whose path contains "delete", so **neither of these is
+# covered by it**. Each therefore ships its own hand-written test asserting a
+# GET leaves the bill's status unchanged — `test_a_get_on_issue_changes_nothing`
+# and `test_a_get_on_cancel_changes_nothing`.
 
-    Editable ALWAYS, including on bills that are not the latest (the contractor
-    certifies late).
+def _confirm_page(title: str, heading: str, body: str, action: str,
+                  submit_label: str, back_url: str, extra: str = "") -> str:
+    """The confirmation page both lifecycle routes render on a GET."""
+    return _shell(title, f"""
+  <div class="page-top"><h1>{heading}</h1></div>
+  <div class="del-box">
+    <div class="del-line">{body}</div>
+  </div>
+  <form method="POST" action="{action}" style="display:flex;gap:.7rem;align-items:flex-end;flex-wrap:wrap;">
+    {extra}
+    <button type="submit" class="btn">{submit_label}</button>
+    <a href="{back_url}" class="btn btn-ghost">Go back</a>
+  </form>""")
+
+
+@ra_bp.route("/issue/<id>", methods=["GET", "POST"])
+def issue_ra(id: str):
+    """
+    Issue a draft bill to the main contractor — the point the lock comes down.
+
+    After this the claim cannot be edited and the bill cannot be deleted; the
+    only way back is a cancellation, which keeps `ra_no` spent. That is the
+    whole reason this is a deliberate act with its own confirmation rather than
+    a status dropdown: it is the moment the document stops being ours.
     """
     bill = STORE["ra_bills"].get(id)
     if not bill:
-        return redirect(url_for("ra.list_ras", msg="That RA bill no longer exists.", type="error"))
+        return redirect(url_for("ra.list_ras",
+                                msg="That RA bill no longer exists.", type="error"))
 
-    boq_id = str(bill.get("boq_id") or "")
-    claims = bill.get("claims") or []
-    status_val = bill.get("status") or "draft"
-    cert_on_val = bill.get("certified_on") or ""
+    allowed, why = can_issue(bill)
+    if not allowed:
+        return redirect(url_for("ra.view_ra", id=id, msg=why, type="error"))
 
     if request.method == "POST":
-        status_val = (request.form.get("status") or status_val).strip()
-        cert_on_val = (request.form.get("certified_on") or "").strip()
+        apply_issue(bill, on=(request.form.get("issued_on") or "").strip())
+        return redirect(url_for("ra.view_ra", id=id,
+                                msg=f"RA{bill.get('ra_no')} issued.",
+                                type="success"))
 
-        rows = {}
-        for c in claims:
-            lid = c.get("line_id", "")
-            if not lid:
-                continue
-            raw_cq = request.form.get(f"cert_qty_{lid}")
-            raw_cr = request.form.get(f"cert_rate_{lid}")
-            rows[lid] = {
-                "certified_qty": _cert_num(raw_cq),
-                "certified_rate": _cert_num(raw_cr)
-            }
+    n_lines = len(bill.get("claims") or [])
+    today = _date.today().isoformat()
+    return _confirm_page(
+        title=f"Issue RA{bill.get('ra_no')}",
+        heading=f"Issue <span>RA{_esc(bill.get('ra_no'))}</span>",
+        body=f"""
+      You are about to issue <b>RA{_esc(bill.get('ra_no'))}</b>
+      ({_esc(bill.get('ref'))}, {_esc(bill.get('leg'))}) against
+      {_esc(bill.get('boq_ref'))}. It claims
+      <b>{n_lines} line{"" if n_lines == 1 else "s"}</b> totalling
+      <b>{_inr(bill.get('grand_total') or 0.0)}</b>.<br/><br/>
+      Once issued, <b>its claim can no longer be edited and it cannot be
+      deleted</b>. Its printed document drops the DRAFT marker, and money may be
+      recorded against it. To withdraw it afterwards you cancel it, which keeps
+      the number <b>RA{_esc(bill.get('ra_no'))}</b> spent &mdash; the next bill
+      will be RA{int(bill.get('ra_no') or 0) + 1} either way.""",
+        action=url_for("ra.issue_ra", id=id),
+        submit_label=f"Issue RA{_esc(bill.get('ra_no'))}",
+        back_url=url_for("ra.view_ra", id=id),
+        extra=f"""
+    <div class="form-group" style="margin:0;"><label for="issued_on">Issued on</label>
+      <input type="date" id="issued_on" name="issued_on" value="{_esc(today)}"/></div>""")
 
-        apply_certification(bill, rows, status=status_val, certified_on=cert_on_val)
 
-        # Check for warnings (certified > claimed)
-        warns = certification_warnings(bill.get("claims") or [])
-        msg = f"Certification saved for RA{bill.get('ra_no')}."
-        msg_type = "success"
-        if warns:
-            warn_txt = " ".join(certification_warning_message(w) for w in warns[:3])
-            msg += f" Note: {warn_txt}"
+@ra_bp.route("/cancel/<id>", methods=["GET", "POST"])
+def cancel_ra(id: str):
+    """
+    Withdraw a bill. **There is no route back**, and that is the point.
 
-        return redirect(url_for("ra.view_ra", id=id, msg=msg, type=msg_type))
+    Cancelling is not deleting. The record stays, its figures stay exactly as
+    issued, the document still prints (over a CANCELLED overprint), and
+    `ra_no` stays spent — cancelled RA3 is still RA3 and the next bill is RA4,
+    the same reasoning that stops a GST serial being reissued.
 
-    # GET form
-    rows_html = ""
-    for c in claims:
-        lid = c.get("line_id", "")
-        snap = BQ._item_no(c.get("item_no"))
-        cq = c.get("certified_qty")
-        cr = c.get("certified_rate")
-        cq_str = "" if cq is None else f"{float(cq):g}"
-        cr_str = "" if cr is None else f"{float(cr):g}"
-        claimed_q = float(c.get("qty") or 0.0)
-        claimed_r = float(c.get("rate") or 0.0)
+    What changes is arithmetic: `claimed_by_line()` stops counting it, so the
+    quantity it claimed goes back onto every line's balance, and
+    `outstanding_of()` reports nil against it so it leaves the ledger's totals.
+    """
+    bill = STORE["ra_bills"].get(id)
+    if not bill:
+        return redirect(url_for("ra.list_ras",
+                                msg="That RA bill no longer exists.", type="error"))
 
-        # Variance calculation if certified_qty is present
-        diff_str = "&mdash;"
-        if cq is not None:
-            diff = float(cq) - claimed_q
-            diff_str = f"{diff:+.2f}" if abs(diff) > 1e-6 else "="
+    allowed, why = can_cancel(bill)
+    if not allowed:
+        return redirect(url_for("ra.view_ra", id=id, msg=why, type="error"))
 
-        rows_html += f"""
-        <tr>
-          <td class="cl-no">{_esc(snap)}</td>
-          <td class="cl-desc">{_esc(c.get("description"))[:140]}</td>
-          <td class="cl-unit">{_esc(c.get("unit"))}</td>
-          <td class="cl-num">{BQ._fmt_qty(claimed_q)}</td>
-          <td class="cl-num">{_inr(claimed_r)}</td>
-          <td class="cl-amt">{_inr(c.get("amount") or 0.0)}</td>
-          <td><input type="text" name="cert_qty_{_esc(lid)}" value="{_esc(cq_str)}" placeholder="blank = uncertified" style="width:110px;padding:3px 6px;font-size:0.85rem;"/></td>
-          <td><input type="text" name="cert_rate_{_esc(lid)}" value="{_esc(cr_str)}" placeholder="blank = claimed rate" style="width:110px;padding:3px 6px;font-size:0.85rem;"/></td>
-          <td class="cl-num" style="font-weight:600;">{diff_str}</td>
-        </tr>"""
+    error = ""
+    if request.method == "POST":
+        reason = (request.form.get("cancel_reason") or "").strip()
+        if not reason:
+            # A cancellation with no reason is a hole in the record six months
+            # later, when the only remaining question is why the number is
+            # missing from the run. Required, and refused in words.
+            error = ("Say why this bill is being cancelled. A cancelled RA "
+                     "number stays spent forever, so the reason is the only "
+                     "thing that will explain the gap later.")
+        else:
+            apply_cancel(bill, reason,
+                         on=(request.form.get("cancelled_on") or "").strip())
+            return redirect(url_for("ra.view_ra", id=id,
+                                    msg=f"RA{bill.get('ra_no')} cancelled.",
+                                    type="success"))
 
-    st_opts = "".join(f'<option value="{st}"{" selected" if st == status_val else ""}>{st.title()}</option>' for st in STATUSES)
-
-    return _shell(f"Certify RA{bill.get('ra_no')}", f"""
-  <div class="page-top">
-    <h1>Certify <span>RA{_esc(bill.get('ra_no'))}</span></h1>
-    <div><a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592; View Bill</a></div>
+    n_lines = len(bill.get("claims") or [])
+    today = _date.today().isoformat()
+    state = "issued" if is_issued(bill) else "a draft"
+    return _shell(f"Cancel RA{bill.get('ra_no')}", f"""
+  <div class="page-top"><h1>Cancel <span>RA{_esc(bill.get('ra_no'))}</span></h1></div>
+  {_alert(error)}
+  <div class="del-box">
+    <h2>&#9888; This cannot be undone</h2>
+    <div class="del-line">
+      You are about to cancel <b>RA{_esc(bill.get('ra_no'))}</b>
+      ({_esc(bill.get('ref'))}, {_esc(bill.get('leg'))}), currently {state},
+      raised on {_esc(bill.get('date'))} against {_esc(bill.get('boq_ref'))}.
+      It claims <b>{n_lines} line{"" if n_lines == 1 else "s"}</b> totalling
+      <b>{_inr(bill.get('grand_total') or 0.0)}</b>.<br/><br/>
+      The bill is <b>not deleted</b>. It keeps its figures, still prints as a
+      record with a CANCELLED overprint, and <b>keeps the number
+      RA{_esc(bill.get('ra_no'))}</b> &mdash; the next bill will be
+      RA{int(bill.get('ra_no') or 0) + 1}, exactly as if this one still stood.
+      <br/><br/>
+      What changes: the quantities it claimed go <b>back onto the balance</b> of
+      every line, and it drops out of every total and out of outstanding.
+      <b>There is no un-cancel.</b>
+    </div>
   </div>
-  <form method="POST" action="{url_for('ra.certify_ra', id=id)}">
-    <div class="ra-meta">
-      <div class="ra-fact"><b>Ref</b><span>{_esc(bill.get('ref'))}</span></div>
-      <div class="ra-fact"><b>BOQ</b><span>{_esc(bill.get('boq_ref'))}</span></div>
-      <div class="ra-fact"><b>Project</b><span>{_esc(bill.get('project_name'))}</span></div>
-      <div class="ra-fact"><b>Status</b>
-        <span><select name="status" style="padding:2px 6px;font-size:0.85rem;">{st_opts}</select></span>
-      </div>
-      <div class="ra-fact"><b>Certified Date</b>
-        <span><input type="date" name="certified_on" value="{_esc(cert_on_val)}" style="padding:2px 6px;font-size:0.85rem;"/></span>
+  <form method="POST" action="{url_for('ra.cancel_ra', id=id)}">
+    <div class="form-section">
+      <div class="fg2">
+        <div class="form-group"><label for="cancel_reason">Why is it being cancelled?</label>
+          <input type="text" id="cancel_reason" name="cancel_reason"
+                 value="{_esc(request.form.get('cancel_reason') or '')}"
+                 placeholder="e.g. quantities remeasured, superseded by RA4"/></div>
+        <div class="form-group"><label for="cancelled_on">Cancelled on</label>
+          <input type="date" id="cancelled_on" name="cancelled_on" value="{_esc(today)}"/></div>
       </div>
     </div>
-    <div class="form-section" style="margin-top:1rem;">
-      <div class="section-title">&#9998; Certified Quantities &amp; Rates</div>
-      <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.8rem;">
-        Blank certified quantity means <em>not yet ruled on</em>. A typed <code>0</code> means <em>certified at zero</em>.
-      </p>
-      <div class="cl-wrap"><table class="claims">
-        <thead><tr>
-          <th>Item</th><th>Description</th><th>Unit</th>
-          <th style="text-align:right;">Claimed Qty</th>
-          <th style="text-align:right;">Claimed Rate</th>
-          <th style="text-align:right;">Claimed Amount</th>
-          <th>Certified Qty</th>
-          <th>Certified Rate</th>
-          <th style="text-align:right;">Variance</th>
-        </tr></thead>
-        <tbody>{rows_html}</tbody>
-      </table></div>
-      <div style="margin-top:1.2rem;display:flex;gap:0.8rem;">
-        <button type="submit" class="btn">Save Certification</button>
-        <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">Cancel</a>
-      </div>
+    <div style="display:flex;gap:.7rem;">
+      <button type="submit" class="btn">Cancel RA{_esc(bill.get('ra_no'))}</button>
+      <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">Keep it</a>
     </div>
   </form>""")
 
@@ -2626,7 +2913,11 @@ def create_ra():
                 #   CLIENT_CHANGES.md item 8 and §3 carry the open question.
                 "prev_balance": prev_balance,
                 "prev_balance_refs": prev_balance_refs,
-                "status": "draft", "certified_on": "",
+                # A new bill is a DRAFT. It is editable, deletable and prints
+                # with a DRAFT marker until somebody deliberately issues it at
+                # `/ra/issue/<id>` — the lock comes down there, not here.
+                "status": "draft",
+                "issued_on": "", "cancelled_on": "", "cancel_reason": "",
                 "notes": notes_val,
                 "company_branch": "", "auth_signatory": "",
             }
@@ -2646,24 +2937,28 @@ def create_ra():
 @ra_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_ra(id: str):
     """
-    Edit a bill's CLAIM — allowed only while it is the latest bill for its BOQ.
+    Edit a bill's CLAIM — allowed only while it is a DRAFT and the latest bill
+    for its BOQ.
 
-    `claimed_by_line()` sums the whole chain, so editing a mid-chain bill
-    silently changes every downstream balance, including ones already printed
-    and handed to the main contractor. Latest-only bounds the recompute to one
-    bill and keeps printed history true.
+    Two independent gates, both in `can_edit()`:
 
-    The certificate is a separate permission and is NOT gated here — see
-    `apply_certification()`. Its entry UI is step 3.
+    - **Status.** An issued bill is a document the main contractor is holding
+      and a cancelled one is withdrawn; neither may have its figures moved.
+      This is the lock that used to fall out of certification being a status,
+      rebuilt as its own thing.
+    - **Position.** `claimed_by_line()` sums the whole chain, so editing a
+      mid-chain bill silently changes every downstream balance, including ones
+      already printed and handed over. Latest-only bounds the recompute to one
+      bill and keeps printed history true.
     """
     bill = STORE["ra_bills"].get(id)
     if not bill:
         return redirect(url_for("ra.create_ra",
                                 msg="That RA bill no longer exists.", type="error"))
 
-    if claim_is_frozen(bill):
-        return redirect(url_for("ra.view_ra", id=id,
-                                msg=frozen_reason(bill), type="error"))
+    allowed, why = can_edit(bill)
+    if not allowed:
+        return redirect(url_for("ra.view_ra", id=id, msg=why, type="error"))
 
     boq_id = str(bill.get("boq_id") or "")
     boq = STORE["boqs"].get(boq_id)
@@ -2766,8 +3061,6 @@ def view_ra(id: str):
 
     boq_id = str(bill.get("boq_id") or "")
     live = approved_labels(boq_id)
-    frozen = claim_is_frozen(bill)
-    cert = certification_summary(bill)
 
     rows = []
     for c in bill.get("claims") or []:
@@ -2779,7 +3072,6 @@ def view_ra(id: str):
         moved = (f' <span class="fh-sec" title="Renumbered by a later BOQ '
                  f'revision">(now {_esc(now)})</span>') if now and now != snap else ""
         warn = ' &#9888;' if c.get("rate_varies") else ""
-        cq = _cert_num(c.get("certified_qty"))
         rows.append(
             f'<tr><td class="cl-no">{_esc(snap)}{moved}</td>'
             f'<td class="cl-desc">{_esc(c.get("description"))[:160]}</td>'
@@ -2789,7 +3081,6 @@ def view_ra(id: str):
             f'<td class="cl-num">{_qty(c.get("qty"))}</td>'
             f'<td class="cl-num">{_inr(c.get("rate") or 0.0)}{warn}</td>'
             f'<td class="cl-num">{_qty(c.get("balance_qty"))}</td>'
-            f'<td class="cl-num">{"&mdash;" if cq is None else _qty(cq)}</td>'
             f'<td class="cl-amt">{_inr(c.get("amount") or 0.0)}</td></tr>')
 
     varies = sum(1 for c in bill.get("claims") or [] if c.get("rate_varies"))
@@ -2802,18 +3093,48 @@ def view_ra(id: str):
             f'rates legitimately move on approved variations &mdash; and is '
             f'recorded on the bill rather than blocked.</span></div>')
 
-    frozen_html = (f'<div class="frozen-note"><span>&#128274;</span>'
-                   f'<span>{_esc(frozen_reason(bill))}</span></div>') if frozen else ""
+    # The lock notice. Whichever gate is shut, the reason is stated in words at
+    # the top of the page rather than being left to a greyed-out button — a
+    # control that vanishes teaches nothing about why.
+    can_ed, edit_why = can_edit(bill)
+    lock_html = (f'<div class="frozen-note"><span>&#128274;</span>'
+                 f'<span>{_esc(edit_why)}</span></div>') if not can_ed else ""
 
-    allowed, why = can_delete(bill)
-    del_btn = (f'<a class="btn btn-ghost" href="{url_for("ra.delete_ra", id=id)}">'
-               f'Delete</a>') if allowed else (
-        f'<span class="btn btn-ghost" style="opacity:.55;cursor:not-allowed;" '
-        f'title="{_esc(why)}">Delete</span>')
-    edit_btn = ("" if frozen else
-                f'<a class="btn btn-ghost" href="{url_for("ra.edit_ra", id=id)}">Edit claim</a>')
-    cert_btn = f'<a class="btn btn-ghost" href="{url_for("ra.certify_ra", id=id)}">&#9998; Certify</a>'
+    def _gated(label: str, endpoint: str, allowed: bool, why: str) -> str:
+        """
+        A control that is **always present**, and carries its refusal when it is
+        not available. The house rule: refuse with the reason on the control
+        rather than hiding it, because a button that vanishes teaches nothing
+        about why it went.
+        """
+        if allowed:
+            return f'<a class="btn btn-ghost" href="{url_for(endpoint, id=id)}">{label}</a>'
+        return (f'<span class="btn btn-ghost" style="opacity:.55;cursor:not-allowed;" '
+                f'title="{_esc(why)}">{label}</span>')
+
+    del_allowed, del_why = can_delete(bill)
+    iss_allowed, iss_why = can_issue(bill)
+    can_allowed, can_why = can_cancel(bill)
+
+    del_btn = _gated("Delete", "ra.delete_ra", del_allowed, del_why)
+    edit_btn = _gated("Edit claim", "ra.edit_ra", can_ed, edit_why)
+    issue_btn = _gated("&#10003; Issue", "ra.issue_ra", iss_allowed, iss_why)
+    cancel_btn = _gated("&#10007; Cancel", "ra.cancel_ra", can_allowed, can_why)
     print_btn = f'<a class="btn" href="{url_for("ra.print_ra", id=id)}" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Tax Invoice</a>'
+
+    # The cancellation band. Loud, at the top, and it names the reason — a
+    # cancelled bill that looks like a live one on screen is how somebody sends
+    # a withdrawn claim a second time.
+    cancelled_html = ""
+    if is_cancelled(bill):
+        cancelled_html = (
+            f'<div class="alert error"><b>RA{_esc(bill.get("ra_no"))} is '
+            f'cancelled.</b> Withdrawn on '
+            f'{_esc(bill.get("cancelled_on") or "an unrecorded date")}'
+            f'{" &mdash; " + _esc(bill.get("cancel_reason")) if bill.get("cancel_reason") else ""}. '
+            f'Its quantities have been released back onto the BOQ balances and '
+            f'it is excluded from every total. The number RA{_esc(bill.get("ra_no"))} '
+            f'stays spent and is never reissued.</div>')
 
     # ── Receipts against this bill ──────────────────────────────────────────
     #
@@ -2837,6 +3158,19 @@ def view_ra(id: str):
         for rid, r in rc_rows)
     rc_empty = ('<tr><td colspan="6" style="color:var(--muted);">'
                 'Nothing received against this bill yet.</td></tr>')
+
+    # **Money is only ever received against an ISSUED bill.** A draft has not
+    # been sent, so nothing can have been paid against it; a cancelled one has
+    # been withdrawn. `receipt.new_receipt()` refuses both at the route — this
+    # is the same rule stated on the control, so the operator is told before
+    # clicking rather than after. The button is disabled, never hidden.
+    if is_issued(bill):
+        rc_add_btn = (f'<a class="btn" href="{url_for("receipt.new_receipt", ra=id)}">'
+                      f'&#43; Record a payment</a>')
+    else:
+        rc_add_btn = (
+            f'<span class="btn" style="opacity:.55;cursor:not-allowed;" '
+            f'title="{_esc(can_receipt(bill)[1])}">&#43; Record a payment</span>')
 
     # The drift notice. A receipt corrected after a later bill froze its effect
     # does not restate that bill — this says so rather than letting the two
@@ -2868,11 +3202,12 @@ def view_ra(id: str):
     <h1>RA{_esc(bill.get('ra_no'))} <span>&middot; {_esc(bill.get('leg'))}</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.view_boq', id=boq_id)}" class="btn btn-ghost">&#8592; BOQ</a>
-      {edit_btn}{cert_btn}{print_btn}{del_btn}
+      {edit_btn}{issue_btn}{cancel_btn}{print_btn}{del_btn}
     </div>
   </div>
   {_flash()}
-  {frozen_html}
+  {cancelled_html}
+  {lock_html}
   {rate_note}
   {drift_note}
   <div class="ra-meta">
@@ -2880,8 +3215,8 @@ def view_ra(id: str):
     <div class="ra-fact"><b>Date</b><span>{_esc(bill.get('date'))}</span></div>
     <div class="ra-fact"><b>Against</b><span>{_esc(bill.get('boq_ref'))} &middot; rev {_esc(bill.get('boq_rev_no'))}</span></div>
     <div class="ra-fact"><b>Project</b><span>{_esc(bill.get('project_name'))}</span></div>
-    <div class="ra-fact"><b>Status</b><span>{_esc(bill.get('status') or 'draft')}</span></div>
-    <div class="ra-fact"><b>Certified</b><span>{cert['certified']} of {cert['total']} lines</span></div>
+    <div class="ra-fact"><b>Status</b><span>{status_badge(bill)}</span></div>
+    <div class="ra-fact"><b>{"Cancelled on" if is_cancelled(bill) else "Issued on"}</b><span>{_esc((bill.get('cancelled_on') if is_cancelled(bill) else bill.get('issued_on')) or '') or "&mdash;"}</span></div>
   </div>
   <div class="form-section">
     <div class="section-title">&#128200; Claim</div>
@@ -2893,7 +3228,6 @@ def view_ra(id: str):
         <th style="text-align:right;">This claim</th>
         <th style="text-align:right;">Rate</th>
         <th style="text-align:right;">Balance</th>
-        <th style="text-align:right;">Certified</th>
         <th style="text-align:right;">Amount</th>
       </tr></thead>
       <tbody>{"".join(rows)}</tbody>
@@ -2924,7 +3258,7 @@ def view_ra(id: str):
       {pb_html}
     </div>
     <div style="margin-top:.8rem;">
-      <a class="btn" href="{url_for('receipt.new_receipt', ra=id)}">&#43; Record a payment</a>
+      {rc_add_btn}
       <a class="btn btn-ghost" href="{url_for('receipt.list_receipts', boq=boq_id)}">Project ledger</a>
     </div>
     <p style="font-size:.75rem;color:var(--muted);margin-top:.6rem;">
@@ -2944,16 +3278,41 @@ def print_ra(id: str):
     """
     The printed RA bill tax invoice document.
 
-    Modeled directly on RA2.pdf (DOMAIN.md §4).
-    Carries TAX INVOICE header, seller & buyer GSTINs, PO/WO references,
-    per-line HSN/SAC codes, CGST/SGST/IGST breakdown, Rounding Off,
-    Grand Total, Amount in Words, and Bank details.
+    Modeled on the client's as-submitted RA2.pdf (DOMAIN.md §4), and rendered
+    **on the same A4 sheet as every other document this office issues** —
+    `docsheet.py` supplies the letterhead, the party block, the items-table
+    shell, the totals rows, the amount in words, the bank block and the
+    signature panel. It used to carry a layout entirely of its own (a
+    `.doc-paper` card in Inter over a slate palette) which matched nothing else
+    the client receives; the sheet is the fix, and the change is measured by
+    `tests/test_print_golden.py`.
+
+    What is **not** shared, and stays here because it is this chain's:
+
+    - the two independent series — a Tax Invoice No. and an RA Bill No. on one
+      page, counting separately (DOMAIN.md §4.2);
+    - **per-line HSN/SAC**, snapshotted onto each claim row, and the per-slab
+      CGST/SGST/IGST block computed off the rate each row stores. That is the
+      difference the `invoice.py` prohibition rests on, and folding it into the
+      shared layer would have smuggled the coupling back in (ABOUT.md §2d);
+    - the sparse table — **only claimed lines**, with a parent specification
+      line printed above its sub-items carrying no quantity and no rate
+      (DOMAIN.md §4.6);
+    - the previous-balance memo, below the Grand Total and outside the tax
+      computation;
+    - the DRAFT / CANCELLED overprint.
 
     **Every value on this page comes from the bill's own record.** That is the
     whole point of the snapshot: an issued tax invoice must render identically
     after the BOQ it was measured against is revised. The only thing read from
     the live BOQ is the specification-header *relation* — see the line table
     below — and `test_ra_print_immutability.py` asserts the property end to end.
+
+    ⚠ **Place of supply is still absent and is not to be added here.** It is a
+    Rule 46 field and its absence is real, but it decides CGST+SGST against
+    IGST and that determination is pending the client's CA — ABOUT.md §7 gap
+    15, CLIENT_CHANGES.md §3.1. Rendering this document on the statutory sheet
+    does not make the question answered.
     """
     bill = STORE["ra_bills"].get(id)
     if not bill:
@@ -2998,6 +3357,36 @@ def print_ra(id: str):
     # `quotation._amount_in_words()` already returns its own "INR " prefix —
     # the document printed "INR INR Nine Lakh …" until this stopped adding one.
     words = _amount_in_words(grand_total)
+
+    # ── The lifecycle overprint ────────────────────────────────────────────
+    #
+    # **Only an ISSUED bill prints clean.** The other two states each get a
+    # diagonal watermark and a band under the title, and both are `@media print`
+    # -visible on purpose: the entire risk here is a working copy or a withdrawn
+    # claim reaching the main contractor's desk looking like a live tax invoice.
+    #
+    # `print-color-adjust:exact` on the band, because a browser with backgrounds
+    # switched off would otherwise print the paper's most important sentence as
+    # black text on white — indistinguishable from the document body. The
+    # watermark is drawn with a border and a colour rather than a fill so it
+    # survives that setting regardless.
+    status = status_of(bill)
+    overprint_html = ""
+    if status != "issued":
+        if status == "cancelled":
+            mark = "CANCELLED"
+            band = (f"This bill was cancelled"
+                    f"{' on ' + _esc(bill.get('cancelled_on')) if bill.get('cancelled_on') else ''}"
+                    f"{' &mdash; ' + _esc(bill.get('cancel_reason')) if bill.get('cancel_reason') else ''}. "
+                    f"It is not a demand for payment. The number "
+                    f"RA{_esc(bill.get('ra_no'))} is not reissued.")
+        else:
+            mark = "DRAFT"
+            band = ("This is a DRAFT and has not been issued. Its figures may "
+                    "still change and it is not a demand for payment.")
+        overprint_html = f"""
+        <div class="lc-mark lc-{status}">{mark}</div>
+        <div class="lc-band lc-{status}">{band}</div>"""
 
     # References
     tax_inv_ref = bill.get("tax_invoice_ref") or bill.get("ref") or f"SF/RA/{bill.get('fy') or '26-27'}/{int(bill.get('ra_no') or 1):04d}"
@@ -3083,42 +3472,48 @@ def print_ra(id: str):
             # same paragraph in full, and an ellipsis in the middle of a
             # specification clause on a tax invoice is a document that says
             # something other than what was agreed.
+            #
+            # `.row-assembly` is the sheet's own class for a row that heads a
+            # group, so a specification clause looks here exactly like an
+            # assembly does on a tax invoice. It carries **no quantity and no
+            # rate** (DOMAIN.md §2.2): it is a heading with legal weight, not a
+            # billable line, and the six numeric columns are spanned rather
+            # than left as a row of blanks that reads as missing data.
             table_rows_html += f"""
-                <tr style="background:#f8fafc;font-weight:700;">
-                  <td style="text-align:center;"></td>
-                  <td style="font-weight:700;color:var(--navy);">{_esc(BQ._item_no(hdr.get("item_no")))}</td>
-                  <td colspan="6" style="font-weight:700;color:var(--navy);">{_esc((hdr.get("description") or "").strip())}</td>
-                </tr>"""
+        <tr class="row-assembly">
+          <td class="c-sno"></td>
+          <td class="c-partno">{_esc(BQ._item_no(hdr.get("item_no")))}</td>
+          <td colspan="6" class="c-desc">{_esc((hdr.get("description") or "").strip())}</td>
+        </tr>"""
         last_header_key = header_key
 
         hsn_sac = (c.get("hsn_sac") or "").strip()
-        hsn_display = _esc(hsn_sac) if hsn_sac else '<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 5px;border-radius:4px;font-size:0.7rem;">Blank HSN/SAC</span>'
+        # A blank code prints as the house amber chip, exactly as it does on the
+        # tax invoice and in the catalogue — never as an empty cell. Rule 46(g):
+        # a line without one costs the customer the input tax credit on it.
+        hsn_display = _esc(hsn_sac) if hsn_sac else B.field("", "HSN/SAC code")
         qty = float(c.get("qty") or 0.0)
         rate = float(c.get("rate") or 0.0)
         amt = float(c.get("amount") or (qty * rate))
 
         table_rows_html += f"""
-            <tr>
-              <td style="text-align:center;">{idx}</td>
-              <td style="font-weight:600;">{_esc(BQ._item_no(c.get('item_no')))}</td>
-              <td>{_esc(c.get('description'))}</td>
-              <td style="text-align:center;">{hsn_display}</td>
-              <td style="text-align:center;">{_esc(c.get('unit'))}</td>
-              <td style="text-align:right;">{BQ._fmt_qty(qty)}</td>
-              <td style="text-align:right;">&#8377;&nbsp;{rate:,.2f}</td>
-              <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{amt:,.2f}</td>
-            </tr>"""
+        <tr class="row-item">
+          <td class="c-sno">{idx}</td>
+          <td class="c-partno">{_esc(BQ._item_no(c.get('item_no')))}</td>
+          <td class="c-desc">{_esc(c.get('description'))}</td>
+          <td class="c-hsn">{hsn_display}</td>
+          <td class="c-qty">{BQ._fmt_qty(qty)}</td>
+          <td class="c-unit">{_esc(c.get('unit'))}</td>
+          <td class="c-price">{_inr(rate)}</td>
+          <td class="c-total">{_inr(amt)}</td>
+        </tr>"""
 
     # Deductions block rows
     deductions_rows_html = ""
     for d in deductions:
         lbl = d.get("label") or d.get("code") or "Deduction"
         damt = float(d.get("amount") or 0.0)
-        deductions_rows_html += f"""
-        <tr>
-          <td colspan="7" style="text-align:right;color:var(--muted);">{_esc(lbl)}:</td>
-          <td style="text-align:right;color:#dc2626;">- &#8377;&nbsp;{damt:,.2f}</td>
-        </tr>"""
+        deductions_rows_html += DS.sum_row(f"Less: {_esc(lbl)}", f"&#8722;&nbsp;{_inr(damt)}")
 
     # Tax block rows
     #
@@ -3140,21 +3535,10 @@ def print_ra(id: str):
     sgst_label = "Total SGST" if multi else f"SGST @ {sgst_rate:g}%"
 
     if tax_type == "igst":
-        tax_rows_html = f"""
-        <tr>
-          <td colspan="7" style="text-align:right;font-weight:500;">{igst_label}:</td>
-          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{igst_amount:,.2f}</td>
-        </tr>"""
+        tax_rows_html = DS.sum_row(igst_label, _inr(igst_amount))
     else:
-        tax_rows_html = f"""
-        <tr>
-          <td colspan="7" style="text-align:right;font-weight:500;">{cgst_label}:</td>
-          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{cgst_amount:,.2f}</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="text-align:right;font-weight:500;">{sgst_label}:</td>
-          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{sgst_amount:,.2f}</td>
-        </tr>"""
+        tax_rows_html = (DS.sum_row(cgst_label, _inr(cgst_amount)) +
+                         DS.sum_row(sgst_label, _inr(sgst_amount)))
 
     if multi:
         slab_rows_html = ""
@@ -3169,14 +3553,13 @@ def print_ra(id: str):
                 heads = (f"CGST {float(s.get('cgst_rate') or 0.0):g}% + "
                          f"SGST {float(s.get('sgst_rate') or 0.0):g}%")
                 head_amt = float(s.get("tax_amount") or 0.0)
-            slab_rows_html += f"""
-        <tr>
-          <td colspan="5" style="text-align:right;color:var(--muted);">
-            Taxable @ {rate_pct:g}% ({heads}){hsn_note}:
-          </td>
-          <td colspan="2" style="text-align:right;">&#8377;&nbsp;{float(s.get('taxable_value') or 0.0):,.2f}</td>
-          <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{head_amt:,.2f}</td>
-        </tr>"""
+            # The slab's taxable value and its tax, on one row. GSTR-1 is filed
+            # rate-wise off exactly these figures, so each is the *stored* one
+            # and the column adds to the total beneath it.
+            slab_rows_html += DS.sum_row(
+                f"Taxable @ {rate_pct:g}% ({heads}){hsn_note} &mdash; "
+                f"{_inr(float(s.get('taxable_value') or 0.0))}",
+                _inr(head_amt))
         tax_rows_html = slab_rows_html + tax_rows_html
 
     # The previous-balance memo. Rendered BELOW the Grand Total and visually
@@ -3197,163 +3580,133 @@ def print_ra(id: str):
         refs = [str(r) for r in (bill.get("prev_balance_refs") or []) if str(r or "").strip()]
         refs_note = (" &middot; " + _esc(", ".join(refs))) if refs else ""
         prev_balance_html = f"""
-        <div style="margin-top:1rem;padding:0.8rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:4px;font-size:0.85rem;">
-          <div style="display:flex;justify-content:space-between;gap:1rem;">
-            <span><b>Previous Balance Outstanding</b>{refs_note}</span>
-            <span style="font-weight:700;">&#8377;&nbsp;{prev_balance:,.2f}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;gap:1rem;margin-top:.35rem;padding-top:.35rem;border-top:1px solid #fcd34d;">
-            <span><b>Total Due (this bill + previous balance)</b></span>
-            <span style="font-weight:800;">&#8377;&nbsp;{total_with_prev:,.2f}</span>
-          </div>
-          <div style="margin-top:.45rem;color:#92400e;font-size:0.75rem;">
-            Memorandum only. The previous balance is carried forward for information and is <b>not</b> re-claimed as a line item on this bill.
-            It was claimed and taxed on the bill that raised it, so no GST is charged on it here.
-          </div>
-        </div>"""
+  <div class="memo-box">
+    <div class="memo-row">
+      <span><b>Previous Balance Outstanding</b>{refs_note}</span>
+      <span class="memo-amt">{_inr(prev_balance)}</span>
+    </div>
+    <div class="memo-row memo-due">
+      <span><b>Total Due (this bill + previous balance)</b></span>
+      <span class="memo-amt">{_inr(total_with_prev)}</span>
+    </div>
+    <div class="memo-note">Memorandum only. The previous balance is carried forward for information and is <b>not</b> re-claimed as a line item on this bill. It was claimed and taxed on the bill that raised it, so no GST is charged on it here.</div>
+  </div>"""
 
     rounding_html = ""
     if abs(rounding_off) > 1e-4:
-        rounding_html = f"""
-        <tr>
-          <td colspan="7" style="text-align:right;color:var(--muted);">Rounding Off:</td>
-          <td style="text-align:right;font-weight:500;">&#8377;&nbsp;{rounding_off:+.2f}</td>
-        </tr>"""
+        rounding_html = DS.sum_row("Rounding Off", f"{rounding_off:+,.2f}")
 
-    # Document html
+    # ── The header meta ────────────────────────────────────────────────────
+    #
+    # **The two series sit side by side and count independently** (DOMAIN.md
+    # §4.2). The Tax Invoice No. is the seller's statutory serial across all
+    # work; `ra_no` is this claim's position in this project's run. One is not
+    # derived from the other and they must not be printed as if they were.
+    meta_col_1 = (
+        _meta("Tax Invoice No.",     _esc(tax_inv_ref)) +
+        _meta("RA Bill No.",         f"RA{_esc(bill.get('ra_no'))} "
+                                     f"({_esc(bill.get('leg'))})") +
+        _meta("Against BOQ",         f"{_esc(bill.get('boq_ref'))} "
+                                     f"(Rev {_esc(bill.get('boq_rev_no'))})") +
+        _meta("Buyer's PO / WO No.", po_ref_disp) +
+        _meta("Buyer's GSTIN",       buyer_gstin_disp)
+    )
+    meta_col_2 = (
+        _meta("Date",                 _esc(tax_inv_date)) +
+        _meta("Contact Person",       contact_person_disp) +
+        _meta("Buyer's PO / WO Date", po_date_disp) +
+        _meta("Our GSTIN",            seller_gstin_disp) +
+        _meta("Our State",            seller_state_disp)
+    )
+
+    # The project and the site, under the buyer. A site is a first-class field
+    # in this business, not a label — they run several concurrently (DOMAIN.md
+    # §1) — and the client's own bill names it on the face.
+    site_html = DS.secondary_block(
+        "Project / Site",
+        "\n".join(x for x in [bill.get("project_name") or "",
+                              bill.get("site_location") or ""] if x.strip()))
+
+    # ── Totals ─────────────────────────────────────────────────────────────
+    totals_html = (
+        DS.sum_row("Claim Subtotal", _inr(claim_subtotal)) +
+        deductions_rows_html +
+        DS.sum_row("Taxable Value (net payable)", _inr(net_payable)) +
+        tax_rows_html +
+        rounding_html +
+        DS.total_row("Grand Total (inclusive of taxes)",
+                     BQ._fmt_qty(sum(float(c.get("qty") or 0.0) for c in claims)),
+                     _inr(grand_total))
+    )
+
     html = f"""<!DOCTYPE html><html lang="en">
-    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-    <title>{B.page_title(f"TAX INVOICE — RA{bill.get('ra_no')}")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}
-    <style>
-      @media print {{
-        .no-print {{ display: none !important; }}
-        body {{ background: #fff !important; padding: 0 !important; }}
-        .doc-paper {{ box-shadow: none !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; border: none !important; }}
-      }}
-      .doc-paper {{ background: #fff; max-width: 900px; margin: 1.5rem auto; padding: 2.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-family: Inter, system-ui, sans-serif; color: #1e293b; }}
-      .doc-header {{ text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 1rem; margin-bottom: 1.5rem; }}
-      .doc-header h1 {{ font-size: 1.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; margin: 0; }}
-      .doc-header p {{ font-size: 0.85rem; color: #475569; margin-top: 0.2rem; }}
-      .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }}
-      .box-card {{ border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; background: #f8fafc; font-size: 0.85rem; line-height: 1.5; }}
-      .box-card b {{ color: #0f172a; display: inline-block; min-width: 110px; }}
-      table.doc-table {{ width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }}
-      table.doc-table th, table.doc-table td {{ border: 1px solid #cbd5e1; padding: 8px 10px; }}
-      table.doc-table th {{ background: #f1f5f9; color: #0f172a; font-weight: 700; text-align: left; }}
-      .doc-summary {{ margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; font-size: 0.85rem; }}
-      .bank-card {{ border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; background: #f8fafc; flex: 1; }}
-      .sig-card {{ text-align: center; width: 220px; border-top: 1px dashed #94a3b8; padding-top: 3.5rem; font-weight: 600; color: #475569; font-size: 0.8rem; }}
-    </style>
-    </head>
-    <body>
-      <div class="no-print" style="max-width:900px;margin:1rem auto 0;display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592; Back to RA View</a>
-          <a href="{url_for('ra.list_ras')}" class="btn btn-ghost" style="margin-left:0.4rem;">RA Register</a>
-        </div>
-        <button onclick="window.print()" class="btn" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Save PDF</button>
-      </div>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(f"TAX INVOICE — RA{bill.get('ra_no')}")}</title>
+  {B.HEAD_ICON}
+  {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA_DOC_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
 
-      <div class="doc-paper">
-        <div class="doc-header">
-          <h1>TAX INVOICE</h1>
-          <p>{B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</p>
-        </div>
+<div class="screen-acts">
+  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
+    Tax Invoice <span style="color:var(--brand);">{_esc(tax_inv_ref)}</span>
+    {status_badge(bill)}
+  </h1>
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
+    <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592;&nbsp;Back to RA{_esc(bill.get('ra_no'))}</a>
+    <a href="{url_for('ra.list_ras')}" class="btn btn-ghost">RA Register</a>
+    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
+  </div>
+</div>
 
-        <div class="grid-2">
-          <div class="box-card">
-            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Billed By (Supplier)</div>
-            <b>Name:</b> {_esc(B.COMPANY_LEGAL or B.COMPANY_NAME)}<br/>
-            <b>GSTIN:</b> {seller_gstin_disp}<br/>
-            <b>State:</b> {seller_state_disp}<br/>
-            <b>Address:</b> {seller_addr_disp}
-          </div>
-          <div class="box-card">
-            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Invoice &amp; Bill Details</div>
-            <b>Tax Invoice Ref:</b> {_esc(tax_inv_ref)}<br/>
-            <b>Invoice Date:</b> {_esc(tax_inv_date)}<br/>
-            <b>RA Bill No:</b> RA{_esc(bill.get('ra_no'))} ({_esc(bill.get('leg'))})<br/>
-            <b>PO/WO No &amp; Date:</b> {po_ref_disp} ({po_date_disp})
-          </div>
-        </div>
+<div class="doc-outer">
+<div class="quotation-doc ra-doc">
 
-        <div class="grid-2">
-          <div class="box-card">
-            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Billed To (Customer)</div>
-            <b>Customer:</b> {buyer_name_disp}<br/>
-            <b>GSTIN:</b> {buyer_gstin_disp}<br/>
-            <b>Contact:</b> {contact_person_disp}<br/>
-            <b>Address:</b> {to_address_disp}
-          </div>
-          <div class="box-card">
-            <div style="font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:0.4rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.3rem;">Project &amp; Site Details</div>
-            <b>Project Name:</b> {project_name_disp}<br/>
-            <b>Site Location:</b> {site_location_disp}<br/>
-            <b>BOQ Ref:</b> {_esc(bill.get('boq_ref'))} (Rev {_esc(bill.get('boq_rev_no'))})
-          </div>
-        </div>
+{DS.sheet_open()}
 
-        <table class="doc-table">
-          <thead>
-            <tr>
-              <th style="width:40px;text-align:center;">#</th>
-              <th style="width:70px;">Item No</th>
-              <th>Description of Goods / Work Executed</th>
-              <th style="width:100px;text-align:center;">HSN / SAC</th>
-              <th style="width:60px;text-align:center;">Unit</th>
-              <th style="width:90px;text-align:right;">Claim Qty</th>
-              <th style="width:100px;text-align:right;">Rate</th>
-              <th style="width:120px;text-align:right;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {table_rows_html}
-            <tr>
-              <td colspan="7" style="text-align:right;font-weight:600;">Claim Subtotal:</td>
-              <td style="text-align:right;font-weight:600;">&#8377;&nbsp;{claim_subtotal:,.2f}</td>
-            </tr>
-            {deductions_rows_html}
-            <tr>
-              <td colspan="7" style="text-align:right;font-weight:700;background:#f8fafc;">Taxable Net Payable Value:</td>
-              <td style="text-align:right;font-weight:700;background:#f8fafc;">&#8377;&nbsp;{net_payable:,.2f}</td>
-            </tr>
-            {tax_rows_html}
-            {rounding_html}
-            <tr style="font-size:0.95rem;background:#f1f5f9;">
-              <td colspan="7" style="text-align:right;font-weight:800;color:#0f172a;">Grand Total (Inclusive of Taxes):</td>
-              <td style="text-align:right;font-weight:800;color:#0f172a;">&#8377;&nbsp;{grand_total:,.2f}</td>
-            </tr>
-          </tbody>
-        </table>
+  <div class="doc-box">
+    {overprint_html}
+    <div class="doc-title">TAX INVOICE</div>
+    <div class="doc-sub-ra">Running Account bill &middot; claim for work executed</div>
 
-        <div style="margin-top:1rem;padding:0.8rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem;">
-          <b>Amount in Words:</b> {_esc(words)}
-        </div>
-        {prev_balance_html}
+{DS.party_block("To", DS.name_block(bill.get("to")) or buyer_name_disp,
+                site_html, meta_col_1, meta_col_2)}
 
-        <div class="doc-summary">
-          <div class="bank-card">
-            <div style="font-weight:700;color:#0f172a;margin-bottom:0.3rem;">Bank Details for Remittance</div>
-            <b>Bank Name:</b> {_esc(B.BANK_NAME)}<br/>
-            <b>A/C No:</b> {_esc(B.BANK_ACCOUNT_NO)}<br/>
-            <b>IFSC Code:</b> {_esc(B.BANK_IFSC)}<br/>
-            <b>Branch:</b> {_esc(B.BANK_BRANCH)}
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;">
-            <p style="font-size:0.75rem;color:var(--muted);margin-bottom:2.5rem;">For {_esc(B.COMPANY_NAME)}</p>
-            <div class="sig-card">Authorised Signatory</div>
-          </div>
-        </div>
-      </div>
-    </body></html>"""
-    return html
+{DS.items_table(RA_COLUMNS, table_rows_html + totals_html)}
+
+{DS.amount_words("Grand Total (in words)", grand_total)}
+  </div>
+{prev_balance_html}
+{DS.bank_block(f"Please quote tax invoice no. <b>{_esc(tax_inv_ref)}</b> "
+               f"and RA{_esc(bill.get('ra_no'))} on the remittance advice.")}
+
+{DS.sig_block(_esc(bill.get("company_branch")), _esc(bill.get("auth_signatory")))}
+
+{DS.sheet_close()}
+
+</div>
+</div>
+
+<footer style="margin-top:1.75rem;">
+  <p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · RA bill tax invoice</p>
+</footer>
+</main>
+</body></html>"""
+    return _page(html)
 
 
 @ra_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_ra(id: str):
     """
-    Delete an RA bill — the highest-numbered one only, and never a certified one.
+    Delete an RA bill — a DRAFT, the highest-numbered one only.
+
+    `can_delete()` holds the four refusals: receipts against it, cancelled,
+    issued, or not the latest. An issued bill is withdrawn by **cancelling**
+    it — which keeps `ra_no` spent and records why — never by deleting it.
 
     **POST-only for the deletion itself.** The GET is a confirmation page that
     names the bill and shows the claimed total being removed, because a link

@@ -110,7 +110,14 @@ def test_printed_seller_block_prints_an_em_dash_when_settings_are_blank(
     rid = _one_bill()
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
 
-    seller = html.split("Billed By (Supplier)")[1].split("</div>")[1]
-    assert "<b>GSTIN:</b> &mdash;" in seller
-    assert "<b>State:</b> &mdash;" in seller
-    assert not _GSTIN_SHAPED.search(seller)
+    # The seller's own registration is two rows of the header meta grid now
+    # that the bill renders on the shared A4 sheet, and the em dash is kept
+    # deliberately. `_meta()`'s own convention is to leave a blank value blank —
+    # right for a despatch reference, wrong here: this is a statutory field on a
+    # tax invoice, and ABOUT.md §5 (`/ra`) says a missing one must be *visible*
+    # as missing rather than quietly absent.
+    ours = html.split('<span class="m-lbl">Our GSTIN</span>')[1]
+    assert ours.startswith('<span class="m-val">&mdash;</span>'), ours[:120]
+    state = html.split('<span class="m-lbl">Our State</span>')[1]
+    assert state.startswith('<span class="m-val">&mdash;</span>'), state[:120]
+    assert not _GSTIN_SHAPED.search(html.split('class="doc-box"')[1])

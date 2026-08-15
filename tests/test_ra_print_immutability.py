@@ -32,8 +32,22 @@ import re
 import pytest
 
 import boq as BQ
+from quotation import _inr
 from store import STORE
 from test_ra_record import boq_line, make_boq, make_bill, claim
+
+# ⚠ **The expected figures below moved from `1,61,920.00`-style Western
+# grouping to `_inr()`'s Indian grouping**, and nothing about what they assert
+# changed. `/ra/print` used to format money as `&#8377;&nbsp;{v:,.2f}` — its
+# own convention, on a sheet that matched none of the other documents this
+# office issues. ABOUT.md §9 is explicit that money on a printed document goes
+# through `_inr()`, and the tax invoice, the proforma, the PO and the BOQ all
+# do. The RA bill now does too.
+#
+# Read every literal here as *the same frozen figure, restated in the grouping
+# the document prints it in*. The property under test — that an issued bill
+# renders from its own record and does not move when the BOQ underneath it
+# does — is untouched, and so are the amounts.
 
 
 @pytest.fixture()
@@ -151,9 +165,9 @@ def test_a_claimed_line_deleted_from_the_boq_still_prints_and_the_bill_ties(clie
 
     # Both claim rows still print, with their own frozen figures...
     assert ">4.1<" in after, "a claimed line vanished from the invoice with the BOQ line"
-    assert "161,920.00" in after and "21,600.00" in after
+    assert _inr(161_920.00) in after and _inr(21_600.00) in after
     # ...and they still add up to the stored subtotal on the same page.
-    assert f"{bill['claim_subtotal']:,.2f}" in after
+    assert _inr(bill['claim_subtotal']) in after
     assert bill["claim_subtotal"] == pytest.approx(161_920.00 + 21_600.00)
 
     # The one permitted difference: the spec header went with the relation that
@@ -163,7 +177,7 @@ def test_a_claimed_line_deleted_from_the_boq_still_prints_and_the_bill_ties(clie
     assert "Supply, fabrication and installation of C class pipe" not in after
     squash = lambda s: " ".join(s.split())
     header_row = re.search(
-        r'<tr style="background:#f8fafc;font-weight:700;">.*?</tr>',
+        r'<tr class="row-assembly">.*?</tr>',
         squash(before), re.S).group(0)
     assert squash(before).replace(header_row, "", 1).replace("  ", " ") == \
            squash(after)
@@ -181,11 +195,11 @@ def test_printed_bill_survives_the_boq_record_disappearing_entirely(client, clea
     STORE["boqs"].clear()
     after = _print(client, rid)
 
-    assert "161,920.00" in after and "21,600.00" in after
+    assert _inr(161_920.00) in after and _inr(21_600.00) in after
     assert ">4.1<" in after and ">17<" in after
     bill = STORE["ra_bills"][rid]
     for figure in ("claim_subtotal", "net_payable", "grand_total"):
-        assert f"{bill[figure]:,.2f}" in after
+        assert _inr(bill[figure]) in after
     # The one documented difference: the spec header is a relation held only by
     # the BOQ, so it goes when the BOQ goes. Nothing else may.
     assert "Supply, fabrication and installation" in before
@@ -217,7 +231,7 @@ def test_frozen_totals_are_read_never_recomputed(client, clean_store):
     """
     The totals block prints what was stored, even when the stored figures no
     longer follow from the rows. That is deliberate: `3770616` froze them so a
-    certified bill cannot restate itself when a tax constant moves. A renderer
+    issued bill cannot restate itself when a tax constant moves. A renderer
     that recomputes would silently reissue every historical bill at today's
     rates the day someone edits `cgst_rate`.
     """
@@ -232,7 +246,7 @@ def test_frozen_totals_are_read_never_recomputed(client, clean_store):
     html = _print(client, rid)
     assert "11,111.11" in html
     assert "22,222.22" in html
-    assert "216,852.89" in html
+    assert _inr(216_852.89) in html
     assert "-0.44" in html
 
 

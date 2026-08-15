@@ -149,7 +149,16 @@ DOCSHEET_STYLES = f"""
 # THE PAGE FRAME AND THE LETTERHEAD
 # =============================================================================
 
-def letterhead(show_web: bool = True, show_gstin: bool = True) -> str:
+def _contact_bit(on: bool, label: str, value: str) -> str:
+    """One optional `| Label: value` fragment of the letterhead contact line."""
+    if not on:
+        return ""
+    return "\n      {}".format(
+        f'<span class="sep">|</span>{label}: {value}' if value else "")
+
+
+def letterhead(show_web: bool = True, show_gstin: bool = True,
+               show_branches: bool = False) -> str:
     """
     The company identity band, as the repeating `<thead>` of the page frame.
 
@@ -163,21 +172,26 @@ def letterhead(show_web: bool = True, show_gstin: bool = True) -> str:
     restart. A blank field renders as `B.field()`'s amber chip rather than as
     nothing, which is how a half-configured identity stays visible.
 
-    ⚠ `show_web` exists to preserve a difference, not to offer a choice.
-      The quotation, the proforma, the tax invoice and the BOQ all print the
-      web address; **`purchase.py` alone does not**, and nothing anywhere
-      records that as a decision. It reads like an omission rather than a
-      choice, but correcting it would change a document this pass is under
-      instruction not to move, so it is preserved and reported instead
-      (INTRODUCTION.md §5.6). Drop the parameter and the branch the day
-      somebody rules on it.
+    The three flags exist to preserve **observed** differences between the
+    documents, not to offer a menu. Each one is a real difference somebody
+    should eventually rule on:
+
+    | | web | GSTIN | branches |
+    |---|---|---|---|
+    | tax invoice, RA bill | ✓ | ✓ | |
+    | proforma invoice | ✓ | | ✓ |
+    | purchase order | | ✓ | |
+
+    - **GSTIN vs branches** is defensible and is kept: Rule 46 wants the
+      supplier's GSTIN on the face of a tax invoice, and the RA bill is one.
+      A proforma is not a statutory record and shows the branch list instead.
+    - **`show_web=False` on the purchase order is not defensible and is not
+      defended.** Every other sheet prints the web address and nothing anywhere
+      records a reason. It reads as an omission, but correcting it would move a
+      document this pass was under instruction to leave byte-identical, so it
+      is preserved and reported instead (INTRODUCTION.md §5.6) — ABOUT.md §7
+      gap 18. Drop the flag and the branch the day somebody rules on it.
     """
-    web = (f"\n      {{}}".format(
-        f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else "")
-        if show_web else "")
-    gstin = (f"\n      {{}}".format(
-        f'<span class="sep">|</span>GSTIN: {B.COMPANY_GSTIN}' if B.COMPANY_GSTIN else "")
-        if show_gstin else "")
     return f"""  <thead><tr><td>
     <div class="lh">
       <div>
@@ -191,7 +205,10 @@ def letterhead(show_web: bool = True, show_gstin: bool = True) -> str:
     <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
     <div class="lh-contact">
       Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
-      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}{web}{gstin}
+      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}{
+        _contact_bit(show_web, "Web", B.COMPANY_WEB)}{
+        _contact_bit(show_gstin, "GSTIN", B.COMPANY_GSTIN)}{
+        _contact_bit(show_branches, "Branches", B.COMPANY_BRANCHES)}
     </div>
   </td></tr></thead>"""
 
@@ -211,13 +228,13 @@ def foot_strip(text: str = "") -> str:
 
 
 def sheet_open(show_web: bool = True, show_gstin: bool = True,
-               foot: str = "") -> str:
+               show_branches: bool = False, foot: str = "") -> str:
     """
     Everything from `<table class="page-frame">` down to the open of the body
     cell the document is written into. Pair it with `sheet_close()`.
     """
     return (f'  <table class="page-frame">\n'
-            f'{letterhead(show_web, show_gstin)}\n'
+            f'{letterhead(show_web, show_gstin, show_branches)}\n'
             f'\n'
             f'{foot_strip(foot)}\n'
             f'\n'

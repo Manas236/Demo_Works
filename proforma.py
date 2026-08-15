@@ -1240,31 +1240,7 @@ def view_proforma(id: str):
 <div class="doc-outer">
 <div class="quotation-doc">
 
-  <table class="page-frame">
-  <thead><tr><td>
-    <div class="lh">
-      <div>
-        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
-        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
-      </div>
-      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-    </div>
-    <div class="lh-rule"></div>
-    <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
-    <div class="lh-contact">
-      Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
-      Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
-      {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
-      {f'<span class="sep">|</span>Branches: {B.COMPANY_BRANCHES}' if B.COMPANY_BRANCHES else ''}
-    </div>
-  </td></tr></thead>
-
-  <tfoot><tr><td>
-    <div class="lh-foot">{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</div>
-  </td></tr></tfoot>
-
-  <tbody><tr><td>
+{DS.sheet_open(show_gstin=False, show_branches=True)}
 
   <div class="doc-box">
     <div class="doc-title">PROFORMA INVOICE</div>

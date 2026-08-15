@@ -36,7 +36,15 @@ import pytest
 import boq as BQ
 import demo_data as DD
 import ra
+from quotation import _inr
 from store import STORE
+
+# ⚠ The printed figures below moved to `_inr()`'s Indian digit grouping when
+# `/ra/print` was rebuilt on the shared A4 sheet. Same figures, same
+# assertions; only the grouping the document prints them in changed, and it
+# changed to the one ABOUT.md §9 has always specified for a printed document.
+# The tax LABELS also lost their trailing colon: `docsheet.sum_row()` is the
+# same row the tax invoice uses, and that sheet has never punctuated them.
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -285,7 +293,8 @@ def test_a_stored_bills_tax_totals_are_never_recomputed(client, seeded):
         "cgst_rate": 9.0, "sgst_rate": 9.0, "igst_rate": 18.0,
         "cgst_amount": 11111.11, "sgst_amount": 22222.22, "igst_amount": 0.0,
         "tax_amount": 33333.33, "rounding_off": 0.0, "grand_total": 144444.44,
-        "status": "draft", "certified_on": "", "notes": "",
+        "status": "draft", "issued_on": "", "cancelled_on": "",
+        "cancel_reason": "", "notes": "",
     }
     before = dict(STORE["ra_bills"][rid])
 
@@ -293,7 +302,7 @@ def test_a_stored_bills_tax_totals_are_never_recomputed(client, seeded):
 
     assert STORE["ra_bills"][rid] == before, "printing mutated the record"
     assert "11,111.11" in html and "22,222.22" in html
-    assert "144,444.44" in html
+    assert _inr(144_444.44) in html
     # No tax_slabs key, so it takes the legacy single-slab path unchanged.
     assert "tax_slabs" not in STORE["ra_bills"][rid]
     assert "Taxable @" not in html
@@ -324,14 +333,14 @@ def test_single_slab_print_keeps_todays_tax_block(client, seeded):
     assert len(STORE["ra_bills"][rid]["tax_slabs"]) == 1
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
 
-    assert "CGST @ 9%:" in html
-    assert "SGST @ 9%:" in html
+    assert "CGST @ 9%" in html
+    assert "SGST @ 9%" in html
     assert "Taxable @" not in html          # no rate-wise table
     assert "Total CGST" not in html         # totals keep their rate label
 
     # The pinned figures reach the sheet.
-    assert "33,756.21" in html
-    assert "442,581.00" in html
+    assert _inr(33_756.21) in html
+    assert _inr(442_581.00) in html
 
 
 def test_two_slab_print_carries_both_rate_rows(client, seeded):
@@ -352,7 +361,8 @@ def test_two_slab_print_carries_both_rate_rows(client, seeded):
         "igst_amount": t["igst_amount"], "tax_amount": t["tax_amount"],
         "tax_slabs": t["tax_slabs"], "rounding_off": t["rounding_off"],
         "grand_total": t["grand_total"],
-        "status": "draft", "certified_on": "", "notes": "",
+        "status": "draft", "issued_on": "", "cancelled_on": "",
+        "cancel_reason": "", "notes": "",
     }
 
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
@@ -363,11 +373,11 @@ def test_two_slab_print_carries_both_rate_rows(client, seeded):
     assert "CGST 9% + SGST 9%" in html
     assert "995462" in html and "73063090" in html
     # Both slab taxable values and both slab taxes.
-    assert "500.00" in html and "1,000.00" in html
+    assert _inr(500.00) in html and _inr(1_000.00) in html
     assert "60.00" in html and "180.00" in html
     # The totals no longer claim a single rate.
-    assert "Total CGST:" in html and "Total SGST:" in html
-    assert "CGST @ 9%:" not in html
+    assert "Total CGST" in html and "Total SGST" in html
+    assert "CGST @ 9%" not in html
 
 
 # ═══ 4b. The rate-wise column foots against the document total ═════════════

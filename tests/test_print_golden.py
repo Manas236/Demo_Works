@@ -375,7 +375,18 @@ PI_BLOCKS = {"head":       "caff49b2b87e06a0",
              "items":      "ee2126dae594bc30",
              "signature":  "964248284443ca1b"}
 
-RA_WHOLE, RA_LEN = "88a55e81022ec48a", 53382
+# Recaptured after `/ra/print` was rebuilt on the shared A4 sheet. The previous
+# baseline was `88a55e81022ec48a` / 53,382 bytes — a `.doc-paper` card in Inter
+# over a slate palette, with no letterhead, no page frame and money in Western
+# digit grouping. See the test below for what moved.
+RA_WHOLE, RA_LEN = "bf9f7f4271cb7180", 97479
+RA_BLOCKS = {"head":       "de1fffbf620734ae",
+             "letterhead": "850cbd4766b608c2",
+             "foot-strip": "cc51ac98a541aaee",
+             "doc-box":    "44c7368b5a1b2380",
+             "party":      "0a1ad2e74686542a",
+             "items":      "92f5cc2dd233b05b",
+             "signature":  "4ebebebbdf2383c8"}
 
 
 def test_the_tax_invoice_document_is_unchanged(client, golden):
@@ -411,20 +422,88 @@ def test_the_purchase_order_document_is_unchanged(client, golden):
 
 def test_the_ra_bill_document_matches_its_recorded_baseline(client, golden_ra):
     """
-    `/ra/print/<id>` — the RA bill tax invoice.
+    `/ra/print/<id>` — the RA bill tax invoice, now on the shared A4 sheet.
 
-    Unlike the two above, this one is **expected to change** in the step that
-    renders it through the shared layer. The digest is here so that the change
-    is a deliberate act with a number attached to it rather than something
-    nobody measured.
+    This one was **expected to change** and did. What moved, against the
+    53,382-byte baseline captured before the rework:
+
+    - it gained the repeating **letterhead** and the `.page-frame` that carries
+      it onto every printed page, the **foot strip**, the amber `todo-chip`
+      treatment for a blank HSN/SAC, and a proper **signature block** with the
+      company GSTIN and PAN;
+    - the four `.box-card` panels became the sheet's three-cell **party block**,
+      so the buyer sits where the buyer sits on every other document and the
+      two number series read as two rows of meta rather than as prose;
+    - the items table became the sheet's eight-column `.q-table`, with **Qty
+      before Unit** as the other documents have it, and the totals became
+      `docsheet` rows;
+    - money moved from `&#8377;&nbsp;{v:,.2f}` to `_inr()` — **Indian digit
+      grouping, no symbol**, which is what ABOUT.md §9 has always specified for
+      a printed document and what the other four already did;
+    - the bank block is the proforma's, not a second one.
+
+    What did **not** move: every figure, every item number, every HSN/SAC and
+    the whole snapshot contract. `tests/test_ra_print_immutability.py` is what
+    holds that, and it still does.
     """
     r = client.get("/ra/print/gold-ra")
     assert r.status_code == 200
-    html = r.get_data(as_text=True)
-    got_len, got_whole = len(html), _sha(html)
-    assert (got_whole, got_len) == (RA_WHOLE, RA_LEN), (
-        f"RA bill: sha {RA_WHOLE} -> {got_whole}, "
-        f"bytes {RA_LEN} -> {got_len}.")
+    _check(r.get_data(as_text=True), RA_WHOLE, RA_LEN, RA_BLOCKS,
+           what="RA bill")
+
+
+def test_the_ra_bill_and_the_tax_invoice_carry_the_SAME_letterhead(
+        client, golden, golden_ra):
+    """
+    The point of the whole exercise, asserted directly.
+
+    Four documents used to write their own letterhead and their own foot strip.
+    The client's complaint was not that any one of them was wrong — it was that
+    they did not look like each other. So the assertion is not "both have a
+    letterhead" but **the same bytes**, and it fails the day somebody adds a
+    line to one document instead of to `docsheet.letterhead()`.
+
+    **The RA bill and the tax invoice must match exactly**, because they are
+    the same instrument: both are headed TAX INVOICE, both create a GST
+    liability, and Rule 46 wants the supplier's GSTIN on the face of each.
+
+    Two documents differ, both on purpose and both pinned here so that a change
+    to either is a decision rather than a drift:
+
+    - the **proforma** prints the branch list where these two print the GSTIN.
+      A proforma is not a statutory record and says so on its own face;
+    - the **purchase order** omits the web address. That one is *not*
+      defensible, is not defended, and is ABOUT.md §7 gap 18.
+
+    Every one of the four carries the same foot strip, with no exceptions.
+    """
+    ti = _blocks(client.get(f"/invoice/view/{GOLD_TI}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+    pi = _blocks(client.get(f"/proforma/view/{GOLD_PI}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+    po = _blocks(client.get(f"/purchase/view/{GOLD_PO}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+    ra = _blocks(client.get("/ra/print/gold-ra").get_data(as_text=True),
+                 SHEET_BLOCKS)
+
+    assert ra["letterhead"] == ti["letterhead"], (
+        "the RA bill and the tax invoice print different letterheads. They are "
+        "the same instrument and they render through docsheet.letterhead() "
+        "precisely so they cannot diverge.")
+
+    assert pi["letterhead"] != ti["letterhead"], (
+        "the proforma's letterhead now matches the tax invoice's. If the "
+        "GSTIN-for-branches swap was dropped deliberately, drop "
+        "docsheet.letterhead()'s `show_branches` flag with it rather than "
+        "leaving a parameter nothing uses.")
+    assert po["letterhead"] != ti["letterhead"], (
+        "the PO's letterhead now matches the others — if that was deliberate, "
+        "drop `show_web` and close ABOUT.md §7 gap 18.")
+
+    foots = {ti["foot-strip"], pi["foot-strip"], po["foot-strip"],
+             ra["foot-strip"]}
+    assert len(foots) == 1, (
+        f"four documents, {len(foots)} different foot strips: {foots}")
 
 
 def test_the_goldens_are_hashing_a_real_document(client, golden, golden_ra):

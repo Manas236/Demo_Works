@@ -52,7 +52,7 @@ def test_amount_in_words_carries_exactly_one_inr(client, clean_store):
     rid = make_bill("r1", "b1", 1, "supply", [c1])
 
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
-    words = re.search(r"<b>Amount in Words:</b>(.*?)</div>", html, re.S).group(1)
+    words = re.search(r'class="amount-words">(.*?)</div>', html, re.S).group(1)
     assert words.count("INR") == 1, words.strip()
     assert "INR INR" not in html
 
@@ -90,7 +90,7 @@ def test_blank_hsn_sac_renders_amber_warning_badge_on_print(client, clean_store)
     res = client.get("/ra/print/r1")
     assert res.status_code == 200
     html = res.get_data(as_text=True)
-    assert "Blank HSN/SAC" in html
+    assert "add HSN/SAC code" in html   # the house amber chip, as on the tax invoice
 
 
 def test_no_rendered_page_contains_doubled_rara_prefix(client, clean_store):
@@ -293,7 +293,11 @@ def test_no_ui_state_reaches_an_ra_record(client, clean_store):
     assert "SPOOFED" not in json.dumps(row)
     assert row["amount"] == 500.0                      # recomputed, not taken
     assert row["approved_qty"] == 100.0                # from the BOQ
-    assert row["certified_qty"] is None                # never postable
+    # `certified_qty` used to be asserted `is None` here — never postable, but
+    # present on the row. Certification is gone entirely (CLIENT_CHANGES.md item
+    # 3), so the posted key must not survive onto the record AT ALL, which is
+    # the stronger form of the same assertion.
+    assert "certified_qty" not in row
     assert row["item_no"] == "1.1"                     # snapshot off the BOQ
 
 
