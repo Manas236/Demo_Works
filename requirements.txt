@@ -11,9 +11,9 @@
 #     dotenv         db.py — reads .env
 #
 # The VERSIONS are pinned so a clone reproduces a known-good environment rather
-# than whatever PyPI resolves to that morning. They are the versions the
-# 523-test suite is verified against — `python -m pytest -q` in a .venv built
-# from this file, with openpyxl added (see the dev block below).
+# than whatever PyPI resolves to that morning. They are the versions the suite
+# is verified against — `python -m pytest -q` in a .venv built from this file,
+# with openpyxl added (see the dev block below).
 #
 # Pins are only ever RAISED to a version the suite has been verified on, never
 # lowered: a pin below the installed version turns `pip install -r` into a
@@ -49,12 +49,24 @@ Werkzeug==3.1.7
 #     pip install openpyxl
 # openpyxl
 #
-# ⚠ openpyxl being commented out here is what makes the suite report two
-#   different totals, and neither is wrong. tests/test_fixtures.py sits behind a
-#   module-level `pytest.importorskip("openpyxl")`, so an environment without it
-#   reports **519 passed, 4 skipped** where one with it reports **523 passed**.
-#   It stays commented out because the app never reads a workbook at runtime;
-#   install it in the venv if you want the full 523.
+# ⚠ openpyxl being commented out here is one of TWO independent things that move
+#   the suite's total, and they are routinely confused for each other. The other
+#   is whether the two client workbooks are installed (they are gitignored — see
+#   fixtures/README.md). ABOUT.md §1 owns the full table; do not restate it here.
+#
+#   Measured on 15 August 2026, in a .venv with openpyxl AND both workbooks
+#   present: **611 passed, 0 skipped**.
+#
+#   This block used to say an environment without openpyxl reports "519 passed,
+#   4 skipped". Both halves were wrong. The total had drifted, and the skip
+#   count was never right at all: tests/test_fixtures.py holds its 4 tests
+#   behind a MODULE-LEVEL `pytest.importorskip("openpyxl")`, which raises during
+#   COLLECTION — so without openpyxl those 4 are never collected and pytest
+#   prints **1 skipped**, not 4. It is the kind of number that is only ever
+#   wrong in a document, because nobody re-reads it against a real run.
+#
+#   openpyxl stays commented out because the app never reads a workbook at
+#   runtime; install it in the venv if you want the module collected.
 #
 # assets/build_assets.py only. Its output PNGs are committed under assets/, so
 # this is a one-off artwork build, not a dependency of anything at runtime:

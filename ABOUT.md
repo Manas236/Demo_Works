@@ -76,7 +76,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 611 passed — or fewer, with skips; see below
+python -m pytest -q                     # 747 passed — or fewer, with skips; see below
 python app.py                           # http://127.0.0.1:5000
 ```
 
@@ -93,13 +93,17 @@ independent things move the number, and they are often confused for each other:
 
 | Environment | Result |
 |---|---|
-| openpyxl installed **and** both client workbooks present | **634 passed** |
-| openpyxl installed, workbooks absent (the usual fresh clone) | **631 passed, 3 skipped** |
-| openpyxl absent (a plain `pip install -r requirements.txt`) | **630 passed, 1 skipped** |
+| openpyxl installed **and** both client workbooks present | **747 passed** |
+| openpyxl installed, workbooks absent (the usual fresh clone) | **744 passed, 3 skipped** |
+| openpyxl absent (a plain `pip install -r requirements.txt`) | **743 passed, 1 skipped** |
 
-*All three re-measured on 15 August 2026, each by actually running the suite in
-that configuration rather than by adjusting the previous row by the number of
-tests added.*
+*All three re-measured on 15 August 2026 after the shared-document-sheet pass,
+each by **actually running the suite in that configuration** rather than by
+adjusting the previous row by the number of tests added. The three totals move
+independently and a figure quoted without naming its configuration is not a
+figure — the row above it was reported as "607 to 630" and "638 passing" by a
+pass that never named one, and 607 was the no-openpyxl baseline rather than the
+real box.*
 
 ⚠ **A module-level `importorskip` reports ONE skip, not one per test.**
 `tests/test_fixtures.py` holds 4 tests behind a module-level
@@ -178,31 +182,31 @@ Consequences you must respect when editing:
 
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 148 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
-| [store.py](store.py) | 45 | The `STORE` dict. Single shared object, imported everywhere. |
+| [app.py](app.py) | 159 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
+| [store.py](store.py) | 46 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 529 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [docsheet.py](docsheet.py) | 373 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
-| [dashboard.py](dashboard.py) | 1488 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
-| [product.py](product.py) | 1465 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
-| [quotation.py](quotation.py) | 2786 | Quotation form + printed document. The big one. |
-| [proforma.py](proforma.py) | 1368 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
-| [invoice.py](invoice.py) | 1367 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
-| [purchase.py](purchase.py) | 1401 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
+| [docsheet.py](docsheet.py) | 433 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
+| [dashboard.py](dashboard.py) | 1530 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
+| [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
+| [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. |
+| [proforma.py](proforma.py) | 1310 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
+| [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
+| [purchase.py](purchase.py) | 1329 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
-| [boq.py](boq.py) | 3964 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 3001 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
-| [receipt.py](receipt.py) | 630 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
-| [client.py](client.py) | ~300 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
-| [po_draft.py](po_draft.py) | 900 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
+| [boq.py](boq.py) | 3977 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
+| [ra.py](ra.py) | 3876 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
+| [receipt.py](receipt.py) | 740 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
+| [client.py](client.py) | 548 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
+| [po_draft.py](po_draft.py) | 1204 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
-| [settings.py](settings.py) | 410 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
-| [pipeline.py](pipeline.py) | 604 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
+| [settings.py](settings.py) | 520 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
+| [pipeline.py](pipeline.py) | 608 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
-| [extractor.py](extractor.py) | 408 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
+| [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 131 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 495 | **Dead file.** Stale docs only — see §8. |
 
@@ -4095,6 +4099,12 @@ little less CSS.
   it is sell side and may join the quotation → PI → TI chain. If it is about
   money going out it is buy side and must not touch a PI or a TI. If both need
   a helper, it goes in `pipeline.py`, which imports nothing from the app.
+- **If it prints, render it through `docsheet.py`** (§2d) — the letterhead, the
+  party block, the items-table shell, the totals rows, the bank block and the
+  signature are one copy, not one per document. Layer your own sheet after it
+  and introduce no new font, type size or border weight. Writing a fresh
+  f-string for a printed page is how four documents stopped looking like each
+  other, and `tests/test_print_golden.py` is what now catches it.
 - Import `BASE_STYLES` and `_nav` from `dashboard`, layer your own `<style>`
   block after them.
 - Pull every company string, colour, and image from `branding.py`.

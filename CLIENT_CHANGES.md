@@ -50,6 +50,38 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > **The commercial risk is the client's to carry and ours to have flagged:** if
 > MG/SF/2026-02 is never signed, this work was done against an unsigned
 > quotation.
+>
+> ---
+>
+> ### ⚠ EXTENDED — 15 August 2026, by Manas Gawde
+>
+> **A second and third item proceeded under this same override, and MG/SF/2026-02 was
+> still unsigned on 15 August 2026.** This block is extended rather than
+> rewritten: the 14 August decision above stands exactly as recorded, and this
+> is a second occasion, not a restatement of the first.
+>
+> **What proceeded:** **item 3** — removing the certified amount / certified
+> quantity section from RA bills, and building the draft / issued / cancelled
+> lifecycle that replaces the edit lock certification was providing as a side
+> effect.
+> And **item 2** — Client-wise segregation, giving a top-level ledger and near-duplicate
+> client detection.
+>
+> **Items 2 and 3 remain CHARGEABLE under MG/SF/2026-02.** Section 7 of that quotation
+> prices item 3 at **Rs 4,000**, and item 2 is also chargeable. They are **not** a §0 no-charge exemption: §0 exempts defect
+> and reachability fixes against scope already sold under MG/SF/2026-01, and
+> these are neither. Building it early changed
+> **when** it was built, not **what it costs** or **who agreed to it**.
+>
+> **The gate is not lifted.** Every still-Pending item — 4 and 5 — continues
+> to need either the signature on MG/SF/2026-02 or its own recorded override,
+> decided by the client-facing owner. Overrides are not a precedent and do
+> not make a subsequent one automatic; an override remains a decision that is taken and
+> recorded, never one an agent may take, infer, or extend.
+>
+> **The commercial risk is unchanged and is restated deliberately:** if
+> MG/SF/2026-02 is never signed, items 8, 3, and 2 were built against an
+> unsigned quotation.
 
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
@@ -62,9 +94,19 @@ task.** It is a record of a conversation. Do not open a file because you read
 about one here, and do not treat a Pending row as a specification you have been
 handed. If you think something gated should be built now, say so and stop.
 
-That rule is unchanged by the override above. **An override is a decision the
+That rule is unchanged by the overrides above. **An override is a decision the
 client-facing owner takes and records; it is not one you may take, infer, or
-extend.** Item 8 being built early is not licence to start item 2, 3, 4 or 5.
+extend.** Items 8, 3, and 2 being built early is not licence to start item 5 —
+and recorded overrides are not a precedent that makes a next one automatic.
+
+> ⚠ **Item 4 is built and the override block does not name it.** The draft PO
+> was delivered on 15 August 2026 alongside items 3 and 2, but the EXTENDED
+> block above names only those two. The block is left exactly as it stands —
+> amending an override to cover work it does not mention is precisely the act
+> the rule above forbids. **Item 4 therefore stands built with no recorded
+> override of its own, and needs one or the signature.** Recorded here rather
+> than resolved, because resolving it is the client-facing owner's decision.
+> Item 4's own entry carries the same note.
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
@@ -154,9 +196,9 @@ carries and decides nothing.
 | # | What they asked for | Status |
 |---|---|---|
 | 1 | Hide Base Rate and Escalation % from the printed BOQ | ✅ **Delivered — no charge** (§0 exempt) |
-| 2 | Client-wise segregation — per-client totals and outstanding | 🟠 Pending |
-| 3 | Remove the certified amount / certified qty section from RA bills | 🟠 Pending |
-| 4 | Draft PO from a BOQ | 🟠 Pending |
+| 2 | Client-wise segregation — per-client totals and outstanding | ✅ **Delivered** — built 15 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
+| 3 | Remove the certified amount / certified qty section from RA bills | ✅ **Delivered** — built 15 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** (Section 7, Rs 4,000) |
+| 4 | Draft PO from a BOQ | ✅ **Delivered** — built 15 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
 | 5 | Delivery Challan from a BOQ | 🟠 Pending |
 | 6 | Raise RA1 from the BOQ | ✅ **Delivered — no charge** (§0 exempt) |
 | 7 | Tax Invoice directly from the BOQ | ↩ **Answered differently** |
@@ -194,83 +236,210 @@ deliberately NOT on the issued print"*.
 
 ---
 
-### 2 · Client-wise segregation — 🟠 Pending
+### 2 · Client-wise segregation — ✅ Delivered
 
-A page of per-client totals and outstanding, grouped by the billed-to party.
+`/client/` — every BOQ grouped by the party it is billed to, with schedule
+value, issued, received and outstanding across all of it.
 
-**Approach.** The grouping key is the party on the BOQ, so the page is only as
-trustworthy as those fields. Two pieces are needed before it:
+⚠ **Built on 15 August 2026 under the §0 override, with MG/SF/2026-02 still
+unsigned.** New scope, **chargeable** under that quotation. See §0's override
+block, which was extended rather than overwritten.
 
-1. **A minimal BOQ edit route, party fields only.** There is no BOQ edit route
-   at all today — the only way to correct a customer name is to raise a full
-   revision, which forks the revision chain for a typo. This route touches the
-   party block and nothing else; it is not the general BOQ edit that §7.3's
-   sibling gaps describe, and it must not become one.
-2. **Party fields freeze once any RA bill exists against that BOQ.** An RA
-   bill snapshots the party block at save, so editing the BOQ afterwards
-   produces a register that disagrees with documents already issued and
-   certified. `ra.bills_of()` answers whether any exist.
+**It is a current-state screen, not a document**, so every figure is computed
+live. Outstanding is **issued bills less receipts** — a draft has not been sent
+and a cancelled one has been withdrawn, and putting either into a figure
+somebody is about to chase a customer for would be a demand for money that was
+never made or was explicitly retracted. It is not clamped at zero: an
+overpayment shows as a credit.
 
-Outstanding depended on item 8 (receipts), which has now landed — so the
-outstanding column is buildable. Take the figure from `ra.outstanding_of()`
-rather than recomputing it, and note that it is **live**: a per-client
-outstanding is a current-state screen, not a document, so it is the one place
-the frozen `prev_balance` is *not* the right source.
+**Near-duplicate names are reported and never merged.** The grouping key is
+`pipeline.norm_name(account_name)` — casefolded, whitespace-collapsed,
+**punctuation kept** — so `Pvt Ltd` and `Pvt. Ltd.` stay two groups with an
+amber band naming them. There is no `customer_id` anywhere in this app; merging
+them would be the system deciding two typed names are one party, which it
+cannot know (DOMAIN.md §6).
 
-→ [ABOUT.md §7](ABOUT.md) gap 3 for the shape of the missing edit/amend flows
-on the sell chain; [ABOUT.md §5](ABOUT.md) (`/boq`) for revisions.
+**The minimal party-edit route** (`/client/edit-party/<id>`) writes the
+customer block and nothing else — no line, no rate, no quantity, no section, no
+project field. It is not the general BOQ edit and must not become one; a test
+posts a full set of decoys to hold that.
+
+⚠ **Two corrections to what was first delivered**, both made on 15 August 2026:
+
+- **A GET on a locked schedule now renders the form READ-ONLY** rather than
+  bouncing. It refused on GET as well as POST, so a locked BOQ's customer
+  details could not even be *looked at* from that page. The controls are
+  disabled, the blocking bills are named and linked, and the POST is what
+  refuses.
+- **The lock was narrowed to DRAFT and ISSUED bills.** It had counted bills of
+  any status, and a cancelled bill can never be deleted or un-cancelled — so
+  one of them froze that BOQ's customer name permanently with no escape, and
+  that client then stayed split across two rows of this very page forever. A
+  cancelled bill is excluded from every other total in this app by design.
+  Where a bill's frozen party snapshot and the live schedule now disagree,
+  `/ra/view` raises an amber band giving both and stating that the document is
+  deliberately not restated — the same divergence surface the receipts work
+  established, reused rather than rewritten.
+
+⚠ **It inherits [ABOUT.md §7](ABOUT.md) gap 17.** `outstanding_of()` is
+`grand_total − receipts` and `grand_total` is what we *claimed*; there is
+nowhere to record that the main contractor allowed less. This page rolls that
+figure up per client, which widens where the overstatement is visible without
+changing its size. §3 below carries the question for them.
+
+→ [ABOUT.md §5](ABOUT.md) (`/client`) for the pages;
+[tests/test_client_segregation.py](tests/test_client_segregation.py),
+[tests/test_norm_name.py](tests/test_norm_name.py).
 
 ---
 
-### 3 · Remove the certified amount / certified qty section from RA bills — 🟠 Pending
+### 3 · Remove the certified amount / certified qty section from RA bills — ✅ Delivered
 
-Remove it entirely, not hide it behind a flag.
+Removed entirely, not hidden behind a flag.
 
-**Approach.** Certification is currently a route (`/ra/certify/<id>`) and a
-status on the record, not just a block on a page, so this is a removal of a
-lifecycle step and not a print change. Whatever replaces it **ships with its
-own guard covering issue and cancel of the replacement**: an issued document
-must not be silently editable, and a cancelled one must not release its number
-for reuse. That is the same shape ABOUT.md §7 gap 3 sets out for a void flow —
-a `cancelled` flag plus an overprint, never a hard delete.
+⚠ **Built on 15 August 2026 under the §0 override, with MG/SF/2026-02 still
+unsigned.** This is **new scope and remains chargeable** under that quotation —
+**Section 7 prices it at Rs 4,000** as *"RA issue + cancellation with the
+certified section removed"*. It is **not** a §0 no-charge exemption: §0 exempts
+defect and reachability fixes against scope already sold under MG/SF/2026-01,
+and certification was neither broken nor unreachable. See §0's override block,
+which was extended rather than overwritten.
 
-If the replacement adds a delete route, ABOUT.md §7.9f's standing rule applies
-in full: POST-only destruction, and **its own per-route test** asserting a GET
-leaves the store unchanged. The `url_map` sweep does not cover that and will
-pass a route that destroys on GET.
+**What went.** The route `/ra/certify/<id>` and its page; `certified_qty` and
+`certified_rate` on every claim row; `certified_on` and the old
+`draft | submitted | certified` status on the bill; the certified quantity and
+amount columns on `/ra/print`, `/ra/view` and the register, with the register's
+*Total Certified Amount* tile and *Certification* badge column; and every helper
+that computed or validated certification — nine functions in all. Nothing about
+it survives in code.
 
-→ [ABOUT.md §7](ABOUT.md) gaps 3 and 9f; [ABOUT.md §5](ABOUT.md) (`/ra`).
+**What replaced the LOCK, which is the part the ask did not mention.**
+Certification was doing two unrelated jobs: it was the main contractor's ruling,
+*and* it was the only thing stopping an already-submitted bill being edited or
+deleted (`has_certification()` gated `can_delete()`, and the old `status` was
+the flag). Removing the ruling removed the lock, so the lock is rebuilt as an
+explicit lifecycle:
+
+| State | What it permits |
+|---|---|
+| `draft` | editable, deletable subject to the existing receipts guard, prints with a **DRAFT** marker |
+| `issued` | `edit_ra` and `delete_ra` both refuse; prints clean; money may be receipted against it |
+| `cancelled` | locked, reason and date recorded, excluded from every total and from outstanding, **cannot be un-cancelled**, prints over a CANCELLED overprint |
+
+**`ra_no` is never reused.** A cancelled RA3 stays RA3 and the next bill is RA4,
+the same reasoning that stops a GST serial being reissued — the number has been
+quoted in somebody else's ledger. `next_ra_no()` counts cancelled bills, which
+makes that true by construction rather than by a rule somebody remembers.
+
+**The over-claim guard now counts drafts and excludes cancelled bills.** Both
+halves are load-bearing and neither is obvious: two drafts each claiming a
+line's whole remaining balance are both caught, and cancelling a bill releases
+its quantity back onto every line it claimed. `OVERCLAIM_TOLERANCE` is still
+`0.0` and the control constants are untouched.
+
+**Receipts.** A receipt may only be recorded against an **issued** bill
+(`ra.can_receipt()`, stated once and read by both `receipt.py` and the control
+on `/ra/view`), and cancelling a bill that carries receipts is **refused** in
+the same shape as the existing `can_delete()` refusal.
+
+**Routes** are `GET,POST /ra/issue/<id>` and `GET,POST /ra/cancel/<id>`,
+following `9d060ee`'s shape exactly: the GET renders a confirmation page and
+mutates nothing, the state change happens only in the POST branch, and there is
+no browser `confirm()` anywhere. ABOUT.md §7.9f's `url_map` sweep only walks
+rules whose path contains "delete", so **neither route is covered by it** and
+each ships its own test asserting a GET changes no status.
+
+**Data migration.** `tools/strip_certification.py` — one-shot, idempotent, not
+wired into startup. Applied to the working database on 15 August 2026:
+**2 bills, 6 certification keys across 2 claim rows**, both migrated from
+`draft` to `issued`. Every existing bill becomes `issued` and none is left a
+draft: the old `status` was a certification-tracking field with no gate attached
+to it, so a stored `"draft"` said nothing about whether the bill was sent.
+
+⚠ **What this cost, stated plainly:** any certified quantity or rate already
+keyed in is destroyed and is recoverable only from the dated dump in
+`backups/`. That is what "remove it entirely" means.
+
+⚠ **And what it leaves open:** there is now **no way to record that the main
+contractor allowed less than was claimed**, and no credit-note flow to correct
+it, so outstanding is overstated for any bill certified down. New in
+[ABOUT.md §7](ABOUT.md) gap 17.
+
+→ [ABOUT.md §7](ABOUT.md) gaps 3, 9f and 17; [ABOUT.md §5](ABOUT.md) (`/ra`);
+[tests/test_ra_routes.py](tests/test_ra_routes.py),
+[tests/test_strip_certification.py](tests/test_strip_certification.py).
 
 ---
 
-### 4 · Draft PO from a BOQ — 🟠 Pending
+### 4 · Draft PO from a BOQ — ✅ Delivered
 
-Description and quantity only. **Rates blank. No supplier buy-rates on it.**
+`/po/` — description and quantity only. **Rates blank. No supplier buy-rates on
+it. No GST.**
 
-**Approach.** Two client constraints must hold and both are hard:
+⚠ **Built on 15 August 2026 under the §0 override, with MG/SF/2026-02 still
+unsigned.** New scope, **chargeable** under that quotation.
 
-- **ONE running PO number series** across all suppliers and all sites.
-- **NO GST on POs.**
+> ⚠ **A gap in the record, reported rather than papered over.** §0's override
+> block, extended on 15 August 2026, names **items 3 and 2** as what proceeded.
+> **It does not name item 4**, and this item was built on the same day under the
+> same circumstances. That block is left exactly as it stands — an override is a
+> decision the client-facing owner takes and records, and amending one to cover
+> work it does not mention is not an agent's to make. **Item 4 therefore has no
+> recorded override of its own.** It needs one, or the signature.
 
-Neither is satisfied by the existing `/purchase` module, which computes CGST /
-SGST / IGST on every PO and numbers them through a financial-year-scoped
-series (`pipeline.fy_ref`). That module is also on `boq.py`'s prohibited-import
-list (§1.1). So this is a **BOQ-side draft document**, not a reuse of
-`purchase.py` and not a change to it — the existing buy-side PO is a different
-document with a different purpose (input tax we pay), and merging them would
-put the client's "no GST" rule onto a record that legitimately needs GST.
+**Built in the BOQ chain**, not by reusing `/purchase`. Two client constraints
+made that necessary and both are hard: **one running PO number series** across
+all suppliers and all sites, and **no GST**. The buy-side PO computes CGST /
+SGST / IGST on every order and numbers through an FY-scoped series, and merging
+them would put the no-GST rule onto a record that legitimately needs GST —
+that PO records **input tax we pay**.
 
-Rates being blank is the point of the document, not an unfinished state: it
-goes to a supplier to be priced. Nothing on it may read a buy-rate from the
-catalogue.
+**Separate behaviour, shared appearance.** The document prints on the same A4
+sheet as the buy-side PO — same letterhead, same party block, same table shell,
+same signature — through the shared `docsheet.py`. It differs only where the
+client asked: no GST block at all (not a zero-rated one), rates blank, and a
+`Pcs` column beside `Qty`.
 
-⚠ **Worth confirming with the client:** "one running series" versus the FY
+**Rates being blank is the point of the document, not an unfinished state.** It
+goes to a supplier to be priced, and nothing on it reads a buy rate from
+anywhere. The BOQ's own `supply_rate` is the dangerous one — that is what we
+*sell* the work for, and printing it on the sheet handed to the person quoting
+us is the worst thing this document could do. There is a test for it.
+
+**The line picker.** `/po/create?boq=<id>` lists every BOQ line as a checkbox
+row with an editable quantity defaulting to the schedule's, plus select-all and
+clear-all. **Every box arrives ticked**, because most orders are the whole
+schedule — but the operator can untick down to a few. Only ticked lines are
+snapshotted; nothing ticked is **refused with a message**, never written as an
+empty PO. A ticked size brings its specification clause with it, carrying no
+quantity. Matching is on `line_id` (§1.4).
+
+**Numbering.** The prefix and the next number are **editable at `/settings`**,
+defaulting to `SF/DPO` and 1. They have to be: the client's series already
+exists on paper, and a hardcoded start would collide with their book on the
+first order. The counter is **global, deliberately not per-BOQ** — the opposite
+of `ra_no`, which is per project because it is that job's own sequence. **A
+deleted draft PO does not release its number.**
+
+**The vendor** is a picker over the shared address book (`type: "vendor"`),
+with a **free-text fallback** for a one-off supplier not worth an entry.
+The brief specified free-text party fields; the address book is an improvement
+on that — it carries the address and the GSTIN and cannot be spelled two ways —
+so both are offered and whichever was used is snapshotted onto the PO at create.
+It is **still not a vendor master**: [ABOUT.md §7](ABOUT.md) gap B6.
+
+⚠ **Still worth confirming with the client:** "one running series" versus the FY
 reset every other series in this app uses. A series that never resets and one
 that resets each April are both "one series across all suppliers and sites",
-and they produce different numbers.
+and they produce different numbers. **What was built does not reset**, taking
+the ask literally.
 
-→ [ABOUT.md §5](ABOUT.md) (`/purchase`) for what the existing PO is;
-[ABOUT.md §2b](ABOUT.md) for the import rule.
+⚠ **Nothing captures the rates the supplier quotes back.** The priced copy comes
+in on paper and is re-keyed into a buy-side PO, with no link between the two
+documents. [ABOUT.md §7](ABOUT.md) gap B7.
+
+→ [ABOUT.md §5](ABOUT.md) (`/po`) for the pages and (`/purchase`) for what the
+existing PO is; [tests/test_po_draft.py](tests/test_po_draft.py).
 
 ---
 
@@ -338,11 +507,18 @@ being built.** Like items 4 and 5 it is a BOQ-chain document: `boq.py` may not
 import `proforma.py` (§1.1), so it does not go through the existing
 `/proforma` module.
 
-⚠ Related and **not** unlocked by this: `ra.py` still asserts in code and in a
-test that an RA bill is not a tax invoice, while the client's real
-as-submitted bill is headed *Tax Invoice*. That assertion is to be **inverted,
-not deleted**, it is not yet implemented, and it is not to be acted on off the
-back of this row — [INTRODUCTION.md §8](INTRODUCTION.md) governs it.
+✅ **The dead premise is closed.** `ra.py` and its tests used to assert that an
+RA bill is not a tax invoice, while the client's real as-submitted bill is
+headed *Tax Invoice*. The assertion was **inverted, not deleted**
+(`test_ra_carries_tax_invoice_record_shape` and
+`test_ra_forbids_improper_tax_coupling`), and the last two comments still
+carrying the old premise — `ra.py:66-68` and the section banner in
+`tests/test_ra_record.py` — were corrected on 15 August 2026 alongside item 3.
+
+⚠ **Still not unlocked by any of that:** `quotation._tax_lines()` remains
+prohibited to `ra.py` on its own three reasons, which survive the inversion
+untouched — [DOMAIN.md §4.9](DOMAIN.md),
+[INTRODUCTION.md §7](INTRODUCTION.md).
 
 → [ABOUT.md §5](ABOUT.md) (`/ra`); [DOMAIN.md](DOMAIN.md) for the
 tax-invoice requirement.

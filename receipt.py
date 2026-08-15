@@ -220,6 +220,19 @@ def _validate(form, bill: dict) -> tuple:
         "notes": (form.get("notes") or "").strip()[:_MAX_NOTES],
     }
 
+    # **A receipt may only be recorded against an ISSUED bill**, and this is
+    # checked before anything the operator typed, because it is a fact about the
+    # bill rather than about the form — no correction to the amount or the date
+    # can make a draft receiptable.
+    #
+    # The rule and its wording both live in `ra.can_receipt()`: `/ra/view`
+    # disables its own "Record a payment" control from the same function, and a
+    # guard stated in two places is a guard that ends up meaning two things.
+    # `receipt.py ──► ra.py`, never the reverse (ABOUT.md §2c).
+    allowed, why = RA.can_receipt(bill)
+    if not allowed:
+        return data, why
+
     if data["mode"] not in RA.RECEIPT_MODES:
         return data, "Pick how the money arrived."
     if not data["date"]:
@@ -240,8 +253,8 @@ def _overpay_note(bill: dict, amount: float, exclude_id: str = None) -> str:
     block.
 
     The house rule, and the same treatment a claim rate that diverges from the
-    approved BOQ gets, and a certification above what was claimed: surface it,
-    name the arithmetic, and let the operator decide. A lump sum settling two
+    approved BOQ gets: surface it, name the arithmetic, and let the operator
+    decide (DOMAIN.md §6). A lump sum settling two
     bills at once is a real thing the client's main contractor does, and a hard
     block would make the ledger unable to record what actually happened
     (DOMAIN.md §6).
@@ -504,14 +517,25 @@ def new_receipt():
         # No bill chosen — pick one, exactly as `ra.create_ra()` renders a BOQ
         # picker rather than a blank form. There is no such thing as a receipt
         # against nothing.
+        # Every bill is LISTED, and only the issued ones offer a Record link —
+        # the refusal rides on the disabled control rather than the row being
+        # dropped. A draft that has silently vanished from this picker is
+        # indistinguishable from one that does not exist.
+        def _pick(rid: str, b: dict) -> str:
+            allowed, why = RA.can_receipt(b)
+            if allowed:
+                return (f'<a class="btn btn-ghost" '
+                        f'href="{url_for("receipt.new_receipt", ra=rid)}">Record</a>')
+            return (f'<span class="btn btn-ghost" style="opacity:.55;'
+                    f'cursor:not-allowed;" title="{_esc(why)}">Record</span>')
+
         rows = "".join(
             f'<tr><td class="cl-no">RA{_esc(b.get("ra_no"))}</td>'
             f'<td class="cl-desc">{_esc(b.get("ref"))}</td>'
             f'<td class="cl-desc">{_esc(b.get("project_name"))}</td>'
             f'<td class="cl-amt">{_inr(b.get("grand_total") or 0.0)}</td>'
             f'<td class="cl-amt">{_inr(RA.outstanding_of(b))}</td>'
-            f'<td><a class="btn btn-ghost" href="{url_for("receipt.new_receipt", ra=rid)}">'
-            f'Record</a></td></tr>'
+            f'<td>{_pick(rid, b)}</td></tr>'
             for rid, b in sorted((STORE.get("ra_bills") or {}).items(),
                                  key=lambda kv: str(kv[1].get("ref") or "")))
         empty = '<tr><td colspan="6">No RA bills yet.</td></tr>'

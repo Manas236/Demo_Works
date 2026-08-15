@@ -30,6 +30,8 @@ from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
                                  # Its own collection, never a list on the bill
                                  # or the BOQ. It imports ra.py; ra.py links
                                  # back with url_for only.
+from client import client_bp     # Client-wise segregation and party edits
+from po_draft import po_draft_bp # Draft PO from BOQ
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
@@ -105,6 +107,8 @@ app.register_blueprint(receipt_bp)            # Mounted at /receipt — REQUIRED
                                               # /ra/view, which builds
                                               # url_for("receipt.new_receipt")
                                               # on every bill and 500s without it.
+app.register_blueprint(po_draft_bp)           # Mounted at /po (Draft PO from BOQ)
+app.register_blueprint(client_bp)             # Mounted at /client
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 

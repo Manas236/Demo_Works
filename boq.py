@@ -729,9 +729,7 @@ def revision_blockers(prev_lines: list, new_lines: list,
     return out
 
 
-def _norm_identity(value) -> str:
-    """Casefolded and whitespace-collapsed — for comparing two typed-in names."""
-    return " ".join(str(value or "").split()).casefold()
+
 
 
 def boq_identity(boq: dict) -> tuple:
@@ -762,8 +760,8 @@ def boq_identity(boq: dict) -> tuple:
     Normalising case and internal whitespace is what makes it survive the
     realistic failure, which is the same name re-typed slightly differently.
     """
-    return (_norm_identity(boq.get("project_name")),
-            _norm_identity(boq.get("account_name")))
+    return (P.norm_name(boq.get("project_name")),
+            P.norm_name(boq.get("account_name")))
 
 
 def superseded_ids() -> set:
@@ -794,7 +792,7 @@ def revision_candidates(project_name=None, account_name=None) -> list:
     """
     want = None
     if project_name is not None or account_name is not None:
-        want = (_norm_identity(project_name), _norm_identity(account_name))
+        want = (P.norm_name(project_name), P.norm_name(account_name))
 
     blocked = superseded_ids()
     rows = []
@@ -2087,12 +2085,25 @@ def view_boq(id: str):
     )
     ra_html = ""
     if ra_rows:
-        chips = "".join(
-            f'<a class="ra-chip" href="{url_for("ra.view_ra", id=rid)}">'
-            f'RA{P.esc(r.get("ra_no"))} &middot; {P.esc(r.get("ref"))} &middot; '
-            f'&#8377;&nbsp;{float(r.get("grand_total") or 0):,.0f}</a>'
-            for rid, r in ra_rows
-        )
+        # A CANCELLED bill shows its number and says so, and shows no figure.
+        # A withdrawn claim printed here at its full value alongside the live
+        # ones invites the reader to add the strip up and get a total the
+        # project does not owe — the same call `/ra/`'s register makes.
+        #
+        # The status string is matched LITERALLY rather than importing
+        # `ra.STATUSES`: boq.py may never import ra.py (§2b), and this is
+        # `dashboard._metrics()`'s precedent for `PO_STATUSES`. If the
+        # vocabulary is ever renamed, this is the second place to change.
+        def _chip(rid, r) -> str:
+            void = str(r.get("status") or "").strip().lower() == "cancelled"
+            money = ("cancelled" if void else
+                     f'&#8377;&nbsp;{float(r.get("grand_total") or 0):,.0f}')
+            style = ' style="opacity:.55;"' if void else ""
+            return (f'<a class="ra-chip" href="{url_for("ra.view_ra", id=rid)}"'
+                    f'{style}>RA{P.esc(r.get("ra_no"))} &middot; '
+                    f'{P.esc(r.get("ref"))} &middot; {money}</a>')
+
+        chips = "".join(_chip(rid, r) for rid, r in ra_rows)
         ra_html = f"""
         <div class="ra-block">
           <span class="ra-lbl">Running Account bills raised</span>
@@ -2150,6 +2161,8 @@ def view_boq(id: str):
     ra_btns = ""
     if is_tip:
         ra_btns = (
+            f'<a href="{url_for("po_draft.create_po", boq=id)}" '
+            f'class="btn btn-ghost">&#43;&nbsp;Draft PO</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
             f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '
@@ -3499,8 +3512,8 @@ def create_boq():
                          f"revisions of one schedule fork the chain, and the "
                          f"over-claim guard cannot answer which branch a claim "
                          f"belongs to.")
-            elif boq_identity(prev) != (_norm_identity(form.get("project_name")),
-                                        _norm_identity(form.get("account_name"))):
+            elif boq_identity(prev) != (P.norm_name(form.get("project_name")),
+                                        P.norm_name(form.get("account_name"))):
                 error = (f"BOQ {P.esc(prev.get('ref'))} is for a different "
                          f"project or customer "
                          f"({P.esc(prev.get('project_name'))} — "

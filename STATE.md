@@ -10,21 +10,19 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 14 August 2026.
-**Tests:** **595 passing** in a venv with openpyxl and both client workbooks
-present; 592 passed / 3 skipped without the workbooks; 591 passed / 1 skipped
-without openpyxl. [ABOUT.md §1](ABOUT.md) explains all three.
+**As of:** branch `antigravity-dev`, 15 August 2026.
+**Tests:** **747 passing** in a venv with openpyxl and both client workbooks
+present; **744 passed / 3 skipped** without the workbooks; **743 passed /
+1 skipped** without openpyxl. All three measured by running the suite in that
+configuration; a count quoted without its configuration is not a count. [ABOUT.md §1](ABOUT.md) has the table and explains
+why the two mechanisms produce different-looking numbers — a module-level
+`importorskip` reports **one** skip however many tests sit behind it.
 **Stack:** Flask, ~12k lines, MySQL. `requirements.txt` is committed and
 pinned, and `.venv` is the supported way to run this repo (§3.1 is closed).
 
-> ⚠ **§1 below is stale and was not rewritten on 14 August.** It still
-> describes steps 3 and 4 as not started, but `/ra/`, `/ra/certify/<id>` and
-> `/ra/print/<id>` all exist and are documented in
-> [ABOUT.md §5](ABOUT.md). Per [INTRODUCTION.md §5.6](INTRODUCTION.md) the code
-> is authoritative and this is drift being **reported rather than
-> silently rewritten** — nobody now present witnessed which commit shipped
-> what, and inventing that history is worse than flagging it. Trust ABOUT.md §5
-> for what the routes do.
+*(The staleness banner that stood here is gone: §1 below was rewritten on
+15 August 2026 and now matches the code. It had described steps 3 and 4 as not
+started while both were shipped.)*
 
 ---
 
@@ -40,8 +38,16 @@ reporting.
 | **1** | Record shape, the revision chain, `claimed_by_line()` — with tests, before any UI | ✅ `19c3ffb` |
 | **1.5** | An opaque `line_id`, and the over-claim guard re-keyed onto it | ✅ `af00d84` (design), `2ed9d05` (code) |
 | **2** | The RA entry form | ✅ `fe629d5` |
-| **3** | The RA register, **and the certification entry UI** | ❌ not started |
-| **4** | The printed RA bill | ❌ not started |
+| **3** | The RA register | ✅ shipped |
+| **4** | The printed RA bill, with the tax block | ✅ shipped |
+
+⚠ **Step 3 was specified as "the register **and the certification entry UI**",
+and the certification half no longer exists.** Both were built; the
+certification entry UI was then removed in full on 15 August 2026 at the
+client's request — CLIENT_CHANGES.md item 3, under the §0 override. The register
+is what remains of step 3. This is recorded rather than tidied away, because a
+step that reads as simply "done" would hide that half of it was built, shipped
+and then deliberately deleted.
 
 Step 1.5 was inserted between 1 and 2 after `item_no` was found ambiguous
 *within* a single BOQ, not merely across revisions. [DOMAIN.md §2.2](DOMAIN.md)
@@ -81,25 +87,23 @@ Taken from the commit body of `fe629d5`.
 - **Matching is `line_id` everywhere**; `item_no` is snapshotted onto the claim
   row and never re-derived. Documents print the snapshot; the view screen shows
   `(now 18)` beside it where a revision has renumbered.
-- **Two edit permissions on one record** — the claim freezes, the certificate
-  never does ([DOMAIN.md §3.5](DOMAIN.md)). Gate at
-  [ra.py:972](ra.py#L972), writer at [ra.py:926](ra.py#L926).
-- **Blank is not zero.** Certified-above-claimed warns.
-- **Delete** is POST-only behind a confirmation page, allowed on the highest
-  `ra_no` only, and **refused outright** for any bill carrying certification
-  data — with the reason shown, not the button hidden.
+- ~~**Two edit permissions on one record** — the claim freezes, the certificate
+  never does.~~ **Retired 15 August 2026 with certification** (§1.6). What
+  survives is the position gate, `claim_is_frozen()`, now one of the two gates
+  in `can_edit()`.
+- **Delete** is POST-only behind a confirmation page and allowed on the highest
+  `ra_no` only — with the reason shown, not the button hidden. Its refusal for
+  a bill carrying certification data became a refusal for an **issued** one
+  (§1.6).
 - `MAX_RA_LINES` is derived from `boq.MAX_LINES` [ra.py:125](ra.py#L125);
   `MAX_RA_JSON_BYTES` is **measured**, not copied
   [ra.py:156](ra.py#L156).
 
 ### 1.4 What step 2 deliberately did not ship
 
-- **No `/ra/` register.** The four routes are `create`, `view`, `edit`,
-  `delete`. There is no list view. Step 3.
-- **No printed document.** `view_ra` is a working screen; it carries no A4
-  sheet. Step 4.
-- **No certification entry UI.** Step 2 shipped the certification *record and
-  arithmetic* only. Step 3.
+*All three items here were later shipped: the `/ra/` register and the printed
+document both stand, and the certification entry UI was built and then removed
+in full (§1.6).*
 
 ---
 
@@ -129,59 +133,147 @@ with quotation MG/SF/2026-02 still unsigned. New scope, still chargeable there.
 
 ---
 
+### 1.6 Certification removed, lifecycle installed — CLIENT_CHANGES.md item 3 · ✅ 15 August 2026
+
+⚠ **Built under the §0 override in [CLIENT_CHANGES.md](CLIENT_CHANGES.md)**,
+with MG/SF/2026-02 still unsigned. New scope, **chargeable** there — Section 7
+prices it at Rs 4,000. The override block was **extended**, not overwritten.
+
+- **Certification is gone entirely.** `/ra/certify/<id>`, `certified_qty` /
+  `certified_rate` / `certified_on`, the certified columns on `/ra/print`,
+  `/ra/view` and the register, and nine helpers. Nothing survives in code.
+- **`status` ∈ `draft | issued | cancelled`** replaced the lock certification
+  was providing as a side effect. An issued bill refuses edit and delete; a
+  cancelled one is locked, excluded from every total and from outstanding, and
+  cannot be un-cancelled. [ABOUT.md §3](ABOUT.md), *"The lifecycle"*.
+- **`ra_no` is never reused.** Cancelled RA3 stays RA3 and the next is RA4.
+- **The over-claim guard counts drafts and excludes cancelled bills.** Two
+  drafts each claiming a line's whole balance are both caught; cancelling
+  releases the quantity back. `OVERCLAIM_TOLERANCE` is unchanged at `0.0` and
+  the control constants in `tests/test_boq_line_ids.py` did not move.
+- **`GET,POST /ra/issue/<id>` and `/ra/cancel/<id>`** — `9d060ee`'s shape: GET
+  confirms, POST mutates, no browser `confirm()`. §7.9f's `url_map` sweep does
+  **not** cover either, so each brings its own GET-changes-nothing test.
+- **A receipt may only be recorded against an ISSUED bill**; cancelling a bill
+  with receipts is refused in `can_delete()`'s shape.
+- `tools/strip_certification.py` — one-shot, idempotent, **not wired into
+  startup**. Applied to the working database: **2 bills, 6 keys across 2 claim
+  rows**, both `draft` → `issued`.
+- ⚠ **It opened a real hole:** there is now no way to record that the main
+  contractor allowed less than was claimed, and no credit-note flow, so
+  outstanding is overstated for any bill certified down.
+  **[ABOUT.md §7](ABOUT.md) gap 17** — raise it before item 2 is built.
+
+---
+
+### 1.7 Client segregation, the draft PO, and one shared printed sheet · ✅ 15 August 2026
+
+⚠ **Items 2 and 4 were built under the §0 override in
+[CLIENT_CHANGES.md](CLIENT_CHANGES.md)**, with MG/SF/2026-02 still unsigned.
+Both are new scope and **chargeable** there. **Item 4 is not named in that
+override block** and needs one of its own or the signature — recorded in
+CLIENT_CHANGES.md §0 and in item 4's entry, not resolved here.
+
+- **`client.py` — `/client/`** (CLIENT_CHANGES.md item 2). BOQs grouped by the
+  billed-to party; schedule value, issued, received, outstanding. **Issued
+  bills only**, less receipts, computed live. Near-duplicate names are
+  **reported and never merged**. [ABOUT.md §5](ABOUT.md) (`/client`).
+- **The party-edit lock was narrowed.** Draft and issued bills freeze the
+  fields; **a cancelled bill alone no longer does**, because it can never be
+  deleted or un-cancelled and was therefore freezing a customer name
+  permanently. A GET now renders the form **read-only** instead of bouncing.
+  Where a bill's frozen snapshot and the live schedule disagree, `/ra/view`
+  raises the receipts band's amber divergence notice — `ra.party_drift()`.
+- **`po_draft.py` — `/po/`** (CLIENT_CHANGES.md item 4). Draft PO from a BOQ:
+  description and quantity only, **no rates, no GST**, a `Pcs` column, one
+  **global** number series editable at `/settings` whose numbers are never
+  released. A checkbox **line picker** — every box ticked, only ticked lines
+  snapshotted, none ticked refused.
+- **`docsheet.py` — the shared printed sheet.** Letterhead, party block, table
+  shell, totals rows, bank block, signature: one copy, rendered by the
+  proforma, the tax invoice, the purchase order, the RA bill and the draft PO.
+  A **leaf** — it imports nothing that prints, which is what lets the RA bill
+  and the tax invoice share a letterhead while `ra.py` still may not import
+  `invoice.py`. [ABOUT.md §2d](ABOUT.md).
+- **`/ra/print` was rebuilt on that sheet.** It had a layout entirely of its
+  own — no letterhead, no page frame, Western digit grouping — on a document
+  their real one heads TAX INVOICE. Every figure, item number and HSN/SAC is
+  unchanged and the snapshot contract is untouched.
+- [tests/test_print_golden.py](tests/test_print_golden.py) hashes the four
+  printed documents and asserts the RA bill's letterhead is **byte-identical**
+  to the tax invoice's.
+
+---
+
 ## 2. What comes next
 
-### 2.1 The tax-invoice requirement is the next feature
+### 2.1 The tax-invoice requirement — mostly shipped
 
-[DOMAIN.md §4](DOMAIN.md) is the requirement in full. In short: the client's
-real as-submitted RA bill is headed **TAX INVOICE**, and `ra.py` currently
-asserts the opposite in code and in a test over its own AST.
+[DOMAIN.md §4](DOMAIN.md) is the requirement in full. The client's real
+as-submitted RA bill is headed **TAX INVOICE**, and `ra.py` used to assert the
+opposite in code and in a test over its own AST.
 
-**Nothing about it is implemented.** It needs an approved plan before any code
-([INTRODUCTION.md §5.1](INTRODUCTION.md)).
+**That assertion has been inverted, not deleted** —
+`test_ra_carries_tax_invoice_record_shape` requires the tax block and
+`test_ra_forbids_improper_tax_coupling` still forbids `_tax_lines`, `invoice.py`
+and the e-invoicing tokens (DOMAIN.md §4.9: per-assertion, not wholesale). The
+tax block, the per-slab arithmetic, the per-line HSN/SAC snapshot, the PO/WO
+reference, the Rounding Off line and the printed sheet are all shipped.
 
-Its parts, and where each lands:
+**What is NOT shipped**, and still needs an approved plan before any code
+([INTRODUCTION.md §5.1](INTRODUCTION.md)):
 
-| Part | Touches | Notes |
+- **The tax HEAD.** `tax_type` defaults to `cgst_sgst`, no form offers the
+  choice, and nothing derives it. Pending the client's CA —
+  [ABOUT.md §7](ABOUT.md) gap 15 and DOMAIN.md §4.3. **Do not encode a guess.**
+- **Place of supply with its State code**, a Rule 46 field, absent from the
+  document entirely. Same gap, same reason.
+- **A tax invoice number as its own series**, not derived from `ra_no`
+  (DOMAIN.md §4.2). `tax_invoice_ref` is captured on the record but is a typed
+  field, not a generated series.
+
+Its parts, and where each landed:
+
+| Part | Touches | Status |
 |---|---|---|
-| Invert the AST assertion | [tests/test_ra_record.py:171](tests/test_ra_record.py#L171) | **Invert, never delete.** Per-assertion, not wholesale — [DOMAIN.md §4.9](DOMAIN.md) |
-| HSN/SAC storable per BOQ line, snapshotted onto the claim row | `boq.py`, `ra.py` — **record shape** | [DOMAIN.md §4.4](DOMAIN.md) |
-| A tax invoice number as its own series | `ra.py` | Not derived from `ra_no` — [DOMAIN.md §4.2](DOMAIN.md) |
-| Party GSTINs and states; the head decided by comparing them | `ra.py` | **Not the site** — [DOMAIN.md §4.3](DOMAIN.md) |
-| Main contractor's PO / Work Order number and date | `ra.py` | |
-| CGST/SGST/IGST computation, and the Rounding Off line | `ra.py` — **its own, not `_tax_lines`** | [DOMAIN.md §4.9](DOMAIN.md) |
-| The tax block on the printed sheet | **Step 4** | Sparse lines, parents retained — [DOMAIN.md §4.6](DOMAIN.md) |
+| Invert the AST assertion | `tests/test_ra_record.py` | ✅ inverted, not deleted — per-assertion, [DOMAIN.md §4.9](DOMAIN.md) |
+| HSN/SAC storable per BOQ line, snapshotted onto the claim row | `boq.py`, `ra.py` — **record shape** | ✅ shipped — [DOMAIN.md §4.4](DOMAIN.md) |
+| A tax invoice number as its own series | `ra.py` | ❌ **not built.** `tax_invoice_ref` is typed, not generated — [DOMAIN.md §4.2](DOMAIN.md) |
+| Party GSTINs and states; the head decided by comparing them | `ra.py` | ❌ **not built, and must not be guessed at** — gap 15, [DOMAIN.md §4.3](DOMAIN.md) |
+| Main contractor's PO / Work Order number and date | `ra.py` | ✅ shipped (`po_ref`, `po_date`) |
+| CGST/SGST/IGST computation, and the Rounding Off line | `ra.py` — **its own, not `_tax_lines`** | ✅ shipped, per rate slab — gap 14 closed |
+| The tax block on the printed sheet | Step 4 | ✅ shipped — [DOMAIN.md §4.6](DOMAIN.md) |
 
-> ⚠ **Sequencing of remaining steps is decided. Do not re-open.**
->
-> The execution order is:
-> **Step 3 (RA register + certification entry UI)** -> **The HSN/SAC record-shape change** -> **Step 4 (printed RA bill with the tax block)**
->
-> **Reasoning:** The register lists bills rather than lines, so it barely touches HSN/SAC. The record change is a migration over stored records and must not be the first task. Placing the record change immediately before its only consumer (the printed document in Step 4) means it is built against a real use rather than speculatively.
->
-> **Stop Condition:** If your step-3 plan turns out to need line-level HSN on screen, STOP and re-raise the order rather than proceeding and retrofitting.
+**Dead-Premise Cleanup Checklist — closed 15 August 2026**
 
-**Dead-Premise Cleanup Checklist**
+The dead premise that "an RA bill is not a tax invoice":
 
-The dead premise that "an RA bill is not a tax invoice" exists in the following files and must be removed or corrected when the tax block is built:
-- [x] `ABOUT.md:116` — Module map description (Fixed)
-- [x] `PHASE4_RA_DESIGN.md:308` — Design document scope (Fixed)
-- [x] `boq.py:115` — Comment describing `PRINT_TAX` (Fixed)
-- [x] `store.py:37` — Comment on `ra_bills` dictionary (Fixed)
-- [x] **[ASSERTION]** `tests/test_ra_record.py:126` — Section header/assertion asserting RA bill is not a tax invoice (Fixed)
-- [x] **[ASSERTION]** `tests/test_import_directions.py:84` — Assertion message (Fixed)
-- [x] `ra.py:14` — Module docstring (Fixed)
-- [x] `ra.py:67` — Inline comment (Fixed)
-- [x] `ra.py:487` — Inline comment (Fixed)
-- [x] `app.py:28` — Blueprint registration comment (Fixed)
+- [x] `ABOUT.md` — Module map description
+- [x] `PHASE4_RA_DESIGN.md` — Design document scope
+- [x] `boq.py` — Comment describing `PRINT_TAX`
+- [x] `store.py` — Comment on `ra_bills` dictionary
+- [x] **[ASSERTION]** `tests/test_ra_record.py` — inverted
+- [x] **[ASSERTION]** `tests/test_import_directions.py` — assertion message
+- [x] `ra.py` — module docstring
+- [x] `ra.py` — the `_tax_lines` import comment. ⚠ **This was ticked before it
+      was true.** The comment still read *"an RA bill is a claim document, not a
+      tax invoice"* until 15 August 2026, when it was corrected to state the
+      three reasons the `_tax_lines` prohibition actually rests on (DOMAIN.md
+      §4.9) — reasons that survive the inversion untouched.
+- [x] `tests/test_ra_record.py` — the section banner still read *"An RA bill is
+      NOT a tax invoice"* above assertions that said the opposite. Corrected
+      15 August 2026.
+- [x] `ra.py` — the receipts-block comment
+- [x] `app.py` — blueprint registration comment
 
-### 2.2 Steps 3 and 4 remain
+*Line numbers were dropped from this list on 15 August 2026: they had all
+drifted, and a checklist that points at the wrong line is worse than one that
+names the file.*
 
-- **Step 3 — the RA register.** A list view, plus the certification entry UI
-  that step 2 deferred (§1.4).
-- **Step 4 — the printed RA bill.** The document the client actually submits.
-  Layout-sensitive, and it now has to carry the tax block from
-  [DOMAIN.md §4](DOMAIN.md).
+### 2.2 Steps 3 and 4 are shipped
+
+Both landed. What each carries is in [ABOUT.md §5](ABOUT.md) (`/ra`); step 3's
+certification entry UI was subsequently removed in full (§1.6).
 
 ---
 
@@ -209,9 +301,12 @@ Real, and they shape future design. **Do not build these.**
 
 - **Delivery challan** — a document type their business uses and this system
   has no equivalent for. [DOMAIN.md §5.1](DOMAIN.md).
-- **Their purchase orders** differ from what `purchase.py` models — no GST, one
-  running series across all suppliers and sites, a `Pcs` column on one variant.
-  [DOMAIN.md §5.2](DOMAIN.md).
+- ~~**Their purchase orders** differ from what `purchase.py` models — no GST, one
+  running series across all suppliers and sites, a `Pcs` column on one variant.~~
+  ✅ **Built as `po_draft.py` / `/po`** on 15 August 2026 (§1.7), as a
+  BOQ-chain document rather than a change to `purchase.py`. All three
+  differences are honoured. `purchase.py` itself is unchanged and still models
+  the buy-side order it always did. [DOMAIN.md §5.2](DOMAIN.md).
 - **Site is a first-class field, not a label** — they run several projects
   concurrently. [DOMAIN.md §1](DOMAIN.md).
 
@@ -224,8 +319,13 @@ Recorded rather than solved, in [PHASE4_RA_DESIGN.md §6](PHASE4_RA_DESIGN.md):
 | **No value guard** (§6.2) | The over-claim guard is on quantity only. Because an RA rate may legitimately differ ([DOMAIN.md §3.6](DOMAIN.md)), a bill can be within quantity and still exceed the approved value. A real hole on a rate-contract project. |
 | **No measurement sheet** (§6.4) | A claimed quantity is asserted, not substantiated. Real RA billing backs each figure with an abstract of measurements. |
 | **Concurrency** (§6.6) | Two simultaneous RA creations can read the same `max(ra_no)`. Pre-existing across the whole app, not introduced by RA. Not worth a lock yet. |
-| **No void or cancel** (§6.7) | A mistake is corrected only by the next bill. A revision does not help — the error is in the claim, not the contract. |
+| ~~**No void or cancel** (§6.7)~~ | ✅ **Closed 15 August 2026.** `/ra/cancel/<id>` withdraws a bill without destroying it, keeping `ra_no` spent and releasing the claimed quantity. §1.6. |
 | **One rate per line per bill** (§6.8) | Matches their data. A part quantity claimed at a varied rate cannot be expressed. |
+
+⚠ **And one gap that this work opened rather than closed:** removing
+certification left nowhere to record that the main contractor allowed less than
+was claimed, so outstanding is overstated for any bill certified down.
+[ABOUT.md §7](ABOUT.md) gap 17.
 
 ### 3.5 Deferred deliberately — out of scope for you
 

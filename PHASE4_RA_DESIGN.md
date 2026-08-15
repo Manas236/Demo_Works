@@ -410,11 +410,24 @@ Listed before you find them.
    guards sync), so this is a pre-existing property of the app shared by every
    `_next_ref()` in it, not something RA introduces. It has never bitten because
    the app is effectively single-user. Worth a note, not worth a lock yet.
-7. **No void or cancel.** RA bills are proposed immutable and non-deletable,
-   which is right for a claim that has been certified — but it means a mistake
-   is corrected only by the next bill. Same shape of gap as §7.3, and the
-   revision route does not help, because the error is in the claim rather than
-   in the contract.
+7. **[AMENDED — 15 Aug 2026, resolved] No void or cancel.** RA bills were
+   proposed immutable and non-deletable, which meant a mistake could only be
+   corrected by the next bill; the revision route does not help, because the
+   error is in the claim rather than in the contract.
+
+   **A cancel now exists.** `GET,POST /ra/cancel/<id>` withdraws a bill without
+   destroying it: the record and every figure on it survive, it still prints
+   over a CANCELLED overprint, `ra_no` **stays spent** so the next bill takes
+   the following number, and the claimed quantity is released back onto the
+   BOQ balances. There is deliberately **no un-cancel**.
+
+   It arrived as part of removing certification (CLIENT_CHANGES.md item 3) —
+   certification had been serving as the edit lock, and replacing that lock is
+   what made an explicit lifecycle necessary. [ABOUT.md §3](ABOUT.md), *"The
+   lifecycle"*.
+
+   ⚠ **§6.7 is closed; §7.3's sell-side half is not.** A quotation, a proforma
+   and a tax invoice still have no void flow.
 8. **One rate per line per RA.** The annexure has a single rate column per
    block, so this matches the data — but a part-quantity claimed at a varied
    rate cannot be expressed.

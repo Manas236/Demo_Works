@@ -143,7 +143,7 @@ that now have one each. **Do not read it as authoritative and do not update it.*
 
 ### Finding your way around ABOUT.md
 
-It is 2,722 lines. Section headings, so you can jump:
+It is 4,100-odd lines. Section headings, so you can jump:
 
 | § | What is there |
 |---|---|
@@ -151,9 +151,10 @@ It is 2,722 lines. Section headings, so you can jump:
 | 2 | Module map, line counts, and the full import-direction graph |
 | 2b | **The BOQ chain** — `boq.py` and `ra.py`, and what each may import |
 | 2c | **Receipts** — `receipt.py`, and why the balance arithmetic lives upstream in `ra.py` |
+| 2d | **`docsheet.py`** — the one printed A4 sheet, why it is a leaf, and how that keeps `ra.py` and `invoice.py` apart |
 | 3 | **Every record shape**, with the properties each shape exists to guarantee |
 | 4 | Persistence — how `db.py` snapshots and diffs, and how failure surfaces |
-| 5 | Page by page, route by route. `/boq` and `/ra` are the ones you need |
+| 5 | Page by page, route by route. `/boq` and `/ra` are the ones you need; `/client` and `/po` are the newest |
 | 6 | Branding, the settings override mechanism, the chart palette |
 | 7 | **Known gaps in existing code** — read before proposing a fix, it is probably here |
 | 8 | Two dead files. `integration.py` and `product_view_additions.py` — do not implement against either |
@@ -202,10 +203,14 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **595 passing** on 14 August 2026, verified in a `.venv` with
+The baseline is **747 passing** on 15 August 2026, verified in a `.venv` with
 openpyxl and both client workbooks installed. Two lower totals are also
-correct and are not a problem: **592 passed / 3 skipped** without the
-workbooks, **591 passed / 1 skipped** without openpyxl.
+correct and are not a problem: **744 passed / 3 skipped** without the
+workbooks, **743 passed / 1 skipped** without openpyxl.
+
+**Always state which of the three you ran.** A count on its own is not a
+result: the three move independently, and one pass reported "607 to 630" and
+"638 passing" without naming a configuration for either.
 [ABOUT.md §1](ABOUT.md) has the table and explains why the two mechanisms are
 different — a module-level `importorskip` reports **one** skip however many
 tests sit behind it, which is the thing most often got wrong about this suite.

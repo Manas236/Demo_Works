@@ -123,6 +123,11 @@ def stage_tone(stage: str) -> str:
 # PARSING / FORMATTING
 # =============================================================================
 
+def norm_name(value) -> str:
+    """Casefolded and whitespace-collapsed — for comparing two typed-in names."""
+    return " ".join(str(value or "").split()).casefold()
+
+
 def parse_money(raw) -> float:
     """
     Lenient money parser — accepts '12,50,000', '₹ 1250000', '1250000.50', ''.
