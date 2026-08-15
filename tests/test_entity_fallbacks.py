@@ -130,10 +130,18 @@ def populated(client):
     # payment — so `/ra/delete/<id>` would redirect rather than render if the
     # only bill were the paid one. RA1 carries the receipt and feeds the
     # /receipt/* rules; RA2 is the latest and unpaid, which is what makes the
-    # edit and delete confirmations render a page for the sweep to look at.
-    paid_rid = _an_ra_bill(bid, ra_no=1, rid="r1-supply", ref="SF/RA/26-27/0001")
-    rid = _an_ra_bill(bid, ra_no=2, rid="r2-supply", ref="SF/RA/26-27/0002")
+    # edit, delete, issue and cancel confirmations render a page for the sweep.
+    #
+    # RA1 is **issued** and RA2 is a **draft**, and that is not decoration: a
+    # receipt may only be recorded against an issued bill (`ra.can_receipt`), so
+    # a draft RA1 with money against it would be a fixture asserting a state the
+    # app refuses to produce.
+    paid_rid = _an_ra_bill(bid, ra_no=1, rid="r1-supply", ref="SF/RA/26-27/0001",
+                           status="issued")
+    rid = _an_ra_bill(bid, ra_no=2, rid="r2-supply", ref="SF/RA/26-27/0002",
+                      status="draft")
     rcid = _a_receipt(paid_rid, bid)
+    dpid = _a_draft_po(bid)
 
     # `/product/delete` renders its confirmation page only for a product that
     # may actually be deleted; one locked into an assembly redirects with the
@@ -143,12 +151,17 @@ def populated(client):
     deletable_pid = next(pid_ for pid_ in STORE["products"]
                          if product_mod.can_delete_product(pid_)[0])
 
+    bid2 = "boq2-no-bills"
+    STORE["boqs"][bid2] = dict(STORE["boqs"][bid])
+    STORE["boqs"][bid2]["id"] = bid2
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
             "/address/edit/<id>":   next(iter(STORE["addresses"])),
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
+            "/client/edit-party/<id>": bid2,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
             "/product/delete/<id>": deletable_pid,
@@ -159,9 +172,19 @@ def populated(client):
             "/quotation/view/<id>": qid,
             "/ra/delete/<id>":      rid,
             "/ra/edit/<id>":        rid,
-            "/ra/certify/<id>":     rid,
+            # RA2 is the draft, so both lifecycle confirmations render a page
+            # rather than redirecting with a refusal. `/ra/issue` needs a bill
+            # that is not already issued; `/ra/cancel` needs one that is neither
+            # cancelled nor carrying receipts — RA1 is the paid one and would
+            # bounce on the second count.
+            "/ra/issue/<id>":       rid,
+            "/ra/cancel/<id>":      rid,
             "/ra/print/<id>":       rid,
             "/ra/view/<id>":        rid,
+            "/po/delete/<id>":      dpid,
+            "/po/edit/<id>":        dpid,
+            "/po/print/<id>":       dpid,
+            "/po/view/<id>":        dpid,
             "/receipt/delete/<id>": rcid,
             "/receipt/edit/<id>":   rcid,
             "/spec/delete/<id>":    blank["REG-BLANK-UNSIZED"],
@@ -177,7 +200,41 @@ def populated(client):
 
     STORE["ra_bills"].clear()
     STORE["receipts"].clear()
+    STORE.setdefault("purchase_orders", {}).clear()
 
+
+def _a_draft_po(boq_id: str) -> str:
+    """
+    One draft PO **with rows on it**, so the sweep has a document to look at.
+
+    ⚠ This fixture used to write `"items": []`. The whole contract of this file
+    is that every route renders a *populated* page — "an empty list page renders
+    no rows, and a row is exactly where a fallback entity appears" — so an empty
+    draft PO let `/po/view` and `/po/print` pass over the branch this sweep
+    exists to check. `vendor_name` is deliberately blank on one of the two
+    documents' cells for the same reason `_a_receipt` leaves `instrument_ref`
+    blank: that cell is where the register falls back to the house em-dash.
+    """
+    pid = "po-draft-1"
+    line = next(li for li in STORE["boqs"][boq_id]["line_items"]
+                if not li["is_header"] and li["total_qty"] > 0)
+    STORE.setdefault("purchase_orders", {})[pid] = {
+        "id": pid, "ref": "SF/DPO/0001",
+        "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore", "site_location": "",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "date": "2026-08-15",
+        "vendor_id": "", "vendor_name": "", "vendor_source": "typed",
+        "to": "", "vendor_gstin": "",
+        "delivery_to": "", "notes": "",
+        "items": [{"line_id": line["line_id"], "is_header": False,
+                   "item_no": line["item_no"],
+                   "description": line["description"],
+                   "unit": line["unit"], "qty": float(line["total_qty"]),
+                   "pcs": ""}],
+        "company_branch": "", "auth_signatory": "",
+    }
+    return pid
 
 def _a_quotation() -> str:
     """A minimal but well-formed quotation — enough to raise a PI against."""
@@ -200,7 +257,7 @@ def _a_quotation() -> str:
 
 
 def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
-                ref: str = "SF/RA/26-27/0001") -> str:
+                ref: str = "SF/RA/26-27/0001", status: str = "draft") -> str:
     """One claim against the demo BOQ, so /ra/view and /boq/view have a bill."""
     li = next(li for li in STORE["boqs"][boq_id]["line_items"]
               if not li["is_header"] and li["total_qty"] > 0)
@@ -212,7 +269,8 @@ def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
         "boq_rev_no": 0, "ra_no": ra_no, "leg": "supply", "claims": claims,
         "claim_subtotal": subtotal, "deductions": drows,
         "deduction_total": dtotal, "net_payable": net,
-        "status": "draft", "certified_on": "", "notes": "",
+        "status": status, "issued_on": "", "cancelled_on": "",
+        "cancel_reason": "", "notes": "",
     }
     return rid
 
@@ -248,10 +306,14 @@ def _urls(populated):
         if "GET" not in rule.methods or rule.rule in SKIP:
             continue
         if not rule.arguments:
-            # /ra/create is the one parameterless form that still needs a query
-            # string; without it there is no schedule to claim against.
-            urls.append(rule.rule + (f"?boq={DD.BOQ_META['id']}&leg=supply"
-                                     if rule.rule == "/ra/create" else ""))
+            # /ra/create and /po/create are parameterless forms that still need a query
+            # string; without it there is no schedule to claim/draft against.
+            if rule.rule == "/ra/create":
+                urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}&leg=supply")
+            elif rule.rule == "/po/create":
+                urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}")
+            else:
+                urls.append(rule.rule)
         elif rule.rule in ids:
             placeholder = rule.rule[rule.rule.index("<"):rule.rule.rindex(">") + 1]
             urls.append(rule.rule.replace(placeholder, ids[rule.rule]))

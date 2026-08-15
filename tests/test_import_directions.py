@@ -81,10 +81,18 @@ FORBIDDEN = [
                                "directly — importing po_draft.py back would be a cycle"),
 
     # ── Draft POs from BOQ (Phase 4 / Item 4) ───────────────────────────────
-    ("po_draft", "purchase", "any", "the buy side PO is a separate pipeline entirely from Draft POs"),
+    ("po_draft", "purchase", "any", "the buy-side PO computes GST and numbers through an "
+                                    "FY-scoped series; a draft PO does neither. Separate "
+                                    "behaviour — the shared APPEARANCE comes from docsheet.py"),
     ("po_draft", "ra",       "any", "Draft POs do not need to know about Running Account bills"),
     ("po_draft", "invoice",  "any", "Draft POs have no tax block and no relation to tax invoices"),
     ("po_draft", "proforma", "any", "Draft POs have no relation to proformas"),
+    ("po_draft", "receipt",  "any", "nor to money received"),
+    ("po_draft", "client",   "any", "nor to the client ledger"),
+    ("po_draft", "product",  "any", "a draft PO is written from the BOQ, not the catalogue — "
+                                    "and it must not read a buy rate from anywhere"),
+    ("settings", "po_draft", "any", "settings.py owns the SERIES and knows nothing about the "
+                                    "document; po_draft.py reads it, never the reverse"),
 
     # ── RA billing (Phase 4) ────────────────────────────────────────────────
     ("ra", "proforma", "any", "an RA bill is a claim against a BOQ; the PI belongs to "
@@ -251,6 +259,21 @@ REQUIRED = [
     ("purchase", "docsheet", "the same sheet. The buy side shares the CHROME "
                              "with the sell side and nothing else — no tax "
                              "arithmetic and no business logic cross this arrow"),
+    ("ra",       "docsheet", "the same sheet again, and THIS is the arrow that "
+                             "lets the RA bill carry the tax invoice's "
+                             "letterhead without ra.py importing invoice.py"),
+
+    ("po_draft", "docsheet", "the same sheet as the buy-side PO — separate "
+                             "behaviour, shared appearance"),
+    ("po_draft", "boq",      "superseded_ids, _line_id, _item_no, _num, _fmt_qty "
+                             "— and _line_id is the key a picked line is matched on"),
+    ("po_draft", "settings", "the ONE running number series, editable at /settings. "
+                             "settings.py owns it and imports nothing back"),
+    ("po_draft", "address",  "the vendor picker over the shared address book"),
+    ("po_draft", "dashboard", "BASE_STYLES and _nav"),
+    ("po_draft", "pipeline",  "esc"),
+    ("po_draft", "store",     "the shared STORE dict"),
+    ("po_draft", "branding",  "every company string, colour and image"),
 ]
 
 

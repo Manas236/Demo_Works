@@ -194,6 +194,7 @@ Consequences you must respect when editing:
 | [ra.py](ra.py) | 3001 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 630 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | ~300 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
+| [po_draft.py](po_draft.py) | 900 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -3138,6 +3139,123 @@ reason.
 
 ---
 
+### `/po` — Draft Purchase Orders · [po_draft.py](po_draft.py)
+
+| Route | View |
+|---|---|
+| `GET /po/` | `list_pos` — register |
+| `GET,POST /po/create?boq=<id>` | `create_po` — the **line picker**, then the vendor |
+| `GET /po/view/<id>` | `view_po` — the document with its action bar |
+| `GET /po/print/<id>` | `print_po` — the document alone |
+| `GET,POST /po/edit/<id>` | `edit_po` — vendor, date and notes only, never the lines |
+| `GET,POST /po/delete/<id>` | `delete_po` — GET confirms, POST deletes |
+
+**CLIENT_CHANGES.md item 4.** A BOQ-side document asking a supplier to price
+the material a schedule needs.
+
+#### Why this is not `purchase.py`, and what it shares anyway
+
+Two client constraints, both hard: **one running PO number series** across all
+suppliers and all sites, and **no GST**. `purchase.py` satisfies neither — it
+computes CGST/SGST/IGST on every order and numbers through an FY-scoped series
+— and merging them would put the client's no-GST rule onto a record that
+legitimately needs GST, because a buy-side PO records **input tax we pay**.
+
+So: **separate behaviour, shared appearance.** The document renders through
+`docsheet.py` (§2d) and is the same A4 sheet the buy-side PO prints on — same
+letterhead, same party block, same table shell, same signature. The differences
+are exactly the ones the client asked for and no others:
+
+| | buy-side PO | draft PO |
+|---|---|---|
+| GST | computed, printed | **none at all** — not a zero-rated block (`PRINT_TAX`) |
+| Rates | typed, priced | **blank by design** (`PRINT_RATES`) — the supplier fills them in |
+| Columns | Qty | Qty **and `Pcs`** — DOMAIN.md §5.2 |
+| Series | `SF/PO/26-27/0001`, FY-scoped | `SF/DPO/0001`, one global run |
+| Total | Order Value | **none** — there is nothing to total |
+
+⚠ **Nothing on it may read a buy rate from anywhere**, and the BOQ's own
+`supply_rate` is the dangerous one: that is what we *sell* the work for, and
+printing it on the sheet we hand to the person quoting us is the single worst
+thing this document could do. There is a test for it.
+
+#### The line picker — the part that was missing
+
+`/po/create?boq=<id>` renders **every line of the BOQ as a checkbox row**,
+showing item number, description, unit and the quantity the schedule carries.
+Per line the order quantity is editable and defaults to the BOQ's; a `Pcs` box
+sits beside it, blank, because nothing on a BOQ line holds one.
+
+- **Every box arrives ticked.** Most orders are the whole schedule, so the
+  common case must be the cheap one — a form opening with 97 empty boxes makes
+  it the expensive one. The operator unticks down to what they want.
+- **Select-all / clear-all / expand-all / collapse-all** sit above the table.
+- **Only ticked lines are snapshotted.** Zero ticked is **refused with a
+  message**, never written as an empty PO.
+- A ticked size **brings its specification header with it**, carrying no
+  quantity — DOMAIN.md §2.2, and a supplier has to be able to read the clause.
+- Matching is on **`line_id`**; a posted row that matches nothing on this BOQ is
+  dropped rather than guessed back through `item_no`.
+
+⚠ **It used to snapshot every line of the BOQ tip, unconditionally.** On the
+client's own 97-line schedule that produced a 97-line purchase order for a
+supplier being asked to price four of them, and there was no checkbox anywhere.
+
+**The interaction is `ra.py`'s claim grid ported over**, not a second design:
+the same `is-spec` / `is-child` classes, the same chevron and tag furniture, the
+same collapsed-on-arrival default, the same expand/collapse bar, and the same
+rule that **a folded row is hidden, never removed** — what saves must not depend
+on what the operator happened to have open.
+
+#### Numbering — global, and a number is never released
+
+**`SF/DPO/0001`, and both halves live at `/settings`.** The prefix and the next
+number are editable fields (`settings.po_series()`), defaulting to the previous
+behaviour so nothing moves on upgrade. They have to be editable: the client's
+series already exists on paper, and a hardcoded start at 1 collides with their
+book on the first order.
+
+⚠ **The counter is GLOBAL and deliberately NOT per-BOQ. That is the opposite of
+`ra_no`,** which is per project because it is that job's own RA sequence. One
+running series across every supplier and every site is what they asked for
+(DOMAIN.md §5.2), so this depends on every draft PO ever raised and on nothing
+about the schedule it came from. `test_the_series_is_global_and_not_per_boq`
+pins the difference.
+
+It is also **not FY-scoped**, unlike every other series in this app. That is
+the ask taken literally, and CLIENT_CHANGES.md item 4 records it as worth
+confirming: a series that never resets and one that resets each April are both
+"one series", and they produce different numbers.
+
+**A deleted draft PO does not release its number.** The counter only ever
+advances, so the next order takes the next number — the same reasoning that
+stops a GST serial being reissued. An edit never reissues one either.
+
+#### The vendor — a picker, with a free-text fallback
+
+`address.picker_options(only_types=("vendor",))` is the primary path and is
+**better than the free text the brief specified**: it carries the address and
+the GSTIN and it cannot be spelled two ways on two documents. A **free-text
+box** sits under it for a one-off supplier not worth an address-book entry, so
+a local fabricator quoting one job does not have to be filed first.
+
+Whichever was used is **snapshotted onto the record** at create
+(`vendor_source` is `"book"` or `"typed"`), so the document does not move when
+the address book is edited underneath it.
+
+⚠ **Still not a vendor master** — §7 gap B6. No payment terms, no lead time, no
+GSTIN validation at the point of purchase.
+
+#### What edit may touch
+
+Vendor, date, delivery address and notes. **Not the lines.** An issued draft PO
+is a document a supplier is pricing, and moving the lines under it is how a
+dispute starts — `purchase.update_purchase()` makes the same call about an
+issued order's commercial content. Ordering different lines means raising
+another draft PO, which is cheap and leaves a trail.
+
+---
+
 ### `/address` — Address Book · [address.py](address.py)
 
 | Route | View |
@@ -3643,6 +3761,29 @@ B6. **Vendor addresses are the only vendor record.** There is no vendor master �
    no payment terms, no lead time, no ratings, no GSTIN validation at the point
    of purchase. `type: "vendor"` in the address book is carrying that whole
    concept.
+
+   ⚠ **The draft PO (`/po`) uses the same address book, and it is still not a
+   vendor master.** CLIENT_CHANGES.md item 4 specified free-text party fields;
+   what was built is a **picker over the shared address book** — better, because
+   it carries the address and the GSTIN and cannot be spelled two ways on two
+   documents — with a **free-text fallback** kept alongside it for a one-off
+   supplier who is not worth an entry. Whichever was used is snapshotted onto
+   the PO at create (`vendor_source`). Neither path validates a GSTIN, records
+   a payment term or knows a lead time, so this gap now has two consumers
+   rather than one.
+
+B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
+   by design — the supplier prices it — so there is nothing to total. Printing
+   `Order Value 0.00` under a column of empty rate cells would state that the
+   material is free, which is the same argument §5 `/boq` makes for a missing
+   base rate printing as `-` rather than as zero.
+
+   What is genuinely missing is the **return leg**: nothing captures the rates
+   the supplier quotes back. Today the priced copy comes in on paper and is
+   re-keyed into a buy-side PO (`/purchase`), with no link between the two
+   documents. A "record the quoted rates against this draft" flow is the
+   natural next step and would be what finally connects the BOQ chain's
+   procurement to `purchase.py`'s.
 
 10. ⚠ **The seeded company identity is SPECIMEN DATA, not Samruddhi's.**
     `settings.ensure_demo_settings()` writes a demo record into

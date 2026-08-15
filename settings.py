@@ -181,6 +181,80 @@ def load_saved() -> dict:
     return STORE["settings"].get(RECORD_ID) or {}
 
 
+# =============================================================================
+# THE DRAFT PO SERIES — its own record, and NOT a branding override
+# =============================================================================
+#
+# A **separate record** in the same collection, because these two are not
+# company identity: they do not print in a letterhead, `apply_settings()` must
+# not push them onto `branding`, and above all they must not be counted by the
+# nav's amber dot. That dot means "a statutory detail is missing and a document
+# will print a chip"; a draft-PO prefix is neither.
+#
+# ⚠ **The counter is GLOBAL and deliberately not per-BOQ. That is the opposite
+#   of `ra_no`.** The client keeps ONE running purchase-order series across all
+#   suppliers and all sites (DOMAIN.md §5.2), so the next number depends on
+#   every draft PO ever raised and on nothing about the schedule it came from.
+#   `ra_no` is per project by design, because it is the client's own RA
+#   sequence for that job. Getting these two the same way round is the
+#   difference between their books matching ours and not.
+#
+# It is also **not** financial-year scoped. Every other series in this app is
+# (`SF/TI/26-27/0001`), and this one is not, because "one running series" is
+# what they asked for and an FY reset would restart it every April.
+# CLIENT_CHANGES.md item 4 records that as worth confirming with them.
+PO_SERIES_RECORD = "po_draft_series"
+
+PO_SERIES_DEFAULTS = {
+    # The current behaviour on upgrade, so nothing moves for anyone who never
+    # opens this page. Both are strings: they are form fields, and `next_no` is
+    # parsed where it is used.
+    "prefix":  "SF/DPO",
+    "next_no": "1",
+}
+
+
+def po_series() -> dict:
+    """The draft-PO prefix and next number, defaults filled in."""
+    saved = STORE["settings"].get(PO_SERIES_RECORD) or {}
+    return {k: (str(saved.get(k) or "").strip() or v)
+            for k, v in PO_SERIES_DEFAULTS.items()}
+
+
+def save_po_series(prefix: str, next_no) -> None:
+    """
+    Write the series back. Only non-default values are stored, exactly as the
+    company overrides are, so a later change to the defaults still reaches
+    anyone who never edited them.
+    """
+    values = {"prefix": str(prefix or "").strip(),
+              "next_no": str(next_no or "").strip()}
+    keep = {k: v for k, v in values.items()
+            if v and v != PO_SERIES_DEFAULTS[k]}
+    if keep:
+        STORE["settings"][PO_SERIES_RECORD] = keep
+    else:
+        STORE["settings"].pop(PO_SERIES_RECORD, None)
+
+
+def _validate_po_series(form) -> tuple:
+    """
+    Returns (data, error), and **always returns data** — `address._validate()`'s
+    contract, which every form in this app holds to.
+    """
+    data = {"prefix":  (form.get("po_prefix") or "").strip(),
+            "next_no": (form.get("po_next_no") or "").strip()}
+    if data["prefix"] and len(data["prefix"]) > 32:
+        return data, "Draft PO prefix: keep it under 32 characters."
+    raw = data["next_no"]
+    if raw:
+        if not raw.isdigit():
+            return data, "Draft PO next number: digits only."
+        if int(raw) < 1:
+            return data, "Draft PO next number: must be 1 or more."
+    return data, ""
+
+
 def _validate(form) -> tuple:
     """
     Returns (data, error). **Always returns data**, so a rejected form
@@ -297,7 +371,10 @@ def edit_settings():
 
     if request.method == "POST":
         data, error = _validate(request.form)
+        po_data, po_error = _validate_po_series(request.form)
+        error = error or po_error
         if not error:
+            save_po_series(po_data["prefix"], po_data["next_no"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -311,8 +388,10 @@ def edit_settings():
             return redirect(url_for("settings.edit_settings",
                                     msg="Company details saved.", type="success"))
         values = data
+        po_values = po_data
     else:
         values = B.current_settings()
+        po_values = po_series()
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -395,6 +474,37 @@ def edit_settings():
             a demand for money.
           </p>
           <div class="fg2">{_fields_html(BANK_FIELDS)}</div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Draft Purchase Order Series</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            <b>One running series across all suppliers and all sites</b>, so it
+            can continue the numbers already kept on paper. Set the next number
+            to whatever comes after the last one in the book. It is
+            deliberately <b>not</b> reset each financial year and is
+            deliberately <b>not</b> per project &mdash; unlike the RA bill
+            number, which is that project's own sequence. A deleted draft PO
+            does not release its number.
+          </p>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="po_prefix">Prefix</label>
+              <input type="text" id="po_prefix" name="po_prefix"
+                     value="{P.esc(po_values.get('prefix', ''))}"
+                     placeholder="{P.esc(PO_SERIES_DEFAULTS['prefix'])}"/>
+              <div class="fld-hint">Prints as
+                {P.esc(po_values.get('prefix') or PO_SERIES_DEFAULTS['prefix'])}/{int(po_values.get('next_no') or 1):04d}</div>
+            </div>
+            <div class="form-group">
+              <label for="po_next_no">Next number</label>
+              <input type="text" id="po_next_no" name="po_next_no"
+                     inputmode="numeric"
+                     value="{P.esc(po_values.get('next_no', ''))}"
+                     placeholder="{P.esc(PO_SERIES_DEFAULTS['next_no'])}"/>
+              <div class="fld-hint">Advances on every draft PO raised.</div>
+            </div>
+          </div>
         </div>
 
         <div class="set-actions">
