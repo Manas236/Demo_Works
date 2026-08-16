@@ -48,6 +48,7 @@ def backfill(write: bool = False):
       - propose a project record (name, norm_name, client from first BOQ)
       - if --write, create the project and set project_id on every BOQ in the group
     """
+    approved_names = {"Sify Bangalore", "Sify 2", "Sify3"}
     boqs = STORE.get("boqs", {})
     if not boqs:
         print("No BOQs in the store — nothing to backfill.")
@@ -123,6 +124,8 @@ def backfill(write: bool = False):
                     boq["project_id"] = existing_pid
                     print(f"    -> set project_id={existing_pid}")
         else:
+            if write and display_name not in approved_names:
+                continue
             pid = str(uuid.uuid4())
             now = _now()
             print(f"\n  norm_name: {repr(norm)}")
@@ -154,6 +157,8 @@ def backfill(write: bool = False):
                     print(f"    -> set project_id={pid} on BOQ {boq.get('ref', bid)}")
 
     if write and created_projects:
+        import db
+        db.sync(STORE)
         print(f"\n{'=' * 70}")
         print(f"DONE: {len(created_projects)} project(s) created, "
               f"{sum(len(v) for v in groups.values())} BOQ(s) linked.")
