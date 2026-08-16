@@ -173,6 +173,8 @@ def ensure_demo_settings() -> None:
     # one loaded back out of MySQL a moment ago — is never overwritten.
     if RECORD_ID not in STORE["settings"]:
         STORE["settings"][RECORD_ID] = dict(DEMO_COMPANY)
+    if CHARGE_HEADS_RECORD not in STORE["settings"]:
+        STORE["settings"][CHARGE_HEADS_RECORD] = {"heads": list(DEFAULT_CHARGE_HEADS)}
     STORE["_settings_seeded"] = True
 
 
@@ -345,6 +347,42 @@ def _validate_po_series(form) -> tuple:
     return data, ""
 
 
+# =============================================================================
+# CHARGE HEADS — employee/misc expenses
+# =============================================================================
+CHARGE_HEADS_RECORD = "charge_heads"
+
+DEFAULT_CHARGE_HEADS = [
+    "Travel", "Food & Meals", "Wages / Labour", "Consumables",
+    "Tools & Equipment", "Transport / Freight", "Accommodation",
+    "Site Expenses", "Other"
+]
+
+def charge_heads() -> list:
+    """The list of charge heads available."""
+    saved = STORE["settings"].get(CHARGE_HEADS_RECORD, {})
+    return saved.get("heads", DEFAULT_CHARGE_HEADS)
+
+def save_charge_heads(heads_list: list) -> None:
+    STORE["settings"][CHARGE_HEADS_RECORD] = {"heads": heads_list}
+
+def _validate_charge_heads(raw: str) -> tuple:
+    """Returns (heads_list, error)"""
+    if not raw.strip():
+        return DEFAULT_CHARGE_HEADS, ""
+        
+    lines = [line.strip() for line in raw.split("\n") if line.strip()]
+    deduped = []
+    seen = set()
+    for line in lines:
+        if line not in seen:
+            deduped.append(line)
+            seen.add(line)
+    if not deduped:
+        return DEFAULT_CHARGE_HEADS, ""
+    return deduped, ""
+
+
 def _validate(form) -> tuple:
     """
     Returns (data, error). **Always returns data**, so a rejected form
@@ -463,10 +501,12 @@ def edit_settings():
         data, error = _validate(request.form)
         po_data, po_error = _validate_po_series(request.form)
         dc_data, dc_error = _validate_dc_series(request.form)
-        error = error or po_error or dc_error
+        ch_data, ch_error = _validate_charge_heads(request.form.get("charge_heads", ""))
+        error = error or po_error or dc_error or ch_error
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
+            save_charge_heads(ch_data)
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -482,10 +522,12 @@ def edit_settings():
         values = data
         po_values = po_data
         dc_values = dc_data
+        ch_values = "\n".join(ch_data)
     else:
         values = B.current_settings()
         po_values = po_series()
         dc_values = dc_series()
+        ch_values = "\n".join(charge_heads())
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -627,6 +669,17 @@ def edit_settings():
                      placeholder="{P.esc(DC_SERIES_DEFAULTS['next_no'])}"/>
               <div class="fld-hint">Advances on every challan raised.</div>
             </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Charge Heads</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            List of categories for employee and miscellaneous charges, one per line.
+          </p>
+          <div class="form-group">
+            <label for="charge_heads">Charge Heads (one per line)</label>
+            <textarea id="charge_heads" name="charge_heads" rows="6">{P.esc(ch_values)}</textarea>
           </div>
         </div>
 

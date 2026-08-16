@@ -13,7 +13,7 @@ from flask import Blueprint, redirect, request, url_for
 import branding as B
 import pipeline as P
 from store import STORE
-from dashboard import BASE_STYLES, _nav
+from dashboard import BASE_STYLES, _nav, rupees
 from quotation import QUOTATION_STYLES
 from ra import revision_chain
 
@@ -124,6 +124,24 @@ def view_project(id: str):
         """
     if not attached_pos:
         po_html = '<tr><td colspan="3" style="color:var(--muted);">No purchase orders attached.</td></tr>'
+
+    # Charges
+    attached_charges = [c for c in STORE.get("charges", {}).values() if c.get("project_id") == id]
+    attached_charges.sort(key=lambda c: str(c.get("created_at") or ""), reverse=True)
+    charge_html = ""
+    for c in attached_charges:
+        gross = float(c.get("taxable_amount") or 0.0) + float(c.get("gst_amount") or 0.0)
+        charge_html += f"""
+        <tr>
+          <td>{P.esc(c.get('date'))}</td>
+          <td><a href="{url_for('charge.edit_charge', id=c.get('id'))}"><b>{P.esc(c.get('person'))}</b></a></td>
+          <td>{P.esc(c.get('head'))}</td>
+          <td>{P.esc(c.get('description'))}</td>
+          <td style="text-align:right;">{rupees(gross)}</td>
+        </tr>
+        """
+    if not attached_charges:
+        charge_html = '<tr><td colspan="5" style="color:var(--muted);">No employee charges attached.</td></tr>'
 
     # ── Eligible BOQs for attachment ──────────────────────────────────────────
     # BOQs not currently attached to this project. We list those with NO project attached, 
@@ -284,6 +302,28 @@ def view_project(id: str):
         </thead>
         <tbody>
           {po_html}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Charges Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Employee & Misc Charges</h2>
+        <span style="font-size:0.8rem;color:var(--muted);">Expenses tagged to this project</span>
+      </div>
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Person</th>
+            <th>Head</th>
+            <th>Description</th>
+            <th style="text-align:right;">Gross Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {charge_html}
         </tbody>
       </table>
     </div>

@@ -160,6 +160,12 @@ def populated(client):
         "id": "proj-1", "name": "Test Project", "norm_name": "test project",
         "client": "", "site_address": "", "notes": "", "created_at": "2026-08-16T12:00:00Z"
     }
+    STORE.setdefault("charges", {})["ch-1"] = {
+        "id": "ch-1", "date": "2026-08-16", "person": "Test Person", "head": "Travel",
+        "description": "Test", "project_id": "proj-1", "project_name": "Test Project",
+        "taxable_amount": 100.0, "gst_rate": 0.0, "gst_amount": 0.0,
+        "notes": "", "created_at": "2026-08-16T12:00:00Z", "updated_at": "2026-08-16T12:00:00Z"
+    }
 
     yield {
         "ids": {
@@ -167,6 +173,8 @@ def populated(client):
             "/address/edit/<id>":   next(iter(STORE["addresses"])),
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
+            "/charge/delete/<id>":  "ch-1",
+            "/charge/edit/<id>":    "ch-1",
             "/client/edit-party/<id>": bid2,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
@@ -216,6 +224,7 @@ def populated(client):
     STORE.setdefault("purchase_orders", {}).clear()
     STORE.setdefault("delivery_challans", {}).clear()
     STORE.setdefault("projects", {}).clear()
+    STORE.setdefault("charges", {}).clear()
 
 
 def _a_challan(boq_id: str) -> str:

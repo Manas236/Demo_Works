@@ -42,7 +42,7 @@ NO_CHROME = {
 # The screen routes the last three passes added. Listed explicitly as well as
 # swept, so that deleting one from the app is a red test rather than a quietly
 # smaller sweep.
-NEW_PAGES = ["/client/", "/po/", "/dc/", "/projects/"]
+NEW_PAGES = ["/client/", "/po/", "/dc/", "/projects/", "/charge/"]
 
 
 @pytest.fixture()

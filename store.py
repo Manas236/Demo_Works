@@ -39,6 +39,7 @@ STORE: dict = {
     "receipts":     {},   # keyed by UUID string → payment RECEIVED against one RA bill. Its OWN collection, never a list on the bill or the BOQ — CLIENT_CHANGES.md §1.3
     "delivery_challans": {},  # keyed by UUID string → goods-movement note against a BOQ. Its OWN collection for §1.3's reason — one BOQ accumulates many challans over a project's life
     "projects":     {},   # keyed by UUID string → project record (the commercial engagement BOQs are grouped under)
+    "charges":      {},   # keyed by UUID string → employee/misc expense record (travel, wages, consumables — not in any BOQ)
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "settings":     {},   # single record under the key "company" → branding overrides
     "_seeded":      False,  # flipped to True after ensure_demo_products() runs once

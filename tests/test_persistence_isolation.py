@@ -617,7 +617,7 @@ def test_the_strip_is_chrome_and_appears_away_from_the_dashboard(client, fake_db
                  # instead of calling `_nav()` looks right and silently drops
                  # this strip — which is the one warning that means *nothing
                  # you type is being saved*.
-                 "/client/", "/po/", "/dc/", "/projects/"):
+                 "/client/", "/po/", "/dc/", "/projects/", "/charge/"):
         html = client.get(path).get_data(as_text=True)
         assert 'class="db-down"' in html, path
 

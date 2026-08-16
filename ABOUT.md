@@ -212,6 +212,7 @@ Consequences you must respect when editing:
 | [projectview.py](projectview.py) | ~300 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). |
 | [po_draft.py](po_draft.py) | 885 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
+| [charge.py](charge.py) | ~200 | **Employee & Miscellaneous Charges.** Ledger for business expenses (travel, food, wages, etc.) not in any BOQ. A leaf. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -245,6 +246,7 @@ app.py
  ├─ challan.py ────────────────┤  imports boq, boqpick, docsheet, address, settings,
  │                             │  dashboard, pipeline, store, branding — and NOT
  │                             │  quotation; it reads that sheet through docsheet
+ ├─ charge.py ─────────────────┤  imports dashboard, pipeline, store, branding, quotation
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way

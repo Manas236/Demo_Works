@@ -38,7 +38,9 @@ def test_company_identity_is_seeded_not_hand_entered(client):
     settings.ensure_demo_settings()
     B.apply_settings(settings.load_saved())
 
-    assert len(STORE["settings"]) == 1
+    assert len(STORE["settings"]) == 2
+    assert "company" in STORE["settings"]
+    assert "charge_heads" in STORE["settings"]
     filled = [v for v in B.current_settings().values() if str(v or "").strip()]
     assert len(filled) == 15, f"only {len(filled)} of 15 company fields filled"
     assert B.COMPANY_GSTIN == "27AAAAA0000A1Z5"
@@ -75,7 +77,7 @@ def test_every_reference_collection_has_a_seeder(client):
     # `delivery_challans` likewise: a challan is signed for on arrival, and a
     # seeded one is a record that material left the yard when none did.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
-                     "ra_bills", "receipts", "delivery_challans", "projects"}
+                     "ra_bills", "receipts", "delivery_challans", "projects", "charges"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

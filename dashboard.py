@@ -927,6 +927,9 @@ def _metrics():
         "recent":       recent,
         "attention":    attention,
         "proj_total":   len(STORE.get("projects", {})),
+        "ch_total":     len(STORE.get("charges", {})),
+        "ch_spend":     sum(float(c.get("taxable_amount") or 0.0) + float(c.get("gst_amount") or 0.0)
+                            for c in STORE.get("charges", {}).values()),
         "p_total":      len(products),
         "p_assembly":   sum(1 for p in products.values() if p.get("type") == "assembly"),
         "p_support":    sum(1 for p in products.values() if p.get("type") == "support"),
@@ -1385,6 +1388,7 @@ def index():
     po_draft_url  = url_for("po_draft.list_pos")
     challan_url   = url_for("challan.list_dcs")
     project_url   = url_for("project.list_projects")
+    charge_url    = url_for("charge.list_charges")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1531,6 +1535,14 @@ def index():
               <div class="card-title">Delivery Challans</div>
               <div class="card-desc">{m['dc_total']} raised · goods leaving the
                   yard against a schedule, no rates and no tax</div>
+            </div>
+          </a>
+
+          <a href="{charge_url}" class="card">
+            <div class="card-icon">{ICONS['purchase']}</div>
+            <div class="card-body">
+              <div class="card-title">Employee & Misc Charges</div>
+              <div class="card-desc">{m['ch_total']} entries · {rupees(m['ch_spend'])} spent</div>
             </div>
           </a>
 

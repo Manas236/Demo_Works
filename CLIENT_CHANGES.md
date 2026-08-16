@@ -245,7 +245,7 @@ carries and decides nothing.
 | 6 | Raise RA1 from the BOQ | ✅ **Delivered — no charge** (§0 exempt) |
 | 7 | Tax Invoice directly from the BOQ | ↩ **Answered differently** |
 | 8 | Record payment received against an RA bill | ✅ **Delivered** — built 14 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
-| 9 | Employee / miscellaneous charges section | ⏸ Deferred — not scoped |
+| 9 | Employee / miscellaneous charges section | ✅ **Delivered** |
 | 10 | Project folder grouping BOQs → net profit / loss | 🚧 Structure Built (Pass A), P&L Deferred |
 
 ---
@@ -688,13 +688,14 @@ lives in `ra.py`; [ABOUT.md §3](ABOUT.md) (Receipt) for the record shape;
 
 ---
 
-### 9 · Employee / miscellaneous charges section — ⏸ Deferred
+### 9 · Employee / miscellaneous charges section — ✅ Delivered
 
-**Not scoped.** Raised in the meeting, not specified. We do not know whether
-this is a deduction on an RA bill, a cost line against a project, or a payroll
-concept, and the three build differently.
-
-Nothing to link — no code exists and no design has been agreed.
+**Delivered.** A separate ledger for recording business expenses (travel, food, wages, etc.) that do not appear in any BOQ.
+- Standalone collection `STORE["charges"]`.
+- The ledger does not compute margin or net profit (per item 10's deferred status).
+- `taxable_amount` and `gst_rate` are stored; `gross_amount` is derived dynamically for display.
+- Editable charge heads list via `/settings`.
+- Optional association with a project.
 
 ---
 

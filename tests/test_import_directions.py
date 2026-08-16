@@ -190,6 +190,23 @@ FORBIDDEN = [
     ("client", "product", "any", "a client page has nothing to do with the catalogue"),
     ("client", "spec", "any", "a client page has nothing to do with the specification library"),
 
+    # ── Employee & miscellaneous charges (CLIENT_CHANGES.md item 9) ──────
+    ("charge", "boq",       "any", "a charge is not part of the BOQ chain"),
+    ("charge", "ra",        "any", "a charge is not an RA bill"),
+    ("charge", "receipt",   "any", "a charge is not a payment received"),
+    ("charge", "invoice",   "any", "a charge is not a tax invoice"),
+    ("charge", "proforma",  "any", "a charge is not a proforma"),
+    ("charge", "purchase",  "any", "a charge is not a purchase order"),
+    ("charge", "po_draft",  "any", "a charge is not a draft PO"),
+    ("charge", "challan",   "any", "a charge is not a delivery challan"),
+    ("charge", "product",   "any", "a charge is not a catalogue item"),
+    ("charge", "spec",      "any", "a charge is not a specification"),
+    ("charge", "docsheet",  "any", "a charge is not a printed document"),
+    ("charge", "boqpick",   "any", "a charge does not pick BOQ lines"),
+    ("charge", "client",    "any", "a charge is not client segregation"),
+    ("charge", "settings",  "any", "settings.py imports quotation; nothing downstream may import back"),
+    ("charge", "project",   "any", "a charge reads STORE['projects'] directly"),
+
     # ── The spec library ────────────────────────────────────────────────────
     ("spec", "boq",      "any", "boq.py imports THIS module for the picker; importing back is a cycle"),
     ("spec", "product",  "any", "spec.py replaces nothing in product.py and must not depend on it"),
@@ -329,6 +346,12 @@ REQUIRED = [
     ("client", "pipeline",  "esc / norm_name"),
     ("client", "store",     "the shared STORE dict"),
     ("client", "branding",  "every company string, colour and image"),
+
+    ("charge", "dashboard", "BASE_STYLES and _nav"),
+    ("charge", "pipeline",  "esc"),
+    ("charge", "store",     "the shared STORE dict"),
+    ("charge", "branding",  "every company string, colour and image"),
+    ("charge", "quotation", "QUOTATION_STYLES"),
 
     # ── The shared document sheet, and everything that renders through it ────
     ("docsheet", "quotation", "VIEW_DOC_STYLES and the document's own money "

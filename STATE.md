@@ -255,6 +255,16 @@ own; the 15 August block was left byte-intact.
 
 ---
 
+### 1.9 Employee & Miscellaneous Charges ledger — CLIENT_CHANGES.md item 9 · ✅ 16 August 2026
+
+- `STORE["charges"]` — its own collection in `db.COLLECTIONS`.
+- `charge.py` — the ledger and the add/edit/delete pages. A **leaf**: it imports nothing that renders a document.
+- `gross_amount` is derived dynamically for display.
+- Charge heads are editable via `/settings`.
+- Optional association with a project.
+
+---
+
 ## 2. What comes next
 
 ### 2.1 The tax-invoice requirement — mostly shipped
