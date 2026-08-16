@@ -50,6 +50,8 @@ CLIENT_CHANGES.md §1.3. Separate from `purchases`, which is the buy-side PO.
 Import direction
 ----------------
     po_draft.py ──► boq.py       superseded_ids, _item_no, _line_id, _fmt_qty
+    po_draft.py ──► boqpick.py   the BOQ line picker — the grid, the fold,
+                                 the payload parser. Shared with challan.py
     po_draft.py ──► docsheet.py  the printed A4 sheet
     po_draft.py ──► address.py   the vendor picker
     po_draft.py ──► settings.py  the number series (§ numbering below)
@@ -72,6 +74,7 @@ from datetime import date as _date
 from flask import Blueprint, redirect, request, url_for
 
 import boq as BQ
+import boqpick as BP
 import branding as B
 import docsheet as DS
 import pipeline as P
@@ -221,99 +224,21 @@ def picked_lines(raw: str, boq: dict) -> tuple:
       but the operator has to be able to untick down to a few, and until now
       there was no box.
 
-    Matching is on **`line_id`** and never on `item_no` (CLIENT_CHANGES.md
-    §1.4): item numbers restart per section and the client's own section A
-    carries item 17 twice. A posted row whose id is not on this BOQ is dropped
-    rather than guessed at.
+    The parsing itself is `boqpick.picked_lines()`, shared with the delivery
+    challan. Only the two refusals are this document's — a purchase order and a
+    goods-movement note are refused for the same reason and say it differently,
+    and a shared component that hard-codes one of them starts lying about the
+    page it is on.
 
-    Specification headers come across with their family, carrying **no
-    quantity** — they are the clause the sizes under them are described by, and
-    a supplier needs to read it (DOMAIN.md §2.2). They are not themselves
-    orderable, so they are never ticked and never counted toward the line total.
+    `with_pcs=True` asks for the draft PO's second count column: pieces of pipe
+    against metres of it, DOMAIN.md §5.2. Nothing on a BOQ line holds one, so
+    it is typed on the form and blank is normal.
     """
-    try:
-        payload = json.loads(raw or "{}")
-        rows = payload.get("lines") or []
-    except (ValueError, TypeError):
-        return [], "The line selection did not survive the round trip. Nothing was saved."
-
-    if not isinstance(rows, list):
-        return [], "The line selection did not survive the round trip. Nothing was saved."
-
-    by_lid = {}
-    for li in boq.get("line_items") or []:
-        lid = BQ._line_id(li.get("line_id"))
-        if lid:
-            by_lid[lid] = li
-
-    # Which ids the operator actually ticked.
-    picked, qty_of = [], {}
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        lid = BQ._line_id(row.get("line_id"))
-        if not lid or lid not in by_lid:
-            continue
-        picked.append(lid)
-        qty_of[lid] = row.get("qty")
-
-    if not picked:
-        return [], ("No lines are ticked. A purchase order with nothing on it "
-                    "is not a document — tick at least one line, or cancel.")
-    if len(picked) > MAX_PO_LINES:
-        return [], (f"{len(picked)} lines selected; the limit is "
-                    f"{MAX_PO_LINES}. Raise more than one order.")
-
-    chosen = set(picked)
-
-    # Walk the BOQ in ORDER rather than the posted list, so the document reads
-    # in schedule order however the browser happened to serialise it. A header
-    # is carried whenever one of its children was ticked.
-    wanted_headers = set()
-    for li in boq.get("line_items") or []:
-        if li.get("is_header"):
-            continue
-        if BQ._line_id(li.get("line_id")) in chosen:
-            parent = BQ._item_no(li.get("parent_item_no"))
-            if parent:
-                wanted_headers.add((str(li.get("section") or ""), parent))
-
-    items = []
-    for li in boq.get("line_items") or []:
-        lid = BQ._line_id(li.get("line_id"))
-        if li.get("is_header"):
-            key = (str(li.get("section") or ""), BQ._item_no(li.get("item_no")))
-            if key in wanted_headers:
-                items.append({
-                    "line_id": lid,
-                    "is_header": True,
-                    "item_no": BQ._item_no(li.get("item_no")),
-                    "description": str(li.get("description") or ""),
-                    "unit": "", "qty": 0.0, "pcs": "",
-                })
-            continue
-        if lid not in chosen:
-            continue
-        # The quantity is editable on the form and defaults to the BOQ's. A
-        # blank or unparseable box falls back to the schedule's figure rather
-        # than to zero: zero would be a silent instruction to buy nothing.
-        qty = BQ._num(qty_of.get(lid), None)
-        if qty is None or qty < 0:
-            qty = float(li.get("total_qty") or 0.0)
-        items.append({
-            "line_id": lid,
-            "is_header": False,
-            "item_no": BQ._item_no(li.get("item_no")),
-            "description": str(li.get("description") or ""),
-            "unit": str(li.get("unit") or ""),
-            "qty": float(qty),
-            # `Pcs` is a second count beside the measured quantity — pieces of
-            # pipe against metres of it. One variant of the client's own PO
-            # carries it (DOMAIN.md §5.2). Nothing on the BOQ holds it, so it
-            # is typed on the form and blank is normal.
-            "pcs": "",
-        })
-    return items, ""
+    return BP.picked_lines(
+        raw, boq, with_pcs=True, max_lines=MAX_PO_LINES,
+        empty_msg=("No lines are ticked. A purchase order with nothing on it "
+                   "is not a document — tick at least one line, or cancel."),
+        cap_msg="Raise more than one order.")
 
 
 def _validate(form, boq: dict) -> tuple:
@@ -362,54 +287,13 @@ def _flash() -> str:
 # CSS
 # =============================================================================
 
-PO_STYLES = """
-<style>
-  /* The line picker. Ported from ra.py's claim grid rather than invented:
-     the same `.is-spec` / `.is-child` classes, the same chevron and tag
-     furniture, the same collapsed-on-arrival default, the same
-     expand-all/collapse-all bar. An operator who has raised an RA bill already
-     knows how this form works. */
-  .pk-wrap { overflow-x:auto; border:1px solid var(--border);
-             border-radius:10px; background:#fff; }
-  .pk-table { width:100%; border-collapse:collapse; table-layout:fixed;
-              font-size:.84rem; }
-  .pk-table th, .pk-table td { padding:.42rem .55rem; border-bottom:1px solid var(--border);
-                               vertical-align:middle; }
-  .pk-table thead th { position:sticky; top:0; z-index:1; background:var(--surface);
-                       font-size:.7rem; text-transform:uppercase; letter-spacing:.06em;
-                       color:var(--muted); text-align:left; }
-  .pk-tick { width:42px; text-align:center; }
-  .pk-no   { width:74px; font-weight:600; }
-  .pk-unit { width:70px; }
-  .pk-avail{ width:96px; text-align:right; font-variant-numeric:tabular-nums;
-             color:var(--muted); }
-  .pk-in   { width:110px; }
-  .pk-in input, .pk-pcs input {
-    width:100%; padding:.28rem .4rem; border:1px solid var(--border);
-    border-radius:6px; font:inherit; text-align:right;
-  }
-  .pk-pcs  { width:88px; }
-  .pk-desc { min-width:220px; }
-  .pk-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
-              overflow:hidden; }
-
-  .pk-head { background:var(--surface); cursor:pointer; user-select:none; }
-  .pk-head td { font-weight:600; }
-  .pk-chev { display:inline-block; width:1em; color:var(--muted); }
-  .pk-tag  { display:inline-block; font-size:.68rem; font-weight:700;
-             text-transform:uppercase; letter-spacing:.05em; color:var(--navy);
-             background:#eef2ff; border-radius:99px; padding:1px 7px;
-             margin-right:.5rem; }
-  .pk-hdesc { color:var(--muted); font-weight:400; }
-  .pk-off td { opacity:.45; }
-
-  .pk-tools { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap;
-              padding:.6rem .2rem; font-size:.82rem; color:var(--muted); }
-  .pk-tools .spacer { flex:1; }
-  .pk-count { font-weight:700; color:var(--navy); }
-
-  .pk-none { display:none; margin-top:.8rem; }
-
+# The picker's own rules come from `boqpick.PICKER_CSS` and are spliced in at
+# the character position they have always occupied, so this sheet is
+# byte-for-byte what it was — `tests/test_print_golden.py` hashes it. The
+# concatenation is deliberate rather than an f-string: the CSS below is full of
+# literal braces, and doubling them all to gain one interpolation would be a
+# larger edit than the one being made.
+PO_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
   /* The vendor pair. The picker is primary; the free-text box is the escape
      hatch for a one-off supplier and says so rather than sitting there
      unexplained. */
@@ -444,185 +328,6 @@ PO_DOC_STYLES = """
 # =============================================================================
 # THE FORM
 # =============================================================================
-
-def _families(boq: dict) -> dict:
-    """`{header line_id: [child line_id, …]}` — boq.py's fold, keyed on ids."""
-    by_item = {}
-    for li in boq.get("line_items") or []:
-        if li.get("is_header"):
-            key = (str(li.get("section") or ""), BQ._item_no(li.get("item_no")))
-            by_item[key] = BQ._line_id(li.get("line_id"))
-    fams = {hlid: [] for hlid in by_item.values() if hlid}
-    for li in boq.get("line_items") or []:
-        if li.get("is_header"):
-            continue
-        parent = BQ._item_no(li.get("parent_item_no"))
-        if not parent:
-            continue
-        hlid = by_item.get((str(li.get("section") or ""), parent))
-        lid = BQ._line_id(li.get("line_id"))
-        if hlid and lid:
-            fams[hlid].append(lid)
-    return fams
-
-
-def _picker_rows(boq: dict, chosen: set = None, qty_of: dict = None) -> str:
-    """
-    One row per BOQ line, every box ticked unless a rejected POST says otherwise.
-
-    **Ticked by default**, because most orders are the whole schedule and a form
-    that opens with 97 empty boxes makes the common case the expensive one. The
-    operator unticks down to what they want.
-
-    A folded row is **hidden, never removed** — exactly `ra._claim_rows()`'s
-    rule and for exactly its reason: what saves must not depend on what the
-    operator happened to have expanded open.
-    """
-    fams = _families(boq)
-    child_of = {kid: h for h, kids in fams.items() for kid in kids}
-    out = []
-
-    for li in boq.get("line_items") or []:
-        lid = BQ._line_id(li.get("line_id"))
-        if not lid:
-            continue
-        item = P.esc(BQ._item_no(li.get("item_no")))
-        raw_desc = str(li.get("description") or "")
-
-        if li.get("is_header"):
-            kids = fams.get(lid) or []
-            tag = (f'<span class="pk-tag">spec &middot; {len(kids)} '
-                   f'item{"" if len(kids) == 1 else "s"}</span>') if kids else \
-                  '<span class="pk-tag">spec</span>'
-            click = (f' id="head_{lid}" data-open="0" '
-                     f'onclick="toggleFamily(\'{lid}\')"') if kids else ""
-            chev = (f'<span class="pk-chev" id="chev_{lid}">&#9656;</span>'
-                    if kids else '<span class="pk-chev"></span>')
-            out.append(
-                f'<tr class="pk-head is-spec"{click}>'
-                f'<td class="pk-tick"></td>'
-                f'<td class="pk-no">{chev}{item}</td>'
-                f'<td colspan="5">{tag}'
-                f'<span class="pk-hdesc" title="{P.esc(raw_desc)}">'
-                f'{P.esc(raw_desc[:110])}</span></td></tr>')
-            continue
-
-        parent = child_of.get(lid)
-        hide = ' style="display:none;"' if parent else ""
-        cls = " is-child" if parent else ""
-        avail = float(li.get("total_qty") or 0.0)
-        ticked = " checked" if (chosen is None or lid in chosen) else ""
-        qty_val = (qty_of or {}).get(lid)
-        qty_val = BQ._fmt_qty(avail) if qty_val is None else P.esc(qty_val)
-
-        out.append(f"""
-        <tr class="pk-row{cls}" id="row_{lid}"{hide}>
-          <td class="pk-tick"><input type="checkbox" id="c_{lid}"{ticked}
-              onchange="tick('{lid}')" aria-label="Include this line"/></td>
-          <td class="pk-no">{item}</td>
-          <td class="pk-desc"><span class="pk-clamp" title="{P.esc(raw_desc)}">
-              {P.esc(" ".join(raw_desc.split()))}</span></td>
-          <td class="pk-unit">{P.esc(li.get("unit") or "")}</td>
-          <td class="pk-avail">{BQ._fmt_qty(avail)}</td>
-          <td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
-              value="{qty_val}" aria-label="Order quantity"/></td>
-          <td class="pk-pcs"><input type="text" inputmode="numeric" id="p_{lid}"
-              value="" aria-label="Pieces"/></td>
-        </tr>""")
-    return "".join(out)
-
-
-def _line_ids(boq: dict) -> list:
-    return [BQ._line_id(li.get("line_id")) for li in boq.get("line_items") or []
-            if not li.get("is_header") and BQ._line_id(li.get("line_id"))]
-
-
-_PO_JS = r"""
-<script>
-function el(id) { return document.getElementById(id); }
-
-/* ── The fold ────────────────────────────────────────────────────────────
-   Ported from ra.py, which ported it from boq.py. Open/closed state lives on
-   the HEADER ROW keyed by its line_id, never in a map keyed by row index:
-   two rows in one section can share an item number, so an index key desyncs
-   the moment anything moves.
-
-   A folded row is HIDDEN, not removed. Every input stays in the document, and
-   saveJSON() below reads values and never visibility. */
-function isFamilyOpen(h) {
-  var head = el('head_' + h);
-  return !!(head && head.getAttribute('data-open') === '1');
-}
-function setFamily(h, open) {
-  var head = el('head_' + h);
-  if (!head) return;
-  head.setAttribute('data-open', open ? '1' : '0');
-  var chev = el('chev_' + h);
-  if (chev) chev.textContent = open ? '▾' : '▸';
-  var kids = FAMILIES[h] || [];
-  for (var i = 0; i < kids.length; i++) {
-    var row = el('row_' + kids[i]);
-    if (row) row.style.display = open ? '' : 'none';
-  }
-}
-function toggleFamily(h) { setFamily(h, !isFamilyOpen(h)); }
-function setAllFamilies(open) {
-  for (var h in FAMILIES) {
-    if (Object.prototype.hasOwnProperty.call(FAMILIES, h)) setFamily(h, open);
-  }
-}
-function expandAll()   { setAllFamilies(true); }
-function collapseAll() { setAllFamilies(false); }
-
-/* ── The ticks ───────────────────────────────────────────────────────────
-   Select-all and clear-all act on EVERY line, folded or not, for the same
-   reason folding does not change the payload: what the operator can see must
-   not decide what they ordered. */
-function tick(lid) {
-  var row = el('row_' + lid), c = el('c_' + lid);
-  if (row && c) row.className = row.className.replace(/ pk-off/g, '')
-                              + (c.checked ? '' : ' pk-off');
-  count();
-}
-function setAll(on) {
-  for (var i = 0; i < LINE_IDS.length; i++) {
-    var c = el('c_' + LINE_IDS[i]);
-    if (c) { c.checked = on; tick(LINE_IDS[i]); }
-  }
-}
-function selectAll() { setAll(true); }
-function clearAll()  { setAll(false); }
-
-function count() {
-  var n = 0;
-  for (var i = 0; i < LINE_IDS.length; i++) {
-    var c = el('c_' + LINE_IDS[i]);
-    if (c && c.checked) n++;
-  }
-  el('pk-count').textContent = n + (n === 1 ? ' line' : ' lines');
-  var warn = el('pk-none');
-  if (warn) warn.style.display = n ? 'none' : '';
-}
-
-/* Only ticked lines are posted. The server refuses an empty selection rather
-   than writing an empty PO — this is a courtesy to the wire, not the rule. */
-function saveJSON() {
-  var lines = [];
-  for (var i = 0; i < LINE_IDS.length; i++) {
-    var lid = LINE_IDS[i], c = el('c_' + lid);
-    if (!c || !c.checked) continue;
-    lines.push({line_id: lid,
-                qty: (el('q_' + lid) || {}).value || '',
-                pcs: (el('p_' + lid) || {}).value || ''});
-  }
-  el('po_json').value = JSON.stringify({lines: lines});
-  return true;
-}
-
-count();
-</script>
-"""
-
 
 def _vendor_block_form(data: dict) -> str:
     """The picker and the free-text fallback, as one field group."""
@@ -675,48 +380,24 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 
     picker = ""
     if not editing:
-        line_ids = _line_ids(boq)
-        chosen = data.get("_chosen")
-        picker = f"""
-      <div class="form-section">
-        <div class="section-title">Lines to order</div>
-        <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+        picker = BP.grid_html(
+            boq,
+            title="Lines to order",
+            intro_html="""        <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
           Every line is ticked to start with, because most orders are the whole
           schedule. Untick what this supplier is not being asked to price, and
           change a quantity where you want less than the schedule shows.
           <b>Rates are deliberately not here</b> — the supplier fills those in.
-        </p>
-        <div class="pk-tools">
-          <button type="button" class="btn btn-ghost" onclick="selectAll()">Select all</button>
-          <button type="button" class="btn btn-ghost" onclick="clearAll()">Clear all</button>
-          <button type="button" class="btn btn-ghost" onclick="expandAll()">Expand all</button>
-          <button type="button" class="btn btn-ghost" onclick="collapseAll()">Collapse all</button>
-          <span class="spacer"></span>
-          <span><span class="pk-count" id="pk-count">0 lines</span> selected</span>
-        </div>
-        <div class="pk-wrap">
-          <table class="pk-table">
-            <thead><tr>
-              <th class="pk-tick"></th>
-              <th class="pk-no">Item</th>
-              <th class="pk-desc">Description</th>
-              <th class="pk-unit">Unit</th>
-              <th class="pk-avail">In BOQ</th>
-              <th class="pk-in">Order qty</th>
-              <th class="pk-pcs">Pcs</th>
-            </tr></thead>
-            <tbody>{_picker_rows(boq, chosen, data.get("_qty"))}</tbody>
-          </table>
-        </div>
-        <div class="alert alert-error pk-none" id="pk-none">
-          Nothing is ticked. A purchase order with no lines on it is not a document.
-        </div>
-      </div>
-      <script>
-        var LINE_IDS = {BQ._json_for_script(line_ids)};
-        var FAMILIES = {BQ._json_for_script(_families(boq))};
-      </script>
-      {_PO_JS}"""
+        </p>""",
+            qty_label="Order qty",
+            qty_aria="Order quantity",
+            empty_note=("Nothing is ticked. A purchase order with no lines on "
+                        "it is not a document."),
+            payload_id="po_json",
+            doc_word="PO",
+            chosen=data.get("_chosen"),
+            qty_of=data.get("_qty"),
+            with_pcs=True)
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
