@@ -122,6 +122,78 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > it is restated deliberately:** if MG/SF/2026-02 is never signed, items 8, 3,
 > 2, 4 and 5 were all built against an unsigned quotation.
 
+> ### ⚠ AUTHORISATION — 16 August 2026, by Manas Gawde — BOQ → real purchase order
+>
+> **A new block, not an amendment.** Every block above stands exactly as
+> written; none has been edited, reformatted or re-scoped. This is a fourth
+> occasion, and it is a **different kind** of one from the three above it,
+> which is why it is worded from scratch rather than extended onto the last.
+>
+> **What proceeds:** raising a **real purchase order from a BOQ**
+> (`/purchase/from-boq/<id>`) and **converting a priced draft PO into one**
+> (`/purchase/from-draft/<id>`), together with the `boq_id`, `project_id` and
+> per-line `line_id` that `purchase.py` needed to carry them. Built 16 August
+> 2026.
+>
+> #### ⚠ This work is NOT on the client's change list at all
+>
+> **It is not item 4, it is not item 5, and it is not any other numbered item
+> in this file.** The client has not asked for it. Read §2's item 4 and item 5
+> and you will find the draft PO and the delivery challan; you will not find
+> this, because nobody outside this office has ever requested it. It was
+> identified here — the operator wanted work raised from a schedule to land in
+> the ordinary purchase order register, and ABOUT.md §7 had already recorded
+> that real procurement cost has no path to a project — and it was built on
+> that basis.
+>
+> That distinction is the whole reason this block exists rather than a line
+> added to the one above. The three overrides above set aside a **commercial
+> gate on scope the client had asked for and we had priced**. This one
+> authorises scope that **has never been asked for and has never been priced**,
+> which is a different decision with a different risk attached, and folding it
+> into a block about items 4 and 5 would have quietly reclassified it as
+> something the client is expecting.
+>
+> **MG/SF/2026-02 was still unsigned on 16 August 2026.** Manas took the
+> decision to proceed anyway and instructed that it be recorded rather than the
+> rule deleted, exactly as on 14, 15 and 16 August.
+>
+> #### ⚠ No charge has been agreed for this, and none may be assumed
+>
+> **It is not covered by MG/SF/2026-02**, because it is not in it — that
+> quotation prices the numbered items in §2 and this is not one of them. **It
+> is not a §0 no-charge exemption either**, because that exemption covers
+> defect and reachability fixes against scope already sold under
+> MG/SF/2026-01, and a purchase order raised from a bill of quantities is new
+> capability rather than making sold capability work.
+>
+> So it sits in neither bucket: **built, unrequested, unpriced, and with no
+> charge agreed by anybody.** Whether it is billed, folded into a later
+> quotation, or given away is a commercial decision for the client-facing
+> owner to take with the client, and it has not been taken. **No agent may
+> record it as chargeable, as delivered-no-charge, or as covered by any
+> existing quotation**, and no agent may raise it with the client — the
+> conversation is Manas's to have.
+>
+> **The gate is not lifted and this is not a precedent.** It is still the
+> default and it still stands. That work outside the change list was authorised
+> once does not make the next piece of unrequested work authorised, and an
+> override remains a decision that is taken and recorded, never one an agent
+> may take, infer, or extend. If anything, this block is the stronger warning
+> of the four: the three above it are about *timing*, and this one is about
+> *scope*.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:**
+> if MG/SF/2026-02 is never signed, items 8, 3, 2, 4 and 5 were all built
+> against an unsigned quotation — and this work was built against no quotation
+> at all.
+>
+> **Where the technical record lives:** [ABOUT.md §2](ABOUT.md) for the routes
+> and the `purchase.py → boqpick.py` edge, [ABOUT.md §7](ABOUT.md) for the
+> project-cost gap it narrows and the part of it that stays open, and
+> [tests/test_boq_to_po.py](tests/test_boq_to_po.py) for what is actually
+> guaranteed.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as

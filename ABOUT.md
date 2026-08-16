@@ -191,33 +191,33 @@ Consequences you must respect when editing:
 
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 167 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
-| [store.py](store.py) | 47 | The `STORE` dict. Single shared object, imported everywhere. |
-| [db.py](db.py) | 530 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
+| [app.py](app.py) | 176 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
+| [store.py](store.py) | 49 | The `STORE` dict. Single shared object, imported everywhere. |
+| [db.py](db.py) | 532 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
 | [docsheet.py](docsheet.py) | 484 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
-| [boqpick.py](boqpick.py) | 499 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
-| [dashboard.py](dashboard.py) | 1548 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
+| [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
+| [dashboard.py](dashboard.py) | 1572 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
 | [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. |
-| [proforma.py](proforma.py) | 1310 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
+| [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
-| [purchase.py](purchase.py) | 1329 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
+| [purchase.py](purchase.py) | 2347 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
-| [boq.py](boq.py) | 3985 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
+| [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
 | [ra.py](ra.py) | 3876 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 740 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 548 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
-| [project.py](project.py) | ~300 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. |
-| [projectview.py](projectview.py) | ~300 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). |
-| [po_draft.py](po_draft.py) | 885 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
+| [project.py](project.py) | 414 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. |
+| [projectview.py](projectview.py) | 334 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). |
+| [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
-| [charge.py](charge.py) | ~200 | **Employee & Miscellaneous Charges.** Ledger for business expenses (travel, food, wages, etc.) not in any BOQ. A leaf. |
+| [charge.py](charge.py) | 372 | **Employee & Miscellaneous Charges.** Ledger for business expenses (travel, food, wages, etc.) not in any BOQ. A leaf. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
-| [settings.py](settings.py) | 643 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
+| [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
 | [pipeline.py](pipeline.py) | 608 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
@@ -234,7 +234,8 @@ app.py
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
- ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address
+ ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address,
+ │                             │  docsheet, boq, boqpick — the last two are §2f
  ├─ spec.py ───────────────────┤  imports dashboard, branding, store, pipeline, demo_data
  ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, spec, demo_data
  ├─ ra.py ─────────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq
@@ -258,8 +259,9 @@ boqpick.py   imports boq + pipeline, and NOTHING that renders a document ← §2
 
 `proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py` and
 `challan.py` each also import **`docsheet.py`** for the printed sheet. That
-arrow is one-way and is what §2d is about. `po_draft.py` and `challan.py`
-additionally import **`boqpick.py`** for the line picker — §2e.
+arrow is one-way and is what §2d is about. `po_draft.py`, `challan.py` and now
+**`purchase.py`** additionally import **`boqpick.py`** for the line picker —
+§2e, and §2f for the third consumer.
 
 **`demo_data.py` is the third bottom-of-graph module.** It holds the 56 seeded
 specs and the 97-line demo BOQ and imports nothing — not `store`, not
@@ -456,7 +458,8 @@ boqpick.py ──► boq.py       _line_id / _item_no / _num / _fmt_qty /
 boqpick.py ──► pipeline.py  esc
 
 po_draft.py ──┐
-challan.py ───┴──► boqpick.py        ← one way, always
+challan.py ───┤
+purchase.py ──┴──► boqpick.py        ← one way, always
 ```
 
 `boqpick.py` imports **nothing that renders a document**, owns no route, and
@@ -473,7 +476,7 @@ refusal band, and the noun the JavaScript's comment uses. A purchase order and
 a goods-movement note say different things about the same grid, and a shared
 component that hard-codes one of them starts lying about the page it is on.
 
-Two flags preserve **observed** differences rather than offering a menu, which
+Three flags preserve **observed** differences rather than offering a menu, which
 is `docsheet.letterhead()`'s `show_web` precedent:
 
 - **`with_pcs`** — the draft PO's second count column, pieces of pipe against
@@ -481,6 +484,24 @@ is `docsheet.letterhead()`'s `show_web` precedent:
   has no such column.
 - **`qty_aria`** — the PO's column head reads `Order qty` and its input
   announces `Order quantity`. Preserving that is the point of the exercise.
+- **`with_rate`** — the **third** consumer's, added when `purchase.py` grew
+  `/purchase/from-boq/<id>` (§2f). A real purchase order is priced, so its grid
+  carries a rate box per line prefilled from `supply_base_rate`. The draft PO
+  must never carry one — its whole point is that the supplier fills the rates
+  in — and the challan carries no money at all.
+
+⚠ **`.pk-rate`'s CSS is deliberately NOT in `PICKER_CSS`.** That constant is
+spliced into `po_draft.PO_STYLES` at a fixed character position and
+`/po/create` is hashed byte-for-byte, so a rule added there would move a golden
+for a column that page does not render. It lives in `purchase.FROM_BOQ_STYLES`,
+beside the only two pages that draw the column, and
+`tests/test_page_chrome.py` asserts it stays out of both `PICKER_CSS` and
+`PURCHASE_STYLES`.
+
+**The header row's colspan is computed, not written down.** `4 + with_pcs +
+with_rate`, for the reason `boq.py` derives its spans from `n_supply_cols`: a
+flag that leaves a row one cell short is exactly the class of breakage nothing
+notices until somebody is holding the paper.
 
 **`PICKER_CSS` is raw CSS**, spliced into `PO_STYLES` at the character position
 it has always occupied — `DS.BANK_CSS`'s arrangement exactly — and wrapped
@@ -497,6 +518,119 @@ should take on, and nothing was changed in it.
 intended. `tests/test_print_golden.py` gained a nine-block golden of
 `/po/create` **before** this module existed; the page is byte-identical across
 the move, and so are the four printed sheets.
+
+### 2f. The BOQ chain reaches the buy side — a real PO from a schedule
+
+Until this existed the app had **two purchase-order systems and no path between
+them**:
+
+```
+BOQ ──► draft PO (SF/DPO/nnnn)   rate-less, sent out to be priced   … and STOP
+        purchase order (SF/PO/26-27/nnnn)   entered from scratch, no upstream
+```
+
+The priced copy came back on paper and was re-keyed into `/purchase/create`
+with nothing linking the two documents. Worse, and this is the part that
+mattered beyond convenience: **a real PO is the only record of what procurement
+actually cost, and it carried no BOQ and no project**, so that cost had no path
+to a job at all. §7 is where that gap was recorded.
+
+```
+GET,POST /purchase/from-boq/<boq_id>       tick the lines, price them, order
+GET,POST /purchase/from-draft/<draft_id>   the draft comes back priced
+```
+
+Both write an **ordinary** `STORE["purchases"]` record with the ordinary
+FY-scoped `SF/PO/26-27/nnnn` series. There is no draft record, no approval step
+and no status of their own — the operator asked for work raised from a schedule
+to land in the register they already use, and it does.
+
+```
+purchase.py ──► boq.py       superseded_ids / _line_id / _item_no / _num /
+                             _fmt_qty / MAX_LINES
+purchase.py ──► boqpick.py   the line picker, at its THIRD consumer — §2e
+
+boq.py      ──► purchase.py  NEVER. /boq/view links out with url_for.
+po_draft.py ──► purchase.py  NEVER, and purchase.py ──► po_draft.py NEVER
+                             either — see below.
+```
+
+**`purchase.py` may import `boq.py`, `boqpick.py` and `project.py`. It may not
+import `po_draft.py`, `ra.py`, `invoice.py`, `challan.py`, `receipt.py` or
+`charge.py`.** All of it is asserted at AST level in
+`tests/test_import_directions.py`. `project.py` is permitted and deliberately
+**not taken**: the project link is one id, one name and one `url_for`, and
+`STORE["projects"]` carries all three.
+
+#### ⚠ `/purchase/from-draft` lives in `purchase.py`, and the reason is the rule
+
+It writes a `purchases` record, and **a module owns the shape it writes**.
+Putting it in `po_draft.py` would force that file to import this one and couple
+two sibling document modules — which have different record shapes, different
+number series and, the client constraint that created the split in the first
+place, different rules about GST.
+
+So the link runs **both ways through `url_for` and neither way through an
+import**, which is the one-way trick used a seventh time:
+
+| direction | how |
+|---|---|
+| draft → real PO | `/po/view` and `/po/` build `url_for("purchase.…")` and read `converted_po_ids` off their own record |
+| real PO → draft | `purchase.py` reads `STORE["purchase_orders"]` directly and links with `url_for("po_draft.…")` |
+
+**The draft is kept, never deleted.** It is the record of what was sent out for
+pricing. **Converting the same draft twice is permitted** — two orders off one
+RFQ is real when an order is split between suppliers or placed in two lots — so
+`converted_po_ids` is a **list**, not a scalar, and a second conversion raises
+an amber band in the shape of the over-claim and party-drift bands rather than
+a refusal. DOMAIN.md §6: surface it, name it, never silently correct it.
+
+#### What the record gained, and what stayed optional
+
+| Field | On | Meaning |
+|---|---|---|
+| `boq_id` / `boq_ref` / `boq_rev_no` | the PO | the schedule it was raised against, refs **stored** not looked up |
+| `project_id` / `project_name` | the PO | inherited from that BOQ **at create and stored**, never derived |
+| `draft_id` / `draft_ref` | the PO | the draft it was converted from |
+| `line_id` | each line | **the key** a row is traced back to the schedule by |
+| `converted_po_ids` | the draft | the real orders raised off it |
+
+**Every one is optional, nothing is backfilled, and a purchase order carrying
+none of them renders byte-for-byte what it always did.** That is the
+`proforma.prior_invoiced` / `ra.tax_slabs` contract, and
+`tests/test_print_golden.py` measures it rather than trusting it — which is why
+the upstream chip strip collapses to the empty string with no literal
+whitespace at its insertion point, and why the two new pages load a separate
+`FROM_BOQ_STYLES` rather than a rule added to the hashed `PURCHASE_STYLES`.
+
+**`project_id` is inherited and then stored, not derived through `boq_id`.** A
+PO entered from scratch can be tagged to a project with no schedule behind it,
+so a lookup would have nothing to look through. A BOQ with no `project_id`
+gives the order **none** — it deliberately does not fall back to the BOQ's
+free-text `project_name`, which is a display label and not a grouping key;
+inventing one would put a row on no project's page while looking as though it
+had one.
+
+#### Three rules the routes hold to
+
+1. **Matching is on `line_id`.** `item_no` is carried for the reader and never
+   matched on — §3's property 0, and the ₹1,99,122.50 it cost when it was.
+2. **The lines are snapshotted at create and the printed order never re-reads
+   the live BOQ.** `print_ra()` shipped the opposite green (§5, `/ra/print`).
+3. **The installation track is excluded** (`purchase.INCLUDE_INSTALL_TRACK`).
+   A BOQ line is priced to supply and to install; the installation amount is
+   labour we perform, not goods we buy, and putting it on an order placed on a
+   vendor would commit us to paying somebody else for our own work. The rate
+   prefill is `supply_base_rate` — what the job was **costed** at — and
+   emphatically not `supply_rate`, the escalated figure we *sell* at.
+
+A **superseded** BOQ is refused at the route with a redirect and a message,
+gated on `boq.superseded_ids()` exactly as `/ra/create` and `/dc/create` are,
+and `/boq/view` hides the control on the same single `is_tip` predicate that
+drives Revise, Draft PO, the challan and the RA links. A link is not a guard,
+so both halves exist.
+
+Held by [tests/test_boq_to_po.py](tests/test_boq_to_po.py).
 
 ### 2b. The BOQ chain — a second sell-side chain, not a fourth link
 
@@ -2180,6 +2314,8 @@ as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 |---|---|
 | `GET /purchase/` | `list_purchases` — register, filterable by status |
 | `GET,POST /purchase/create` | `create_purchase` — raise a PO on a vendor |
+| `GET,POST /purchase/from-boq/<boq_id>` | `from_boq` — **raise one from a schedule**, §2f |
+| `GET,POST /purchase/from-draft/<draft_id>` | `from_draft` — **convert a priced draft**, §2f |
 | `POST /purchase/<id>/update` | `update_purchase` — status only |
 | `GET /purchase/view/<id>` | `view_purchase` — the printed purchase order |
 
@@ -2230,6 +2366,29 @@ writes nothing.
 PO** button works. It is a query param rather than a path segment on purpose: a
 PO is *not derived* from a quotation the way a PI is, and it can be raised with
 no job at all.
+
+The vendor block is `_vendor_from()` / `_vendor_field()`, **shared with the two
+BOQ-side routes below**. Three create paths have to answer "who are we buying
+from" identically — the same picker over the same address book, the same two
+refusals in the same order, the same five fields snapshotted — and three copies
+of that is three chances for one of them to accept a vendor the others refuse.
+Unlike `po_draft.vendor_from()` there is **no free-text fallback**: a draft PO
+is a request for a quotation and may go to a fabricator nobody has filed, while
+this document commits money and quotes the vendor's GSTIN back on a record we
+claim input tax credit against.
+
+#### Raised from a BOQ, and converted from a draft — see §2f
+
+`/purchase/from-boq/<id>` and `/purchase/from-draft/<id>` are the two routes
+that give a real purchase order an upstream. **§2f is where they are
+documented** — the import edges, the record fields, the `line_id` rule, the
+excluded installation track and why the conversion route lives here rather than
+in `po_draft.py`. It is not restated here.
+
+The one thing worth repeating at the page level: they land in **this** register
+with **this** series and **this** lifecycle. There is no second collection, no
+draft flag and no approval gate, and `update_purchase()` still changes status
+only whichever route wrote the record.
 
 #### The lifecycle — this is the "different procedure"
 
@@ -4185,10 +4344,42 @@ B4. **Free-text line items are not possible.** Every PO line must be a catalogue
    product. Real purchasing buys consumables, freight and one-off fabrication
    that will never be in a sales catalogue. An "other — describe it" row is the
    fix.
-B5. **Job costing is material only.** No labour, no overhead, no allocation of a
-   stock purchase across the jobs that consume it. The margin figure on the
-   deal panel is a gross material margin and nothing more; the panel says so,
-   but it is easy to quote at somebody as if it were profit.
+B5. 🟠 **Job costing is material only — NARROWED, and the narrowing has its own
+   sharp edge.** No labour, no overhead, no allocation of a stock purchase
+   across the jobs that consume it. The margin figure on the deal panel is a
+   gross material margin and nothing more; the panel says so, but it is easy to
+   quote at somebody as if it were profit.
+
+   ✅ **What is now closed: a real purchase order can carry a project, so
+   procurement cost finally has a path to one.** It had none at all — a PO's
+   only optional upstream was `quotation_id`, and a purchase order is the only
+   record in this app of what material actually cost us. `/purchase/from-boq`
+   and `/purchase/from-draft` inherit `project_id` from the schedule at create
+   and store it, `/purchase/create` offers a project selector, and
+   `/projects/view/<id>` lists the orders that carry one. See §2f.
+
+   🟠 **What remains, and it is the part a future profit view must be built
+   around: a PO entered from scratch carries a project only if somebody tags
+   it.** The field is optional and must stay optional — stock, consumables and
+   spares are genuinely bought with no job behind them (§3, *Purchase Order*,
+   property 4) — so there will always be real spend with no `project_id` on it.
+   Two distinct populations end up looking identical: cost that belongs to no
+   project, and cost that belongs to one and was not tagged.
+
+   📌 **So when a profit or cost view is built, unattributed spend must appear
+   as a visible line of its own — never be filtered out, and never be silently
+   spread across the projects that were tagged.** A per-project cost figure
+   computed as "the POs carrying this id" is *understated by every order
+   somebody forgot to tag*, and understated silently, which is the failure mode
+   this repo has already paid for twice: §7 gap 17's outstanding is overstated
+   by every disallowance with nothing on any screen saying it may be, and
+   `claimed_by_line()` keyed on `item_no` waved ₹1,99,122.50 through while
+   looking correct. A screen showing *Sify Bangalore ₹4,20,000 · unattributed
+   ₹1,85,000* is honest and prompts the tagging; one showing only the first
+   number is a profit figure that is wrong in the direction that flatters us.
+
+   Nothing about the record shapes needs to change for that — `project_id` is
+   present or it is not, and both are already derivable.
 B6. **Vendor addresses are the only vendor record.** There is no vendor master —
    no payment terms, no lead time, no ratings, no GSTIN validation at the point
    of purchase. `type: "vendor"` in the address book is carrying that whole
@@ -4210,12 +4401,29 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    material is free, which is the same argument §5 `/boq` makes for a missing
    base rate printing as `-` rather than as zero.
 
-   What is genuinely missing is the **return leg**: nothing captures the rates
-   the supplier quotes back. Today the priced copy comes in on paper and is
-   re-keyed into a buy-side PO (`/purchase`), with no link between the two
-   documents. A "record the quoted rates against this draft" flow is the
-   natural next step and would be what finally connects the BOQ chain's
-   procurement to `purchase.py`'s.
+   ✅ **The return leg is NARROWED.** This used to read: *"nothing captures the
+   rates the supplier quotes back — the priced copy comes in on paper and is
+   re-keyed into a buy-side PO, with no link between the two documents"*, and
+   named a flow that would *"finally connect the BOQ chain's procurement to
+   `purchase.py`'s"*. **That connection exists.**
+   `/purchase/from-draft/<draft_id>` converts a draft into a real purchase
+   order carrying the supplier, the lines, the `line_id`s, the `boq_id` and the
+   `project_id`; the draft is kept and links through to what it became. §2f.
+
+   🟠 **What remains is narrower and is still real: the rates are typed on the
+   conversion form, not captured on the draft itself.** So the priced copy is
+   still re-keyed — once, at conversion, instead of from scratch — and the
+   draft PO still holds no record of what the supplier actually quoted against
+   it. Two consequences worth naming:
+
+   - **A draft sent to two suppliers cannot be compared inside the app.** That
+     is the workflow the two drafts against one BOQ exist for (§5 `/po`), and
+     comparing them still means putting two pieces of paper side by side.
+   - **`_draft_rate_of()` already reads a `rate` off the draft's row before
+     falling back to the BOQ's base rate**, and nothing writes one. That is
+     deliberate rather than dead code: when the capture flow lands, a rate the
+     supplier genuinely quoted must beat what we costed the job at, and having
+     the precedence wrong at that point would be silent.
 
 10. ⚠ **The seeded company identity is SPECIMEN DATA, not Samruddhi's.**
     `settings.ensure_demo_settings()` writes a demo record into
