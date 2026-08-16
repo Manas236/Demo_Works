@@ -3918,6 +3918,9 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 > which is unchanged.
 
 ##### How these are numbered
+9d, 9c, B1 etc are literal legacy identifiers. Do not renumber them. An un-numbered gap is one added after the initial audit.
+
+* **Global Nav vs Print Goldens**: The print goldens verify the HTML block from `<head>` through the document start. Because printed documents load the global `_nav()` from `dashboard.py`, ANY future change to the global navigation bar breaks the print goldens, even though the nav is hidden via CSS during print. This is a known coupling gap that forces retargeting the goldens whenever the nav changes.
 
 **A gap's number is a stable identifier, not its position in a list.** Sixty-odd
 references cite them from code comments, docstrings, tests and four other

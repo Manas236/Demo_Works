@@ -360,8 +360,10 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks=None,
 
 # Captured 15 August 2026, against the code as it stood BEFORE `docsheet.py`
 # existed. These three numbers are the baseline the extraction is measured by.
-TI_WHOLE, TI_LEN = "def697b1652ca51f", 110082
-TI_BLOCKS = {"head":       "ed18381f6fc165b7",
+GOLD_TI = "gold-ti"
+TI_WHOLE = "ab555e45cd245fa5"
+TI_LEN = 110208
+TI_BLOCKS = {"head":       "49524db46e29dcc5",
              "letterhead": "850cbd4766b608c2",
              "foot-strip": "cc51ac98a541aaee",
              "doc-box":    "5e4d6a24b0a5b726",
@@ -369,8 +371,8 @@ TI_BLOCKS = {"head":       "ed18381f6fc165b7",
              "items":      "ace24562781a2e31",
              "signature":  "f5511fad8e1212cc"}
 
-PO_WHOLE, PO_LEN = "2af89ab327a2a5ba", 101674
-PO_BLOCKS = {"head":       "91a7e4c4a836e219",
+PO_WHOLE, PO_LEN = "4f7794a81d90071c", 101851
+PO_BLOCKS = {"head":       "d0df61b20bb3a42e",
              "letterhead": "350d4e9032d16839",
              "foot-strip": "cc51ac98a541aaee",
              "doc-box":    "ffe286e7afd8c90b",
@@ -378,8 +380,10 @@ PO_BLOCKS = {"head":       "91a7e4c4a836e219",
              "items":      "fd759d99cf4b162a",
              "signature":  "5717ca48143d8b6e"}
 
-PI_WHOLE, PI_LEN = "e637583a110820f4", 103617
-PI_BLOCKS = {"head":       "caff49b2b87e06a0",
+GOLD_PI = "gold-pi"
+PI_WHOLE = "4969d5e4f6a6508b"
+PI_LEN = 103773
+PI_BLOCKS = {"head":       "a3b342e73adf07fc",
              "letterhead": "93c3e6d7afb10731",
              "foot-strip": "cc51ac98a541aaee",
              "doc-box":    "77fa68a83f706064",
@@ -391,8 +395,10 @@ PI_BLOCKS = {"head":       "caff49b2b87e06a0",
 # baseline was `88a55e81022ec48a` / 53,382 bytes — a `.doc-paper` card in Inter
 # over a slate palette, with no letterhead, no page frame and money in Western
 # digit grouping. See the test below for what moved.
-RA_WHOLE, RA_LEN = "bf9f7f4271cb7180", 97479
-RA_BLOCKS = {"head":       "de1fffbf620734ae",
+GOLD_RA = "gold-ra"
+RA_WHOLE = "2e12fa898f1b39fe"
+RA_LEN = 97656
+RA_BLOCKS = {"head":       "ea1ccbaa59c99616",
              "letterhead": "850cbd4766b608c2",
              "foot-strip": "cc51ac98a541aaee",
              "doc-box":    "44c7368b5a1b2380",
@@ -654,16 +660,18 @@ def golden_picker(client, pinned_identity, monkeypatch):
 
 # Captured 16 August 2026, against the code as it stood BEFORE `boqpick.py`
 # existed. These are the baseline the extraction is measured by.
-PICK_WHOLE, PICK_LEN = "c97509ea5bf4ab66", 54333
-PICK_BLOCKS = {"head":    "7b1f46fa7f2ed641",
-               "intro":   "bef0984ca97a76df",
+GOLD_PICK_BOQ = "gold-pick"
+PICK_WHOLE = "2cbe1a602a7943f6"
+PICK_LEN = 54498
+PICK_BLOCKS = {"head":    "04f4809335b2c9e8",
+               "intro":   "5558f09cc783266e",
                "vendor":  "715e7c6cd4634448",
                "details": "53b096aa21f5264c",
                "lines":   "10ed04f5fad93d1e",
                "tools":   "76ba5972ff18f235",
                "rows":    "a57b4602a006fa6f",
                "payload": "0b433e5e3f3e5705",
-               "js":      "f38e4de84298541d"}
+               "js":      "f1bae1908e487e97"}
 
 
 def test_the_boq_line_picker_is_unchanged(client, golden_picker):

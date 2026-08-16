@@ -708,6 +708,7 @@ def _nav():
         <span class="nb-word">{B.name_html("nb-fire")}</span>
       </a>
       <div class="nav-right">
+        <a href="{url_for('project.list_projects')}" class="nav-link">{ICONS['project']}Projects</a>
         <a href="{settings_url}" class="nav-link">{dot}{ICONS['settings']}Settings</a>
         <span class="nav-pill">{B.APP_SUBTITLE}</span>
       </div>

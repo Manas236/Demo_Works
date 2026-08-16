@@ -88,6 +88,28 @@ def view_project(id: str):
     if not attached_pis:
         pi_html = '<tr><td colspan="3" style="color:var(--muted);">No proforma invoices attached.</td></tr>'
 
+    # Tax Invoices (inheriting via proforma)
+    attached_tis = []
+    for ti in STORE.get("invoices", {}).values():
+        pi_id = ti.get("proforma_id")
+        if pi_id:
+            pi = STORE.get("proformas", {}).get(pi_id)
+            if pi and pi.get("project_id") == id:
+                attached_tis.append(ti)
+                
+    attached_tis.sort(key=lambda t: (str(t.get("date") or ""), str(t.get("ref") or "")), reverse=True)
+    ti_html = ""
+    for ti in attached_tis:
+        ti_html += f"""
+        <tr>
+          <td><a href="{url_for('invoice.view_invoice', id=ti.get('id'))}"><b>{P.esc(ti.get('ref'))}</b></a></td>
+          <td>{P.esc(ti.get('date'))}</td>
+          <td>{P.esc(ti.get('account_name') or '—')}</td>
+        </tr>
+        """
+    if not attached_tis:
+        ti_html = '<tr><td colspan="3" style="color:var(--muted);">No tax invoices attached.</td></tr>'
+
     # Purchase Orders
     attached_pos = [po for po in STORE.get("purchases", {}).values() if po.get("project_id") == id]
     attached_pos.sort(key=lambda p: (str(p.get("date") or ""), str(p.get("ref") or "")), reverse=True)
@@ -222,6 +244,26 @@ def view_project(id: str):
         </thead>
         <tbody>
           {pi_html}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tax Invoices Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Tax Invoices</h2>
+        <span style="font-size:0.8rem;color:var(--muted);">Tax invoices inherit their project from their proforma</span>
+      </div>
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Ref</th>
+            <th>Date</th>
+            <th>Billed To</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ti_html}
         </tbody>
       </table>
     </div>
