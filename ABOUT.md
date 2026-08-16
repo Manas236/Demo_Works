@@ -76,7 +76,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 747 passed — or fewer, with skips; see below
+python -m pytest -q                     # 838 passed, 1 skipped without openpyxl; see below
 python app.py                           # http://127.0.0.1:5000
 ```
 
@@ -91,19 +91,27 @@ two machines with different Pythons and nothing here pins interpreter behaviour.
 **The suite reports three different totals and none of them is wrong.** Two
 independent things move the number, and they are often confused for each other:
 
-| Environment | Result |
-|---|---|
-| openpyxl installed **and** both client workbooks present | **747 passed** |
-| openpyxl installed, workbooks absent (the usual fresh clone) | **744 passed, 3 skipped** |
-| openpyxl absent (a plain `pip install -r requirements.txt`) | **743 passed, 1 skipped** |
+| Environment | Result | Measured |
+|---|---|---|
+| openpyxl installed **and** both client workbooks present | **751 passed** *(derived — see below)* | 15 Aug 2026 |
+| openpyxl installed, workbooks absent (the usual fresh clone) | **748 passed, 3 skipped** *(derived — see below)* | 15 Aug 2026 |
+| openpyxl absent (a plain `pip install -r requirements.txt`) | **838 passed, 1 skipped** | **16 Aug 2026** |
 
-*All three re-measured on 15 August 2026 after the shared-document-sheet pass,
-each by **actually running the suite in that configuration** rather than by
-adjusting the previous row by the number of tests added. The three totals move
-independently and a figure quoted without naming its configuration is not a
-figure — the row above it was reported as "607 to 630" and "638 passing" by a
-pass that never named one, and 607 was the no-openpyxl baseline rather than the
-real box.*
+⚠ **Only the third row was re-measured on 16 August 2026**, after the delivery
+challan. It was measured by running the suite in that configuration, and it is
+the only figure on this table you should rely on today. The first two rows are
+the 15 August measurements **plus the four workbook tests that openpyxl
+unlocks**, and are therefore *derived* — precisely the arithmetic this note has
+always said not to do. They are marked rather than silently updated, because a
+number nobody has run is a claim and not a result. The box this pass ran on has
+no openpyxl and neither client workbook, so those two configurations could not
+be produced without installing a package into the interpreter — which
+`requirements.txt`'s pins exist to stop anyone doing casually.
+
+*The three totals move independently and a figure quoted without naming its
+configuration is not a figure — the row above it was reported as "607 to 630"
+and "638 passing" by a pass that never named one, and 607 was the no-openpyxl
+baseline rather than the real box.*
 
 ⚠ **A module-level `importorskip` reports ONE skip, not one per test.**
 `tests/test_fixtures.py` holds 4 tests behind a module-level
@@ -178,37 +186,39 @@ Consequences you must respect when editing:
 
 ## 2. Module map
 
-*Note: The line counts below are indicative and will drift as the codebase grows; treat a stale number as expected rather than as evidence the doc is untrustworthy.*
+*Note: The line counts below are indicative and will drift as the codebase grows; treat a stale number as expected rather than as evidence the doc is untrustworthy. They are total lines (`wc -l`), blanks included — a count that excludes blank lines reads about 12% lower and is not what this table holds. Regenerated 16 August 2026.*
 
 | File | Lines | Role |
 |---|---|---|
-| [app.py](app.py) | 159 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
-| [store.py](store.py) | 46 | The `STORE` dict. Single shared object, imported everywhere. |
-| [db.py](db.py) | 529 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
+| [app.py](app.py) | 167 | Wiring only. Boots persistence, registers blueprints, error handlers (404/500/413). Never implements features. |
+| [store.py](store.py) | 47 | The `STORE` dict. Single shared object, imported everywhere. |
+| [db.py](db.py) | 530 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [docsheet.py](docsheet.py) | 433 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
-| [dashboard.py](dashboard.py) | 1530 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
+| [docsheet.py](docsheet.py) | 484 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
+| [boqpick.py](boqpick.py) | 499 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
+| [dashboard.py](dashboard.py) | 1548 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
 | [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. |
 | [proforma.py](proforma.py) | 1310 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 1329 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
-| [boq.py](boq.py) | 3977 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
+| [boq.py](boq.py) | 3985 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
 | [ra.py](ra.py) | 3876 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 740 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 548 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
-| [po_draft.py](po_draft.py) | 1204 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
+| [po_draft.py](po_draft.py) | 885 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
+| [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
-| `tools/gen_demo_data.py` | 311 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
+| `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
-| [settings.py](settings.py) | 520 | Company identity + bank details form. Writes runtime overrides onto `branding`. |
+| [settings.py](settings.py) | 643 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
 | [pipeline.py](pipeline.py) | 608 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
-| `integration.py` | 131 | **Dead file.** Stale docs only — see §8. |
-| `product_view_additions.py` | 495 | **Dead file.** Stale docs only — see §8. |
+| `integration.py` | 130 | **Dead file.** Stale docs only — see §8. |
+| `product_view_additions.py` | 494 | **Dead file.** Stale docs only — see §8. |
 
 **Import direction (never reverse these — circular imports):**
 
@@ -227,17 +237,24 @@ app.py
  ├─ receipt.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq, ra
  ├─ client.py ─────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq, ra, receipt
  ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
+ ├─ po_draft.py ───────────────┤  imports boq, boqpick, docsheet, address, settings,
+ │                             │  quotation, dashboard, pipeline, store, branding
+ ├─ challan.py ────────────────┤  imports boq, boqpick, docsheet, address, settings,
+ │                             │  dashboard, pipeline, store, branding — and NOT
+ │                             │  quotation; it reads that sheet through docsheet
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
 branding.py  imports nothing from the app  ← keep it that way
 demo_data.py imports nothing AT ALL        ← keep it that way
 docsheet.py  imports quotation + the three above, and NOTHING that prints  ← §2d
+boqpick.py   imports boq + pipeline, and NOTHING that renders a document ← §2e
 ```
 
-`proforma.py`, `invoice.py`, `purchase.py`, `ra.py` and `po_draft.py` each also
-import **`docsheet.py`** for the printed sheet. That arrow is one-way and is
-what §2d is about.
+`proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py` and
+`challan.py` each also import **`docsheet.py`** for the printed sheet. That
+arrow is one-way and is what §2d is about. `po_draft.py` and `challan.py`
+additionally import **`boqpick.py`** for the line picker — §2e.
 
 **`demo_data.py` is the third bottom-of-graph module.** It holds the 56 seeded
 specs and the 97-line demo BOQ and imports nothing — not `store`, not
@@ -344,10 +361,21 @@ docsheet.py ──► dashboard, branding, pipeline
 
 invoice.py ──┐
 proforma.py ─┤
-purchase.py ─┼──► docsheet.py        ← one way, always
-ra.py ───────┤
-po_draft.py ─┘
+purchase.py ─┤
+ra.py ───────┼──► docsheet.py        ← one way, always
+po_draft.py ─┤
+challan.py ──┘
 ```
+
+⚠ **`challan.py` reads `QUOTATION_STYLES` through this leaf**, as
+`DS.QUOTATION_STYLES`, because it is on `quotation.py`'s prohibited-import
+list. That is not a way around the rule; it is the arrangement above used a
+second time. `docsheet.py` imports `quotation.py` deliberately and re-exports
+the stack, and every form in this app is built out of that sheet's
+`.form-section` / `.fg2` / `.form-group` widgets — re-declaring them in the
+challan would be a second design system, which is what
+`tests/test_page_chrome.py` exists to catch. If the shared form furniture ever
+moves out of `quotation.py`, that one line follows it.
 
 `docsheet.py` imports **nothing that prints**. It may not import `invoice.py`,
 `proforma.py`, `purchase.py`, `ra.py`, `boq.py`, `po_draft.py`, `receipt.py`,
@@ -377,6 +405,93 @@ positions it always occupied. One definition, and the proforma still renders
 byte-for-byte what it did. It had to move: the RA bill needs the same block and
 `ra.py` may never import `proforma.py`, so leaving it there would have meant a
 second bank block that looked different from the first.
+
+#### The two optional seams, and why each defaults to `None`
+
+The delivery challan needed two things no other document has. Both are
+parameters that **default to `None` and emit the bytes this module always
+emitted**, so every existing caller renders identically — and
+`tests/test_print_golden.py` is what proves that rather than asserts it.
+
+| Seam | What it does | Who uses it |
+|---|---|---|
+| `sheet_open(title_band=…)` | the document's title **inside the page frame and above the letterhead** | the delivery challan only |
+| `sig_block(left_html=…)` | replaces the GSTIN/PAN grid on the left of the signature panel | the delivery challan only |
+
+⚠ **`title_band` is a `<caption>`, and the reason is load-bearing.** It has to
+sit inside `.page-frame` and above the `<thead>`, and a `<caption>` is the only
+child a `<table>` accepts in that position — a `<div>` there is hoisted out of
+the table by every browser. The obvious alternative, a second `<tr>` at the top
+of the `<thead>`, would put the band **inside the letterhead block**
+`tests/test_print_golden.py` splits on, and the challan's letterhead would stop
+hashing identically to the tax invoice's. The caption sits before that marker,
+so the letterhead is untouched. `DS.BAND_CSS` carries the rule, spliced into
+the one sheet that asks for a band.
+
+⚠ It does **not** repeat on page two, and the letterhead does. A caption is
+painted once; only `display:table-header-group` repeats. That is a real
+difference, and it is left as one: a challan is a one-page note, and making the
+band repeat would mean moving it into the `<thead>`, which is exactly what must
+not happen.
+
+### 2e. `boqpick.py` — one grid, two documents, and why it is also a leaf
+
+The BOQ line picker — a checkbox per line, an editable quantity defaulting to
+the schedule's, select-all / clear-all, and the family fold that carries a
+specification clause down with the sizes under it.
+
+It was written once as `ra.py`'s claim grid, ported into `po_draft.py` as the
+order picker, and the delivery challan wants it a third time. Three copies is
+where §2d found four letterheads that had already drifted, so it was extracted
+at the **second** consumer rather than the fourth.
+
+```
+boqpick.py ──► boq.py       _line_id / _item_no / _num / _fmt_qty /
+                            _json_for_script / MAX_LINES
+boqpick.py ──► pipeline.py  esc
+
+po_draft.py ──┐
+challan.py ───┴──► boqpick.py        ← one way, always
+```
+
+`boqpick.py` imports **nothing that renders a document**, owns no route, and
+knows nothing about either consumer. That is what lets `po_draft.py` and
+`challan.py` share a grid **without either importing the other** — if the leaf
+could import one of them, the two documents would be coupled through the
+basement while appearing not to be. Asserted in
+`tests/test_import_directions.py`, along with the fact that neither imports the
+other.
+
+**Everything a reader sees is passed in** — the section title, the intro
+paragraph, the quantity column's label, the input's accessible name, the
+refusal band, and the noun the JavaScript's comment uses. A purchase order and
+a goods-movement note say different things about the same grid, and a shared
+component that hard-codes one of them starts lying about the page it is on.
+
+Two flags preserve **observed** differences rather than offering a menu, which
+is `docsheet.letterhead()`'s `show_web` precedent:
+
+- **`with_pcs`** — the draft PO's second count column, pieces of pipe against
+  metres of it (DOMAIN.md §5.2). Nothing on a BOQ line holds one. The challan
+  has no such column.
+- **`qty_aria`** — the PO's column head reads `Order qty` and its input
+  announces `Order quantity`. Preserving that is the point of the exercise.
+
+**`PICKER_CSS` is raw CSS**, spliced into `PO_STYLES` at the character position
+it has always occupied — `DS.BANK_CSS`'s arrangement exactly — and wrapped
+afresh by `CHALLAN_STYLES`, which may not load `PO_STYLES`.
+
+⚠ **`ra.py`'s claim grid is deliberately NOT folded in.** It carries the
+cumulative over-claim guard and two money columns, the guard is load-bearing,
+and it re-styles on every keystroke as a figure is typed. It could probably
+collapse into this module one day — the fold, the row shapes and the tools bar
+are already the same — but it is a wider blast radius than an extraction pass
+should take on, and nothing was changed in it.
+
+**The extraction changed nothing visible**, and that is measured rather than
+intended. `tests/test_print_golden.py` gained a nine-block golden of
+`/po/create` **before** this module existed; the page is byte-identical across
+the move, and so are the four printed sheets.
 
 ### 2b. The BOQ chain — a second sell-side chain, not a fourth link
 
@@ -517,6 +632,7 @@ STORE = {
     "boqs":         {},     # uuid -> bill of quantities (head of the BOQ -> RA chain)
     "ra_bills":     {},     # uuid -> Running Account claim against a BOQ revision
     "receipts":     {},     # uuid -> payment RECEIVED against one RA bill
+    "delivery_challans": {},# uuid -> goods-movement note against a BOQ
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -1214,6 +1330,74 @@ a different document with different accounting, and smuggling it in as a
 negative receipt would make every sum in the ledger ambiguous. An
 *over*payment, by contrast, is ordinary: it makes `outstanding_of()` negative
 and carries forward as a credit, and it warns rather than blocking.
+
+### Delivery Challan  (goods leaving the yard)
+
+Written by `challan.py`. **Its own collection** (CLIENT_CHANGES.md §1.3): one
+BOQ accumulates many challans over a project's life, and a BOQ record is one
+JSON blob against `boq.MAX_JSON_BYTES`.
+
+```python
+{"id": uuid,
+ "ref": "54",                       # THEIR series — a bare integer, no prefix
+ "date": "2026-07-28",              # the challan date
+ "boq_id": uuid,                    # a SPECIFIC revision
+ "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+ "project_name": str, "site_location": str,
+ "account_name": str,               # carried for the register ONLY — see below
+ # The consignee is the SITE, snapshotted at save
+ "consignee_id": "",                # address-book id when one was picked
+ "consignee_source": "book" | "typed",
+ "consignee_name": "Samruddhi Fire",
+ "consignee_addr": "Sify Infinit\nBangalore",
+ "consignee_phone": "95765 76713",
+ # Dispatch — all free text, all editable afterwards
+ "dispatch_mode": "Transport", "dispatch_to": "Bangalore",
+ "po_no": "", "po_date": "", "notes": "",
+ "items": [ … ],
+ "company_branch": "", "auth_signatory": ""}
+```
+
+An `item` row — four fields and no fifth:
+
+```python
+{"line_id": "a3f19c0b7e42",   # THE MATCH KEY, copied off the BOQ line
+ "is_header": False,          # True = the specification clause, no quantity
+ "item_no": "24.b",           # snapshotted; NOT printed — the table has no such column
+ "description": str, "unit": "Nos", "qty": 2.0}
+```
+
+Six properties this shape exists to guarantee:
+
+1. **No money is expressible.** There is no rate field, no amount field, no tax
+   field and no total — not zeroed, absent. A challan that carries money is an
+   invoice wearing a different heading. `PRINT_RATES`, `PRINT_TAX` and
+   `PRINT_TOTALS` are named constants rather than an absence so the rule is
+   findable.
+2. **`account_name` is NOT the consignee.** It is the main contractor being
+   billed, carried only so the register can group. On the client's own DC54 the
+   consignee is **Samruddhi themselves**, at their own site store — they are
+   moving their own material, not selling it (DOMAIN.md §5.1). The consignee
+   defaults to the company name from `/settings` and is never wired to this
+   field.
+3. **Every row is a snapshot, including the specification clause.** Unlike
+   `print_ra()`, which still resolves a parent clause off the live BOQ because
+   no claim row carries one, a challan item row carries the clause text itself
+   — so `/dc/print` reads **nothing at all** from `STORE["boqs"]`.
+4. **`item_no` is stored and not printed.** The four-column table is Sr.No. |
+   Description | Qty | Unit, which is their DC54 exactly. The item number is
+   kept because it is what an operator reconciles against the schedule on
+   screen, and it is a snapshot for the reason a claim row's is (§3, *"`item_no`
+   on a claim row is a SNAPSHOT"*).
+5. **`ref` is a bare integer when the prefix is blank**, and that is their
+   numbering rather than a missing feature. Set a prefix at `/settings` and it
+   becomes `PREFIX/0055`. `settings.dc_ref_of()` owns the shape, because the
+   settings page has to preview it while it is being typed and may not import
+   `challan.py`.
+6. **Cumulative dispatched quantity is NOT a field.** It is derived by
+   `challan.dispatched_by_line()`, summed across the whole revision chain —
+   `ra.claimed_by_line()`'s rule and for its reason: a maintained counter that
+   one code path forgets to update is worse than none, because it is trusted.
 
 ### Address
 
@@ -3353,6 +3537,141 @@ another draft PO, which is cheap and leaves a trail.
 
 ---
 
+### `/dc` — Delivery Challans · [challan.py](challan.py)
+
+| Route | View |
+|---|---|
+| `GET /dc/` | `list_dcs` — register, newest first |
+| `GET,POST /dc/create?boq=<id>` | `create_dc` — the **line picker**, then the consignee |
+| `GET /dc/view/<id>` | `view_dc` — the document, its action bar, and the over-dispatch band |
+| `GET /dc/print/<id>` | `print_dc` — the document alone |
+| `GET,POST /dc/edit/<id>` | `edit_dc` — consignee and dispatch fields only, never the lines |
+| `GET,POST /dc/delete/<id>` | `delete_dc` — GET confirms, POST deletes |
+
+**CLIENT_CHANGES.md item 5**, built to their own **DC54**, which is the ground
+truth for the layout rather than a starting point.
+
+#### It hangs off the project chain, beside the RA bill and not below it
+
+```
+BOQ ──► RA bill 1 ──► RA bill 2 ──► …        money claimed
+    └─► challan, challan, …                  goods moved
+```
+
+⚠ **`challan.py` may never import `ra.py`, and this is the load-bearing
+prohibition.** A challan records material dispatched; an RA bill records money
+claimed. They diverge in both directions on any real site — material dispatched
+and not yet billed, material billed and not yet dispatched — and coupling them
+would force one to answer the other's questions. **Nothing reconciles them**,
+which is §7 gap 19 rather than an oversight. If you find yourself needing
+`ra.py` here, stop.
+
+#### The document — where it follows DC54 and where it follows the house sheet
+
+It renders through **`docsheet.py`** (§2d): the same page frame, the same
+repeating letterhead, the same foot strip, the same items-table shell, the same
+signature panel and the same print CSS as the tax invoice. **Its letterhead
+block hashes byte-identically to the tax invoice's**, and
+`tests/test_print_golden.py` asserts exactly that — the same assertion the RA
+bill carries, now on a fifth document.
+
+What differs is what DC54 differs by, and nothing else:
+
+| | |
+|---|---|
+| **Title band** | **DELIVERY CHALLAN**, inside the page frame and **above** the letterhead. A `<caption>` — see §2d for why that mattered |
+| **Party block** | two **two-column** blocks (office against consignee, then challan meta against dispatch meta) in place of the shared 42/29/29 grid |
+| **Band** | **DESCRIPTION OF GOODS**, between the meta blocks and the table |
+| **Table** | four columns — Sr.No. \| Description \| Qty \| Unit. No Part No, no HSN, no Rate, no Amount |
+| **Signature** | **Name & Signature of Receiver** on the left, where every other document prints GSTIN and PAN. No other document here is signed by the person receiving it |
+| **Absent** | GST block, bank block, totals row, amount in words, rate and amount columns |
+
+Everything on the page comes from the challan's own stored rows. The seller
+identity is read live from `branding` — `B.COMPANY_GSTIN`, `B.COMPANY_ADDR`,
+`B.COMPANY_PHONE`, with the State **derived** from the GSTIN via
+`P.gstin_state_label()`. That is `print_ra()`'s convention exactly, including
+having no fallback behind any of them: a blank prints an em dash, because a
+missing identity must be visible. `tests/test_challan.py` greps the module and
+fails if a State name or a GSTIN-shaped string reappears anywhere in it.
+
+⚠ **The ~20 blank ruled rows on their form are deliberately not reproduced.**
+They exist because DC54 is a spreadsheet printed for a human to write more lines
+on by hand. A generated challan lists exactly what left the yard, and blank
+ruled rows under a signature are an invitation to add a line *after* the
+receiver has signed for it. `PRINT_BLANK_ROWS = False` records the decision;
+CLIENT_CHANGES.md item 5 flags it as worth confirming with them.
+
+#### The consignee is the SITE, and the picker is a prefill
+
+On DC54 the consignee is **Samruddhi Fire themselves** at "Sify Infinit,
+Bangalore". They are moving their own material to their own store. So the
+consignee name defaults to the company name from `/settings` and is **never**
+wired to the BOQ's `account_name`, which is the main contractor being billed.
+
+The fields are **free text**, with `address.picker_options()` offered beside
+them as an **optional prefill** — the arrangement `po_draft.py`'s vendor block
+has, and here for one more reason: a site store that exists for four months is
+not worth an address-book entry. Whichever path was used is snapshotted
+(`consignee_source`), so the document does not move when the book is edited.
+
+#### Numbering — global, blank-prefixed, and never released
+
+**Their series has no prefix**: challan 54 is the bare integer `54`, one paper
+run across every site. So `settings.DC_SERIES_DEFAULTS` has `prefix: ""`, and
+`settings.dc_ref_of()` prints the bare number unpadded when the prefix is
+blank and `PREFIX/0055` when it is not. Both halves are editable at
+`/settings`, so the series can be seeded to 55 and continue their book.
+
+It lives in **its own settings record**, not a branding override, for
+`po_draft`'s reason: `apply_settings()` must not push it onto `branding`, and
+above all the nav's amber completeness dot must not count a blank challan
+prefix as a missing statutory detail. Here a blank prefix is the *normal*
+configuration.
+
+⚠ **GLOBAL, deliberately not per-BOQ — the opposite of `ra_no`**, which is per
+project because it is that job's own RA sequence.
+
+**A deleted challan does not release its number.** A high-water mark that only
+advances, never `max+1` over the survivors — `po_draft.next_ref()` shipped as
+`max+1` and was fixed, and this is the fixed implementation. The paper has
+travelled with a load of material.
+
+#### Over-dispatch WARNS and never blocks
+
+An amber band on `/dc/view` names every line whose cumulative dispatched
+quantity has passed the BOQ's, states both figures, and **lets the challan
+stand**.
+
+**This is the opposite call from the RA over-claim guard and it is deliberate,
+so do not "improve" it later.** That guard is a hard block because it guards
+money billed to a main contractor and an over-claim is a false claim. A challan
+is a goods-movement note, and real sites have replacements, breakages, free
+issue and returns. A hard block here would stop lawful movements and push
+people to write challans outside the system, which is worse than an
+unreconciled number. `BLOCK_OVER_DISPATCH = False` is where that decision
+lives.
+
+The cumulative figure is **derived and never stored**, summed across the whole
+revision chain via `boq._ancestor_ids()` — a per-record sum would report nil
+dispatched the moment a schedule was revised, silently and only on the projects
+that had been revised.
+
+#### What edit may touch
+
+Consignee, date, dispatch mode, dispatch-to, PO reference and notes. **Not the
+lines.** A challan is signed for on arrival and its lines are what left the
+yard; moving them behind a signature is how a dispute starts. `/po/edit` makes
+the same call and `purchase.update_purchase()` made it first.
+
+#### Entry point
+
+`/boq/view`'s action bar carries **+ Delivery Challan**, gated on the same
+single `is_tip` predicate that drives the RA links and the *Revise* button, so
+the controls cannot disagree. `/dc/create` **refuses a superseded BOQ at the
+route** as well, because a link is not a guard.
+
+---
+
 ### `/address` — Address Book · [address.py](address.py)
 
 | Route | View |
@@ -3578,6 +3897,14 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 > August 2026 by Manas Gawde for item 8 (the receipts ledger) only, with
 > MG/SF/2026-02 still unsigned — the rule stands, the override is recorded in
 > CLIENT_CHANGES.md §0, and every other Pending item is still gated.**
+> **Extended on 15 August 2026 (items 3 and 2), and again on 16 August 2026 by
+> Manas Gawde for item 5 (the delivery challan) — which also carries the fresh
+> dated authorisation for item 4, the draft PO built one day earlier with none
+> of its own. MG/SF/2026-02 was still unsigned on both dates, all of this work
+> remains chargeable under it rather than being a §0 no-charge exemption, and
+> if it is never signed then items 8, 3, 2, 4 and 5 were built against an
+> unsigned quotation.** Each block in CLIENT_CHANGES.md §0 is its own dated
+> record; none of them was edited to cover the next.
 > **Defect and reachability fixes
 > against scope already sold are exempt** — which is most of what §7 is, so
 > this section is not gated by that rule and is safe to pick up. An item can
@@ -4057,6 +4384,56 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    **The fix is to delete the flag and the branch**, once somebody rules that
    the vendor should see the same letterhead the customer does. It is one line
    and one golden digest.
+
+19. 🟠 **No dispatch-versus-claim reconciliation — OPEN, and deliberate for
+   now.** Dispatched quantity (`challan.dispatched_by_line()`) and claimed
+   quantity (`ra.claimed_by_line()`) are tracked **independently, against the
+   same BOQ lines, with nothing anywhere comparing them.**
+
+   So material that has been dispatched and never billed is invisible, and so
+   is material billed and never dispatched. Both happen: the first is
+   straightforwardly money not asked for, and the second is a claim the site
+   cannot yet support.
+
+   **It is deliberate rather than missed.** `challan.py` may not import
+   `ra.py` (§2b, §5 `/dc`) precisely because the two documents answer different
+   questions and would otherwise start answering each other's — a challan
+   records goods leaving the yard, an RA bill records money claimed, and they
+   legitimately disagree at any moment. A reconciliation is a **third** thing
+   that reads both, and it belongs in a module that imports both rather than in
+   either one. Nothing like that exists yet, and inventing it under a challan
+   route would be the coupling the prohibition exists to prevent.
+
+   What it would take, when it is wanted: a read-only screen — per BOQ line,
+   approved / dispatched / claimed / the two differences — living somewhere
+   that may import both, `client.py` being the obvious candidate since it
+   already imports `ra.py` and `receipt.py`. Nothing about the record shapes
+   needs to change; both figures are already derivable.
+
+20. 🔴 **The delivery challan's particulars may not satisfy Rule 55 of the CGST
+   Rules — OPEN, and NOT to be guessed at.**
+
+   Their own DC54 carries **no HSN, no taxable value and no tax rate or
+   amount**, and `challan.py` reproduces that faithfully, because it was built
+   to their document. **Their document and a compliant document are not
+   necessarily the same thing**, and this app has no basis for deciding which
+   they need.
+
+   Two questions, and both are the **client's CA's** to answer:
+
+   - whether a delivery challan issued for this movement has to carry the
+     particulars Rule 55 lists, and if so which of them;
+   - whether an **e-way bill** obligation attaches. The sample movement is Navi
+     Mumbai to Bangalore, which is interstate.
+
+   📌 **No agent may encode a guess about tax law in this repo.** This sits
+   beside gap 15 (place of supply and the CGST/SGST-versus-IGST head, also
+   pending their CA) and is answered the same way: by them, on the record, in
+   CLIENT_CHANGES.md §3. Do not add an HSN column, a taxable-value column, a
+   tax block or an e-way-bill field to this document until that ruling exists —
+   and note that adding any of them would also stop it looking like the challan
+   their site staff actually recognise, which is a second reason to wait for an
+   instruction rather than infer one.
 
 ---
 

@@ -58,13 +58,22 @@ CHAIN 1   quotation ──► proforma invoice ──► tax invoice
 
 CHAIN 2   BOQ ──► RA bill 1 ──► RA bill 2 ──► …
           a project, priced once and billed progressively as it is built
-                         │
-                         └──► receipt, receipt, …
-                              money actually received against a bill
+            │            │
+            │            └──► receipt, receipt, …
+            │                 money actually received against a bill
+            │
+            ├──► draft PO, draft PO, …    sent to a supplier to be priced
+            └──► challan, challan, …      goods leaving the yard
 
 BUY SIDE  purchase order ──► [vendor lifecycle]
           a separate pipeline; never links to a proforma or a tax invoice
 ```
+
+⚠ **The draft PO and the delivery challan hang off the BOQ, not off an RA
+bill.** A challan in particular sits *beside* the bill and is deliberately not
+reconciled with it: one records goods moved, the other money claimed, and they
+legitimately disagree at any moment. [ABOUT.md §5](ABOUT.md) (`/dc`) and §7
+gap 19.
 
 **Chain 1** sells things. A quotation offers goods at a price; a proforma
 requests money against it; a tax invoice records the supply. Each link freezes a
@@ -152,6 +161,7 @@ It is 4,100-odd lines. Section headings, so you can jump:
 | 2b | **The BOQ chain** — `boq.py` and `ra.py`, and what each may import |
 | 2c | **Receipts** — `receipt.py`, and why the balance arithmetic lives upstream in `ra.py` |
 | 2d | **`docsheet.py`** — the one printed A4 sheet, why it is a leaf, and how that keeps `ra.py` and `invoice.py` apart |
+| 2e | **`boqpick.py`** — the one BOQ line picker, why it is also a leaf, and how that keeps `po_draft.py` and `challan.py` apart |
 | 3 | **Every record shape**, with the properties each shape exists to guarantee |
 | 4 | Persistence — how `db.py` snapshots and diffs, and how failure surfaces |
 | 5 | Page by page, route by route. `/boq` and `/ra` are the ones you need; `/client` and `/po` are the newest |
@@ -203,10 +213,15 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **747 passing** on 15 August 2026, verified in a `.venv` with
-openpyxl and both client workbooks installed. Two lower totals are also
-correct and are not a problem: **744 passed / 3 skipped** without the
-workbooks, **743 passed / 1 skipped** without openpyxl.
+The baseline is **838 passed / 1 skipped** on 16 August 2026, verified in the
+**openpyxl-absent, workbooks-absent** configuration by running the suite in it.
+
+⚠ **The other two configurations were not re-measured on that pass.** The box
+had neither openpyxl nor either client workbook, so the rows for *openpyxl
+present, workbooks absent* and *openpyxl present, workbooks present* in
+[ABOUT.md §1](ABOUT.md) are **derived** and are marked there as such. A count
+nobody ran is a claim, not a result — if you are on a box that can produce
+either, run it and replace the derived figure with the measured one.
 
 **Always state which of the three you ran.** A count on its own is not a
 result: the three move independently, and one pass reported "607 to 630" and

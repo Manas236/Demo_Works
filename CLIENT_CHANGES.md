@@ -83,6 +83,45 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > MG/SF/2026-02 is never signed, items 8, 3, and 2 were built against an
 > unsigned quotation.
 
+> ### ⚠ OVERRIDE — 16 August 2026, by Manas Gawde
+>
+> **A new block, not an amendment.** The 14 August and 15 August blocks above
+> stand exactly as written and nothing in them has been edited, reformatted or
+> re-scoped. This is a third occasion, decided on its own date.
+>
+> **MG/SF/2026-02 was still unsigned on 16 August 2026**, and Manas took the
+> decision to proceed anyway.
+>
+> **What proceeds under this override:** **item 5** — the Delivery Challan
+> raised from a BOQ, built 16 August 2026.
+>
+> **It also, and deliberately, authorises item 4 — the draft PO, built on 15
+> August 2026 with no recorded override of its own.** The EXTENDED block above
+> names only items 3 and 2; item 4 shipped alongside them and was left standing
+> outside any authorisation, and the note further down §0 recorded that rather
+> than resolving it, because resolving it was the client-facing owner's
+> decision and not an agent's. **That decision is taken here.** The date gap is
+> named rather than papered over: item 4 was built on **15 August 2026** and
+> authorised on **16 August 2026**, one day later. This is a fresh dated
+> authorisation covering earlier work, not a retrospective edit to the 15
+> August block — amending an override to cover work it does not mention is
+> precisely the act §0's own rule forbids.
+>
+> **Neither item becomes no-charge work.** §0's exemption covers defect and
+> reachability fixes against scope already sold under MG/SF/2026-01. **Items 4
+> and 5 are new scope priced into MG/SF/2026-02 and remain chargeable there.**
+> Building them early changed **when** they were built, not **what they cost**
+> or **who agreed to them**.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent
+> may take, infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged, and
+> it is restated deliberately:** if MG/SF/2026-02 is never signed, items 8, 3,
+> 2, 4 and 5 were all built against an unsigned quotation.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
@@ -96,17 +135,20 @@ handed. If you think something gated should be built now, say so and stop.
 
 That rule is unchanged by the overrides above. **An override is a decision the
 client-facing owner takes and records; it is not one you may take, infer, or
-extend.** Items 8, 3, and 2 being built early is not licence to start item 5 —
-and recorded overrides are not a precedent that makes a next one automatic.
+extend.** Items 8, 3, 2, 4 and 5 being built early is not licence to start
+anything else — and recorded overrides are not a precedent that makes a next
+one automatic.
 
-> ⚠ **Item 4 is built and the override block does not name it.** The draft PO
-> was delivered on 15 August 2026 alongside items 3 and 2, but the EXTENDED
-> block above names only those two. The block is left exactly as it stands —
+> ⚠ ~~**Item 4 is built and the override block does not name it.**~~ ✅
+> **Resolved on 16 August 2026 by the block above**, which is a fresh dated
+> authorisation covering it. The history is kept rather than deleted, because
+> it is the reason the 16 August block is worded the way it is: the draft PO
+> was delivered on **15 August 2026** alongside items 3 and 2, the EXTENDED
+> block names only those two, and that block was left exactly as it stands —
 > amending an override to cover work it does not mention is precisely the act
-> the rule above forbids. **Item 4 therefore stands built with no recorded
-> override of its own, and needs one or the signature.** Recorded here rather
-> than resolved, because resolving it is the client-facing owner's decision.
-> Item 4's own entry carries the same note.
+> the rule above forbids. So item 4 stood built with no recorded override for
+> **one day**, and was authorised on its own date instead. Item 4's own entry
+> carries the same note.
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
@@ -198,8 +240,8 @@ carries and decides nothing.
 | 1 | Hide Base Rate and Escalation % from the printed BOQ | ✅ **Delivered — no charge** (§0 exempt) |
 | 2 | Client-wise segregation — per-client totals and outstanding | ✅ **Delivered** — built 15 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
 | 3 | Remove the certified amount / certified qty section from RA bills | ✅ **Delivered** — built 15 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** (Section 7, Rs 4,000) |
-| 4 | Draft PO from a BOQ | ✅ **Delivered** — built 15 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
-| 5 | Delivery Challan from a BOQ | 🟠 Pending |
+| 4 | Draft PO from a BOQ | ✅ **Delivered** — built 15 Aug 2026, authorised by the 16 Aug §0 override; **chargeable under MG/SF/2026-02** |
+| 5 | Delivery Challan from a BOQ | ✅ **Delivered** — built 16 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
 | 6 | Raise RA1 from the BOQ | ✅ **Delivered — no charge** (§0 exempt) |
 | 7 | Tax Invoice directly from the BOQ | ↩ **Answered differently** |
 | 8 | Record payment received against an RA bill | ✅ **Delivered** — built 14 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
@@ -379,13 +421,16 @@ it. No GST.**
 ⚠ **Built on 15 August 2026 under the §0 override, with MG/SF/2026-02 still
 unsigned.** New scope, **chargeable** under that quotation.
 
-> ⚠ **A gap in the record, reported rather than papered over.** §0's override
-> block, extended on 15 August 2026, names **items 3 and 2** as what proceeded.
-> **It does not name item 4**, and this item was built on the same day under the
-> same circumstances. That block is left exactly as it stands — an override is a
-> decision the client-facing owner takes and records, and amending one to cover
-> work it does not mention is not an agent's to make. **Item 4 therefore has no
-> recorded override of its own.** It needs one, or the signature.
+> ⚠ ~~**A gap in the record, reported rather than papered over.**~~ ✅
+> **Closed on 16 August 2026.** §0's override block, extended on 15 August
+> 2026, names **items 3 and 2** as what proceeded and **does not name item 4**,
+> which was built on the same day under the same circumstances. That block is
+> still left exactly as it stands — amending an override to cover work it does
+> not mention is not an agent's to make. Instead, the **16 August 2026 block**
+> is a fresh dated authorisation that covers this item explicitly and names the
+> one-day gap between building it and authorising it. It remains **chargeable**
+> under MG/SF/2026-02, and if that quotation is never signed this work was done
+> against an unsigned one.
 
 **Built in the BOQ chain**, not by reusing `/purchase`. Two client constraints
 made that necessary and both are hard: **one running PO number series** across
@@ -443,18 +488,73 @@ existing PO is; [tests/test_po_draft.py](tests/test_po_draft.py).
 
 ---
 
-### 5 · Delivery Challan from a BOQ — 🟠 Pending
+### 5 · Delivery Challan from a BOQ — ✅ Delivered
 
-**Approach.** DC number and date, consignee, quantity and unit. **No rates
-anywhere on it** — a challan that carries money is an invoice wearing a
-different heading.
+`/dc/` — description, quantity and unit. **No rates, no amounts, no tax, no
+totals and no bank block.** A challan that carries money is an invoice wearing
+a different heading.
 
-Its own collection (§1.3), its own number series, its rows snapshotted at save
-and matched to the BOQ on `line_id` (§1.4). The consignee is snapshotted onto
-the challan, not read from the BOQ at print (§1.2).
+⚠ **Built on 16 August 2026 under the §0 override, with MG/SF/2026-02 still
+unsigned.** New scope, **chargeable** under that quotation.
 
-→ [ABOUT.md §3](ABOUT.md) for the record-shape conventions a new collection
-follows.
+**Built to their own DC54**, which is the ground truth for the layout: the
+title band inside the page border and above the letterhead, the two
+two-column blocks (office against consignee, then challan meta against
+dispatch meta), the **DESCRIPTION OF GOODS** band, and a four-column table —
+Sr.No., Description, Qty, Unit — with nothing else in it.
+
+**Built in the BOQ chain**, beside the RA bill and independently of it.
+`challan.py` may not import `ra.py`: a challan records material dispatched and
+an RA bill records money claimed, and they diverge in both directions on a real
+site. Nothing reconciles them, which is recorded as [ABOUT.md §7](ABOUT.md)
+gap 19 rather than solved here.
+
+**The consignee is the SITE, not the party being billed.** On DC54 the
+consignee is Samruddhi themselves at "Sify Infinit, Bangalore" — they are
+moving their own material to their own store (DOMAIN.md §5.1). It defaults to
+the company name from `/settings` and is **never** wired to the BOQ's
+`account_name`, which is the main contractor. The fields are free text, with
+the address book offered beside them as an **optional prefill** — the same
+arrangement the draft PO's vendor block has, and for one more reason: a site
+store that exists for four months is not worth an address-book entry.
+
+**Numbering.** The prefix and the next number are editable at `/settings`, and
+the prefix **defaults to blank**, because their series has none: challan 54 is
+the bare integer `54`. So a blank prefix prints the number unpadded and the
+series can be seeded to 55 to continue their book; set a prefix and it takes
+the padded `PREFIX/0055` shape every other series here uses. The counter is
+**global, deliberately not per-BOQ** — the opposite of `ra_no`. **A deleted
+challan does not release its number.**
+
+**Over-dispatch warns and never blocks**, which is the opposite call from the
+RA over-claim guard and is deliberate. That guard is hard because it guards
+money billed to a main contractor and an over-claim is a false claim. This is a
+goods-movement note, and real sites have replacements, breakages, free issue
+and returns; refusing a lawful movement here would only push it onto paper this
+system never sees. An amber band names the lines and the movement stands.
+Cumulative dispatched quantity is derived across the revision chain and never
+stored.
+
+**The rows are snapshotted at save** and matched to the BOQ on `line_id`
+(§1.4), including the parent specification clause for any ticked size — so
+unlike `/ra/print`, this document reads nothing at all from the live BOQ
+(§1.2).
+
+⚠ **The ~20 blank ruled rows on their form are deliberately not reproduced.**
+They exist because DC54 is a spreadsheet printed for a human to write more
+lines on by hand. A generated challan lists exactly what left the yard, and
+blank ruled rows under a signature are an invitation to add a line after the
+receiver has signed for it. Raising a second challan is cheap and leaves a
+trail. **Worth confirming with them** — they may want the blank rows back for
+hand-written additions at the gate.
+
+⚠ **Whether their challan particulars satisfy Rule 55 of the CGST Rules is a
+question for their CA and is not answered here.** Their DC carries no HSN, no
+taxable value and no tax rate, and the system reproduces that faithfully. See
+[ABOUT.md §7](ABOUT.md) gap 20 and §3 of this file.
+
+→ [ABOUT.md §5](ABOUT.md) (`/dc`) for the pages, §2e for the shared line
+picker; [tests/test_challan.py](tests/test_challan.py).
 
 ---
 
@@ -629,6 +729,16 @@ inferred from the seeded data.
    this app is a valid manual tax invoice below the threshold and **not** valid
    above it. We cannot answer this from anything we hold.
    → [ABOUT.md §7](ABOUT.md) gap 9b.
+
+2b. ⚠ **Whether their delivery challan satisfies Rule 55 of the CGST Rules, and
+   whether an e-way bill obligation attaches.** Their DC54 carries no HSN, no
+   taxable value and no tax rate or amount, and item 5 reproduces that
+   faithfully — **we built their document, not a compliant one, and those are
+   not necessarily the same thing.** The movement on the sample is Navi Mumbai
+   to Bangalore, which is interstate. **Pending their CA.** No agent may encode
+   a guess about tax law in this repo: this sits beside question 1 and is
+   answered the same way, by them. Technical detail: [ABOUT.md §7](ABOUT.md)
+   gap 20.
 
 3. **Retention % and mobilisation-advance figures.** The `deductions` shape
    exists and is deliberately empty; both fit it. We need their actual terms,

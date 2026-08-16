@@ -10,12 +10,15 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 15 August 2026.
-**Tests:** **747 passing** in a venv with openpyxl and both client workbooks
-present; **744 passed / 3 skipped** without the workbooks; **743 passed /
-1 skipped** without openpyxl. All three measured by running the suite in that
-configuration; a count quoted without its configuration is not a count. [ABOUT.md §1](ABOUT.md) has the table and explains
-why the two mechanisms produce different-looking numbers — a module-level
+**As of:** branch `antigravity-dev`, 16 August 2026.
+**Tests:** **838 passed / 1 skipped** in the **openpyxl-absent, workbooks-absent**
+configuration — measured on 16 August 2026 by running the suite in it. The other
+two configurations (openpyxl present, with and without the client workbooks)
+were **not re-measured on this pass**: the box it ran on has neither openpyxl
+nor either workbook, and [ABOUT.md §1](ABOUT.md) marks their rows as derived
+rather than silently updating them. A count quoted without its configuration is
+not a count, and a count nobody ran is a claim. That table also explains why the
+two mechanisms produce different-looking numbers — a module-level
 `importorskip` reports **one** skip however many tests sit behind it.
 **Stack:** Flask, ~12k lines, MySQL. `requirements.txt` is committed and
 pinned, and `.venv` is the supported way to run this repo (§3.1 is closed).
@@ -170,9 +173,10 @@ prices it at Rs 4,000. The override block was **extended**, not overwritten.
 
 ⚠ **Items 2 and 4 were built under the §0 override in
 [CLIENT_CHANGES.md](CLIENT_CHANGES.md)**, with MG/SF/2026-02 still unsigned.
-Both are new scope and **chargeable** there. **Item 4 is not named in that
-override block** and needs one of its own or the signature — recorded in
-CLIENT_CHANGES.md §0 and in item 4's entry, not resolved here.
+Both are new scope and **chargeable** there. **Item 4 was not named in the 15
+August override block**; the **16 August 2026 block** is a fresh dated
+authorisation that covers it and names the one-day gap. The 15 August block was
+not amended.
 
 - **`client.py` — `/client/`** (CLIENT_CHANGES.md item 2). BOQs grouped by the
   billed-to party; schedule value, issued, received, outstanding. **Issued
@@ -202,6 +206,52 @@ CLIENT_CHANGES.md §0 and in item 4's entry, not resolved here.
 - [tests/test_print_golden.py](tests/test_print_golden.py) hashes the four
   printed documents and asserts the RA bill's letterhead is **byte-identical**
   to the tax invoice's.
+
+---
+
+### 1.8 The delivery challan, and one shared line picker · ✅ 16 August 2026
+
+⚠ **Item 5 was built under the §0 override in
+[CLIENT_CHANGES.md](CLIENT_CHANGES.md)**, with MG/SF/2026-02 still unsigned.
+New scope, **chargeable** there. **The same 16 August block also carries the
+fresh dated authorisation for item 4**, built one day earlier with none of its
+own; the 15 August block was left byte-intact.
+
+- **`boqpick.py` — the shared BOQ line picker**, extracted from `po_draft.py`
+  at its **second** consumer rather than its fourth. A **leaf**: it imports
+  `boq` and `pipeline`, renders no document, owns no route, and knows nothing
+  about either consumer. `/po/create` was pinned byte-for-byte **before** the
+  move and is byte-identical across it, as are the four printed sheets.
+  [ABOUT.md §2e](ABOUT.md). `ra.py`'s claim grid was deliberately left alone —
+  it carries the over-claim guard and money columns.
+- **`challan.py` — `/dc/`** (CLIENT_CHANGES.md item 5). Built to their own
+  DC54: title band inside the page frame and above the letterhead, two
+  two-column blocks, a **DESCRIPTION OF GOODS** band, and a four-column table.
+  **No rate, no amount, no tax, no total, no bank block, no rupee sign.**
+- **Beside the RA bill, not below it.** `challan.py` may not import `ra.py`: a
+  challan records goods moved and an RA bill records money claimed, and they
+  legitimately disagree. ⚠ **Nothing reconciles them** —
+  [ABOUT.md §7](ABOUT.md) gap 19, taken on deliberately.
+- **The consignee is the SITE**, defaulting to us, never wired to the BOQ's
+  billed-to party. Free-text fields with the address book as an optional
+  prefill.
+- **Numbering is a global high-water mark with a blank default prefix**, so it
+  can be seeded to 55 and continue their bare-integer challan book. A deleted
+  challan spends its number.
+- **Over-dispatch warns and never blocks** — the opposite call from the RA
+  over-claim guard, and `BLOCK_OVER_DISPATCH = False` is where the decision
+  lives. Cumulative dispatch is derived across the revision chain, never
+  stored.
+- **Two `docsheet` seams** — `sheet_open(title_band=)` and
+  `sig_block(left_html=)` — both default to `None` and emit the bytes they
+  always did. [ABOUT.md §2d](ABOUT.md).
+- [tests/test_challan.py](tests/test_challan.py) — 46 tests. The print golden
+  now asserts the challan's letterhead is **byte-identical** to the tax
+  invoice's, which is the fifth document to carry that assertion.
+- ⚠ **Whether their challan particulars satisfy Rule 55 of the CGST Rules, and
+  whether an e-way bill obligation attaches, are questions for their CA** —
+  [ABOUT.md §7](ABOUT.md) gap 20, CLIENT_CHANGES.md §3 question 2b. **Do not
+  encode a guess.**
 
 ---
 
@@ -299,8 +349,13 @@ Nothing is outstanding here.
 
 Real, and they shape future design. **Do not build these.**
 
-- **Delivery challan** — a document type their business uses and this system
-  has no equivalent for. [DOMAIN.md §5.1](DOMAIN.md).
+- ~~**Delivery challan** — a document type their business uses and this system
+  has no equivalent for.~~ ✅ **Built as `challan.py` / `/dc`** on 16 August
+  2026 (§1.8), as a BOQ-chain document beside the RA bill rather than below it.
+  [DOMAIN.md §5.1](DOMAIN.md). ⚠ Two things it does **not** do: reconcile
+  dispatched against claimed quantity ([ABOUT.md §7](ABOUT.md) gap 19), and
+  answer whether its particulars satisfy Rule 55 of the CGST Rules (gap 20 —
+  **for their CA**).
 - ~~**Their purchase orders** differ from what `purchase.py` models — no GST, one
   running series across all suppliers and sites, a `Pcs` column on one variant.~~
   ✅ **Built as `po_draft.py` / `/po`** on 15 August 2026 (§1.7), as a
