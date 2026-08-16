@@ -302,7 +302,13 @@ SHEET_BLOCKS = [
     ("letterhead", "<thead><tr><td>"),
     ("foot-strip", "<tfoot><tr><td>"),
     ("doc-box",    '<div class="doc-box">'),
-    ("party",      '<div class="doc-header">'),
+    # The class attribute is matched WITHOUT its closing quote, because the
+    # delivery challan's party block carries a second class
+    # (`doc-header dc-2col`) and would otherwise carry no marker at all. The
+    # four sheets that carry the bare class find the identical offset either
+    # way, so their digests are untouched — which the four assertions below
+    # are what proves.
+    ("party",      '<div class="doc-header'),
     ("items",      '<div class="items-wrap">'),
     ("signature",  '<div class="sig-block">'),
 ]
@@ -691,6 +697,129 @@ def test_the_picker_golden_is_hashing_a_real_form(client, golden_picker):
     assert "spec &middot; 2 items" in html, "the family fold did not render"
     assert "SF/DPO/0001" in html, "the series is not the pinned default"
     assert 'value="2026-08-16"' in html, "today's date was not pinned"
+
+
+# ═══ The delivery challan ══════════════════════════════════════════════════
+
+GOLD_DC = "gold-challan"
+
+
+@pytest.fixture()
+def golden_dc(client, pinned_identity):
+    """
+    One delivery challan, fixed end to end, built to their DC54.
+
+    Built directly rather than through `/dc/create` for the reason the four
+    sheets above are: the route mints a uuid and spends a number from the
+    series, and neither is a thing a golden can hold still.
+    """
+    STORE.setdefault("delivery_challans", {}).clear()
+    STORE["delivery_challans"][GOLD_DC] = {
+        "id": GOLD_DC, "ref": "54", "date": "2026-07-28",
+        "boq_id": "gold-boq", "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore — Fire Protection",
+        "site_location": "Whitefield, Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "consignee_id": "", "consignee_source": "typed",
+        "consignee_name": "Samruddhi Fire",
+        "consignee_addr": "Sify Infinit\nBangalore",
+        "consignee_phone": "95765 76713",
+        "dispatch_mode": "Transport", "dispatch_to": "Bangalore",
+        "po_no": "", "po_date": "", "notes": "",
+        "items": [
+            {"line_id": "aaaaaaaaaaaa", "is_header": False, "item_no": "1",
+             "description": "80mm Butterfly valve- SANT", "unit": "Nos",
+             "qty": 2.0},
+            {"line_id": "bbbbbbbbbbbb", "is_header": False, "item_no": "2",
+             "description": "150mm Foot valve- SANT", "unit": "Nos",
+             "qty": 1.0},
+            {"line_id": "cccccccccccc", "is_header": False, "item_no": "3",
+             "description": "32mm Ball valve- SANT", "unit": "Nos",
+             "qty": 1.0},
+        ],
+        "company_branch": "", "auth_signatory": "",
+    }
+
+    yield
+
+    STORE["delivery_challans"].clear()
+
+
+# Captured 16 August 2026, when `/dc/print` was built. There is no earlier
+# baseline to compare against and there should not be: this is a new document,
+# so the number records what shipped rather than proving nothing moved.
+#
+# The `letterhead` and `foot-strip` digests are deliberately the tax invoice's
+# own — `850cbd…` and `cc51ac…` appear against TI_BLOCKS above. That is the
+# point of the sheet, and the assertion below states it directly rather than
+# leaving it to two literals happening to match.
+DC_WHOLE, DC_LEN = "d22fee5aa301c740", 83649
+DC_BLOCKS = {"head":       "f3f5e6b5c49c9e9f",
+             "letterhead": "850cbd4766b608c2",
+             "foot-strip": "cc51ac98a541aaee",
+             "doc-box":    "57c1a660915be1d9",
+             "party":      "429e9f10652d220b",
+             "items":      "6ad4a95ae07c0108",
+             "signature":  "53c1b52f4aa0c8ba"}
+
+
+def test_the_delivery_challan_document_matches_its_recorded_baseline(
+        client, golden_dc):
+    """
+    `/dc/print/<id>` — the goods-movement note, on the shared A4 sheet.
+
+    Pinned on the same markers as the four documents above, which is itself
+    part of the assertion: the challan carries the same `<head>` stylesheet
+    stack, the same repeating letterhead, the same foot strip, the same framed
+    `.doc-box`, the same `.doc-header` party grid, the same `.items-wrap` table
+    shell and the same `.sig-block`. What differs inside those blocks is what
+    DC54 differs by, and nothing else.
+    """
+    r = client.get(f"/dc/print/{GOLD_DC}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), DC_WHOLE, DC_LEN, DC_BLOCKS,
+           what="delivery challan")
+
+
+def test_the_challan_and_the_tax_invoice_carry_the_SAME_letterhead(
+        client, golden, golden_dc):
+    """
+    The RA bill's assertion, applied to the fifth document that prints.
+
+    A delivery challan is not a tax invoice and shares almost nothing else with
+    one — no GST block, no bank block, no totals, a four-column table and a
+    title band above the letterhead that no other document has. **The
+    letterhead is still the same bytes**, because it is the same office, and
+    the client's complaint was never that one document was wrong: it was that
+    they did not look like they came from the same place.
+
+    This is also what pins `docsheet.sheet_open(title_band=…)` to the design it
+    was given. The band is a `<caption>`, which sits **before** the `<thead>`
+    marker this block starts at — so the letterhead is untouched by it. Move
+    the band into a second `<thead>` row and this test goes red, which is
+    exactly the mistake it exists to catch.
+    """
+    ti = _blocks(client.get(f"/invoice/view/{GOLD_TI}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+    dc = _blocks(client.get(f"/dc/print/{GOLD_DC}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+
+    assert dc["letterhead"] == ti["letterhead"], (
+        "the delivery challan and the tax invoice print different letterheads. "
+        "Both render through docsheet.letterhead() precisely so they cannot "
+        "diverge — and if the title band is what moved it, it belongs in the "
+        "<caption>, not in the <thead>.")
+    assert dc["foot-strip"] == ti["foot-strip"], (
+        "the challan's foot strip differs from every other document's")
+
+
+def test_the_challan_golden_is_hashing_a_real_document(client, golden_dc):
+    """The control. A digest passes just as well against an error page."""
+    html = client.get(f"/dc/print/{GOLD_DC}").get_data(as_text=True)
+    assert "DELIVERY CHALLAN" in html and "DESCRIPTION OF GOODS" in html
+    assert "150mm Foot valve- SANT" in html, "the goods table rendered nothing"
+    assert "Sify Infinit" in html, "the consignee block rendered nothing"
+    assert "Name &amp; Signature of Receiver" in html
 
 
 def test_the_goldens_are_hashing_a_real_document(client, golden, golden_ra):

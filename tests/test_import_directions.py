@@ -94,6 +94,64 @@ FORBIDDEN = [
     ("settings", "po_draft", "any", "settings.py owns the SERIES and knows nothing about the "
                                     "document; po_draft.py reads it, never the reverse"),
 
+    # ── The BOQ line picker is a LEAF (CLIENT_CHANGES.md item 5) ────────────
+    #
+    # `boqpick.py` holds the grid two documents render and a third will: the
+    # checkbox rows, the family fold, the tools bar and the payload parser. It
+    # is the same shape of extraction as `docsheet.py` and it is a leaf for the
+    # same reason — if it could import either consumer, `po_draft.py` and
+    # `challan.py` would be coupled through the basement while appearing not to
+    # be. It renders no document and owns no route.
+    ("boqpick", "po_draft",  "any", "the picker is a leaf: po_draft.py renders THROUGH it"),
+    ("boqpick", "challan",   "any", "same — challan.py renders through it"),
+    ("boqpick", "ra",        "any", "the claim grid is ra.py's own and stays there; "
+                                    "it carries the over-claim guard and money columns"),
+    ("boqpick", "docsheet",  "any", "a form is not a printed sheet"),
+    ("boqpick", "invoice",   "any", "the picker has nothing to do with any document"),
+    ("boqpick", "proforma",  "any", "same"),
+    ("boqpick", "purchase",  "any", "same"),
+    ("boqpick", "receipt",   "any", "same"),
+    ("boqpick", "client",    "any", "same"),
+    ("boqpick", "product",   "any", "the picker reads a BOQ, never the catalogue"),
+    ("boqpick", "spec",      "any", "the BOQ already copied the clause it needs"),
+    ("boqpick", "settings",  "any", "settings.py imports quotation; nothing downstream "
+                                    "may import back"),
+    ("boqpick", "flask",     "any", "it builds HTML strings and owns no route"),
+    ("boq",     "boqpick",   "any", "boqpick.py imports boq.py for _line_id and the "
+                                    "rest; importing back is a cycle"),
+
+    # ── Delivery challans (CLIENT_CHANGES.md item 5) ────────────────────────
+    #
+    # The load-bearing one is `challan -> ra`. A DC records goods leaving the
+    # yard; an RA bill records money claimed. They diverge in both directions
+    # on a real site — material dispatched and not yet billed, material billed
+    # and not yet dispatched — and coupling them would force one to answer the
+    # other's questions. Nothing reconciles them, and that is ABOUT.md §7 gap
+    # 19 rather than a thing this module should close on its own.
+    ("challan", "ra",        "any", "a challan records goods moved, an RA bill records "
+                                    "money claimed; they diverge and neither answers "
+                                    "the other's questions"),
+    ("challan", "invoice",   "any", "a challan has no tax block and no relation to a "
+                                    "tax invoice"),
+    ("challan", "proforma",  "any", "the PI belongs to the quotation chain"),
+    ("challan", "purchase",  "any", "the buy side is a separate pipeline"),
+    ("challan", "po_draft",  "any", "two BOQ-chain documents that share a PICKER, not "
+                                    "each other — both import boqpick.py"),
+    ("challan", "quotation", "any", "the form furniture is read through docsheet.py, "
+                                    "which is the leaf both this module and the sell "
+                                    "chain depend on"),
+    ("challan", "product",   "any", "a challan is written from the BOQ, not the catalogue"),
+    ("challan", "receipt",   "any", "a goods movement is not a payment"),
+    ("challan", "client",    "any", "nor a client ledger"),
+    ("challan", "spec",      "any", "the BOQ already copied the clause"),
+    ("boq",     "challan",   "any", "the BOQ view page links out with url_for and reads "
+                                    "STORE['delivery_challans'] directly — importing "
+                                    "challan.py back would be a cycle"),
+    ("settings", "challan",  "any", "settings.py owns the SERIES and knows nothing about "
+                                    "the document; challan.py reads it, never the reverse"),
+    ("docsheet", "challan",  "any", "the sheet is a leaf: challan.py renders through it"),
+    ("docsheet", "boqpick",  "any", "the printed sheet knows nothing about a form"),
+
     # ── RA billing (Phase 4) ────────────────────────────────────────────────
     ("ra", "proforma", "any", "an RA bill is a claim against a BOQ; the PI belongs to "
                               "the quotation chain and has nothing to say about it"),
@@ -274,6 +332,35 @@ REQUIRED = [
     ("po_draft", "pipeline",  "esc"),
     ("po_draft", "store",     "the shared STORE dict"),
     ("po_draft", "branding",  "every company string, colour and image"),
+
+    ("boqpick", "boq",      "_line_id / _item_no / _num / _fmt_qty / "
+                            "_json_for_script / MAX_LINES — and _line_id is the "
+                            "key a picked line is matched on"),
+    ("boqpick", "pipeline", "esc"),
+
+    ("po_draft", "boqpick", "the line picker, extracted at the SECOND consumer "
+                            "rather than the fourth. `/po/create` is pinned "
+                            "byte-for-byte across that move in "
+                            "tests/test_print_golden.py"),
+
+    ("challan", "boqpick",  "the same grid — the challan is the second consumer "
+                            "the extraction was made for"),
+    ("challan", "docsheet", "the same A4 sheet as every other document that "
+                            "prints, and THIS is the arrow that lets the challan "
+                            "carry the tax invoice's letterhead without importing "
+                            "invoice.py — or quotation.py, which is on its own "
+                            "prohibited list"),
+    ("challan", "boq",      "superseded_ids, _line_id, _item_no, _fmt_qty and "
+                            "_ancestor_ids — the revision chain the cumulative "
+                            "dispatched quantity is summed across"),
+    ("challan", "settings", "the ONE running number series, editable at /settings. "
+                            "settings.py owns it and imports nothing back"),
+    ("challan", "address",  "the consignee prefill over the shared address book"),
+    ("challan", "dashboard", "BASE_STYLES and _nav"),
+    ("challan", "pipeline",  "esc and gstin_state_label — the seller's State is "
+                             "DERIVED from the GSTIN, never stored beside it"),
+    ("challan", "store",     "the shared STORE dict"),
+    ("challan", "branding",  "every company string, colour and image"),
 ]
 
 
@@ -339,6 +426,49 @@ def test_ra_reads_receipts_without_importing_receipt():
     assert "receipts" in src, "ra.py should read STORE['receipts'] directly"
     assert 'url_for("receipt.' in src, "ra.py should link to receipts with url_for"
     assert "receipt" not in imports_of("ra")
+
+
+def test_boq_reads_challans_without_importing_challan():
+    """
+    The one-way trick, used a sixth time.
+
+    `/boq/view`'s action bar offers **+ Delivery Challan** on the tip of a
+    revision chain, built with `url_for` exactly as the RA links and the draft
+    PO link beside it are. `boq.py` may never import a module that imports it.
+    """
+    src = (REPO / "boq.py").read_text(encoding="utf8")
+    assert 'url_for("challan.' in src, "boq.py should link to challans with url_for"
+    assert "challan" not in imports_of("boq")
+
+
+def test_the_two_consumers_of_the_picker_do_not_know_about_each_other():
+    """
+    What the extraction is *for*, asserted directly.
+
+    `po_draft.py` and `challan.py` render the same grid. The point of lifting
+    it into a leaf is that neither has to know the other exists — if either
+    imported the other, the shared component would be a shared component in
+    name and a dependency in fact.
+    """
+    assert "challan" not in imports_of("po_draft")
+    assert "po_draft" not in imports_of("challan")
+    for mod in ("po_draft", "challan"):
+        assert "boqpick" in imports_of(mod), f"{mod}.py no longer uses the leaf"
+
+
+def test_the_picker_owns_the_grid_the_two_documents_share():
+    """
+    Where the functions live is what makes the import direction possible, so it
+    is asserted rather than left to convention — `test_the_balance_arithmetic_
+    lives_upstream_in_ra`'s argument, one module over. Moving any of these back
+    into a consumer forces the other to import it.
+    """
+    import boqpick
+
+    for name in ("families", "line_ids", "rows_html", "grid_html", "js",
+                 "picked_lines", "PICKER_CSS"):
+        assert hasattr(boqpick, name), (
+            f"boqpick.{name} moved — both consumers depend on it being here")
 
 
 def test_the_balance_arithmetic_lives_upstream_in_ra():
