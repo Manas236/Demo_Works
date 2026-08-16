@@ -233,6 +233,34 @@ FORBIDDEN = [
     ("demo_data", "pipeline",  "any", "same"),
     ("demo_data", "dashboard", "any", "same"),
     ("demo_data", "flask",     "any", "it is a data module, not a Flask one"),
+
+    # ── The project entity is a LEAF (Pass A) ────────────────────────────
+    #
+    # project.py holds the commercial engagement BOQs are grouped under.
+    # It is a leaf: it may import dashboard, pipeline, store and branding,
+    # and nothing else from the app.  boq.py reads STORE["projects"]
+    # directly and links out with url_for — the same one-way trick used
+    # between boq→ra, boq→challan, boq→po_draft, and ra→receipt.
+    #
+    # Nothing imports project.py at module level.  That is what keeps the
+    # graph acyclic: project sits beside client, both above dashboard and
+    # below the document chain.
+    ("project", "boq",       "any", "project.py is a leaf; boq.py reads STORE['projects'] "
+                                    "directly and links out with url_for"),
+    ("project", "challan",   "any", "a project does not know about challans"),
+    ("project", "purchase",  "any", "the buy side is a separate pipeline"),
+    ("project", "po_draft",  "any", "a project does not know about draft POs"),
+    ("project", "invoice",   "any", "a project does not know about tax invoices"),
+    ("project", "ra",        "any", "a project does not know about RA bills"),
+    ("project", "receipt",   "any", "a project does not know about payments"),
+    ("project", "quotation", "any", "a project does not know about quotations"),
+    ("project", "product",   "any", "a project is not part of the catalogue"),
+    ("project", "docsheet",  "any", "a project is not a printed document"),
+    ("project", "boqpick",   "any", "a project does not pick BOQ lines"),
+    ("project", "spec",      "any", "a project is not a specification"),
+    ("project", "client",    "any", "client segregation is a separate concern"),
+    ("project", "settings",  "any", "settings.py imports quotation; nothing downstream "
+                                    "may import back"),
 ]
 
 
@@ -361,6 +389,12 @@ REQUIRED = [
                              "DERIVED from the GSTIN, never stored beside it"),
     ("challan", "store",     "the shared STORE dict"),
     ("challan", "branding",  "every company string, colour and image"),
+
+    # ── project.py is a LEAF (Pass A) ────────────────────────────────────
+    ("project", "dashboard", "BASE_STYLES and _nav"),
+    ("project", "pipeline",  "esc / norm_name"),
+    ("project", "store",     "the shared STORE dict"),
+    ("project", "branding",  "every company string, colour and image"),
 ]
 
 

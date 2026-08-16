@@ -156,6 +156,11 @@ def populated(client):
     STORE["boqs"][bid2] = dict(STORE["boqs"][bid])
     STORE["boqs"][bid2]["id"] = bid2
 
+    STORE.setdefault("projects", {})["proj-1"] = {
+        "id": "proj-1", "name": "Test Project", "norm_name": "test project",
+        "client": "", "site_address": "", "notes": "", "created_at": "2026-08-16T12:00:00Z"
+    }
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
@@ -167,6 +172,9 @@ def populated(client):
             "/invoice/view/<id>":   iid,
             "/product/delete/<id>": deletable_pid,
             "/product/view/<id>":   next(iter(STORE["products"])),
+            "/projects/delete/<id>": "proj-1",
+            "/projects/edit/<id>":   "proj-1",
+            "/projects/view/<id>":   "proj-1",
             "/proforma/from/<qid>": qid,
             "/proforma/view/<id>":  pid,
             "/purchase/view/<id>":  next(iter(STORE["purchases"])),
@@ -207,6 +215,7 @@ def populated(client):
     STORE["receipts"].clear()
     STORE.setdefault("purchase_orders", {}).clear()
     STORE.setdefault("delivery_challans", {}).clear()
+    STORE.setdefault("projects", {}).clear()
 
 
 def _a_challan(boq_id: str) -> str:

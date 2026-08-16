@@ -75,7 +75,7 @@ def test_every_reference_collection_has_a_seeder(client):
     # `delivery_challans` likewise: a challan is signed for on arrival, and a
     # seeded one is a record that material left the yard when none did.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
-                     "ra_bills", "receipts", "delivery_challans"}
+                     "ra_bills", "receipts", "delivery_challans", "projects"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

@@ -36,6 +36,9 @@ from challan import challan_bp   # Delivery challans: goods leaving the yard
                                  # against a BOQ. Its own collection, beside
                                  # the RA bill on the project chain and
                                  # deliberately not reconciled with it.
+from project import project_bp   # Projects: the commercial engagement BOQs
+                                 # are grouped under. A LEAF — it must not
+                                 # import any document module.
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
@@ -117,6 +120,8 @@ app.register_blueprint(challan_bp)            # Mounted at /dc — REQUIRED by
                                               # url_for("challan.create_dc")
                                               # in its action bar.
 app.register_blueprint(client_bp)             # Mounted at /client
+app.register_blueprint(project_bp)            # Mounted at /projects — LEAF, must
+                                              # not import any document module.
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 

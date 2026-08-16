@@ -72,6 +72,7 @@ from address import INDIAN_STATES, picker_options, picker_payload
 from dashboard import BASE_STYLES, _nav
 from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
 from store import STORE
+import project
 
 # The document's own formatters and stylesheet — see the module docstring.
 from quotation import (
@@ -3561,6 +3562,15 @@ def create_boq():
                 # same project and party, not already superseded, and no
                 # claimed line dropped. See PHASE4_RA_DESIGN.md §4.
                 "supersedes": prev_id,
+
+                # The project this BOQ belongs to, or "" if none has been
+                # assigned.  A revision inherits its ancestor's project_id —
+                # the field is not separately editable on a revision, because
+                # changing it on one revision and not another would split a
+                # chain across two P&Ls.  Nothing in this pass makes the
+                # field mandatory: existing BOQs carry "" until backfilled.
+                "project_id": (prev.get("project_id", "") if prev else
+                               (form.get("project_id") or "").strip()),
 
                 "project_name":  (form.get("project_name") or "").strip(),
                 "site_location": (form.get("site_location") or "").strip(),
