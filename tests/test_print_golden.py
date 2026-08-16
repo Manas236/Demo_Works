@@ -1,11 +1,16 @@
 """
-The three printed documents, pinned byte-for-byte.
+The printed documents — and one form — pinned byte-for-byte.
 
-This file exists for one job: to prove that extracting the shared document
-presentation layer (`docsheet.py`) changed **nothing visible** on the two
-documents that already existed and must not move — the tax invoice and the
-purchase order. It was written and committed BEFORE that extraction, so the
-baseline is a real observation rather than a description of the result.
+This file exists for one job: to prove that extracting a shared layer changed
+**nothing visible** on the pages that already existed and must not move. It has
+done that twice now, and each time the baseline was written and committed
+BEFORE the extraction it measures, so it is a real observation rather than a
+description of the result:
+
+* `docsheet.py` — the printed A4 sheet, lifted out of four documents. The tax
+  invoice, the proforma and the purchase order are pinned against it.
+* `boqpick.py` — the BOQ line picker, lifted out of `po_draft.py` at its second
+  consumer. `/po/create` is pinned against that one.
 
 ### What it asserts
 
@@ -36,6 +41,7 @@ moved.
 """
 
 import hashlib
+from datetime import date as _real_date
 
 import pytest
 
@@ -504,6 +510,187 @@ def test_the_ra_bill_and_the_tax_invoice_carry_the_SAME_letterhead(
              ra["foot-strip"]}
     assert len(foots) == 1, (
         f"four documents, {len(foots)} different foot strips: {foots}")
+
+
+# ═══ The BOQ line picker, pinned BEFORE it is extracted ════════════════════
+#
+# `/po/create` is not an A4 sheet, so it gets its own marker list. The blocks
+# are chosen to isolate the four things the extraction could plausibly move:
+# the stylesheet stack (which carries the `.pk-*` rules), the tools bar, the
+# rendered rows, and the JavaScript.
+
+GOLD_PICK_BOQ = "gold-pick-boq"
+
+PICKER_BLOCKS = [
+    ("head",    "<head>"),
+    ("intro",   '<div class="set-intro"'),
+    ("vendor",  '<div class="section-title">Supplier</div>'),
+    ("details", '<div class="section-title">Order details</div>'),
+    ("lines",   '<div class="section-title">Lines to order</div>'),
+    ("tools",   '<div class="pk-tools">'),
+    ("rows",    "<tbody>"),
+    ("payload", "var LINE_IDS"),
+    ("js",      "function el(id)"),
+]
+
+
+class _FixedToday:
+    """`datetime.date` with today nailed down. Only `today()` is ever called."""
+
+    @staticmethod
+    def today():
+        return _real_date(2026, 8, 16)
+
+
+@pytest.fixture()
+def golden_picker(client, pinned_identity, monkeypatch):
+    """
+    `/po/create?boq=<id>` — the BOQ line picker, held still.
+
+    Captured **before** the grid was lifted out of `po_draft.py` into
+    `boqpick.py`, for exactly the reason the four sheets above were captured
+    before `docsheet.py` existed: a digest taken afterwards asserts only that
+    the code equals itself.
+
+    Four things on this page move on their own, and each is pinned rather than
+    hashed around — a normalisation applied to the page before hashing would be
+    a second thing that can be wrong:
+
+    * the **company identity**, via `pinned_identity`;
+    * **today's date**, which fills the form's date box. `po_draft._date` is
+      replaced with a fixed stand-in;
+    * the **draft-PO series**, which prints in the intro band as the number
+      this order will take — the record is removed so the defaults stand;
+    * the **address book**, which fills the vendor picker. It is one of the two
+      collections `conftest.client` does not clear between tests, so it is
+      snapshotted, emptied, re-seeded and put back.
+
+    The BOQ itself is a fixed three-line schedule rather than the seeded Sify
+    one: it carries a specification header with two sizes under it and one
+    standalone line, which is every row shape the grid renders — folded child,
+    fold point with a `spec · N items` tag, and an unparented row.
+    """
+    import address
+    import po_draft
+    import settings as SET
+
+    monkeypatch.setattr(po_draft, "_date", _FixedToday)
+
+    saved_addresses = dict(STORE["addresses"])
+    saved_seed = STORE.get("_addr_seeded")
+    saved_series = STORE["settings"].get(SET.PO_SERIES_RECORD)
+    STORE["addresses"].clear()
+    STORE["_addr_seeded"] = False
+    address.ensure_demo_addresses()
+    STORE["settings"].pop(SET.PO_SERIES_RECORD, None)
+    STORE.setdefault("purchase_orders", {}).clear()
+
+    head = {
+        "line_id": "cccccccccccc", "item_no": "24", "parent_item_no": "",
+        "section": "B", "is_header": True,
+        "description": ("Providing and fixing MS heavy duty 'C' class pipe "
+                        "conforming to IS 1239 / IS 3589, including all "
+                        "fittings, supports and testing."),
+        "remark": "", "unit": "", "area_qty": {}, "total_qty": 0.0,
+        "supply_base_rate": None, "supply_escalation_pct": 0.0,
+        "supply_rate": 0.0, "supply_amount": 0.0,
+        "supply_hsn": "", "supply_gst_rate": 18.0,
+        "install_base_rate": None, "install_escalation_pct": 0.0,
+        "install_rate": 0.0, "install_amount": 0.0,
+        "install_sac": "", "install_gst_rate": 18.0,
+    }
+    kid_a = dict(head, line_id="dddddddddddd", item_no="24.a",
+                 parent_item_no="24", is_header=False,
+                 description="80 mm dia", unit="Mtrs",
+                 area_qty={"T1": 120.0}, total_qty=120.0,
+                 supply_base_rate=980.0, supply_rate=1127.0,
+                 supply_amount=135240.0, supply_hsn="73063090")
+    kid_b = dict(kid_a, line_id="eeeeeeeeeeee", item_no="24.b",
+                 description="150 mm dia", area_qty={"T1": 700.0},
+                 total_qty=700.0, supply_base_rate=1760.0,
+                 supply_rate=2024.0, supply_amount=1416800.0)
+    loose = dict(head, line_id="ffffffffffff", item_no="31",
+                 parent_item_no="", is_header=False,
+                 description="Butterfly valve 80 mm, wafer type, cast iron body",
+                 unit="Nos", area_qty={"T1": 4.0}, total_qty=4.0,
+                 supply_base_rate=6200.0, supply_rate=7130.0,
+                 supply_amount=28520.0, supply_hsn="84818030")
+
+    STORE["boqs"][GOLD_PICK_BOQ] = {
+        "id": GOLD_PICK_BOQ, "ref": "SF/BOQ/26-27/0007", "fy": "26-27",
+        "date": "2026-04-01", "rev_no": 0, "supersedes": "",
+        "project_name": "Sify Bangalore — Fire Protection",
+        "site_location": "Whitefield, Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd", "contact_person": "Mr R Nair",
+        "to": "Prudent Teqtis Pvt Ltd\nSurvey 21, Whitefield\nBangalore, Karnataka - 560066",
+        "bill_gstin": "29AABCP1234C1ZX", "ship_same": "on",
+        "rate_basis_label": "Mohali Rates",
+        "sections": [{"code": "B", "title": "Hydrant system", "areas": ["T1"]}],
+        "line_items": [head, kid_a, kid_b, loose],
+        "supply_subtotal": 1580560.0, "install_subtotal": 0.0,
+        "subtotal": 1580560.0,
+        "payment_terms": "", "delivery_terms": "", "notes": "",
+        "company_branch": "", "auth_signatory": "",
+    }
+
+    yield
+
+    STORE["boqs"].pop(GOLD_PICK_BOQ, None)
+    STORE["purchase_orders"].clear()
+    STORE["addresses"].clear()
+    STORE["addresses"].update(saved_addresses)
+    STORE["_addr_seeded"] = saved_seed
+    if saved_series is None:
+        STORE["settings"].pop(SET.PO_SERIES_RECORD, None)
+    else:
+        STORE["settings"][SET.PO_SERIES_RECORD] = saved_series
+
+
+# Captured 16 August 2026, against the code as it stood BEFORE `boqpick.py`
+# existed. These are the baseline the extraction is measured by.
+PICK_WHOLE, PICK_LEN = "c97509ea5bf4ab66", 54333
+PICK_BLOCKS = {"head":    "7b1f46fa7f2ed641",
+               "intro":   "bef0984ca97a76df",
+               "vendor":  "715e7c6cd4634448",
+               "details": "53b096aa21f5264c",
+               "lines":   "10ed04f5fad93d1e",
+               "tools":   "76ba5972ff18f235",
+               "rows":    "a57b4602a006fa6f",
+               "payload": "0b433e5e3f3e5705",
+               "js":      "f38e4de84298541d"}
+
+
+def test_the_boq_line_picker_is_unchanged(client, golden_picker):
+    """
+    `/po/create?boq=<id>` — the grid `boqpick.py` was lifted out of.
+
+    The grid is checkbox-per-line with an editable quantity, select-all /
+    clear-all, and the family fold that carries a specification clause with its
+    sizes. It exists in `po_draft.py`, it is wanted verbatim by the delivery
+    challan, and copying it a third time is how four documents stopped looking
+    like each other. So it moves into a leaf module — and this pins what
+    "unchanged" means while it does.
+    """
+    r = client.get(f"/po/create?boq={GOLD_PICK_BOQ}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), PICK_WHOLE, PICK_LEN, PICK_BLOCKS,
+           markers=PICKER_BLOCKS, what="BOQ line picker")
+
+
+def test_the_picker_golden_is_hashing_a_real_form(client, golden_picker):
+    """
+    The control, for the same reason the four sheets have one.
+
+    A digest assertion passes just as well against a redirect that rendered
+    nothing, or against a BOQ whose lines silently failed to reach the grid.
+    """
+    html = client.get(f"/po/create?boq={GOLD_PICK_BOQ}").get_data(as_text=True)
+    assert 'id="c_dddddddddddd"' in html, "the picker rendered no checkbox rows"
+    assert 'id="q_eeeeeeeeeeee"' in html, "the quantity boxes are missing"
+    assert "150 mm dia" in html, "the line descriptions did not render"
+    assert "spec &middot; 2 items" in html, "the family fold did not render"
+    assert "SF/DPO/0001" in html, "the series is not the pinned default"
+    assert 'value="2026-08-16"' in html, "today's date was not pinned"
 
 
 def test_the_goldens_are_hashing_a_real_document(client, golden, golden_ra):
