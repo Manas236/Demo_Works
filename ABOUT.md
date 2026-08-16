@@ -93,20 +93,21 @@ independent things move the number, and they are often confused for each other:
 
 | Environment | Result | Measured |
 |---|---|---|
-| openpyxl installed **and** both client workbooks present | **751 passed** *(derived — see below)* | 15 Aug 2026 |
-| openpyxl installed, workbooks absent (the usual fresh clone) | **748 passed, 3 skipped** *(derived — see below)* | 15 Aug 2026 |
+| openpyxl installed **and** both client workbooks present | **842 passed** *(derived — see below)* | 15 Aug 2026 + 95 |
+| openpyxl installed, workbooks absent (the usual fresh clone) | **839 passed, 3 skipped** *(derived — see below)* | 15 Aug 2026 + 95 |
 | openpyxl absent (a plain `pip install -r requirements.txt`) | **838 passed, 1 skipped** | **16 Aug 2026** |
 
 ⚠ **Only the third row was re-measured on 16 August 2026**, after the delivery
 challan. It was measured by running the suite in that configuration, and it is
 the only figure on this table you should rely on today. The first two rows are
-the 15 August measurements **plus the four workbook tests that openpyxl
-unlocks**, and are therefore *derived* — precisely the arithmetic this note has
-always said not to do. They are marked rather than silently updated, because a
-number nobody has run is a claim and not a result. The box this pass ran on has
-no openpyxl and neither client workbook, so those two configurations could not
-be produced without installing a package into the interpreter — which
-`requirements.txt`'s pins exist to stop anyone doing casually.
+the 15 August measurements **plus the 95 tests that pass added**, and are
+therefore *derived* — precisely the arithmetic this note has always said not to
+do. They are marked rather than silently updated, because a number nobody has
+run is a claim and not a result. The box this pass ran on has no openpyxl and
+neither client workbook, so those two configurations could not be produced
+without installing a package into the interpreter — which `requirements.txt`'s
+pins exist to stop anyone doing casually. **If you are on a box that can
+produce either, run it and replace the derived figure with the measured one.**
 
 *The three totals move independently and a figure quoted without naming its
 configuration is not a figure — the row above it was reported as "607 to 630"
