@@ -622,6 +622,90 @@ def test_the_strip_is_chrome_and_appears_away_from_the_dashboard(client, fake_db
         assert 'class="db-down"' in html, path
 
 
+def test_the_strip_reaches_the_two_boq_side_purchase_forms(client, fake_db):
+    """
+    The sweep above walks parameterless paths, so the two routes that raise a
+    real purchase order from the BOQ chain are checked by name.
+
+    They are exactly the pages where losing this warning would cost most: an
+    operator can sit on a 97-line picker for a long time pricing it, and a form
+    that draws its own chrome instead of calling `_nav()` looks completely right
+    while silently dropping the one strip that means **nothing you type is being
+    saved**. The order they are about to raise commits money to a vendor.
+    """
+    import json
+
+    import address
+    import demo_data as DD
+    from store import STORE as S
+
+    client.get("/boq/")
+    address.ensure_demo_addresses()
+    bid = DD.BOQ_META["id"]
+    vendor = next(a["id"] for a in S["addresses"].values()
+                  if a.get("type") == "vendor")
+    line = next(li for li in S["boqs"][bid]["line_items"] if not li.get("is_header"))
+    r = client.post(f"/po/create?boq={bid}", data={
+        "date": "2026-08-16", "vendor_id": vendor, "notes": "",
+        "po_json": json.dumps({"lines": [{"line_id": line["line_id"],
+                                          "qty": "", "pcs": ""}]})})
+    assert r.status_code == 302
+    did = next(iter(S["purchase_orders"]))
+
+    # The schedule has already been written by the requests above, so seeding it
+    # again is not a change and there would be nothing for MySQL to refuse. Touch
+    # it, then let one request's teardown drive db.sync() into the refusal.
+    fake_db.refuse = {"boqs"}
+    S["boqs"][bid]["notes"] = "touched, so there is a write to refuse"
+    client.get("/purchase/")
+    assert db.failures(), "the fixture did not actually reach db.sync()"
+
+    for path in (f"/purchase/from-boq/{bid}", f"/purchase/from-draft/{did}"):
+        html = client.get(path).get_data(as_text=True)
+        assert 'class="db-down"' in html, path
+        assert "Bills of quantities are not being saved." in html, path
+
+    S["purchase_orders"].clear()
+
+
+def test_a_purchase_order_raised_from_a_boq_is_persisted_like_any_other(fake_db):
+    """
+    The new upstream fields ride inside the `purchases` record and therefore
+    inside that collection's own JSON blob — no new table, no new collection,
+    nothing added to `db.COLLECTIONS`.
+
+    That matters for the failure isolation this file is about: an order carrying
+    a BOQ, a project and a `line_id` per line is one row in `purchases` exactly
+    as an order entered from scratch is, so it fails and recovers with that
+    collection and cannot take a ninth one down with it.
+    """
+    assert "purchases" in db.COLLECTIONS
+    store = a_store()
+    store["purchases"]["po-from-boq"] = {
+        "id": "po-from-boq", "ref": "SF/PO/26-27/0007",
+        "boq_id": "b-1", "boq_ref": "SF/BOQ/26-27/0001",
+        "project_id": "p-1", "project_name": "Sify Bangalore",
+        "draft_id": "d-1", "draft_ref": "SF/DPO/0001",
+        "line_items": [{"line_id": "a3f19c0b7e42", "name": "MS pipe 150 mm",
+                        "qty": 4.0, "price": 1760.0, "total": 7040.0}],
+    }
+    fake_db.refuse = {"boqs"}
+
+    result = db.sync(store)
+
+    assert result["failed"] == ["boqs"]
+    assert "po-from-boq" in fake_db.rows["purchases"]
+    written = json.loads(fake_db.rows["purchases"]["po-from-boq"])
+    assert written["boq_id"] == "b-1"
+    assert written["project_id"] == "p-1"
+    assert written["line_items"][0]["line_id"] == "a3f19c0b7e42"
+
+    # And an edit to it is still caught by the digest diff.
+    store["purchases"]["po-from-boq"]["line_items"][0]["price"] = 1800.0
+    fake_db.refuse = set()
+    assert db.sync(store)["written"] == 2       # the PO, and the BOQ that retried
+
+
 def test_the_strip_clears_itself_when_the_write_lands(client, fake_db):
     fake_db.refuse = {"boqs"}
     client.get("/boq/")                               # seeds a BOQ, which is refused

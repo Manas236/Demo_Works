@@ -68,6 +68,34 @@ FORBIDDEN = [
     ("proforma",  "purchase",  "any", "and the sell side must never reach across either"),
     ("invoice",   "purchase",  "any", "same"),
 
+    # ── The buy side reaches UP the BOQ chain, and no further (Pass C) ──────
+    #
+    # `/purchase/from-boq/<id>` and `/purchase/from-draft/<id>` gave the real
+    # purchase order an upstream, which is what finally puts procurement cost on
+    # a project. What it must NOT give it is a dependency on any other document
+    # module: `purchase.py` may read a schedule and render its picker, and that
+    # is the whole of it.
+    #
+    # `po_draft` is the load-bearing one and it runs both ways. The conversion
+    # route lives in `purchase.py` because it writes a `purchases` record;
+    # `po_draft.py` links to it with `url_for` and reads `converted_po_ids` off
+    # its own record. If either imported the other, two sibling document modules
+    # would be coupled for the sake of one dict lookup — which is exactly what
+    # the one-way trick between quotation/proforma, proforma/invoice,
+    # quotation/purchase, boq/ra, ra/receipt and boq/challan exists to avoid.
+    ("purchase", "po_draft", "any", "the conversion route lives in purchase.py because it "
+                                    "writes a purchases record; po_draft.py links to it by "
+                                    "URL and reads STORE['purchase_orders'] is read the "
+                                    "other way — neither imports the other"),
+    ("purchase", "ra",       "any", "an RA bill claims money IN against a schedule; a PO "
+                                    "commits money OUT. They share a BOQ and nothing else"),
+    ("purchase", "challan",  "any", "a goods-movement note is not a purchase order"),
+    ("purchase", "receipt",  "any", "a receipt is money RECEIVED — the other side of the "
+                                    "ledger entirely"),
+    ("purchase", "charge",   "any", "an employee expense is not a purchase order"),
+    ("purchase", "client",   "any", "client segregation is a sell-side ledger"),
+    ("purchase", "spec",     "any", "the BOQ already copied the clause it needs"),
+
     # ── The BOQ chain (handover §3.4) ───────────────────────────────────────
     ("boq", "ra",       "any", "the BOQ view page links out with url_for and reads STORE['ra_bills'] "
                                "directly — importing ra.py back would be a cycle"),
@@ -394,6 +422,14 @@ REQUIRED = [
                             "byte-for-byte across that move in "
                             "tests/test_print_golden.py"),
 
+    # ── The buy side's own arrows up the BOQ chain (Pass C) ─────────────────
+    ("purchase", "boq",     "superseded_ids — a superseded schedule is refused at "
+                            "the route, not merely unlinked — plus _line_id, "
+                            "_item_no, _num, _fmt_qty and MAX_LINES"),
+    ("purchase", "boqpick", "the line picker, at its THIRD consumer. It was "
+                            "extracted so this grid would not be written a third "
+                            "time, and importing it is what makes that true"),
+
     ("challan", "boqpick",  "the same grid — the challan is the second consumer "
                             "the extraction was made for"),
     ("challan", "docsheet", "the same A4 sheet as every other document that "
@@ -526,6 +562,69 @@ def test_the_picker_owns_the_grid_the_two_documents_share():
                  "picked_lines", "PICKER_CSS"):
         assert hasattr(boqpick, name), (
             f"boqpick.{name} moved — both consumers depend on it being here")
+
+
+def test_the_draft_and_the_real_po_link_without_importing_each_other():
+    """
+    The one-way trick, used a seventh time — and this one runs in **both**
+    directions at once, which is what makes it worth its own test.
+
+    `/purchase/from-draft/<id>` reads a draft PO out of `STORE["purchase_orders"]`
+    and writes `converted_po_ids` back onto it. `/po/view` and `/po/` read that
+    list and link to `/purchase/view/<id>`. Neither module imports the other, and
+    neither may: they are sibling document modules with different record shapes,
+    different number series and — the client constraint that created the split in
+    the first place — different rules about GST.
+
+    The route lives in `purchase.py` rather than `po_draft.py` because it writes
+    a `purchases` record, and a module owns the shape it writes.
+    """
+    assert "po_draft" not in imports_of("purchase")
+    assert "purchase" not in imports_of("po_draft")
+
+    pur = (REPO / "purchase.py").read_text(encoding="utf8")
+    assert "purchase_orders" in pur, (
+        "purchase.py should read STORE['purchase_orders'] directly")
+    assert 'url_for("po_draft.' in pur, (
+        "purchase.py should link back to the draft with url_for")
+
+    draft = (REPO / "po_draft.py").read_text(encoding="utf8")
+    assert "converted_po_ids" in draft, (
+        "po_draft.py should read the converted_po_ids purchase.py writes")
+    assert 'url_for("purchase.' in draft, (
+        "po_draft.py should link to the real PO with url_for")
+
+
+def test_the_project_is_reached_through_the_store_and_url_for():
+    """
+    `project.py` is a **permitted** import for `purchase.py` and is deliberately
+    not taken: the project link is one id, one name and one `url_for`, and
+    nothing in `project.py`'s API is needed to carry them.
+
+    The direction that is not optional is the reverse — `project.py` is a leaf
+    and may never import `purchase.py`, which the FORBIDDEN table above already
+    asserts. This is the half that says why the arrow is absent rather than
+    leaving a reader to guess it was forgotten.
+    """
+    pur = (REPO / "purchase.py").read_text(encoding="utf8")
+    assert '"projects"' in pur, "purchase.py should read STORE['projects'] directly"
+    assert 'url_for("projectview.' in pur, (
+        "purchase.py should link to the project's page with url_for")
+    assert "purchase" not in imports_of("project")
+
+
+def test_the_picker_is_shared_by_three_documents_now():
+    """
+    `boqpick.py` was extracted at its second consumer rather than its fourth,
+    on the reasoning that three copies is where `docsheet.py` found four
+    letterheads that had already drifted apart. The third consumer has arrived
+    and did not write a fourth copy — which is the extraction paying for itself.
+    """
+    for mod in ("po_draft", "challan", "purchase"):
+        assert "boqpick" in imports_of(mod), f"{mod}.py no longer uses the leaf"
+    # And the leaf still knows about none of them.
+    for mod in ("po_draft", "challan", "purchase"):
+        assert mod not in imports_of("boqpick")
 
 
 def test_the_balance_arithmetic_lives_upstream_in_ra():

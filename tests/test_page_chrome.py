@@ -155,6 +155,59 @@ def test_the_new_registers_are_reachable_from_the_dashboard(populated, client, p
         f"reach it is to know the URL.")
 
 
+def test_the_boq_side_purchase_forms_carry_the_shared_chrome(populated, client):
+    """
+    The sweep above walks parameterless rules only, so the two routes that raise
+    a real purchase order from the BOQ chain are checked by name here.
+
+    Both are ordinary screen pages in this app and must look like it: the shared
+    nav (which is where the persistence strip and the settings dot ride), the
+    shared stylesheet under their own, and no browser `confirm()` anywhere.
+
+    ⚠ `purchase.FROM_BOQ_STYLES` is layered **after** `BASE_STYLES`, never
+      instead of it, and is a separate constant from `PURCHASE_STYLES` because
+      `/purchase/view` loads that one and is hashed byte-for-byte in
+      `tests/test_print_golden.py`.
+    """
+    import json
+
+    import purchase
+    vendor = next(a["id"] for a in STORE["addresses"].values()
+                  if a.get("type") == "vendor")
+    lines = [li for li in STORE["boqs"][populated["boq"]]["line_items"]
+             if not li.get("is_header")][:2]
+    r = client.post(f"/po/create?boq={populated['boq']}", data={
+        "date": "2026-08-15", "vendor_id": vendor, "notes": "",
+        "po_json": json.dumps({"lines": [{"line_id": li["line_id"],
+                                          "qty": "", "pcs": ""} for li in lines]})})
+    assert r.status_code == 302
+    did = next(iter(STORE["purchase_orders"]))
+
+    for url in (f"/purchase/from-boq/{populated['boq']}",
+                f"/purchase/from-draft/{did}"):
+        res = client.get(url)
+        assert res.status_code == 200, f"{url} did not render"
+        html = res.get_data(as_text=True)
+        assert "<nav>" in html and 'class="nav-brand"' in html, (
+            f"{url} does not render dashboard._nav()")
+        assert ".nav-brand" in html, f"{url} does not load BASE_STYLES"
+        assert "confirm(" not in html, f"{url} carries a browser confirm() dialog"
+        # Its own sheet is layered on top rather than replacing the shared one.
+        assert ".pk-rate" in html, f"{url} does not load FROM_BOQ_STYLES"
+
+    # The rules the picker's own stylesheet must NOT have grown: `/po/create`
+    # renders no rate column, and its page is pinned byte-for-byte.
+    assert ".pk-rate" not in purchase.BP.PICKER_CSS, (
+        "the rate column's CSS was added to the shared PICKER_CSS. That "
+        "constant is spliced into po_draft.PO_STYLES at a fixed character "
+        "position and /po/create is hashed — keep it in FROM_BOQ_STYLES.")
+    assert ".pk-rate" not in purchase.PURCHASE_STYLES, (
+        "a form rule was added to the sheet /purchase/view loads, which is a "
+        "printed document hashed in tests/test_print_golden.py.")
+
+    STORE["purchase_orders"].clear()
+
+
 def test_no_page_uses_a_browser_confirm_dialog(populated, client):
     """
     ABOUT.md §7.9f: `confirm()` is not a guard. It never runs for a

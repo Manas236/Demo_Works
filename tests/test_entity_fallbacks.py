@@ -186,6 +186,13 @@ def populated(client):
             "/proforma/from/<qid>": qid,
             "/proforma/view/<id>":  pid,
             "/purchase/view/<id>":  next(iter(STORE["purchases"])),
+            # The two BOQ-side create forms. Both render a populated page: the
+            # first the whole 97-line picker with a rate box per line, the
+            # second the draft's own rows — and `_a_draft_po` deliberately
+            # leaves `vendor_name` blank, which is exactly the cell that falls
+            # back to the house em-dash.
+            "/purchase/from-boq/<boq_id>":     bid,
+            "/purchase/from-draft/<draft_id>": dpid,
             "/quotation/view/<id>": qid,
             "/ra/delete/<id>":      rid,
             "/ra/edit/<id>":        rid,
