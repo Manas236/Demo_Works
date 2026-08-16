@@ -145,6 +145,34 @@ def _spend_ref() -> str:
     return ref
 
 
+def converted_pos(po: dict) -> list:
+    """
+    `[(purchase_id, purchase_record)]` — the real POs raised off this draft.
+
+    ⚠ **A LIST, and this module does not own the field.** `purchase.py` appends
+    to `converted_po_ids` when `/purchase/from-draft/<id>` writes an order;
+    everything here does is read it and link out with `url_for`. That is the
+    one-way trick this repo already runs between quotation/proforma,
+    proforma/invoice, quotation/purchase, boq/ra, ra/receipt and boq/challan —
+    **`po_draft.py` must never import `purchase.py`**, and the prohibition is
+    asserted at AST level in `tests/test_import_directions.py`.
+
+    A list rather than a single `po_id` because converting the same draft twice
+    is deliberately permitted: an order genuinely does get split between two
+    suppliers or placed in two lots. A scalar would let the second conversion
+    silently erase the first one's trail, which is the opposite of what a record
+    of what was sent out for pricing is for.
+
+    Ids whose order has since been deleted are dropped rather than rendered as a
+    dead link.
+    """
+    purchases = STORE.get("purchases") or {}
+    rows = [(pid, purchases[pid]) for pid in (po.get("converted_po_ids") or [])
+            if pid in purchases]
+    rows.sort(key=lambda kv: str(kv[1].get("ref") or ""))
+    return rows
+
+
 def draft_pos_of_boq(boq_id: str) -> list:
     """Draft POs raised against this specific BOQ revision."""
     rows = [(pid, po) for pid, po in (STORE.get("purchase_orders") or {}).items()
@@ -583,6 +611,13 @@ def list_pos():
     rows = ""
     for pid, po in pos:
         n = sum(1 for r in po.get("items", []) if not r.get("is_header"))
+        # Where the draft ended up. Blank is the normal state — most drafts are
+        # still out with a supplier being priced — so it falls back to the house
+        # em-dash, substituted AFTER escaping (tests/test_entity_fallbacks.py).
+        converted = ", ".join(
+            f'<a href="{url_for("purchase.view_purchase", id=rid)}">'
+            f'{P.esc(rec.get("ref"))}</a>'
+            for rid, rec in converted_pos(po)) or '&mdash;'
         rows += f"""
         <tr>
           <td><a href="{url_for('po_draft.view_po', id=pid)}"><b>{P.esc(po.get("ref"))}</b></a></td>
@@ -591,10 +626,11 @@ def list_pos():
           <td><a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}">{P.esc(po.get("boq_ref"))}</a></td>
           <td>{P.esc(po.get("project_name")) or '&mdash;'}</td>
           <td style="text-align:right;">{n}</td>
+          <td>{converted}</td>
         </tr>"""
 
     if not rows:
-        rows = ('<tr><td colspan="6" style="text-align:center;color:var(--muted);'
+        rows = ('<tr><td colspan="7" style="text-align:center;color:var(--muted);'
                 'padding:2rem;">No draft purchase orders yet. Raise one from a '
                 'bill of quantities.</td></tr>')
 
@@ -632,6 +668,7 @@ def list_pos():
         <th>PO No.</th><th>Date</th><th>Supplier</th>
         <th>Against BOQ</th><th>Project</th>
         <th style="text-align:right;">Lines</th>
+        <th>Converted &rarr;</th>
       </tr></thead>
       <tbody>{rows}</tbody>
     </table>
@@ -721,6 +758,31 @@ def view_po(id: str):
         return redirect(url_for("po_draft.list_pos",
                                 msg="That draft PO no longer exists.", type="error"))
 
+    # ── Where the priced copy goes next ───────────────────────────────────
+    #
+    # The return leg ABOUT.md §7 gap B7 named as missing: the supplier prices
+    # this sheet, and until now the priced copy came back on paper and was
+    # re-keyed into `/purchase/create` from scratch, with nothing linking the two
+    # documents. This is a **link**, built with `url_for` — the route lives in
+    # `purchase.py`, which owns the `purchases` record shape, and this module
+    # must never import it.
+    #
+    # The draft is not consumed by following it. It stays exactly as it is,
+    # because it is the record of what was sent out to be priced.
+    already = converted_pos(po)
+    convert_html = (
+        f'<a href="{url_for("purchase.from_draft", draft_id=id)}" class="btn">'
+        f'{"Convert again" if already else "Convert to Purchase Order"}</a>')
+    converted_strip = ""
+    if already:
+        chips = "".join(
+            f'<a class="po-chip" href="{url_for("purchase.view_purchase", id=rid)}">'
+            f'{P.esc(rec.get("ref"))}</a>' for rid, rec in already)
+        converted_strip = (
+            f'<div class="po-strip" style="margin:0 0 1rem;">'
+            f'<span style="font-size:.82rem;color:var(--muted);margin-right:.5rem;">'
+            f'Converted to</span>{chips}</div>')
+
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -740,6 +802,7 @@ def view_po(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All Draft POs</a>
     <a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(po.get('boq_ref'))}</a>
+    {convert_html}
     <a href="{url_for('po_draft.edit_po', id=id)}" class="btn btn-ghost">Edit</a>
     <a href="{url_for('po_draft.delete_po', id=id)}" class="btn btn-ghost">Delete</a>
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
@@ -747,6 +810,7 @@ def view_po(id: str):
 </div>
 
 {_flash()}
+{converted_strip}
 
 <div class="doc-outer">
 {_document_html(po)}

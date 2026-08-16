@@ -2165,11 +2165,25 @@ def view_boq(id: str):
     # against a schedule, and a superseded revision is not the schedule anybody
     # is building from. `/dc/create` refuses one at the route as well — a link
     # is not a guard.
+    #
+    # ⚠ **Raise Purchase Order** rides the same gate as its neighbours, and for
+    # the same reason rather than for symmetry: a superseded revision is not the
+    # schedule anybody is building from, so it is not the schedule anybody
+    # should be buying for. `/purchase/from-boq` refuses one at the route as
+    # well — a link is not a guard.
+    #
+    # It sits beside **Draft PO** because the two are the ends of one decision:
+    # the draft goes out rate-less to be priced, this one is the real order in
+    # the ordinary register with the ordinary series. `boq.py` may never import
+    # `purchase.py`, so this is `url_for` and nothing else — the same one-way
+    # trick as the RA chips, the draft PO and the challan above it.
     ra_btns = ""
     if is_tip:
         ra_btns = (
             f'<a href="{url_for("po_draft.create_po", boq=id)}" '
             f'class="btn btn-ghost">&#43;&nbsp;Draft PO</a>'
+            f'<a href="{url_for("purchase.from_boq", boq_id=id)}" '
+            f'class="btn btn-ghost">&#43;&nbsp;Raise Purchase Order</a>'
             f'<a href="{url_for("challan.create_dc", boq=id)}" '
             f'class="btn btn-ghost">&#43;&nbsp;Delivery Challan</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
