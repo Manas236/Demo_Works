@@ -85,6 +85,28 @@ import docsheet as DS
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
+# ── The upstream links, and why importing these two is not a cycle ───────────
+#
+# `boq.py` is the schedule a purchase order can now be raised against, and
+# `boqpick.py` is the line picker that raising it uses. Neither imports this
+# module and neither ever may — `boq.py` links out with `url_for` (the one-way
+# trick this repo runs between quotation/proforma, proforma/invoice,
+# quotation/purchase, boq/ra, ra/receipt and boq/challan), and `boqpick.py` is a
+# leaf that renders no document at all. Both directions are asserted at AST
+# level in `tests/test_import_directions.py`.
+#
+# ⚠ **`po_draft.py` is deliberately NOT imported**, even though
+#   `/purchase/from-draft/<id>` reads a draft PO. It is a sibling document
+#   module, and coupling two of those for the sake of one dict lookup is what
+#   the whole `url_for` arrangement exists to avoid: this module reads
+#   `STORE["purchase_orders"]` directly, and `po_draft.py` links *here* by URL.
+#   The prohibition runs both ways and is tested both ways.
+#
+# `project.py` is permitted and is not imported either, for the same reason —
+# the project is reached through `STORE["projects"]` and `url_for`.
+import boq as BQ
+import boqpick as BP
+
 # The shared A4 document toolkit — the sheet, not the sales chain. The sheet
 # itself is now `docsheet.py`, which the tax invoice renders through as well:
 # neither module imports the other, both import the leaf, and the separation
@@ -138,6 +160,26 @@ CHASE_STATUSES = ("Issued",)
 
 # Blank rows the line editor opens with.
 DEFAULT_LINE_ROWS = 3
+
+# ⚠ **A material purchase order carries the SUPPLY track and never the
+# installation one.** A BOQ prices every line twice — once to supply the
+# material and once to install it (ABOUT.md §2b) — and the installation amount
+# is labour we perform, not goods we buy from a supplier. Putting it on an order
+# placed on a vendor would commit us to paying somebody else for our own work.
+#
+# A named constant rather than an absence, so the rule is findable: this is
+# `challan.PRINT_RATES` / `po_draft.PRINT_TAX`'s arrangement. Flipping it is not
+# a one-line change — a labour order is a different document with a different
+# counterparty — so read this comment before you do.
+INCLUDE_INSTALL_TRACK = False
+
+# The prefill for a rate box on `/purchase/from-boq`. `supply_base_rate` is what
+# the job was **costed** at before any escalation, which is the closest thing
+# this app holds to what we expect to pay for the material. `supply_rate` is the
+# escalated figure we SELL it at and is emphatically not it — `po_draft.py`'s
+# module docstring makes the same point about the sheet that goes out for
+# pricing, and it is the same mistake in a different place.
+RATE_PREFILL_FIELD = "supply_base_rate"
 
 
 # =============================================================================
@@ -358,6 +400,210 @@ def _alert(msg: str, msg_type: str) -> str:
     return f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
 
 
+# =============================================================================
+# THE VENDOR — one block, three create paths
+# =============================================================================
+#
+# `/purchase/create`, `/purchase/from-boq` and `/purchase/from-draft` all have
+# to answer "who are we buying from", and they must answer it identically: the
+# same picker over the same address book, the same two refusals in the same
+# order, and the same five fields snapshotted onto the record. Three copies of
+# that is three chances for one of them to accept a vendor the others refuse.
+#
+# So it is extracted here rather than written twice more, and `create_purchase()`
+# was changed to call it — the extraction is the point, and a helper only the new
+# routes used would be the second copy it exists to prevent. The refusal wording
+# and the ordering are unchanged, deliberately, because they are what the
+# existing tests read.
+
+def _vendor_from(form) -> tuple:
+    """
+    Returns `(fields, error)` — the vendor block a PO record carries, or why not.
+
+    **The address book is the only path**, unlike `po_draft.vendor_from()` which
+    also takes a typed one-off supplier. That difference is real and is kept: a
+    draft PO is a request for a quotation and may go to a fabricator nobody has
+    filed, whereas this document commits money and quotes the vendor's GSTIN
+    back at them on a record we claim input tax credit against.
+
+    ⚠ **Still not a vendor master** — ABOUT.md §7 gap B6, which now has a third
+      consumer rather than two.
+    """
+    vendor_id = (form.get("vendor_id") or "").strip()
+    vendor = STORE["addresses"].get(vendor_id)
+    if not vendor_id:
+        return {}, "Choose the vendor this order goes to."
+    if not vendor:
+        return {}, "That vendor is no longer in the address book."
+    return {
+        "vendor_id":    vendor_id,
+        "vendor_name":  vendor.get("company") or vendor.get("label") or "",
+        "vendor_gstin": vendor.get("gstin", ""),
+        "to":           _addr_block(vendor),
+        "vendor_ref":   (form.get("vendor_ref") or "").strip(),
+    }, ""
+
+
+def _vendor_field(selected: str) -> str:
+    """The vendor form group — one widget, so three forms cannot offer three."""
+    return f"""<div class="form-group">
+              <label for="vendor_id">Vendor *</label>
+              <select id="vendor_id" name="vendor_id" required>
+                {picker_options("— choose vendor —", only_types=("vendor",), selected=selected)}
+              </select>
+              <small class="field-hint">From the address book, vendors only.
+                Add one at <a href="{url_for("address.add_address")}">Address Book</a>
+                if the supplier is not listed.</small>
+            </div>"""
+
+
+# =============================================================================
+# THE UPSTREAM LINKS — boq_id, project_id, and line_id on every line
+# =============================================================================
+#
+# All three are **optional**, all three default to `""` / absent, and a purchase
+# order carrying none of them is the normal case rather than an incomplete one.
+# That is the same contract `proforma.prior_invoiced` and `ra.tax_slabs` hold
+# to: a new field defaults cleanly, nothing is backfilled, and every record
+# written before it existed renders exactly as it did.
+#
+# ⚠ **`line_id` is the key and `item_no` is a label.** Item numbers restart per
+#   section and the client's own section A carries item 17 twice — a flexible
+#   sprinkler drop at ₹1,800 and a 150 mm butterfly valve at ₹14,572.50. Keying
+#   on it collapsed 87 priced lines into 77 and waved ₹1,99,122.50 of over-claim
+#   through on their real schedule (ABOUT.md §3 property 0). Nothing here ever
+#   matches on `item_no`; it is carried for the person reading the document.
+
+def _project_name_of(project_id: str) -> str:
+    """
+    The project's own name, or `""`.
+
+    Stored on the record rather than looked up at render, so the PO still reads
+    as a historical document if the project is removed — `proforma.quotation_ref`
+    and `ra.boq_ref` make the same call for the same reason.
+    """
+    proj = (STORE.get("projects") or {}).get(str(project_id or "")) or {}
+    return str(proj.get("name") or "")
+
+
+def _project_of_boq(boq: dict) -> tuple:
+    """
+    `(project_id, project_name)` a PO inherits from the BOQ it is raised against.
+
+    **Inherited at create and then STORED, never derived.** A PO entered from
+    scratch can be tagged to a project with no BOQ behind it at all, so the link
+    cannot be a lookup through `boq_id` — there would be nothing to look through.
+
+    ⚠ A BOQ with no `project_id` gives the PO **no project**, and specifically
+      does not fall back to the BOQ's free-text `project_name`. That field is a
+      display label; `project_id` is the grouping key (project.py's docstring
+      says so in as many words), and inventing an id-less project name here
+      would put a row on no project's page while looking as though it had one.
+    """
+    pid = str(boq.get("project_id") or "")
+    name = _project_name_of(pid)
+    return (pid, name) if name else ("", "")
+
+
+def _boq_lines_by_id(boq: dict) -> dict:
+    """`{line_id: line}` for the BOQ, so a picked row can find its HSN and rate."""
+    out = {}
+    for li in boq.get("line_items") or []:
+        lid = BQ._line_id(li.get("line_id"))
+        if lid:
+            out[lid] = li
+    return out
+
+
+def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
+    """
+    Returns `(line_items, error)` — `boqpick` rows in this module's line shape.
+
+    The rows are **snapshotted into the PO record here and now**. Nothing on the
+    printed order is ever re-read from the live BOQ afterwards, which is not a
+    stylistic preference: `print_ra()` looped `boq["line_items"]` instead of the
+    bill's own claims, so a line deleted from the schedule vanished from the
+    printed table while its amount stayed inside the printed subtotal — an
+    invoice whose rows did not add up to its own total, green the whole time
+    because every print test rendered against data nobody then touched
+    (ABOUT.md §5, `/ra/print` reads the RECORD).
+
+    A **specification header** comes across carrying its clause and no money, so
+    the supplier can read what they are being asked to supply (DOMAIN.md §2.2).
+    It has no quantity, no rate and no amount, and is excluded from both totals.
+    """
+    by_lid = _boq_lines_by_id(boq)
+    items = []
+    for row in picked:
+        lid = str(row.get("line_id") or "")
+        src = by_lid.get(lid) or {}
+        if row.get("is_header"):
+            items.append({
+                "type":      "item",
+                "is_header": True,
+                "line_id":   lid,
+                "name":      str(row.get("description") or ""),
+                "part_no":   str(row.get("item_no") or ""),
+                "hsn":       "",
+                "qty":       0.0,
+                "unit":      "",
+                "price":     0.0,
+                "total":     0.0,
+                "depth":     0,
+            })
+            continue
+
+        qty = float(row.get("qty") or 0.0)
+        if qty <= 0:
+            return [], (f"Quantity for item {row.get('item_no') or '(unnumbered)'} "
+                        f"must be greater than zero.")
+        rate = float(row.get("rate") or 0.0)
+        if rate < 0:
+            return [], (f"Rate for item {row.get('item_no') or '(unnumbered)'} "
+                        f"cannot be negative.")
+
+        items.append({
+            "type":      "item",
+            "is_header": False,
+            # THE key. Carried so this row can be traced back to the schedule
+            # line it was ordered against however the item numbers are later
+            # renumbered by a revision.
+            "line_id":   lid,
+            "name":      str(row.get("description") or ""),
+            "part_no":   str(row.get("item_no") or ""),
+            # The BOQ line carries a supply HSN and an installation SAC. Only
+            # the supply code belongs on a material order — INCLUDE_INSTALL_TRACK.
+            "hsn":       str(src.get("supply_hsn") or ""),
+            "qty":       qty,
+            "unit":      str(row.get("unit") or ""),
+            "price":     rate,
+            "total":     round(rate * qty, 2),
+            "depth":     0,
+        })
+
+    if not any(not r["is_header"] for r in items):
+        return [], "Add at least one item to the purchase order."
+    return items, ""
+
+
+def _totals_of(items: list, tax_type: str, cgst: float, igst: float) -> tuple:
+    """
+    `(subtotal, tax_info, grand_total, total_qty)` for a set of PO lines.
+
+    The same `quotation._tax_lines()` every purchase order has always used, with
+    SGST forced equal to CGST exactly as the create form forces it. The tax is
+    **input** tax we pay — the opposite side of the ledger from a tax invoice —
+    and none of that arithmetic is shared with the sell chain, only the
+    furniture it prints inside.
+    """
+    subtotal = round(sum(float(r.get("total") or 0.0) for r in items), 2)
+    tax_info = _tax_lines(subtotal, tax_type,
+                          cgst_rate=cgst, sgst_rate=cgst, igst_rate=igst)
+    grand = round(subtotal + float(tax_info.get("total") or 0.0), 2)
+    total_qty = round(sum(float(r.get("qty") or 0.0) for r in items), 3)
+    return subtotal, tax_info, grand, total_qty
+
+
 def _product_options(selected: str = "") -> str:
     """
     Catalogue <option> list for a line row.
@@ -507,6 +753,73 @@ PURCHASE_STYLES = """
      this module (purchase -> quotation, never back), so by the rule in
      ABOUT.md §2 the class belongs to the upstream sheet. Every page here loads
      QUOTATION_STYLES, so this module gets them for free. */
+</style>
+"""
+
+
+# =============================================================================
+# CSS — the two BOQ-side create forms ONLY
+# =============================================================================
+#
+# ⚠ **This is deliberately a SEPARATE constant from `PURCHASE_STYLES`, and the
+#   reason is measurable.** `PURCHASE_STYLES` is loaded by `/purchase/view`,
+#   which `tests/test_print_golden.py` hashes byte-for-byte — so a rule added
+#   there for a form moves the digest of a printed document that did not change.
+#   The two pages below are the only ones that draw a picker or a rate column,
+#   so their rules load only on them.
+#
+# `BP.PICKER_CSS` is spliced in at the top exactly as `po_draft.PO_STYLES`
+# splices it, because `challan.CHALLAN_STYLES` established that a second
+# consumer wraps the same raw CSS afresh rather than importing the first
+# consumer's sheet. `.pk-rate` is added *here* rather than to `PICKER_CSS` for
+# the same golden reason — `/po/create` renders no rate column and must not
+# carry a rule for one.
+FROM_BOQ_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
+  .pk-rate { width:112px; }
+  .pk-rate input {
+    width:100%; padding:.28rem .4rem; border:1px solid var(--border);
+    border-radius:6px; font:inherit; text-align:right;
+  }
+
+  /* The amber band. Same shape and same severity as ra.py's over-claim and
+     party-drift bands, and the same rule behind it (DOMAIN.md §6): surface it,
+     name it, never silently correct it. Amber, not red — nothing is broken,
+     but nothing here may go out unread. */
+  .up-warn {
+    background:#FFF8E6; border:1px solid #E8C86A; border-left:3px solid #C79200;
+    border-radius:var(--radius); padding:.85rem 1.1rem; margin-bottom:1.2rem;
+    font-size:.86rem; line-height:1.6;
+  }
+  .up-warn b { color:#7A5A00; }
+  .up-warn .uw-chips { margin-top:.45rem; display:flex; gap:.4rem; flex-wrap:wrap; }
+
+  /* The from-draft line table. product.py's repeating-row pattern, which this
+     module's own line editor already uses — there is nothing to PICK when
+     converting a draft, because the draft IS the selection. */
+  .dl-head, .dl-row {
+    display:grid; grid-template-columns:74px 1fr 70px 96px 112px;
+    gap:.55rem; align-items:center;
+  }
+  .dl-head {
+    font-size:.7rem; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.06em; margin-bottom:.4rem;
+  }
+  .dl-row { padding:.35rem 0; border-bottom:1px solid var(--border); }
+  .dl-row input {
+    width:100%; padding:.28rem .4rem; border:1px solid var(--border);
+    border-radius:6px; font:inherit; text-align:right;
+  }
+  .dl-no { font-weight:600; font-size:.84rem; }
+  .dl-desc { font-size:.84rem; }
+  .dl-unit { font-size:.84rem; color:var(--muted); }
+  .dl-avail { font-size:.84rem; color:var(--muted); text-align:right;
+              font-variant-numeric:tabular-nums; }
+  .dl-spec { grid-column:1 / -1; font-size:.82rem; color:var(--muted);
+             font-weight:600; padding:.4rem 0 .1rem; }
+  @media (max-width:640px){
+    .dl-head, .dl-row { grid-template-columns:60px 1fr 90px 100px; }
+    .dl-head span:nth-child(4), .dl-row .dl-avail { display:none; }
+  }
 </style>
 """
 
@@ -700,10 +1013,12 @@ def create_purchase():
 
     if request.method == "POST":
         po_date   = (f.get("date") or "").strip()
-        vendor_id = (f.get("vendor_id") or "").strip()
-        vendor    = STORE["addresses"].get(vendor_id)
         qid       = (f.get("quotation_id") or "").strip()
         status    = (f.get("status") or DEFAULT_STATUS).strip()
+
+        # One vendor block, shared with the two BOQ-side create paths. The two
+        # refusals and their order are exactly what they always were.
+        vendor_fields, vendor_err = _vendor_from(f)
 
         tax_type  = (f.get("tax_type") or "exempt").strip()
         cgst = P.parse_money(f.get("cgst_rate"))
@@ -713,10 +1028,8 @@ def create_purchase():
 
         if not po_date:
             error = "Purchase order date is required."
-        elif not vendor_id:
-            error = "Choose the vendor this order goes to."
-        elif not vendor:
-            error = "That vendor is no longer in the address book."
+        elif vendor_err:
+            error = vendor_err
         elif status not in PO_STATUSES:
             error = "Invalid status."
         elif qid and qid not in STORE["quotations"]:
@@ -740,16 +1053,22 @@ def create_purchase():
                 "date": po_date,
 
                 # ── Who we are buying FROM. Not a customer. ───────────────
-                "vendor_id":    vendor_id,
-                "vendor_name":  vendor.get("company") or vendor.get("label") or "",
-                "vendor_gstin": vendor.get("gstin", ""),
-                "to":           _addr_block(vendor),
-                "vendor_ref":   (f.get("vendor_ref") or "").strip(),
+                **vendor_fields,
 
-                # ── Optional soft link to the job. Never a hard parent. ───
+                # ── Optional soft links upstream. NEVER hard parents. ─────
+                # Every one of these may be "" and that is the normal case for
+                # an order entered from scratch — stock and consumables get
+                # bought with no deal, no schedule and no project behind them.
+                # Any code walking purchases must assume nothing.
                 "quotation_id":  qid,
                 "quotation_ref": q.get("ref", ""),
                 "project_id":    (f.get("project_id") or "").strip(),
+                "project_name":  _project_name_of((f.get("project_id") or "").strip()),
+                "boq_id":        "",
+                "boq_ref":       "",
+                "boq_rev_no":    0,
+                "draft_id":      "",
+                "draft_ref":     "",
 
                 # ── What we are buying ────────────────────────────────────
                 "line_items": items,
@@ -1078,6 +1397,636 @@ def create_purchase():
     return _page(template)
 
 
+# =============================================================================
+# RAISING A REAL PO FROM THE BOQ CHAIN
+# =============================================================================
+#
+# Until this existed, work raised from a bill of quantities dead-ended at a
+# **draft** PO (`SF/DPO/nnnn`) — a rate-less sheet sent to a supplier to be
+# priced, with no way back. The priced copy came in on paper and was re-keyed
+# into `/purchase/create` from scratch, with no link between the two documents
+# and, more expensively, **no link from the money we actually spent to the
+# project we spent it on** (ABOUT.md §7, the largest open gap in that list).
+#
+# Two routes close it, and both land in the ordinary register with the ordinary
+# `SF/PO/26-27/nnnn` series:
+#
+#   /purchase/from-boq/<boq_id>       tick the lines, price them, order them
+#   /purchase/from-draft/<draft_id>   the draft comes back priced; make it real
+#
+# Neither introduces a draft state, an approval step or a status of its own. The
+# record they write is the same record `/purchase/create` writes, with three
+# optional fields filled in — which is why a PO that has none of them is
+# completely unaffected and renders byte-for-byte what it always did.
+
+def _form_values(f, is_post: bool, **defaults) -> dict:
+    """
+    The order's own fields — the user's input on a rejected POST, else defaults.
+
+    `create_purchase()`'s `_v()` contract, which is `address._validate()`'s:
+    **a rejected form re-renders with what was typed** and nothing is written.
+    """
+    def v(name, fallback=""):
+        if is_post:
+            return (f.get(name) or "").strip()
+        return str(fallback or "").strip()
+
+    return {
+        "date":             v("date", defaults.get("date") or _today()),
+        "vendor_id":        v("vendor_id", defaults.get("vendor_id", "")),
+        "status":           v("status", DEFAULT_STATUS),
+        "vendor_ref":       v("vendor_ref", defaults.get("vendor_ref", "")),
+        "delivery_date":    v("delivery_date"),
+        "delivery_to":      v("delivery_to",
+                              defaults.get("delivery_to") or B.COMPANY_ADDR),
+        "tax_type":         v("tax_type", "cgst_sgst"),
+        "cgst_rate":        v("cgst_rate", "9"),
+        "igst_rate":        v("igst_rate", "18"),
+        "payment_terms":    v("payment_terms"),
+        "delivery_terms":   v("delivery_terms"),
+        "dispatch_through": v("dispatch_through"),
+        "incoterms":        v("incoterms"),
+        "notes":            v("notes", defaults.get("notes", "")),
+    }
+
+
+def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
+                   banner_html: str, lines_section: str, data: dict,
+                   error: str, onsubmit: str = "true") -> str:
+    """
+    One form, two routes.
+
+    The order's own fields — date, vendor, status, tax, terms — are identical
+    whichever upstream document the lines came from, so they are written once.
+    Only the **lines** differ: `/from-boq` renders `boqpick`'s grid, `/from-draft`
+    renders the draft's own rows, because there is nothing left to pick once a
+    draft has been raised.
+
+    Every widget is the shared one: `_vendor_field()` for the supplier, and
+    `_sel_opts` over `_PAY_TERMS` / `_DEL_TERMS` / `_DISPATCH` / `_INCOTERMS` for
+    the terms — "By Road Transport" must mean the same thing whichever way the
+    goods move, and whichever form asked.
+    """
+    status_opts = "".join(
+        f'<option{" selected" if s == data["status"] else ""}>{s}</option>'
+        for s in PO_STATUSES if s != "Cancelled"
+    )
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(title)}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{FROM_BOQ_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>{title}</h1>
+        <div style="display:flex;gap:.7rem;flex-wrap:wrap;">{back_html}</div>
+      </div>
+
+      {_alert(error, "error")}
+      {banner_html}
+
+      <div class="buy-note">
+        This is the <b>buy side</b> &mdash; a <b>real purchase order we place on a
+        vendor</b>, in the ordinary register and the ordinary series.
+        <div class="bn-sub">{intro_html}
+          The next number is {P.esc(_next_ref(data["date"]))}.</div>
+      </div>
+
+      <form method="POST" action="{action}" onsubmit="return {onsubmit};">
+        <input type="hidden" name="po_json" id="po_json" value=""/>
+
+        <div class="form-section">
+          <div class="section-title">Order</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="date">PO Date *</label>
+              <input type="date" id="date" name="date" value="{P.esc(data['date'])}" required/>
+            </div>
+            {_vendor_field(data["vendor_id"])}
+            <div class="form-group">
+              <label for="status">Status</label>
+              <select id="status" name="status">{status_opts}</select>
+              <small class="field-hint">The ordinary lifecycle &mdash; Draft while
+                you are still pricing it, Issued once it has gone to the vendor.
+                There is no extra approval step on this path.</small>
+            </div>
+            <div class="form-group">
+              <label for="vendor_ref">Vendor's Offer / Quote Ref</label>
+              <input type="text" id="vendor_ref" name="vendor_ref"
+                     value="{P.esc(data['vendor_ref'])}"
+                     placeholder="their quotation no., if any"/>
+            </div>
+            <div class="form-group">
+              <label for="delivery_date">Wanted By</label>
+              <input type="date" id="delivery_date" name="delivery_date"
+                     value="{P.esc(data['delivery_date'])}"/>
+            </div>
+          </div>
+        </div>
+
+        {lines_section}
+
+        <div class="form-section">
+          <div class="section-title">Tax the vendor will charge us</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="tax_type">Tax Type</label>
+              <select id="tax_type" name="tax_type">
+                <option value="cgst_sgst"{" selected" if data["tax_type"] == "cgst_sgst" else ""}>CGST + SGST (intra-state)</option>
+                <option value="igst"{" selected" if data["tax_type"] == "igst" else ""}>IGST (inter-state)</option>
+                <option value="exempt"{" selected" if data["tax_type"] == "exempt" else ""}>Exempt / Nil</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="cgst_rate">CGST % <span style="font-weight:500;text-transform:none;">(SGST matches)</span></label>
+              <input type="number" id="cgst_rate" name="cgst_rate"
+                     value="{P.esc(data['cgst_rate'])}" min="0" step="any"/>
+            </div>
+            <div class="form-group">
+              <label for="igst_rate">IGST %</label>
+              <input type="number" id="igst_rate" name="igst_rate"
+                     value="{P.esc(data['igst_rate'])}" min="0" step="any"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Terms &amp; delivery</div>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="payment_terms">Payment Terms</label>
+              {_sel_opts("payment_terms", _PAY_TERMS, _PAY_TERMS[0], data["payment_terms"])}
+            </div>
+            <div class="form-group">
+              <label for="delivery_terms">Terms of Delivery</label>
+              {_sel_opts("delivery_terms", _DEL_TERMS, _DEL_TERMS[0], data["delivery_terms"])}
+            </div>
+            <div class="form-group">
+              <label for="dispatch_through">Dispatch Through</label>
+              {_sel_opts("dispatch_through", _DISPATCH, _DISPATCH[0], data["dispatch_through"])}
+            </div>
+            <div class="form-group">
+              <label for="incoterms">Incoterms</label>
+              {_sel_opts("incoterms", _INCOTERMS, _INCOTERMS[0], data["incoterms"])}
+            </div>
+            <div class="form-group span2">
+              <label for="delivery_to">Deliver To</label>
+              <textarea id="delivery_to" name="delivery_to" rows="3"
+                placeholder="our stores, or the project site">{P.esc(data['delivery_to'])}</textarea>
+            </div>
+            <div class="form-group span2">
+              <label for="notes">Note on the order <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <input type="text" id="notes" name="notes" value="{P.esc(data['notes'])}"
+                     placeholder="e.g. Urgent — required at site by month end"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn">Raise Purchase Order</button>
+          {back_html}
+        </div>
+      </form>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order</p></footer>
+    </main></body></html>""")
+
+
+def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
+                       boq: dict = None, project_id: str = "",
+                       project_name: str = "", draft: dict = None,
+                       origin: str = "") -> dict:
+    """
+    Write the purchase order. **One record shape, whichever route got here.**
+
+    It is the same record `create_purchase()` writes — same collection, same
+    `SF/PO/26-27/nnnn` series, same lifecycle, same audit trail. The only
+    difference is that three optional fields are filled in. There is no draft
+    flag, no approval gate and no status this app would have to teach anybody to
+    clear; a purchase order raised from a schedule is a purchase order.
+    """
+    boq = boq or {}
+    tax_type = data["tax_type"]
+    cgst = P.parse_money(data["cgst_rate"])
+    igst = P.parse_money(data["igst_rate"])
+    subtotal, tax_info, grand, total_qty = _totals_of(items, tax_type, cgst, igst)
+
+    pid = str(uuid.uuid4())
+    po = {
+        "id":   pid,
+        "ref":  _next_ref(data["date"]),
+        "fy":   P.fy_of(data["date"]),
+        "date": data["date"],
+
+        **vendor_fields,
+
+        # ── The upstream links. All optional; all STORED, never derived. ──
+        "quotation_id":  "",
+        "quotation_ref": "",
+        "boq_id":        str(boq.get("id") or ""),
+        "boq_ref":       str(boq.get("ref") or ""),
+        "boq_rev_no":    int(boq.get("rev_no") or 0),
+        "project_id":    project_id,
+        "project_name":  project_name,
+        "draft_id":      str((draft or {}).get("id") or ""),
+        "draft_ref":     str((draft or {}).get("ref") or ""),
+
+        "line_items":  items,
+        "subtotal":    subtotal,
+        "tax_type":    tax_type,
+        "tax_info":    tax_info,
+        "grand_total": grand,
+        "total_qty":   total_qty,
+
+        "delivery_date":    data["delivery_date"],
+        "delivery_to":      data["delivery_to"],
+        "payment_terms":    data["payment_terms"],
+        "delivery_terms":   data["delivery_terms"],
+        "dispatch_through": data["dispatch_through"],
+        "incoterms":        data["incoterms"],
+
+        "status":         data["status"],
+        "status_history": [],
+        "notes":          data["notes"],
+        "company_branch": "",
+        "auth_signatory": "",
+    }
+    _log(po, f"Purchase order {po['ref']} raised on "
+             f"{po.get('vendor_name') or 'vendor'} for &#8377;{grand:,.0f}"
+             f"{origin}.",
+         status_to=data["status"])
+    STORE["purchases"][pid] = po
+    return po
+
+
+@purchase_bp.route("/from-boq/<boq_id>", methods=["GET", "POST"])
+def from_boq(boq_id: str):
+    """
+    Raise a **real** purchase order against a bill of quantities.
+
+    The grid is `boqpick.py`'s — the same one `/po/create` and `/dc/create`
+    render, imported rather than copied a third time, which is the entire reason
+    that leaf exists. What this route adds to it is a **rate box per line**,
+    prefilled from the schedule's `supply_base_rate` and editable.
+
+    Three rules worth knowing before editing:
+
+    * **The installation track is excluded** (`INCLUDE_INSTALL_TRACK`). A BOQ
+      line is priced to supply and to install; only the first is goods we buy.
+    * **Matching is on `line_id`.** `item_no` is a display label and is not
+      unique even within a section — the seeded Sify schedule has 87 priced
+      lines and 77 distinct item numbers.
+    * **A superseded revision is refused at the route**, exactly as `/ra/create`
+      and `/dc/create` refuse one. `/boq/view` also hides the link, but a link
+      is not a guard.
+    """
+    boq = (STORE.get("boqs") or {}).get(boq_id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs",
+                                msg="Choose a bill of quantities to order against.",
+                                type="error"))
+    if boq_id in BQ.superseded_ids():
+        return redirect(url_for("boq.view_boq", id=boq_id,
+                                msg="That schedule has been superseded. Raise the "
+                                    "purchase order against the current revision.",
+                                type="error"))
+
+    project_id, project_name = _project_of_boq(boq)
+    is_post = request.method == "POST"
+    f = request.form
+    data = _form_values(f, is_post)
+    error = ""
+    chosen = qty_of = rate_of = None
+
+    if is_post:
+        vendor_fields, error = _vendor_from(f)
+        if not data["date"]:
+            error = "Purchase order date is required."
+        elif data["status"] not in PO_STATUSES:
+            error = error or "Invalid status."
+
+        picked, line_err = ([], "") if error else BP.picked_lines(
+            f.get("po_json") or "", boq, with_pcs=False, with_rate=True,
+            max_lines=BQ.MAX_LINES,
+            empty_msg=("No lines are ticked. A purchase order with nothing on "
+                       "it is not a document — tick at least one line, or cancel."),
+            cap_msg="Raise more than one order.")
+        error = error or line_err
+
+        items, shape_err = ([], "") if error else _po_lines_from_picked(picked, boq)
+        error = error or shape_err
+
+        if not error:
+            po = _write_upstream_po(
+                data=data, vendor_fields=vendor_fields, items=items, boq=boq,
+                project_id=project_id, project_name=project_name,
+                origin=f", against {boq.get('ref') or 'a schedule'}")
+            return redirect(url_for("purchase.view_purchase", id=po["id"],
+                                    msg=f"Purchase order {po['ref']} created "
+                                        f"against {boq.get('ref') or 'the schedule'}.",
+                                    type="success"))
+
+        # Hand the operator back exactly what they ticked and typed.
+        chosen, qty_of, rate_of = _replay_picked(f.get("po_json") or "")
+
+    boq_ref = P.esc(boq.get("ref") or "")
+    proj_bit = (f' &middot; project <b>{P.esc(project_name)}</b>'
+                if project_name else
+                ' &middot; <span style="color:var(--muted);">this schedule is not '
+                'attached to a project, so the order will carry none</span>')
+
+    lines_section = BP.grid_html(
+        boq,
+        title="Lines to order",
+        intro_html=f"""        <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+          Every line is ticked to start with, because most orders are the whole
+          schedule. Untick what this supplier is not supplying, and change a
+          quantity where you want less than the schedule shows.
+          <b>Rates open at the schedule's supply base rate</b> &mdash; what the job
+          was costed at — and are yours to edit; what you leave in the box is what
+          is stored. The <b>installation</b> rates are labour and are deliberately
+          not offered here.
+        </p>""",
+        qty_label="Order qty",
+        qty_aria="Order quantity",
+        empty_note=("Nothing is ticked. A purchase order with no lines on it "
+                    "is not a document."),
+        payload_id="po_json",
+        doc_word="purchase order",
+        chosen=chosen,
+        qty_of=qty_of,
+        with_rate=True,
+        rate_of=rate_of,
+        rate_label="Rate (&#8377;)",
+        rate_aria="Rate")
+
+    back_html = (f'<a href="{url_for("boq.view_boq", id=boq_id)}" '
+                 f'class="btn btn-ghost">&#8592; {boq_ref}</a>')
+    return _upstream_form(
+        title="Purchase Order from BOQ",
+        action=url_for("purchase.from_boq", boq_id=boq_id),
+        back_html=back_html,
+        intro_html=(f'Against <b>{boq_ref}</b> &middot; '
+                    f'{P.esc(boq.get("project_name") or "")}{proj_bit}.'),
+        banner_html="",
+        lines_section=lines_section,
+        data=data,
+        error=error,
+        onsubmit="saveJSON()")
+
+
+def _replay_picked(raw: str) -> tuple:
+    """
+    `(chosen, qty_of, rate_of)` off a rejected POST, so nothing typed is lost.
+
+    `po_draft.create_po()`'s arrangement, with the rate column added. A form
+    that throws the operator's ticks away on a validation failure is worse than
+    no validation on a 97-line schedule.
+    """
+    import json
+    try:
+        rows = (json.loads(raw or "{}").get("lines") or [])
+    except (ValueError, TypeError):
+        rows = []
+    rows = [r for r in rows if isinstance(r, dict)]
+    return ({BQ._line_id(r.get("line_id")) for r in rows},
+            {BQ._line_id(r.get("line_id")): r.get("qty") for r in rows},
+            {BQ._line_id(r.get("line_id")): r.get("rate") for r in rows})
+
+
+@purchase_bp.route("/from-draft/<draft_id>", methods=["GET", "POST"])
+def from_draft(draft_id: str):
+    """
+    Turn a priced draft PO into a real one.
+
+    ⚠ **This route lives here and not in `po_draft.py`, deliberately.** It
+    writes a `purchases` record, so it belongs to the module that owns that
+    shape; putting it there would force `po_draft.py` to import this module and
+    couple two document modules for no reason at all. `po_draft.py` links here
+    by URL — the one-way trick, used a seventh time.
+
+    **The draft is kept, never deleted.** It is the record of what was sent out
+    for pricing, and destroying it the moment it succeeds would throw away the
+    only evidence of what was asked and of whom.
+
+    **Converting twice is allowed and warned about.** Two purchase orders off one
+    request for quotation is an ordinary thing when an order is split between
+    suppliers or placed in two lots, so this warns in an amber band naming the
+    orders already raised — `ra.prev_balance_drift()`'s and `ra.party_drift()`'s
+    shape — and lets it through. DOMAIN.md §6: surface it, name it, never
+    silently refuse it.
+    """
+    drafts = STORE.get("purchase_orders") or {}
+    draft = drafts.get(draft_id)
+    if not draft:
+        return redirect(url_for("po_draft.list_pos",
+                                msg="That draft PO no longer exists.", type="error"))
+
+    # The BOQ may legitimately be gone; the draft is a snapshot and still
+    # converts. Its rates then have no base to fall back on, which is stated on
+    # the form rather than silently producing zeros.
+    boq = (STORE.get("boqs") or {}).get(str(draft.get("boq_id") or "")) or {}
+    base_of = {}
+    for lid, li in _boq_lines_by_id(boq).items():
+        base = li.get(RATE_PREFILL_FIELD)
+        base_of[lid] = None if base is None else float(base)
+
+    project_id, project_name = _project_of_boq(boq)
+
+    # Only rows with something to buy. A draft carries its specification headers
+    # for the supplier to read, and those come across unchanged.
+    rows = list(draft.get("items") or [])
+
+    is_post = request.method == "POST"
+    f = request.form
+    # The draft's own vendor prefills the picker ONLY when it came from the
+    # address book. A typed one-off supplier has no id to select, and this
+    # document may not carry one — see `_vendor_from()`.
+    data = _form_values(f, is_post,
+                        vendor_id=(draft.get("vendor_id") or ""),
+                        delivery_to=draft.get("delivery_to") or "",
+                        notes=draft.get("notes") or "")
+    error = ""
+    posted_qty, posted_rate = {}, {}
+
+    if is_post:
+        posted_qty = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_qty")))
+        posted_rate = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_rate")))
+
+        vendor_fields, error = _vendor_from(f)
+        if not data["date"]:
+            error = "Purchase order date is required."
+        elif data["status"] not in PO_STATUSES:
+            error = error or "Invalid status."
+
+        items = []
+        if not error:
+            for row in rows:
+                lid = str(row.get("line_id") or "")
+                if row.get("is_header"):
+                    items.append({
+                        "type": "item", "is_header": True, "line_id": lid,
+                        "name": str(row.get("description") or ""),
+                        "part_no": str(row.get("item_no") or ""),
+                        "hsn": "", "qty": 0.0, "unit": "", "price": 0.0,
+                        "total": 0.0, "depth": 0,
+                    })
+                    continue
+                qty = BQ._num(posted_qty.get(lid), None)
+                if qty is None or qty < 0:
+                    qty = float(row.get("qty") or 0.0)
+                if qty <= 0:
+                    error = (f"Quantity for item {row.get('item_no') or '(unnumbered)'} "
+                             f"must be greater than zero.")
+                    break
+                rate = BQ._num(posted_rate.get(lid), None)
+                if rate is None or rate < 0:
+                    rate = _draft_rate_of(row, base_of)
+                src = _boq_lines_by_id(boq).get(lid) or {}
+                items.append({
+                    "type": "item", "is_header": False, "line_id": lid,
+                    "name": str(row.get("description") or ""),
+                    "part_no": str(row.get("item_no") or ""),
+                    "hsn": str(src.get("supply_hsn") or ""),
+                    "qty": float(qty), "unit": str(row.get("unit") or ""),
+                    "price": float(rate),
+                    "total": round(float(rate) * float(qty), 2),
+                    "depth": 0,
+                })
+            if not error and not any(not r["is_header"] for r in items):
+                error = "This draft PO has no lines to order."
+
+        if not error:
+            po = _write_upstream_po(
+                data=data, vendor_fields=vendor_fields, items=items, boq=boq,
+                project_id=project_id, project_name=project_name, draft=draft,
+                origin=f", converted from draft {draft.get('ref') or ''}".rstrip())
+            # The link back, on the draft. A LIST, not a scalar: converting twice
+            # is permitted, and a single field would let the second conversion
+            # quietly erase the first one's trail.
+            draft.setdefault("converted_po_ids", []).append(po["id"])
+            return redirect(url_for("purchase.view_purchase", id=po["id"],
+                                    msg=f"Purchase order {po['ref']} created from "
+                                        f"draft {draft.get('ref') or 'PO'}.",
+                                    type="success"))
+
+    # ── The lines. Not the picker: a draft IS the selection. ──────────────
+    lines_html = ""
+    for row in rows:
+        lid = P.esc(str(row.get("line_id") or ""))
+        if row.get("is_header"):
+            lines_html += (f'<div class="dl-row"><div class="dl-spec">'
+                           f'{P.esc(row.get("item_no") or "")} &middot; '
+                           f'{P.esc(str(row.get("description") or "")[:160])}</div></div>')
+            continue
+        raw_lid = str(row.get("line_id") or "")
+        qty_v = posted_qty.get(raw_lid)
+        if qty_v is None:
+            qty_v = BQ._fmt_qty(float(row.get("qty") or 0.0))
+        rate_v = posted_rate.get(raw_lid)
+        if rate_v is None:
+            r = _draft_rate_of(row, base_of, blank_when_unknown=True)
+            rate_v = "" if r is None else f"{float(r):.2f}"
+        lines_html += f"""
+        <div class="dl-row">
+          <span class="dl-no">{P.esc(row.get("item_no") or "")}</span>
+          <span class="dl-desc">{P.esc(" ".join(str(row.get("description") or "").split())[:180])}</span>
+          <span class="dl-unit">{P.esc(row.get("unit") or "")}</span>
+          <input type="hidden" name="dl_line_id" value="{lid}"/>
+          <input type="text" inputmode="decimal" name="dl_qty" value="{P.esc(qty_v)}"
+                 aria-label="Order quantity"/>
+          <input type="text" inputmode="decimal" name="dl_rate" value="{P.esc(rate_v)}"
+                 aria-label="Rate"/>
+        </div>"""
+
+    rate_note = ("Rates open at the schedule's supply base rate and are yours to "
+                 "edit." if boq else
+                 "The bill of quantities behind this draft is no longer in the "
+                 "system, so there is no base rate to open with — every rate has "
+                 "to be typed.")
+    lines_section = f"""
+      <div class="form-section">
+        <div class="section-title">Lines carried from the draft</div>
+        <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+          Every line on the draft comes across with its BOQ line id, so this order
+          stays traceable to the schedule it was measured from. {rate_note}
+          The draft itself is <b>kept</b> — it is the record of what was sent out
+          to be priced.
+        </p>
+        <div class="dl-head">
+          <span>Item</span><span>Description</span><span>Unit</span>
+          <span style="text-align:right;">Qty</span>
+          <span style="text-align:right;">Rate (&#8377;)</span>
+        </div>
+        {lines_html or '<p style="font-size:.85rem;color:var(--muted);">This draft PO carries no lines.</p>'}
+      </div>"""
+
+    # ── The amber band, on a second conversion ────────────────────────────
+    banner_html = ""
+    already = [pid_ for pid_ in (draft.get("converted_po_ids") or [])
+               if pid_ in STORE["purchases"]]
+    if already:
+        chips = "".join(
+            f'<a class="po-chip" href="{url_for("purchase.view_purchase", id=pid_)}">'
+            f'{P.esc(STORE["purchases"][pid_].get("ref"))}</a>'
+            for pid_ in already)
+        banner_html = (
+            f'<div class="up-warn">'
+            f'<b>Draft {P.esc(draft.get("ref"))} has already been converted.</b> '
+            f'{len(already)} purchase order{"" if len(already) == 1 else "s"} '
+            f'already exist{"s" if len(already) == 1 else ""} against it, so '
+            f'converting again will order this material a second time.'
+            f'<br/>That is not blocked, because splitting one request for '
+            f'quotation across two orders is an ordinary thing — but check the '
+            f'quantities below before you raise it.'
+            f'<div class="uw-chips">{chips}</div></div>')
+
+    typed_note = ""
+    if not draft.get("vendor_id") and draft.get("vendor_name"):
+        typed_note = (f' The draft went to <b>{P.esc(draft.get("vendor_name"))}</b>, '
+                      f'who is not in the address book — a real order has to name a '
+                      f'vendor from it, so add them first or pick whoever is '
+                      f'actually supplying.')
+
+    back_html = (f'<a href="{url_for("po_draft.view_po", id=draft_id)}" '
+                 f'class="btn btn-ghost">&#8592; {P.esc(draft.get("ref"))}</a>')
+    return _upstream_form(
+        title="Purchase Order from Draft",
+        action=url_for("purchase.from_draft", draft_id=draft_id),
+        back_html=back_html,
+        intro_html=(f'Converted from draft <b>{P.esc(draft.get("ref"))}</b>'
+                    f'{" &middot; " + P.esc(boq.get("ref")) if boq.get("ref") else ""}'
+                    f'{" &middot; project <b>" + P.esc(project_name) + "</b>" if project_name else ""}.'
+                    f'{typed_note}'),
+        banner_html=banner_html,
+        lines_section=lines_section,
+        data=data,
+        error=error)
+
+
+def _draft_rate_of(row: dict, base_of: dict, blank_when_unknown: bool = False):
+    """
+    A converted line's opening rate — **the draft first, the BOQ second**.
+
+    A draft PO carries no rates today (`po_draft.PRINT_RATES` is False and the
+    whole document exists so the supplier fills them in), so in practice this
+    always falls through to the schedule's supply base rate. It reads the draft
+    first anyway, because ABOUT.md §7 gap B7 names capturing the supplier's
+    quoted rates against a draft as the natural next piece of work — and when
+    that lands, a rate the supplier actually quoted must beat what we costed the
+    job at rather than being silently ignored.
+    """
+    quoted = row.get("rate")
+    if quoted is not None:
+        parsed = BQ._num(quoted, None)
+        if parsed is not None and parsed >= 0:
+            return float(parsed)
+    base = base_of.get(str(row.get("line_id") or ""))
+    if base is None:
+        return None if blank_when_unknown else 0.0
+    return float(base)
+
+
 @purchase_bp.route("/<id>/update", methods=["POST"])
 def update_purchase(id: str):
     """
@@ -1129,6 +2078,22 @@ def view_purchase(id: str):
     # ── Line rows ─────────────────────────────────────────────────────────
     sno, total_qty, table_rows = 0, 0.0, ""
     for row in po.get("line_items", []):
+        # A specification header, carried down from a BOQ line's parent clause
+        # so the supplier can read what they are being asked to supply
+        # (DOMAIN.md §2.2). It carries no quantity, no rate and no amount, takes
+        # no serial number, and contributes nothing to either total.
+        #
+        # Orders entered from scratch have no such row — `_parse_lines()` cannot
+        # produce one — so this branch is never taken on a PO raised at
+        # `/purchase/create`, and that document is byte-for-byte what it was.
+        if row.get("is_header"):
+            table_rows += f"""
+        <tr class="row-assembly">
+          <td class="c-sno"></td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>
+          <td colspan="6" class="c-desc">{P.esc(row.get('name'))}</td>
+        </tr>"""
+            continue
         sno += 1
         total_qty += float(row.get("qty") or 0)
         table_rows += f"""
@@ -1249,6 +2214,46 @@ def view_purchase(id: str):
         f'<option{" selected" if s == (po.get("status") or DEFAULT_STATUS) else ""}>{s}</option>'
         for s in PO_STATUSES
     )
+    # ── Where this order came from, when it came from anywhere ────────────
+    #
+    # ⚠ **Every one of these is conditional and the whole strip collapses to the
+    #   empty string when the order has no upstream link.** That is what makes
+    #   an order entered from scratch render byte-for-byte what it always did,
+    #   which `tests/test_print_golden.py` measures rather than trusts. Note
+    #   there is no literal whitespace around `{upstream_html}` at its insertion
+    #   point below, for exactly that reason.
+    #
+    # The refs are read off the RECORD; the id is only used to build the link
+    # and to check the target still exists. A BOQ or a project that has been
+    # removed leaves the order still naming what it was raised against, in
+    # plain text — `proforma.quotation_ref`'s contract.
+    up_chips = ""
+    if po.get("boq_ref") or po.get("boq_id"):
+        label = P.esc(po.get("boq_ref")) or "the schedule"
+        if po.get("boq_id") in (STORE.get("boqs") or {}):
+            up_chips += (f'<a class="po-chip" href="'
+                         f'{url_for("boq.view_boq", id=po["boq_id"])}">'
+                         f'{label} &middot; schedule</a>')
+        else:
+            up_chips += f'<span class="po-chip">{label} &middot; schedule</span>'
+    if po.get("draft_ref") or po.get("draft_id"):
+        label = P.esc(po.get("draft_ref")) or "draft PO"
+        if po.get("draft_id") in (STORE.get("purchase_orders") or {}):
+            up_chips += (f'<a class="po-chip" href="'
+                         f'{url_for("po_draft.view_po", id=po["draft_id"])}">'
+                         f'{label} &middot; draft</a>')
+        else:
+            up_chips += f'<span class="po-chip">{label} &middot; draft</span>'
+    if po.get("project_id") or po.get("project_name"):
+        label = P.esc(po.get("project_name")) or "project"
+        if po.get("project_id") in (STORE.get("projects") or {}):
+            up_chips += (f'<a class="po-chip" href="'
+                         f'{url_for("projectview.view_project", id=po["project_id"])}">'
+                         f'{label} &middot; project</a>')
+        else:
+            up_chips += f'<span class="po-chip">{label} &middot; project</span>'
+    upstream_html = (f'<div class="po-strip">{up_chips}</div>' if up_chips else "")
+
     job_link = ""
     if po.get("quotation_id") in STORE["quotations"]:
         jc = job_cost(po["quotation_id"])
@@ -1276,7 +2281,7 @@ def view_purchase(id: str):
       <button type="submit" class="btn">Update</button>
     </div>
   </form>
-  {f'<div class="po-strip">{job_link}</div>' if job_link else ''}
+  {f'<div class="po-strip">{job_link}</div>' if job_link else ''}{upstream_html}
   <div class="po-hist">{_history_html(po)}</div>
 </div>"""
 

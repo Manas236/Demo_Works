@@ -22,9 +22,23 @@ Any route, any record shape, any stylesheet element of its own, and any
 document-specific wording. Every string a reader sees — the section title, the
 intro paragraph, the quantity column's label, the refusal message — is passed
 in by the caller, because those are the parts that legitimately differ between
-a purchase order and a delivery challan. The flags below (`with_pcs`) exist to
-preserve **observed** differences between the two documents, not to offer a
-menu; that is `docsheet.letterhead()`'s `show_web` precedent.
+a purchase order and a delivery challan. The flags below (`with_pcs`,
+`with_rate`) exist to preserve **observed** differences between the consumers,
+not to offer a menu; that is `docsheet.letterhead()`'s `show_web` precedent.
+
+`with_rate` is the third consumer's, added when `purchase.py` grew
+`/purchase/from-boq/<id>`. A **real** purchase order is priced, so its grid
+needs a rate box per line prefilled from the BOQ's `supply_base_rate` — the
+draft PO's grid must never carry one (its whole point is that the supplier
+fills the rates in) and the delivery challan carries no money at all. Off, this
+module emits the bytes it always emitted; `tests/test_print_golden.py` pins
+`/po/create` and is what proves that rather than asserts it.
+
+⚠ **`.pk-rate`'s CSS is deliberately NOT in `PICKER_CSS`.** That constant is
+spliced into `po_draft.PO_STYLES` at a fixed character position and `/po/create`
+is hashed byte-for-byte, so a rule added here would move a golden for a column
+that page does not render. It lives in `purchase.FROM_BOQ_STYLES`, beside the
+only page that draws the column.
 
 ⚠ **`ra.py`'s claim grid is deliberately NOT folded in here.** It carries the
 cumulative over-claim guard and two money columns, the guard is load-bearing,
@@ -158,7 +172,9 @@ def line_ids(boq: dict) -> list:
 # =============================================================================
 
 def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
-              with_pcs: bool = False, qty_aria: str = "Quantity") -> str:
+              with_pcs: bool = False, qty_aria: str = "Quantity",
+              with_rate: bool = False, rate_of: dict = None,
+              rate_aria: str = "Rate") -> str:
     """
     One row per BOQ line, every box ticked unless a rejected POST says otherwise.
 
@@ -179,10 +195,29 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
     derived from the column label: the draft PO's column reads `Order qty` and
     its input announces `Order quantity`, and preserving that is the whole
     point of extracting this without moving a byte.
+
+    `with_rate` adds the real purchase order's rate box, **prefilled from the
+    BOQ line's `supply_base_rate`** — what the job was costed at, and therefore
+    the right opening figure for what we expect to pay. It is a suggestion and
+    never an imposition: the box is editable and `purchase.py` stores what comes
+    back, which is `purchase.fillRate()`'s own rule about a catalogue price and
+    `/boq/create`'s about an escalated rate.
+
+    ⚠ **A `None` base rate prefills BLANK, not `0.00`.** On a BOQ line `None`
+      means the rate was negotiated directly rather than escalated (ABOUT.md §3
+      property 6); collapsing it to zero here would open the form stating that
+      the material is free.
+
+    ⚠ **The INSTALLATION track is never read.** `install_base_rate` is labour,
+      not purchased goods, and a material PO has no business carrying it — see
+      `purchase.INCLUDE_INSTALL_TRACK`.
     """
     fams = families(boq)
     child_of = {kid: h for h, kids in fams.items() for kid in kids}
-    span = "5" if with_pcs else "4"
+    # The header row's colspan covers every column after Item. Computed rather
+    # than written down, so a flag cannot silently leave a row one cell short —
+    # `boq.py`'s rule about spans derived from `n_supply_cols` (ABOUT.md §5).
+    span = str(4 + (1 if with_pcs else 0) + (1 if with_rate else 0))
     out = []
 
     for li in boq.get("line_items") or []:
@@ -221,6 +256,17 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
           <td class="pk-pcs"><input type="text" inputmode="numeric" id="p_{lid}"
               value="" aria-label="Pieces"/></td>""") if with_pcs else ""
 
+        rate_cell = ""
+        if with_rate:
+            rate_val = (rate_of or {}).get(lid)
+            if rate_val is None:
+                base = li.get("supply_base_rate")
+                # `None` is "negotiated directly", not zero — it opens blank.
+                rate_val = "" if base is None else f"{float(base):.2f}"
+            rate_cell = (f"""
+          <td class="pk-rate"><input type="text" inputmode="decimal" id="r_{lid}"
+              value="{P.esc(rate_val)}" aria-label="{P.esc(rate_aria)}"/></td>""")
+
         out.append(f"""
         <tr class="pk-row{cls}" id="row_{lid}"{hide}>
           <td class="pk-tick"><input type="checkbox" id="c_{lid}"{ticked}
@@ -231,7 +277,7 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
           <td class="pk-unit">{P.esc(li.get("unit") or "")}</td>
           <td class="pk-avail">{BQ._fmt_qty(avail)}</td>
           <td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
-              value="{qty_val}" aria-label="{P.esc(qty_aria)}"/></td>{pcs_cell}
+              value="{qty_val}" aria-label="{P.esc(qty_aria)}"/></td>{pcs_cell}{rate_cell}
         </tr>""")
     return "".join(out)
 
@@ -318,7 +364,7 @@ function saveJSON() {
     var lid = LINE_IDS[i], c = el('c_' + lid);
     if (!c || !c.checked) continue;
     lines.push({line_id: lid,
-                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD__});
+                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD____RATE_FIELD__});
   }
   el('__PAYLOAD_ID__').value = JSON.stringify({lines: lines});
   return true;
@@ -331,19 +377,26 @@ count();
 _PCS_FIELD = """,
                 pcs: (el('p_' + lid) || {}).value || ''"""
 
+_RATE_FIELD = """,
+                rate: (el('r_' + lid) || {}).value || ''"""
 
-def js(payload_id: str, doc_word: str, with_pcs: bool = False) -> str:
+
+def js(payload_id: str, doc_word: str, with_pcs: bool = False,
+       with_rate: bool = False) -> str:
     """The fold, the ticks and the payload builder, wired to one form."""
     return (_JS_TEMPLATE
             .replace("__DOC_WORD__", doc_word)
             .replace("__PCS_FIELD__", _PCS_FIELD if with_pcs else "")
+            .replace("__RATE_FIELD__", _RATE_FIELD if with_rate else "")
             .replace("__PAYLOAD_ID__", payload_id))
 
 
 def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               qty_aria: str, empty_note: str, payload_id: str, doc_word: str,
               chosen: set = None, qty_of: dict = None,
-              with_pcs: bool = False, avail_label: str = "In BOQ") -> str:
+              with_pcs: bool = False, avail_label: str = "In BOQ",
+              with_rate: bool = False, rate_of: dict = None,
+              rate_label: str = "Rate", rate_aria: str = "Rate") -> str:
     """
     The whole grid as one form section — tools bar, table, refusal band, and
     the script that drives them.
@@ -355,6 +408,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
     on.
     """
     pcs_head = ('\n              <th class="pk-pcs">Pcs</th>') if with_pcs else ""
+    rate_head = (f'\n              <th class="pk-rate">{rate_label}</th>'
+                 if with_rate else "")
     return f"""
       <div class="form-section">
         <div class="section-title">{title}</div>
@@ -375,9 +430,10 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               <th class="pk-desc">Description</th>
               <th class="pk-unit">Unit</th>
               <th class="pk-avail">{avail_label}</th>
-              <th class="pk-in">{qty_label}</th>{pcs_head}
+              <th class="pk-in">{qty_label}</th>{pcs_head}{rate_head}
             </tr></thead>
-            <tbody>{rows_html(boq, chosen, qty_of, with_pcs, qty_aria)}</tbody>
+            <tbody>{rows_html(boq, chosen, qty_of, with_pcs, qty_aria,
+                              with_rate, rate_of, rate_aria)}</tbody>
           </table>
         </div>
         <div class="alert alert-error pk-none" id="pk-none">
@@ -388,7 +444,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
         var LINE_IDS = {BQ._json_for_script(line_ids(boq))};
         var FAMILIES = {BQ._json_for_script(families(boq))};
       </script>
-      {js(payload_id, doc_word, with_pcs)}"""
+      {js(payload_id, doc_word, with_pcs, with_rate)}"""
 
 
 # =============================================================================
@@ -396,7 +452,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
 # =============================================================================
 
 def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
-                 max_lines: int = None, with_pcs: bool = False) -> tuple:
+                 max_lines: int = None, with_pcs: bool = False,
+                 with_rate: bool = False) -> tuple:
     """
     Returns `(items, error)` — the BOQ lines that were **ticked**, snapshotted.
 
@@ -415,6 +472,12 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
       are not `desc` and not `type`. `po_draft` read the wrong two and
       snapshotted every row with an empty description; two of its three tests
       passed against that, because they asserted `"" in html`.
+
+    `with_rate` carries the rate box back off the form as a float on each
+    non-header row. A **blank or unparseable** box falls back to the BOQ's
+    `supply_base_rate`, and a missing base rate falls back to `0.0` — exactly
+    the quantity's rule one field over, and for its reason: the prefill is what
+    the operator saw, so an empty box means "as offered", never "free".
     """
     if max_lines is None:
         max_lines = BQ.MAX_LINES
@@ -434,7 +497,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             by_lid[lid] = li
 
     # Which ids the operator actually ticked.
-    picked, qty_of = [], {}
+    picked, qty_of, rate_of = [], {}, {}
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -443,6 +506,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             continue
         picked.append(lid)
         qty_of[lid] = row.get("qty")
+        rate_of[lid] = row.get("rate")
 
     if not picked:
         return [], empty_msg
@@ -465,6 +529,11 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
                 wanted_headers.add((str(li.get("section") or ""), parent))
 
     extra = {"pcs": ""} if with_pcs else {}
+    if with_rate:
+        # A specification header carries the clause and no money — the same
+        # reason it carries no quantity. Present and zero rather than absent, so
+        # every row this function returns has one shape.
+        extra = {**extra, "rate": 0.0}
     items = []
     for li in boq.get("line_items") or []:
         lid = BQ._line_id(li.get("line_id"))
@@ -487,7 +556,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
         qty = BQ._num(qty_of.get(lid), None)
         if qty is None or qty < 0:
             qty = float(li.get("total_qty") or 0.0)
-        items.append({
+        row = {
             "line_id": lid,
             "is_header": False,
             "item_no": BQ._item_no(li.get("item_no")),
@@ -495,5 +564,14 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             "unit": str(li.get("unit") or ""),
             "qty": float(qty),
             **extra,
-        })
+        }
+        if with_rate:
+            # The prefill is the SUPPLY base rate. The installation track is
+            # labour and is never read here — purchase.INCLUDE_INSTALL_TRACK.
+            rate = BQ._num(rate_of.get(lid), None)
+            if rate is None or rate < 0:
+                base = li.get("supply_base_rate")
+                rate = 0.0 if base is None else float(base)
+            row["rate"] = float(rate)
+        items.append(row)
     return items, ""
