@@ -72,8 +72,10 @@ def test_every_reference_collection_has_a_seeder(client):
     # against. Seeding one would invent a claim.
     # `receipts` is transactional for the same reason `ra_bills` is, and more
     # so: seeding one would invent a payment the client never received.
+    # `delivery_challans` likewise: a challan is signed for on arrival, and a
+    # seeded one is a record that material left the yard when none did.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
-                     "ra_bills", "receipts"}
+                     "ra_bills", "receipts", "delivery_challans"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

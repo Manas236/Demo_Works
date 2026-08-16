@@ -237,6 +237,96 @@ def save_po_series(prefix: str, next_no) -> None:
         STORE["settings"].pop(PO_SERIES_RECORD, None)
 
 
+# =============================================================================
+# THE DELIVERY CHALLAN SERIES — its own record, for the draft PO's reasons
+# =============================================================================
+#
+# A **third record** in the same collection, and it is here rather than on
+# `branding` for exactly the reason the draft-PO series is: it does not print
+# in a letterhead, `apply_settings()` must not push it onto `branding`, and it
+# must not be counted by the nav's amber dot. That dot means "a statutory
+# detail is missing and a document will print a chip"; a challan prefix is not
+# one, and a blank prefix here is the *normal* configuration rather than a gap.
+#
+# ⚠ **The prefix defaults to BLANK, and that is the client's own numbering.**
+#   Their challan 54 is the bare integer `54` — one paper series across every
+#   supplier and every site, with no prefix at all. So a blank prefix prints
+#   the number on its own and unpadded, which is what continues their book;
+#   set a prefix and the series takes the padded `PREFIX/0055` shape every
+#   other series in this app uses. `challan.next_ref()` owns that rule.
+#
+# ⚠ **GLOBAL, and deliberately not per-BOQ. That is the opposite of `ra_no`**,
+#   which is per project because it is that job's own RA sequence. One running
+#   series across all sites is what the paper does.
+DC_SERIES_RECORD = "delivery_challan_series"
+
+DC_SERIES_DEFAULTS = {
+    # Blank, because their series has no prefix. Both are strings: they are
+    # form fields, and `next_no` is parsed where it is used.
+    "prefix":  "",
+    "next_no": "1",
+}
+
+
+def dc_series() -> dict:
+    """The delivery-challan prefix and next number, defaults filled in."""
+    saved = STORE["settings"].get(DC_SERIES_RECORD) or {}
+    return {k: (str(saved.get(k) or "").strip() or v)
+            for k, v in DC_SERIES_DEFAULTS.items()}
+
+
+def dc_ref_of(series: dict) -> str:
+    """
+    The challan number a series is currently pointing at.
+
+    **The shape lives here, with the record**, rather than in `challan.py`:
+    `/settings` has to show the operator what the next number will look like
+    while they are typing it, and `settings.py` may not import `challan.py`
+    (nothing downstream of `quotation.py` may import back). Two copies of a
+    padding rule is how a preview starts disagreeing with the document.
+
+    Blank prefix -> the bare integer, unpadded: `54`. That is the client's own
+    book and the reason the prefix defaults to blank.
+    Prefix set   -> `PREFIX/0054`, the padded shape every other series uses.
+    """
+    prefix = str(series.get("prefix") or "").strip()
+    n = int(series.get("next_no") or 1)
+    return f"{prefix}/{n:04d}" if prefix else str(n)
+
+
+def _dc_ref_preview(series: dict) -> str:
+    """`dc_ref_of()` over a half-typed form, which may hold a blank number."""
+    return dc_ref_of({"prefix": series.get("prefix", ""),
+                      "next_no": series.get("next_no") or 1})
+
+
+def save_dc_series(prefix: str, next_no) -> None:
+    """Write the series back. Only non-default values are stored."""
+    values = {"prefix": str(prefix or "").strip(),
+              "next_no": str(next_no or "").strip()}
+    keep = {k: v for k, v in values.items()
+            if v and v != DC_SERIES_DEFAULTS[k]}
+    if keep:
+        STORE["settings"][DC_SERIES_RECORD] = keep
+    else:
+        STORE["settings"].pop(DC_SERIES_RECORD, None)
+
+
+def _validate_dc_series(form) -> tuple:
+    """Returns (data, error), and **always returns data**."""
+    data = {"prefix":  (form.get("dc_prefix") or "").strip(),
+            "next_no": (form.get("dc_next_no") or "").strip()}
+    if data["prefix"] and len(data["prefix"]) > 32:
+        return data, "Delivery challan prefix: keep it under 32 characters."
+    raw = data["next_no"]
+    if raw:
+        if not raw.isdigit():
+            return data, "Delivery challan next number: digits only."
+        if int(raw) < 1:
+            return data, "Delivery challan next number: must be 1 or more."
+    return data, ""
+
+
 def _validate_po_series(form) -> tuple:
     """
     Returns (data, error), and **always returns data** — `address._validate()`'s
@@ -372,9 +462,11 @@ def edit_settings():
     if request.method == "POST":
         data, error = _validate(request.form)
         po_data, po_error = _validate_po_series(request.form)
-        error = error or po_error
+        dc_data, dc_error = _validate_dc_series(request.form)
+        error = error or po_error or dc_error
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
+            save_dc_series(dc_data["prefix"], dc_data["next_no"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -389,9 +481,11 @@ def edit_settings():
                                     msg="Company details saved.", type="success"))
         values = data
         po_values = po_data
+        dc_values = dc_data
     else:
         values = B.current_settings()
         po_values = po_series()
+        dc_values = dc_series()
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -503,6 +597,35 @@ def edit_settings():
                      value="{P.esc(po_values.get('next_no', ''))}"
                      placeholder="{P.esc(PO_SERIES_DEFAULTS['next_no'])}"/>
               <div class="fld-hint">Advances on every draft PO raised.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Delivery Challan Series</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            <b>One running series across all sites</b>, like the draft PO and
+            unlike the RA bill number. The prefix is <b>blank by default</b>,
+            because the challan book it continues numbers in bare integers
+            &mdash; challan <b>54</b>, not <b>SF/DC/0054</b>. Set the next
+            number to whatever comes after the last one written in the book.
+            A deleted challan does not release its number.
+          </p>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="dc_prefix">Prefix <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <input type="text" id="dc_prefix" name="dc_prefix"
+                     value="{P.esc(dc_values.get('prefix', ''))}"
+                     placeholder="leave blank for a bare number"/>
+              <div class="fld-hint">Prints as {P.esc(_dc_ref_preview(dc_values))}</div>
+            </div>
+            <div class="form-group">
+              <label for="dc_next_no">Next number</label>
+              <input type="text" id="dc_next_no" name="dc_next_no"
+                     inputmode="numeric"
+                     value="{P.esc(dc_values.get('next_no', ''))}"
+                     placeholder="{P.esc(DC_SERIES_DEFAULTS['next_no'])}"/>
+              <div class="fld-hint">Advances on every challan raised.</div>
             </div>
           </div>
         </div>

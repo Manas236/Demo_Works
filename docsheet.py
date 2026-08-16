@@ -139,6 +139,22 @@ BANK_CSS_NARROW = """\
   }
 """
 
+# The rules for `sheet_open(title_band=…)`. Raw, and spliced into the one sheet
+# that asks for a band — the same arrangement as `BANK_CSS` above and for the
+# same reason: one copy of the rule, wherever it is needed.
+BAND_CSS = """\
+  /* ── Title band ───────────────────────────────────────────────────────
+     The delivery challan is the one document whose title sits INSIDE the page
+     frame and ABOVE the letterhead, and a `<caption>` is the only element a
+     table gives us that can be in both places at once. See `sheet_open()` for
+     why that mattered enough to use one. */
+  .quotation-doc .page-frame > caption {
+    caption-side:top; text-align:center; color:var(--doc-ink);
+    font-size:var(--fs-lg); font-weight:700; letter-spacing:1.2px;
+    padding:0 0 3px; text-decoration:underline;
+  }
+"""
+
 DOCSHEET_STYLES = f"""
 <style>
 {BANK_CSS}{BANK_CSS_NARROW}</style>
@@ -228,12 +244,38 @@ def foot_strip(text: str = "") -> str:
 
 
 def sheet_open(show_web: bool = True, show_gstin: bool = True,
-               show_branches: bool = False, foot: str = "") -> str:
+               show_branches: bool = False, foot: str = "",
+               title_band: str = None) -> str:
     """
     Everything from `<table class="page-frame">` down to the open of the body
     cell the document is written into. Pair it with `sheet_close()`.
+
+    `title_band` renders the document's title **inside the page frame and above
+    the letterhead**, which is where the client's own delivery challan puts it
+    and nowhere else in this app does. It is a `<caption>` because that is the
+    only child a `<table>` accepts before its `<thead>`: a `<div>` there is
+    hoisted out of the table by every browser, and a second `<tr>` inside the
+    `<thead>` would put the band inside the letterhead block that
+    `tests/test_print_golden.py` requires to hash identically to the tax
+    invoice's. The caption sits outside that block and the letterhead is
+    untouched, which is the whole point.
+
+    ⚠ It does **not** repeat on page two, and the letterhead does. A caption is
+      painted once; only `display:table-header-group` repeats. That is a real
+      difference and it is left as one — a challan is a one-page note, and
+      making the band repeat would mean moving it into the `<thead>`, which is
+      exactly what must not happen.
+
+    **Defaults to `None`, and with `None` this function emits the bytes it
+    always did** — the four existing callers render identically and the goldens
+    prove it. The rule for `.page-frame > caption` is `BAND_CSS`, spliced into
+    the sheet that asks for a band. A sheet that never passes one carries no
+    rule for it.
     """
+    band = ("" if title_band is None
+            else f'  <caption class="sheet-band">{title_band}</caption>\n')
     return (f'  <table class="page-frame">\n'
+            f'{band}'
             f'{letterhead(show_web, show_gstin, show_branches)}\n'
             f'\n'
             f'{foot_strip(foot)}\n'
@@ -409,23 +451,32 @@ def bank_block(note_html: str = "") -> str:
 
 
 def sig_block(branch: str = "", signatory: str = "",
-              computer_generated: bool = False) -> str:
+              computer_generated: bool = False,
+              left_html: str = None) -> str:
     """
     The statutory identifiers and the signature panel.
 
     `branch` and `signatory` are the document's own stored values; both fall
     back to the company defaults, and the caller escapes them because they came
     off a record.
+
+    `left_html` replaces the GSTIN/PAN grid on the left of the panel. It exists
+    for the delivery challan, which prints **"Name & Signature of Receiver"**
+    there instead — a challan is handed over and signed for on arrival, and the
+    person signing is the consignee rather than us. Every other document wants
+    the statutory pair, so it **defaults to `None` and emits the bytes it
+    always did**; the goldens prove that.
     """
     comp = branch or B.COMPANY_NAME
     who = signatory or B.COMPANY_SIGNATORY
     note = ('\n  <div class="sig-note">This is a Computer Generated Document, '
             'no signature required</div>') if computer_generated else ""
-    return f"""  <div class="sig-block">
-    <div class="sig-kv">
+    left = left_html if left_html is not None else f"""<div class="sig-kv">
       <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
       <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
-    </div>
+    </div>"""
+    return f"""  <div class="sig-block">
+    {left}
     <div class="sig-right">
       <div class="sig-for">For {comp}</div>
       <div class="sig-name">{who}</div>

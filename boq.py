@@ -2158,11 +2158,19 @@ def view_boq(id: str):
     # the form — `revision_candidates()` refuses to fork one — and diverge only
     # on a hand-edited fork. Not duplicated here on purpose; see ABOUT.md §7
     # gap 16b for where the shared predicate should live.
+    #
+    # ⚠ The **Delivery Challan** link rides the same `is_tip` gate, and for the
+    # same reason rather than for symmetry: a challan records goods moving
+    # against a schedule, and a superseded revision is not the schedule anybody
+    # is building from. `/dc/create` refuses one at the route as well — a link
+    # is not a guard.
     ra_btns = ""
     if is_tip:
         ra_btns = (
             f'<a href="{url_for("po_draft.create_po", boq=id)}" '
             f'class="btn btn-ghost">&#43;&nbsp;Draft PO</a>'
+            f'<a href="{url_for("challan.create_dc", boq=id)}" '
+            f'class="btn btn-ghost">&#43;&nbsp;Delivery Challan</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
             f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '

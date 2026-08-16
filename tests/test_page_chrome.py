@@ -35,13 +35,14 @@ NO_CHROME = {
     # sheet is the deliverable. They still load the shared stylesheet, which is
     # the half this file checks for them.
     "/po/print/<id>":  "print-only: the document alone, /boq/print's shape",
+    "/dc/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/boq/print/<id>": "print-only: the document alone",
 }
 
-# The screen routes the previous two passes added. Listed explicitly as well as
+# The screen routes the last three passes added. Listed explicitly as well as
 # swept, so that deleting one from the app is a red test rather than a quietly
 # smaller sweep.
-NEW_PAGES = ["/client/", "/po/"]
+NEW_PAGES = ["/client/", "/po/", "/dc/"]
 
 
 @pytest.fixture()
@@ -76,7 +77,8 @@ def test_every_screen_page_carries_the_shared_nav(populated, client):
     """
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
-           "/po/create": f"?boq={populated['boq']}"}
+           "/po/create": f"?boq={populated['boq']}",
+           "/dc/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         r = client.get(url)
@@ -96,7 +98,8 @@ def test_every_page_layers_its_css_after_the_shared_stylesheet(populated, client
     """
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
-           "/po/create": f"?boq={populated['boq']}"}
+           "/po/create": f"?boq={populated['boq']}",
+           "/dc/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         html = client.get(url).get_data(as_text=True)
@@ -164,7 +167,8 @@ def test_no_page_uses_a_browser_confirm_dialog(populated, client):
     """
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
-           "/po/create": f"?boq={populated['boq']}"}
+           "/po/create": f"?boq={populated['boq']}",
+           "/dc/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         html = client.get(url).get_data(as_text=True)

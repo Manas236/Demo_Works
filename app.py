@@ -32,6 +32,10 @@ from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
                                  # back with url_for only.
 from client import client_bp     # Client-wise segregation and party edits
 from po_draft import po_draft_bp # Draft PO from BOQ
+from challan import challan_bp   # Delivery challans: goods leaving the yard
+                                 # against a BOQ. Its own collection, beside
+                                 # the RA bill on the project chain and
+                                 # deliberately not reconciled with it.
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 
@@ -108,6 +112,10 @@ app.register_blueprint(receipt_bp)            # Mounted at /receipt — REQUIRED
                                               # url_for("receipt.new_receipt")
                                               # on every bill and 500s without it.
 app.register_blueprint(po_draft_bp)           # Mounted at /po (Draft PO from BOQ)
+app.register_blueprint(challan_bp)            # Mounted at /dc — REQUIRED by
+                                              # /boq/view, which builds
+                                              # url_for("challan.create_dc")
+                                              # in its action bar.
 app.register_blueprint(client_bp)             # Mounted at /client
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings

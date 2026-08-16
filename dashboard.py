@@ -964,6 +964,14 @@ def _metrics():
         # to report and a money figure here would be zero on every card.
         "dpo_total": len(STORE.get("purchase_orders", {})),
 
+        # Delivery challans — the BOQ chain's goods-movement note. A count
+        # only, and for a stronger reason than the draft PO's: a challan
+        # carries no money at all, by design (ABOUT.md §5, `/dc`). Lines
+        # dispatched would be the honest second figure, but it is a sum over
+        # every challan's rows on a card that renders on every page load, and
+        # a count answers "is anything moving" already.
+        "dc_total": len(STORE.get("delivery_challans", {})),
+
         # Client register. **Issued bills only, less receipts** — a draft has
         # not been sent and a cancelled one was withdrawn, and the same two
         # exclusions hold on `/client/` itself. Status strings are matched
@@ -1372,6 +1380,7 @@ def index():
     spec_url      = url_for("spec.list_specs")
     client_url    = url_for("client.list_clients")
     po_draft_url  = url_for("po_draft.list_pos")
+    challan_url   = url_for("challan.list_dcs")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1501,6 +1510,15 @@ def index():
               <div class="card-title">Draft Purchase Orders</div>
               <div class="card-desc">{m['dpo_total']} raised · sent to a supplier
                   to be priced, no rates and no GST</div>
+            </div>
+          </a>
+
+          <a href="{challan_url}" class="card">
+            <div class="card-icon">{ICONS['purchase']}</div>
+            <div class="card-body">
+              <div class="card-title">Delivery Challans</div>
+              <div class="card-desc">{m['dc_total']} raised · goods leaving the
+                  yard against a schedule, no rates and no tax</div>
             </div>
           </a>
 

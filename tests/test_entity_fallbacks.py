@@ -142,6 +142,7 @@ def populated(client):
                       status="draft")
     rcid = _a_receipt(paid_rid, bid)
     dpid = _a_draft_po(bid)
+    dcid = _a_challan(bid)
 
     # `/product/delete` renders its confirmation page only for a product that
     # may actually be deleted; one locked into an assembly redirects with the
@@ -185,6 +186,10 @@ def populated(client):
             "/po/edit/<id>":        dpid,
             "/po/print/<id>":       dpid,
             "/po/view/<id>":        dpid,
+            "/dc/delete/<id>":      dcid,
+            "/dc/edit/<id>":        dcid,
+            "/dc/print/<id>":       dcid,
+            "/dc/view/<id>":        dcid,
             "/receipt/delete/<id>": rcid,
             "/receipt/edit/<id>":   rcid,
             "/spec/delete/<id>":    blank["REG-BLANK-UNSIZED"],
@@ -201,6 +206,38 @@ def populated(client):
     STORE["ra_bills"].clear()
     STORE["receipts"].clear()
     STORE.setdefault("purchase_orders", {}).clear()
+    STORE.setdefault("delivery_challans", {}).clear()
+
+
+def _a_challan(boq_id: str) -> str:
+    """
+    One delivery challan **with rows on it**, so the sweep has a document.
+
+    `dispatch_to` and `po_no` are deliberately left blank: those cells are
+    exactly where the register and the document fall back to the house em-dash,
+    which is the branch this file exists to check. `_a_draft_po` leaves
+    `vendor_name` blank for the same reason.
+    """
+    cid = "dc-1"
+    line = next(li for li in STORE["boqs"][boq_id]["line_items"]
+                if not li["is_header"] and li["total_qty"] > 0)
+    STORE.setdefault("delivery_challans", {})[cid] = {
+        "id": cid, "ref": "54", "date": "2026-08-16",
+        "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore", "site_location": "",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "consignee_id": "", "consignee_source": "typed",
+        "consignee_name": "Samruddhi Fire", "consignee_addr": "",
+        "consignee_phone": "",
+        "dispatch_mode": "Transport", "dispatch_to": "",
+        "po_no": "", "po_date": "", "notes": "",
+        "items": [{"line_id": line["line_id"], "is_header": False,
+                   "item_no": line["item_no"],
+                   "description": line["description"],
+                   "unit": line["unit"], "qty": float(line["total_qty"])}],
+        "company_branch": "", "auth_signatory": "",
+    }
+    return cid
 
 
 def _a_draft_po(boq_id: str) -> str:
@@ -310,7 +347,7 @@ def _urls(populated):
             # string; without it there is no schedule to claim/draft against.
             if rule.rule == "/ra/create":
                 urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}&leg=supply")
-            elif rule.rule == "/po/create":
+            elif rule.rule in ("/po/create", "/dc/create"):
                 urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}")
             else:
                 urls.append(rule.rule)
