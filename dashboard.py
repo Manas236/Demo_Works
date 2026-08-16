@@ -632,6 +632,7 @@ ICONS = {
     "nopo":    """<svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>""",
     "plus":    """<svg viewBox="0 0 24 24" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>""",
     "users":   """<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>""",
+    "project": """<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>""",
 }
 
 
@@ -924,6 +925,7 @@ def _metrics():
         "month_totals": month_totals,
         "recent":       recent,
         "attention":    attention,
+        "proj_total":   len(STORE.get("projects", {})),
         "p_total":      len(products),
         "p_assembly":   sum(1 for p in products.values() if p.get("type") == "assembly"),
         "p_support":    sum(1 for p in products.values() if p.get("type") == "support"),
@@ -1381,6 +1383,7 @@ def index():
     client_url    = url_for("client.list_clients")
     po_draft_url  = url_for("po_draft.list_pos")
     challan_url   = url_for("challan.list_dcs")
+    project_url   = url_for("project.list_projects")
     extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
@@ -1420,6 +1423,14 @@ def index():
 
         <div class="mods-lbl">Modules</div>
         <section class="mods">
+
+          <a href="{project_url}" class="card">
+            <div class="card-icon">{ICONS['project']}</div>
+            <div class="card-body">
+              <div class="card-title">Projects</div>
+              <div class="card-desc">{m['proj_total']} created · group BOQs</div>
+            </div>
+          </a>
 
           <a href="{product_url}" class="card">
             <div class="card-icon">{ICONS['product']}</div>

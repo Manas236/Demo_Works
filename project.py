@@ -106,7 +106,7 @@ def list_projects():
         n_boqs = attached_boq_count(pid)
         rows += f"""
         <tr>
-          <td><a href="{url_for('project.view_project', id=pid)}">{P.esc(p.get('name'))}</a></td>
+          <td><a href="{url_for('projectview.view_project', id=pid)}">{P.esc(p.get('name'))}</a></td>
           <td>{P.esc(p.get('client') or '') or '&mdash;'}</td>
           <td>{P.esc(p.get('site_address') or '') or '&mdash;'}</td>
           <td>{n_boqs}</td>
@@ -167,43 +167,6 @@ def list_projects():
     return _page(html)
 
 
-@project_bp.route("/view/<id>")
-def view_project(id: str):
-    """Project detail — placeholder until projectview.py is built."""
-    proj = STORE["projects"].get(id)
-    if not proj:
-        return redirect(url_for("project.list_projects",
-                                msg="Project not found.", type="error"))
-
-    n_boqs = attached_boq_count(id)
-
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8"/>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-      <title>{B.page_title(P.esc(proj.get('name', 'Project')))}</title>
-      {B.HEAD_ICON}
-      {BASE_STYLES}
-    </head>
-    <body>
-      {_nav()}
-      <main style="max-width:900px; margin:0 auto; padding:1rem 1.25rem;">
-        <h1>{P.esc(proj.get('name'))}</h1>
-        <p><strong>Client:</strong> {P.esc(proj.get('client') or '') or '&mdash;'}</p>
-        <p><strong>Site:</strong> {P.esc(proj.get('site_address') or '') or '&mdash;'}</p>
-        <p><strong>Notes:</strong> {P.esc(proj.get('notes') or '') or '&mdash;'}</p>
-        <p><strong>BOQs attached:</strong> {n_boqs}</p>
-        <div style="margin-top:1rem;">
-          <a href="{url_for('project.edit_project', id=id)}" class="btn">Edit</a>
-          <a href="{url_for('project.list_projects')}" class="btn btn-ghost">Back</a>
-        </div>
-      </main>
-    </body>
-    </html>
-    """
-    return _page(html)
 
 
 @project_bp.route("/create", methods=["GET", "POST"])

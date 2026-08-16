@@ -246,7 +246,7 @@ carries and decides nothing.
 | 7 | Tax Invoice directly from the BOQ | ↩ **Answered differently** |
 | 8 | Record payment received against an RA bill | ✅ **Delivered** — built 14 Aug 2026 under the §0 override; **chargeable under MG/SF/2026-02** |
 | 9 | Employee / miscellaneous charges section | ⏸ Deferred — not scoped |
-| 10 | Project folder grouping BOQs → net profit / loss | ⏸ Deferred — not scoped |
+| 10 | Project folder grouping BOQs → net profit / loss | 🚧 Structure Built (Pass A), P&L Deferred |
 
 ---
 
@@ -698,7 +698,11 @@ Nothing to link — no code exists and no design has been agreed.
 
 ---
 
-### 10 · Project folder grouping BOQs, feeding a net profit/loss view — ⏸ Deferred
+### 10 · Project folder grouping BOQs, feeding a net profit/loss view — 🚧 Structure Built (Pass A)
+
+**Pass A (Structure Only)** has been implemented. Projects are now a top-level entity, and they act as folders that group BOQs (and their entire revision chains), Proforma Invoices, and Purchase Orders. The `projectview.py` module provides the UI for viewing project details and managing attached documents. By design, no financial figures or profit/loss calculations are shown at this stage.
+
+**Pass B (Profit / Loss View)** remains **Deferred — not scoped**. The commercial logic to compute true profitability requires strict definitions of cost and revenue, which are yet to be finalized.
 
 **Not scoped.** Raised in the meeting, not specified.
 

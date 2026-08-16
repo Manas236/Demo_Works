@@ -687,6 +687,7 @@ def create_proforma(qid: str):
                 "po_date":       (f.get("po_date") or "").strip(),
                 "advance_pct":   pct,
                 "amount_due":    due,
+                "project_id":    (f.get("project_id") or "").strip(),
 
                 # ── The running position, frozen at issue ─────────────────
                 # What earlier PIs on this quotation had already asked for.
@@ -743,6 +744,7 @@ def create_proforma(qid: str):
     v_date     = _v("date", _today())
     v_po_no    = _v("po_number", q.get("po_number", ""))
     v_po_date  = _v("po_date", q.get("po_date", ""))
+    v_pid      = _v("project_id", q.get("project_id", ""))
     # The advance defaults to whatever is still uninvoiced, not to 100. On the
     # first PI those are the same number; on the second they are the whole
     # difference between "ask for the balance" and "bill the order twice".
@@ -854,6 +856,12 @@ def create_proforma(qid: str):
                     "blank rather than pre-filled.<br>Enter a percentage only if you "
                     "mean to invoice beyond the order value.")
 
+    p_opts = '<option value="">&#8212; none &#8212;</option>'
+    for proj_id, proj in sorted(STORE["projects"].items(),
+                                key=lambda kv: kv[1].get("name", "").lower()):
+        sel = " selected" if proj_id == v_pid else ""
+        p_opts += f'<option value="{P.esc(proj_id)}"{sel}>{P.esc(proj.get("name"))}</option>'
+
     confirm_html = ""
     if needs_confirm:
         confirm_html = """
@@ -907,6 +915,10 @@ def create_proforma(qid: str):
             <div class="form-group">
               <label for="po_date">Customer PO Date</label>
               <input type="date" id="po_date" name="po_date" value="{P.esc(v_po_date)}"/>
+            </div>
+            <div class="form-group">
+              <label for="project_id">Project <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <select id="project_id" name="project_id">{p_opts}</select>
             </div>
           </div>
         </div>

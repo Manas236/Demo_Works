@@ -749,6 +749,7 @@ def create_purchase():
                 # ── Optional soft link to the job. Never a hard parent. ───
                 "quotation_id":  qid,
                 "quotation_ref": q.get("ref", ""),
+                "project_id":    (f.get("project_id") or "").strip(),
 
                 # ── What we are buying ────────────────────────────────────
                 "line_items": items,
@@ -799,6 +800,8 @@ def create_purchase():
     # ?quotation_id=… lets the quotation's "Raise PO" button pre-select the job.
     # Only honoured on GET; on POST the form field is authoritative.
     v_qid    = _v("quotation_id", request.args.get("quotation_id", ""))
+    q        = STORE["quotations"].get(v_qid) or {}
+    v_pid    = _v("project_id", q.get("project_id", ""))
     v_vref   = _v("vendor_ref")
     v_del_d  = _v("delivery_date")
     v_del_to = _v("delivery_to", B.COMPANY_ADDR)
@@ -841,6 +844,12 @@ def create_purchase():
         sel = " selected" if qid_ == v_qid else ""
         q_opts += (f'<option value="{P.esc(qid_)}"{sel}>{P.esc(q_.get("ref"))} '
                    f'&middot; {P.esc(q_.get("account_name") or "unnamed")}</option>')
+
+    p_opts = '<option value="">&#8212; none &#8212;</option>'
+    for proj_id, proj in sorted(STORE["projects"].items(),
+                                key=lambda kv: kv[1].get("name", "").lower()):
+        sel = " selected" if proj_id == v_pid else ""
+        p_opts += f'<option value="{P.esc(proj_id)}"{sel}>{P.esc(proj.get("name"))}</option>'
 
     status_opts = "".join(
         f'<option{" selected" if s == _v("status", DEFAULT_STATUS) else ""}>{s}</option>'
@@ -898,6 +907,10 @@ def create_purchase():
               <small class="field-hint">Link it to the quotation this material is
                 for and the deal shows quoted value against what it costs us.
                 Leave blank for stock.</small>
+            </div>
+            <div class="form-group">
+              <label for="project_id">Project <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <select id="project_id" name="project_id">{p_opts}</select>
             </div>
             <div class="form-group">
               <label for="vendor_ref">Vendor's Offer / Quote Ref</label>

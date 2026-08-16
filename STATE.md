@@ -324,6 +324,15 @@ names the file.*
 
 Both landed. What each carries is in [ABOUT.md §5](ABOUT.md) (`/ra`); step 3's
 certification entry UI was subsequently removed in full (§1.6).
+---
+
+### 1.7 Project Structure (Pass A) · ✅ 16 August 2026
+
+The project structural foundations have been built.
+- **Projects** are now top-level commercial engagements that group BOQs, Proformas, and Purchase Orders.
+- `project.py` handles the creation and editing of project metadata.
+- `projectview.py` provides the Project Detail Page, strictly enforcing the "no money" rule (no profit/loss logic).
+- BOQ revisions are handled correctly: attaching a BOQ to a project seamlessly attaches its entire revision chain.
 
 ---
 

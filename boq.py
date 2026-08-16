@@ -3687,6 +3687,9 @@ def create_boq():
             prefill["rev_no"]     = str(int(_num(revise_src.get("rev_no"), 0)) + 1)
             prefill["supersedes"] = revise_src["id"]
 
+    if request.method == "GET" and request.args.get("project_id"):
+        prefill["project_id"] = request.args.get("project_id")
+
     # ── The supersedes selector ────────────────────────────────────────────
     #
     # Candidates are narrowed to the same project and party whenever the form
