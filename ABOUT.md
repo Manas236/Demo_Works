@@ -8,7 +8,7 @@ PO Base Rate is to be editable
 
 Discount Column in Final PO
 
-Employee Management System with OT system baked in
+Employee Management System c:\Users\manas\Downloads\Measurement_sheet3.pdf c:\Users\manas\Downloads\Measurement_sheet2.pdf c:\Users\manas\Downloads\ATTENDANCE_SHEET.xlsx c:\Users\manas\Downloads\Skyline.xlsx c:\Users\manas\Downloads\RD_fire.xlsx c:\Users\manas\Downloads\Bhaveshwar_Callista_roadpali.xlsx c:\Users\manas\Downloads\Measurement_Sheet_updated.xlsx c:\Users\manas\Downloads\Kalyan_Site.xlsx c:\Users\manas\Downloads\Mundra_Gujrat_Fire_fighting.xlsx c:\Users\manas\Downloads\BOQ_New_(Recovered).xls c:\Users\manas\Downloads\Abhilasha.xlsx c:\Users\manas\Downloads\Quotation_for_Ground+9th_Floor.xlsx c:\Users\manas\Downloads\Khargar_38th_Floors.xls c:\Users\manas\Downloads\DC-SF.xlsx c:\Users\manas\Downloads\Walkeshwar_Blank_BOQ_Fire_Hydrant_&_Sprinkler.xls c:\Users\manas\Downloads\New_Qoute.xlsx c:\Users\manas\Downloads\fire_e_fighting-Turbhe.xlsx c:\Users\manas\Downloads\BOQ_Kandivali.xlswith OT system baked in
 
 Loading and Unloading Charges(1 count) in Final PO
 
