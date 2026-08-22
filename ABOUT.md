@@ -1,5 +1,85 @@
 # ABOUT — Samruddhi Fire QMS
 
+Raise Total Outstanding in client register
+
+Add edit and delete in RA
+
+PO Base Rate is to be editable
+
+Discount Column in Final PO
+
+Employee Management System with OT system baked in
+
+Loading and Unloading Charges(1 count) in Final PO
+
+Transportation charge(1 count) in Final PO
+
+2 Extra charge in Final PO
+
+RA (Join/Merge Supply and Installation)
+
+3 Approvals for charges(Director, Operation Head, HR) Ladder-Type Approval
+
+RA,TI,PO Approval by Operation Head & Director
+- Without Approval it cannot be printed or Screenshoted
+
+Attach Document(Compulsory) in Charge Section
+
+Employee Management System:
+-Employee Details
+-Salary + OT
+
+Attendence Management System:
+- Attendence(Presentee & Absentee)
+- Salary(0 or 1)(Based on Attendence)(Has to be filled Daily)
+- OT = Salary/8 x Hours
+- 1 Employee - 1 Site - 1 Day
+- (Presentation Table Format)Employee - Site - OT Time
+
+Add Feature Measurement in Project & Site Billing
+
+Order of working:
+BoQ -> DC -> RA-Supply
+BoQ -> Measurement -> RA-Installation
+
+Measurement:
+Will be raised through BoQ
+
+Roles:
+Director 1 & 2
+Operation Head
+HR
+Sales Manager (can be linked with Purchase)
+Purchase Manager (can be linked with Sales)
+Accountant
+
+
+
+Director:
+Admin Access + Visual Dashboard
+
+Operation Head:
+Admin Access + Visual Dashboard
+
+HR:
+Attendence & Employee Details
+Misc. Charges
+Salary Editing(in Employee Details)
+
+Sales Manager:
+All Document Acccess except HR information
+Add Charges (will require approval from HR)
+
+Purchase Manager: 
+All Document Acccess except HR information
+Add Charges (will require approval from HR)
+
+Accountant:
+All Document Acccess except HR information
+Add Charges (will require approval from HR)
+Overview of Employee
+Manage Employee and their Site
+
 > **Read this file at the start of every conversation before touching code.**
 > It is the project's context anchor: what this app is, how each page works,
 > where the landmines are, and what is deliberately unfinished.
@@ -1690,22 +1770,54 @@ the one experiment a real MySQL cannot easily be made to run.
 An **operations dashboard, not a menu.** It answers "what is my pipeline worth,
 what is stuck, and what moved" before it offers a link anywhere. Top to bottom:
 
-1. **Page head** — title, today's date, `+ New quotation` / `Register`.
+The page is cut into **zones**: a `.zone` wrapper, opened by a `.zone-hd`
+(uppercase label, optional subtitle, and a hairline that flexes out to the right
+margin). Before that, every block carried the same weight and the same gap, so
+the hero, four analysis panels and a fifteen-card launcher ran together as one
+mass. The zones are presentation only — they wrap the existing sections and
+change no figure, link or metric.
+
+1. **Page head** — title, today's date, `+ New quotation` / `Register`, closed
+   by a hairline.
 2. **Hero band** — one hero figure (**Open pipeline**, the only ≥48px number on
    the page) plus three stat tiles: PO Expected, Won (with recorded PO value),
-   Win rate (with a meter).
-3. **Open pipeline by stage** — ordinal bar chart over `P.OPEN_STAGES`; each row
-   links to `/quotation/?stage=<name>`.
-4. **Needs attention** — the work queue (see below).
-5. **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
-6. **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
-   the register exactly.
-7. **Module strip** — the old card launcher (9 cards: catalogue, quotations,
-   proforma invoices, tax invoices, spec library, bills of quantities, purchase
-   orders, address book, market news), now at the foot, carrying live counts
-   instead of prose. The strip is
-   `auto-fit`, so adding a card needs no layout change. Settings is reached
-   from the nav, not from here — it is configuration, not a module you work in.
+   Win rate (with a meter). Unlabelled: it *is* the headline.
+3. **Zone “Where the pipeline stands”** — two panels side by side:
+   - **Open pipeline by stage** — ordinal bar chart over `P.OPEN_STAGES`; each
+     row links to `/quotation/?stage=<name>`.
+   - **Needs attention** — the work queue (see below).
+4. **Zone “What moved”** — two panels side by side:
+   - **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
+   - **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
+     the register exactly.
+5. **Zone “Modules”** — the card launcher, at the foot, carrying live counts
+   instead of prose. Its **15 cards are split into four `.mod-group` blocks**
+   rather than one undifferentiated run, each with a label, a one-line note and
+   a 22×3px coloured tick:
+
+   | Group | Tick | Cards |
+   |---|---|---|
+   | Sell side — the deal chain | `--brand` | Quotations, Proforma Invoices, Tax Invoices |
+   | Projects & site billing | `--navy` | Projects, Bills of Quantities, Running Account Bills, Delivery Challans |
+   | Buy side — money out | `--saffron` | Purchase Orders, Draft Purchase Orders, Employee & Misc Charges |
+   | Library & records | `--muted` | Product Catalogue, Spec Library, Client Register, Address Book, Market News |
+
+   The split is §1's two-pipelines model made visible — it is the same
+   distinction that says a PO must never link to a proforma or a tax invoice.
+   The ticks are **identity tokens, never `CHART_*`**: a status colour spent on
+   decoration stops meaning good/critical/serious/warning (§6).
+
+   ⚠ **`.mods` is a fixed 4-column grid, not `auto-fit`** (3 under 1080px, 2
+   under 780px, 1 under 620px). Each group is its own grid, and under `auto-fit`
+   a 3-card group and a 5-card group resolved to different column counts — so
+   card widths changed from group to group and the launcher lost its vertical
+   rhythm. Fixed columns cost a part-filled last row and buy an aligned page.
+   Cards are `align-items: flex-start` for the same reason: descriptions run one
+   to three lines, and centring them against a row-stretched box put every title
+   on its own baseline.
+
+   Settings is reached from the nav, not from here — it is configuration, not a
+   module you work in.
 
    The tax-invoice card counts **`net_payable`, not invoiced value** — the
    figure genuinely still owed, after advances already adjusted. Two cards both
@@ -1817,8 +1929,13 @@ Money on this page uses **`inr()`** (Indian grouping) and **`compact()`**
 `quotation._inr()` on purpose: that one belongs to the printed document, and
 `quotation.py` imports *this* module, so it could not be shared the other way.
 
-To add a module card: copy an `<a class="card">` block into `section.mods`, add
-an entry to `ICONS`, `url_for("<bp>.<view>")`. The strip is `auto-fit`.
+To add a module card: copy an `<a class="card">` block into the `div.mods` of
+**whichever `.mod-group` the register belongs to** — decide its pipeline first
+(§9) — add an entry to `ICONS`, and link it with `url_for("<bp>.<view>")`. The
+grid is a fixed 4 columns, so a new card extends the group's last row or starts
+another; no layout change is needed either way. `tests/test_page_chrome.py`
+asserts every new register is reachable from this page by `href`, so a card that
+never gets added is a red test rather than an unreachable route.
 
 ---
 

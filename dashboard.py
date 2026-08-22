@@ -341,7 +341,9 @@ DASH_STYLES = """
   /* ── Page head ───────────────────────────────────────────────────── */
   .dash-head {
     display: flex; align-items: flex-end; justify-content: space-between;
-    gap: 1.25rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+    gap: 1.25rem; flex-wrap: wrap;
+    margin-bottom: 1.9rem; padding-bottom: 1.15rem;
+    border-bottom: 1px solid var(--border);
   }
   .dash-head h1 {
     font-size: 1.6rem; font-weight: 700; letter-spacing: -.5px; line-height: 1.2;
@@ -383,8 +385,8 @@ DASH_STYLES = """
   .bd-funnel { justify-content: space-around; }
 
   /* ── Band: hero figure + supporting tiles ────────────────────────── */
-  .band { display: grid; grid-template-columns: 1fr 1.85fr; gap: 1.1rem;
-    margin-bottom: 1.1rem; }
+  .band { display: grid; grid-template-columns: 1fr 1.85fr; gap: 1.15rem;
+    margin-bottom: 0; }
   .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
 
   /* The one hero number on the page. Proportional figures, not tabular —
@@ -428,10 +430,10 @@ DASH_STYLES = """
   /* stretch, not start: two panels of different content lengths still read as
      one row. .panel is a flex column with .panel-bd on flex:1, so the shorter
      one grows rather than leaving a ragged step down the page. */
-  .cols     { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1.1rem;
-    margin-bottom: 1.1rem; align-items: stretch; }
-  .cols-eq  { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem;
-    margin-bottom: 1.1rem; align-items: stretch; }
+  .cols     { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1.15rem;
+    margin-bottom: 0; align-items: stretch; }
+  .cols-eq  { display: grid; grid-template-columns: 1fr 1fr; gap: 1.15rem;
+    margin-bottom: 0; align-items: stretch; }
 
   /* ── Funnel (ordinal bars) ───────────────────────────────────────── */
   .fn-row {
@@ -559,16 +561,61 @@ DASH_STYLES = """
   .mini .mn-lbl { font-size: .72rem; color: var(--muted); }
 
   /* ── Module strip (the launcher, demoted to the foot of the page) ── */
-  .mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    gap: .85rem; margin-top: .35rem; }
-  .mods .card { flex-direction: row; align-items: center; gap: .85rem;
+  /* A fixed column count, NOT auto-fit. Each group is its own grid, and
+     auto-fit let a 3-card group and a 5-card group resolve to different column
+     counts — so card widths changed from group to group and the launcher lost
+     the one vertical rhythm that makes fifteen cards scannable. Fixed columns
+     cost a part-filled last row and buy an aligned page. */
+  .mods { display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: .85rem; align-items: stretch; }
+  /* Two lines of description is the common case; holding the floor there stops
+     rows stepping up and down as counts change. */
+  .mods .card { min-height: 82px; }
+  /* Top-aligned, not centred: descriptions run one to three lines, and centring
+     each card's content against a row-stretched box left every title on its own
+     baseline. Aligning to the top gives each row one horizontal line to read
+     along, which is most of what makes fifteen cards scannable. */
+  .mods .card { flex-direction: row; align-items: flex-start; gap: .85rem;
     padding: 1rem 1.1rem; }
   .mods .card-icon { width: 38px; height: 38px; border-radius: 10px; }
   .mods .card-icon svg { width: 19px; height: 19px; }
   .mods .card-title { font-size: .9rem; margin-bottom: .1rem; }
   .mods .card-desc { font-size: .74rem; }
-  .mods-lbl { font-size: .74rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .09em; color: var(--muted); margin: 1.9rem 0 .8rem; }
+
+  /* ── Zones — the page reads as bands, not as one wall ────────────── */
+  /* Every block used to carry the same weight and the same 1.1rem gap, so the
+     hero, four analysis panels and a fifteen-card launcher ran together as one
+     undifferentiated mass. A labelled hairline every few blocks gives the eye
+     somewhere to stop and tells it what it is about to read. Presentation
+     only — no figure, link or metric changes. */
+  .zone { margin-top: 2.75rem; }
+  .zone-hd { display: flex; align-items: center; gap: .8rem; margin-bottom: 1rem; }
+  .zone-hd h2 {
+    font-size: .72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--muted); white-space: nowrap;
+  }
+  .zone-hd .zn-sub { font-size: .76rem; color: var(--muted); white-space: nowrap; }
+  /* The rule takes whatever width is left, so the label sits flush left and the
+     line always reaches the right edge at any viewport. */
+  .zone-hd::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Module groups ───────────────────────────────────────────────── */
+  /* The launcher is split by which pipeline a register belongs to (§1) rather
+     than being one auto-fit run of everything. The coloured tick is wayfinding
+     and nothing else: sell side brand-red, project chain navy, buy side
+     saffron, reference muted. These are identity tokens, never CHART_* — a
+     status colour must not be spent on decoration (§6). */
+  .mod-group + .mod-group { margin-top: 1.75rem; }
+  .mg-hd { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; }
+  .mg-bar {
+    width: 22px; height: 3px; border-radius: 2px;
+    background: var(--muted); flex-shrink: 0;
+  }
+  .mg-sell .mg-bar { background: var(--brand); }
+  .mg-proj .mg-bar { background: var(--navy); }
+  .mg-buy  .mg-bar { background: var(--saffron); }
+  .mg-hd h3 { font-size: .82rem; font-weight: 700; color: var(--text); }
+  .mg-hd .mg-note { font-size: .74rem; color: var(--muted); }
 
   /* ── Empty state ─────────────────────────────────────────────────── */
   .empty { text-align: center; padding: 2.6rem 1.5rem; }
@@ -581,13 +628,25 @@ DASH_STYLES = """
     text-align: center; margin: auto; max-width: 34ch; }
 
   /* ── Responsive ──────────────────────────────────────────────────── */
+  @media (max-width: 1080px) {
+    .mods { grid-template-columns: repeat(3, 1fr); }
+  }
   @media (max-width: 1000px) {
     .band { grid-template-columns: 1fr; }
     .cols, .cols-eq { grid-template-columns: 1fr; }
   }
+  @media (max-width: 780px) {
+    .mods { grid-template-columns: repeat(2, 1fr); }
+  }
   @media (max-width: 620px) {
     main.dash { padding: 1.5rem 1rem 3rem; }
+    .zone { margin-top: 2.1rem; }
+    .mod-group + .mod-group { margin-top: 1.4rem; }
     .kpis { grid-template-columns: 1fr; }
+    .mods { grid-template-columns: 1fr; }
+    /* The group note is context, not content — it doubles the header height on
+       a phone and the coloured tick already separates the groups. */
+    .mg-hd .mg-note { display: none; }
     .hero-fig .hf-val { font-size: 2.4rem; }
     .fn-row { grid-template-columns: 6.5rem 1fr 4.4rem; gap: .5rem; }
     .dash-head { align-items: flex-start; }
@@ -1213,6 +1272,11 @@ def _insight_html(m) -> str:
           </div>
         </section>
 
+        <div class="zone">
+          <div class="zone-hd">
+            <h2>Where the pipeline stands</h2>
+            <span class="zn-sub">live deals only</span>
+          </div>
         <section class="cols">
           <div class="panel">
             <div class="panel-hd">
@@ -1230,7 +1294,13 @@ def _insight_html(m) -> str:
             <div class="panel-bd">{_attention_html(m)}</div>
           </div>
         </section>
+        </div>
 
+        <div class="zone">
+          <div class="zone-hd">
+            <h2>What moved</h2>
+            <span class="zn-sub">recent activity</span>
+          </div>
         <section class="cols-eq">
           <div class="panel">
             <div class="panel-hd">
@@ -1250,7 +1320,8 @@ def _insight_html(m) -> str:
             </div>
             <div class="panel-bd">{_recent_html(m)}</div>
           </div>
-        </section>"""
+        </section>
+        </div>"""
 
 
 # ── Rendering — why this view does not call render_template_string() ──────────
@@ -1426,25 +1497,19 @@ def index():
 
         {_insight_html(m)}
 
-        <div class="mods-lbl">Modules</div>
-        <section class="mods">
+        <div class="zone">
+          <div class="zone-hd">
+            <h2>Modules</h2>
+            <span class="zn-sub">every register in the app</span>
+          </div>
 
-          <a href="{project_url}" class="card">
-            <div class="card-icon">{ICONS['project']}</div>
-            <div class="card-body">
-              <div class="card-title">Projects</div>
-              <div class="card-desc">{m['proj_total']} created · group BOQs</div>
-            </div>
-          </a>
-
-          <a href="{product_url}" class="card">
-            <div class="card-icon">{ICONS['product']}</div>
-            <div class="card-body">
-              <div class="card-title">Product Catalogue</div>
-              <div class="card-desc">{m['p_total']} items · {m['p_assembly']} assemblies
-                  · {std_count} standalone</div>
-            </div>
-          </a>
+        <section class="mod-group mg-sell">
+          <div class="mg-hd">
+            <span class="mg-bar"></span>
+            <h3>Sell side — the deal chain</h3>
+            <span class="mg-note">quotation &rarr; proforma &rarr; tax invoice</span>
+          </div>
+          <div class="mods">
 
           <a href="{quotation_url}" class="card">
             <div class="card-icon">{ICONS['quotation']}</div>
@@ -1471,11 +1536,22 @@ def index():
             </div>
           </a>
 
-          <a href="{spec_url}" class="card">
-            <div class="card-icon">{ICONS['spec']}</div>
+          </div>
+        </section>
+
+        <section class="mod-group mg-proj">
+          <div class="mg-hd">
+            <span class="mg-bar"></span>
+            <h3>Projects &amp; site billing</h3>
+            <span class="mg-note">schedules, interim claims and despatch</span>
+          </div>
+          <div class="mods">
+
+          <a href="{project_url}" class="card">
+            <div class="card-icon">{ICONS['project']}</div>
             <div class="card-body">
-              <div class="card-title">Spec Library</div>
-              <div class="card-desc">{m['spec_total']} clauses · what a BOQ line is written from</div>
+              <div class="card-title">Projects</div>
+              <div class="card-desc">{m['proj_total']} created · group BOQs</div>
             </div>
           </a>
 
@@ -1495,28 +1571,31 @@ def index():
             </div>
           </a>
 
+          <a href="{challan_url}" class="card">
+            <div class="card-icon">{ICONS['purchase']}</div>
+            <div class="card-body">
+              <div class="card-title">Delivery Challans</div>
+              <div class="card-desc">{m['dc_total']} raised · goods leaving the
+                  yard against a schedule, no rates and no tax</div>
+            </div>
+          </a>
+
+          </div>
+        </section>
+
+        <section class="mod-group mg-buy">
+          <div class="mg-hd">
+            <span class="mg-bar"></span>
+            <h3>Buy side — money out</h3>
+            <span class="mg-note">never linked to a proforma or a tax invoice</span>
+          </div>
+          <div class="mods">
+
           <a href="{purchase_url}" class="card">
             <div class="card-icon">{ICONS['purchase']}</div>
             <div class="card-body">
               <div class="card-title">Purchase Orders</div>
               <div class="card-desc">{m['po_total']} raised{f" · {rupees(m['po_committed'])} committed" if m['po_committed'] else " · what we buy, not what we sell"}</div>
-            </div>
-          </a>
-
-          <a href="{address_url}" class="card">
-            <div class="card-icon">{ICONS['address']}</div>
-            <div class="card-body">
-              <div class="card-title">Address Book</div>
-              <div class="card-desc">{m['a_total']} saved · feeds the Bill To and
-                  Ship To pickers</div>
-            </div>
-          </a>
-
-          <a href="{client_url}" class="card">
-            <div class="card-icon">{ICONS['users']}</div>
-            <div class="card-body">
-              <div class="card-title">Client Register</div>
-              <div class="card-desc">{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}</div>
             </div>
           </a>
 
@@ -1529,20 +1608,56 @@ def index():
             </div>
           </a>
 
-          <a href="{challan_url}" class="card">
-            <div class="card-icon">{ICONS['purchase']}</div>
-            <div class="card-body">
-              <div class="card-title">Delivery Challans</div>
-              <div class="card-desc">{m['dc_total']} raised · goods leaving the
-                  yard against a schedule, no rates and no tax</div>
-            </div>
-          </a>
-
           <a href="{charge_url}" class="card">
             <div class="card-icon">{ICONS['purchase']}</div>
             <div class="card-body">
               <div class="card-title">Employee & Misc Charges</div>
               <div class="card-desc">{m['ch_total']} entries · {rupees(m['ch_spend'])} spent</div>
+            </div>
+          </a>
+
+          </div>
+        </section>
+
+        <section class="mod-group mg-ref">
+          <div class="mg-hd">
+            <span class="mg-bar"></span>
+            <h3>Library &amp; records</h3>
+            <span class="mg-note">what the documents above are written from</span>
+          </div>
+          <div class="mods">
+
+          <a href="{product_url}" class="card">
+            <div class="card-icon">{ICONS['product']}</div>
+            <div class="card-body">
+              <div class="card-title">Product Catalogue</div>
+              <div class="card-desc">{m['p_total']} items · {m['p_assembly']} assemblies
+                  · {std_count} standalone</div>
+            </div>
+          </a>
+
+          <a href="{spec_url}" class="card">
+            <div class="card-icon">{ICONS['spec']}</div>
+            <div class="card-body">
+              <div class="card-title">Spec Library</div>
+              <div class="card-desc">{m['spec_total']} clauses · what a BOQ line is written from</div>
+            </div>
+          </a>
+
+          <a href="{client_url}" class="card">
+            <div class="card-icon">{ICONS['users']}</div>
+            <div class="card-body">
+              <div class="card-title">Client Register</div>
+              <div class="card-desc">{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}</div>
+            </div>
+          </a>
+
+          <a href="{address_url}" class="card">
+            <div class="card-icon">{ICONS['address']}</div>
+            <div class="card-body">
+              <div class="card-title">Address Book</div>
+              <div class="card-desc">{m['a_total']} saved · feeds the Bill To and
+                  Ship To pickers</div>
             </div>
           </a>
 
@@ -1554,7 +1669,10 @@ def index():
             </div>
           </a>
 
+          </div>
         </section>
+
+        </div>
 
         <footer>
           <p>{B.COMPANY_NAME} &nbsp;·&nbsp; {B.APP_SUBTITLE} &nbsp;·&nbsp; internal use</p>
