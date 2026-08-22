@@ -224,6 +224,9 @@ one automatic.
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
+Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
+Phase 2 and earlier. The §0 rule above applies to that file in full.
+
 ---
 
 ## 1. How we approach this work

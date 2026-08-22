@@ -114,7 +114,9 @@ heading and read the rest.
 | 5 | **[CLAUDE.md](CLAUDE.md)** | The three fast facts that stop you breaking a page before you have read anything | Everything else — it points at ABOUT.md |
 | 6 | **[PHASE4_RA_DESIGN.md](PHASE4_RA_DESIGN.md)** | The approved RA billing design and the **decision record** — what was settled on 2026-08-05, what was amended, and what was left open on purpose | Current state — that is STATE.md |
 | 7 | **[CLIENT_CHANGES.md](CLIENT_CHANGES.md)** | What the **client** asked for, one row per request, with its client-facing status; the standing approach those items are built against; the open questions we are waiting on them to answer | Gaps we found ourselves; the ordered queue; anything architectural |
-| 8 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
+| 8 | **[CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md)** | **Phase 3 scope only** — the 19 August 2026 meeting, as 3A / 3B / 3C with the build order and the invariants each item has to hold. Read it before touching anything about users, approvals, attachments, measurement, the merged RA or labour cost | Phase 2 and earlier — that is CLIENT_CHANGES.md; permission to build any of it |
+| 9 | **[SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md)** | What the client's own 18 source documents actually contain — structure, conventions and defects — and what that evidence does to DOMAIN.md's claims. Read it before asserting how the client's paperwork behaves; the documents themselves are gitignored | The domain model, the code facts, the work queue; every finding is OPEN and none is actioned |
+| 10 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
 
 ### The boundary that is easiest to get wrong
 

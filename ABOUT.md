@@ -85,6 +85,21 @@ Manage Employee and their Site
 > where the landmines are, and what is deliberately unfinished.
 > If you change architecture, a data shape, or a route — update this file in the
 > same commit.
+>
+> **This file does not own the whole document set.** The map is
+> [INTRODUCTION.md §4](INTRODUCTION.md). Two entries on it are recent and easy
+> to miss:
+>
+> - [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md) — **Phase 3 scope only** (3A /
+>   3B / 3C, 19 August 2026), covering users, permissions, approvals, file
+>   attachments, measurement, the merged RA and labour cost. Nothing in it is
+>   built, and the CLIENT_CHANGES.md §0 gate applies to it in full. It is a
+>   specification, not a work order. **§7 below is unaffected by it** — a gap
+>   is not closed by a specification nobody has built against.
+> - [SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md) — the evidence pass over the
+>   client's own 18 source documents: what their paperwork actually contains
+>   and where it contradicts DOMAIN.md. Every finding is OPEN and none has been
+>   actioned.
 tax on different parts is different
 1 Description
 ---

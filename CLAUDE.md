@@ -7,6 +7,20 @@ shapes, known gaps, and which files are stale. Do not infer structure from file
 names or from `integration.py` / `product_view_additions.py` (both are dead
 docs; ABOUT.md §8 explains why).
 
+Two documents are easy to miss because nothing else used to point at them.
+[INTRODUCTION.md §4](INTRODUCTION.md) holds the full document map; these two are
+the ones you are most likely to need and least likely to find:
+
+- [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md) — **Phase 3 scope** (3A / 3B / 3C)
+  from the 19 August 2026 meeting. Read it before touching users, approvals,
+  attachments, measurement, the merged RA or labour cost. It is a
+  specification, not permission to build: the CLIENT_CHANGES.md §0 gate applies
+  to it in full.
+- [SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md) — what the client's own 18 source
+  documents contain, and what that evidence does to DOMAIN.md. Read it before
+  asserting how their paperwork behaves. Every finding is OPEN; none is
+  actioned.
+
 Fast facts so you don't get it wrong before reading:
 
 - Flask app, **no `/templates` and no `/static`** — all HTML is f-strings passed
