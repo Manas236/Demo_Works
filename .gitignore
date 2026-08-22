@@ -34,3 +34,9 @@ backups/
 *.bak.*
 
 Quote.html
+# Client source documents — the batch Manas collected for the Phase 3 / §8
+# evidence pass: BOQs, RA bills, quotations, measurement sheets, a delivery
+# challan, an attendance sheet. Real rates and real customers' details; they
+# are read once for structure and never at runtime. SOURCE_DOCUMENTS.md is the
+# findings record and IS tracked — the documents themselves are not.
+client_docs/
