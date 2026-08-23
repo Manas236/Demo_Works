@@ -11,8 +11,9 @@
 > for exactly that reason. Update it when a step lands.
 
 **As of:** branch `antigravity-dev`, 16 August 2026.
-**Tests:** **838 passed / 1 skipped** in the **openpyxl-absent, workbooks-absent**
-configuration — measured on 16 August 2026 by running the suite in it. The other
+**Tests:** **923 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 23 August 2026 by running the suite in it. *(It read
+838 / 1, 16 August 2026, until then.)* The other
 two configurations (openpyxl present, with and without the client workbooks)
 were **not re-measured on this pass**: the box it ran on has neither openpyxl
 nor either workbook, and [ABOUT.md §1](ABOUT.md) marks their rows as derived

@@ -194,6 +194,76 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > [tests/test_boq_to_po.py](tests/test_boq_to_po.py) for what is actually
 > guaranteed.
 
+> ### ⚠ SUPERSEDED IN PART — 23 August 2026, by Manas Gawde — the draft PO half only
+>
+> **A new block, not an amendment.** The 16 August AUTHORISATION block above
+> stands exactly as written; nothing in it has been edited, reformatted or
+> re-scoped. This block supersedes **one half** of it and leaves the other half
+> standing, and the two halves must not be collapsed into each other.
+>
+> **What changed on the outside.** Quotation **MG/SF/2026-02** was **sent on
+> 21 August 2026 and has been read by the client.** Its **section 3**, titled
+> *"Built since MG/SF/2026-01 — at no charge"*, lists F.01 to F.05 as built,
+> included in the handover, and not charged for. **F.05 is the draft PO
+> conversion** — *"a draft purchase order becomes a purchase order without
+> re-entering a single line"*, which is `/purchase/from-draft/<id>`.
+>
+> #### The draft PO → PO route: the 16 August prohibition is SPENT
+>
+> The 16 August block forbade any agent recording that work as
+> delivered-no-charge or as covered by any quotation, and forbade any agent
+> raising it with the client. **It was written to protect an option to charge,
+> and that option has now been spent by the client-facing owner in the ordinary
+> way** — by telling the client, in writing, that the work is built, is in the
+> handover, and is not charged for.
+>
+> So for **`/purchase/from-draft/<id>` only**, the 16 August prohibition no
+> longer binds. That route may now be recorded as **delivered at no charge**,
+> because that is exactly what the client has been told. Recording anything else
+> would put this file in conflict with a commercial document the client is
+> holding — and the document he is holding wins.
+>
+> [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md)'s *"Already built, not in Phase 3"*
+> section states it that way, and is **correct**. It carries a pointer back to
+> this block.
+>
+> #### The BOQ → PO route: the 16 August prohibition STANDS, in full
+>
+> **`/purchase/from-boq/<id>` appears nowhere in MG/SF/2026-02.** It is not in
+> section 3, it is not in 3A, 3B or 3C, and there is no reference anywhere in
+> that quotation to a purchase order raised directly from a BOQ. **The client has
+> been told nothing about it.**
+>
+> It therefore remains exactly what the 16 August block says it is: **built,
+> unrequested, unpriced, and with no charge agreed by anybody.** Every sentence
+> of that block continues to bind for this route — no agent may record it as
+> chargeable, as delivered-no-charge, or as covered by any existing quotation,
+> and no agent may raise it with the client. That conversation is still Manas's
+> to have, and it has not been had.
+>
+> **The two routes were authorised in one block and are resolved separately on
+> purpose.** They shipped together, in one piece of work, on the same `boq_id` /
+> `project_id` / per-line `line_id` foundation — which is precisely what makes
+> them easy to collapse into one another, and precisely why collapsing them would
+> give away the only one of the two that is still worth anything.
+>
+> #### The scope of this supersession, stated so it cannot be stretched
+>
+> **This block supersedes the 16 August prohibition for one route and for no
+> other work.** It is not a general finding that a sent quotation spends every
+> prohibition in this file, and it is not a finding about section 3 as a whole.
+> **No agent may extend it** — not to the BOQ → PO route, not to items 8, 3, 2,
+> 4 and 5 (which are **chargeable** under MG/SF/2026-02 and are untouched by
+> this), and not to anything built later. A supersession is a decision the
+> client-facing owner takes and records, exactly as an override is; it is never
+> one an agent may take, infer, or extend.
+>
+> **The gate is not lifted and this is not a precedent.** MG/SF/2026-02 is
+> **valid until 28 August 2026** and was still **unsigned** when it was sent.
+> Section 3 disclosing work as already delivered at no charge does not sign the
+> rest of that quotation and does not authorise a single Phase 3 item;
+> [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md) stays gated in full.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as

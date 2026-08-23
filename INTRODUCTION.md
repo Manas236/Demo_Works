@@ -215,8 +215,13 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **838 passed / 1 skipped** on 16 August 2026, verified in the
-**openpyxl-absent, workbooks-absent** configuration by running the suite in it.
+The baseline is **923 passed / 1 skipped** on 23 August 2026, verified by
+running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(It read **838 passed / 1 skipped**, 16 August 2026, until 23 August — 85 tests
+stale. The configuration is spelled out in full here as well as in
+[ABOUT.md §1](ABOUT.md), because naming only half of it is how the figure went
+stale without anyone noticing.)*
 
 ⚠ **The other two configurations were not re-measured on that pass.** The box
 had neither openpyxl nor either client workbook, so the rows for *openpyxl

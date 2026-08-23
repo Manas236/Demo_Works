@@ -87,6 +87,27 @@ Reasons, all still binding:
 The client asked for "edit and delete in RA" without qualification. This narrowing is
 deliberate and must be explained to him rather than silently applied.
 
+**What is already built — a finding, recorded 23 August 2026. Not a commercial ruling.**
+The draft / issued / cancelled lifecycle shipped on 15 August 2026 under
+`CLIENT_CHANGES.md` item 3, and it brought **both** halves of what 3A.06 sells:
+
+| Half of 3A.06 | Route | Function | Gate | State today |
+|---|---|---|---|---|
+| Cancel-and-reissue an **issued** bill | `GET,POST /ra/cancel/<id>` | `ra.cancel_ra()` | `ra.can_cancel()` — allows draft **and** issued, refuses cancelled, refuses a bill carrying receipts | **built** |
+| **Edit** a **draft** bill | `GET,POST /ra/edit/<id>` | `ra.edit_ra()` | `ra.can_edit()` — refuses cancelled, refuses issued, refuses mid-chain via `claim_is_frozen()`; so it permits a **draft that is the latest bill on its BOQ** | **built** |
+| **Delete** a **draft** bill | `GET,POST /ra/delete/<id>` | `ra.delete_ra()` | `ra.can_delete()` — refuses receipted, cancelled, issued, and any bill that is not the highest `ra_no` | **built** |
+
+`ra_no` is never reused, so the consecutive-serial reason above is already held by
+construction rather than by the narrowing.
+
+⚠ **This is a fact about the code, not a decision about the money.** A6 is **not**
+marked delivered, is **not** removed from 3A, and its price is **not** changed by this
+note — those are the client-facing owner's to take, and 3A.06 as sold may still cover
+work this table does not show. The obvious candidate is the **latest-bill-only**
+restriction on both edit and delete: the client asked for "edit and delete in RA" without
+one, and a draft that is not the highest `ra_no` is refused today. What an agent may
+**not** do is build A6 from scratch without first reading these three routes.
+
 ---
 
 ## Phase 3B — users, access and approvals
@@ -294,6 +315,50 @@ rests on these:
 
 Note the project **entity** is built; the project **P&L view** (C6) is not.
 
+→ The Draft PO → PO bridge is **F.05** of MG/SF/2026-02 section 3, and recording it here
+as delivered-no-charge is authorised by the **23 August 2026 "SUPERSEDED IN PART"** block
+in [CLIENT_CHANGES.md](CLIENT_CHANGES.md) §0 — which spends the 16 August prohibition for
+**that route only**. The **BOQ → PO** route (`/purchase/from-boq/<id>`) is in no
+quotation, is deliberately **not** on the list above, and the 16 August prohibition
+stands for it in full. Do not add it here.
+
+---
+
+## Stated by the client, NOT in MG/SF/2026-02 — unpriced and untagged
+
+⚠ **Neither scope nor exclusion. These five have no home yet, and that is the whole
+point of this section.** Each was said by the client at the 19 August 2026 meeting, and
+each is absent from **both** this file's 3A / 3B / 3C tagging **and** the sent quotation.
+
+| # | What he said | Status |
+|---|---|---|
+| 1 | Director — **visual dashboard** | Not tagged. The phrase "visual dashboard" appears nowhere in MG/SF/2026-02. |
+| 2 | Operation Head — **visual dashboard** | Not tagged. Same absence. |
+| 3 | HR — **salary editing, inside employee details** | Not tagged. HR editing salary appears nowhere in MG/SF/2026-02. C4 covers an employee master carrying salary; it does not cover HR's right to edit it. |
+| 4 | Accountant — **overview of employees** | Not tagged. An Accountant employee overview appears nowhere in MG/SF/2026-02. |
+| 5 | Accountant — **manage employees and their site** | Not tagged. Appears nowhere in MG/SF/2026-02. B4 names the Accountant role; it does not give that role employee management. |
+
+**None of the five is inside the 3B or 3C price.** MG/SF/2026-02's scope-and-changes
+clause fixes prices to **tagged references only**, and not one of these carries a tag.
+Building any of them inside Phase 3 would be **unpaid work** — however natural it looks
+sitting next to the roles (B4) and the employee master (C4) that *are* tagged.
+
+**Dropping them silently is equally wrong.** He said them in a meeting, they are in his
+own requirements list, and he will expect them. They are recorded here precisely so that
+neither mistake happens by accident: they are not quietly built, and they are not quietly
+forgotten.
+
+**Items 1 and 2 need a client ruling before they can be priced at all.** A dashboard
+already exists in this software (`dashboard.py`). Whether "visual dashboard" meant *that
+dashboard, restricted by role* or *a new analytics view* is **not answerable from any
+document we hold**, and the two differ by an order of magnitude in cost. Ask him. Do not
+take the cheaper reading because it is cheaper, and do not take the dearer one because it
+is safer.
+
+**Not priced here, not built here, and not added to any phase.** Putting any of these
+five into 3A, 3B or 3C would be exactly the silent inclusion this section exists to
+prevent.
+
 ---
 
 ## Excluded
@@ -309,14 +374,53 @@ Note the project **entity** is built; the project **P&L view** (C6) is not.
 
 ## Open questions for the client
 
-1. Does the merged RA carry **one tax invoice number covering both bills**? Their paper
+1. ✅ **CLOSED — 23 August 2026. No longer a question for the client.**
+   ~~Does the merged RA carry **one tax invoice number covering both bills**? Their paper
    practice already runs Tax Invoice No and RA Bill No as separate series, which
-   suggests yes — but confirm before building C3.
+   suggests yes — but confirm before building C3.~~
+
+   **Answered by commitment rather than by the client.** MG/SF/2026-02 **3C.02** — sent
+   21 August 2026 and read by him — sells the merged RA as supply and installation bills
+   raised separately and then combined into one document carrying both sets of lines
+   **and one tax invoice number**, stated as delivered scope and not as a question.
+   Putting it to him now would be asking permission for something we have already sold
+   him. The C3 invariant above is unchanged and is now backed by a commercial commitment.
+
+   ⚠ **The problem underneath did not disappear — it moved.** It has stopped being a
+   client question and become a **build** question: BQ1 below.
 2. Is a payment ever received against a **merged document** rather than an individual
    bill? Current design says no.
 3. GST head and place of supply — required before go-live.
 4. Which is authoritative for labour cost in C6: attendance wages or the installation
    base rate?
+
+---
+
+## Open build questions — ours, not the client's
+
+⚠ **Do not put these to the client.** They are consequences of what has already been
+sold to him, and they are settled by a design pass here.
+
+### BQ1 — C3: one merged invoice number against "the RA bill is the tax invoice"
+
+[DOMAIN.md §4](DOMAIN.md) rules that an RA bill **is** a tax invoice, and §4.2 that its
+**Tax Invoice No. is its own statutory series** — the seller's serial across all work,
+counted independently of `ra_no` and never derived from it. 3C.02 now commits us to a
+merged document minting **one tax invoice number** across two source bills that each
+already carry one — a third serial raised over two already spent. The consecutiveness A6
+leans on ("GST requires consecutive invoice serials — you cannot edit a serial away", the
+stated reason an issued bill is cancelled and reissued rather than edited) has a hole in
+it until something decides which of the three numbers is the statutory invoice and what
+becomes of the other two.
+
+*One fact that changes the shape of the fix rather than removing it:* per
+[STATE.md §2.1](STATE.md) the tax invoice number is **not yet a generated series** —
+`tax_invoice_ref` is a typed field on the RA record. So the collision today is between a
+typed value and a minted one, and C3 would be the first thing in this app to mint one.
+
+**Recorded, not solved.** Solving it is a C3 design pass and it must happen **before** C3
+is built. Do not resolve it inside a build step, and do not resolve it by quietly having
+the merged document reuse one leg's number.
 
 ---
 

@@ -1,85 +1,5 @@
 # ABOUT — Samruddhi Fire QMS
 
-Raise Total Outstanding in client register
-
-Add edit and delete in RA
-
-PO Base Rate is to be editable
-
-Discount Column in Final PO
-
-Employee Management System c:\Users\manas\Downloads\Measurement_sheet3.pdf c:\Users\manas\Downloads\Measurement_sheet2.pdf c:\Users\manas\Downloads\ATTENDANCE_SHEET.xlsx c:\Users\manas\Downloads\Skyline.xlsx c:\Users\manas\Downloads\RD_fire.xlsx c:\Users\manas\Downloads\Bhaveshwar_Callista_roadpali.xlsx c:\Users\manas\Downloads\Measurement_Sheet_updated.xlsx c:\Users\manas\Downloads\Kalyan_Site.xlsx c:\Users\manas\Downloads\Mundra_Gujrat_Fire_fighting.xlsx c:\Users\manas\Downloads\BOQ_New_(Recovered).xls c:\Users\manas\Downloads\Abhilasha.xlsx c:\Users\manas\Downloads\Quotation_for_Ground+9th_Floor.xlsx c:\Users\manas\Downloads\Khargar_38th_Floors.xls c:\Users\manas\Downloads\DC-SF.xlsx c:\Users\manas\Downloads\Walkeshwar_Blank_BOQ_Fire_Hydrant_&_Sprinkler.xls c:\Users\manas\Downloads\New_Qoute.xlsx c:\Users\manas\Downloads\fire_e_fighting-Turbhe.xlsx c:\Users\manas\Downloads\BOQ_Kandivali.xlswith OT system baked in
-
-Loading and Unloading Charges(1 count) in Final PO
-
-Transportation charge(1 count) in Final PO
-
-2 Extra charge in Final PO
-
-RA (Join/Merge Supply and Installation)
-
-3 Approvals for charges(Director, Operation Head, HR) Ladder-Type Approval
-
-RA,TI,PO Approval by Operation Head & Director
-- Without Approval it cannot be printed or Screenshoted
-
-Attach Document(Compulsory) in Charge Section
-
-Employee Management System:
--Employee Details
--Salary + OT
-
-Attendence Management System:
-- Attendence(Presentee & Absentee)
-- Salary(0 or 1)(Based on Attendence)(Has to be filled Daily)
-- OT = Salary/8 x Hours
-- 1 Employee - 1 Site - 1 Day
-- (Presentation Table Format)Employee - Site - OT Time
-
-Add Feature Measurement in Project & Site Billing
-
-Order of working:
-BoQ -> DC -> RA-Supply
-BoQ -> Measurement -> RA-Installation
-
-Measurement:
-Will be raised through BoQ
-
-Roles:
-Director 1 & 2
-Operation Head
-HR
-Sales Manager (can be linked with Purchase)
-Purchase Manager (can be linked with Sales)
-Accountant
-
-
-
-Director:
-Admin Access + Visual Dashboard
-
-Operation Head:
-Admin Access + Visual Dashboard
-
-HR:
-Attendence & Employee Details
-Misc. Charges
-Salary Editing(in Employee Details)
-
-Sales Manager:
-All Document Acccess except HR information
-Add Charges (will require approval from HR)
-
-Purchase Manager: 
-All Document Acccess except HR information
-Add Charges (will require approval from HR)
-
-Accountant:
-All Document Acccess except HR information
-Add Charges (will require approval from HR)
-Overview of Employee
-Manage Employee and their Site
-
 > **Read this file at the start of every conversation before touching code.**
 > It is the project's context anchor: what this app is, how each page works,
 > where the landmines are, and what is deliberately unfinished.
@@ -171,7 +91,9 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 838 passed, 1 skipped without openpyxl; see below
+python -m pytest -q                     # 923 passed, 1 skipped — openpyxl ABSENT,
+                                        #   client workbooks ABSENT. See the table below;
+                                        #   a count without its configuration is not a count.
 python app.py                           # http://127.0.0.1:5000
 ```
 
@@ -184,25 +106,42 @@ is gitignored. **Supported: CPython 3.10 to 3.14**, last verified on 3.14.3
 two machines with different Pythons and nothing here pins interpreter behaviour.
 
 **The suite reports three different totals and none of them is wrong.** Two
-independent things move the number, and they are often confused for each other:
+independent things move the number, they are often confused for each other, and
+**only one of the three has ever actually been run:**
 
 | Environment | Result | Measured |
 |---|---|---|
-| openpyxl installed **and** both client workbooks present | **842 passed** *(derived — see below)* | 15 Aug 2026 + 95 |
-| openpyxl installed, workbooks absent (the usual fresh clone) | **839 passed, 3 skipped** *(derived — see below)* | 15 Aug 2026 + 95 |
-| openpyxl absent (a plain `pip install -r requirements.txt`) | **838 passed, 1 skipped** | **16 Aug 2026** |
+| openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
+| openpyxl installed, workbooks absent (the usual fresh clone) | ⚠ **unknown** *(was "839 passed, 3 skipped" — see below)* | never |
+| openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **923 passed, 1 skipped** | **23 Aug 2026** |
 
-⚠ **Only the third row was re-measured on 16 August 2026**, after the delivery
-challan. It was measured by running the suite in that configuration, and it is
-the only figure on this table you should rely on today. The first two rows are
-the 15 August measurements **plus the 95 tests that pass added**, and are
-therefore *derived* — precisely the arithmetic this note has always said not to
-do. They are marked rather than silently updated, because a number nobody has
-run is a claim and not a result. The box this pass ran on has no openpyxl and
-neither client workbook, so those two configurations could not be produced
-without installing a package into the interpreter — which `requirements.txt`'s
-pins exist to stop anyone doing casually. **If you are on a box that can
-produce either, run it and replace the derived figure with the measured one.**
+⚠ **Only the third row has ever been measured, and it was re-measured on
+23 August 2026.** The configuration is named in the row itself and not only in
+this paragraph, because a bare number with its configuration in the prose is
+exactly what went stale here: this row read **838 passed, 1 skipped** and
+**16 Aug 2026** until 23 August, by which point the real figure was 923 — 85
+tests out of date, and quoted in that stale form by both
+[INTRODUCTION.md §5.5](INTRODUCTION.md) and [STATE.md](STATE.md). All three were
+corrected in one pass on 23 August 2026. **If you move this number, move theirs.**
+
+⚠ **The first two rows have been withdrawn rather than re-derived.** They used
+to read 842 and 839, arrived at as "the 15 August measurement **plus the 95
+tests that pass added**" — the precise arithmetic this note has always said not
+to do. That arithmetic has now been overtaken twice over, so the derived figures
+are not merely unmeasured, they are wrong: whatever those two configurations
+report today, it is not 842 and not 839. **A number nobody has run is a claim,
+not a result**, so they are marked unknown. The box this pass ran on has no
+openpyxl and neither client workbook, and those two configurations cannot be
+produced without installing a package into the interpreter — which
+`requirements.txt`'s pins exist to stop anyone doing casually. **If you are on a
+box that can produce either, run it and put the measured figure in.**
+
+⚠ **A rising total is not evidence that anything got safer.**
+`tests/test_import_directions.py` is parametrised over modules and routes and
+collects **216 tests on its own** — nearly a quarter of the suite — so the total
+climbs whenever a module or a route is added, whether or not one line of new
+behaviour was tested. Read a jump in this number as "the app grew", and go and
+look at what actually covers the change.
 
 *The three totals move independently and a figure quoted without naming its
 configuration is not a figure — the row above it was reported as "607 to 630"
