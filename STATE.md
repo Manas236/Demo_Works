@@ -266,6 +266,24 @@ own; the 15 August block was left byte-intact.
 
 ---
 
+### 1.10 Project Structure (Pass A) · ✅ 16 August 2026
+
+*(Numbered **1.7** and sitting below §2.2 until 23 August 2026 — a second §1.7
+under a rule that had already closed §2, so §1 appeared to end at 1.9 and this
+section was invisible to anyone reading §1 in order. Renumbered to **1.10**, the
+next free number after §1.9, and moved into sequence. Content unchanged. The
+other §1.7 — client segregation, the draft PO and the shared printed sheet —
+keeps its number, and §3.3's `(§1.7)` reference points at that one and is
+correct as it stands.)*
+
+The project structural foundations have been built.
+- **Projects** are now top-level commercial engagements that group BOQs, Proformas, and Purchase Orders.
+- `project.py` handles the creation and editing of project metadata.
+- `projectview.py` provides the Project Detail Page, strictly enforcing the "no money" rule (no profit/loss logic).
+- BOQ revisions are handled correctly: attaching a BOQ to a project seamlessly attaches its entire revision chain.
+
+---
+
 ## 2. What comes next
 
 ### 2.1 The tax-invoice requirement — mostly shipped
@@ -305,12 +323,48 @@ Its parts, and where each landed:
 | CGST/SGST/IGST computation, and the Rounding Off line | `ra.py` — **its own, not `_tax_lines`** | ✅ shipped, per rate slab — gap 14 closed |
 | The tax block on the printed sheet | Step 4 | ✅ shipped — [DOMAIN.md §4.6](DOMAIN.md) |
 
-**Dead-Premise Cleanup Checklist — closed 15 August 2026**
+**Dead-Premise Cleanup Checklist — ~~closed 15 August 2026~~ REOPENED 23 August 2026**
+
+⚠ **It was not closed.** One row was ticked against a file that still asserted
+the premise; see that row for what was amended on 23 August 2026 and for the two
+statements deliberately left standing pending **BQ2**.
 
 The dead premise that "an RA bill is not a tax invoice":
 
 - [x] `ABOUT.md` — Module map description
-- [x] `PHASE4_RA_DESIGN.md` — Design document scope
+- [ ] `PHASE4_RA_DESIGN.md` — Design document scope. ⚠ **This was ticked on 15
+      August 2026 against a file that still asserted the premise, and it is
+      un-ticked here on 23 August 2026 rather than quietly re-ticked.** §5
+      carried the `[AMENDED 8 Aug 2026]` note while **§7's decision table,
+      directly below it, still answered "Is the RA bill a tax invoice? **No.**
+      Claim document only."** Four further statements rested on the same dead
+      premise: the §5 bullet header *"Tax — explicitly OUT of scope"*, the ⚠
+      instruction ordering ABOUT.md §5 to be corrected **back toward** the dead
+      premise, the *"roughly halves the module"* scope-reduction claim, and the
+      `❌ Rule 46 full tax invoice engine` prohibition row. **All five were
+      amended on 23 August 2026** — struck, not deleted, each carrying the same
+      `[AMENDED 8 Aug 2026]` marker and a pointer to §5 so the ruling reads as
+      one.
+
+      **It stays un-ticked because two statements were deliberately left
+      standing**, and a tick over a live dead-premise assertion is the exact
+      error this checklist already made once (see the `ra.py` `_tax_lines` row
+      below):
+
+      - **§2** — *"**If the RA bill is the tax invoice** (see §5, this is
+        unresolved and it matters), `ref` inherits Rule 46(b): unique within the
+        FY and **≤ 16 characters**"*.
+      - **§5's prohibition table** — *"❌ FY-unique *statutory* reference |
+        `ref` is our document number, **not a tax-invoice serial**; no
+        16-character cap"*.
+
+      The second is a dead-premise assertion in plain terms. Both were left
+      **because settling them means ruling on whether `ref` is a tax-invoice
+      serial**, which is not a documentation pass's call and which the 8 August
+      amendment makes arguable in a direction §5 was written before. It is
+      raised as **BQ2** in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md), where
+      BQ1 already depends on the answer. **This row may be ticked when BQ2 is
+      answered and those two statements are made to agree — and not before.**
 - [x] `boq.py` — Comment describing `PRINT_TAX`
 - [x] `store.py` — Comment on `ra_bills` dictionary
 - [x] **[ASSERTION]** `tests/test_ra_record.py` — inverted
@@ -335,15 +389,6 @@ names the file.*
 
 Both landed. What each carries is in [ABOUT.md §5](ABOUT.md) (`/ra`); step 3's
 certification entry UI was subsequently removed in full (§1.6).
----
-
-### 1.7 Project Structure (Pass A) · ✅ 16 August 2026
-
-The project structural foundations have been built.
-- **Projects** are now top-level commercial engagements that group BOQs, Proformas, and Purchase Orders.
-- `project.py` handles the creation and editing of project metadata.
-- `projectview.py` provides the Project Detail Page, strictly enforcing the "no money" rule (no profit/loss logic).
-- BOQ revisions are handled correctly: attaching a BOQ to a project seamlessly attaches its entire revision chain.
 
 ---
 
@@ -420,6 +465,39 @@ specimen company identity, the absence of a credit-note flow, e-invoicing.
 
 Read it before proposing a fix. What you are about to report is probably
 already there, with the reason it has not been done.
+
+---
+
+### 3.7 Documentation drift — known, not yet fixed
+
+**This is the backlog, and it exists so that no further documentation-only pass
+is needed.** Every line below is an inconsistency found during the stabilisation
+passes of 22–23 August 2026 and deliberately **not** fixed, because fixing it was
+outside that pass's scope or is a ruling nobody has taken. **Each one gets fixed
+by whoever next touches that file for a real reason** — not by a pass convened to
+fix them. If you are editing one of these files anyway, clear its rows and delete
+them from here; if you are not, leave them.
+
+Documentation stops being a workstream after this. The next pass writes code.
+
+**Blocked on a ruling — do not clear these opportunistically.** Rows 1 to 4 are
+one question, raised as **BQ2** in
+[CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md): *is `ref` a tax-invoice serial, and
+does it therefore inherit Rule 46(b)'s 16-character cap?* They contradict each
+other and cannot be reconciled by editing prose. **Answer BQ2, then fix all four
+together** — and un-tick nothing until they agree.
+
+| # | File · line | The drift |
+|---|---|---|
+| 1 | [PHASE4_RA_DESIGN.md:167](PHASE4_RA_DESIGN.md#L167) | *"`ref` inherits Rule 46(b): unique within the FY and **≤ 16 characters**"*, on a condition the 8 August amendment has since satisfied. **BQ2.** |
+| 2 | [PHASE4_RA_DESIGN.md:328](PHASE4_RA_DESIGN.md#L328) | *"`ref` is our document number, **not a tax-invoice serial**; no 16-character cap"* — the same file answering row 1 the other way, and still stating the dead premise. **BQ2.** Also the reason §2.1's cleanup checklist is un-ticked. |
+| 3 | [ra.py:216-218](ra.py#L216-L218) | Code comment: *"No 16-character cap. That is Rule 46(b)'s limit on a TAX INVOICE number, and **this document is not one**."* The dead premise, in code. `_REF_CAP = 64`. **BQ2.** |
+| 4 | [ra.py:845-846](ra.py#L845-L846) | `next_ref()`'s docstring: *"**No 16-character cap and no statutory meaning**: this is a claim document, not a tax invoice."* Second instance of row 3. **BQ2.** |
+| 5 | [INTRODUCTION.md:318-325](INTRODUCTION.md#L318) | §8, *"One rule in this codebase is now known to be wrong"*, still reads *"`ra.py` **currently asserts** … that an RA bill is not a tax invoice"* and *"it is **not yet implemented**"*. It was inverted on 15 August 2026. The whole section is stale and is one of the first things a new reader is told. |
+| 6 | [DOMAIN.md:370-376](DOMAIN.md#L370) | §4's opening prose still says *"The code **currently asserts** the opposite"* and cites `test_ra_does_not_pull_in_the_tax_machinery`, a test that no longer exists. Left standing on 23 August 2026 because a requirement's wording is not a status pass's to edit; the correction is the **STATUS — shipped** marker directly below it. |
+| 7 | [ABOUT.md:4568-4573](ABOUT.md#L4568) | Gap 15's first paragraph is stale: it says `/ra/print` hardcodes `seller_state = "Punjab (03)"` and a fallback GSTIN. Both literals are gone — [ra.py:3516-3517](ra.py#L3516-L3517) derives the GSTIN from `branding` and the State from the GSTIN's first two digits, and [tests/test_ra_seller_identity.py](tests/test_ra_seller_identity.py) fails if either returns. **The rest of gap 15 is still true and still open**: place of supply with its State code is absent, and the tax head is not derived. Fix the first paragraph only. |
+| 8 | [STATE.md:13](STATE.md#L13) | *"**As of:** branch `antigravity-dev`, 16 August 2026"* — this file now carries 23 August 2026 content in §2.1, §1.10 and this section. |
+| 9 | [DOMAIN.md](DOMAIN.md) §4.7 · [ra.py:3556](ra.py#L3556) | Not a doc-to-doc drift but a doc-to-code one, recorded because it is easy to misread as a bug: §4.7 says print order is its own concern, and `print_ra()` has no print-order rule at all — it emits stored claim order. **There is nothing to fix and nothing to harmonise.** An agent adding a print order is adding a feature, not correcting a defect. |
 
 ---
 

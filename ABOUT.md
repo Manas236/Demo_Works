@@ -91,9 +91,13 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 923 passed, 1 skipped — openpyxl ABSENT,
-                                        #   client workbooks ABSENT. See the table below;
-                                        #   a count without its configuration is not a count.
+python -m pytest -q                     # 924 passed, 3 skipped — this is what THESE
+                                        #   steps produce: openpyxl was installed three
+                                        #   lines up, client workbooks ABSENT. Row 2 below.
+                                        #   (It said "923 passed, 1 skipped — openpyxl
+                                        #   ABSENT" until 23 Aug 2026, quoting row 3 at the
+                                        #   foot of a sequence that installs openpyxl. Skip
+                                        #   line 91 and you get row 3 instead.)
 python app.py                           # http://127.0.0.1:5000
 ```
 
@@ -107,16 +111,47 @@ two machines with different Pythons and nothing here pins interpreter behaviour.
 
 **The suite reports three different totals and none of them is wrong.** Two
 independent things move the number, they are often confused for each other, and
-**only one of the three has ever actually been run:**
+**two of the three have now actually been run — including, at last, the
+supported one:**
 
-| Environment | Result | Measured |
-|---|---|---|
-| openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| openpyxl installed, workbooks absent (the usual fresh clone) | ⚠ **unknown** *(was "839 passed, 3 skipped" — see below)* | never |
-| openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **923 passed, 1 skipped** | **23 Aug 2026** |
+| # | Environment | Result | Measured |
+|---|---|---|---|
+| 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl`), both client workbooks **absent** | **924 passed, 3 skipped** | **23 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **923 passed, 1 skipped** | **23 Aug 2026** |
 
-⚠ **Only the third row has ever been measured, and it was re-measured on
-23 August 2026.** The configuration is named in the row itself and not only in
+⚠ **Row 2 is the configuration this repo says to run, and until 23 August 2026 it
+had never been run.** Every figure this document has ever carried came from row 3
+— a global interpreter with openpyxl absent, which is the configuration
+[INTRODUCTION.md §5.7](INTRODUCTION.md) and the cold-start block above both tell
+you **not** to use. It was measured for the first time on 23 August 2026 by
+following the cold-start block's own steps. **It passes**: no failures, no
+errors, and nothing in the documented sequence is broken.
+
+**Quote row 2 unless you have a reason to quote another.** Row 3 is kept — not
+demoted and not deleted — because it is the baseline every earlier pass reported
+against, and dropping it would make this pass's own before/after unreadable.
+**Two honest numbers beat one that hides which interpreter produced it.**
+
+**The 3-test gap between rows 2 and 3 is openpyxl, not the `.venv`.** Both ran on
+the same CPython 3.10.11 with both workbooks absent. Without openpyxl,
+`tests/test_fixtures.py`'s 4 tests are never collected and pytest prints
+`1 skipped` (row 3). With it, all 4 are collected: 1 passes and 3 skip
+individually via `conftest.require_fixture()` because the workbooks are absent
+(row 2). 923 + 1 = 924 passed, and 3 skipped rather than 1 — which is the
+two-mechanism distinction below, arrived at from a real run rather than from
+arithmetic. The `.venv` itself moved nothing observable, and that is a result
+worth having: the pins reproduce what the global interpreter was already doing.
+
+⚠ **Row 2 replaces a derived figure, and the derivation was wrong in the way this
+note has always warned about.** It read *"839 passed, 3 skipped"*. The skip count
+was right; the pass count was out by 85, because it was reached by adding tests
+to a total that had itself gone stale. **Row 1 is still unmeasured** and stays
+marked unknown — it needs both client workbooks, which are gitignored and absent
+here. If you are on a box that has them, run it and put the measured figure in.
+
+⚠ **Row 3 was re-measured on 23 August 2026, and row 2 measured for the first
+time on the same day.** The configuration is named in the row itself and not only in
 this paragraph, because a bare number with its configuration in the prose is
 exactly what went stale here: this row read **838 passed, 1 skipped** and
 **16 Aug 2026** until 23 August, by which point the real figure was 923 — 85
@@ -124,7 +159,8 @@ tests out of date, and quoted in that stale form by both
 [INTRODUCTION.md §5.5](INTRODUCTION.md) and [STATE.md](STATE.md). All three were
 corrected in one pass on 23 August 2026. **If you move this number, move theirs.**
 
-⚠ **The first two rows have been withdrawn rather than re-derived.** They used
+⚠ **Rows 1 and 2 were withdrawn rather than re-derived; row 2 has since been
+measured and row 1 has not.** They used
 to read 842 and 839, arrived at as "the 15 August measurement **plus the 95
 tests that pass added**" — the precise arithmetic this note has always said not
 to do. That arithmetic has now been overtaken twice over, so the derived figures

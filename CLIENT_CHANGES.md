@@ -909,6 +909,15 @@ inferred from the seeded data.
 
 ---
 
-*Last updated after the client meeting of 10 August 2026. When an item's status
-changes, change it here and in [STATE.md](STATE.md) — this file records the
-status, STATE.md orders the work.*
+*Section 2's change list is the client meeting of **10 August 2026**, and that
+is what it still records. **This file as a whole is later than that**: §0 has
+since taken dated blocks on **14, 15 and 16 August 2026** (three overrides and
+one authorisation) and a **SUPERSEDED IN PART** block on **23 August 2026** — so
+a reader who takes the 10 August date as the file's currency will miss every
+commercial decision taken since, which is most of them. **Last updated 23 August
+2026.** Phase 3 is a different meeting and a different file:
+[CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md), 19 August 2026.*
+
+*When an item's status changes, change it here and in [STATE.md](STATE.md) —
+this file records the status, STATE.md orders the work. **When a dated block is
+added to §0, update the date above in the same edit.***

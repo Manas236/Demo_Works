@@ -306,14 +306,33 @@ before wiring C5 into C6.
 
 ## Already built, not in Phase 3
 
-Delivered at no charge and listed in MG/SF/2026-02 §3. The Phase 3C foundation partly
-rests on these:
+Delivered at no charge and listed in MG/SF/2026-02 §3. **Section 3 lists FIVE items,
+F.01 to F.05, all stated to the client as built, included in the handover, and not
+charged for.** All five are listed below, each tagged with its F reference — this list
+was showing three of the five until 23 August 2026, and a list that is short by two is
+how work already given away gets quoted for a second time. The Phase 3C foundation
+partly rests on some of them:
 
-- Employee / miscellaneous charges module (`charge.py`, editable heads in `/settings`)
-- Project grouping / project entity
-- Draft PO → PO bridge
+| F | What MG/SF/2026-02 §3 says | Where the repo records it |
+|---|---|---|
+| **F.01** | Base rate hidden on print — base rate and escalation percentage removed from the printed BOQ | [CLIENT_CHANGES.md](CLIENT_CHANGES.md) **item 1**, *"✅ Delivered, no charge"*. `show_rate_breakup` is the single seam; `/boq/print` passes False, `/boq/view` passes True. Nothing was removed from storage. |
+| **F.02** | RA-1 from the BOQ — the first RA bill raised directly from the BOQ, for supply and for installation | [CLIENT_CHANGES.md](CLIENT_CHANGES.md) **item 6**, *"✅ Delivered, no charge"*. `+ RA · Supply` and `+ RA · Installation` on `/boq/view`, offered only on the tip of a revision chain. |
+| **F.03** | Charges module — site expenses, wages, travel, freight and other costs against a site, with editable charge heads | [CLIENT_CHANGES.md](CLIENT_CHANGES.md) **item 9**; `charge.py`, heads editable in `/settings`. [STATE.md](STATE.md) §1.9. |
+| **F.04** | Project grouping — BOQs grouped under a project | [CLIENT_CHANGES.md](CLIENT_CHANGES.md) **item 10**, *"🚧 Structure Built (Pass A)"*; `project.py` / `projectview.py`. [STATE.md](STATE.md) §1.10. |
+| **F.05** | Draft PO conversion — a draft PO becomes a PO without re-entering a line | [CLIENT_CHANGES.md](CLIENT_CHANGES.md) **item 4** and the **23 August 2026 SUPERSEDED IN PART** block in §0; `/purchase/from-draft/<id>`. |
 
 Note the project **entity** is built; the project **P&L view** (C6) is not.
+
+**F.01 and F.02 need no supersession block, and this is not the F.05 case repeating.**
+Both were **requested by the client**, both were already recorded in
+[CLIENT_CHANGES.md](CLIENT_CHANGES.md) as **Delivered — no charge** under §0's standing
+exemption for defect and reachability fixes against scope already sold under
+MG/SF/2026-01 — §0 names them, *"Items 1 and 6 are both"* — and **no §0 prohibition has
+ever attached to either.** There was no option to charge, so there is none to spend.
+F.05 needed a dated block only because the 16 August AUTHORISATION had expressly
+forbidden recording that route as delivered-no-charge; nothing comparable exists here.
+Listing F.01 and F.02 restates what this repo already said, in the file that was missing
+it.
 
 → The Draft PO → PO bridge is **F.05** of MG/SF/2026-02 section 3, and recording it here
 as delivered-no-charge is authorised by the **23 August 2026 "SUPERSEDED IN PART"** block
@@ -421,6 +440,41 @@ typed value and a minted one, and C3 would be the first thing in this app to min
 **Recorded, not solved.** Solving it is a C3 design pass and it must happen **before** C3
 is built. Do not resolve it inside a build step, and do not resolve it by quietly having
 the merged document reuse one leg's number.
+
+### BQ2 — does `ref` inherit Rule 46(b)'s 16-character cap? The repo says both
+
+[PHASE4_RA_DESIGN.md §2](PHASE4_RA_DESIGN.md) (line 167) says that **if** the RA bill is
+the tax invoice, `ref` inherits Rule 46(b) — *"unique within the FY and **≤ 16
+characters**, which `SF/RA/26-27/0004` satisfies at exactly 16"* — and calls the
+condition unresolved; §5's prohibition table (line 326) of the **same file** answers it
+already, *"`ref` is our document number, not a tax-invoice serial; **no 16-character
+cap**"*, and [ABOUT.md](ABOUT.md) says the same of the sibling series (lines 2529 and
+3103). The condition §2 hedged on is no longer open — the `[AMENDED 8 Aug 2026]` note in
+§5, now carried into §7 as well, rules that the RA bill **is** a tax invoice — so §2's
+antecedent is satisfied while §5's conclusion, written before that amendment, still
+denies the consequent. **The code sides with §5 and enforces nothing at 16:**
+`ra._next_ref()` passes `cap=_REF_CAP` = **64** ([ra.py:219](ra.py#L219),
+[ra.py:856](ra.py#L856)), where `invoice._next_ref()` passes `cap=16`
+([invoice.py:190](invoice.py#L190)) through the same `pipeline.fy_ref()` mechanism,
+whose docstring names Rule 46(b) as the reason the parameter exists
+([pipeline.py:196-201](pipeline.py#L196-L201)).
+
+**BQ1 depends on the answer.** Whatever 3C.02's merged document mints has to satisfy
+Rule 46(b) or it does not, and until this is settled the repo says both — so the shape of
+the series BQ1 has to design is undetermined before it starts. A 16-character budget is
+not a detail that can be retrofitted: `SF/RA/26-27/0004` is at exactly 16 with no room
+for a merge marker, so a merged serial that must fit inside the cap cannot be a decorated
+variant of a leg's number.
+
+⚠ **Not settled here, and deliberately.** This pass reports the contradiction and changes
+neither file's wording, because settling it is a ruling on whether `ref` is a statutory
+serial — a design decision, taken with the client-facing owner, in the same C3 pass that
+answers BQ1. **Answer BQ2 first: BQ1's answer is not stable without it.**
+[STATE.md](STATE.md) §2.1's Dead-Premise Cleanup Checklist is un-ticked against
+`PHASE4_RA_DESIGN.md` pending exactly this, and `ra.py`'s own comment at
+[ra.py:216-218](ra.py#L216-L218) — *"No 16-character cap. That is Rule 46(b)'s limit on a
+TAX INVOICE number, and **this document is not one**"* — still states the dead premise in
+code and must be corrected by whoever answers this.
 
 ---
 

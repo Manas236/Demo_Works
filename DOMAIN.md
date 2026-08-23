@@ -346,9 +346,23 @@ with nowhere to put it.
 
 ## 4. REQUIREMENT — the RA bill is a tax invoice
 
-> ⚠ **This is a requirement, not a description. None of it is implemented.**
-> Do not build it without an approved plan. It is queued in
-> [STATE.md](STATE.md).
+> ⚠ **This is a requirement, not a description — and it is now PART BUILT.**
+> The banner that stood here until 23 August 2026 read *"None of it is
+> implemented"*. That was true when §4 was written and had stopped being true by
+> 15 August 2026: most of this section shipped, and a reader taking the old
+> banner at face value would conclude the merged RA (`CLIENT_CHANGES-2.md`
+> 3C / **3C.02**) has a clean field to build on. It does not.
+>
+> **Every obligation below now carries a STATUS marker.** `shipped`, `part`, or
+> `not built`. The marker records only what the code does today; **the
+> requirement's own wording is unchanged and is not the marker's to move.**
+> Where the two disagree the code is right and this file is stale
+> ([INTRODUCTION.md §5.6](INTRODUCTION.md)) — report it, do not edit the code
+> to match.
+>
+> **Nothing marked `part` or `not built` may be built without an approved plan.**
+> The queue is [STATE.md](STATE.md) §2.1, which owns where each piece landed;
+> this file owns why each is required.
 
 The client's real as-submitted RA bill was obtained on **8 August 2026**. It is
 headed **"TAX INVOICE"**.
@@ -365,19 +379,37 @@ can actually fail.
 deleted.** A deleted assertion pins nothing; an inverted one keeps proving that
 the module is what it is supposed to be.
 
+**STATUS — shipped.** Inverted on 15 August 2026, not deleted, and split
+per-assertion exactly as §4.9 requires: `test_ra_carries_tax_invoice_record_shape`
+([tests/test_ra_record.py:188](tests/test_ra_record.py#L188)) now requires the
+tax block, and `test_ra_forbids_improper_tax_coupling`
+([tests/test_ra_record.py:198](tests/test_ra_record.py#L198)) still forbids
+`_tax_lines`, `invoice.py` and the e-invoicing tokens. `ra.py`'s docstring
+([ra.py:14-17](ra.py#L14-L17)) now states the opposite of what it stated when
+this section was written.
+
+⚠ **The three paragraphs immediately above this marker are written in the
+present tense and are now stale** — the code no longer "currently asserts the
+opposite". They are left exactly as they stand because a requirement's wording
+is not a status pass's to edit; the correction is this marker. Recorded in
+[STATE.md](STATE.md) §6 as backlog.
+
 ### 4.1 What their real document carries
 
-| | |
-|---|---|
-| Title | `TAX INVOICE` |
-| **Two number series** | a Tax Invoice No (`SF-3`) **and** an RA Bill No (`2`) |
-| Parties | buyer's and seller's GSTIN, and **both parties' state** |
-| Reference | the main contractor's **PO / Work Order number and date** |
-| Site | the project site name |
-| Per line | description, **HSN/SAC**, unit, quantity, rate, amount |
-| Tax | `CGST 9%` + `SGST 9%` on the total |
-| Adjustment | an explicit **Rounding Off** line |
-| Foot | bank details, stamp, Authorised Signatory |
+The third column is the **STATUS marker** described in the banner. It records
+what `/ra/print` does today; it does not alter what the row requires.
+
+| | | STATUS |
+|---|---|---|
+| Title | `TAX INVOICE` | **shipped** — [ra.py:3767](ra.py#L3767) |
+| **Two number series** | a Tax Invoice No (`SF-3`) **and** an RA Bill No (`2`) | **part** — both print side by side ([ra.py:3699-3702](ra.py#L3699-L3702)), but the Tax Invoice No. is a **typed** field, not a series. §4.2 |
+| Parties | buyer's and seller's GSTIN, and **both parties' state** | **part** — both GSTINs and the **seller's** state ship ([ra.py:3516-3520](ra.py#L3516-L3520), [ra.py:3706](ra.py#L3706), [ra.py:3713](ra.py#L3713)); the **buyer's state is not printed at all** |
+| Reference | the main contractor's **PO / Work Order number and date** | **shipped** — `po_ref` / `po_date`, [ra.py:3705](ra.py#L3705), [ra.py:3711](ra.py#L3711) |
+| Site | the project site name | **shipped** — [ra.py:3719-3722](ra.py#L3719-L3722) |
+| Per line | description, **HSN/SAC**, unit, quantity, rate, amount | **shipped** — [ra.py:3593-3603](ra.py#L3593-L3603). §4.4 |
+| Tax | `CGST 9%` + `SGST 9%` on the total | **part** — the arithmetic ships per rate slab (`ra.tax_slabs`, [ra.py:1067](ra.py#L1067)); which **head** applies does not. §4.3 |
+| Adjustment | an explicit **Rounding Off** line | **shipped** — `ra.compute_rounding_off` ([ra.py:991](ra.py#L991)), printed at [ra.py:3690-3691](ra.py#L3690-L3691). §4.5 |
+| Foot | bank details, stamp, Authorised Signatory | **shipped** — [ra.py:3778-3781](ra.py#L3778-L3781) |
 
 ### 4.2 The two number series are not the same counter
 
@@ -390,6 +422,22 @@ They count differently because they answer different questions: the RA number
 says which claim this is on this project; the tax invoice number is the seller's
 own statutory serial across all work.
 
+**STATUS — part, and this is the one to read before building 3C.02.** The two
+series print side by side and are printed as independent
+([ra.py:3695-3702](ra.py#L3695-L3702)). But **no tax-invoice series is minted
+anywhere in this app.** `tax_invoice_ref` is a plain typed form field
+([ra.py:2899](ra.py#L2899), [ra.py:2935](ra.py#L2935), stored;
+[ra.py:3064](ra.py#L3064), [ra.py:3091](ra.py#L3091), edited) with no counter
+behind it, and when the operator leaves it blank `print_ra()` falls back
+`tax_invoice_ref` → `ref` → **a string built from `ra_no`**
+([ra.py:3486](ra.py#L3486)). So on a bill with the field left empty the printed
+Tax Invoice No. **is** derived from `ra_no`, which is the one thing this section
+forbids. The prohibition holds for every bill where the field is filled and
+fails silently on every bill where it is not.
+
+⚠ **`CLIENT_CHANGES-2.md` BQ1 depends on this.** 3C.02 sells a merged document
+minting **one** tax invoice number; there is nothing minting a first one yet.
+
 ### 4.3 CGST + SGST versus IGST is a stored determination, not a hardcoded comparison
 
 India's GST splits into a central and a state component for a supply within one
@@ -400,6 +448,18 @@ state (CGST + SGST), and a single integrated tax across state lines (IGST).
 **UNCONFIRMED:** Whether that is the correct statutory treatment has not been verified. For works contracts on immovable property, the place of supply may instead follow the property's location, which would imply IGST. This is an open question for the client's accountant. Do not resolve it, do not encode either reading as law, and do not cite tax law as settled.
 
 **THEREFORE:** The tax head is a **stored per-bill determination with a default**, NOT a hardcoded comparison of any two fields (such as party states or site location). A wrong default must be fixable as data by the user, rather than requiring a code change and a database migration.
+
+**STATUS — part.** The *shape* is right and the *reach* is not. `tax_type` is
+stored on the bill ([ra.py:2955](ra.py#L2955), [ra.py:3080](ra.py#L3080)),
+defaults to `cgst_sgst`, and `ra._head_split()`
+([ra.py:1041-1065](ra.py#L1041-L1065)) splits a rate across whichever head the
+bill already carries and **decides nothing** — no comparison of party states or
+site location exists anywhere, which is what this section demands. What is
+missing is the user's half: **no form anywhere offers the choice**, so the
+default is not in practice "fixable as data by the user" and every bill is
+`cgst_sgst`. **Place of supply with its State code is absent from the document
+entirely.** Pending the client's CA — [ABOUT.md §7](ABOUT.md) gap 15. Do not
+encode a guess.
 
 *(Note: [ABOUT.md §5](ABOUT.md) documents a different derivation for the existing tax-invoice pipeline, which defaults to the ship-to state and then the source quotation's bill_state. The two pipelines are not required to agree, and this divergence is deliberate and unresolved rather than an oversight.)*
 
@@ -413,10 +473,23 @@ as `item_no` already is** (§2.2). Snapshotted, because the document is a record
 of what was sent: if the classification on the BOQ is later corrected, a bill
 already submitted must keep printing what it printed.
 
+**STATUS — shipped.** Stored per BOQ line as `supply_hsn` / `install_sac`
+([boq.py:518-521](boq.py#L518-L521)), and snapshotted onto the claim row as
+`hsn_sac` by leg, alongside `item_no` and never re-derived
+([ra.py:1246-1263](ra.py#L1246-L1263)). ⚠ The seeded codes are **placeholders
+assigned by category** — [ABOUT.md §5](ABOUT.md), the specification library.
+
 ### 4.5 Rounding off is an explicit line
 
 Their bill carries a **Rounding Off** row. It is a stated adjustment on the face
 of the document, not an incidental float artefact to be absorbed silently.
+
+**STATUS — shipped.** `ra.compute_rounding_off()`
+([ra.py:991-999](ra.py#L991-L999)) computes it to the nearest whole rupee and
+stores the delta; the row prints only when it is non-zero
+([ra.py:3690-3691](ra.py#L3690-L3691)). The identity
+`grand_total == net_payable + tax_amount + rounding_off` is stated and held at
+[ra.py:1155](ra.py#L1155).
 
 ### 4.6 The printed bill is sparse, but keeps its family structure
 
@@ -426,6 +499,13 @@ of the document, not an incidental float artefact to be absorbed silently.
 and no rate** (§2.2). The hierarchy survives into the document even though the
 parent is not itself billable — a reader must be able to see which specification
 a claimed size belongs to.
+
+**STATUS — shipped.** `print_ra()` iterates the **claim rows** only, so only
+claimed lines appear; the live BOQ is consulted for exactly one thing, the
+`parent_item_no` relation ([ra.py:3540-3552](ra.py#L3540-L3552)), and the header
+emits as a `.row-assembly` carrying no quantity and no rate, spanned rather than
+blank ([ra.py:3564-3581](ra.py#L3564-L3581)). The clause prints in full, never
+truncated.
 
 ### 4.7 Print order is not entry order — and these are two separate rules
 
@@ -442,6 +522,15 @@ makes a mis-claim visible.
 > "fixes the inconsistency" by forcing one onto the other will break whichever
 > it loses.
 
+**STATUS — not built, and the two are currently NOT harmonised only by
+accident.** The entry form's half ships: it renders every BOQ line in schedule
+order, exhausted ones greyed rather than hidden
+([ra.py:2156-2159](ra.py#L2156-L2159)). The print's half does not exist as a
+concern — `print_ra()` emits the stored claim rows in stored order
+([ra.py:3556](ra.py#L3556)), which is entry order, which is BOQ order. **There
+is no print-order rule in the code to break**, so an agent adding one is adding
+it, not fixing it. The prohibition above binds the day one is added.
+
 ### 4.8 Explicitly out of scope
 
 **IRN, e-invoice JSON generation and GSTR-1 filing are not in scope.**
@@ -449,6 +538,12 @@ makes a mis-claim visible.
 A printed GST invoice is not e-invoicing. E-invoicing means registering each
 invoice with a government portal over an API and printing the identifier and
 signed QR code it returns. **Do not build toward that API.**
+
+**STATUS — held, and enforced.** Absent by assertion, not merely by omission:
+`test_ra_forbids_improper_tax_coupling`
+([tests/test_ra_record.py:198](tests/test_ra_record.py#L198)) fails if the
+e-invoicing tokens appear in `ra.py`. The exclusion survived the 15 August
+inversion untouched, which is what §4.9 means by per-assertion.
 
 ### 4.9 What this does *not* unlock
 
@@ -466,6 +561,16 @@ That prohibition stands on its own reasons and survives unchanged:
 `ra.py` grows its own. Likewise, e-invoicing tokens stay asserted-absent per
 §4.8. **The inversion is per-assertion, not wholesale** — one test becomes
 several, and some of its current absences remain.
+
+**STATUS — held, and enforced.** `ra.py` grew its own tax block
+(`_declared_rate`, `_head_split`, `tax_slabs`, `compute_tax_totals` —
+[ra.py:1002-1220](ra.py#L1002-L1220)) and imports no `_tax_lines`; the
+prohibition is pinned by `test_ra_forbids_improper_tax_coupling`
+([tests/test_ra_record.py:198](tests/test_ra_record.py#L198)), which survived
+the inversion. `ra.py`'s own import comment was corrected on 15 August 2026 to
+state the three reasons above rather than the dead premise —
+[STATE.md](STATE.md) §2.1's cleanup checklist records that it had been ticked
+before it was true.
 
 ---
 

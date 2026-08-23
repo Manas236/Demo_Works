@@ -305,9 +305,11 @@ asserts it. So the reuse is real, not aspirational.
   columns that make it a running account rather than an invoice.
 - **Numbering.** `boq._next_ref()` gives the FY series; the per-BOQ `ra_no` is
   additional.
-- **Tax — [AMENDED] explicitly OUT of scope.** **An RA bill is a claim
-  document, not a tax invoice.** Decided and commercially scoped: the project
-  tax-invoice chain is a separate paid module later.
+- **Tax — ~~[AMENDED] explicitly OUT of scope.~~ [AMENDED 8 Aug 2026 — see the
+  note below.] Tax is IN scope for this module and has shipped.**
+  ~~**An RA bill is a claim document, not a tax invoice.**~~ Decided and
+  commercially scoped: the project tax-invoice chain is a separate paid module
+  later.
 
   > **[AMENDED 8 Aug 2026]** The first sentence is superseded: the
   > client's as-submitted RA bill is headed "Tax Invoice", so the RA
@@ -321,18 +323,31 @@ asserts it. So the reuse is real, not aspirational.
   | | |
   |---|---|
   | ❌ `quotation._tax_lines()` | do not import it |
-  | ❌ Rule 46 full tax invoice engine | per-line HSN/SAC is snapshotted per DOMAIN.md §4; no `place_of_supply`, no `pos_code` |
+  | ⚠ ~~❌ Rule 46 full tax invoice engine~~ **[AMENDED 8 Aug 2026 — see the note above.]** | Per-line HSN/SAC **is** snapshotted (DOMAIN.md §4.4) and the tax block is built. `place_of_supply` / `pos_code` are still absent — but as an **open gap pending the client's CA** ([ABOUT.md §7](ABOUT.md) gap 15), **not** as a standing prohibition. Do not add one on a guess; do not read this row as forbidding it forever. |
   | ❌ reverse-charge declaration | |
   | ❌ FY-unique *statutory* reference | `ref` is our document number, not a tax-invoice serial; no 16-character cap |
   | ❌ e-invoicing / IRN / signed QR | §7.9b does not apply to this module |
 
-  ⚠ **ABOUT.md §5 currently says "the liability falls due on the RA bill, which
+  ⚠ **[AMENDED 8 Aug 2026 — see the note above. WITHDRAWN 23 August 2026.]**
+  ~~**ABOUT.md §5 currently says "the liability falls due on the RA bill, which
   is the tax invoice."** That sentence is now wrong about this module and must
   be corrected in the same commit as the code — an RA bill states what is
-  claimed, and the tax invoice against it is a later, separate document.
+  claimed, and the tax invoice against it is a later, separate document.~~
 
-  This is the single largest scope reduction against the original proposal and
-  roughly halves the module.
+  **This instruction was the dead premise giving an order.** ABOUT.md §5 was
+  right the first time. It was changed on the strength of this paragraph and
+  then changed back: [ABOUT.md](ABOUT.md) `/boq` → *Numbering* now carries a
+  `[Corrected 8 Aug 2026]` note and a *(Superseded history)* line recording the
+  round trip. **Do not act on the struck text**, and do not "correct" ABOUT.md
+  §5 back toward it.
+
+  ~~This is the single largest scope reduction against the original proposal and
+  roughly halves the module.~~ **[AMENDED 8 Aug 2026 — see the note above.]**
+  **The reduction did not survive.** The tax block, the per-slab arithmetic, the
+  per-line HSN/SAC snapshot, the PO/WO reference and the Rounding Off line are
+  all built ([STATE.md](STATE.md) §2.1). What the commercial scoping still buys
+  is narrower and is stated in the note above: a separate project
+  proforma/tax-invoice chain remains a later chargeable module.
 
 ---
 
@@ -444,7 +459,7 @@ re-open them.
 | Tolerance on the over-claim block | **Hard block, no UI override.** `OVERCLAIM_TOLERANCE` defaults to `0.0`; applies to the **cumulative** claim only, never per bill. §6.1 |
 | RA rate divergence from the approved BOQ rate | **Warn at entry, never block.** Stored on the claim row. §0.3 |
 | Deductions | **In the record from day one**, empty in Phase 1, with the arithmetic and the print format already accounting for them. §6.3 |
-| Is the RA bill a tax invoice? | **No.** Claim document only. No Rule 46, no place of supply, no e-invoicing, no `_tax_lines()`. §5 |
+| Is the RA bill a tax invoice? | **[AMENDED 8 Aug 2026 — see §5.]** ~~**No.** Claim document only.~~ **Yes.** The client's as-submitted RA bill is headed *Tax Invoice*, so the bill itself carries the tax block — [DOMAIN.md §4](DOMAIN.md). This row and §5's `[AMENDED 8 Aug 2026]` note are **one ruling**, not two; it was left answering "No" here until 23 August 2026 while §5 directly above it said the opposite. **What is NOT amended:** `_tax_lines()` stays forbidden (DOMAIN.md §4.9), e-invoicing / IRN stay out of scope (§4.8), and place of supply is still absent — but as an **open gap pending the client's CA** ([ABOUT.md §7](ABOUT.md) gap 15, DOMAIN.md §4.3), not as a decision that it must never exist. |
 | `#VALUE!` on repeated header bands | **Out of scope.** Phase 3 import notes. §0.2 |
 
 ### Still open, deliberately
