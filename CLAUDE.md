@@ -34,3 +34,7 @@ Fast facts so you don't get it wrong before reading:
 
 When you change architecture, a data shape, or a route — update ABOUT.md in the
 same commit.
+
+Any pass that changes the build state of a Phase 3 item must update
+[PROGRESS.md](PROGRESS.md) in the same commit, header block included.
+PROGRESS.md is regenerated from code, never edited to match a plan.

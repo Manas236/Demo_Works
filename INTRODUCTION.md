@@ -117,6 +117,7 @@ heading and read the rest.
 | 8 | **[CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md)** | **Phase 3 scope only** — the 19 August 2026 meeting, as 3A / 3B / 3C with the build order and the invariants each item has to hold. Read it before touching anything about users, approvals, attachments, measurement, the merged RA or labour cost | Phase 2 and earlier — that is CLIENT_CHANGES.md; permission to build any of it |
 | 9 | **[SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md)** | What the client's own 18 source documents actually contain — structure, conventions and defects — and what that evidence does to DOMAIN.md's claims. Read it before asserting how the client's paperwork behaves; the documents themselves are gitignored | The domain model, the code facts, the work queue; every finding is OPEN and none is actioned |
 | 10 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
+| 11 | **[PROGRESS.md](PROGRESS.md)** | **Phase 3 build status**, one row per CLIENT_CHANGES-2.md item — BUILT / PARTIAL / NOT STARTED / BLOCKED, each with the `file:line`, route or test name it was established from, plus the blockers and the code-vs-docs drift found while establishing them. Regenerated from code; a pass that changes a Phase 3 item's build state updates it in the same commit | What the items *are* — that is CLIENT_CHANGES-2.md; permission to build any of them; anything about Phase 2 or Phase 4 |
 
 ### The boundary that is easiest to get wrong
 
