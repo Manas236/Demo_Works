@@ -385,14 +385,11 @@ def _json_for_script(obj) -> str:
       every `json.dumps(picker_payload())` in the app. They are untouched here
       because the quotation chain is live — recorded in ABOUT.md §7.
     """
-    # NOTE the doubled backslashes. The replacement must be the SIX characters
-    # backslash-u-0-0-3-c, not the character U+003C. A single backslash here
-    # compiles to "<" and the replace becomes a silent no-op — which is exactly
-    # what it was on the first attempt at this fix.
-    return (json.dumps(obj)
-            .replace("<", "\\u003c")
-            .replace(">", "\\u003e")
-            .replace("&", "\\u0026"))
+    # The body moved to `pipeline.json_for_script()` when `quotation.py` needed
+    # the same fix and could not import this module (ABOUT.md §2b: the arrow
+    # runs boq -> quotation). Byte-for-byte the same three replacements; this
+    # name is kept because comments here and ABOUT.md §7 gap 9e cite it.
+    return P.json_for_script(obj)
 
 
 def _sel_keep(name: str, options, default: str, current=None) -> str:
@@ -1751,7 +1748,7 @@ def list_boqs():
     alert_html = ""
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
     query = (request.args.get("q") or "").strip().lower()
     rows  = []
@@ -1976,8 +1973,8 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
         notes_html = (f'<div class="tnc-section"><div class="tnc-title">Notes</div>'
                       f'<div style="white-space:pre-wrap;">{P.esc(boq.get("notes"))}</div></div>')
 
-    comp_br   = boq.get("company_branch") or B.COMPANY_NAME
-    signatory = boq.get("auth_signatory") or B.COMPANY_SIGNATORY
+    comp_br   = P.esc(boq.get("company_branch")) or P.esc(B.COMPANY_NAME)
+    signatory = P.esc(boq.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
     return f"""
 <div class="doc-outer boq-outer">
@@ -1988,8 +1985,8 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
       <div class="lh">
         <div>
           <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-          <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
-          {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
+          <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
+          {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
         </div>
         <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
       </div>
@@ -1998,13 +1995,13 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
       <div class="lh-contact">
         Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
         Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
-        {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
+        {f'<span class="sep">|</span>Web: {P.esc(B.COMPANY_WEB)}' if B.COMPANY_WEB else ''}
       </div>
     </td></tr></thead>
 
     <tfoot><tr><td>
       <div class="lh-foot">
-        {B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; BOQ {P.esc(boq.get('ref'))}
+        {P.esc(B.COMPANY_LEGAL or B.COMPANY_NAME)} &middot; BOQ {P.esc(boq.get('ref'))}
         &middot; basic value, taxes extra
       </div>
     </td></tr></tfoot>
@@ -2116,7 +2113,7 @@ def view_boq(id: str):
     alert_html = ""
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
     # Read ONCE, and both controls below branch on it — so this page cannot
     # offer to revise a record it refuses to bill, or the other way round.
@@ -2229,7 +2226,7 @@ def view_boq(id: str):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title(P.esc(boq.get('ref')) + " BOQ")}</title>
+  <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
   {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
 </head>
@@ -2290,7 +2287,7 @@ def print_boq(id: str):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title(P.esc(boq.get('ref')) + " BOQ")}</title>
+  <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
   {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
   <style>
@@ -3994,7 +3991,7 @@ def create_boq():
         <div class="form-group">
           <label for="auth_signatory">Authorised Signatory</label>
           <input type="text" id="auth_signatory" name="auth_signatory" value="{_v('auth_signatory')}"
-                 placeholder="{B.COMPANY_SIGNATORY}"/>
+                 placeholder="{P.esc(B.COMPANY_SIGNATORY)}"/>
         </div>
       </div>
     </div>

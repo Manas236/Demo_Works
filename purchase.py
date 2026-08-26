@@ -397,7 +397,7 @@ def _alert(msg: str, msg_type: str) -> str:
     if not msg:
         return ""
     icon = "&#10003;" if msg_type == "success" else "&#10007;"
-    return f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+    return f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
 
 # =============================================================================
@@ -2145,7 +2145,7 @@ def view_purchase(id: str):
         _meta("Required By",      P.esc(po.get("delivery_date"))) +
         _meta("Dispatch Through", P.esc(po.get("dispatch_through"))) +
         _meta("Incoterms",        P.esc(po.get("incoterms"))) +
-        _meta("Our GSTIN",        B.COMPANY_GSTIN)
+        _meta("Our GSTIN",        P.esc(B.COMPANY_GSTIN))
     )
 
     # ── The vendor block. This is the "To" on a PO — NOT a customer. ───────
@@ -2207,7 +2207,7 @@ def view_purchase(id: str):
                      f'{P.esc(po["notes"])}</div>')
 
     comp_br   = P.esc(po.get("company_branch")) or B.COMPANY_NAME
-    signatory = P.esc(po.get("auth_signatory")) or B.COMPANY_SIGNATORY
+    signatory = P.esc(po.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
     # ── Screen-only panel: lifecycle + audit trail ────────────────────────
     status_sel = "".join(

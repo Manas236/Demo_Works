@@ -355,7 +355,7 @@ def _alert(msg: str, msg_type: str) -> str:
     if not msg:
         return ""
     icon = "&#10003;" if msg_type == "success" else "&#10007;"
-    return f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+    return f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
 
 # =============================================================================
@@ -1197,7 +1197,7 @@ def view_invoice(id: str):
     )
 
     comp_br   = P.esc(ti.get("company_branch")) or B.COMPANY_NAME
-    signatory = P.esc(ti.get("auth_signatory")) or B.COMPANY_SIGNATORY
+    signatory = P.esc(ti.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
     # ── One complete sheet per copy ───────────────────────────────────────
     def _sheet(copy_key: str) -> str:

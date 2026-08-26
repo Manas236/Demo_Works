@@ -2327,7 +2327,7 @@ def _alert(msg: str, kind: str = "error") -> str:
     That makes this the one choke point, and it is why no caller may pass HTML
     through it. `_flash()` passes the raw query parameter for the same reason.
     """
-    return f'<div class="alert {kind}">{_esc(msg)}</div>' if msg else ""
+    return f'<div class="alert {_esc(kind)}">{_esc(msg)}</div>' if msg else ""
 
 
 def _flash() -> str:

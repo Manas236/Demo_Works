@@ -166,11 +166,17 @@ DOCSHEET_STYLES = f"""
 # =============================================================================
 
 def _contact_bit(on: bool, label: str, value: str) -> str:
-    """One optional `| Label: value` fragment of the letterhead contact line."""
+    """
+    One optional `| Label: value` fragment of the letterhead contact line.
+
+    `value` is escaped: all three callers pass a `/settings` field
+    (`COMPANY_WEB`, `COMPANY_GSTIN`, `COMPANY_BRANCHES`), which is user text
+    under Phase 3B's threat model. `label` is a literal at every call site.
+    """
     if not on:
         return ""
     return "\n      {}".format(
-        f'<span class="sep">|</span>{label}: {value}' if value else "")
+        f'<span class="sep">|</span>{label}: {P.esc(value)}' if value else "")
 
 
 def letterhead(show_web: bool = True, show_gstin: bool = True,
@@ -212,8 +218,8 @@ def letterhead(show_web: bool = True, show_gstin: bool = True,
     <div class="lh">
       <div>
         <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
-        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
+        <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
+        {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
       </div>
       <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
     </div>
@@ -237,7 +243,11 @@ def foot_strip(text: str = "") -> str:
     schedule's reference here instead, which is why this takes a string rather
     than being baked in.
     """
-    body = text or f"{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}"
+    # `text` arrives escaped from its one caller (boq.py prints the schedule's
+    # reference here); only the house fallback is escaped, so nothing is
+    # escaped twice. `&middot;` is the house separator and stays outside.
+    body = text or (f"{P.esc(B.COMPANY_LEGAL or B.COMPANY_NAME)} &middot; "
+                    f"{P.esc(B.COMPANY_TAGLINE)}")
     return f"""  <tfoot><tr><td>
     <div class="lh-foot">{body}</div>
   </td></tr></tfoot>"""
@@ -467,8 +477,12 @@ def sig_block(branch: str = "", signatory: str = "",
     the statutory pair, so it **defaults to `None` and emits the bytes it
     always did**; the goldens prove that.
     """
+    # `branch` and `signatory` arrive escaped from the caller (the docstring
+    # above says so, and every caller does it), so only the fallbacks are
+    # escaped here. `COMPANY_SIGNATORY` is a `/settings` field and is therefore
+    # user text; `COMPANY_NAME` deliberately is not (branding.py §1c).
     comp = branch or B.COMPANY_NAME
-    who = signatory or B.COMPANY_SIGNATORY
+    who = signatory or P.esc(B.COMPANY_SIGNATORY)
     note = ('\n  <div class="sig-note">This is a Computer Generated Document, '
             'no signature required</div>') if computer_generated else ""
     left = left_html if left_html is not None else f"""<div class="sig-kv">

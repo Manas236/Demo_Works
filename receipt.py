@@ -311,7 +311,7 @@ def _shell(title: str, body: str) -> str:
 
 def _alert(msg: str, kind: str = "error") -> str:
     """A banner. **Escapes its own message** — every caller passes plain text."""
-    return f'<div class="alert {kind}">{_esc(msg)}</div>' if msg else ""
+    return f'<div class="alert {_esc(kind)}">{_esc(msg)}</div>' if msg else ""
 
 
 def _flash() -> str:

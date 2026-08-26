@@ -23,6 +23,7 @@ separate pipeline and do not belong in this module.
 """
 
 import html
+import json
 from datetime import date, datetime
 
 # =============================================================================
@@ -211,6 +212,36 @@ def esc(v) -> str:
 
 
 _esc = esc  # internal shorthand used throughout this module
+
+
+def json_for_script(obj) -> str:
+    """
+    JSON safe to embed inside a `<script>` block.
+
+    `json.dumps` does not escape `<`, so a stored value containing the seven
+    characters `</script>` CLOSES the script element early and every byte after
+    it is parsed as HTML. That is script injection through any field a user is
+    invited to type into — ABOUT.md §7 gap 9e.
+
+    `<`, `>` and `&` are ordinary JSON string escapes: the browser decodes them
+    back to the original characters, so nothing about the data changes, only
+    its spelling on the wire. `ensure_ascii` (on by default) has already
+    escaped U+2028/U+2029, the other pair that terminates a JS line.
+
+    This module imports nothing from the app, which is why the helper lives
+    here: `boq.py` needed it first and `quotation.py` needs it now, and
+    `quotation.py` may not import `boq.py` (the arrow runs the other way —
+    ABOUT.md §2b). `boq._json_for_script()` delegates here and keeps its name,
+    because comments and ABOUT.md §7 gap 9e cite it.
+
+    ⚠ NOTE the doubled backslashes. The replacement must be the SIX characters
+      backslash-u-0-0-3-c, not the character U+003C. A single backslash here
+      compiles to `<` and the replace becomes a silent no-op.
+    """
+    return (json.dumps(obj)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026"))
 
 
 # =============================================================================

@@ -10,12 +10,39 @@ Routes
   GET  /quotation/create      — full quotation form (CRM-style)
   POST /quotation/create      — validate → build line_items → save → redirect to view
   GET  /quotation/view/<id>   — rendered quotation document
+
+────────────────────────────────────────────────────────────────────────────
+ESCAPING  (26 August 2026)
+────────────────────────────────────────────────────────────────────────────
+This module escaped in a handful of places and not in the rest, and rendered
+its three pages through `render_template_string()`. Both are closed here.
+The pass was deliberately narrow: values are escaped, `_page()` replaces the
+second Jinja parse, `P.json_for_script()` replaces the two bare `json.dumps`
+embeds, and **nothing else was touched** — no refactor, no renaming, no new
+behaviour. INTRODUCTION.md §7 freezes this file against refactor and feature
+work; CLIENT_CHANGES-2.md's "Security items promoted by this phase" names this
+exact defect as a narrow security fix the freeze permits, precedent `9d060ee`.
+
+Why it stopped being cosmetic: Phase 3B put sessions in front of every page,
+so a stored `<script>` in a customer name runs in the reader's session, and
+`{{ config['SECRET_KEY'] }}` in one printed the signing key on `/quotation/` —
+which is session forgery, not defacement.
+
+What is deliberately NOT escaped: the style constants, `_nav()`,
+`B.HEAD_ICON`, the markup this module builds itself (`_meta`, the option
+lists, `P.stage_badge`, `P.po_cell`, `P.history_html`, the tile and filter
+blocks), and every money or quantity format — `_inr()`, `_fmt_qty()` and
+`{...:,.0f}` — see ABOUT.md §9.
+
+⚠ `_meta()` is NOT escaped and must stay that way: every one of its ~40
+callers across six modules pre-escapes what it passes, and escaping here as
+well would print `&amp;` for a `&` in a reference.
 """
 
 import json
 import uuid
 from datetime import date as _date
-from flask import Blueprint, render_template_string, request, redirect, url_for
+from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
@@ -243,6 +270,25 @@ def _inr(v: float, dec: int = 2) -> str:
     return ("-" + out) if neg else out
 
 
+def _page(html: str) -> str:
+    """
+    A finished page. Deliberately **not** Jinja-rendered.
+
+    Each of the three views here used to end `render_template_string(…)` on a
+    string that was already fully interpolated. Nothing is passed as Jinja
+    context, so that second parse bought nothing — but it executed any
+    `{{ … }}` that had arrived from user input, and `P.esc` escapes
+    `< > & " '` and deliberately not braces. A customer name reading
+    `{{ config['SECRET_KEY'] }}` printed this application's signing key on
+    `/quotation/`. ABOUT.md §7 gap 9d; the same one-liner already fixed
+    `spec.py`, `boq.py`, `proforma.py`, `invoice.py`, `purchase.py`,
+    `address.py`, `settings.py`, `dashboard.py` and now `product.py`.
+
+    Flask returns any `str` a view returns, so this is the whole of the fix.
+    """
+    return html
+
+
 def _meta(label: str, val: str) -> str:
     """
     One label/value pair in the document header.
@@ -281,7 +327,10 @@ def _product_catalog_json() -> str:
             "hsn":      p.get("hsn", ""),
             "children": resolved_children,
         }
-    return json.dumps(catalog)
+    # NOT a bare json.dumps: `json.dumps` does not escape `<`, so a product
+    # named `…</script>…` would close the block this is embedded in and every
+    # byte after it would parse as HTML. ABOUT.md §7 gap 9e.
+    return P.json_for_script(catalog)
 
 
 def _process_selections(data: list) -> list:
@@ -904,7 +953,7 @@ def list_quotations():
     alert_html = ""
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {msg}</div>'
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
     # ── Pipeline summary + filtering (all logic lives in pipeline.py) ───
     summary   = P.summarize(quotations)
@@ -998,9 +1047,9 @@ def list_quotations():
             n_root   = sum(1 for r in q["line_items"] if r["depth"] == 0)
             rows_html += f"""
             <tr>
-              <td class="td-ref">{q['ref']}</td>
-              <td class="td-muted">{q['date']}</td>
-              <td class="td-cust">{customer}</td>
+              <td class="td-ref">{P.esc(q['ref'])}</td>
+              <td class="td-muted">{P.esc(q['date'])}</td>
+              <td class="td-cust">{P.esc(customer)}</td>
               <td>{P.stage_badge(P.stage_of(q))}</td>
               <td class="col-h">{P.po_cell(q)}</td>
               <td class="td-muted col-h">{n_root} line{"s" if n_root!=1 else ""}</td>
@@ -1057,7 +1106,7 @@ def list_quotations():
       {table_html}
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · quotation register</p></footer>
     </main></body></html>"""
-    return render_template_string(template)
+    return _page(template)          # NOT render_template_string — see _page()
 
 
 # ── Dropdown option lists ──────────────────────────────────────────────────────
@@ -1259,36 +1308,40 @@ def create_quotation():
 
     # ── GET / re-render with error ─────────────────────────────────────
     list_url     = url_for("quotation.list_quotations")
-    error_html   = f'<div class="alert alert-error">&#10007; {error}</div>' if error else ""
+    error_html   = f'<div class="alert alert-error">&#10007; {P.esc(error)}</div>' if error else ""
     today_str    = str(_date.today())
     catalog_json = _product_catalog_json()
 
     prod_opts = '<option value="">— select product —</option>'
     for pid, p in products.items():
         tag       = p.get("type", "standalone")[:3].upper()
-        safe_name = p["name"].replace('"', '&quot;')
-        safe_pno  = p["part_no"].replace('"', '&quot;')
+        # These two used to be `.replace('"', '&quot;')`, which is a quote-only
+        # half-escape: it kept the attribute from breaking but left `<` and `>`
+        # to reach the option TEXT raw. P.esc does both.
+        safe_name = P.esc(p["name"])
+        safe_pno  = P.esc(p["part_no"])
         prod_opts += (
-            f'<option value="{pid}"'
+            f'<option value="{P.esc(pid)}"'
             f' data-name="{safe_name}"'
             f' data-partno="{safe_pno}"'
-            f' data-type="{p.get("type","standalone")}"'
+            f' data-type="{P.esc(p.get("type","standalone"))}"'
             f' data-price="{p["base_price"]}">'
-            f'[{tag}] {p["name"]} ({p["part_no"]})</option>'
+            f'[{P.esc(tag)}] {safe_name} ({safe_pno})</option>'
         )
 
     comp_opts = '<option value="">— select component —</option>'
     for pid, p in products.items():
         tag       = p.get("type", "standalone")[:3].upper()
-        safe_name = p["name"].replace('"', '&quot;')
-        safe_pno  = p["part_no"].replace('"', '&quot;')
+        # Same half-escape as the picker above, closed the same way.
+        safe_name = P.esc(p["name"])
+        safe_pno  = P.esc(p["part_no"])
         comp_opts += (
-            f'<option value="{pid}"'
+            f'<option value="{P.esc(pid)}"'
             f' data-name="{safe_name}"'
             f' data-partno="{safe_pno}"'
             f' data-price="{p["base_price"]}"'
-            f' data-unit="{p["unit"]}">'
-            f'[{tag}] {p["name"]} ({p["part_no"]})</option>'
+            f' data-unit="{P.esc(p["unit"])}">'
+            f'[{P.esc(tag)}] {safe_name} ({safe_pno})</option>'
         )
 
     def _fv(k, d=""):
@@ -1316,7 +1369,10 @@ def create_quotation():
 
     # Safely JSON-encode Python strings for embedding in JS string literals
     def _js(s):
-        return json.dumps(str(s))
+        # Same reason as `_product_catalog_json()`: this feeds a JS string
+        # literal inside a <script> block, and `</script>` in the value would
+        # end the block. ABOUT.md §7 gap 9e.
+        return P.json_for_script(str(s))
 
     page = """<!DOCTYPE html><html lang="en">
 <head>
@@ -2265,7 +2321,7 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         contact_person      = _fv("contact_person"),
         addr_options_bill   = picker_options("— fill from address book —"),
         addr_options_ship   = picker_options("— fill from address book —"),
-        addr_book_json      = json.dumps(picker_payload()),
+        addr_book_json      = P.json_for_script(picker_payload()),
         address_url         = url_for("address.list_addresses"),
         bill_addr           = _fv("bill_addr"),
         bill_city           = _fv("bill_city"),
@@ -2309,7 +2365,7 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         sel_ship_country    = _sel_opts("ship_country",    _COUNTRIES,     "India",                              _fv("ship_country", "India")),
         sel_ship_state      = _sel_opts("ship_state",      _STATES_IN,     "Maharashtra",                        _fv("ship_state",   "Maharashtra")),
     )
-    return render_template_string(html)
+    return _page(html)              # NOT render_template_string — see _page()
 
 
 # =============================================================================
@@ -2437,7 +2493,7 @@ def view_quotation(id: str):
     alert_html = ""
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {msg}</div>'
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
     # PO vs quoted — the gap between what we quoted and what they ordered.
     po_val, quoted = float(q.get("po_value") or 0.0), float(q.get("grand_total") or 0.0)
@@ -2549,11 +2605,11 @@ def view_quotation(id: str):
         table_rows += f"""
         <tr class="{row_cls}">
           <td class="c-sno">{sno}</td>
-          <td class="c-partno">{row['part_no']}</td>
-          <td class="c-desc {indent}">{row['name']}</td>
-          <td class="c-hsn">{hsn}</td>
+          <td class="c-partno">{P.esc(row['part_no'])}</td>
+          <td class="c-desc {indent}">{P.esc(row['name'])}</td>
+          <td class="c-hsn">{P.esc(hsn)}</td>
           <td class="c-qty">{_fmt_qty(row['qty'])}</td>
-          <td class="c-unit">{row['unit']}</td>
+          <td class="c-unit">{P.esc(row['unit'])}</td>
           <td class="c-price">{price_s}</td>
           <td class="c-total">{total_s}</td>
         </tr>"""
@@ -2590,7 +2646,7 @@ def view_quotation(id: str):
 
             table_rows += f"""
             <tr class="row-sum">
-              <td colspan="4" class="sum-lbl">{tname}{rate_label}</td>
+              <td colspan="4" class="sum-lbl">{P.esc(tname)}{rate_label}</td>
               <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
               <td class="c-total">{_inr(tamt)}</td>
             </tr>"""
@@ -2610,18 +2666,21 @@ def view_quotation(id: str):
     # they are our internal pipeline data and have no business on a document
     # the customer reads. They stay on the deal panel above.
     validity = q.get("validity_days") or ""
+    # `_meta()` does NOT escape — every one of its callers across six modules
+    # pre-escapes what it hands over, and this file was the only one that did
+    # not. See `_meta()`'s own note.
     meta_col_1 = (
-        _meta("Quotation No.",        q["ref"]) +
-        _meta("Buyer Ref. No.",       q.get("buyer_ref")      or "") +
-        _meta("Mode/Term of Payment", q.get("payment_terms")  or "") +
-        _meta("Terms of Delivery",    q.get("delivery_terms") or "")
+        _meta("Quotation No.",        P.esc(q["ref"])) +
+        _meta("Buyer Ref. No.",       P.esc(q.get("buyer_ref")      or "")) +
+        _meta("Mode/Term of Payment", P.esc(q.get("payment_terms")  or "")) +
+        _meta("Terms of Delivery",    P.esc(q.get("delivery_terms") or ""))
     )
     meta_col_2 = (
-        _meta("Date",             q["date"]) +
-        _meta("Other Ref.",       q.get("other_ref")        or "") +
-        _meta("Dispatch Through", q.get("dispatch_through") or "") +
-        _meta("Validity",         f"{validity} days" if validity else "") +
-        _meta("Incoterms",        q.get("incoterms")        or "")
+        _meta("Date",             P.esc(q["date"])) +
+        _meta("Other Ref.",       P.esc(q.get("other_ref")        or "")) +
+        _meta("Dispatch Through", P.esc(q.get("dispatch_through") or "")) +
+        _meta("Validity",         f"{P.esc(validity)} days" if validity else "") +
+        _meta("Incoterms",        P.esc(q.get("incoterms")        or ""))
     )
 
     # First line of the address block is the customer's name — set it bold, the
@@ -2630,9 +2689,9 @@ def view_quotation(id: str):
     to_display = ""
     if to_lines and to_lines[0].strip():
         rest = "\n".join(to_lines[1:]).strip()
-        to_display = f'<span class="dh-name">{to_lines[0]}</span>'
+        to_display = f'<span class="dh-name">{P.esc(to_lines[0])}</span>'
         if rest:
-            to_display += f'\n{rest}'
+            to_display += f'\n{P.esc(rest)}'
 
     ship_parts = []
     if not q.get("ship_same"):
@@ -2651,18 +2710,18 @@ def view_quotation(id: str):
     if ship_parts:
         ship_html = (
             '<div class="dh-ship"><span class="dh-lbl">Ship To</span>'
-            f'<div class="dh-body">{chr(10).join(ship_parts)}</div></div>'
+            f'<div class="dh-body">{P.esc(chr(10).join(ship_parts))}</div></div>'
         )
 
     tnc_terms = _build_tnc(q)
     tnc_html  = "".join(
-        f'<li><span class="tnc-num">{i+1}.</span><span>{t}</span></li>'
+        f'<li><span class="tnc-num">{i+1}.</span><span>{P.esc(t)}</span></li>'
         for i, t in enumerate(tnc_terms)
     )
 
     words     = _amount_in_words(q["grand_total"])
-    comp_br   = q.get("company_branch") or B.COMPANY_NAME
-    signatory = q.get("auth_signatory") or B.COMPANY_SIGNATORY
+    comp_br   = P.esc(q.get("company_branch")) or P.esc(B.COMPANY_NAME)
+    signatory = P.esc(q.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -2678,7 +2737,7 @@ def view_quotation(id: str):
 
 <div class="screen-acts">
   <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
-    Quotation <span style="color:var(--brand);">{q['ref']}</span>
+    Quotation <span style="color:var(--brand);">{P.esc(q['ref'])}</span>
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{list_url}"   class="btn btn-ghost">&#8592; All Quotations</a>
@@ -2702,8 +2761,8 @@ def view_quotation(id: str):
     <div class="lh">
       <div>
         <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {B.COMPANY_TAGLINE} &#8212;</div>
-        {f'<div class="lh-legal">{B.COMPANY_LEGAL}</div>' if B.COMPANY_LEGAL else ''}
+        <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
+        {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
       </div>
       <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
     </div>
@@ -2712,13 +2771,13 @@ def view_quotation(id: str):
     <div class="lh-contact">
       Phone: {B.field(B.COMPANY_PHONE, "phone")}<span class="sep">|</span>
       Email: {B.field(B.COMPANY_EMAIL, "e-mail")}
-      {f'<span class="sep">|</span>Web: {B.COMPANY_WEB}' if B.COMPANY_WEB else ''}
-      {f'<span class="sep">|</span>Branches: {B.COMPANY_BRANCHES}' if B.COMPANY_BRANCHES else ''}
+      {f'<span class="sep">|</span>Web: {P.esc(B.COMPANY_WEB)}' if B.COMPANY_WEB else ''}
+      {f'<span class="sep">|</span>Branches: {P.esc(B.COMPANY_BRANCHES)}' if B.COMPANY_BRANCHES else ''}
     </div>
   </td></tr></thead>
 
   <tfoot><tr><td>
-    <div class="lh-foot">{B.COMPANY_LEGAL or B.COMPANY_NAME} &middot; {B.COMPANY_TAGLINE}</div>
+    <div class="lh-foot">{P.esc(B.COMPANY_LEGAL or B.COMPANY_NAME)} &middot; {P.esc(B.COMPANY_TAGLINE)}</div>
   </td></tr></tfoot>
 
   <tbody><tr><td>
@@ -2783,4 +2842,4 @@ def view_quotation(id: str):
 </footer>
 </main>
 </body></html>"""
-    return render_template_string(template)
+    return _page(template)          # NOT render_template_string — see _page()

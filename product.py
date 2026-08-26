@@ -21,13 +21,36 @@ Phase 2.1 additions:
 Backward compatibility:
   - All new fields (type, children) use .get() with safe defaults everywhere
   - Existing Phase 1 routes and their signatures are unchanged
+
+────────────────────────────────────────────────────────────────────────────
+ESCAPING  (26 August 2026)
+────────────────────────────────────────────────────────────────────────────
+This module used to have **no escaping at all** and rendered every page
+through `render_template_string()`. Both are closed here, and the pass was
+deliberately narrow: values are escaped, `_page()` replaces the second Jinja
+parse, and **nothing else was touched** — no refactor, no renaming, no new
+behaviour. INTRODUCTION.md §7 freezes this file against refactor and feature
+work; CLIENT_CHANGES-2.md's "Security items promoted by this phase" names this
+exact defect as a narrow security fix the freeze permits, precedent `9d060ee`.
+
+Why it stopped being cosmetic: Phase 3B put sessions in front of every page,
+so a stored `<script>` in a product name runs in the reader's session, and
+`{{ config['SECRET_KEY'] }}` in one printed the signing key — which is session
+forgery, not defacement.
+
+`P.esc` is `html.escape(..., quote=True)`. `pipeline.py` imports nothing of
+ours, so this edge cannot cycle. What is deliberately NOT escaped: the style
+constants, `_nav()`, `B.HEAD_ICON`, the markup this module builds itself
+(`_badge`, the option lists, the tree nodes, the alert wrapper) and the money
+format `{...:,.0f}` — see ABOUT.md §9.
 """
 
 import uuid
-from flask import Blueprint, render_template_string, request, redirect, url_for
+from flask import Blueprint, request, redirect, url_for
 
 # ── Shared imports ────────────────────────────────────────────────────────────
 import branding as B
+import pipeline as P
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
@@ -706,9 +729,34 @@ VIEW_STYLES = """
 # HELPERS
 # =============================================================================
 
+def _page(html: str) -> str:
+    """
+    A finished page. Deliberately **not** Jinja-rendered.
+
+    Every view here used to end `return render_template_string(template)` on a
+    string that was already fully interpolated. Nothing is passed as Jinja
+    context, so that second parse bought nothing — but it executed any
+    `{{ … }}` that had arrived from user input, and `P.esc` escapes
+    `< > & " '` and deliberately not braces. A product named
+    `{{ config['SECRET_KEY'] }}` printed this application's signing key on
+    `/product/`. ABOUT.md §7 gap 9d; the same one-liner already fixed
+    `spec.py`, `boq.py`, `proforma.py`, `invoice.py`, `purchase.py`,
+    `address.py`, `settings.py` and `dashboard.py`.
+
+    Flask returns any `str` a view returns, so this is the whole of the fix.
+    """
+    return html
+
+
+def _esc(v) -> str:
+    """The house escaper, under this module's own short name."""
+    return P.esc(v)
+
+
 def _badge(ptype: str) -> str:
     labels = {"assembly": "Assembly", "support": "Support", "standalone": "Standalone"}
-    return f'<span class="badge badge-{ptype}">{labels.get(ptype, ptype)}</span>'
+    return (f'<span class="badge badge-{_esc(ptype)}">'
+            f'{_esc(labels.get(ptype, ptype))}</span>')
 
 
 def _build_child_select_options(exclude_id: str | None = None) -> str:
@@ -722,7 +770,7 @@ def _build_child_select_options(exclude_id: str | None = None) -> str:
             continue
         ptype = p.get("type", "standalone")
         label = f'[{ptype[:3].upper()}] {p["name"]} ({p["part_no"]})'
-        opts += f'<option value="{pid}">{label}</option>'
+        opts += f'<option value="{_esc(pid)}">{_esc(label)}</option>'
     return opts
 
 
@@ -751,7 +799,7 @@ def _render_tree(product_id: str, qty: int, depth: int, visited: frozenset) -> s
             f'<div class="tree-node {depth_cls} tree-warning">'
             f'  <span class="tree-connector">&#8627;</span>'
             f'  &#9888;&nbsp;Circular reference detected'
-            f'  &nbsp;<code style="font-size:.78rem;">{product_id[:8]}…</code>'
+            f'  &nbsp;<code style="font-size:.78rem;">{_esc(product_id[:8])}…</code>'
             f'</div>'
         )
 
@@ -762,7 +810,7 @@ def _render_tree(product_id: str, qty: int, depth: int, visited: frozenset) -> s
             f'<div class="tree-node {depth_cls} tree-warning">'
             f'  <span class="tree-connector">&#8627;</span>'
             f'  &#9888;&nbsp;Missing product'
-            f'  &nbsp;<code style="font-size:.78rem;">{product_id[:8]}…</code>'
+            f'  &nbsp;<code style="font-size:.78rem;">{_esc(product_id[:8])}…</code>'
             f'</div>'
         )
 
@@ -776,8 +824,8 @@ def _render_tree(product_id: str, qty: int, depth: int, visited: frozenset) -> s
     node_html = (
         f'<div class="tree-node {depth_cls}">'
         f'  <span class="tree-connector">{connector}</span>'
-        f'  <span class="tree-name">{p["name"]}</span>'
-        f'  <span class="tree-partno">{p["part_no"]}</span>'
+        f'  <span class="tree-name">{_esc(p["name"])}</span>'
+        f'  <span class="tree-partno">{_esc(p["part_no"])}</span>'
         f'  {_badge(ptype)}'
         f'  {qty_html}'
         f'  <span class="tree-price">&#8377;&nbsp;{p["base_price"]:,.0f}</span>'
@@ -845,17 +893,17 @@ def list_products():
             rows += f"""
             <tr>
               <td class="td-name">
-                {p['name']}
+                {_esc(p['name'])}
                 {child_info}
               </td>
-              <td class="td-partno">{p['part_no']}</td>
+              <td class="td-partno">{_esc(p['part_no'])}</td>
               <td class="td-partno">{B.field(p.get('hsn'), 'HSN')}</td>
               <td>{_badge(ptype)}</td>
-              <td class="td-unit">{p['unit']}</td>
+              <td class="td-unit">{_esc(p['unit'])}</td>
               <td class="td-price">&#8377; {p['base_price']:,.0f}</td>
               <td class="col-desc" style="color:var(--muted);font-size:.85rem;max-width:200px;
                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                {desc_preview}
+                {_esc(desc_preview)}
               </td>
               <td style="white-space:nowrap;">
                 <div style="display:flex;gap:.4rem;align-items:center;">
@@ -898,13 +946,13 @@ def list_products():
     alert_html = ""
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {msg}</div>'
+        alert_html = f'<div class="alert alert-{_esc(msg_type)}">{icon} {_esc(msg)}</div>'
 
     type_counts: dict[str, int] = {}
     for p in products.values():
         t = p.get("type", "standalone")
         type_counts[t] = type_counts.get(t, 0) + 1
-    subtitle = " &nbsp;&#183;&nbsp; ".join(f'{v} {k}' for k, v in sorted(type_counts.items()))
+    subtitle = " &nbsp;&#183;&nbsp; ".join(f'{v} {_esc(k)}' for k, v in sorted(type_counts.items()))
 
     template = f"""
     <!DOCTYPE html>
@@ -940,7 +988,7 @@ def list_products():
     </body>
     </html>
     """
-    return render_template_string(template)
+    return _page(template)          # NOT render_template_string — see _page()
 
 
 @product_bp.route("/view/<id>")
@@ -1016,7 +1064,7 @@ def view_product(id: str):
         bom_html = f"""
         <div class="no-bom-box">
           <div style="font-size:1.8rem;">&#128269;</div>
-          <strong>{type_label} product &mdash; no sub-components</strong>
+          <strong>{_esc(type_label)} product &mdash; no sub-components</strong>
           <p>Only <em>Assembly</em> products have a Bill of Materials.
              This is a leaf node that can be used as a component inside assemblies.</p>
         </div>
@@ -1024,7 +1072,7 @@ def view_product(id: str):
 
     # ── Description block (only if non-empty) ────────────────────────
     desc = (product.get("description") or "").strip()
-    desc_html = f'<div class="detail-desc">{desc}</div>' if desc else ""
+    desc_html = f'<div class="detail-desc">{_esc(desc)}</div>' if desc else ""
 
     template = f"""
     <!DOCTYPE html>
@@ -1051,14 +1099,14 @@ def view_product(id: str):
         <!-- Product header card -->
         <div class="detail-card">
           <h2>
-            {product['name']}
+            {_esc(product['name'])}
             {_badge(ptype)}
           </h2>
           <div class="detail-meta">
             <div class="detail-meta-item">
               <strong>Part No.</strong>
               <span style="font-family:'SFMono-Regular',Consolas,monospace;font-size:.88rem;">
-                {product['part_no']}
+                {_esc(product['part_no'])}
               </span>
             </div>
             <div class="detail-meta-item">
@@ -1069,7 +1117,7 @@ def view_product(id: str):
             </div>
             <div class="detail-meta-item">
               <strong>Unit</strong>
-              <span>{product['unit']}</span>
+              <span>{_esc(product['unit'])}</span>
             </div>
             <div class="detail-meta-item">
               <strong>Base Price</strong>
@@ -1077,7 +1125,7 @@ def view_product(id: str):
             </div>
             <div class="detail-meta-item">
               <strong>Type</strong>
-              <span>{ptype.capitalize()}</span>
+              <span>{_esc(ptype.capitalize())}</span>
             </div>
           </div>
           {desc_html}
@@ -1093,7 +1141,7 @@ def view_product(id: str):
     </body>
     </html>
     """
-    return render_template_string(template)
+    return _page(template)          # NOT render_template_string — see _page()
 
 
 @product_bp.route("/add", methods=["GET", "POST"])
@@ -1183,7 +1231,7 @@ def add_product():
             ))
 
     list_url   = url_for("product.list_products")
-    error_html = f'<div class="alert alert-error">&#10007; {error}</div>' if error else ""
+    error_html = f'<div class="alert alert-error">&#10007; {_esc(error)}</div>' if error else ""
 
     unit_options   = ["", "pcs", "set", "kg", "m", "L", "box", "pair", "roll"]
     unit_opts_html = "".join(
@@ -1210,11 +1258,12 @@ def add_product():
         for pid, p in products.items():
             sel    = "selected" if pid == cid else ""
             plabel = p.get("type", "standalone")
-            opts  += f'<option value="{pid}" {sel}>[{plabel[:3].upper()}] {p["name"]} ({p["part_no"]})</option>'
+            opts  += (f'<option value="{_esc(pid)}" {sel}>'
+                      f'{_esc(f"[{plabel[:3].upper()}] " + p["name"] + " (" + p["part_no"] + ")")}</option>')
         restored += f"""
         <div class="child-row">
           <select name="child_product_id">{opts}</select>
-          <input type="number" name="child_qty" value="{cqty}" min="1" step="1"/>
+          <input type="number" name="child_qty" value="{_esc(cqty)}" min="1" step="1"/>
           <button type="button" class="btn-remove-child"
                   onclick="this.closest('.child-row').remove()">&#215;</button>
         </div>
@@ -1259,21 +1308,21 @@ def add_product():
               <div class="form-group">
                 <label for="name">Product Name *</label>
                 <input type="text" id="name" name="name"
-                       value="{request.form.get('name', '')}"
+                       value="{_esc(request.form.get('name', ''))}"
                        placeholder="e.g. Steel Bracket" required autocomplete="off"/>
               </div>
 
               <div class="form-group">
                 <label for="part_no">Part No. *</label>
                 <input type="text" id="part_no" name="part_no"
-                       value="{request.form.get('part_no', '')}"
+                       value="{_esc(request.form.get('part_no', ''))}"
                        placeholder="e.g. SB-1042" required autocomplete="off"/>
               </div>
 
               <div class="form-group">
                 <label for="hsn">HSN / SAC Code</label>
                 <input type="text" id="hsn" name="hsn"
-                       value="{request.form.get('hsn', '')}"
+                       value="{_esc(request.form.get('hsn', ''))}"
                        placeholder="e.g. 84137010" inputmode="numeric"
                        pattern="[0-9]{{4}}|[0-9]{{6}}|[0-9]{{8}}" maxlength="8"
                        autocomplete="off"/>
@@ -1290,7 +1339,7 @@ def add_product():
               <div class="form-group">
                 <label for="base_price">Base Price (&#8377;) *</label>
                 <input type="number" id="base_price" name="base_price"
-                       value="{request.form.get('base_price', '')}"
+                       value="{_esc(request.form.get('base_price', ''))}"
                        placeholder="0.00" step="0.01" min="0" required/>
               </div>
 
@@ -1303,7 +1352,7 @@ def add_product():
               <div class="form-group full">
                 <label for="description">Description</label>
                 <textarea id="description" name="description"
-                  placeholder="Dimensions, material, spec notes&#8230;">{request.form.get('description', '')}</textarea>
+                  placeholder="Dimensions, material, spec notes&#8230;">{_esc(request.form.get('description', ''))}</textarea>
               </div>
 
               <div class="assembly-section full" id="assembly-section"
@@ -1370,7 +1419,7 @@ def add_product():
     </body>
     </html>
     """
-    return render_template_string(template)
+    return _page(template)          # NOT render_template_string — see _page()
 
 
 @product_bp.route("/delete/<id>", methods=["GET", "POST"])

@@ -822,8 +822,8 @@ def _footer_contact() -> str:
                 f'add address, phone, e-mail, GSTIN and PAN in '
                 f'<a href="{url_for("settings.edit_settings")}"><b>Settings</b></a> '
                 f'before issuing a quotation.</p>')
-    return (f'<p class="foot-contact">{B.COMPANY_ADDR} &nbsp;·&nbsp; '
-            f'<b>{B.COMPANY_PHONE}</b> &nbsp;·&nbsp; {B.COMPANY_EMAIL}</p>')
+    return (f'<p class="foot-contact">{P.esc(B.COMPANY_ADDR)} &nbsp;·&nbsp; '
+            f'<b>{P.esc(B.COMPANY_PHONE)}</b> &nbsp;·&nbsp; {P.esc(B.COMPANY_EMAIL)}</p>')
 
 
 # =============================================================================

@@ -808,7 +808,7 @@ def list_specs():
     alert_html = ""
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
     cur_cat = (request.args.get("cat") or "").strip()
     query   = (request.args.get("q") or "").strip().lower()
@@ -974,7 +974,7 @@ def view_spec(id: str):
 
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-    <title>{B.page_title(P.esc(s.get('code')))}</title>{B.HEAD_ICON}
+    <title>{B.page_title(s.get('code'))}</title>{B.HEAD_ICON}
     {BASE_STYLES}{SPEC_STYLES}</head>
     <body>{_nav()}
     <main>

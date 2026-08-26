@@ -536,7 +536,7 @@ def edit_settings():
         alert_html = f'<div class="alert alert-error">&#10007; {P.esc(error)}</div>'
     elif msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
-        alert_html = f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
     def _fields_html(fields) -> str:
         out = ""

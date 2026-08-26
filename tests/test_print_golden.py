@@ -358,34 +358,72 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks=None,
 
 # ═══ The three documents ═══════════════════════════════════════════════════
 
+# ── Re-baselined 27 August 2026 — the unescaped-output pass ────────────────
+#
+# **What moved, and why re-baselining is the correct answer here.** All five
+# documents moved by exactly **+8 bytes**, in exactly **two blocks** —
+# `letterhead` and `foot-strip` — with `head`, `doc-box`, `party`, `items` and
+# `signature` hashing identically on every one of them. Nothing about any
+# document's layout, figures or wording changed.
+#
+# The whole of the difference is one character in one field:
+#
+#     branding.COMPANY_TAGLINE == "Fire Protection Systems & Services"
+#
+#   before  <div class="lh-tag">&#8212; Fire Protection Systems & Services &#8212;</div>
+#   after   <div class="lh-tag">&#8212; Fire Protection Systems &amp; Services &#8212;</div>
+#
+#   before  <div class="lh-foot">SAMRUDDHI FIRE &middot; Fire Protection Systems & Services</div>
+#   after   <div class="lh-foot">SAMRUDDHI FIRE &middot; Fire Protection Systems &amp; Services</div>
+#
+# `&` -> `&amp;` is +4 bytes, the tagline prints twice per sheet, so +8 bytes
+# per document — which is the arithmetic every one of the five reported.
+#
+# **A browser draws both spellings as the same `&`.** The rendered documents
+# are visually identical; only the bytes moved. They moved because
+# `COMPANY_TAGLINE` is a `/settings` field that was previously emitted RAW —
+# which is the defect this pass closed, demonstrating itself on the one default
+# value that happens to contain an escapable character. `B.field()`,
+# `docsheet._contact_bit()`, `letterhead()` and `foot_strip()` now escape.
+#
+# Every other statutory default (`27AAAAA0000A1Z5`, `AAAAA0000A`,
+# `SPECIMEN BANK LTD.`, the invented address) is alphanumeric, so no other
+# field moved a byte — which is why only these two blocks did.
+#
+# The old digests are kept in the comment above each set rather than deleted.
+
+
 # Captured 15 August 2026, against the code as it stood BEFORE `docsheet.py`
 # existed. These three numbers are the baseline the extraction is measured by.
 GOLD_TI = "gold-ti"
-TI_WHOLE = "ab555e45cd245fa5"
-TI_LEN = 110208
+# was ab555e45cd245fa5 / 110208 before the 27 Aug 2026 escaping pass
+TI_WHOLE = "f91031b44e1e7dc7"
+TI_LEN = 110216
 TI_BLOCKS = {"head":       "49524db46e29dcc5",
-             "letterhead": "850cbd4766b608c2",
-             "foot-strip": "cc51ac98a541aaee",
+             "letterhead": "3c080a57f60c89e9",
+             "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "5e4d6a24b0a5b726",
              "party":      "a7c0e4ecf0b1491f",
              "items":      "ace24562781a2e31",
              "signature":  "f5511fad8e1212cc"}
 
-PO_WHOLE, PO_LEN = "4f7794a81d90071c", 101851
+# was 4f7794a81d90071c / 101851 before the 27 Aug 2026 escaping pass
+PO_WHOLE, PO_LEN = "e21237eb007ee61b", 101859
 PO_BLOCKS = {"head":       "d0df61b20bb3a42e",
-             "letterhead": "350d4e9032d16839",
-             "foot-strip": "cc51ac98a541aaee",
+             "letterhead": "2800166c693cc2f1",
+             "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "ffe286e7afd8c90b",
              "party":      "307d35714073c084",
              "items":      "fd759d99cf4b162a",
              "signature":  "5717ca48143d8b6e"}
 
 GOLD_PI = "gold-pi"
-PI_WHOLE = "4969d5e4f6a6508b"
-PI_LEN = 103773
+# was 4969d5e4f6a6508b / 103773 before the 27 Aug 2026 escaping pass
+PI_WHOLE = "d4fe110738e8d20f"
+PI_LEN = 103781
 PI_BLOCKS = {"head":       "a3b342e73adf07fc",
-             "letterhead": "93c3e6d7afb10731",
-             "foot-strip": "cc51ac98a541aaee",
+             "letterhead": "1c368b0c8259abe0",
+             "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "77fa68a83f706064",
              "party":      "9427bbb3e9495dd8",
              "items":      "ee2126dae594bc30",
@@ -396,11 +434,12 @@ PI_BLOCKS = {"head":       "a3b342e73adf07fc",
 # over a slate palette, with no letterhead, no page frame and money in Western
 # digit grouping. See the test below for what moved.
 GOLD_RA = "gold-ra"
-RA_WHOLE = "2e12fa898f1b39fe"
-RA_LEN = 97656
+# was 2e12fa898f1b39fe / 97656 before the 27 Aug 2026 escaping pass
+RA_WHOLE = "1c5f5c7e6720628f"
+RA_LEN = 97664
 RA_BLOCKS = {"head":       "ea1ccbaa59c99616",
-             "letterhead": "850cbd4766b608c2",
-             "foot-strip": "cc51ac98a541aaee",
+             "letterhead": "3c080a57f60c89e9",
+             "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "44c7368b5a1b2380",
              "party":      "0a1ad2e74686542a",
              "items":      "92f5cc2dd233b05b",
@@ -761,10 +800,11 @@ def golden_dc(client, pinned_identity):
 # own — `850cbd…` and `cc51ac…` appear against TI_BLOCKS above. That is the
 # point of the sheet, and the assertion below states it directly rather than
 # leaving it to two literals happening to match.
-DC_WHOLE, DC_LEN = "d22fee5aa301c740", 83649
+# was d22fee5aa301c740 / 83649 before the 27 Aug 2026 escaping pass
+DC_WHOLE, DC_LEN = "9face4745b37d291", 83657
 DC_BLOCKS = {"head":       "f3f5e6b5c49c9e9f",
-             "letterhead": "850cbd4766b608c2",
-             "foot-strip": "cc51ac98a541aaee",
+             "letterhead": "3c080a57f60c89e9",
+             "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "57c1a660915be1d9",
              "party":      "429e9f10652d220b",
              "items":      "6ad4a95ae07c0108",

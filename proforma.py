@@ -304,7 +304,7 @@ def _alert(msg: str, msg_type: str) -> str:
     if not msg:
         return ""
     icon = "&#10003;" if msg_type == "success" else "&#10007;"
-    return f'<div class="alert alert-{msg_type}">{icon} {P.esc(msg)}</div>'
+    return f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
 
 
 # =============================================================================
@@ -1191,7 +1191,7 @@ def view_proforma(id: str):
                     f'{P.esc(pi["quotation_ref"])}</span>')
 
     comp_br   = P.esc(pi.get("company_branch")) or B.COMPANY_NAME
-    signatory = P.esc(pi.get("auth_signatory")) or B.COMPANY_SIGNATORY
+    signatory = P.esc(pi.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
     q_view = (url_for("quotation.view_quotation", id=pi["quotation_id"])
               if pi.get("quotation_id") in STORE["quotations"] else "")

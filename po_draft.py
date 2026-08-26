@@ -559,7 +559,7 @@ def _document_html(po: dict) -> str:
         DS._meta("Date",       P.esc(po.get("date"))) +
         DS._meta("Site",       P.esc(po.get("site_location"))) +
         DS._meta("For",        P.esc(po.get("account_name"))) +
-        DS._meta("Our GSTIN",  B.COMPANY_GSTIN)
+        DS._meta("Our GSTIN",  P.esc(B.COMPANY_GSTIN))
     )
 
     note_html = ""

@@ -28,7 +28,7 @@ def _esc(v) -> str:
     return P.esc(str(v or ""))
 
 def _alert(msg: str, kind: str = "error") -> str:
-    return f'<div class="alert {kind}">{_esc(msg)}</div>' if msg else ""
+    return f'<div class="alert {_esc(kind)}">{_esc(msg)}</div>' if msg else ""
 
 def _flash() -> str:
     msg = (request.args.get("msg") or "").strip()

@@ -246,7 +246,7 @@ def view_project(id: str):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>{B.page_title(P.esc(proj.get('name', 'Project')))}</title>
+  <title>{B.page_title(proj.get('name', 'Project'))}</title>
   {B.HEAD_ICON}
   {BASE_STYLES}
   {QUOTATION_STYLES}

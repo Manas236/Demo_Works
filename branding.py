@@ -22,6 +22,7 @@ company name, a hex colour or an image path — import from here instead.
 """
 
 import base64
+import html
 from pathlib import Path
 
 # =============================================================================
@@ -115,14 +116,35 @@ def current_settings() -> dict:
     return {k: globals()[k] for k in SETTINGS_KEYS}
 
 
+def _esc(v) -> str:
+    """
+    HTML-escape a value on its way onto a page.
+
+    `pipeline.esc()` is the same call and is what the rest of the app uses, but
+    this module imports nothing of ours on purpose — it sits at the bottom of
+    the graph beside `pipeline.py` itself — so it reaches `html.escape`
+    directly rather than growing an import.
+    """
+    return html.escape(str(v or ""), quote=True)
+
+
 def field(value: str, hint: str) -> str:
     """
     Render an identity field, or a visible placeholder when it is still blank.
 
     Blank statutory details must never look like a deliberate omission on a
     document that goes to a customer, so they are flagged rather than hidden.
+
+    ⚠ **The value is escaped here, and that is load-bearing.** Every field this
+    renders comes from `/settings`, which means it is typed by a user — and
+    Phase 3B made an authenticated insider the threat model
+    (CLIENT_CHANGES-2.md, "Security items promoted by this phase"). This is the
+    single accessor for the statutory and bank blocks, so escaping here closes
+    the letterhead on every document in the app at once. The chip is markup
+    this function writes itself and is deliberately outside the escaper; `hint`
+    is a literal at every call site.
     """
-    value = (value or "").strip()
+    value = _esc(value).strip()
     return value if value else f'<span class="todo-chip">add {hint}</span>'
 
 
@@ -133,8 +155,12 @@ def name_html(accent_class: str) -> str:
     """
     head, _, tail = COMPANY_NAME.rpartition(" ")
     if not head:
-        return COMPANY_NAME
-    return f'{head} <span class="{accent_class}">{tail}</span>'
+        return _esc(COMPANY_NAME)
+    # `COMPANY_NAME` is deliberately NOT a /settings field (see §1c above), so
+    # this is a code constant rather than user text and the escaping changes no
+    # byte today. It is here so the function stays safe if that ever changes.
+    # `accent_class` is a literal at every call site.
+    return f'{_esc(head)} <span class="{accent_class}">{_esc(tail)}</span>'
 
 
 def has(*values: str) -> bool:
@@ -288,8 +314,23 @@ HEAD_ICON = f'<link rel="icon" href="{FAVICON_URI}"/>' if FAVICON_URI else ""
 
 
 def page_title(page: str) -> str:
-    """Consistent browser-tab titles: 'Quotations · Samruddhi Fire'."""
-    return f"{page} &middot; {APP_NAME}"
+    """
+    Consistent browser-tab titles: 'Quotations · Samruddhi Fire'.
+
+    ⚠ **`page` is escaped here.** A `<title>` element is RCDATA, so a `<script>`
+    inside it does not run — but the seven characters `</title>` end it, and
+    everything after them is parsed as ordinary HTML. Nine routes reached this
+    with a record's `ref` straight off the store, so a document reference
+    reading `</title><script>…` executed on every page that named it. `&middot;`
+    is the house separator this function writes itself and stays outside the
+    escaper.
+
+    Callers pass plain text. Four used to pre-escape (`boq.py` ×2,
+    `projectview.py`, `spec.py`); that was removed in the same commit as this,
+    because escaping twice prints `&amp;` for a `&` in a reference — the same
+    class of bug `tests/test_entity_fallbacks.py` exists to catch.
+    """
+    return f"{_esc(page)} &middot; {APP_NAME}"
 
 
 def logo_img(px: int = 30, doc: bool = False, alt: str = "") -> str:
@@ -297,6 +338,8 @@ def logo_img(px: int = 30, doc: bool = False, alt: str = "") -> str:
     uri = LOGO_DOC_URI if doc else LOGO_URI
     if not uri:
         return ""
-    alt = alt or f"{COMPANY_NAME} logo"
+    # `uri` is a base64 data URI built at import from the artwork on disk, and
+    # is deliberately left raw — it is generated markup, not user text.
+    alt = _esc(alt or f"{COMPANY_NAME} logo")
     return (f'<img src="{uri}" alt="{alt}" width="{px}" height="{px}" '
             f'style="width:{px}px;height:{px}px;object-fit:contain;display:block;"/>')
