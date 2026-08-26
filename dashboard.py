@@ -776,6 +776,39 @@ def _nav():
     """
 
 
+def _access_card() -> str:
+    """
+    The launcher for user and role administration — for administrators only.
+
+    `auth` is imported **inside the function body**, the same escape hatch
+    `index()` already uses for the `product` and `address` seeders: `auth._shell()`
+    imports `BASE_STYLES` and `_nav` from this module, so a module-level import
+    here would be a cycle (ABOUT.md §2).
+
+    Rendered only for a user holding `admin.users`. Everyone else gets nothing
+    rather than a card that refuses when clicked — the module strip is this
+    app's launcher, and a launcher that offers a locked door is worse than one
+    that does not mention it. The route is gated independently; this is
+    navigation, never the access check.
+    """
+    import auth
+
+    if not auth.has_perm("admin.users"):
+        return ""
+
+    n_users = sum(1 for u in auth.users().values() if u.get("active"))
+    n_roles = len(auth.roles())
+    return f"""
+          <a href="{url_for('auth.list_users')}" class="card">
+            <div class="card-icon">{ICONS['users']}</div>
+            <div class="card-body">
+              <div class="card-title">Users &amp; Access</div>
+              <div class="card-desc">{n_users} active user{"" if n_users == 1 else "s"}
+                  · {n_roles} roles · who may do what</div>
+            </div>
+          </a>"""
+
+
 def _footer_contact() -> str:
     """
     Contact strip for the dashboard footer.
@@ -1668,6 +1701,8 @@ def index():
               <div class="card-desc">Pump, steel and fire-safety prices ↗</div>
             </div>
           </a>
+
+          {_access_card()}
 
           </div>
         </section>

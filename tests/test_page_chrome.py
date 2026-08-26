@@ -37,6 +37,14 @@ NO_CHROME = {
     "/po/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/dc/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/boq/print/<id>": "print-only: the document alone",
+    # The two pages reached while logged OUT. `_nav()` links to Projects and
+    # Settings and carries the settings dot and the persistence strip — every
+    # one of which is either a refusal or a leak to somebody with no session, so
+    # these two carry `auth.AUTH_STANDALONE_STYLES` instead of BASE_STYLES.
+    # They are the only two exemptions in this app that are not print routes,
+    # and the reason is the session, not the paper.
+    "/login":  "reached logged out: no nav, because every nav link would refuse",
+    "/setup":  "reached logged out, and only while no user exists; redirects after that",
 }
 
 # The screen routes the last three passes added. Listed explicitly as well as

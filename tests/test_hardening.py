@@ -68,7 +68,11 @@ def test_every_reference_collection_has_a_seeder(client):
     for u in ("/product/", "/address/", "/spec/", "/boq/", "/settings/"):
         client.get(u)
 
-    seeded = {"products", "addresses", "specs", "boqs", "settings"}
+    # `roles` is reference data in the strict sense this test means: the six
+    # builtin roles plus Owner are configuration that must exist on a fresh
+    # install, or nobody can be given any access at all. `auth.ensure_builtin_roles()`
+    # is the seeder, called from `auth.install()`.
+    seeded = {"products", "addresses", "specs", "boqs", "settings", "roles"}
     # `ra_bills` belongs here and not above: a BOQ is reference data for a demo,
     # but a Running Account claim is a document somebody certifies and gets paid
     # against. Seeding one would invent a claim.
@@ -76,14 +80,51 @@ def test_every_reference_collection_has_a_seeder(client):
     # so: seeding one would invent a payment the client never received.
     # `delivery_challans` likewise: a challan is signed for on arrival, and a
     # seeded one is a record that material left the yard when none did.
+    # `users` is transactional for a sharper reason than the documents are: a
+    # seeded user is a working login with a known password on every install that
+    # ever ships. The first account is minted deliberately, by `/setup` or by
+    # `tools/seed_users.py`, and both refuse to invent a password.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
-                     "ra_bills", "receipts", "delivery_challans", "projects", "charges"}
+                     "ra_bills", "receipts", "delivery_challans", "projects", "charges",
+                     "users"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:
         assert STORE[coll], f"{coll} is empty on a fresh install — no seeder"
-    for coll in transactional:
+    # `users` is held out of this loop and asserted properly by the test below.
+    # The `client` fixture signs in, so a harness account exists by the time
+    # this runs, and counting rows here would measure the test harness rather
+    # than the application. The property itself is not dropped — it is stated
+    # directly, by clearing the collection and running every seeder at it.
+    for coll in transactional - {"users"}:
         assert not STORE[coll], f"{coll} was seeded — real documents must not be invented"
+
+
+def test_no_seeder_invents_a_user(client):
+    """
+    Nothing in the application mints a user account.
+
+    The strong form of the `users` row above, and it is worth its own test: a
+    seeded user is not merely an invented record like a seeded invoice, it is a
+    **working login with a known password on every install that ever ships**.
+    The first account is created deliberately — by `/setup` or by
+    `tools/seed_users.py` — and both refuse to invent a password.
+
+    Written as "empty the collection, run everything that seeds, look again"
+    rather than as a row count, so it keeps saying something true no matter what
+    the test harness signs in as.
+    """
+    import auth
+
+    STORE["users"].clear()
+    for u in ("/", "/product/", "/address/", "/spec/", "/boq/", "/settings/"):
+        client.get(u)
+    auth.ensure_builtin_roles()
+
+    assert not STORE["users"], (
+        "something in the application seeded a user account. A seeded user is a "
+        "known-password login on every install; the first account must be minted "
+        "deliberately through /setup or tools/seed_users.py.")
 
 
 def test_seed_flags_are_not_persisted(client):

@@ -5,8 +5,6 @@ Entry point for the Quotation Management System.
 Registers all Blueprints and defines global error handling.
 """
 
-import os
-
 from flask import Flask, redirect, url_for
 import dashboard                  # too_large_page() for the 413 handler
 from dashboard import dashboard_bp
@@ -43,6 +41,9 @@ from projectview import projectview_bp # UI for Project Detail
 from charge import charge_bp             # Employee & Misc Charges Ledger
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
+import auth                      # Identity, roles and the default-deny gate.
+from auth import auth_bp         # Imports nothing that prints, so it may be
+                                 # imported anywhere — see auth.py's header.
 
 import branding as B             # Runtime overrides are pushed onto this module
 import db                        # MySQL persistence (config from .env)
@@ -50,7 +51,11 @@ from store import STORE
 
 # ── App Initialization ────────────────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "qms-demo-secret-2024")
+
+# `app.secret_key` is set by `auth.install()` at the foot of this file, from a
+# real key rather than the literal `"qms-demo-secret-2024"` that used to sit
+# here (ABOUT.md §7 gap 8). It has to happen after the blueprints are
+# registered, so it is not done on this line any more.
 
 
 # ── Persistence ───────────────────────────────────────────────────────────────
@@ -128,6 +133,19 @@ app.register_blueprint(projectview_bp)        # Project UI detail page
 app.register_blueprint(charge_bp)             # Mounted at /charge — LEAF, must come after dashboard
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
+app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,
+                                              # /account, /users, /roles.
+
+
+# ── Identity ──────────────────────────────────────────────────────────────────
+# The real signing key, the 12-hour session lifetime, and the builtin roles.
+# After blueprint registration because it seeds against a STORE that
+# `_boot_persistence()` has already hydrated.
+#
+# This does NOT gate anything on its own. `auth.enforce(app)` below is the line
+# that closes the app; the two are separate so that turning access control off
+# again is one revert rather than an excavation.
+auth.install(app)
 
 
 # ── Global Error Handling ─────────────────────────────────────────────────────

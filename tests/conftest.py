@@ -21,12 +21,43 @@ import pytest  # noqa: E402
 from store import STORE  # noqa: E402
 
 
-@pytest.fixture()
-def client():
-    """A Flask test client over a STORE emptied of everything the tests write."""
-    import app as app_module
+# ── Authentication ─────────────────────────────────────────────────────────
+#
+# Phase 3B closed this application: `auth._gate()` refuses every endpoint that
+# is not PUBLIC, so without a session the ~920 tests written before it would
+# all redirect to /login and assert against the redirect page.
+#
+# `client` therefore arrives signed in. That is blunt on purpose and it hides
+# gating bugs by construction — a test using this fixture can never tell you
+# whether a route was reachable without a session. `tests/test_access_control.py`
+# is what covers that, using `anon_client` below, and it is the reason this
+# fixture is allowed to be as blunt as it is. **Do not add access-control
+# assertions to tests that use `client`; they would pass for the wrong reason.**
+#
+# The seeded account holds the **Owner** role, not Director. CLIENT_CHANGES-2.md
+# B3 splits the two — a Director administers users but "cannot alter role
+# definitions" — so a Director session would 403 on `/roles/*` and the page
+# sweeps in `test_page_chrome.py` and `test_entity_fallbacks.py` would fail on a
+# rule working exactly as specified.
+TEST_USER = "test-owner"
+TEST_PASSWORD = "test-owner-password"
 
-    app_module.app.config["TESTING"] = True
+
+def ensure_test_user():
+    """The seeded Owner the suite signs in as. Idempotent."""
+    import auth
+
+    auth.ensure_builtin_roles()
+    user = auth.find_user(TEST_USER)
+    if user is None:
+        user = auth.create_user(TEST_USER, "Test Owner", TEST_PASSWORD,
+                                ["role-owner"], created_by="conftest")
+    user["active"] = True
+    return user
+
+
+def _fresh_store():
+    """The per-test reset the `client` fixture has always done."""
     for key in ("boqs", "specs", "quotations", "proformas", "invoices", "purchases"):
         STORE[key].clear()
     # Seed flags are per-test too: a test that clears `specs` must be able to
@@ -34,6 +65,38 @@ def client():
     # restart" path the demo data exists to support.
     STORE["_spec_seeded"] = False
     STORE["_boq_seeded"] = False
+
+
+@pytest.fixture()
+def client():
+    """A Flask test client, signed in as the seeded Owner, over a fresh STORE."""
+    import app as app_module
+    import auth
+
+    app_module.app.config["TESTING"] = True
+    _fresh_store()
+    user = ensure_test_user()
+    with app_module.app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess[auth.SESSION_KEY] = user["id"]
+        yield c
+
+
+@pytest.fixture()
+def anon_client():
+    """
+    A test client with **no session at all** — the anonymous caller.
+
+    A separate client rather than a logged-out `client`, because
+    `session.clear()` on a client that has already been signed in still leaves a
+    cookie jar, and "refused because the cookie was cleared" is a weaker
+    statement than "refused having never had one".
+    """
+    import app as app_module
+
+    app_module.app.config["TESTING"] = True
+    _fresh_store()
+    ensure_test_user()
     with app_module.app.test_client() as c:
         yield c
 

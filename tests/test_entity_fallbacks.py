@@ -49,6 +49,12 @@ SKIP = {
     # Flask registers this automatically. ABOUT.md §1: there is no /static
     # folder — every asset is a base64 data URI — so it can only 404.
     "/static/<path:filename>": "no /static folder exists; assets are data URIs",
+    # `/setup` renders only while `users` is empty and redirects once one
+    # exists. Every fixture here signs in, so a user always exists and this can
+    # only ever be a 302. That self-disabling is the point of the route and is
+    # asserted directly in tests/test_auth.py::test_setup_disables_itself.
+    # `/login` is NOT skipped — it renders a real form and is swept normally.
+    "/setup": "renders only while no user exists; the fixtures all sign in",
 }
 
 
@@ -167,10 +173,29 @@ def populated(client):
         "notes": "", "created_at": "2026-08-16T12:00:00Z", "updated_at": "2026-08-16T12:00:00Z"
     }
 
+    # A second user for the /users/* confirmations to act on. Deliberately not
+    # the logged-in Owner: deactivating the only Owner is refused, and the
+    # refusal page is not the markup this sweep is checking.
+    import auth
+    auth.ensure_builtin_roles()
+    spare = auth.find_user("sweep-spare") or auth.create_user(
+        "sweep-spare", "", "sweep-spare-pw", ["role-hr"], created_by="fixture")
+    spare_uid = spare["id"]
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
             "/address/edit/<id>":   next(iter(STORE["addresses"])),
+            # The access-control pages. `spare_uid` is a second, ordinary user
+            # so that `/users/deactivate` renders its confirmation rather than
+            # the "this is the only Owner" refusal — both are real pages, but
+            # only the confirmation exercises the row markup the sweep is
+            # looking at. `role-hr` is a builtin role with a small permission
+            # set, so the editor renders every checkbox block quickly.
+            "/users/edit/<id>":       spare_uid,
+            "/users/deactivate/<id>": spare_uid,
+            "/users/activate/<id>":   spare_uid,
+            "/roles/edit/<id>":       "role-hr",
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
             "/charge/delete/<id>":  "ch-1",

@@ -1,6 +1,12 @@
 # Secrets — never commit
 .env
 
+# The session signing key, minted on first run by auth.resolve_secret_key()
+# when neither SAMRUDDHI_SECRET_KEY nor SECRET_KEY is set. Committing it would
+# publish the value that signs every session cookie, which is the whole of what
+# the old hardcoded demo default got wrong (ABOUT.md §7 gap 8).
+secret_key.txt
+
 # Client workbooks — a customer's priced schedule and their running-account
 # position. Commercial data; it does not belong in a history that gets cloned.
 # The app never reads them at runtime; only tools/gen_demo_data.py and the

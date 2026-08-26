@@ -74,7 +74,7 @@ load_dotenv(override=False)
 # the table is created automatically on next start.
 COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "purchase_orders",
                "specs", "boqs", "ra_bills", "receipts", "delivery_challans", "projects",
-               "charges", "addresses", "settings")
+               "charges", "addresses", "settings", "users", "roles")
 
 # Seed flags (_seeded / _addr_seeded) are deliberately NOT persisted. Both
 # seeders use fixed IDs and skip existing rows, so re-running them after a
@@ -259,6 +259,8 @@ LABELS = {
     "charges":    "employee and misc charges",
     "addresses":  "addresses",
     "settings":   "company settings",
+    "users":      "user accounts",
+    "roles":      "roles and permissions",
 }
 
 
