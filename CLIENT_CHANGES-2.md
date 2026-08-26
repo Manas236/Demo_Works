@@ -2,16 +2,38 @@
 
 **Source:** client meeting, 19 August 2026 (Yogesh Bankar, Samruddhi Fire Services)
 **Commercial:** quoted in MG/SF/2026-02 as Phase 3A / 3B / 3C
-**Status:** not started. Nothing in this file is built.
+**Status:** ~~not started. Nothing in this file is built.~~ **Partly built as at
+26 August 2026 — and it was already partly built before that.** This line was
+wrong in both directions and is corrected rather than deleted, because the way
+it went wrong is worth keeping:
+
+- **3B items B1–B5 are BUILT** (26 August 2026, `auth.py`), under the dated
+  **26 August 2026 OVERRIDE** block in `CLIENT_CHANGES.md` §0. B6, B7 and B8 are
+  not.
+- **Parts of 3A were already built when this file was written**, by work done
+  under Phase 2 before the 19 August meeting — A4 in full, A1, A5 and A6 in
+  part. The "nothing is built" line was never true of 3A; the table below and
+  [PROGRESS.md](PROGRESS.md) have said so since 23 and 25 August respectively.
+
+[PROGRESS.md](PROGRESS.md) is the per-item build state and is regenerated from
+code. **This file remains the specification; it never records build status
+beyond this note.** Where the two disagree, PROGRESS.md is the one that was
+measured.
 
 **Authority:** MG/SF/2026-02 (3A / 3B / 3C) was **sent** and is **unsigned** as at
-22 August 2026.
+22 August 2026, and was **still unsigned on 26 August 2026** when 3B was built
+under the override. It is **valid until 28 August 2026**.
 
 The **§0 gate in `CLIENT_CHANGES.md` applies to this file in full.** No item here
 gets built until MG/SF/2026-02 is signed, or until a dated override block in
 `CLIENT_CHANGES.md` §0 names the specific item. An override is a decision the
 client-facing owner takes and records; it is never one an agent may take, infer or
 extend.
+
+⚠ **The 26 August override covers B1–B5 and nothing else.** Every other item in
+this file — the rest of 3A, B6, B7, B8, and the whole of 3C — is **still gated**,
+and one override is not a precedent that clears the next. That B1–B5 were built
+makes the items that depend on them *possible*, not *authorised*.
 
 **This file is a specification, not an instruction to build.** The build order below
 applies *once work is authorised* — it does not authorise the work.

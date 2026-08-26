@@ -91,14 +91,23 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 924 passed, 3 skipped — this is what THESE
+python -m pytest -q                     # 987 passed, 3 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
                                         #   (It said "923 passed, 1 skipped — openpyxl
                                         #   ABSENT" until 23 Aug 2026, quoting row 3 at the
                                         #   foot of a sequence that installs openpyxl. Skip
-                                        #   line 91 and you get row 3 instead.)
-python app.py                           # http://127.0.0.1:5000
+                                        #   line 91 and you get row 3 instead. It read
+                                        #   "924 passed, 3 skipped" until 26 Aug 2026,
+                                        #   when Phase 3B added 63 tests.)
+
+python tools/seed_users.py --password "<choose one>"   # ⚠ Phase 3B: the app is
+                                        #   CLOSED. With no user in the database every
+                                        #   route redirects to /setup, which creates the
+                                        #   first Owner in a browser. This is the same
+                                        #   job without one. There is no default password
+                                        #   and placeholders are refused.
+python app.py                           # http://127.0.0.1:5000 — then sign in
 ```
 
 **Run it in a `.venv`, not on a system interpreter.** That is the supported
@@ -117,8 +126,15 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl`), both client workbooks **absent** | **924 passed, 3 skipped** | **23 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **923 passed, 1 skipped** | **23 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl`), both client workbooks **absent** | **987 passed, 3 skipped** | **26 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **986 passed, 1 skipped** | **26 Aug 2026** |
+
+*(Rows 2 and 3 read **924 / 3** and **923 / 1** from 23 August 2026 until
+26 August, when Phase 3B access control added 63 tests. **Both figures above
+were measured on 26 August, and both pre-pass figures were re-measured on the
+same day rather than quoted** — they matched, which is what makes the +63
+a real before/after and not arithmetic. The 3-test gap between the two rows is
+still openpyxl and is explained below; it is unchanged by this pass.)*
 
 ⚠ **Row 2 is the configuration this repo says to run, and until 23 August 2026 it
 had never been run.** Every figure this document has ever carried came from row 3
@@ -138,7 +154,7 @@ the same CPython 3.10.11 with both workbooks absent. Without openpyxl,
 `tests/test_fixtures.py`'s 4 tests are never collected and pytest prints
 `1 skipped` (row 3). With it, all 4 are collected: 1 passes and 3 skip
 individually via `conftest.require_fixture()` because the workbooks are absent
-(row 2). 923 + 1 = 924 passed, and 3 skipped rather than 1 — which is the
+(row 2). 986 + 1 = 987 passed, and 3 skipped rather than 1 — which is the
 two-mechanism distinction below, arrived at from a real run rather than from
 arithmetic. The `.venv` itself moved nothing observable, and that is a result
 worth having: the pins reproduce what the global interpreter was already doing.
@@ -288,6 +304,7 @@ Consequences you must respect when editing:
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
+| [auth.py](auth.py) | 1639 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. |
 | [pipeline.py](pipeline.py) | 608 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
@@ -298,7 +315,7 @@ Consequences you must respect when editing:
 
 ```
 app.py
- ├─ dashboard.py ──────────────┐  (BASE_STYLES, _nav) imports branding, store, pipeline, db
+ ├─ dashboard.py ──────────────┐  (BASE_STYLES, _nav) imports branding, store, pipeline, db, auth
  ├─ product.py ────────────────┤  imports dashboard, branding, store
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
@@ -323,6 +340,7 @@ app.py
 pipeline.py  imports nothing from the app  ← keep it that way
 branding.py  imports nothing from the app  ← keep it that way
 demo_data.py imports nothing AT ALL        ← keep it that way
+auth.py      imports store, pipeline, branding — and NOTHING that prints ← §2g
 docsheet.py  imports quotation + the three above, and NOTHING that prints  ← §2d
 boqpick.py   imports boq + pipeline, and NOTHING that renders a document ← §2e
 ```
@@ -822,6 +840,59 @@ beside branding.py and pipeline.py. dashboard.py must **never** import
 `product`, `quotation` or `address` at module level, because those import *it*.
 `index()` pulls `ensure_demo_products` / `ensure_demo_addresses` in **inside the
 function body** for exactly that reason; that is deliberate, not an oversight.
+
+### 2g. `auth.py` — a fourth bottom-of-graph module, and the one that renders
+
+`pipeline.py`, `branding.py` and `demo_data.py` sit at the bottom of the import
+graph because nothing there may import anything of ours. **`auth.py` has to sit
+in the same place, and it draws pages** — which is a combination none of the
+other three has to manage.
+
+**Why it has to be at the bottom.** `dashboard.py` imports it. The module strip
+on `/` carries the **Users & Access** card, and that card is drawn only for a
+holder of `admin.users` — so the dashboard has to be able to ask who is signed
+in. Every other module in the app imports `dashboard.py` for `BASE_STYLES` and
+`_nav()`, so anything `auth.py` reached for at module level would be reached by
+the entire application, and anything that imports `dashboard` back would be a
+cycle at boot.
+
+So its module-level imports are exactly three — `store`, `pipeline`, `branding` —
+and [tests/test_import_directions.py](tests/test_import_directions.py) asserts
+that as a **whitelist**, not a blacklist:
+`test_auth_imports_nothing_that_prints`. A blacklist has to be remembered when
+somebody adds a module; a whitelist catches the import nobody thought of.
+
+**How it renders anyway.** Two shells, and the split is the whole trick:
+
+| Shell | Used by | Chrome |
+|---|---|---|
+| `_standalone()` | `/login`, `/setup` | Its own `AUTH_STANDALONE_STYLES`. **No nav** — every nav link would refuse somebody with no session, and the persistence strip would leak database health to a stranger. |
+| `_shell()` | `/account`, `/logout`, `/users`, `/roles`, `/access-log` | `BASE_STYLES` + `QUOTATION_STYLES` + `AUTH_ADMIN_STYLES`, imported **inside the function body** — the same escape hatch `dashboard.index()` uses for the seeders. |
+
+Those two logged-out pages are the **only** screen routes in this app that do
+not layer `BASE_STYLES`, and both are named with that reason in
+`tests/test_page_chrome.py::NO_CHROME`. Every other page in `auth.py` is an
+ordinary page of this application and looks like one.
+
+**The gate.** `auth._gate()` runs as a single `app.before_request` hook
+installed by `auth.enforce(app)`, and it answers from `ROUTE_PERMISSIONS`, a
+dict of endpoint name → permission id (or `PUBLIC` / `AUTHENTICATED`).
+
+⚠ **An endpoint absent from that dict is refused** — to everybody, including an
+Owner. That is the design and it is the reason this is a central registry rather
+than a decorator on each route: a forgotten decorator fails *open*, and is
+indistinguishable from a route meant to be open. Absence failing closed is what
+makes a route added in a later pass unreachable until somebody classifies it.
+
+The cost of that choice, stated plainly: **the registry is a second thing to
+keep in step with the routes.** It is paid for by
+`test_access_control.py::test_every_endpoint_is_classified`, which walks
+`app.url_map` and fails on any endpoint with no entry. That test is
+load-bearing — weakening it re-opens the application silently.
+
+**What it is not.** The gate is **endpoint-level**, not object-level. "May this
+user approve *this* record" is not expressible in it and stays a per-view guard;
+see §7 gap 24, which the B6 approvals work inherits.
 
 ---
 
@@ -1618,6 +1689,67 @@ Six properties this shape exists to guarantee:
 
 `type` ∈ `office | site | billing | shipping | vendor`.
 Validated: PIN `^[1-9][0-9]{5}$`, GSTIN full 15-char pattern.
+
+### User  (Phase 3B)
+
+```python
+{ "id", "username", "display_name", "password_hash",
+  "role_ids", "active", "created_at", "created_by" }
+```
+
+- `id` — `uuid4().hex[:12]`, server-minted.
+- `username` — stored **as entered**, compared **case-insensitively**.
+  `Yogesh` and `yogesh` are one login; the register shows the spelling the
+  person actually uses.
+- `password_hash` — `werkzeug.security.generate_password_hash`. Werkzeug was
+  already a pinned dependency (`requirements.txt`, `Werkzeug==3.1.7`), so this
+  added none.
+- `role_ids` — a **list**. One user may hold several roles and their effective
+  permissions are the **union** (CLIENT_CHANGES-2.md B4: the client explicitly
+  wants Sales and Purchase linkable).
+- `active` — **users are deactivated, never deleted, and there is no delete
+  route.** `db.py` has no foreign keys, so `created_by` here — and on every
+  record the B6 approvals ladder will stamp — would dangle the moment a row
+  disappeared. A deactivated user cannot sign in, which is the whole of what
+  removing access means, and the name on last year's bill still resolves.
+  `tests/test_auth.py::test_there_is_no_route_that_deletes_a_user` walks the
+  URL map to keep it that way.
+
+⚠ **Nothing seeds a user.** A seeded account is a working login with a known
+password on every install that ships. The first one is minted deliberately, by
+`GET/POST /setup` or `tools/seed_users.py`, and both refuse a blank, short or
+placeholder password. `tests/test_hardening.py::test_no_seeder_invents_a_user`
+empties the collection, runs every seeder at it, and looks again.
+
+### Role  (Phase 3B)
+
+```python
+{ "id", "name", "permissions", "builtin" }
+```
+
+- `permissions` — a list of ids from `auth.PERMISSIONS`, which is **minted in
+  code** (61 of them). The client bundles permissions into roles; the client
+  **cannot invent a permission string** — `auth._posted_permissions()` drops
+  anything that is not a key of the catalogue, because a stored typo grants
+  nothing and looks exactly like a permission that is simply not working.
+- `builtin` — the seven seeded by `auth.ensure_builtin_roles()`. Their ids are
+  the fixed slugs `role-owner`, `role-director`, … rather than uuid4, for the
+  reason §4 gives about the other seeders: a fixed id makes a re-run a no-op.
+  **An existing builtin's permissions are never rewritten** — once an Owner has
+  edited what Director means, a restart must not undo it.
+
+**Owner and Admin are not a field.** CLIENT_CHANGES-2.md B3 splits an *Owner*
+who defines what a role means from an *Admin* who creates users and assigns
+roles that already exist. That is modelled as **"Owner is exactly whoever holds
+`admin.roles`"** — one mechanism, so there is no tier flag that can disagree
+with the permissions sitting next to it. Two guards hold the split:
+
+- `auth._may_grant()` — a non-Owner cannot assign a role carrying
+  `admin.roles`, or the Admin who "cannot alter role definitions" would simply
+  tick the Owner role on a new account and sign in as it;
+- `auth._would_strand_install()` — the last active Owner cannot be deactivated
+  **or edited out of the tier**. There is no console and no password-reset
+  e-mail in this deployment, so these refusals *are* the recovery mechanism.
 
 ---
 
@@ -4038,6 +4170,30 @@ either is a rebrand, not a setting.
 
 ---
 
+### `/login`, `/users`, `/roles` — Identity & Access · [auth.py](auth.py)
+
+Thirteen routes. The architecture is §2g; this is what each page does.
+
+| Route | Methods | Permission | What it does |
+|---|---|---|---|
+| `/login` | GET, POST | **PUBLIC** | Standalone, no nav. One message for a bad password *and* an unknown user — telling a stranger which half was wrong tells them which half to keep guessing. A **deactivated** account is told so plainly, which is the opposite call: they have already proved they hold the password, and "wrong password" would send an honest user off resetting one that was never the problem. `next=` is filtered by `_safe_next()` so the form cannot become an open redirect. |
+| `/logout` | GET, POST | any user | **GET confirms, POST destroys** — the delete-route convention from `9d060ee`. A GET that ends a session is issued by link prefetchers, crawlers and mail scanners unfurling a pasted URL, every one of which would log somebody out mid-form. |
+| `/setup` | GET, POST | **PUBLIC, conditionally** | The first Owner, in a browser. Renders **only while `users` is empty** and redirects the moment one exists, so the public window closes by itself rather than depending on somebody remembering to close it. With no users at all, `_gate()` sends *every* request here — a fresh install must not be a locked door. |
+| `/account` | GET, POST | any user | Own details, own roles, own permission list, and the only place a user changes their own password. |
+| `/users` | GET | `admin.users` | The register. Deactivated accounts stay listed, greyed. |
+| `/users/create` | GET, POST | `admin.users` | Endpoint pinned to `auth.create_user`; the view is `create_user_route` because `create_user` is the record helper. |
+| `/users/edit/<id>` | GET, POST | `admin.users` | Display name, roles, and **the manual password reset** (§7 gap 21). |
+| `/users/deactivate/<id>` | GET, POST | `admin.users` | GET confirms, POST acts. **There is no delete route** — §3, User. |
+| `/users/activate/<id>` | GET, POST | `admin.users` | The reverse. |
+| `/roles` | GET | `admin.roles` | **Owner only.** Shows each role's permission count and how many active users hold it. |
+| `/roles/create`, `/roles/edit/<id>` | GET, POST | `admin.roles` | Checkboxes over the 61-permission catalogue, grouped by module. A builtin role's **name** is fixed; its permissions are not. |
+| `/access-log` | GET | `admin.access_log` | The last 500 refusals — user, endpoint, permission wanted, why. §7 gap 23 on what it is not. |
+
+⚠ **No nav chip shows who is signed in, deliberately.** The printed documents
+embed `_nav()` inside the block `tests/test_print_golden.py` hashes, so any nav
+change moves every print golden. Decoupling the two is its own job; until it is
+done, `/account` is reached from the Users & Access card and by URL.
+
 ### `/extractor` — Market News · [extractor.py](extractor.py)
 
 `GET /extractor/` only. A dark-canvas page of **four hardcoded articles** in
@@ -4283,8 +4439,20 @@ Real, verified, and safe to pick up:
    hardcoding 600 where it would drift from the constant that enforces it.
 7. **HTML escaping is inconsistent.** `address.py`, `pipeline.py` and
    `proforma.py` escape; `quotation.py` and `product.py` largely don't.
-8. **`SECRET_KEY` defaults to `qms-demo-secret-2024`.** Generate a real one
-   before any deployment.
+8. ~~**`SECRET_KEY` defaults to `qms-demo-secret-2024`.** Generate a real one
+   before any deployment.~~ ✅ **Closed, 26 August 2026.**
+   `auth.resolve_secret_key()` reads `SAMRUDDHI_SECRET_KEY`, then `SECRET_KEY`,
+   then a `secret_key.txt` it mints beside the code and which is gitignored.
+   **The hardcoded literal is deleted, not demoted** — a fallback that only
+   fires "in development" is a fallback that ships, and
+   `tests/test_auth.py::test_the_demo_secret_key_is_gone_from_the_codebase`
+   reads every root module's AST to keep it deleted. It became urgent rather
+   than untidy the moment sessions went live: a signing key published in this
+   repository's history means a forged cookie is a valid login, and every
+   permission check in `auth.py` would be theatre. CLIENT_CHANGES-2.md lists it
+   under "Security items promoted by this phase"; **the other item there —
+   unescaped output in `product.py` and `quotation.py` — is still open**, see
+   §7.7 and §7.9d.
 9. **Standing T&C clauses are unreviewed** by the client — all three of
    `quotation._build_tnc()`, `proforma._build_pi_terms()` and
    `invoice._build_ti_terms()` (§5).
@@ -4757,6 +4925,58 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    and note that adding any of them would also stop it looking like the challan
    their site staff actually recognise, which is a second reason to wait for an
    instruction rather than infer one.
+21. 🟠 **No password reset, by design — and the manual path is undocumented for
+   the client.** CLIENT_CHANGES-2.md B3 puts e-mail reset explicitly out of
+   scope and says reset is a manual Owner action. That action exists —
+   `/users/edit/<id>` sets a new password — but **nothing tells the client
+   that**, and `/account` only says "an Owner sets a new password for you".
+
+   The failure case is specific and reachable: the **last Owner forgets their
+   password**. `_would_strand_install()` guarantees an active Owner exists; it
+   cannot guarantee anybody can sign in as one. There is no console, no
+   `flask shell` in this deployment and no reset e-mail, so the recovery today
+   is editing `password_hash` in MySQL by hand. Either a second Owner is a
+   documented operational requirement, or a break-glass CLI is needed. **It is
+   not a code fix until somebody decides which**, which is why this is a gap
+   and not a task.
+22. 🟠 **No rate limiting and no lockout on `/login`.** Passwords may be
+   brute-forced at whatever rate the box serves requests. `werkzeug`'s scrypt
+   hashing makes each attempt cost something, which is a floor and not a
+   defence.
+
+   Deliberately not fixed in the same pass that introduced login: a lockout is
+   also a denial-of-service against the real user — lock the last Owner out for
+   fifteen minutes and gap 21 arrives on a timer. It needs a decision about
+   what happens to an administrator account under attack, taken with the
+   client-facing owner, before it is built. The refusal log (`/access-log`)
+   records failed *authorisation*; it does **not** record failed *logins*,
+   which is the first thing this gap needs.
+23. 🟠 **The refusal log is a diagnostic, not an audit trail.**
+   `auth.REFUSAL_LOG` is an in-memory `deque(maxlen=500)`: bounded, unordered
+   with respect to restarts, and **gone when the process stops**. Refusals are
+   also written to `app.logger`, which does survive, but nothing in this app
+   reads that back.
+
+   It is deliberately not a persisted collection. An audit trail has retention,
+   immutability and a defined question it answers; a ring buffer pretending to
+   be one is worse than not having one, because somebody will rely on it. **B6
+   approvals will need a real audit record** — who approved what, and when —
+   and that is a separate design decision, not an extension of this.
+
+   ⚠ It logs refusals only. **Successful** access is not recorded anywhere.
+24. 🟠 **Permissions are endpoint-level only. Object-level access is not
+   expressible.** `auth.ROUTE_PERMISSIONS` maps an endpoint to a permission, so
+   it answers *"may this user issue RA bills"*. It cannot answer *"may this
+   user issue **this** RA bill"*.
+
+   📌 **The B6 approvals ladder inherits this, and it is the load-bearing part
+   of B6.** CLIENT_CHANGES-2.md: *"a user cannot approve a record they created.
+   This is checked against the record's creator, not against the approver's
+   role"* — and it exists because union permissions defeat the ladder
+   otherwise, a user holding both Sales Manager and HR raising a charge and
+   approving it themselves. **That check cannot live in the registry** and must
+   be a per-view guard against the record's `created_by`. Recorded here so the
+   approvals pass inherits it rather than rediscovering it halfway through.
 
 ---
 

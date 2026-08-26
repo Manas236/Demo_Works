@@ -165,6 +165,7 @@ It is 4,100-odd lines. Section headings, so you can jump:
 | 2c | **Receipts** — `receipt.py`, and why the balance arithmetic lives upstream in `ra.py` |
 | 2d | **`docsheet.py`** — the one printed A4 sheet, why it is a leaf, and how that keeps `ra.py` and `invoice.py` apart |
 | 2e | **`boqpick.py`** — the one BOQ line picker, why it is also a leaf, and how that keeps `po_draft.py` and `challan.py` apart |
+| 2g | **`auth.py`** — the fourth bottom-of-graph module, and the only one that renders. Why access control has to sit under `dashboard.py`, the two page shells, and **why the gate is a central registry rather than a decorator** |
 | 3 | **Every record shape**, with the properties each shape exists to guarantee |
 | 4 | Persistence — how `db.py` snapshots and diffs, and how failure surfaces |
 | 5 | Page by page, route by route. `/boq` and `/ra` are the ones you need; `/client` and `/po` are the newest |
@@ -216,20 +217,41 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **923 passed / 1 skipped** on 23 August 2026, verified by
+The baseline is **986 passed / 1 skipped** on 26 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
-*(It read **838 passed / 1 skipped**, 16 August 2026, until 23 August — 85 tests
-stale. The configuration is spelled out in full here as well as in
-[ABOUT.md §1](ABOUT.md), because naming only half of it is how the figure went
-stale without anyone noticing.)*
+*(It read **923 passed / 1 skipped** on 23 August 2026, in the same
+configuration, and **838 passed / 1 skipped** on 16 August. The 26 August pass
+built Phase 3B access control and added 63 tests: `tests/test_auth.py` (36),
+`tests/test_access_control.py` (13), new parametrised cases in
+`tests/test_import_directions.py`, and one in `tests/test_hardening.py`. The
+923 figure was re-measured at the start of that pass rather than quoted — it
+matched.)*
 
-⚠ **The other two configurations were not re-measured on that pass.** The box
-had neither openpyxl nor either client workbook, so the rows for *openpyxl
-present, workbooks absent* and *openpyxl present, workbooks present* in
-[ABOUT.md §1](ABOUT.md) are **derived** and are marked there as such. A count
-nobody ran is a claim, not a result — if you are on a box that can produce
-either, run it and replace the derived figure with the measured one.
+**The supported configuration is measured too:** the repo's `.venv` (CPython
+3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **987 passed
+/ 3 skipped**, measured 26 August 2026 against the same commit. It read
+**924 / 3** against the pre-pass code, measured the same day — which matches
+[ABOUT.md §1](ABOUT.md) row 2 exactly.
+
+*(⚠ **This paragraph used to say that row was "derived". It was wrong.**
+ABOUT.md §1 has recorded row 2 as **measured on 23 August 2026** since that
+date; this file went on describing it as derived, which is the same
+documentation drift §5.5 exists to warn about, pointing the wrong way. Corrected
+26 August 2026 after re-running it and getting ABOUT.md's figure back.)*
+
+The +1 pass and +2 skips over the global figure are the whole of the openpyxl
+difference: `tests/test_fixtures.py` holds its 4 tests behind a **module-level**
+`pytest.importorskip("openpyxl")`. Without openpyxl the module fails at
+**collection** and pytest prints **1 skipped** for all four; with it the module
+collects and the individual skips appear. One skip standing for four uncollected
+tests is the thing most often got wrong about this suite.
+
+⚠ **The third configuration — *openpyxl present, workbooks present* — has never
+been measured**, and [ABOUT.md §1](ABOUT.md) row 1 marks it **unknown** rather
+than guessing. This box has openpyxl but neither `sify_boq.xlsx` nor
+`annexure.xlsx`. A count nobody ran is a claim, not a result: if you are on a box
+that has the workbooks, run it and put the measured figure in.
 
 **Always state which of the three you ran.** A count on its own is not a
 result: the three move independently, and one pass reported "607 to 630" and

@@ -264,6 +264,103 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > rest of that quotation and does not authorise a single Phase 3 item;
 > [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md) stays gated in full.
 
+> ### ⚠ OVERRIDE — 26 August 2026, by Manas Gawde — Phase 3B, access control only
+>
+> **A new block, not an amendment.** Every block above stands exactly as
+> written; none has been edited, reformatted or re-scoped. This is the sixth
+> occasion and the **first that reaches into Phase 3**, which is why it is
+> worded from scratch rather than extended onto the block above it.
+>
+> **MG/SF/2026-02 was still unsigned on 26 August 2026**, and is **valid until
+> 28 August 2026** — two days after this decision. Manas took the decision to
+> proceed anyway and instructed that it be recorded rather than the rule
+> deleted, exactly as on 14, 15, 16 and 23 August.
+>
+> #### What proceeds
+>
+> **Phase 3B items B1, B2, B3, B4 and B5 only** — user accounts and login,
+> permissions as named strings minted in code, the Owner / Admin split, the six
+> client roles, and default-deny access control across all 72 endpoints. Built
+> 26 August 2026 in `auth.py`.
+>
+> **B6 (approvals), B7 (unapproved documents are view-only) and B8 (file
+> attachments) are NOT authorised by this block and were not built.** They are
+> the rest of 3B and they remain gated in full. So does every item of 3A and 3C.
+>
+> #### Two deviations from CLIENT_CHANGES-2.md, taken deliberately
+>
+> Both were put to the client-facing owner as decisions before any code was
+> written, and neither is an agent's reading of the spec.
+>
+> 1. **B5's two-stage rollout was collapsed into one.** B5 asks for audit mode —
+>    log what would be refused, run it, then flip to enforce. This enforces from
+>    the start. 3C's approvals cannot be built on an unenforced layer: "an
+>    unapproved document may be viewed but not printed" is not a guarantee an
+>    audit-mode hook makes, so building B6 and B7 on one means re-verifying all
+>    of it afterwards — and a second audit-mode pass needs a second override
+>    cycle this calendar does not have. **The logging half of audit mode was
+>    kept as a condition of the decision**: every refusal records the user, the
+>    endpoint and the permission wanted, because the enumeration test proves no
+>    endpoint is *unclassified* but cannot see one classified *too tight*.
+>
+> 2. **B3's Owner tier was built, and it is not in the six roles B4 names.**
+>    B4 lists Director, Operations Head, HR, Sales Manager, Purchase Manager and
+>    Accountant; B3 separately requires an Owner who defines what a role *means*
+>    and an Admin who cannot. Seven roles ship, not six. Without the seventh the
+>    client's own Directors could rewrite any role definition, which is the one
+>    thing B3 says they may not do.
+>
+> #### It remains chargeable, and the price is unchanged
+>
+> **Phase 3B is priced in MG/SF/2026-02 and stays priced there.** This is not a
+> §0 no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and an access-control layer is
+> new capability. Building it early changed **when** it was built, not **what it
+> costs** or **who agreed to it**. No agent may record any part of 3B as
+> delivered-no-charge or as covered by MG/SF/2026-01.
+>
+> **One thing inside this work is genuinely exempt and is recorded as such:**
+> the `SECRET_KEY` demo default ([ABOUT.md §7](ABOUT.md) gap 8). That is a
+> security defect in code already sold under MG/SF/2026-01, it is named in
+> CLIENT_CHANGES-2.md's own "Security items promoted by this phase" as a narrow
+> security fix rather than 3B scope, and it is closed by this work. The
+> **unescaped output in `product.py` and `quotation.py`** named alongside it in
+> that same section is **not** fixed and is still open.
+>
+> #### What was NOT built, and must not be assumed
+>
+> The five role lines the client stated at the 19 August meeting that carry **no
+> 3A/3B/3C tag and appear nowhere in MG/SF/2026-02** — the two "visual
+> dashboard" lines, HR editing salary, and the Accountant's employee overview
+> and employee management — are **not** built and no permission stands in for
+> any of them. CLIENT_CHANGES-2.md's own section says building them inside
+> Phase 3 would be unpaid work; that is unchanged by this block.
+>
+> **CLIENT_CHANGES-2.md carries no per-role permission grid.** B4 names the
+> roles and states exactly one restriction — HR information is kept from Sales,
+> Purchase and Accounts. The permission set each of the seven roles ships with
+> is therefore a **derived starting position, not a client instruction**, and it
+> is editable by an Owner with checkboxes precisely so that it does not have to
+> be right first time. It should be walked through with the client rather than
+> presented as what he asked for.
+>
+> **The gate is not lifted and this is not a precedent.** It is still the
+> default and it still stands. That Phase 3B was authorised does not authorise
+> 3A, 3C, or the rest of 3B, and an override remains a decision that is taken
+> and recorded, never one an agent may take, infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged, and
+> it is restated deliberately:** if MG/SF/2026-02 is never signed, items 8, 3,
+> 2, 4 and 5 **and the whole of the Phase 3B access-control layer** were built
+> against an unsigned quotation — and MG/SF/2026-02 expires on 28 August 2026.
+>
+> **Where the technical record lives:** [ABOUT.md §2](ABOUT.md) for `auth.py`
+> and its place in the import graph, [ABOUT.md §7](ABOUT.md) for the four gaps
+> this work opens and the one it closes, [PROGRESS.md](PROGRESS.md) for the
+> per-item build state, and
+> [tests/test_access_control.py](tests/test_access_control.py) for what is
+> actually guaranteed.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as

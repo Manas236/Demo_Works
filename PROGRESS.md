@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 25 August 2026 |
+| **Date** | 26 August 2026 |
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `2ec54f6b297456d4fb703b4a9491611b47c725a0` |
-| **vs `origin/antigravity-dev`** | 2 ahead, 0 behind |
-| **Dirty files** | 0 — `git status --porcelain` empty. No `.py` file is modified or untracked, so no status in this file depends on uncommitted code. |
-| **Test figure** | **not measured this pass.** The pass was constrained to create no file anywhere on this machine other than `PROGRESS.md`; `python -m pytest` writes `.pytest_cache/` and `__pycache__/`, so the suite was not run. No count is quoted from any document either. |
+| **HEAD** | `3b58338` — *"Phase 3B: turn default deny on"*. This file is updated in the docs commit that follows it, so the code it describes is the code at `3b58338`. |
+| **vs `origin/antigravity-dev`** | 3 ahead, 0 behind, unpushed. ⚠ The previous edition of this file said "2 ahead"; the three commits it was counting had in fact been **pushed** — `git reflog show origin/antigravity-dev` records `2286c14 … update by push`. The ahead-count restarts from that pushed base. |
+| **Dirty files** | 0 — `git status --porcelain` empty at the time of writing. |
+| **Test figure** | **measured this pass: 986 passed, 1 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **923 passed / 1 skipped**, re-measured in the same configuration at the start of the pass rather than quoted. <br><br>⚠ A second configuration was measured for the first time: the repo's `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **987 passed, 3 skipped** against this commit, and **924 passed, 3 skipped** against the pre-pass code. INTRODUCTION.md §5.5 and ABOUT.md §1 marked that row **derived**; it is now measured. The third configuration (*openpyxl present, workbooks present*) is still derived — neither client workbook is on this box. |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -33,28 +33,39 @@ Only BUILT fills the bar. PARTIAL contributes nothing; BLOCKED contributes
 nothing.
 
 ```
-ALL  █░░░░░░░░░░░░░░░░░░░   1 of 20 BUILT · 3 PARTIAL · 2 BLOCKED · 14 NOT STARTED
-3A   ███░░░░░░░░░░░░░░░░░   1 of 6 BUILT · 3 PARTIAL · 0 BLOCKED · 2 NOT STARTED
-3B   ░░░░░░░░░░░░░░░░░░░░   0 of 8 BUILT · 0 PARTIAL · 0 BLOCKED · 8 NOT STARTED
-3C   ░░░░░░░░░░░░░░░░░░░░   0 of 6 BUILT · 0 PARTIAL · 2 BLOCKED · 4 NOT STARTED
+ALL  ██████░░░░░░░░░░░░░░   6 of 20 BUILT · 3 PARTIAL · 2 BLOCKED ·  9 NOT STARTED
+3A   ███░░░░░░░░░░░░░░░░░   1 of 6 BUILT · 3 PARTIAL · 0 BLOCKED ·  2 NOT STARTED
+3B   ████████████▌░░░░░░░   5 of 8 BUILT · 0 PARTIAL · 0 BLOCKED ·  3 NOT STARTED
+3C   ░░░░░░░░░░░░░░░░░░░░   0 of 6 BUILT · 0 PARTIAL · 2 BLOCKED ·  4 NOT STARTED
 ```
+
+⚠ **Only B1–B5 were authorised.** The 26 August 2026 OVERRIDE block in
+`CLIENT_CHANGES.md` §0 names those five items and no others. B6, B7 and B8 are
+NOT STARTED *and still gated*, as is every remaining item of 3A and 3C — a
+filled bar is not permission to fill the next one.
 
 ---
 
 ## 3. What the bars do not say
 
 **The item count does not measure the work.** These twenty items are not
-comparable units and the ratio 1/20 is close to meaningless as a measure of
-effort remaining. A2 is a column on one form. B5 is a decision applied to every
-route in the application, twice.
+comparable units and the ratio 6/20 is close to meaningless as a measure of
+effort remaining. A2 is a column on one form. B5 was a decision applied to every
+route in the application.
 
-Three items dominate what is left, and between them they are most of Phase 3:
+**B5 is now built, and it cost less than this section predicted.** The 25 August
+edition called it "a decorator on every route function in every module" and the
+largest single item in Phase 3. It was built instead as **one central
+registry and one `before_request` hook** — `auth.py` is a new file and `app.py`
+gained one line; no route function in any other module was touched. The
+prediction was wrong about the shape, and the reason is worth keeping: a
+decorator scheme fails **open** when somebody forgets one, and default-deny only
+works by *absence*, which a decorator cannot express. What the registry costs
+instead is a second thing to keep in step with the routes, and
+`test_every_endpoint_is_classified` is what pays for it.
 
-- **B5 — default deny, two-stage.** Not a feature. It is a decorator on every
-  route function in every module, an audit-mode pass, a log to read, a flip to
-  enforce, and an AST test asserting no route escaped. It touches more files
-  than the rest of 3B combined and it cannot be done incrementally without
-  leaving routes silently open.
+Two items now dominate what is left of Phase 3:
+
 - **B8 — file attachments.** The first thing that breaks the storage model.
   There is no `/static`, images are base64 data URIs, and `boq.MAX_JSON_BYTES`
   is 300,000 ([boq.py:192](boq.py#L192)) against a photographed supplier bill
@@ -64,8 +75,17 @@ Three items dominate what is left, and between them they are most of Phase 3:
   unblocks it has to settle a statutory numbering question the repo currently
   answers both ways.
 
-B1/B2/B3/B4 are individually smaller but strictly sequential and strictly
-prior: none of 3C can be built until a user exists.
+~~B1/B2/B3/B4 are individually smaller but strictly sequential and strictly
+prior: none of 3C can be built until a user exists.~~ **Done — a user now
+exists, and 3C is no longer blocked on identity.** It is still gated: the
+26 August override covers B1–B5 and nothing else.
+
+**What B6 needs that this pass did not give it.** The gate is **endpoint-level**
+(ABOUT.md §7 gap 24). B6's load-bearing rule — *a user cannot approve a record
+they created, checked against the record's creator* — is not expressible in
+`ROUTE_PERMISSIONS` and must be a per-view guard against `created_by`. Nothing
+in this pass makes that check easier; it only makes it possible, by giving
+records somebody to have been created by.
 
 ---
 
@@ -84,20 +104,32 @@ prior: none of 3C can be built until a user exists.
 
 ### 3B — users, access and approvals
 
-Nothing in 3B exists. There is no authentication, no user record, no session
-identity, no role and no permission anywhere in the application. The one
-related fact in code is that `SECRET_KEY` is read from the environment but
-still falls back to the demo default:
-`app.secret_key = os.getenv("SECRET_KEY", "qms-demo-secret-2024")`
-[app.py:53](app.py#L53).
+**B1–B5 built 26 August 2026** in [auth.py](auth.py) (1,639 lines), under the
+dated **26 August 2026 OVERRIDE** in `CLIENT_CHANGES.md` §0. The application is
+now closed: `auth.enforce(app)` [app.py:158](app.py#L158) installs a single
+`before_request` gate that refuses **any** of the 72 endpoints not classified in
+`auth.ROUTE_PERMISSIONS` [auth.py:236](auth.py#L236).
+
+The `SECRET_KEY` demo fallback recorded here on 25 August is **gone**:
+`auth.resolve_secret_key()` [auth.py:70](auth.py#L70) reads
+`SAMRUDDHI_SECRET_KEY`, then `SECRET_KEY`, then a gitignored `secret_key.txt`,
+with no hardcoded fallback. ABOUT.md §7 gap 8 is closed.
+
+**B6, B7 and B8 remain NOT STARTED and remain gated.**
+
+⚠ **Two deliberate deviations from CLIENT_CHANGES-2.md**, both decided by the
+client-facing owner before code was written and both recorded in the override
+block: B5's two-stage audit-mode rollout was collapsed into immediate
+enforcement (with the logging half kept as a condition), and B3's **Owner** tier
+ships as a seventh role beside B4's six. Do not read either as spec drift.
 
 | Tag | Requirement (short) | Status | Evidence | What is left | Browser? |
 |---|---|---|---|---|---|
-| **B1** | user accounts and login | NOT STARTED | No `users` collection in `store.py`; `db.py`'s collection map [db.py:259](db.py#L259) names no user table. No login route on any blueprint. No password hashing import anywhere — `werkzeug.security` is unreferenced. | All of it, plus the `SECRET_KEY` move CC-2 folds into this item rather than treating as separate — [app.py:53](app.py#L53) still carries the demo fallback. | ☐ |
-| **B2** | permissions are named strings, minted in code | NOT STARTED | No permission string, constant or registry in any `.py` file. | All of it: the code-side permission constants, roles as editable data, union of roles for effective permissions, and the `/settings` surface that assigns without allowing new strings to be invented. | ☐ |
-| **B3** | Owner / Admin split | NOT STARTED | No user tier concept exists — see B1. | All of it, including the last-Owner-undeletable invariant and the manual Owner-driven password reset. | ☐ |
-| **B4** | roles as discussed | NOT STARTED | No role record exists. | Seeding the six roles, the HR restriction from Sales/Purchase/Accounts, and multi-role assignment. | ☐ |
-| **B5** | default deny, rolled out in audit mode | NOT STARTED | No decorator on any route function. Route decorators across the app are bare `@<bp>.route(...)` — e.g. [ra.py:2506](ra.py#L2506), [purchase.py:863](purchase.py#L863), [client.py:219](client.py#L219). No AST test over route permissions in `tests/`; `tests/test_import_directions.py` uses the AST technique CC-2 points at, but only for import direction. | All of it, both stages, plus the AST test. Largest single item in Phase 3 — see §3. | ☐ |
+| **B1** | user accounts and login | **BUILT** | `users` collection [store.py:44](store.py#L44), persisted via [db.py:75](db.py#L75). `GET,POST /login` `auth.login()` [auth.py:944](auth.py#L944); `GET,POST /logout` [auth.py:990](auth.py#L990) (GET confirms, POST destroys); `GET,POST /setup` [auth.py:1090](auth.py#L1090); `GET,POST /account` [auth.py:1025](auth.py#L1025). Hashing is `werkzeug.security` — `create_user()` [auth.py:508](auth.py#L508). `SECRET_KEY` moved: `resolve_secret_key()` [auth.py:70](auth.py#L70). Bootstrap also non-interactive: [tools/seed_users.py](tools/seed_users.py). Tests: `test_a_correct_password_signs_in`, `test_a_wrong_password_does_not`, `test_a_deactivated_user_cannot_sign_in`, `test_logout_needs_a_post`, `test_the_demo_secret_key_is_gone_from_the_codebase` [tests/test_auth.py](tests/test_auth.py). | Nothing for B1. **But see §7 gaps 21 and 22** — no documented password-reset path for a locked-out last Owner, and no rate limiting on `/login`. Neither is a code fix until a decision is taken. | ☑ |
+| **B2** | permissions are named strings, minted in code | **BUILT** | 61 permissions in `auth.PERMISSIONS` [auth.py:120](auth.py#L120), each with a label and display group, derived from `app.url_map`. Roles are editable data: `GET,POST /roles/edit/<id>` [auth.py:1562](auth.py#L1562) renders checkboxes over the catalogue. The client cannot mint a string — `_posted_permissions()` [auth.py:1514](auth.py#L1514) drops anything not a catalogue key. Effective permissions are the **union** of roles: `permissions_of()` [auth.py:540](auth.py#L540). Tests: `test_a_role_cannot_be_given_a_permission_that_does_not_exist`, `test_editing_a_role_takes_effect_without_signing_in_again`, `test_every_catalogue_permission_gates_something` [tests/test_access_control.py](tests/test_access_control.py). | Nothing for B2. **Deviation from CC-2's wording:** the assignment surface is `/roles`, not `/settings`. `/settings` is the company-identity form and mixing an access matrix into it would put a lockout one mis-click from a bank-details save. | ☑ |
+| **B3** | Owner / Admin split | **BUILT** | Modelled as *"Owner is exactly whoever holds `admin.roles`"* — `is_owner()` [auth.py:557](auth.py#L557) — so there is no tier field to disagree with the permissions beside it. Only an Owner may grant an Owner role: `_may_grant()` [auth.py:1150](auth.py#L1150). The last active Owner cannot be deactivated **or edited out of the tier**: `_would_strand_install()` [auth.py:1169](auth.py#L1169). Role floors: `_role_edit_refusal()` [auth.py:1197](auth.py#L1197). Tests: `test_the_last_owner_cannot_be_deactivated`, `test_the_last_owner_cannot_edit_their_own_owner_role_away`, `test_an_admin_cannot_grant_themselves_the_owner_role`, `test_an_admin_can_still_create_an_ordinary_user`, `test_the_owner_role_cannot_lose_the_permission_that_defines_it`. | Password reset is manual and works (`/users/edit/<id>` sets a password) but is **undocumented for the client** — §7 gap 21. More than one Owner is permitted and untested in anger; a single-Owner install has no recovery path if that password is lost. | ☑ |
+| **B4** | roles as discussed | **BUILT** | Seven builtin roles seeded idempotently by `ensure_builtin_roles()` [auth.py:469](auth.py#L469) from `BUILTIN_ROLES` [auth.py:392](auth.py#L392) — B4's six plus B3's Owner. Multi-role assignment is a checkbox list on `/users/create` and `/users/edit`; effective permissions are the union. HR restriction applied literally to `charge.*`, the wages ledger being the only employee data the app holds. Tests: `test_the_six_client_roles_and_the_owner_are_seeded`, `test_hr_information_is_kept_from_sales_purchase_and_accounts`, `test_permissions_are_the_union_of_several_roles`, `test_re_seeding_does_not_undo_an_owners_edit`. | ⚠ **The per-role permission sets are a derived starting position, not a client instruction.** CC-2 carries **no per-role grid** — B4 names the roles and states one restriction. Walk the seven roles through with the client. HR's real surface arrives with C4 (employee master); until then HR holds only the charge ledger. | ☑ |
+| **B5** | default deny, rolled out in audit mode | **BUILT — with a recorded deviation** | Central registry `ROUTE_PERMISSIONS` [auth.py:236](auth.py#L236) classifying all 72 endpoints; single hook `_gate()` [auth.py:669](auth.py#L669) installed by `enforce()` [auth.py:740](auth.py#L740) at [app.py:158](app.py#L158). **Absence refuses** — proved, not claimed, by `test_an_unregistered_endpoint_is_refused`. The sweep CC-2 asks for is `test_every_endpoint_is_classified`, over `app.url_map`; `test_no_non_public_endpoint_is_reachable_without_a_session` sweeps every endpoint anonymously. 13 tests in [tests/test_access_control.py](tests/test_access_control.py). | ⚠ **Audit mode was not run.** CC-2 asks for log-only then flip; this enforces from the start, by decision recorded in the override block. **The logging half was kept as the condition of that decision** — every refusal records user, endpoint, permission and reason to `REFUSAL_LOG` [auth.py:626](auth.py#L626) and `app.logger`, readable at `GET /access-log` [auth.py:1604](auth.py#L1604). Also: the registry is **endpoint-level only** — §7 gap 24, which B6 inherits. | ☑ |
 | **B6** | approvals | NOT STARTED | No approval state on any record. Every occurrence of "approve/approved" in application code refers to BOQ **approved quantity** — e.g. [challan.py:249](challan.py#L249), [boq.py:2141](boq.py#L2141) — not to an approval ladder. `purchase.py` states the opposite explicitly: *"There is no extra approval step on this path"* [purchase.py:1511](purchase.py#L1511). | All of it, including the load-bearing creator-cannot-approve rule checked against the record's creator. Cannot start before B1. | ☐ |
 | **B7** | unapproved documents are view-only | NOT STARTED | Depends on B6, which does not exist. Print routes carry no approval gate: `GET /ra/print/<id>` [ra.py:3370](ra.py#L3370), `GET /dc/print/<id>` [challan.py:965](challan.py#L965). | Gate on the print and download routes, plus the print stylesheet that blanks the view page so `Ctrl+P` does not bypass the gate. | ☐ |
 | **B8** | file attachments | NOT STARTED | No `request.files` and no upload handling anywhere in the application. Storage model unchanged: `MAX_JSON_BYTES = 300_000` [boq.py:192](boq.py#L192), no `/static` directory. | All of it: real file storage, path on the record, size and type gate, compulsory on charges, optional on payments, cascade delete with the parent. Call the attached file a **proof of payment**, never a "receipt" — that word is taken by the payment record itself. | ☐ |

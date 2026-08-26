@@ -31,6 +31,13 @@ Fast facts so you don't get it wrong before reading:
 - `store.STORE` is one shared dict mutated in place; `db.py` persists it by
   snapshotting and diffing after every request.
 - Seller-side app: we issue the quotation, the customer sends us the PO.
+- **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
+  `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
+  refused, not opened** — so a route you add is unreachable until you classify
+  it, and `tests/test_access_control.py` fails until you do. On a fresh
+  database every URL redirects to `/setup`; `python tools/seed_users.py
+  --password "…"` is the same job from a terminal. ABOUT.md §2g is why it is a
+  central registry and not a decorator.
 
 When you change architecture, a data shape, or a route — update ABOUT.md in the
 same commit.

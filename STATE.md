@@ -10,17 +10,26 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 16 August 2026.
-**Tests:** **923 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 23 August 2026 by running the suite in it. *(It read
-838 / 1, 16 August 2026, until then.)* The other
-two configurations (openpyxl present, with and without the client workbooks)
-were **not re-measured on this pass**: the box it ran on has neither openpyxl
-nor either workbook, and [ABOUT.md §1](ABOUT.md) marks their rows as derived
-rather than silently updating them. A count quoted without its configuration is
-not a count, and a count nobody ran is a claim. That table also explains why the
-two mechanisms produce different-looking numbers — a module-level
-`importorskip` reports **one** skip however many tests sit behind it.
+**As of:** branch `antigravity-dev`, 26 August 2026.
+**Tests:** **986 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 26 August 2026 by running the suite in it. *(It read
+923 / 1 from 23 August, and 838 / 1 from 16 August. The 923 figure was
+re-measured at the start of the 26 August pass rather than quoted, and matched;
+the +63 is Phase 3B access control — see §1.11.)*
+
+**A second configuration is now measured rather than derived:** the repo's
+`.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
+reports **987 passed / 3 skipped** against the same commit, and read **924 / 3**
+against the pre-pass code. The **third** configuration — openpyxl present *with*
+the client workbooks — is **still derived**, because neither workbook is on this
+box; [ABOUT.md §1](ABOUT.md) marks that row as such rather than silently
+updating it.
+
+A count quoted without its configuration is not a count, and a count nobody ran
+is a claim. That table also explains why the two mechanisms produce
+different-looking numbers — a module-level `importorskip` reports **one** skip
+however many tests sit behind it, which is exactly the +1 pass / +2 skips
+between the two measured rows above.
 **Stack:** Flask, ~12k lines, MySQL. `requirements.txt` is committed and
 pinned, and `.venv` is the supported way to run this repo (§3.1 is closed).
 
@@ -281,6 +290,54 @@ The project structural foundations have been built.
 - `project.py` handles the creation and editing of project metadata.
 - `projectview.py` provides the Project Detail Page, strictly enforcing the "no money" rule (no profit/loss logic).
 - BOQ revisions are handled correctly: attaching a BOQ to a project seamlessly attaches its entire revision chain.
+
+### 1.11 Phase 3B — authentication, roles and access control · ✅ 26 August 2026
+
+**The application is closed.** Until this landed there was no user, no session,
+no role and no permission anywhere in it, and every route was reachable by
+anyone who could reach the port.
+
+⚠ **This is Phase 3, not Phase 4, and it was gated.** It was built under the
+dated **26 August 2026 OVERRIDE** block in [CLIENT_CHANGES.md](CLIENT_CHANGES.md)
+§0, with **MG/SF/2026-02 still unsigned** and expiring 28 August 2026. It covers
+**B1–B5 only**. B6, B7, B8 and the whole of 3A and 3C are **still gated** — read
+that block before touching any of them.
+
+What shipped, in [auth.py](auth.py) (1,639 lines, a new module):
+
+- **B1** — user accounts, login, logout, first-run `/setup`, `/account`, and a
+  non-interactive [tools/seed_users.py](tools/seed_users.py). Passwords are
+  `werkzeug.security` hashes. Users are **deactivated, never deleted**.
+- **B2** — 61 permissions minted in code, roles as editable data, effective
+  permissions the **union** of a user's roles. A role edit lands on the user's
+  next click, not their next login.
+- **B3** — the Owner / Admin split, modelled as "Owner is whoever holds
+  `admin.roles`". Two guards stop a lockout: a non-Owner cannot grant the Owner
+  role, and the last active Owner cannot be deactivated or edited out of it.
+- **B4** — seven builtin roles (B4's six plus Owner), seeded idempotently.
+- **B5** — default deny, as one central registry and one `before_request` hook.
+  **An endpoint absent from the registry is refused**, so a route added later
+  fails closed.
+
+Also closed here: **[ABOUT.md §7](ABOUT.md) gap 8**, the `SECRET_KEY` demo
+default. It stopped being untidy and became session forgery the moment sessions
+went live.
+
+**Four new gaps opened**, all in [ABOUT.md §7](ABOUT.md): **21** no documented
+password-reset path for a locked-out last Owner, **22** no rate limiting or
+lockout on `/login`, **23** the refusal log is a diagnostic and not an audit
+trail, **24** permissions are endpoint-level only — which is the one the B6
+approvals ladder inherits, because *"a user cannot approve a record they
+created"* cannot be expressed in the registry.
+
+**Still open from CLIENT_CHANGES-2.md's own "Security items promoted by this
+phase":** the unescaped output in `product.py` and `quotation.py`. Role-based
+access makes an authenticated insider the threat model, and a stored XSS there
+lets one user hijack another's session — which, with an approvals ladder, means
+approving their own submissions. That is a blocker for B6, not for B1–B5.
+
+Per-item evidence with `file:line` and test names is in
+[PROGRESS.md](PROGRESS.md) §4.
 
 ---
 
