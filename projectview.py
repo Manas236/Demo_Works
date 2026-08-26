@@ -16,6 +16,7 @@ project page becomes a P&L that nobody signed off on.
 """
 
 from flask import Blueprint, redirect, request, url_for
+import auth
 import branding as B
 import pipeline as P
 from store import STORE
@@ -87,6 +88,35 @@ def view_project(id: str):
                                 msg="Project not found.", type="error"))
 
     if request.method == "POST":
+        # ⚠ **This branch WRITES, and the route is classified `project.view`.**
+        #
+        # `auth.ROUTE_PERMISSIONS` maps an *endpoint* to a permission, and this
+        # rule answers GET and POST on one endpoint — so without this guard the
+        # read permission authorises the write below, which reassigns
+        # `project_id` on every BOQ in a revision chain. Sales Manager,
+        # Purchase Manager and Accountant all hold `project.view` and none
+        # holds `project.edit`: all three are refused `/projects/edit/<id>`
+        # and could re-attach any schedule to any project through this page.
+        #
+        # The registry cannot express "this permission for GET, that one for
+        # POST", so this is a per-view guard — the same shape ABOUT.md §7 gap
+        # 24 prescribes for the object-level checks B6 will need. The endpoint
+        # stays on `project.view` because reading the page is genuinely a read;
+        # only the POST is raised to `project.edit`.
+        #
+        # `tests/test_access_control_adversarial.py` holds both halves: the
+        # refusal, and the control that a `project.edit` holder still attaches.
+        if not auth.has_perm("project.edit"):
+            auth._log_refusal(auth.current_user(), request.endpoint,
+                              "project.edit", "write on a read-gated route")
+            return auth._refusal_page(
+                "You do not have access to change this project",
+                "Attaching a schedule to a project is a change rather than a "
+                "reading of one, so it needs the <b>Edit a project</b> "
+                "permission (<code>project.edit</code>) &mdash; viewing this "
+                "page only needs <code>project.view</code>. Ask an "
+                "administrator to add it to one of your roles."), 403
+
         action = request.form.get("action")
         if action == "attach_boq":
             boq_id = request.form.get("boq_id")
