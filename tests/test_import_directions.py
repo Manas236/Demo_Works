@@ -306,6 +306,36 @@ FORBIDDEN = [
     ("project", "client",    "any", "client segregation is a separate concern"),
     ("project", "settings",  "any", "settings.py imports quotation; nothing downstream "
                                     "may import back"),
+
+    # ── auth.py sits at the BOTTOM of the graph (Phase 3B) ───────────────
+    #
+    # It has to, because it is imported by `dashboard.py` — which every other
+    # module imports for `BASE_STYLES` and `_nav()`. Anything auth.py pulled in
+    # at module level would therefore be pulled in by the whole application.
+    #
+    # `dashboard` is "module" rather than "any" for exactly the reason
+    # `dashboard -> product` is: `auth._shell()` imports the chrome inside the
+    # function body, which breaks the cycle and is deliberate. At module level
+    # it would be a boot failure.
+    ("auth", "dashboard", "module", "dashboard.py imports auth.py for the Access card, "
+                                    "so a module-level import back is a cycle. "
+                                    "auth._shell() imports the chrome in the function "
+                                    "body — the precedent dashboard.index() sets"),
+    ("auth", "quotation", "module", "same cycle, one further out: quotation.py imports "
+                                    "dashboard.py. QUOTATION_STYLES is pulled in "
+                                    "beside BASE_STYLES inside _shell()"),
+    ("auth", "docsheet",  "any",    "auth.py renders no document. Nothing that prints "
+                                    "may be reachable from the bottom of the graph"),
+    ("auth", "boq",       "any",    "identity knows nothing about a schedule"),
+    ("auth", "ra",        "any",    "identity knows nothing about a claim"),
+    ("auth", "invoice",   "any",    "identity knows nothing about a tax invoice"),
+    ("auth", "purchase",  "any",    "identity knows nothing about the buy side"),
+    ("auth", "settings",  "any",    "settings.py imports quotation, which imports "
+                                    "dashboard, which imports auth"),
+    ("auth", "product",   "any",    "and product.py is one of the two frozen files"),
+    ("auth", "db",        "any",    "auth.py mutates STORE like every other module; "
+                                    "db.py mirrors it. It must not reach for the "
+                                    "database itself"),
 ]
 
 
@@ -454,6 +484,13 @@ REQUIRED = [
     ("project", "pipeline",  "esc / norm_name"),
     ("project", "store",     "the shared STORE dict"),
     ("project", "branding",  "every company string, colour and image"),
+
+    # ── auth.py — the whole of what it may reach for (Phase 3B) ──────────
+    ("auth", "store",    "the shared STORE dict — users and roles are two "
+                         "collections in it, like every other record"),
+    ("auth", "pipeline", "esc. pipeline.py imports nothing from the app, which "
+                         "is what makes it safe from the bottom of the graph"),
+    ("auth", "branding", "the logo and company name on the login page"),
 ]
 
 
@@ -478,6 +515,45 @@ def test_demo_data_imports_nothing_at_all():
     `branding.py` and can never be the cause of a cycle.
     """
     assert imports_of("demo_data") == set()
+
+
+def test_auth_imports_nothing_that_prints():
+    """
+    The direction that lets **every** module import `auth.py`.
+
+    Access control is needed at the bottom of the graph — `dashboard.py` asks it
+    whether to draw the Access card, and `dashboard.py` is imported by
+    everything. So `auth.py` has to be safe to import from anywhere, and that is
+    only true while its own module-level imports stay inside the set that is
+    already safe from there: the three bottom modules plus the standard library
+    and Werkzeug.
+
+    Stated as a whitelist rather than a blacklist on purpose. A new prohibition
+    has to be remembered; a whitelist catches the import nobody thought of.
+    """
+    allowed = {"branding", "pipeline", "store"}
+    ours = {m.stem for m in REPO.glob("*.py")} - {"auth"}
+    reached = imports_of("auth", top_level_only=True) & ours
+    assert reached <= allowed, (
+        f"auth.py imports {sorted(reached - allowed)} at module level. Every "
+        f"module in this app may import auth.py, so anything it reaches for is "
+        f"reached by all of them — and anything that prints would be a cycle "
+        f"through dashboard.py. Use a function-body import, as _shell() does.")
+
+
+def test_dashboard_asks_auth_before_drawing_the_access_card():
+    """
+    The other half: `dashboard.py` really does import `auth.py`.
+
+    The Users & Access card is the only way to reach user administration without
+    typing a URL, and it is drawn only for a holder of `admin.users`. If this
+    arrow ever went away the card would either vanish or, worse, show for
+    everybody — CLIENT_CHANGES-2.md is explicit that shipping a feature without
+    its entry point is a mistake this repo has already made once.
+    """
+    assert "auth" in imports_of("dashboard"), (
+        "dashboard.py no longer imports auth.py, so the module strip cannot ask "
+        "who is signed in")
 
 
 @pytest.mark.parametrize("module,required,why", REQUIRED)

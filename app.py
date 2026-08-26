@@ -147,6 +147,16 @@ app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,
 # again is one revert rather than an excavation.
 auth.install(app)
 
+# ⚠ **This is the line that closes the application.** Every endpoint not
+# classified in `auth.ROUTE_PERMISSIONS` is refused from here on, including to
+# an Owner — absence is the safe answer, so a route added later fails closed
+# rather than shipping open.
+#
+# Reverting the commit that added this line restores open access without losing
+# users, roles or the pages that manage them. That is why it is one line on its
+# own rather than a flag: a flag that defaults to off never comes on.
+auth.enforce(app)
+
 
 # ── Global Error Handling ─────────────────────────────────────────────────────
 # Catches any unmatched route and silently redirects to the dashboard.
