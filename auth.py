@@ -940,6 +940,18 @@ def _alert() -> str:
 # ROUTES — session
 # =============================================================================
 
+# A hash of a value nobody holds, minted once at import. `login()` verifies the
+# submitted password against this when the username does not exist, so that the
+# not-found path costs the same scrypt work as the found path and the response
+# time stops saying whether an account is real. It can never match: the input is
+# 32 random bytes that are discarded immediately.
+#
+# Generated rather than hardcoded on purpose — a literal hash in this file would
+# be a published value, and `tests/test_auth.py` reads every module's AST to
+# keep exactly that kind of constant out of the codebase.
+_DUMMY_HASH = generate_password_hash(secrets.token_hex(32))
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     """The one public page that grants a session."""
@@ -956,6 +968,25 @@ def login():
 
         # One message for every failure. Distinguishing "no such user" from
         # "wrong password" tells an attacker which half to keep working on.
+        #
+        # ⚠ **The message was never the leak. The clock was.**
+        # `check_password_hash` is scrypt and costs ~70 ms; it only ran when
+        # `find_user()` returned a record, so an unknown username was answered
+        # in ~0.3 ms and a real one in ~70 ms — **239x**, measured. That is not
+        # a side channel needing statistics to see: it is visible in a
+        # browser's network tab, over the internet, on the first attempt, and
+        # it enumerates every valid username in this install however carefully
+        # the page is worded. Paired with §7 gap 22 (no rate limit, no
+        # lockout) it turns password guessing from "guess a name and a
+        # password" into "guess a password for a name you know is real".
+        #
+        # So the not-found path pays the same cost: hash the supplied password
+        # against a fixed dummy and throw the answer away. `_DUMMY_HASH` is
+        # minted once at import from a random value nobody holds, so it can
+        # never match anything.
+        if user is None:
+            check_password_hash(_DUMMY_HASH, password)
+
         if (user is None
                 or not check_password_hash(user.get("password_hash") or "", password)):
             error = "That username and password do not match."
