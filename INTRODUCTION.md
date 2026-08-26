@@ -118,6 +118,7 @@ heading and read the rest.
 | 9 | **[SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md)** | What the client's own 18 source documents actually contain — structure, conventions and defects — and what that evidence does to DOMAIN.md's claims. Read it before asserting how the client's paperwork behaves; the documents themselves are gitignored | The domain model, the code facts, the work queue; every finding is OPEN and none is actioned |
 | 10 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
 | 11 | **[PROGRESS.md](PROGRESS.md)** | **Phase 3 build status**, one row per CLIENT_CHANGES-2.md item — BUILT / PARTIAL / NOT STARTED / BLOCKED, each with the `file:line`, route or test name it was established from, plus the blockers and the code-vs-docs drift found while establishing them. Regenerated from code; a pass that changes a Phase 3 item's build state updates it in the same commit | What the items *are* — that is CLIENT_CHANGES-2.md; permission to build any of them; anything about Phase 2 or Phase 4 |
+| 12 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 61 permissions grid, a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
 
 ### The boundary that is easiest to get wrong
 
@@ -217,22 +218,32 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **986 passed / 1 skipped** on 26 August 2026, verified by
+The baseline is **1,058 passed / 1 skipped** on 27 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
-*(It read **923 passed / 1 skipped** on 23 August 2026, in the same
-configuration, and **838 passed / 1 skipped** on 16 August. The 26 August pass
-built Phase 3B access control and added 63 tests: `tests/test_auth.py` (36),
+*(It read **986 passed / 1 skipped** on 26 August 2026, **923 / 1** on
+23 August and **838 / 1** on 16 August, all in the same configuration. The
+27 August pass escaped user text everywhere it reaches HTML and attacked the
+Phase 3B access layer, adding 72 tests: `tests/test_escaping.py` (31),
+`tests/test_access_control_adversarial.py` (29) and
+`tests/test_access_matrix_doc.py` (12). The 986 figure was re-measured at the
+start of that pass rather than quoted — it matched. The 26 August pass built
+Phase 3B access control and added 63: `tests/test_auth.py` (36),
 `tests/test_access_control.py` (13), new parametrised cases in
-`tests/test_import_directions.py`, and one in `tests/test_hardening.py`. The
-923 figure was re-measured at the start of that pass rather than quoted — it
-matched.)*
+`tests/test_import_directions.py`, and one in `tests/test_hardening.py`.)*
+
+⚠ **Five print goldens were re-baselined on 27 August 2026**, by +8 bytes each
+and in two blocks only — the letterhead and the footer. The whole difference is
+the `&` in the company tagline now being written `&amp;`, which a browser draws
+identically; **no rendered figure moved**. The byte-level justification is in
+`tests/test_print_golden.py` beside the digests. That is the only circumstance
+in which a golden may be re-baselined: the fixture data behind it contains a
+character that was previously emitted raw, and you can show which.
 
 **The supported configuration is measured too:** the repo's `.venv` (CPython
-3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **987 passed
-/ 3 skipped**, measured 26 August 2026 against the same commit. It read
-**924 / 3** against the pre-pass code, measured the same day — which matches
-[ABOUT.md §1](ABOUT.md) row 2 exactly.
+3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **1,059 passed
+/ 3 skipped**, measured 27 August 2026 against the same commit. It read
+**987 / 3** against the pre-pass code, measured the same day.
 
 *(⚠ **This paragraph used to say that row was "derived". It was wrong.**
 ABOUT.md §1 has recorded row 2 as **measured on 23 August 2026** since that
@@ -294,35 +305,66 @@ a `pip freeze`; [ABOUT.md §1](ABOUT.md) has the cold-start sequence and
 
 ---
 
-## 6. Two things about this codebase that will bite you first
+## 6. Three things about this codebase that will bite you first
 
-Both are covered fully in ABOUT.md. They are repeated here — as pointers, not
-explanations — only because they are what breaks on day one.
+All three are covered fully in ABOUT.md. They are repeated here — as pointers,
+not explanations — only because they are what breaks on day one.
 
 1. **HTML lives in Python f-strings**, so every literal `{` and `}` in embedded
    CSS or JavaScript must be **doubled** (`{{` / `}}`). This is the single most
    common way to break a page here. [ABOUT.md §1](ABOUT.md).
-2. **`render_template_string` has been removed** from the modules that were
-   fixed, and must not be reintroduced anywhere. A fully-interpolated string
-   parsed a second time executes any `{{ … }}` that came from user input.
-   [ABOUT.md §7.9d](ABOUT.md).
+2. **`render_template_string` is gone from every module** and must not be
+   reintroduced anywhere. A fully-interpolated string parsed a second time
+   executes any `{{ … }}` that came from user input — and did, until
+   27 August 2026: a product named `{{ config['SECRET_KEY'] }}` printed this
+   application's signing key. [ABOUT.md §7.9d](ABOUT.md).
+3. **Escape every user-supplied value where you interpolate it**, with `P.esc`.
+   Not in a response filter — that would double-escape the deliberate markup and
+   mangle the print pages. Never escape a money or quantity format, and never
+   escape a value a helper has already escaped. [ABOUT.md §9](ABOUT.md) has the
+   full rule and [ABOUT.md §7.7](ABOUT.md) has the sinks that are easy to miss.
 
 ---
 
-## 7. Files you must not touch
+## 7. Files you must not refactor
 
-- **`product.py`** — carries known unescaped output across its whole surface.
-- **`quotation.py`** — the same, with additional sinks that are not fixed by
-  removing `render_template_string`.
+- **`product.py`**
+- **`quotation.py`**
 
-Both belong to Chain 1, the older sell chain. Both are **deliberately deferred**
-and both are **out of scope for you**. Do not "fix" them, do not tidy them, do
-not refactor around them. Editing either expands the blast radius into code that
-has no test coverage for your changes, and the deferral is a decision that has
-already been taken — it is not an oversight you have spotted.
+Both belong to Chain 1, the older sell chain. Both are **frozen against
+refactor and feature work**, and both are **out of scope for you**. Do not tidy
+them, do not restructure them, do not port a nicer pattern across from
+`spec.py`, and do not build the missing product edit route
+([ABOUT.md §7.2](ABOUT.md)) in one of them. Editing either expands the blast
+radius into code that has no test coverage for your changes, and the deferral is
+a decision that has already been taken — it is not an oversight you have
+spotted.
 
-They must be fixed before any white-label deployment. That is not now, and it is
-not your call. [ABOUT.md §7.7 and §7.9d](ABOUT.md) hold the detail.
+### The one exception, and what it does not license
+
+**Narrow security fixes and route-method fixes are permitted**, and must be
+called out in the commit that makes them and in ABOUT.md. Two have now happened:
+
+- `9d060ee` (12 August 2026) closed a GET that destroyed a product.
+- **27 August 2026** escaped the unescaped output and removed the second Jinja
+  parse from both files. That was the item CLIENT_CHANGES-2.md's own "Security
+  items promoted by this phase" names, and it says in as many words that the
+  freeze "explicitly permits" it.
+
+⚠ **This section used to say these files "carry known unescaped output".** They
+no longer do — [ABOUT.md §7.7 and §7.9d](ABOUT.md) are closed. **The
+prohibition is unchanged by that**, because it was never really about the
+escaping: it is about not taking on a refactor of untested code in the older
+chain. A security fix being allowed once, and then twice, is not the freeze
+being lifted.
+
+⚠ **And do not read "the two files with the escaping problem" as the boundary
+of an escaping problem.** The 27 August enumeration found the same defect in
+fifteen other files — most importantly the company identity from `/settings`,
+which printed raw on every document's letterhead. If you are looking for a sink,
+sweep the routes; do not read these two files and stop.
+
+**Importing from them is fine and expected** — see below.
 
 **Importing from them is fine and expected.** `ra.py` imports
 `QUOTATION_STYLES` and `_inr` from `quotation.py`

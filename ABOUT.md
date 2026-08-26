@@ -257,17 +257,31 @@ Consequences you must respect when editing:
 - HTML lives in **f-strings**, so every literal `{` and `}` in CSS/JS inside
   those strings must be **doubled** (`{{` / `}}`). Getting this wrong is the
   #1 source of breakage in this repo.
-- Where a view still calls `render_template_string`, Jinja runs over the
-  finished result, so `{{ }}` that survives into the output is **executed** —
-  including braces that came from user input (§7.9d). Values are
-  pre-interpolated by Python, never passed as Jinja context, so that second
-  parse is pure downside. Eight of the ten page modules now return the string
-  directly through a local `_page()`; only `quotation.py` and `product.py`
-  still re-render. **Do not add a new `render_template_string` call.**
-- User-supplied text is **not** auto-escaped in most places. `address.py` uses
-  `markupsafe.escape` via `_e()`; `pipeline.py` uses `esc()`. `quotation.py`
-  and `product.py` mostly do not. Treat this as a known gap, not a pattern to
-  copy.
+- **`render_template_string` is gone from every module** (27 August 2026).
+  Where a view called it, Jinja ran over the finished result, so `{{ }}` that
+  survived into the output was **executed** — including braces that came from
+  user input (§7.9d). Values are pre-interpolated by Python and never passed as
+  Jinja context, so that second parse was pure downside. Every page module now
+  returns the string directly through a local `_page()`, `quotation.py` and
+  `product.py` included. **Do not reintroduce it.**
+- **User-supplied text is escaped at every site where it reaches HTML**
+  (27 August 2026, §7.7). `pipeline.esc()` — `html.escape(..., quote=True)` — is
+  the house escaper and most modules reach it as `P.esc`; `address.py` uses
+  `markupsafe.escape` via `_e()`, which is equivalent. `branding.py` escapes
+  inside `field()`, `page_title()`, `name_html()` and `logo_img()`, which is
+  what closes the `/settings` identity on every letterhead at once.
+
+  **Escape at the interpolation site, not in a response filter** — a filter
+  would double-escape the deliberate markup and mangle the print pages. Two
+  helpers deliberately do **not** escape, because all of their callers already
+  do: `quotation._meta()` and the caller-supplied arguments of
+  `docsheet.sig_block()`. Escaping in those would print `&amp;` for a `&`, the
+  bug `tests/test_entity_fallbacks.py` exists to catch.
+
+  Never escape a money or quantity format (§9), and never escape generated
+  markup — the style constants, `_nav()`, `B.HEAD_ICON`, the base64 data URIs.
+- **JSON going into a `<script>` block uses `pipeline.json_for_script()`**, not
+  `json.dumps` — §7.9e.
 
 ---
 
@@ -304,8 +318,8 @@ Consequences you must respect when editing:
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
-| [auth.py](auth.py) | 1639 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. |
-| [pipeline.py](pipeline.py) | 608 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
+| [auth.py](auth.py) | 1670 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. |
+| [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 130 | **Dead file.** Stale docs only — see §8. |
@@ -316,7 +330,8 @@ Consequences you must respect when editing:
 ```
 app.py
  ├─ dashboard.py ──────────────┐  (BASE_STYLES, _nav) imports branding, store, pipeline, db, auth
- ├─ product.py ────────────────┤  imports dashboard, branding, store
+ ├─ product.py ────────────────┤  imports dashboard, branding, store, pipeline
+ │                             │  (pipeline is new — P.esc, §7.7)
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
@@ -335,6 +350,9 @@ app.py
  │                             │  dashboard, pipeline, store, branding — and NOT
  │                             │  quotation; it reads that sheet through docsheet
  ├─ charge.py ─────────────────┤  imports dashboard, pipeline, store, branding, quotation
+ ├─ projectview.py ─────────────┤  imports dashboard, branding, store, pipeline,
+ │                             │  quotation, ra — and auth, for the write guard
+ │                             │  on its POST branch (§7 gap 24b)
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
@@ -2379,9 +2397,10 @@ What a PI has to say that a quotation does not:
   ⚠ Generic trade terms, **not checked against Samruddhi's actual policy** —
   same caveat as the quotation's standing clauses.
 
-Unlike `quotation.py`, this module **escapes user input** (`P.esc`) everywhere
-it interpolates, including inside `_build_pi_terms()`. §7.7 is the gap, not the
-pattern to copy.
+This module **escapes user input** (`P.esc`) everywhere it interpolates,
+including inside `_build_pi_terms()`. *(This used to read "unlike
+`quotation.py`". As of 27 August 2026 every module escapes — §7.7 is closed —
+so it is no longer the odd one out.)*
 
 #### Numbering
 
@@ -2512,8 +2531,9 @@ The closing figure is labelled **"Taxable Value"**, not "Subtotal": on a tax
 invoice that figure is the base the tax was computed on, and that is the term
 both the customer's accounts team and the GST return use for it.
 
-Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
-(`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.
+This module **escapes user input** (`P.esc`) everywhere it interpolates.
+*(This used to read "unlike `quotation.py`". As of 27 August 2026 every module
+escapes — §7.7 is closed.)*
 
 #### Numbering
 
@@ -3261,8 +3281,9 @@ which nothing else does until somebody is holding the paper.
   >
   > *(Superseded history)*: This used to read "the liability falls due on the RA bill, which is the tax invoice". It was then incorrectly changed to assert that an RA bill is a claim document and is deliberately not a tax invoice — no Rule 46 fields, no place of supply, no e-invoicing (`PHASE4_RA_DESIGN.md` §5), under the false premise that the project tax-invoice chain is a separate module later that would carry the liability.
 
-Like `proforma.py` and unlike `quotation.py`, this module **escapes user input**
-(`P.esc`) everywhere it interpolates. §7.7 is the gap, not the pattern.
+This module **escapes user input** (`P.esc`) everywhere it interpolates.
+*(This used to read "unlike `quotation.py`". As of 27 August 2026 every module
+escapes — §7.7 is closed.)*
 
 #### Numbering
 
@@ -4437,8 +4458,53 @@ Real, verified, and safe to pick up:
    POST succeeded. It imports `boq.MAX_LINES` *inside the function* — boq.py
    imports dashboard.py, so a module-level import is a cycle — rather than
    hardcoding 600 where it would drift from the constant that enforces it.
-7. **HTML escaping is inconsistent.** `address.py`, `pipeline.py` and
-   `proforma.py` escape; `quotation.py` and `product.py` largely don't.
+7. ~~**HTML escaping is inconsistent.** `address.py`, `pipeline.py` and
+   `proforma.py` escape; `quotation.py` and `product.py` largely don't.~~
+   ✅ **Closed, 27 August 2026.** User text is escaped at every site where it
+   reaches HTML, in all seventeen files that render.
+
+   **It was never confined to the two files this gap named**, and that is the
+   part worth carrying forward. It was enumerated by writing a payload into
+   every free-text field in the store and fetching all 83 GET routes, rather
+   than by reading the two files CLIENT_CHANGES-2.md points at — which is how
+   these were found:
+
+   | class | where | what it was |
+   |---|---|---|
+   | reflected `?type=` | 9 list pages, 9 modules | landed inside `class="alert alert-…"`; a crafted link, no stored record needed |
+   | reflected `?msg=` | `product.py`, `quotation.py` | same, in element text |
+   | `<title>` breakout | 8 routes, 6 modules | `branding.page_title()` passed a record's `ref` through raw; `</title>` ends the element |
+   | company identity | 9 document/print routes | `branding.field()` returned `/settings` values raw, plus bare `B.COMPANY_*` in `docsheet.py`, `boq.py`, `quotation.py` |
+   | no escaping at all | `product.py` | the whole surface |
+   | half-escaping | `quotation.py` | the product pickers did `.replace('"','&quot;')`, so `<` and `>` reached the option text |
+   | SSTI | `product.py`, `quotation.py` | §7.9d |
+   | JSON in `<script>` | `quotation.py` | §7.9e |
+
+   **The company identity is the one to remember.** Every field on `/settings`
+   prints on the letterhead of every document this office issues, so it was the
+   widest-reaching of the eight and it sits in neither file the specification
+   named. `B.field()` escapes now, which closes it in one place.
+
+   Escaping is **conversion, not removal** — INTRODUCTION.md §9. A customer
+   really called `Smith & Sons <Bombay>` still prints as their own name.
+
+   What is deliberately still raw, and why: the style constants, `_nav()`,
+   `B.HEAD_ICON` and the base64 data URIs (generated markup), the table and
+   option markup each module builds itself, and **every money and quantity
+   format** — `_inr()`, `_fmt_qty()`, `{...:,.0f}` — see §9. Not one rendered
+   figure moved.
+
+   ⚠ **`quotation._meta()` is NOT escaped and must stay that way.** All ~40 of
+   its callers across six modules pre-escape what they hand it; escaping there
+   as well would print `&amp;` for a `&` in a reference — the same class of bug
+   `tests/test_entity_fallbacks.py` exists to catch. The same reasoning applies
+   to `docsheet.sig_block()`, where only the `/settings` **fallbacks** are
+   escaped and the caller's already-escaped record values are not.
+
+   Held by [tests/test_escaping.py](tests/test_escaping.py), which sweeps
+   `app.url_map` so a route added later is covered the day it is registered,
+   and asserts the payload is present **escaped** rather than merely absent.
+   16 of its 31 tests fail against the code as it was.
 8. ~~**`SECRET_KEY` defaults to `qms-demo-secret-2024`.** Generate a real one
    before any deployment.~~ ✅ **Closed, 26 August 2026.**
    `auth.resolve_secret_key()` reads `SAMRUDDHI_SECRET_KEY`, then `SECRET_KEY`,
@@ -4503,23 +4569,55 @@ Real, verified, and safe to pick up:
    control test proves the payload genuinely reached it — 18 of those 19 fail
    against the code as it was.
 
-   🔴 **Still open in `quotation.py` and `product.py`, and the one-liner does
-   not reach either.** `quotation.py` builds its pages with `.format()` rather
-   than f-strings and has attribute, `<script>` and option-text sinks besides;
-   `product.py` has no escaping at all in 1465 lines, so returning the string
-   unrendered fixes the injection and leaves the XSS. Each needs its own pass,
-   and `product.py`'s is really an escaping pass (§7.7) with this fix on the
-   end.
+   ✅ **Closed in `quotation.py` and `product.py` too, 27 August 2026** — and
+   the note above was right that the one-liner did not reach either on its own.
+   Each got the escaping pass §7.7 describes **with the one-liner on the end**,
+   which is exactly the order this entry predicted. Both files now carry a
+   `_page()` helper of their own; `render_template_string` is gone from both
+   imports, and it is now absent from every module in the app.
 
-9e. 🔴 **User text inside `<script>` — OPEN wherever `json.dumps` is embedded.**
+   **The consequence was worse here than anywhere it had been fixed before**,
+   because sessions had gone live in between. A product named
+   `{{ config['SECRET_KEY'] }}` printed the application's signing key on
+   `/product/`, and a customer named the same thing printed it on
+   `/quotation/`. A leaked signing key forges a valid cookie for any account,
+   which makes every permission check in `auth.py` theatre — so this was not a
+   stored defacement, it was a full compromise of the layer §1.11 had just
+   shipped.
+
+   `tests/test_escaping.py::test_a_stored_jinja_expression_is_not_executed`
+   asserts three things per module, because each catches a different failure:
+   the key is not in the body, the expression printed **literally** so the
+   value survived, and the page still returned 200 — a `{% … %}` payload used
+   to 500 it, which is a stored denial of service.
+
+9e. ~~🔴 **User text inside `<script>` — OPEN wherever `json.dumps` is embedded.**~~
+   ✅ **Closed, 27 August 2026.**
    `json.dumps` does not escape `<`, so a value containing `</script>` closes
-   the block and everything after it parses as HTML. `boq._json_for_script()`
-   fixes it for the three payloads on the BOQ form (`<` / `>` /
-   `&` are ordinary JSON escapes, so the browser decodes them back
-   unchanged). The same raw pattern is still used by
-   `quotation._product_catalog_json()` and by every
-   `json.dumps(picker_payload())` on the quotation form. Same reason for
-   leaving it, same size of fix.
+   the block and everything after it parses as HTML. `<` / `>` / `&` are
+   ordinary JSON escapes, so the browser decodes them back unchanged — the data
+   is identical and only its spelling on the wire differs.
+
+   **The helper moved to `pipeline.json_for_script()`**, because the second
+   consumer could not reach the first: `quotation.py` may not import `boq.py`
+   (the arrow runs the other way — §2b), and `pipeline.py` imports nothing of
+   ours, so it is the only place both chains can read from. That is the same
+   argument §2b already makes for `esc`, `parse_money`, `fy_of` and `fy_ref`.
+
+   `boq._json_for_script()` **kept its name and now delegates**, byte for byte —
+   it is cited from comments here and in `boq.py`, and renaming it would have
+   pointed those at nothing. `quotation._product_catalog_json()`, the
+   `picker_payload()` embed on `/quotation/create` and `quotation._js()` all go
+   through the shared helper now.
+
+   ⚠ The doubled backslash in the replacement is load-bearing and is commented
+   in `pipeline.py`: the replacement must be the six characters
+   backslash-u-0-0-3-c, not the character U+003C. A single backslash compiles
+   to `<` and the replace becomes a silent no-op — which is what it was on the
+   first attempt at this fix, in `boq.py`, in an earlier pass.
+
+   Held by
+   `tests/test_escaping.py::test_stored_text_cannot_close_an_embedded_script_block`.
 
 9f. ✅ **The delete audit — no GET in this app destroys anything.**
    `/address/delete`, `/product/delete` and `/spec/delete` all **destroyed on
@@ -4978,6 +5076,62 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    be a per-view guard against the record's `created_by`. Recorded here so the
    approvals pass inherits it rather than rediscovering it halfway through.
 
+24b. 🟠 **The registry is keyed per ENDPOINT, so it cannot say "this
+   permission to read, that one to write" — NARROWED, and the narrowing has a
+   sharp edge.** 44 rules in this app answer both GET and POST on one endpoint
+   and carry one permission between them.
+
+   **For 43 of them that is right, and is tighter than a per-method scheme
+   would be.** `/ra/delete/<id>` renders a confirmation on GET and destroys on
+   POST; both should require `ra.delete`, and somebody who cannot delete should
+   not be shown the confirmation page either. Splitting them would also draw a
+   read/write line through routes where that line is the client's decision.
+
+   ✅ **The one exception is closed.** `/projects/view/<id>` was classified
+   `project.view` — it is a view page — and its POST branch reassigns
+   `project_id` on every BOQ in a revision chain. Sales Manager, Purchase
+   Manager and Accountant all hold `project.view`, none holds `project.edit`,
+   and all three were refused `/projects/edit/<id>` with a 403 while being able
+   to make the same change through the page they could read. `view_project()`
+   now checks `auth.has_perm("project.edit")` on the POST branch only — a
+   per-view guard, the same shape gap 24 prescribes. It is why
+   `projectview.py` imports `auth`.
+
+   🟠 **What remains: nothing structural stops the next one.** A route
+   added later that writes on POST under a `*.view` permission would be the same
+   bug.
+   `tests/test_access_control_adversarial.py::test_no_other_multi_method_rule_is_gated_on_a_read_permission`
+   sweeps `app.url_map` and fails on any such rule, with this endpoint the one
+   named exception — so it is caught, but it is caught by a test rather than
+   made unexpressible.
+
+   📌 **If a per-method registry is ever built**, it has to be built with
+   the client, not derived: for most of these 44 the current single key is the
+   correct answer and re-keying them would loosen the gate, not tighten it.
+
+25. 🟠 **`/login` is no longer a timing oracle, but nothing rate-limits
+   it.** `check_password_hash` is scrypt and costs ~70 ms; it used to run only
+   when `find_user()` returned a record, so an unknown username was rejected in
+   ~0.3 ms and a real one in ~70 ms. **239x** — readable in a browser's network
+   tab on the first attempt, no statistics required. The page's wording was
+   already careful and identical for both failures; **the wording was never the
+   leak.**
+
+   ✅ Closed 27 August 2026: the not-found path hashes the submitted password
+   against `_DUMMY_HASH`, minted at import from `secrets.token_hex(32)` so it
+   can never match and is never a constant published in this repository's
+   history. Measured 1.00x afterwards.
+
+   🟠 **This narrows gap 22 and does not close it.** An attacker who
+   already knows a username may still guess passwords at whatever rate the box
+   serves requests, and `find_user()` is still an O(n) scan whose cost varies
+   with where in the dict a name sits — a far smaller signal than 239x, but not
+   zero. Python cannot give constant time and this does not claim to.
+
+   The regression test allows an **8x** spread deliberately: timing tests flake,
+   and it is there to catch the branch being deleted rather than to certify
+   anything.
+
 ---
 
 ## 8. Stale docs — do not trust these two files
@@ -5031,6 +5185,9 @@ little less CSS.
 - Cross-blueprint links use `url_for("blueprint.view_function")`.
 - Flash messages are query params: `redirect(url_for(..., msg="...",
   type="success"|"error"))`, rendered as `.alert .alert-success/-error`.
+  **Escape both**, including `type`: it lands inside a `class="…"` attribute,
+  which is why nine list pages reflected it raw until 27 August 2026 (§7.7) —
+  an attribute sink reads like a constant and is the easiest one to miss.
 - New persisted collection? Add the key to `STORE` **and** to
   `db.COLLECTIONS` — the table is then created automatically on next start.
 - Business rules that might change belong in a module-level constant with a
@@ -5039,3 +5196,32 @@ little less CSS.
   printed document** goes through `_inr()` — Indian digit grouping, no symbol.
   Do not mix them. Quantities use `_fmt_qty()` (drops a trailing `.0`).
 - Remember the doubled braces in f-string HTML.
+- **Escape every user-supplied value at the point you interpolate it**, with
+  `P.esc` (`pipeline.esc`, i.e. `html.escape(..., quote=True)`). Not in a
+  response filter — a filter would double-escape the deliberate markup and
+  mangle the print pages. §7.7 is the pass that made this true everywhere and
+  is worth reading before you add a page, because it lists the sinks that are
+  easy to miss: attributes, `<title>`, `<option>` text, and anything read back
+  out of `request.args`.
+
+  **Do not escape:** the style constants, `_nav()`, `B.HEAD_ICON`, base64 data
+  URIs, markup you built yourself, or **any money or quantity format** —
+  escaping runs on the formatted string and must never change a rendered
+  figure.
+
+  **Do not escape twice.** `quotation._meta()` and the caller-supplied
+  arguments of `docsheet.sig_block()` take pre-escaped values by contract;
+  `esc(x or '&mdash;')` is the same mistake in miniature and
+  `tests/test_entity_fallbacks.py` catches it. Write
+  `esc(value or '') or '&mdash;'`.
+- **JSON inside a `<script>` block goes through `pipeline.json_for_script()`**,
+  never bare `json.dumps` — `json.dumps` does not escape `<`, so a stored
+  `</script>` closes the block. §7.9e.
+- **Return the finished page directly**, through the module's local `_page()`.
+  **Never `render_template_string`** — it is gone from every module and
+  reintroducing it re-opens §7.9d.
+- **A new route is unreachable until you classify it** in
+  `auth.ROUTE_PERMISSIONS`, and `tests/test_access_control.py` fails until you
+  do (§2g). If the rule accepts POST, check the permission you chose is a
+  *write* permission — one endpoint carries one permission across both methods,
+  and a read verb on a writing POST is §7 gap 24b.

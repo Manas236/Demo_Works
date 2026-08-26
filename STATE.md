@@ -10,16 +10,19 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 26 August 2026.
-**Tests:** **986 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 26 August 2026 by running the suite in it. *(It read
-923 / 1 from 23 August, and 838 / 1 from 16 August. The 923 figure was
-re-measured at the start of the 26 August pass rather than quoted, and matched;
-the +63 is Phase 3B access control — see §1.11.)*
+**As of:** branch `antigravity-dev`, 27 August 2026.
+**Tests:** **1,058 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 27 August 2026 by running the suite in it. *(It read
+986 / 1 from 26 August, 923 / 1 from 23 August, and 838 / 1 from 16 August. The
+986 figure was re-measured at the start of the 27 August pass rather than
+quoted, and matched. The +72 is the escaping pass and the adversarial
+verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
+`tests/test_access_control_adversarial.py` (29) and
+`tests/test_access_matrix_doc.py` (12).)*
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **987 passed / 3 skipped** against the same commit, and read **924 / 3**
+reports **1,059 passed / 3 skipped** against the same commit, and read **987 / 3**
 against the pre-pass code. The **third** configuration — openpyxl present *with*
 the client workbooks — is **still derived**, because neither workbook is on this
 box; [ABOUT.md §1](ABOUT.md) marks that row as such rather than silently
@@ -330,14 +333,142 @@ trail, **24** permissions are endpoint-level only — which is the one the B6
 approvals ladder inherits, because *"a user cannot approve a record they
 created"* cannot be expressed in the registry.
 
-**Still open from CLIENT_CHANGES-2.md's own "Security items promoted by this
-phase":** the unescaped output in `product.py` and `quotation.py`. Role-based
-access makes an authenticated insider the threat model, and a stored XSS there
-lets one user hijack another's session — which, with an approvals ladder, means
-approving their own submissions. That is a blocker for B6, not for B1–B5.
+~~**Still open from CLIENT_CHANGES-2.md's own "Security items promoted by this
+phase":** the unescaped output in `product.py` and `quotation.py`.~~ ✅ **Closed
+on 27 August 2026 — see §1.12**, which also found that the defect reached far
+wider than those two files. Role-based access makes an authenticated insider the
+threat model, and a stored XSS there lets one user hijack another's session —
+which, with an approvals ladder, means approving their own submissions. It was a
+blocker for B6, not for B1–B5, and it no longer blocks B6.
+
+⚠ **This section is the record of what the 26 August pass shipped and is left
+exactly as it was written.** What it claimed was verified independently on
+27 August 2026 and **nine of eleven attacks came back clean**; the two that did
+not are named in §1.12 and are fixed. Read the two together — this one says what
+was built, §1.12 says what happened when somebody tried to break it.
 
 Per-item evidence with `file:line` and test names is in
 [PROGRESS.md](PROGRESS.md) §4.
+
+### 1.12 Escaping, and Phase 3B verified by attack · ✅ 27 August 2026
+
+**Two jobs, neither of them new features.** One closed the last security item
+CLIENT_CHANGES-2.md promoted; the other went looking for holes in the access
+layer §1.11 shipped, because nobody had.
+
+⚠ **Not gated, and no new override block.** [CLIENT_CHANGES.md](CLIENT_CHANGES.md)
+§0's standing exemption covers **defect and reachability fixes against scope
+already sold under MG/SF/2026-01**, and CLIENT_CHANGES-2.md names the escaping
+work as a *narrow security fix* the `product.py` / `quotation.py` freeze
+explicitly permits (precedent `9d060ee`). The 26 August block already treated
+the other item in that same sentence — the `SECRET_KEY` default — as exactly
+that. Verifying and documenting work that is already built is not new scope
+either. **Nothing gated was started:** B6, B7, B8 and the whole of 3A and 3C are
+untouched.
+
+#### What was built — the escaping half
+
+User text now reaches HTML escaped, everywhere it reaches HTML. CLIENT_CHANGES-2.md
+pointed at two files; enumerating it properly — a payload written into every
+free-text field, then all 83 pages fetched and the bytes read — found **eight
+classes across seventeen files**. In plain terms:
+
+- Anything a person typed into a record — a customer name, a product
+  description, a specification clause — could contain instructions for the
+  browser instead of text, and the browser obeyed them.
+- **A link was enough.** Two of the eight needed no stored record at all: a
+  crafted URL handed to a signed-in user ran code in their session on nine
+  different list pages.
+- **The company's own identity was one of the sinks.** Everything typed at
+  `/settings` — the legal name, the address, the GSTIN, the bank block — printed
+  on the letterhead of every document raw. That one is outside both files the
+  specification named, and it is the worst-placed of the lot, because it is on
+  *every* document rather than one record's own page.
+- Worst of all, two pages executed `{{ … }}` typed into a record, and a product
+  named `{{ config['SECRET_KEY'] }}` **printed the application's signing key**.
+  Anybody who could add a product could then forge a login cookie for any
+  account, which would have made the whole of §1.11 decorative.
+
+**How it works:** every value is passed through one escaper on its way into the
+page, so `<` becomes `&lt;` and the browser draws it as text instead of obeying
+it. The characters are *converted, never removed* — a customer really called
+`Smith & Sons <Bombay>` still prints as their own name, per
+[INTRODUCTION.md §9](INTRODUCTION.md). The two pages that re-parsed their own
+output stopped doing so.
+
+**Five printed documents moved by 8 bytes each.** Only the letterhead and the
+footer; every other block is byte-identical. The whole difference is the `&` in
+*"Fire Protection Systems & Services"* now being written `&amp;` — which a
+browser draws as the same `&`. **No rendered figure changed.** The arithmetic is
+written out in `tests/test_print_golden.py`.
+
+#### What was built — the verification half
+
+Eleven attacks on the access layer. **Nine were clean.** Forged and unsigned
+session cookies are refused; deactivating somebody takes effect on their very
+next click rather than their next login; a role edit lands immediately; the
+seven roles get exactly the administration access they should, hit directly by
+URL rather than through the menus; every lockout guard refuses a direct POST;
+`/setup` refuses to mint a second Owner; no error page renders before the gate;
+a route added with no permission declared is refused even to an Owner; and the
+refusal log records who was refused and what they wanted **without** recording
+passwords, cookies or form contents.
+
+**Two were not.**
+
+1. **A read permission authorised a write.** `/projects/view/<id>` is a view
+   page, and was classified as one — but posting to it re-attaches a schedule to
+   a project. Sales Manager, Purchase Manager and Accountant are all refused the
+   project *edit* page and could all make that change through the *view* page.
+   Fixed with a check on the write path only.
+2. **The login page leaked which usernames exist.** The wording was careful and
+   identical for both failures; the *timing* was not. A real username took 70 ms
+   to reject and an unknown one took 0.3 ms, because only the real one did the
+   password-hashing work. **239×** — visible in a browser, on the first try, no
+   statistics needed. Fixed by doing the same work either way; now 1.0×.
+
+#### What was deliberately NOT built
+
+- **No rate limiting or lockout on `/login`.** Still open ([ABOUT.md §7](ABOUT.md)
+  gap 22) and still needs a decision, because locking an account under attack is
+  also a way to lock out the last Owner. Closing the timing leak narrows the
+  attack; it does not stop password guessing.
+- **The route registry was not re-keyed per method.** 44 pages answer both
+  reading and writing under one permission; for 43 of them that is correct and
+  is *stricter* than splitting them. The one exception got a guard. The general
+  shape is recorded as gap 24b rather than fixed wholesale, because splitting
+  the rest draws a read/write line that is the client's call.
+- **Nothing in `product.py` or `quotation.py` was tidied, renamed or
+  restructured.** Values were escaped and nothing else. Those files remain
+  frozen against refactor.
+- **The two dead permissions and the object-level question are untouched.**
+  Nothing here restricts anybody to their own projects or their own documents;
+  that is gap 24 and it is B6's problem.
+
+#### What is not trustworthy yet
+
+- **The role grid is still ours, not the client's.** Seven roles × 61
+  permissions is 427 decisions and **16** of them come from the specification.
+  [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) now marks every single cell as
+  specification or derivation, and it exists to be walked through with the
+  client rather than filed.
+- **The refusal log is still a diagnostic, not an audit trail** (gap 23). It is
+  in memory, it holds 500 entries, and a restart empties it. It records
+  refusals only — nothing anywhere records successful access.
+- **Escaping is now swept by test on every route, but only for the routes that
+  exist.** The sweep reads `app.url_map`, so a new page is covered the day it is
+  registered; a new *rendering helper* used by an existing page is not
+  automatically covered.
+- **The timing test is a timing test.** It allows an 8× spread against a defect
+  that measured 239×, and it exists to catch the fix being deleted — not to
+  certify constant-time behaviour, which Python cannot give.
+
+New: [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md), generated by
+[tools/dump_access_matrix.py](tools/dump_access_matrix.py) and never hand-edited.
+Three gaps closed in [ABOUT.md §7](ABOUT.md) — **7**, **9d** and **9e** — and two
+opened: **24b** and **25**.
+
+---
 
 ---
 
@@ -506,13 +637,30 @@ was claimed, so outstanding is overstated for any bill certified down.
 
 ### 3.5 Deferred deliberately — out of scope for you
 
-- **`product.py`** — no escaping across ~1,409 lines.
-- **`quotation.py`** — five sinks, three of which removing
-  `render_template_string` does not fix.
+- ~~**`product.py`** — no escaping across ~1,409 lines.~~
+- ~~**`quotation.py`** — five sinks, three of which removing
+  `render_template_string` does not fix.~~
 
-Both are the older sell chain. Both must be fixed before any white-label
-deployment. **Neither is now.** [INTRODUCTION.md §7](INTRODUCTION.md) is the
-rule; [ABOUT.md §7.7 and §7.9d](ABOUT.md) hold the detail.
+✅ **Both closed on 27 August 2026 — §1.12.** They were fixed as **narrow
+security fixes**, which is the one thing the freeze on these two files has
+always permitted (precedent `9d060ee`, and CLIENT_CHANGES-2.md's own "Security
+items promoted by this phase" names them as such). Escaping and the removal of
+the second template parse; **nothing renamed, restructured or feature-extended**,
+and each file carries a header block saying exactly what was and was not
+touched.
+
+⚠ **The rest of the prohibition stands, unchanged.** These two files are still
+**not to be refactored or feature-extended** — [INTRODUCTION.md §7](INTRODUCTION.md)
+is the rule and it is not spent by this. The missing product edit route (ABOUT.md
+§7.2) is still not to be built, and `spec.py`'s `_render_form` pattern is still
+not to be ported across. What changed is that these two files no longer carry an
+unescaped-output defect; what did not change is what you may do in them.
+
+⚠ **And the defect was never confined to them.** The 27 August enumeration
+found it in fifteen other files — most importantly the company identity from
+`/settings`, which printed raw on every document's letterhead. Treating
+"`product.py` and `quotation.py`" as the boundary of an escaping problem is the
+specific mistake that pass had to correct; see §1.12 and [ABOUT.md §7.7](ABOUT.md).
 
 ### 3.6 Gaps in code that already exists
 
