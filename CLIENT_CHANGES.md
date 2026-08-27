@@ -361,6 +361,113 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > [tests/test_access_control.py](tests/test_access_control.py) for what is
 > actually guaranteed.
 
+> ### ⚠ OVERRIDE — 27 August 2026, by Manas Gawde — Phase 3A, three document items only
+>
+> **A new block, not an amendment.** Every block above stands exactly as
+> written; none has been edited, reformatted or re-scoped. This is the seventh
+> occasion and the second that reaches into Phase 3.
+>
+> **MG/SF/2026-02 was still unsigned on 27 August 2026** and is **valid until
+> 28 August 2026** — one day after this decision. Manas took the decision to
+> proceed anyway and instructed that it be recorded rather than the rule
+> deleted, exactly as on 14, 15, 16, 23 and 26 August.
+>
+> #### What proceeds
+>
+> **Phase 3A items A1, A2 and A5 only:**
+>
+> - **A1 — PO base rate editable.** The half that was missing: the rate on an
+>   **existing** purchase order. Built as `GET,POST /purchase/edit/<id>` and
+>   restricted to a PO in **Draft** status — see the deviation below.
+> - **A2 — discount column on the final PO.** A per-line discount percentage,
+>   inside the tax base.
+> - **A5 — write-off / adjustment on a payment.** A `write_off` field on the
+>   receipt record, feeding Total Outstanding on the client register.
+>
+> **A3 (additional charge lines) is NOT authorised by this block and was not
+> built.** It is not gated for a commercial reason — it is stopped on an
+> unanswered **tax** question that CC-2 does not settle and that no existing
+> code path in this repo answers. See the deviation section below and
+> [PROGRESS.md](PROGRESS.md) §6-H.
+>
+> **A4 and A6 were not built and are not authorised.** A4 was already BUILT and
+> was only re-verified; A6 was already PARTIAL and was only re-reported. Neither
+> gained a line of code under this block.
+>
+> #### Two deviations from CLIENT_CHANGES-2.md, taken deliberately
+>
+> 1. **A1 was narrowed to a Draft purchase order.** CC-2 calls A1 a
+>    *"straightforward field unlock"* and carries no lifecycle qualification.
+>    The code refuses more than that today for a stated reason:
+>    `update_purchase()` is status-and-note only because *"a vendor has already
+>    been told a price and a quantity, and changing them behind the document is
+>    how a dispute starts."* `PO_STATUSES[0]` is **`Draft` — "written, not yet
+>    sent to the vendor"** — so a Draft PO is precisely the case that reasoning
+>    does **not** cover, and unlocking the rate there contradicts nothing.
+>    Unlocking it on an **Issued** order would.
+>
+>    **This narrowing is the same shape as A6's and must be explained to the
+>    client rather than silently applied.** Whether A1-as-sold covers editing
+>    the rate on an issued PO is a commercial question and has not been asked.
+>
+> 2. **A3 was stopped rather than built, on a tax question.** A loading,
+>    unloading or transportation line on a **buy-side** purchase order is either
+>    part of the vendor's own consideration — s.15(2)(c) CGST Act, incidental
+>    expenses, **inside** the taxable value — or a third-party cost we carry
+>    ourselves, **outside** this vendor's supply altogether. CC-2 specifies the
+>    repeater as *"label + amount"*, which carries no taxability, and the same
+>    head is taxable on one order and not on the next depending on who performs
+>    the work. There is no existing code path to read it off: no document in
+>    this application carries a freight, packing or round-off line today, and
+>    `charge.py`'s heads serve an expenses ledger that computes no tax at all.
+>
+>    An inflated taxable value on a purchase order overstates the input tax
+>    credit we tell a vendor to bill us for, and their invoice then does not
+>    reconcile. **That is not a defect testing finds**, so the item is stopped
+>    and the question is put rather than answered.
+>
+> #### It remains chargeable, and the price is unchanged
+>
+> **Phase 3A is priced in MG/SF/2026-02 and stays priced there.** This is not a
+> §0 no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and all three of these are new
+> capability. Building them early changed **when** they were built, not **what
+> they cost** or **who agreed to them**. No agent may record any part of 3A as
+> delivered-no-charge or as covered by MG/SF/2026-01.
+>
+> #### One pre-existing defect is named here and was NOT fixed
+>
+> `client.received_val` sums every receipt **regardless of mode**
+> ([client.py:112](client.py#L112)), so the `mode="adjustment"` receipt that was
+> the only way to clear a short-allowed balance before A5 makes Outstanding
+> right by making **Received** wrong. A5's `write_off` field is a **separate**
+> field from `amount` precisely so that new write-offs do not go through that
+> path — but **adjustment-mode receipts already in the database are untouched**,
+> and deciding what happens to them is a data question about live records, not
+> a code question. It is reported in [PROGRESS.md](PROGRESS.md) §6-D and stays
+> open.
+>
+> **The gate is not lifted and this is not a precedent.** It is still the
+> default and it still stands. That A1, A2 and A5 were authorised does not
+> authorise A3, the rest of 3A, the rest of 3B, or any of 3C, and an override
+> remains a decision that is taken and recorded, never one an agent may take,
+> infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged, and
+> it is restated deliberately:** if MG/SF/2026-02 is never signed, items 8, 3,
+> 2, 4 and 5, the whole of the Phase 3B access-control layer **and these three
+> Phase 3A items** were built against an unsigned quotation — and MG/SF/2026-02
+> expires **tomorrow**, on 28 August 2026.
+>
+> **Where the technical record lives:** [ABOUT.md §2](ABOUT.md) for the
+> `/purchase/edit/<id>` route and the discount field, [ABOUT.md §7](ABOUT.md)
+> for the gap A5 narrows and the one it leaves open,
+> [PROGRESS.md](PROGRESS.md) for the per-item build state, and
+> [tests/test_po_discount.py](tests/test_po_discount.py),
+> [tests/test_po_rate_edit.py](tests/test_po_rate_edit.py) and
+> [tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) for what is
+> actually guaranteed.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
