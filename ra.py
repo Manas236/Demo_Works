@@ -702,6 +702,25 @@ def received_against(ra_id: str) -> float:
                      for _rid, r in receipts_for(ra_id)), 2)
 
 
+def written_off_against(ra_id: str) -> float:
+    """
+    Total **written off** against one bill — CLIENT_CHANGES-2.md A5.
+
+    Deliberately a second function beside `received_against()` rather than a
+    figure folded into it. Money that arrived and money the contractor allowed
+    short are two different facts: the first is a bank movement and belongs in
+    the client register's **Received** column, the second is a reduction in what
+    is owed and does not. Summing them together is precisely the defect the A5
+    field exists to stop being necessary (PROGRESS.md §6-D).
+
+    A receipt written before 27 August 2026 has no `write_off` key at all, and
+    reads as 0.0 — no backfill, the same contract `proforma.prior_invoiced` and
+    `tax_slabs` hold to.
+    """
+    return round(sum(float(r.get("write_off") or 0.0)
+                     for _rid, r in receipts_for(ra_id)), 2)
+
+
 def outstanding_of(bill: dict) -> float:
     """
     What is still unpaid on one bill: its own `grand_total` minus what has
@@ -724,8 +743,12 @@ def outstanding_of(bill: dict) -> float:
         return 0.0
     if is_cancelled(bill):
         return 0.0
+    rid = str(bill.get("id") or "")
+    # **Less what was received AND less what was written off** (A5). A short
+    # allowance the contractor has agreed is not money we are still owed, and
+    # leaving it here is what left 10,000 sitting in outstanding forever.
     gross = float(bill.get("grand_total") or 0.0)
-    return round(gross - received_against(str(bill.get("id") or "")), 2)
+    return round(gross - received_against(rid) - written_off_against(rid), 2)
 
 
 def previous_balance(boq_id: str, before_ra_no: int,
@@ -3227,10 +3250,13 @@ def view_ra(id: str):
         f'<td class="cl-unit">{_esc(RECEIPT_MODE_LABELS.get(str(r.get("mode") or ""), r.get("mode") or ""))}</td>'
         f'<td class="cl-desc">{_esc(r.get("instrument_ref")) or "&mdash;"}</td>'
         f'<td class="cl-amt">{_inr(r.get("amount") or 0.0)}</td>'
+        # A5. An em dash where there is none, so an ordinary ledger looks
+        # exactly as it did and a write-off cannot hide inside one.
+        f'<td class="cl-amt">{_inr(r.get("write_off")) if r.get("write_off") else "&mdash;"}</td>'
         f'<td><a class="btn btn-ghost" href="{url_for("receipt.edit_receipt", id=rid)}">Edit</a> '
         f'<a class="btn btn-ghost" href="{url_for("receipt.delete_receipt", id=rid)}">Delete</a></td></tr>'
         for rid, r in rc_rows)
-    rc_empty = ('<tr><td colspan="6" style="color:var(--muted);">'
+    rc_empty = ('<tr><td colspan="7" style="color:var(--muted);">'
                 'Nothing received against this bill yet.</td></tr>')
 
     # **Money is only ever received against an ISSUED bill.** A draft has not
@@ -3341,7 +3367,8 @@ def view_ra(id: str):
     <div class="cl-wrap"><table class="claims">
       <thead><tr>
         <th>Receipt</th><th>Received on</th><th>Mode</th><th>Instrument</th>
-        <th style="text-align:right;">Amount</th><th></th>
+        <th style="text-align:right;">Amount</th>
+        <th style="text-align:right;">Written off</th><th></th>
       </tr></thead>
       <tbody>{rc_body or rc_empty}</tbody>
     </table></div>

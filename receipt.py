@@ -218,6 +218,7 @@ def _validate(form, bill: dict) -> tuple:
         "instrument_ref": (form.get("instrument_ref") or "").strip()[:_MAX_TEXT],
         "instrument_date": (form.get("instrument_date") or "").strip()[:_MAX_TEXT],
         "notes": (form.get("notes") or "").strip()[:_MAX_NOTES],
+        "write_off_raw": (form.get("write_off") or "").strip()[:_MAX_TEXT],
     }
 
     # **A receipt may only be recorded against an ISSUED bill**, and this is
@@ -244,10 +245,35 @@ def _validate(form, bill: dict) -> tuple:
                       "arrived, so it has to be more than zero — a refund is a "
                       "different document and is not recorded here.")
     data["amount"] = round(amount, 2)
+
+    # ── The write-off — CLIENT_CHANGES-2.md A5 ────────────────────────────
+    #
+    # The main contractor allows a bill short: bills 1,00,000, allows 90,000.
+    # The bill still says 1,00,000 and the receipts say 90,000, so 10,000 sits
+    # in outstanding forever. This is the field that clears it.
+    #
+    # ⚠ **A SEPARATE figure from `amount`, and that separation is the whole
+    #   point of the field.** Before it existed the only way to clear a short
+    #   allowance was a second receipt with `mode="adjustment"` — which does
+    #   reduce Outstanding, but `client.received_val()` sums receipt amounts
+    #   without inspecting mode, so the register's **Received** column was
+    #   inflated by every write-off (PROGRESS.md §6-D). Money received and money
+    #   given up are two different facts and are now stored as two figures.
+    #
+    # ⚠ **It is NOT a GST credit note.** It produces no document, carries no
+    #   number series, and appears on nothing that leaves this office. CC-2 A5
+    #   says so explicitly; the formal credit note is quoted separately and is
+    #   not in Phase 3A.
+    write_off = float(P.parse_money(data["write_off_raw"]) or 0.0)
+    if write_off < 0:
+        return data, ("A write-off cannot be negative. It records an amount "
+                      "given up, so more money owed is not what it says.")
+    data["write_off"] = round(write_off, 2)
     return data, ""
 
 
-def _overpay_note(bill: dict, amount: float, exclude_id: str = None) -> str:
+def _overpay_note(bill: dict, amount: float, exclude_id: str = None,
+                  write_off: float = 0.0) -> str:
     """
     A WARNING when this receipt takes the bill past what it claimed. Never a
     block.
@@ -261,15 +287,18 @@ def _overpay_note(bill: dict, amount: float, exclude_id: str = None) -> str:
     """
     if not bill:
         return ""
-    already = RA.received_against(str(bill.get("id") or ""))
+    rid_ = str(bill.get("id") or "")
+    already = round(RA.received_against(rid_) + RA.written_off_against(rid_), 2)
     if exclude_id:
         prior = (STORE.get("receipts") or {}).get(exclude_id) or {}
-        already = round(already - float(prior.get("amount") or 0.0), 2)
+        already = round(already - float(prior.get("amount") or 0.0)
+                                - float(prior.get("write_off") or 0.0), 2)
     gross = float(bill.get("grand_total") or 0.0)
-    total = round(already + float(amount or 0.0), 2)
+    total = round(already + float(amount or 0.0) + float(write_off or 0.0), 2)
     if total - gross < _MIN_AMOUNT:
         return ""
-    return (f"This takes total receipts against RA{bill.get('ra_no')} to "
+    return (f"This takes total receipts and write-offs against "
+            f"RA{bill.get('ra_no')} to "
             f"{_inr(total)} against a bill of {_inr(gross)} — "
             f"{_inr(total - gross)} more than was claimed. Recorded as entered; "
             f"the excess carries forward as a credit on the next bill.")
@@ -340,20 +369,29 @@ def _mode_options(selected: str) -> str:
 
 
 def _bill_facts(bill: dict, exclude_id: str = None) -> str:
-    """The five facts above the form — where this money is going."""
+    """The facts above the form — where this money is going. A sixth,
+    **Written off**, appears only on a bill that carries one (A5)."""
     rid = str(bill.get("id") or "")
     received = RA.received_against(rid)
+    written_off = RA.written_off_against(rid)
+    # On an EDIT, the receipt being edited is taken back out of both figures, so
+    # the facts read "before this one" rather than double-counting it.
     if exclude_id:
         prior = (STORE.get("receipts") or {}).get(exclude_id) or {}
         received = round(received - float(prior.get("amount") or 0.0), 2)
+        written_off = round(written_off - float(prior.get("write_off") or 0.0), 2)
     gross = float(bill.get("grand_total") or 0.0)
+    written_off_fact = ""
+    if written_off:
+        written_off_fact = (f'\n      <div class="ra-fact"><b>Written off</b>'
+                            f'<span>{_inr(written_off)}</span></div>')
     return f"""
     <div class="ra-meta">
       <div class="ra-fact"><b>Bill</b><span>RA{_esc(bill.get("ra_no"))} &middot; {_esc(bill.get("leg"))}</span></div>
       <div class="ra-fact"><b>Reference</b><span>{_esc(bill.get("ref"))}</span></div>
       <div class="ra-fact"><b>Project</b><span>{_esc(bill.get("project_name"))}</span></div>
       <div class="ra-fact"><b>Bill total</b><span>{_inr(gross)}</span></div>
-      <div class="ra-fact"><b>Received so far</b><span>{_inr(received)}</span></div>
+      <div class="ra-fact"><b>Received so far</b><span>{_inr(received)}</span></div>{written_off_fact}
     </div>"""
 
 
@@ -399,6 +437,24 @@ def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
         bill when it is raised &mdash; entering a payment here never changes a
         bill that has already gone out.</span></div>
     </div>
+    <div class="form-section">
+      <div class="section-title">&#9986; What was given up</div>
+      <div class="fg2">
+        <div class="form-group"><label for="write_off">Write-off / adjustment</label>
+          <input type="text" id="write_off" name="write_off" inputmode="decimal"
+                 placeholder="0.00" value="{_esc(data.get("write_off_raw"))}"/></div>
+        <div class="form-group"></div>
+      </div>
+      <div class="form-hint"><span class="fh-icon">&#9888;</span>
+        <span>Use this when the contractor <b>allows the bill short</b> &mdash;
+        billed {_inr(float(bill.get("grand_total") or 0.0))}, allowed less, and
+        the difference is never coming. It comes off <b>Outstanding</b> and is
+        kept out of <b>Received</b>, because it is not money that arrived.
+        <br/><b>This is not a credit note.</b> It produces no document, carries
+        no number, and appears on nothing that leaves this office &mdash; the
+        bill still says what it says. Leave it blank on an ordinary
+        payment.</span></div>
+    </div>
     <div style="display:flex;gap:.7rem;">
       <button type="submit" class="btn">{_esc(submit_label)}</button>
       <a href="{back_url}" class="btn btn-ghost">Cancel</a>
@@ -442,10 +498,12 @@ def list_receipts():
         f'<td class="cl-unit">{_esc(RA.RECEIPT_MODE_LABELS.get(str(r.get("mode") or ""), r.get("mode") or ""))}</td>'
         f'<td class="cl-desc">{_esc(r.get("instrument_ref")) or "&mdash;"}</td>'
         f'<td class="cl-amt">{_inr(r.get("amount") or 0.0)}</td>'
+        # A5, and an em dash where there is none — see ra.py's panel.
+        f'<td class="cl-amt">{_inr(r.get("write_off")) if r.get("write_off") else "&mdash;"}</td>'
         f'<td><a class="btn btn-ghost" href="{url_for("receipt.edit_receipt", id=rid)}">Edit</a> '
         f'<a class="btn btn-ghost" href="{url_for("receipt.delete_receipt", id=rid)}">Delete</a></td></tr>'
         for rid, r in rows)
-    empty = '<tr><td colspan="8" style="color:var(--muted);">No receipts recorded.</td></tr>'
+    empty = '<tr><td colspan="9" style="color:var(--muted);">No receipts recorded.</td></tr>'
     total = round(sum(float(r.get("amount") or 0.0) for _rid, r in rows), 2)
 
     # The per-bill position, only when the ledger is scoped to one project —
@@ -498,7 +556,8 @@ def list_receipts():
     <div class="cl-wrap"><table class="claims">
       <thead><tr><th>Receipt</th><th>Date</th><th>Project</th><th>Bill</th>
         <th>Mode</th><th>Instrument</th>
-        <th style="text-align:right;">Amount</th><th></th></tr></thead>
+        <th style="text-align:right;">Amount</th>
+        <th style="text-align:right;">Written off</th><th></th></tr></thead>
       <tbody>{body or empty}</tbody>
     </table></div>
     <div class="ra-foot">
@@ -557,7 +616,8 @@ def new_receipt():
 
     today = _date.today().isoformat()
     data = {"date": today, "amount_raw": "", "mode": "neft",
-            "instrument_ref": "", "instrument_date": "", "notes": ""}
+            "instrument_ref": "", "instrument_date": "", "notes": "",
+            "write_off_raw": ""}
     error = ""
 
     if request.method == "POST":
@@ -581,6 +641,10 @@ def new_receipt():
                 "project_name": str(bill.get("project_name") or ""),
                 "account_name": str(bill.get("account_name") or ""),
                 "amount": data["amount"],
+                # A5. A **second figure**, never folded into `amount` — see
+                # `_validate()`. Absent on every receipt written before
+                # 27 Aug 2026, and 0.0 is what absent means.
+                "write_off": data["write_off"],
                 "mode": data["mode"],
                 "instrument_ref": data["instrument_ref"],
                 "instrument_date": data["instrument_date"],
@@ -589,7 +653,8 @@ def new_receipt():
             # NOTHING is written to the RA bill here. Not its `prev_balance`,
             # not any later bill's. That is the contract this module exists to
             # keep — see the module docstring.
-            note = _overpay_note(bill, data["amount"], exclude_id=rid)
+            note = _overpay_note(bill, data["amount"], exclude_id=rid,
+                                 write_off=data["write_off"])
             return redirect(url_for("ra.view_ra", id=ra_id,
                                     msg=note or "Payment recorded.",
                                     type="error" if note else "success"))
@@ -630,6 +695,8 @@ def edit_receipt(id: str):
         "instrument_ref": str(rec.get("instrument_ref") or ""),
         "instrument_date": str(rec.get("instrument_date") or ""),
         "notes": str(rec.get("notes") or ""),
+        "write_off_raw": (f'{float(rec.get("write_off") or 0.0):g}'
+                          if rec.get("write_off") else ""),
     }
     error = ""
 
@@ -651,6 +718,7 @@ def edit_receipt(id: str):
             rec["date"] = data["date"]
             rec["fy"] = P.fy_of(data["date"])
             rec["amount"] = data["amount"]
+            rec["write_off"] = data["write_off"]
             rec["mode"] = data["mode"]
             rec["instrument_ref"] = data["instrument_ref"]
             rec["instrument_date"] = data["instrument_date"]
@@ -658,7 +726,8 @@ def edit_receipt(id: str):
             # `ref` is NOT reissued on an edit. It may already be on a
             # remittance advice, and a number that moves is a number nobody can
             # quote back. Same reason `ra_no` is never reassigned.
-            over = _overpay_note(bill, data["amount"], exclude_id=id)
+            over = _overpay_note(bill, data["amount"], exclude_id=id,
+                                 write_off=data["write_off"])
             return redirect(url_for("ra.view_ra", id=ra_id,
                                     msg=over or "Receipt updated.",
                                     type="error" if over else "success"))

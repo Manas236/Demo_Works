@@ -99,7 +99,8 @@ def _client_groups():
         grp = groups.setdefault(normed, {
             "display_names": set(), "boqs": [],
             "total_boq": 0.0, "total_issued": 0.0,
-            "total_received": 0.0, "total_outstanding": 0.0,
+            "total_received": 0.0, "total_written_off": 0.0,
+            "total_outstanding": 0.0,
         })
 
         grp["display_names"].add(raw_name)
@@ -111,13 +112,28 @@ def _client_groups():
                          for _rid, b in bills_of(boq_id) if is_issued(b))
         received_val = sum(float(r.get("amount") or 0.0)
                            for _rid, r in receipts_of_boq(boq_id))
+        # A5's write-off, and a **separate** sum from `received_val` on purpose.
+        # Money that arrived and money the contractor allowed short are two
+        # different facts: the first is a bank movement and belongs in Received,
+        # the second reduces what is owed and does not. Folding them together is
+        # what made the one workaround available before A5 — a second receipt
+        # with `mode="adjustment"` — fix Outstanding by breaking Received.
+        #
+        # ⚠ **That older defect is NOT fixed by this line.** `received_val`
+        #   still sums every receipt regardless of mode, so an adjustment-mode
+        #   receipt already in the database still inflates Received. What
+        #   happens to those records is a question about live data, not code.
+        #   PROGRESS.md §6-D carries it and it stays open.
+        written_off_val = sum(float(r.get("write_off") or 0.0)
+                              for _rid, r in receipts_of_boq(boq_id))
 
         grp["total_issued"] += issued_val
         grp["total_received"] += received_val
+        grp["total_written_off"] += written_off_val
         # Not clamped at zero. An overpayment is ordinary — a lump sum settling
         # two bills at once — and it carries forward as a credit, exactly as
         # `ra.outstanding_of()` lets it.
-        grp["total_outstanding"] += (issued_val - received_val)
+        grp["total_outstanding"] += (issued_val - received_val - written_off_val)
 
     base_map = {}
     for normed in groups:
@@ -246,6 +262,18 @@ def list_clients():
         out_cls = " credit" if out < 0 else ""
         out_note = " in credit" if out < 0 else ""
 
+        # Shown only where there is one. Outstanding now drops by every A5
+        # write-off, and a register reading Issued 1,00,000 / Received 90,000 /
+        # Outstanding 0 with nothing between them explains nothing — it looks
+        # like an arithmetic error rather than an allowance somebody agreed to.
+        # A client with no write-offs sees the three figures it always did.
+        written_off_stat = ""
+        if grp["total_written_off"]:
+            written_off_stat = (
+                f"""
+          <div class="cl-stat"><span class="cl-lbl">Written off</span>
+            <span class="cl-val">{_inr(grp['total_written_off'])}</span></div>""")
+
         rows = ""
         for boq in grp["boqs"]:
             bid = boq.get("id")
@@ -276,7 +304,7 @@ def list_clients():
           <div class="cl-stat"><span class="cl-lbl">Issued (RA)</span>
             <span class="cl-val">{_inr(grp['total_issued'])}</span></div>
           <div class="cl-stat"><span class="cl-lbl">Received</span>
-            <span class="cl-val">{_inr(grp['total_received'])}</span></div>
+            <span class="cl-val">{_inr(grp['total_received'])}</span></div>{written_off_stat}
           <div class="cl-stat"><span class="cl-lbl">Outstanding{out_note}</span>
             <span class="cl-val{out_cls}">{_inr(abs(out))}</span></div>
         </div>
