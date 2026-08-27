@@ -10,10 +10,12 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 27 August 2026 (§1.15, the sign-out chip).
-**Tests:** **1,102 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**As of:** branch `antigravity-dev`, 27 August 2026 (§1.16, permission-filtered navigation).
+**Tests:** **1,151 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 27 August 2026 by running the suite in it. *(It read
-1,079 / 1 before §1.15 added 23 tests over the sign-out chip
+1,102 / 1 before §1.16 added 49 tests over permission-filtered navigation
+([tests/test_nav_visibility.py](tests/test_nav_visibility.py)),
+1,079 / 1 before §1.15 added 23 over the sign-out chip
 ([tests/test_nav_user_chip.py](tests/test_nav_user_chip.py)), 1,062 / 1 before
 §1.14 added 17 over the privilege-escalation attack
 ([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py)), and
@@ -29,8 +31,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,103 passed / 3 skipped** against the same commit, and read
-**1,080 / 3** before §1.15's 23 tests, **1,063 / 3** before §1.14's 17,
+reports **1,152 passed / 3 skipped** against the same commit, and read
+**1,103 / 3** before §1.16's 49 tests, **1,080 / 3** before §1.15's 23,
+**1,063 / 3** before §1.14's 17,
 **1,059 / 3** before §1.13's 4 and
 **987 / 3** against the pre-escaping code. Every one of those was measured, not derived. The **third** configuration — openpyxl present *with*
 the client workbooks — is **still derived**, because neither workbook is on this
@@ -693,6 +696,73 @@ use `_nav()` at all.
 **+23 tests** in [tests/test_nav_user_chip.py](tests/test_nav_user_chip.py).
 **No golden moved**: `tests/test_print_golden.py` is unmodified and passes, and
 that file — not this one — is the evidence.
+
+---
+
+### 1.16 The launcher stops offering doors that refuse · ✅ 27 August 2026
+
+**Every nav entry and all fifteen dashboard cards were shown to everybody.**
+Clicking one you had no permission for refused correctly — that half was never
+in doubt and is not what changed — but an HR user's landing page listed the
+quotation register, the tax invoices, the purchase orders and eleven other
+things they cannot open.
+
+#### Derived, never listed
+
+`auth.can_reach(endpoint)` [auth.py:726](auth.py#L726) answers *"would `_gate()`
+let this user through?"* from **`ROUTE_PERMISSIONS` — the same dict the gate
+answers from.** `dashboard._card()` and `dashboard._nav_links()` ask it, and
+each card names the **endpoint** it opens rather than a permission id. Nothing
+in `dashboard.py` names a permission in code any more, asserted from the AST by
+`test_the_dashboard_names_no_permission_id_anywhere_in_its_code`.
+
+That leaves one function that has to agree with another, so they are made to
+answer the same questions: `test_can_reach_agrees_with_the_gate_on_every_endpoint_for_every_role`
+sweeps **all seven roles against every classified GET endpoint**, requesting
+each URL for real and comparing the result with the prediction. `/setup` is the
+one named exclusion and it is not a disagreement — it is PUBLIC and the gate
+does let it through; the **view** closes it once users exist.
+
+#### Hiding is presentation. The gate is the gate.
+
+**No permission check was removed, weakened or short-circuited.**
+`test_every_hidden_card_is_still_refused_when_hit_directly` hits every hidden
+card by URL for each of the seven roles and requires a refusal, and
+`test_every_visible_card_actually_opens` is the control — without it a role
+locked out of everything would score a clean pass.
+
+#### Empty groups, and the honest empty page
+
+`_module_group()` drops a heading whose cards have all gone — a Sales Manager
+sees no "Buy side — money out" block at all, rather than an empty box telling
+them there is something they are missing. The zone drops when its last group
+does. A role reaching no register at all gets a short explanation naming who
+can fix it, instead of a title over a blank page that reads as a failure to
+load.
+
+📌 **A judgement call, wider than the brief.** The header's two action buttons
+**and the whole pipeline band** are quotation surfaces, so they are suppressed
+for anybody without `quotation.view`. The brief said menus and cards; leaving
+the band would have left a dozen refusing links on the landing page of an
+Operation Head. What that does **not** decide is whether such a user should see
+pipeline *figures* at all — recorded as [ABOUT.md §7 gap 27](ABOUT.md), open,
+because it is a client question and belongs with the seven-role walkthrough
+`docs/ACCESS_MATRIX.md` already asks for.
+
+**+49 tests** in [tests/test_nav_visibility.py](tests/test_nav_visibility.py);
+**31 of them fail against the pre-pass code**, verified by reverting
+`dashboard.py` and `auth.py` and running them. **No golden moved** —
+`NAV_LINK_SEP` exists so the filtered nav renders the byte-identical markup for
+a user who may reach every entry, and `tests/test_print_golden.py` is
+unmodified and passes.
+
+⚠ **One test-isolation fact worth knowing:** roles are a shared dict that the
+`client` fixture does not clear, and `ensure_builtin_roles()` never rewrites an
+existing row — both correct, both required by B2. So
+`test_auth.py::test_editing_a_role_takes_effect_without_signing_in_again`
+leaves `boq.view` on HR for every later test in the run. The new file restores
+the builtin permission sets in an autouse fixture rather than the other file
+being changed; that test is testing the right thing.
 
 ---
 

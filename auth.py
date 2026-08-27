@@ -723,6 +723,44 @@ def _gate():
     return None
 
 
+def can_reach(endpoint: str, user=None) -> bool:
+    """
+    Would `_gate()` let this user through to `endpoint`?
+
+    **Navigation asks this; it never decides anything.** Every menu entry and
+    every dashboard card is drawn only when this returns True, so a user is not
+    shown a door that will slam — but the door is still locked by `_gate()`,
+    which runs on the request regardless of what was drawn. Hiding is
+    presentation. If a check anywhere starts looking redundant because a link is
+    gone, that is the bug: the link is one `curl` away from being back.
+
+    **It reads `ROUTE_PERMISSIONS`, the same dict the gate reads**, and it is
+    written to mirror `_gate()`'s branches in the same order. That is the whole
+    point — a second hand-maintained list of "what to show" drifts from the list
+    of "what to allow", and every drift is either a dead link or a hidden route
+    that is quietly open.
+    `tests/test_nav_visibility.py::test_can_reach_agrees_with_the_gate_on_every_endpoint_for_every_role`
+    sweeps all 7 builtin roles against every classified endpoint and fails on
+    any disagreement, so the mirroring is asserted rather than maintained by
+    memory.
+
+    Absence is False, exactly as absence is a refusal in the gate: an
+    unclassified endpoint is unreachable, so a launcher must not offer it.
+    """
+    required = ROUTE_PERMISSIONS.get(endpoint)
+    if required is None:
+        return False
+    if required == PUBLIC:
+        return True
+
+    user = current_user() if user is None else user
+    if user is None:
+        return False
+    if required == AUTHENTICATED:
+        return True
+    return required in permissions_of(user)
+
+
 def install(app) -> None:
     """
     The identity layer: real signing key, session lifetime, builtin roles.

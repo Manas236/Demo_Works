@@ -134,16 +134,18 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,103 passed, 3 skipped** | **27 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,102 passed, 1 skipped** | **27 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,152 passed, 3 skipped** | **27 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,151 passed, 1 skipped** | **27 Aug 2026** |
 
 *(Rows 2 and 3 read **1,063 / 3** and **1,062 / 1** earlier on 27 August 2026.
 The privilege-escalation pass added **17**
 ([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py), §7
-gap 26) and the sign-out chip added **23**
-([tests/test_nav_user_chip.py](tests/test_nav_user_chip.py), §5); both figures
-were re-measured in the configurations named in the rows at the start of that
-pass rather than quoted, and matched. They read **924 / 3** and **923 / 1** from 23 August 2026 until
+gap 26), the sign-out chip added **23**
+([tests/test_nav_user_chip.py](tests/test_nav_user_chip.py), §5) and
+permission-filtered navigation added **49**
+([tests/test_nav_visibility.py](tests/test_nav_visibility.py), §5 `/`); the
+1,063 / 1,062 figures were re-measured in the configurations named in the rows
+at the start of that pass rather than quoted, and matched. They read **924 / 3** and **923 / 1** from 23 August 2026 until
 26 August, when Phase 3B access control added 63 tests, and **987 / 3** and
 **986 / 1** until 27 August, when the escaping and access-control-adversarial
 passes added 72 and the break-glass recovery pass added 4 more
@@ -939,6 +941,15 @@ load-bearing — weakening it re-opens the application silently.
 **What it is not.** The gate is **endpoint-level**, not object-level. "May this
 user approve *this* record" is not expressible in it and stays a per-view guard;
 see §7 gap 24, which the B6 approvals work inherits.
+
+**The navigation reads it too, and that is deliberate.** `can_reach(endpoint)`
+answers "would the gate let this user through?" from the same dict, and every
+menu entry and dashboard card is drawn only when it says yes (§5, `/`). It is a
+second function that has to agree with `_gate()`, so
+`tests/test_nav_visibility.py::test_can_reach_agrees_with_the_gate_on_every_endpoint_for_every_role`
+sweeps all seven roles against every classified GET endpoint and compares the
+prediction with what the gate actually did. **Hiding is presentation; the gate
+is the gate.**
 
 **Nor is it field-level, and that has now cost twice.** A registry entry says
 who may reach an endpoint; it cannot say which *writes on that page* they may
@@ -2015,6 +2026,31 @@ change no figure, link or metric.
 
    Settings is reached from the nav, not from here — it is configuration, not a
    module you work in.
+
+   ✅ **Every card and both nav entries are filtered by what the signed-in user
+   may reach** (27 August 2026). Before that the whole strip was shown to
+   everybody; clicking a card you had no permission for refused correctly, which
+   was the important half, and it should not have been on the page.
+
+   **Visibility is derived, never listed.** `auth.can_reach(endpoint)` reads
+   `ROUTE_PERMISSIONS` — the same dict `_gate()` answers from — and `_card()`
+   and `_nav_links()` ask it. Nothing in `dashboard.py` names a permission id
+   any more; each card names the **endpoint** it opens. A second list of "what
+   to show" drifts from the list of "what to allow", and every drift is either
+   a dead link or a hidden entry somebody believes is closed.
+
+   ⚠ **Hiding is presentation and never replaces the gate.** No permission
+   check was removed, weakened or short-circuited for this, and
+   `tests/test_nav_visibility.py` hits **every hidden card by URL for all seven
+   roles** and requires a refusal — paired with a control requiring every
+   visible one to open.
+
+   `_module_group()` drops a heading whose cards have all gone (a Sales Manager
+   sees no "Buy side" block at all), the zone drops when its last group does,
+   and a role that reaches no register gets a short explanation instead of a
+   title over nothing. The header's two action buttons and the whole pipeline
+   band are quotation surfaces, so they go together for anybody without
+   `quotation.view` — otherwise the landing page is a dozen refusals in a row.
 
    The tax-invoice card counts **`net_payable`, not invoiced value** — the
    figure genuinely still owed, after advances already adjusted. Two cards both
@@ -5326,6 +5362,27 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    same bug, and no sweep catches that class the way
    `test_no_other_multi_method_rule_is_gated_on_a_read_permission` catches
    24b's.
+
+27. 🟠 **Navigation is filtered by permission; the *figures* on the landing
+   page are not.** Closed for menus and cards on 27 August 2026 — every entry
+   in `_nav()` and every card in the module strip is drawn only when
+   `auth.can_reach()` says the gate would allow it, derived from
+   `ROUTE_PERMISSIONS` and never from a second list (§5, `/`).
+
+   🟠 **What that pass deliberately did not decide.** The hero band, the funnel,
+   the work queue and the month columns are all quotation-derived, so they are
+   suppressed for anybody without `quotation.view` — which removes a dozen
+   refusing links but is a blunt instrument in both directions. It hides the
+   *analysis* from an Operation Head who might reasonably be shown it, and it
+   does nothing about the other direction: `/`'s remaining figures, and the
+   counts on each module card, still summarise records the reader may only be
+   able to *list*, not open one by one.
+
+   📌 **"May this user see this number" is a client question, not a code one.**
+   Whether an Operation Head should see pipeline value, or an Accountant see
+   purchase commitments, belongs with the seven-role walkthrough
+   [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) already asks for. Recorded
+   here so the next pass does not quietly invent an answer.
 
 ---
 

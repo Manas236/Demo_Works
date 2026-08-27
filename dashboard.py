@@ -856,9 +856,57 @@ def _persistence_strip() -> str:
     )
 
 
+# The nav's own entries, as data rather than as markup.
+#
+# `endpoint` is the key into `auth.ROUTE_PERMISSIONS` — the **same** dict
+# `_gate()` answers from — so what the nav offers and what the gate allows
+# cannot drift apart. There is deliberately no permission id here: writing one
+# would be the second list, and the second list is how a hidden entry becomes an
+# open route (or a visible one becomes a dead link).
+NAV_ITEMS = (
+    ("project.list_projects",  "project",  "Projects"),
+    ("settings.edit_settings", "settings", "Settings"),
+)
+
+# The indent each nav entry sits on. A constant so the joined output is
+# byte-for-byte what the hand-written markup produced before it was filtered —
+# five print goldens hash this nav, and an Owner (who may reach every entry)
+# must render exactly the bytes they did on 26 August.
+NAV_LINK_SEP = "\n        "
+
+# The same idea one level in, for the dashboard's own action bar.
+ACTION_SEP = "\n            "
+
+
+def _nav_links() -> str:
+    """
+    The nav entries this user may actually reach, in order.
+
+    Empty for somebody who may reach neither, which leaves the brand, the pill
+    and the user chip — a nav with no dead ends rather than a nav with none.
+    """
+    import auth
+
+    out = []
+    for endpoint, icon, label in NAV_ITEMS:
+        if not auth.can_reach(endpoint):
+            continue
+        dot = ""
+        if endpoint == "settings.edit_settings" and not B.has(*B.current_settings().values()):
+            dot = '<span class="nl-dot" title="Company details incomplete"></span>'
+        out.append(f'<a href="{url_for(endpoint)}" class="nav-link">'
+                   f'{dot}{ICONS[icon]}{label}</a>')
+    return "".join(NAV_LINK_SEP + link for link in out)
+
+
 def _nav():
     """
     The shared nav. Rendered on every page, hidden by the print stylesheet.
+
+    Its entries are filtered by what the signed-in user may reach — see
+    `_nav_links()` and `auth.can_reach()`. **That is presentation only.** Every
+    route is still gated by `_gate()` on the request itself; a link that is not
+    drawn is not a route that is closed.
 
     The signed-in user chip rides at the right-hand end, and it is the only
     sign-out control in the application. It lives in `_user_chip()` with its own
@@ -875,10 +923,6 @@ def _nav():
     severity up: see `_persistence_strip()`.
     """
     dashboard_url = url_for("dashboard.index")
-    settings_url  = url_for("settings.edit_settings")
-
-    incomplete = not B.has(*B.current_settings().values())
-    dot = '<span class="nl-dot" title="Company details incomplete"></span>' if incomplete else ""
 
     return f"""
     <nav>
@@ -886,9 +930,7 @@ def _nav():
         {B.logo_img(30)}
         <span class="nb-word">{B.name_html("nb-fire")}</span>
       </a>
-      <div class="nav-right">
-        <a href="{url_for('project.list_projects')}" class="nav-link">{ICONS['project']}Projects</a>
-        <a href="{settings_url}" class="nav-link">{dot}{ICONS['settings']}Settings</a>
+      <div class="nav-right">{_nav_links()}
         <span class="nav-pill">{B.APP_SUBTITLE}</span>{_user_chip()}
       </div>
     </nav>
@@ -913,7 +955,11 @@ def _access_card() -> str:
     """
     import auth
 
-    if not auth.has_perm("admin.users"):
+    # `can_reach()` rather than `has_perm("admin.users")`: identical today,
+    # because that is what `/users` is classified as — but derived from the
+    # registry instead of naming the permission a second time, which is the
+    # rule the other fourteen cards now follow.
+    if not auth.can_reach("auth.list_users"):
         return ""
 
     n_users = sum(1 for u in auth.users().values() if u.get("active"))
@@ -1506,6 +1552,64 @@ def _page(html: str) -> str:
     return html
 
 
+# ── The module launcher, filtered by what the user may reach ─────────────────
+#
+# The strip used to be fifteen cards written out longhand, shown to everybody.
+# Clicking one you had no permission for refused correctly — and a launcher that
+# offers a locked door is worse than one that does not mention it, which is the
+# argument `_access_card()` has made for the Users & Access card since 26 August.
+# These two helpers are that argument applied to the other fourteen.
+#
+# **Visibility is derived from `auth.ROUTE_PERMISSIONS`** through
+# `auth.can_reach()` — the same dict `_gate()` answers from. Nothing here holds
+# a permission id, because a second list of "what to show" drifts from the list
+# of "what to allow", and every drift is either a dead link or a hidden route
+# that is quietly open. **The gate still runs on every request regardless of
+# what was drawn.**
+
+def _card(endpoint: str, icon: str, title: str, desc: str,
+          new_tab: bool = False) -> str:
+    """One launcher card, or "" when this user could not open it."""
+    import auth
+
+    if not auth.can_reach(endpoint):
+        return ""
+    tab = ' target="_blank"' if new_tab else ""
+    return f"""
+          <a href="{url_for(endpoint)}"{tab} class="card">
+            <div class="card-icon">{ICONS[icon]}</div>
+            <div class="card-body">
+              <div class="card-title">{title}</div>
+              <div class="card-desc">{desc}</div>
+            </div>
+          </a>"""
+
+
+def _module_group(css: str, heading: str, note: str, cards: list) -> str:
+    """
+    A titled block of cards, or "" when every card in it is hidden.
+
+    A heading with nothing under it is worse than no heading: it tells a Sales
+    Manager there is a "Buy side" they are missing rather than simply not
+    mentioning one. So the group goes when its last card does.
+    """
+    live = [c for c in cards if c]
+    if not live:
+        return ""
+    return f"""
+        <section class="mod-group {css}">
+          <div class="mg-hd">
+            <span class="mg-bar"></span>
+            <h3>{heading}</h3>
+            <span class="mg-note">{note}</span>
+          </div>
+          <div class="mods">
+{"".join(live)}
+
+          </div>
+        </section>"""
+
+
 def too_large_page() -> str:
     """
     The body of the 413 handler. Wired in app.py, which only ever wires.
@@ -1599,27 +1703,118 @@ def index():
 
     m = _metrics()
 
-    product_url   = url_for("product.list_products")
+    import auth
+
     quotation_url = url_for("quotation.list_quotations")
-    address_url   = url_for("address.list_addresses")
-    proforma_url  = url_for("proforma.list_proformas")
-    invoice_url   = url_for("invoice.list_invoices")
-    purchase_url  = url_for("purchase.list_purchases")
-    boq_url       = url_for("boq.list_boqs")
-    ra_url        = url_for("ra.list_ras")
-    spec_url      = url_for("spec.list_specs")
-    client_url    = url_for("client.list_clients")
-    po_draft_url  = url_for("po_draft.list_pos")
-    challan_url   = url_for("challan.list_dcs")
-    project_url   = url_for("project.list_projects")
-    charge_url    = url_for("charge.list_charges")
-    extractor_url = url_for("extractor.index")   # Cross-blueprint url_for
     create_url    = url_for("quotation.create_quotation")
 
     today   = m["today"]
     datestr = f"{today.strftime('%A')}, {today.day} {today.strftime('%B %Y')}"
 
     std_count = m["p_total"] - m["p_assembly"] - m["p_support"]
+
+    # ── The launcher, as data ────────────────────────────────────────────────
+    # Every card names the endpoint it opens; `_card()` drops the ones this user
+    # could not open, and `_module_group()` drops a heading whose cards have all
+    # gone. `extractor.index` is the one that opens in a new tab.
+    groups = [
+        _module_group(
+            "mg-sell", "Sell side &mdash; the deal chain",
+            "quotation &rarr; proforma &rarr; tax invoice", [
+                _card("quotation.list_quotations", "quotation", "Quotations",
+                      f"""{m['q_count']} raised ·
+                  {m['summary']['open']['count']} still live"""),
+                _card("proforma.list_proformas", "proforma", "Proforma Invoices",
+                      f"""{m['pi_total']} issued{f" · {rupees(m['pi_due'])} requested" if m['pi_due'] else " · raised from a quotation"}"""),
+                _card("invoice.list_invoices", "invoice", "Tax Invoices",
+                      f"""{m['ti_total']} issued{f" · {rupees(m['ti_due'])} outstanding" if m['ti_due'] else " · raised from a proforma"}"""),
+            ]),
+        _module_group(
+            "mg-proj", "Projects &amp; site billing",
+            "schedules, interim claims and despatch", [
+                _card("project.list_projects", "project", "Projects",
+                      f"{m['proj_total']} created · group BOQs"),
+                _card("boq.list_boqs", "boq", "Bills of Quantities",
+                      f"""{m['boq_total']} priced{f" · {rupees(m['boq_value'])} basic value" if m['boq_value'] else " · project schedules, billed by RA"}"""),
+                _card("ra.list_ras", "ra", "Running Account Bills",
+                      f"""{m['ra_total']} raised{f" · {rupees(m['ra_value'])} claimed" if m['ra_value'] else " · interim claims against BOQs"}"""),
+                _card("challan.list_dcs", "purchase", "Delivery Challans",
+                      f"""{m['dc_total']} raised · goods leaving the
+                  yard against a schedule, no rates and no tax"""),
+            ]),
+        _module_group(
+            "mg-buy", "Buy side &mdash; money out",
+            "never linked to a proforma or a tax invoice", [
+                _card("purchase.list_purchases", "purchase", "Purchase Orders",
+                      f"""{m['po_total']} raised{f" · {rupees(m['po_committed'])} committed" if m['po_committed'] else " · what we buy, not what we sell"}"""),
+                _card("po_draft.list_pos", "purchase", "Draft Purchase Orders",
+                      f"""{m['dpo_total']} raised · sent to a supplier
+                  to be priced, no rates and no GST"""),
+                _card("charge.list_charges", "purchase", "Employee & Misc Charges",
+                      f"{m['ch_total']} entries · {rupees(m['ch_spend'])} spent"),
+            ]),
+        _module_group(
+            "mg-ref", "Library &amp; records",
+            "what the documents above are written from", [
+                _card("product.list_products", "product", "Product Catalogue",
+                      f"""{m['p_total']} items · {m['p_assembly']} assemblies
+                  · {std_count} standalone"""),
+                _card("spec.list_specs", "spec", "Spec Library",
+                      f"{m['spec_total']} clauses · what a BOQ line is written from"),
+                _card("client.list_clients", "users", "Client Register",
+                      f"""{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}"""),
+                _card("address.list_addresses", "address", "Address Book",
+                      f"""{m['a_total']} saved · feeds the Bill To and
+                  Ship To pickers"""),
+                _card("extractor.index", "news", "Market News",
+                      "Pump, steel and fire-safety prices ↗", new_tab=True),
+                _access_card(),
+            ]),
+    ]
+    # The zone itself goes when every group in it has gone — a "Modules"
+    # heading over nothing at all is the same lie as an empty group heading.
+    modules_zone = f"""
+        <div class="zone">
+          <div class="zone-hd">
+            <h2>Modules</h2>
+            <span class="zn-sub">every register in the app</span>
+          </div>
+{"".join(g for g in groups if g)}
+
+        </div>""" if any(groups) else ""
+
+    # Header actions and the whole pipeline band are quotation surfaces. An
+    # Operation Head or an HR user holds no `quotation.view`, so offering them
+    # "New quotation", "Register" and a panel of links into the register would
+    # be fifteen refusals in a row.
+    actions = []
+    if auth.can_reach("quotation.create_quotation"):
+        actions.append(f'<a href="{create_url}" class="btn">'
+                       f'{ICONS["plus"]} New quotation</a>')
+    if auth.can_reach("quotation.list_quotations"):
+        actions.append(f'<a href="{quotation_url}" class="btn btn-ghost">Register</a>')
+    # The bar goes with its last button, for the reason an empty group heading
+    # goes with its last card: an empty toolbar reads as a page that failed to
+    # load rather than as a page with nothing to offer you.
+    dash_actions = ('<div class="dash-actions">' + ACTION_SEP
+                    + ACTION_SEP.join(actions)
+                    + '\n          </div>') if actions else ""
+
+    insight = (_insight_html(m) if auth.can_reach("quotation.list_quotations")
+               else "")
+
+    # Somebody whose roles reach no register at all would otherwise get a title
+    # and an empty page, which looks broken rather than restricted. Say which
+    # it is, and say who fixes it.
+    nothing_here = "" if any(groups) else """
+        <div class="zone">
+          <div class="card" style="padding:1.5rem;">
+            <div class="card-title">Nothing to show here yet</div>
+            <div class="card-desc">None of your roles reaches a register in this
+              application. If that is wrong, an administrator can add the
+              permission you need to one of them.</div>
+          </div>
+        </div>"""
 
     template = f"""
     <!DOCTYPE html>
@@ -1642,192 +1837,11 @@ def index():
             <h1>Quotation <em>Desk</em></h1>
             <div class="dh-date">{datestr}</div>
           </div>
-          <div class="dash-actions">
-            <a href="{create_url}" class="btn">{ICONS['plus']} New quotation</a>
-            <a href="{quotation_url}" class="btn btn-ghost">Register</a>
-          </div>
+          {dash_actions}
         </header>
 
-        {_insight_html(m)}
-
-        <div class="zone">
-          <div class="zone-hd">
-            <h2>Modules</h2>
-            <span class="zn-sub">every register in the app</span>
-          </div>
-
-        <section class="mod-group mg-sell">
-          <div class="mg-hd">
-            <span class="mg-bar"></span>
-            <h3>Sell side — the deal chain</h3>
-            <span class="mg-note">quotation &rarr; proforma &rarr; tax invoice</span>
-          </div>
-          <div class="mods">
-
-          <a href="{quotation_url}" class="card">
-            <div class="card-icon">{ICONS['quotation']}</div>
-            <div class="card-body">
-              <div class="card-title">Quotations</div>
-              <div class="card-desc">{m['q_count']} raised ·
-                  {m['summary']['open']['count']} still live</div>
-            </div>
-          </a>
-
-          <a href="{proforma_url}" class="card">
-            <div class="card-icon">{ICONS['proforma']}</div>
-            <div class="card-body">
-              <div class="card-title">Proforma Invoices</div>
-              <div class="card-desc">{m['pi_total']} issued{f" · {rupees(m['pi_due'])} requested" if m['pi_due'] else " · raised from a quotation"}</div>
-            </div>
-          </a>
-
-          <a href="{invoice_url}" class="card">
-            <div class="card-icon">{ICONS['invoice']}</div>
-            <div class="card-body">
-              <div class="card-title">Tax Invoices</div>
-              <div class="card-desc">{m['ti_total']} issued{f" · {rupees(m['ti_due'])} outstanding" if m['ti_due'] else " · raised from a proforma"}</div>
-            </div>
-          </a>
-
-          </div>
-        </section>
-
-        <section class="mod-group mg-proj">
-          <div class="mg-hd">
-            <span class="mg-bar"></span>
-            <h3>Projects &amp; site billing</h3>
-            <span class="mg-note">schedules, interim claims and despatch</span>
-          </div>
-          <div class="mods">
-
-          <a href="{project_url}" class="card">
-            <div class="card-icon">{ICONS['project']}</div>
-            <div class="card-body">
-              <div class="card-title">Projects</div>
-              <div class="card-desc">{m['proj_total']} created · group BOQs</div>
-            </div>
-          </a>
-
-          <a href="{boq_url}" class="card">
-            <div class="card-icon">{ICONS['boq']}</div>
-            <div class="card-body">
-              <div class="card-title">Bills of Quantities</div>
-              <div class="card-desc">{m['boq_total']} priced{f" · {rupees(m['boq_value'])} basic value" if m['boq_value'] else " · project schedules, billed by RA"}</div>
-            </div>
-          </a>
-
-          <a href="{ra_url}" class="card">
-            <div class="card-icon">{ICONS['ra']}</div>
-            <div class="card-body">
-              <div class="card-title">Running Account Bills</div>
-              <div class="card-desc">{m['ra_total']} raised{f" · {rupees(m['ra_value'])} claimed" if m['ra_value'] else " · interim claims against BOQs"}</div>
-            </div>
-          </a>
-
-          <a href="{challan_url}" class="card">
-            <div class="card-icon">{ICONS['purchase']}</div>
-            <div class="card-body">
-              <div class="card-title">Delivery Challans</div>
-              <div class="card-desc">{m['dc_total']} raised · goods leaving the
-                  yard against a schedule, no rates and no tax</div>
-            </div>
-          </a>
-
-          </div>
-        </section>
-
-        <section class="mod-group mg-buy">
-          <div class="mg-hd">
-            <span class="mg-bar"></span>
-            <h3>Buy side — money out</h3>
-            <span class="mg-note">never linked to a proforma or a tax invoice</span>
-          </div>
-          <div class="mods">
-
-          <a href="{purchase_url}" class="card">
-            <div class="card-icon">{ICONS['purchase']}</div>
-            <div class="card-body">
-              <div class="card-title">Purchase Orders</div>
-              <div class="card-desc">{m['po_total']} raised{f" · {rupees(m['po_committed'])} committed" if m['po_committed'] else " · what we buy, not what we sell"}</div>
-            </div>
-          </a>
-
-          <a href="{po_draft_url}" class="card">
-            <div class="card-icon">{ICONS['purchase']}</div>
-            <div class="card-body">
-              <div class="card-title">Draft Purchase Orders</div>
-              <div class="card-desc">{m['dpo_total']} raised · sent to a supplier
-                  to be priced, no rates and no GST</div>
-            </div>
-          </a>
-
-          <a href="{charge_url}" class="card">
-            <div class="card-icon">{ICONS['purchase']}</div>
-            <div class="card-body">
-              <div class="card-title">Employee & Misc Charges</div>
-              <div class="card-desc">{m['ch_total']} entries · {rupees(m['ch_spend'])} spent</div>
-            </div>
-          </a>
-
-          </div>
-        </section>
-
-        <section class="mod-group mg-ref">
-          <div class="mg-hd">
-            <span class="mg-bar"></span>
-            <h3>Library &amp; records</h3>
-            <span class="mg-note">what the documents above are written from</span>
-          </div>
-          <div class="mods">
-
-          <a href="{product_url}" class="card">
-            <div class="card-icon">{ICONS['product']}</div>
-            <div class="card-body">
-              <div class="card-title">Product Catalogue</div>
-              <div class="card-desc">{m['p_total']} items · {m['p_assembly']} assemblies
-                  · {std_count} standalone</div>
-            </div>
-          </a>
-
-          <a href="{spec_url}" class="card">
-            <div class="card-icon">{ICONS['spec']}</div>
-            <div class="card-body">
-              <div class="card-title">Spec Library</div>
-              <div class="card-desc">{m['spec_total']} clauses · what a BOQ line is written from</div>
-            </div>
-          </a>
-
-          <a href="{client_url}" class="card">
-            <div class="card-icon">{ICONS['users']}</div>
-            <div class="card-body">
-              <div class="card-title">Client Register</div>
-              <div class="card-desc">{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}</div>
-            </div>
-          </a>
-
-          <a href="{address_url}" class="card">
-            <div class="card-icon">{ICONS['address']}</div>
-            <div class="card-body">
-              <div class="card-title">Address Book</div>
-              <div class="card-desc">{m['a_total']} saved · feeds the Bill To and
-                  Ship To pickers</div>
-            </div>
-          </a>
-
-          <a href="{extractor_url}" target="_blank" class="card">
-            <div class="card-icon">{ICONS['news']}</div>
-            <div class="card-body">
-              <div class="card-title">Market News</div>
-              <div class="card-desc">Pump, steel and fire-safety prices ↗</div>
-            </div>
-          </a>
-
-          {_access_card()}
-
-          </div>
-        </section>
-
-        </div>
+        {insight}
+{modules_zone}{nothing_here}
 
         <footer>
           <p>{B.COMPANY_NAME} &nbsp;·&nbsp; {B.APP_SUBTITLE} &nbsp;·&nbsp; internal use</p>
