@@ -148,6 +148,29 @@ def _client_groups():
     return groups, duplicates
 
 
+# ⚠ **CLIENT_CHANGES-2.md A4 requires this line and names the reason.**
+#
+# *"Until the formal credit note exists, Total Outstanding is only as correct as
+# the write-off field makes it. This limitation is stated in MG/SF/2026-02 §6
+# deliberately — do not quietly present the figure as authoritative."*
+#
+# A5's write-off now exists, so the figure is better than it was. It is still
+# not authoritative, for two reasons worth keeping apart:
+#
+#   1. There is **no formal credit note** (explicitly out of Phase 3A), so an
+#      allowance that legally needs one is recorded here as an internal
+#      write-off and nowhere else.
+#   2. `received_val` above still sums receipts **regardless of mode**, so an
+#      `adjustment`-mode receipt entered before A5 still makes Outstanding right
+#      by making Received wrong (PROGRESS.md §6-D). That is open.
+#
+# Stated once, under the figures, rather than in a tooltip nobody opens.
+OUTSTANDING_CAVEAT = (
+    '<div class="cl-caveat">Outstanding is an <b>internal</b> figure. It is net '
+    'of any write-off recorded against a receipt, and there is no credit note '
+    'behind a write-off &mdash; the bill still says what it says.</div>')
+
+
 def _page(html: str) -> str:
     """A finished page. Deliberately not Jinja-rendered — ABOUT.md §7.9d."""
     return html
@@ -190,6 +213,9 @@ CLIENT_STYLES = """
 
   .cl-stats { display:flex; gap:2rem; flex-wrap:wrap; padding:.9rem 1.1rem;
               border-bottom:1px solid var(--border); }
+  /* CC-2 A4's caveat. Quiet, but under the figure rather than in a tooltip. */
+  .cl-caveat { padding:.5rem 1.1rem .7rem; font-size:.76rem; line-height:1.5;
+               color:var(--muted); border-bottom:1px solid var(--border); }
   .cl-stat  { display:flex; flex-direction:column; gap:.2rem; }
   .cl-lbl   { font-size:.68rem; text-transform:uppercase; letter-spacing:.06em;
               color:var(--muted); font-weight:700; }
@@ -308,6 +334,7 @@ def list_clients():
           <div class="cl-stat"><span class="cl-lbl">Outstanding{out_note}</span>
             <span class="cl-val{out_cls}">{_inr(abs(out))}</span></div>
         </div>
+        {OUTSTANDING_CAVEAT}
         <table class="cl-table">
           <thead><tr>
             <th>BOQ</th><th>Date</th><th>Project</th><th>Site</th>
