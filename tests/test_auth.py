@@ -494,3 +494,100 @@ def test_a_key_is_minted_and_reused_when_the_environment_is_silent(
     assert len(first) >= 32
     assert (tmp_path / "secret_key.txt").read_text(encoding="utf8").strip() == first
     assert auth.resolve_secret_key() == first, "a new key on every boot logs everybody out"
+
+
+# ── tools/set_password.py ──────────────────────────────────────────────────
+#
+# The break-glass CLI that closed ABOUT.md §7 gap 21. Its behaviour needs a live
+# MySQL and cannot run here — `main()` refuses outright when `db.init()` is
+# false, which is the point of it. What these four tests hold is the half that
+# CAN rot silently: the three things it deliberately does not own a copy of, and
+# the one thing it must never do. Each is a real drift, not a style rule.
+
+def _set_password_source():
+    import pathlib
+    return (pathlib.Path(__file__).resolve().parent.parent
+            / "tools" / "set_password.py").read_text(encoding="utf8")
+
+
+def test_the_break_glass_tool_shares_the_seed_scripts_password_policy():
+    """
+    One password policy with one home.
+
+    Two copies drift, and the copy that drifts *low* is the one somebody reaches
+    for in an emergency — which is exactly when a placeholder password gets set
+    on the account that can grant itself everything.
+    """
+    from tools import seed_users, set_password
+
+    assert set_password._reject_password is seed_users._reject_password
+
+
+def test_the_break_glass_tool_takes_its_hashing_from_auth():
+    """
+    The writer and the reader must not be able to drift apart.
+
+    `/login` verifies with `auth`'s `check_password_hash`. A tool that reached
+    for `werkzeug.security` itself could be pinned differently, or follow a
+    parameter change `auth` had not taken, and mint a hash that verifies
+    nowhere — locking the account harder than the forgotten password did.
+    Read from the AST so a mention in the docstring is not a false positive.
+    """
+    import ast
+
+    import auth as auth_mod
+    from tools import set_password
+
+    tree = ast.parse(_set_password_source())
+    direct = [n for n in ast.walk(tree)
+              if isinstance(n, ast.ImportFrom) and n.module == "werkzeug.security"]
+    assert not direct, (
+        "tools/set_password.py imports werkzeug.security directly; it must come "
+        "through auth, which is where /login gets it")
+
+    assert set_password.auth.generate_password_hash is auth_mod.generate_password_hash
+    assert set_password.auth.check_password_hash is auth_mod.check_password_hash
+
+
+def test_the_break_glass_tool_never_creates_a_user():
+    """
+    It sets passwords; it does not mint accounts.
+
+    A typo'd username that created an account would be worse than one that
+    failed: a seeded-by-accident login is `test_no_seeder_invents_a_user`'s
+    whole subject, and this tool runs with the operator's full attention
+    elsewhere. Asserted against the AST rather than the text because the
+    docstring says the words "does not create users" in prose.
+    """
+    import ast
+
+    called = set()
+    for node in ast.walk(ast.parse(_set_password_source())):
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = (fn.attr if isinstance(fn, ast.Attribute)
+                    else fn.id if isinstance(fn, ast.Name) else "")
+            called.add(name)
+
+    assert "create_user" not in called
+    assert "ensure_builtin_roles" not in called, (
+        "seeding roles is tools/seed_users.py's job; this tool touches an "
+        "account that already exists")
+
+
+def test_the_break_glass_tool_never_prints_the_hash():
+    """
+    A recovery tool is run in somebody's terminal, and terminals keep scrollback.
+
+    The username, roles and Owner tier are what the operator needs to know it
+    worked. The hash is the one thing on that screen worth stealing.
+    """
+    import ast
+
+    for node in ast.walk(ast.parse(_set_password_source())):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "print"):
+            continue
+        printed = ast.dump(ast.Module(body=[ast.Expr(node)], type_ignores=[]))
+        for banned in ("new_hash", "password_hash"):
+            assert banned not in printed, f"a print() carries {banned}"
