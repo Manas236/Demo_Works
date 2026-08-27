@@ -2161,6 +2161,244 @@ def update_purchase(id: str):
                             msg="Purchase order updated.", type="success"))
 
 
+# =============================================================================
+# A1 — THE RATE ON AN ORDER THAT ALREADY EXISTS
+# =============================================================================
+#
+# CLIENT_CHANGES-2.md **A1**, built under the 27 August 2026 override block in
+# `CLIENT_CHANGES.md` §0. The rate was already editable **at creation** — the
+# box is on `/purchase/create`, on `/purchase/from-boq` and on
+# `/purchase/from-draft`, and `RATE_PREFILL_FIELD` only ever suggested a
+# figure. What was missing, and what this is, is editing it **afterwards**.
+#
+# ⚠ **DRAFT ONLY, and that is a narrowing CC-2 does not carry.** CC-2 calls A1
+#   a "straightforward field unlock" with no lifecycle qualification. The
+#   restriction below is ours, taken for the reason `update_purchase()` already
+#   states in prose: *"a vendor has already been told a price and a quantity,
+#   and changing them behind the document is how a dispute starts."*
+#   `PO_STATUSES[0]` is `Draft` — **"written, not yet sent to the vendor"** —
+#   which is precisely the case that reasoning does not cover. Unlocking the
+#   rate there contradicts nothing; unlocking it on an **Issued** order would
+#   contradict the sentence above and the document a supplier is holding.
+#
+#   This is the same shape as A6's draft-only rule, and like A6's it **must be
+#   explained to the client rather than silently applied**. Whether A1-as-sold
+#   covers an issued order is a commercial question and has not been asked.
+#
+# **Rates and discounts, and nothing else.** Not the quantity, not the vendor,
+# not the lines. "Base rate editable" is a field unlock, and a form that also
+# re-derived the line list would have to answer what happens to the `line_id`
+# on a BOQ-derived order — which is the key the whole `/purchase/from-boq`
+# arrangement turns on (see `_po_lines_from_picked`). Lines stay exactly as
+# they were ordered; only what we agreed to pay for them moves.
+
+
+def can_edit_rates(po: dict) -> tuple:
+    """
+    `(allowed, reason)` for editing the commercial content of an order.
+
+    Returns the refusal in words rather than a bare False, because it is shown
+    to the operator and "Only a draft order can be repriced" is the whole
+    explanation. Same contract as `ra.can_edit()`.
+    """
+    status = (po or {}).get("status") or DEFAULT_STATUS
+    if status != "Draft":
+        return False, (f"This order is {status}. Only a Draft order can be "
+                       f"repriced — the vendor has already been sent this "
+                       f"one, and an amendment means a fresh purchase order.")
+    return True, ""
+
+
+def _priced_rows(po: dict) -> list:
+    """
+    `(index, row)` for every line that carries money.
+
+    Specification headers carried down from a BOQ clause are skipped: they have
+    no quantity, no rate and no amount, and a rate box against one would write a
+    figure into a row that contributes nothing to either total.
+    """
+    return [(i, r) for i, r in enumerate(po.get("line_items") or [])
+            if not r.get("is_header")]
+
+
+def _reprice(po: dict, form) -> str:
+    """
+    Apply the posted rates and discounts to `po` in place. Returns "" or an error.
+
+    **Positional**, against `_priced_rows()` in order, and the count must match
+    exactly. The form is generated from this same list and cannot add or remove
+    a line, so a short or long post is a tampered one or a stale tab — and
+    silently zipping it against whatever arrived would reprice the wrong line.
+    Nothing is written until every row has been read and validated.
+    """
+    rows  = _priced_rows(po)
+    rates = form.getlist("line_rate")
+    discs = form.getlist("line_discount")
+
+    if len(rates) != len(rows):
+        return ("That order has changed since this form was opened. "
+                "Reopen it and try again.")
+
+    staged = []
+    for n, (_idx, row) in enumerate(rows):
+        name = str(row.get("name") or "this line")
+        rate = P.parse_money(rates[n])
+        if rate < 0:
+            return f"Rate for '{name}' cannot be negative."
+        disc, err = _parse_discount(discs[n] if n < len(discs) else "", name)
+        if err:
+            return err
+        staged.append((row, rate, disc))
+
+    for row, rate, disc in staged:
+        row["price"] = rate
+        row["discount_pct"] = disc
+        row["total"] = _line_total(rate, float(row.get("qty") or 0.0), disc)
+
+    # The same three figures the create form writes, from the same helper, using
+    # the rates already stored on the order. The tax TYPE is not editable here:
+    # whether a vendor charges CGST+SGST or IGST is a fact about where they are,
+    # not a price we negotiated, and it was settled when the order was raised.
+    tax_info = po.get("tax_info") or {}
+    subtotal, new_tax, grand, total_qty = _totals_of(
+        po.get("line_items") or [],
+        po.get("tax_type", "exempt"),
+        float(tax_info.get("cgst_rate") or 0.0),
+        float(tax_info.get("igst_rate") or 0.0))
+    po["subtotal"]    = subtotal
+    po["tax_info"]    = new_tax
+    po["grand_total"] = grand
+    po["total_qty"]   = total_qty
+    return ""
+
+
+@purchase_bp.route("/edit/<id>", methods=["GET", "POST"])
+def edit_purchase_rates(id: str):
+    """
+    Reprice a **Draft** purchase order — CLIENT_CHANGES-2.md A1.
+
+    Gated by `can_edit_rates()` on both verbs. Checking only on POST would leave
+    a form that renders happily and refuses on submit; checking only on GET
+    would leave the POST open to anyone who kept the URL.
+    """
+    po = STORE["purchases"].get(id)
+    if not po:
+        return redirect(url_for("purchase.list_purchases",
+                                msg="Purchase order not found.", type="error"))
+
+    allowed, why = can_edit_rates(po)
+    if not allowed:
+        return redirect(url_for("purchase.view_purchase", id=id,
+                                msg=why, type="error"))
+
+    error = ""
+    if request.method == "POST":
+        before = float(po.get("grand_total") or 0.0)
+        error = _reprice(po, request.form)
+        if not error:
+            after = float(po.get("grand_total") or 0.0)
+            note  = (request.form.get("note") or "").strip()
+            _log(po, note or (f"Repriced: order value &#8377;{before:,.0f} "
+                              f"&#8594; &#8377;{after:,.0f}."))
+            return redirect(url_for("purchase.view_purchase", id=id,
+                                    msg="Rates updated.", type="success"))
+
+    # ── The rows ──────────────────────────────────────────────────────────
+    #
+    # Six cells, which is exactly what `.line-row` already lays out for the
+    # create form: item, qty, rate, discount, amount, spacer. Reusing that grid
+    # rather than declaring a new one is not tidiness — `PURCHASE_STYLES` is
+    # loaded by `/purchase/view`, whose bytes are pinned, so a rule added for
+    # this page would move a printed document that did not change.
+    posted_rates = request.form.getlist("line_rate")    if request.method == "POST" else []
+    posted_discs = request.form.getlist("line_discount") if request.method == "POST" else []
+
+    rows_html = ""
+    for n, (_idx, row) in enumerate(_priced_rows(po)):
+        rate = posted_rates[n] if n < len(posted_rates) else f"{float(row.get('price') or 0.0):.2f}"
+        disc = posted_discs[n] if n < len(posted_discs) else (
+            f"{float(row.get('discount_pct') or 0.0):g}" if row.get("discount_pct") else "")
+        rows_html += f"""
+        <div class="line-row">
+          <span>{P.esc(row.get('name'))}
+            <span class="bn-sub">{P.esc(row.get('part_no'))}</span></span>
+          <span>{_fmt_qty(float(row.get('qty') or 0.0))} {P.esc(row.get('unit'))}</span>
+          <input type="number" name="line_rate" value="{P.esc(rate)}"
+                 min="0" step="0.01" placeholder="Rate"/>
+          <input type="number" name="line_discount" value="{P.esc(disc)}"
+                 min="0" max="100" step="any" placeholder="0"/>
+          <span class="ln-amt">{_inr(row.get('total') or 0)}</span>
+          <span></span>
+        </div>"""
+
+    tax_info = po.get("tax_info") or {}
+    tax_note = "no tax on this order"
+    if po.get("tax_type") == "cgst_sgst":
+        tax_note = (f"CGST {float(tax_info.get('cgst_rate') or 0):g}% + "
+                    f"SGST {float(tax_info.get('sgst_rate') or 0):g}%")
+    elif po.get("tax_type") == "igst":
+        tax_note = f"IGST {float(tax_info.get('igst_rate') or 0):g}%"
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Reprice " + str(po.get('ref')))}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Reprice <span>{P.esc(po.get('ref'))}</span></h1>
+        <a href="{url_for("purchase.view_purchase", id=id)}" class="btn btn-ghost">&#8592; Back to the order</a>
+      </div>
+
+      {_alert(error, "error")}
+
+      <div class="buy-note">
+        This order is a <b>Draft</b> &mdash; it has not been sent to
+        {P.esc(_vendor_of(po))} yet, so what we agree to pay is still ours to
+        change.
+        <div class="bn-sub">Rates and discounts only. Quantities, lines and the
+          vendor are not editable here, and the tax stays as raised
+          ({P.esc(tax_note)}). Once this order is <b>Issued</b> an amendment
+          means a fresh purchase order, not an edit behind this one.</div>
+      </div>
+
+      <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
+        <div class="form-section">
+          <div class="section-title">What we pay</div>
+          <div class="line-head">
+            <span>Item</span><span>Qty</span><span>Rate (&#8377;)</span>
+            <span>Disc %</span>
+            <span style="text-align:right;">Amount</span><span></span>
+          </div>
+          {rows_html}
+          <div class="po-total-strip">
+            <span>Order Value as it stands
+              <b>&#8377; {float(po.get('grand_total') or 0.0):,.0f}</b></span>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Why</div>
+          <div class="form-group">
+            <label for="note">Note <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+            <input type="text" id="note" name="note"
+                   placeholder="e.g. revised after Sanghvi's second quote"/>
+            <span class="field-hint">Goes on the order's history. Left blank, the
+              history records the old and new order value.</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1.2rem;">
+          <button type="submit" class="btn">Save rates</button>
+          <a href="{url_for("purchase.view_purchase", id=id)}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+
+      <footer><p>{B.COMPANY_NAME} &middot; {B.APP_SUBTITLE} &middot; purchase order</p></footer>
+    </main></body></html>"""
+    return _page(template)
+
+
 @purchase_bp.route("/view/<id>")
 def view_purchase(id: str):
     """
@@ -2379,6 +2617,17 @@ def view_purchase(id: str):
                     f'quoted &#8377;&nbsp;{jc["quoted"]:,.0f} &middot; '
                     f'committed &#8377;&nbsp;{jc["committed"]:,.0f}</span>')
 
+    # Offered only where `can_edit_rates()` would allow it, which today means a
+    # Draft order. A button that redirects to a refusal is a worse answer than
+    # no button, and every PO ever printed before this pass was Issued or later
+    # — so the pinned golden does not move.
+    reprice_btn = ""
+    if can_edit_rates(po)[0]:
+        # The newline and indent live INSIDE the string, so an order that is
+        # not a Draft renders the action bar byte-for-byte as it always did.
+        reprice_btn = (f'\n    <a href="{url_for("purchase.edit_purchase_rates", id=id)}" '
+                       f'class="btn btn-ghost">Reprice</a>')
+
     panel = f"""
 <div class="po-panel">
   <h2>Order status</h2>
@@ -2418,7 +2667,7 @@ def view_purchase(id: str):
     {_status_badge(po.get('status'))}
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>
+    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>

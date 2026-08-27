@@ -211,6 +211,11 @@ def populated(client):
             "/proforma/from/<qid>": qid,
             "/proforma/view/<id>":  pid,
             "/purchase/view/<id>":  next(iter(STORE["purchases"])),
+            # A1's repricing form. The seeded order above is raised as a
+            # **Draft** on purpose, which is the only status `can_edit_rates()`
+            # lets through — pointed at an Issued order this route redirects,
+            # and the sweep would be checking a redirect rather than a page.
+            "/purchase/edit/<id>":  next(iter(STORE["purchases"])),
             # The two BOQ-side create forms. Both render a populated page: the
             # first the whole 97-line picker with a rate box per line, the
             # second the draft's own rows — and `_a_draft_po` deliberately

@@ -308,6 +308,19 @@ ROUTE_PERMISSIONS = {
     "purchase.from_boq":          "purchase.create",
     "purchase.from_draft":        "purchase.create",
     "purchase.update_purchase":   "purchase.edit",
+    # ⚠ **`purchase.create`, deliberately, and not `purchase.edit`.**
+    # `purchase.edit` is labelled "Update a purchase order's status" and
+    # that is what it means — moving an order along its lifecycle.
+    # `/purchase/edit/<id>` changes what this company has agreed to PAY a
+    # vendor, which is the same authority `/purchase/create` confers and a
+    # strictly larger one than marking a delivery received. Every role that
+    # holds `purchase.edit` today also holds `purchase.create`, so this
+    # classification moves no cell of the access matrix; it is chosen for
+    # the day a storekeeper is given status rights and must not be able to
+    # reprice an order. No new permission was minted: inventing one would
+    # force a per-role decision that CLIENT_CHANGES-2.md B4 does not
+    # authorise us to take on the client's behalf.
+    "purchase.edit_purchase_rates": "purchase.create",
     "po_draft.list_pos":          "po.view",
     "po_draft.view_po":           "po.view",
     "po_draft.create_po":         "po.create",
