@@ -41,7 +41,7 @@ reserved *status* colours and always ship with a text label beside the swatch.
 
 from datetime import date, datetime
 
-from flask import Blueprint, url_for
+from flask import Blueprint, has_request_context, request, url_for
 
 import branding as B
 import db
@@ -695,6 +695,120 @@ ICONS = {
 }
 
 
+# ── The signed-in user chip ───────────────────────────────────────────────────
+#
+# Its own constant, emitted **inside the body next to the chip itself**, and
+# deliberately NOT folded into `BASE_STYLES`.
+#
+# `BASE_STYLES` is the block five print goldens hash. Adding four rules to it
+# would move all five for a control that `@media print` hides anyway — see
+# ABOUT.md §7, "Global Nav vs Print Goldens". A `<style>` element in the body
+# is valid HTML5 and is the one shape that lets this ship without touching that
+# block or any page's `<head>`.
+
+USER_CHIP_STYLES = """
+<style>
+  .nav-user {
+    display: flex; align-items: center; gap: .5rem;
+    padding-left: .85rem; border-left: 1px solid var(--border);
+  }
+  .nu-who {
+    display: flex; align-items: center; gap: .45rem;
+    text-decoration: none; color: var(--text);
+    font-size: .8rem; font-weight: 600; white-space: nowrap;
+  }
+  .nu-who:hover { color: var(--brand); }
+  .nu-avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: var(--navy-lt); color: var(--navy);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .68rem; font-weight: 700; letter-spacing: .02em;
+  }
+  .nu-out {
+    font-size: .76rem; font-weight: 600; color: var(--muted);
+    text-decoration: none; white-space: nowrap;
+    border: 1px solid var(--border); border-radius: 6px; padding: .22rem .55rem;
+  }
+  .nu-out:hover { color: var(--brand); border-color: var(--brand); }
+
+  /* The name goes first on a narrow screen; the avatar and Sign out stay. */
+  @media (max-width: 820px) { .nu-name { display: none; } }
+</style>
+"""
+
+# The endpoints whose exact response bytes `tests/test_print_golden.py` hashes.
+#
+# ⚠ **This is not a list of print routes.** `/invoice/view`, `/proforma/view`
+# and `/purchase/view` are screen pages that happen to carry an A4 sheet, and
+# `/po/create` is a form. What the six have in common is only that a golden
+# pins them byte-for-byte, so **anything** added to their chrome moves a
+# digest — and a nav change has no business re-baselining a printed document.
+#
+# The chip is therefore suppressed on exactly these, and nowhere else. The set
+# is checked against the golden file itself by
+# `tests/test_nav_user_chip.py::test_the_suppression_set_is_exactly_what_the_goldens_pin`,
+# so it cannot quietly drift out of step with what is actually hashed — add a
+# golden without adding its endpoint here and that test fails, which is the
+# only reason a hand-written set is acceptable at all.
+#
+# 📌 The cost is stated plainly rather than hidden: **six pages carry no sign-out
+# control**, and the way to fix that is to break the nav/golden coupling
+# (ABOUT.md §7, "Global Nav vs Print Goldens"), not to re-baseline anything.
+PINNED_PAGES = frozenset({
+    "invoice.view_invoice",
+    "proforma.view_proforma",
+    "purchase.view_purchase",
+    "ra.print_ra",
+    "challan.print_dc",
+    "po_draft.create_po",
+})
+
+
+def _user_chip() -> str:
+    """
+    Who is signed in, their account, and the way out.
+
+    `auth` is imported **inside the function body** — the escape hatch
+    `_access_card()` and `index()` already use, and for the same reason:
+    `auth._shell()` imports `_nav` from this module, so a module-level import
+    here would be a cycle (ABOUT.md §2g).
+
+    Empty in three cases, each on purpose:
+
+    * **no request context** — nothing to read a session from;
+    * **no signed-in user** — `/login` and `/setup` do not layer this chrome at
+      all, but the 404 and 413 handlers can render before anybody has signed
+      in, and a chip saying nothing is worse than no chip;
+    * **a page a golden pins** — see `PINNED_PAGES`.
+
+    The control is a **link to `GET /logout`**, not a POST button. `/logout`
+    already confirms on GET and destroys on POST, the delete-route convention
+    from `9d060ee`, and putting the form in the nav would both bypass that
+    confirmation and put a `<form>` on every page in the application.
+    """
+    import auth
+
+    if not has_request_context() or request.endpoint in PINNED_PAGES:
+        return ""
+
+    user = auth.current_user()
+    if user is None:
+        return ""
+
+    name = (user.get("display_name") or user.get("username") or "").strip()
+    initials = "".join(word[0] for word in name.split()[:2]).upper() or "?"
+
+    return f"""{USER_CHIP_STYLES}
+        <div class="nav-user">
+          <a class="nu-who" href="{url_for('auth.account')}"
+             title="My account &mdash; {P.esc(name)}">
+            <span class="nu-avatar">{P.esc(initials)}</span>
+            <span class="nu-name">{P.esc(name)}</span>
+          </a>
+          <a class="nu-out" href="{url_for('auth.logout')}">Sign out</a>
+        </div>"""
+
+
 # ── Shared Nav Component ──────────────────────────────────────────────────────
 def _persistence_strip() -> str:
     """
@@ -746,6 +860,12 @@ def _nav():
     """
     The shared nav. Rendered on every page, hidden by the print stylesheet.
 
+    The signed-in user chip rides at the right-hand end, and it is the only
+    sign-out control in the application. It lives in `_user_chip()` with its own
+    style constant rather than in `BASE_STYLES`, so the block the print goldens
+    hash is untouched; it renders empty on the six endpoints a golden pins. See
+    `PINNED_PAGES`.
+
     The settings link carries an amber dot while any company or bank field is
     still blank — those pages are printing visible "add …" chips until it
     clears, so the way to fix them should be one click away from wherever the
@@ -769,7 +889,7 @@ def _nav():
       <div class="nav-right">
         <a href="{url_for('project.list_projects')}" class="nav-link">{ICONS['project']}Projects</a>
         <a href="{settings_url}" class="nav-link">{dot}{ICONS['settings']}Settings</a>
-        <span class="nav-pill">{B.APP_SUBTITLE}</span>
+        <span class="nav-pill">{B.APP_SUBTITLE}</span>{_user_chip()}
       </div>
     </nav>
     {_persistence_strip()}

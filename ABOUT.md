@@ -134,14 +134,16 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,080 passed, 3 skipped** | **27 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,079 passed, 1 skipped** | **27 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,103 passed, 3 skipped** | **27 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,102 passed, 1 skipped** | **27 Aug 2026** |
 
-*(Rows 2 and 3 read **1,063 / 3** and **1,062 / 1** earlier on 27 August 2026,
-before the privilege-escalation pass added **17**
+*(Rows 2 and 3 read **1,063 / 3** and **1,062 / 1** earlier on 27 August 2026.
+The privilege-escalation pass added **17**
 ([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py), §7
-gap 26); both were re-measured in the configurations named in the rows at the
-start of that pass rather than quoted, and matched. They read **924 / 3** and **923 / 1** from 23 August 2026 until
+gap 26) and the sign-out chip added **23**
+([tests/test_nav_user_chip.py](tests/test_nav_user_chip.py), §5); both figures
+were re-measured in the configurations named in the rows at the start of that
+pass rather than quoted, and matched. They read **924 / 3** and **923 / 1** from 23 August 2026 until
 26 August, when Phase 3B access control added 63 tests, and **987 / 3** and
 **986 / 1** until 27 August, when the escaping and access-control-adversarial
 passes added 72 and the break-glass recovery pass added 4 more
@@ -4265,10 +4267,23 @@ Thirteen routes. The architecture is §2g; this is what each page does.
 | `/roles/create`, `/roles/edit/<id>` | GET, POST | `admin.roles` | Checkboxes over the 61-permission catalogue, grouped by module. A builtin role's **name** is fixed; its permissions are not. |
 | `/access-log` | GET | `admin.access_log` | The last 500 refusals — user, endpoint, permission wanted, why. §7 gap 23 on what it is not. |
 
-⚠ **No nav chip shows who is signed in, deliberately.** The printed documents
-embed `_nav()` inside the block `tests/test_print_golden.py` hashes, so any nav
-change moves every print golden. Decoupling the two is its own job; until it is
-done, `/account` is reached from the Users & Access card and by URL.
+✅ **The nav now carries the signed-in user chip** — display name, initials, a
+link to `/account` and a **Sign out** link — added 27 August 2026, and it is the
+first sign-out control the interface has ever had. `/logout` had existed since
+26 August with nothing linking to it.
+
+It is built in `dashboard._user_chip()`, not in `_nav()`'s markup and not in
+`BASE_STYLES`, because the print goldens hash whole responses. Its styles live
+in `dashboard.USER_CHIP_STYLES` and are emitted **in the body beside the chip**,
+so the shared style block those goldens hash is untouched. The chip's own markup
+is still bytes, so it is suppressed on the six endpoints a golden pins —
+`dashboard.PINNED_PAGES`, checked against the golden file itself by
+`tests/test_nav_user_chip.py::test_the_suppression_set_is_exactly_what_the_goldens_pin`.
+
+The link goes to **`GET /logout`**, which confirms; `POST /logout` is still what
+destroys the session. A form in the nav would have put a `<form>` on every page
+in the application and skipped the confirmation that stops a prefetcher signing
+somebody out.
 
 ### `/extractor` — Market News · [extractor.py](extractor.py)
 
@@ -4421,6 +4436,24 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 9d, 9c, B1 etc are literal legacy identifiers. Do not renumber them. An un-numbered gap is one added after the initial audit.
 
 * **Global Nav vs Print Goldens**: The print goldens verify the HTML block from `<head>` through the document start. Because printed documents load the global `_nav()` from `dashboard.py`, ANY future change to the global navigation bar breaks the print goldens, even though the nav is hidden via CSS during print. This is a known coupling gap that forces retargeting the goldens whenever the nav changes.
+
+  🟠 **Measured on 27 August 2026, and still open.** Replacing `_nav()` with a
+  sentinel and re-running [tests/test_print_golden.py](tests/test_print_golden.py)
+  moved **five of its eleven** assertions — the tax invoice, the proforma, the
+  purchase order, the RA bill and the BOQ line picker at `/po/create`. The
+  **delivery challan did not move**: `challan.print_dc` renders no nav at all,
+  which is the shape all six should have. So the coupling is real, it is
+  narrower than "every printed document", and one document already proves it is
+  avoidable.
+
+  📌 **The user chip was built around it rather than through it** (§5,
+  `/login`, `/users`, `/roles`): its styles are a separate constant emitted in
+  the body, and its markup is suppressed on the six endpoints a golden pins
+  (`dashboard.PINNED_PAGES`). **No golden moved.** The price is that those six
+  pages carry no sign-out control — three of them, `/invoice/view`,
+  `/proforma/view` and `/purchase/view`, being ordinary screen pages. Breaking
+  the coupling — by giving the document routes challan-shaped shells with no
+  nav — would give the chip to all six and is the fix; re-baselining is not.
 
 **A gap's number is a stable identifier, not its position in a list.** Sixty-odd
 references cite them from code comments, docstrings, tests and four other

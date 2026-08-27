@@ -10,11 +10,12 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 27 August 2026 (§1.14, the privilege-escalation pass).
-**Tests:** **1,079 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**As of:** branch `antigravity-dev`, 27 August 2026 (§1.15, the sign-out chip).
+**Tests:** **1,102 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 27 August 2026 by running the suite in it. *(It read
-1,062 / 1 earlier the same day, before §1.14 added 17 tests over the
-privilege-escalation attack
+1,079 / 1 before §1.15 added 23 tests over the sign-out chip
+([tests/test_nav_user_chip.py](tests/test_nav_user_chip.py)), 1,062 / 1 before
+§1.14 added 17 over the privilege-escalation attack
 ([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py)), and
 1,058 / 1 before §1.13 added 4 over
 [tools/set_password.py](tools/set_password.py); each figure was re-measured at
@@ -28,8 +29,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,080 passed / 3 skipped** against the same commit, and read
-**1,063 / 3** before §1.14's 17 tests, **1,059 / 3** before §1.13's 4 and
+reports **1,103 passed / 3 skipped** against the same commit, and read
+**1,080 / 3** before §1.15's 23 tests, **1,063 / 3** before §1.14's 17,
+**1,059 / 3** before §1.13's 4 and
 **987 / 3** against the pre-escaping code. Every one of those was measured, not derived. The **third** configuration — openpyxl present *with*
 the client workbooks — is **still derived**, because neither workbook is on this
 box; [ABOUT.md §1](ABOUT.md) marks that row as such rather than silently
@@ -633,6 +635,64 @@ which now says they cannot touch an Owner's account.
 
 No gap closed outright in [ABOUT.md §7](ABOUT.md); **26 opened and closed in the
 same pass**, which is how a hole found and fixed together is recorded here.
+
+---
+
+### 1.15 A way to sign out, built around the golden coupling · ✅ 27 August 2026
+
+**The application had no sign-out control.** `/logout` shipped with §1.11 on 26
+August, works, and confirms on GET before destroying on POST — and **nothing in
+the interface linked to it**. The only way out of a session was to clear a
+cookie or wait twelve hours.
+
+The reason it had been left out is recorded in [ABOUT.md §5](ABOUT.md): the
+print goldens hash whole responses, printed documents render `_nav()`, so a nav
+change moves them. §1.11 was told not to touch `_nav()` and did not.
+
+#### The coupling, measured before anything was changed
+
+`_nav()` was replaced with a sentinel and
+[tests/test_print_golden.py](tests/test_print_golden.py) re-run. **Five of its
+eleven assertions moved:** the tax invoice, the proforma, the purchase order,
+the RA bill and the BOQ line picker at `/po/create`. The **delivery challan did
+not** — `challan.print_dc` renders no nav at all, which is the shape all six
+document routes should have. So the coupling is real, it is narrower than "every
+printed document", and one document already proves it is avoidable.
+
+#### Built around it, not through it
+
+**Styles**: `dashboard.USER_CHIP_STYLES`, a constant of its own, emitted as a
+`<style>` element **in the body beside the chip**. `BASE_STYLES` — the block
+those goldens hash — is not touched, and no page's `<head>` had to change.
+
+**Markup**: `dashboard._user_chip()`, called from inside `_nav()`, so the chip
+reaches every page in the application **including `/product/` and
+`/quotation/`, neither of which was edited**. That is the whole argument for
+putting it in `_nav()` rather than at 39 call sites: those two files are frozen.
+
+**Suppression**: the chip's markup is still bytes, so it renders empty on the
+six endpoints a golden pins — `dashboard.PINNED_PAGES`. A hand-written set of
+routes is exactly the drift Part C refuses to accept, so it is checked against
+the golden file itself: `test_the_suppression_set_is_exactly_what_the_goldens_pin`
+reads the URLs out of that file's **AST**, resolves them through the live
+`url_map`, and fails if the two disagree in either direction.
+
+**The control is a link to `GET /logout`**, not a form. `POST /logout` is still
+what destroys the session, and the GET confirmation from `9d060ee` stays — a
+form in the nav would have put a `<form>` on every page and skipped it.
+
+📌 **The price, stated rather than hidden.** Six pages carry no sign-out
+control, three of them ordinary screen pages (`/invoice/view`,
+`/proforma/view`, `/purchase/view`). The fix is to break the nav/golden coupling
+by giving those routes challan-shaped shells; it is **not** to re-baseline
+anything. Recorded against the "Global Nav vs Print Goldens" bullet in
+[ABOUT.md §7](ABOUT.md), which is narrowed by this pass and stays open.
+`/extractor/` is untouched — it builds its own dark-canvas `<nav>` and does not
+use `_nav()` at all.
+
+**+23 tests** in [tests/test_nav_user_chip.py](tests/test_nav_user_chip.py).
+**No golden moved**: `tests/test_print_golden.py` is unmodified and passes, and
+that file — not this one — is the evidence.
 
 ---
 
