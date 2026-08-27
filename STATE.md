@@ -10,12 +10,15 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 27 August 2026 (§1.13, break-glass recovery).
-**Tests:** **1,062 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**As of:** branch `antigravity-dev`, 27 August 2026 (§1.14, the privilege-escalation pass).
+**Tests:** **1,079 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 27 August 2026 by running the suite in it. *(It read
-1,058 / 1 earlier the same day, before §1.13 added 4 tests over
-[tools/set_password.py](tools/set_password.py); that figure was re-measured at
-the start of §1.13 rather than quoted, and matched.
+1,062 / 1 earlier the same day, before §1.14 added 17 tests over the
+privilege-escalation attack
+([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py)), and
+1,058 / 1 before §1.13 added 4 over
+[tools/set_password.py](tools/set_password.py); each figure was re-measured at
+the start of the pass that moved it rather than quoted, and each matched.
 986 / 1 from 26 August, 923 / 1 from 23 August, and 838 / 1 from 16 August. The
 986 figure was re-measured at the start of the 27 August pass rather than
 quoted, and matched. The +72 is the escaping pass and the adversarial
@@ -25,9 +28,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,063 passed / 3 skipped** against the same commit, and read
-**1,059 / 3** before §1.13's 4 tests and **987 / 3** against the pre-escaping
-code. Every one of those was measured, not derived. The **third** configuration — openpyxl present *with*
+reports **1,080 passed / 3 skipped** against the same commit, and read
+**1,063 / 3** before §1.14's 17 tests, **1,059 / 3** before §1.13's 4 and
+**987 / 3** against the pre-escaping code. Every one of those was measured, not derived. The **third** configuration — openpyxl present *with*
 the client workbooks — is **still derived**, because neither workbook is on this
 box; [ABOUT.md §1](ABOUT.md) marks that row as such rather than silently
 updating it.
@@ -557,6 +560,79 @@ One gap closed in [ABOUT.md §7](ABOUT.md): **21**. None opened. Rows 2 and 3 of
 ABOUT.md §1's test table were **re-measured and corrected** — they still read the
 26 August figures, because §1.12 updated this file, PROGRESS.md and
 INTRODUCTION.md but not that table.
+
+---
+
+### 1.14 A Director was one password field away from Owner · ✅ 27 August 2026
+
+**Found by attacking the page rather than reading about it.**
+[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) tells the client a Director
+"cannot grant anybody the Owner role, or create a new Owner account". Both
+halves were true and both were already tested. **Nobody had tested the third
+field on the same form.**
+
+`/users/edit/<id>` is classified `admin.users` and sets a password for any
+account it can load. A Director-only account — not the Owner+Director `/setup`
+mints — POSTed a new password onto the **Owner's** row, changed no role at all,
+signed in as the Owner through the real `/login`, and loaded `/roles` with a
+**200**. That is [ABOUT.md §7 gap 24b](ABOUT.md)'s shape for the second time:
+the page was classified, one write path on it was guarded, the write path
+beside it was not.
+
+Four more attacks got through, all the same sentence: the form took the Owner
+role **off** a spare Owner; `/users/deactivate` switched a spare Owner off and
+`/users/activate` switched a dormant one back on — which walks the install down
+to the single Owner whose password the first attack then sets; and a **limited
+admin role** (`admin.users` and little else, exactly the role B2 invites an
+Owner to build) conferred four `charge.*` permissions by handing out the HR
+role. `_may_grant()` tested one permission — `admin.roles` — and was correct
+only because that is the single permission a Director happens to lack.
+
+Five of the ten attacks were already clean, including all three the prompt for
+this pass expected to fail: a Director cannot create an Owner, cannot add the
+Owner role to anybody, and cannot add it to themselves. `_may_grant()` covered
+those on 26 August and `test_an_admin_cannot_promote_themselves_to_owner`
+already held them.
+
+#### What was built
+
+The rule is now stated once and enforced in both directions: **a permission you
+do not hold, you cannot confer; an account holding a permission you do not
+hold, you cannot take over.** `_may_grant()` [auth.py:1181](auth.py#L1181)
+widened from one permission to the whole set; `_may_administer()`
+[auth.py:1227](auth.py#L1227) is its mirror; `_administer_refusal()`
+[auth.py:1272](auth.py#L1272) turns it into the app's ordinary 403 page and
+**logs it to `REFUSAL_LOG`**, so it reaches `/access-log` instead of living
+only in the attacker's browser. Guards `/users/edit`, `/users/deactivate` and
+`/users/activate`, on **GET as well as POST**.
+
+Two exemptions, both load-bearing: an **Owner** short-circuits (the tier can
+already grant itself anything by editing a role), and **acting on your own
+account is always allowed** (you gain nothing you already hold, and
+`_would_strand_install()` still guards the one self-inflicted lockout).
+
+📌 **A judgement call, recorded as one.** A Director can no longer administer an
+Owner account *at all*. B3 says an Admin may "deactivate users" and does not
+except Owners, so this is a tightening past the letter of the specification. It
+is right because `_would_strand_install()` only protects the **last** Owner: a
+Director could switch spares off one at a time and then reset the survivor. It
+costs this install nothing — §1.13 gave it two Owners, and an Owner administers
+an Owner.
+
+**+17 tests**, all in
+[tests/test_privilege_escalation.py](tests/test_privilege_escalation.py).
+**Seven of them fail against the code as it stood** — verified by running the
+file against `HEAD:auth.py` and restoring, not by assuming it. Every attack is
+paired with a control on the same route and the same field, so a Director
+locked out of `/users` entirely would fail this file rather than pass it.
+
+**No golden moved** — this pass touched no chrome. `docs/ACCESS_MATRIX.md` was
+regenerated: the **grid is unchanged** (no permission, role or route
+classification moved) and the two lines that changed are the Director's prose,
+which now says they cannot touch an Owner's account.
+
+No gap closed outright in [ABOUT.md §7](ABOUT.md); **26 opened and closed in the
+same pass**, which is how a hole found and fixed together is recorded here.
 
 ---
 

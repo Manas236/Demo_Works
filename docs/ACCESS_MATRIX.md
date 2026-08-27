@@ -207,9 +207,9 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 *60 of 61 permissions.*
 
-**What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role, and read the refused-access log. They can also edit the company identity and bank details at Settings.
+**What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings.
 
-**What they explicitly cannot do.** **Change what a role means.** This is the single line between Director and Owner, and it is the point of the split: a Director who could edit role definitions could give themselves any permission in the system, so "cannot alter role definitions" would mean nothing. They also cannot grant anybody the Owner role, or create a new Owner account — that would be the same escalation by another door.
+**What they explicitly cannot do.** **Change what a role means.** This is the single line between Director and Owner, and it is the point of the split: a Director who could edit role definitions could give themselves any permission in the system, so "cannot alter role definitions" would mean nothing. They also cannot grant anybody the Owner role, or create a new Owner account — that would be the same escalation by another door. **Nor can they touch an Owner's account at all**: not its password, not its roles, not whether it is switched on. Setting an Owner's password is signing in as an Owner, which is the same door again with no role change needed to walk through it. The rule underneath all three is one rule — a permission you do not hold, you cannot confer, and an account holding one you do not hold, you cannot take over.
 
 ### Operation Head
 

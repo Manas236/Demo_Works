@@ -134,10 +134,14 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,063 passed, 3 skipped** | **27 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,062 passed, 1 skipped** | **27 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,080 passed, 3 skipped** | **27 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,079 passed, 1 skipped** | **27 Aug 2026** |
 
-*(Rows 2 and 3 read **924 / 3** and **923 / 1** from 23 August 2026 until
+*(Rows 2 and 3 read **1,063 / 3** and **1,062 / 1** earlier on 27 August 2026,
+before the privilege-escalation pass added **17**
+([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py), §7
+gap 26); both were re-measured in the configurations named in the rows at the
+start of that pass rather than quoted, and matched. They read **924 / 3** and **923 / 1** from 23 August 2026 until
 26 August, when Phase 3B access control added 63 tests, and **987 / 3** and
 **986 / 1** until 27 August, when the escaping and access-control-adversarial
 passes added 72 and the break-glass recovery pass added 4 more
@@ -933,6 +937,19 @@ load-bearing — weakening it re-opens the application silently.
 **What it is not.** The gate is **endpoint-level**, not object-level. "May this
 user approve *this* record" is not expressible in it and stays a per-view guard;
 see §7 gap 24, which the B6 approvals work inherits.
+
+**Nor is it field-level, and that has now cost twice.** A registry entry says
+who may reach an endpoint; it cannot say which *writes on that page* they may
+perform. Both holes found by attacking this layer are that same sentence:
+`POST /projects/view/<id>` wrote records under a read permission (gap 24b), and
+`/users/edit/<id>` set an **Owner's password** under `admin.users` (gap 26).
+Both are fixed by per-view guards, which is the shape gap 24 prescribes —
+`projectview.view_project()` checks `project.edit` on its POST branch, and the
+three `/users/*` write routes check `_may_administer()` on both methods.
+**Two guards in auth.py carry the whole of that rule** and are the first place
+to look before adding a route that writes a credential or a role:
+`_may_grant()` (you cannot confer a permission you do not hold) and
+`_may_administer()` (you cannot take over an account that holds one).
 
 ---
 
@@ -4241,9 +4258,9 @@ Thirteen routes. The architecture is §2g; this is what each page does.
 | `/account` | GET, POST | any user | Own details, own roles, own permission list, and the only place a user changes their own password. |
 | `/users` | GET | `admin.users` | The register. Deactivated accounts stay listed, greyed. |
 | `/users/create` | GET, POST | `admin.users` | Endpoint pinned to `auth.create_user`; the view is `create_user_route` because `create_user` is the record helper. |
-| `/users/edit/<id>` | GET, POST | `admin.users` | Display name, roles, and **the manual password reset** — one Owner setting another's password, which is why two Owners is now the operational requirement (§7 gap 21, closed). The break-glass equivalent for when nobody can sign in at all is [tools/set_password.py](tools/set_password.py). |
-| `/users/deactivate/<id>` | GET, POST | `admin.users` | GET confirms, POST acts. **There is no delete route** — §3, User. |
-| `/users/activate/<id>` | GET, POST | `admin.users` | The reverse. |
+| `/users/edit/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | Display name, roles, and **the manual password reset** — one Owner setting another's password, which is why two Owners is now the operational requirement (§7 gap 21, closed). The break-glass equivalent for when nobody can sign in at all is [tools/set_password.py](tools/set_password.py). ⚠ **`admin.users` is not enough on its own here.** The account being edited must hold nothing the editor does not — otherwise the password field is a way to *become* it. §7 gap 26. |
+| `/users/deactivate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | GET confirms, POST acts. **There is no delete route** — §3, User. The extra guard is what stops an Admin switching spare Owners off one at a time until only the one they can reset is left. |
+| `/users/activate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | The reverse, and it needs the guard for the mirror reason: a dormant Owner account is a live one after one POST, and whoever held it may still know its password. |
 | `/roles` | GET | `admin.roles` | **Owner only.** Shows each role's permission count and how many active users hold it. |
 | `/roles/create`, `/roles/edit/<id>` | GET, POST | `admin.roles` | Checkboxes over the 61-permission catalogue, grouped by module. A builtin role's **name** is fixed; its permissions are not. |
 | `/access-log` | GET | `admin.access_log` | The last 500 refusals — user, endpoint, permission wanted, why. §7 gap 23 on what it is not. |
@@ -5205,6 +5222,77 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    The regression test allows an **8x** spread deliberately: timing tests flake,
    and it is there to catch the branch being deleted rather than to certify
    anything.
+
+26. ~~🔴 **`admin.users` was `admin.roles` if you used the password field.**~~
+   ✅ **Closed 27 August 2026.**
+
+   `/users/edit/<id>` sets a password for any account it can load, and
+   `admin.users` is all it takes to load one. A **Director** — who may not tick
+   the Owner box, may not reach `/roles/*`, and is told in
+   [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) that they "cannot grant
+   anybody the Owner role" — could instead POST a new password onto the
+   **Owner's** row, change no role at all, sign in as the Owner and reach
+   `/roles` with a 200. Measured, not reasoned: the forged credential opened a
+   session and the session loaded the page.
+
+   **This is gap 24b's shape a second time.** `/users/edit` was classified
+   (`admin.users`), the *roles* write path on it was guarded (`_may_grant()`),
+   and the *password* write path beside it was guarded by nothing. A guard on
+   one field of a form is not a guard on the form.
+
+   ⚠ **The old `_may_grant()` was also narrower than the rule it enforces.** It
+   tested one permission, `admin.roles`, and was correct only by accident: the
+   Director role happens to lack exactly that one permission and nothing else.
+   The moment an Owner does what B2 invites — bundle a *limited* admin role,
+   `admin.users` plus a little — that holder could hand somebody the HR role
+   and confer four `charge.*` permissions they do not hold themselves.
+
+   ✅ The rule is now stated once and applied in both directions:
+   **a permission you do not hold, you cannot confer; and an account holding a
+   permission you do not hold, you cannot take over.**
+   `_may_grant()` [auth.py:1181](auth.py#L1181) tests the whole permission set
+   of every role being assigned against the actor's own union.
+   `_may_administer()` [auth.py:1227](auth.py#L1227) is its mirror, and
+   `_administer_refusal()` [auth.py:1272](auth.py#L1272) turns it into the
+   ordinary refusal page — logged to `REFUSAL_LOG`, so it appears on
+   `/access-log` beside every gate refusal rather than being visible only in
+   the browser it happened in. It guards `/users/edit`, `/users/deactivate` and
+   `/users/activate`, on **GET as well as POST**: a form that draws a password
+   box and then refuses the POST teaches the user the app is broken, and leaves
+   the field one missed guard from working again.
+
+   **Two deliberate exemptions, both needed or the guard breaks B3 instead of
+   bounding it.** An **Owner** short-circuits — the Owner tier can already
+   grant itself anything by editing a role, so a subset test on it would only
+   produce a puzzling refusal if somebody unticked a box on the Owner role.
+   And **acting on your own account is always allowed**: you gain nothing you
+   did not already hold, and `_would_strand_install()` still guards the one
+   thing you can do to yourself that matters.
+
+   📌 **A Director can no longer administer an Owner account at all** — not its
+   password, not its roles, not whether it is switched on. That is a
+   **tightening past the letter of B3**, which says an Admin may "deactivate
+   users" without excepting Owners, and it is a judgement call recorded as one.
+   The reason it is the right call: `_would_strand_install()` only protects the
+   **last** Owner, so a Director could switch spare Owners off one at a time
+   until exactly one remained — and then set that one's password. The two
+   halves compose into the whole install. It costs the client nothing they had:
+   an Owner administers an Owner, and this install has two.
+
+   17 tests in
+   [tests/test_privilege_escalation.py](tests/test_privilege_escalation.py),
+   **seven of which fail against the code as it stood** — verified by running
+   them against `HEAD:auth.py`, not by assuming it. Five of the ten attacks in
+   that file got through; the other five were already clean and are pinned
+   anyway, because they are claims `docs/ACCESS_MATRIX.md` makes to the client
+   in prose.
+
+   🟠 **What is still endpoint-level.** This is a per-view guard, the shape gap
+   24 prescribes, and nothing structural stops the next one. A route added
+   later that writes a credential or a role under `admin.users` would be the
+   same bug, and no sweep catches that class the way
+   `test_no_other_multi_method_rule_is_gated_on_a_read_permission` catches
+   24b's.
 
 ---
 

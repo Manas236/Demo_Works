@@ -22,6 +22,14 @@ nothing asserts is a clean result that stops being true quietly — and several
 of these (the tamper cases, the lockout guards) are exactly the properties a
 future refactor of `auth.py` would break without noticing.
 
+**A twelfth attack was run on 27 August 2026 and lives in its own file.**
+`tests/test_privilege_escalation.py` asks what an Admin can *do* once they are
+on `/users`, rather than which of those pages they can reach — §5 and §6 below
+only ever tested the **roles** field. Five of its ten attacks got through, the
+first being that `/users/edit/<id>` set the **Owner's password** under
+`admin.users`. It is a separate file rather than a §12 here because it is a
+separate pass with its own commit; read the two together.
+
 ### Reading a "clean" test in this file
 
 Every one of them pairs the refusal with a **control** that must succeed, on

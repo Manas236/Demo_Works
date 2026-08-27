@@ -1186,15 +1186,105 @@ def _may_grant(actor, role_ids) -> str:
     the Owner role off the same checkbox list that assigns Sales Manager, and
     the tier split would be decoration — the Admin who "cannot alter role
     definitions" would simply grant themselves the role that can.
+
+    ⚠ **The rule is wider than the Owner role, and used to be written narrower
+    than it.** Until 27 August 2026 this checked one permission — `admin.roles`
+    — so it happened to be correct only because the Director role is the one
+    the client has, and `admin.roles` is the only permission a Director lacks.
+    The moment an Owner uses B2 as intended and bundles a *limited* admin role
+    — `admin.users` plus a handful of operational permissions, which is the
+    whole point of roles being data — that holder could hand somebody else the
+    HR role and confer `charge.delete`, a permission they do not hold and
+    cannot exercise. **Nobody confers what they do not hold**, so the test is
+    now the whole permission set of each role against the actor's own union.
     """
     if is_owner(actor):
         return ""
+    held = permissions_of(actor)
     for rid in role_ids or []:
         role = roles().get(rid)
-        if role and OWNER_PERM in (role.get("permissions") or []):
+        if not role:
+            continue
+        carried = set(role.get("permissions") or []) & set(PERMISSIONS)
+        if OWNER_PERM in carried:
             return (f"Only an Owner can grant the {role['name']!r} role, because "
                     f"it carries the right to change what every other role means.")
+        missing = sorted(carried - held)
+        if missing:
+            return (f"You cannot grant the {role['name']!r} role: it carries "
+                    f"{_perm_phrase(missing)}, which you do not hold yourself. A "
+                    f"permission you do not have cannot be given to somebody else.")
     return ""
+
+
+def _perm_phrase(perm_ids) -> str:
+    """Up to three permission labels in words, then a count. Display only."""
+    shown = [PERMISSIONS[p][0] for p in perm_ids[:3] if p in PERMISSIONS]
+    tail = f" and {len(perm_ids) - 3} more" if len(perm_ids) > 3 else ""
+    return ", ".join(shown) + tail
+
+
+def _may_administer(actor, target) -> str:
+    """
+    "" when `actor` may change this account, else the refusal.
+
+    The mirror of `_may_grant()`, and the half that was missing.
+
+    `_may_grant()` guards the **roles** field on `/users/create` and
+    `/users/edit`. Nothing guarded the **password** field beside it, and
+    `/users/edit` sets a password for any account it can load — so a Director,
+    who holds `admin.users` and may not create an Owner, could instead set the
+    existing Owner's password and sign in as them. That reaches the same place
+    by a shorter route: it needs no role change at all, and the account it
+    lands in is the one B3 calls undeletable. Measured on 27 August 2026 — the
+    forged sign-in reached `/roles` with a 200.
+
+    So the rule is symmetric. Conferring a permission you do not hold is
+    refused; **taking over an account that holds one is the same act** and is
+    refused too. An Owner short-circuits, exactly as in `_may_grant()`: the
+    Owner tier can already grant itself anything by editing a role, so testing
+    them against a subset would only produce a puzzling refusal if somebody
+    ever unticks a permission on the Owner role.
+
+    Acting on your own account is always allowed — you gain nothing you did not
+    already have, and `/account` is the ordinary way to change your own
+    password anyway. `_would_strand_install()` still guards the one thing you
+    can do to yourself that matters.
+    """
+    if is_owner(actor):
+        return ""
+    if not target or (actor or {}).get("id") == target.get("id"):
+        return ""
+
+    extra = sorted(permissions_of(target) - permissions_of(actor))
+    if not extra:
+        return ""
+    if OWNER_PERM in extra:
+        return ("This is an Owner account, and you are not an Owner. Setting its "
+                "password would let you sign in as it, and taking its roles away "
+                "would decide who administers this install — both are the Owner "
+                "tier, which none of your roles carries.")
+    return (f"This account holds {_perm_phrase(extra)}, which you do not hold "
+            f"yourself. Setting its password would let you sign in as it, so only "
+            f"somebody who already holds everything it does may change it.")
+
+
+def _administer_refusal(target):
+    """
+    The 403 for `_may_administer()`, or None when the change is allowed.
+
+    Returned as a refusal page rather than a form error because that is what it
+    is: the same shape `_gate()` returns, logged to the same place, so it shows
+    up on `/access-log` beside every other refusal instead of being invisible
+    outside the browser it happened in.
+    """
+    actor = current_user()
+    detail = _may_administer(actor, target)
+    if not detail:
+        return None
+    _log_refusal(actor, request.endpoint, None,
+                 "the target account holds permissions the actor does not")
+    return _refusal_page("You cannot administer this account", _esc(detail)), 403
 
 
 def _would_strand_install(user_id: str, new_role_ids=None, deactivating=False) -> str:
@@ -1373,6 +1463,12 @@ def edit_user(id):
     if not user:
         return redirect(url_for("auth.list_users", msg="No such user.", type="error"))
 
+    # Before the form is read, and before it is even drawn: this page sets a
+    # password, and a password on a more-privileged account is that account.
+    refused = _administer_refusal(user)
+    if refused:
+        return refused
+
     error = ""
     if request.method == "POST":
         display = (request.form.get("display_name") or "").strip()
@@ -1442,6 +1538,13 @@ def deactivate_user(id):
     if not user:
         return redirect(url_for("auth.list_users", msg="No such user.", type="error"))
 
+    # An Admin who could switch Owners off one at a time would end at an
+    # install with exactly one Owner left — and `/users/edit` would then hand
+    # them its password. Same guard, same reason.
+    refused = _administer_refusal(user)
+    if refused:
+        return refused
+
     refusal = _would_strand_install(id, deactivating=True)
     if request.method == "POST":
         if refusal:
@@ -1472,6 +1575,14 @@ def activate_user(id):
     user = users().get(id)
     if not user:
         return redirect(url_for("auth.list_users", msg="No such user.", type="error"))
+
+    # Reactivation is the other half of deactivation and needs the same guard:
+    # a dormant Owner account is a live Owner account with one POST, and
+    # whoever it belonged to may still know its password.
+    refused = _administer_refusal(user)
+    if refused:
+        return refused
+
     if request.method == "POST":
         user["active"] = True
         return redirect(url_for("auth.list_users",
