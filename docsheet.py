@@ -363,6 +363,29 @@ SELL_COLUMNS = (("c-sno", "S.No"), ("c-partno", "Part No"),
                 ("c-qty", "Qty"), ("c-unit", "Unit"),
                 ("c-price", "Rate"), ("c-total", "Amount"))
 
+# The buy side carries one column the sell side does not: a per-line **discount
+# percentage** the vendor has allowed us (CLIENT_CHANGES-2.md A2). It sits
+# between the rate and the amount because that is where it acts — the amount in
+# the last column is already net of it, so the taxable value the summary rows
+# total is the discounted one.
+#
+# ⚠ **A separate tuple, not a column appended to `SELL_COLUMNS`.** The sell
+#   chain's three documents are pinned byte-for-byte in
+#   `tests/test_print_golden.py`, and a discount a vendor allowed *us* has no
+#   business appearing on a quotation we send a customer.
+BUY_COLUMNS = (("c-sno", "S.No"), ("c-partno", "Part No"),
+               ("c-desc", "Description of Goods"), ("c-hsn", "HSN/SAC"),
+               ("c-qty", "Qty"), ("c-unit", "Unit"),
+               ("c-price", "Rate"), ("c-disc", "Disc %"),
+               ("c-total", "Amount"))
+
+# The blank cells a summary row lays down between its label and its amount.
+# Named rather than inlined because a table with a ninth column needs one more
+# of them — and the label's `colspan` is **not** what changes. The label spans
+# S.No / Part No / Description / HSN on both sheets, which is four either way.
+SUM_BLANKS   = ("c-qty", "c-unit", "c-price")
+TOTAL_BLANKS = ("c-unit", "c-price")
+
 
 def items_table(columns, rows_html: str) -> str:
     """
@@ -389,24 +412,40 @@ def items_table(columns, rows_html: str) -> str:
 # Rows, not arithmetic. Every figure arrives already computed and already
 # formatted; nothing here adds, rounds or decides a tax head.
 
-def sum_row(label: str, amount: str, indent: int = 8) -> str:
-    """One right-hand summary row — a subtotal, a tax line, a deduction."""
+def sum_row(label: str, amount: str, indent: int = 8,
+            blanks: tuple = SUM_BLANKS) -> str:
+    """
+    One right-hand summary row — a subtotal, a tax line, a deduction.
+
+    `blanks` is the run of empty cells between the label and the amount, and it
+    is the only thing that varies between the two column sets: a ninth column on
+    the buy side is one more blank, not a wider label. The default reproduces
+    the sell-side row byte-for-byte, which is what keeps the three pinned
+    documents in `tests/test_print_golden.py` where they are.
+    """
     pad = " " * indent
+    cells = "".join(f"<td class=\"{c}\"></td>" for c in blanks)
     return (f"\n{pad}<tr class=\"row-sum\">\n"
             f"{pad}  <td colspan=\"4\" class=\"sum-lbl\">{label}</td>\n"
-            f"{pad}  <td class=\"c-qty\"></td><td class=\"c-unit\"></td>"
-            f"<td class=\"c-price\"></td>\n"
+            f"{pad}  {cells}\n"
             f"{pad}  <td class=\"c-total\">{amount}</td>\n"
             f"{pad}</tr>")
 
 
-def total_row(label: str, qty: str, amount: str, indent: int = 4) -> str:
-    """The closing row, carrying the document's total quantity and value."""
+def total_row(label: str, qty: str, amount: str, indent: int = 4,
+              blanks: tuple = TOTAL_BLANKS) -> str:
+    """
+    The closing row, carrying the document's total quantity and value.
+
+    `blanks` follows the quantity cell, for the same reason `sum_row()`'s does.
+    The default reproduces the sell-side row byte-for-byte.
+    """
     pad = " " * indent
+    cells = "".join(f"<td class=\"{c}\"></td>" for c in blanks)
     return (f"\n{pad}<tr class=\"row-total row-sum\">\n"
             f"{pad}  <td colspan=\"4\" class=\"sum-lbl\">{label}</td>\n"
             f"{pad}  <td class=\"c-qty\">{qty}</td>\n"
-            f"{pad}  <td class=\"c-unit\"></td><td class=\"c-price\"></td>\n"
+            f"{pad}  {cells}\n"
             f"{pad}  <td class=\"c-total\">{amount}</td>\n"
             f"{pad}</tr>")
 

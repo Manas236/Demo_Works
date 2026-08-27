@@ -181,6 +181,14 @@ INCLUDE_INSTALL_TRACK = False
 # pricing, and it is the same mistake in a different place.
 RATE_PREFILL_FIELD = "supply_base_rate"
 
+# The buy sheet's summary rows, one cell wider than the sell chain's because
+# `DS.BUY_COLUMNS` carries the discount column. Bound here rather than passed
+# literally at each of the three call sites, so a fourth one cannot quietly
+# print a row that is a cell short and pull the Order Value out from under the
+# Amount column.
+_SUM_BLANKS   = DS.SUM_BLANKS   + ("c-disc",)
+_TOTAL_BLANKS = DS.TOTAL_BLANKS + ("c-disc",)
+
 
 # =============================================================================
 # HELPERS
@@ -338,6 +346,26 @@ def _history_html(po: dict) -> str:
     return out
 
 
+# The discount column (CLIENT_CHANGES-2.md A2) is a **percentage off the rate**,
+# not a rupee figure off the amount.
+#
+# A percentage is the form the client's own schedules already speak: DOMAIN.md
+# §2.5 derives every BOQ rate as a base rate plus an **escalation percentage**,
+# and a vendor's allowance comes back the same way. It also survives a quantity
+# change, which a flat amount does not — edit the qty on a line discounted by
+# ₹500 and the ₹500 silently becomes a different percentage of a different
+# order.
+#
+# ⚠ **Where it sits relative to tax is the whole of the arithmetic, and it sits
+#   INSIDE the tax base.** The discounted figure is what lands in the line's
+#   `total`, so it is what `_totals_of()` sums into `subtotal`, and `subtotal`
+#   is the sole argument `_tax_lines()` computes tax from — there is no second
+#   path. A discount allowed on the order is a reduction in what the vendor
+#   supplies for, so the tax they charge us follows it down; billing us tax on
+#   a price we are not paying would overstate the input credit we could claim.
+MAX_DISCOUNT_PCT = 100.0
+
+
 def _parse_lines(form) -> tuple:
     """
     Read the repeating line-item rows off the form.
@@ -356,9 +384,10 @@ def _parse_lines(form) -> tuple:
     ids   = form.getlist("line_product_id")
     qtys  = form.getlist("line_qty")
     rates = form.getlist("line_rate")
+    discs = form.getlist("line_discount")
 
     items = []
-    for pid, qty_raw, rate_raw in zip(ids, qtys, rates):
+    for idx, (pid, qty_raw, rate_raw) in enumerate(zip(ids, qtys, rates)):
         pid = (pid or "").strip()
         if not pid:
             continue
@@ -376,6 +405,14 @@ def _parse_lines(form) -> tuple:
         if rate < 0:
             return [], f"Rate for '{p['name']}' cannot be negative."
 
+        # A short `line_discount` list is the ordinary case, not a broken form:
+        # every record written before A2 existed has none, and so does a POST
+        # from anything that does not render the column. Missing reads as zero.
+        disc, disc_err = _parse_discount(
+            discs[idx] if idx < len(discs) else "", p["name"])
+        if disc_err:
+            return [], disc_err
+
         items.append({
             "type":    "item",
             "name":    p["name"],
@@ -384,13 +421,51 @@ def _parse_lines(form) -> tuple:
             "qty":     qty,
             "unit":    p.get("unit", ""),
             "price":   rate,
-            "total":   round(rate * qty, 2),
+            "discount_pct": disc,
+            "total":   _line_total(rate, qty, disc),
             "depth":   0,
         })
 
     if not items:
         return [], "Add at least one item to the purchase order."
     return items, ""
+
+
+def _parse_discount(raw, item_name: str) -> tuple:
+    """
+    `(percent, error)` for one discount box. Blank is 0, which is not a discount.
+
+    Refused above 100 because a line cannot cost less than nothing, and refused
+    below 0 because a negative discount is a price increase wearing a disguise —
+    the rate box is where a higher price belongs, in the open, where the vendor
+    can be shown the number we agreed.
+    """
+    txt = str(raw or "").strip()
+    if not txt:
+        return 0.0, ""
+    try:
+        pct = float(txt)
+    except ValueError:
+        return 0.0, f"Discount for '{item_name}' must be a number."
+    if pct < 0:
+        return 0.0, f"Discount for '{item_name}' cannot be negative."
+    if pct > MAX_DISCOUNT_PCT:
+        return 0.0, (f"Discount for '{item_name}' cannot be more than "
+                     f"{MAX_DISCOUNT_PCT:g}%.")
+    return pct, ""
+
+
+def _line_total(rate: float, qty: float, disc_pct: float) -> float:
+    """
+    One line's amount, net of its discount, rounded once at the end.
+
+    Rounded **once**, on the discounted product, rather than discounting an
+    already-rounded amount: two roundings on 87 lines is how a purchase order
+    ends up a rupee away from the vendor's invoice for no reason anybody can
+    find. `discount_pct == 0` reproduces `round(rate * qty, 2)` exactly, which
+    is what every line written before A2 carries.
+    """
+    return round(rate * qty * (1.0 - (disc_pct or 0.0) / 100.0), 2)
 
 
 def _alert(msg: str, msg_type: str) -> str:
@@ -634,6 +709,16 @@ def _product_options(selected: str = "") -> str:
 
 PURCHASE_STYLES = """
 <style>
+  /* ── Print: the discount column ───────────────────────────────────────
+     `.c-disc` is declared HERE and not in `QUOTATION_STYLES` beside its eight
+     siblings, and that is the whole point of this constant. The sell chain's
+     column widths are shared by the quotation, the proforma and the tax
+     invoice, all three of which are pinned byte-for-byte; a rule added there
+     moves three digests for a column only the buy sheet draws. Narrow, because
+     "12.5%" is the widest thing it will ever hold. */
+  .c-disc { width:14mm; text-align:right; font-variant-numeric:tabular-nums;
+            font-size:var(--fs-xs); }
+
   /* ── Screen: form ─────────────────────────────────────────────────── */
   .field-hint {
     display:block; margin-top:.35rem; font-size:.76rem;
@@ -655,11 +740,11 @@ PURCHASE_STYLES = """
   /* Repeating line editor — same shape as product.py's BOM child rows, which
      is the established pattern in this app for "a few rows, no JS model". */
   .line-row {
-    display:grid; grid-template-columns:1fr 90px 130px 120px 34px;
+    display:grid; grid-template-columns:1fr 90px 130px 80px 120px 34px;
     gap:.55rem; align-items:center; margin-bottom:.55rem;
   }
   .line-head {
-    display:grid; grid-template-columns:1fr 90px 130px 120px 34px;
+    display:grid; grid-template-columns:1fr 90px 130px 80px 120px 34px;
     gap:.55rem; font-size:.72rem; font-weight:700; color:var(--muted);
     text-transform:uppercase; letter-spacing:.05em; margin-bottom:.4rem;
   }
@@ -682,6 +767,8 @@ PURCHASE_STYLES = """
   @media (max-width:640px){
     .line-row, .line-head { grid-template-columns:1fr 70px 110px; }
     .line-head span:nth-child(4), .line-head span:nth-child(5),
+    .line-head span:nth-child(6),
+    .line-row input[name="line_discount"],
     .line-row .ln-amt { display:none; }
   }
 
@@ -1133,17 +1220,22 @@ def create_purchase():
     prior_ids   = f.getlist("line_product_id") if request.method == "POST" else []
     prior_qtys  = f.getlist("line_qty")        if request.method == "POST" else []
     prior_rates = f.getlist("line_rate")       if request.method == "POST" else []
-    rows_data = [(i, q, r) for i, q, r in zip(prior_ids, prior_qtys, prior_rates)]
+    prior_discs = f.getlist("line_discount")   if request.method == "POST" else []
+    # `zip` on four lists would silently drop every row if the discount list
+    # came in short, so it is indexed separately and a missing one reads blank.
+    rows_data = [(i, q, r, prior_discs[n] if n < len(prior_discs) else "")
+                 for n, (i, q, r) in enumerate(zip(prior_ids, prior_qtys, prior_rates))]
     while len(rows_data) < DEFAULT_LINE_ROWS:
-        rows_data.append(("", "", ""))
+        rows_data.append(("", "", "", ""))
 
     lines_html = ""
-    for sel, qty, rate in rows_data:
+    for sel, qty, rate, disc in rows_data:
         lines_html += f"""
         <div class="line-row">
           <select name="line_product_id" onchange="fillRate(this)">{_product_options(sel)}</select>
           <input type="number" name="line_qty" value="{P.esc(qty)}" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" value="{P.esc(rate)}" min="0" step="0.01" placeholder="Rate"/>
+          <input type="number" name="line_discount" value="{P.esc(disc)}" min="0" max="100" step="any" placeholder="0"/>
           <span class="ln-amt">&#8212;</span>
           <button type="button" class="btn-remove-line"
                   onclick="this.closest('.line-row').remove(); recalc();">&#215;</button>
@@ -1247,6 +1339,7 @@ def create_purchase():
           <div class="section-title">Items ordered</div>
           <div class="line-head">
             <span>Item</span><span>Qty</span><span>Rate (&#8377;)</span>
+            <span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
           <div id="lines">{lines_html}</div>
@@ -1328,6 +1421,7 @@ def create_purchase():
           <select name="line_product_id" onchange="fillRate(this)">{_product_options()}</select>
           <input type="number" name="line_qty" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" min="0" step="0.01" placeholder="Rate"/>
+          <input type="number" name="line_discount" min="0" max="100" step="any" placeholder="0"/>
           <span class="ln-amt">&#8212;</span>
           <button type="button" class="btn-remove-line"
                   onclick="this.closest('.line-row').remove(); recalc();">&#215;</button>
@@ -1360,7 +1454,14 @@ def create_purchase():
           document.querySelectorAll('#lines .line-row').forEach(function (row) {{
             var q = parseFloat(row.querySelector('input[name="line_qty"]').value) || 0;
             var r = parseFloat(row.querySelector('input[name="line_rate"]').value) || 0;
-            var amt = q * r;
+            var dEl = row.querySelector('input[name="line_discount"]');
+            var d = dEl ? (parseFloat(dEl.value) || 0) : 0;
+            if (d < 0) d = 0;
+            if (d > 100) d = 100;
+            /* The same shape as _line_total(): discount the product, then round
+               once. The server is the authority and recomputes it on POST --
+               this strip only has to agree with what will be stored. */
+            var amt = Math.round(q * r * (1 - d / 100) * 100) / 100;
             sub += amt;
             var cell = row.querySelector('.ln-amt');
             if (cell) cell.textContent = amt ? amt.toLocaleString('en-IN',
@@ -2091,11 +2192,17 @@ def view_purchase(id: str):
         <tr class="row-assembly">
           <td class="c-sno"></td>
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>
-          <td colspan="6" class="c-desc">{P.esc(row.get('name'))}</td>
+          <td colspan="7" class="c-desc">{P.esc(row.get('name'))}</td>
         </tr>"""
             continue
         sno += 1
         total_qty += float(row.get("qty") or 0)
+        # A line written before A2 has no `discount_pct` at all, and one saved
+        # with the box left blank has 0.0. Both print an em dash rather than
+        # "0 %", because a discount of nothing is not a discount and a column of
+        # zeroes reads like a negotiation that failed.
+        disc_pct = float(row.get("discount_pct") or 0.0)
+        disc_cell = f"{disc_pct:g}%" if disc_pct else "&#8212;"
         table_rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sno}</td>
@@ -2105,6 +2212,7 @@ def view_purchase(id: str):
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
           <td class="c-price">{_inr(row.get('price') or 0)}</td>
+          <td class="c-disc">{disc_cell}</td>
           <td class="c-total">{_inr(row.get('total') or 0)}</td>
         </tr>"""
 
@@ -2118,8 +2226,13 @@ def view_purchase(id: str):
     # this document is **input** tax we pay, the opposite side of the ledger
     # from a tax invoice, and nothing about that arithmetic is shared with the
     # sell chain — only the furniture it prints inside.
+    # ⚠ The summary rows carry one more blank cell than the sell chain's,
+    # because the buy sheet has one more column. `DS.SUM_BLANKS` /
+    # `DS.TOTAL_BLANKS` stay the default everywhere else, so the tax invoice and
+    # the proforma are untouched by this — see docsheet.py's note.
     if has_tax:
-        table_rows += DS.sum_row("Taxable Value", _inr(subtotal))
+        table_rows += DS.sum_row("Taxable Value", _inr(subtotal),
+                                 blanks=_SUM_BLANKS)
         rate_keys = {"CGST": "cgst_rate", "SGST": "sgst_rate",
                      "IGST": "igst_rate", "VAT": "vat_rate"}
         skip = {"total", *rate_keys.values()}
@@ -2128,9 +2241,11 @@ def view_purchase(id: str):
                 continue
             r = tax_info.get(rate_keys.get(tname, ""), 0)
             lbl = f" @ {r:g}%" if r else ""
-            table_rows += DS.sum_row(f"{tname}{lbl}", _inr(tamt), indent=12)
+            table_rows += DS.sum_row(f"{tname}{lbl}", _inr(tamt), indent=12,
+                                     blanks=_SUM_BLANKS)
 
-    table_rows += DS.total_row("Order Value", _fmt_qty(total_qty), _inr(grand))
+    table_rows += DS.total_row("Order Value", _fmt_qty(total_qty), _inr(grand),
+                               blanks=_TOTAL_BLANKS)
 
     # ── Header meta ───────────────────────────────────────────────────────
     meta_col_1 = (
@@ -2324,7 +2439,7 @@ def view_purchase(id: str):
 
     {status_strip}
 
-{DS.items_table(DS.SELL_COLUMNS, table_rows)}
+{DS.items_table(DS.BUY_COLUMNS, table_rows)}
 
 {DS.amount_words("Order Value (in words)", grand)}
   </div>

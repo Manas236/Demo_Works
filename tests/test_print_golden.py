@@ -408,13 +408,32 @@ TI_BLOCKS = {"head":       "49524db46e29dcc5",
              "signature":  "f5511fad8e1212cc"}
 
 # was 4f7794a81d90071c / 101851 before the 27 Aug 2026 escaping pass
-PO_WHOLE, PO_LEN = "e21237eb007ee61b", 101859
-PO_BLOCKS = {"head":       "d0df61b20bb3a42e",
+# Was e21237eb007ee61b / 101,859 before the 27 Aug 2026 Phase 3A pass added the
+# discount column (CLIENT_CHANGES-2.md A2). **+942 bytes, in two blocks, and
+# every one of them is accounted for:**
+#
+#   head  +721 = the `.c-disc` print rule and its comment (+634), the two
+#                `grid-template-columns` rows of the form's line editor widening
+#                by one 80px cell (+10), and the mobile rule that hides the new
+#                box with the amount (+77). All three live in `PURCHASE_STYLES`
+#                and not in `QUOTATION_STYLES`, which is why the quotation, the
+#                proforma and the tax invoice below did NOT move.
+#   items +221 = one `<th class="c-disc">Disc %</th>` (+41), one `c-disc` cell
+#                on each of the two line rows (+84), and one empty `c-disc` cell
+#                on each of the three tax summary rows and the Order Value row
+#                (+96), which `DS.SUM_BLANKS` / `DS.TOTAL_BLANKS` supply.
+#
+# letterhead, foot-strip, doc-box, party and signature are byte-identical, and
+# so is every figure on the sheet: the golden PO carries no `discount_pct`, so
+# its Disc % column prints an em dash and its Order Value is unchanged at
+# 307,508.00. A2 moved the shape of this document, not its arithmetic.
+PO_WHOLE, PO_LEN = "809c8921d502d98b", 102801
+PO_BLOCKS = {"head":       "5354379fd4182ed2",   # was d0df61b20bb3a42e
              "letterhead": "2800166c693cc2f1",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "ffe286e7afd8c90b",
              "party":      "307d35714073c084",
-             "items":      "fd759d99cf4b162a",
+             "items":      "5e17a6d93410823c",   # was fd759d99cf4b162a
              "signature":  "5717ca48143d8b6e"}
 
 GOLD_PI = "gold-pi"

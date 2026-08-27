@@ -48,6 +48,7 @@ import pytest
 
 import address
 import boq as BQ
+import docsheet as DS
 import demo_data as DD
 from store import STORE
 
@@ -629,7 +630,15 @@ def test_the_specification_header_comes_across_and_carries_no_money(shop, client
 
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
     assert 'class="row-assembly"' in html
-    assert 'colspan="6"' in html
+    # Was `colspan="6"` until 27 Aug 2026, when A2's discount column took the
+    # buy sheet from eight columns to nine (`DS.BUY_COLUMNS`). The header row
+    # still spans every column after S.No and Part No, which is what this
+    # asserts; the literal is the table's width and tracks it.
+    assert 'colspan="7"' in html
+    assert len(DS.BUY_COLUMNS) == 9, "the span above is 9 - 2 and must follow it"
+    # And it is still a header: no quantity, no rate, no amount in the row.
+    row = html.split('class="row-assembly"', 1)[1].split("</tr>", 1)[0]
+    assert 'class="c-qty"' not in row and 'class="c-total"' not in row
 
 
 def test_the_order_value_is_the_ordinary_input_tax_arithmetic(shop, client):
