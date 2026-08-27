@@ -218,10 +218,12 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,058 passed / 1 skipped** on 27 August 2026, verified by
+The baseline is **1,062 passed / 1 skipped** on 27 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
-*(It read **986 passed / 1 skipped** on 26 August 2026, **923 / 1** on
+*(It read **1,058 / 1** earlier on 27 August 2026 — the break-glass recovery
+pass ([STATE.md §1.13](STATE.md)) added 4 tests over `tools/set_password.py` —
+then **986 passed / 1 skipped** on 26 August 2026, **923 / 1** on
 23 August and **838 / 1** on 16 August, all in the same configuration. The
 27 August pass escaped user text everywhere it reaches HTML and attacked the
 Phase 3B access layer, adding 72 tests: `tests/test_escaping.py` (31),
@@ -241,7 +243,7 @@ in which a golden may be re-baselined: the fixture data behind it contains a
 character that was previously emitted raw, and you can show which.
 
 **The supported configuration is measured too:** the repo's `.venv` (CPython
-3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **1,059 passed
+3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **1,063 passed
 / 3 skipped**, measured 27 August 2026 against the same commit. It read
 **987 / 3** against the pre-pass code, measured the same day.
 

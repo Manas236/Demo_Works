@@ -91,7 +91,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 987 passed, 3 skipped — this is what THESE
+python -m pytest -q                     # 1,063 passed, 3 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
                                         #   (It said "923 passed, 1 skipped — openpyxl
@@ -99,7 +99,10 @@ python -m pytest -q                     # 987 passed, 3 skipped — this is what
                                         #   foot of a sequence that installs openpyxl. Skip
                                         #   line 91 and you get row 3 instead. It read
                                         #   "924 passed, 3 skipped" until 26 Aug 2026,
-                                        #   when Phase 3B added 63 tests.)
+                                        #   when Phase 3B added 63 tests, and "987 passed,
+                                        #   3 skipped" earlier on 27 Aug, when the
+                                        #   escaping and adversarial passes added 72,
+                                        #   and the break-glass tool added 4 more.)
 
 python tools/seed_users.py --password "<choose one>"   # ⚠ Phase 3B: the app is
                                         #   CLOSED. With no user in the database every
@@ -107,6 +110,11 @@ python tools/seed_users.py --password "<choose one>"   # ⚠ Phase 3B: the app i
                                         #   first Owner in a browser. This is the same
                                         #   job without one. There is no default password
                                         #   and placeholders are refused.
+                                        #   Run it TWICE, with --username and
+                                        #   --roles owner,director: two Owners is an
+                                        #   operational requirement, not a nicety (§7.21).
+                                        #   Forgot the password on an account that already
+                                        #   exists? tools/set_password.py, not MySQL.
 python app.py                           # http://127.0.0.1:5000 — then sign in
 ```
 
@@ -126,15 +134,29 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl`), both client workbooks **absent** | **987 passed, 3 skipped** | **26 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **986 passed, 1 skipped** | **26 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,063 passed, 3 skipped** | **27 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,062 passed, 1 skipped** | **27 Aug 2026** |
 
 *(Rows 2 and 3 read **924 / 3** and **923 / 1** from 23 August 2026 until
-26 August, when Phase 3B access control added 63 tests. **Both figures above
-were measured on 26 August, and both pre-pass figures were re-measured on the
-same day rather than quoted** — they matched, which is what makes the +63
-a real before/after and not arithmetic. The 3-test gap between the two rows is
-still openpyxl and is explained below; it is unchanged by this pass.)*
+26 August, when Phase 3B access control added 63 tests, and **987 / 3** and
+**986 / 1** until 27 August, when the escaping and access-control-adversarial
+passes added 72 and the break-glass recovery pass added 4 more
+(`tests/test_auth.py`, the four structural invariants on
+[tools/set_password.py](tools/set_password.py)). **Every figure in this table was measured, never derived**,
+and each pass re-measured its own predecessor rather than quoting it. The 3-test
+gap between the two rows is still openpyxl and is explained below; it is
+unchanged.)*
+
+*(⚠ **Rows 2 and 3 stood at 987 / 3 and 986 / 1 — the 26 August figures — for a
+day longer than they should have.** The escaping pass measured 1,059 / 3 and
+1,058 / 1 and wrote them into [STATE.md](STATE.md),
+[PROGRESS.md](PROGRESS.md) and [INTRODUCTION.md §5.5](INTRODUCTION.md), but not
+into this table — the one place the note above says to quote. Both figures here
+were **re-measured on 27 August 2026** in the two configurations named in the
+rows; they matched what those three files already carried, and the rows now
+carry that measurement plus this pass's own 4 tests. This is the exact
+failure the paragraph below has warned about twice: a number is only as current
+as the least-visited file that holds it.)*
 
 ⚠ **Row 2 is the configuration this repo says to run, and until 23 August 2026 it
 had never been run.** Every figure this document has ever carried came from row 3
@@ -154,9 +176,9 @@ the same CPython 3.10.11 with both workbooks absent. Without openpyxl,
 `tests/test_fixtures.py`'s 4 tests are never collected and pytest prints
 `1 skipped` (row 3). With it, all 4 are collected: 1 passes and 3 skip
 individually via `conftest.require_fixture()` because the workbooks are absent
-(row 2). 986 + 1 = 987 passed, and 3 skipped rather than 1 — which is the
+(row 2). 1,062 + 1 = 1,063 passed, and 3 skipped rather than 1 — which is the
 two-mechanism distinction below, arrived at from a real run rather than from
-arithmetic. The `.venv` itself moved nothing observable, and that is a result
+arithmetic, and it has now held across three separate re-measurements. The `.venv` itself moved nothing observable, and that is a result
 worth having: the pins reproduce what the global interpreter was already doing.
 
 ⚠ **Row 2 replaces a derived figure, and the derivation was wrong in the way this
@@ -1738,6 +1760,22 @@ password on every install that ships. The first one is minted deliberately, by
 `GET/POST /setup` or `tools/seed_users.py`, and both refuse a blank, short or
 placeholder password. `tests/test_hardening.py::test_no_seeder_invents_a_user`
 empties the collection, runs every seeder at it, and looks again.
+
+- `password_hash` — `werkzeug.security` scrypt, written at exactly three places
+  and read at one. `auth.create_user()` writes it on mint; `/account` writes it
+  when a user changes their own; `/users/edit/<id>` writes it when an Admin sets
+  somebody else's. **`/login` is the only reader.** A fourth writer exists
+  outside the app — [tools/set_password.py](tools/set_password.py), the
+  break-glass CLI for when nobody can sign in at all (§7.21) — and it imports
+  the hashing from `auth` rather than from `werkzeug` directly, so the writer
+  and the reader cannot drift apart. **Nothing anywhere prints or logs it**, and
+  `tests/test_access_control_adversarial.py` asserts the refusal log carries no
+  credentials.
+- **Two active Owners is an operational requirement, not a preference.**
+  `auth._would_strand_install()` guarantees an active Owner *exists*; it cannot
+  guarantee anybody can *sign in* as one, and a single-Owner install turns one
+  forgotten password into a lockout with no in-app way out. §7.21 has the
+  incident this was learned from.
 
 ### Role  (Phase 3B)
 
@@ -4203,7 +4241,7 @@ Thirteen routes. The architecture is §2g; this is what each page does.
 | `/account` | GET, POST | any user | Own details, own roles, own permission list, and the only place a user changes their own password. |
 | `/users` | GET | `admin.users` | The register. Deactivated accounts stay listed, greyed. |
 | `/users/create` | GET, POST | `admin.users` | Endpoint pinned to `auth.create_user`; the view is `create_user_route` because `create_user` is the record helper. |
-| `/users/edit/<id>` | GET, POST | `admin.users` | Display name, roles, and **the manual password reset** (§7 gap 21). |
+| `/users/edit/<id>` | GET, POST | `admin.users` | Display name, roles, and **the manual password reset** — one Owner setting another's password, which is why two Owners is now the operational requirement (§7 gap 21, closed). The break-glass equivalent for when nobody can sign in at all is [tools/set_password.py](tools/set_password.py). |
 | `/users/deactivate/<id>` | GET, POST | `admin.users` | GET confirms, POST acts. **There is no delete route** — §3, User. |
 | `/users/activate/<id>` | GET, POST | `admin.users` | The reverse. |
 | `/roles` | GET | `admin.roles` | **Owner only.** Shows each role's permission count and how many active users hold it. |
@@ -5023,20 +5061,53 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    and note that adding any of them would also stop it looking like the challan
    their site staff actually recognise, which is a second reason to wait for an
    instruction rather than infer one.
-21. 🟠 **No password reset, by design — and the manual path is undocumented for
-   the client.** CLIENT_CHANGES-2.md B3 puts e-mail reset explicitly out of
-   scope and says reset is a manual Owner action. That action exists —
-   `/users/edit/<id>` sets a new password — but **nothing tells the client
-   that**, and `/account` only says "an Owner sets a new password for you".
+21. ~~🟠 **No password reset, by design — and the manual path is undocumented
+   for the client.**~~ ✅ **Closed, 27 August 2026 — both ways, because the gap
+   said "either" and the cheaper half alone would not have held.**
 
-   The failure case is specific and reachable: the **last Owner forgets their
-   password**. `_would_strand_install()` guarantees an active Owner exists; it
-   cannot guarantee anybody can sign in as one. There is no console, no
-   `flask shell` in this deployment and no reset e-mail, so the recovery today
-   is editing `password_hash` in MySQL by hand. Either a second Owner is a
-   documented operational requirement, or a break-glass CLI is needed. **It is
-   not a code fix until somebody decides which**, which is why this is a gap
-   and not a task.
+   The failure case was specific and it had already happened on this box: the
+   3B pass seeded the only Owner, signed in as it during testing and recorded
+   the password nowhere, so the install had an active Owner nobody could sign
+   in as. `_would_strand_install()` guarantees an active Owner **exists**; it
+   cannot guarantee anybody can **sign in** as one, and that distinction is the
+   whole gap. With no console, no `flask shell` in this deployment and no reset
+   e-mail, the recovery this section documented was editing `password_hash` in
+   MySQL by hand — which is not a recovery path.
+
+   **The break-glass CLI: [tools/set_password.py](tools/set_password.py).**
+   `python tools/set_password.py --username X --password Y`, non-interactive.
+   It **sets** passwords and **does not create users** — an unknown username is
+   refused rather than minted, because a typo would otherwise silently produce a
+   second account, and minting is `/setup`'s job and `tools/seed_users.py`'s.
+   Three things it does not have its own copy of: the hashing comes from `auth`,
+   where `/login` gets it, so it cannot mint a hash `check_password_hash()` will
+   not accept; the password policy is `seed_users._reject_password`, so the
+   placeholder list and the 8-character floor are one rule with one home rather
+   than two that drift — and the copy that drifts low is the one reached for in
+   an emergency; and it refuses to run at all when `db.init()` is false, so it
+   can never report a change it made only to a dict that dies with the process.
+   The new hash is verified with `check_password_hash()` **before** it is
+   written: a hash the app cannot read back would lock the account harder than
+   the forgotten password did. It prints the username, roles, Owner tier and
+   which database it wrote to; **it never prints the hash**.
+
+   **The second Owner, which is the actual mitigation.** A break-glass CLI needs
+   a terminal on the box. Two Owners need nothing — one signs the other back in
+   at `/users/edit/<id>`. This install now has two active accounts holding
+   `admin.roles`, and that is the operational requirement this gap asked
+   somebody to decide on: **a single-Owner install is a lockout waiting for a
+   forgotten password.** Verified by driving the real server rather than by
+   asserting it — both accounts signed in through `/login` and reached `/`,
+   `/users`, `/roles`, `/boq/view/<id>` and `/boq/print/<id>`, `/account`
+   changed each one's own password and the new password then worked, and an
+   anonymous request still redirected to `/login`.
+
+   ⚠ **What is NOT closed.** `/account` still tells a locked-out user only
+   that "an Owner sets a new password for you", and nothing client-facing
+   documents either path. This entry is the developer-facing record; the
+   client-facing half is still owed. Nor is the underlying design changed —
+   e-mail reset stays out of scope per CLIENT_CHANGES-2.md B3, and the missing
+   rate limit — gap 22, narrowed but not closed by gap 25 — is untouched.
 22. 🟠 **No rate limiting and no lockout on `/login`.** Passwords may be
    brute-forced at whatever rate the box serves requests. `werkzeug`'s scrypt
    hashing makes each attempt cost something, which is a floor and not a
@@ -5044,9 +5115,12 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
 
    Deliberately not fixed in the same pass that introduced login: a lockout is
    also a denial-of-service against the real user — lock the last Owner out for
-   fifteen minutes and gap 21 arrives on a timer. It needs a decision about
-   what happens to an administrator account under attack, taken with the
-   client-facing owner, before it is built. The refusal log (`/access-log`)
+   fifteen minutes and gap 21 arrives on a timer. **Gap 21's closure softens
+   that and does not remove it**: a second Owner means a lockout has to catch
+   both accounts at once, and `tools/set_password.py` is a way back in that a
+   timer cannot take away. It still needs a decision about what happens to an
+   administrator account under attack, taken with the client-facing owner,
+   before it is built. The refusal log (`/access-log`)
    records failed *authorisation*; it does **not** record failed *logins*,
    which is the first thing this gap needs.
 23. 🟠 **The refusal log is a diagnostic, not an audit trail.**
