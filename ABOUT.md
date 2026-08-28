@@ -1190,8 +1190,8 @@ record to freeze a copy of, because the decision to buy is ours.
 - **Vendor — who we buy FROM, not a customer:** `vendor_id`, `vendor_name`,
   `vendor_gstin`, `to` (the printable block), `vendor_ref` (their offer no.)
 - **Soft job link:** `quotation_id`, `quotation_ref` — **both may be `""`**
-- **Content:** `line_items`, `subtotal`, `tax_type`, `tax_info`,
-  `grand_total`, `total_qty`
+- **Content:** `line_items`, `subtotal`, **`charges`**, **`taxable_value`**,
+  `tax_type`, `tax_info`, `grand_total`, `total_qty`
   - each priced line: `name`, `part_no`, `hsn`, `qty`, `unit`, `price`,
     **`discount_pct`** (A2 — a percentage, 0–100, **absent on every line
     written before 27 Aug 2026**), `total`, `depth`. **`total` is already NET
@@ -1200,6 +1200,23 @@ record to freeze a copy of, because the decision to buy is ours.
     the only thing `_tax_lines()` sees.
   - a BOQ-derived order also carries `line_id` per line and `is_header` rows;
     a header has no qty, rate, amount or `discount_pct`.
+  - **`charges`** (A3, 28 Aug 2026 — **absent on every order written before
+    it**, and `charges_of()` reads a missing key as `[]`): a list of
+    `{label, amount, taxable}`. `label` is free text the operator typed and
+    **must be escaped at the interpolation site** — `DS.sum_row()` takes its
+    label raw. `taxable` defaults to **true**, and the default lives in the
+    form rather than in the parser.
+  - **`taxable_value`** (A3): `subtotal` plus the **taxable** charges, and the
+    only thing `_tax_lines()` is given. `subtotal` deliberately keeps its old
+    meaning — the sum of the line amounts — so an order with no charges has
+    `taxable_value == subtotal` and every stored total written before A3 is
+    reproduced to the rupee. A **non-taxable** charge is added after the tax.
+- **Reprice trail (A1, 28 Aug 2026):** `reprice_log[]`, each entry
+  `{at, by, status, note, lines[]}` where a line is
+  `{name, part_no, rate_from, rate_to, disc_from, disc_to}`. **Only lines that
+  moved are recorded**, and an entry is written only when at least one did.
+  Absent on an order never repriced, which is what keeps `/purchase/view`'s
+  pinned bytes still.
 - **Where and when:** `delivery_date` (wanted by), `delivery_to`,
   `payment_terms`, `delivery_terms`, `dispatch_through`, `incoterms`
 - **Lifecycle:** `status`, `status_history[]` (`{at, status, note}`)
@@ -1217,6 +1234,12 @@ Four things that differ from the sell side and are easy to get wrong:
    see what is inside.
 3. **The tax is input tax we pay**, not output tax we collect. It uses the same
    `quotation._tax_lines()`, but it sits on the other side of the ledger.
+   ⚠ **A3's charge lines are INSIDE that base** — a line on a purchase order we
+   issue to a **named vendor** is consideration for that vendor's supply,
+   s.15(2)(c) CGST Act. `_totals_of()` is the single place it enters, and
+   `create_purchase()` calls it rather than repeating it, precisely so the
+   create form and `/purchase/edit/<id>` cannot compute a different base from
+   one order.
 4. **`quotation_id` may be empty and that is normal** — a stock purchase. Any
    code walking purchases must not assume a job.
 
@@ -2688,7 +2711,7 @@ as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 | `GET,POST /purchase/from-boq/<boq_id>` | `from_boq` — **raise one from a schedule**, §2f |
 | `GET,POST /purchase/from-draft/<draft_id>` | `from_draft` — **convert a priced draft**, §2f |
 | `POST /purchase/<id>/update` | `update_purchase` — status and note only |
-| `GET,POST /purchase/edit/<id>` | `edit_purchase_rates` — **reprice a Draft PO**, §2f-A1 |
+| `GET,POST /purchase/edit/<id>` | `edit_purchase_rates` — **reprice a live PO and maintain its A3 charge lines**, §2f-A1. Any status but `Cancelled`; every reprice is recorded |
 | `GET /purchase/view/<id>` | `view_purchase` — the printed purchase order |
 
 **Read §1 "There are two pipelines" before editing this file.** This is the
@@ -2835,21 +2858,38 @@ is the key the vendor quotes on their invoice and the key we match it against.
 
 #### §2f-A1 — repricing a Draft purchase order, and the discount column
 
-Two Phase 3A items land on this module (CLIENT_CHANGES-2.md **A1** and **A2**,
-authorised by the **27 August 2026 OVERRIDE** block in CLIENT_CHANGES.md §0).
+**Three** Phase 3A items land on this module (CLIENT_CHANGES-2.md **A1**, **A2**
+and **A3**) — A1 and A2 under the **27 August 2026 OVERRIDE** block in
+CLIENT_CHANGES.md §0, A3 and A1's widening under the **28 August 2026** one.
 
 **A1 — `GET,POST /purchase/edit/<id>`.** The rate was never locked *at
 creation*; what did not exist was any route that changed a **stored** line
 rate, because `update_purchase()` is status-and-note only and says so. This is
-that route, and it edits **rates and discounts only** — not quantities, not the
-lines, not the vendor.
+that route, and it edits **rates, discounts and A3's charge lines only** — not
+quantities, not the lines, not the vendor, and not the tax **type**, which is a
+fact about where the vendor is rather than a price we negotiated.
 
-⚠ **Draft only.** `can_edit_rates()` allows `PO_STATUSES[0]` and refuses the
-other five, for the reason `update_purchase()` already states in prose: a vendor
-has already been told a price, and `Draft` means *"written, not yet sent to the
-vendor"*. **This narrowing is not in CC-2's A1 line** and is a commercial
-question nobody has put to the client — PROGRESS.md §6-I, and it is why A1 is
-recorded PARTIAL rather than BUILT.
+⚠ **Any status but `Cancelled`, from 28 August 2026.** It was Draft-only for one
+day. The narrowing was lifted because the reason anybody wants an editable base
+rate is a rate that has **already gone out** — Draft-only leaves exactly that
+case unsolved, and a Draft rate was never locked in the first place. The
+objection it protected (`update_purchase()`'s *"changing them behind the
+document is how a dispute starts"*) is answered by **recording** the change: the
+dispute starts when it is invisible, not when it is made. PROGRESS.md §6-I.
+
+A **Cancelled** order is still refused — it is not a live order, and repricing
+one would restate a document we have said is void. That is the same rule
+`ra.cancelled_reason()` states for a cancelled bill, not a lifecycle narrowing.
+
+⚠ **Every reprice that moves a figure writes a record, and that is what makes
+the unlock safe.** `_record_reprice()` appends to `reprice_log[]` — who
+(`_repricer()`, which imports `auth` **inside the function** so the arrow does
+not join the module graph for one string), when, and old rate → new rate on each
+line that actually moved. **Only moved lines**, and no entry at all when nothing
+moved; the route says "Nothing changed" rather than claiming a save.
+`_reprice_html()` renders it under the order inside `.po-panel`, which is
+`display:none` at print — what the vendor holds is the order, not our record of
+having changed it.
 
 ⚠ **Gated by `purchase.create`, not `purchase.edit`.** Repricing changes what
 this company has agreed to pay; `purchase.edit` means "update a purchase order's
@@ -2857,9 +2897,10 @@ status". Every role holding one holds the other today, so no cell of the access
 matrix moved. PROGRESS.md §6-J.
 
 The **Reprice** control on `/purchase/view` is rendered only where
-`can_edit_rates()` would allow it, with its newline **inside** the string — so
-an order that is not a Draft renders that action bar byte-for-byte as it always
-did, and the pinned golden did not move for it.
+`can_edit_rates()` would allow it, with its newline **inside** the string. It is
+now offered on the pinned **Issued** golden order, which is one of the two
+reasons that golden moved in this pass; the other is the stylesheet. Nothing on
+the printed sheet changed.
 
 **A2 — the discount column.** A per-line **percentage**, stored as
 `discount_pct`, applied by `_line_total()` as `round(rate * qty * (1 - pct/100),
@@ -2867,7 +2908,7 @@ did, and the pinned golden did not move for it.
 
 ⚠ **It sits INSIDE the tax base, and that is the whole of the arithmetic.** The
 discounted figure is what lands in the line's `total`, so it is what
-`_totals_of()` sums into `subtotal`, and `subtotal` is the sole argument
+`_totals_of()` sums into `subtotal`, and `subtotal` is the first term
 `quotation._tax_lines()` computes tax from — there is no second path. A discount
 allowed on the order reduces what the vendor supplies for, so the tax follows it
 down; taxing a price nobody is paying would overstate the input credit we tell
@@ -2885,6 +2926,71 @@ three documents are pinned byte-for-byte. `DS.sum_row()` and `DS.total_row()`
 grew a `blanks` parameter for the ninth column; **the label's `colspan` is not
 what changes** (it spans S.No / Part No / Description / HSN on both sheets), so
 the default output is byte-identical and is asserted to be.
+
+**A3 — the additional-charge repeater.** Loading, transportation and anything
+else the vendor bills us for beyond the line items. Stored as `charges`, a list
+of `{label, amount, taxable}`; **one repeater, not four fields**, per CC-2's own
+A3 note. `PO_CHARGE_SLOTS = 4` free-text slots, with the client's two named
+heads seeded into the first two by `DEFAULT_PO_CHARGE_LABELS` — a **prefill, not
+a vocabulary**. On `/purchase/create` and `/purchase/edit/<id>`, both drawing
+`_charge_section_html()` so the two cannot describe one field two ways.
+
+⚠ **The charge is INSIDE the taxable value, and this took a ruling rather than
+a reading.** A line on a purchase order **we issue to a named vendor** is part
+of what we are agreeing to pay *that vendor* — consideration for that vendor's
+supply, **s.15(2)(c) CGST Act**, incidental expenses. The competing reading
+(a third-party cost we carry ourselves) describes something that would not
+appear on this vendor's PO at all. A3 was **stopped for a day** on exactly this
+question — §7 gap 28 keeps the original finding, because stopping was right.
+
+The arithmetic, all of it in `_totals_of()`:
+
+```
+subtotal      = sum(line totals)              lines only, meaning UNCHANGED
+taxable_value = subtotal + taxable charges    A3 enters HERE
+tax           = _tax_lines(taxable_value)     so the tax follows them up
+grand_total   = taxable_value + tax + exempt charges
+```
+
+⚠ **`create_purchase()` no longer repeats those lines.** It carried a verbatim
+copy of them until 28 August 2026; A3 has to enter the arithmetic in **one**
+place or the create form and the reprice form compute a different tax base from
+the same order.
+
+⚠ **`taxable` defaults to true, and the default lives in the FORM.** A blank
+charge row ships with the box ticked; `_parse_charges()` reads an absent
+checkbox as false, because that is what an unticked box posts. The flag exists
+so the exception is expressible the day a genuine third-party freight cost turns
+up — a non-taxable line is added **after** the tax and never before it, and it
+prints as `<label> (no tax)` so the vendor can see it was excluded rather than
+left out.
+
+⚠ **The flag is read by INDEX — `charge_taxable_<n>` — not by `getlist`.** An
+unchecked checkbox posts nothing at all, so three labels and one ticked box
+would arrive as a 3-long list and a 1-long list, and zipping them pairs the tick
+with the wrong line.
+
+**An order with no charges prints exactly what it printed before A3**: no
+`Sub Total` row, no charge rows, and `taxable_value` falls back to `subtotal` on
+a record that predates the key. That is what keeps every purchase order already
+in the database still — and the pinned golden with it. The only bytes A3 added
+to `/purchase/view` are the `.chg-*` screen stylesheet.
+
+⚠ **`DS.sum_row()` interpolates its label RAW**, and a charge label is free text
+somebody typed, so `view_purchase()` passes `P.esc(...)` at the interpolation
+site — §9.
+
+⚠ **No repeater on `/purchase/from-boq` or `/purchase/from-draft`.** They are
+derived documents whose job is to carry a schedule across without re-entry; a
+charge is added afterwards on the edit form, like any other money that was not
+on the schedule. They still write `charges: []`, so every order this module
+creates carries the key.
+
+⚠ **NOT built, and recorded rather than silent:** CC-2's A3 note also asks for
+the heads to be seeded in `/settings` and editable there. They are not. Reading
+them would add a `purchase.py → settings.py` edge to the import graph in §2 for
+a picker whose labels are already free text. It is a deviation named in the
+28 August 2026 override block for the client to confirm.
 
 ---
 
@@ -5489,7 +5595,11 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    24b's.
 
 27. 🟠 **Navigation is filtered by permission; the *figures* on the landing
-   page are not.** Closed for menus and cards on 27 August 2026 — every entry
+   page are not. STILL OPEN, and deliberately left open on 28 August 2026** —
+   the pass that closed gaps 28 and 29 was instructed not to fix this one and
+   not to let it silently drop off this list. Dashboard counts still summarise
+   records the reader may not be entitled to see individually.
+   Closed for menus and cards on 27 August 2026 — every entry
    in `_nav()` and every card in the module strip is drawn only when
    `auth.can_reach()` says the gate would allow it, derived from
    `ROUTE_PERMISSIONS` and never from a second list (§5, `/`).
@@ -5509,8 +5619,34 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) already asks for. Recorded
    here so the next pass does not quietly invent an answer.
 
-28. 🔴 **A charge line on a buy-side PO has no settled tax treatment, and that
-    is why CLIENT_CHANGES-2.md A3 is not built.** *Opened 27 August 2026.*
+28. ✅ **CLOSED 28 August 2026 — a charge line on a buy-side PO is INSIDE the
+    taxable value, and A3 is built.** *Opened 27 August 2026, closed the next
+    day under the override block of that date.*
+
+    **The ruling.** The document is a purchase order **we issue to a named
+    vendor**, so a line on it is part of what we are agreeing to pay *that
+    vendor* — consideration for that vendor's supply, s.15(2)(c) CGST Act,
+    incidental expenses, **inside** the taxable value. The competing reading
+    below describes a cost that **would not appear on this vendor's PO at
+    all**: it would be a separate transaction with a separate party on a
+    separate document, and `charge.py`'s expenses ledger is where it lives.
+    The ambiguity is real in the world and is not real on this document.
+
+    **The exception is expressible anyway**, which is what stops this being
+    reopened. Every charge line carries `taxable`, defaulting to true, and an
+    untaxed line is added **after** the tax. The finding's own objection —
+    *"the same head is one thing on one order and the other on the next"* — is
+    answered by putting the flag on the **line**, not on the head in
+    `/settings`, which is exactly where the finding says it does not belong.
+
+    ⚠ **One part of CC-2's A3 note is deliberately NOT built:** the heads are
+    not seeded in `/settings` and not editable there. Reading them would add a
+    `purchase.py → settings.py` edge to the import graph in §2 for labels that
+    are already free text. Recorded as a deviation in the 28 August override
+    block for the client to confirm — not forgotten.
+
+    `tests/test_po_charges.py` (25), PROGRESS.md §6-H. **The original finding
+    follows, unchanged, because stopping was the right call:**
 
     Loading, unloading and transportation on a purchase order are either **part
     of the vendor's own consideration** — s.15(2)(c) CGST Act, incidental
@@ -5536,23 +5672,36 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     a purchase order, is a transportation charge something the vendor bills us
     for, or something we pay somebody else?"* PROGRESS.md §6-H.
 
-29. 🟡 **`client._client_groups()` sums receipts regardless of mode, so an
-    `adjustment`-mode receipt still inflates Received.** *Narrowed, not closed,
-    on 27 August 2026.*
+29. ✅ **CLOSED 28 August 2026 — Received is bank movements only, and an
+    adjustment is subtracted under its own name.** *Opened 27 August 2026 as a
+    question about live records rather than about code.*
 
-    A5's `write_off` is a **separate field from `amount`** precisely so new
-    entries do not go through that path, and Outstanding now nets it off
-    correctly. But **adjustment-mode receipts already in the database are
-    untouched**: they still make Outstanding right by making Received wrong.
+    **The count came before the decision.** The live database was queried
+    before anything was changed: **zero adjustment-mode receipts**, one receipt
+    in total, mode `neft`. The question that had been held open as a data
+    question had no data behind it, so **no historical figure moved by a
+    rupee** — which is what made it safe to decide rather than keep reporting.
 
-    What to do with them is a question about **live records**, not about code —
-    back-fill them into `write_off`, exclude the mode from `received_val` and
-    restate every historical register total, or leave them. Each answer moves
-    figures somebody may already have quoted to a client.
+    `client.received_val` now excludes adjustment-mode receipts via
+    **`ra.is_adjustment()`** — one function rather than six string comparisons,
+    because `client.py` keeps adjustments out of Received while `ra.py` keeps
+    them inside Outstanding, and the two must not be able to disagree about
+    what an adjustment is.
 
-    Pinned as a **tripwire** rather than left to be discovered:
-    `test_an_adjustment_mode_receipt_still_inflates_received` asserts the
-    *defective* behaviour on purpose. PROGRESS.md §6-D.
+    ⚠ **An adjustment is excluded from Received and is NOT dropped.** It is
+    subtracted from Outstanding under its own **Adjusted** heading, shown on
+    the same terms as A5's write-off row. `ra.py`'s note on `RECEIPT_MODES` is
+    explicit that an adjustment is settled against the bill and *"the money
+    genuinely stops being outstanding"*, so removing it from Outstanding too
+    would state a debt that is not owed. Three sums, three facts — A5's own
+    precedent. Outstanding is **invariant by construction**: `received_val`
+    lost exactly what `adjusted_val` gained.
+
+    **`ra.outstanding_of()` and `ra.received_against()` were deliberately not
+    changed.** They are the *bill's* figures, not the register's columns.
+
+    The tripwire did its job and is retargeted, not deleted, with all three of
+    its old assertions kept verbatim in a comment. PROGRESS.md §6-D.
 
 ---
 

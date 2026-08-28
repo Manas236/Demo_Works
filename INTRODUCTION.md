@@ -218,13 +218,21 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,225 passed / 1 skipped** on 27 August 2026, verified by
+The baseline is **1,275 passed / 1 skipped** on 28 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
-*(The day's four passes took it **1,058 → 1,062 → 1,151 → 1,225**. The last of
-them is the **Phase 3A** pass ([STATE.md §1.17](STATE.md)), which added **74**
-in four files: `tests/test_po_discount.py` (22), `tests/test_po_rate_edit.py`
-(21), `tests/test_receipt_write_off.py` (21) and
+*(The 28 August pass ([STATE.md §1.18](STATE.md)) closed Phase 3A and added
+**50**: `tests/test_po_charges.py` (25) and `tests/test_ra_edit_delete.py` (11)
+are new, `tests/test_po_rate_edit.py` went 21 → 32 and
+`tests/test_receipt_write_off.py` 21 → 24. **Five existing tests were
+deliberately retargeted in that pass and none was deleted** — four pinned A1's
+Draft-only narrowing, which was lifted, and one was a tripwire written to fail
+when its defect was fixed. Every one keeps its old assertion verbatim in a
+comment; see §5.5's rule below on what makes that legitimate. The 27 August
+day's four passes took it **1,058 → 1,062 → 1,151 → 1,225**. The last of
+them is the **Phase 3A document** pass ([STATE.md §1.17](STATE.md)), which added
+**74** in four files: `tests/test_po_discount.py` (22),
+`tests/test_po_rate_edit.py` (21), `tests/test_receipt_write_off.py` (21) and
 `tests/test_client_outstanding.py` (10). Before it, the escalation / sign-out /
 navigation pass added 89 — `tests/test_privilege_escalation.py` (17),
 `tests/test_nav_user_chip.py` (23), `tests/test_nav_visibility.py` (49) — and
@@ -233,8 +241,23 @@ on 26 August 2026, **923 / 1** on 23 August, **838 / 1** on 16 August, all in
 the same configuration. Every figure was re-measured at the start of the pass
 that moved it rather than quoted, and every one matched.)*
 
-⚠ **One print golden was re-baselined on 27 August 2026 by the Phase 3A pass,
-and this is the second circumstance in which that is allowed.** The purchase
+⚠ **The purchase-order golden was re-baselined TWICE on 28 August 2026, by the
+pass that closed Phase 3A — and both times the movement was the work.** It moved
+**+1,021 bytes** for **A1** (939 of `.po-reprice` stylesheet, plus an 82-byte
+`Reprice` anchor that the **Issued** golden order qualifies for now the
+Draft-only narrowing is lifted) and **+937 bytes** for **A3** (all of it
+`.chg-*` stylesheet for the charge repeater). **Both moved the `head` block and
+nothing else** — and `head` runs from `<head>` to the letterhead, so it carries
+the stylesheet, the nav and the screen action bar, not just the `<head>`
+element. `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and `signature`
+are byte-identical through both. **Not one figure on the printed sheet moved**:
+the golden order carries no charges and has never been repriced, so no charge
+row and no `Rate changes` panel render and `taxable_value` falls back to
+`subtotal`. The other six goldens did not move. Every byte is decomposed in the
+comment above the digests in `tests/test_print_golden.py`.
+
+⚠ **One print golden was re-baselined on 27 August 2026 by the Phase 3A document
+pass, and this is the second circumstance in which that is allowed.** The purchase
 order moved **+942 bytes**, in two of its seven blocks, because
 CLIENT_CHANGES-2.md **A2** added a discount column to the buy sheet — head +721
 of CSS, items +221 of cells. **The change was the work, not a side effect**, and

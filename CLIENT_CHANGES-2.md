@@ -7,6 +7,10 @@
 wrong in both directions and is corrected rather than deleted, because the way
 it went wrong is worth keeping:
 
+- **The whole of 3A is BUILT as at 28 August 2026** — A1, A2 and A5 under the
+  **27 August 2026 OVERRIDE** block in `CLIENT_CHANGES.md` §0, A1's widening,
+  A3 and A6 under the **28 August 2026** one, and A4 was already built.
+  ⚠ **A6 closes as *built with a stated limitation*** — see its section below.
 - **3B items B1–B5 are BUILT** (26 August 2026, `auth.py`), under the dated
   **26 August 2026 OVERRIDE** block in `CLIENT_CHANGES.md` §0. B6, B7 and B8 are
   not.
@@ -30,10 +34,11 @@ gets built until MG/SF/2026-02 is signed, or until a dated override block in
 client-facing owner takes and records; it is never one an agent may take, infer or
 extend.
 
-⚠ **The 26 August override covers B1–B5 and nothing else.** Every other item in
-this file — the rest of 3A, B6, B7, B8, and the whole of 3C — is **still gated**,
-and one override is not a precedent that clears the next. That B1–B5 were built
-makes the items that depend on them *possible*, not *authorised*.
+⚠ **Three override blocks now reach into this file, and between them they cover
+3A in full and B1–B5.** Every other item — B6, B7, B8, and the whole of 3C — is
+**still gated**, and no override is a precedent that clears the next. That 3A is
+complete makes the items that depend on it *possible*, not *authorised*. **3A
+being closed is the strongest version of that warning, not an exception to it.**
 
 **This file is a specification, not an instruction to build.** The build order below
 applies *once work is authorised* — it does not authorise the work.
@@ -78,6 +83,26 @@ heads seeded in `/settings` and editable by the client. Same pattern as the char
 heads already in `charge.py`.
 
 Four hardcoded fields guarantees a fifth request within a month.
+
+> ✅ **BUILT 28 August 2026**, under the override block of that date. One
+> repeater of four free-text slots, with loading & unloading and transportation
+> seeded into the first two as a **prefill, not a vocabulary** — so the "fifth
+> request" this note warns about is a typed label, not a code change.
+>
+> ⚠ **The tax question this item was stopped on for a day was ANSWERED, not
+> worked around.** CC-2 specifies "label + amount", which carries no
+> taxability; the 27 August override block refused A3 on exactly that. **The
+> ruling: the charge is inside the taxable value** — a line on a purchase order
+> we issue to a named vendor is consideration for that vendor's supply,
+> s.15(2)(c) CGST Act. Every line nonetheless carries a **taxable flag
+> defaulting to true**, so a genuine third-party cost can be marked outside the
+> base without reopening the question.
+>
+> ⚠ **One half of this note is NOT built and is a recorded deviation:** the
+> heads are **not** seeded in `/settings` and not editable there. Reading them
+> would add a `purchase.py → settings.py` import edge for labels that are
+> already free text. Named in the 28 August override block for the
+> client-facing owner to confirm — **do not record it as delivered.**
 
 ### A5 — write-off / adjustment on a payment
 
@@ -129,6 +154,40 @@ work this table does not show. The obvious candidate is the **latest-bill-only**
 restriction on both edit and delete: the client asked for "edit and delete in RA" without
 one, and a draft that is not the highest `ra_no` is refused today. What an agent may
 **not** do is build A6 from scratch without first reading these three routes.
+
+> ### ✅ CLOSED 28 August 2026 — built, with a stated limitation
+>
+> The decision this note left to the client-facing owner was taken under the
+> **28 August 2026 OVERRIDE** block in `CLIENT_CHANGES.md` §0. **The
+> latest-bill-only restriction STAYS**, and A6 closes as **built with a stated
+> limitation** rather than being lifted or left partial.
+>
+> **Why the restriction is right.** RA bills are cumulative. Editing bill 3
+> while bill 5 exists corrupts every claim downstream of it, including figures
+> already sent to the main contractor. The client asked without qualification
+> because the chain arithmetic is not his problem to know — that is what makes
+> it our job to answer rather than his to have specified.
+>
+> **The limitation, in language that can be read to him as it stands:**
+>
+> > *You can edit or delete the most recent RA bill on a project while it is
+> > still a draft. You cannot edit or delete an earlier one once a later bill
+> > exists, because every later claim was worked out from the earlier one —
+> > changing it would silently change every bill after it, including ones
+> > already sent to the main contractor. To correct an earlier bill, cancel the
+> > bills after it and then it, newest first, and reissue; cancelling keeps each
+> > number and records why. If the correction can wait, put it on the next
+> > claim, where the contractor can see it.*
+>
+> **What was actually built:** nothing in `ra.py`'s lifecycle logic changed. The
+> two refusals were rewritten to explain *why* and to name **cancelling
+> forward** as the supported route, and edit and delete were verified **end to
+> end** through the real routes rather than against the gate functions
+> (`tests/test_ra_edit_delete.py`, 11 tests).
+>
+> ⚠ **If the client wants arbitrary-bill editing after hearing this, that is
+> NEW SCOPE.** It is priced nowhere and nobody may record this limitation as a
+> defect owed to him.
 
 ---
 

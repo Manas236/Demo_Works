@@ -10,9 +10,14 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 27 August 2026 (§1.17, Phase 3A document items).
-**Tests:** **1,225 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 27 August 2026 by running the suite in it. *(It read
+**As of:** branch `antigravity-dev`, 28 August 2026 (§1.18, **Phase 3A closed**).
+**Tests:** **1,275 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 28 August 2026 by running the suite in it. *(It read
+1,225 / 1 before §1.18 added 50 tests closing Phase 3A
+([tests/test_po_charges.py](tests/test_po_charges.py) 25,
+[tests/test_ra_edit_delete.py](tests/test_ra_edit_delete.py) 11, plus 11 more in
+[tests/test_po_rate_edit.py](tests/test_po_rate_edit.py) and 3 in
+[tests/test_receipt_write_off.py](tests/test_receipt_write_off.py)),
 1,151 / 1 before §1.17 added 74 tests over the Phase 3A document items
 ([tests/test_po_discount.py](tests/test_po_discount.py) 22,
 [tests/test_po_rate_edit.py](tests/test_po_rate_edit.py) 21,
@@ -36,7 +41,8 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,226 passed / 3 skipped** against the same commit, and read
+reports **1,276 passed / 3 skipped** against the same commit, and read
+**1,226 / 3** before §1.18's 50 tests,
 **1,152 / 3** before §1.17's 74 tests,
 **1,103 / 3** before §1.16's 49 tests, **1,080 / 3** before §1.15's 23,
 **1,063 / 3** before §1.14's 17,
@@ -847,6 +853,127 @@ row gained two further assertions rather than losing any.
 
 `docs/ACCESS_MATRIX.md` regenerated — **61 permissions and the 7×61 grid
 unchanged**, endpoints 85 → 86.
+
+---
+
+### 1.18 Phase 3A — CLOSED · ✅ 28 August 2026
+
+**All six 3A items are BUILT.** Authorised by the **28 August 2026 OVERRIDE**
+block in [CLIENT_CHANGES.md](CLIENT_CHANGES.md) §0, which names **A1's
+widening, A3 and A6**. MG/SF/2026-02 was still unsigned and **expired on this
+date** — this is the last day the decision could be taken against it.
+
+Seven commits, one per item so a single one can be reverted without losing the
+rest: the override block, §6-D's arithmetic, A1, A3, A6, the test-leak fix, then
+docs.
+
+**The shape of the pass is the thing worth keeping.** All three items were
+already *possible* on 27 August; each was held by a **question**, not by code,
+and the previous edition said so. Two answers were "build it" and one was "the
+restriction is correct, keep it". Nobody wrote code to unblock anything.
+
+**A1 — the Draft-only narrowing lifted.** `can_edit_rates()` now refuses only
+`Cancelled`. The reason anybody wants an editable base rate is a rate that has
+**already gone out**, so Draft-only left exactly that case unsolved — a Draft
+rate was never locked, it is a form nobody submitted.
+
+⚠ **The objection is answered rather than discarded.** `update_purchase()`'s
+*"changing them behind the document is how a dispute starts"* still holds — and
+the dispute starts when the change is **invisible**. Every reprice that moves a
+figure writes a `reprice_log` entry: who, when, old rate → new rate per line
+that moved, rendered under the order by `_reprice_html()`. Only moved lines are
+listed; an unchanged submit writes nothing and says so. The trail is inside
+`.po-panel`, which is `display:none` at print — what the vendor holds is the
+order, not our record of having changed it. PROGRESS.md §6-I is closed.
+
+**A3 — the item the previous pass was stopped on.** The tax question is
+answered: **the charge is inside the taxable value.** The document is a purchase
+order we issue to a **named vendor**, so a line on it is that vendor's
+consideration — s.15(2)(c), incidental expenses. The third-party reading
+describes a cost that would not appear on this vendor's PO at all.
+
+⚠ **The exception is made expressible rather than argued away.** Every line
+carries `taxable`, defaulting to true; an untaxed line is added **after** tax.
+That is what stops the ruling having to be reopened under time pressure. Where
+it enters, in one place, `_totals_of()`:
+
+    subtotal      = sum(line totals)              lines only, meaning unchanged
+    taxable_value = subtotal + taxable charges    A3 enters HERE
+    tax           = _tax_lines(taxable_value)
+    grand_total   = taxable_value + tax + exempt charges
+
+One repeater of four free-text slots, per CC-2's *"do not build four fields"*,
+with the client's two named heads seeded into the first two.
+⚠ **The `/settings`-editable head list CC-2 also asks for is NOT built** — it
+would add a `purchase.py → settings.py` import edge for labels that are already
+free text. Recorded as a deviation, not skipped quietly. ABOUT.md §7 gap 28 is
+closed; PROGRESS.md §6-H carries the ruling.
+
+**A6 — closed as BUILT WITH A STATED LIMITATION, and not one line of `ra.py`'s
+lifecycle logic moved.** The latest-bill-only restriction was put up as a
+candidate for lifting and ruled **correct**: RA bills are cumulative, so editing
+bill 3 while bill 5 exists corrupts every claim downstream of it. The client
+asked without qualification because the chain arithmetic is not his to know.
+
+What changed is the **refusals**. Both stopped one sentence short of useful —
+they said no and named the obstacle, and left the operator to guess at the
+remedy. Both now explain why cumulative bills matter and name cancelling
+forward, newest first, as the supported route. The wording keeps the phrase
+`tests/test_ra_routes.py` already pins, so no existing test was retargeted.
+Verified **end to end** through `/ra/create` → `/ra/edit` → `/ra/print` and
+`/ra/delete`, not against the gate functions. PROGRESS.md §6-A carries the
+client-readable wording. **Arbitrary-bill editing is new scope and is priced
+nowhere.**
+
+**§6-D's arithmetic — the data decision, taken with the count in front of it.**
+The live database was queried before anything changed: **zero adjustment-mode
+receipts**, one receipt in total, mode `neft`. So no historical figure moved.
+`client.received_val` now excludes adjustment-mode receipts, making **Received**
+bank movements only.
+
+⚠ **An adjustment is excluded from Received and is NOT dropped** — it is
+subtracted from Outstanding under its own **Adjusted** heading. This is a
+**deliberate deviation** from the instruction that authorised the pass, which
+would have put every adjustment back into Outstanding: `ra.py`'s own note on
+`RECEIPT_MODES` says an adjustment is settled against the bill and *"the money
+genuinely stops being outstanding"*, and the §6-D tripwire asserted that
+`total_outstanding == 0.0` was **right**. Outstanding is invariant by
+construction — `received_val` lost exactly what `adjusted_val` gained.
+`ra.outstanding_of()` and `ra.received_against()` were deliberately not changed.
+
+**The test leak, fixed where the mutation is.** `tests/test_nav_visibility.py`
+carried an autouse fixture that reset all seven builtin roles before every test,
+to undo an edit `tests/test_auth.py` made and never put back. The fixture is
+deleted. **Three tests were leaking, not the one that was named** — and the
+worst was `test_a_role_cannot_be_given_a_permission_that_does_not_exist`, which
+left HR holding a single permission and no `dashboard.view` for the rest of the
+run. All three now use one `_role_restored()` guard and each asserts it put the
+role back. Verified order-independent both ways round and with the file alone.
+
+#### Measurements
+
+**1,225 → 1,275 passed, 1 skipped** (global `C:\Program Files\Python310`,
+no `.venv`, openpyxl absent). **1,226 → 1,276 passed, 3 skipped** (`.venv`,
+openpyxl 3.1.5). Both measured at both ends, neither derived. **+50**:
+`tests/test_po_charges.py` (25) and `tests/test_ra_edit_delete.py` (11) are new,
+`tests/test_po_rate_edit.py` 21 → 32, `tests/test_receipt_write_off.py` 21 → 24.
+
+**Five existing tests were deliberately retargeted and none was deleted.** Four
+in `tests/test_po_rate_edit.py` pinned A1's Draft-only narrowing; one in
+`tests/test_receipt_write_off.py` was the §6-D tripwire, written to fail when
+its defect was fixed. Every one keeps its old assertion verbatim in a comment.
+
+**`/purchase/view`'s golden moved twice, +1,021 (A1) and +937 (A3), both in the
+`head` block only.** Every byte is stylesheet or the `Reprice` anchor the Issued
+golden order now qualifies for. `items` did not move: the golden carries no
+charges and has never been repriced, so **not one printed figure changed**. No
+other golden moved.
+
+`docs/ACCESS_MATRIX.md` regenerated and **byte-identical** — no route was added,
+so no permission, role or classification moved.
+
+A `mysqldump` was taken before any of it:
+`backups/samruddhi_qms-20260828-132711-a1-a3-a6.sql`, 444,047 bytes.
 
 ---
 
