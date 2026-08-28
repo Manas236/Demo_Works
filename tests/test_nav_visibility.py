@@ -62,7 +62,15 @@ ALL_CARDS = [
     "Quotations", "Proforma Invoices", "Tax Invoices",
     "Projects", "Bills of Quantities", "Running Account Bills",
     "Delivery Challans",
-    "Purchase Orders", "Draft Purchase Orders", "Employee & Misc Charges",
+    # ⚠ Read "Employee & Misc Charges" until 29 August 2026. The label was
+    #   corrected when C4 shipped a REAL employee master (`employee.py`): this
+    #   ledger has never had an employee record behind it, only a typed name,
+    #   and once a real one existed the old label was actively misleading.
+    #   The old assertion, verbatim:
+    #       "Purchase Orders", "Draft Purchase Orders", "Employee & Misc Charges",
+    #   The module, the endpoint and the permission are all unchanged — only
+    #   the words on the card moved. PROGRESS.md §6-E.
+    "Purchase Orders", "Draft Purchase Orders", "Expenses & Charges",
     "Product Catalogue", "Spec Library", "Client Register", "Address Book",
     "Market News", "Users &amp; Access",
 ]
@@ -73,11 +81,23 @@ EXPECTED_CARDS = {
     "operation-head": [
         "Projects", "Bills of Quantities", "Running Account Bills",
         "Delivery Challans", "Purchase Orders", "Draft Purchase Orders",
-        "Employee & Misc Charges", "Product Catalogue", "Spec Library",
+        # was "Employee & Misc Charges" — see the note on ALL_CARDS above
+        "Expenses & Charges", "Product Catalogue", "Spec Library",
         "Client Register", "Address Book"],
     # B4's one stated restriction, seen from the other side: HR is the narrowest
     # role in the system and its dashboard is two cards.
-    "hr": ["Employee & Misc Charges", "Address Book"],
+    #
+    # ⚠ **STILL two cards after C4 shipped an employee master on 29 August 2026,
+    #   and that is the point of this line.** HR holds all four `employee.*`
+    #   permissions, but `employee.py` deliberately has **no dashboard card and
+    #   no nav link**: `_nav()` is embedded in every printed page, so one more
+    #   entry moves every print golden in the repo. `charge.py` shipped the same
+    #   way for the same reason and is the precedent. The page is reachable at
+    #   `/employee/`; the link is queued work. If a card is ever added, this
+    #   list gains "Employees" and the goldens are re-baselined in that commit.
+    #   The old assertion, verbatim:
+    #       "hr": ["Employee & Misc Charges", "Address Book"],
+    "hr": ["Expenses & Charges", "Address Book"],
     "sales-manager": [
         "Quotations", "Proforma Invoices", "Tax Invoices", "Projects",
         "Bills of Quantities", "Running Account Bills", "Product Catalogue",
@@ -115,7 +135,8 @@ CARD_ENDPOINT = {
     "Delivery Challans":          "challan.list_dcs",
     "Purchase Orders":            "purchase.list_purchases",
     "Draft Purchase Orders":      "po_draft.list_pos",
-    "Employee & Misc Charges": "charge.list_charges",
+    # was "Employee & Misc Charges" — see the note on ALL_CARDS above
+    "Expenses & Charges":         "charge.list_charges",
     "Product Catalogue":          "product.list_products",
     "Spec Library":               "spec.list_specs",
     "Client Register":            "client.list_clients",

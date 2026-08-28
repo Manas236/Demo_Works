@@ -350,7 +350,8 @@ Consequences you must respect when editing:
 | [projectview.py](projectview.py) | 334 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
-| [charge.py](charge.py) | 372 | **Employee & Miscellaneous Charges.** Ledger for business expenses (travel, food, wages, etc.) not in any BOQ. A leaf. |
+| [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
+| [employee.py](employee.py) | 520 | **Employee master** &mdash; details and salary (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf. ⚠ **No nav link and no dashboard card, deliberately** &mdash; `_nav()` is on every printed page. Owner, Director and HR only (B4). |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 380 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines. ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -390,6 +391,9 @@ app.py
  │                             │  dashboard, pipeline, store, branding — and NOT
  │                             │  quotation; it reads that sheet through docsheet
  ├─ charge.py ─────────────────┤  imports dashboard, pipeline, store, branding, quotation
+ ├─ employee.py ───────────────┤  imports dashboard, pipeline, store, branding, quotation
+ │                             │  — C4. NEVER charge.py, in either direction: that
+ │                             │  edge is C5 and is gated
  ├─ projectview.py ─────────────┤  imports dashboard, branding, store, pipeline,
  │                             │  quotation, ra — and auth, for the write guard
  │                             │  on its POST branch (§7 gap 24b)
@@ -1008,6 +1012,7 @@ STORE = {
     "ra_bills":     {},     # uuid -> Running Account claim against a BOQ revision
     "receipts":     {},     # uuid -> payment RECEIVED against one RA bill
     "delivery_challans": {},# uuid -> goods-movement note against a BOQ
+    "employees":    {},     # uuid -> employee master record: details and salary (C4)
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -1938,6 +1943,45 @@ with the permissions sitting next to it. Two guards hold the split:
 - `auth._would_strand_install()` — the last active Owner cannot be deactivated
   **or edited out of the tier**. There is no console and no password-reset
   e-mail in this deployment, so these refusals *are* the recovery mechanism.
+
+### Employee  (CC-2 **C4**, 29 August 2026)
+
+```python
+{"id": uuid, "name": "Ramesh Patil", "code": "SF-014",
+ "designation": "Fitter", "site": "Whitefield",
+ "date_joined": "2026-04-01", "monthly_salary": 24000.0,
+ "active": True, "notes": "",
+ "created_at": "…", "updated_at": "…"}
+```
+
+**Details and salary. That is the whole of C4** — CC-2's text for it is one
+sentence long and this record is the entire answer to it.
+
+- **`name` is the only required field**, and `monthly_salary` **may be zero**: a
+  proprietor or a family member drawing nothing is real, and refusing it would
+  force somebody to invent a figure on a salary register. A register nobody can
+  add to until they have every field is a register that stays empty.
+- **`code` is unique, case-insensitively.** It is how a person is identified on
+  a muster or a wage sheet, so two people holding one is the same defect as two
+  customers sharing an invoice number.
+- **`active` is a state, not a deletion.** A person who has left keeps their
+  record — what they were paid does not stop being true — and drops out of
+  `employee.active_employees()`, which is the accessor anything downstream
+  should use. `/employee/delete` exists for a row entered by mistake, and its
+  confirmation page says so and offers deactivating instead.
+- **`site` is free text**, not a link to a project. Linking a person to a
+  project is C5/C6 territory and both are gated.
+- ⚠ **Nothing seeds an employee.** A seeded one is a person who does not exist
+  carrying a salary they are not paid, on the register HR reads. Demo data is a
+  convenience everywhere else in this app; here it would be a fiction about
+  somebody's pay. `tests/test_hardening.py` classifies `employees` as
+  transactional and asserts the collection is empty on a fresh install.
+- ⚠ **No attendance, no overtime, no wage calculation and no link to
+  `charge.py`, projects or a P&L.** Those are **C5** and **C6**, both gated. The
+  OT multiplier CC-2 requires to be a *setting rather than a constant* is not
+  pre-built either — laying groundwork for a gated item is starting it, and
+  `tests/test_employee.py` reads the module source to assert none of it is
+  there.
 
 ---
 
@@ -4559,6 +4603,69 @@ the same call and `purchase.update_purchase()` made it first.
 single `is_tip` predicate that drives the RA links and the *Revise* button, so
 the controls cannot disagree. `/dc/create` **refuses a superseded BOQ at the
 route** as well, because a link is not a guard.
+
+---
+
+### `/employee` — Employee Master · [employee.py](employee.py) · **CC-2 C4**
+
+| Route | View |
+|---|---|
+| `GET /employee/` | `list_employees` — the register; `?all=1` shows inactive too |
+| `GET,POST /employee/new` | `new_employee` |
+| `GET /employee/view/<id>` | `view_employee` |
+| `GET,POST /employee/edit/<id>` | `edit_employee` |
+| `GET,POST /employee/delete/<id>` | `delete_employee` — **GET confirms, POST destroys** |
+
+Built under the **29 August 2026** override block in `CLIENT_CHANGES.md` §0.
+Before it, C4 was one of the seven NOT STARTED items and was gated.
+
+**CC-2's C4 is one sentence — *"Employee details and salary"* — and this is the
+whole of it.** The record shape and its rules are §3. What matters at page
+level is three things, each of which is a decision rather than a detail:
+
+⚠ **1. THERE IS NO NAV LINK AND NO DASHBOARD CARD, AND THAT IS DELIBERATE.**
+`dashboard._nav()` is embedded in **every printed page** and hidden by CSS, so
+one more nav entry moves **every print golden in the repo**. That has bitten
+this repo twice. `charge.py` shipped with no nav link for exactly this reason
+and is the precedent this follows. **The page is reachable at `/employee/`**,
+and the link is *queued work* — it belongs in a pass that expects to
+re-baseline the goldens and does nothing else.
+`tests/test_employee.py::test_there_is_no_nav_link_and_no_dashboard_card` is
+what stops it being "fixed" by accident, and says to delete itself in the commit
+that adds the link.
+
+⚠ **2. Owner, Director and HR only — and the restriction is SPEC-TRACED, not
+derived.** CLIENT_CHANGES-2.md **B4** states exactly one per-role restriction:
+*"HR information is restricted from Sales, Purchase and Accounts."* A register
+carrying every employee's salary is that information in its plainest form, so
+Sales Manager, Purchase Manager and Accountant hold none of `employee.*`. Those
+twelve cells are marked **`§`** in [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)
+rather than `·`. **Who *holds* it is still a derivation** — B4 names who is kept
+out, not who is let in — so the Owner, Director and HR cells stay `·`. Operation
+Head holds the wages ledger but **not** the employee master: salary is a step
+beyond a site expense. That one is ours, and it is a checkbox on `/roles/edit`
+if the client disagrees.
+
+  ⚠ HR holds `employee.edit` because a register somebody can read but nobody
+  can maintain is not a master. **Nobody may read that as CC-2's untagged
+  *"HR — salary editing, inside employee details"* having been delivered.** That
+  line carries no 3A/3B/3C tag, appears nowhere in MG/SF/2026-02, and is an
+  open item.
+
+⚠ **3. `/employee/delete/<id>` answers both verbs; the GET renders a
+confirmation and mutates nothing.** `9d060ee`'s shape, and §7.9f's standing
+rule: a browser `confirm()` is not a guard, because a link-prefetching browser,
+a crawler, a mail scanner unfurling a pasted URL and the back button all issue a
+plain GET. `test_delete_methods.py` walks the URL map and catches a GET-*only*
+delete route, but says in terms that it **cannot** catch one that accepts both
+and still destroys on GET — so this route ships its own hand-written GET test.
+
+**What C4 did NOT build, and it is gated rather than forgotten:** no attendance,
+no overtime, no salary calculation, and no link to `charge.py`, to projects or
+to a P&L. `employee.py ↔ charge.py` is forbidden **in both directions** at AST
+level, because that edge is the first step of **C5**.
+
+Held by [tests/test_employee.py](tests/test_employee.py).
 
 ---
 

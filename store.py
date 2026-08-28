@@ -40,6 +40,7 @@ STORE: dict = {
     "delivery_challans": {},  # keyed by UUID string → goods-movement note against a BOQ. Its OWN collection for §1.3's reason — one BOQ accumulates many challans over a project's life
     "projects":     {},   # keyed by UUID string → project record (the commercial engagement BOQs are grouped under)
     "charges":      {},   # keyed by UUID string → employee/misc expense record (travel, wages, consumables — not in any BOQ)
+    "employees":    {},   # keyed by UUID string → employee master record: details and salary (CC-2 C4). Its OWN collection — a person is not a charge, and the charges ledger has never had an employee record behind it
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "users":        {},   # keyed by UUID string → user account (auth.py). Its OWN collection — never a list on a role, per CLIENT_CHANGES.md §1.3
     "roles":        {},   # keyed by UUID string → role: a named bundle of permission strings. Separate from users for the same §1.3 reason: one role is held by many users

@@ -1750,7 +1750,13 @@ def index():
                 _card("po_draft.list_pos", "purchase", "Draft Purchase Orders",
                       f"""{m['dpo_total']} raised · sent to a supplier
                   to be priced, no rates and no GST"""),
-                _card("charge.list_charges", "purchase", "Employee & Misc Charges",
+                # ⚠ Labelled "Employee & Misc Charges" until 29 August 2026,
+                # when a real employee master arrived (employee.py, CC-2 C4)
+                # and made that label actively misleading — this ledger has
+                # never had an employee record behind it, only a typed name.
+                # The module keeps its name; the label is what was wrong.
+                # PROGRESS.md §6-E.
+                _card("charge.list_charges", "purchase", "Expenses & Charges",
                       f"{m['ch_total']} entries · {rupees(m['ch_spend'])} spent"),
             ]),
         _module_group(

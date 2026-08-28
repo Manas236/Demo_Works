@@ -173,6 +173,17 @@ def populated(client):
         "notes": "", "created_at": "2026-08-16T12:00:00Z", "updated_at": "2026-08-16T12:00:00Z"
     }
 
+    # C4's employee master (29 Aug 2026). Every field on this record is typed
+    # by a user and every one reaches HTML, so its three id-taking routes join
+    # the sweep rather than the SKIP list.
+    STORE.setdefault("employees", {})["emp-1"] = {
+        "id": "emp-1", "name": "Test Employee", "code": "SF-001",
+        "designation": "Fitter", "site": "Test Site",
+        "date_joined": "2026-04-01", "monthly_salary": 24000.0,
+        "active": True, "notes": "",
+        "created_at": "2026-08-29T12:00:00Z", "updated_at": "2026-08-29T12:00:00Z",
+    }
+
     # A second user for the /users/* confirmations to act on. Deliberately not
     # the logged-in Owner: deactivating the only Owner is refused, and the
     # refusal page is not the markup this sweep is checking.
@@ -200,6 +211,9 @@ def populated(client):
             "/boq/view/<id>":       bid,
             "/charge/delete/<id>":  "ch-1",
             "/charge/edit/<id>":    "ch-1",
+            "/employee/delete/<id>": "emp-1",
+            "/employee/edit/<id>":   "emp-1",
+            "/employee/view/<id>":   "emp-1",
             "/client/edit-party/<id>": bid2,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
@@ -262,6 +276,11 @@ def populated(client):
     STORE.setdefault("delivery_challans", {}).clear()
     STORE.setdefault("projects", {}).clear()
     STORE.setdefault("charges", {}).clear()
+    # `conftest._fresh_store()` clears only six collections, so a fixture that
+    # writes outside them has to clean up after itself or the record leaks into
+    # every later test in the run. `test_hardening.py` asserts that nothing
+    # seeds an employee, and a leaked fixture row reads exactly like a seeder.
+    STORE.setdefault("employees", {}).clear()
 
 
 def _a_challan(boq_id: str) -> str:

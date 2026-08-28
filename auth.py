@@ -165,12 +165,24 @@ PERMISSIONS = {
     "dc.print":              ("Print a delivery challan",                 "Dispatch"),
 
     # CLIENT_CHANGES-2.md B4: "HR information is restricted from Sales,
-    # Purchase and Accounts." `charge.py` is the wages and site-expense ledger,
-    # so it is the only surface in the app today that restriction can attach to.
+    # Purchase and Accounts." Until 29 August 2026 `charge.py` — the wages and
+    # site-expense ledger — was the only surface that restriction could attach
+    # to. The employee master below is now the other, and is the plainer of the
+    # two: it carries **salary**.
     "charge.view":           ("View employee and misc charges",           "Employee costs"),
     "charge.create":         ("Record a charge",                          "Employee costs"),
     "charge.edit":           ("Edit a charge",                            "Employee costs"),
     "charge.delete":         ("Delete a charge",                          "Employee costs"),
+
+    # C4 — the employee master (29 August 2026). ⚠ **Owner, Director and HR
+    # only.** That is not a derivation: B4 states exactly one per-role
+    # restriction — HR information is kept from Sales, Purchase and Accounts —
+    # and a register carrying every employee's salary IS that information.
+    # Marked `§` (spec-traced) in docs/ACCESS_MATRIX.md, not `·`.
+    "employee.view":         ("View the employee master",                 "Employee costs"),
+    "employee.create":       ("Add an employee",                          "Employee costs"),
+    "employee.edit":         ("Edit an employee's details and salary",    "Employee costs"),
+    "employee.delete":       ("Remove an employee from the register",     "Employee costs"),
 
     "project.view":          ("View projects",                            "Projects"),
     "project.create":        ("Create a project",                         "Projects"),
@@ -341,6 +353,16 @@ ROUTE_PERMISSIONS = {
     "charge.new_charge":          "charge.create",
     "charge.edit_charge":         "charge.edit",
     "charge.delete_charge":       "charge.delete",
+    # C4, the employee master. `/employee/delete/<id>` answers both verbs and is
+    # classified once, as `employee.delete`: its GET renders a confirmation and
+    # destroys nothing, so the stricter of the two permissions is the right one
+    # for both. That is the ordinary case this registry's fourth caveat
+    # describes, not the `/projects/view/<id>` exception.
+    "employee.list_employees":    "employee.view",
+    "employee.view_employee":     "employee.view",
+    "employee.new_employee":      "employee.create",
+    "employee.edit_employee":     "employee.edit",
+    "employee.delete_employee":   "employee.delete",
 
     # ── Projects ─────────────────────────────────────────────────────────────
     "project.list_projects":      "project.view",
@@ -418,6 +440,11 @@ BUILTIN_ROLES = {
             "proforma.view", "proforma.create", "invoice.view", "invoice.create",
             "receipt.create", "receipt.edit", "receipt.delete", "client.edit",
             "charge.view", "charge.create", "charge.edit", "charge.delete",
+            # C4. A Director is the Admin tier and sits inside the HR wall —
+            # B4 keeps employee information from Sales, Purchase and Accounts,
+            # and names none of those three here.
+            "employee.view", "employee.create", "employee.edit",
+            "employee.delete",
             "project.delete", "spec.delete", "product.create", "product.delete",
             "address.delete", "settings.edit",
             "admin.users", "admin.access_log",
@@ -429,10 +456,21 @@ BUILTIN_ROLES = {
     ),
     "hr": (
         "HR",
-        # HR's real surface is the employee master (C4), which is not built.
-        # Until it is, the only employee data in this app is the wages ledger.
+        # ⚠ **HR's real surface arrived on 29 August 2026: the employee master
+        #   (C4).** Until then the only employee data in this app was the wages
+        #   ledger, and this role was a stand-in for a job rather than the job.
+        #
+        # `employee.edit` is held deliberately, and the reasoning is worth
+        # keeping: a register somebody can read but nobody can maintain is not
+        # a master. ⚠ **Nobody may read that as CC-2's untagged "HR — salary
+        # editing, inside employee details" having been delivered.** That line
+        # carries no 3A/3B/3C tag, appears nowhere in MG/SF/2026-02, and is
+        # recorded as an open item. C4 is an employee master carrying salary;
+        # it is not a decision about who may change a figure on it.
         ["dashboard.view", "charge.view", "charge.create", "charge.edit",
-         "charge.delete", "address.view"],
+         "charge.delete", "address.view",
+         "employee.view", "employee.create", "employee.edit",
+         "employee.delete"],
     ),
     "sales-manager": (
         "Sales Manager",

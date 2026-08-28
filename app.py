@@ -39,6 +39,12 @@ from project import project_bp   # Projects: the commercial engagement BOQs
                                  # import any document module.
 from projectview import projectview_bp # UI for Project Detail
 from charge import charge_bp             # Employee & Misc Charges Ledger
+from employee import employee_bp         # Employee master: details and salary
+                                 # (CC-2 C4). A LEAF, and deliberately NOT on
+                                 # the nav or the dashboard — _nav() is on every
+                                 # printed page, so one more entry moves every
+                                 # print golden. Reachable by URL; the link is
+                                 # queued work. Same call charge.py made.
 from address import address_bp   # Standalone address book
 from settings import settings_bp, ensure_demo_settings, load_saved  # Company identity & bank details
 import auth                      # Identity, roles and the default-deny gate.
@@ -131,6 +137,7 @@ app.register_blueprint(project_bp)            # Mounted at /projects — LEAF, m
                                               # not import any document module.
 app.register_blueprint(projectview_bp)        # Project UI detail page
 app.register_blueprint(charge_bp)             # Mounted at /charge — LEAF, must come after dashboard
+app.register_blueprint(employee_bp)           # Mounted at /employee — LEAF, same rule
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,

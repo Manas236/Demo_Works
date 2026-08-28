@@ -416,10 +416,32 @@ def test_the_route_is_gated_by_the_permission_that_commits_money():
 def test_no_new_permission_was_minted_for_this(client):
     """
     Minting one would force a per-role decision CLIENT_CHANGES-2.md B4 does not
-    authorise us to take on the client's behalf. 61 is the figure
-    `docs/ACCESS_MATRIX.md` carries.
+    authorise us to take on the client's behalf.
+
+    ⚠ **Retargeted on 29 August 2026, and the old assertion is kept verbatim
+      here because it is the thing that changed:**
+
+          assert len(auth.PERMISSIONS) == 61
+
+      That was a **global** count standing in for a claim about **A1**. It was
+      right when it was written and it stayed right for a day, but it fails the
+      moment any *unrelated* item mints a permission — which C4, the employee
+      master, legitimately does (four of them: `employee.view` / `create` /
+      `edit` / `delete`). A global count cannot tell "A1 quietly grew a
+      permission" from "somebody built a different feature", and only the first
+      is a defect.
+
+      So the property is now stated where it actually lives: **the buy side
+      still has exactly the three permissions it had**, and repricing is gated
+      by one of them rather than by a fourth. That is what A1 claimed, it is
+      strictly more specific than the count it replaces, and it goes on being
+      true no matter what the rest of the application mints.
     """
-    assert len(auth.PERMISSIONS) == 61
+    buy_side = {p for p in auth.PERMISSIONS if p.startswith("purchase.")}
+    assert buy_side == {"purchase.view", "purchase.create", "purchase.edit"}, (
+        "A1 minted a purchase permission. Repricing is gated by "
+        "`purchase.create`, which already exists.")
+    assert auth.ROUTE_PERMISSIONS["purchase.edit_purchase_rates"] in buy_side
 
 
 # ── The record — A1's other half, 28 August 2026 ───────────────────────────

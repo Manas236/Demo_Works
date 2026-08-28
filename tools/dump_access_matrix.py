@@ -90,13 +90,19 @@ SPEC_BACKED = {
     ("director", "admin.users"): _B3_ADMIN,
     ("director", "admin.roles"): _B3_NOT_ROLES,          # asserted ABSENT
 
-    # B4's one stated restriction. `charge.py` is the wages and site-expense
-    # ledger and is the only surface in the app today that "HR information"
-    # can attach to, so the wall is drawn there. All four charge permissions
-    # are withheld from all three roles: twelve cells, each asserted ABSENT.
+    # B4's one stated restriction, drawn across BOTH surfaces it now has.
+    #
+    # `charge.py` is the wages and site-expense ledger and was the only place
+    # "HR information" could attach to until 29 August 2026. The **employee
+    # master** (C4) is the other, and it is the plainer of the two: it carries
+    # every employee's salary. Four charge permissions and four employee
+    # permissions withheld from all three roles — twenty-four cells, each
+    # asserted ABSENT, and every one of them traceable to one sentence.
 }
 for _role in ("sales-manager", "purchase-manager", "accountant"):
-    for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete"):
+    for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete",
+                  "employee.view", "employee.create", "employee.edit",
+                  "employee.delete"):
         SPEC_BACKED[(_role, _perm)] = _B4_HR_WALL
 
 # Cells the specification requires to be EMPTY rather than filled. Marked in
@@ -107,7 +113,9 @@ SPEC_REQUIRES_ABSENT = {
     ("director", "admin.roles"),
 }
 for _role in ("sales-manager", "purchase-manager", "accountant"):
-    for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete"):
+    for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete",
+                  "employee.view", "employee.create", "employee.edit",
+                  "employee.delete"):
         SPEC_REQUIRES_ABSENT.add((_role, _perm))
 
 
@@ -172,15 +180,21 @@ ROLE_NOTES = {
                              "admin.users", "charge.delete", "settings.edit"]},
     },
     "hr": {
-        "can": "The wages and site-expense ledger, and the address book. Record "
-               "a charge, edit it, and delete one.",
+        "can": "**The employee master** — add somebody to the register, record "
+               "their designation, site, joining date and monthly salary, "
+               "change it, and remove a record entered by mistake. Also the "
+               "wages and site-expense ledger, and the address book.",
         "cannot": "Everything else. HR sees no schedule, no bill, no quotation, "
-                  "no purchase order and no money received. This is the "
-                  "narrowest role in the system and deliberately so — but read "
-                  "the warning below the grid: **the employee master HR "
-                  "actually needs does not exist yet**, so what this role can "
-                  "reach today is a stand-in, not the job.",
-        "claims": {"holds": ["charge.view", "charge.delete", "address.view"],
+                  "no purchase order and no money received. This is still the "
+                  "narrowest role in the system and deliberately so. ⚠ Read "
+                  "what the employee master **is**: CLIENT_CHANGES-2.md C4 is "
+                  "*\"employee details and salary\"* and that is the whole of "
+                  "it — there is no attendance, no overtime and no wage "
+                  "calculation behind it, and HR's right to *edit* a salary is "
+                  "an untagged line the client stated and nobody has priced.",
+        "claims": {"holds": ["charge.view", "charge.delete", "address.view",
+                             "employee.view", "employee.create",
+                             "employee.edit", "employee.delete"],
                    "lacks": ["boq.view", "ra.view", "quotation.view",
                              "purchase.view", "receipt.view", "admin.users"]},
     },
@@ -438,12 +452,13 @@ def build() -> str:
       "limited to*.")
     w("")
     w("**2. Withholding a permission does not withhold the information.** "
-      "The HR wall is drawn at the wages ledger because that is the only "
-      "employee data this application holds. A Sales Manager who cannot open "
-      "the charges ledger can still read a project page, and B4's restriction "
-      "is about pay, not about projects. **The employee master HR actually "
-      "needs does not exist yet** (CLIENT_CHANGES-2.md C4, not built), so the "
-      "HR role today is a placeholder for a job rather than the job.")
+      "The HR wall is now drawn at two surfaces — the wages ledger and the "
+      "**employee master** (CLIENT_CHANGES-2.md C4, built 29 August 2026) — "
+      "and the second is the one that carries salary. A Sales Manager who can "
+      "open neither can still read a project page, and B4's restriction is "
+      "about pay, not about projects. What the wall does **not** do is hide a "
+      "person's existence: their name is on a delivery challan, a site note or "
+      "a project page like anybody else's, and nothing here changes that.")
     w("")
     w("**3. Permissions are per page, not per record.** The gate answers *\"may "
       "this user issue RA bills\"*. It cannot answer *\"may this user issue "

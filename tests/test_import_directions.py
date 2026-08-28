@@ -235,6 +235,42 @@ FORBIDDEN = [
     ("charge", "settings",  "any", "settings.py imports quotation; nothing downstream may import back"),
     ("charge", "project",   "any", "a charge reads STORE['projects'] directly"),
 
+    # ── The employee master is a LEAF (CC-2 C4, 29 August 2026) ─────────────
+    #
+    # `employee.py` holds people and what they are paid. It renders no document
+    # and belongs to no chain, so it may reach for the chrome and nothing else —
+    # exactly `charge.py`'s position, one collection along.
+    #
+    # ⚠ **`employee` <-> `charge` is forbidden in BOTH directions, and that is
+    #   the load-bearing pair.** Linking the wages ledger to the employee master
+    #   is CC-2 **C5** (attendance and site-wise labour cost), which is GATED and
+    #   was not authorised by the 29 August override block. `charge.person` stays
+    #   free text. The edge would be the whole of C5's first step, so it is
+    #   refused at AST level rather than left to a comment.
+    ("employee", "charge",    "any", "linking the wages ledger to the employee "
+                                     "master is C5, which is gated"),
+    ("charge",   "employee",  "any", "and the same edge from the other side"),
+    ("employee", "boq",       "any", "an employee is not part of the BOQ chain"),
+    ("employee", "ra",        "any", "an employee is not an RA bill"),
+    ("employee", "receipt",   "any", "an employee is not a payment received"),
+    ("employee", "invoice",   "any", "an employee is not a tax invoice"),
+    ("employee", "proforma",  "any", "an employee is not a proforma"),
+    ("employee", "purchase",  "any", "an employee is not a purchase order"),
+    ("employee", "po_draft",  "any", "an employee is not a draft PO"),
+    ("employee", "challan",   "any", "an employee is not a delivery challan"),
+    ("employee", "product",   "any", "an employee is not a catalogue item"),
+    ("employee", "spec",      "any", "an employee is not a specification"),
+    ("employee", "docsheet",  "any", "an employee record never prints — there is "
+                                     "no document here and no sheet to render on"),
+    ("employee", "boqpick",   "any", "an employee does not pick BOQ lines"),
+    ("employee", "client",    "any", "an employee is not a client"),
+    ("employee", "project",   "any", "linking a person to a project is C5/C6, "
+                                     "both gated"),
+    ("employee", "settings",  "any", "settings.py imports quotation; nothing "
+                                     "downstream may import back"),
+    ("employee", "auth",      "any", "the gate is central (auth.ROUTE_PERMISSIONS) "
+                                     "and no page module asks it directly"),
+
     # ── The spec library ────────────────────────────────────────────────────
     ("spec", "boq",      "any", "boq.py imports THIS module for the picker; importing back is a cycle"),
     ("spec", "product",  "any", "spec.py replaces nothing in product.py and must not depend on it"),
@@ -410,6 +446,12 @@ REQUIRED = [
     ("charge", "store",     "the shared STORE dict"),
     ("charge", "branding",  "every company string, colour and image"),
     ("charge", "quotation", "QUOTATION_STYLES"),
+
+    ("employee", "dashboard", "BASE_STYLES, _nav and rupees"),
+    ("employee", "pipeline",  "esc and parse_money"),
+    ("employee", "store",     "the shared STORE dict"),
+    ("employee", "branding",  "every company string, colour and image"),
+    ("employee", "quotation", "QUOTATION_STYLES"),
 
     # ── The shared document sheet, and everything that renders through it ────
     ("docsheet", "quotation", "VIEW_DOC_STYLES and the document's own money "

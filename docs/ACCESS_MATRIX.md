@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 61 permissions · 86 classified endpoints.**
+**7 roles · 65 permissions · 91 classified endpoints.**
 
 ---
 
@@ -14,7 +14,7 @@
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **427 cells**. **16** of them can be traced to a line of the specification. The rest — **411** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **455 cells**. **28** of them can be traced to a line of the specification. The rest — **427** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -112,6 +112,10 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Record a charge<br/>`charge.create` | · | · | · | · | § | § | § |
 | Edit a charge<br/>`charge.edit` | · | · | · | · | § | § | § |
 | Delete a charge<br/>`charge.delete` | · | · |  | · | § | § | § |
+| View the employee master<br/>`employee.view` | · | · |  | · | § | § | § |
+| Add an employee<br/>`employee.create` | · | · |  | · | § | § | § |
+| Edit an employee's details and salary<br/>`employee.edit` | · | · |  | · | § | § | § |
+| Remove an employee from the register<br/>`employee.delete` | · | · |  | · | § | § | § |
 
 ### Projects
 
@@ -151,7 +155,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **61** | **60** | **39** | **6** | **21** | **20** | **13** |
+| **Total permissions held** | **65** | **64** | **39** | **10** | **21** | **20** | **13** |
 
 ---
 
@@ -165,14 +169,26 @@ Every cell marked `§` above, with the line it comes from. This list is short, a
 - Accountant **does not hold** `charge.delete`
 - Accountant **does not hold** `charge.edit`
 - Accountant **does not hold** `charge.view`
+- Accountant **does not hold** `employee.create`
+- Accountant **does not hold** `employee.delete`
+- Accountant **does not hold** `employee.edit`
+- Accountant **does not hold** `employee.view`
 - Purchase Manager **does not hold** `charge.create`
 - Purchase Manager **does not hold** `charge.delete`
 - Purchase Manager **does not hold** `charge.edit`
 - Purchase Manager **does not hold** `charge.view`
+- Purchase Manager **does not hold** `employee.create`
+- Purchase Manager **does not hold** `employee.delete`
+- Purchase Manager **does not hold** `employee.edit`
+- Purchase Manager **does not hold** `employee.view`
 - Sales Manager **does not hold** `charge.create`
 - Sales Manager **does not hold** `charge.delete`
 - Sales Manager **does not hold** `charge.edit`
 - Sales Manager **does not hold** `charge.view`
+- Sales Manager **does not hold** `employee.create`
+- Sales Manager **does not hold** `employee.delete`
+- Sales Manager **does not hold** `employee.edit`
+- Sales Manager **does not hold** `employee.view`
 
 **CLIENT_CHANGES-2.md B3 — the Admin tier "Cannot alter role definitions."**
 
@@ -197,7 +213,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*61 of 61 permissions.*
+*65 of 65 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -205,7 +221,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*60 of 61 permissions.*
+*64 of 65 permissions.*
 
 **What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings.
 
@@ -213,7 +229,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Operation Head
 
-*39 of 61 permissions.*
+*39 of 65 permissions.*
 
 **What they can do.** Run the work. Write and revise schedules, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
 
@@ -221,15 +237,15 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### HR
 
-*6 of 61 permissions.*
+*10 of 65 permissions.*
 
-**What they can do.** The wages and site-expense ledger, and the address book. Record a charge, edit it, and delete one.
+**What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. Also the wages and site-expense ledger, and the address book.
 
-**What they explicitly cannot do.** Everything else. HR sees no schedule, no bill, no quotation, no purchase order and no money received. This is the narrowest role in the system and deliberately so — but read the warning below the grid: **the employee master HR actually needs does not exist yet**, so what this role can reach today is a stand-in, not the job.
+**What they explicitly cannot do.** Everything else. HR sees no schedule, no bill, no quotation, no purchase order and no money received. This is still the narrowest role in the system and deliberately so. ⚠ Read what the employee master **is**: CLIENT_CHANGES-2.md C4 is *"employee details and salary"* and that is the whole of it — there is no attendance, no overtime and no wage calculation behind it, and HR's right to *edit* a salary is an untagged line the client stated and nobody has priced.
 
 ### Sales Manager
 
-*21 of 61 permissions.*
+*21 of 65 permissions.*
 
 **What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills.
 
@@ -237,7 +253,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Purchase Manager
 
-*20 of 61 permissions.*
+*20 of 65 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules, the catalogue and the specification library, and keep the address book current.
 
@@ -245,7 +261,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Accountant
 
-*13 of 61 permissions.*
+*13 of 65 permissions.*
 
 **What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
@@ -257,7 +273,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 **1. A user may hold several roles, and gets the union.** CLIENT_CHANGES-2.md B4: *"One user may hold several roles — the client explicitly wants Sales and Purchase linkable."* So somebody who is both Sales Manager and Purchase Manager can do everything in both columns. Read the grid as *what each role adds*, never as *what a person is limited to*.
 
-**2. Withholding a permission does not withhold the information.** The HR wall is drawn at the wages ledger because that is the only employee data this application holds. A Sales Manager who cannot open the charges ledger can still read a project page, and B4's restriction is about pay, not about projects. **The employee master HR actually needs does not exist yet** (CLIENT_CHANGES-2.md C4, not built), so the HR role today is a placeholder for a job rather than the job.
+**2. Withholding a permission does not withhold the information.** The HR wall is now drawn at two surfaces — the wages ledger and the **employee master** (CLIENT_CHANGES-2.md C4, built 29 August 2026) — and the second is the one that carries salary. A Sales Manager who can open neither can still read a project page, and B4's restriction is about pay, not about projects. What the wall does **not** do is hide a person's existence: their name is on a delivery challan, a site note or a project page like anybody else's, and nothing here changes that.
 
 **3. Permissions are per page, not per record.** The gate answers *"may this user issue RA bills"*. It cannot answer *"may this user issue **this** RA bill"*. Nothing here restricts anybody to their own projects, their own clients or their own documents. This is ABOUT.md §7 gap 24, and it is the load-bearing part of the approvals work (B6): *"a user cannot approve a record they created"* is a per-record question and cannot be expressed in this grid at all.
 
@@ -313,6 +329,10 @@ Read off the live route registry, so it cannot drift from what the application a
 | `charge.create` | `charge.new_charge` |
 | `charge.edit` | `charge.edit_charge` |
 | `charge.delete` | `charge.delete_charge` |
+| `employee.view` | `employee.list_employees`, `employee.view_employee` |
+| `employee.create` | `employee.new_employee` |
+| `employee.edit` | `employee.edit_employee` |
+| `employee.delete` | `employee.delete_employee` |
 | `project.view` | `project.list_projects`, `projectview.view_project` |
 | `project.create` | `project.create_project` |
 | `project.edit` | `project.edit_project` |

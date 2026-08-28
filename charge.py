@@ -1,6 +1,31 @@
 """
-charge.py — Employee & Miscellaneous Charges Ledger
-=================================================
+charge.py — Business Expenses Ledger  (travel, food, wages, consumables)
+========================================================================
+
+⚠ **This file was titled "Employee & Miscellaneous Charges Ledger" until
+29 August 2026, and the title was wrong in a way that mattered.** There was no
+employee record anywhere in the application behind it — PROGRESS.md §6-E
+recorded exactly that — so "employee" here named a **free-text `person` field
+somebody types**, not a person the system knows. A reader could reasonably have
+concluded that this module was the employee master, and that C4 was therefore
+partly built. It was not.
+
+Now that a real employee master exists (`employee.py`, CLIENT_CHANGES-2.md
+**C4**, 29 August 2026), that title is not merely loose but actively
+misleading, so it is corrected here.
+
+⚠ **The MODULE IS NOT RENAMED, deliberately.** `charge.py`, `charge_bp`,
+`/charge`, `STORE["charges"]` and `charge.*` in `auth.PERMISSIONS` all stay
+exactly as they are. A rename would touch the route registry, the access
+matrix, the dashboard, `projectview.py` and every test that names an endpoint —
+a wide change, for a word. **What was wrong was the description, so the
+description is what changed.**
+
+What this ledger is: business expenses that appear on no BOQ — travel, food,
+wages paid out, consumables, site expenses. `person` is free text and stays
+free text; it is **not** a foreign key to `employee.py` and must not become one
+in this pass. Linking the two is part of **C5** (attendance and site-wise
+labour cost), which is gated and not authorised.
 """
 
 import uuid

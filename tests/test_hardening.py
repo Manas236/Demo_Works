@@ -84,9 +84,14 @@ def test_every_reference_collection_has_a_seeder(client):
     # seeded user is a working login with a known password on every install that
     # ever ships. The first account is minted deliberately, by `/setup` or by
     # `tools/seed_users.py`, and both refuse to invent a password.
+    # `employees` (C4, 29 Aug 2026) is transactional and is the plainest case in
+    # the set: a seeded employee is a **person who does not exist, carrying a
+    # salary they are not paid**, sitting on the register HR reads. Demo data is
+    # a convenience everywhere else in this app; here it would be a fiction
+    # about somebody's pay.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "projects", "charges",
-                     "users"}
+                     "employees", "users"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:
