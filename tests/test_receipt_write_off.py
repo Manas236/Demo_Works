@@ -19,16 +19,21 @@ column was inflated by every write-off (PROGRESS.md §6-D). Money that arrived
 and money the contractor allowed short are two different facts, and they are
 now two figures:
 
-    outstanding = billed − received − written_off
-    received    = sum(amount)          ← unchanged, and now correct
+    outstanding = billed − received − adjusted − written_off
+    received    = sum(amount of the five BANK modes)
 
-**The old defect is NOT fixed by A5 and is asserted here as still present.**
-`received_val` still sums every receipt regardless of mode, so an
-adjustment-mode receipt already in the database still inflates Received. What
-happens to those records is a question about live data, not about code, and it
-stays open. `test_an_adjustment_mode_receipt_still_inflates_received` is
-deliberately written to **pass on the defective behaviour** — it is a tripwire,
-so that whoever fixes it has to come here and say so.
+**The older defect A5 did not fix was closed on 28 August 2026**, under the
+override block of that date, after the live database was queried and found to
+hold **zero** adjustment-mode receipts. `client.received_val` now excludes
+them, and they are subtracted from Outstanding under their own **Adjusted**
+heading rather than dropped — `ra.py`'s note on `RECEIPT_MODES` is explicit
+that an adjustment is settled against the bill and that the money genuinely
+stops being outstanding.
+
+`test_an_adjustment_mode_receipt_still_inflates_received` **was** a tripwire
+asserting the defective behaviour on purpose. It did its job: it is now
+`..._no_longer_inflates_received`, and its old assertions are kept verbatim in
+a comment above it rather than deleted.
 
 ### What A5 is not
 
@@ -301,22 +306,44 @@ def test_a_client_with_no_write_offs_sees_the_three_figures_it_always_did(client
     assert "Outstanding" in html
 
 
-# ── The defect A5 does NOT fix ─────────────────────────────────────────────
+# ── The defect A5 did not fix, and 28 August 2026 did ──────────────────────
+#
+# ⚠ **This test was a TRIPWIRE and is now an assertion of correct behaviour.**
+#   It was written on 27 August 2026 to pin the *defective* behaviour on
+#   purpose, so that whoever fixed it had to come here and record the decision
+#   rather than discovering the change downstream. That is what happened, and
+#   this comment is the record.
+#
+# **The decision, taken 28 August 2026** under the override block of that date
+# in `CLIENT_CHANGES.md` §0, with the count in front of it rather than after:
+# **the live database was queried and holds ZERO adjustment-mode receipts** —
+# one receipt in total, mode `neft`. Nothing anybody has been shown moves.
+#
+# **What the old assertions said, kept verbatim rather than deleted:**
+#
+#     assert grp["total_outstanding"] == 0.0, "Outstanding is right..."
+#     assert grp["total_received"] == 100000.0, \
+#         "...and Received is wrong, by the whole adjustment. Still open."
+#     assert grp["total_written_off"] == 0.0, \
+#         "an adjustment-mode receipt is not a write-off and is not counted as one"
+#
+# Only the middle one changed, 100000.0 -> 90000.0. **Outstanding is still
+# asserted at 0.00**, and that is the whole of the design: the adjustment left
+# Received and did not leave the arithmetic. `ra.py`'s own note on
+# `RECEIPT_MODES` says an adjustment is settled against the bill and *"the money
+# genuinely stops being outstanding"*, so dropping it from Outstanding too would
+# have restated a settled balance as a debt — a fix that broke the figure the
+# old assertion called **right**.
 
-def test_an_adjustment_mode_receipt_still_inflates_received(client, bill):
+def test_an_adjustment_mode_receipt_no_longer_inflates_received(client, bill):
     """
-    ⚠ **A TRIPWIRE, not an endorsement.** This asserts the *defective* current
-    behaviour on purpose.
+    Received is bank movements only; an adjustment reduces Outstanding under
+    its own name.
 
-    `client.received_val` sums every receipt regardless of mode, so the
-    pre-A5 workaround — a second receipt with `mode="adjustment"` — still makes
-    Outstanding right by making Received wrong. A5 makes that workaround
-    unnecessary for **new** entries; it does nothing about records already in
-    the database, and what to do with those is a question about live data
-    rather than about code (PROGRESS.md §6-D).
-
-    When somebody fixes it, this test fails, and they have to come here and
-    record the decision rather than discovering the change downstream.
+    All four figures asserted together, because the property is that they
+    **reconcile**: Issued 1,00,000 less Received 90,000 less Adjusted 10,000
+    leaves nothing outstanding, and a reader can do that subtraction by eye on
+    the page.
     """
     assert _record(client, amount="90000").status_code == 302
     r = client.post("/receipt/new?ra=ra-writeoff-1", data={
@@ -327,8 +354,68 @@ def test_an_adjustment_mode_receipt_still_inflates_received(client, bill):
     assert r.status_code == 302
 
     grp = _register_group(client, bill)
-    assert grp["total_outstanding"] == 0.0, "Outstanding is right..."
-    assert grp["total_received"] == 100000.0, \
-        "...and Received is wrong, by the whole adjustment. Still open."
+    assert grp["total_outstanding"] == 0.0, \
+        "Outstanding was right before the fix and must still be right after it"
+    assert grp["total_received"] == 90000.0, \
+        "Received must be the bank movement alone — the adjustment is not one"
+    assert grp["total_adjusted"] == 10000.0, \
+        "the adjustment has to be shown somewhere, or the page stops reconciling"
     assert grp["total_written_off"] == 0.0, \
         "an adjustment-mode receipt is not a write-off and is not counted as one"
+
+
+def test_the_adjusted_figure_is_named_on_the_register(client, bill):
+    """
+    The arithmetic being right is not enough on its own.
+
+    A register reading Issued 1,00,000 / Received 90,000 / Outstanding 0 with
+    nothing between them looks like an arithmetic error. The same rule the A5
+    write-off row already follows: shown where there is one, absent where there
+    is not.
+    """
+    assert _record(client, amount="90000").status_code == 302
+    assert client.post("/receipt/new?ra=ra-writeoff-1", data={
+        "date": "2026-08-21", "amount": "10000", "mode": "adjustment",
+        "instrument_ref": "", "instrument_date": "", "notes": "short allowed",
+        "write_off": "",
+    }).status_code == 302
+
+    grp = _register_group(client, bill)
+    assert grp["total_adjusted"] == 10000.0, "the fixture did not take"
+    html = client.get("/client/").get_data(as_text=True)
+    assert "Adjusted" in html, "the adjustment is subtracted but never named"
+    assert "Received" in html, "and the page still names what it always did"
+
+
+def test_a_client_with_no_adjustments_sees_no_adjusted_row(client, bill):
+    """The other half, and the one that keeps the ordinary page unchanged."""
+    assert _record(client, amount="90000").status_code == 302
+    grp = _register_group(client, bill)
+    assert grp["total_adjusted"] == 0.0
+    html = client.get("/client/").get_data(as_text=True)
+    assert "Received" in html, "the register rendered nothing, so this proves nothing"
+    assert "Adjusted" not in html
+
+
+def test_an_adjustment_still_reduces_what_is_outstanding_on_the_bill(client, bill):
+    """
+    `ra.outstanding_of()` was **not** changed and must not be.
+
+    The register stopped counting an adjustment as Received; the bill never
+    counted it that way in the first place, and it still nets it off. If this
+    fails, the two sides of the same fact have drifted apart — which is the
+    thing `ra.is_adjustment()` exists as one function to prevent.
+    """
+    assert _record(client, amount="90000").status_code == 302
+    assert client.post("/receipt/new?ra=ra-writeoff-1", data={
+        "date": "2026-08-21", "amount": "10000", "mode": "adjustment",
+        "instrument_ref": "", "instrument_date": "", "notes": "short allowed",
+        "write_off": "",
+    }).status_code == 302
+
+    bill_rec = STORE["ra_bills"]["ra-writeoff-1"]
+    assert RA.outstanding_of(bill_rec) == 0.0, \
+        "the bill still owes money it has been settled for"
+    assert RA.received_against("ra-writeoff-1") == 100000.0, \
+        "ra.received_against() is the bill's own figure and was deliberately " \
+        "left summing every mode — it is not the register's Received column"

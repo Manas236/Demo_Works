@@ -142,6 +142,29 @@ RECEIPT_MODE_LABELS = {
     "upi": "UPI", "cash": "Cash", "adjustment": "Adjustment",
 }
 
+# The one payment mode that is not a payment. Five of the six modes above are a
+# bank or a cash movement; `adjustment` is a settlement against the bill with no
+# money in transit, which is why it is the only one anything has to branch on.
+ADJUSTMENT_MODE = "adjustment"
+
+
+def is_adjustment(receipt: dict) -> bool:
+    """
+    Is this receipt a settlement rather than a payment? — 28 August 2026.
+
+    **One function rather than six `== "adjustment"` comparisons**, for the
+    reason `_receipts_refusal()` exists: `client.py` keeps adjustments out of
+    **Received** and `ra.py` keeps them inside **Outstanding**, so the two are
+    reading the same fact from opposite sides and must not be able to disagree
+    about what the fact is.
+
+    Written to be safe on a record entered by hand or restored from a dump: the
+    mode is lower-cased and stripped before the comparison, because
+    `receipt._validate()` normalises on the way in but nothing normalises a row
+    that arrives any other way.
+    """
+    return str((receipt or {}).get("mode") or "").strip().lower() == ADJUSTMENT_MODE
+
 # =============================================================================
 # THE LIFECYCLE — three states, and the lock that used to be certification's job
 # =============================================================================

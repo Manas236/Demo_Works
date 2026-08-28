@@ -52,8 +52,8 @@ from store import STORE
 from dashboard import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from boq import BOQ_STYLES, boq_identity, _to_block
-from ra import (bills_of, is_issued, is_cancelled, outstanding_of,
-                party_lock_bills, PARTY_FIELDS)
+from ra import (bills_of, is_issued, is_cancelled, is_adjustment,
+                outstanding_of, party_lock_bills, PARTY_FIELDS)
 from receipt import receipts_of_boq
 
 client_bp = Blueprint("client", __name__, url_prefix="/client")
@@ -100,7 +100,7 @@ def _client_groups():
             "display_names": set(), "boqs": [],
             "total_boq": 0.0, "total_issued": 0.0,
             "total_received": 0.0, "total_written_off": 0.0,
-            "total_outstanding": 0.0,
+            "total_adjusted": 0.0, "total_outstanding": 0.0,
         })
 
         grp["display_names"].add(raw_name)
@@ -110,30 +110,57 @@ def _client_groups():
         boq_id = boq.get("id")
         issued_val = sum(float(b.get("grand_total") or 0.0)
                          for _rid, b in bills_of(boq_id) if is_issued(b))
+        # ── Received is BANK MOVEMENTS ONLY, from 28 August 2026 ───────
+        #
+        # `received_val` used to sum every receipt regardless of mode, so an
+        # `adjustment`-mode receipt — the only workaround available before A5 —
+        # made Outstanding right by making **Received** wrong. That was
+        # PROGRESS.md §6-D's open half, and it is closed here.
+        #
+        # **The count came before the decision.** The live database was queried
+        # on 28 August 2026: **zero** adjustment-mode receipts, one receipt in
+        # total, mode `neft`. So no figure anybody has been shown moves, which
+        # is what made this safe to decide rather than to keep reporting.
+        #
+        # ⚠ **An adjustment is excluded from Received and is NOT dropped.** It
+        #   is subtracted from Outstanding under its own name below. `ra.py`'s
+        #   note on `RECEIPT_MODES` is explicit that an adjustment is a credit
+        #   note, a debit note or a contra settled against the bill and that
+        #   *"the money genuinely stops being outstanding"* — so removing it
+        #   from Outstanding as well would put a settled balance back on the
+        #   books and state a debt that is not owed. Three sums, three facts,
+        #   which is the same call A5 took when it made `write_off` a separate
+        #   field rather than folding it into `amount`.
         received_val = sum(float(r.get("amount") or 0.0)
-                           for _rid, r in receipts_of_boq(boq_id))
+                           for _rid, r in receipts_of_boq(boq_id)
+                           if not is_adjustment(r))
         # A5's write-off, and a **separate** sum from `received_val` on purpose.
         # Money that arrived and money the contractor allowed short are two
         # different facts: the first is a bank movement and belongs in Received,
-        # the second reduces what is owed and does not. Folding them together is
-        # what made the one workaround available before A5 — a second receipt
-        # with `mode="adjustment"` — fix Outstanding by breaking Received.
-        #
-        # ⚠ **That older defect is NOT fixed by this line.** `received_val`
-        #   still sums every receipt regardless of mode, so an adjustment-mode
-        #   receipt already in the database still inflates Received. What
-        #   happens to those records is a question about live data, not code.
-        #   PROGRESS.md §6-D carries it and it stays open.
+        # the second reduces what is owed and does not.
         written_off_val = sum(float(r.get("write_off") or 0.0)
                               for _rid, r in receipts_of_boq(boq_id))
+        # Settled against the bill without a bank movement. Reduces Outstanding,
+        # never Received.
+        adjusted_val = sum(float(r.get("amount") or 0.0)
+                           for _rid, r in receipts_of_boq(boq_id)
+                           if is_adjustment(r))
 
         grp["total_issued"] += issued_val
         grp["total_received"] += received_val
         grp["total_written_off"] += written_off_val
+        grp["total_adjusted"] += adjusted_val
         # Not clamped at zero. An overpayment is ordinary — a lump sum settling
         # two bills at once — and it carries forward as a credit, exactly as
         # `ra.outstanding_of()` lets it.
-        grp["total_outstanding"] += (issued_val - received_val - written_off_val)
+        # Four terms, and the page renders every one of them that is
+        # non-zero, so a reader can do this subtraction by eye. The figure is
+        # **identical** to what three terms produced before 28 August 2026 —
+        # `received_val` lost exactly the adjustments that `adjusted_val`
+        # gained, so the total is invariant by construction, not by luck. What
+        # changed is which column each rupee is shown in.
+        grp["total_outstanding"] += (issued_val - received_val
+                                     - written_off_val - adjusted_val)
 
     base_map = {}
     for normed in groups:
@@ -160,15 +187,17 @@ def _client_groups():
 #   1. There is **no formal credit note** (explicitly out of Phase 3A), so an
 #      allowance that legally needs one is recorded here as an internal
 #      write-off and nowhere else.
-#   2. `received_val` above still sums receipts **regardless of mode**, so an
-#      `adjustment`-mode receipt entered before A5 still makes Outstanding right
-#      by making Received wrong (PROGRESS.md §6-D). That is open.
+#   2. ~~`received_val` above still sums receipts regardless of mode.~~
+#      **Closed 28 August 2026.** Received is bank movements only; an
+#      `adjustment` is shown under its own heading and still reduces
+#      Outstanding. PROGRESS.md §6-D is closed in both halves.
 #
 # Stated once, under the figures, rather than in a tooltip nobody opens.
 OUTSTANDING_CAVEAT = (
     '<div class="cl-caveat">Outstanding is an <b>internal</b> figure. It is net '
-    'of any write-off recorded against a receipt, and there is no credit note '
-    'behind a write-off &mdash; the bill still says what it says.</div>')
+    'of any write-off and of any adjustment recorded against a receipt, and '
+    'there is no credit note behind a write-off &mdash; the bill still says '
+    'what it says. <b>Received</b> is money that moved through a bank.</div>')
 
 
 def _page(html: str) -> str:
@@ -300,6 +329,16 @@ def list_clients():
           <div class="cl-stat"><span class="cl-lbl">Written off</span>
             <span class="cl-val">{_inr(grp['total_written_off'])}</span></div>""")
 
+        # Same rule, same reason: shown only where there is one. A client whose
+        # money all arrived through a bank sees exactly the three figures it saw
+        # before 28 August 2026, and the byte-for-byte identical page.
+        adjusted_stat = ""
+        if grp["total_adjusted"]:
+            adjusted_stat = (
+                f"""
+          <div class="cl-stat"><span class="cl-lbl">Adjusted</span>
+            <span class="cl-val">{_inr(grp['total_adjusted'])}</span></div>""")
+
         rows = ""
         for boq in grp["boqs"]:
             bid = boq.get("id")
@@ -330,7 +369,7 @@ def list_clients():
           <div class="cl-stat"><span class="cl-lbl">Issued (RA)</span>
             <span class="cl-val">{_inr(grp['total_issued'])}</span></div>
           <div class="cl-stat"><span class="cl-lbl">Received</span>
-            <span class="cl-val">{_inr(grp['total_received'])}</span></div>{written_off_stat}
+            <span class="cl-val">{_inr(grp['total_received'])}</span></div>{adjusted_stat}{written_off_stat}
           <div class="cl-stat"><span class="cl-lbl">Outstanding{out_note}</span>
             <span class="cl-val{out_cls}">{_inr(abs(out))}</span></div>
         </div>
