@@ -13,15 +13,24 @@ route that changed a **stored** line rate — `POST /purchase/<id>/update` is
 status-and-note only and says so in its docstring. This file covers the half
 that was missing.
 
-### The narrowing this file also pins
+### The narrowing this file used to pin — LIFTED 28 August 2026
 
-`can_edit_rates()` allows **Draft only**, and CC-2's A1 line carries no such
-qualification — it is ours, not the client's, taken because a Draft is
-"written, not yet sent to the vendor" and an Issued order is one a supplier is
-holding. **These tests assert the narrowing exists**; they do not assert it is
-the right commercial answer, which is not a question code can settle. If the
-client rules that an Issued order may be repriced, the tests below are what has
-to be deliberately changed, and that is the point of writing them this way.
+~~`can_edit_rates()` allows **Draft only**.~~ It did until 28 August 2026,
+under the override block of that date in `CLIENT_CHANGES.md` §0.
+
+**The tests below were written so that this change would have to be
+deliberate**, and it was: four of them asserted the narrowing and four of them
+were rewritten, each keeping its old assertion verbatim in a comment. Nothing
+here was quietly relaxed and nothing was deleted.
+
+**Why it was lifted.** The reason anybody wants an editable base rate is that a
+wrong rate has *already gone out*; Draft-only leaves exactly that case
+unsolved. The objection the narrowing protected — a vendor has already been
+told a price — is answered by **recording** the change instead of forbidding
+it, which is what `reprice_log` is.
+
+**One status is still refused: `Cancelled`.** A withdrawn order is not a live
+order and repricing it would restate a document we have said is void.
 """
 
 import pytest
@@ -53,21 +62,36 @@ def _raise(client, *, rate="1000", qty="10", disc="", status="Draft",
 
 # ── The gate ───────────────────────────────────────────────────────────────
 
-def test_only_a_draft_order_can_be_repriced():
+def test_every_live_status_can_be_repriced_and_a_cancelled_one_cannot():
     """
-    The narrowing, stated against every status the lifecycle has.
+    The gate, stated against every status the lifecycle has.
 
-    `Draft` is `PO_STATUSES[0]` and its comment reads "written, not yet sent to
-    the vendor". Everything after it has been sent.
+    **This test asserted the opposite until 28 August 2026.** What it said then,
+    kept rather than deleted:
+
+        assert PU.can_edit_rates({"status": "Draft"})[0] is True
+        for status in PU.PO_STATUSES:
+            if status == "Draft":
+                continue
+            allowed, why = PU.can_edit_rates({"status": status})
+            assert allowed is False, f"{status} was allowed through"
+            assert status in why, "the refusal must say which status refused it"
+            assert "fresh purchase order" in why
+
+    Written as a sweep over `PO_STATUSES` rather than five named cases, so a
+    seventh status added later is covered the day it is added.
     """
-    assert PU.can_edit_rates({"status": "Draft"})[0] is True
     for status in PU.PO_STATUSES:
-        if status == "Draft":
-            continue
-        allowed, why = PU.can_edit_rates({"status": status})
-        assert allowed is False, f"{status} was allowed through"
-        assert status in why, "the refusal must say which status refused it"
-        assert "fresh purchase order" in why
+        allowed, why = PU.can_edit_rates({"status": status, "ref": "SF/PO/X"})
+        if status == "Cancelled":
+            assert allowed is False, "a cancelled order was repriced"
+            assert "cancelled" in why.lower(), \
+                "the refusal must say why, not merely refuse"
+            assert "fresh purchase order" in why, \
+                "and must name the supported route"
+        else:
+            assert allowed is True, f"{status} was refused"
+            assert why == ""
 
 
 def test_an_order_with_no_status_at_all_is_treated_as_a_draft():
@@ -76,26 +100,75 @@ def test_an_order_with_no_status_at_all_is_treated_as_a_draft():
     assert PU.can_edit_rates({})[0] is True
 
 
-def test_the_form_refuses_to_open_on_an_issued_order(client):
+def test_the_form_opens_on_an_issued_order_and_says_it_has_gone_out(client):
+    """
+    **Asserted the refusal until 28 August 2026.** What it said then:
+
+        r = client.get(f"/purchase/edit/{po['id']}")
+        assert r.status_code == 302, "an issued order must not render the form"
+        assert "Only a Draft order can be repriced" in r.headers["Location"] \
+            or "Issued" in r.headers["Location"]
+
+    Opening is now the point. The second half is what stops that being a silent
+    widening: the form has to tell the operator the vendor is holding these
+    figures, because that is the fact the old refusal was carrying.
+    """
     po = _raise(client, status="Issued")
     r = client.get(f"/purchase/edit/{po['id']}")
-    assert r.status_code == 302, "an issued order must not render the form"
-    assert "Only a Draft order can be repriced" in r.headers["Location"] \
-        or "Issued" in r.headers["Location"]
+    assert r.status_code == 200, "an issued order must render the form now"
+    html = r.get_data(as_text=True)
+    assert "Issued" in html
+    assert "has been sent it" in html, \
+        "the form must say the vendor is holding what is being changed"
+    assert "Every change is recorded" in html, \
+        "and must say the change is recorded, which is what replaced the refusal"
 
 
-def test_the_post_refuses_on_an_issued_order_too(client):
+def test_the_post_lands_on_an_issued_order_and_is_recorded(client):
     """
-    Checking only on GET would leave the POST open to anyone who kept the URL —
-    including somebody who opened the form while the order was a Draft and
-    submitted it after it was issued.
+    **Asserted the refusal until 28 August 2026.** What it said then:
+
+        po["status"] = "Issued"
+        r = client.post(f"/purchase/edit/{po['id']}", data={"line_rate": "1"})
+        assert r.status_code == 302
+        assert po["line_items"][0]["price"] == 1000.0, "the rate moved anyway"
+
+    The rate is now allowed to move — and the assertion that replaces "it did
+    not move" is "it moved **and left a record**". A reprice that changed a
+    figure without writing one would be the actual regression.
     """
     po = _raise(client, status="Draft")
     assert client.get(f"/purchase/edit/{po['id']}").status_code == 200
     po["status"] = "Issued"
-    r = client.post(f"/purchase/edit/{po['id']}", data={"line_rate": "1"})
+
+    r = client.post(f"/purchase/edit/{po['id']}",
+                    data={"line_rate": "1", "line_discount": ""})
     assert r.status_code == 302
-    assert po["line_items"][0]["price"] == 1000.0, "the rate moved anyway"
+    assert po["line_items"][0]["price"] == 1.0, "the rate did not move"
+    assert len(po["reprice_log"]) == 1, "the rate moved with no record of it"
+    assert po["reprice_log"][0]["status"] == "Issued", \
+        "the record must say what the order was when it was repriced"
+
+
+def test_a_cancelled_order_still_refuses_both_verbs(client):
+    """
+    The one status that is still refused, through the real routes.
+
+    GET and POST both, for the reason the route docstring gives: checking only
+    one verb leaves the other open to anyone who kept the URL.
+    """
+    po = _raise(client, status="Draft")
+    po["status"] = "Cancelled"
+
+    r = client.get(f"/purchase/edit/{po['id']}")
+    assert r.status_code == 302, "a cancelled order rendered the form"
+
+    r = client.post(f"/purchase/edit/{po['id']}",
+                    data={"line_rate": "1", "line_discount": ""})
+    assert r.status_code == 302
+    assert po["line_items"][0]["price"] == 1000.0, \
+        "a cancelled order was repriced through the POST"
+    assert not po.get("reprice_log")
 
 
 def test_a_missing_order_redirects_rather_than_raising(client):
@@ -275,20 +348,34 @@ def test_the_form_shows_the_stored_rate_and_discount(client):
     assert "CGST 9% + SGST 9%" in html
 
 
-def test_the_reprice_button_is_offered_on_a_draft_and_not_after(client):
+def test_the_reprice_button_is_offered_on_every_live_order_and_not_on_a_cancelled_one(client):
     """
     A button that redirects to a refusal is a worse answer than no button — the
-    same rule the 27 August navigation pass applied to the whole nav.
+    same rule the 27 August navigation pass applied to the whole nav. That rule
+    is unchanged; what changed is which orders the gate lets through.
+
+    **Asserted Draft-only until 28 August 2026.** What it said then:
+
+        po["status"] = "Issued"
+        issued_page = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+        assert f"/purchase/edit/{po['id']}" not in issued_page
+        assert ">Reprice</a>" not in issued_page
+
+    ⚠ This is the change that moved `/purchase/view`'s pinned golden: the
+      golden order is **Issued** and now carries a Reprice button.
     """
     po = _raise(client, status="Draft")
-    draft_page = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
-    assert f"/purchase/edit/{po['id']}" in draft_page
-    assert ">Reprice</a>" in draft_page
-
-    po["status"] = "Issued"
-    issued_page = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
-    assert f"/purchase/edit/{po['id']}" not in issued_page
-    assert ">Reprice</a>" not in issued_page
+    for status in PU.PO_STATUSES:
+        po["status"] = status
+        page = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+        if status == "Cancelled":
+            assert f"/purchase/edit/{po['id']}" not in page, \
+                "a cancelled order offered a Reprice button"
+            assert ">Reprice</a>" not in page
+        else:
+            assert f"/purchase/edit/{po['id']}" in page, \
+                f"{status} was not offered a Reprice button"
+            assert ">Reprice</a>" in page
 
 
 def test_the_reprice_is_written_onto_the_order_history(client):
@@ -333,3 +420,187 @@ def test_no_new_permission_was_minted_for_this(client):
     `docs/ACCESS_MATRIX.md` carries.
     """
     assert len(auth.PERMISSIONS) == 61
+
+
+# ── The record — A1's other half, 28 August 2026 ───────────────────────────
+#
+# The Draft-only restriction was doing one job: stopping a figure a vendor had
+# been told from moving behind the document. Lifting it without putting
+# something in its place would remove the protection and keep none of it. This
+# is what took its place, so these tests are load-bearing for the decision and
+# not decoration on it.
+
+def test_a_reprice_records_the_old_rate_and_the_new_one_per_line(client):
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+
+    assert client.post(f"/purchase/edit/{po['id']}",
+                       data={"line_rate": "900", "line_discount": ""}
+                       ).status_code == 302
+
+    log = po["reprice_log"]
+    assert len(log) == 1, "one submit, one entry"
+    entry = log[0]
+    assert len(entry["lines"]) == 1
+    line = entry["lines"][0]
+    assert line["rate_from"] == 1000.0
+    assert line["rate_to"] == 900.0
+    assert entry["at"], "an entry with no timestamp answers half the question"
+    assert entry["by"], "and one with no author answers neither"
+
+
+def test_the_discount_move_is_recorded_beside_the_rate(client):
+    """A2's discount is money too, and a change to it is a reprice."""
+    po = _raise(client, rate="1000", qty="10", disc="", status="Issued")
+
+    assert client.post(f"/purchase/edit/{po['id']}",
+                       data={"line_rate": "1000", "line_discount": "10"}
+                       ).status_code == 302
+
+    line = po["reprice_log"][0]["lines"][0]
+    assert (line["rate_from"], line["rate_to"]) == (1000.0, 1000.0)
+    assert (line["disc_from"], line["disc_to"]) == (0.0, 10.0)
+
+
+def test_only_the_lines_that_moved_are_recorded(client):
+    """
+    A four-line order with one changed rate must not produce four rows.
+
+    A log that lists every line every time is a log nobody reads, and "which
+    line moved" is the question it exists to answer.
+    """
+    from product import ensure_demo_products
+    ensure_demo_products()
+    address.ensure_demo_addresses()
+    pids = sorted(STORE["products"])[:3]
+    r = client.post("/purchase/create", data={
+        "date": "2026-04-18", "vendor_id": VENDOR_ID, "status": "Issued",
+        "tax_type": "exempt", "cgst_rate": "0", "igst_rate": "0",
+        "line_product_id": pids, "line_qty": ["1", "1", "1"],
+        "line_rate": ["100", "200", "300"], "line_discount": ["", "", ""],
+    })
+    assert r.status_code == 302
+    po = list(STORE["purchases"].values())[0]
+    assert len(po["line_items"]) == 3
+
+    assert client.post(f"/purchase/edit/{po['id']}", data={
+        "line_rate": ["100", "250", "300"],
+        "line_discount": ["", "", ""],
+    }).status_code == 302
+
+    lines = po["reprice_log"][0]["lines"]
+    assert len(lines) == 1, "unchanged lines were recorded as changes"
+    assert (lines[0]["rate_from"], lines[0]["rate_to"]) == (200.0, 250.0)
+
+
+def test_a_submit_that_changes_nothing_writes_no_entry(client):
+    """A form re-submitted unchanged is not a reprice and must not read as one."""
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+
+    r = client.post(f"/purchase/edit/{po['id']}",
+                    data={"line_rate": "1000.00", "line_discount": ""})
+    assert r.status_code == 302
+    assert not po.get("reprice_log"), "an unchanged submit invented a history"
+    assert "Nothing+changed" in r.headers["Location"].replace("%20", "+") \
+        or "Nothing changed" in r.headers["Location"], \
+        "and the operator must be told that, not told it saved"
+
+
+def test_a_second_reprice_appends_and_does_not_replace(client):
+    """
+    The whole value of the record is that it is a chain.
+
+    An overwrite would leave the *current* rate visible and the one before it
+    gone, which is the state the Draft-only restriction existed to prevent.
+    """
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+
+    for rate in ("900", "850"):
+        assert client.post(f"/purchase/edit/{po['id']}",
+                           data={"line_rate": rate, "line_discount": ""}
+                           ).status_code == 302
+
+    log = po["reprice_log"]
+    assert len(log) == 2
+    assert log[0]["lines"][0]["rate_from"] == 1000.0
+    assert log[0]["lines"][0]["rate_to"] == 900.0
+    assert log[1]["lines"][0]["rate_from"] == 900.0
+    assert log[1]["lines"][0]["rate_to"] == 850.0
+
+
+def test_the_note_is_carried_onto_the_record(client):
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+    assert client.post(f"/purchase/edit/{po['id']}", data={
+        "line_rate": "900", "line_discount": "",
+        "note": "revised after Sanghvi's second quote",
+    }).status_code == 302
+    assert po["reprice_log"][0]["note"] == "revised after Sanghvi's second quote"
+
+
+def test_the_history_is_shown_on_the_order(client):
+    """
+    Recorded and not surfaced is the same as not recorded, for the person the
+    record exists for.
+    """
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+    assert client.post(f"/purchase/edit/{po['id']}", data={
+        "line_rate": "900", "line_discount": "", "note": "vendor revised",
+    }).status_code == 302
+
+    html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+    assert "Rate changes" in html, "the reprice trail is not on the page"
+    assert "vendor revised" in html
+    assert "1,000.00" in html and "900.00" in html, \
+        "the old rate and the new one must both be readable"
+
+
+def test_an_order_never_repriced_shows_no_rate_changes_panel(client):
+    """
+    The other half, and the one that keeps every existing order's page
+    unchanged — which is what stops this feature moving documents it did not
+    touch.
+    """
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+    html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+    assert "Rate changes" not in html
+    # The class is in the stylesheet unconditionally; it is the DIV that must
+    # be absent, so match the markup rather than the name of the rule.
+    assert '<div class="po-reprice">' not in html
+
+
+def test_the_operator_name_is_escaped_on_its_way_to_the_page(client):
+    """
+    `by` is a display name off a user record, which is user text — ABOUT.md §9.
+
+    Written against the stored record rather than a crafted login, because the
+    escaping site is the render and that is what this asserts.
+    """
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+    assert client.post(f"/purchase/edit/{po['id']}",
+                       data={"line_rate": "900", "line_discount": ""}
+                       ).status_code == 302
+    po["reprice_log"][0]["by"] = '<script>x</script>'
+
+    html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+    assert "<script>x</script>" not in html
+    assert "&lt;script&gt;x&lt;/script&gt;" in html
+
+
+def test_the_reprice_trail_does_not_reach_the_printed_sheet(client):
+    """
+    It lives inside `.po-panel`, which is `display:none` at print.
+
+    What the vendor holds is the order, not our record of having changed it.
+    Asserted through the stylesheet the page actually ships, because that is
+    where the guarantee lives.
+    """
+    po = _raise(client, rate="1000", qty="10", status="Issued")
+    assert client.post(f"/purchase/edit/{po['id']}",
+                       data={"line_rate": "900", "line_discount": ""}
+                       ).status_code == 302
+
+    html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+    at = html.find('<div class="po-reprice">')
+    assert at > 0
+    panel_at = html.find('<div class="po-panel">')
+    assert 0 < panel_at < at, "the trail escaped the panel that hides it at print"
+    assert "@media print { .po-panel { display:none; } }" in html

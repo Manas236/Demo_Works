@@ -803,6 +803,25 @@ PURCHASE_STYLES = """
   .po-hist-row .ph-at { color:var(--muted); font-variant-numeric:tabular-nums; }
   .po-hist-row .ph-note { color:var(--text); }
   .po-hist-empty { font-size:.83rem; color:var(--muted); }
+
+  /* A1's reprice trail (28 Aug 2026). Inside .po-panel deliberately, so the
+     rule below hides it from the printed sheet along with everything else on
+     the panel: what the vendor holds is the order, not our record of having
+     changed it. */
+  .po-reprice { margin-top:1.1rem; border-top:1px solid var(--border); padding-top:.8rem; }
+  .po-reprice-t {
+    font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--muted); margin-bottom:.5rem;
+  }
+  .rp-entry { padding:.35rem 0; }
+  .rp-when { font-size:.78rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .rp-line {
+    display:flex; gap:.7rem; align-items:baseline; flex-wrap:wrap;
+    font-size:.82rem; padding:.15rem 0 .15rem .9rem;
+  }
+  .rp-line .rp-item { color:var(--text); }
+  .rp-line .rp-move { font-variant-numeric:tabular-nums; font-weight:600; }
+  .rp-line .rp-disc { color:var(--muted); font-variant-numeric:tabular-nums; }
   @media print { .po-panel { display:none; } }
 
   /* ── Print: the PO document ───────────────────────────────────────── */
@@ -2171,19 +2190,33 @@ def update_purchase(id: str):
 # `/purchase/from-draft`, and `RATE_PREFILL_FIELD` only ever suggested a
 # figure. What was missing, and what this is, is editing it **afterwards**.
 #
-# ⚠ **DRAFT ONLY, and that is a narrowing CC-2 does not carry.** CC-2 calls A1
-#   a "straightforward field unlock" with no lifecycle qualification. The
-#   restriction below is ours, taken for the reason `update_purchase()` already
-#   states in prose: *"a vendor has already been told a price and a quantity,
-#   and changing them behind the document is how a dispute starts."*
-#   `PO_STATUSES[0]` is `Draft` — **"written, not yet sent to the vendor"** —
-#   which is precisely the case that reasoning does not cover. Unlocking the
-#   rate there contradicts nothing; unlocking it on an **Issued** order would
-#   contradict the sentence above and the document a supplier is holding.
+# ⚠ **The DRAFT-ONLY narrowing was LIFTED on 28 August 2026**, under the
+#   override block of that date in `CLIENT_CHANGES.md` §0. From 27 August this
+#   route refused every status but `Draft`, and the commercial question that
+#   narrowing left open — *"whether A1-as-sold covers editing the rate on an
+#   issued PO"* — was put and answered.
 #
-#   This is the same shape as A6's draft-only rule, and like A6's it **must be
-#   explained to the client rather than silently applied**. Whether A1-as-sold
-#   covers an issued order is a commercial question and has not been asked.
+#   **The answer, and the reasoning, because it overturns a decision this file
+#   used to argue for:** the reason anybody wants an editable base rate is that
+#   a wrong rate has **already gone out**. A restriction to Drafts leaves
+#   exactly that case unsolved, which removes the feature's purpose — a Draft
+#   rate was never locked in the first place, it is simply a form you have not
+#   submitted. The objection the narrowing protected — `update_purchase()`'s
+#   *"a vendor has already been told a price and a quantity, and changing them
+#   behind the document is how a dispute starts"* — is answered by **recording**
+#   the change rather than forbidding it. The dispute starts when the change is
+#   invisible, not when it is made.
+#
+#   **So nothing is overwritten silently.** Every reprice that moves a figure
+#   writes a `reprice_log` entry — who, when, and old rate → new rate on each
+#   line that actually moved — and `/purchase/view` renders it under the order.
+#   See `_record_reprice()` below.
+#
+# ⚠ **One status is still refused: `Cancelled`.** A withdrawn order is not a
+#   live purchase order, and repricing one would restate a document we have
+#   said is void. That is the same rule `ra.cancelled_reason()` states for a
+#   cancelled bill, for the same reason, and it is the only status this route
+#   turns away.
 #
 # **Rates and discounts, and nothing else.** Not the quantity, not the vendor,
 # not the lines. "Base rate editable" is a field unlock, and a form that also
@@ -2198,15 +2231,116 @@ def can_edit_rates(po: dict) -> tuple:
     `(allowed, reason)` for editing the commercial content of an order.
 
     Returns the refusal in words rather than a bare False, because it is shown
-    to the operator and "Only a draft order can be repriced" is the whole
-    explanation. Same contract as `ra.can_edit()`.
+    to the operator. Same contract as `ra.can_edit()`.
+
+    **One refusal, and it is not about the vendor having been told.** A live
+    order in any status may be repriced, because the case the feature exists for
+    is precisely a rate that has already gone out (see the section note above).
+    A **Cancelled** order is refused: it is not a live order, it is a document
+    withdrawn on the record, and repricing it would restate something we have
+    told somebody is void.
     """
     status = (po or {}).get("status") or DEFAULT_STATUS
-    if status != "Draft":
-        return False, (f"This order is {status}. Only a Draft order can be "
-                       f"repriced — the vendor has already been sent this "
-                       f"one, and an amendment means a fresh purchase order.")
+    if status == "Cancelled":
+        return False, (f"{po.get('ref') or 'This order'} was cancelled, so it "
+                       f"cannot be repriced. The withdrawal is a fact the "
+                       f"vendor has been told; raise a fresh purchase order "
+                       f"instead of restating a void one.")
     return True, ""
+
+
+def _repricer() -> str:
+    """
+    Who is repricing, for the record. Falls back to a name, never to silence.
+
+    `auth.py` is a bottom-of-graph module and imports nothing that prints, so
+    this arrow is one-way and safe — `dashboard.py` already pulls it in, which
+    makes it transitively present here either way. Imported inside the function
+    rather than at module level for the same reason `dashboard.index()` imports
+    the seeders that way: a module-level arrow here would be a new edge on the
+    graph in ABOUT.md §2 for one string.
+    """
+    import auth
+    user = auth.current_user() or {}
+    return str(user.get("display_name") or user.get("username") or "unknown")
+
+
+def _record_reprice(po: dict, before: list, note: str) -> list:
+    """
+    Append one `reprice_log` entry naming every line whose money moved.
+
+    `before` is `[(name, part_no, rate, discount_pct), ...]` captured **before**
+    `_reprice()` wrote anything, in `_priced_rows()` order — the same order the
+    form was generated from, so the two zip without a key.
+
+    **Only lines that actually moved are recorded**, and an entry is written
+    only when at least one did. A submit that changes nothing is not a reprice
+    and a log full of "no change" rows is a log nobody reads. Returns the list
+    of moved rows so the caller can say how many there were.
+
+    Rounded to 2dp before comparison: `128000.0` and `128000.004` are the same
+    rate and a float that came back off a form should not be able to invent a
+    history entry.
+    """
+    moved = []
+    for (name, part_no, old_rate, old_disc), (_i, row) in zip(before, _priced_rows(po)):
+        new_rate = round(float(row.get("price") or 0.0), 2)
+        new_disc = round(float(row.get("discount_pct") or 0.0), 4)
+        if (round(old_rate, 2), round(old_disc, 4)) == (new_rate, new_disc):
+            continue
+        moved.append({
+            "name": name, "part_no": part_no,
+            "rate_from": round(old_rate, 2), "rate_to": new_rate,
+            "disc_from": round(old_disc, 4), "disc_to": new_disc,
+        })
+    if not moved:
+        return []
+    po.setdefault("reprice_log", []).append({
+        "at":     _now(),
+        "by":     _repricer(),
+        "status": po.get("status") or DEFAULT_STATUS,
+        "note":   note,
+        "lines":  moved,
+    })
+    return moved
+
+
+def _reprice_html(po: dict) -> str:
+    """
+    The reprice history, newest first, or "" when there is none.
+
+    Returns the **empty string** on an order that has never been repriced, so
+    an order that predates 28 August 2026 renders exactly the bytes it always
+    did — which is what keeps `/purchase/view`'s golden still.
+
+    Rendered as one row per changed line under a header naming who and when,
+    because "who changed it" and "what it changed from" are the two questions
+    anybody looking at a repriced order is asking and splitting them across two
+    panels answers neither.
+    """
+    log = po.get("reprice_log") or []
+    if not log:
+        return ""
+    out = ""
+    for e in reversed(log):
+        lines = ""
+        for ln in e.get("lines") or []:
+            disc_bit = ""
+            if float(ln.get("disc_from") or 0) or float(ln.get("disc_to") or 0):
+                disc_bit = (f'<span class="rp-disc">disc '
+                            f'{float(ln.get("disc_from") or 0):g}%'
+                            f' &#8594; {float(ln.get("disc_to") or 0):g}%</span>')
+            lines += (f'<div class="rp-line">'
+                      f'<span class="rp-item">{P.esc(ln.get("name"))}</span>'
+                      f'<span class="rp-move">{_inr(ln.get("rate_from") or 0)}'
+                      f' &#8594; {_inr(ln.get("rate_to") or 0)}</span>'
+                      f'{disc_bit}</div>')
+        note = (f' &middot; {P.esc(e.get("note"))}') if e.get("note") else ""
+        out += (f'<div class="rp-entry">'
+                f'<div class="rp-when">{P.esc(e.get("at"))} &middot; '
+                f'{P.esc(e.get("by"))} &middot; order was '
+                f'{P.esc(e.get("status"))}{note}</div>{lines}</div>')
+    return out
 
 
 def _priced_rows(po: dict) -> list:
@@ -2275,11 +2409,17 @@ def _reprice(po: dict, form) -> str:
 @purchase_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_purchase_rates(id: str):
     """
-    Reprice a **Draft** purchase order — CLIENT_CHANGES-2.md A1.
+    Reprice a live purchase order — CLIENT_CHANGES-2.md A1.
 
     Gated by `can_edit_rates()` on both verbs. Checking only on POST would leave
     a form that renders happily and refuses on submit; checking only on GET
     would leave the POST open to anyone who kept the URL.
+
+    **Any status but `Cancelled`**, from 28 August 2026 — see the section note
+    above for why the Draft-only narrowing was lifted rather than kept. Every
+    reprice that moves a figure is recorded by `_record_reprice()` before the
+    redirect, and the record is what makes the unlock safe rather than the
+    restriction that used to stand in its place.
     """
     po = STORE["purchases"].get(id)
     if not po:
@@ -2294,14 +2434,29 @@ def edit_purchase_rates(id: str):
     error = ""
     if request.method == "POST":
         before = float(po.get("grand_total") or 0.0)
+        # Captured BEFORE `_reprice()` writes, because it mutates the rows in
+        # place and there is no second copy to diff against afterwards.
+        was = [(str(r.get("name") or ""), str(r.get("part_no") or ""),
+                float(r.get("price") or 0.0), float(r.get("discount_pct") or 0.0))
+               for _i, r in _priced_rows(po)]
         error = _reprice(po, request.form)
         if not error:
             after = float(po.get("grand_total") or 0.0)
             note  = (request.form.get("note") or "").strip()
-            _log(po, note or (f"Repriced: order value &#8377;{before:,.0f} "
-                              f"&#8594; &#8377;{after:,.0f}."))
+            moved = _record_reprice(po, was, note)
+            # The order's own trail gets one line; the per-line detail lives in
+            # `reprice_log` and prints under the document. Two records of one
+            # event, and neither restates the other.
+            if moved:
+                n = len(moved)
+                _log(po, note or (f"Repriced {n} line{'' if n == 1 else 's'}: "
+                                  f"order value &#8377;{before:,.0f} "
+                                  f"&#8594; &#8377;{after:,.0f}."))
+                msg = f"Rates updated on {n} line{'' if n == 1 else 's'}."
+            else:
+                msg = "Nothing changed, so nothing was recorded."
             return redirect(url_for("purchase.view_purchase", id=id,
-                                    msg="Rates updated.", type="success"))
+                                    msg=msg, type="success"))
 
     # ── The rows ──────────────────────────────────────────────────────────
     #
@@ -2331,6 +2486,21 @@ def edit_purchase_rates(id: str):
           <span></span>
         </div>"""
 
+    # A Draft has not gone anywhere; an Issued order has. The same form serves
+    # both from 28 August 2026, and it says which one this is rather than
+    # asserting the Draft case at an operator who is looking at an Issued order.
+    status_now = po.get("status") or DEFAULT_STATUS
+    if status_now == "Draft":
+        sent_note = (f"This order is a <b>Draft</b> &mdash; it has not been "
+                     f"sent to {P.esc(_vendor_of(po))} yet, so what we agree "
+                     f"to pay is still ours to change.")
+    else:
+        sent_note = (f"This order is <b>{P.esc(status_now)}</b> and "
+                     f"{P.esc(_vendor_of(po))} has been sent it. Repricing it "
+                     f"is allowed and is how a rate that went out wrong gets "
+                     f"corrected &mdash; but the vendor is holding the figures "
+                     f"you are about to change, so tell them.")
+
     tax_info = po.get("tax_info") or {}
     tax_note = "no tax on this order"
     if po.get("tax_type") == "cgst_sgst":
@@ -2353,13 +2523,12 @@ def edit_purchase_rates(id: str):
       {_alert(error, "error")}
 
       <div class="buy-note">
-        This order is a <b>Draft</b> &mdash; it has not been sent to
-        {P.esc(_vendor_of(po))} yet, so what we agree to pay is still ours to
-        change.
+        {sent_note}
         <div class="bn-sub">Rates and discounts only. Quantities, lines and the
           vendor are not editable here, and the tax stays as raised
-          ({P.esc(tax_note)}). Once this order is <b>Issued</b> an amendment
-          means a fresh purchase order, not an edit behind this one.</div>
+          ({P.esc(tax_note)}). <b>Every change is recorded</b> &mdash; who, when,
+          and the old rate against the new one on each line that moves &mdash;
+          and it prints under the order.</div>
       </div>
 
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
@@ -2617,16 +2786,26 @@ def view_purchase(id: str):
                     f'quoted &#8377;&nbsp;{jc["quoted"]:,.0f} &middot; '
                     f'committed &#8377;&nbsp;{jc["committed"]:,.0f}</span>')
 
-    # Offered only where `can_edit_rates()` would allow it, which today means a
-    # Draft order. A button that redirects to a refusal is a worse answer than
-    # no button, and every PO ever printed before this pass was Issued or later
-    # — so the pinned golden does not move.
+    # Offered only where `can_edit_rates()` would allow it, which from
+    # 28 August 2026 means **every order except a Cancelled one**. A button that
+    # redirects to a refusal is a worse answer than no button.
+    #
+    # ⚠ This is one of the two reasons `/purchase/view`'s golden moved in this
+    #   pass: the pinned order is **Issued**, and until the narrowing was lifted
+    #   an Issued order carried no Reprice button. It carries one now, and that
+    #   is the feature rather than a regression.
     reprice_btn = ""
     if can_edit_rates(po)[0]:
-        # The newline and indent live INSIDE the string, so an order that is
-        # not a Draft renders the action bar byte-for-byte as it always did.
+        # The newline and indent live INSIDE the string, so a Cancelled order
+        # renders the action bar byte-for-byte as it always did.
         reprice_btn = (f'\n    <a href="{url_for("purchase.edit_purchase_rates", id=id)}" '
                        f'class="btn btn-ghost">Reprice</a>')
+
+    # Empty string on an order that has never been repriced, so the panel of an
+    # order raised before 28 August 2026 renders byte-for-byte as it did.
+    rp = _reprice_html(po)
+    reprice_hist = (f'\n  <div class="po-reprice">'
+                    f'<div class="po-reprice-t">Rate changes</div>{rp}</div>') if rp else ""
 
     panel = f"""
 <div class="po-panel">
@@ -2646,7 +2825,7 @@ def view_purchase(id: str):
     </div>
   </form>
   {f'<div class="po-strip">{job_link}</div>' if job_link else ''}{upstream_html}
-  <div class="po-hist">{_history_html(po)}</div>
+  <div class="po-hist">{_history_html(po)}</div>{reprice_hist}
 </div>"""
 
     template = f"""<!DOCTYPE html><html lang="en">

@@ -427,8 +427,34 @@ TI_BLOCKS = {"head":       "49524db46e29dcc5",
 # so is every figure on the sheet: the golden PO carries no `discount_pct`, so
 # its Disc % column prints an em dash and its Order Value is unchanged at
 # 307,508.00. A2 moved the shape of this document, not its arithmetic.
-PO_WHOLE, PO_LEN = "809c8921d502d98b", 102801
-PO_BLOCKS = {"head":       "5354379fd4182ed2",   # was d0df61b20bb3a42e
+# Was 809c8921d502d98b / 102,801 before the 28 August 2026 pass lifted A1's
+# Draft-only narrowing. **+1,021 bytes, in ONE block, and every byte of it is
+# accounted for:**
+#
+#   head  +1021 = the `.po-reprice` / `.rp-*` rules and their comment, added to
+#                 `PURCHASE_STYLES` for A1's rate-change trail (+939), and the
+#                 `<a ... >Reprice</a>` anchor in the action bar (+82, of which
+#                 36 are the golden order's own id in the href).
+#
+# **Why the anchor lands in `head`:** the `head` block runs from `<head>` to
+# `<thead><tr><td>`, so it carries the stylesheet, the nav AND the screen action
+# bar — everything above the letterhead. It is not only the `<head>` element.
+#
+# **The anchor is there because the golden order is `Issued`.** Until this pass
+# `can_edit_rates()` refused every status but `Draft`, so no Reprice button was
+# offered on it. The narrowing was lifted under the 28 August 2026 override
+# block, which is the feature, not a regression — `test_po_rate_edit.py`'s
+# `test_the_reprice_button_is_offered_on_every_live_order_...` is the assertion
+# that names it.
+#
+# letterhead, foot-strip, doc-box, party and signature are **byte-identical**,
+# and so is every figure on the sheet: the golden PO has never been repriced, so
+# `_reprice_html()` returns "" and no `Rate changes` panel renders. Nothing on
+# the printed document moved — `.po-panel` is `display:none` at print, and the
+# only two things that did move are a stylesheet rule and a screen button.
+PO_WHOLE, PO_LEN = "7e9d7b25658feed6", 103822
+PO_BLOCKS = {"head":       "c4b27c10e58c1b4f",   # was 5354379fd4182ed2,
+                                                 # was d0df61b20bb3a42e
              "letterhead": "2800166c693cc2f1",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "ffe286e7afd8c90b",
