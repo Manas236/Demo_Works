@@ -468,6 +468,145 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > [tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) for what is
 > actually guaranteed.
 
+> ### ⚠ OVERRIDE — 28 August 2026, by Manas Gawde — A1's widening, A3 and A6
+>
+> **A new block, not an amendment.** Every block above stands exactly as
+> written; none has been edited, reformatted or re-scoped. This is the eighth
+> occasion and the third that reaches into Phase 3.
+>
+> **MG/SF/2026-02 is unsigned and expires TODAY, 28 August 2026.** Manas took
+> the decision to proceed anyway and instructed that it be recorded rather than
+> the rule deleted, exactly as on 14, 15, 16, 23, 26 and 27 August. This is the
+> last day on which that decision can be taken against this quotation at all.
+>
+> #### What proceeds
+>
+> Three things, and each of them **answers a question an earlier block
+> deliberately left open** rather than starting fresh scope:
+>
+> - **A1 — the Draft-only narrowing is LIFTED.** The 27 August block recorded
+>   the narrowing as a deviation and said in terms that *"whether A1-as-sold
+>   covers editing the rate on an issued PO is a commercial question and has not
+>   been asked."* It is answered here: **repricing is allowed on a live purchase
+>   order in any status, and every reprice is recorded** — who, when, and the
+>   old rate → new rate on each line that moved — with that history shown on the
+>   order. The reasoning is that the reason anyone wants an editable base rate is
+>   that a wrong rate has **already gone out**; a restriction to Drafts leaves
+>   exactly that case unsolved, which removes the feature's purpose. The
+>   objection the narrowing protected — *"a vendor has already been told a
+>   price"* — is answered by **recording** the change rather than forbidding it.
+>
+> - **A3 — additional charge lines on the final PO, AUTHORISED, and the tax
+>   question is ANSWERED.** The 27 August block explicitly refused A3 and stopped
+>   it on one sentence. The ruling is: **the charge is inside the taxable
+>   value.** A line on a purchase order **we issue to a named vendor** is part of
+>   what we are agreeing to pay **that vendor**, which is consideration for that
+>   vendor's supply — s.15(2)(c) CGST Act, incidental expenses, **inside** the
+>   taxable value. The third-party reading in the 27 August block describes a
+>   cost that would **not appear on this vendor's PO at all**; it would be a
+>   separate transaction with a separate party on a separate document. The
+>   ambiguity is real in the world and is not real on this document.
+>
+>   **The exception is nonetheless made expressible rather than argued away.**
+>   Each charge line carries a **taxable flag defaulting to true**, so the day a
+>   genuine third-party freight cost has to sit on this order it can be marked
+>   outside the base without another pass and without the tax-base question
+>   being reopened under time pressure.
+>
+> - **A6 — the latest-bill-only restriction STAYS, and A6 closes as built with a
+>   stated limitation.** RA bills are cumulative; editing bill 3 while bill 5
+>   exists corrupts every claim downstream of it. The client asked without
+>   qualification because the chain arithmetic is not his to know.
+>   `claim_is_frozen()` → `is_latest_bill()` is **correct behaviour, not a
+>   shortfall**. What proceeds is not a lifting: it is the refusal being made to
+>   **explain itself and name the supported route** (cancel forward), and the
+>   limitation being recorded in client-readable language. **Not one line of
+>   `ra.py`'s lifecycle logic changes.** If the client wants arbitrary-bill
+>   editing after hearing this, that is **new scope** and is not priced anywhere.
+>
+> #### One data decision is taken here, and it is the one §6-D was holding
+>
+> The 27 August block named `client.received_val` summing every receipt
+> regardless of mode, and left it open because *"deciding what happens to them
+> is a data question about live records, not a code question."*
+>
+> **The live database was queried before the decision was taken: there are ZERO
+> adjustment-mode receipts in it** (1 receipt in total, mode `neft`). So the
+> question had no live records behind it at all, and **no historical figure
+> anybody has been shown moves by a rupee.** Adjustment-mode receipts are now
+> kept out of **Received**, which is a bank-movement column, and are subtracted
+> from **Outstanding** under their own name — see the deviation below for why
+> they are not simply dropped.
+>
+> #### Three deviations, taken deliberately and recorded rather than applied
+>
+> 1. **A3 ships as a four-slot repeater with free-text labels, not four
+>    hardcoded fields — and not the `/settings`-seeded head list either.**
+>    CC-2's A3 note says *"do not build four fields"* and asks for one repeater
+>    with the heads seeded in `/settings`. The instruction for this pass named
+>    four lines — loading & unloading, transportation, and two further. **Both
+>    are satisfied by the repeater**: it stores a list, every label is free text,
+>    the first two slots are seeded with the client's own two heads, and the slot
+>    count is one constant. What is **not** built is the `/settings`-editable head
+>    list, because reading it would add a `purchase.py → settings.py` import edge
+>    for a picker whose labels are already free text. **Recorded as a deviation
+>    for the client-facing owner to confirm, not as delivered.**
+>
+> 2. **Adjustment-mode receipts are excluded from Received but NOT from
+>    Outstanding.** The literal instruction for this pass was
+>    `outstanding = billed − received − written_off` with `received`
+>    payment-only, which would put every adjustment back into Outstanding.
+>    **Two facts in the repo say that is wrong**: `ra.py`'s own note on
+>    `RECEIPT_MODES` says an adjustment is settled against the bill and *"the
+>    money genuinely stops being outstanding"*, and the §6-D tripwire asserts in
+>    as many words that today's `total_outstanding == 0.0` is **right** and only
+>    Received is wrong. So the fix follows A5's own precedent — *a separate
+>    field rather than a figure folded into another* — and adds an **Adjusted**
+>    term: Received is bank movements only, Outstanding is unchanged in every
+>    case, and the register's columns reconcile. **This is a deviation from the
+>    instruction and is flagged as one.**
+>
+> 3. **The Director-cannot-administer-an-Owner narrowing from 27 August
+>    stands, and is recorded as a deliberate deviation from B3.** B3 says an
+>    Admin may create, deactivate and assign roles; the code refuses that against
+>    an **Owner** account. It is tighter than B3 because `_would_strand_install()`
+>    only protects the **last** Owner, so spare Owners could be picked off one at
+>    a time. **For the client to confirm, not a bug to fix.**
+>
+> #### It remains chargeable, and the price is unchanged
+>
+> **Phase 3A is priced in MG/SF/2026-02 and stays priced there.** This is not a
+> §0 no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and A3 is new capability.
+> Building it early changed **when** it was built, not **what it costs** or
+> **who agreed to it**. No agent may record any part of 3A as
+> delivered-no-charge or as covered by MG/SF/2026-01.
+>
+> **Arbitrary-bill RA editing is NOT sold by A6 closing.** A6 closes as *built
+> with a stated limitation*. Nobody may record the limitation as a defect owed
+> to the client, and nobody may build past it without a fresh authorisation.
+>
+> **The gate is not lifted and this is not a precedent.** It is still the
+> default and it still stands. That A1's widening, A3 and A6 were authorised
+> does not authorise the rest of 3B or any of 3C, and an override remains a
+> decision that is taken and recorded, never one an agent may take, infer, or
+> extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged, and
+> it is restated deliberately:** if MG/SF/2026-02 is never signed, items 8, 3,
+> 2, 4 and 5, the whole of the Phase 3B access-control layer, the three Phase 3A
+> items of 27 August **and these three** were built against an unsigned
+> quotation — and MG/SF/2026-02 **expires today**.
+>
+> **Where the technical record lives:** [ABOUT.md §2](ABOUT.md) for the charge
+> lines and the reprice log, [ABOUT.md §7](ABOUT.md) for the gap this closes and
+> the ones it leaves open, [PROGRESS.md](PROGRESS.md) for the per-item build
+> state, and [tests/test_po_charges.py](tests/test_po_charges.py),
+> [tests/test_po_rate_edit.py](tests/test_po_rate_edit.py),
+> [tests/test_ra_edit_delete.py](tests/test_ra_edit_delete.py) and
+> [tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) for what is
+> actually guaranteed.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
