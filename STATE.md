@@ -863,9 +863,9 @@ block in [CLIENT_CHANGES.md](CLIENT_CHANGES.md) §0, which names **A1's
 widening, A3 and A6**. MG/SF/2026-02 was still unsigned and **expired on this
 date** — this is the last day the decision could be taken against it.
 
-Seven commits, one per item so a single one can be reverted without losing the
-rest: the override block, §6-D's arithmetic, A1, A3, A6, the test-leak fix, then
-docs.
+Eight commits, one per item so a single one can be reverted without losing the
+rest: the override block, §6-D's arithmetic, A1, A3, A6, the test-leak fix,
+docs, and one correcting a counterfactual figure in A3's worked example.
 
 **The shape of the pass is the thing worth keeping.** All three items were
 already *possible* on 27 August; each was held by a **question**, not by code,

@@ -95,10 +95,16 @@ def test_the_worked_example_from_the_report(client):
                                  ───────────
         Order Value                19,700.00
 
-    Every one of those six figures is asserted below. If the charge lines sat
-    *outside* the base the tax would be 900 + 900 and the Order Value 17,900 —
-    a 900-rupee difference in the input credit we are telling the vendor to bill
-    us for, which is the reason this item was stopped rather than guessed.
+    Every one of those six figures is asserted below.
+
+    **The counterfactual, because the difference is the point.** If the two
+    taxable charges sat *outside* the base, the taxable value would be 10,000,
+    the tax 900 + 900 = 1,800, and the Order Value **18,800** — the charges
+    added after tax instead of before it. That is **900 rupees** of input credit
+    we would be telling the vendor to bill us for or not, on one small order,
+    and their invoice would fail to reconcile against ours either way round. It
+    is not a difference testing finds on its own, which is why A3 was stopped
+    for a day and ruled on rather than guessed.
     """
     po = _po(client, rate="5000", qty="2", cgst="9", charges=[
         ("Loading & Unloading", "1500", True),
@@ -113,9 +119,12 @@ def test_the_worked_example_from_the_report(client):
     assert po["tax_info"]["total"] == 2700.00
     assert po["grand_total"] == 19700.00
 
-    # And the counter-example, stated so the difference is on the record.
-    assert po["grand_total"] != 17900.00, \
-        "the charges were taxed as if they sat outside the base"
+    # The counterfactual as an assertion, not merely as prose: 18,800.00 is what
+    # this order would carry if the charges sat outside the base.
+    assert po["grand_total"] != 18800.00, \
+        "the charges were added after tax, i.e. treated as outside the base"
+    assert round(po["grand_total"] - 18800.00, 2) == 900.00, \
+        "the difference the ruling makes is 18% of the 5,000 of taxable charges"
 
 
 def test_the_charge_is_inside_the_base_and_the_tax_follows_it_up(client):
