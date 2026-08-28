@@ -452,8 +452,22 @@ TI_BLOCKS = {"head":       "49524db46e29dcc5",
 # `_reprice_html()` returns "" and no `Rate changes` panel renders. Nothing on
 # the printed document moved — `.po-panel` is `display:none` at print, and the
 # only two things that did move are a stylesheet rule and a screen button.
-PO_WHOLE, PO_LEN = "7e9d7b25658feed6", 103822
-PO_BLOCKS = {"head":       "c4b27c10e58c1b4f",   # was 5354379fd4182ed2,
+# Moved a second time in the same 28 August 2026 pass, by A3's charge lines.
+# **+937 bytes, in the SAME one block, and it is one thing:**
+#
+#   head  +937 = the `.chg-head` / `.chg-row` / `.chg-tax` rules and their
+#                comment, added to `PURCHASE_STYLES` for the charge repeater on
+#                `/purchase/create` and `/purchase/edit/<id>`.
+#
+# ⚠ **`items` did NOT move, and that is the property A3 was built to hold.**
+#   The golden order carries no `charges`, so `charges_of()` returns `[]`, no
+#   Sub Total row and no charge rows are drawn, and the Taxable Value row prints
+#   `taxable_value` — which falls back to `subtotal` and is the identical
+#   260,600.00 it always printed. Order Value is unchanged at 307,508.00. **Not
+#   one figure on the printed sheet moved**; a stylesheet did.
+PO_WHOLE, PO_LEN = "c577fb58b9913384", 104759
+PO_BLOCKS = {"head":       "aa05dcac55729c51",   # was c4b27c10e58c1b4f,
+                                                 # was 5354379fd4182ed2,
                                                  # was d0df61b20bb3a42e
              "letterhead": "2800166c693cc2f1",
              "foot-strip": "1efaaf73d3a0a076",

@@ -455,6 +455,155 @@ def _parse_discount(raw, item_name: str) -> tuple:
     return pct, ""
 
 
+# =============================================================================
+# A3 — ADDITIONAL CHARGE LINES ON THE FINAL PURCHASE ORDER
+# =============================================================================
+#
+# CLIENT_CHANGES-2.md **A3**, built under the 28 August 2026 override block in
+# `CLIENT_CHANGES.md` §0. The 27 August block explicitly REFUSED this item and
+# stopped it on one sentence of tax law; that sentence has now been answered and
+# the answer is recorded here because it is the whole design.
+#
+# ⚠ **THE CHARGE IS INSIDE THE TAXABLE VALUE.** A line on a purchase order **we
+#   issue to a named vendor** is part of what we are agreeing to pay *that
+#   vendor*, which is consideration for that vendor's supply — s.15(2)(c) CGST
+#   Act, incidental expenses charged by the supplier in respect of the supply.
+#   It sits inside the taxable value and tax computes on the total including it.
+#
+#   The competing reading — a third-party cost we carry ourselves, our own tempo
+#   and our own labour — describes a cost that **would not appear on this
+#   vendor's purchase order at all**. It is a separate transaction with a
+#   separate party on a separate document, and `charge.py`'s expenses ledger is
+#   where it belongs. The ambiguity is real in the world and is not real on this
+#   document.
+#
+# ⚠ **The exception is expressible anyway, and that is deliberate.** Each line
+#   carries `taxable`, defaulting to **True**. The day a genuine third-party
+#   freight cost has to sit on this order it can be marked outside the base
+#   without another pass and without the tax-base question being reopened under
+#   time pressure. A non-taxable line is added AFTER tax, never before it.
+#
+# **One repeater, not four fields** — CC-2's A3 note says so in as many words,
+# and it is right: four hardcoded fields guarantees a fifth request. What is
+# stored is a **list**, every label is free text, the first two slots are seeded
+# with the client's own two heads, and the slot count below is one constant.
+#
+# ⚠ **What is NOT built, recorded rather than left silent:** CC-2 also asks for
+#   the heads to be seeded in `/settings` and editable there. They are not.
+#   Reading them would add a `purchase.py → settings.py` edge to the import
+#   graph (ABOUT.md §2) for a picker whose labels are already free text. It is a
+#   recorded deviation in the 28 August override block, for the client-facing
+#   owner to confirm — not a thing that was forgotten.
+
+# How many charge slots the form offers. The client asked for four — loading &
+# unloading, transportation, and "2 extra charges". Raising this is a one-line
+# change and nothing below counts on it being 4.
+PO_CHARGE_SLOTS = 4
+
+# The two the client named, in the two slots he named them for. The rest are
+# blank; every one of them is an editable text box, so this is a prefill and not
+# a vocabulary.
+DEFAULT_PO_CHARGE_LABELS = ("Loading & Unloading", "Transportation", "", "")
+
+# A charge bigger than this is a typo, not a charge — the same class of guard as
+# `MAX_DISCOUNT_PCT`. Ten crore on a loading line is somebody's stray zero.
+MAX_CHARGE_AMOUNT = 100000000.0
+
+
+def _parse_charges(form) -> tuple:
+    """
+    `(charges, error)` — the additional-charge repeater off a submitted form.
+
+    Read **by index** rather than by three parallel `getlist()` calls, because
+    an unchecked checkbox posts **nothing at all**: `charge_taxable` as a list
+    would arrive shorter than the labels and silently pair the wrong flag with
+    the wrong line. `charge_taxable_<n>` cannot misalign.
+
+    Row rules, and each of them is a refusal to guess:
+
+    - **Both blank** — skipped. Empty slots are the normal case and are not an
+      error; a form offering four slots for two charges must not demand four.
+    - **An amount that is not a number, or is negative** — refused. A negative
+      charge is a discount wearing a disguise, and A2's discount column is where
+      a reduction belongs, in the open.
+    - **An amount with no label** — refused. A figure on a purchase order that
+      does not say what it is for is exactly what a vendor queries.
+    - **A label with a zero amount** — skipped. Nothing is being charged.
+
+    Nothing is returned until every row has been read, so a bad fourth row does
+    not leave the first three half-applied.
+    """
+    labels = form.getlist("charge_label")
+    amounts = form.getlist("charge_amount")
+    rows = max(len(labels), len(amounts))
+
+    out = []
+    for n in range(rows):
+        label = str(labels[n] if n < len(labels) else "").strip()[:120]
+        raw = str(amounts[n] if n < len(amounts) else "").strip()
+
+        if not label and not raw:
+            continue
+        if raw:
+            try:
+                amount = float(raw)
+            except ValueError:
+                return [], (f"Charge amount for "
+                            f"'{label or 'line ' + str(n + 1)}' must be a number.")
+        else:
+            amount = 0.0
+        if amount < 0:
+            return [], (f"Charge amount for '{label or 'line ' + str(n + 1)}' "
+                        f"cannot be negative. A reduction belongs in the "
+                        f"discount column.")
+        if amount > MAX_CHARGE_AMOUNT:
+            return [], (f"Charge amount for '{label or 'line ' + str(n + 1)}' "
+                        f"is larger than this document allows.")
+        if amount and not label:
+            return [], (f"Charge line {n + 1} has an amount but no label. Say "
+                        f"what the vendor is being asked to charge for.")
+        if not amount:
+            continue
+
+        out.append({
+            "label": label,
+            "amount": round(amount, 2),
+            # Absent checkbox means unticked means NOT taxable. The form ships
+            # every box ticked, so the default a blank form produces is the
+            # taxable one — the flag defaults to true where it is created, not
+            # where it is read.
+            "taxable": bool(form.get(f"charge_taxable_{n}")),
+        })
+    return out, ""
+
+
+def charges_of(po: dict) -> list:
+    """
+    The charge lines on an order, or `[]`.
+
+    A purchase order raised before 28 August 2026 has no `charges` key at all
+    and reads as empty — no backfill, the same contract `written_off_against()`
+    and `proforma.prior_invoiced` hold to.
+    """
+    return list((po or {}).get("charges") or [])
+
+
+def charge_totals(charges: list) -> tuple:
+    """
+    `(taxable, exempt)` — the charge money that goes inside the tax base and the
+    charge money that goes after it.
+
+    Two figures rather than one, because they enter the arithmetic at different
+    points and folding them together is the mistake this whole item was stopped
+    on for a day.
+    """
+    taxable = round(sum(float(c.get("amount") or 0.0)
+                        for c in (charges or []) if c.get("taxable")), 2)
+    exempt = round(sum(float(c.get("amount") or 0.0)
+                       for c in (charges or []) if not c.get("taxable")), 2)
+    return taxable, exempt
+
+
 def _line_total(rate: float, qty: float, disc_pct: float) -> float:
     """
     One line's amount, net of its discount, rounded once at the end.
@@ -466,6 +615,92 @@ def _line_total(rate: float, qty: float, disc_pct: float) -> float:
     is what every line written before A2 carries.
     """
     return round(rate * qty * (1.0 - (disc_pct or 0.0) / 100.0), 2)
+
+
+def _charge_rows_html(charges: list, posted_labels=None, posted_amounts=None,
+                      posted_taxable=None) -> str:
+    """
+    The A3 repeater, `PO_CHARGE_SLOTS` rows of label + amount + taxable.
+
+    Filled from three sources in falling priority, which is the same contract
+    `edit_purchase_rates()`'s rate boxes hold to:
+
+    1. **What the user just posted**, so a form rejected on its fourth row comes
+       back with the first three still typed in rather than emptied.
+    2. **What is stored on the order**, when there is an order.
+    3. **`DEFAULT_PO_CHARGE_LABELS`**, which is a prefill and not a vocabulary —
+       every one of these is an editable text box.
+
+    `posted_taxable` is the **form itself**, not a list, because an unchecked
+    box posts nothing: it is asked `charge_taxable_<n>` per row. `None` means
+    this is not a re-render of a POST, and the box follows the stored flag.
+
+    **The box ships ticked on a blank row.** That is where "taxable defaults to
+    true" actually lives — a charge on a purchase order we issue is inside the
+    taxable value (see the section note), and the operator has to take an action
+    to say otherwise.
+    """
+    out = ""
+    for n in range(PO_CHARGE_SLOTS):
+        stored = charges[n] if n < len(charges) else {}
+
+        if posted_labels is not None and n < len(posted_labels):
+            label = str(posted_labels[n])
+        else:
+            label = str(stored.get("label") or "")
+            if not label and not stored and n < len(DEFAULT_PO_CHARGE_LABELS):
+                label = DEFAULT_PO_CHARGE_LABELS[n]
+
+        if posted_amounts is not None and n < len(posted_amounts):
+            amount = str(posted_amounts[n])
+        elif stored.get("amount"):
+            amount = f"{float(stored['amount']):.2f}"
+        else:
+            amount = ""
+
+        if posted_taxable is not None:
+            taxable = bool(posted_taxable.get(f"charge_taxable_{n}"))
+        elif stored:
+            taxable = bool(stored.get("taxable"))
+        else:
+            taxable = True
+
+        out += f"""
+        <div class="chg-row">
+          <input type="text" name="charge_label" value="{P.esc(label)}"
+                 placeholder="what the charge is for" maxlength="120"/>
+          <input type="number" name="charge_amount" value="{P.esc(amount)}"
+                 min="0" step="0.01" placeholder="0.00" oninput="recalc()"/>
+          <label class="chg-tax">
+            <input type="checkbox" name="charge_taxable_{n}" value="1"
+                   {"checked" if taxable else ""} onchange="recalc()"/>
+            <span>Taxable</span>
+          </label>
+        </div>"""
+    return out
+
+
+def _charge_section_html(charges: list, posted_labels=None, posted_amounts=None,
+                         posted_taxable=None) -> str:
+    """
+    The whole `form-section` the repeater lives in, so the create form and the
+    reprice form cannot describe the same field two different ways.
+    """
+    rows = _charge_rows_html(charges, posted_labels, posted_amounts, posted_taxable)
+    return f"""
+        <div class="form-section">
+          <div class="section-title">Additional charges</div>
+          <div class="chg-head">
+            <span>Charge</span><span>Amount (&#8377;)</span><span></span>
+          </div>
+          {rows}
+          <small class="field-hint">Loading, transportation and anything else
+            this vendor is billing us for beyond the line items. <b>Taxable</b>
+            puts the charge inside the value the vendor computes GST on, which
+            is what an incidental expense on their own supply is
+            &mdash; s.15(2)(c). Untick it only for a cost somebody other than
+            this vendor is charging us. Leave a row blank and it is not used.</small>
+        </div>"""
 
 
 def _alert(msg: str, msg_type: str) -> str:
@@ -661,22 +896,43 @@ def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
     return items, ""
 
 
-def _totals_of(items: list, tax_type: str, cgst: float, igst: float) -> tuple:
+def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
+               charges: list = None) -> tuple:
     """
-    `(subtotal, tax_info, grand_total, total_qty)` for a set of PO lines.
+    `(subtotal, taxable_value, tax_info, grand_total, total_qty)` for a set of
+    PO lines and their A3 charge lines.
 
     The same `quotation._tax_lines()` every purchase order has always used, with
     SGST forced equal to CGST exactly as the create form forces it. The tax is
     **input** tax we pay — the opposite side of the ledger from a tax invoice —
     and none of that arithmetic is shared with the sell chain, only the
     furniture it prints inside.
+
+    ⚠ **WHERE THE CHARGE LINES ENTER, which is the whole of A3's arithmetic:**
+
+        subtotal      = sum(line totals)              ← unchanged, lines only
+        taxable_value = subtotal + taxable charges    ← A3 enters HERE
+        tax           = _tax_lines(taxable_value)     ← so tax follows them up
+        grand_total   = taxable_value + tax + exempt charges
+
+    `subtotal` deliberately keeps meaning exactly what it always meant — the sum
+    of the line amounts — and `taxable_value` is the new figure. An order with
+    no charges has `taxable_value == subtotal`, so **every stored total on every
+    order raised before this pass is reproduced to the rupee**, and the printed
+    "Taxable Value" row prints the same number it always did.
+
+    A **non-taxable** charge is added after the tax and is not in the base,
+    which is the one line of code the `taxable` flag buys.
     """
     subtotal = round(sum(float(r.get("total") or 0.0) for r in items), 2)
-    tax_info = _tax_lines(subtotal, tax_type,
+    ch_taxable, ch_exempt = charge_totals(charges)
+    taxable_value = round(subtotal + ch_taxable, 2)
+    tax_info = _tax_lines(taxable_value, tax_type,
                           cgst_rate=cgst, sgst_rate=cgst, igst_rate=igst)
-    grand = round(subtotal + float(tax_info.get("total") or 0.0), 2)
+    grand = round(taxable_value + float(tax_info.get("total") or 0.0)
+                  + ch_exempt, 2)
     total_qty = round(sum(float(r.get("qty") or 0.0) for r in items), 3)
-    return subtotal, tax_info, grand, total_qty
+    return subtotal, taxable_value, tax_info, grand, total_qty
 
 
 def _product_options(selected: str = "") -> str:
@@ -795,6 +1051,29 @@ PURCHASE_STYLES = """
     color:var(--muted); margin-bottom:.9rem;
   }
   .po-panel-row { display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end; }
+  /* A3's charge repeater (28 Aug 2026). Three cells against `.line-row`'s six,
+     so it gets its own grid rather than borrowing one that does not fit. Screen
+     only — the printed charge lines are ordinary `row-sum` rows and carry no
+     rule of their own, which is why nothing here is inside the print block. */
+  .chg-head, .chg-row {
+    display:grid; grid-template-columns:1fr 150px 120px; gap:.6rem;
+    align-items:center;
+  }
+  .chg-head {
+    font-size:.72rem; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); padding:0 0 .35rem;
+  }
+  .chg-row { padding:.22rem 0; }
+  .chg-row input[type="text"], .chg-row input[type="number"] { margin:0; }
+  .chg-tax {
+    display:flex; gap:.4rem; align-items:center;
+    font-size:.82rem; color:var(--muted); margin:0;
+  }
+  .chg-tax input { margin:0; }
+  @media (max-width:640px) {
+    .chg-head { display:none; }
+    .chg-row { grid-template-columns:1fr; }
+  }
   .po-hist { margin-top:1.1rem; border-top:1px solid var(--border); padding-top:.8rem; }
   .po-hist-row {
     display:flex; gap:.7rem; align-items:baseline; flex-wrap:wrap;
@@ -1131,6 +1410,7 @@ def create_purchase():
         igst = P.parse_money(f.get("igst_rate"))
 
         items, line_err = _parse_lines(f)
+        charges, charge_err = _parse_charges(f)
 
         if not po_date:
             error = "Purchase order date is required."
@@ -1142,13 +1422,17 @@ def create_purchase():
             error = "That quotation no longer exists. Leave the job blank to raise a stock order."
         elif line_err:
             error = line_err
+        elif charge_err:
+            error = charge_err
 
         if not error:
-            subtotal = round(sum(r["total"] for r in items), 2)
+            # Through `_totals_of()` rather than repeating its three lines here.
+            # They were a verbatim copy of it before 28 August 2026, and A3 has
+            # to enter the arithmetic in **one** place or the create form and
+            # the reprice form compute a different tax base from the same order.
             # SGST always mirrors CGST, exactly as the quotation form forces it.
-            tax_info = _tax_lines(subtotal, tax_type,
-                                  cgst_rate=cgst, sgst_rate=cgst, igst_rate=igst)
-            grand = round(subtotal + float(tax_info.get("total") or 0.0), 2)
+            (subtotal, taxable_value, tax_info,
+             grand, total_qty) = _totals_of(items, tax_type, cgst, igst, charges)
 
             q   = STORE["quotations"].get(qid) or {}
             pid = str(uuid.uuid4())
@@ -1179,10 +1463,14 @@ def create_purchase():
                 # ── What we are buying ────────────────────────────────────
                 "line_items": items,
                 "subtotal":   subtotal,
+                # A3. `subtotal` is the lines; `taxable_value` is the lines plus
+                # the taxable charges and is what the tax was computed on.
+                "charges":       charges,
+                "taxable_value": taxable_value,
                 "tax_type":   tax_type,
                 "tax_info":   tax_info,
                 "grand_total": grand,
-                "total_qty":  round(sum(r["qty"] for r in items), 3),
+                "total_qty":  total_qty,
 
                 # ── Where and when we want it ─────────────────────────────
                 "delivery_date":    (f.get("delivery_date") or "").strip(),
@@ -1213,6 +1501,15 @@ def create_purchase():
             return redirect(url_for("purchase.view_purchase", id=pid,
                                     msg=f"Purchase order {po['ref']} created.",
                                     type="success"))
+
+    # A3's repeater. On a rejected POST it comes back carrying what was typed;
+    # on a fresh GET it comes back carrying `DEFAULT_PO_CHARGE_LABELS` and no
+    # amounts, which is a prefill nobody has to use.
+    if request.method == "POST":
+        charge_section = _charge_section_html(
+            [], f.getlist("charge_label"), f.getlist("charge_amount"), f)
+    else:
+        charge_section = _charge_section_html([])
 
     # ── Field values: the user's own input on a failed POST, else default ──
     def _v(name: str, fallback: str = "") -> str:
@@ -1365,11 +1662,13 @@ def create_purchase():
           <button type="button" class="btn btn-ghost" onclick="addLine()"
                   style="margin-top:.3rem;">+ Add item</button>
           <div class="po-total-strip">
-            <span>Subtotal <b id="po-sub">&#8377; 0</b></span>
+            <span>Taxable Value <b id="po-sub">&#8377; 0</b></span>
             <span>Tax <b id="po-tax">&#8377; 0</b></span>
             <span>Order Value <b id="po-grand">&#8377; 0</b></span>
           </div>
         </div>
+
+        {charge_section}
 
         <div class="form-section">
           <div class="section-title">Tax the vendor will charge us</div>
@@ -1487,19 +1786,33 @@ def create_purchase():
               {{minimumFractionDigits: 2, maximumFractionDigits: 2}}) : '\\u2014';
           }});
 
+          /* A3: the same split the server does in _totals_of(). A taxable
+             charge joins the base BEFORE tax; an untaxed one is added after it.
+             The strip is a preview and the server is the authority, but a
+             preview that ignored the charges would disagree with the document
+             it is previewing. */
+          var chTax = 0, chEx = 0;
+          document.querySelectorAll('.chg-row').forEach(function (row) {{
+            var a = parseFloat(row.querySelector('input[name="charge_amount"]').value) || 0;
+            if (a <= 0) return;
+            var box = row.querySelector('input[type="checkbox"]');
+            if (box && box.checked) {{ chTax += a; }} else {{ chEx += a; }}
+          }});
+          var base = Math.round((sub + chTax) * 100) / 100;
+
           var type = document.getElementById('tax_type').value;
           var tax = 0;
           if (type === 'cgst_sgst') {{
-            tax = sub * (parseFloat(document.getElementById('cgst_rate').value) || 0) / 100 * 2;
+            tax = base * (parseFloat(document.getElementById('cgst_rate').value) || 0) / 100 * 2;
           }} else if (type === 'igst') {{
-            tax = sub * (parseFloat(document.getElementById('igst_rate').value) || 0) / 100;
+            tax = base * (parseFloat(document.getElementById('igst_rate').value) || 0) / 100;
           }}
 
           var f = function (v) {{ return '\\u20B9 ' + v.toLocaleString('en-IN',
             {{maximumFractionDigits: 0}}); }};
-          document.getElementById('po-sub').textContent   = f(sub);
+          document.getElementById('po-sub').textContent   = f(base);
           document.getElementById('po-tax').textContent   = f(tax);
-          document.getElementById('po-grand').textContent = f(sub + tax);
+          document.getElementById('po-grand').textContent = f(base + tax + chEx);
         }}
 
         function bind() {{
@@ -1729,7 +2042,14 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
     tax_type = data["tax_type"]
     cgst = P.parse_money(data["cgst_rate"])
     igst = P.parse_money(data["igst_rate"])
-    subtotal, tax_info, grand, total_qty = _totals_of(items, tax_type, cgst, igst)
+    # No charge repeater on the two upstream forms: they are derived documents
+    # whose job is to carry a schedule's lines across without re-entry, and a
+    # charge is added afterwards on `/purchase/edit/<id>` like any other money
+    # that was not on the schedule. `charges` is still written, as `[]`, so the
+    # key exists on every order this module creates.
+    charges = []
+    (subtotal, taxable_value, tax_info,
+     grand, total_qty) = _totals_of(items, tax_type, cgst, igst, charges)
 
     pid = str(uuid.uuid4())
     po = {
@@ -1753,6 +2073,8 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
 
         "line_items":  items,
         "subtotal":    subtotal,
+        "charges":       charges,
+        "taxable_value": taxable_value,
         "tax_type":    tax_type,
         "tax_info":    tax_info,
         "grand_total": grand,
@@ -2373,6 +2695,13 @@ def _reprice(po: dict, form) -> str:
         return ("That order has changed since this form was opened. "
                 "Reopen it and try again.")
 
+    # A3's charge lines are re-read whole rather than diffed: the repeater posts
+    # every slot every time, so what arrives IS the new list. Validated before
+    # any row is written, for the same reason the rates are.
+    charges, charge_err = _parse_charges(form)
+    if charge_err:
+        return charge_err
+
     staged = []
     for n, (_idx, row) in enumerate(rows):
         name = str(row.get("name") or "this line")
@@ -2393,16 +2722,21 @@ def _reprice(po: dict, form) -> str:
     # the rates already stored on the order. The tax TYPE is not editable here:
     # whether a vendor charges CGST+SGST or IGST is a fact about where they are,
     # not a price we negotiated, and it was settled when the order was raised.
+    po["charges"] = charges
+
     tax_info = po.get("tax_info") or {}
-    subtotal, new_tax, grand, total_qty = _totals_of(
+    (subtotal, taxable_value, new_tax,
+     grand, total_qty) = _totals_of(
         po.get("line_items") or [],
         po.get("tax_type", "exempt"),
         float(tax_info.get("cgst_rate") or 0.0),
-        float(tax_info.get("igst_rate") or 0.0))
-    po["subtotal"]    = subtotal
-    po["tax_info"]    = new_tax
-    po["grand_total"] = grand
-    po["total_qty"]   = total_qty
+        float(tax_info.get("igst_rate") or 0.0),
+        charges)
+    po["subtotal"]      = subtotal
+    po["taxable_value"] = taxable_value
+    po["tax_info"]      = new_tax
+    po["grand_total"]   = grand
+    po["total_qty"]     = total_qty
     return ""
 
 
@@ -2468,6 +2802,15 @@ def edit_purchase_rates(id: str):
     posted_rates = request.form.getlist("line_rate")    if request.method == "POST" else []
     posted_discs = request.form.getlist("line_discount") if request.method == "POST" else []
 
+    # The same widget the create form draws, so the two cannot describe one
+    # field two ways. A rejected POST comes back with what was typed.
+    if request.method == "POST":
+        charge_section = _charge_section_html(
+            charges_of(po), request.form.getlist("charge_label"),
+            request.form.getlist("charge_amount"), request.form)
+    else:
+        charge_section = _charge_section_html(charges_of(po))
+
     rows_html = ""
     for n, (_idx, row) in enumerate(_priced_rows(po)):
         rate = posted_rates[n] if n < len(posted_rates) else f"{float(row.get('price') or 0.0):.2f}"
@@ -2531,6 +2874,15 @@ def edit_purchase_rates(id: str):
           and it prints under the order.</div>
       </div>
 
+      <script>
+        /* The charge widget is shared with `/purchase/create`, whose live total
+           strip calls recalc() on every keystroke. This page has no such strip
+           — the Order Value it shows is the stored one, "as it stands" — so the
+           hook is defined and does nothing rather than throwing a ReferenceError
+           into the console on every character typed. */
+        function recalc() {{}}
+      </script>
+
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
         <div class="form-section">
           <div class="section-title">What we pay</div>
@@ -2545,6 +2897,8 @@ def edit_purchase_rates(id: str):
               <b>&#8377; {float(po.get('grand_total') or 0.0):,.0f}</b></span>
           </div>
         </div>
+
+        {charge_section}
 
         <div class="form-section">
           <div class="section-title">Why</div>
@@ -2629,6 +2983,15 @@ def view_purchase(id: str):
     grand    = float(po.get("grand_total") or 0.0)
     has_tax  = tax_type != "exempt" and float(tax_info.get("total") or 0) > 0
 
+    # ── A3's charge lines ─────────────────────────────────────────────────
+    #
+    # `taxable_value` falls back to `subtotal` for an order raised before
+    # 28 August 2026, which is exactly right: with no charges the two are the
+    # same figure, and the Taxable Value row below prints what it always did.
+    charges = charges_of(po)
+    ch_taxable, ch_exempt = charge_totals(charges)
+    taxable_value = float(po.get("taxable_value") or subtotal)
+
     # The rows come from `docsheet`; what goes in them stays here. The tax on
     # this document is **input** tax we pay, the opposite side of the ledger
     # from a tax invoice, and nothing about that arithmetic is shared with the
@@ -2637,8 +3000,35 @@ def view_purchase(id: str):
     # because the buy sheet has one more column. `DS.SUM_BLANKS` /
     # `DS.TOTAL_BLANKS` stay the default everywhere else, so the tax invoice and
     # the proforma are untouched by this — see docsheet.py's note.
+    # ⚠ **The order of these rows IS the arithmetic**, so read it as one thing:
+    #
+    #     Sub Total          the lines            ← only printed when charges
+    #                                               exist; otherwise Taxable
+    #                                               Value is the lines and one
+    #                                               row said so, as before
+    #     <taxable charges>  each on its own row  ← INSIDE the base
+    #     Taxable Value      lines + those        ← what tax is computed on
+    #     CGST / SGST / IGST                      ← follows them up
+    #     <exempt charges>   each on its own row  ← AFTER tax, outside the base
+    #     Order Value        the lot
+    #
+    # An order with no charges renders byte-for-byte what it rendered before
+    # A3 — no Sub Total row, no charge rows — which is what keeps the printed
+    # document still for every order already in the database.
+    if charges and has_tax:
+        table_rows += DS.sum_row("Sub Total", _inr(subtotal),
+                                 blanks=_SUM_BLANKS)
+    for c in charges:
+        if not c.get("taxable"):
+            continue
+        # `P.esc` at the interpolation site — `DS.sum_row()` interpolates its
+        # label raw and the label here is free text somebody typed (ABOUT.md §9).
+        table_rows += DS.sum_row(P.esc(c.get("label")),
+                                 _inr(c.get("amount") or 0),
+                                 indent=12, blanks=_SUM_BLANKS)
+
     if has_tax:
-        table_rows += DS.sum_row("Taxable Value", _inr(subtotal),
+        table_rows += DS.sum_row("Taxable Value", _inr(taxable_value),
                                  blanks=_SUM_BLANKS)
         rate_keys = {"CGST": "cgst_rate", "SGST": "sgst_rate",
                      "IGST": "igst_rate", "VAT": "vat_rate"}
@@ -2650,6 +3040,21 @@ def view_purchase(id: str):
             lbl = f" @ {r:g}%" if r else ""
             table_rows += DS.sum_row(f"{tname}{lbl}", _inr(tamt), indent=12,
                                      blanks=_SUM_BLANKS)
+    else:
+        # An exempt order has no Taxable Value row to hang the charges under, so
+        # a taxable charge on one still needs its own row above — printed by the
+        # loop above — and the charges simply add into the Order Value. Nothing
+        # further to draw here.
+        pass
+
+    # Outside the base, so after the tax and never before it. Labelled so the
+    # vendor can see it was excluded rather than left out.
+    for c in charges:
+        if c.get("taxable"):
+            continue
+        table_rows += DS.sum_row(f"{P.esc(c.get('label'))} (no tax)",
+                                 _inr(c.get("amount") or 0),
+                                 indent=12, blanks=_SUM_BLANKS)
 
     table_rows += DS.total_row("Order Value", _fmt_qty(total_qty), _inr(grand),
                                blanks=_TOTAL_BLANKS)
