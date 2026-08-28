@@ -607,6 +607,98 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > [tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) for what is
 > actually guaranteed.
 
+> ### ⚠ OVERRIDE — 29 August 2026, by Manas Gawde — extra PO lines (new scope) and C4
+>
+> **A new block, not an amendment.** Every block above stands exactly as
+> written; none has been edited, reformatted or re-scoped. This is the ninth
+> occasion and the fourth that reaches into Phase 3.
+>
+> #### ⚠ MG/SF/2026-02 EXPIRED on 28 August 2026, and the work below proceeds anyway
+>
+> **The quotation has lapsed.** It was sent on 21 August 2026, read by the
+> client the same day, and **has never been answered** — no signature, no
+> advance, no reply of any kind. The 28 August block above said in terms that it
+> was *"the last day on which that decision can be taken against this quotation
+> at all."* That day has passed. **Every override before this one was taken
+> against a quotation that was unsigned; this is the first taken against one
+> that is lapsed**, and the difference is recorded here rather than left to be
+> discovered later by somebody reading this file and assuming the gate was met.
+>
+> Manas took the decision to proceed anyway, on 29 August 2026, and instructed
+> that it be recorded rather than the rule deleted — exactly as on 14, 15, 16,
+> 23, 26, 27 and 28 August. **A lapsed quotation is a stronger reason to record
+> and a weaker reason to build**, and that tension is the point of this
+> paragraph. Nothing below is evidence that the gate has been met or lifted.
+>
+> #### What proceeds — two things, and only these two
+>
+> - **Extra free-text purchase-order lines. ⚠ THIS IS NOT ONE OF CC-2's TWENTY
+>   ITEMS.** The client asked, *after* the 19 August 2026 meeting that produced
+>   that list, to be able to put parts on a purchase order that appear nowhere
+>   on the BOQ, and sent a list of them carrying **no prices and no units**. It
+>   has **no 3A/3B/3C tag**, it is **priced nowhere** — not in MG/SF/2026-02,
+>   not in MG/SF/2026-01 — and it belongs in the same category as the five
+>   lines in CLIENT_CHANGES-2.md's *"Stated by the client, NOT in
+>   MG/SF/2026-02"* section. **No agent may record it as a Phase 3 item or
+>   count it toward the twenty.** PROGRESS.md carries it in a section of its
+>   own, outside the bars.
+>
+>   **The build shape was decided by the owner and is not an engineering choice
+>   to revisit:** extra lines are **free text typed onto each order**. There is
+>   no parts master, no catalogue collection, no picker and no per-vendor rate
+>   table. A seeded price list exists **only as a typeahead prefill**, so that a
+>   real order can be raised today; **every rate in it is an assumed placeholder
+>   and none of it is a quoted or verified market price.** A line prefilled from
+>   it is marked as assumed on screen, and that mark is **never printed** — the
+>   vendor receives the order, not our note that we invented the price.
+>
+> - **C4 — employee master, AUTHORISED.** One of the seven NOT STARTED items,
+>   gated until now. CC-2's C4 is *"Employee details and salary"* and that is
+>   the whole of what proceeds: a register, a create form, a view, an edit and a
+>   delete. **No attendance, no overtime, no salary calculation, and no link to
+>   charges, projects or the P&L** — those are C5 and C6 and they stay gated.
+>   The OT multiplier CC-2 requires to be a setting rather than a constant is
+>   **not** pre-built either; laying groundwork for a gated item is starting it.
+>
+> #### What is NOT authorised and remains gated
+>
+> **B6, B7, B8, C1, C2 and C5**, and the two BLOCKED items **C3** and **C6**.
+> Do not start any of them, do not lay groundwork for them, and do not add
+> fields "ready for" them. That last clause is written down because it is the
+> way this gate is most likely to be walked through by accident: a column added
+> today for an item authorised next month is that item, started.
+>
+> #### Chargeability — and one half of it is genuinely unsettled
+>
+> **C4 is priced in MG/SF/2026-02 and stays priced there.** This is not a §0
+> no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and an employee master is new
+> capability. Building it early changed **when** it was built, not **what it
+> costs** or **who agreed to it**.
+>
+> ⚠ **The extra-lines work is priced NOWHERE, and no agent may invent a price
+> for it or record it as delivered under either quotation.** It is not covered
+> by MG/SF/2026-01 (it did not exist), and it is not covered by MG/SF/2026-02
+> (it is untagged, and that quotation has in any case lapsed). Whether it is
+> charged, absorbed, or folded into a replacement quotation is a **commercial
+> decision the client-facing owner has not yet taken**. It is recorded here as
+> unpriced so that the decision is visible when it is taken, rather than
+> foreclosed by silence.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It is still the default and it still stands. That extra PO lines and C4 were
+> authorised does not authorise the rest of 3B or any of the remaining five 3C
+> items, and an override remains a decision that is taken and recorded, never
+> one an agent may take, infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged, and
+> it is restated deliberately and in its sharpest form yet:** if MG/SF/2026-02
+> is never signed, items 8, 3, 2, 4 and 5, the whole of the Phase 3B
+> access-control layer, the three Phase 3A items of 27 August, the three of
+> 28 August **and C4** were built against a quotation that has now **lapsed** —
+> and the extra-lines work was built against **no quotation at all**.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
