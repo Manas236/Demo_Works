@@ -134,8 +134,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,226 passed, 3 skipped** | **27 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,225 passed, 1 skipped** | **27 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,368 passed, 3 skipped** | **29 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,367 passed, 1 skipped** | **29 Aug 2026** |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -192,7 +192,7 @@ the same CPython 3.10.11 with both workbooks absent. Without openpyxl,
 `tests/test_fixtures.py`'s 4 tests are never collected and pytest prints
 `1 skipped` (row 3). With it, all 4 are collected: 1 passes and 3 skip
 individually via `conftest.require_fixture()` because the workbooks are absent
-(row 2). 1,225 + 1 = 1,226 passed, and 3 skipped rather than 1 — which is the
+(row 2). 1,367 + 1 = 1,368 passed, and 3 skipped rather than 1 — which is the
 two-mechanism distinction below, arrived at from a real run rather than from
 arithmetic, and it has now held across four separate re-measurements. The `.venv` itself moved nothing observable, and that is a result
 worth having: the pins reproduce what the global interpreter was already doing.

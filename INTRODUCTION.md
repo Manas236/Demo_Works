@@ -218,8 +218,15 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,275 passed / 1 skipped** on 28 August 2026, verified by
+The baseline is **1,367 passed / 1 skipped** on 29 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The 29 August pass opened Phase 3C and added **92**: `tests/test_employee.py`
+(34) and `tests/test_po_extra_lines.py` (33) are new, and
+`tests/test_import_directions.py` went 231 → 256 for the two new modules' import
+arrows. It built **C4**, the employee master, and **extra free-text
+purchase-order lines** — the latter ⚠ **not one of CC-2's twenty items** and
+priced in neither quotation; see PROGRESS.md §4a.)*
 
 *(The 28 August pass ([STATE.md §1.18](STATE.md)) closed Phase 3A and added
 **50**: `tests/test_po_charges.py` (25) and `tests/test_ra_edit_delete.py` (11)
