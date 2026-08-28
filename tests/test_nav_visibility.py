@@ -127,26 +127,21 @@ CARD_ENDPOINT = {
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-@pytest.fixture(autouse=True)
-def builtin_roles_as_shipped(client):
-    """
-    The seven builtin roles put back to what `BUILTIN_ROLES` defines, per test.
-
-    Roles live in one shared dict that `conftest._fresh_store()` deliberately
-    does not clear, and `ensure_builtin_roles()` deliberately never rewrites an
-    existing row — an Owner's edit has to survive a restart, which is the whole
-    point of B2. Both of those are correct, and together they mean an earlier
-    test's role edit survives into this file:
-    `test_auth.py::test_editing_a_role_takes_effect_without_signing_in_again`
-    appends `boq.view` to HR precisely to prove that property.
-
-    Every table above is written against the roles **as shipped**, so they are
-    restored here. The other file is testing the right thing and is not touched.
-    """
-    auth.ensure_builtin_roles()
-    for slug, (_name, perms) in auth.BUILTIN_ROLES.items():
-        auth.roles()[f"role-{slug}"]["permissions"] = sorted(set(perms))
-    yield
+# ── The autouse fixture that used to live here was DELETED on 28 August 2026 ──
+#
+# `builtin_roles_as_shipped` reset all seven roles to `BUILTIN_ROLES` before
+# every test in this file, for one reason:
+# `test_auth.py::test_editing_a_role_takes_effect_without_signing_in_again`
+# appended `boq.view` to HR and never took it off, and roles live in one shared
+# dict that `conftest._fresh_store()` deliberately does not clear.
+#
+# **That was a workaround in the wrong file.** A test that pollutes global state
+# is a defect regardless of what it is testing, and the leaking test now
+# restores what it changed in a `finally` and asserts that it did. With the
+# mutation contained at its source there is nothing here to undo, and a fixture
+# that resets the roles would hide the next leak instead of surfacing it —
+# every table below is written against the roles **as shipped**, so if one is
+# ever edited and not put back, this file is exactly where it should fail.
 
 
 def _user(slug: str) -> dict:

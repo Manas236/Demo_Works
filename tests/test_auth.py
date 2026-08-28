@@ -14,6 +14,8 @@ The refusals are the recovery mechanism, so they are tested as behaviour rather
 than assumed from reading the code.
 """
 
+import contextlib
+
 import pytest
 
 import auth
@@ -149,10 +151,14 @@ def test_re_seeding_does_not_undo_an_owners_edit(fresh_users):
     the client's own configuration, and it would do it at the least visible
     moment — nobody watches a restart.
     """
-    director = auth.roles()["role-director"]
-    director["permissions"] = [p for p in director["permissions"] if p != "dc.delete"]
-    auth.ensure_builtin_roles()
-    assert "dc.delete" not in auth.roles()["role-director"]["permissions"]
+    with _role_restored("director") as director:
+        director["permissions"] = [p for p in director["permissions"]
+                                   if p != "dc.delete"]
+        auth.ensure_builtin_roles()
+        assert "dc.delete" not in auth.roles()["role-director"]["permissions"]
+
+    assert "dc.delete" in auth.roles()["role-director"]["permissions"], \
+        "this test leaked its role edit into the rest of the run"
 
 
 def test_a_director_is_an_admin_but_not_an_owner(fresh_users):
@@ -189,9 +195,14 @@ def test_a_role_cannot_be_given_a_permission_that_does_not_exist(client, fresh_u
     A stored typo grants nothing and is invisible on the page that stored it —
     it looks exactly like a permission that is simply not working.
     """
-    client.post("/roles/edit/role-hr",
-                data={"permissions": ["charge.view", "charge.invented", "not.real"]})
-    assert auth.roles()["role-hr"]["permissions"] == ["charge.view"]
+    with _role_restored("hr"):
+        client.post("/roles/edit/role-hr",
+                    data={"permissions": ["charge.view", "charge.invented",
+                                          "not.real"]})
+        assert auth.roles()["role-hr"]["permissions"] == ["charge.view"]
+
+    assert "dashboard.view" in auth.roles()["role-hr"]["permissions"], \
+        "this test left HR holding one permission for the rest of the run"
 
 
 def test_editing_a_role_takes_effect_without_signing_in_again(client, fresh_users):
@@ -208,8 +219,47 @@ def test_editing_a_role_takes_effect_without_signing_in_again(client, fresh_user
         sess[auth.SESSION_KEY] = user["id"]
     assert client.get("/boq/").status_code == 403
 
-    auth.roles()["role-hr"]["permissions"].append("boq.view")
-    assert client.get("/boq/").status_code == 200
+    # Restored whatever happens below — see `_role_restored()`. The assertion
+    # after the block is not decoration: it is what fails if the guard is ever
+    # removed, in the file that caused the leak rather than in the one that
+    # tripped over it.
+    with _role_restored("hr"):
+        auth.roles()["role-hr"]["permissions"].append("boq.view")
+        assert client.get("/boq/").status_code == 200
+
+    assert "boq.view" not in auth.roles()["role-hr"]["permissions"],         "this test leaked its role edit into the rest of the run"
+
+
+@contextlib.contextmanager
+def _role_restored(slug: str):
+    """
+    Put one builtin role's permissions back, whatever the block does to them.
+
+    **Three tests in this file edit a builtin role to prove something true, and
+    until 28 August 2026 none of them put it back.** Roles live in one shared
+    dict that `conftest._fresh_store()` deliberately does not clear, and
+    `ensure_builtin_roles()` deliberately never rewrites an existing row — an
+    Owner's edit has to survive a restart, which is the whole point of B2. Both
+    are correct, and together they mean an edit here reaches every file that
+    runs afterwards.
+
+    It did. `tests/test_nav_visibility.py` carried an autouse fixture whose only
+    job was to undo the damage, and that fixture was deleted when this was
+    added. **A test that pollutes global state is a defect regardless of what it
+    is testing**, and the fix belongs where the mutation is.
+
+    The worst of the three was
+    `test_a_role_cannot_be_given_a_permission_that_does_not_exist`, which posts
+    to `/roles/edit/role-hr` and left HR holding **one** permission — no
+    `dashboard.view`, so an HR user could not load the dashboard for the rest of
+    the run.
+    """
+    role = auth.roles()[f"role-{slug}"]
+    original = list(role["permissions"])
+    try:
+        yield role
+    finally:
+        auth.roles()[f"role-{slug}"]["permissions"] = original
 
 
 # ── B3's lockout guards ────────────────────────────────────────────────────
