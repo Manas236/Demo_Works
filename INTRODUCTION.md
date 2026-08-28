@@ -218,34 +218,49 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,062 passed / 1 skipped** on 27 August 2026, verified by
+The baseline is **1,225 passed / 1 skipped** on 27 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
-*(It read **1,058 / 1** earlier on 27 August 2026 — the break-glass recovery
-pass ([STATE.md §1.13](STATE.md)) added 4 tests over `tools/set_password.py` —
-then **986 passed / 1 skipped** on 26 August 2026, **923 / 1** on
-23 August and **838 / 1** on 16 August, all in the same configuration. The
-27 August pass escaped user text everywhere it reaches HTML and attacked the
-Phase 3B access layer, adding 72 tests: `tests/test_escaping.py` (31),
-`tests/test_access_control_adversarial.py` (29) and
-`tests/test_access_matrix_doc.py` (12). The 986 figure was re-measured at the
-start of that pass rather than quoted — it matched. The 26 August pass built
-Phase 3B access control and added 63: `tests/test_auth.py` (36),
-`tests/test_access_control.py` (13), new parametrised cases in
-`tests/test_import_directions.py`, and one in `tests/test_hardening.py`.)*
+*(The day's four passes took it **1,058 → 1,062 → 1,151 → 1,225**. The last of
+them is the **Phase 3A** pass ([STATE.md §1.17](STATE.md)), which added **74**
+in four files: `tests/test_po_discount.py` (22), `tests/test_po_rate_edit.py`
+(21), `tests/test_receipt_write_off.py` (21) and
+`tests/test_client_outstanding.py` (10). Before it, the escalation / sign-out /
+navigation pass added 89 — `tests/test_privilege_escalation.py` (17),
+`tests/test_nav_user_chip.py` (23), `tests/test_nav_visibility.py` (49) — and
+break-glass recovery added 4 over `tools/set_password.py`. Earlier: **986 / 1**
+on 26 August 2026, **923 / 1** on 23 August, **838 / 1** on 16 August, all in
+the same configuration. Every figure was re-measured at the start of the pass
+that moved it rather than quoted, and every one matched.)*
 
-⚠ **Five print goldens were re-baselined on 27 August 2026**, by +8 bytes each
-and in two blocks only — the letterhead and the footer. The whole difference is
-the `&` in the company tagline now being written `&amp;`, which a browser draws
-identically; **no rendered figure moved**. The byte-level justification is in
-`tests/test_print_golden.py` beside the digests. That is the only circumstance
-in which a golden may be re-baselined: the fixture data behind it contains a
-character that was previously emitted raw, and you can show which.
+⚠ **One print golden was re-baselined on 27 August 2026 by the Phase 3A pass,
+and this is the second circumstance in which that is allowed.** The purchase
+order moved **+942 bytes**, in two of its seven blocks, because
+CLIENT_CHANGES-2.md **A2** added a discount column to the buy sheet — head +721
+of CSS, items +221 of cells. **The change was the work, not a side effect**, and
+every byte is decomposed in the comment above the digests in
+`tests/test_print_golden.py`. **No figure on the sheet moved**: the golden PO
+carries no discount, so its new column prints an em dash and its Order Value is
+unchanged at 307,508.00. The quotation, proforma, tax invoice, RA bill, delivery
+challan and `/po/create` goldens did **not** move — that separation is what
+`docsheet.BUY_COLUMNS` and the `.c-disc` rule's placement in `PURCHASE_STYLES`
+exist to hold.
+
+*(The first circumstance, still the more common one: **five goldens were
+re-baselined earlier on 27 August 2026**, by +8 bytes each and in two blocks
+only — the letterhead and the footer. The whole difference was the `&` in the
+company tagline now being written `&amp;`, which a browser draws identically;
+no rendered figure moved there either.)*
+
+**In both cases the rule is the same and it is not "the suite is red, update
+the number":** you may re-baseline only when you can say **which field moved,
+by how many bytes, and why** — in writing, beside the digest, in the same
+commit as the change.
 
 **The supported configuration is measured too:** the repo's `.venv` (CPython
-3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **1,063 passed
+3.10.11, **openpyxl 3.1.5 present**, both workbooks absent) reports **1,226 passed
 / 3 skipped**, measured 27 August 2026 against the same commit. It read
-**987 / 3** against the pre-pass code, measured the same day.
+**1,152 / 3** against the pre-pass code, measured the same day.
 
 *(⚠ **This paragraph used to say that row was "derived". It was wrong.**
 ABOUT.md §1 has recorded row 2 as **measured on 23 August 2026** since that

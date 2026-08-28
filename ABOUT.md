@@ -134,10 +134,18 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,152 passed, 3 skipped** | **27 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,151 passed, 1 skipped** | **27 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,226 passed, 3 skipped** | **27 Aug 2026** |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,225 passed, 1 skipped** | **27 Aug 2026** |
 
-*(Rows 2 and 3 read **1,063 / 3** and **1,062 / 1** earlier on 27 August 2026.
+*(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
+pass of 27 August 2026, which added **74** across
+[tests/test_po_discount.py](tests/test_po_discount.py) (22),
+[tests/test_po_rate_edit.py](tests/test_po_rate_edit.py) (21),
+[tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) (21) and
+[tests/test_client_outstanding.py](tests/test_client_outstanding.py) (10) —
+§2f-A1, §2-A5 and §7 gaps 28 and 29. Both were re-measured at the start of
+that pass rather than quoted, and matched.
+They read **1,063 / 3** and **1,062 / 1** earlier on 27 August 2026.
 The privilege-escalation pass added **17**
 ([tests/test_privilege_escalation.py](tests/test_privilege_escalation.py), §7
 gap 26), the sign-out chip added **23**
@@ -184,9 +192,9 @@ the same CPython 3.10.11 with both workbooks absent. Without openpyxl,
 `tests/test_fixtures.py`'s 4 tests are never collected and pytest prints
 `1 skipped` (row 3). With it, all 4 are collected: 1 passes and 3 skip
 individually via `conftest.require_fixture()` because the workbooks are absent
-(row 2). 1,062 + 1 = 1,063 passed, and 3 skipped rather than 1 — which is the
+(row 2). 1,225 + 1 = 1,226 passed, and 3 skipped rather than 1 — which is the
 two-mechanism distinction below, arrived at from a real run rather than from
-arithmetic, and it has now held across three separate re-measurements. The `.venv` itself moved nothing observable, and that is a result
+arithmetic, and it has now held across four separate re-measurements. The `.venv` itself moved nothing observable, and that is a result
 worth having: the pins reproduce what the global interpreter was already doing.
 
 ⚠ **Row 2 replaces a derived figure, and the derivation was wrong in the way this
@@ -325,19 +333,19 @@ Consequences you must respect when editing:
 | [store.py](store.py) | 49 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 532 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [docsheet.py](docsheet.py) | 484 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. A **leaf** — see §2d. |
+| [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
 | [dashboard.py](dashboard.py) | 1572 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
 | [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
-| [purchase.py](purchase.py) | 2347 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
+| [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
 | [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
-| [ra.py](ra.py) | 3876 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
-| [receipt.py](receipt.py) | 740 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Imports `ra.py`; `ra.py` links back with `url_for` only. |
-| [client.py](client.py) | 548 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
+| [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
+| [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
+| [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 414 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. |
 | [projectview.py](projectview.py) | 334 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
@@ -1184,6 +1192,14 @@ record to freeze a copy of, because the decision to buy is ours.
 - **Soft job link:** `quotation_id`, `quotation_ref` — **both may be `""`**
 - **Content:** `line_items`, `subtotal`, `tax_type`, `tax_info`,
   `grand_total`, `total_qty`
+  - each priced line: `name`, `part_no`, `hsn`, `qty`, `unit`, `price`,
+    **`discount_pct`** (A2 — a percentage, 0–100, **absent on every line
+    written before 27 Aug 2026**), `total`, `depth`. **`total` is already NET
+    of the discount** — `_line_total()` rounds the discounted product once —
+    which is what puts the discount inside the tax base, since `subtotal` is
+    the only thing `_tax_lines()` sees.
+  - a BOQ-derived order also carries `line_id` per line and `is_header` rows;
+    a header has no qty, rate, amount or `discount_pct`.
 - **Where and when:** `delivery_date` (wanted by), `delivery_to`,
   `payment_terms`, `delivery_terms`, `dispatch_through`, `incoterms`
 - **Lifecycle:** `status`, `status_history[]` (`{at, status, note}`)
@@ -1639,7 +1655,10 @@ never a list on the RA bill and never a list on the BOQ (CLIENT_CHANGES.md
  "ra_ref": "SF/RA/26-27/0004", "ra_no": 4, "leg": "supply",
  "boq_id": uuid, "boq_ref": "SF/BOQ/26-27/0001",
  "project_name": str, "account_name": str,
- "amount": 250000.0,                # always > 0
+ "amount": 250000.0,                # always > 0 — money that ARRIVED
+ "write_off": 10000.0,              # A5 — money GIVEN UP. >= 0, absent
+                                    #   on every receipt before 27 Aug 2026,
+                                    #   and never folded into `amount`
  "mode": "neft",                    # one of ra.RECEIPT_MODES
  "instrument_ref": "UTR12345",      # cheque no / UTR / txn id
  "instrument_date": "2026-08-13",
@@ -2668,7 +2687,8 @@ as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 | `GET,POST /purchase/create` | `create_purchase` — raise a PO on a vendor |
 | `GET,POST /purchase/from-boq/<boq_id>` | `from_boq` — **raise one from a schedule**, §2f |
 | `GET,POST /purchase/from-draft/<draft_id>` | `from_draft` — **convert a priced draft**, §2f |
-| `POST /purchase/<id>/update` | `update_purchase` — status only |
+| `POST /purchase/<id>/update` | `update_purchase` — status and note only |
+| `GET,POST /purchase/edit/<id>` | `edit_purchase_rates` — **reprice a Draft PO**, §2f-A1 |
 | `GET /purchase/view/<id>` | `view_purchase` — the printed purchase order |
 
 **Read §1 "There are two pipelines" before editing this file.** This is the
@@ -2812,7 +2832,62 @@ is Rule 46's limit on what we issue *as a supplier*, and here we are the
 customer. A buyer's series still has to be unique and non-repeating, because it
 is the key the vendor quotes on their invoice and the key we match it against.
 
+
+#### §2f-A1 — repricing a Draft purchase order, and the discount column
+
+Two Phase 3A items land on this module (CLIENT_CHANGES-2.md **A1** and **A2**,
+authorised by the **27 August 2026 OVERRIDE** block in CLIENT_CHANGES.md §0).
+
+**A1 — `GET,POST /purchase/edit/<id>`.** The rate was never locked *at
+creation*; what did not exist was any route that changed a **stored** line
+rate, because `update_purchase()` is status-and-note only and says so. This is
+that route, and it edits **rates and discounts only** — not quantities, not the
+lines, not the vendor.
+
+⚠ **Draft only.** `can_edit_rates()` allows `PO_STATUSES[0]` and refuses the
+other five, for the reason `update_purchase()` already states in prose: a vendor
+has already been told a price, and `Draft` means *"written, not yet sent to the
+vendor"*. **This narrowing is not in CC-2's A1 line** and is a commercial
+question nobody has put to the client — PROGRESS.md §6-I, and it is why A1 is
+recorded PARTIAL rather than BUILT.
+
+⚠ **Gated by `purchase.create`, not `purchase.edit`.** Repricing changes what
+this company has agreed to pay; `purchase.edit` means "update a purchase order's
+status". Every role holding one holds the other today, so no cell of the access
+matrix moved. PROGRESS.md §6-J.
+
+The **Reprice** control on `/purchase/view` is rendered only where
+`can_edit_rates()` would allow it, with its newline **inside** the string — so
+an order that is not a Draft renders that action bar byte-for-byte as it always
+did, and the pinned golden did not move for it.
+
+**A2 — the discount column.** A per-line **percentage**, stored as
+`discount_pct`, applied by `_line_total()` as `round(rate * qty * (1 - pct/100),
+2)`.
+
+⚠ **It sits INSIDE the tax base, and that is the whole of the arithmetic.** The
+discounted figure is what lands in the line's `total`, so it is what
+`_totals_of()` sums into `subtotal`, and `subtotal` is the sole argument
+`quotation._tax_lines()` computes tax from — there is no second path. A discount
+allowed on the order reduces what the vendor supplies for, so the tax follows it
+down; taxing a price nobody is paying would overstate the input credit we tell
+that vendor to bill.
+
+⚠ **A line with `discount_pct == 0` — or without the key at all, which is every
+line written before 27 August 2026 — reproduces `round(rate * qty, 2)` exactly.**
+Nothing is backfilled.
+
+**The column belongs to the buy sheet alone.** `docsheet.BUY_COLUMNS` is a
+separate tuple from `SELL_COLUMNS`, and `.c-disc` is declared in
+`PURCHASE_STYLES` rather than `QUOTATION_STYLES` — a discount a vendor allowed
+*us* has no business on a quotation we send a customer, and the sell chain's
+three documents are pinned byte-for-byte. `DS.sum_row()` and `DS.total_row()`
+grew a `blanks` parameter for the ninth column; **the label's `colspan` is not
+what changes** (it spans S.No / Part No / Description / HSN on both sheets), so
+the default output is byte-identical and is asserted to be.
+
 ---
+
 
 ### `/spec` — Specification Library · [spec.py](spec.py)
 
@@ -3842,9 +3917,46 @@ reason.
   `url_map` sweep does not prove this and that every delete route brings its
   own test.
 
----
 
-### `/client` — Client Register · [client.py](client.py)
+#### §2-A5 — the write-off, and why it is a second field
+
+CLIENT_CHANGES-2.md **A5**, authorised by the 27 August 2026 OVERRIDE block. A
+receipt carries an optional **`write_off`** amount beside its `amount`.
+
+The problem, in the client's own figures: the main contractor allows a bill
+short — billed ₹1,00,000, allows ₹90,000 — so ₹10,000 sits in outstanding
+forever. The write-off clears it.
+
+⚠ **A SECOND figure, never folded into `amount`, and that separation IS the
+item.** Before it, the only way to clear a short allowance was a second receipt
+with `mode="adjustment"`, which fixes Outstanding but inflates **Received** —
+`client._client_groups()` sums receipt amounts without inspecting mode. Money
+that arrived and money the contractor allowed short are two different facts:
+
+```
+outstanding = billed − received − written_off        ra.outstanding_of()
+received    = sum(amount)                            unchanged, and now correct
+written_off = sum(write_off)                         ra.written_off_against()
+```
+
+`written_off_against()` is deliberately a **second function** beside
+`received_against()` for the same reason. A receipt written before 27 August
+2026 has no `write_off` key and reads as `0.0`; **nothing is backfilled**.
+
+⚠ **It is NOT a GST credit note.** No document, no number series, nothing that
+leaves the office — CC-2 A5 is explicit, and the form says so to the person
+typing into the box. The formal credit note is quoted separately and is not in
+Phase 3A.
+
+⚠ **The pre-existing mode-blind defect is NOT fixed** and is pinned as a
+tripwire (`test_an_adjustment_mode_receipt_still_inflates_received`).
+PROGRESS.md §6-D carries it and it is the client-facing owner's to close.
+
+**Where the figure shows.** A `Written off` column on `/receipt/` and on the
+bill's receipts panel in `/ra/view` (an em dash where there is none, so an
+ordinary ledger reads as it always did), a sixth fact above the receipt form,
+and a `Written off` stat on the client register. A balance that drops with
+nothing on the page explaining it is worse than the balance that never dropped.
 
 | Route | View |
 |---|---|
@@ -3853,6 +3965,10 @@ reason.
 
 **CLIENT_CHANGES.md item 2.** Every BOQ grouped by the party it is billed to,
 with schedule value, issued, received and outstanding across all of it.
+
+---
+
+### `/client` — Client Register · [client.py](client.py)
 
 #### It is a current-state screen, not a document
 
@@ -3867,6 +3983,15 @@ from every other total in this app by design. A withdrawn claim inside a
 per-client outstanding is a demand for money that was explicitly retracted,
 presented to somebody about to chase a customer for it.
 `test_outstanding_counts_issued_bills_only` is the guard.
+
+⚠ **Outstanding is net of A5 write-offs, and the page says so.**
+`_client_groups()` computes `issued − received − written_off`, and
+`OUTSTANDING_CAVEAT` states under the figures that Outstanding is an **internal**
+figure with no credit note behind a write-off. CC-2's A4 note asks for exactly
+that — *"do not quietly present the figure as authoritative"* — and the page did
+not carry it before 27 August 2026 (PROGRESS.md §6-D). The caveat renders whether
+or not anything has been written off: one that appears only when something
+unusual has happened is one nobody reads at the moment it matters.
 
 Outstanding is **not clamped at zero**: an overpayment is ordinary — a lump sum
 settling two bills — and shows as a credit, exactly as `ra.outstanding_of()`
@@ -5383,6 +5508,51 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    purchase commitments, belongs with the seven-role walkthrough
    [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) already asks for. Recorded
    here so the next pass does not quietly invent an answer.
+
+28. 🔴 **A charge line on a buy-side PO has no settled tax treatment, and that
+    is why CLIENT_CHANGES-2.md A3 is not built.** *Opened 27 August 2026.*
+
+    Loading, unloading and transportation on a purchase order are either **part
+    of the vendor's own consideration** — s.15(2)(c) CGST Act, incidental
+    expenses, **inside** the taxable value — or **a third-party cost we carry
+    ourselves**, outside this vendor's supply altogether and possibly a GTA
+    reverse-charge liability the document cannot express. **The same head is one
+    thing on one order and the other on the next**, so a per-head flag in
+    `/settings` moves the question rather than answering it.
+
+    **Nothing in this application answers it.** No document printed here carries
+    a freight, packing or round-off line today; `charge.py`'s heads serve an
+    expenses ledger that computes no tax at all — and its `Transport / Freight`
+    head is itself evidence for the *second* reading.
+
+    An inflated taxable value on a PO overstates the input credit we tell a
+    vendor to bill us for, and their invoice then does not reconcile. **That is
+    not a defect testing finds**, which is why A3 was stopped rather than
+    guessed. Contrast **A2**, which was built: a discount is before tax under
+    *both* readings of CC-2's wording, so the tax base is invariant across the
+    ambiguity.
+
+    📌 **Owner: the client-facing owner, with the client.** One sentence — *"on
+    a purchase order, is a transportation charge something the vendor bills us
+    for, or something we pay somebody else?"* PROGRESS.md §6-H.
+
+29. 🟡 **`client._client_groups()` sums receipts regardless of mode, so an
+    `adjustment`-mode receipt still inflates Received.** *Narrowed, not closed,
+    on 27 August 2026.*
+
+    A5's `write_off` is a **separate field from `amount`** precisely so new
+    entries do not go through that path, and Outstanding now nets it off
+    correctly. But **adjustment-mode receipts already in the database are
+    untouched**: they still make Outstanding right by making Received wrong.
+
+    What to do with them is a question about **live records**, not about code —
+    back-fill them into `write_off`, exclude the mode from `received_val` and
+    restate every historical register total, or leave them. Each answer moves
+    figures somebody may already have quoted to a client.
+
+    Pinned as a **tripwire** rather than left to be discovered:
+    `test_an_adjustment_mode_receipt_still_inflates_received` asserts the
+    *defective* behaviour on purpose. PROGRESS.md §6-D.
 
 ---
 

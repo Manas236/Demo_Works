@@ -10,9 +10,14 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 27 August 2026 (§1.16, permission-filtered navigation).
-**Tests:** **1,151 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**As of:** branch `antigravity-dev`, 27 August 2026 (§1.17, Phase 3A document items).
+**Tests:** **1,225 passed / 1 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 27 August 2026 by running the suite in it. *(It read
+1,151 / 1 before §1.17 added 74 tests over the Phase 3A document items
+([tests/test_po_discount.py](tests/test_po_discount.py) 22,
+[tests/test_po_rate_edit.py](tests/test_po_rate_edit.py) 21,
+[tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) 21,
+[tests/test_client_outstanding.py](tests/test_client_outstanding.py) 10),
 1,102 / 1 before §1.16 added 49 tests over permission-filtered navigation
 ([tests/test_nav_visibility.py](tests/test_nav_visibility.py)),
 1,079 / 1 before §1.15 added 23 over the sign-out chip
@@ -31,7 +36,8 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,152 passed / 3 skipped** against the same commit, and read
+reports **1,226 passed / 3 skipped** against the same commit, and read
+**1,152 / 3** before §1.17's 74 tests,
 **1,103 / 3** before §1.16's 49 tests, **1,080 / 3** before §1.15's 23,
 **1,063 / 3** before §1.14's 17,
 **1,059 / 3** before §1.13's 4 and
@@ -763,6 +769,86 @@ existing row — both correct, both required by B2. So
 leaves `boq.view` on HR for every later test in the run. The new file restores
 the builtin permission sets in an autouse fixture rather than the other file
 being changed; that test is testing the right thing.
+
+### 1.17 Phase 3A — the document items · ✅ 27 August 2026
+
+**The first pass to build a Phase 3A item.** Authorised by the **27 August 2026
+OVERRIDE** block in [CLIENT_CHANGES.md](CLIENT_CHANGES.md) §0, which names
+**A1, A2 and A5** and explicitly declines A3. MG/SF/2026-02 was still unsigned
+and **expires 28 August 2026**, the day after this work.
+
+Five commits, one per item so a single one can be reverted without losing the
+rest: the override block, then A2, A1, A5 and A4.
+
+**A2 — the discount column on the final PO.** A per-line percentage, stored as
+`discount_pct`, applied by `purchase._line_total()`.
+
+⚠ **It sits inside the tax base, and that is the whole of the arithmetic.** The
+discounted figure lands in the line's `total`, `_totals_of()` sums those into
+`subtotal`, and `subtotal` is the only argument `quotation._tax_lines()` sees.
+On the test figures: ₹10,000 list less 10% is ₹9,000 taxable, ₹1,620 tax,
+₹10,620 — not ₹1,800 and ₹10,800, which is what applying it after tax would
+have produced and what nothing but an explicit test would have caught.
+
+The buy sheet got its own `docsheet.BUY_COLUMNS` and its own `.c-disc` rule in
+`PURCHASE_STYLES`; `sum_row()` / `total_row()` grew a `blanks` parameter whose
+default is byte-identical. **The purchase order golden moved +942 bytes and no
+other did** — head +721 of CSS, items +221 of cells, justified line by line in
+`tests/test_print_golden.py`.
+
+**A1 — repricing an existing PO.** `GET,POST /purchase/edit/<id>`. The rate was
+never locked at creation; what did not exist was a route that changed a
+**stored** one. Rates and discounts only — and it is the only way a BOQ-derived
+order gets an A2 discount at all, since `_po_lines_from_picked()` writes none.
+
+⚠ **Draft only, and that narrowing is not in CC-2's A1 line.** Recorded PARTIAL
+for the same reason A6 is: the code does less than the requirement says, however
+good the reason. PROGRESS.md §6-I. Gated by `purchase.create` rather than
+`purchase.edit` — §6-J — which moved no cell of the 7×61 grid.
+
+**A5 — the write-off on a payment.** A `write_off` amount beside `amount` on the
+receipt, summed by `ra.written_off_against()` and subtracted in
+`ra.outstanding_of()` and on the client register.
+
+⚠ **A second field, never folded into `amount`, and that separation IS the
+item.** Money that arrived and money the contractor allowed short are two
+different facts; folding them was what made the old `mode="adjustment"`
+workaround fix Outstanding by breaking Received.
+
+**A4 — verified, not rebuilt.** +10 tests pinning its arithmetic from a second
+angle, and the caveat CC-2's A4 note asks for in as many words now renders under
+the figures. `test_client_segregation.py` untouched.
+
+#### What was stopped, and why it is the most important line here
+
+**A3 — the additional-charges repeater — was NOT built, and not because of the
+commercial gate.** It is stopped on an unanswered **tax** question: a loading or
+transportation line on a buy-side PO is either the vendor's own consideration
+(s.15(2)(c), inside the taxable value) or a third-party cost outside this
+vendor's supply. CC-2 specifies "label + amount", which carries no taxability,
+and **no document in this application carries a charge line today** to read the
+answer off. Overstating a taxable value overstates the input credit we tell a
+vendor to bill. ABOUT.md §7 gap 28, PROGRESS.md §6-H.
+
+**A6 — untouched, deliberately.** Not one line of `ra.py`'s lifecycle moved. The
+latest-bill-only restriction on `can_edit()` and `can_delete()` was re-verified
+and is still real; lifting it is a commercial question.
+
+#### Measurements
+
+**1,151 → 1,225 passed, 1 skipped** (global `C:\Program Files\Python310`,
+no `.venv`, openpyxl absent). **1,152 → 1,226 passed, 3 skipped** (`.venv`,
+openpyxl 3.1.5). Both measured at both ends, neither derived. **+74**, in four
+new files.
+
+One existing assertion changed: a specification header row's `colspan`, 6 of 8
+columns → 7 of 9. Same claim, wider table; old value kept in a comment, and the
+row gained two further assertions rather than losing any.
+
+`docs/ACCESS_MATRIX.md` regenerated — **61 permissions and the 7×61 grid
+unchanged**, endpoints 85 → 86.
+
+---
 
 ---
 

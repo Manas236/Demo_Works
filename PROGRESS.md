@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 27 August 2026 *(the day's third pass — three parts in one sitting: the privilege-escalation attack on `/users/*`, the sign-out chip, and permission-filtered navigation. The escaping and adversarial pass was the first, ending at `a06f6ea`; break-glass recovery was the second, ending at `eff0034`)* |
+| **Date** | 27 August 2026 *(the day's fourth pass, and the first to build a Phase 3A item. The three before it were the escaping and adversarial pass ending `a06f6ea`, break-glass recovery ending `eff0034`, and the privilege-escalation / sign-out / permission-filtered-navigation pass ending `8070115`. None of those three built a Phase 3 item; this one builds three.)* |
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `eff0034` — *"docs: gap 21 closed, and the test table that four files had already moved"*, the docs commit closing the previous pass. This edition is written **into** the Part A commit of the current pass rather than after it, so the code it describes is `auth.py` as that commit leaves it. |
-| **vs `origin/antigravity-dev`** | **7 ahead, 0 behind, unpushed** at the start of this pass — measured with `git rev-list --left-right --count`, not assumed. Five are the escaping fix, the adversarial test file, one commit per hole it found, and that pass's docs commit; the sixth is the break-glass tool and the seventh its docs. This pass adds **three**, one per part — the escalation fix, the logout control, and permission-filtered navigation — taking it to **10 ahead, unpushed**. |
+| **HEAD** | `b2654bd` — *"A4: verified, not rebuilt — and the caveat CC-2 asked for in as many words"*, the last of the five code commits in this pass. This edition is written **after** them and describes the code as they leave it. |
+| **vs `origin/antigravity-dev`** | **15 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count`, not assumed. Ten were there at the start of this pass; it adds **five**: the §0 override block, then one commit per A-item so that a single item can be reverted without losing the rest (A2, A1, A5, A4). |
 | **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass, and empty again at the end of it. |
-| **Test figure** | **measured at the end of the pass: 1,151 passed, 1 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,062 passed / 1 skipped**, re-measured in the same configuration at the start of the pass rather than quoted — it matched. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,152 passed, 3 skipped** against this commit, and **1,063 / 3** against the pre-pass code — both measured, neither derived. The third configuration (*openpyxl present, workbooks present*) is still unmeasured — neither client workbook is on this box (`fixtures/` holds only its README). <br><br>+17 in `tests/test_privilege_escalation.py`, of which **7 fail against the pre-fix `auth.py`** — verified by checking out `HEAD:auth.py`, running the file against it, and restoring. +23 in `tests/test_nav_user_chip.py` for the sign-out chip, and +49 in `tests/test_nav_visibility.py` for permission-filtered navigation, **31 of which fail against the pre-pass `dashboard.py` / `auth.py`** — verified by reverting both and running them. <br><br>✅ **No golden was re-baselined and none moved** — no golden file is modified in the working tree and `tests/test_print_golden.py` passes unchanged. `docs/ACCESS_MATRIX.md` **was** regenerated: its 7×61 grid is unchanged, and the two lines that moved are the Director's plain-English paragraphs, which no longer say a Director may "assign any existing role" full stop. |
+| **Test figure** | **measured at the end of the pass: 1,225 passed, 1 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,151 passed / 1 skipped**, re-measured in the same configuration at the start of this pass rather than quoted — it matched. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,226 passed, 3 skipped** against this commit and **1,152 / 3** against the pre-pass code — both measured, neither derived. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+74 in both configurations**, in four new files: +22 `tests/test_po_discount.py`, +21 `tests/test_po_rate_edit.py`, +21 `tests/test_receipt_write_off.py`, +10 `tests/test_client_outstanding.py`. <br><br>⚠ **One golden moved and it was meant to.** `/purchase/view` is **+942 bytes**, in two of its seven blocks, and every byte is accounted for in the comment above the new digests in `tests/test_print_golden.py`. The other six pinned documents — quotation, proforma, tax invoice, RA bill, delivery challan, `/po/create` — did **not** move, which is the property `DS.BUY_COLUMNS` and the `.c-disc` rule's placement in `PURCHASE_STYLES` exist to hold. <br><br>⚠ **One existing assertion was changed**, in `tests/test_boq_to_po.py`: a specification header row's `colspan` was 6 of 8 columns and is now 7 of 9. Same claim, wider table; the old value is kept in a comment and the row gained two further assertions rather than losing any. `docs/ACCESS_MATRIX.md` was regenerated: **61 permissions and the 7×61 grid are unchanged**, and the only line that moved is the endpoint count, 85 → 86. |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -33,16 +33,31 @@ Only BUILT fills the bar. PARTIAL contributes nothing; BLOCKED contributes
 nothing.
 
 ```
-ALL  ██████░░░░░░░░░░░░░░   6 of 20 BUILT · 3 PARTIAL · 2 BLOCKED ·  9 NOT STARTED
-3A   ███░░░░░░░░░░░░░░░░░   1 of 6 BUILT · 3 PARTIAL · 0 BLOCKED ·  2 NOT STARTED
+ALL  ████████░░░░░░░░░░░░   8 of 20 BUILT · 2 PARTIAL · 2 BLOCKED ·  8 NOT STARTED
+3A   ██████████░░░░░░░░░░   3 of 6 BUILT · 2 PARTIAL · 0 BLOCKED ·  1 NOT STARTED
 3B   ████████████▌░░░░░░░   5 of 8 BUILT · 0 PARTIAL · 0 BLOCKED ·  3 NOT STARTED
 3C   ░░░░░░░░░░░░░░░░░░░░   0 of 6 BUILT · 0 PARTIAL · 2 BLOCKED ·  4 NOT STARTED
 ```
 
-⚠ **Only B1–B5 were authorised.** The 26 August 2026 OVERRIDE block in
-`CLIENT_CHANGES.md` §0 names those five items and no others. B6, B7 and B8 are
-NOT STARTED *and still gated*, as is every remaining item of 3A and 3C — a
+⚠ **Only B1–B5 and A1, A2, A5 were authorised.** The 26 August 2026 OVERRIDE
+block in `CLIENT_CHANGES.md` §0 names the five 3B items; the **27 August 2026
+OVERRIDE** block names A1, A2 and A5 and explicitly refuses A3. Everything else
+— A3, B6, B7, B8 and the whole of 3C — is NOT STARTED *and still gated*. A
 filled bar is not permission to fill the next one.
+
+⚠ **A1 is PARTIAL, not BUILT, and the reason is the same one that holds A6
+there.** A1's code exists and 21 tests cover it, which is the legend's
+definition of BUILT — but CC-2's A1 line says "PO base rate editable" with **no
+lifecycle qualification**, and the route ships **Draft-only**. That is a
+narrowing the requirement line does not carry, exactly as A6's latest-bill-only
+restriction is a narrowing its requirement line does not carry. Marking A1 BUILT
+would assert that the narrowing is inside 3A-as-sold, which is a commercial
+question nobody has put to the client. §6-I carries it.
+
+**The board moved 6 → 8, not 6 → 11.** Two of the three items that did not move
+are held by commercial questions rather than by engineering (A1 and A6), and one
+is held by an unanswered **tax** question (A3, §6-H). None of the three is
+blocked on code anybody has to write.
 
 ---
 
@@ -63,6 +78,12 @@ decorator scheme fails **open** when somebody forgets one, and default-deny only
 works by *absence*, which a decorator cannot express. What the registry costs
 instead is a second thing to keep in step with the routes, and
 `test_every_endpoint_is_classified` is what pays for it.
+
+**3A is now the smallest thing left, and none of it is engineering.** Three
+of its six items are BUILT, two are PARTIAL behind **commercial** questions
+(A1's Draft-only narrowing, A6's latest-bill-only restriction) and one — A3 —
+is stopped on a **tax** question one sentence long. Nobody has to write code to
+unblock any of the three; somebody has to answer three questions.
 
 Two items now dominate what is left of Phase 3:
 
@@ -95,12 +116,12 @@ records somebody to have been created by.
 
 | Tag | Requirement (short) | Status | Evidence | What is left | Browser? |
 |---|---|---|---|---|---|
-| **A1** | PO base rate editable | PARTIAL | Editable **at creation**: `RATE_PREFILL_FIELD = "supply_base_rate"` [purchase.py:182](purchase.py#L182); rate box rendered and stored on `GET,POST /purchase/from-boq/<boq_id>` [purchase.py:1662](purchase.py#L1662) and `GET,POST /purchase/from-draft/<draft_id>` [purchase.py:1797](purchase.py#L1797). Test `test_rates_prefill_from_the_supply_base_rate_and_an_edit_is_what_is_stored` [tests/test_boq_to_po.py:240](tests/test_boq_to_po.py#L240). | Editing the rate on an **existing** PO. `POST /purchase/<id>/update` [purchase.py:2030](purchase.py#L2030) is status-and-note only; its docstring states the commercial content of an issued PO is deliberately not editable there. No route anywhere changes a stored PO line rate. | ☐ |
-| **A2** | Discount column on final PO | NOT STARTED | The string `discount` does not occur in any application `.py` file. The only repo-wide hit is `.venv/.../rich/_emoji_codes.py`. | All of it: form column, per-line or document-level storage, and the effect on `_totals_of()` [purchase.py:589](purchase.py#L589). | ☐ |
-| **A3** | Additional charge lines on final PO | NOT STARTED | No repeater on the PO. No `additional_charge` / `extra_charge` / `loading` / `transportation` field in `purchase.py`. The seed pattern CC-2 points at exists but serves the charges ledger, not the PO: `CHARGE_HEADS_RECORD` [settings.py:353](settings.py#L353), `charge_heads()` [settings.py:361](settings.py#L361). | All of it. Build **one** label+amount repeater seeded from `/settings`, per CC-2's A3 note — not four fields. | ☐ |
-| **A4** | Total outstanding on client register | **BUILT** | Computed at [client.py:120](client.py#L120) from `issued_val` [client.py:110](client.py#L110) less `received_val` [client.py:112](client.py#L112); rendered on `GET /clients/` [client.py:219](client.py#L219) at [client.py:280](client.py#L280). Tests `test_outstanding_counts_issued_bills_only` [tests/test_client_segregation.py:151](tests/test_client_segregation.py#L151) and `test_receipts_reduce_outstanding_and_an_overpayment_shows_as_credit` [tests/test_client_segregation.py:173](tests/test_client_segregation.py#L173). | Nothing for A4 itself. **But see §6-D:** CC-2's A4 caveat requires the figure not be presented as authoritative until A5 exists, and the page carries no such caveat. | ☐ |
-| **A5** | Write-off / adjustment on a payment | PARTIAL | No write-off field exists on any record. What exists is an adjacent pre-existing capability: receipt mode `"adjustment"` in `RECEIPT_MODES` [ra.py:138](ra.py#L138), offered by `_mode_options()` [receipt.py:326](receipt.py#L326) on `GET,POST /receipts/new` [receipt.py:510](receipt.py#L510). The mode list is covered by `test_the_mode_picker_is_a_select_over_the_shared_list` [tests/test_receipts.py:751](tests/test_receipts.py#L751). | The field itself. Today the only way to clear a short-allowed balance is to file a **second receipt** with `mode="adjustment"` — which does reduce Outstanding, but `received_val` [client.py:112](client.py#L112) sums receipt amounts **without inspecting mode**, so the register's "Received" figure is inflated by every write-off. A5 as specified is a field on the payment, producing no document and no number series. | ☐ |
-| **A6** | RA edit and delete — draft only | PARTIAL | All three routes exist and are gated: `GET,POST /ra/cancel/<id>` [ra.py:2740](ra.py#L2740) gated by `can_cancel()` [ra.py:1578](ra.py#L1578); `GET,POST /ra/edit/<id>` [ra.py:3011](ra.py#L3011) gated by `can_edit()` [ra.py:1470](ra.py#L1470); `GET,POST /ra/delete/<id>` [ra.py:3796](ra.py#L3796) gated by `can_delete()` [ra.py:1512](ra.py#L1512). Tests: `test_the_latest_bill_can_be_edited` [tests/test_ra_routes.py:378](tests/test_ra_routes.py#L378), `test_the_latest_bill_can_be_deleted_and_the_number_is_reused` [tests/test_ra_routes.py:748](tests/test_ra_routes.py#L748), `test_a_cancelled_bill_cannot_be_un_cancelled_edited_or_deleted` [tests/test_ra_routes.py:535](tests/test_ra_routes.py#L535). | **The latest-bill-only restriction, verified as real — see §6-A.** A draft that is not the highest `ra_no` on its BOQ is refused **both** edit and delete. CC-2's A6 wording narrows to draft-only and stops there; it does not narrow to latest-only. Whether A6-as-sold covers lifting that is a commercial question, not a code one. | ☐ |
+| **A1** | PO base rate editable | PARTIAL | **Both halves now exist.** At creation: `RATE_PREFILL_FIELD = "supply_base_rate"` [purchase.py:182](purchase.py#L182), rate box on `GET,POST /purchase/from-boq/<boq_id>` and `GET,POST /purchase/from-draft/<draft_id>`, test `test_rates_prefill_from_the_supply_base_rate_and_an_edit_is_what_is_stored` [tests/test_boq_to_po.py:240](tests/test_boq_to_po.py#L240). **On an existing order (new, 27 Aug 2026):** `GET,POST /purchase/edit/<id>` → `purchase.edit_purchase_rates()`, gated by `can_edit_rates()`, arithmetic in `_reprice()`; 21 tests in [tests/test_po_rate_edit.py](tests/test_po_rate_edit.py). Classified `purchase.create` in `auth.ROUTE_PERMISSIONS`. | **The Draft-only narrowing — see §6-I.** `can_edit_rates()` allows `status == "Draft"` and refuses the other five statuses. CC-2's A1 line carries no lifecycle qualification, so whether A1-as-sold covers repricing an **Issued** order is a commercial question and has not been asked. Also: quantities, lines and the vendor are deliberately not editable there. | ☐ |
+| **A2** | Discount column on final PO | **BUILT** | Per-line discount **percentage**, inside the tax base. `MAX_DISCOUNT_PCT`, `_parse_discount()` and `_line_total()` in [purchase.py](purchase.py); `DS.BUY_COLUMNS` and the `blanks` parameter on `DS.sum_row()` / `DS.total_row()` in [docsheet.py](docsheet.py); `.c-disc` in `PURCHASE_STYLES`; rendered by `view_purchase()`. 22 tests in [tests/test_po_discount.py](tests/test_po_discount.py), of which `test_the_discount_reduces_the_tax_because_it_is_inside_the_tax_base` is the load-bearing one. Golden re-baselined **+942 bytes**, justified field by field. | Nothing for A2. The discount is settable at `/purchase/create` and, for a BOQ-derived order, at `/purchase/edit/<id>` — `_po_lines_from_picked()` writes no `discount_pct`, by design. | ☐ |
+| **A3** | Additional charge lines on final PO | NOT STARTED | No repeater on the PO. No `additional_charge` / `extra_charge` / `loading` / `transportation` field in `purchase.py`. The seed pattern CC-2 points at exists but serves the charges ledger, not the PO: `CHARGE_HEADS_RECORD` [settings.py:353](settings.py#L353), `charge_heads()` [settings.py:361](settings.py#L361). | **All of it — and it is STOPPED on a tax question, not on the commercial gate. See §6-H.** The 27 August override block explicitly declines to authorise it. Build **one** label+amount repeater seeded from `/settings` per CC-2's A3 note, not four fields — *after* somebody rules on whether a charge line sits inside or outside the GST base on a buy-side PO. | ☐ |
+| **A4** | Total outstanding on client register | **BUILT** | Computed in `client._client_groups()` from `issued_val` less `received_val` **less `written_off_val`** (new, 27 Aug); rendered on `GET /client/`. Original tests `test_outstanding_counts_issued_bills_only` and `test_receipts_reduce_outstanding_and_an_overpayment_shows_as_credit` [tests/test_client_segregation.py](tests/test_client_segregation.py) untouched; +10 verification tests in [tests/test_client_outstanding.py](tests/test_client_outstanding.py). | Nothing for A4 itself, and **§6-D is now closed on its presentational half**: `OUTSTANDING_CAVEAT` states under the figures that Outstanding is internal and that no credit note stands behind a write-off, which is what CC-2's A4 note asks for in as many words. The **arithmetic** half of §6-D is still open — see A5's row and §6-D. | ☐ |
+| **A5** | Write-off / adjustment on a payment | **BUILT** | A `write_off` amount on the receipt record, written by `receipt.new_receipt()` and `receipt.edit_receipt()`, validated in `receipt._validate()`, summed by `ra.written_off_against()` and subtracted in `ra.outstanding_of()`. Visible on the receipts ledger, the bill's receipts panel, the form's facts block and the client register. 21 tests in [tests/test_receipt_write_off.py](tests/test_receipt_write_off.py). | Nothing for A5 as CC-2 specifies it. **Two things worth knowing rather than left silent:** it is a field *on a payment*, so a standalone write-off against a bill with no payment at all is not expressible — CC-2 words A5 that way and this follows it. And it is **not** a credit note: no document, no number series, stated on the form itself. | ☐ |
+| **A6** | RA edit and delete — draft only | PARTIAL | Unchanged by this pass — **not one line of `ra.py`'s lifecycle was touched**. All three routes exist and are gated: `GET,POST /ra/cancel/<id>` by `can_cancel()`, `GET,POST /ra/edit/<id>` by `can_edit()` [ra.py:1493](ra.py#L1493), `GET,POST /ra/delete/<id>` by `can_delete()` [ra.py:1535](ra.py#L1535). | **The latest-bill-only restriction, re-verified on 27 Aug 2026 and still real — see §6-A.** `can_edit()` refuses via `claim_is_frozen()` at [ra.py:1518](ra.py#L1518) and `can_delete()` at [ra.py:1574](ra.py#L1574), both resolving to `is_latest_bill()` [ra.py:1430](ra.py#L1430). A draft that is not the highest `ra_no` is refused **both** operations. Whether lifting that is inside A6-as-sold is a commercial question, not a code one, and nothing in this pass was built that lifts it. | ☐ |
 
 ### 3B — users, access and approvals
 
@@ -272,20 +293,47 @@ Anyone carrying a `3C.0n` tag over from the quotation must add one to reach the
 CC-2 letter.
 
 **C. `CLIENT_CHANGES-2.md`'s header says "not started. Nothing in this file is
-built."** That is [CLIENT_CHANGES-2.md:5](CLIENT_CHANGES-2.md#L5). It is wrong
+built."** *(Corrected in part on 26 August 2026; **more wrong than ever after
+27 August**, when A1, A2 and A5 were built and A4 re-verified.)* That is [CLIENT_CHANGES-2.md:5](CLIENT_CHANGES-2.md#L5). It is wrong
 by this audit: A4 is built and tested, and A1, A5 and A6 each stand partly on
 shipped code. CC-2's own A6 section already contradicts its header by
 documenting three built routes. The header was not amended when that section was
 added on 23 August 2026.
 
-**D. The client register presents Outstanding with no caveat.** CC-2's A4 note
-says the figure is only as correct as the A5 write-off field makes it, and *"do
-not quietly present the figure as authoritative"*. A5 does not exist, and
-[client.py:280](client.py#L280) renders the figure with no qualification beyond
-an *"in credit"* note when it is negative. Compounding it: `received_val`
-[client.py:112](client.py#L112) sums every receipt regardless of mode, so the
-one workaround available today — a `mode="adjustment"` receipt — makes
-Outstanding right by making **Received** wrong.
+**D. The client register presented Outstanding with no caveat — HALF CLOSED on
+27 August 2026, and the half that remains is the one that matters.**
+
+~~CC-2's A4 note says the figure is only as correct as the A5 write-off field
+makes it, and *"do not quietly present the figure as authoritative"*. A5 does
+not exist, and `client.py` renders the figure with no qualification beyond an
+*"in credit"* note when it is negative.~~
+
+✅ **The presentational half is closed.** A5 now exists, `outstanding_of()` and
+the register both net it off, and `client.OUTSTANDING_CAVEAT` states under the
+figures that Outstanding is an internal figure and that no credit note stands
+behind a write-off. Pinned by
+`test_the_page_no_longer_presents_outstanding_without_a_caveat`
+[tests/test_client_outstanding.py](tests/test_client_outstanding.py).
+
+⚠ **The arithmetic half is STILL OPEN and was deliberately not decided.**
+`received_val` in `client._client_groups()` still sums every receipt **regardless
+of mode**, so a `mode="adjustment"` receipt — the only workaround available
+before A5 — still makes Outstanding right by making **Received** wrong.
+
+A5's `write_off` is a **separate field from `amount`** precisely so that new
+entries do not go through that path, and
+`test_the_register_keeps_the_write_off_out_of_received` pins that they do not.
+But **adjustment-mode receipts already in the database are untouched**, and what
+happens to them is a question about live records rather than about code:
+back-fill them into `write_off`? exclude the mode from `received_val` and change
+what every historical register total reads? leave them? Each answer restates
+figures somebody may already have quoted to a client.
+
+It is pinned as a **tripwire** rather than left to be discovered:
+`test_an_adjustment_mode_receipt_still_inflates_received`
+[tests/test_receipt_write_off.py](tests/test_receipt_write_off.py) asserts the
+**defective** behaviour on purpose, so whoever fixes it has to come here and
+record the decision. **Owner: the client-facing owner.**
 
 **E. `charge.py` is named for a module it is not.** Its title is *"Employee &
 Miscellaneous Charges Ledger"* [charge.py:2](charge.py#L2) and the dashboard
@@ -308,6 +356,84 @@ limit on a TAX INVOICE number, and **this document is not one**."*
 `[AMENDED 8 Aug 2026]` note both rule that it **is** one. Already tracked as
 row 3 of [STATE.md:494](STATE.md#L494); restated here because BQ2 cannot be
 closed without correcting it, and C3 cannot start without BQ2.
+
+**H. A3 is stopped on a tax question that CC-2 does not settle, and neither
+does any code in this repo.** *New, 27 August 2026. This is the finding that
+cost the pass an item.*
+
+CC-2's A3 specifies **one repeater, "label + amount"**, with the heads seeded in
+`/settings`. A label and an amount carry **no taxability**, and on a **buy-side**
+purchase order a loading, unloading or transportation line is one of two
+completely different things:
+
+- **Part of the vendor's own consideration** — s.15(2)(c) CGST Act, incidental
+  expenses charged by the supplier in respect of the supply. It is **inside** the
+  taxable value and attracts tax at the line rate.
+- **A third-party cost we carry ourselves** — our own tempo, our own labour at
+  site. It is not part of this vendor's supply at all, it is **outside** the
+  taxable value, and it may be a GTA reverse-charge liability this document has
+  no way to express.
+
+**The same head is one thing on one order and the other thing on the next**,
+depending on who performs the work — so a per-head flag in `/settings` does not
+settle it either, it only moves the question.
+
+**There is nothing in this repo to read the answer off.** `grep` finds no
+`freight`, `packing`, `round_off` or `other_charge` on any document in the
+application; **no document this app prints carries a charge line today.**
+`charge.py`'s heads serve the expenses ledger, which computes no tax at all —
+and its "Transport / Freight" head is itself evidence for the *second* reading,
+because a cost booked in an expenses ledger is by construction not the vendor's.
+
+**Why this was stopped rather than decided.** An inflated taxable value on a
+purchase order overstates the input tax credit we tell a vendor to bill us for,
+and their invoice then does not reconcile against ours. That is not a defect
+testing finds. Contrast **A2**, which was built: a discount is *before tax under
+both readings of CC-2's wording*, so the tax base is invariant across the
+ambiguity, and that invariance is what made it safe.
+
+**Owner: the client-facing owner, with the client.** The question is one
+sentence — *"on a purchase order, is a transportation or loading charge
+something the vendor is being asked to bill us for, or something we pay
+somebody else?"* — and Yogesh can answer it. It is not one of the BQ questions
+and must not be settled internally.
+
+**I. A1 ships Draft-only and CC-2's A1 line carries no such qualification.**
+*New, 27 August 2026, and structurally identical to §6-A.*
+
+`purchase.can_edit_rates()` allows `status == "Draft"` and refuses the other
+five. The reason is sound and is the code's own: `update_purchase()` refuses
+commercial edits because *"a vendor has already been told a price and a
+quantity, and changing them behind the document is how a dispute starts"*, and
+`PO_STATUSES[0]` is **`Draft` — "written, not yet sent to the vendor"**, which
+is precisely the case that reasoning does not cover.
+
+**But the reason being sound is not the same as the narrowing being sold.**
+CC-2 A1 reads "PO base rate editable" and its note reads "straightforward field
+unlock" — no lifecycle qualification anywhere. This is the same shape as A6's
+narrowing, and CC-2 says of that one that it *"must be explained to him rather
+than silently applied"*. The same applies here and has not been done.
+
+A1 is therefore recorded **PARTIAL** rather than BUILT, on the same principle
+that holds A6 there: the code does less than the requirement line says, however
+good the reason. Marking it BUILT would quietly assert a commercial answer.
+
+**J. `/purchase/edit/<id>` is gated by `purchase.create`, not `purchase.edit`.**
+*New, 27 August 2026. A deliberate classification, recorded because it reads
+oddly until the reason is known.*
+
+`purchase.edit` is labelled *"Update a purchase order's status"* and that is what
+it means. Repricing changes what this company has agreed to **pay a vendor**,
+which is the authority `purchase.create` already confers — somebody who can
+raise a PO already chooses every rate on it — and a strictly larger authority
+than marking a delivery received.
+
+Every role holding `purchase.edit` today also holds `purchase.create`, so **the
+7×61 grid does not move**; the classification is for the day a storekeeper is
+given status rights and must not be able to reprice an order. **No permission
+was minted**: inventing one would force a per-role decision CC-2's B4 does not
+authorise an agent to take on the client's behalf, and B4 states exactly one
+restriction (HR information away from Sales, Purchase and Accounts) and no grid.
 
 ---
 
