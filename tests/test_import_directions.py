@@ -517,6 +517,54 @@ def test_demo_data_imports_nothing_at_all():
     assert imports_of("demo_data") == set()
 
 
+def test_po_parts_imports_nothing_at_all():
+    """
+    `po_parts.py` is the second module held to `demo_data.py`'s standard, and
+    for the same reason: it is a **data table**, not a component.
+
+    It holds the seeded prefill list for extra purchase-order lines — every
+    figure in it an assumed placeholder — and `purchase.py` reads it. Keeping it
+    at the very bottom of the graph is what makes that arrow free: a table that
+    imports nothing can never be half of a cycle, whoever picks it up next.
+
+    ⚠ It is deliberately NOT a collection in `STORE` and NOT persisted by
+      `db.py`, so it must not reach for either. The 29 August 2026 override
+      block records that decision: this is a typeahead prefill, not a parts
+      master, and a module that imported `store` would be the first step
+      towards becoming one.
+    """
+    assert imports_of("po_parts") == set()
+
+
+def test_the_seeded_part_list_is_a_prefill_and_not_a_collection():
+    """
+    The shape of `po_parts.py`, asserted rather than trusted to a comment.
+
+    `purchase.py` may read the table; nothing may write it, and it must never
+    acquire the machinery of a record — no `STORE` key, no blueprint, no route.
+    The client asked for free-text lines and the owner chose free text; a parts
+    master is the thing this was explicitly decided against, and it would arrive
+    one import at a time.
+    """
+    src = (REPO / "po_parts.py").read_text(encoding="utf8")
+    tree = ast.parse(src)
+
+    # No route surface. Checked on the parsed source rather than on the text,
+    # so that the docstring saying "this is not a page" cannot fail the test
+    # that proves it.
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    assert "Blueprint" not in names, "a prefill table must not become a page"
+    assert "route" not in names, "a prefill table must not grow a route"
+
+    # No collection. `STORE` may be *named* in the prose — it says the table is
+    # deliberately not one — but it must never be reached for in code.
+    assert "STORE" not in names, "a prefill table must not become a collection"
+
+    assert "po_parts" in imports_of("purchase"), \
+        "purchase.py reads the seeded prefill list"
+
+
 def test_auth_imports_nothing_that_prints():
     """
     The direction that lets **every** module import `auth.py`.

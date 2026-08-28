@@ -85,6 +85,13 @@ import docsheet as DS
 from dashboard import BASE_STYLES, _nav
 from store import STORE
 
+# The seeded prefill list for extra (non-BOQ) purchase-order lines. A flat
+# table that imports NOTHING — not store, not pipeline, not branding — so this
+# arrow is one-way and `po_parts.py` sits at the bottom of the graph beside
+# `demo_data.py`. ⚠ Every rate in it is an ASSUMED PLACEHOLDER; read that
+# module's docstring before quoting one of its figures anywhere.
+import po_parts as PP
+
 # ── The upstream links, and why importing these two is not a cycle ───────────
 #
 # `boq.py` is the schedule a purchase order can now be raised against, and
@@ -296,15 +303,34 @@ def job_cost(quotation_id: str) -> dict:
     **Cancelled POs are excluded from committed spend**; a withdrawn commitment
     is not a cost. They are still counted in `count` so the panel does not
     silently lose a document somebody raised.
+
+    ⚠ **`extra_committed` is broken out on a row of its own, and that is not
+      presentation.** An extra free-text line is real cost with **no BOQ line
+      behind it** (29 Aug 2026). Folded silently into `committed` it would be
+      invisible; dropped, it would understate what the job has cost. So it is
+      reported as its own figure **as well as** inside `committed` — which is
+      the honest pair, because it genuinely is part of what we have committed to
+      spend and it genuinely has no schedule line to hang on.
+
+      Read the two together: `committed` is the whole commitment, and
+      `extra_committed` is how much of it answers to nothing on any schedule.
+      **Never build a coverage ratio out of these** — a numerator counting extra
+      lines against a BOQ's line count is comparing two different things.
     """
     committed = 0.0
     received  = 0.0
+    extra_committed = 0.0
+    extra_count = 0
     rows = _purchases_for(quotation_id)
     for _pid, po in rows:
         if (po.get("status") or DEFAULT_STATUS) == "Cancelled":
             continue
         val = float(po.get("grand_total") or 0.0)
         committed += val
+        xl = extra_lines_of(po)
+        if xl:
+            extra_committed += extra_lines_total(xl)
+            extra_count += len(xl)
         if po.get("status") == "Received":
             received += val
 
@@ -313,6 +339,10 @@ def job_cost(quotation_id: str) -> dict:
     return {
         "count":     len(rows),
         "committed": committed,
+        # Its own row. Part of `committed`, and reported separately because it
+        # is the part of it that no schedule line accounts for.
+        "extra_committed": round(extra_committed, 2),
+        "extra_count":     extra_count,
         "received":  received,
         "quoted":    quoted,
         "margin":    quoted - committed,
@@ -617,6 +647,201 @@ def _line_total(rate: float, qty: float, disc_pct: float) -> float:
     return round(rate * qty * (1.0 - (disc_pct or 0.0) / 100.0), 2)
 
 
+# =============================================================================
+# EXTRA (NON-BOQ) PURCHASE-ORDER LINES
+# =============================================================================
+#
+# ⚠ **THIS IS NOT ONE OF CLIENT_CHANGES-2.md's TWENTY PHASE 3 ITEMS.** It is a
+#   client request made *after* the 19 August 2026 meeting that produced that
+#   list, it carries no 3A/3B/3C tag, and it is priced in neither quotation.
+#   Built under the **29 August 2026** override block in `CLIENT_CHANGES.md`
+#   §0, which says in terms that no agent may record it as a Phase 3 item or
+#   count it toward the board. PROGRESS.md carries it outside the bars.
+#
+# The requirement, in the client's words: BOQ items are not enough. When raising
+# a purchase order he needs to ask the vendor for additional parts that appear
+# nowhere on the BOQ. He sent a list of those parts with **no prices and no
+# units**.
+#
+# ── THREE SEPARATE CONCEPTS LIVE ON THIS RECORD AND MUST NOT BE CONFLATED ────
+#
+#   There are THREE, not two, and each enters the arithmetic at its own point:
+#
+#   ┌───────────────┬────────────────────────────┬─────────────────────────────┐
+#   │ `line_items`  │ BOQ-derived or catalogue    │ into `subtotal`             │
+#   │               │ lines; carry a `line_id`    │                             │
+#   │               │ when raised from a schedule │                             │
+#   ├───────────────┼────────────────────────────┼─────────────────────────────┤
+#   │ `extra_lines` │ **new** — free-text parts;  │ into `subtotal`, exactly    │
+#   │               │ carry **NO** `line_id`      │ as a `line_items` row does  │
+#   ├───────────────┼────────────────────────────┼─────────────────────────────┤
+#   │ `charges`     │ A3's 4-slot labelled        │ AFTER `subtotal`, into      │
+#   │               │ repeater (loading, freight) │ `taxable_value`             │
+#   └───────────────┴────────────────────────────┴─────────────────────────────┘
+#
+# ⚠ **An extra line is a LINE, not a charge.** It is goods this company is
+#   buying from this vendor, so it sits inside `subtotal` exactly as a
+#   `line_items` row does. It does **not** go through `_parse_charges()` or
+#   `charge_totals()`, and the fact that both are "money that was not on the
+#   schedule" is not a reason to merge them: a charge is what the vendor bills
+#   us *beyond* the goods, and an extra line *is* goods.
+#
+# ⚠ **An extra line carries NO `line_id` and must never be given one.**
+#   `line_id` is a BOQ identity — the key `/purchase/from-boq` matches a row
+#   back to a schedule by (§2f, and the ₹1,99,122.50 that matching on `item_no`
+#   once cost). An extra line has no BOQ ancestor, so it has no such identity,
+#   and minting one would make a part that is on no schedule claim to be on one.
+#   `tests/test_po_extra_lines.py` asserts the key is absent.
+#
+# ⚠ **NOT capped at four.** `PO_CHARGE_SLOTS = 4` is A3's *fixed* repeater for
+#   labelled charges. Extra lines are open-ended — the client's own list runs to
+#   about 74 distinct parts — so rows are added and removed like the create
+#   form's item rows, and there is no slot count here at all. There is also no
+#   maximum, deliberately: `_parse_lines()` has none either, and inventing one
+#   for this repeater alone would refuse an order the item editor beside it
+#   would accept.
+#
+# ⚠ **Free text, and there is no parts master.** The owner chose this
+#   explicitly. `po_parts.py` is a **typeahead prefill and nothing else** — not
+#   a collection, not a document, not editable through the UI, not a vocabulary.
+#   A description that matches a seeded name prefills unit and rate; anything
+#   else is accepted exactly as typed, with a blank rate.
+
+
+def _extra_assumed(description: str, rate: float) -> bool:
+    """
+    Whether this line's rate is still the seeded ASSUMED placeholder.
+
+    Derived on the **server**, from the description and the rate themselves,
+    rather than trusted from a hidden field the form posts. A hidden flag would
+    be client-controlled, and the direction that matters is the dangerous one:
+    a tampered or stale form could clear the mark and quietly present an
+    invented figure as a real price.
+
+    So the rule is arithmetic, not memory: **the rate is assumed if and only if
+    the description matches a seeded part AND the submitted rate is still that
+    part's seeded figure.** Prefill the box and it is true; edit the rate to
+    anything else and it is false on the very next save, which is exactly
+    "clears the moment the rate is edited".
+
+    ⚠ **It can say "assumed" about a rate nobody prefilled** — type
+    `Butane gas` and `130` by hand and the line is marked, because the figure
+    on it *is* the placeholder figure whatever route it took to get there. That
+    false positive is the safe one: it over-warns on screen and the mark never
+    prints. The opposite error would let an invented rate travel unmarked.
+    """
+    hit = PP.lookup(description)
+    if not hit:
+        return False
+    _canonical, _unit, seeded = hit
+    return round(float(rate or 0.0), 2) == round(seeded, 2)
+
+
+def _parse_extra_lines(form) -> tuple:
+    """
+    `(extra_lines, error)` — the free-text extra-line repeater off a form.
+
+    Row rules, and each is a refusal to guess:
+
+    - **Every field blank** — dropped silently. The editor opens with blank
+      rows on purpose and an untouched one is not a mistake, which is
+      `_parse_lines()`'s own contract.
+    - **A description and no rate** — **kept**, with rate 0, and shown as
+      incomplete. This is the client's actual case: he sent a list of parts
+      with no prices, and refusing the row would make the feature useless on
+      the day it is most needed. The vendor is being asked to price it.
+    - **A quantity, rate or discount with no description** — refused. A figure
+      on a purchase order that does not say what it is for is exactly what a
+      vendor queries, and it is the same refusal `_parse_charges()` makes.
+    - **A negative quantity or rate** — refused, in the words `_parse_lines()`
+      uses.
+
+    Nothing is returned until every row has been read, so a bad fourth row does
+    not leave the first three half-applied.
+    """
+    descs  = form.getlist("extra_desc")
+    units  = form.getlist("extra_unit")
+    qtys   = form.getlist("extra_qty")
+    rates  = form.getlist("extra_rate")
+    discs  = form.getlist("extra_discount")
+    rows = max(len(descs), len(units), len(qtys), len(rates), len(discs))
+
+    def _at(seq, n):
+        return str(seq[n] if n < len(seq) else "").strip()
+
+    out = []
+    for n in range(rows):
+        desc = _at(descs, n)[:200]
+        unit = _at(units, n)[:30]
+        qty_raw, rate_raw, disc_raw = _at(qtys, n), _at(rates, n), _at(discs, n)
+
+        if not (desc or unit or qty_raw or rate_raw or disc_raw):
+            continue
+
+        if not desc:
+            return [], (f"Extra line {n + 1} has figures but no description. "
+                        f"Say what the vendor is being asked to supply.")
+
+        try:
+            qty = float(qty_raw or 0)
+        except ValueError:
+            return [], f"Quantity for '{desc}' must be a number."
+        if qty < 0:
+            return [], f"Quantity for '{desc}' cannot be negative."
+
+        rate = P.parse_money(rate_raw)
+        if rate < 0:
+            return [], f"Rate for '{desc}' cannot be negative."
+
+        disc, disc_err = _parse_discount(disc_raw, desc)
+        if disc_err:
+            return [], disc_err
+
+        out.append({
+            "type": "extra",
+            "description": desc,
+            "unit": unit,
+            "qty": qty,
+            "rate": rate,
+            "discount_pct": disc,
+            # Reuses `_line_total()` — the SAME arithmetic A2 put on the item
+            # rows, not a second copy of it. A2's discount is inside the tax
+            # base and that has to remain true of an extra line, which it does
+            # because `total` is already net and `subtotal` is what
+            # `_tax_lines()` sees.
+            "total": _line_total(rate, qty, disc),
+            "rate_is_assumed": _extra_assumed(desc, rate),
+            # ⚠ NO `line_id`. Deliberate, load-bearing, and asserted by a test.
+            #   An extra line has no BOQ ancestor and must never claim one.
+        })
+    return out, ""
+
+
+def extra_lines_of(po: dict) -> list:
+    """
+    The extra lines on an order, or `[]`.
+
+    A purchase order raised before 29 August 2026 has no `extra_lines` key at
+    all and reads as empty — no backfill, the same contract `charges_of()` and
+    `proforma.prior_invoiced` hold to, and what keeps every order already in
+    the database printing byte-for-byte what it always printed.
+    """
+    return list((po or {}).get("extra_lines") or [])
+
+
+def extra_lines_total(extra_lines: list) -> float:
+    """
+    What the extra lines add to `subtotal`, net of their own discounts.
+
+    Its own function because it is also the figure the job-costing summary
+    needs to show on a **row of its own**: extra-line spend is real cost with
+    no BOQ line behind it, and folding it into a schedule-derived figure would
+    make it invisible.
+    """
+    return round(sum(float(r.get("total") or 0.0)
+                     for r in (extra_lines or [])), 2)
+
+
 def _charge_rows_html(charges: list, posted_labels=None, posted_amounts=None,
                       posted_taxable=None) -> str:
     """
@@ -700,6 +925,118 @@ def _charge_section_html(charges: list, posted_labels=None, posted_amounts=None,
             is what an incidental expense on their own supply is
             &mdash; s.15(2)(c). Untick it only for a cost somebody other than
             this vendor is charging us. Leave a row blank and it is not used.</small>
+        </div>"""
+
+
+# How many blank extra-line rows the form opens with. A floor, not a cap — the
+# "+ Add part" button adds as many more as anybody wants, and `_parse_extra_lines()`
+# drops every row left untouched.
+DEFAULT_EXTRA_ROWS = 3
+
+
+def _extra_row_html(desc="", unit="", qty="", rate="", disc="") -> str:
+    """
+    One row of the extra-line repeater. Also the `<template>` a new row clones.
+
+    Six cells to `.line-row`'s six, but a different set of them — a free-text
+    description and unit where the item editor has a catalogue `<select>` — so
+    it gets its own `.xl-row` grid rather than borrowing one that does not fit.
+    That is the same call A3's `.chg-row` made for the same reason.
+    """
+    return f"""
+        <div class="xl-row">
+          <input type="text" name="extra_desc" value="{P.esc(desc)}"
+                 list="xl-parts" maxlength="200" placeholder="part, as you would say it to the vendor"
+                 oninput="xlFill(this)"/>
+          <input type="text" name="extra_unit" value="{P.esc(unit)}"
+                 maxlength="30" placeholder="Unit"/>
+          <input type="number" name="extra_qty" value="{P.esc(qty)}"
+                 min="0" step="any" placeholder="Qty" oninput="recalc()"/>
+          <input type="number" name="extra_rate" value="{P.esc(rate)}"
+                 min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
+          <input type="number" name="extra_discount" value="{P.esc(disc)}"
+                 min="0" max="100" step="any" placeholder="0" oninput="recalc()"/>
+          <span class="ln-amt">&#8212;</span>
+          <button type="button" class="btn-remove-line"
+                  onclick="this.closest('.xl-row').remove(); recalc();">&#215;</button>
+        </div>"""
+
+
+def _extra_section_html(extra_lines: list, posted=None) -> str:
+    """
+    The whole `form-section` the extra-line repeater lives in.
+
+    Shared by `/purchase/create` and `/purchase/edit/<id>` so the two cannot
+    describe the same field two different ways — `_charge_section_html()`'s
+    contract, one repeater further down the form.
+
+    Filled from three sources in falling priority, which is that same contract:
+
+    1. **What the user just posted** (`posted` is the form), so a rejected POST
+       comes back with every row still typed in rather than emptied.
+    2. **What is stored on the order**, when there is an order.
+    3. **Blank rows**, padded to `DEFAULT_EXTRA_ROWS`.
+
+    ⚠ **This section is drawn on `/purchase/create` and `/purchase/edit/<id>`
+      ONLY.** It is deliberately absent from `/purchase/from-boq/<boq_id>` and
+      `/purchase/from-draft/<draft_id>` — see the note on those routes.
+    """
+    rows_data = []
+    if posted is not None:
+        descs = posted.getlist("extra_desc")
+        units = posted.getlist("extra_unit")
+        qtys  = posted.getlist("extra_qty")
+        rates = posted.getlist("extra_rate")
+        discs = posted.getlist("extra_discount")
+        n_rows = max(len(descs), len(units), len(qtys), len(rates), len(discs))
+        for n in range(n_rows):
+            rows_data.append((
+                descs[n] if n < len(descs) else "",
+                units[n] if n < len(units) else "",
+                qtys[n]  if n < len(qtys)  else "",
+                rates[n] if n < len(rates) else "",
+                discs[n] if n < len(discs) else "",
+            ))
+    else:
+        for r in extra_lines or []:
+            rows_data.append((
+                str(r.get("description") or ""),
+                str(r.get("unit") or ""),
+                _fmt_qty(float(r.get("qty") or 0.0)) if r.get("qty") else "",
+                f"{float(r.get('rate') or 0.0):.2f}" if r.get("rate") else "",
+                f"{float(r.get('discount_pct') or 0.0):g}" if r.get("discount_pct") else "",
+            ))
+    while len(rows_data) < DEFAULT_EXTRA_ROWS:
+        rows_data.append(("", "", "", "", ""))
+
+    rows = "".join(_extra_row_html(*r) for r in rows_data)
+    options = "".join(f'<option value="{P.esc(n)}"></option>'
+                      for n in PP.suggestions())
+    return f"""
+        <div class="form-section">
+          <div class="section-title">Extra parts &mdash; not on the schedule</div>
+          <div class="xl-head">
+            <span>Part</span><span>Unit</span><span>Qty</span>
+            <span>Rate (&#8377;)</span><span>Disc %</span>
+            <span style="text-align:right;">Amount</span><span></span>
+          </div>
+          <div id="xlines">{rows}</div>
+          <datalist id="xl-parts">{options}</datalist>
+          <button type="button" class="btn btn-ghost" onclick="addExtra()"
+                  style="margin-top:.3rem;">+ Add part</button>
+          <small class="field-hint">Anything you need from this vendor that is
+            not a BOQ item. <b>Type the part however you say it</b> &mdash; this
+            is free text, not a catalogue, and nothing here has to exist
+            anywhere else first. These are <b>goods</b>, so they sit in the
+            order's sub&nbsp;total beside the items above, not in the additional
+            charges below.
+            <br/><b>Rates are suggested, never quoted.</b> A part we have seen
+            before fills in a unit and a placeholder rate so an order can go out
+            today; that figure is <b>an assumption nobody has verified</b>, it
+            is flagged on screen until you replace it, and it is never printed
+            on the order the vendor receives. Leave the rate blank if you want
+            the vendor to price it. Leave a whole row blank and it is not
+            used.</small>
         </div>"""
 
 
@@ -897,10 +1234,10 @@ def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
 
 
 def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
-               charges: list = None) -> tuple:
+               charges: list = None, extra_lines: list = None) -> tuple:
     """
     `(subtotal, taxable_value, tax_info, grand_total, total_qty)` for a set of
-    PO lines and their A3 charge lines.
+    PO lines, their extra free-text lines and their A3 charge lines.
 
     The same `quotation._tax_lines()` every purchase order has always used, with
     SGST forced equal to CGST exactly as the create form forces it. The tax is
@@ -908,30 +1245,45 @@ def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
     and none of that arithmetic is shared with the sell chain, only the
     furniture it prints inside.
 
-    ⚠ **WHERE THE CHARGE LINES ENTER, which is the whole of A3's arithmetic:**
+    ⚠ **WHERE EACH OF THE THREE ENTERS, which is the whole of the arithmetic:**
 
-        subtotal      = sum(line totals)              ← unchanged, lines only
-        taxable_value = subtotal + taxable charges    ← A3 enters HERE
-        tax           = _tax_lines(taxable_value)     ← so tax follows them up
+        subtotal      = sum(line totals) + sum(extra line totals)
+                                                      ← extra lines enter HERE,
+                                                        as LINES, beside items
+        taxable_value = subtotal + taxable charges    ← A3 enters HERE instead
+        tax           = _tax_lines(taxable_value)     ← so tax follows both up
         grand_total   = taxable_value + tax + exempt charges
 
-    `subtotal` deliberately keeps meaning exactly what it always meant — the sum
-    of the line amounts — and `taxable_value` is the new figure. An order with
-    no charges has `taxable_value == subtotal`, so **every stored total on every
-    order raised before this pass is reproduced to the rupee**, and the printed
-    "Taxable Value" row prints the same number it always did.
+    **Three concepts, two entry points, and the difference is not cosmetic.**
+    An extra line is *goods we are buying from this vendor*, so it belongs in
+    `subtotal` exactly where a `line_items` row belongs. A charge is what the
+    vendor bills us *beyond* the goods, so it joins one step later. Putting an
+    extra line through `charge_totals()` would give the right grand total by the
+    wrong route and print it in the wrong place on the sheet.
+
+    `subtotal` therefore still means what it always meant — **the sum of the
+    line amounts** — with the free-text lines counted as the lines they are. An
+    order with no extra lines and no charges has `taxable_value == subtotal`, so
+    **every stored total on every order raised before this pass is reproduced to
+    the rupee**, and the printed "Taxable Value" row prints the same number it
+    always did.
 
     A **non-taxable** charge is added after the tax and is not in the base,
     which is the one line of code the `taxable` flag buys.
     """
-    subtotal = round(sum(float(r.get("total") or 0.0) for r in items), 2)
+    subtotal = round(sum(float(r.get("total") or 0.0) for r in items)
+                     + extra_lines_total(extra_lines), 2)
     ch_taxable, ch_exempt = charge_totals(charges)
     taxable_value = round(subtotal + ch_taxable, 2)
     tax_info = _tax_lines(taxable_value, tax_type,
                           cgst_rate=cgst, sgst_rate=cgst, igst_rate=igst)
     grand = round(taxable_value + float(tax_info.get("total") or 0.0)
                   + ch_exempt, 2)
-    total_qty = round(sum(float(r.get("qty") or 0.0) for r in items), 3)
+    # Extra lines are quantities of goods, so they count toward the order's
+    # total quantity for the same reason they count toward its value.
+    total_qty = round(sum(float(r.get("qty") or 0.0) for r in items)
+                      + sum(float(r.get("qty") or 0.0)
+                            for r in (extra_lines or [])), 3)
     return subtotal, taxable_value, tax_info, grand, total_qty
 
 
@@ -1074,6 +1426,44 @@ PURCHASE_STYLES = """
     .chg-head { display:none; }
     .chg-row { grid-template-columns:1fr; }
   }
+  /* The extra free-text line repeater (29 Aug 2026). Seven cells against
+     `.line-row`'s six and a different set of them — a typed description and a
+     typed unit where the item editor has a catalogue <select> — so it gets its
+     own grid rather than stretching one that does not fit. Screen only. */
+  .xl-head, .xl-row {
+    display:grid; grid-template-columns:1fr 80px 80px 110px 70px 110px 34px;
+    gap:.55rem; align-items:center;
+  }
+  .xl-head {
+    font-size:.72rem; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.05em; margin-bottom:.4rem;
+  }
+  .xl-row { margin-bottom:.55rem; }
+  .xl-row input { margin:0; }
+  @media (max-width:640px){
+    .xl-head { display:none; }
+    .xl-row { grid-template-columns:1fr 70px 90px; }
+    .xl-row input[name="extra_unit"], .xl-row input[name="extra_discount"],
+    .xl-row .ln-amt { display:none; }
+  }
+
+  /* ⚠ THE ASSUMED-RATE MARKER IS SCREEN ONLY, AND THE PRINT RULE BELOW IS THE
+     WHOLE POINT OF IT. It says "the figure beside me was seeded from
+     po_parts.py and nobody has replaced it yet" — which is a note to ourselves
+     about our own guess. The vendor receives the ORDER, not our record of
+     having invented the price, so it is `display:none` at print exactly as
+     `.po-panel` is. Same amber and same shape as the blank-identity
+     `.todo-chip` it is modelled on, because the app already has one visual
+     language for "this still needs real data". */
+  .xl-assumed {
+    display:inline-block; margin-left:.4em;
+    background:#FFF4D6; color:#8A5A00; border:1px dashed #E0A93B;
+    border-radius:5px; padding:0 .38em;
+    font-size:.82em; font-weight:600; font-style:normal;
+    letter-spacing:0; white-space:nowrap;
+  }
+  @media print { .xl-assumed { display:none !important; } }
+
   .po-hist { margin-top:1.1rem; border-top:1px solid var(--border); padding-top:.8rem; }
   .po-hist-row {
     display:flex; gap:.7rem; align-items:baseline; flex-wrap:wrap;
@@ -1411,6 +1801,7 @@ def create_purchase():
 
         items, line_err = _parse_lines(f)
         charges, charge_err = _parse_charges(f)
+        extra_lines, extra_err = _parse_extra_lines(f)
 
         if not po_date:
             error = "Purchase order date is required."
@@ -1422,6 +1813,8 @@ def create_purchase():
             error = "That quotation no longer exists. Leave the job blank to raise a stock order."
         elif line_err:
             error = line_err
+        elif extra_err:
+            error = extra_err
         elif charge_err:
             error = charge_err
 
@@ -1430,9 +1823,12 @@ def create_purchase():
             # They were a verbatim copy of it before 28 August 2026, and A3 has
             # to enter the arithmetic in **one** place or the create form and
             # the reprice form compute a different tax base from the same order.
+            # The extra free-text lines enter through the same single door, and
+            # this route deliberately keeps no private copy of that sum either.
             # SGST always mirrors CGST, exactly as the quotation form forces it.
             (subtotal, taxable_value, tax_info,
-             grand, total_qty) = _totals_of(items, tax_type, cgst, igst, charges)
+             grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
+                                            charges, extra_lines)
 
             q   = STORE["quotations"].get(qid) or {}
             pid = str(uuid.uuid4())
@@ -1462,9 +1858,14 @@ def create_purchase():
 
                 # ── What we are buying ────────────────────────────────────
                 "line_items": items,
+                # Free-text parts that are on no schedule (29 Aug 2026). LINES,
+                # not charges: they are inside `subtotal` beside `line_items`,
+                # and not one of them carries a `line_id`.
+                "extra_lines": extra_lines,
                 "subtotal":   subtotal,
-                # A3. `subtotal` is the lines; `taxable_value` is the lines plus
-                # the taxable charges and is what the tax was computed on.
+                # A3. `subtotal` is the lines — both kinds; `taxable_value` is
+                # those plus the taxable charges, and is what the tax was
+                # computed on.
                 "charges":       charges,
                 "taxable_value": taxable_value,
                 "tax_type":   tax_type,
@@ -1508,8 +1909,10 @@ def create_purchase():
     if request.method == "POST":
         charge_section = _charge_section_html(
             [], f.getlist("charge_label"), f.getlist("charge_amount"), f)
+        extra_section = _extra_section_html([], posted=f)
     else:
         charge_section = _charge_section_html([])
+        extra_section = _extra_section_html([])
 
     # ── Field values: the user's own input on a failed POST, else default ──
     def _v(name: str, fallback: str = "") -> str:
@@ -1564,6 +1967,16 @@ def create_purchase():
         f'"{pid}":{float(p.get("base_price") or 0):.2f}'
         for pid, p in STORE["products"].items()
     ) + "}"
+
+    # The seeded prefill table for the extra-line typeahead, keyed by the SAME
+    # normalisation `po_parts._norm()` applies — the browser and the server have
+    # to agree on what "matches", because the server decides from the same table
+    # whether a rate is still the assumed one.
+    # ⚠ Through `P.json_for_script()`, not `json.dumps` (ABOUT.md §7.9e).
+    seed_json = P.json_for_script({
+        PP._norm(name): {"u": row["unit"], "r": float(row["assumed_rate"])}
+        for name, row in PP.PARTS.items()
+    })
 
     q_opts = '<option value="">&#8212; none / stock purchase &#8212;</option>'
     for qid_, q_ in sorted(STORE["quotations"].items(),
@@ -1668,6 +2081,8 @@ def create_purchase():
           </div>
         </div>
 
+        {extra_section}
+
         {charge_section}
 
         <div class="form-section">
@@ -1746,13 +2161,53 @@ def create_purchase():
         </div>
       </template>
 
+      <template id="xline-tpl">{_extra_row_html()}</template>
+
       <script>
         var RATES = {catalog_rates};
+
+        /* The seeded prefill list, normalised name -> {{u: unit, r: rate}}.
+           ⚠ Every `r` here is an ASSUMED PLACEHOLDER, not a quoted price — see
+           po_parts.py. It is offered into an empty box and flagged on screen
+           until somebody replaces it. Through json_for_script(), never
+           json.dumps: this is JSON going into a <script> block (ABOUT.md
+           §7.9e). */
+        var XSEED = {seed_json};
 
         function addLine() {{
           var tpl = document.getElementById('line-tpl');
           document.getElementById('lines').appendChild(tpl.content.cloneNode(true));
           bind();
+        }}
+
+        function addExtra() {{
+          var tpl = document.getElementById('xline-tpl');
+          document.getElementById('xlines').appendChild(tpl.content.cloneNode(true));
+          recalc();
+        }}
+
+        /* The same normalisation po_parts._norm() does: lowercase, and every
+           run of whitespace collapsed to one. The two have to agree, because
+           the server decides whether a rate is still the assumed one by looking
+           the description up in the same table. */
+        function xlNorm(s) {{
+          return String(s || '').toLowerCase().split(/\\s+/).filter(Boolean).join(' ');
+        }}
+
+        /* Suggest the seeded unit and rate, never impose them: an empty box is
+           filled, a typed one is left alone. That is fillRate()'s contract
+           above, and it is what makes "the assumed mark clears the moment the
+           rate is edited" true — the operator's own figure is never
+           overwritten. */
+        function xlFill(input) {{
+          var hit = XSEED[xlNorm(input.value)];
+          if (!hit) {{ recalc(); return; }}
+          var row = input.closest('.xl-row');
+          var unit = row.querySelector('input[name="extra_unit"]');
+          var rate = row.querySelector('input[name="extra_rate"]');
+          if (unit && !unit.value) {{ unit.value = hit.u; }}
+          if (rate && !rate.value) {{ rate.value = hit.r.toFixed(2); }}
+          recalc();
         }}
 
         /* Suggest the catalogue price, never impose it: base_price is what we
@@ -1779,6 +2234,23 @@ def create_purchase():
             /* The same shape as _line_total(): discount the product, then round
                once. The server is the authority and recomputes it on POST --
                this strip only has to agree with what will be stored. */
+            var amt = Math.round(q * r * (1 - d / 100) * 100) / 100;
+            sub += amt;
+            var cell = row.querySelector('.ln-amt');
+            if (cell) cell.textContent = amt ? amt.toLocaleString('en-IN',
+              {{minimumFractionDigits: 2, maximumFractionDigits: 2}}) : '\\u2014';
+          }});
+
+          /* Extra free-text lines are LINES: they join `sub`, the same figure
+             the item rows above join, and NOT the charge split below. Same
+             _line_total() shape again — discount the product, then round once. */
+          document.querySelectorAll('#xlines .xl-row').forEach(function (row) {{
+            var q = parseFloat(row.querySelector('input[name="extra_qty"]').value) || 0;
+            var r = parseFloat(row.querySelector('input[name="extra_rate"]').value) || 0;
+            var dEl = row.querySelector('input[name="extra_discount"]');
+            var d = dEl ? (parseFloat(dEl.value) || 0) : 0;
+            if (d < 0) d = 0;
+            if (d > 100) d = 100;
             var amt = Math.round(q * r * (1 - d / 100) * 100) / 100;
             sub += amt;
             var cell = row.querySelector('.ln-amt');
@@ -1815,6 +2287,9 @@ def create_purchase():
           document.getElementById('po-grand').textContent = f(base + tax + chEx);
         }}
 
+        /* Only the item rows need this: every extra-line input carries its own
+           inline oninput (recalc, or xlFill on the description), so a row added
+           by cloning the template is live the moment it lands. */
         function bind() {{
           document.querySelectorAll('#lines input').forEach(function (el) {{
             el.oninput = recalc;
@@ -2048,8 +2523,20 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
     # that was not on the schedule. `charges` is still written, as `[]`, so the
     # key exists on every order this module creates.
     charges = []
+    # ⚠ **No extra-line repeater here either, and it is the same call, made
+    #   again deliberately.** `/purchase/from-boq` and `/purchase/from-draft`
+    #   are picker flows over a schedule: their whole job is to carry ticked
+    #   lines across without re-entry. Bolting a free-text surface onto a picker
+    #   is a second design — two ways of adding a line on one form, one of which
+    #   traces to the schedule and one of which cannot — and it is not what
+    #   either page is for. A part that is on no schedule is added afterwards on
+    #   `/purchase/edit/<id>`, exactly as a charge is. `extra_lines` is still
+    #   written, as `[]`, so the key exists on every order this module creates.
+    #   **A recorded deviation, matching the call A3 made, not an omission.**
+    extra_lines = []
     (subtotal, taxable_value, tax_info,
-     grand, total_qty) = _totals_of(items, tax_type, cgst, igst, charges)
+     grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
+                                    charges, extra_lines)
 
     pid = str(uuid.uuid4())
     po = {
@@ -2072,6 +2559,7 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
         "draft_ref":     str((draft or {}).get("ref") or ""),
 
         "line_items":  items,
+        "extra_lines": extra_lines,
         "subtotal":    subtotal,
         "charges":       charges,
         "taxable_value": taxable_value,
@@ -2702,6 +3190,16 @@ def _reprice(po: dict, form) -> str:
     if charge_err:
         return charge_err
 
+    # The extra free-text lines the same way, and for a second reason: unlike
+    # the item rows they are **not** positional. This repeater can gain and lose
+    # rows on the edit form, so there is no stable list to diff against and what
+    # arrives IS the new list. That is also why a description and a quantity are
+    # editable here while a `line_items` row's are not — an item row is a
+    # snapshot of something upstream, and an extra line has no upstream at all.
+    extra_lines, extra_err = _parse_extra_lines(form)
+    if extra_err:
+        return extra_err
+
     staged = []
     for n, (_idx, row) in enumerate(rows):
         name = str(row.get("name") or "this line")
@@ -2723,6 +3221,7 @@ def _reprice(po: dict, form) -> str:
     # whether a vendor charges CGST+SGST or IGST is a fact about where they are,
     # not a price we negotiated, and it was settled when the order was raised.
     po["charges"] = charges
+    po["extra_lines"] = extra_lines
 
     tax_info = po.get("tax_info") or {}
     (subtotal, taxable_value, new_tax,
@@ -2731,7 +3230,7 @@ def _reprice(po: dict, form) -> str:
         po.get("tax_type", "exempt"),
         float(tax_info.get("cgst_rate") or 0.0),
         float(tax_info.get("igst_rate") or 0.0),
-        charges)
+        charges, extra_lines)
     po["subtotal"]      = subtotal
     po["taxable_value"] = taxable_value
     po["tax_info"]      = new_tax
@@ -2773,11 +3272,17 @@ def edit_purchase_rates(id: str):
         was = [(str(r.get("name") or ""), str(r.get("part_no") or ""),
                 float(r.get("price") or 0.0), float(r.get("discount_pct") or 0.0))
                for _i, r in _priced_rows(po)]
+        # The extra lines are compared whole rather than per-line, because they
+        # are not positional: a row can be added or removed here, so "which one
+        # moved" is not a question with an answer. What matters for the message
+        # is only whether the list is the one that went in.
+        extra_was = extra_lines_of(po)
         error = _reprice(po, request.form)
         if not error:
             after = float(po.get("grand_total") or 0.0)
             note  = (request.form.get("note") or "").strip()
             moved = _record_reprice(po, was, note)
+            extra_moved = extra_lines_of(po) != extra_was
             # The order's own trail gets one line; the per-line detail lives in
             # `reprice_log` and prints under the document. Two records of one
             # event, and neither restates the other.
@@ -2787,6 +3292,17 @@ def edit_purchase_rates(id: str):
                                   f"order value &#8377;{before:,.0f} "
                                   f"&#8594; &#8377;{after:,.0f}."))
                 msg = f"Rates updated on {n} line{'' if n == 1 else 's'}."
+                if extra_moved:
+                    msg += " Extra parts updated."
+            elif extra_moved:
+                # `reprice_log` records rate movements on ITEM lines and is
+                # rendered as such, so an extra-line edit does not fake an entry
+                # in it. It still goes on the order's own status trail, because
+                # "nothing changed" would be a lie about a save that happened.
+                _log(po, note or (f"Extra parts updated: order value "
+                                  f"&#8377;{before:,.0f} "
+                                  f"&#8594; &#8377;{after:,.0f}."))
+                msg = "Extra parts updated."
             else:
                 msg = "Nothing changed, so nothing was recorded."
             return redirect(url_for("purchase.view_purchase", id=id,
@@ -2808,8 +3324,11 @@ def edit_purchase_rates(id: str):
         charge_section = _charge_section_html(
             charges_of(po), request.form.getlist("charge_label"),
             request.form.getlist("charge_amount"), request.form)
+        extra_section = _extra_section_html(extra_lines_of(po),
+                                            posted=request.form)
     else:
         charge_section = _charge_section_html(charges_of(po))
+        extra_section = _extra_section_html(extra_lines_of(po))
 
     rows_html = ""
     for n, (_idx, row) in enumerate(_priced_rows(po)):
@@ -2844,6 +3363,13 @@ def edit_purchase_rates(id: str):
                      f"corrected &mdash; but the vendor is holding the figures "
                      f"you are about to change, so tell them.")
 
+    # The same seeded prefill table the create form hands its typeahead, keyed
+    # by the same `po_parts._norm()` normalisation the server matches on.
+    seed_json = P.json_for_script({
+        PP._norm(name): {"u": row["unit"], "r": float(row["assumed_rate"])}
+        for name, row in PP.PARTS.items()
+    })
+
     tax_info = po.get("tax_info") or {}
     tax_note = "no tax on this order"
     if po.get("tax_type") == "cgst_sgst":
@@ -2867,20 +3393,55 @@ def edit_purchase_rates(id: str):
 
       <div class="buy-note">
         {sent_note}
-        <div class="bn-sub">Rates and discounts only. Quantities, lines and the
-          vendor are not editable here, and the tax stays as raised
-          ({P.esc(tax_note)}). <b>Every change is recorded</b> &mdash; who, when,
-          and the old rate against the new one on each line that moves &mdash;
-          and it prints under the order.</div>
+        <div class="bn-sub">Rates and discounts on the <b>items</b> &mdash;
+          their quantities, the lines themselves and the vendor are not editable
+          here, and the tax stays as raised ({P.esc(tax_note)}).
+          <b>Every change is recorded</b> &mdash; who, when, and the old rate
+          against the new one on each item line that moves &mdash; and it prints
+          under the order.
+          <br/><b>Extra parts below are fully editable</b>, descriptions and
+          quantities included: an item row is a snapshot of something upstream,
+          and an extra part has no upstream to disagree with. Changing one goes
+          on the order's history rather than into the rate-change table, which
+          lists movements on item lines.</div>
       </div>
+
+      <template id="xline-tpl">{_extra_row_html()}</template>
 
       <script>
         /* The charge widget is shared with `/purchase/create`, whose live total
            strip calls recalc() on every keystroke. This page has no such strip
            — the Order Value it shows is the stored one, "as it stands" — so the
            hook is defined and does nothing rather than throwing a ReferenceError
-           into the console on every character typed. */
+           into the console on every character typed. The extra-line widget is
+           shared the same way and calls it from the same places. */
         function recalc() {{}}
+
+        /* The extra-line repeater is shared with `/purchase/create` too, so the
+           two behaviours it needs come with it: add a row, and prefill from the
+           seeded list. Both are the create form's own, and the seed table below
+           is the same one, through json_for_script() (ABOUT.md §7.9e).
+           ⚠ Every rate in it is an ASSUMED PLACEHOLDER — see po_parts.py. */
+        var XSEED = {seed_json};
+
+        function addExtra() {{
+          var tpl = document.getElementById('xline-tpl');
+          document.getElementById('xlines').appendChild(tpl.content.cloneNode(true));
+        }}
+
+        function xlNorm(s) {{
+          return String(s || '').toLowerCase().split(/\\s+/).filter(Boolean).join(' ');
+        }}
+
+        function xlFill(input) {{
+          var hit = XSEED[xlNorm(input.value)];
+          if (!hit) {{ return; }}
+          var row = input.closest('.xl-row');
+          var unit = row.querySelector('input[name="extra_unit"]');
+          var rate = row.querySelector('input[name="extra_rate"]');
+          if (unit && !unit.value) {{ unit.value = hit.u; }}
+          if (rate && !rate.value) {{ rate.value = hit.r.toFixed(2); }}
+        }}
       </script>
 
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
@@ -2897,6 +3458,8 @@ def edit_purchase_rates(id: str):
               <b>&#8377; {float(po.get('grand_total') or 0.0):,.0f}</b></span>
           </div>
         </div>
+
+        {extra_section}
 
         {charge_section}
 
@@ -2973,6 +3536,61 @@ def view_purchase(id: str):
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
           <td class="c-price">{_inr(row.get('price') or 0)}</td>
+          <td class="c-disc">{disc_cell}</td>
+          <td class="c-total">{_inr(row.get('total') or 0)}</td>
+        </tr>"""
+
+    # ── Extra free-text lines (29 Aug 2026) ───────────────────────────────
+    #
+    # Rendered as ordinary `row-item` rows in the SAME table, continuing the
+    # same serial numbering and the same quantity total, because that is what
+    # they are: goods on this order. They are not a second table, not a block
+    # under the totals, and emphatically not charge rows — a charge is what the
+    # vendor bills us beyond the goods, and these ARE goods.
+    #
+    # An order with no extra lines draws nothing here and prints byte-for-byte
+    # what it always printed, which is what keeps the pinned golden still.
+    #
+    # ⚠ Two cells differ from an item row and both are honest blanks rather than
+    #   invented content: there is **no part number** (nothing upstream minted
+    #   one) and **no HSN** (these come from no catalogue). The HSN cell goes
+    #   through `B.field()` exactly as an item row's does, so a missing HSN is
+    #   flagged in the house style rather than left looking deliberate.
+    for row in extra_lines_of(po):
+        sno += 1
+        qty = float(row.get("qty") or 0.0)
+        total_qty += qty
+        disc_pct = float(row.get("discount_pct") or 0.0)
+        disc_cell = f"{disc_pct:g}%" if disc_pct else "&#8212;"
+        rate = float(row.get("rate") or 0.0)
+        if rate:
+            # ⚠ **SCREEN ONLY.** `.xl-assumed` is `display:none` at print — see
+            #   PURCHASE_STYLES. The vendor receives the order; the vendor does
+            #   not receive our note that we invented the price.
+            chip = ('<span class="xl-assumed">assumed</span>'
+                    if row.get("rate_is_assumed") else "")
+            rate_cell = f"{_inr(rate)}{chip}"
+        else:
+            # A part typed with no rate: kept deliberately, and shown as
+            # incomplete in the same amber the blank-HSN guard uses. This one
+            # DOES print — a vendor being asked to price a line has to be able
+            # to see which line, and that is the client's actual use for it.
+            #
+            # ⚠ It cannot tell a line nobody has priced from a line genuinely
+            #   supplied free of charge, because both store rate 0. A
+            #   free-of-cost line is rare enough on a purchase order that
+            #   flagging it is the better error; if one ever needs to be
+            #   expressed, it needs a field, not a zero.
+            rate_cell = B.field("", "rate")
+        table_rows += f"""
+        <tr class="row-item">
+          <td class="c-sno">{sno}</td>
+          <td class="c-partno"></td>
+          <td class="c-desc">{P.esc(row.get('description'))}</td>
+          <td class="c-hsn">{B.field("", "HSN")}</td>
+          <td class="c-qty">{_fmt_qty(qty)}</td>
+          <td class="c-unit">{P.esc(row.get('unit'))}</td>
+          <td class="c-price">{rate_cell}</td>
           <td class="c-disc">{disc_cell}</td>
           <td class="c-total">{_inr(row.get('total') or 0)}</td>
         </tr>"""
@@ -3184,12 +3802,26 @@ def view_purchase(id: str):
     job_link = ""
     if po.get("quotation_id") in STORE["quotations"]:
         jc = job_cost(po["quotation_id"])
+        # Extra-line spend gets named here rather than disappearing into
+        # `committed`: it is cost with no schedule line behind it, and a job
+        # summary that hides that is the whole trap `job_cost()`'s docstring
+        # describes. Rendered ONLY when there is some — an order with no extra
+        # lines draws the identical string it always drew, which is what keeps
+        # `/purchase/view`'s pinned bytes still. Same contract as
+        # `reprice_btn` and `upstream_html` above.
+        extra_bit = ""
+        if jc["extra_committed"]:
+            n = jc["extra_count"]
+            extra_bit = (f' &middot; of which extra parts '
+                         f'&#8377;&nbsp;{jc["extra_committed"]:,.0f} '
+                         f'({n} line{"" if n == 1 else "s"} on no schedule)')
         job_link = (f'<a class="po-chip" href="'
                     f'{url_for("quotation.view_quotation", id=po["quotation_id"])}">'
                     f'{P.esc(po.get("quotation_ref"))} &middot; job costing</a>'
                     f'<span class="jc-sub" style="margin-left:.5rem;">'
                     f'quoted &#8377;&nbsp;{jc["quoted"]:,.0f} &middot; '
-                    f'committed &#8377;&nbsp;{jc["committed"]:,.0f}</span>')
+                    f'committed &#8377;&nbsp;{jc["committed"]:,.0f}'
+                    f'{extra_bit}</span>')
 
     # Offered only where `can_edit_rates()` would allow it, which from
     # 28 August 2026 means **every order except a Cancelled one**. A button that

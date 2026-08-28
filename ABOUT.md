@@ -352,6 +352,7 @@ Consequences you must respect when editing:
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Employee & Miscellaneous Charges.** Ledger for business expenses (travel, food, wages, etc.) not in any BOQ. A leaf. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
+| [po_parts.py](po_parts.py) | 380 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines. ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
@@ -376,6 +377,7 @@ app.py
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address,
  │                             │  docsheet, boq, boqpick — the last two are §2f
+ │                             │  — and po_parts, the seeded prefill table
  ├─ spec.py ───────────────────┤  imports dashboard, branding, store, pipeline, demo_data
  ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, spec, demo_data
  ├─ ra.py ─────────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq
@@ -396,6 +398,7 @@ app.py
 pipeline.py  imports nothing from the app  ← keep it that way
 branding.py  imports nothing from the app  ← keep it that way
 demo_data.py imports nothing AT ALL        ← keep it that way
+po_parts.py  imports nothing AT ALL        ← keep it that way, and see below
 auth.py      imports store, pipeline, branding — and NOTHING that prints ← §2g
 docsheet.py  imports quotation + the three above, and NOTHING that prints  ← §2d
 boqpick.py   imports boq + pipeline, and NOTHING that renders a document ← §2e
@@ -414,6 +417,20 @@ specs and the 97-line demo BOQ and imports nothing — not `store`, not
 because of scale, not taste: inline, it would leave `spec.py` more data than
 code and push `boq.py` past 2700 lines. `product.py`'s twelve inline seed rows
 are a different order of thing and are fine where they are.
+
+**`po_parts.py` is the fourth, and it is held to the same standard for the same
+reason.** It holds the 73-part seeded prefill list for extra purchase-order
+lines and imports nothing at all, so `purchase.py` can read it with no risk of
+a cycle and whoever picks it up next can too. It is separate from `purchase.py`
+for the same reason `demo_data.py` is separate from `boq.py` — scale — and for
+one more that matters more: **it is deliberately not a collection.** There is
+no `STORE` key, no table in `db.py`, no blueprint and no route, and
+`tests/test_import_directions.py` asserts all three at AST level. The client
+asked for free-text lines and the owner chose free text; a parts master is the
+thing that decision was taken *against*, and it would arrive one import at a
+time. ⚠ **Every rate in the file is an assumed placeholder and none of it is a
+quoted price** — the module docstring says so first, and nothing in this
+application may present one as real.
 
 It is **generated, not written**: `python tools/gen_demo_data.py` reads
 `sify_boq.xlsx` and emits it, byte-for-byte reproducibly. Clause text, rates,
@@ -1190,8 +1207,23 @@ record to freeze a copy of, because the decision to buy is ours.
 - **Vendor — who we buy FROM, not a customer:** `vendor_id`, `vendor_name`,
   `vendor_gstin`, `to` (the printable block), `vendor_ref` (their offer no.)
 - **Soft job link:** `quotation_id`, `quotation_ref` — **both may be `""`**
-- **Content:** `line_items`, `subtotal`, **`charges`**, **`taxable_value`**,
-  `tax_type`, `tax_info`, `grand_total`, `total_qty`
+- **Content:** `line_items`, **`extra_lines`**, `subtotal`, **`charges`**,
+  **`taxable_value`**, `tax_type`, `tax_info`, `grand_total`, `total_qty`
+
+  ⚠ **THREE separate concepts live here and must not be conflated**, which is
+  the single most confusable thing on this record:
+
+  | | what it is | where it enters |
+  |---|---|---|
+  | `line_items` | BOQ-derived or catalogue lines; carry a `line_id` when raised from a schedule | `subtotal` |
+  | `extra_lines` | free-text parts on no schedule; carry **no** `line_id` | `subtotal` |
+  | `charges` | A3's 4-slot labelled repeater (loading, transport…) | after `subtotal`, into `taxable_value` |
+
+  An extra line is a **line**, not a charge — it is goods we are buying from
+  this vendor, so it sits inside `subtotal` exactly where a `line_items` row
+  does. A charge is what the vendor bills us *beyond* the goods. Routing an
+  extra line through `charge_totals()` gives the right grand total by the wrong
+  route and prints it in the wrong place on the sheet.
   - each priced line: `name`, `part_no`, `hsn`, `qty`, `unit`, `price`,
     **`discount_pct`** (A2 — a percentage, 0–100, **absent on every line
     written before 27 Aug 2026**), `total`, `depth`. **`total` is already NET
@@ -1206,11 +1238,39 @@ record to freeze a copy of, because the decision to buy is ours.
     **must be escaped at the interpolation site** — `DS.sum_row()` takes its
     label raw. `taxable` defaults to **true**, and the default lives in the
     form rather than in the parser.
+  - **`extra_lines`** (29 Aug 2026 — **absent on every order written before
+    it**, and `extra_lines_of()` reads a missing key as `[]`): a list of
+    `{type: "extra", description, unit, qty, rate, discount_pct, total,
+    rate_is_assumed}`. `description` and `unit` are **free text somebody typed
+    and must be escaped at the interpolation site**. `total` is already NET of
+    the discount — the same `_line_total()` the item rows use, not a second
+    copy — which is what puts an extra line's discount inside the tax base
+    exactly as A2 put an item line's there.
+    - ⚠ **No `line_id`, ever, and not even a blank one.** `line_id` is a BOQ
+      identity (§2f); an extra line has no BOQ ancestor, so minting one would
+      make a part that is on no schedule claim to be on one. Every read of
+      `line_id` in `purchase.py` is `.get()`-guarded and a test asserts the key
+      is absent.
+    - `rate_is_assumed` is **derived on the server**, not remembered in a
+      hidden field: true iff the description matches a `po_parts.py` entry
+      **and** the rate is still that entry's seeded figure. Editing the rate to
+      anything else clears it on the next save. It can over-report — type a
+      seeded figure by hand and it marks — and that is the safe direction; the
+      opposite would let an invented rate travel unmarked.
+    - **⚠ The `assumed` chip is `display:none` at print** (`.xl-assumed` in
+      `PURCHASE_STYLES`). The vendor receives the order, not our note that we
+      invented the price.
+    - A row with a description and **no rate** is kept, with rate 0, and prints
+      the blank-field `todo-chip`. That one *does* print: a vendor being asked
+      to price a line has to see which line. It cannot distinguish an unpriced
+      line from a genuinely free one — both store 0 — and that is recorded
+      rather than solved.
   - **`taxable_value`** (A3): `subtotal` plus the **taxable** charges, and the
     only thing `_tax_lines()` is given. `subtotal` deliberately keeps its old
-    meaning — the sum of the line amounts — so an order with no charges has
-    `taxable_value == subtotal` and every stored total written before A3 is
-    reproduced to the rupee. A **non-taxable** charge is added after the tax.
+    meaning — the sum of the line amounts, both kinds — so an order with no
+    charges has `taxable_value == subtotal` and every stored total written
+    before A3 is reproduced to the rupee. A **non-taxable** charge is added
+    after the tax.
 - **Reprice trail (A1, 28 Aug 2026):** `reprice_log[]`, each entry
   `{at, by, status, note, lines[]}` where a line is
   `{name, part_no, rate_from, rate_to, disc_from, disc_to}`. **Only lines that
@@ -2991,6 +3051,88 @@ the heads to be seeded in `/settings` and editable there. They are not. Reading
 them would add a `purchase.py → settings.py` edge to the import graph in §2 for
 a picker whose labels are already free text. It is a deviation named in the
 28 August 2026 override block for the client to confirm.
+
+#### Extra free-text lines — parts that are on no schedule (29 August 2026)
+
+⚠ **This is NOT one of CLIENT_CHANGES-2.md's twenty Phase 3 items**, and the
+distinction is commercial rather than pedantic. It is a client request made
+*after* the 19 August 2026 meeting that produced that list, it carries no
+3A/3B/3C tag, and it is priced in **neither** quotation. Built under the
+**29 August 2026** override block in `CLIENT_CHANGES.md` §0, which forbids
+recording it as a Phase 3 item or counting it toward the board. PROGRESS.md
+carries it in a section outside the bars.
+
+The requirement: BOQ items are not enough. When raising a purchase order the
+client needs to ask the vendor for additional parts that appear nowhere on the
+BOQ, and he sent a list of them with **no prices and no units**.
+
+**Extra lines are free text typed onto each order.** There is no parts master,
+no catalogue collection, no picker and no per-vendor rate table — the owner
+chose that explicitly, and `po_parts.py` exists **only as a typeahead
+prefill**. Typing a description that matches a seeded name fills in the unit
+and a rate; typing anything else is accepted exactly as typed with a blank
+rate. The seeded figure is offered into an **empty** box and never overwrites
+what somebody typed, which is `fillRate()`'s contract one repeater along.
+
+⚠ **Every seeded rate is an ASSUMED PLACEHOLDER, and nothing may present one as
+a real price.** It exists so an order can go out before the vendor has priced
+the list. A line still carrying one is flagged on screen with an amber
+`.xl-assumed` chip in the same shape as the blank-identity `todo-chip` — and
+that chip is **`display:none` at print**, for the same reason `.po-panel` is:
+the vendor receives the order, not our record of having guessed.
+
+The arithmetic is §3's, and all of it enters through **`_totals_of()`**:
+
+```
+subtotal      = sum(line totals) + sum(extra line totals)   ← extras enter HERE
+taxable_value = subtotal + taxable charges                  ← A3 enters HERE
+```
+
+`create_purchase()` keeps **no private copy** of that sum — A3 removed one such
+copy on 28 August for exactly this reason, and this item would have reintroduced
+it. `_line_total()` and `_parse_discount()` are reused rather than duplicated,
+so an extra line's discount is inside the tax base exactly as A2's is.
+
+**On `/purchase/create` and `/purchase/edit/<id>` only.** ⚠ Deliberately **not**
+on `/purchase/from-boq/<boq_id>` or `/purchase/from-draft/<draft_id>`: those are
+picker flows whose job is to carry a schedule's ticked lines across without
+re-entry, and adding a free-text surface to a picker is a second design — two
+ways of adding a line on one form, one traceable to the schedule and one not. A
+part on no schedule is added afterwards on the edit form, exactly as a charge
+is. Both still write `extra_lines: []`, so every order this module creates
+carries the key. **The same call A3 made, made again and recorded again.**
+
+**Unlike the item rows, this repeater is not positional and is fully editable on
+`/purchase/edit/<id>`** — descriptions and quantities included. It can gain and
+lose rows, so `_reprice()` re-reads it whole rather than diffing it, and "which
+row moved" is not a question with an answer. An item row is a snapshot of
+something upstream; an extra line has no upstream to disagree with. An
+extra-line-only edit goes on the order's **status history** and not into
+`reprice_log`, which lists rate movements on item lines — and the route says
+"Extra parts updated" rather than "Nothing changed", which would be a lie about
+a save that happened.
+
+**Permission: `purchase.create`, and no new endpoint.** Extra lines are edited
+at `/purchase/create` and `/purchase/edit/<id>`, both already classified
+`purchase.create` — choosing what this company agrees to pay a vendor is the
+authority that permission already confers, which is §2f-A1's own reasoning.
+**`docs/ACCESS_MATRIX.md` did not move by a byte.**
+
+⚠ **The P&L trap, and how far it is actually closed.** An extra line is real
+cost with **no BOQ line behind it**. `purchase.job_cost()` therefore reports
+`extra_committed` and `extra_count` on a **row of their own**, as well as inside
+`committed` — the honest pair, because the money genuinely is part of the
+commitment and genuinely answers to nothing on any schedule. `/purchase/view`
+renders that clause **only when there is extra-line value**, which is what keeps
+the pinned golden still. **Never build a coverage ratio out of these figures**:
+a numerator counting extra lines against a BOQ's line count compares two
+different things. There is no such ratio in the app today, and this is the note
+that says not to add one. ⚠ **`quotation.py`'s deal panel re-derives its own
+`committed` and does not call `job_cost()`**, so it folds extra-line value in
+with no breakout row; `quotation.py` is frozen against feature work, so that is
+recorded here rather than changed.
+
+Held by [tests/test_po_extra_lines.py](tests/test_po_extra_lines.py).
 
 ---
 

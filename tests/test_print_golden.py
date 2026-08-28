@@ -465,8 +465,34 @@ TI_BLOCKS = {"head":       "49524db46e29dcc5",
 #   `taxable_value` — which falls back to `subtotal` and is the identical
 #   260,600.00 it always printed. Order Value is unchanged at 307,508.00. **Not
 #   one figure on the printed sheet moved**; a stylesheet did.
-PO_WHOLE, PO_LEN = "c577fb58b9913384", 104759
-PO_BLOCKS = {"head":       "aa05dcac55729c51",   # was c4b27c10e58c1b4f,
+#
+# Moved a THIRD time on 29 August 2026, by the extra free-text purchase-order
+# lines. **+1,800 characters, in the SAME one block, and it is one thing:**
+#
+#   head  +1,800 = the `.xl-head` / `.xl-row` / `.xl-assumed` rules and their
+#                  comments, added to `PURCHASE_STYLES` for the extra-line
+#                  repeater on `/purchase/create` and `/purchase/edit/<id>`.
+#
+# That figure was **measured, not derived**: the stylesheet block added to
+# `PURCHASE_STYLES` is 1,800 characters long and the page grew by 1,800, so the
+# delta is the stylesheet and nothing else — not one other character of this
+# document moved.
+#
+# ⚠ **`items` did NOT move again, for the same reason and a second one.** The
+#   golden order carries no `extra_lines`, so `extra_lines_of()` returns `[]`
+#   and the loop that draws them runs zero times: no extra row, no serial
+#   number consumed, nothing added to `total_qty`, and `subtotal` unchanged at
+#   260,600.00 because `extra_lines_total([])` is 0.0. Order Value is still
+#   307,508.00. The `job costing` chip is also unchanged — its extra-parts
+#   clause renders only when there is extra-line value, exactly as
+#   `reprice_btn` renders only on a live order.
+#
+# ⚠ **The assumed-rate chip cannot reach this document even when an order does
+#   carry one.** `.xl-assumed` is `display:none` at print. That is asserted
+#   directly in `tests/test_po_extra_lines.py` rather than inferred from here.
+PO_WHOLE, PO_LEN = "0b7ed84b19fa2646", 106559
+PO_BLOCKS = {"head":       "823a24d818d5f0c3",   # was aa05dcac55729c51,
+                                                 # was c4b27c10e58c1b4f,
                                                  # was 5354379fd4182ed2,
                                                  # was d0df61b20bb3a42e
              "letterhead": "2800166c693cc2f1",
