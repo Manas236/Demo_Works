@@ -1450,6 +1450,27 @@ def clean_claims(raw_lines: list, boq: dict, leg: str, prev: dict,
 # sent this" is the fact the operator can act on and "a later bill exists" is
 # not the reason they are being stopped.
 
+# ⚠ **THE LATEST-BILL-ONLY RESTRICTION IS DELIBERATE AND STAYS** — ruled on
+#   28 August 2026 under the override block of that date, and recorded here
+#   because this is the function that enforces it.
+#
+#   CC-2's A6 narrows the client's unqualified "edit and delete in RA" to draft
+#   only. The code adds a second narrowing CC-2 does not carry: a draft that is
+#   not the highest `ra_no` is refused both operations.
+#
+#   **It was put to the client-facing owner as a candidate for lifting and was
+#   deliberately kept.** RA bills are cumulative — `claimed_by_line()` sums the
+#   whole chain — so editing bill 3 while bill 5 exists corrupts every claim
+#   downstream of it, including ones already printed and handed over. The client
+#   asked without qualification because the chain arithmetic is not his to know.
+#   This is **correct behaviour, not a shortfall**, and A6 closes as *built with
+#   a stated limitation* rather than as partial.
+#
+#   What the 28 August pass changed is the **refusals**, not the rule: both now
+#   explain why and name cancelling forward as the supported route. Arbitrary
+#   mid-chain editing is **new scope** and is priced nowhere — see
+#   `CLIENT_CHANGES-2.md` A6 and PROGRESS.md §6-A.
+
 def is_latest_bill(boq_id: str, ra_id: str) -> bool:
     """Is this the highest-numbered bill in the project's chain?"""
     rows = bills_of(boq_id)
@@ -1479,7 +1500,19 @@ def claim_is_frozen(bill: dict) -> bool:
 
 
 def frozen_reason(bill: dict) -> str:
-    """Why this bill's claim cannot be edited, in words, or ""."""
+    """
+    Why this bill's claim cannot be edited, in words, or "".
+
+    **Rewritten 28 August 2026 to name the supported route** — CLIENT_CHANGES-2
+    A6, under the override block of that date. The restriction itself is
+    unchanged and was deliberately kept; see the note above `is_latest_bill()`.
+    What changed is that a refusal now finishes the sentence: it says *why* this
+    bill is frozen, *which* bills froze it, and *what to do instead*.
+
+    A refusal that only says no leaves the operator to guess, and the guess that
+    is available — raise a correction on the next bill without telling anybody
+    the earlier one was wrong — is worse than either supported answer.
+    """
     if not claim_is_frozen(bill):
         return ""
     later = [int(b.get("ra_no") or 0)
@@ -1488,10 +1521,20 @@ def frozen_reason(bill: dict) -> str:
     if not later:
         return "This bill's claim can no longer be edited."
     names = ", ".join(f"RA{n}" for n in sorted(later))
+    plural = len(later) == 1
     return (f"RA{bill.get('ra_no')}'s claim is frozen because {names} "
-            f"{'has' if len(later) == 1 else 'have'} been raised against this "
-            f"BOQ. Every later bill's balance was calculated from this one, so "
-            f"changing it now would rewrite figures already sent out.")
+            f"{'has' if plural else 'have'} been raised against this "
+            f"BOQ. RA bills are cumulative: {names} "
+            f"{'took its' if plural else 'took their'} opening position from "
+            f"this bill's closing one, so editing RA{bill.get('ra_no')} now "
+            f"would silently restate every claim after it \u2014 including "
+            f"figures already sent out to the main contractor.\n\n"
+            f"What to do instead: work forward, not back. Cancel "
+            f"{names} and then this bill, newest first, and reissue \u2014 "
+            f"cancelling keeps each number spent and records why. If the "
+            f"correction can wait, put it on the next claim, where it is "
+            f"visible to the contractor rather than applied behind a document "
+            f"he has.")
 
 
 def _receipts_refusal(bill: dict, done: str, doing: str) -> str:
@@ -1595,14 +1638,23 @@ def can_delete(bill: dict) -> tuple:
             f"out is withdrawn by cancelling it — which keeps the number spent "
             f"and records why — not by removing it from our own books.")
     if claim_is_frozen(bill):
+        # Rewritten 28 August 2026 for the same reason `frozen_reason()` was:
+        # the refusal was correct and stopped one sentence short of useful.
         later = [int(b.get("ra_no") or 0)
                  for _rid, b in bills_of(str(bill.get("boq_id") or ""))
                  if int(b.get("ra_no") or 0) > int(bill.get("ra_no") or 0)]
         names = ", ".join(f"RA{n}" for n in sorted(later))
         return False, (
-            f"Only the latest bill can be deleted. Delete {names} first — "
-            f"removing RA{bill.get('ra_no')} now would leave a gap in the "
-            f"sequence and change every later bill's balance.")
+            f"Only the latest bill can be deleted, and RA{bill.get('ra_no')} is "
+            f"not it — {names} "
+            f"{'sits' if len(later) == 1 else 'sit'} after it. RA bills are "
+            f"cumulative, so removing RA{bill.get('ra_no')} now would leave a "
+            f"gap in the sequence and change every later bill's balance.\n\n"
+            f"What to do instead: work forward, not back. Deal with {names} "
+            f"first, newest first — cancel one that has been issued, which "
+            f"keeps its number spent and records why, or delete one that is "
+            f"still a draft. RA{bill.get('ra_no')} becomes the latest bill "
+            f"again once nothing sits after it.")
     return True, ""
 
 
