@@ -1194,6 +1194,103 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > against a quotation that has **lapsed** — and the extra-lines work, together
 > with the cutback that repairs it, was built against **no quotation at all**.
 
+> ### ⚠ OVERRIDE — 30 August 2026, by Manas Gawde — a cleanup pass: one live identity mutation, and no Phase 3 item
+>
+> **A new block, not an amendment, and the first one dated 30 August 2026.**
+> The thirteen blocks above it — including all five dated 29 August 2026 —
+> **have not been edited, reformatted, re-scoped or extended by a single
+> character.** This is the **fourteenth occasion overall**. Eight of the
+> thirteen above reach into Phase 3; **this one does not, and adds no ninth.**
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a sixth time, not softened
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending", it is not "with the client", and it is not awaiting a countersign.
+> **It is expired.** A sixth restatement is not evidence that the first five
+> made it routine. **A lapsed quotation is a stronger reason to record and a
+> weaker reason to build**, and nothing below builds anything.
+>
+> #### What proceeds — one thing, and only this
+>
+> **The role reconciliation of the cleanup pass, AUTHORISED.** It **mutates
+> live role records** in `STORE["roles"]`, and this block is the authorisation
+> the fifth block of 29 August 2026 said the next identity mutation would have
+> to take on its own terms rather than by citing `_role_grants()` as precedent.
+> It does not cite it. It is authorised here, on its own date, before it is run.
+>
+> **What it does, precisely:** `auth.ensure_builtin_roles()` deliberately never
+> rewrites an existing role's permission list — once an Owner has edited what
+> Director means, a restart must not undo it. The cost of that correctness is
+> that **a permission minted in a later pass never reaches a database that
+> already has its roles.** The reconciliation grants each builtin role exactly
+> the permissions `auth.BUILTIN_ROLES` already gives it **in code**, and
+> nothing else. **It invents no policy and decides nothing new**: every grant
+> it makes was already decided, with its reasoning recorded, in the pass that
+> minted the permission.
+>
+> #### ⚠ THE DRIFT IS WIDER THAN THE MEASUREMENT DOCUMENT — recorded, not buried
+>
+> The pass was commissioned to reconcile the six `measurement.*` permissions
+> left unreachable by the fifth block of 29 August 2026. On measuring the live
+> database it found **fourteen** permissions held by **no role at all**, not
+> six. The other eight are **`employee.*` (C4)** and **`attendance.*` (C5)**,
+> minted on 29 August 2026 and unreachable on this database ever since.
+>
+> **C4 and C5 have stood on the board as BUILT while nobody — including the
+> Owner — could open either page.** That is the same defect as the measurement
+> one, twice over and older, and it is recorded here because it means this
+> mutation touches **more role records than the commissioning brief named**.
+> All fourteen are reconciled, for the reason the pass was commissioned at all:
+> the instruction was to fix the class and not the instance, and granting six
+> of fourteen known orphans would be the instance.
+>
+> **No new capability is delivered by this.** Every one of the fourteen is a
+> permission this application already ships, attached to a page already built
+> and already marked built. The reconciliation makes reachable what was
+> **already sold, already built and already paid for in effort** — it does not
+> add a feature, a page, a route or a role.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **B8** — not started, no groundwork, and **attachment storage is not
+>   begun.** The owner has proposed BLOBs; that is a separate authorised pass
+>   and this is not it.
+> - **C3** and **C6**, both BLOCKED — C3 on BQ1 and BQ2, C6 on CC-2's Open
+>   question 4. Neither is opened, and nothing is wired into C6 or any P&L.
+> - **No Phase 3 item is built, closed, or advanced by this pass.** The board
+>   does not move: it stands where the fifth block of 29 August 2026 left it.
+>
+> #### Chargeability
+>
+> **Nothing here is chargeable, and it is not the §0 MG/SF/2026-01 exemption
+> that makes it so.** That exemption covers defect and reachability fixes
+> against scope sold under MG/SF/2026-01. These fourteen permissions belong to
+> C2, C4 and C5 — **priced in MG/SF/2026-02, which has lapsed.** So the
+> honest statement is narrower and worth making exactly: this pass **adds no
+> capability and moves no price.** It repairs work already built, leaves that
+> work priced where it was already priced, and bills nothing of its own.
+>
+> The reconciliation tool and the tests written to stop this class recurring
+> are priced **nowhere at all**, like the other engineering the blocks above
+> record as unspecced.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises an
+> identity mutation does not authorise the next one**, and a future migration
+> reaching into `users` or `roles` needs a block of its own that names it —
+> exactly as this block refused to cite `_role_grants()`.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything the five blocks of 29 August 2026
+> record as built — C4, C5, the B6/B7 approval ladder, C2 and C1 — was built
+> against a quotation that has **lapsed**, and this pass has now made three of
+> those items reachable by the people meant to use them.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
