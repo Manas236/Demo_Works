@@ -22,6 +22,7 @@ This grid has **455 cells**. **28** of them can be traced to a line of the speci
 | `·` | **Our derivation.** A reasonable starting position, not a client instruction. Editable with a checkbox on `/roles`. |
 | *(blank)* | The role does not hold this permission. |
 | `§` *on a blank cell* | The specification requires this to be **withheld**. Shown so a deliberate exclusion is not mistaken for an oversight. |
+| `–` | **Withheld by our derivation.** The specification says nothing either way; we chose not to grant it. A **reversible default, not a policy** — an Owner grants it at `/roles/edit/<id>` with a checkbox, no code change and no re-login. |
 
 Every derived cell is a question for the client, and none of them is expensive to change: an Owner reassigns any of it with checkboxes at `/roles`, with no deployment and no developer.
 
@@ -112,10 +113,10 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Record a charge<br/>`charge.create` | · | · | · | · | § | § | § |
 | Edit a charge<br/>`charge.edit` | · | · | · | · | § | § | § |
 | Delete a charge<br/>`charge.delete` | · | · |  | · | § | § | § |
-| View the employee master<br/>`employee.view` | · | · |  | · | § | § | § |
-| Add an employee<br/>`employee.create` | · | · |  | · | § | § | § |
-| Edit an employee's details and salary<br/>`employee.edit` | · | · |  | · | § | § | § |
-| Remove an employee from the register<br/>`employee.delete` | · | · |  | · | § | § | § |
+| View the employee master<br/>`employee.view` | · | · | – | · | § | § | § |
+| Add an employee<br/>`employee.create` | · | · | – | · | § | § | § |
+| Edit an employee's details and salary<br/>`employee.edit` | · | · | – | · | § | § | § |
+| Remove an employee from the register<br/>`employee.delete` | · | · | – | · | § | § | § |
 
 ### Projects
 

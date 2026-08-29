@@ -431,7 +431,14 @@ def view_project(id: str):
     <!-- Charges Panel -->
     <div class="panel">
       <div class="panel-head">
-        <h2>Employee & Misc Charges</h2>
+        <!-- ⚠ Labelled "Employee & Misc Charges" until 29 August 2026 — the
+             THIRD site carrying that wording, outside the two corrected with
+             charge.py's own title. A real employee master now exists
+             (employee.py, CC-2 C4), and this ledger has never had an employee
+             record behind it: "Person" below is a free-text field somebody
+             types. The module is NOT renamed — charge.py, /charge and
+             charge.* all stay. The label is what was wrong. PROGRESS.md §6-E. -->
+        <h2>Expenses & Charges</h2>
         <span style="font-size:0.8rem;color:var(--muted);">Expenses tagged to this project</span>
       </div>
       <table class="data">

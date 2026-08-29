@@ -58,6 +58,10 @@ OUT_PATH = REPO / "docs" / "ACCESS_MATRIX.md"
 MARK_SPEC = "§"
 MARK_DERIVED = "·"
 MARK_ABSENT = ""
+# Withheld because WE chose to, with no specification either way. Deliberately
+# not `·`, which means "held, and our derivation" — this is the other half of
+# the same idea and a reader must be able to tell them apart at a glance.
+MARK_DERIVED_ABSENT = "–"
 
 
 # ── What CLIENT_CHANGES-2.md actually settles ──────────────────────────────
@@ -117,6 +121,32 @@ for _role in ("sales-manager", "purchase-manager", "accountant"):
                   "employee.view", "employee.create", "employee.edit",
                   "employee.delete"):
         SPEC_REQUIRES_ABSENT.add((_role, _perm))
+
+# Cells we withhold as a DEFAULT WE CHOSE, with no line of specification either
+# way. The distinction from the set above is the whole reason this one exists:
+# an empty cell, a cell the specification empties, and a cell **we** empty are
+# three different claims, and only the middle one may carry a `§`.
+#
+# ⚠ **Operation Head and the employee master (29 August 2026).** B4 names six
+#   roles and Operations Head is one of them, so "CC-2 is silent on the role" is
+#   not the reason. The reason is narrower: B4's single sentence about employee
+#   data — *"HR information is restricted from Sales, Purchase and Accounts"* —
+#   does not name Operations Head **in either direction.** It neither grants the
+#   role employee access nor withholds it. Marking these four `§` would claim a
+#   backing that does not exist; leaving them blank would read as an oversight.
+#   They are ours, and they say so.
+#
+#   It is a **reversible default, not a policy**: an Owner grants any of it at
+#   `/roles/edit/<id>` with a checkbox — no code change, no deployment and no
+#   re-login. Recorded in the second 29 August 2026 override block in
+#   CLIENT_CHANGES.md §0 and in PROGRESS.md.
+#
+#   The three roles B4 *does* name keep their `§` above, because for them that
+#   sentence is real.
+DERIVED_REQUIRES_ABSENT = set()
+for _perm in ("employee.view", "employee.create", "employee.edit",
+              "employee.delete"):
+    DERIVED_REQUIRES_ABSENT.add(("operation-head", _perm))
 
 
 # ── Plain-English role descriptions ────────────────────────────────────────
@@ -347,6 +377,10 @@ def build() -> str:
     w(f"| `{MARK_SPEC}` *on a blank cell* | The specification requires this to "
       f"be **withheld**. Shown so a deliberate exclusion is not mistaken for "
       f"an oversight. |")
+    w(f"| `{MARK_DERIVED_ABSENT}` | **Withheld by our derivation.** The "
+      f"specification says nothing either way; we chose not to grant it. A "
+      f"**reversible default, not a policy** — an Owner grants it at "
+      f"`/roles/edit/<id>` with a checkbox, no code change and no re-login. |")
     w("")
     w("Every derived cell is a question for the client, and none of them is "
       "expensive to change: an Owner reassigns any of it with checkboxes at "
@@ -379,6 +413,8 @@ def build() -> str:
                     cells.append(MARK_SPEC if key in SPEC_BACKED else MARK_DERIVED)
                 elif key in SPEC_REQUIRES_ABSENT:
                     cells.append(MARK_SPEC)
+                elif key in DERIVED_REQUIRES_ABSENT:
+                    cells.append(MARK_DERIVED_ABSENT)
                 else:
                     cells.append(MARK_ABSENT)
             w(f"| {label}<br/>`{pid}` | " + " | ".join(cells) + " |")

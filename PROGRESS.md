@@ -328,6 +328,48 @@ and the Accountant's employee overview and employee management — are **also no
 built**, and items 4 and 5 are the ones to watch now that an employee master
 exists: they will look one checkbox away and they are not.
 
+### Operation Head and `employee.*` — REFUSED as a reversible default
+
+**Ruled on 29 August 2026 by the client-facing owner, second pass, and recorded
+in the second override block of that date in `CLIENT_CHANGES.md` §0.**
+
+**Operation Head does not hold `employee.view`, `employee.create`,
+`employee.edit` or `employee.delete`.** The seeded role does not grant them and
+did not gain them; `auth.py` was **not edited** to reach this position — it is
+where the role already stood, now stated rather than left implicit.
+
+✅ **It is a REVERSIBLE DEFAULT, not a policy.** An Owner grants any of the four
+at **`/roles/edit/<id>`** with a checkbox — **no code change, no deployment, no
+developer and no re-login.** A question the client has not been asked is
+correctly held as a default that is free to change, and refusing *for now* costs
+nothing to undo. **Nobody may record this as the client having decided
+anything.**
+
+⚠ **CC-2 does not settle it — and "CC-2 is silent on this role" would be the
+wrong reason.** It is worth stating precisely, because the imprecise version is
+the one that gets repeated:
+
+- **B4 names the role.** *"Director (×2), Operations Head, HR, Sales Manager,
+  Purchase Manager, Accountant."* Operations Head is one of the six.
+- **B4's one sentence about employee data does not name it.** *"HR information
+  is restricted from Sales, Purchase and Accounts."* Operations Head is not in
+  that sentence **in either direction** — neither granted employee access nor
+  denied it.
+- **CC-2 mentions the role elsewhere**, and none of it touches employee data:
+  B6's approval ladder (*Director → Operations Head → HR* on charges;
+  *Operations Head + Director* on RA / Tax Invoice / PO), and the untagged
+  *"Operation Head — visual dashboard"* line among the five items with no home.
+
+So the refusal is **ours**, and `docs/ACCESS_MATRIX.md` marks it as such: those
+four cells carry the new **`–` (withheld by our derivation)** mark rather than
+`§`, because a `§` would claim a backing that does not exist. **The three roles
+B4 does name keep their `§`** — for Sales, Purchase and Accounts that sentence
+is real, and their twenty-four withheld cells are a specification being applied.
+
+⚠ **No grant moved.** `auth.py` is byte-identical, Operation Head holds the same
+39 permissions it held before, and the only change to the matrix is those four
+cells' **marking** plus the legend row that gives the new mark meaning.
+
 ---
 
 ## 5. BLOCKED
@@ -566,12 +608,26 @@ would reach the route registry, the access matrix, the dashboard,
 in a pass authorised for two specific things. **What was wrong was the
 description, so the description is what changed.**
 
-⚠ **One further site was found and deliberately LEFT:**
-[projectview.py:434](projectview.py#L434) still renders `<h2>Employee & Misc
-Charges</h2>` over the charges block on a project page. It is outside the two
-sites the pass instruction named, and `projectview.py` was not otherwise touched
-here. **Recorded rather than silently fixed or silently ignored** — it is a
-one-line change for whoever next opens that file.
+✅ **The third site is now closed too — 29 August 2026, second pass.**
+
+> **What the first pass recorded, unchanged:** *"One further site was found and
+> deliberately LEFT: [projectview.py:434](projectview.py#L434) still renders
+> `<h2>Employee & Misc Charges</h2>` over the charges block on a project page.
+> It is outside the two sites the pass instruction named, and `projectview.py`
+> was not otherwise touched here. Recorded rather than silently fixed or
+> silently ignored — it is a one-line change for whoever next opens that
+> file."*
+
+It now reads **"Expenses & Charges"**, matching the label already chosen for
+the dashboard card and `charge.py`'s title, with a comment beside it saying why.
+**The label only.** `projectview.py` is **not** renamed and nothing else in that
+file was touched — the same call §6-E made about `charge.py` itself, made again
+one file along. The page's "Person" column still shows free text somebody typed,
+which is the fact the wording was hiding.
+
+With all three sites corrected, **nothing in the application labels this ledger
+"employee" any more**, and an auditor checking C4 by name can no longer land on
+the wages ledger and conclude the employee master was built twice.
 
 ⚠ **Note what is still true after the correction:** `charge.py` remains where
 wages actually get recorded, and it is **not** linked to the employee master.
