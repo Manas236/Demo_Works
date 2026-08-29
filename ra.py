@@ -3135,6 +3135,14 @@ def edit_ra(id: str):
     if not allowed:
         return redirect(url_for("ra.view_ra", id=id, msg=why, type="error"))
 
+    # B7 (ours — see approval.can_modify). LAYERED ON TOP of can_edit(), not
+    # replacing it: can_edit() refuses an issued or mid-chain bill, this refuses
+    # an approved or part-approved one, and a bill has to pass both. The two ask
+    # different questions and neither answer implies the other.
+    may, why_not = approval.can_modify("ra", bill)
+    if not may:
+        return redirect(url_for("ra.view_ra", id=id, msg=why_not, type="error"))
+
     boq_id = str(bill.get("boq_id") or "")
     boq = STORE["boqs"].get(boq_id)
     if not boq:
@@ -3517,6 +3525,22 @@ def print_ra(id: str):
     bill = STORE["ra_bills"].get(id)
     if not bill:
         return redirect(url_for("ra.list_ras", msg="That RA bill no longer exists.", type="error"))
+
+    # ── CC-2 B7 — an unapproved document may be viewed, but not printed ─────
+    #
+    # Refused BY URL, not by hiding the Print button: hiding is not a gate
+    # (B5), and `/ra/print/<id>` is a typeable address. `/ra/view/<id>` is
+    # untouched and goes on rendering — B7 permits the viewing and refuses only
+    # the printing.
+    #
+    # ⚠ **This takes the printed DRAFT working copy away**, and that is a real
+    # loss rather than a tidy consequence. The lifecycle above gives a draft a
+    # DRAFT overprint precisely so a working copy exists and cannot be mistaken
+    # for an issued document; a draft is unapproved and B7 is unqualified, so
+    # the working copy goes with it. Recorded in ABOUT.md §2i, not smoothed over.
+    may_print, why_not = approval.can_print("ra", bill)
+    if not may_print:
+        return redirect(url_for("ra.view_ra", id=id, msg=why_not, type="error"))
 
     boq_id = str(bill.get("boq_id") or "")
     boq = STORE["boqs"].get(boq_id) or {}
@@ -3947,6 +3971,12 @@ def delete_ra(id: str):
 
     allowed, why = can_delete(bill)
     boq_id = str(bill.get("boq_id") or "")
+
+    # B7, layered on can_delete() the same way it is layered on can_edit().
+    # Deleting an approved bill is a stronger act than editing one, so it
+    # cannot be the looser of the two.
+    if allowed:
+        allowed, why = approval.can_modify("ra", bill)
 
     if not allowed:
         # Refused with the reason, and the button is never hidden — a control

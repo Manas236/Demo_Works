@@ -351,7 +351,14 @@ def edit_charge(id: str):
     charge = STORE.get("charges", {}).get(id)
     if not charge:
         return redirect(url_for("charge.list_charges", msg="Charge not found.", type="error"))
-        
+
+    # B7 (ours, see approval.can_modify): an approved charge is locked, a
+    # part-climbed one is locked, and an unapproved one belongs to whoever
+    # raised it. Refused BY URL — hiding the Edit link is not a gate.
+    may, why_not = approval.can_modify("charge", charge)
+    if not may:
+        return redirect(url_for("charge.list_charges", msg=why_not, type="error"))
+
     data = dict(charge)
     data["taxable_amount_raw"] = str(data.get("taxable_amount", ""))
     data["gst_rate_raw"] = str(data.get("gst_rate", ""))
@@ -377,6 +384,11 @@ def edit_charge(id: str):
                 "notes": data["notes"],
                 "updated_at": _now()
             })
+            # An approval describes the document somebody read, so a changed
+            # document has not been approved. Only reachable for a REJECTED
+            # charge going back through the ladder — can_modify() refuses every
+            # other state that carries a rung.
+            approval.clear_approvals(charge)
             return redirect(url_for("charge.list_charges", msg="Charge updated.", type="success"))
             
     return _form(data, error, action=url_for("charge.edit_charge", id=id), submit_label="Update Charge")
@@ -386,7 +398,13 @@ def delete_charge(id: str):
     charge = STORE.get("charges", {}).get(id)
     if not charge:
         return redirect(url_for("charge.list_charges", msg="Charge not found.", type="error"))
-        
+
+    # Same guard as edit: deleting an approved charge is a stronger act than
+    # editing one, so it cannot be the looser of the two.
+    may, why_not = approval.can_modify("charge", charge)
+    if not may:
+        return redirect(url_for("charge.list_charges", msg=why_not, type="error"))
+
     if request.method == "POST":
         STORE["charges"].pop(id, None)
         return redirect(url_for("charge.list_charges", msg="Charge deleted.", type="success"))

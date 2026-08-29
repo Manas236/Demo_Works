@@ -102,6 +102,23 @@ def make_bill(rid, boq_id, ra_no, leg, claims, deductions=None, **over):
         "cgst_amount": tax_info["cgst_amount"], "sgst_amount": tax_info["sgst_amount"], "igst_amount": tax_info["igst_amount"],
         "tax_amount": tax_info["tax_amount"], "rounding_off": tax_info["rounding_off"], "grand_total": tax_info["grand_total"],
         "notes": "", "company_branch": "", "auth_signatory": "",
+        # ⚠ **APPROVED by default** (CC-2 B7, 29 August 2026), in the same
+        # spirit as `status` above and `make_bill`'s "issued by default" in
+        # test_receipts.py: the fixture describes the state the tests using it
+        # are actually about.
+        #
+        # B7 refuses `/ra/print/<id>` for a bill that has not completed its
+        # ladder, and the files importing this helper — the print goldens, the
+        # immutability proofs, the tax-slab and seller-identity checks — are all
+        # about the **printed document**. A pending bill there would make them
+        # assert against a redirect, which is a state none of them is testing.
+        #
+        # Written directly rather than climbed, because the suite signs in as
+        # the Owner and B6 forbids the Owner approving a record the Owner
+        # raised. `tests/test_approval.py` climbs the ladder for real, and
+        # `tests/test_approval_b7.py` is where the refusal is asserted. A test
+        # that wants a pending bill passes `approval_status=` through `**over`.
+        "approval_status": "approved",
     }
     STORE["ra_bills"][rid].update(over)
     return rid

@@ -107,6 +107,14 @@ def make_bill(boq_id, ra_no, leg="supply", claims=None, boq_ref="SF/BOQ/26-27/00
         "rounding_off": info["rounding_off"], "grand_total": info["grand_total"],
         "status": "issued", "issued_on": "2026-08-06", "cancelled_on": "",
         "cancel_reason": "", "notes": "",
+        # ⚠ **APPROVED by default** (CC-2 B7, 29 August 2026), for the same
+        # reason this helper is issued by default. A bill in this module exists
+        # to have money put against it and to be printed as the document the
+        # main contractor is holding; B7 refuses to print one that has not
+        # completed its ladder, so a pending bill here would be a fixture
+        # asserting a state these tests are not about. A test that wants a
+        # pending bill passes `approval_status=` through `**over`.
+        "approval_status": "approved",
     }
     STORE["ra_bills"][rid].update(over)
     return rid
@@ -378,8 +386,14 @@ def test_editing_a_bills_claim_does_not_recompute_its_carried_balance(client, se
     # A DRAFT, because `edit_ra` now refuses an issued bill outright — the lock
     # that replaced certification. What this test is about is what the edit does
     # to `prev_balance` when it IS permitted, so the bill has to be editable.
+    # ⚠ **PENDING as well as draft** (CC-2 B7, 29 August 2026), and for the
+    #   same reason the line above is a draft. `approval.can_modify()` locks an
+    #   approved document — that is the point of it — and this helper is
+    #   approved by default because every other test in this module prints. What
+    #   this test is about is what the edit does to `prev_balance` when it IS
+    #   permitted, so the bill has to be editable under BOTH gates.
     rid2 = make_bill(seeded, 2, claims=[claim_for(li, 5.0, prev=5.0)],
-                     status="draft",
+                     status="draft", approval_status="pending",
                      prev_balance=777.0, prev_balance_refs=["SF/RA/26-27/0001"])
 
     r = client.post(f"/ra/edit/{rid2}", data={

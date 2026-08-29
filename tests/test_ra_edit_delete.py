@@ -41,6 +41,7 @@ import boq as BQ
 import demo_data as DD
 import ra
 from store import STORE
+from conftest import printable
 
 
 @pytest.fixture()
@@ -133,6 +134,10 @@ def test_the_edited_figure_reaches_the_printed_bill(client, seeded):
         "ra_json": payload([(line["line_id"], 7, line["supply_rate"])]),
     }).status_code == 302
 
+    # CC-2 B7: a bill raised through /ra/create is pending and does not print.
+    # What this test is about is whether an EDIT reaches the sheet, so the bill
+    # is made printable after the edit — see tests/conftest.py::printable.
+    printable(STORE["ra_bills"][rid])
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
     assert BQ._fmt_qty(7.0) in html, "the printed bill still shows the old claim"
 

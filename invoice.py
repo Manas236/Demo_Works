@@ -1278,7 +1278,7 @@ def view_invoice(id: str):
   {B.HEAD_ICON}
   {DS.SHEET_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}
 </head>
-<body>
+<body>{approval.print_block("invoice", ti)}
 {_nav()}
 <main>
 

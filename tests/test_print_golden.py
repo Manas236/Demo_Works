@@ -165,6 +165,10 @@ def golden(client, pinned_identity):
         "payment_terms": "30 days from invoice",
         "notes": "Balance payable within 30 days.",
         "company_branch": "", "auth_signatory": "",
+        # APPROVED — CC-2 B7. See the note on the RA golden below: an
+        # approved document emits no print-blanking block, so this sheet
+        # is byte-identical to what it was before B6 and B7 existed.
+        "approval_status": "approved",
     }
 
     STORE["purchases"][GOLD_PO] = {
@@ -197,6 +201,10 @@ def golden(client, pinned_identity):
                             "note": "Raised against QT-0001."}],
         "notes": "Please confirm despatch date by return.",
         "company_branch": "", "auth_signatory": "",
+        # APPROVED — CC-2 B7. See the note on the RA golden below: an
+        # approved document emits no print-blanking block, so this sheet
+        # is byte-identical to what it was before B6 and B7 existed.
+        "approval_status": "approved",
     }
 
     yield
@@ -282,6 +290,20 @@ def golden_ra(client, pinned_identity):
         "status": "issued", "issued_on": "2026-06-05",
         "cancelled_on": "", "cancel_reason": "",
         "notes": "", "company_branch": "", "auth_signatory": "",
+        # ⚠ **APPROVED — CC-2 B7, 29 August 2026, and this is what keeps the
+        #   goldens byte-identical.** B7 refuses to print a document that has
+        #   not completed its approval ladder, and `/invoice/view` and
+        #   `/purchase/view` carry a print-blanking stylesheet when it has not.
+        #   An APPROVED document emits neither — `approval.print_block()`
+        #   returns the empty string — so the sheet below is exactly the page it
+        #   was before B6 and B7 existed, and every digest in this file was
+        #   re-measured unchanged rather than re-baselined.
+        #
+        #   That is also the honest thing for these fixtures to say. After B7 a
+        #   printable document IS an approved one, so a golden pinning "the
+        #   printed sheet" is pinning an approved document's sheet. The refusal
+        #   path has its own tests in `tests/test_approval_b7.py`.
+        "approval_status": "approved",
     }
     bill.update(tax)
     STORE["ra_bills"]["gold-ra"] = bill

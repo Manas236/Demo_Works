@@ -24,6 +24,8 @@ import boq as BQ
 import demo_data as DD
 import ra
 from store import STORE
+from conftest import printable
+import approval
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -581,6 +583,28 @@ def test_a_draft_prints_with_a_marker_and_an_issued_bill_prints_clean(client, se
     li = priced(seeded, 1)[0]
     rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
 
+    # ⚠ **Extended 29 August 2026 for CC-2 B7, and the collision is asserted
+    #   here rather than smoothed over.** The fixture line above stood as:
+    #
+    #       rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)])
+    #       h = client.get(f"/ra/print/{rid}").get_data(as_text=True)
+    #
+    #   — a draft, printed. B7 is unqualified: "an unapproved document may be
+    #   viewed, but not printed or downloaded", and a draft is unapproved. So
+    #   **the printed DRAFT working copy this test exists for is now gated**,
+    #   which is a real loss taken deliberately and recorded in ABOUT.md §2i.
+    #
+    #   Every assertion below is unchanged and still runs. What is added is the
+    #   refusal itself, first, so the new rule is pinned by the same test that
+    #   pins what it took away — rather than the loss being visible only as a
+    #   fixture that quietly gained a field.
+    refused = client.get(f"/ra/print/{rid}", follow_redirects=False)
+    assert refused.status_code in (302, 303), (
+        "B7 no longer refuses to print an unapproved draft")
+
+    approval.clear_approvals(STORE["ra_bills"][rid])
+    printable(STORE["ra_bills"][rid])
+
     h = client.get(f"/ra/print/{rid}").get_data(as_text=True)
     assert "DRAFT" in h
     assert "has not been issued" in h
@@ -601,6 +625,14 @@ def test_a_cancelled_bill_still_prints_over_a_cancelled_overprint(client, seeded
     rid = make_bill(seeded, 1, claims=[claim_for(li, 1.0)],
                     status="cancelled", cancelled_on="2026-08-15",
                     cancel_reason="superseded by RA2")
+    # ⚠ CC-2 B7 (29 August 2026). The fixture call above is unchanged; what is
+    #   added is `approval_status`. A cancelled bill is unapproved, so B7 gates
+    #   it too — and "cancelling is not deleting: the record survives and still
+    #   prints" is a property this repo decided deliberately (ra.py's lifecycle)
+    #   which B7 now qualifies. The assertions below are untouched and still
+    #   pin the CANCELLED overprint; the collision is recorded in ABOUT.md §2i
+    #   and carried into the pass report as an open question for the client.
+    printable(STORE["ra_bills"][rid])
 
     r = client.get(f"/ra/print/{rid}")
     assert r.status_code == 200

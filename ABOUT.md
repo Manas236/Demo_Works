@@ -1143,7 +1143,50 @@ a lookup has to match. `role_slugs_of()` reads the **slug** off the role id, not
 the display name, so renaming the role in `/roles` does not silently detach it
 from its rung.
 
-**Two rules here are ours, not CC-2's**, and both are listed as judgement calls:
+#### B7 — and the two things CC-2 does not say
+
+CC-2's B7 is **about printing**: *"an unapproved document may be viewed, but not
+printed or downloaded"*, plus a print stylesheet so `Ctrl+P` does not walk round
+the gate. `approval.can_print()` is that rule and `/ra/print/<id>` refuses by URL.
+
+⚠ **`/invoice/view/<id>` and `/purchase/view/<id>` have NO separate print
+route** — they render the A4 sheet itself. B7's first bullet assumes view and
+print are different URLs, which is true of the RA bill and false of these two.
+Gating their view route would refuse the viewing B7 explicitly permits, so
+**B7's second bullet is the whole gate there**: `approval.print_block()` emits a
+`@media print` stylesheet that blanks the page, and the route stays open. An
+**approved** document emits nothing, which is exactly why not one digest in
+`tests/test_print_golden.py` moved.
+
+⚠ **B7 SAYS NOTHING ABOUT EDITING.** Who may edit before submission, whether an
+approved document may be changed, whether a rejected one returns to editable —
+CC-2 settles none of the three. `approval.can_modify()` settles them, it is
+**ours**, and it takes the restrictive reading except in one place:
+
+| question | our rule | why |
+|---|---|---|
+| edit an **approved** document? | **No.** Raise a corrected one. | The restrictive reading, and what makes an approval mean anything |
+| edit a **part-climbed** one? | **No.** Have it rejected first. | An edit would change what the first approver approved while their name stays on it |
+| edit a **rejected** one? | **Yes — its creator only.** | ⚠ **The one place the restrictive option was NOT taken.** "No" creates an unreachable state: an issued RA bill that is rejected also cannot be deleted (`can_delete()` refuses an issued bill) and cannot be printed. It would be stranded with no move available to anybody |
+| edit **before any rung**? | **Creator only** (anyone, where no creator is known) | The restrictive answer to CC-2's silence |
+
+`can_modify()` **layers on** each module's own guard and replaces none.
+`ra.can_edit()` still refuses an issued bill; this refuses an approved one; a
+bill passes both. ⚠ `/purchase/<id>/update` is **deliberately not gated** — it
+moves an order along its status lifecycle and changes no figure, and locking a
+goods receipt behind an approval ladder would stop a storekeeper recording a
+delivery that has physically happened.
+
+⚠ **TWO COLLISIONS WITH EXISTING DELIBERATE DESIGN, and neither is smoothed
+over.** `ra.py`'s lifecycle gives a **draft** bill a printed DRAFT overprint so
+a working copy exists, and keeps a **cancelled** bill printable because "the
+cancellation is the record of what was withdrawn". Both are unapproved, and B7
+is unqualified — so **the printed draft working copy and the cancelled record
+are both gated now**. That is a capability the client had before this pass and
+does not have after it. `tests/test_approval_b7.py` pins both so they read as
+decisions rather than as accidents, and both are carried as open questions.
+
+**Two more rules here are ours, not CC-2's**, and both are listed as judgement calls:
 
 - **One user, one rung.** B4 lets one user hold several roles, so without it a
   user holding Director *and* HR climbs two thirds of the charges ladder alone

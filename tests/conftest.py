@@ -56,6 +56,31 @@ def ensure_test_user():
     return user
 
 
+def printable(record):
+    """
+    Mark one approvable record APPROVED, so B7's print gate lets it through.
+
+    CC-2 **B7** (29 August 2026): *"an unapproved document may be viewed, but
+    not printed or downloaded."* `/ra/print/<id>` refuses an unapproved bill,
+    which is correct and is asserted directly in `tests/test_approval_b7.py`.
+
+    Every test that existed before B7 builds its bill as a fixture and then
+    prints it to check the **document**, not the ladder — so those fixtures now
+    have to describe a document that can actually be printed. This is what says
+    so, in one place, rather than an `approval_status` key scattered through
+    eight files with no explanation attached to any of it.
+
+    ⚠ **It writes the status directly and does not climb the ladder**, because
+    the suite signs in as the Owner and the Owner cannot approve a record the
+    Owner raised — B6's creator guard, working exactly as specified. Climbing it
+    properly would mean inventing two more users in every one of those files to
+    test something they are not about. `tests/test_approval.py` is where the
+    ladder is climbed for real.
+    """
+    record["approval_status"] = "approved"
+    return record
+
+
 def _fresh_store():
     """The per-test reset the `client` fixture has always done."""
     for key in ("boqs", "specs", "quotations", "proformas", "invoices", "purchases"):

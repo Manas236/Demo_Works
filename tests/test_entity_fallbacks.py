@@ -145,6 +145,7 @@ def populated(client):
     paid_rid = _an_ra_bill(bid, ra_no=1, rid="r1-supply", ref="SF/RA/26-27/0001",
                            status="issued")
     rid = _an_ra_bill(bid, ra_no=2, rid="r2-supply", ref="SF/RA/26-27/0002",
+                      approval_status="pending",
                       status="draft")
     rcid = _a_receipt(paid_rid, bid)
     dpid = _a_draft_po(bid)
@@ -186,6 +187,26 @@ def populated(client):
             "user_id": "sweep-other-user", "user_name": "Another Person",
             "at": "2026-08-29 10:00",
         }],
+    }
+
+    # ⚠ A SECOND charge, and the reason is B6 and B7 pulling in opposite
+    #   directions again — the same split `_an_ra_bill` needed one collection
+    #   over.
+    #
+    #   `ch-1` above has a rung already climbed, which is what makes the
+    #   approval pages render a ladder with user text in it. But B7's
+    #   `can_modify()` refuses to edit or delete a part-climbed record — editing
+    #   under a climbed rung would change what that approver approved — so
+    #   `/charge/edit` and `/charge/delete` would walk a redirect.
+    #
+    #   `ch-2` is untouched: no rungs, no creator, so both refusals stay real
+    #   and both pages still render for the sweep.
+    STORE["charges"]["ch-2"] = {
+        "id": "ch-2", "date": "2026-08-16", "person": "Second Person",
+        "head": "Consumables", "description": "Test", "project_id": "proj-1",
+        "project_name": "Test Project", "taxable_amount": 250.0,
+        "gst_rate": 18.0, "gst_amount": 45.0, "notes": "",
+        "created_at": "2026-08-16T12:00:00Z", "updated_at": "2026-08-16T12:00:00Z",
     }
 
     # C4's employee master (29 Aug 2026). Every field on this record is typed
@@ -256,8 +277,10 @@ def populated(client):
             "/roles/edit/<id>":       "role-hr",
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
-            "/charge/delete/<id>":  "ch-1",
-            "/charge/edit/<id>":    "ch-1",
+            # ch-2, not ch-1: see the fixture note above. B7 refuses to edit
+            # or delete a record that is part-way up its ladder.
+            "/charge/delete/<id>":  "ch-2",
+            "/charge/edit/<id>":    "ch-2",
             # B6's eight approval routes (29 Aug 2026). Every one renders a
             # confirmation page carrying `role_name`, `user_name` and — on a
             # rejected record — `reject_reason`, all of them free text on the
@@ -309,7 +332,9 @@ def populated(client):
             # bounce on the second count.
             "/ra/issue/<id>":       rid,
             "/ra/cancel/<id>":      rid,
-            "/ra/print/<id>":       rid,
+            # r1 is the APPROVED bill — see `_an_ra_bill`. B7 refuses to print
+            # r2, which is pending on purpose so the approval pages render.
+            "/ra/print/<id>":       paid_rid,
             "/ra/view/<id>":        rid,
             "/po/delete/<id>":      dpid,
             "/po/edit/<id>":        dpid,
@@ -431,7 +456,8 @@ def _a_quotation() -> str:
 
 
 def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
-                ref: str = "SF/RA/26-27/0001", status: str = "draft") -> str:
+                ref: str = "SF/RA/26-27/0001", status: str = "draft",
+                approval_status: str = "approved") -> str:
     """One claim against the demo BOQ, so /ra/view and /boq/view have a bill."""
     li = next(li for li in STORE["boqs"][boq_id]["line_items"]
               if not li["is_header"] and li["total_qty"] > 0)
@@ -445,6 +471,22 @@ def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
         "deduction_total": dtotal, "net_payable": net,
         "status": status, "issued_on": "", "cancelled_on": "",
         "cancel_reason": "", "notes": "",
+        # ⚠ CC-2 B6 and B7 pull this fixture in OPPOSITE directions, which is
+        #   why the state is a parameter rather than a constant.
+        #
+        #   B7: `/ra/print/<id>` refuses a bill that has not completed its
+        #   ladder, so the printed sheet needs an APPROVED bill or the sweep
+        #   walks a redirect, which carries no markup to check.
+        #
+        #   B6: `/approval/approve/ra/<id>` refuses a bill that is already
+        #   approved — there is nothing left to approve — so the approval pages
+        #   need a PENDING one.
+        #
+        #   So the fixture builds two bills and the routes are pointed at the
+        #   one each of them is about. Both refusals are correct and both are
+        #   asserted directly in tests/test_approval.py and
+        #   tests/test_approval_b7.py.
+        "approval_status": approval_status,
     }
     return rid
 

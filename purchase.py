@@ -3329,6 +3329,21 @@ def edit_purchase_rates(id: str):
         return redirect(url_for("purchase.view_purchase", id=id,
                                 msg=why, type="error"))
 
+    # B7 (ours — see approval.can_modify), layered on `can_edit_rates()` rather
+    # than replacing it. A1 unlocked repricing on an issued order deliberately;
+    # this refuses it on an APPROVED one, which is a different question. What
+    # this route changes is what the company has agreed to PAY a vendor, so it
+    # is exactly the figure an approval is an approval OF.
+    #
+    # ⚠ `/purchase/<id>/update` is deliberately NOT gated: it moves the order
+    #   along its status lifecycle and changes no figure, and locking a receipt
+    #   of goods behind an approval ladder would stop the storekeeper recording
+    #   a delivery that has physically happened.
+    may, why_not = approval.can_modify("purchase", po)
+    if not may:
+        return redirect(url_for("purchase.view_purchase", id=id,
+                                msg=why_not, type="error"))
+
     error = ""
     if request.method == "POST":
         before = float(po.get("grand_total") or 0.0)
@@ -3942,7 +3957,7 @@ def view_purchase(id: str):
   {B.HEAD_ICON}
   {DS.SHEET_STYLES}{PURCHASE_STYLES}
 </head>
-<body>
+<body>{approval.print_block("purchase", po)}
 {_nav()}
 <main>
 

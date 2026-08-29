@@ -545,6 +545,197 @@ GRANDFATHER_NOTE = (
     "cannot approve their own record has nobody to check against here.")
 
 
+# =============================================================================
+# B7 — WHAT AN UNAPPROVED DOCUMENT MAY DO
+# =============================================================================
+# CC-2 **B7**, in full:
+#
+#     Real requirement: **an unapproved document may be viewed, but not printed
+#     or downloaded.**
+#
+#     - Gate the print and download routes on approval status
+#     - The view page needs a print stylesheet that blanks it, or `Ctrl+P`
+#       bypasses the gate
+#
+# ⚠ **B7 IS ABOUT PRINTING, NOT ABOUT EDITING.** It says nothing at all about
+# who may edit an approvable document or whether an approved one may be changed.
+# `can_modify()` below is **ours**, taken because an approval a later edit can
+# walk underneath is not an approval, and every one of its rules is listed as a
+# judgement call in ABOUT.md §2i.
+
+
+def can_print(doc_key: str, record) -> tuple:
+    """
+    `(allowed, reason)` — B7's gate, in one place.
+
+    A document that has not finished its ladder does not print, and the refusal
+    is **by URL** rather than by hiding the button — B5's rule, and the reason
+    `tests/test_approval_b7.py` requests every one of these addresses directly.
+
+    ⚠ **A grandfathered document prints.** It was issued before this gate
+    existed, and applying the gate retrospectively would make every bill the
+    client already holds unprintable on the day this shipped. That is the same
+    reasoning the grandfather rule rests on everywhere else in this module, and
+    it is why `tools/backfill_created_by.py` had to run before B7 could.
+
+    ⚠ **A DRAFT RA BILL NO LONGER PRINTS, and that is a real loss, taken
+    deliberately.** `ra.py`'s lifecycle gives a draft a printed DRAFT marker
+    precisely so a working copy exists and can never be mistaken for an issued
+    document. A draft is unapproved, and B7 is unqualified, so the working copy
+    goes. This is recorded as a **collision between B7 and an existing
+    deliberate design**, not as a tidy consequence of it — see ABOUT.md §2i and
+    the pass report.
+    """
+    spec = DOCUMENTS.get(doc_key)
+    if not spec:
+        return True, ""
+    if not record:
+        return False, "That document no longer exists."
+    if is_grandfathered(record):
+        return True, ""
+    if is_approved(record):
+        return True, ""
+    if is_rejected(record):
+        return False, (
+            f"This {spec['label']} was rejected, so it cannot be printed or "
+            f"downloaded. Correct it and put it back through the ladder. You "
+            f"can go on viewing it on screen.")
+    waiting = ", ".join(role_label(s) for s in outstanding_steps(doc_key, record))
+    return False, (
+        f"This {spec['label']} has not been approved, so it cannot be printed "
+        f"or downloaded. It is waiting on {waiting or 'approval'}. You can go "
+        f"on viewing it on screen.")
+
+
+# ── B7's second bullet: the print-blanking stylesheet ──────────────────────
+#
+# ⚠ **This is the WHOLE gate for the tax invoice and the purchase order, and
+# that is a finding rather than a choice.** Those two documents have **no
+# separate print route**: `/invoice/view/<id>` and `/purchase/view/<id>` render
+# the A4 sheet itself. B7's first bullet — "gate the print and download routes"
+# — assumes view and print are different URLs, which is true of the RA bill
+# (`/ra/view` and `/ra/print`) and false of these two. Gating their view route
+# would refuse the viewing B7 explicitly permits, so the stylesheet is what
+# enforces B7 there and the route stays open.
+#
+# ⚠ **Doubled braces.** This string is interpolated into f-string pages, so every
+# literal CSS brace is `{{` / `}}` — CLAUDE.md's most common way to break a page
+# here. It is written as a plain (non-f) string so the braces are single in the
+# source and survive one f-string interpolation at the call site.
+
+PRINT_BLOCK_MARKER = "approval-print-block"
+
+PRINT_BLOCK_CSS = """
+<style>
+@media print {
+  body > *:not(#approval-print-block) { display: none !important; }
+  #approval-print-block { display: block !important; }
+}
+</style>
+<div id="approval-print-block" style="display:none">
+  <h1 style="font-size:1.5rem;margin:0 0 1rem">Not approved &mdash; not for issue</h1>
+  <p style="font-size:1rem;line-height:1.6;max-width:34em">
+    This document has not completed its approval ladder. It may be read on
+    screen, but it is not to be printed or issued &mdash; printing it would
+    produce a document nobody has approved.
+  </p>
+</div>
+"""
+
+
+def print_block(doc_key: str, record) -> str:
+    """
+    The print-blanking stylesheet, or `""` when the document may be printed.
+
+    ⚠ **Emitting nothing for an approvable document is what keeps the pinned
+    print goldens byte-identical.** An approved sheet is exactly the page it was
+    before this module existed, which is why `tests/test_print_golden.py` did
+    not move by one byte for B7 — the golden records are approved, and an
+    approved document renders no blanking block.
+    """
+    allowed, _reason = can_print(doc_key, record)
+    return "" if allowed else PRINT_BLOCK_CSS
+
+
+def can_modify(doc_key: str, record, user=_UNSET) -> tuple:
+    """
+    `(allowed, reason)` — may this record's figures still be changed?
+
+    ⚠ **EVERY RULE HERE IS OURS, NOT CC-2's.** B7 is about printing and
+    downloading. It says nothing about editing, so the three questions the pass
+    brief raised — who may edit before submission, whether an approved document
+    may be edited at all, whether a rejected one returns to editable — are
+    **not settled by CC-2** and are settled here. Each takes the restrictive
+    reading except where the restrictive reading creates an unreachable state,
+    and that exception is argued rather than assumed.
+
+    It **layers on top of** each module's own rules and replaces none of them.
+    `ra.can_edit()` still refuses an issued bill; this refuses an approved one;
+    a caller asks both.
+
+    1. **An approved document is locked.** Amend it by raising the next
+       document — a corrected claim, a revised order — not by editing figures
+       two people have signed off. The restrictive reading of CC-2's silence,
+       and the one that makes an approval mean anything at all.
+    2. **A part-climbed ladder is locked too.** Once one rung is taken, an edit
+       would change what that approver approved while their name stays on it.
+       Have it rejected first; that sends it back.
+    3. **A rejected document returns to its creator, and only to its creator.**
+       ⚠ **The one place the restrictive option was NOT taken**, because there
+       it creates an unreachable state rather than a strict one: an issued RA
+       bill that is rejected and cannot be edited also cannot be deleted
+       (`ra.can_delete()` refuses an issued bill) and cannot be printed (B7). It
+       would be stranded with no move available to anybody. Editing it calls
+       `clear_approvals()` and the ladder starts from the bottom.
+    4. **Before any rung is climbed, only the creator edits.** Where there is no
+       creator — grandfathered, or a fixture — the guard cannot apply and the
+       module's own permission is the whole gate, exactly as in
+       `can_approve()`.
+
+    An Owner is exempt from the *creator* clauses (3 and 4) under B3's
+    "Everything", and is **not** exempt from 1 and 2: a locked document is
+    locked because of what it is, not because of who is asking.
+    """
+    spec = DOCUMENTS.get(doc_key)
+    if not spec:
+        return True, ""
+    if not record:
+        return False, "That document no longer exists."
+
+    user = session_user() if user is _UNSET else user
+    uid = str((user or {}).get("id") or "")
+
+    if is_approved(record):
+        return False, (
+            f"This {spec['label']} has been approved, so its figures are "
+            f"locked. Raise a corrected document rather than editing one that "
+            f"has been signed off.")
+
+    if is_rejected(record):
+        if creator_is_known(record) and creator_of(record) != uid \
+                and not auth.is_owner(user):
+            return False, (
+                f"This {spec['label']} was rejected and goes back to whoever "
+                f"raised it. You did not raise it.")
+        return True, ""
+
+    if approvals_of(record):
+        taken = ", ".join(sorted({str(a.get("role_name") or a.get("role") or "")
+                                  for a in approvals_of(record)}))
+        return False, (
+            f"This {spec['label']} has already been approved by {taken}, so it "
+            f"cannot be edited part-way up the ladder. Have it rejected first "
+            f"— that sends it back to whoever raised it.")
+
+    if creator_is_known(record) and creator_of(record) != uid \
+            and not auth.is_owner(user):
+        return False, (
+            f"This {spec['label']} was raised by somebody else and has not "
+            f"been approved yet. Only whoever raised it can change it.")
+
+    return True, ""
+
+
 _BADGE = ("display:inline-block;padding:2px 9px;border-radius:12px;"
           "font-size:0.74rem;font-weight:700;letter-spacing:.02em;"
           "border:1px solid;")

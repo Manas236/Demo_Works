@@ -38,6 +38,7 @@ import demo_data as DD
 import ra
 from quotation import _inr
 from store import STORE
+from conftest import printable
 
 # ⚠ The printed figures below moved to `_inr()`'s Indian digit grouping when
 # `/ra/print` was rebuilt on the shared A4 sheet. Same figures, same
@@ -295,6 +296,11 @@ def test_a_stored_bills_tax_totals_are_never_recomputed(client, seeded):
         "tax_amount": 33333.33, "rounding_off": 0.0, "grand_total": 144444.44,
         "status": "draft", "issued_on": "", "cancelled_on": "",
         "cancel_reason": "", "notes": "",
+        # APPROVED — CC-2 B7 refuses to print a bill that has not
+        # completed its ladder, and this test is about the TAX BLOCK on
+        # the printed sheet, not about the ladder. See
+        # tests/conftest.py::printable for why it is written directly.
+        "approval_status": "approved",
     }
     before = dict(STORE["ra_bills"][rid])
 
@@ -331,6 +337,10 @@ def test_single_slab_print_keeps_todays_tax_block(client, seeded):
     rid = next(iter(STORE["ra_bills"]))
 
     assert len(STORE["ra_bills"][rid]["tax_slabs"]) == 1
+    # CC-2 B7: an unapproved document does not print. This bill was raised
+    # through /ra/create so it starts pending, and what is pinned below is the
+    # printed TAX BLOCK, not the ladder.
+    printable(STORE["ra_bills"][rid])
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
 
     assert "CGST @ 9%" in html
@@ -363,6 +373,9 @@ def test_two_slab_print_carries_both_rate_rows(client, seeded):
         "grand_total": t["grand_total"],
         "status": "draft", "issued_on": "", "cancelled_on": "",
         "cancel_reason": "", "notes": "",
+        # APPROVED - CC-2 B7. This test is about the printed tax block,
+        # not the ladder. See tests/conftest.py::printable.
+        "approval_status": "approved",
     }
 
     html = client.get(f"/ra/print/{rid}").get_data(as_text=True)
