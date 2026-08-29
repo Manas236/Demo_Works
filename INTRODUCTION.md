@@ -218,8 +218,17 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,464 passed / 2 skipped** on 29 August 2026, verified by
+The baseline is **1,531 passed / 2 skipped** on 29 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The **fourth** 29 August pass added **67 passed and 0 skipped**, moving the
+board 13 → 15 and 3B from 5/8 to 7/8: `tests/test_approval.py` (24, **B6** — the
+approval ladder and the creator guard), `tests/test_approval_grandfather.py`
+(10, the pin that keeps the grandfathered set closed),
+`tests/test_approval_b7.py` (24, **B7** — an unapproved document may be viewed
+but not printed) and `tests/test_doc_figures.py` (9, which is what now holds
+these four documents in step). ⚠ **Not one print golden moved**, which was the
+condition the pass was given.)*
 
 *(The **third** 29 August pass added **77 passed and 1 skipped**, moving the
 board 12 → 13: `tests/test_attendance.py` (33, **C5** — attendance and

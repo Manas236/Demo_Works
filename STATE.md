@@ -10,9 +10,10 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 29 August 2026 (**third pass** — C5 built,
-the board 12 → 13, and the navigation re-baselined on purpose).
-**Tests:** **1,464 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**As of:** branch `antigravity-dev`, 29 August 2026 (**fourth pass** — B6 and
+B7 built, the board 13 → 15, 3B 5/8 → 7/8, and the first pass since the
+access-control layer to rewrite live rows).
+**Tests:** **1,531 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 29 August 2026 by running the suite in it. ⚠ *(It
 read **1,367 / 1** here until this edition, which was the 28 August figure: the
 two 29 August passes before this one added 20 and 92 tests and neither updated
@@ -46,8 +47,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,465 passed / 4 skipped** against the same commit, and read
-**1,388 / 3** before this pass's 78,
+reports **1,532 passed / 4 skipped** against the same commit, and read
+**1,465 / 4** before this pass's 67,
+**1,388 / 3** before the third 29 August pass's 78,
 **1,276 / 3** before the 29 August pass's 92 tests,
 **1,226 / 3** before §1.18's 50 tests,
 **1,152 / 3** before §1.17's 74 tests,
