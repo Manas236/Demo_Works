@@ -689,6 +689,101 @@ def ensure_builtin_roles() -> int:
     return made
 
 
+# ── Reconciliation: the permission a later pass minted and nobody holds ──────
+#
+# `ensure_builtin_roles()` above is deliberately non-destructive, and that
+# correctness has a standing cost: **a permission minted in a later pass never
+# reaches a database that already has its roles.** The permission exists in
+# code, it exists on a fresh database, and on the owner's live one no role holds
+# it — so the feature it guards is unreachable by everybody, the Owner included,
+# because `_gate()` has no Owner bypass.
+#
+# This has now shipped three times: the four `*.approve` permissions (B6),
+# `employee.*` / `attendance.*` (C4 / C5) and `measurement.*` (C2). Twice it was
+# repaired by a one-off `_role_grants()` copied into a migration script; the
+# third time nobody noticed for a day. The three functions below are that repair
+# written **once**, as a general reconciliation any later pass can run, and
+# `tools/reconcile_role_permissions.py` is its command line.
+#
+# ⚠ **They report; they do not write.** `apply_drift()` writes and nothing calls
+#   it implicitly — no import, no request hook, no `ensure_builtin_roles()`
+#   side effect. Granting a permission is a decision about who may do what, and
+#   the 30 August 2026 override block forbids taking it silently.
+
+
+def role_permission_drift(roles_map=None) -> dict:
+    """
+    `{role_id: [permission, ...]}` — for every **builtin** role, the permissions
+    `BUILTIN_ROLES` gives it *in code* that the stored record does not hold.
+
+    Drift in the other direction is deliberately **not** reported. A permission
+    a stored role holds and the code does not give it is an Owner's edit at
+    `/roles/edit/<id>`, which `ensure_builtin_roles()` exists to preserve;
+    reporting it would invite a "reconciliation" that undoes somebody's decision.
+
+    A role in `BUILTIN_ROLES` with no stored record is skipped rather than
+    reported — that is `ensure_builtin_roles()`'s job, and it is idempotent.
+    """
+    store = roles() if roles_map is None else roles_map
+    out = {}
+    for slug, (_name, perms) in BUILTIN_ROLES.items():
+        rid = f"role-{slug}"
+        role = store.get(rid)
+        if not role:
+            continue
+        missing = sorted(set(perms) - set(role.get("permissions") or []))
+        if missing:
+            out[rid] = missing
+    return out
+
+
+def orphan_permissions(roles_map=None) -> list:
+    """
+    Every id in `PERMISSIONS` that **no stored role holds at all** — sorted.
+
+    This is the symptom the drift above produces, stated in the form that
+    matters operationally: a permission here gates a page nobody in the company
+    can open. It is computed over *stored* roles rather than `BUILTIN_ROLES`,
+    and that distinction is the whole point — over `BUILTIN_ROLES` the answer is
+    always empty, because the Owner role is `list(_ALL_PERMS)` and therefore
+    holds every permission by construction. Only a real database can drift.
+
+    Custom roles an Owner has created count as holders, exactly like builtins:
+    the question is whether *anybody* can reach the page, not whether a builtin
+    can.
+    """
+    store = roles() if roles_map is None else roles_map
+    held = set()
+    for role in store.values():
+        held |= set(role.get("permissions") or [])
+    return sorted(set(PERMISSIONS) - held)
+
+
+def apply_drift(drift, roles_map=None) -> int:
+    """
+    Grant `{role_id: [permission, ...]}`. Returns the number of (role,
+    permission) pairs actually added.
+
+    Additive only — it never removes a permission a role holds, so an Owner's
+    own edits survive it for the same reason they survive `ensure_builtin_roles()`.
+    Unknown role ids and permissions absent from `PERMISSIONS` are skipped
+    rather than invented.
+    """
+    store = roles() if roles_map is None else roles_map
+    granted = 0
+    for rid, perms in drift.items():
+        role = store.get(rid)
+        if not role:
+            continue
+        have = set(role.get("permissions") or [])
+        add = {p for p in perms if p in PERMISSIONS} - have
+        if not add:
+            continue
+        role["permissions"] = sorted(have | add)
+        granted += len(add)
+    return granted
+
+
 def find_user(username: str):
     """The user record for `username`, compared case-insensitively, or None."""
     wanted = (username or "").strip().lower()

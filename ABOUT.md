@@ -1023,6 +1023,47 @@ to look before adding a route that writes a credential or a role:
 `_may_administer()` (you cannot take over an account that holds one).
 
 
+**A permission the registry knows and no role holds — the third failure of this
+layer, and the one that hides.** `ensure_builtin_roles()` is deliberately
+non-destructive: an existing role's permission list is never rewritten, because
+once an Owner has edited what Director means a restart must not undo it. The
+standing cost is that **a permission minted in a later pass never reaches a
+database that already has its roles.** It is in `PERMISSIONS`, it is in
+`BUILTIN_ROLES`, a fresh database gets it — and on the live one nobody holds it,
+so `_gate()` refuses the page to everybody. There is **no Owner bypass in
+`_gate()`**, which is what turns a missing grant into a page not even the owner
+can open.
+
+It has shipped three times: B6's four `*.approve` permissions, C4/C5's
+`employee.*` and `attendance.*`, and C2's `measurement.*`. On 30 August 2026 the
+live database held **fourteen** permissions that reached no role at all.
+
+Three functions in `auth.py` are the general repair, and
+`tools/reconcile_role_permissions.py` is their command line:
+
+| | |
+|---|---|
+| `role_permission_drift()` | per builtin role, what `BUILTIN_ROLES` gives it in code that the stored record lacks. Drift the other way is **not** reported — that is an Owner's edit, and "reconciling" it would undo a decision. |
+| `orphan_permissions()` | ids that **no stored role holds at all**. Computed over *stored* roles, never over `BUILTIN_ROLES`, where the answer is always empty because the Owner role is `list(_ALL_PERMS)`. |
+| `apply_drift()` | grants. **Additive only**, and it skips ids absent from `PERMISSIONS` — a reconciliation that can invent a permission is a privilege escalation. |
+
+⚠ **Nothing calls `apply_drift()` implicitly** — no import, no request hook, no
+`ensure_builtin_roles()` side effect. Granting is a decision about who may do
+what; the tool reports first and writes only on `--write`.
+
+[tests/test_permission_reachability.py](tests/test_permission_reachability.py)
+is the guard, and its docstring is worth reading before adding to it: the
+obvious assertion — "every permission is held by some role in `BUILTIN_ROLES`" —
+**can never fail**, because the Owner is every permission by construction. That
+test is kept, with `test_owner_holds_every_permission_by_construction` pinning
+the property that makes it vacuous, so it arms itself the day the Owner is
+narrowed. The two that bite today are
+`test_every_permission_reaches_a_role_other_than_the_owner` (with
+`OWNER_ONLY_BY_DESIGN` naming `admin.roles` and its B3 reason) and the drift
+test, which reconstructs the real conditions: roles stored first, permission
+minted afterwards.
+
+
 ### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
 
 ⚠ **An alias may exist only if the client wrote that exact string.** That is
