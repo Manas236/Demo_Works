@@ -872,10 +872,40 @@ def _persistence_strip() -> str:
 #
 # ⚠ **The nav is not the launcher and must not become it.** Fifteen registers
 # live on the dashboard's module strip; what belongs *here* is what somebody
-# needs from wherever they already are. Projects is the entity that groups the
-# documents, Employees is the register the workforce pages hang off, and
-# Settings is configuration. Each of the three also carries a card, which is the
-# Projects pattern rather than a duplication introduced here.
+# needs from wherever they already are. Every entry also carries a card, which
+# is the Projects pattern rather than a duplication introduced here.
+#
+# ⚠ **THE RULE WAS AMENDED ON 30 AUGUST 2026, and the amendment is the point.**
+#   It used to name three kinds of page — the entity that groups the documents
+#   (Projects), the register the workforce pages hang off (Employees), and
+#   configuration (Settings) — and a measurement sheet is none of the three. The
+#   entry added the day before was correctly flagged as breaking the rule rather
+#   than argued into it, and the note below is that flag, kept verbatim.
+#
+#   Removing the entry would have moved five print goldens to make a document
+#   HARDER to find, against an owner who had just reported that he could not
+#   reach most of what had been built. So the entry stays and the rule is
+#   restated as a test rather than as a list of three kinds:
+#
+#       An entry belongs here when somebody, MID-TASK and unable to finish,
+#       has to go and use it — not when it is merely important.
+#
+#   Projects, Employees and Settings all still pass it. Measurements passes it
+#   for a reason C1 makes concrete: `/ra/create` on the installation leg is
+#   REFUSED until an approved measurement exists, so the person who discovers
+#   they need one discovers it while raising a claim somewhere else entirely.
+#
+#   ⚠ The BOQ is the nearest miss and stays off, deliberately. C1 gates the
+#     measurement on a BOQ exactly as it gates the claim on the measurement, so
+#     "another document needs it first" does NOT separate them — the honest
+#     separation is that a BOQ is where the work starts and you are already
+#     there, while a measurement is the step you find missing on your way to
+#     something else. That is a finer distinction than the old rule carried, and
+#     it is written down so the next pass argues with it instead of rediscovering
+#     it. **A fifth entry still needs a reason of this shape, and still moves
+#     five goldens.**
+#
+# ABOUT.md §5 (`/` — Dashboard) records the amendment and its date.
 #
 # ⚠ **Adding an entry moves every print golden in this repository.** `_nav()` is
 # embedded in every printed page and hidden by CSS at print, so the bytes move
@@ -890,6 +920,12 @@ def _persistence_strip() -> str:
 #   because the pass brief that authorised C2 required it, and that is recorded
 #   plainly rather than argued into the rule — this entry is the one that makes
 #   "the nav is not the launcher" harder to hold, not an example of it.
+#
+#   ⚠ **Kept verbatim, and superseded by the amendment above (30 August 2026).**
+#     It is left standing rather than rewritten because it is the honest record
+#     of an entry that broke the rule as it then stood, and because the case
+#     against, two paragraphs down, is still the strongest argument anybody has
+#     made here. The rule changed to fit the application; this note is why.
 #
 #   The case for it, such as it is: an installation claim is refused until an
 #   approved sheet exists, so the measurement register is the page somebody is

@@ -944,7 +944,7 @@ def view_dc(id: str):
     <a href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(dc.get('boq_ref'))}</a>
     <a href="{url_for('challan.edit_dc', id=id)}" class="btn btn-ghost">Edit</a>
     <a href="{url_for('challan.delete_dc', id=id)}" class="btn btn-ghost">Delete</a>
-    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
+    <a href="{url_for('challan.print_dc', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
 

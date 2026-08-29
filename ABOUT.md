@@ -2893,13 +2893,39 @@ Module-specific CSS is layered *after* `BASE_STYLES` in each module
 `DASH_STYLES` is a **plain string, not an f-string**, so its CSS braces are
 written once — only the HTML f-strings below it need doubling.
 
-##### The entries, and why there are only three
+##### The entries, and the rule that was amended to fit them
 
-`NAV_ITEMS` is **Projects · Employees · Settings**, and the nav is deliberately
-**not** the launcher — fifteen registers live on the module strip below, and
-what belongs in a bar drawn on every page is what somebody needs from wherever
-they already are. Each of the three also carries a card, which is the Projects
-pattern rather than a duplication.
+`NAV_ITEMS` is **Projects · Measurements · Employees · Settings**, and the nav
+is deliberately **not** the launcher — fifteen registers live on the module
+strip below, and what belongs in a bar drawn on every page is what somebody
+needs from wherever they already are. Each of the four also carries a card,
+which is the Projects pattern rather than a duplication.
+
+⚠ **The rule was amended on 30 August 2026, and this paragraph is the record of
+it.** It used to read "why there are only three", and it named three *kinds* of
+page: the entity that groups the documents (Projects), the register the
+workforce pages hang off (Employees), and configuration (Settings). The
+measurement register, added 29 August 2026 with C2, is none of the three — the
+pass that added it said so in `dashboard.NAV_ITEMS`' own comment and flagged it
+as breaking the rule rather than arguing it in.
+
+The rule changed rather than the nav, for a reason that is worth stating: the
+owner had just reported that he could not reach most of what had been built,
+and **removing the entry would have moved five print goldens to make a document
+harder to find.** The three-kinds list is replaced by a test:
+
+> An entry belongs in the nav when somebody, **mid-task and unable to finish**,
+> has to go and use it — not when it is merely important.
+
+Projects, Employees and Settings all still pass it. Measurements passes because
+C1 makes it concrete: `/ra/create` on the installation leg is **refused** until
+an approved measurement exists, so the person who needs one discovers it while
+raising a claim somewhere else. **The BOQ is the nearest miss and stays off** —
+C1 gates the measurement on a BOQ exactly as it gates the claim on the
+measurement, so "another document needs it first" does not separate them; the
+honest separation is that a BOQ is where the work starts and you are already
+there. The full argument, including the case against, is in
+`dashboard.NAV_ITEMS`' comment, where the superseded note is kept verbatim.
 
 ⚠ **Adding an entry moves every print golden in this repository**, because
 `_nav()` is embedded in every printed page and hidden by CSS at print. Measured

@@ -805,7 +805,7 @@ def view_po(id: str):
     {convert_html}
     <a href="{url_for('po_draft.edit_po', id=id)}" class="btn btn-ghost">Edit</a>
     <a href="{url_for('po_draft.delete_po', id=id)}" class="btn btn-ghost">Delete</a>
-    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
+    <a href="{url_for('po_draft.print_po', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
 
