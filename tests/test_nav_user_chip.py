@@ -132,29 +132,69 @@ def test_the_chip_is_on_every_ordinary_page_not_just_the_dashboard(client, url):
 
 def test_the_frozen_modules_get_the_chip_without_being_edited(client):
     """
-    `product.py` and `quotation.py` are frozen (INTRODUCTION.md §7) and neither
-    is modified by this pass. They carry the chip because `_nav()` grew it,
-    which is the whole argument for putting it there instead of at 39 call
-    sites.
+    `product.py` and `quotation.py` are frozen (INTRODUCTION.md §7). They carry
+    the chip because `_nav()` grew it, which is the whole argument for putting
+    it there instead of at 39 call sites.
+
+    ⚠ **REWRITTEN on 29 August 2026.** `quotation.py` was unfrozen NARROWLY
+    under the second override block of that date in `CLIENT_CHANGES.md` §0, for
+    one thing: the deal panel's Committed figure, which re-derived its own total
+    instead of calling `purchase.job_cost()`. The original assertion was, in
+    full and verbatim:
+
+        assert not changed.stdout.strip(), (
+            f"a frozen module was edited: {changed.stdout.strip()}. The chip is in "
+            f"_nav() precisely so these two never have to be.")
+
+    It is not weakened, and it is not deleted. `product.py` still has to be
+    untouched, on exactly the same terms. For `quotation.py` the claim is now
+    the one the override actually made: **every edited line falls inside
+    `view_quotation()`**. A narrow unfreeze that grows to fit the work is not a
+    narrow unfreeze, and this is what would catch it — an edit anywhere else in
+    that file fails here, including the escaping-sensitive formatters the freeze
+    was really protecting.
     """
+    import ast
+    import re
     import subprocess
 
     for url in ("/product/", "/quotation/"):
         assert 'class="nav-user"' in client.get(url).get_data(as_text=True), (
             f"{url} lost its sign-out control")
 
-    try:
-        changed = subprocess.run(["git", "diff", "--name-only",
-                                  "eff0034", "--", "product.py", "quotation.py"],
-                                 cwd=REPO, capture_output=True, text=True,
-                                 timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        pytest.skip("git is not available here; the assertion above still holds")
-    if changed.returncode != 0:
-        pytest.skip("this checkout does not reach eff0034 — the pass's baseline")
-    assert not changed.stdout.strip(), (
-        f"a frozen module was edited: {changed.stdout.strip()}. The chip is in "
-        f"_nav() precisely so these two never have to be.")
+    def _diff(*args):
+        try:
+            r = subprocess.run(["git", "diff", *args], cwd=REPO,
+                               capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            pytest.skip("git is not available here; the assertions above still hold")
+        if r.returncode != 0:
+            pytest.skip("this checkout does not reach eff0034 — the pass's baseline")
+        return r.stdout
+
+    # `product.py` is frozen with no exception at all. Unchanged assertion.
+    assert not _diff("--name-only", "eff0034", "--", "product.py").strip(), (
+        "product.py is fully frozen and was edited. The chip is in _nav() "
+        "precisely so it never has to be.")
+
+    # `quotation.py` — the narrow unfreeze, held to one function.
+    src = (REPO / "quotation.py").read_text(encoding="utf8")
+    span = next((n.lineno, n.end_lineno) for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.FunctionDef) and n.name == "view_quotation")
+
+    for hunk in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@",
+                            _diff("-U0", "eff0034", "--", "quotation.py"),
+                            re.MULTILINE):
+        start = int(hunk.group(1))
+        count = int(hunk.group(2) or 1)
+        if count == 0:            # a pure deletion touches no new-file line
+            continue
+        end = start + count - 1
+        assert span[0] <= start and end <= span[1], (
+            f"quotation.py lines {start}-{end} were edited, outside "
+            f"view_quotation() ({span[0]}-{span[1]}). The 29 August 2026 "
+            f"unfreeze covers the deal panel's committed figure and its "
+            f"breakout row. Nothing else in that file is unfrozen.")
 
 
 def test_the_display_name_is_escaped(client):

@@ -62,6 +62,19 @@ FORBIDDEN = [
                                          "at module level it would be a cycle"),
     ("dashboard", "address",   "module", "same reason"),
     ("quotation", "proforma",  "any", "the chain imports strictly downstream; quotation links out with url_for"),
+
+    # ⚠ **`quotation` -> `purchase` is scope "module", not "any", from
+    #   29 August 2026.** The deal panel calls `purchase.job_cost()` rather than
+    #   re-deriving a second `committed` beside it, and it takes the import
+    #   INSIDE `view_quotation()` — the documented escape hatch `_shell()` uses.
+    #   At module level it is a cycle: `purchase.py` imports this module for the
+    #   document formatters. The pair is listed here so the in-function import
+    #   is a pinned decision rather than an omission from this table.
+    ("quotation", "purchase",  "module", "purchase.py imports quotation.py for the document "
+                                         "formatters, so a module-level import back is a "
+                                         "cycle. view_quotation() imports it in the function "
+                                         "body to call job_cost(), which is the one "
+                                         "definition of `committed`"),
     ("proforma",  "invoice",   "any", "same rule, one link further down"),
     ("purchase",  "proforma",  "any", "the buy side must never touch a sell-side money document"),
     ("purchase",  "invoice",   "any", "a PO records input tax; an invoice records output tax"),

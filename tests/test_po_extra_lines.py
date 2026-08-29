@@ -935,3 +935,148 @@ def test_the_rendered_map_on_the_page_is_normalised_and_alias_resolved(client, p
     for key in served:
         assert key == PP._norm(key), f"{key!r} was served un-normalised"
     assert "soket 15mm" in served, "aliases must reach the browser resolved"
+
+
+# ══ 11. The quotation deal panel — ONE definition of "committed" ═══════════
+#
+# ⚠ **The panel used to re-derive its own `committed` from a STORE walk beside
+#   `purchase.job_cost()`.** Two functions computing the same commercial word is
+#   the defect; the missing extra-parts row was its most visible symptom, and
+#   ABOUT.md recorded the whole thing as a known gap because `quotation.py` was
+#   frozen against feature work. It was unfrozen NARROWLY for this one figure
+#   under the second 29 August 2026 override block, and this section is what
+#   holds the two together now that they are one.
+#
+#   The two agreed when they were separated — measured across the live database
+#   and an exhaustive sweep of every PO status before a line was changed, on the
+#   rule that a Committed figure which moves is a commercial call and not an
+#   engineering one. These tests are what keep them agreeing.
+
+def _quote_with_po(client, qid, ref, *, extras=(), status="Draft", quoted=100000.0):
+    """A quotation with one PO raised against it, through the real routes."""
+    from product import ensure_demo_products
+    ensure_demo_products()
+    address.ensure_demo_addresses()
+
+    STORE["quotations"].setdefault(qid, {
+        "id": qid, "ref": ref, "date": "2026-04-10",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "to": "Prudent Teqtis Pvt Ltd\nBangalore, Karnataka - 560066",
+        "ship_same": "on", "line_items": [],
+        "subtotal": quoted, "tax_type": "exempt", "tax_info": {"total": 0.0},
+        "grand_total": quoted, "total_qty": 0.0,
+    })
+    pid = sorted(STORE["products"])[0]
+    r = client.post("/purchase/create", data={
+        "date": "2026-04-18", "vendor_id": VENDOR_ID, "status": status,
+        "quotation_id": qid,
+        "tax_type": "exempt", "cgst_rate": "0", "igst_rate": "0",
+        "line_product_id": pid, "line_qty": "10", "line_rate": "1000",
+        "line_discount": "",
+        "extra_desc":     [str(e[0]) for e in extras],
+        "extra_unit":     [str(e[1]) for e in extras],
+        "extra_qty":      [str(e[2]) for e in extras],
+        "extra_rate":     [str(e[3]) for e in extras],
+        "extra_discount": [str(e[4]) for e in extras],
+        "charge_label": [], "charge_amount": [],
+    })
+    assert r.status_code == 302, "the order was not created"
+    return client.get(f"/quotation/view/{qid}").get_data(as_text=True)
+
+
+def test_the_deal_panel_renders_job_costs_committed_figure(client):
+    """
+    **The panel's Committed IS `job_cost()`'s Committed.** Asserted against the
+    served bytes, so a second derivation reappearing in `quotation.py` fails
+    here rather than being noticed by a client reading two different totals for
+    one word.
+    """
+    qid = "dp-quote-0001"
+    html = _quote_with_po(client, qid, "QT-9101",
+                          extras=[("Paint roller", "Nos", "5", "90", "")])
+
+    jc = PU.job_cost(qid)
+    assert jc["committed"] == 10450.0
+    assert f'&#8377;&nbsp;{jc["committed"]:,.0f}' in html, \
+        "the panel must render job_cost()'s committed figure, not one of its own"
+    assert f'&#8377;&nbsp;{jc["quoted"]:,.0f}' in html
+    assert f'&#8377;&nbsp;{jc["margin"]:,.0f}' in html
+
+
+def test_the_deal_panel_breaks_out_extra_line_value_on_its_own_row(client):
+    """
+    The row the folded figure hid. It is **part of** committed and reported
+    separately, because it is the part of it that no schedule line accounts for.
+    """
+    qid = "dp-quote-0002"
+    html = _quote_with_po(client, qid, "QT-9102",
+                          extras=[("Paint roller", "Nos", "5", "90", ""),
+                                  ("Butane gas", "Nos", "2", "130", "")])
+
+    jc = PU.job_cost(qid)
+    assert jc["extra_committed"] == 710.0
+    assert jc["extra_count"] == 2
+
+    assert "Of which, extra parts" in html, "the breakout row must be drawn"
+    assert f'&#8377;&nbsp;{jc["extra_committed"]:,.0f}' in html
+    assert "2 line(s) on no schedule" in html
+    # It is inside committed, not a second total beside it.
+    assert jc["extra_committed"] < jc["committed"]
+
+
+def test_the_deal_panel_draws_no_breakout_row_when_there_are_no_extra_lines(client):
+    """
+    Same contract `/purchase/view` holds for the same clause: drawn only when
+    there is something to say. A zero row would be noise on every deal.
+    """
+    qid = "dp-quote-0003"
+    html = _quote_with_po(client, qid, "QT-9103")
+
+    assert PU.job_cost(qid)["extra_committed"] == 0.0
+    assert "Of which, extra parts" not in html
+    assert "Job costing" in html, "the panel itself must still be there"
+
+
+def test_the_deal_panel_excludes_cancelled_orders_exactly_as_job_cost_does(client):
+    """
+    A withdrawn commitment is not a cost — but the order is still **counted**,
+    so the panel never silently loses a document somebody raised. Both halves
+    come from `job_cost()` now, so they cannot disagree with it.
+    """
+    qid = "dp-quote-0004"
+    _quote_with_po(client, qid, "QT-9104",
+                   extras=[("Paint roller", "Nos", "5", "90", "")])
+    html = _quote_with_po(client, qid, "QT-9104", status="Cancelled",
+                          extras=[("Butane gas", "Nos", "2", "130", "")])
+
+    jc = PU.job_cost(qid)
+    assert jc["count"] == 2, "both orders are counted"
+    assert jc["committed"] == 10450.0, "only the live one is spent"
+    assert f'&#8377;&nbsp;{jc["committed"]:,.0f}' in html
+    assert "2 purchase order(s)" in html, \
+        "the cancelled order is still shown as raised"
+
+
+def test_quotation_does_not_import_purchase_at_module_level():
+    """
+    ⚠ **The arrow must not join the module graph.** `purchase.py` imports
+    `quotation.py` for the document formatters, so a module-level import back is
+    a cycle. `view_quotation()` takes it in the function body — the same escape
+    hatch `dashboard._shell()` uses — and `test_import_directions.py` pins the
+    pair at scope "module". This is the second assertion of it, from the side
+    that would break.
+    """
+    import ast
+    import pathlib
+
+    src = pathlib.Path(PU.__file__).parent / "quotation.py"
+    tree = ast.parse(src.read_text(encoding="utf8"))
+    top = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            top.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            top.add(node.module.split(".")[0])
+
+    assert "purchase" not in top, \
+        "quotation.py must not import purchase.py at module level — it is a cycle"

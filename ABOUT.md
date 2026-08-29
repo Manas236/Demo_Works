@@ -2511,6 +2511,21 @@ This block is the **only** place the two pipelines touch on screen, and it
 touches at the *job*, not at a document. It is material cost only — no labour,
 no overhead — and it says so under the figures.
 
+⚠ **The figures come from `purchase.job_cost()`. This panel computes none of
+its own** (29 August 2026). It did until then, from a STORE walk beside the real
+one — two definitions of "committed", which is what let extra-line value fold in
+with no breakout row. The import is taken **inside `view_quotation()`**, the
+documented escape hatch `dashboard._shell()` uses: `purchase.py` imports this
+module for the document formatters, so a module-level import back is a cycle.
+`tests/test_import_directions.py` pins the pair at scope `"module"` so the arrow
+never joins the graph in §2.
+
+The panel draws a fourth `.jc-cell`, **"Of which, extra parts"**, when
+`extra_committed` is non-zero — real cost with no BOQ line behind it, part of
+`committed` and reported separately because no schedule accounts for it.
+`.jobcost-grid` is `repeat(auto-fit, minmax(120px,1fr))`, so the fourth cell
+needed no new CSS. ⚠ **Never build a coverage ratio out of that pair.**
+
 ---
 
 ### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
@@ -3212,10 +3227,16 @@ renders that clause **only when there is extra-line value**, which is what keeps
 the pinned golden still. **Never build a coverage ratio out of these figures**:
 a numerator counting extra lines against a BOQ's line count compares two
 different things. There is no such ratio in the app today, and this is the note
-that says not to add one. ⚠ **`quotation.py`'s deal panel re-derives its own
-`committed` and does not call `job_cost()`**, so it folds extra-line value in
-with no breakout row; `quotation.py` is frozen against feature work, so that is
-recorded here rather than changed.
+that says not to add one. ✅ **`quotation.py`'s deal panel calls
+`job_cost()` (29 August 2026).** It re-derived its own `committed` from a second
+STORE walk until then, which folded extra-line value in with no breakout row.
+**Two functions computing the same commercial word was the defect; the missing
+row was the symptom.** The panel now renders `job_cost()`'s figures and draws
+the extra-parts breakout as its own `.jc-cell`, on the same "only when there is
+something to say" rule this page uses for the same clause. `quotation.py` was
+unfrozen **narrowly** for it — that figure and that row — under the second
+29 August 2026 override block, and `tests/test_nav_user_chip.py` now asserts
+every edited line in that file falls inside `view_quotation()`.
 
 Held by [tests/test_po_extra_lines.py](tests/test_po_extra_lines.py).
 

@@ -2431,11 +2431,31 @@ def view_quotation(id: str):
 
     # ── Job costing: what this deal is costing us on the BUY side ───────
     # Purchase orders are a separate pipeline (see purchase.py) and this is the
-    # one place the two meet — at the *job*, never at the document. Read
-    # STORE["purchases"] directly for the same reason as the proformas above:
-    # purchase.py imports this module for the document formatters, so importing
-    # it back would be a cycle. The costing arithmetic lives there, so it is
-    # duplicated nowhere; only the rendering is here.
+    # one place the two meet — at the *job*, never at the document.
+    #
+    # ⚠ **THE FIGURE COMES FROM `purchase.job_cost()`. THIS PANEL DOES NOT
+    #   COMPUTE ONE.** Until 29 August 2026 it re-derived its own `committed`
+    #   from a STORE walk beside the real one. Two functions computing the same
+    #   commercial word is the defect — the missing extra-line row below was
+    #   only its most visible symptom — and "the costing arithmetic lives there,
+    #   so it is duplicated nowhere" was not true of this block while it did.
+    #
+    #   The two agreed on the day they were separated, and that was **measured
+    #   before the change, not assumed**: every quotation in the live database
+    #   was computed both ways, and an exhaustive sweep of every PO status —
+    #   including missing, blank and wrong-case — put the two derivations side
+    #   by side. Not one figure moved. Had one moved, this change was to stop:
+    #   a Committed figure that changes is one somebody may already have quoted
+    #   to a client, and that is a commercial call and not an engineering one.
+    #
+    # ⚠ **The import is INSIDE the function, and it must stay there.**
+    #   `purchase.py` imports this module for the document formatters, so a
+    #   module-level import back is a cycle. This is the same documented escape
+    #   hatch `dashboard._shell()` and `purchase._repricer()` use, and
+    #   `tests/test_import_directions.py` pins it at scope `"module"`: the
+    #   arrow must not join the module graph in §2.
+    import purchase as _PU
+
     po_rows = sorted(
         ((po_id, po) for po_id, po in STORE["purchases"].items()
          if po.get("quotation_id") == id),
@@ -2443,14 +2463,40 @@ def view_quotation(id: str):
     )
     jobcost_html = ""
     if po_rows:
-        committed = sum(float(po.get("grand_total") or 0.0)
-                        for _i, po in po_rows if po.get("status") != "Cancelled")
-        quoted    = float(q.get("grand_total") or 0.0)
-        margin    = quoted - committed
-        # A quotation can legitimately total zero (everything marked "included,
-        # no separate charge"), so the percentage is guarded rather than assumed.
-        pct       = (margin / quoted * 100.0) if quoted else 0.0
+        jc        = _PU.job_cost(id)
+        committed = jc["committed"]
+        quoted    = jc["quoted"]
+        margin    = jc["margin"]
+        # Guarded upstream against a zero divisor — a quotation can legitimately
+        # total zero (everything marked "included, no separate charge").
+        pct       = jc["margin_pct"]
         tone      = "good" if margin >= 0 else "bad"
+
+        # ⚠ **Extra free-text lines get a row of their own, and that is not
+        #   presentation.** An extra line is real cost with **no BOQ line behind
+        #   it**. It is genuinely part of `committed`, so it stays inside that
+        #   figure; it genuinely answers to nothing on any schedule, so it is
+        #   also reported separately. Read the two together — `committed` is the
+        #   whole commitment, and this is how much of it no schedule accounts
+        #   for. Folded in silently it was invisible, which is what this row
+        #   fixes.
+        #
+        #   Drawn **only when there is extra-line value**, which is the same
+        #   call `/purchase/view` makes for the same clause. A zero row would be
+        #   noise on every deal that has none.
+        #
+        # ⚠ **NEVER build a coverage ratio out of these two figures.** A
+        #   numerator counting extra lines against a BOQ's line count compares
+        #   two different things. There is no such ratio in the app and this is
+        #   the second place that says not to add one.
+        extra_cell = ""
+        if jc["extra_committed"]:
+            extra_cell = f"""
+            <div class="jc-cell">
+              <div class="jc-lbl">Of which, extra parts</div>
+              <div class="jc-val">&#8377;&nbsp;{jc["extra_committed"]:,.0f}</div>
+              <div class="jc-sub">{jc["extra_count"]} line(s) on no schedule</div>
+            </div>"""
 
         po_chips = "".join(
             f'<a class="po-chip" href="{url_for("purchase.view_purchase", id=po_id)}">'
@@ -2469,13 +2515,13 @@ def view_quotation(id: str):
             <div class="jc-cell">
               <div class="jc-lbl">Committed</div>
               <div class="jc-val">&#8377;&nbsp;{committed:,.0f}</div>
-              <div class="jc-sub">{len(po_rows)} purchase order(s)</div>
+              <div class="jc-sub">{jc["count"]} purchase order(s)</div>
             </div>
             <div class="jc-cell">
               <div class="jc-lbl">Gross Margin</div>
               <div class="jc-val {tone}">&#8377;&nbsp;{margin:,.0f}</div>
               <div class="jc-sub">{pct:.1f}% of quoted value</div>
-            </div>
+            </div>{extra_cell}
           </div>
           <div class="po-strip">{po_chips}</div>
           <div class="jc-sub" style="margin-top:.5rem;">
