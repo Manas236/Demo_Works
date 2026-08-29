@@ -699,6 +699,112 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > 28 August **and C4** were built against a quotation that has now **lapsed** —
 > and the extra-lines work was built against **no quotation at all**.
 
+> ### ⚠ OVERRIDE — 29 August 2026, by Manas Gawde — SECOND block of this date, after `86902ef`
+>
+> **A new block, not an amendment, and the second one dated 29 August 2026.**
+> The block immediately above it — committed as `86902ef`, covering extra PO
+> lines and C4 — **has not been edited, reformatted, re-scoped or extended by a
+> single character.** It says what it said when it was written and it covers
+> what it named. Amending an older block to cover work it does not mention is
+> the specific act §0 forbids, and the item-4 note at the foot of this section
+> is the standing record of what that mistake looks like. This is the tenth
+> occasion overall and the fifth that reaches into Phase 3.
+>
+> **This block authorises no feature.** It closes findings the pass that
+> produced `86902ef → 5605416` recorded against its own work. Nothing here
+> starts a gated item, and nothing here moves the board.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated, not softened
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending", it is not "with the client", and it is not awaiting a countersign.
+> **It is expired.** The block above was the first override taken against a
+> lapsed quotation; this is the second, and the second is not evidence that the
+> first made it routine. **A lapsed quotation is a stronger reason to record and
+> a weaker reason to build**, and repeating the sentence is the point of it.
+>
+> #### What proceeds — one narrow unfreeze, and only this
+>
+> - **`quotation.py` is UNFROZEN NARROWLY, for ONE thing.** The freeze on that
+>   file is **not lifted generally**. It is set aside for exactly one change:
+>   **the deal panel's Committed figure**, which today re-derives its own total
+>   from `STORE["purchases"]` instead of calling `purchase.job_cost()`. Two
+>   functions computing the same commercial word is the defect; the missing
+>   extra-line breakout row is a symptom of it. The unfreeze covers **that
+>   figure and that breakout row and nothing else in that file.**
+>
+>   ⚠ **This block does not authorise a refactor, a rename, a tidy-up, or a
+>   second edit.** Every other function in `quotation.py` stays frozen, and one
+>   of them is frozen because a **stored XSS lived there**. Anything else that
+>   looks wrong in that file is to be **noted and left**. If the change cannot
+>   be made without touching a second function, the instruction is to **stop and
+>   report**, not to widen this authorisation — an unfreeze that grows to fit
+>   the work is not a narrow unfreeze.
+>
+>   ⚠ **Precondition, and it was met before a line was changed.** Every existing
+>   quotation's committed figure was computed both ways against the live
+>   database first, on the standing §6-D precedent that a change to a number
+>   somebody may have quoted needs a count behind it. **A figure that moved was
+>   to stop the work.** None moved. The measurement and its coverage — including
+>   what the live data could *not* evidence — are recorded in the pass report and
+>   in PROGRESS.md, honestly and including the part that is weak.
+>
+> #### The Operation Head ruling — REFUSED, and reversible by design
+>
+> **Operation Head is refused `employee.*`** — view, create, edit and delete —
+> by the client-facing owner, on 29 August 2026. The role's seeded permission
+> set does not grant it and does not gain it here.
+>
+> ⚠ **This is a REVERSIBLE DEFAULT, not a permanent policy, and the distinction
+> is the whole of the ruling.** It is refused *for now*, on the narrow ground
+> that it costs nothing to reverse: an Owner grants it at `/roles/edit/<id>`
+> with four checkboxes, **no code change, no deployment, no developer and no
+> re-login**. A default that is free to change is the right way to hold a
+> question the client has not been asked. **Nobody may record this as the client
+> having decided anything**, and nobody may cite it as precedent for refusing a
+> role something else.
+>
+> ⚠ **CC-2 does not settle it, and the reason is narrower than "CC-2 is
+> silent".** B4 *does* name Operations Head — it lists the six roles and that is
+> one of them. What B4 says about employee data is a single sentence: *"HR
+> information is restricted from Sales, Purchase and Accounts."* Operations Head
+> is **not in that sentence**, in either direction: the specification neither
+> grants it employee access nor withholds it. So the refusal is **ours**, and it
+> must be marked in `docs/ACCESS_MATRIX.md` as **our derivation and not a
+> specification** — marking it `§` would claim a backing that does not exist.
+> The three roles B4 *does* name keep their `§`, because for them the sentence
+> is real. CC-2 mentions Operations Head elsewhere (B6's approval ladder, and
+> the untagged *"Operation Head — visual dashboard"* line among the five items
+> that have no home); **none of those touches employee data either.**
+>
+> #### Still gated, untouched, and not started
+>
+> **B6, B7, B8, C1, C2 and C5**, and the two BLOCKED items **C3** and **C6**.
+> Not one of them is started, and no groundwork is laid for any of them. No
+> field is added "ready for" one, which remains the way this gate is most likely
+> to be walked through by accident.
+>
+> #### Chargeability
+>
+> **Nothing in this block is new capability, so nothing in it is newly
+> chargeable.** Closing a finding a pass raised against its own work is the §0
+> **no-charge** exemption doing exactly what it is for. That does **not**
+> retro-price the extra-lines work this pass hardens: **that remains priced
+> nowhere** — not in MG/SF/2026-01, not in MG/SF/2026-02 — and whether it is
+> charged, absorbed, or folded into a replacement quotation is still a
+> commercial decision the client-facing owner **has not yet taken**.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. A narrow unfreeze of one file for one
+> figure does not unfreeze that file, does not unfreeze `product.py`, and does
+> not authorise the rest of 3B or any of the remaining 3C items. **An override
+> is a decision the client-facing owner takes and records; it is never one an
+> agent may take, infer, or extend** — and a *narrow* one is the easiest kind to
+> extend by accident, which is why its scope is written twice above.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
