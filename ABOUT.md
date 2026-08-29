@@ -1177,14 +1177,50 @@ moves an order along its status lifecycle and changes no figure, and locking a
 goods receipt behind an approval ladder would stop a storekeeper recording a
 delivery that has physically happened.
 
-⚠ **TWO COLLISIONS WITH EXISTING DELIBERATE DESIGN, and neither is smoothed
-over.** `ra.py`'s lifecycle gives a **draft** bill a printed DRAFT overprint so
-a working copy exists, and keeps a **cancelled** bill printable because "the
-cancellation is the record of what was withdrawn". Both are unapproved, and B7
-is unqualified — so **the printed draft working copy and the cancelled record
-are both gated now**. That is a capability the client had before this pass and
-does not have after it. `tests/test_approval_b7.py` pins both so they read as
-decisions rather than as accidents, and both are carried as open questions.
+⚠ ~~**TWO COLLISIONS WITH EXISTING DELIBERATE DESIGN, and neither is smoothed
+over.**~~ ✅ **BOTH ANSWERED, 29 August 2026, by the FIFTH override block of
+that date — and the history is kept rather than deleted, because the way it
+went is the point.** Pass D read B7 strictly that morning and gated two
+capabilities the client already had: `ra.py`'s lifecycle gives a **draft** bill
+a printed DRAFT overprint so a working copy exists, and keeps a **cancelled**
+bill printable because "the cancellation is the record of what was withdrawn".
+Both were carried as open questions. Both were put and answered the same day,
+and both are readmitted:
+
+| exemption | why | pinned by |
+|---|---|---|
+| a **draft** RA bill prints, DRAFT overprint and all | B7 exists so an unapproved **claim** cannot leave the building looking final. The overprint is the opposite of that failure — it *is* the safeguard, and gating the print removed the safeguard's purpose along with it | `test_every_draft_print_carries_the_DRAFT_overprint`, which asserts the overprint on a plain, a pending **and a rejected** draft |
+| a **cancelled** RA bill prints | it is not a claim. It is the audit record of a withdrawn one, and a record that cannot be produced is not a record — the same reasoning `ra.can_delete()` already refuses to delete one on | `test_a_cancelled_bill_prints_because_a_record_that_cannot_be_produced_is_not_one` |
+
+**These two and no others.** The exemption is
+`approval.DOCUMENTS["ra"]["print_exempt_states"]` — **data on one document, not
+a rule inside `can_print()`** — because `purchase.PO_STATUSES` also carries
+"Draft" and "Cancelled", and a status test written in the function would
+silently exempt every unapproved draft purchase order. The other three entries
+carry no `print_exempt_states` at all and a test asserts that.
+
+⚠ **What B7 reduces to on an RA bill after the narrowing:** the three lifecycle
+states are `draft`, `issued` and `cancelled`, two are exempt, so the rule is now
+exactly *"an **issued** bill prints only once it is approved"* — which is the
+document B7 is about, the one that goes to the main contractor. Pending,
+part-climbed and rejected all still refuse by URL on an issued bill, and every
+unapproved document of the other three types still refuses whatever its own
+status field says.
+
+⚠ **A rejected DRAFT prints, and that ordering is OURS.** Lifecycle state and
+approval state are orthogonal axes, so the exemption is checked before the
+rejected clause. The reason for the draft exemption is about what the paper says
+rather than where the record stands on its ladder, and a sheet stamped DRAFT
+saying *"its figures may still change and it is not a demand for payment"* is a
+true description of a rejected draft. The override block's wording admits both
+readings; this one is a judgement call and is recorded as one.
+
+⚠ **approval.py may not import ra.py** (ra.py imports it), so `can_print()`
+compares the raw `status` field rather than calling `ra.status_of()`. The two
+agree exactly for these two strings — `status_of()` returns the normalised value
+unchanged when it is one of `ra.STATUSES` — and
+`test_the_raw_status_test_agrees_with_ra_status_of_on_every_value` holds the
+equivalence over every status value rather than leaving it to a comment.
 
 **Two more rules here are ours, not CC-2's**, and both are listed as judgement calls:
 

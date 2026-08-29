@@ -132,39 +132,161 @@ def test_a_grandfathered_bill_prints(client):
         "strands every document the client already holds")
 
 
-def test_the_draft_working_copy_is_now_gated_and_that_is_a_real_loss(client):
+def test_the_draft_working_copy_prints_again_and_that_was_a_decision(client):
     """
-    ⚠ **A collision between B7 and an existing deliberate design, pinned here
-    so it is visible rather than discovered.**
+    ⚠ **REWRITTEN 29 August 2026 (fifth override block). It asserted the
+    opposite this morning, and the decision the old test asked for was taken.**
 
-    `ra.py`'s lifecycle gives a DRAFT bill a printed DRAFT overprint precisely
-    so a working copy exists and can never be mistaken for an issued document.
-    A draft is unapproved, and B7 is unqualified, so the working copy goes.
+    The original test and its assertion, kept verbatim so the reversal is
+    legible rather than invisible:
 
-    This is asserted rather than worked around because it is a capability the
-    client had yesterday and does not have today, and somebody has to tell him.
-    It is carried into the pass report as an open question.
+        def test_the_draft_working_copy_is_now_gated_and_that_is_a_real_loss(client):
+            _a_bill("b7-draft", status="draft", issued_on="")
+            r = client.get("/ra/print/b7-draft", follow_redirects=False)
+            assert r.status_code in (302, 303), (
+                "if this now passes, the draft working copy is printable again — which "
+                "may be right, but it is a decision somebody has to have taken")
+
+    It *is* now right, and the decision was taken: the fifth override block of
+    29 August 2026 narrows B7 to admit `draft` and `cancelled` and nothing else.
+    The reasoning is that the DRAFT overprint is itself the safeguard B7 wants —
+    a working copy that cannot be mistaken for an issued document — so gating
+    the print removed the safeguard's purpose along with it.
+
+    The overprint is not optional to that argument, and the test below is what
+    holds it.
     """
     _a_bill("b7-draft", status="draft", issued_on="")
     r = client.get("/ra/print/b7-draft", follow_redirects=False)
-    assert r.status_code in (302, 303), (
-        "if this now passes, the draft working copy is printable again — which "
-        "may be right, but it is a decision somebody has to have taken")
+    assert r.status_code == 200, (
+        "a DRAFT bill must print — the printed working copy is the exemption "
+        "the fifth override block of 29 August 2026 names")
 
 
-def test_a_cancelled_bill_is_gated_too(client):
+@pytest.mark.parametrize("rid,over", [
+    ("b7-draft-over", {}),
+    ("b7-draft-over-pending", {"approval_status": approval.PENDING}),
+    ("b7-draft-over-rejected", {"approval_status": approval.REJECTED,
+                                "reject_reason": "figures queried"}),
+])
+def test_every_draft_print_carries_the_DRAFT_overprint(client, rid, over):
     """
-    The second collision, same shape.
+    ⚠ **THE CONDITION THE NARROWING WAS TAKEN UNDER.**
 
-    `ra.can_delete()` refuses to delete a cancelled bill because "the
-    cancellation is the record of what was withdrawn"; the bill goes on printing
-    over a CANCELLED overprint for the same reason. B7 gates that record too
-    unless it was approved before it was withdrawn.
+    A draft that prints *clean* is precisely the failure B7 exists to prevent —
+    an unapproved claim leaving the building looking final. The exemption is
+    only defensible while the overprint renders, so this asserts the overprint
+    on every draft print rather than only on the plain one: pending is the
+    ordinary case, and a **rejected draft** is the case where lifecycle state
+    and approval state disagree.
+
+    `ra.py` draws `<div class="lc-mark lc-draft">DRAFT</div>` and a band saying
+    the figures may still change. Both are asserted — the mark alone could
+    survive a stylesheet that hid it.
+    """
+    _a_bill(rid, status="draft", issued_on="", **over)
+    r = client.get(f"/ra/print/{rid}")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert '<div class="lc-mark lc-draft">DRAFT</div>' in html, (
+        "a draft printed WITHOUT its DRAFT overprint — that is the thing B7 "
+        "guards against, and it is worse than either reading of B7")
+    assert "This is a DRAFT and has not been issued" in html, (
+        "the DRAFT band is missing; the mark alone is not the safeguard")
+
+
+def test_a_cancelled_bill_prints_because_a_record_that_cannot_be_produced_is_not_one(client):
+    """
+    ⚠ **REWRITTEN 29 August 2026 (fifth override block), same reversal.**
+
+    The original test and its assertion, kept verbatim:
+
+        def test_a_cancelled_bill_is_gated_too(client):
+            _a_bill("b7-cancelled", status="cancelled", cancelled_on="2026-08-20",
+                    cancel_reason="superseded")
+            r = client.get("/ra/print/b7-cancelled", follow_redirects=False)
+            assert r.status_code in (302, 303)
+
+    A cancelled bill is not a claim. It is the audit record of a withdrawn one,
+    and a record that cannot be produced is not a record — which is the same
+    reasoning `ra.can_delete()` already refuses to delete one on.
     """
     _a_bill("b7-cancelled", status="cancelled", cancelled_on="2026-08-20",
             cancel_reason="superseded")
     r = client.get("/ra/print/b7-cancelled", follow_redirects=False)
-    assert r.status_code in (302, 303)
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert '<div class="lc-mark lc-cancelled">CANCELLED</div>' in html, (
+        "a cancelled bill printed without its CANCELLED overprint")
+
+
+def test_an_ISSUED_unapproved_bill_still_refuses_which_is_the_case_B7_IS_ABOUT(client):
+    """
+    The narrowing is two named states, not a softening.
+
+    An RA bill has three lifecycle states and two are now exempt, so what B7
+    reduces to on this document is *"an issued bill prints only once it is
+    approved"* — the document that goes to the main contractor. If this ever
+    passes, B7 has been switched off rather than narrowed.
+    """
+    _a_bill("b7-issued-unapproved", status="issued", issued_on="2026-08-06")
+    r = client.get("/ra/print/b7-issued-unapproved", follow_redirects=False)
+    assert r.status_code in (302, 303), (
+        "an ISSUED, unapproved bill printed — that is the whole of what B7 "
+        "refuses, and narrowing it to draft and cancelled must not reach it")
+    assert "has not been approved" in _where(r)
+
+
+def test_the_exemption_does_NOT_leak_to_a_draft_PURCHASE_ORDER(client, cast):
+    """
+    ⚠ **Why the exemption is data on one document and not a rule in
+    `can_print()`.**
+
+    `purchase.PO_STATUSES` carries "Draft" and "Cancelled" as two of its six
+    states. A status test written inside `can_print()` would lowercase them and
+    silently exempt every unapproved draft purchase order — a document nobody
+    narrowed anything for. `print_exempt_states` sits on the `ra` entry alone,
+    and this is what proves the other three carry none.
+    """
+    for key in ("charge", "invoice", "purchase"):
+        assert "print_exempt_states" not in approval.DOCUMENTS[key], (
+            f"{key} gained a print exemption; the fifth override block of "
+            f"29 August 2026 names the RA bill and nothing else")
+
+    po = {"id": "b7-po-draft", "ref": "SF/PO/26-27/0001", "status": "Draft",
+          "created_by": "somebody-else"}
+    STORE.setdefault("purchases", {})["b7-po-draft"] = po
+    allowed, _why = approval.can_print("purchase", po)
+    assert not allowed, (
+        "an unapproved DRAFT purchase order became printable — the RA "
+        "exemption leaked across documents")
+
+
+def test_the_raw_status_test_agrees_with_ra_status_of_on_every_value():
+    """
+    ⚠ **The equivalence `approval.py` cannot assert by calling.**
+
+    `can_print()` compares `record["status"]`, lowercased and stripped, against
+    `print_exempt_states`. `ra.py` reads the same field through
+    `ra.status_of()`, which normalises anything unrecognised to `issued`.
+    approval.py may not import ra.py — ra.py imports it — so the two readings
+    are held in step here rather than by a comment.
+
+    The claim is narrow and exact: for the two exempt strings the raw test and
+    `ra.status_of()` give the same answer, and for everything else the raw test
+    says "not exempt".
+    """
+    import ra
+
+    exempt = approval.DOCUMENTS["ra"]["print_exempt_states"]
+    for raw in list(ra.STATUSES) + ["", "  DRAFT ", "submitted", "certified",
+                                    "Cancelled", None, "issued"]:
+        rec = {"status": raw}
+        raw_says = str(rec.get("status") or "").strip().lower() in exempt
+        ra_says = ra.status_of(rec) in exempt
+        assert raw_says == ra_says, (
+            f"status {raw!r}: approval.py reads exempt={raw_says}, "
+            f"ra.status_of() reads exempt={ra_says}")
 
 
 # ═══ B7's SECOND BULLET — THE PRINT STYLESHEET ═════════════════════════════

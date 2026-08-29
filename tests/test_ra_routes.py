@@ -598,18 +598,40 @@ def test_a_draft_prints_with_a_marker_and_an_issued_bill_prints_clean(client, se
     #   refusal itself, first, so the new rule is pinned by the same test that
     #   pins what it took away — rather than the loss being visible only as a
     #   fixture that quietly gained a field.
-    refused = client.get(f"/ra/print/{rid}", follow_redirects=False)
-    assert refused.status_code in (302, 303), (
-        "B7 no longer refuses to print an unapproved draft")
-
-    approval.clear_approvals(STORE["ra_bills"][rid])
-    printable(STORE["ra_bills"][rid])
+    #
+    # ⚠ **REVERSED the same day, 29 August 2026, by the FIFTH override block.**
+    #   The loss above was taken back: B7 is narrowed to admit `draft` and
+    #   `cancelled` and nothing else, because the DRAFT overprint this test
+    #   exists for is itself the safeguard B7 wants. The two lines that were
+    #   added that morning, kept verbatim so the reversal is legible:
+    #
+    #       refused = client.get(f"/ra/print/{rid}", follow_redirects=False)
+    #       assert refused.status_code in (302, 303), (
+    #           "B7 no longer refuses to print an unapproved draft")
+    #
+    #       approval.clear_approvals(STORE["ra_bills"][rid])
+    #       printable(STORE["ra_bills"][rid])
+    #
+    #   What replaces them is the assertion that the draft prints WITHOUT being
+    #   made approvable first — which is the exemption, stated positively. The
+    #   `printable()` helper is deliberately not called: if the exemption ever
+    #   goes away, this fails rather than passing for the wrong reason.
+    #   `tests/test_approval_b7.py` holds the same rule from the other side and
+    #   asserts the overprint on a rejected draft too.
+    assert approval.status_of(STORE["ra_bills"][rid]) == approval.PENDING, (
+        "this bill must be UNAPPROVED for the exemption to be what is under "
+        "test")
 
     h = client.get(f"/ra/print/{rid}").get_data(as_text=True)
     assert "DRAFT" in h
     assert "has not been issued" in h
 
     client.post(f"/ra/issue/{rid}")
+    # ⚠ An ISSUED bill is NOT exempt — that is the case B7 is about, and the
+    #   narrowing does not reach it. So the second half of this test, which is
+    #   about the document rather than the ladder, has to describe a bill that
+    #   can be printed. `printable()` is what says so in one place.
+    printable(STORE["ra_bills"][rid])
     h = client.get(f"/ra/print/{rid}").get_data(as_text=True)
     assert "DRAFT" not in h
     # The stylesheet still DEFINES .lc-mark — it is one sheet for all three
@@ -632,7 +654,19 @@ def test_a_cancelled_bill_still_prints_over_a_cancelled_overprint(client, seeded
     #   which B7 now qualifies. The assertions below are untouched and still
     #   pin the CANCELLED overprint; the collision is recorded in ABOUT.md §2i
     #   and carried into the pass report as an open question for the client.
-    printable(STORE["ra_bills"][rid])
+    #
+    # ⚠ **REVERSED the same day by the FIFTH override block**, which readmits a
+    #   cancelled bill: it is not a claim, it is the audit record of a withdrawn
+    #   one, and a record that cannot be produced is not a record. The line
+    #   added that morning, kept verbatim:
+    #
+    #       printable(STORE["ra_bills"][rid])
+    #
+    #   It is gone, and its absence is the assertion: this bill is unapproved
+    #   and prints anyway.
+    assert approval.status_of(STORE["ra_bills"][rid]) == approval.PENDING, (
+        "this bill must be UNAPPROVED for the exemption to be what is under "
+        "test")
 
     r = client.get(f"/ra/print/{rid}")
     assert r.status_code == 200

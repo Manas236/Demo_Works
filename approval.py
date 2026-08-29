@@ -127,6 +127,29 @@ DOCUMENTS = {
         "sequential": False,
         "permission": "ra.approve",
         "list_endpoint": "ra.list_ras",
+        # ── B7's TWO NAMED EXCEPTIONS, narrowed 29 August 2026 (fifth block) ──
+        #
+        # Two lifecycle states of an RA bill print whatever their approval
+        # state, and **only** these two. Read `can_print()` for the reasoning;
+        # what belongs here is why it is DATA on one document rather than a
+        # rule in the function.
+        #
+        # ⚠ **A generic "a draft prints" rule would leak to the purchase
+        #   order.** `purchase.PO_STATUSES` carries "Draft" and "Cancelled" as
+        #   two of its six states, so a status test written in `can_print()`
+        #   itself would silently exempt every unapproved draft PO — a document
+        #   nobody narrowed anything for. The exemption is keyed to the one
+        #   document the override block names, and the three other entries
+        #   carry no `print_exempt_states` at all.
+        #
+        # ⚠ **The values are compared to the RAW `status` field, and that is
+        #   exactly equivalent to `ra.status_of()` for these two strings** —
+        #   `status_of()` returns the normalised value unchanged when it is one
+        #   of `ra.STATUSES`, and "draft" and "cancelled" both are. approval.py
+        #   may not import ra.py (ra.py imports this module), so the equivalence
+        #   is asserted in `tests/test_approval_b7.py` against `ra.status_of()`
+        #   over every status value rather than left to this comment.
+        "print_exempt_states": ("draft", "cancelled"),
     },
     "invoice": {
         "collection": "invoices",
@@ -578,13 +601,46 @@ def can_print(doc_key: str, record) -> tuple:
     reasoning the grandfather rule rests on everywhere else in this module, and
     it is why `tools/backfill_created_by.py` had to run before B7 could.
 
-    ⚠ **A DRAFT RA BILL NO LONGER PRINTS, and that is a real loss, taken
-    deliberately.** `ra.py`'s lifecycle gives a draft a printed DRAFT marker
-    precisely so a working copy exists and can never be mistaken for an issued
-    document. A draft is unapproved, and B7 is unqualified, so the working copy
-    goes. This is recorded as a **collision between B7 and an existing
-    deliberate design**, not as a tidy consequence of it — see ABOUT.md §2i and
-    the pass report.
+    ⚠ **TWO STATES OF AN RA BILL ARE EXEMPT, and only these two.** Narrowed on
+    29 August 2026 under the fifth override block of that date, which reversed
+    the strict reading pass D shipped that morning. `print_exempt_states` on the
+    `ra` entry of `DOCUMENTS` is the whole of the exemption:
+
+    * **A DRAFT bill prints, carrying its DRAFT overprint.** B7 exists so an
+      unapproved **claim** cannot leave the building looking final. The
+      overprint is the opposite of that failure — it is itself the safeguard,
+      and gating the print removes the safeguard's purpose along with it. The
+      overprint must still render, and
+      `tests/test_approval_b7.py::test_every_draft_print_carries_the_DRAFT_overprint`
+      is what holds that: a draft that printed *clean* is the thing B7 is
+      actually guarding against, and it would be a worse outcome than either
+      reading.
+    * **A CANCELLED bill prints.** A cancelled bill is not a claim. It is the
+      audit record of a withdrawn one, and a record that cannot be produced is
+      not a record. `ra.can_delete()` already refuses to delete one for the same
+      reason.
+
+    **Every other unapproved state stays gated exactly as pass D built it** —
+    pending, part-climbed and rejected all still refuse by URL, and so does an
+    unapproved document of the other three types whatever its own status field
+    says. This is a narrowing of two named states, not a softening of B7.
+
+    ⚠ **What the narrowing reduces to on an RA bill, stated plainly:** the three
+    lifecycle states are `draft`, `issued` and `cancelled`, two of them are
+    exempt, so B7 on an RA bill is now exactly *"an **issued** bill prints only
+    once it is approved"*. That is the document B7 is about — the one that goes
+    to the main contractor.
+
+    ⚠ **The exemption is checked BEFORE the rejected clause, and that ordering
+    is a judgement call.** Lifecycle state and approval state are orthogonal
+    axes, so a bill can be a rejected draft. It prints, carrying its DRAFT
+    overprint, because the reason for the draft exemption is about what the
+    paper says rather than about where the record stands on its ladder — and a
+    sheet stamped DRAFT saying *"its figures may still change and it is not a
+    demand for payment"* is a true description of a rejected draft. A rejected
+    **issued** bill still refuses, which is the case that matters. The override
+    block's wording ("draft-state and cancelled-state only" against "rejected
+    still refuses") admits both readings; this one is recorded as ours.
     """
     spec = DOCUMENTS.get(doc_key)
     if not spec:
@@ -594,6 +650,9 @@ def can_print(doc_key: str, record) -> tuple:
     if is_grandfathered(record):
         return True, ""
     if is_approved(record):
+        return True, ""
+    exempt = spec.get("print_exempt_states") or ()
+    if str(record.get("status") or "").strip().lower() in exempt:
         return True, ""
     if is_rejected(record):
         return False, (

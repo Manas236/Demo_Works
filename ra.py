@@ -3533,11 +3533,16 @@ def print_ra(id: str):
     # untouched and goes on rendering — B7 permits the viewing and refuses only
     # the printing.
     #
-    # ⚠ **This takes the printed DRAFT working copy away**, and that is a real
-    # loss rather than a tidy consequence. The lifecycle above gives a draft a
-    # DRAFT overprint precisely so a working copy exists and cannot be mistaken
-    # for an issued document; a draft is unapproved and B7 is unqualified, so
-    # the working copy goes with it. Recorded in ABOUT.md §2i, not smoothed over.
+    # ⚠ **NARROWED 29 August 2026 (fifth override block): a DRAFT and a
+    # CANCELLED bill print, and no other unapproved state does.** Pass D read
+    # B7 strictly and took both away that morning; the block reversed it the
+    # same day. The DRAFT overprint below is itself the safeguard B7 wants — a
+    # working copy that cannot be mistaken for an issued document — so gating
+    # the print removed the safeguard's purpose along with it, and a cancelled
+    # bill is the audit record of a withdrawn claim rather than a claim. What
+    # remains gated is the case B7 is actually about: an **issued** bill that
+    # has not been approved. `approval.DOCUMENTS["ra"]["print_exempt_states"]`
+    # is the whole of the exemption; ABOUT.md §2i carries the reasoning.
     may_print, why_not = approval.can_print("ra", bill)
     if not may_print:
         return redirect(url_for("ra.view_ra", id=id, msg=why_not, type="error"))
