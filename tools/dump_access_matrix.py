@@ -99,14 +99,20 @@ SPEC_BACKED = {
     # `charge.py` is the wages and site-expense ledger and was the only place
     # "HR information" could attach to until 29 August 2026. The **employee
     # master** (C4) is the other, and it is the plainer of the two: it carries
-    # every employee's salary. Four charge permissions and four employee
-    # permissions withheld from all three roles — twenty-four cells, each
-    # asserted ABSENT, and every one of them traceable to one sentence.
+    # every employee's salary. **Attendance** (C5, 29 August 2026) is the third,
+    # and it is HR information on the same terms rather than by extension: the
+    # record carries a **salary snapshot** and the page it renders on turns that
+    # into a **wage**. A role that may not see what somebody is paid may not see
+    # what a day of them cost. Four charge permissions, four employee and four
+    # attendance permissions withheld from all three roles — thirty-six cells,
+    # each asserted ABSENT, and every one of them traceable to one sentence.
 }
 for _role in ("sales-manager", "purchase-manager", "accountant"):
     for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete",
                   "employee.view", "employee.create", "employee.edit",
-                  "employee.delete"):
+                  "employee.delete",
+                  "attendance.view", "attendance.create", "attendance.edit",
+                  "attendance.delete"):
         SPEC_BACKED[(_role, _perm)] = _B4_HR_WALL
 
 # Cells the specification requires to be EMPTY rather than filled. Marked in
@@ -119,7 +125,9 @@ SPEC_REQUIRES_ABSENT = {
 for _role in ("sales-manager", "purchase-manager", "accountant"):
     for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete",
                   "employee.view", "employee.create", "employee.edit",
-                  "employee.delete"):
+                  "employee.delete",
+                  "attendance.view", "attendance.create", "attendance.edit",
+                  "attendance.delete"):
         SPEC_REQUIRES_ABSENT.add((_role, _perm))
 
 # Cells we withhold as a DEFAULT WE CHOSE, with no line of specification either
@@ -143,9 +151,19 @@ for _role in ("sales-manager", "purchase-manager", "accountant"):
 #
 #   The three roles B4 *does* name keep their `§` above, because for them that
 #   sentence is real.
+#   ⚠ **The same ruling covers `attendance.*` (C5, 29 August 2026, third
+#   pass)**, and for the same narrow reason rather than by inheritance: B4's one
+#   sentence does not name Operations Head, and CC-2 says nothing anywhere about
+#   the role and attendance. It is refused **for now**, on the ground that it
+#   costs nothing to reverse — four more checkboxes at `/roles/edit/<id>`.
+#   Operations Head does hold the wages ledger (`charge.*`), so the refusal is a
+#   line drawn at **pay-derived** data rather than at site costs, and that line
+#   is ours. **Nobody may record it as the client having decided anything.**
 DERIVED_REQUIRES_ABSENT = set()
 for _perm in ("employee.view", "employee.create", "employee.edit",
-              "employee.delete"):
+              "employee.delete",
+              "attendance.view", "attendance.create", "attendance.edit",
+              "attendance.delete"):
     DERIVED_REQUIRES_ABSENT.add(("operation-head", _perm))
 
 
@@ -212,19 +230,29 @@ ROLE_NOTES = {
     "hr": {
         "can": "**The employee master** — add somebody to the register, record "
                "their designation, site, joining date and monthly salary, "
-               "change it, and remove a record entered by mistake. Also the "
-               "wages and site-expense ledger, and the address book.",
+               "change it, and remove a record entered by mistake. **And "
+               "attendance** (C5): mark who was on which site each day, record "
+               "overtime, and read the site-wise labour cost that comes out of "
+               "it. Also the wages and site-expense ledger, and the address "
+               "book.",
         "cannot": "Everything else. HR sees no schedule, no bill, no quotation, "
                   "no purchase order and no money received. This is still the "
                   "narrowest role in the system and deliberately so. ⚠ Read "
                   "what the employee master **is**: CLIENT_CHANGES-2.md C4 is "
                   "*\"employee details and salary\"* and that is the whole of "
-                  "it — there is no attendance, no overtime and no wage "
-                  "calculation behind it, and HR's right to *edit* a salary is "
-                  "an untagged line the client stated and nobody has priced.",
+                  "it — the master itself holds no attendance, no overtime and "
+                  "no wage calculation; those are C5's, in their own module. "
+                  "HR's right to *edit* a salary is still an untagged line the "
+                  "client stated and nobody has priced. "
+                  "⚠ Attendance is a **labour cost tracker, not payroll**: no "
+                  "PF, no ESIC, no professional tax, no minimum-wage check and "
+                  "no payslip, and it is wired into no profit-and-loss view — "
+                  "C6 is BLOCKED.",
         "claims": {"holds": ["charge.view", "charge.delete", "address.view",
                              "employee.view", "employee.create",
-                             "employee.edit", "employee.delete"],
+                             "employee.edit", "employee.delete",
+                             "attendance.view", "attendance.create",
+                             "attendance.edit", "attendance.delete"],
                    "lacks": ["boq.view", "ra.view", "quotation.view",
                              "purchase.view", "receipt.view", "admin.users"]},
     },
@@ -488,9 +516,10 @@ def build() -> str:
       "limited to*.")
     w("")
     w("**2. Withholding a permission does not withhold the information.** "
-      "The HR wall is now drawn at two surfaces — the wages ledger and the "
-      "**employee master** (CLIENT_CHANGES-2.md C4, built 29 August 2026) — "
-      "and the second is the one that carries salary. A Sales Manager who can "
+      "The HR wall is now drawn at three surfaces — the wages ledger, the "
+      "**employee master** (CLIENT_CHANGES-2.md C4) and **attendance** "
+      "(C5, 29 August 2026) — and the last two are the ones that carry salary "
+      "and what a day of it cost. A Sales Manager who can "
       "open neither can still read a project page, and B4's restriction is "
       "about pay, not about projects. What the wall does **not** do is hide a "
       "person's existence: their name is on a delivery challan, a site note or "

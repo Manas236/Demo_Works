@@ -352,6 +352,7 @@ Consequences you must respect when editing:
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 520 | **Employee master** &mdash; details and salary (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf. ✅ **Linked from the nav and the launcher since 29 Aug 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). |
+| [attendance.py](attendance.py) | 897 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`; **nothing imports it**, and that is C6 being blocked rather than tidiness. ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. Owner, Director and HR only. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -392,8 +393,16 @@ app.py
  │                             │  quotation; it reads that sheet through docsheet
  ├─ charge.py ─────────────────┤  imports dashboard, pipeline, store, branding, quotation
  ├─ employee.py ───────────────┤  imports dashboard, pipeline, store, branding, quotation
- │                             │  — C4. NEVER charge.py, in either direction: that
- │                             │  edge is C5 and is gated
+ │                             │  — C4. NEVER charge.py, in either direction, and
+ │                             │  NEVER attendance.py — the arrow runs the other
+ │                             │  way and /employee/ links out with url_for
+ ├─ attendance.py ─────────────┤  imports dashboard, pipeline, store, branding,
+ │                             │  quotation, employee (the master it consumes)
+ │                             │  and settings (the OT multiplier CC-2 requires
+ │                             │  to be configurable) — C5. NEVER charge.py in
+ │                             │  either direction, and NOTHING imports it:
+ │                             │  a labour figure reaching another module is C6,
+ │                             │  which is BLOCKED
  ├─ projectview.py ─────────────┤  imports dashboard, branding, store, pipeline,
  │                             │  quotation, ra — and auth, for the write guard
  │                             │  on its POST branch (§7 gap 24b)
@@ -1080,6 +1089,7 @@ STORE = {
     "receipts":     {},     # uuid -> payment RECEIVED against one RA bill
     "delivery_challans": {},# uuid -> goods-movement note against a BOQ
     "employees":    {},     # uuid -> employee master record: details and salary (C4)
+    "attendance":   {},     # uuid -> one employee, one site, one day (C5)
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -2049,6 +2059,52 @@ sentence long and this record is the entire answer to it.
   pre-built either — laying groundwork for a gated item is starting it, and
   `tests/test_employee.py` reads the module source to assert none of it is
   there.
+
+### Attendance  (CC-2 **C5**, 29 August 2026)
+
+```python
+{"id": uuid, "date": "2026-08-29",
+ "employee_id": uuid,                # THE KEY, into `employees`
+ "employee_name": "Ramesh Patil",    # snapshot
+ "employee_code": "SF-014",          # snapshot
+ "monthly_salary": 26000.0,          # snapshot — see property 2
+ "site": "Whitefield",               # FREE TEXT, never a project id
+ "status": "present" | "absent",
+ "ot_hours": 2.0, "notes": "",
+ "created_at": "…", "updated_at": "…"}
+```
+
+**Its own collection**, never a list on the employee (CLIENT_CHANGES.md §1.3):
+one person accumulates a record per working day for as long as they are
+employed, which is exactly the shape that rule exists for.
+
+Four properties this shape exists to guarantee:
+
+1. ⚠ **`(employee_id, date)` is unique, and the constraint is the item.** CC-2's
+   *"one employee = one site = one day"*, enforced by
+   `attendance.conflicting_record()` at **write time** in both write routes.
+   Keying on `(employee, site, date)` instead would let one person be marked
+   present on three sites in one day and bill a full day's wage three times —
+   silently, on the only figure this module produces.
+2. ⚠ **The three employee fields are SNAPSHOTS, not lookups.** A wage figure for
+   a day already worked must not move when a salary is revised or a name
+   corrected — `proforma.prior_invoiced` and `ra.prev_balance` one chain over.
+   An **edit** re-snapshots, because an edit restates what that day was.
+3. **No cost is stored.** Day wage, overtime and the site total are derived by
+   `cost_of()` and `site_costs()` from the settings in force at render time. A
+   maintained total is a number one code path can forget to update, and this
+   repo has paid for that twice — `ra.claimed_by_line()` and
+   `challan.dispatched_by_line()` derive for the same reason.
+4. ⚠ **`site` is FREE TEXT and is never a `project_id`.** A BOQ carries
+   `project_name` *and* `site_location` as separate fields, so a project is not
+   a site here; and a project link on this record is the first half of C6,
+   which is BLOCKED. §5 `/attendance` has the full reasoning.
+
+⚠ **Nothing seeds an attendance record.** A seeded marking says somebody was on
+a site on a day and puts a wage against it — inventing a day's labour cost is
+worse than inventing the person it is attributed to. `tests/test_hardening.py`
+classifies `attendance` as transactional and asserts the collection is empty on
+a fresh install.
 
 ---
 
@@ -4833,6 +4889,125 @@ Held by [tests/test_employee.py](tests/test_employee.py).
 
 ---
 
+### `/attendance` — Attendance & site-wise labour cost · [attendance.py](attendance.py) · **CC-2 C5**
+
+| Route | View |
+|---|---|
+| `GET /attendance/` | `list_attendance` — one day's muster + the site-wise cost; `?date=` moves the day |
+| `GET,POST /attendance/mark` | `mark_attendance` |
+| `GET,POST /attendance/edit/<id>` | `edit_attendance` |
+| `GET,POST /attendance/delete/<id>` | `delete_attendance` — **GET confirms, POST destroys** |
+
+Built under the **third 29 August 2026** override block in `CLIENT_CHANGES.md`
+§0. Before it, C5 was one of the six remaining NOT STARTED items and was gated;
+`employee.py` says in as many words that C4 built nothing toward it.
+
+CC-2's C5 is five bullets — daily presentee/absentee, salary as 0 or 1 on
+attendance, **one employee = one site = one day**, `OT = (salary ÷ 8) × hours`,
+and a presentation table of Employee — Site — OT time. **This is a labour cost
+tracker, not payroll**, and both pages say so on their face: no PF, no ESIC, no
+professional tax, no minimum-wage check, no payslip and no bank file.
+
+#### ⚠ The OT multiplier is a SETTING, and no literal multiplier is in the code
+
+CC-2 is explicit and the reason is statutory rather than stylistic. The
+client's own figure is `salary ÷ 8 × hours`, which is **1× ordinary rate**;
+overtime under the Factories Act and most state Shops & Establishments Acts is
+generally **twice** ordinary wages. **Hardcoding the client's figure would make
+this software compute a statutory underpayment.**
+
+So it lives at `/settings` — `settings.ot_multiplier()`, defaulting to the
+client's figure, with a line on the page saying what it is and what it is not —
+and `attendance.ot_amount()` takes it as an **argument**.
+`tests/test_attendance.py::test_no_literal_multiplier_exists_in_the_calculation_path`
+walks the AST of `daily_wage`, `ot_amount` and `cost_of` and fails on any
+numeric constant in a multiplication or a division. That is the test that
+survives somebody simplifying the behavioural one.
+
+⚠ **`wage_days_per_month` is a second setting and it is OURS, not CC-2's.** A
+monthly salary needs a divisor before it is a daily wage and CC-2 never gives
+one. **26** is the ordinary Indian convention (a month less its weekly offs);
+30, and the actual length of the month, are both defensible and give different
+money. Writing one into the code would be exactly the hardcoding above, so it
+is a field with a stated default. **Nobody may record 26 as the client having
+chosen anything.**
+
+`STANDARD_HOURS_PER_DAY = 8.0` is the one figure that *is* a constant, and it
+is CC-2's own `÷ 8` — a divisor defining what an hour of a working day is, not
+a rate anybody is paid at.
+
+#### ⚠ One employee = one site = one day — a uniqueness constraint, enforced at write
+
+CC-2's third bullet, read as **uniqueness on `(employee, date)`**: on any given
+day a person is on one site, so there is at most one record per person per day
+and that record names the site.
+
+**The reading matters and the alternative is worse.** Keying on
+`(employee, site, date)` would permit the same person to be marked present on
+three sites on one day, each costing a full day's wage — **the same labour
+counted three times**, silently, on the only figure this module produces.
+
+`conflicting_record()` owns it and **both write routes call it before storing
+anything** — not the form, and not a `<select>` that happens to omit a name.
+The edit route passes its own id as `except_id`, which is the way this
+constraint is usually got wrong: without it, saving a record unchanged finds
+itself and every edit refuses.
+
+#### ⚠ Site is free text and is deliberately NOT a project
+
+The project record was considered first and does not fit:
+
+1. **A project is not a site in this app's own data model.** A BOQ carries
+   `project_name` **and** `site_location` as two separate fields (§3). One
+   project runs at several sites.
+2. **`employee.site` is already free text**, and C4 chose that deliberately.
+3. **A `project_id` here is the first half of C6**, which is BLOCKED.
+
+The form prefills the employee's own posted site, so the common case is one
+keystroke. No second site entity was invented.
+
+#### ⚠ Nothing is exported — C6 is BLOCKED and stays blocked
+
+The site-wise labour cost is displayed on **this module's own pages and
+nowhere else.** No figure on the dashboard (the card carries counts only), none
+on `/projects/view/<id>`, none in `charge.py`, and no function any other module
+calls. **C6 is BLOCKED on CC-2's Open question 4** — whether attendance-based
+wages or the BOQ's installation base rate is authoritative for labour cost — and
+subtracting both counts labour twice. C5 can be built without that answer;
+wiring it into C6 cannot.
+
+`projectview.py`'s standing prohibition is untouched, `employee.py ↔ charge.py`
+stays forbidden in both directions, and `tests/test_attendance.py` asserts at
+AST level that **nothing imports this module**.
+
+#### Access
+
+`attendance.*` — four permissions, granted to **Owner, Director and HR**,
+identical to `employee.*`. Sales Manager, Purchase Manager and Accountant are
+refused and marked **`§`** in [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md):
+B4's *"HR information is restricted from Sales, Purchase and Accounts"* covers
+a muster carrying a salary snapshot and producing a wage on the same terms it
+covers the master.
+
+⚠ **Operation Head is refused and marked `–` — withheld by OUR derivation, not
+`§`.** B4 names the role but its one sentence about employee data does not name
+it in either direction, so a `§` would claim a backing that does not exist. It
+is a **reversible default**: an Owner grants any of the four at
+`/roles/edit/<id>` with a checkbox — no code change, no deployment, no
+re-login. PROGRESS.md carries the same ruling for `employee.*`.
+
+#### The snapshot
+
+`employee_name`, `employee_code` and `monthly_salary` are **copied onto the
+marking**, not looked up. A wage figure for a day already worked must not move
+when somebody's salary is revised — the freeze contract `proforma.prior_invoiced`
+and `ra.prev_balance` hold one chain over. An **edit** re-snapshots, because an
+edit is a restatement of what that day was.
+
+Held by [tests/test_attendance.py](tests/test_attendance.py).
+
+---
+
 ### `/address` — Address Book · [address.py](address.py)
 
 | Route | View |
@@ -4878,10 +5053,23 @@ as a match for a filter it does not satisfy.
 |---|---|
 | `GET,POST /settings/` | `edit_settings` |
 
-One form, two sections: **Company Identity** (legal name, tagline, address,
-phone, e-mail, web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank,
-account name, account number, IFSC, branch). Reached from the **Settings link in
-`_nav()`**, so it is one click from anywhere.
+One form. **Company Identity** (legal name, tagline, address, phone, e-mail,
+web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank, account name,
+account number, IFSC, branch), then four blocks that are **not** branding
+overrides and live in records of their own: the draft-PO series, the delivery-
+challan series, the charge heads, and **Labour Cost**. Reached from the
+**Settings link in `_nav()`**, so it is one click from anywhere.
+
+⚠ **Labour Cost is CC-2 C5's, and the OT multiplier is there because a constant
+would be a statutory underpayment.** `ot_multiplier` defaults to the client's
+own 1× and the page says on its face that the Factories Act and most state Shops
+& Establishments Acts put overtime at generally twice. `wage_days_per_month`
+defaults to 26 and is **ours rather than the client's** — CC-2 never says what a
+monthly salary is divided by to get a daily wage, and the page says so.
+`settings.ot_multiplier()` and `settings.wage_days_per_month()` are the only
+accessors; `attendance.py` takes both as arguments and holds neither figure.
+Changing either changes what `/attendance/` shows from the next render, and
+**rewrites nothing already recorded**.
 
 `branding.py` values are the **defaults**; this page saves *overrides*.
 

@@ -89,9 +89,13 @@ def test_every_reference_collection_has_a_seeder(client):
     # salary they are not paid**, sitting on the register HR reads. Demo data is
     # a convenience everywhere else in this app; here it would be a fiction
     # about somebody's pay.
+    # `attendance` (C5, 29 Aug 2026) is transactional for that reason carried
+    # one step further: a seeded marking says somebody was **on a site on a day**
+    # and puts a wage against it. Inventing a day's labour cost is worse than
+    # inventing the person it is attributed to.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "projects", "charges",
-                     "employees", "users"}
+                     "employees", "attendance", "users"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

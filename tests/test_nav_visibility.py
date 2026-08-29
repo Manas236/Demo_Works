@@ -95,7 +95,13 @@ ALL_CARDS = [
     #       "Purchase Orders", "Draft Purchase Orders", "Employee & Misc Charges",
     #   The module, the endpoint and the permission are all unchanged — only
     #   the words on the card moved. PROGRESS.md §6-E.
+    # ⚠ Added 29 August 2026 (third pass) with CC-2 **C5**. It sits under
+    #   "Buy side — money out" while the employee MASTER sits under "Library &
+    #   records": a day's wages and overtime is money going out, a register of
+    #   who works here is a master record. ABOUT.md §9's own rule — decide the
+    #   pipeline first — is what splits them.
     "Purchase Orders", "Draft Purchase Orders", "Expenses & Charges",
+    "Attendance",
     "Product Catalogue", "Spec Library", "Client Register", "Employees",
     "Address Book",
     "Market News", "Users &amp; Access",
@@ -118,6 +124,10 @@ EXPECTED_CARDS = {
         "Receipts",
         "Delivery Challans", "Purchase Orders", "Draft Purchase Orders",
         # was "Employee & Misc Charges" — see the note on ALL_CARDS above
+        # ⚠ No "Attendance": Operation Head holds no `attendance.*`, on the
+        #   same reversible derivation that withholds `employee.*`. It DOES
+        #   hold the wages ledger beside it, so the line is drawn at
+        #   pay-derived data rather than at site cost, and that line is ours.
         "Expenses & Charges", "Product Catalogue", "Spec Library",
         "Client Register", "Address Book"],
     # B4's one stated restriction, seen from the other side: HR is the narrowest
@@ -139,7 +149,10 @@ EXPECTED_CARDS = {
     #   that expects to re-baseline the goldens arrived, and it did. The
     #   assertion that stood between those two passes, verbatim:
     #       "hr": ["Expenses & Charges", "Address Book"],
-    "hr": ["Expenses & Charges", "Employees", "Address Book"],
+    #   ⚠ **FOUR from the same pass, once C5 shipped** — the assertion between
+    #     the link arriving and C5 arriving, verbatim:
+    #         "hr": ["Expenses & Charges", "Employees", "Address Book"],
+    "hr": ["Expenses & Charges", "Attendance", "Employees", "Address Book"],
     # Unchanged by this pass: a Sales Manager holds neither `receipt.view`
     # nor `employee.view`, so neither new card is drawn for them.
     "sales-manager": [
@@ -187,6 +200,7 @@ CARD_ENDPOINT = {
     "Delivery Challans":          "challan.list_dcs",
     "Purchase Orders":            "purchase.list_purchases",
     "Draft Purchase Orders":      "po_draft.list_pos",
+    "Attendance":                 "attendance.list_attendance",
     # was "Employee & Misc Charges" — see the note on ALL_CARDS above
     "Expenses & Charges":         "charge.list_charges",
     "Product Catalogue":          "product.list_products",

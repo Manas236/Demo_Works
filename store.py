@@ -41,6 +41,7 @@ STORE: dict = {
     "projects":     {},   # keyed by UUID string → project record (the commercial engagement BOQs are grouped under)
     "charges":      {},   # keyed by UUID string → employee/misc expense record (travel, wages, consumables — not in any BOQ)
     "employees":    {},   # keyed by UUID string → employee master record: details and salary (CC-2 C4). Its OWN collection — a person is not a charge, and the charges ledger has never had an employee record behind it
+    "attendance":   {},   # keyed by UUID string → one employee, one site, one day (CC-2 C5). Its OWN collection, never a list on the employee — one person accumulates a record per working day for as long as they are employed, which is CLIENT_CHANGES.md §1.3's rule exactly
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "users":        {},   # keyed by UUID string → user account (auth.py). Its OWN collection — never a list on a role, per CLIENT_CHANGES.md §1.3
     "roles":        {},   # keyed by UUID string → role: a named bundle of permission strings. Separate from users for the same §1.3 reason: one role is held by many users

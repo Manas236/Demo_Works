@@ -1223,6 +1223,21 @@ def _metrics():
         "rcpt_total":   len(STORE.get("receipts", {})),
         "rcpt_value":   sum(float(r.get("amount") or 0.0)
                             for r in STORE.get("receipts", {}).values()),
+        # Attendance (CC-2 C5). A count of markings and how many of them are
+        # TODAY, because a muster is a daily thing and "is today done" is the
+        # only question this card can usefully answer at a glance.
+        #
+        # ⚠ **No labour-cost figure here, and that is a rule rather than a
+        # choice.** The site-wise cost is displayed inside `/attendance/` and
+        # nowhere else: C6 is BLOCKED on whether attendance wages or the BOQ
+        # installation rate is authoritative, and a cost total on the landing
+        # page is the first half of the P&L that question governs. It would
+        # also put payroll-derived money in front of every holder of
+        # `dashboard.view`, which is the §7 gap 27 trap B4 keeps HR data out
+        # of. Counts only.
+        "att_total":    len(STORE.get("attendance", {})),
+        "att_today":    sum(1 for a in STORE.get("attendance", {}).values()
+                            if str(a.get("date") or "") == today.isoformat()),
         "ch_total":     len(STORE.get("charges", {})),
         "ch_spend":     sum(float(c.get("taxable_amount") or 0.0) + float(c.get("gst_amount") or 0.0)
                             for c in STORE.get("charges", {}).values()),
@@ -1802,6 +1817,15 @@ def index():
                 # PROGRESS.md §6-E.
                 _card("charge.list_charges", "purchase", "Expenses & Charges",
                       f"{m['ch_total']} entries · {rupees(m['ch_spend'])} spent"),
+                # ⚠ C5. It sits under "Buy side — money out" and the employee
+                # MASTER sits under "Library & records", which reads oddly
+                # until you apply §9's own rule: decide the pipeline first. A
+                # master record of who works here is a library; a day's wages
+                # and overtime is money going out, beside the expenses ledger
+                # where wages are recorded today. ⚠ The card carries COUNTS and
+                # no cost — see `_metrics()`.
+                _card("attendance.list_attendance", "employee", "Attendance",
+                      f"""{m['att_total']} marked · {m['att_today']} today"""),
             ]),
         _module_group(
             "mg-ref", "Library &amp; records",

@@ -21,29 +21,35 @@ a register of people with what each is paid, and nothing else.
 Built under the **29 August 2026** override block in `CLIENT_CHANGES.md` §0.
 Before that block, C4 was one of the seven NOT STARTED items and was gated.
 
-⚠ **OUT OF SCOPE HERE, EXPLICITLY, AND STILL GATED:**
+⚠ **OUT OF SCOPE HERE, AND STILL TRUE OF THIS FILE:**
 
-* **No attendance.** Presentee / absentee is **C5**.
-* **No overtime.** OT is C5 as well, and CC-2 requires the multiplier to be a
-  **setting, not a constant** — so the setting is not pre-built either. Laying
-  groundwork for a gated item is starting it.
+* **No attendance and no overtime in this module.** Presentee / absentee, OT
+  and site-wise labour cost are **C5**, and C5 was authorised on 29 August 2026
+  (third pass) — but it lives in its own module, [attendance.py](attendance.py),
+  which imports this one. **Nothing was added here for it.** The register links
+  out with `url_for`, which needs no import; importing back would be a cycle.
 * **No salary calculation.** `monthly_salary` is a number recorded against a
-  person. Nothing multiplies, prorates or divides it.
-* **No link to `charge.py`, to projects, or to a P&L.** C5 consumes this module
-  later and **C6** is the profit-and-loss item; both are BLOCKED or gated.
+  person. Nothing in *this* file multiplies, prorates or divides it —
+  `attendance.py` reads the figure and does the arithmetic there, against an
+  OT multiplier that is a **setting rather than a constant**.
+* **No link to `charge.py` and none to a P&L.** `employee.py ↔ charge.py` stays
+  forbidden in **both** directions at AST level, and that prohibition did *not*
+  expire when C5 was authorised: joining the wages ledger to the people data is
+  a profit-and-loss question and **C6 is BLOCKED** on CC-2's Open question 4.
 
 A leaf, and one with no way in from the chrome
 -----------------------------------------------
 Imports `dashboard`, `branding`, `pipeline`, `store` and `quotation` — the same
 five `charge.py` takes, and nothing else. Nothing imports it.
 
-⚠ **THERE IS NO NAV LINK AND NO DASHBOARD CARD, AND THAT IS DELIBERATE.**
-`dashboard._nav()` is embedded in **every printed page** and hidden by CSS, so
-one more nav entry moves **every print golden in the repo**. That has bitten
-this repo twice. Pass B — `charge.py`, the charges ledger — shipped with no nav
-link for exactly this reason and is the precedent this follows. The page is
-reachable by URL. **The nav link is queued work, not an omission**, and it
-belongs in a pass that expects to re-baseline the goldens and does nothing else.
+✅ **IT IS NOW IN THE NAV AND ON THE LAUNCHER** (29 August 2026, third pass).
+It shipped with neither, deliberately: `dashboard._nav()` is embedded in every
+printed page and hidden by CSS, so one more nav entry moves **every print
+golden in the repo**, and `charge.py` had shipped the same way for the same
+reason. ⚠ **The cost of that call was that the owner could not find a page he
+had paid for**, which is why it was reversed in a pass authorised to
+re-baseline: five goldens moved +248 bytes each, in the `head` block alone, and
+nothing on any printed sheet changed.
 
 ⚠ **Access: Owner, Director and HR only, and that restriction is SPEC-TRACED.**
 CLIENT_CHANGES-2.md **B4** states exactly one per-role restriction — *"HR
@@ -336,6 +342,7 @@ def list_employees():
     <h1>Employee <span>Master</span></h1>
     <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
       {toggle}
+      <a href="{url_for('attendance.list_attendance')}" class="btn btn-ghost">Attendance</a>
       <a href="{url_for('employee.new_employee')}" class="btn">&#43; Add Employee</a>
     </div>
   </div>

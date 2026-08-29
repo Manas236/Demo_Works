@@ -184,6 +184,25 @@ PERMISSIONS = {
     "employee.edit":         ("Edit an employee's details and salary",    "Employee costs"),
     "employee.delete":       ("Remove an employee from the register",     "Employee costs"),
 
+    # C5 — attendance and site-wise labour cost. Granted to exactly the roles
+    # that hold `employee.*`, for consistency: a muster names the same people
+    # and a labour-cost figure is derived from the same salaries, so a role
+    # that may not see the master has no business seeing what it costs.
+    #
+    # ⚠ **Operation Head is REFUSED, and that is OUR derivation, not CC-2's.**
+    #   It carries the `–` mark in docs/ACCESS_MATRIX.md — "withheld by our
+    #   derivation" — and NOT `§`. B4's one sentence about employee data
+    #   ("HR information is restricted from Sales, Purchase and Accounts") does
+    #   not name Operations Head in either direction, so a `§` would claim a
+    #   backing that does not exist. It is a **reversible default**: an Owner
+    #   grants any of these four at /roles/edit/<id> with a checkbox, no code
+    #   change and no re-login. PROGRESS.md §4b carries the same ruling for
+    #   `employee.*` and this follows it rather than deciding again.
+    "attendance.view":       ("View attendance and site-wise labour cost", "Employee costs"),
+    "attendance.create":     ("Mark attendance for a day",                "Employee costs"),
+    "attendance.edit":       ("Correct an attendance record",             "Employee costs"),
+    "attendance.delete":     ("Remove an attendance record",              "Employee costs"),
+
     "project.view":          ("View projects",                            "Projects"),
     "project.create":        ("Create a project",                         "Projects"),
     "project.edit":          ("Edit a project",                           "Projects"),
@@ -364,6 +383,17 @@ ROUTE_PERMISSIONS = {
     "employee.edit_employee":     "employee.edit",
     "employee.delete_employee":   "employee.delete",
 
+    # ── Attendance and site-wise labour cost (C5) ────────────────────────────
+    # `/attendance/delete/<id>` answers both verbs and is classified once, as
+    # `attendance.delete`: its GET renders a confirmation and destroys nothing,
+    # so the stricter of the two is right for both. The ordinary case this
+    # registry's fourth caveat describes, not the `/projects/view/<id>`
+    # exception.
+    "attendance.list_attendance":  "attendance.view",
+    "attendance.mark_attendance":  "attendance.create",
+    "attendance.edit_attendance":  "attendance.edit",
+    "attendance.delete_attendance": "attendance.delete",
+
     # ── Projects ─────────────────────────────────────────────────────────────
     "project.list_projects":      "project.view",
     "projectview.view_project":   "project.view",
@@ -445,6 +475,9 @@ BUILTIN_ROLES = {
             # and names none of those three here.
             "employee.view", "employee.create", "employee.edit",
             "employee.delete",
+            # C5, on `employee.*`'s terms — see the catalogue note.
+            "attendance.view", "attendance.create", "attendance.edit",
+            "attendance.delete",
             "project.delete", "spec.delete", "product.create", "product.delete",
             "address.delete", "settings.edit",
             "admin.users", "admin.access_log",
@@ -470,7 +503,13 @@ BUILTIN_ROLES = {
         ["dashboard.view", "charge.view", "charge.create", "charge.edit",
          "charge.delete", "address.view",
          "employee.view", "employee.create", "employee.edit",
-         "employee.delete"],
+         "employee.delete",
+         # C5. HR keeps the muster for the same reason it keeps the master: a
+         # register somebody can read but nobody can maintain is not a
+         # register, and attendance is recorded daily by whoever holds the
+         # people data.
+         "attendance.view", "attendance.create", "attendance.edit",
+         "attendance.delete"],
     ),
     "sales-manager": (
         "Sales Manager",

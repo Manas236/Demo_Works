@@ -40,6 +40,7 @@ from project import project_bp   # Projects: the commercial engagement BOQs
 from projectview import projectview_bp # UI for Project Detail
 from charge import charge_bp             # Employee & Misc Charges Ledger
 from employee import employee_bp         # Employee master: details and salary
+from attendance import attendance_bp     # Attendance + site-wise labour cost (C5)
                                  # (CC-2 C4). A LEAF, and deliberately NOT on
                                  # the nav or the dashboard — _nav() is on every
                                  # printed page, so one more entry moves every
@@ -138,6 +139,10 @@ app.register_blueprint(project_bp)            # Mounted at /projects — LEAF, m
 app.register_blueprint(projectview_bp)        # Project UI detail page
 app.register_blueprint(charge_bp)             # Mounted at /charge — LEAF, must come after dashboard
 app.register_blueprint(employee_bp)           # Mounted at /employee — LEAF, same rule
+app.register_blueprint(attendance_bp)         # Mounted at /attendance — imports
+                                              #   employee_bp's module for the
+                                              #   master and settings for the OT
+                                              #   multiplier; nothing imports it
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,

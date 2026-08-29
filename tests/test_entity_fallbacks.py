@@ -184,6 +184,18 @@ def populated(client):
         "created_at": "2026-08-29T12:00:00Z", "updated_at": "2026-08-29T12:00:00Z",
     }
 
+    # C5's attendance record (29 Aug 2026, third pass). `site` and `notes` are
+    # typed by a user and both reach HTML, so its two id-taking routes join the
+    # sweep for C4's reason one collection along. The salary is a SNAPSHOT on
+    # the record rather than a lookup, which is why this fixture carries one.
+    STORE.setdefault("attendance", {})["att-1"] = {
+        "id": "att-1", "date": "2026-08-29",
+        "employee_id": "emp-1", "employee_name": "Test Employee",
+        "employee_code": "SF-001", "monthly_salary": 24000.0,
+        "site": "Test Site", "status": "present", "ot_hours": 2.0, "notes": "",
+        "created_at": "2026-08-29T12:00:00Z", "updated_at": "2026-08-29T12:00:00Z",
+    }
+
     # A second user for the /users/* confirmations to act on. Deliberately not
     # the logged-in Owner: deactivating the only Owner is refused, and the
     # refusal page is not the markup this sweep is checking.
@@ -214,6 +226,8 @@ def populated(client):
             "/employee/delete/<id>": "emp-1",
             "/employee/edit/<id>":   "emp-1",
             "/employee/view/<id>":   "emp-1",
+            "/attendance/delete/<id>": "att-1",
+            "/attendance/edit/<id>":   "att-1",
             "/client/edit-party/<id>": bid2,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
@@ -281,6 +295,7 @@ def populated(client):
     # every later test in the run. `test_hardening.py` asserts that nothing
     # seeds an employee, and a leaked fixture row reads exactly like a seeder.
     STORE.setdefault("employees", {}).clear()
+    STORE.setdefault("attendance", {}).clear()
 
 
 def _a_challan(boq_id: str) -> str:

@@ -257,10 +257,17 @@ UNLINKED_ON_PURPOSE = {
 }
 
 
+# The verbs a module uses for "the form my own register offers". `mark` is
+# attendance's — you mark a day, you do not create one — and it is here rather
+# than in the exception list because it is the same *kind* of page as the other
+# three, not a page somebody decided not to link.
+FORM_VERBS = ("create", "new", "add", "mark")
+
+
 def _create_form_endpoints(flask_app):
     """Endpoints whose own register already offers them as a `+ New` button."""
     return {ep for ep in _classified_landing_pages(flask_app)
-            if ep.rsplit(".", 1)[1].split("_")[0] in ("create", "new", "add")}
+            if ep.rsplit(".", 1)[1].split("_")[0] in FORM_VERBS}
 
 
 def _classified_landing_pages(flask_app):

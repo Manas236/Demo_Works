@@ -350,6 +350,120 @@ def _validate_po_series(form) -> tuple:
 # =============================================================================
 # CHARGE HEADS — employee/misc expenses
 # =============================================================================
+# =============================================================================
+# THE LABOUR-COST SETTINGS — CC-2 **C5**, and the OT multiplier is the point
+# =============================================================================
+#
+# A **fourth record** in the same collection, here for the draft-PO series'
+# reasons: it does not print in a letterhead, `apply_settings()` must not push
+# it onto `branding`, and the nav's amber completeness dot must not count it.
+#
+# ⚠ **THE OT MULTIPLIER IS A SETTING BECAUSE HARDCODING IT WOULD MAKE THIS
+#   SOFTWARE COMPUTE A STATUTORY UNDERPAYMENT, and that is CC-2's own reasoning
+#   rather than our caution.** The client specified `salary ÷ 8 × hours`, which
+#   is **1× ordinary rate**. Statutory overtime under the Factories Act and
+#   most state Shops & Establishments Acts is generally **twice** ordinary
+#   wages. So the client's figure is the DEFAULT and the field is editable, and
+#   `attendance.py` reads it — **no literal multiplier appears anywhere in the
+#   calculation code**, which `tests/test_attendance.py` asserts at AST level
+#   rather than by reading the source for a number.
+#
+# ⚠ **`wage_days_per_month` is OURS, not CC-2's, and it is a setting for the
+#   same reason.** CC-2 says "salary as 0 or 1 based on attendance" and
+#   "OT = (salary ÷ 8) × hours" — both need a **daily** wage, and CC-2 never
+#   says what a monthly salary is divided by to get one. 26 is the ordinary
+#   Indian wage convention (a month less its weekly offs); 30, and the actual
+#   length of the month, are both defensible and give different money. Picking
+#   one in code would be exactly the hardcoding the paragraph above forbids, so
+#   it is a field with a stated default and this comment says whose decision it
+#   is. **Nobody may record 26 as the client having chosen anything.**
+LABOUR_RECORD = "labour_cost"
+
+LABOUR_DEFAULTS = {
+    # The client's own figure. Strings, because they are form fields and are
+    # parsed where they are used — `po_series()`'s convention.
+    "ot_multiplier":       "1",
+    "wage_days_per_month": "26",
+}
+
+
+def labour_settings() -> dict:
+    """The OT multiplier and the wage divisor, defaults filled in."""
+    saved = STORE["settings"].get(LABOUR_RECORD) or {}
+    return {k: (str(saved.get(k) or "").strip() or v)
+            for k, v in LABOUR_DEFAULTS.items()}
+
+
+def ot_multiplier() -> float:
+    """
+    The OT multiplier as a number, for `attendance.py`.
+
+    ⚠ **The one accessor.** A second parse of the same field somewhere else is
+    a second place the default gets written down, and the default is precisely
+    the thing that must never be a constant in the calculation.
+    """
+    raw = labour_settings()["ot_multiplier"]
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(LABOUR_DEFAULTS["ot_multiplier"])
+
+
+def wage_days_per_month() -> float:
+    """The divisor that turns a monthly salary into a daily wage."""
+    raw = labour_settings()["wage_days_per_month"]
+    try:
+        days = float(raw)
+    except (TypeError, ValueError):
+        days = float(LABOUR_DEFAULTS["wage_days_per_month"])
+    # A zero divisor is a crash on a page somebody opens daily and a negative
+    # one is a negative wage. Both fall back rather than raise.
+    return days if days > 0 else float(LABOUR_DEFAULTS["wage_days_per_month"])
+
+
+def save_labour_settings(multiplier, days) -> None:
+    """Only non-default values are stored — `save_po_series()`'s contract."""
+    values = {"ot_multiplier":       str(multiplier or "").strip(),
+              "wage_days_per_month": str(days or "").strip()}
+    keep = {k: v for k, v in values.items()
+            if v and v != LABOUR_DEFAULTS[k]}
+    if keep:
+        STORE["settings"][LABOUR_RECORD] = keep
+    else:
+        STORE["settings"].pop(LABOUR_RECORD, None)
+
+
+def _validate_labour(form) -> tuple:
+    """Returns (data, error), and **always returns data**."""
+    data = {"ot_multiplier":       (form.get("ot_multiplier") or "").strip(),
+            "wage_days_per_month": (form.get("wage_days_per_month") or "").strip()}
+
+    raw = data["ot_multiplier"]
+    if raw:
+        try:
+            mult = float(raw)
+        except ValueError:
+            return data, "Overtime multiplier: enter a number, e.g. 1 or 2."
+        if mult < 0:
+            return data, "Overtime multiplier: cannot be negative."
+        if mult > 10:
+            return data, ("Overtime multiplier: 10x is not an overtime rate, "
+                          "it is a typo.")
+
+    raw = data["wage_days_per_month"]
+    if raw:
+        try:
+            days = float(raw)
+        except ValueError:
+            return data, "Working days a month: enter a number, e.g. 26 or 30."
+        if days <= 0:
+            return data, "Working days a month: must be more than zero."
+        if days > 31:
+            return data, "Working days a month: no month has more than 31 days."
+
+    return data, ""
+
+
 CHARGE_HEADS_RECORD = "charge_heads"
 
 DEFAULT_CHARGE_HEADS = [
@@ -502,11 +616,14 @@ def edit_settings():
         po_data, po_error = _validate_po_series(request.form)
         dc_data, dc_error = _validate_dc_series(request.form)
         ch_data, ch_error = _validate_charge_heads(request.form.get("charge_heads", ""))
-        error = error or po_error or dc_error or ch_error
+        lb_data, lb_error = _validate_labour(request.form)
+        error = error or po_error or dc_error or ch_error or lb_error
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
             save_charge_heads(ch_data)
+            save_labour_settings(lb_data["ot_multiplier"],
+                                 lb_data["wage_days_per_month"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -523,11 +640,13 @@ def edit_settings():
         po_values = po_data
         dc_values = dc_data
         ch_values = "\n".join(ch_data)
+        lb_values = lb_data
     else:
         values = B.current_settings()
         po_values = po_series()
         dc_values = dc_series()
         ch_values = "\n".join(charge_heads())
+        lb_values = labour_settings()
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -668,6 +787,45 @@ def edit_settings():
                      value="{P.esc(dc_values.get('next_no', ''))}"
                      placeholder="{P.esc(DC_SERIES_DEFAULTS['next_no'])}"/>
               <div class="fld-hint">Advances on every challan raised.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Labour Cost &mdash; overtime and the daily wage</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            Read by <b>Attendance</b> when it works out what a day on site
+            cost. ⚠ <b>The overtime multiplier is a setting and not a fixed
+            number on purpose.</b> The figure below is the one the client gave
+            &mdash; <b>1&times;</b>, from <i>salary &divide; 8 &times;
+            hours</i>. Statutory overtime under the Factories Act and most
+            state Shops &amp; Establishments Acts is generally <b>twice</b>
+            ordinary wages, so leaving it at 1 may understate what is owed.
+            This software does not decide that; it computes what is set here.
+            Neither figure appears anywhere else, and nothing already recorded
+            is rewritten &mdash; changing them changes what the attendance
+            pages show from now on.
+          </p>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="ot_multiplier">Overtime multiplier</label>
+              <input type="text" id="ot_multiplier" name="ot_multiplier"
+                     inputmode="decimal"
+                     value="{P.esc(lb_values.get('ot_multiplier', ''))}"
+                     placeholder="{P.esc(LABOUR_DEFAULTS['ot_multiplier'])}"/>
+              <div class="fld-hint">1 = the client's figure. 2 = the usual
+                statutory rate. Applied to the hourly rate, never to the day.</div>
+            </div>
+            <div class="form-group">
+              <label for="wage_days_per_month">Working days a month</label>
+              <input type="text" id="wage_days_per_month" name="wage_days_per_month"
+                     inputmode="decimal"
+                     value="{P.esc(lb_values.get('wage_days_per_month', ''))}"
+                     placeholder="{P.esc(LABOUR_DEFAULTS['wage_days_per_month'])}"/>
+              <div class="fld-hint">What a monthly salary is divided by to get
+                one day's wage. ⚠ <b>Ours, not the client's</b> &mdash; he did
+                not specify a divisor. 26 is the usual convention; 30 is also
+                defensible and gives different money.</div>
             </div>
           </div>
         </div>
