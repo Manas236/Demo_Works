@@ -882,10 +882,27 @@ def _persistence_strip() -> str:
 # while the paper does not. That is why `employee.py` shipped with no link on
 # 29 August 2026 and why the link arrived in a pass authorised to re-baseline —
 # ABOUT.md §7, "Global Nav vs Print Goldens". Do not add one casually.
+# ⚠ **A FOURTH ENTRY ARRIVED 29 August 2026 (fifth pass) — the measurement
+#   register — and it is the FIRST DOCUMENT REGISTER in this nav.** Read the
+#   rule above before adding a fifth: Projects is the entity that groups the
+#   documents, Employees is the register the workforce pages hang off, Settings
+#   is configuration, and a measurement sheet is none of those three. It is here
+#   because the pass brief that authorised C2 required it, and that is recorded
+#   plainly rather than argued into the rule — this entry is the one that makes
+#   "the nav is not the launcher" harder to hold, not an example of it.
+#
+#   The case for it, such as it is: an installation claim is refused until an
+#   approved sheet exists, so the measurement register is the page somebody is
+#   sent to from wherever they already are. The case against it is that the
+#   same is true of the BOQ, which has a card and no nav entry.
+#
+#   It moved four print goldens, in the `_nav()` block and nowhere else, in a
+#   commit that did nothing but this.
 NAV_ITEMS = (
-    ("project.list_projects",   "project",  "Projects"),
-    ("employee.list_employees", "employee", "Employees"),
-    ("settings.edit_settings",  "settings", "Settings"),
+    ("project.list_projects",     "project",  "Projects"),
+    ("measurement.list_ms",       "boq",      "Measurements"),
+    ("employee.list_employees",   "employee", "Employees"),
+    ("settings.edit_settings",    "settings", "Settings"),
 )
 
 # The indent each nav entry sits on. A constant so the joined output is

@@ -437,12 +437,39 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks=None,
 #   at all, which ABOUT.md §7 already recorded as the shape all six should
 #   have. Its digest below is untouched, and that is the measurement that says
 #   the coupling is avoidable rather than inherent.
+#
+#   ⚠ **RE-BASELINED AGAIN 29 August 2026 (fifth pass) for the MEASUREMENT
+#     register's nav entry** — CC-2 C2. `dashboard.NAV_ITEMS` gained a fourth
+#     entry and it is the FIRST DOCUMENT REGISTER in that nav; `dashboard.py`
+#     carries the note about what that does to the "the nav is not the launcher"
+#     rule.
+#
+#     Measured, per document: **+342 bytes, and the `head` block ALONE**, on the
+#     tax invoice, the proforma, the purchase order, the RA bill and the BOQ
+#     line picker. `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and
+#     `signature` are byte-identical on every one of them.
+#
+#     **The 342 bytes are the whole of the delta and they are one anchor.**
+#     `NAV_LINK_SEP` plus `<a href="/measurement/" class="nav-link">` plus the
+#     `boq` icon SVG plus `Measurements</a>` measures 342 characters exactly,
+#     and every page grew by exactly 342 — so the delta is the link and nothing
+#     else. It sits inside `<nav>…</nav>`, which `quotation.VIEW_DOC_STYLES`
+#     hides with `display:none !important` under `@media print`, so **not one
+#     figure, label or visible character on any printed sheet changed.**
+#     `tests/test_nav_reachability.py` asserts both halves directly and is now
+#     parametrised over BOTH recorded "before" states, so the employee link's
+#     confinement is still asserted rather than quietly retired.
+#
+#     ⚠ **The delivery challan did NOT move again**, for the same reason: it
+#     renders no nav at all. Its digest below is untouched a second time.
 GOLD_TI = "gold-ti"
 # was ab555e45cd245fa5 / 110208 before the 27 Aug 2026 escaping pass
 # was f91031b44e1e7dc7 / 110216 before the 29 Aug 2026 nav re-baseline
-TI_WHOLE = "92903e2e6134597b"
-TI_LEN = 110464
-TI_BLOCKS = {"head":       "f76089afb5505200",   # was 49524db46e29dcc5
+# was 92903e2e6134597b / 110464 before the 29 Aug 2026 MEASUREMENT nav entry
+TI_WHOLE = "9141446abd5ec906"
+TI_LEN = 110806
+TI_BLOCKS = {"head":       "13840b8797d6e721",   # was f76089afb5505200,
+                                                  # was 49524db46e29dcc5
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "5e4d6a24b0a5b726",
@@ -534,8 +561,10 @@ TI_BLOCKS = {"head":       "f76089afb5505200",   # was 49524db46e29dcc5
 #   carry one.** `.xl-assumed` is `display:none` at print. That is asserted
 #   directly in `tests/test_po_extra_lines.py` rather than inferred from here.
 # was 0b7ed84b19fa2646 / 106559 before the 29 Aug 2026 nav re-baseline
-PO_WHOLE, PO_LEN = "a7b30226a545aa62", 106807
-PO_BLOCKS = {"head":       "09c8c69b2580ee92",   # was 823a24d818d5f0c3,
+# was a7b30226a545aa62 / 106807 before the 29 Aug 2026 MEASUREMENT nav entry
+PO_WHOLE, PO_LEN = "ac40e815028168a7", 107149
+PO_BLOCKS = {"head":       "e6bade8d45a63f6a",   # was 09c8c69b2580ee92,
+                                                 # was 823a24d818d5f0c3,
                                                  # was aa05dcac55729c51,
                                                  # was c4b27c10e58c1b4f,
                                                  # was 5354379fd4182ed2,
@@ -550,9 +579,11 @@ PO_BLOCKS = {"head":       "09c8c69b2580ee92",   # was 823a24d818d5f0c3,
 GOLD_PI = "gold-pi"
 # was 4969d5e4f6a6508b / 103773 before the 27 Aug 2026 escaping pass
 # was d4fe110738e8d20f / 103781 before the 29 Aug 2026 nav re-baseline
-PI_WHOLE = "9a509c8c1f87ce5c"
-PI_LEN = 104029
-PI_BLOCKS = {"head":       "0250890a6d6e2f6b",   # was a3b342e73adf07fc
+# was 9a509c8c1f87ce5c / 104029 before the 29 Aug 2026 MEASUREMENT nav entry
+PI_WHOLE = "8cf87b4361ccc740"
+PI_LEN = 104371
+PI_BLOCKS = {"head":       "fb2abee257b52d86",   # was 0250890a6d6e2f6b,
+                                                  # was a3b342e73adf07fc
              "letterhead": "1c368b0c8259abe0",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "77fa68a83f706064",
@@ -567,9 +598,11 @@ PI_BLOCKS = {"head":       "0250890a6d6e2f6b",   # was a3b342e73adf07fc
 GOLD_RA = "gold-ra"
 # was 2e12fa898f1b39fe / 97656 before the 27 Aug 2026 escaping pass
 # was 1c5f5c7e6720628f / 97664 before the 29 Aug 2026 nav re-baseline
-RA_WHOLE = "7f964e7dceb2699f"
-RA_LEN = 97912
-RA_BLOCKS = {"head":       "924f39af975d8d7b",   # was ea1ccbaa59c99616
+# was 7f964e7dceb2699f / 97912 before the 29 Aug 2026 MEASUREMENT nav entry
+RA_WHOLE = "74982d79ad492c09"
+RA_LEN = 98254
+RA_BLOCKS = {"head":       "837ea9b648848976",   # was 924f39af975d8d7b,
+                                                  # was ea1ccbaa59c99616
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "44c7368b5a1b2380",
@@ -836,9 +869,14 @@ GOLD_PICK_BOQ = "gold-pick"
 # one is a FORM, not a printed sheet — it moved for the same +248 bytes and
 # nothing about the picker itself changed: `intro`, `vendor`, `details`,
 # `lines`, `tools`, `rows`, `payload` and `js` are all byte-identical.
-PICK_WHOLE = "c5f1a8da473a7c42"
-PICK_LEN = 54746
-PICK_BLOCKS = {"head":    "2bf1b714db890d61",   # was 04f4809335b2c9e8
+# was c5f1a8da473a7c42 / 54746 before the 29 Aug 2026 MEASUREMENT nav entry —
+# **+342 bytes, the same one anchor**, and the same eight blocks are again
+# byte-identical. A form is not paper, so nothing here is a print claim; it is
+# pinned because `boqpick.py` is shared and this is where a drift would show.
+PICK_WHOLE = "fa67dd4e4be6ee70"
+PICK_LEN = 55088
+PICK_BLOCKS = {"head":    "8bf28275fa127606",   # was 2bf1b714db890d61,
+                                                # was 04f4809335b2c9e8
                "intro":   "5558f09cc783266e",
                "vendor":  "715e7c6cd4634448",
                "details": "53b096aa21f5264c",

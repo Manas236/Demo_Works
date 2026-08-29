@@ -69,14 +69,30 @@ ROLES = ["owner", "director", "operation-head", "hr", "sales-manager",
 #   nav with nothing in it at all. Operation Head still does not see Employees —
 #   it holds no `employee.*`, by our derivation and not by CC-2 (PROGRESS.md
 #   §4b), and `can_reach()` is what keeps it off the nav.
+# ⚠ **A FOURTH ENTRY, 29 August 2026 (fifth pass): Measurements (CC-2 C2), and
+#   it is the FIRST DOCUMENT REGISTER in this nav.** `dashboard.NAV_ITEMS`
+#   carries the note about what that does to the "the nav is not the launcher"
+#   rule; this is where the consequence is visible. **Purchase Manager and HR do
+#   not see it**: neither holds `measurement.view`, HR because the whole BOQ
+#   chain is outside its wall and Purchase Manager by our reversible default.
+#   The old assertion, verbatim:
+#       EXPECTED_NAV = {
+#           "owner":            ["Projects", "Employees", "Settings"],
+#           "director":         ["Projects", "Employees", "Settings"],
+#           "operation-head":   ["Projects"],
+#           "hr":               ["Employees"],
+#           "sales-manager":    ["Projects"],
+#           "purchase-manager": ["Projects"],
+#           "accountant":       ["Projects"],
+#       }
 EXPECTED_NAV = {
-    "owner":            ["Projects", "Employees", "Settings"],
-    "director":         ["Projects", "Employees", "Settings"],
-    "operation-head":   ["Projects"],
+    "owner":            ["Projects", "Measurements", "Employees", "Settings"],
+    "director":         ["Projects", "Measurements", "Employees", "Settings"],
+    "operation-head":   ["Projects", "Measurements"],
     "hr":               ["Employees"],
-    "sales-manager":    ["Projects"],
+    "sales-manager":    ["Projects", "Measurements"],
     "purchase-manager": ["Projects"],
-    "accountant":       ["Projects"],
+    "accountant":       ["Projects", "Measurements"],
 }
 
 ALL_CARDS = [

@@ -5875,6 +5875,38 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
   fix is still the challan's shape — document routes with no nav at all — and
   the challan's `0` in that table is the evidence that it works.
 
+  🟠 **Re-baselined a SECOND time on 29 August 2026 (fifth pass), and
+  the gap is more open than before, not less.** `NAV_ITEMS` gained
+  `Measurements` (CC-2 **C2**), and it is the **first document register** in
+  that nav — the entry that makes `dashboard.NAV_ITEMS`' own "the nav is not the
+  launcher" rule harder to hold rather than an example of it. What it measured:
+
+  | document | before | after | delta | blocks moved |
+  |---|---|---|---|---|
+  | tax invoice | 110,464 | 110,806 | **+342** | `head` |
+  | proforma | 104,029 | 104,371 | **+342** | `head` |
+  | purchase order | 106,807 | 107,149 | **+342** | `head` |
+  | RA bill | 97,912 | 98,254 | **+342** | `head` |
+  | `/po/create` picker | 54,746 | 55,088 | **+342** | `head` |
+  | **delivery challan** | 83,657 | 83,657 | **0** | **none** |
+
+  The 342 bytes are **one anchor and nothing else**: `NAV_LINK_SEP` +
+  `<a href="/measurement/" class="nav-link">` + the `boq` icon SVG +
+  `Measurements</a>` measures 342 characters exactly, and every page grew by
+  exactly 342. Six other blocks byte-identical on all five, the challan at zero
+  a second time, and stripping the nav again makes the two renders identical.
+
+  📌 **`tests/test_nav_reachability.py` is now parametrised over BOTH
+  recorded "before" states**, so the employee link's confinement is still
+  asserted rather than quietly retired by the pass that added the next one. A
+  pass that edits that constant in place proves its own entry and stops proving
+  the last one.
+
+  📌 **The price of this gap is now measured twice and is climbing.**
+  Two nav entries have cost ten re-baselines across two passes. The fix is
+  unchanged and unbuilt: give the document routes challan-shaped shells with no
+  nav.
+
 **A gap's number is a stable identifier, not its position in a list.** Sixty-odd
 references cite them from code comments, docstrings, tests and four other
 documents (`ABOUT.md §7.9d`, `§7 gap 14`, `§7.2`), and nothing checks those

@@ -40,13 +40,31 @@ from test_print_golden import (  # noqa: F401  (fixtures are used by pytest)
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-# The nav as it stood before the employee entry, used to render the same page
-# both ways in one process. Nothing else in this pass touches a pinned page, so
-# the difference between the two renders IS the nav change.
+# The nav as it stood before each entry that has been added to it, used to
+# render the same page both ways in one process. Nothing else in the pass that
+# added the entry touches a pinned page, so the difference between the two
+# renders IS the nav change.
+#
+# ⚠ **Both are kept and both are swept.** A pass that adds an entry and edits
+#   this constant in place proves that ITS entry is confined to the nav and
+#   silently stops proving it of the last one — and the whole value of this file
+#   is that the property holds for the nav as a whole rather than for one link.
 NAV_BEFORE_THE_EMPLOYEE_LINK = (
     ("project.list_projects",  "project",  "Projects"),
     ("settings.edit_settings", "settings", "Settings"),
 )
+
+# 29 August 2026 (fifth pass) — before the measurement register's entry.
+NAV_BEFORE_THE_MEASUREMENT_LINK = (
+    ("project.list_projects",   "project",  "Projects"),
+    ("employee.list_employees", "employee", "Employees"),
+    ("settings.edit_settings",  "settings", "Settings"),
+)
+
+NAV_BEFORE_STATES = {
+    "before-employees":    NAV_BEFORE_THE_EMPLOYEE_LINK,
+    "before-measurements": NAV_BEFORE_THE_MEASUREMENT_LINK,
+}
 
 # Every page a golden pins, with the markers it is split on.
 PINNED = [
@@ -63,15 +81,21 @@ PINNED = [
 PRINTED_SHEETS = [n for n, _u, _m in PINNED if n != "BOQ line picker"]
 
 
-@pytest.fixture()
-def both_navs(client):
-    """Render any URL with and without the employee entry, in one process."""
+@pytest.fixture(params=sorted(NAV_BEFORE_STATES), ids=sorted(NAV_BEFORE_STATES))
+def both_navs(request, client):
+    """
+    Render any URL with the nav as it is now and as it stood before one entry.
+
+    Parametrised over every recorded "before" state, so each entry ever added is
+    still asserted to be confined to `<nav>` rather than only the most recent
+    one.
+    """
     after = dashboard.NAV_ITEMS
+    before_items = NAV_BEFORE_STATES[request.param]
 
     def render(url):
         out = {}
-        for key, items in (("after", after),
-                           ("before", NAV_BEFORE_THE_EMPLOYEE_LINK)):
+        for key, items in (("after", after), ("before", before_items)):
             dashboard.NAV_ITEMS = items
             r = client.get(url)
             assert r.status_code == 200, f"{url} -> {r.status_code}"
@@ -107,7 +131,8 @@ def test_a_nav_entry_moves_the_nav_and_nothing_else(
     whole form — must be character-for-character what it was.
 
     Measured when this was written: **+248 bytes on five pages, 0 on the
-    challan.**
+    challan.** Measured again on 29 August 2026 for the measurement register's
+    entry: **+342 bytes on the same five, 0 on the challan.**
     """
     before, after = both_navs(url)
 
