@@ -218,8 +218,22 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,367 passed / 1 skipped** on 29 August 2026, verified by
+The baseline is **1,464 passed / 2 skipped** on 29 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The **third** 29 August pass added **77 passed and 1 skipped**, moving the
+board 12 → 13: `tests/test_attendance.py` (33, **C5** — attendance and
+site-wise labour cost), `tests/test_nav_reachability.py` (30, of which one skips
+— the navigation re-baseline and the reachability sweep) and
+`tests/test_po_parts_aliases.py` (15, the `po_parts.py` alias cutback).
+`tests/test_employee.py` stays at 34: one test was **deleted** exactly as its
+own docstring instructed, and one added in its place. ⚠ **Five print goldens
+moved on purpose**, +248 bytes each, in the `head` block alone, and nothing on
+any printed sheet changed.)*
+
+*(The **second** 29 August pass added **20** and built no feature; it measured
+1,387 / 1 here and that figure never reached this file — the staleness is
+recorded rather than quietly corrected.)*
 
 *(The 29 August pass opened Phase 3C and added **92**: `tests/test_employee.py`
 (34) and `tests/test_po_extra_lines.py` (33) are new, and

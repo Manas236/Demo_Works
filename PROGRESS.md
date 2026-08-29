@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 29 August 2026, **second pass** *(a closing pass, not a building one. It builds no feature and starts no gated item: it closes findings the pass that produced `86902ef → 5605416` recorded against its own work. `quotation.py` was unfrozen **narrowly** for one figure; the extra-line prefill was inverted so the **server** performs it; the Operation Head cell was marked a derivation; and §6-E's third label site was closed. **The board does not move — no Phase 3 item is built or closed here.**)* |
+| **Date** | 29 August 2026, **third pass** *(a building pass, and the first since C4 to move the board. Three things, in the order they were done: the `po_parts.py` alias cutback — a **defect fix** against this pass-family's own work of the same date; the **full navigation re-baseline**, which moved five print goldens on purpose; and **C5**, attendance and site-wise labour cost. **The board moves 12 → 13 and 3C 1/6 → 2/6.**)* |
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `a42e366` — *"Operation Head marked a derivation; projectview label; §6-E closed"*, the last of the four **code and matrix** commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the fifth commit. The pass began at `5605416`. |
-| **vs `origin/antigravity-dev`** | **8 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed** (the same convention the previous edition used: it recorded 3 ahead as the fourth of its four commits). With this edition committed it is **9 ahead**. It was **4 ahead / 0 behind** at `5605416` when this pass started, so the five commits of this pass are the whole of the difference. **Behind is 0**, which was the gate condition for starting at all. |
-| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260829-092531-prefill-quotation-unfreeze.sql`, **444,361 bytes**, and `backups/` is gitignored so it is not staged. `git add .` was not used at any point. |
-| **Test figure** | **measured at the end of the pass: 1,387 passed, 1 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,367 passed / 1 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,388 passed, 3 skipped** against this commit and **1,368 / 3** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+20 in both configurations, and the two parts reconcile exactly**: **+19** in `tests/test_po_extra_lines.py` (33 → 52) and **+1** in `tests/test_import_directions.py` (256 → 257, the `quotation` → `purchase` pair pinned at scope `"module"`). 19 + 1 = 20. `tests/test_nav_user_chip.py` stays at 23 — one test was rewritten in place, not added. <br><br>✅ **NOT ONE GOLDEN MOVED.** `/purchase/view` is **byte-identical** — same whole-document hash, the same **106,559** bytes, and all seven blocks unchanged. The chip wording changed but the pinned order carries no `extra_lines`, so the loop that would draw one runs zero times; and no stylesheet was touched, which is the block a `.xl-*` change lands in. The other five pinned documents did not move either. <br><br>⚠ **One existing test was rewritten, and it keeps its old assertion verbatim in a comment above it.** `test_nav_user_chip.py::test_the_frozen_modules_get_the_chip_without_being_edited` asserted `quotation.py` had not been edited since `eff0034`, which the narrow unfreeze deliberately breaks. It was **not weakened**: `product.py` must still be untouched on identical terms, and for `quotation.py` it now asserts **every edited line falls inside `view_quotation()`** — which pins the *narrowness* of the unfreeze rather than dropping the check. Verified non-vacuous: it matches five real hunks and would fail on an edit anywhere else in that file. <br><br>⚠ **`docs/ACCESS_MATRIX.md` moved in four cells and one legend row, and no grant moved with them.** `auth.py` is byte-identical and Operation Head holds the same 39 permissions it held before. What changed is the *claim* the grid makes about four blank cells. |
+| **HEAD** | `b7b9205` — *"C5 — attendance, overtime and site-wise labour cost"*, the last of the four commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the fifth commit. The pass began at `4542d31`. |
+| **vs `origin/antigravity-dev`** | **14 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed**, which is the convention the previous two editions used and stated. With this edition committed it is **15 ahead**. It was **9 ahead / 0 behind** at `4542d31` when this pass started, so the five commits of this pass are the whole of the difference. **Behind is 0**, which was the gate condition for starting at all. |
+| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260829-103257-alias-nav-c5.sql`, **444,361 bytes** — the same size as the previous pass's dump, which is what a pass that changed no live record looks like. `backups/` is gitignored so it is not staged, and **`git add .` was not used at any point**. |
+| **Test figure** | **measured at the end of the pass: 1,464 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,387 passed / 1 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,465 passed, 4 skipped** against this commit and **1,388 / 3** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+77 passed and +1 skipped in both configurations, reconciling exactly**: **+15** in `tests/test_po_parts_aliases.py` (new), **+29 passed and +1 skipped** in `tests/test_nav_reachability.py` (new, 30 collected — the skip is its own, a print-rule check that does not apply to a form), and **+33** in `tests/test_attendance.py` (new). 15 + 29 + 33 = 77. `tests/test_employee.py` stays at **34** — one test was **deleted** exactly as its own docstring instructed and one added in its place; `tests/test_nav_visibility.py` stays at **49** and `tests/test_import_directions.py` at **257**. <br><br>⚠ **FIVE GOLDENS MOVED, ON PURPOSE, AND NOTHING ON PAPER CHANGED.** The nav gained an `Employees` entry, which the third 29 August override block names as the intended outcome rather than a side effect. Measured per document: **tax invoice 110,216 → 110,464; proforma 103,781 → 104,029; purchase order 106,559 → 106,807; RA bill 97,664 → 97,912; `/po/create` picker 54,498 → 54,746 — +248 bytes each, in the `head` block ALONE.** `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and `signature` are byte-identical on all five. **The delivery challan did not move at all** (83,657 → 83,657): `challan.print_dc` renders no nav, which ABOUT.md §7 already called the shape all six should have. <br><br>⚠ **The printed appearance is asserted, not assumed.** Strip `<nav>…</nav>` from both renders and they are **byte-identical**, per document, in `tests/test_nav_reachability.py` — so no figure, label or visible character on any printed sheet changed. A second, independent test requires every sheet carrying a nav to carry the `@media print` rule that hides it. <br><br>⚠ **Four existing tests were rewritten and one deleted; every one keeps its old assertion verbatim in a comment.** `test_employee.py::test_there_is_no_nav_link_and_no_dashboard_card` — **deleted**, which is what its own docstring told the pass that adds the link to do; its full text is preserved in a comment where it stood. `test_nav_visibility.py` — `EXPECTED_NAV`, `ALL_CARDS` and four `EXPECTED_CARDS` rows. `test_print_golden.py` — five baselines, each keeping its previous digest. `test_entity_fallbacks.py` and `test_hardening.py` were **extended, not excepted**: the new routes joined the escaping sweep and the new collection was classified transactional. <br><br>⚠ **`docs/ACCESS_MATRIX.md` moved in the four `attendance.*` rows, their counts, and the HR-wall prose — and nowhere else.** No existing grant moved by a cell. |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -33,28 +33,37 @@ Only BUILT fills the bar. PARTIAL contributes nothing; BLOCKED contributes
 nothing.
 
 ```
-ALL  ████████████░░░░░░░░  12 of 20 BUILT · 0 PARTIAL · 2 BLOCKED ·  6 NOT STARTED
+ALL  █████████████░░░░░░░  13 of 20 BUILT · 0 PARTIAL · 2 BLOCKED ·  5 NOT STARTED
 3A   ████████████████████   6 of 6 BUILT · 0 PARTIAL · 0 BLOCKED ·  0 NOT STARTED
 3B   ████████████▌░░░░░░░   5 of 8 BUILT · 0 PARTIAL · 0 BLOCKED ·  3 NOT STARTED
-3C   ███▎░░░░░░░░░░░░░░░░   1 of 6 BUILT · 0 PARTIAL · 2 BLOCKED ·  3 NOT STARTED
+3C   ██████▋░░░░░░░░░░░░░   2 of 6 BUILT · 0 PARTIAL · 2 BLOCKED ·  2 NOT STARTED
 ```
 
-⚠ **The extra purchase-order lines built in this pass are NOT on these bars, and
-must never be put on them.** They are not one of CC-2's twenty items — no
-3A/3B/3C tag, priced in neither quotation, requested *after* the 19 August 2026
-meeting that produced the list. §4a carries them, outside the count. **The
-denominator is still 20.**
+⚠ **The extra purchase-order lines are NOT on these bars, and must never be put
+on them.** They are not one of CC-2's twenty items — no 3A/3B/3C tag, priced in
+neither quotation, requested *after* the 19 August 2026 meeting that produced
+the list. §4a carries them, outside the count, and **the defect fix this pass
+made to them is outside it too**: cutting 156 invented aliases out of
+`po_parts.py` repairs untagged work and does not become tagged by being
+repaired. **The denominator is still 20.**
 
-⚠ **Only B1–B5, the whole of 3A and now C4 were authorised.** The 26 August 2026
-OVERRIDE block in `CLIENT_CHANGES.md` §0 names the five 3B items; the
-**27 August 2026** block names A1, A2 and A5 and explicitly refuses A3; the
-**28 August 2026** block names A1's widening, A3 and A6; the **29 August 2026**
-block names **C4** and the untagged extra-lines work, **and nothing else**.
-Everything remaining — B6, B7, B8, C1, C2, C5 and the two BLOCKED items C3 and
-C6 — is NOT STARTED *and still gated*. A filled bar is not permission to fill
-the next one, and **3C is where that warning matters most**: one item moving
-does not open the other five, and C5 in particular sits one obvious step away
-from C4 and is not authorised.
+⚠ **Only B1–B5, the whole of 3A, C4 and now C5 were authorised.** The
+26 August 2026 OVERRIDE block in `CLIENT_CHANGES.md` §0 names the five 3B
+items; the **27 August 2026** block names A1, A2 and A5 and explicitly refuses
+A3; the **28 August 2026** block names A1's widening, A3 and A6; the first
+**29 August 2026** block names **C4** and the untagged extra-lines work; the
+**third 29 August 2026** block names **C5**, the navigation re-baseline and the
+`po_parts.py` alias cutback, **and nothing else**. Everything remaining —
+B6, B7, B8, C1, C2 and the two BLOCKED items C3 and C6 — is NOT STARTED *and
+still gated*. A filled bar is not permission to fill the next one.
+
+⚠ **C2 is the one to watch now, and it is NOT nearer than it was.** With C5
+built, C2 (the measurement document) is the obvious next 3C item — and its
+approved quantity feeds RA-Installation, so **it needs an approval concept and
+B6 does not exist**. Building it today means either no approval step, which
+defeats the document, or a second approval concept B6 must later reconcile
+with. **C2 follows B6.** The third 29 August block records that reasoning so it
+is not re-derived next pass.
 
 ✅ **3A IS CLOSED.** The three items that were not BUILT on 27 August each
 turned out to be held by a **question**, not by code: A1 by a commercial one
@@ -70,20 +79,34 @@ the item as sold is delivered and the limitation is recorded in language the
 client can be read; it is **not** a claim that arbitrary-bill editing works.
 That is new scope and is priced nowhere. §6-A carries the wording.
 
-✅ **3C IS OPEN, and C4 is the first item on it to move.** Every other 3C item
-is held by something real: C1 by two unwired links, C2 by a module that does not
-exist, C3 and C6 by open questions (§5), and C5 by the gate. C4 was held only by
-the gate, which is why it is the one that moved.
+✅ **3C IS OPEN, and C5 is the second item on it to move.** The previous edition
+said *"C4 being BUILT does not make C5 nearer than it was"* and it was right:
+what moved C5 was not C4 shipping but **an override naming it**. C4 was the
+prerequisite, not the permission, and the distinction is the whole of why that
+note was written.
 
-⚠ **C4 being BUILT does not make C5 nearer than it was.** C5 consumes this
-module, so it will *look* like the obvious next step — that is exactly the
-reading this note exists to refuse. C5 is attendance, overtime and site-wise
-labour cost, it is gated, and CC-2 additionally requires the OT multiplier to be
-a **setting rather than a constant**. That setting was **not** pre-built either:
-laying groundwork for a gated item is starting it.
+Of the four 3C items still open, **C1 is held by two unwired links, C2 by B6
+not existing, and C3 and C6 by open questions (§5)**. None of them is held only
+by the gate, which is what C4 and C5 both were.
 
-**The board moved 11 → 12**, and 3C moved 0/6 → 1/6. One item moved, and it is
-the one the 29 August override block names.
+⚠ **C5 is BUILT and is NOT wired into C6.** It consumes the employee master and
+produces a site-wise labour cost **displayed inside its own module and nowhere
+else** — no dashboard figure, no project-page figure, nothing exported, and a
+test asserting at AST level that no module imports it. **C6 stays BLOCKED** on
+CC-2's Open question 4: attendance-based wages and the BOQ's installation base
+rate both represent labour, and subtracting both counts it twice. C5 can be
+built without that answer; wiring it in cannot.
+
+⚠ **The OT multiplier is a SETTING and no literal multiplier is in the
+calculation code**, which is CC-2's own requirement and the sharpest thing in
+this item. The client's figure is 1× ordinary rate; statutory overtime is
+generally twice; hardcoding the first would make this software compute an
+**underpayment**. Held by a behavioural test and by an **AST walk** that fails
+on a numeric constant in a multiplication or a division inside `daily_wage()`,
+`ot_amount()` or `cost_of()`.
+
+**The board moved 12 → 13**, and 3C moved 1/6 → 2/6. One item moved, and it is
+the one the third 29 August override block names.
 
 ---
 
@@ -217,10 +240,10 @@ ships as a seventh role beside B4's six. Do not read either as spec drift.
 | Tag | Requirement (short) | Status | Evidence | What is left | Browser? |
 |---|---|---|---|---|---|
 | **C1** | order of working | NOT STARTED | Neither leg of the stated ordering is wired. `ra.py` contains **no reference to `challan`** at all, so `BoQ → Delivery Challan → RA-Supply` is two unconnected documents rather than a chain; the challan blueprint stands alone at [challan.py:774](challan.py#L774)–[challan.py:1040](challan.py#L1040). `BoQ → Measurement → RA-Installation` has no middle term — no measurement module exists. Installation quantity is still typed straight into the claim grid [ra.py:1315](ra.py#L1315). | Both links. C1 is only closed once a challan constrains supply quantity and C2 supplies installation quantity. | ☐ |
-| **C2** | measurement document | NOT STARTED | No measurement module, record, route or test. `db.py`'s collection map [db.py:259](db.py#L259) holds no measurement collection. | All of it: raise from the BOQ, approve, and feed approved quantity into RA-Installation. Depends on B6 for what "approved" means. | ☐ |
+| **C2** | measurement document | NOT STARTED *(and **still gated** — C5 shipping does not open it)* | No measurement module, record, route or test. `db.py`'s collection map [db.py:259](db.py#L259) holds no measurement collection. | All of it: raise from the BOQ, approve, and feed approved quantity into RA-Installation. ⚠ **It depends on B6 for what "approved" means, and B6 does not exist** — which is why the third 29 August 2026 override block records C2 as deliberately not taken rather than merely not authorised. Building it now means either a measurement document with **no approval step**, which defeats the document since an unapproved measurement is a number somebody typed, or a **second approval concept** that B6 must later reconcile with. **C2 follows B6.** | ☐ |
 | **C3** | merged RA | **BLOCKED** | No merge code exists — `merge` does not occur in any application `.py` file. Blocked on **BQ1 + BQ2** before it can be built at all; see §5. Two live code facts the design pass must start from: `tax_invoice_ref` is a **typed form field**, never minted [ra.py:2899](ra.py#L2899), and when left blank the printed tax-invoice number **silently falls back to the RA `ref`** [ra.py:3486](ra.py#L3486) — the two series are already conflated in code. | The design pass first, then the build. Note CC-2's instruction to put the merge action on the RA register from day one. | ☐ |
-| **C4** | employee master | **BUILT** | New leaf module [employee.py](employee.py) and an `employees` collection in [store.py](store.py) and [db.py](db.py). Fields: name, employee code, designation, site, monthly salary, date joined, active flag. Five routes — `GET /employee/`, `GET,POST /employee/new`, `GET /employee/view/<id>`, `GET,POST /employee/edit/<id>`, `GET,POST /employee/delete/<id>` — the last of which **confirms on GET and destroys only in the POST branch** (`9d060ee`'s shape), with its own hand-written GET test because `test_delete_methods.py` says in terms that its URL-map sweep cannot catch a both-verbs route that destroys on GET. Four permissions minted in `auth.PERMISSIONS` and five endpoints classified in `auth.ROUTE_PERMISSIONS`. 34 tests in [tests/test_employee.py](tests/test_employee.py). | Nothing for C4 as CC-2 words it — *"Employee details and salary"* is one sentence and this is the whole of it. **Three things to know rather than discover:** ⚠ **There is NO nav link and NO dashboard card**, deliberately — `_nav()` is embedded in every printed page, so one entry moves every print golden in the repo; `charge.py` shipped the same way and is the precedent. The page is reachable at `/employee/` and **the link is queued work**, for a pass that expects to re-baseline the goldens and does nothing else. ⚠ **Owner, Director and HR only.** The *restriction* is spec-traced to B4 and marked `§` in the matrix; who *holds* it is still a derivation and marked `·`. Operation Head holds the wages ledger but not this — ours, and a checkbox if the client disagrees. ⚠ **The untagged item alongside it is NOT delivered** — HR's right to *edit* salary is outside C4 and outside MG/SF/2026-02. See §4a. | ☐ |
-| **C5** | attendance and site-wise labour cost | NOT STARTED *(and **still gated** — C4 shipping does not open it)* | No attendance record, route or test anywhere. ⚠ **C4 built the employee master C5 will consume, and nothing else toward C5.** `employee.py` carries no attendance, no OT and no wage calculation, `employee.py ↔ charge.py` is forbidden **in both directions** at AST level because that edge is C5's first step, and `tests/test_employee.py` reads the module source to assert the absence rather than trusting a comment. | All of it: daily presentee/absentee, one employee = one site = one day, and the OT calculation. **The OT multiplier must be a setting, not a constant** — CC-2 is explicit that hardcoding the client's 1× figure would make the software compute a statutory underpayment. | ☐ |
+| **C4** | employee master | **BUILT** | New leaf module [employee.py](employee.py) and an `employees` collection in [store.py](store.py) and [db.py](db.py). Fields: name, employee code, designation, site, monthly salary, date joined, active flag. Five routes — `GET /employee/`, `GET,POST /employee/new`, `GET /employee/view/<id>`, `GET,POST /employee/edit/<id>`, `GET,POST /employee/delete/<id>` — the last of which **confirms on GET and destroys only in the POST branch** (`9d060ee`'s shape), with its own hand-written GET test because `test_delete_methods.py` says in terms that its URL-map sweep cannot catch a both-verbs route that destroys on GET. Four permissions minted in `auth.PERMISSIONS` and five endpoints classified in `auth.ROUTE_PERMISSIONS`. 34 tests in [tests/test_employee.py](tests/test_employee.py). | Nothing for C4 as CC-2 words it — *"Employee details and salary"* is one sentence and this is the whole of it. **Three things to know rather than discover:** ✅ **The nav link and the dashboard card ARRIVED on 29 August 2026 (third pass).** The caveat that stood here — *"There is NO nav link and NO dashboard card, deliberately … the link is queued work, for a pass that expects to re-baseline the goldens"* — described the cost of protecting the goldens in an unattended pass, and that cost was that **the owner could not find a page he had paid for**. The pass it named arrived: five goldens moved +248 bytes each, in the `head` block alone, and nothing on any printed sheet changed. ⚠ **Owner, Director and HR only.** The *restriction* is spec-traced to B4 and marked `§` in the matrix; who *holds* it is still a derivation and marked `·`. Operation Head holds the wages ledger but not this — ours, and a checkbox if the client disagrees. ⚠ **The untagged item alongside it is NOT delivered** — HR's right to *edit* salary is outside C4 and outside MG/SF/2026-02. See §4a. | ☐ |
+| **C5** | attendance and site-wise labour cost | **BUILT** | New leaf module [attendance.py](attendance.py) and an `attendance` collection in [store.py](store.py) and [db.py](db.py). Four routes — `GET /attendance/` (the day's muster + the site-wise cost, `?date=` moves the day), `GET,POST /attendance/mark`, `GET,POST /attendance/edit/<id>`, `GET,POST /attendance/delete/<id>` — the last of which **confirms on GET and destroys only in the POST branch** (`9d060ee`'s shape), with its own hand-written GET test because `test_delete_methods.py` says in terms its URL-map sweep cannot catch a both-verbs route that destroys on GET. Four permissions minted in `auth.PERMISSIONS` and four endpoints classified in `auth.ROUTE_PERMISSIONS`. **33 tests** in [tests/test_attendance.py](tests/test_attendance.py). <br><br>⚠ **THE OT MULTIPLIER IS A SETTING AND NO LITERAL MULTIPLIER IS IN THE CALCULATION CODE.** `settings.ot_multiplier()`, defaulting to the client's own 1×, with `/settings` saying on its face that the Factories Act and most state Shops & Establishments Acts put overtime at generally **twice** — CC-2's point being that hardcoding 1× makes this software compute a **statutory underpayment**. Held two ways: a behavioural test (change the setting, ₹1,250 becomes ₹1,500, and nothing stored is rewritten) and an **AST walk** over `daily_wage()`, `ot_amount()` and `cost_of()` that fails on any numeric constant in a multiplication or a division. `STANDARD_HOURS_PER_DAY` is a **name**, not a literal — CC-2's own `÷ 8`. <br><br>⚠ **One employee = one site = one day, enforced at WRITE time** in `conflicting_record()`, called by both write routes before anything is stored — not in the form. Keyed `(employee, date)` and **deliberately not** `(employee, site, date)`: the second reading bills one day's wage three times for one person marked on three sites. The edit route passes its own id as `except_id`, which is how this constraint is usually got wrong. | Nothing for C5 as CC-2 words it — five bullets, all five built. **Four things to know rather than discover:** ⚠ **`wage_days_per_month` is a SECOND setting and it is OURS, not CC-2's.** A monthly salary needs a divisor before it is a daily wage and CC-2 never gives one; 26 is the usual convention, 30 is defensible, and they give different money. Defaulted to 26 and stated as ours on the page. **Nobody may record it as the client having chosen anything.** ⚠ **Site is FREE TEXT and is deliberately not a project** — a BOQ carries `project_name` *and* `site_location` as separate fields, `employee.site` is already free text by C4's choice, and a `project_id` here is the first half of C6. ⚠ **Overtime on an absent day is recorded, shown and NOT paid.** CC-2 does not rule on it; the hours stay visible so the contradiction is not swallowed. ⚠ **Owner, Director and HR only. Operation Head is REFUSED and marked `–`, not `§`** — ours, reversible at `/roles/edit/<id>`. See §4b. | ☐ |
 | **C6** | project profit and loss | **BLOCKED** | No project P&L exists, and the project page **refuses to be one by design**: *"no revenue total, no cost total, no margin, no profit, no net, no balance … it does not do the subtraction"* [projectview.py:11-15](projectview.py#L11-L15), route `GET,POST /projects/view/<id>` [projectview.py:82](projectview.py#L82). The only margin arithmetic in the app is `purchase.job_cost()` [purchase.py:280](purchase.py#L280), which is scoped to a **quotation**, not a project, and ignores recorded charges entirely. Blocked on the labour-cost authority decision; see §5. | The decision first. Then: planned margin from the BOQ against actual cost from POs and charges, and an explicit reversal of `projectview.py`'s standing prohibition — that docstring is a deliberate guard and must be amended, not ignored. | ☐ |
 
 ---
@@ -325,11 +348,13 @@ too — it is a claim about the **figure**, never about the operator — and the
 over-reporting is the safe direction, because the mark never prints and the
 opposite error would let an invented rate travel unmarked.
 
-⚠ **OPEN QUESTION FOR THE CLIENT: is "PO red paint" red-oxide primer?** It is
-most likely `P.O. Red` or `R.O. Red` on his sheet. It is seeded **verbatim** and
-deliberately **not renamed** — guessing would put a word in the client's mouth
-on a document that goes to a vendor, and on a purchase-order screen "PO" also
-reads as "purchase order". A test pins the question open.
+⚠ **OPEN QUESTIONS FOR THE CLIENT — now two, and both pinned by tests.** *Is
+"PO red paint" red-oxide primer?* It is most likely `P.O. Red` or `R.O. Red` on
+his sheet, seeded **verbatim** and deliberately **not renamed** — guessing would
+put a word in the client's mouth on a document that goes to a vendor, and on a
+purchase-order screen "PO" also reads as "purchase order". The second question —
+*are `200mm elbow` and `8" elbow` the same part?* — arrived with the alias
+cutback below, which removed the ambiguity rather than answering it.
 
 **Recorded deviations**, both deliberate:
 
@@ -381,6 +406,101 @@ reads as "purchase order". A test pins the question open.
    Held by five tests in `tests/test_po_extra_lines.py` §11, and by
    `tests/test_nav_user_chip.py`, which now asserts every edited line in
    `quotation.py` falls inside `view_quotation()`.
+
+### The alias cutback — a DEFECT FIX against this section's own work
+
+⚠ **CLOSED 29 August 2026, third pass, and it is still outside the bars.**
+Repairing untagged work does not make it tagged, and the fix is a §0
+**no-charge** item: a defect against something delivered the same day, not new
+capability. **It does not retro-price the extra-lines work either** — that
+remains priced nowhere.
+
+**The finding, measured rather than described.** `po_parts.py` shipped with 73
+canonical parts and **172 aliases, of which 156 nobody had written**. They were
+plausible-looking permutations generated to widen the prefill — word order
+reversed, a space added, `mm` swapped for `inch`. Three classes were actively
+wrong, and the first is a live wrong number:
+
+| class | example | what it did |
+|---|---|---|
+| **a live wrong number** | `200 mm elbow` → ₹3,400 · `200 mm elbow 8 inch` → ₹3,200 | one physical part, two placeholder rates, **and which one landed on a purchase order depended on how somebody typed it** |
+| **an inch↔mm equivalence** | `25mm flange` → `1 inch flange` | a **pricing decision dressed as a spelling**, taken inside a lookup table where nobody would read it |
+| **a bare name choosing a size** | `grinding wheel` → the 4-inch one | a rate for a part the operator did not specify |
+
+`_norm()`'s own docstring already said why: *a match it gets wrong puts a
+figure on a purchase order that nobody chose.* The aliases were that same
+mistake one level up from the normaliser the sentence was written about.
+
+⚠ **One deleted alias rested on a MISREADING of the client's sheet**, and it is
+named in the module, in ABOUT.md §2h and in a test so it is not put back: his
+sheet carries a **dummy** flange — `6 inch dummy flange 16mm (240 PCD)` — and,
+separately, `150mm flange`. `6 inch flange → 150mm flange` folded a dummy
+flange into a plain one.
+
+**Measured before and after:**
+
+| | before | after |
+|---|---|---|
+| alias entries | 172 | **16** |
+| `INDEX` keys | 241 | **89** |
+| keys that were neither a canonical name nor a client line | **153** | **0** |
+| hit-rate against the client's own lines | 77 / 78 | **78 / 78** |
+
+⚠ **The hit-rate went UP, and that row is not a typo.** The cutback removes the
+surface for strings **nobody wrote** and adds one the client did: his verbatim
+`M.S ANGEL 50 X 50 X 5 MM - 03 pcs` had never been indexed, only the form with
+the quantity stripped. Against arbitrary typing the prefill now misses far more
+often — `grinding wheel` fills nothing, the line is accepted exactly as typed
+with a blank rate and no assumed flag — **and every string it stopped answering
+for is a string nobody wrote.**
+
+**The rule, made permanent, and the test is the deliverable.** An alias may
+exist only if the client wrote that exact string. `CLIENT_LINES` holds his 78
+strings and is the source of truth; `CLIENT_LINE_QUANTITIES` is the one
+permitted derivation, **a table of two rows with the stripped form written out**
+rather than a regex that would decide for itself what a quantity is; and
+`MISSPELLINGS` records why a canonical departs from his spelling and **licenses
+no alias on its own** — reading it as "any string containing `soket` may be an
+alias" is how 156 of them arrived. `permitted_alias_keys()` is the rule as code
+and [tests/test_po_parts_aliases.py](tests/test_po_parts_aliases.py) **calls it
+rather than carrying a copy**, which is the `xlNorm()` lesson one file along.
+
+⚠ **NO CANONICAL PART WAS MERGED OR SPLIT.** `200mm elbow` and `8" elbow` stay
+two entries with **no alias between them**, so typing one can never fetch the
+other's rate. The module does **not** assert they are the same part and does
+**not** assert they are different.
+
+⚠ **THE CLIENT'S SHEET IS NOT IN THIS REPOSITORY, and that is the weakest part
+of this work.** Not `client_docs/`, not `fixtures/`, not the history — it
+arrived as a message and was transcribed straight into `PARTS`, so `PARTS` is
+now the only record of it anywhere. `CLIENT_LINES` is therefore a
+**reconstruction from the module's own evidence**, and every line carries its
+grade in the source: `(v)` verbatim from the original docstring or commit
+message, `(m)` a canonical with a documented misspelling reversed, `(—)` taken
+as the canonical because nothing records anything else. A test fails if a line
+is added without a grade. **The tests hold `PARTS` to `CLIENT_LINES`; nothing
+can hold `CLIENT_LINES` to the sheet.**
+
+⚠ **The count is 78 distinct strings — 80 raw lines**, two of them exact
+repeats. **A figure of 81 has been quoted elsewhere and cannot be reproduced
+from anything in this repository.** The missing line, if there is one, left no
+trace in the transcription.
+
+⚠ **No existing test was rewritten, weakened or deleted for this**, and the
+reason is worth keeping: the twelve aliases pinned by
+`test_an_alias_prefills_the_same_rate_as_its_canonical_name` **all survive the
+cut**. That is independent corroboration — the surviving set is the set the
+pass that built the file already treated as the client's own.
+
+**Open questions carried forward to the client, both pinned by tests:**
+
+1. **Is "PO red paint" red-oxide primer?** Seeded verbatim, deliberately not
+   renamed. Unchanged from the previous edition.
+2. **Are `200mm elbow` and `8" elbow` the same part?** 200 mm is 8 inches, so
+   they may be one item written twice at two placeholder rates — or two items
+   he buys separately. **This pass removed the ambiguity rather than answering
+   it**, which is the only arrangement that cannot put the wrong figure on an
+   order.
 
 ## 4b. Untagged and NOT built — the open item beside C4
 
@@ -445,6 +565,27 @@ is real, and their twenty-four withheld cells are a specification being applied.
 39 permissions it held before, and the only change to the matrix is those four
 cells' **marking** plus the legend row that gives the new mark meaning.
 
+#### ⚠ The same ruling now covers `attendance.*` — 29 August 2026, third pass
+
+**Operation Head does not hold `attendance.view`, `attendance.create`,
+`attendance.edit` or `attendance.delete`**, and those four cells carry the same
+`–` mark for the same narrow reason: B4 names the role, B4's one sentence about
+employee data does not name it in either direction, and a `§` would claim a
+backing that does not exist. It stays **39 permissions**.
+
+It is **a reversible default and the code proves it rather than claiming it**:
+`test_operation_head_can_be_granted_it_without_a_code_change` ticks
+`attendance.view` onto `role-operation-head` in memory and requires
+`/attendance/` to open — no deployment, no developer, no re-login.
+
+⚠ **Note where the line actually falls, because it is not obvious.** Operation
+Head **does** hold the whole of `charge.*`, the wages and site-expense ledger.
+So the refusal is a line drawn at **pay-derived** data — the master, and now a
+muster that carries a salary snapshot and produces a wage — rather than at site
+cost. **That line is ours.** Sales, Purchase and Accounts keep their `§` on the
+new rows too, because for them B4's sentence is real and a muster producing a
+wage is HR information on the same terms the master is.
+
 ---
 
 ## 5. BLOCKED
@@ -501,6 +642,16 @@ design consequence of anything we sold. It is not one of the BQ questions and
 must not be settled internally.
 
 C5 can be built without the answer. **Wiring C5 into C6 cannot.**
+
+⚠ **C5 is now BUILT, and C6 is exactly as blocked as it was.** Nothing changed
+about this decision on 29 August 2026 — what changed is that the module whose
+figures would feed it exists, which makes the wiring look one function call
+away. It is not: **the question is which of two labour bases is authoritative,
+and it is the client's.** `attendance.py` exports nothing, no other module
+imports it (asserted at AST level), the dashboard card carries counts and no
+money, and `projectview.py`'s standing prohibition is untouched. A pass that
+"just adds a labour line to the project page" has answered Open question 4 on
+the client's behalf.
 
 ### Phase-wide gate — not an item status
 
@@ -860,6 +1011,47 @@ given status rights and must not be able to reprice an order. **No permission
 was minted**: inventing one would force a per-role decision CC-2's B4 does not
 authorise an agent to take on the client's behalf, and B4 states exactly one
 restriction (HR information away from Sales, Purchase and Accounts) and no grid.
+
+**K. A classified page with no link is a page nobody finds — FOUND by sweep,
+CLOSED 29 August 2026, third pass.** *New.*
+
+The employee master shipped on 29 August 2026 correct, tested and permissioned,
+with **no nav entry and no dashboard card**, to protect the print goldens during
+an unattended pass. `test_there_is_no_nav_link_and_no_dashboard_card` existed to
+stop that being "fixed" by accident and told the pass that adds the link to
+delete it. **Its cost was that the owner could not find a page he had paid
+for**, which is a delivery defect and not a presentation one.
+
+**Enumerated before anything was changed**, which is how two more were found.
+41 classified GET endpoints take no path argument; excluding forms their own
+register offers and the pre-session and chip-hung session pages, **three** pages
+were reachable and unlinked:
+
+| endpoint | inbound `url_for` | verdict |
+|---|---|---|
+| `employee.list_employees` | 8, **every one inside `employee.py`** — an island | linked: nav **and** card |
+| `auth.access_log` | **ZERO, anywhere in the application** | linked from `/users` — see below |
+| `receipt.list_receipts` | 7, from `client.py` and `ra.py` | linked: card. The only top-level register with none |
+
+⚠ **`/access-log` is deliberately NOT on the launcher.** That strip is for
+registers somebody works in; the refusal log is a **diagnostic, not an audit
+trail** — ABOUT.md §7 gap 23, an in-memory `deque(maxlen=500)` that dies with
+the process — and putting it on the landing page would advertise it as more
+than it is. Its parent is `/users`, which is where you go when somebody says
+they were refused something.
+
+**What replaces the deleted test** is a sweep over `app.url_map`:
+`test_every_classified_page_is_reachable_from_the_nav_or_the_launcher` requires
+every classified landing page to be a nav entry, a card, a form its own register
+offers, or a **named exception with its reason written beside it**. Verified
+non-vacuous: remove any one of the three links and it names it. A page added in
+a later pass is covered the day it is registered.
+
+⚠ **The nav/golden coupling is NOT closed by this and must not be read as
+closed.** It is ABOUT.md §7's first gap, it cost five documents +248 bytes each
+here, and it will cost the same five again on the next nav change. The fix is
+the delivery challan's shape — a document route with no nav at all, which is why
+the challan alone did not move — and re-baselining is not the fix.
 
 ---
 

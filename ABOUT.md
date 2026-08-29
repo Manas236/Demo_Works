@@ -134,8 +134,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,368 passed, 3 skipped** | **29 Aug 2026** |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,367 passed, 1 skipped** | **29 Aug 2026** |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,465 passed, 4 skipped** | **29 Aug 2026** *(third pass)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,464 passed, 2 skipped** | **29 Aug 2026** *(third pass)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -192,6 +192,21 @@ the same CPython 3.10.11 with both workbooks absent. Without openpyxl,
 `tests/test_fixtures.py`'s 4 tests are never collected and pytest prints
 `1 skipped` (row 3). With it, all 4 are collected: 1 passes and 3 skip
 individually via `conftest.require_fixture()` because the workbooks are absent
+⚠ **The gap is now 1 passed and 2 skipped rather than 1 and 2, and the second
+skip is not openpyxl's.** `tests/test_nav_reachability.py` skips one of its own
+cases in **both** configurations — a print-rule check that does not apply to the
+one pinned page that is a form. So row 3 reads 1,464 / 2 and row 2 reads
+1,465 / 4: openpyxl still accounts for +1 passed and +2 skipped, and the new
+file accounts for the remaining skip in both.
+
+⚠ **These two rows stood at 1,367 / 1 and 1,368 / 3 — the FIRST 29 August
+measurement — through the whole of the second pass of that date**, which
+measured 1,387 / 1 and 1,388 / 3 and wrote them into PROGRESS.md and its own
+report but not into this table. **That is the third time this exact failure has
+happened here**, and the paragraph two above is the standing warning about it: a
+number is only as current as the least-visited file that holds it. Both figures
+here were re-measured on 29 August 2026 in the configurations named in the rows.
+
 (row 2). 1,367 + 1 = 1,368 passed, and 3 skipped rather than 1 — which is the
 two-mechanism distinction below, arrived at from a real run rather than from
 arithmetic, and it has now held across four separate re-measurements. The `.venv` itself moved nothing observable, and that is a result
