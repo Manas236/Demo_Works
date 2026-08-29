@@ -1044,6 +1044,156 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > quotation that has **lapsed** — and the extra-lines work, together with the
 > cutback that repairs it, was built against **no quotation at all**.
 
+> ### ⚠ OVERRIDE — 29 August 2026, by Manas Gawde — FIFTH block of this date: C2 and C1, the measurement document and the order of working
+>
+> **A new block, not an amendment, and the fifth one dated 29 August 2026.**
+> The four blocks above it — `86902ef` (extra PO lines and C4), the narrow
+> `quotation.py` unfreeze with the Operation Head ruling, the third (C5, the
+> navigation re-baseline, the alias cutback) and the fourth (B6 and B7) —
+> **have not been edited, reformatted, re-scoped or extended by a single
+> character.** Each says what it said when it was written and each covers what
+> it named. This is the **thirteenth occasion overall and the eighth that
+> reaches into Phase 3**.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a fifth time, not softened
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending", it is not "with the client", and it is not awaiting a countersign.
+> **It is expired.** This is the **fifth** override taken against a lapsed
+> quotation, and a fifth is not evidence that the first four made it routine.
+> **A lapsed quotation is a stronger reason to record and a weaker reason to
+> build.** Nothing below is evidence that the gate has been met or lifted.
+>
+> #### What proceeds — two items, and only these two
+>
+> - **C2 — the measurement document, AUTHORISED.** CC-2's C2 is three lines:
+>   *"Raised from the BOQ. Approved measurements become the source of
+>   installation quantity on RA-Installation."* That is the whole of it, and
+>   the shortness is recorded here rather than papered over — see the
+>   unspecced-subsystem note below.
+>
+> - **C1 — the order of working, AUTHORISED.** CC-2's C1 states two chains,
+>   `BoQ → Delivery Challan → RA-Supply` and `BoQ → Measurement →
+>   RA-Installation`, and says *"Today installation quantity is typed straight
+>   into the claim grid with nothing behind it. C2 closes that."* It states the
+>   domain model; it does not state an enforcement mechanism, and the choice to
+>   refuse **by URL** rather than by hiding a button is B5's established rule
+>   applied here, not C1's text.
+>
+> #### ⚠ WHAT C2 DOES NOT SAY, recorded BEFORE it is built
+>
+> This is the pass-D lesson written down in advance rather than discovered
+> afterwards. CC-2's C2 does **not** say any of the following, and every one of
+> them is **ours, unspecced and unpriced**:
+>
+> - that a measured quantity may not exceed the BOQ quantity for its line;
+> - that cumulative RA-Installation claims may not exceed the approved measured
+>   quantity;
+> - **which** approval ladder a measurement climbs — B6 names ladders for
+>   charges and for RA / Tax Invoice / PO, and names measurement on neither;
+> - that a measurement sheet prints at all, or what it looks like on paper.
+>
+> They are authorised as part of C2 because a measurement document without them
+> is a form that records a number nobody checks. **They are not a delivered C2
+> requirement and nobody may later cite them as one.** `PROGRESS.md` must say so
+> plainly wherever C2 is marked BUILT.
+>
+> #### ⚠ PASS D BUILT `approval.can_modify()` ON CC-2's SILENCE, NOT ON CC-2's TEXT
+>
+> **Carried forward and recorded here because pass D disclosed it and no block
+> yet holds it.** CC-2's **B7 governs printing and downloading only** — *"an
+> unapproved document may be viewed, but not printed or downloaded"*, with the
+> print and download routes gated and a print stylesheet so `Ctrl+P` does not
+> walk round the gate. It says **nothing whatever about editing**.
+>
+> `approval.can_modify()` and every edit rule in it — an approved document is
+> locked, a part-climbed ladder is locked, a rejected document returns to its
+> creator only, an unstarted one is editable by its creator only — is a
+> subsystem **we invented to fill that silence**. It is **ours, unspecced and
+> unpriced**, it is not B7, and **`PROGRESS.md` must say so plainly wherever B7
+> is marked BUILT**, so that nobody later cites it as a delivered CC-2
+> requirement or as work MG/SF/2026-02 covers.
+>
+> Building it was the right call — an approval a later edit can walk underneath
+> is not an approval — and that does not make it specified.
+>
+> #### ⚠ `_role_grants()` MUTATED LIVE ROLE RECORDS, and it is acknowledged retrospectively
+>
+> **Carried forward from pass D, which disclosed it.** The `created_by`
+> migration was authorised to rewrite existing document rows and the fourth
+> block of this date says so. What that block does **not** say is that the same
+> migration also reached into `STORE["roles"]`: `_role_grants()` added the four
+> `*.approve` permissions to four builtin role records that already existed in
+> the live database, rather than only to `auth.BUILTIN_ROLES` in code.
+>
+> That is a second class of live mutation — identity data, not document data —
+> and it was taken under a block that authorised the first. **It is
+> acknowledged here rather than argued away.** It is recorded so that the next
+> migration touching `users` or `roles` is authorised on its own terms and does
+> not cite this one as precedent.
+>
+> #### ⚠ B7's PRINT GATE IS NARROWED BY TWO NAMED EXCEPTIONS, and by no others
+>
+> Pass D reported that B7, read strictly, took away two capabilities the client
+> has today. Both are readmitted, and **only** these two:
+>
+> - **A DRAFT RA bill prints, carrying its DRAFT overprint.** B7 exists so an
+>   unapproved **claim** cannot leave the building looking final. The overprint
+>   is the opposite of that failure — it is itself the safeguard, and removing
+>   the print removes the safeguard's purpose along with it. **The overprint
+>   must still render**; a draft that prints clean is the thing B7 is actually
+>   guarding against.
+> - **A CANCELLED RA bill prints.** A cancelled bill is not a claim. It is the
+>   audit record of a withdrawn one, and a record that cannot be produced is not
+>   a record.
+>
+> **Every other unapproved state stays gated exactly as pass D built it** —
+> pending, part-climbed and rejected all still refuse by URL. The narrowing is
+> **draft-state and cancelled-state only** and it is not a general softening of
+> B7.
+>
+> #### Still gated, untouched, and not started
+>
+> **B8**, and the two BLOCKED items **C3** and **C6**. Not one of them is
+> started and no groundwork is laid for any of them. After this pass **B8 is
+> the only buildable item left**; C3 stays blocked on BQ1 and BQ2, and C6 on
+> CC-2's Open question 4.
+>
+> ⚠ **That C2 and C1 landing leaves B8 alone on the board is NOT an
+> authorisation to build it.** B8 breaks the storage model — there is no
+> `/static`, images are base64 data URIs, and `MAX_JSON_BYTES` is 300,000
+> against a 2–5 MB photographed bill. It is priced in MG/SF/2026-02,
+> MG/SF/2026-02 is expired, and it needs an override block of its own that
+> names it. **That a thing has become the obvious next one is the most common
+> way this gate gets walked through by accident.**
+>
+> #### Chargeability
+>
+> **C2 and C1 are priced in MG/SF/2026-02 and stay priced there.** This is not
+> a §0 no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and a measurement document is
+> new capability. Building it early changed **when** it was built, not **what it
+> costs** or **who agreed to it** — and the quotation that prices it has lapsed.
+>
+> The four unspecced additions listed above, the B7 narrowing, and
+> `can_modify()` carried forward from pass D, are priced **nowhere at all**.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. That C2 and C1 were authorised does
+> not authorise B8, and it emphatically does not open C3 or C6.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, items 8, 3, 2, 4 and 5, the whole of the Phase
+> 3B access-control layer, the three Phase 3A items of 27 August, the three of
+> 28 August, C4, C5, the B6/B7 approval ladder **and now C2 and C1** were built
+> against a quotation that has **lapsed** — and the extra-lines work, together
+> with the cutback that repairs it, was built against **no quotation at all**.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
