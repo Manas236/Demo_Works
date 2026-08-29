@@ -395,11 +395,32 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks=None,
 
 # Captured 15 August 2026, against the code as it stood BEFORE `docsheet.py`
 # existed. These three numbers are the baseline the extraction is measured by.
+# ⚠ **RE-BASELINED 29 August 2026 (third pass) for the NAVIGATION link, and
+#   the movement is the intended outcome of an authorised change rather than a
+#   surprise.** The employee master shipped on 29 August with no nav entry
+#   precisely so that this file would not move; the owner then could not find
+#   the page. `dashboard.NAV_ITEMS` gained `Employees`, and because `_nav()` is
+#   embedded in every printed page **the bytes moved while the paper did not**.
+#
+#   Measured, per document: **+248 bytes, and the `head` block ALONE.**
+#   `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and `signature` are
+#   byte-identical on every one of them. The 248 bytes are one `<a
+#   class="nav-link">` inside `<nav>…</nav>`, which
+#   `quotation.VIEW_DOC_STYLES` hides with `display:none !important` under
+#   `@media print` — so **not one figure, label or visible character on any
+#   printed sheet changed.** `tests/test_nav_reachability.py` asserts both
+#   halves directly rather than leaving them to this comment.
+#
+#   ⚠ **The delivery challan did NOT move**: `challan.print_dc` renders no nav
+#   at all, which ABOUT.md §7 already recorded as the shape all six should
+#   have. Its digest below is untouched, and that is the measurement that says
+#   the coupling is avoidable rather than inherent.
 GOLD_TI = "gold-ti"
 # was ab555e45cd245fa5 / 110208 before the 27 Aug 2026 escaping pass
-TI_WHOLE = "f91031b44e1e7dc7"
-TI_LEN = 110216
-TI_BLOCKS = {"head":       "49524db46e29dcc5",
+# was f91031b44e1e7dc7 / 110216 before the 29 Aug 2026 nav re-baseline
+TI_WHOLE = "92903e2e6134597b"
+TI_LEN = 110464
+TI_BLOCKS = {"head":       "f76089afb5505200",   # was 49524db46e29dcc5
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "5e4d6a24b0a5b726",
@@ -490,8 +511,10 @@ TI_BLOCKS = {"head":       "49524db46e29dcc5",
 # ⚠ **The assumed-rate chip cannot reach this document even when an order does
 #   carry one.** `.xl-assumed` is `display:none` at print. That is asserted
 #   directly in `tests/test_po_extra_lines.py` rather than inferred from here.
-PO_WHOLE, PO_LEN = "0b7ed84b19fa2646", 106559
-PO_BLOCKS = {"head":       "823a24d818d5f0c3",   # was aa05dcac55729c51,
+# was 0b7ed84b19fa2646 / 106559 before the 29 Aug 2026 nav re-baseline
+PO_WHOLE, PO_LEN = "a7b30226a545aa62", 106807
+PO_BLOCKS = {"head":       "09c8c69b2580ee92",   # was 823a24d818d5f0c3,
+                                                 # was aa05dcac55729c51,
                                                  # was c4b27c10e58c1b4f,
                                                  # was 5354379fd4182ed2,
                                                  # was d0df61b20bb3a42e
@@ -504,9 +527,10 @@ PO_BLOCKS = {"head":       "823a24d818d5f0c3",   # was aa05dcac55729c51,
 
 GOLD_PI = "gold-pi"
 # was 4969d5e4f6a6508b / 103773 before the 27 Aug 2026 escaping pass
-PI_WHOLE = "d4fe110738e8d20f"
-PI_LEN = 103781
-PI_BLOCKS = {"head":       "a3b342e73adf07fc",
+# was d4fe110738e8d20f / 103781 before the 29 Aug 2026 nav re-baseline
+PI_WHOLE = "9a509c8c1f87ce5c"
+PI_LEN = 104029
+PI_BLOCKS = {"head":       "0250890a6d6e2f6b",   # was a3b342e73adf07fc
              "letterhead": "1c368b0c8259abe0",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "77fa68a83f706064",
@@ -520,9 +544,10 @@ PI_BLOCKS = {"head":       "a3b342e73adf07fc",
 # digit grouping. See the test below for what moved.
 GOLD_RA = "gold-ra"
 # was 2e12fa898f1b39fe / 97656 before the 27 Aug 2026 escaping pass
-RA_WHOLE = "1c5f5c7e6720628f"
-RA_LEN = 97664
-RA_BLOCKS = {"head":       "ea1ccbaa59c99616",
+# was 1c5f5c7e6720628f / 97664 before the 29 Aug 2026 nav re-baseline
+RA_WHOLE = "7f964e7dceb2699f"
+RA_LEN = 97912
+RA_BLOCKS = {"head":       "924f39af975d8d7b",   # was ea1ccbaa59c99616
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "44c7368b5a1b2380",
@@ -785,9 +810,13 @@ def golden_picker(client, pinned_identity, monkeypatch):
 # Captured 16 August 2026, against the code as it stood BEFORE `boqpick.py`
 # existed. These are the baseline the extraction is measured by.
 GOLD_PICK_BOQ = "gold-pick"
-PICK_WHOLE = "2cbe1a602a7943f6"
-PICK_LEN = 54498
-PICK_BLOCKS = {"head":    "04f4809335b2c9e8",
+# was 2cbe1a602a7943f6 / 54498 before the 29 Aug 2026 nav re-baseline. ⚠ This
+# one is a FORM, not a printed sheet — it moved for the same +248 bytes and
+# nothing about the picker itself changed: `intro`, `vendor`, `details`,
+# `lines`, `tools`, `rows`, `payload` and `js` are all byte-identical.
+PICK_WHOLE = "c5f1a8da473a7c42"
+PICK_LEN = 54746
+PICK_BLOCKS = {"head":    "2bf1b714db890d61",   # was 04f4809335b2c9e8
                "intro":   "5558f09cc783266e",
                "vendor":  "715e7c6cd4634448",
                "details": "53b096aa21f5264c",

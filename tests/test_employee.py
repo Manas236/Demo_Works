@@ -417,26 +417,53 @@ def test_the_walled_off_roles_hold_none_of_the_four():
             assert pid not in perms, f"{slug} must not hold {pid} — B4"
 
 
-# ══ 8. No nav link, no dashboard card — deliberate ════════════════════════
+# ══ 8. The nav link and the dashboard card — ARRIVED ══════════════════════
+#
+# ⚠ **A test stood here and it told this pass to delete it. It has been
+#   deleted, exactly as instructed and in the commit that adds the link**, and
+#   it is recorded here rather than removed without trace. It read:
+#
+#       def test_there_is_no_nav_link_and_no_dashboard_card(client):
+#           """
+#           ⚠ **DELIBERATE, and this test is what stops it being "fixed" by
+#           accident.**
+#
+#           `dashboard._nav()` is embedded in **every printed page** and hidden
+#           by CSS, so one more nav entry moves **every print golden in the
+#           repo**. That has bitten this repo twice. `charge.py` shipped with no
+#           nav link for exactly this reason and is the precedent.
+#
+#           The page is reachable at `/employee/`, which the tests above prove.
+#           Adding the link is queued work and belongs in a pass that expects to
+#           re-baseline the goldens and does nothing else — **at which point
+#           delete this test in the same commit**, rather than weakening it.
+#           """
+#           html = client.get("/").get_data(as_text=True)
+#           assert "/employee/" not in html, (
+#               "an employee link appeared on the dashboard. _nav() is on every "
+#               "printed page, so this moves every print golden — see the "
+#               "docstring.")
+#
+#   The pass it named arrived on 29 August 2026 (third pass), authorised to
+#   re-baseline. Five goldens moved by +248 bytes each, all of it inside
+#   `<nav>`, and **nothing on any printed sheet changed** —
+#   `tests/test_nav_reachability.py` holds both halves, and the per-role
+#   visibility of the link is `tests/test_nav_visibility.py`'s.
 
-def test_there_is_no_nav_link_and_no_dashboard_card(client):
+
+def test_the_register_is_reachable_from_the_nav_and_the_launcher(client):
     """
-    ⚠ **DELIBERATE, and this test is what stops it being "fixed" by accident.**
+    The replacement for the test above, asserting the opposite fact for the
+    same reason: **the owner could not find a page he had paid for.**
 
-    `dashboard._nav()` is embedded in **every printed page** and hidden by CSS,
-    so one more nav entry moves **every print golden in the repo**. That has
-    bitten this repo twice. `charge.py` shipped with no nav link for exactly
-    this reason and is the precedent.
-
-    The page is reachable at `/employee/`, which the tests above prove. Adding
-    the link is queued work and belongs in a pass that expects to re-baseline
-    the goldens and does nothing else — **at which point delete this test in
-    the same commit**, rather than weakening it.
+    Both surfaces, because they fail differently — the launcher is only on `/`,
+    and the nav is on every page but is the one that costs a golden.
     """
     html = client.get("/").get_data(as_text=True)
-    assert "/employee/" not in html, (
-        "an employee link appeared on the dashboard. _nav() is on every printed "
-        "page, so this moves every print golden — see the docstring.")
+    assert html.count('href="/employee/"') >= 2, (
+        "the employee master must be reachable from BOTH the nav and the "
+        "dashboard launcher, not one of them")
+    assert 'class="nav-link">' in html
 
 
 # ══ 9. What C4 is NOT ═════════════════════════════════════════════════════

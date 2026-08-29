@@ -45,14 +45,35 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 ROLES = ["owner", "director", "operation-head", "hr", "sales-manager",
          "purchase-manager", "accountant"]
 
-# What each role's nav must offer. `Projects` and `Settings` are the only two
-# entries the nav has ever had; the chip beside them is AUTHENTICATED and is
-# `tests/test_nav_user_chip.py`'s business, not this file's.
+# What each role's nav must offer. The chip beside the entries is
+# AUTHENTICATED and is `tests/test_nav_user_chip.py`'s business, not this
+# file's.
+#
+# ⚠ **`Employees` was added on 29 August 2026 and every print golden moved for
+#   it — deliberately, and that movement is the whole point of the pass that
+#   made it.** `_nav()` is embedded in every printed page and hidden by CSS at
+#   print, so the bytes moved by +248 on five documents and **nothing on any
+#   printed sheet changed**; `test_nav_reachability.py` is what holds both
+#   halves. The old assertion, verbatim:
+#       EXPECTED_NAV = {
+#           "owner":            ["Projects", "Settings"],
+#           "director":         ["Projects", "Settings"],
+#           "operation-head":   ["Projects"],
+#           "hr":               [],
+#           "sales-manager":    ["Projects"],
+#           "purchase-manager": ["Projects"],
+#           "accountant":       ["Projects"],
+#       }
+#   ⚠ HR's nav goes from EMPTY to one entry, which is the reachability defect
+#   this closes at its sharpest: the role that holds the employee master had a
+#   nav with nothing in it at all. Operation Head still does not see Employees —
+#   it holds no `employee.*`, by our derivation and not by CC-2 (PROGRESS.md
+#   §4b), and `can_reach()` is what keeps it off the nav.
 EXPECTED_NAV = {
-    "owner":            ["Projects", "Settings"],
-    "director":         ["Projects", "Settings"],
+    "owner":            ["Projects", "Employees", "Settings"],
+    "director":         ["Projects", "Employees", "Settings"],
     "operation-head":   ["Projects"],
-    "hr":               [],
+    "hr":               ["Employees"],
     "sales-manager":    ["Projects"],
     "purchase-manager": ["Projects"],
     "accountant":       ["Projects"],
@@ -61,6 +82,10 @@ EXPECTED_NAV = {
 ALL_CARDS = [
     "Quotations", "Proforma Invoices", "Tax Invoices",
     "Projects", "Bills of Quantities", "Running Account Bills",
+    # ⚠ Added 29 August 2026. `/receipt/` was the ONE top-level register in
+    #   this app with no card: reachable from `/client/` and from `/ra/view`,
+    #   and from nowhere on the launcher. The old assertion had no such line.
+    "Receipts",
     "Delivery Challans",
     # ⚠ Read "Employee & Misc Charges" until 29 August 2026. The label was
     #   corrected when C4 shipped a REAL employee master (`employee.py`): this
@@ -71,15 +96,26 @@ ALL_CARDS = [
     #   The module, the endpoint and the permission are all unchanged — only
     #   the words on the card moved. PROGRESS.md §6-E.
     "Purchase Orders", "Draft Purchase Orders", "Expenses & Charges",
-    "Product Catalogue", "Spec Library", "Client Register", "Address Book",
+    "Product Catalogue", "Spec Library", "Client Register", "Employees",
+    "Address Book",
     "Market News", "Users &amp; Access",
 ]
 
 EXPECTED_CARDS = {
     "owner":    ALL_CARDS,
     "director": ALL_CARDS,
+    # ⚠ Gains "Receipts" and NOT "Employees". Operation Head holds
+    #   `receipt.view` and none of `employee.*` — the second is our derivation
+    #   rather than CC-2's, marked `–` in the access matrix and reversible at
+    #   `/roles/edit/<id>`. The old assertion, verbatim:
+    #       "operation-head": [
+    #           "Projects", "Bills of Quantities", "Running Account Bills",
+    #           "Delivery Challans", "Purchase Orders", "Draft Purchase Orders",
+    #           "Expenses & Charges", "Product Catalogue", "Spec Library",
+    #           "Client Register", "Address Book"],
     "operation-head": [
         "Projects", "Bills of Quantities", "Running Account Bills",
+        "Receipts",
         "Delivery Challans", "Purchase Orders", "Draft Purchase Orders",
         # was "Employee & Misc Charges" — see the note on ALL_CARDS above
         "Expenses & Charges", "Product Catalogue", "Spec Library",
@@ -97,7 +133,15 @@ EXPECTED_CARDS = {
     #   list gains "Employees" and the goldens are re-baselined in that commit.
     #   The old assertion, verbatim:
     #       "hr": ["Employee & Misc Charges", "Address Book"],
-    "hr": ["Expenses & Charges", "Address Book"],
+    #
+    # ⚠ **THREE cards from 29 August 2026 (third pass), and the note above is
+    #   the reason it took a second pass.** The link WAS queued work, the pass
+    #   that expects to re-baseline the goldens arrived, and it did. The
+    #   assertion that stood between those two passes, verbatim:
+    #       "hr": ["Expenses & Charges", "Address Book"],
+    "hr": ["Expenses & Charges", "Employees", "Address Book"],
+    # Unchanged by this pass: a Sales Manager holds neither `receipt.view`
+    # nor `employee.view`, so neither new card is drawn for them.
     "sales-manager": [
         "Quotations", "Proforma Invoices", "Tax Invoices", "Projects",
         "Bills of Quantities", "Running Account Bills", "Product Catalogue",
@@ -106,10 +150,17 @@ EXPECTED_CARDS = {
         "Projects", "Bills of Quantities", "Delivery Challans",
         "Purchase Orders", "Draft Purchase Orders", "Product Catalogue",
         "Spec Library", "Address Book"],
+    # ⚠ Gains "Receipts" (holds `receipt.view`) and NOT "Employees" — B4 keeps
+    #   HR information from Accounts, and that one IS spec-traced. The old
+    #   assertion, verbatim:
+    #       "accountant": [
+    #           "Proforma Invoices", "Tax Invoices", "Projects",
+    #           "Bills of Quantities", "Running Account Bills",
+    #           "Purchase Orders", "Client Register"],
     "accountant": [
         "Proforma Invoices", "Tax Invoices", "Projects",
-        "Bills of Quantities", "Running Account Bills", "Purchase Orders",
-        "Client Register"],
+        "Bills of Quantities", "Running Account Bills", "Receipts",
+        "Purchase Orders", "Client Register"],
 }
 
 EXPECTED_GROUPS = {
@@ -132,6 +183,7 @@ CARD_ENDPOINT = {
     "Projects":                   "project.list_projects",
     "Bills of Quantities":        "boq.list_boqs",
     "Running Account Bills":      "ra.list_ras",
+    "Receipts":                   "receipt.list_receipts",
     "Delivery Challans":          "challan.list_dcs",
     "Purchase Orders":            "purchase.list_purchases",
     "Draft Purchase Orders":      "po_draft.list_pos",
@@ -140,6 +192,7 @@ CARD_ENDPOINT = {
     "Product Catalogue":          "product.list_products",
     "Spec Library":               "spec.list_specs",
     "Client Register":            "client.list_clients",
+    "Employees":                  "employee.list_employees",
     "Address Book":               "address.list_addresses",
     "Market News":                "extractor.index",
     "Users &amp; Access":         "auth.list_users",

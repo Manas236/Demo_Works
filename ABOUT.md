@@ -351,7 +351,7 @@ Consequences you must respect when editing:
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
-| [employee.py](employee.py) | 520 | **Employee master** &mdash; details and salary (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf. ⚠ **No nav link and no dashboard card, deliberately** &mdash; `_nav()` is on every printed page. Owner, Director and HR only (B4). |
+| [employee.py](employee.py) | 520 | **Employee master** &mdash; details and salary (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf. ✅ **Linked from the nav and the launcher since 29 Aug 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -2338,6 +2338,23 @@ Module-specific CSS is layered *after* `BASE_STYLES` in each module
 
 `DASH_STYLES` is a **plain string, not an f-string**, so its CSS braces are
 written once — only the HTML f-strings below it need doubling.
+
+##### The entries, and why there are only three
+
+`NAV_ITEMS` is **Projects · Employees · Settings**, and the nav is deliberately
+**not** the launcher — fifteen registers live on the module strip below, and
+what belongs in a bar drawn on every page is what somebody needs from wherever
+they already are. Each of the three also carries a card, which is the Projects
+pattern rather than a duplication.
+
+⚠ **Adding an entry moves every print golden in this repository**, because
+`_nav()` is embedded in every printed page and hidden by CSS at print. Measured
+on 29 August 2026 when `Employees` was added: **+248 bytes on the tax invoice,
+the proforma, the purchase order, the RA bill and the `/po/create` picker; 0 on
+the delivery challan**, which renders no nav at all. In every case **the `head`
+block alone moved** and the printed sheet was byte-identical once the nav was
+removed. §7's first gap is the coupling; `tests/test_nav_reachability.py` is
+what now measures it rather than fearing it.
 
 ##### `_nav()` carries the two app-wide warnings
 
@@ -4763,16 +4780,23 @@ Before it, C4 was one of the seven NOT STARTED items and was gated.
 whole of it.** The record shape and its rules are §3. What matters at page
 level is three things, each of which is a decision rather than a detail:
 
-⚠ **1. THERE IS NO NAV LINK AND NO DASHBOARD CARD, AND THAT IS DELIBERATE.**
-`dashboard._nav()` is embedded in **every printed page** and hidden by CSS, so
-one more nav entry moves **every print golden in the repo**. That has bitten
-this repo twice. `charge.py` shipped with no nav link for exactly this reason
-and is the precedent this follows. **The page is reachable at `/employee/`**,
-and the link is *queued work* — it belongs in a pass that expects to
-re-baseline the goldens and does nothing else.
-`tests/test_employee.py::test_there_is_no_nav_link_and_no_dashboard_card` is
-what stops it being "fixed" by accident, and says to delete itself in the commit
-that adds the link.
+✅ **1. IT IS NOW LINKED, from the nav AND the launcher** (29 August 2026,
+third pass). It shipped with neither, deliberately: `dashboard._nav()` is
+embedded in **every printed page** and hidden by CSS, so one more nav entry
+moves **every print golden in the repo**, and that was not a thing to do in an
+unattended pass. `charge.py` had shipped the same way for the same reason.
+
+⚠ **The cost of that call was the point of reversing it: the page was
+reachable at `/employee/` and the owner could not find it.** A register nobody
+can navigate to is not delivered, whatever the tests say. The link arrived in a
+pass authorised to re-baseline — five goldens moved **+248 bytes each, in the
+`head` block alone**, and **nothing on any printed sheet changed**;
+`tests/test_nav_reachability.py` holds both halves and
+`tests/test_nav_visibility.py` holds who sees the entry.
+`test_there_is_no_nav_link_and_no_dashboard_card` said to delete itself in the
+commit that adds the link, and it was — kept verbatim in a comment in its
+place, with `test_the_register_is_reachable_from_the_nav_and_the_launcher`
+asserting the opposite fact.
 
 ⚠ **2. Owner, Director and HR only — and the restriction is SPEC-TRACED, not
 derived.** CLIENT_CHANGES-2.md **B4** states exactly one per-role restriction:
@@ -5110,6 +5134,34 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
   `/proforma/view` and `/purchase/view`, being ordinary screen pages. Breaking
   the coupling — by giving the document routes challan-shaped shells with no
   nav — would give the chip to all six and is the fix; re-baselining is not.
+
+  🟠 **Re-baselined once, on purpose, on 29 August 2026 — and the gap is still
+  open.** `NAV_ITEMS` gained `Employees` (§5, `/employee`), which is the change
+  this entry predicts the cost of, taken deliberately under an override that
+  named the golden movement as its intended outcome. What it measured:
+
+  | document | before | after | delta | blocks moved |
+  |---|---|---|---|---|
+  | tax invoice | 110,216 | 110,464 | **+248** | `head` |
+  | proforma | 103,781 | 104,029 | **+248** | `head` |
+  | purchase order | 106,559 | 106,807 | **+248** | `head` |
+  | RA bill | 97,664 | 97,912 | **+248** | `head` |
+  | `/po/create` picker | 54,498 | 54,746 | **+248** | `head` |
+  | **delivery challan** | 83,657 | 83,657 | **0** | **none** |
+
+  Every one of the 248 bytes is one `<a class="nav-link">` inside
+  `<nav>…</nav>`; `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and
+  `signature` are byte-identical on all five, and **stripping the nav makes the
+  two renders byte-identical**, which is how "nothing on paper changed" is
+  established rather than hoped.
+  [tests/test_nav_reachability.py](tests/test_nav_reachability.py) asserts all
+  of that per document, plus that every sheet carrying a nav also carries the
+  `@media print` rule that hides it.
+
+  📌 **The re-baseline does not close this gap and must not be read as
+  closing it.** The next nav change costs the same five documents again. The
+  fix is still the challan's shape — document routes with no nav at all — and
+  the challan's `0` in that table is the evidence that it works.
 
 **A gap's number is a stable identifier, not its position in a list.** Sixty-odd
 references cite them from code comments, docstrings, tests and four other

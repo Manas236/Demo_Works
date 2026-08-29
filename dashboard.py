@@ -692,6 +692,12 @@ ICONS = {
     "plus":    """<svg viewBox="0 0 24 24" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>""",
     "users":   """<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>""",
     "project": """<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>""",
+    # One person with a card, not the `users` pair: `users` opens the *accounts*
+    # register (who may sign in), and this opens the *employee* master (who
+    # works here and what they are paid). Two registers that both say "people"
+    # need telling apart at a glance, and they are the two an auditor most often
+    # confuses — PROGRESS.md §6-E is that confusion in words.
+    "employee": """<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="17" y1="3" x2="21" y2="3"/><line x1="19" y1="1" x2="19" y2="5"/></svg>""",
 }
 
 
@@ -863,9 +869,23 @@ def _persistence_strip() -> str:
 # cannot drift apart. There is deliberately no permission id here: writing one
 # would be the second list, and the second list is how a hidden entry becomes an
 # open route (or a visible one becomes a dead link).
+#
+# ⚠ **The nav is not the launcher and must not become it.** Fifteen registers
+# live on the dashboard's module strip; what belongs *here* is what somebody
+# needs from wherever they already are. Projects is the entity that groups the
+# documents, Employees is the register the workforce pages hang off, and
+# Settings is configuration. Each of the three also carries a card, which is the
+# Projects pattern rather than a duplication introduced here.
+#
+# ⚠ **Adding an entry moves every print golden in this repository.** `_nav()` is
+# embedded in every printed page and hidden by CSS at print, so the bytes move
+# while the paper does not. That is why `employee.py` shipped with no link on
+# 29 August 2026 and why the link arrived in a pass authorised to re-baseline —
+# ABOUT.md §7, "Global Nav vs Print Goldens". Do not add one casually.
 NAV_ITEMS = (
-    ("project.list_projects",  "project",  "Projects"),
-    ("settings.edit_settings", "settings", "Settings"),
+    ("project.list_projects",   "project",  "Projects"),
+    ("employee.list_employees", "employee", "Employees"),
+    ("settings.edit_settings",  "settings", "Settings"),
 )
 
 # The indent each nav entry sits on. A constant so the joined output is
@@ -1185,6 +1205,24 @@ def _metrics():
         "recent":       recent,
         "attention":    attention,
         "proj_total":   len(STORE.get("projects", {})),
+        # The employee master (CC-2 C4). Active only, because that is the
+        # accessor the module itself exposes and an inactive person is not
+        # somebody the office is currently paying. ⚠ **No salary total on the
+        # card.** The register is restricted to Owner, Director and HR, and a
+        # payroll figure on the landing page would state to anybody holding
+        # `dashboard.view` the one number B4 keeps from Sales, Purchase and
+        # Accounts. ABOUT.md §7 gap 27 is the standing form of that risk; this
+        # is one place not to walk into it.
+        "emp_total":    sum(1 for e in STORE.get("employees", {}).values()
+                            if e.get("active", True)),
+        # Receipts — money actually received against an RA bill. A count and a
+        # value; `amount` is always positive by construction (ABOUT.md §3), so
+        # this is a straight sum and needs no status filter. Written off is
+        # deliberately NOT added in: it is money given up, not money that
+        # arrived, and A5's whole point is that the two are separate facts.
+        "rcpt_total":   len(STORE.get("receipts", {})),
+        "rcpt_value":   sum(float(r.get("amount") or 0.0)
+                            for r in STORE.get("receipts", {}).values()),
         "ch_total":     len(STORE.get("charges", {})),
         "ch_spend":     sum(float(c.get("taxable_amount") or 0.0) + float(c.get("gst_amount") or 0.0)
                             for c in STORE.get("charges", {}).values()),
@@ -1738,6 +1776,12 @@ def index():
                       f"""{m['boq_total']} priced{f" · {rupees(m['boq_value'])} basic value" if m['boq_value'] else " · project schedules, billed by RA"}"""),
                 _card("ra.list_ras", "ra", "Running Account Bills",
                       f"""{m['ra_total']} raised{f" · {rupees(m['ra_value'])} claimed" if m['ra_value'] else " · interim claims against BOQs"}"""),
+                # Money received against those claims. Reachable from
+                # `/client/` and `/ra/view` since it was built, but it had no
+                # card — the only top-level register in the app without one,
+                # which meant the ledger could be found only from inside a bill.
+                _card("receipt.list_receipts", "proforma", "Receipts",
+                      f"""{m['rcpt_total']} recorded{f" · {rupees(m['rcpt_value'])} received" if m['rcpt_value'] else " · payments against RA bills"}"""),
                 _card("challan.list_dcs", "purchase", "Delivery Challans",
                       f"""{m['dc_total']} raised · goods leaving the
                   yard against a schedule, no rates and no tax"""),
@@ -1769,6 +1813,20 @@ def index():
                       f"{m['spec_total']} clauses · what a BOQ line is written from"),
                 _card("client.list_clients", "users", "Client Register",
                       f"""{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}"""),
+                # ⚠ The employee MASTER (CC-2 C4) — not the accounts register,
+                # which is `_access_card()` two rows down. It sits here rather
+                # than under "Buy side" because it is a master record like the
+                # client register and the address book beside it: it holds who
+                # works here, and holds no money movement at all. What money it
+                # feeds is C5's, and C5 has its own home.
+                #
+                # ⚠ Drawn only for a holder of `employee.view` — Owner,
+                # Director and HR (B4). `_card()` asks `can_reach()`, so an
+                # Operation Head, a Sales Manager, a Purchase Manager and an
+                # Accountant see nothing here at all, and the route still
+                # refuses them by URL. Hiding never replaces the gate.
+                _card("employee.list_employees", "employee", "Employees",
+                      f"""{m['emp_total']} active · details and salary"""),
                 _card("address.list_addresses", "address", "Address Book",
                       f"""{m['a_total']} saved · feeds the Bill To and
                   Ship To pickers"""),

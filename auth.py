@@ -1466,6 +1466,7 @@ def list_users():
         <div style="display:flex;gap:.5rem;">
           <a class="btn" href="{url_for('auth.create_user')}">+ New user</a>
           <a class="btn" href="{url_for('auth.list_roles')}">Roles</a>
+          {_access_log_link()}
         </div>
       </div>
       <p style="font-size:.85rem;color:#6b7280;margin:.6rem 0 0;">
@@ -1825,6 +1826,30 @@ def edit_role(id):
       </form>
     </div>"""
     return _shell("Edit role", body)
+
+
+def _access_log_link() -> str:
+    """
+    The refusal log's only link in the whole application.
+
+    ⚠ It had **none** until 29 August 2026: `/access-log` was classified,
+    permissioned and rendered, and nothing anywhere pointed at it — reachable
+    only by typing the URL. It is here rather than on the dashboard's module
+    strip deliberately. That strip is a launcher for registers somebody works
+    in; this is a **diagnostic**, not an audit trail (ABOUT.md §7 gap 23: an
+    in-memory `deque(maxlen=500)` that dies with the process), and putting it
+    on the landing page would advertise it as more than it is. `/users` is its
+    parent — you come here when somebody says they were refused something.
+
+    Drawn only for a holder of `admin.access_log`, through `can_reach()` rather
+    than by naming the permission a second time. An Admin holding `admin.users`
+    without it sees the two buttons beside it and not this one, and the route
+    still refuses them by URL.
+    """
+    if not can_reach("auth.access_log"):
+        return ""
+    return (f'<a class="btn btn-ghost" href="{url_for("auth.access_log")}">'
+            f'Refused access</a>')
 
 
 # =============================================================================
