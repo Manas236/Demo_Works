@@ -953,6 +953,97 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > together with the cutback that now repairs it, was built against **no
 > quotation at all**.
 
+> ### ⚠ OVERRIDE — 29 August 2026, by Manas Gawde — FOURTH block of this date: B6 and B7, the approval ladder
+>
+> **A new block, not an amendment, and the fourth one dated 29 August 2026.**
+> The three blocks above it — `86902ef` (extra PO lines and C4), the narrow
+> `quotation.py` unfreeze with the Operation Head ruling, and the third (C5, the
+> navigation re-baseline, the alias cutback) — **have not been edited,
+> reformatted, re-scoped or extended by a single character.** Each says what it
+> said when it was written and each covers what it named. This is the **twelfth
+> occasion overall and the seventh that reaches into Phase 3**.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a fourth time, not softened
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending", it is not "with the client", and it is not awaiting a countersign.
+> **It is expired.** This is the **fourth** override taken against a lapsed
+> quotation, and a fourth is not evidence that the first three made it routine.
+> **A lapsed quotation is a stronger reason to record and a weaker reason to
+> build.** Nothing below is evidence that the gate has been met or lifted.
+>
+> #### What proceeds — two items, and only these two
+>
+> - **B6 — the approval ladder, AUTHORISED.** CC-2's B6 is a three-step
+>   sequential ladder on charges (Director → Operation Head → HR), a two-approver
+>   requirement on RA / Tax Invoice / PO (Operation Head + Director), **any one
+>   Director's approval sufficient**, and the load-bearing rule that **a user
+>   cannot approve a record they created** — checked against the record's
+>   creator, not against the approver's role. Without that rule union permissions
+>   defeat the ladder, which is CC-2's own stated reason for it.
+>
+> - **B7 — unapproved documents are view-only, AUTHORISED.** CC-2's B7 is that
+>   an unapproved document **may be viewed but not printed or downloaded**, with
+>   the print and download routes gated on approval status and a print stylesheet
+>   so `Ctrl+P` does not walk around the gate.
+>
+> #### ⚠ The `created_by` backfill MUTATES LIVE RECORDS, and that is authorised
+>
+> Every approvable record gains a `created_by`, and records written before the
+> field existed have no creator to record. **This is the first pass since the
+> access-control layer that rewrites existing rows rather than only adding
+> behaviour**, and it is authorised on that understanding: a backup is taken
+> first, and the backup taken before this pass is the last one that will match
+> the pre-migration shape.
+>
+> **Grandfathered records are approvable, and the exception is pinned so it
+> cannot grow.** Refusing approval on every pre-existing record would strand
+> live bills; allowing it silently would pretend the creator-cannot-approve rule
+> held when it did not. Neither is acceptable, so the record carries an explicit
+> marker that it predates the approval system, **on screen only and never on
+> paper**, the count is recorded at migration time, and a test fails if any
+> record created after the migration lacks a creator. **The test is the point of
+> the rule** — without it the exception becomes a permanent hole.
+>
+> #### Still gated, untouched, and not started
+>
+> **B8, C1 and C2**, and the two BLOCKED items **C3** and **C6**. Not one of them
+> is started and no groundwork is laid for any of them.
+>
+> ⚠ **C2 becomes buildable when this lands, and that is NOT an authorisation to
+> build it.** The third block of this date recorded that C2 waits on B6 because
+> its approved quantity feeds RA-Installation and an unapproved measurement is
+> a number somebody typed. B6 landing removes that engineering obstacle and
+> **removes nothing else**: C2 is priced in MG/SF/2026-02, MG/SF/2026-02 is
+> expired, and C2 still needs an override block of its own that names it. **That
+> a thing has become possible is the most common way this gate gets walked
+> through by accident**, and it is recorded here precisely so the next pass does
+> not mistake the one for the other.
+>
+> #### Chargeability
+>
+> **B6 and B7 are priced in MG/SF/2026-02 and stay priced there.** This is not a
+> §0 no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and an approval ladder is new
+> capability. Building it early changed **when** it was built, not **what it
+> costs** or **who agreed to it** — and the quotation that prices it has lapsed.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. That B6 and B7 were authorised does
+> not authorise B8, C1 or C2, and it emphatically does not open C6.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, items 8, 3, 2, 4 and 5, the whole of the Phase
+> 3B access-control layer, the three Phase 3A items of 27 August, the three of
+> 28 August, C4, C5 **and now the B6/B7 approval ladder** were built against a
+> quotation that has **lapsed** — and the extra-lines work, together with the
+> cutback that repairs it, was built against **no quotation at all**.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
