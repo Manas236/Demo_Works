@@ -338,7 +338,7 @@ def sheets_of_boq(boq_id: str) -> list:
     return rows
 
 
-def sheets_on_chain(boq_id: str) -> list:
+def sheets_on_chain(boq_id: str, chain: set = None) -> list:
     """
     `[(id, sheet)]` raised anywhere on this BOQ's revision chain, newest first.
 
@@ -347,12 +347,23 @@ def sheets_on_chain(boq_id: str) -> list:
     measured the moment a schedule was revised — silently, and only on the
     projects that have been revised.
 
-    `boq._ancestor_ids()` walks backward from here, which is
-    `challan.dispatched_by_line()`'s choice and is right for the same reason: a
-    measurement is always raised against the tip, so backward is the whole
-    chain from wherever it was raised.
+    `boq._ancestor_ids()` walks **backward**, which is
+    `challan.dispatched_by_line()`'s choice and is right for its reason: a
+    measurement is always raised against the tip, so backward is the whole chain
+    from wherever it was raised.
+
+    ⚠ **`chain` exists so `ra.py` can hand in ITS chain, and that is
+    load-bearing rather than tidy.** `ra.claimed_by_line()` walks
+    `ra.revision_chain()`, which goes **both** ways. On the tip the two answers
+    are identical, but `edit_ra()` asks about a bill whose `boq_id` may be a
+    superseded revision — and there a backward-only walk would miss a sheet
+    raised on a later revision while the claimed sum still counted the later
+    bills. The ceiling and the sum would then be measured over different sets of
+    records, which is the one thing a guard must never do. `ra.overclaims()`
+    passes its own chain in; everything else here defaults to the backward walk.
     """
-    chain = BQ._ancestor_ids(boq_id) if boq_id else set()
+    if chain is None:
+        chain = BQ._ancestor_ids(boq_id) if boq_id else set()
     rows = [(mid, m) for mid, m in records().items()
             if str(m.get("boq_id") or "") in chain]
     rows.sort(key=lambda kv: (str(kv[1].get("date") or ""),
@@ -361,7 +372,7 @@ def sheets_on_chain(boq_id: str) -> list:
 
 
 def measured_by_line(boq_id: str, exclude_id: str = "",
-                     approved_only: bool = False) -> dict:
+                     approved_only: bool = False, chain: set = None) -> dict:
     """
     `{line_id: qty}` measured against this BOQ's revision chain.
 
@@ -392,7 +403,7 @@ def measured_by_line(boq_id: str, exclude_id: str = "",
     takes the same argument for the same reason.
     """
     out = {}
-    for mid, m in sheets_on_chain(boq_id):
+    for mid, m in sheets_on_chain(boq_id, chain):
         if exclude_id and mid == exclude_id:
             continue
         if approval.is_rejected(m):
@@ -409,7 +420,7 @@ def measured_by_line(boq_id: str, exclude_id: str = "",
     return out
 
 
-def approved_qty_by_line(boq_id: str) -> dict:
+def approved_qty_by_line(boq_id: str, chain: set = None) -> dict:
     """
     `{line_id: qty}` from **approved** measurement sheets on the chain.
 
@@ -425,12 +436,13 @@ def approved_qty_by_line(boq_id: str) -> dict:
     with no approved measurement, so an empty answer can only describe a project
     that already existed. `tests/test_measurement_pin.py` is what pins that.
     """
-    return measured_by_line(boq_id, approved_only=True)
+    return measured_by_line(boq_id, approved_only=True, chain=chain)
 
 
-def has_approved_measurement(boq_id: str) -> bool:
+def has_approved_measurement(boq_id: str, chain: set = None) -> bool:
     """Is there an approved measurement anywhere on this BOQ's chain?"""
-    return any(approval.is_approved(m) for _mid, m in sheets_on_chain(boq_id))
+    return any(approval.is_approved(m)
+               for _mid, m in sheets_on_chain(boq_id, chain))
 
 
 def boq_qty_by_line(boq_id: str) -> dict:

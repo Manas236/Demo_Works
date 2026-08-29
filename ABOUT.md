@@ -1148,6 +1148,51 @@ widths and one signature label, which is what `challan.py` added.
 
 ---
 
+#### C1 — the order of working, and the state the supply leg was found in
+
+CC-2 **C1** states two chains and no enforcement mechanism:
+
+```
+BoQ ──► Delivery Challan ──► RA-Supply
+BoQ ──► Measurement      ──► RA-Installation
+```
+
+⚠ **The supply leg was UNWIRED before 29 August 2026.** Nothing outside
+`challan.py` read `STORE["delivery_challans"]` — not `ra.py`, not the BOQ page,
+nothing — and `challan → ra` was refused at AST level. ABOUT.md §7 gap 19
+recorded that the two are not reconciled. C1's supply link did not exist in
+either direction, and `ra.challan_exists()` plus `ra._c1_refusal()` are the whole
+of it.
+
+**Refused by URL, and that is ours.** C1 states a domain model; the choice to
+refuse the address rather than hide a button is B5's established rule.
+`/boq/view` hides a chip whose step is missing — presentation — and
+`tests/test_c1_order_of_working.py` requests every refused address directly,
+**including the POST**, because a GET refusal with an open POST is not a gate.
+
+**The two legs are not symmetrical:**
+
+| leg | ordering guard | quantity ceiling |
+|---|---|---|
+| installation | an **approved** measurement must exist on the chain | **yes** — `ra.overclaims()` reads the measured quantity |
+| supply | a delivery challan must exist on the chain | **no** |
+
+The supply leg gets no ceiling because CC-2 says a challan *proves* the supply
+and puts no quantity on that arrow — and deriving one would be the wrong rule
+anyway: `challan.BLOCK_OVER_DISPATCH` is False on purpose, so dispatch figures
+are a warning rather than a guard and are not tight enough to cap somebody's
+money.
+
+A challan also needs **no approval**, and that is deliberate: `approval.DOCUMENTS`
+does not name it, B6 puts it on no ladder, and requiring an approval nothing in
+the system can grant would make the supply leg unusable.
+
+⚠ **The guard is on raising a NEW claim.** A bill that already exists keeps its
+typed quantity and goes on rendering — that is the pre-measurement exception, and
+widening the guard to an existing record is how it would strand live bills.
+
+---
+
 ### 2i. `approval.py` — the ladder, and the guard the registry cannot hold
 
 CC-2 **B6** and **B7**, built 29 August 2026 under the fourth override block of

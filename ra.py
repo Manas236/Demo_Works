@@ -966,9 +966,9 @@ def overclaims(boq_id: str, leg: str, claims: list,
     module existed — the same shape of problem as `created_by`, and it gets the
     same treatment. The exception **cannot grow**, because
     `/ra/create?leg=installation` refuses a BOQ with no approved measurement
-    so an empty answer from `MS.approved_qty_by_line()` can only describe a
-    project that already existed. The C1 route guard that closes it lands in the
-    next commit; `tests/test_measurement_pin.py` is what pins it.
+    (`_c1_refusal()`), so an empty answer from `MS.approved_qty_by_line()` can
+    only describe a project that already existed. `tests/test_measurement_pin.py`
+    is what pins that, and it is the point of the rule.
 
     ⚠ **Once ONE approved measurement exists on a chain, every line's ceiling
     comes from it** — including a line the sheet did not measure, whose ceiling
@@ -979,7 +979,7 @@ def overclaims(boq_id: str, leg: str, claims: list,
     **The supply leg is untouched.** Its ceiling is still the approved BOQ
     quantity, because supply is proven by a delivery challan and CC-2 asks for
     no quantity to flow from one to the other. C1's supply guard is an ordering
-    check at the route, not a ceiling here.
+    check at the route, not a ceiling here — see `_c1_refusal()`.
     """
     approved = approved_by_line(boq_id)
     prior = claimed_by_line(boq_id, exclude_ra_id=exclude_ra_id)
@@ -991,7 +991,15 @@ def overclaims(boq_id: str, leg: str, claims: list,
     # "is this line in the schedule at all" question below still reads the BOQ:
     # a line that was never measured is a different refusal from a line that was
     # never in the schedule, and one message must not wear the other's words.
-    measured = MS.approved_qty_by_line(boq_id) if leg == "installation" else {}
+    # ⚠ **The chain is handed in, not re-derived.** `claimed_by_line()` above
+    #   walks `revision_chain()`, which goes both ways; `measurement.py` defaults
+    #   to `boq._ancestor_ids()`, which goes backward only. On the tip the two
+    #   agree, but `edit_ra()` asks about a bill whose `boq_id` may be a
+    #   superseded revision — and there the ceiling and the sum would be measured
+    #   over different sets of records, which is the one thing a guard must never
+    #   do.
+    measured = (MS.approved_qty_by_line(boq_id, chain=set(revision_chain(boq_id)))
+                if leg == "installation" else {})
 
     out = []
     for c in claims or []:
@@ -1609,6 +1617,97 @@ def frozen_reason(bill: dict) -> str:
             f"correction can wait, put it on the next claim, where it is "
             f"visible to the contractor rather than applied behind a document "
             f"he has.")
+
+
+# =============================================================================
+# CC-2 C1 — THE ORDER OF WORKING
+# =============================================================================
+# CC-2 states the chain and nothing about how it is held:
+#
+#     BoQ -> Delivery Challan -> RA-Supply
+#     BoQ -> Measurement      -> RA-Installation
+#
+#     Supply is proven by a delivery challan. Installation is proven by a
+#     measurement.
+#
+# ⚠ **REFUSED BY URL, NOT BY HIDING A BUTTON.** That is B5's established rule
+#   and it is ours, not C1's — C1 states a domain model. `/boq/view` does hide
+#   the two chips when the step before them is missing, and hiding is
+#   presentation: `/ra/create?boq=…&leg=installation` is a typeable address and
+#   this is the gate on it. `tests/test_c1_order_of_working.py` requests each
+#   address directly.
+#
+# ⚠ **THE TWO LEGS ARE NOT SYMMETRICAL, and the asymmetry is deliberate.**
+#   The installation leg gets an ordering guard AND a quantity ceiling
+#   (`overclaims()`), because CC-2 says the approved measurement *is* the source
+#   of the quantity. The supply leg gets the ordering guard ALONE: CC-2 says a
+#   challan proves the supply, and says nothing about a quantity flowing from
+#   one to the other. Deriving a supply ceiling from dispatch would be inventing
+#   a rule — and it would be the wrong one, because
+#   `challan.BLOCK_OVER_DISPATCH` is False on purpose, so dispatch figures are
+#   not guarded tightly enough to be the ceiling on a claim.
+#
+# ⚠ **`ra.py` does NOT import `challan.py`.** It reads
+#   `STORE["delivery_challans"]` directly — the one-way trick used between
+#   boq/ra, boq/challan, boq/po_draft and ra/receipt. The prohibition on
+#   `challan -> ra` exists because "a challan records goods moved, an RA bill
+#   records money claimed; they diverge and neither answers the other's
+#   questions", and that argument cuts both ways; the existence check here needs
+#   one dict lookup, not the challan module. `measurement.py` IS imported,
+#   because a quantity actually flows along that arrow and CC-2 says so.
+
+
+def challan_exists(boq_id: str) -> bool:
+    """
+    Is there any delivery challan on this BOQ's revision chain?
+
+    Chain-scoped for `claimed_by_line()`'s reason: a revision is a new BOQ
+    record, so a per-record answer would report "no challan" the moment a
+    schedule was revised — silently, and only on the revised projects.
+    """
+    chain = set(revision_chain(boq_id))
+    if not chain:
+        return False
+    return any(str(dc.get("boq_id") or "") in chain
+               for dc in (STORE.get("delivery_challans") or {}).values())
+
+
+def _c1_refusal(boq_id: str, leg: str):
+    """
+    The C1 gate, or None. A redirect carrying the reason and the way forward.
+
+    A redirect rather than a 403, for `approval._refusal()`'s two reasons: it is
+    the house shape for a per-record business rule, and `auth._gate()` refuses
+    with a 403, so returning one here would make `/ra/create` look permanently
+    unreachable to `tests/test_nav_visibility.py`'s sweep. What is refused is
+    this schedule, today — not the route.
+
+    ⚠ **A project with existing bills and no proof document is NOT rescued
+    here.** The guard is on raising a NEW claim, so a bill that already exists
+    keeps its typed quantity and goes on rendering. That is deliberate and it is
+    the pin: the exception is closed at the moment this shipped and every claim
+    raised afterwards has to have the step before it. Widening this to let an
+    old project carry on is how the exception would grow.
+    """
+    if leg == "installation":
+        # The same chain `overclaims()` measures against — see the note there.
+        if not MS.has_approved_measurement(boq_id,
+                                           chain=set(revision_chain(boq_id))):
+            return redirect(url_for(
+                "boq.view_boq", id=boq_id, type="error",
+                msg="Installation is claimed against an approved measurement, "
+                    "not against the schedule. Raise a measurement sheet for "
+                    "this project and have it approved, then this claim can be "
+                    "made."))
+        return None
+
+    if leg == "supply" and not challan_exists(boq_id):
+        return redirect(url_for(
+            "boq.view_boq", id=boq_id, type="error",
+            msg="Supply is claimed against material that has gone out. Raise a "
+                "delivery challan for this project first, then this claim can "
+                "be made."))
+    return None
 
 
 def _receipts_refusal(bill: dict, done: str, doing: str) -> str:
@@ -3053,6 +3152,11 @@ def create_ra():
       <tbody>{rows or empty}</tbody>
     </table></div>
   </div>""")
+
+    # ── CC-2 C1 — THE ORDER OF WORKING, refused BY URL ──────────────────────
+    refusal = _c1_refusal(boq_id, leg)
+    if refusal:
+        return refusal
 
     boq = boqs[boq_id]
     prev = claimed_by_line(boq_id)

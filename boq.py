@@ -2174,15 +2174,30 @@ def view_boq(id: str):
     # the ordinary register with the ordinary series. `boq.py` may never import
     # `purchase.py`, so this is `url_for` and nothing else — the same one-way
     # trick as the RA chips, the draft PO and the challan above it.
-    # ⚠ **The Measurement chip.** A measurement is the installation leg's proof,
-    # exactly as the challan is the supply leg's, so it rides the same `is_tip`
-    # gate as its neighbours and for the same reason: a superseded revision is
-    # not the schedule anybody is measuring against. `/measurement/create`
-    # refuses one at the route as well — a link is not a guard.
+    # ⚠ **The Measurement chip and CC-2 C1.** A measurement is the installation
+    # leg's proof, exactly as the challan is the supply leg's, so it rides the
+    # same `is_tip` gate as its neighbours and for the same reason: a superseded
+    # revision is not the schedule anybody is measuring against.
+    # `/measurement/create` refuses one at the route as well — a link is not a
+    # guard.
     #
-    # `boq.py` may import neither `ra.py` nor `measurement.py` (ABOUT.md §2b),
-    # so this is `url_for` and nothing else — the one-way trick every other chip
-    # in this bar uses.
+    # ⚠ **The two RA chips are now drawn only when the step before them
+    # exists**, which is C1's order of working. THIS IS PRESENTATION AND NOT
+    # THE GATE. `ra._c1_refusal()` refuses the typed URL, and
+    # `tests/test_c1_order_of_working.py` hits each address directly to prove
+    # it. Hiding a button is not access control (B5's rule); what hiding does is
+    # stop somebody clicking into a refusal they could have been spared.
+    #
+    # `boq.py` may import neither `ra.py` nor `challan.py` nor `measurement.py`
+    # (§2b), so both conditions are read off STORE directly — the same one-way
+    # trick every other chip in this bar uses.
+    _chain = _ancestor_ids(id) | {id}
+    _has_dc = any(str(dc.get("boq_id") or "") in _chain
+                  for dc in (STORE.get("delivery_challans") or {}).values())
+    _has_ms = any(str(m.get("boq_id") or "") in _chain
+                  and str(m.get("approval_status") or "") == "approved"
+                  for m in (STORE.get("measurements") or {}).values())
+
     ra_btns = ""
     if is_tip:
         ra_btns = (
@@ -2194,11 +2209,15 @@ def view_boq(id: str):
             f'class="btn btn-ghost">&#43;&nbsp;Delivery Challan</a>'
             f'<a href="{url_for("measurement.create_ms", boq=id)}" '
             f'class="btn btn-ghost">&#43;&nbsp;Measurement</a>'
-            f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
-            f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>'
-            f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '
-            f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Installation</a>'
         )
+        if _has_dc:
+            ra_btns += (
+                f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
+                f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>')
+        if _has_ms:
+            ra_btns += (
+                f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '
+                f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Installation</a>')
 
     n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
     panel_html = f"""
