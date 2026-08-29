@@ -805,6 +805,154 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > agent may take, infer, or extend** — and a *narrow* one is the easiest kind to
 > extend by accident, which is why its scope is written twice above.
 
+> ### ⚠ OVERRIDE — 29 August 2026, by Manas Gawde — THIRD block of this date: C5, the navigation re-baseline, and the alias cutback
+>
+> **A new block, not an amendment, and the third one dated 29 August 2026.**
+> The two blocks above it — `86902ef` (extra PO lines and C4) and the one that
+> followed `86902ef → 5605416` (the narrow `quotation.py` unfreeze and the
+> Operation Head ruling) — **have not been edited, reformatted, re-scoped or
+> extended by a single character.** Each says what it said when it was written
+> and each covers what it named. Amending an older block to cover work it does
+> not mention is the specific act §0 forbids, and the item-4 note at the foot of
+> this section is the standing record of what that mistake looks like. This is
+> the **eleventh occasion overall and the sixth that reaches into Phase 3**.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a third time, not softened
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending", it is not "with the client", and it is not awaiting a countersign.
+> **It is expired.** This is the **third** override taken against a lapsed
+> quotation, and a third is not evidence that the first two made it routine.
+> **A lapsed quotation is a stronger reason to record and a weaker reason to
+> build**, and repeating the sentence is the point of it. Nothing below is
+> evidence that the gate has been met or lifted.
+>
+> #### What proceeds — three things, and only these three
+>
+> - **C5 — attendance and site-wise labour cost, AUTHORISED.** One of the six
+>   remaining NOT STARTED items, gated until now. CC-2's C5 is daily
+>   presentee/absentee marking, **one employee = one site = one day**, overtime
+>   at `salary ÷ 8 × hours`, and a site-wise labour cost figure. It consumes the
+>   employee master C4 shipped and it is **a labour cost tracker, not payroll** —
+>   PF, ESIC, professional tax and minimum wages remain the client's, per
+>   MG/SF/2026-02 §5.
+>
+>   ⚠ **The OT multiplier is a SETTING and no literal multiplier may appear in
+>   the calculation code.** CC-2 is explicit and the reason is not stylistic: the
+>   client's own figure is 1× ordinary rate, statutory overtime under the
+>   Factories Act and most state Shops & Establishments Acts is generally
+>   **twice**, and hardcoding the client's figure would make this software
+>   compute a **statutory underpayment**. It defaults to the client's figure and
+>   lives at `/settings` with a line saying what it is and what it is not.
+>
+>   ⚠ **C5 is NOT to be wired into C6 or any P&L, and this authorisation does
+>   not reach that far.** C6 is BLOCKED on the client's Open question 4 —
+>   whether attendance-based wages or the BOQ installation base rate is
+>   authoritative for labour cost — and subtracting both counts labour twice.
+>   **C5 can be built without that answer; wiring it into C6 cannot.** Nothing
+>   is exported, and `projectview.py`'s standing prohibition is untouched.
+>
+> - **The full navigation re-baseline, AUTHORISED — and every pinned print
+>   golden will move.** `dashboard._nav()` is embedded in every printed page and
+>   hidden by CSS at print, so a nav entry moves the pinned bytes of documents
+>   whose printed appearance does not change by one character. That coupling is
+>   [ABOUT.md §7](ABOUT.md)'s first gap and it is why the employee master shipped
+>   with no link — a deliberate call to protect the goldens during an unattended
+>   pass, which left the owner unable to find a page he had paid for.
+>
+>   **That call is now reversed on purpose. The movement of the goldens is the
+>   intended outcome of this authorisation, not a side effect of it**, and the
+>   re-baseline is the point rather than the price. Two conditions ride with it
+>   and neither is negotiable: the movement in each document must be **confined
+>   to the `_nav()` block**, every other block staying byte-identical; and **not
+>   one figure, label or visible character on any printed sheet may change.** If
+>   a nav change is visible on paper the print rule is wrong — **stop and
+>   report, do not re-baseline.**
+>
+> - **The `po_parts.py` alias cutback, AUTHORISED as a DEFECT FIX.** The seeded
+>   prefill table carries 73 canonical parts and 172 aliases, and the
+>   overwhelming majority of those aliases are **invented — nobody wrote them**.
+>   One class is a live wrong number: `200 mm elbow` and `200 mm elbow 8 inch`
+>   are the same physical part reaching two different placeholder rates, so
+>   which figure lands on a purchase order depends on how somebody typed it.
+>   `_norm()`'s own docstring names that as the thing to avoid — *a match it
+>   gets wrong puts a figure on a purchase order that nobody chose*.
+>
+>   **This is a defect fix against work delivered on 29 August 2026 and is a §0
+>   no-charge item**, not new capability and not new scope. The rule it
+>   establishes is that **an alias may exist only if the client wrote that exact
+>   string, or it is a documented misspelling of a string the client wrote**;
+>   everything else is deleted, and a test enforces the rule so the next pass
+>   cannot reinvent them. **The test is the deliverable, not just the cutback.**
+>
+>   ⚠ **No canonical part may be merged or split.** `200mm elbow` and
+>   `8" elbow` stay two separate entries with **no alias between them**, so
+>   typing one can never fetch the other's rate. This block does **not** assert
+>   they are the same part and does **not** assert they are different — that is a
+>   parts question for the client, and the cutback removes the ambiguity rather
+>   than answering it. It joins *is "PO red paint" red-oxide primer* as an open
+>   question carried forward.
+>
+>   ⚠ **Prefill hit-rate falls, and the fall is correct.** `grinding wheel` will
+>   no longer fill a rate: the line is accepted exactly as typed, with a blank
+>   rate and no assumed flag, which is the honest outcome. A bare name that
+>   silently chooses a size — the 4-inch wheel, the 20-litre thinner, the
+>   non-Asian primer — is the same defect as the elbow, one step quieter.
+>
+> #### Still gated, untouched, and not started
+>
+> **B6, B7, B8, C1 and C2**, and the two BLOCKED items **C3** and **C6**. Not
+> one of them is started, and no groundwork is laid for any of them. No field is
+> added "ready for" one, which remains the way this gate is most likely to be
+> walked through by accident.
+>
+> ⚠ **C2 in particular is NOT taken now, and the reason is recorded so it is not
+> re-asked next pass.** C2 is the measurement document, and its approved
+> quantity is what feeds RA-Installation — so **it needs an approval concept,
+> and B6 does not exist.** Building C2 today means one of two things, and both
+> are worse than waiting: a measurement document with **no approval step**,
+> which defeats the document, since an unapproved measurement is a number
+> somebody typed; or a **second approval concept** invented here that B6 must
+> later reconcile with, which is how two ladders end up disagreeing about what
+> "approved" means on the same record. **C2 follows B6.** C5 does not, which is
+> why C5 is the item that moves.
+>
+> #### Chargeability
+>
+> **C5 is priced in MG/SF/2026-02 and stays priced there.** This is not a §0
+> no-charge exemption: that exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01, and attendance and labour cost
+> are new capability. Building it early changed **when** it was built, not
+> **what it costs** or **who agreed to it** — and the quotation that prices it
+> has lapsed.
+>
+> **The navigation re-baseline and the alias cutback are both no-charge.** The
+> first makes a page already delivered actually reachable, which is the
+> reachability half of the §0 exemption in its plainest form. The second is a
+> defect fix against the extra-lines work of 29 August — and ⚠ **it does not
+> retro-price that work, which remains priced NOWHERE**: not in MG/SF/2026-01,
+> not in MG/SF/2026-02, and whether it is charged, absorbed, or folded into a
+> replacement quotation is still a commercial decision the client-facing owner
+> **has not yet taken**.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. That C5 was authorised does not
+> authorise C1 or C2, and it emphatically does not open C6 — C6 is blocked on a
+> question the client has not answered, and C5 arriving does not answer it.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged, and
+> it is restated in its sharpest form yet:** if MG/SF/2026-02 is never signed,
+> items 8, 3, 2, 4 and 5, the whole of the Phase 3B access-control layer, the
+> three Phase 3A items of 27 August, the three of 28 August, C4 **and now C5**
+> were built against a quotation that has **lapsed** — and the extra-lines work,
+> together with the cutback that now repairs it, was built against **no
+> quotation at all**.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
