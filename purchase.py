@@ -79,6 +79,7 @@ import uuid
 from datetime import date as _date, datetime as _datetime
 from flask import Blueprint, request, redirect, url_for
 
+import approval
 import branding as B
 import pipeline as P
 import docsheet as DS
@@ -1937,6 +1938,8 @@ def create_purchase():
                      f"{po['vendor_name'] or 'vendor'} for &#8377;{grand:,.0f}.",
                  status_to=status)
             STORE["purchases"][pid] = po
+            # B6 — the creator, captured at the write site. See approval.py.
+            approval.stamp_creator(po)
 
             # Buying material for a job is a real event in that deal's life, so
             # it goes on the quotation's audit trail — the one place the two
@@ -2639,6 +2642,10 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
              f"{origin}.",
          status_to=data["status"])
     STORE["purchases"][pid] = po
+    # B6 — the creator, captured at the write site. This helper is the
+    # write site for BOTH /purchase/from-boq and /purchase/from-draft, so
+    # stamping here covers the pair without a second call.
+    approval.stamp_creator(po)
     return po
 
 

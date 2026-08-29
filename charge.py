@@ -31,6 +31,7 @@ labour cost), which is gated and not authorised.
 import uuid
 from flask import Blueprint, redirect, request, url_for
 
+import approval
 import branding as B
 import pipeline as P
 from store import STORE
@@ -331,6 +332,10 @@ def new_charge():
                 "created_at": _now(),
                 "updated_at": _now()
             }
+            # B6 — the creator is captured HERE, at the write site, because the
+            # rule that a person may not approve their own record needs the
+            # creator recorded at the one moment there is one.
+            approval.stamp_creator(STORE["charges"][cid])
             return redirect(url_for("charge.list_charges", msg="Charge saved.", type="success"))
             
     return _form(data, error, action=url_for("charge.new_charge"), submit_label="Save Charge")

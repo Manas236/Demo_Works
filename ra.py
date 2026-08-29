@@ -56,6 +56,7 @@ from datetime import date as _date
 
 from flask import Blueprint, redirect, request, url_for
 
+import approval
 import boq as BQ
 import branding as B
 import pipeline as P
@@ -3093,6 +3094,8 @@ def create_ra():
                 "notes": notes_val,
                 "company_branch": "", "auth_signatory": "",
             }
+            # B6 — the creator, captured at the write site. See approval.py.
+            approval.stamp_creator(STORE["ra_bills"][rid])
             return redirect(url_for("ra.view_ra", id=rid,
                                     msg="RA bill saved.", type="success"))
 

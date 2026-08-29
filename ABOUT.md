@@ -2123,6 +2123,54 @@ a fresh install.
 
 ---
 
+### Approval fields  (CC-2 **B6** / **B7**, 29 August 2026)
+
+Not a collection of its own. These fields ride on the **four approvable
+documents** — a charge, an RA bill, a tax invoice and a purchase order — because
+an approval is a fact *about* a document, not a record with a life of its own.
+`approval.DOCUMENTS` is the one list of which four, and `approval.py` is the
+only module that reads or writes any of it.
+
+```python
+{...,                                # the document's own fields, unchanged
+ "created_by": "<user id>" | None,   # WHO RAISED IT — captured at the write site
+ "pre_approval_system": True,        # ONLY on a record the migration marked
+}
+```
+
+**`created_by` is captured at the write site, by `approval.stamp_creator()`.**
+Not derived later and not inferred from a log: B6's load-bearing rule is that a
+user cannot approve a record they created, and a rule about the creator needs
+the creator recorded at the one moment there is one. The five write sites are
+`charge.new_charge`, `ra.create_ra`, `invoice.create_invoice`,
+`purchase.create_purchase` and `purchase._create_po_record` — the last serving
+both `/purchase/from-boq` and `/purchase/from-draft`.
+
+⚠ **`pre_approval_system` marks a CLOSED HISTORICAL SET and only the migration
+writes it.** `tools/backfill_created_by.py` marked **15 records** on 29 August
+2026 — 5 charges, 7 RA bills, 1 tax invoice, 2 purchase orders — and wrote its
+own moment and counts to `STORE["settings"]["approval_migration"]`.
+
+The three states, and why they are three and not two:
+
+| `created_by` | `pre_approval_system` | means |
+|---|---|---|
+| a user id | absent | ordinary: this person raised it, and may not approve it |
+| `None` | `True` | **grandfathered** — predates the system, counted, closed |
+| absent / `""` | absent | creator unknown (a fixture, a seed). Not in the set |
+
+Collapsing rows 2 and 3 is the mistake this shape exists to prevent. A
+grandfathered record is a member of a set somebody counted; a record with a
+missing stamp is a bug. If the second were inferred from the first, every future
+stamping failure would silently join a set that was closed in August — and a
+grandfathered record is approvable by anybody, because the creator guard has
+nothing to check against. `tests/test_approval_grandfather.py` is what keeps the
+set closed, and it is load-bearing: it asserts every create route stamps, that
+no record created after the pinned moment lacks a creator, and that nothing but
+the migration ever writes the mark.
+
+---
+
 ## 4. Persistence — how `db.py` works
 
 STORE is a plain dict that every blueprint mutates **in place**. A write-through

@@ -59,6 +59,7 @@ import uuid
 from datetime import date as _date
 from flask import Blueprint, request, redirect, url_for
 
+import approval
 import branding as B
 import pipeline as P
 import docsheet as DS
@@ -742,6 +743,8 @@ def create_invoice(pid: str):
                 "auth_signatory": pi.get("auth_signatory", ""),
             }
             STORE["invoices"][iid] = ti
+            # B6 — the creator, captured at the write site. See approval.py.
+            approval.stamp_creator(ti)
 
             # Invoicing the supply is the last real event in the deal's life, so
             # it belongs on the quotation's audit trail alongside the PI. Like
