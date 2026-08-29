@@ -353,7 +353,7 @@ Consequences you must respect when editing:
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 520 | **Employee master** &mdash; details and salary (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf. ⚠ **No nav link and no dashboard card, deliberately** &mdash; `_nav()` is on every printed page. Owner, Director and HR only (B4). |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
-| [po_parts.py](po_parts.py) | 380 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines. ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §5 `/purchase`. |
+| [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
@@ -435,6 +435,11 @@ thing that decision was taken *against*, and it would arrive one import at a
 time. ⚠ **Every rate in the file is an assumed placeholder and none of it is a
 quoted price** — the module docstring says so first, and nothing in this
 application may present one as real.
+
+⚠ **It also owns an alias rule that is enforced by a test, and §2h is the rule.**
+`PARTS` carries the client's own spellings and nothing else; the file shipped
+with 172 aliases of which 156 were invented, and the cutback is not the
+deliverable — the test that stops the next one is.
 
 It is **generated, not written**: `python tools/gen_demo_data.py` reads
 `sify_boq.xlsx` and emits it, byte-for-byte reproducibly. Clause text, rates,
@@ -992,6 +997,68 @@ three `/users/*` write routes check `_may_administer()` on both methods.
 to look before adding a route that writes a credential or a role:
 `_may_grant()` (you cannot confer a permission you do not hold) and
 `_may_administer()` (you cannot take over an account that holds one).
+
+
+### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
+
+⚠ **An alias may exist only if the client wrote that exact string.** That is
+the whole rule, it lives in `po_parts.py`'s docstring, and
+[tests/test_po_parts_aliases.py](tests/test_po_parts_aliases.py) enforces it.
+
+It exists because the file shipped on 29 August 2026 with 73 canonical parts
+and **172 aliases, 156 of which nobody had written** — plausible-looking
+permutations generated to widen the prefill: word order reversed, a space
+added, `mm` swapped for `inch`. Three classes of them were actively wrong:
+
+| class | example | what it did |
+|---|---|---|
+| **a live wrong number** | `200 mm elbow` → ₹3,400 · `200 mm elbow 8 inch` → ₹3,200 | one physical part, two placeholder rates, **and which one landed on a purchase order depended on how somebody typed it** |
+| **an inch↔mm equivalence** | `25mm flange` → `1 inch flange` | a **pricing decision dressed as a spelling**, taken inside a lookup table where nobody would read it |
+| **a bare name choosing a size** | `grinding wheel` → the 4-inch one | a rate for a part the operator did not specify |
+
+`_norm()`'s own docstring already said why: *a match it gets wrong puts a
+figure on a purchase order that nobody chose.* The aliases were the same
+mistake one level up from the normaliser it warned about.
+
+⚠ **One deleted alias rested on a misreading.** The client's sheet carries a
+**dummy** flange — `6 inch dummy flange 16mm (240 PCD)` — and, separately,
+`150mm flange`. The alias `6 inch flange → 150mm flange` folded a dummy flange
+into a plain one. Different items, different rates.
+
+**The shape of the rule, in three names:**
+
+| | |
+|---|---|
+| `CLIENT_LINES` | the client's own 78 strings. **The only thing an alias may be.** |
+| `CLIENT_LINE_QUANTITIES` | the two lines whose trailing quantity was dropped (`Safety shoes 10no`, `M.S ANGEL … - 03 pcs`), with the stripped form **written out**. Nothing parses a quantity out of anything — `10G Esab` and `12x100` are trailing figures that are part of a name. |
+| `MISSPELLINGS` | `soket`/`fastner`/`angel`/`lather`/`threded`. ⚠ **Records why a canonical departs from the client's spelling; it licenses NO alias.** The client's spelling is an alias because he wrote it. |
+
+`permitted_alias_keys()` is the rule as code, and the test **calls it rather
+than carrying a copy** — a test with its own copy of a rule is the second
+definition the `xlNorm()` removal was about, one file along.
+
+⚠ **No canonical part was merged or split.** `200mm elbow` and `8" elbow` stay
+two entries with **no alias between them**, so typing one can never fetch the
+other's rate. The module does **not** assert they are the same part and does
+**not** assert they are different — that is a parts question for the client and
+it is pinned open beside *is "PO red paint" red-oxide primer?*.
+
+⚠ **THE CLIENT'S SHEET IS NOT IN THIS REPOSITORY** — not in `client_docs/`, not
+in `fixtures/`, not in the history. It arrived as a message and was transcribed
+straight into `PARTS`, so `CLIENT_LINES` is a **reconstruction from this
+module's own evidence**, not a transcription. Every line carries an evidence
+grade in the source — `(v)` verbatim, `(m)` a misspelling reversed, `(—)` taken
+as the canonical for want of any other record — and a test fails if a line is
+added without one. The tests hold `PARTS` to `CLIENT_LINES`; **nothing can hold
+`CLIENT_LINES` to the sheet.** When the sheet is available, add its lines and
+the aliases follow. Do not add an alias any other way.
+
+**Measured across the cutback:** 172 → 16 aliases; `INDEX` 241 → 89 keys; index
+keys that were neither a canonical name nor a client line, **153 → 0**; and the
+hit-rate against the client's own lines went **77/78 → 78/78**, because his
+verbatim `M.S ANGEL 50 X 50 X 5 MM - 03 pcs` had never been indexed. The
+prefill misses far more strings than it did, and every one of them is a string
+nobody wrote.
 
 ---
 
@@ -3160,6 +3227,17 @@ holds no alias table, no canonical names and no rule about what "matches".
 **canonical names only** — so not one of the client's own spellings ever
 prefilled in the browser, on either form. That was live for one day and is
 fixed by the same change.
+
+⚠ **THE ALIASES WERE MOSTLY INVENTED, and 156 of the 172 are deleted**
+(29 August 2026, third pass). **§2h is the rule and the reason**; the short
+version is that an alias may exist only if the client wrote that exact string,
+one class of the deleted ones put two placeholder rates on one physical part
+depending on how it was typed, and
+[tests/test_po_parts_aliases.py](tests/test_po_parts_aliases.py) is what stops
+the next pass regenerating them. **Prefill hit-rate against arbitrary typing
+falls sharply and that is the fix** — `grinding wheel` no longer fills a rate,
+the line is accepted exactly as typed with a blank rate and no assumed flag,
+and the hit-rate against the *client's own* lines went up rather than down.
 
 ⚠ **Every seeded rate is an ASSUMED PLACEHOLDER, and nothing may present one as
 a real price.** It exists so an order can go out before the vendor has priced
