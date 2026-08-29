@@ -133,6 +133,7 @@ PERMISSIONS = {
     "ra.issue":              ("Issue an RA bill",                         "RA billing"),
     "ra.cancel":             ("Cancel an issued RA bill",                 "RA billing"),
     "ra.print":              ("Print an RA bill",                         "RA billing"),
+    "ra.approve":            ("Approve or reject an RA bill",             "RA billing"),
 
     "receipt.view":          ("View receipts",                            "Money in"),
     "receipt.create":        ("Record a receipt",                         "Money in"),
@@ -148,10 +149,12 @@ PERMISSIONS = {
     "proforma.create":       ("Raise a proforma invoice",                 "Quotation chain"),
     "invoice.view":          ("View tax invoices",                        "Quotation chain"),
     "invoice.create":        ("Raise a tax invoice",                      "Quotation chain"),
+    "invoice.approve":       ("Approve or reject a tax invoice",          "Quotation chain"),
 
     "purchase.view":         ("View purchase orders",                     "Buy side"),
     "purchase.create":       ("Raise a purchase order",                   "Buy side"),
     "purchase.edit":         ("Update a purchase order's status",         "Buy side"),
+    "purchase.approve":      ("Approve or reject a purchase order",       "Buy side"),
     "po.view":               ("View draft purchase orders",               "Buy side"),
     "po.create":             ("Raise a draft purchase order",             "Buy side"),
     "po.edit":               ("Edit a draft purchase order",              "Buy side"),
@@ -173,6 +176,13 @@ PERMISSIONS = {
     "charge.create":         ("Record a charge",                          "Employee costs"),
     "charge.edit":           ("Edit a charge",                            "Employee costs"),
     "charge.delete":         ("Delete a charge",                          "Employee costs"),
+    # B6 — the approval ladder (29 August 2026). This permission answers
+    # "may you reach the approve route at all"; WHICH RUNG your approval
+    # satisfies is a question about your ROLE and is answered in
+    # approval.py, because B6 states the ladder in role names. Keeping
+    # the two apart is what lets an Owner suspend somebody's approval
+    # rights with a checkbox without dismantling the ladder.
+    "charge.approve":        ("Approve or reject a charge",               "Employee costs"),
 
     # C4 — the employee master (29 August 2026). ⚠ **Owner, Director and HR
     # only.** That is not a derivation: B4 states exactly one per-role
@@ -394,6 +404,26 @@ ROUTE_PERMISSIONS = {
     "attendance.edit_attendance":  "attendance.edit",
     "attendance.delete_attendance": "attendance.delete",
 
+    # ── Approvals (B6) ───────────────────────────────────────────────────────
+    # ⚠ **Eight endpoints, not one.** A single `/approval/approve/<doc_key>/<id>`
+    # would need four different permissions on one endpoint, which this registry
+    # cannot express — it would have to be classified `AUTHENTICATED` with the
+    # real check hidden in the view, which is the weakening B5 exists to
+    # prevent. `approval.py` registers the eight from one table, so the bodies
+    # are still written once.
+    #
+    # Reject carries the same permission as approve: rejecting is an approval
+    # decision, not a lesser one, and the guard that governs both is the same
+    # `approval.can_approve()`.
+    "approval.approve_charge":    "charge.approve",
+    "approval.reject_charge":     "charge.approve",
+    "approval.approve_ra":        "ra.approve",
+    "approval.reject_ra":         "ra.approve",
+    "approval.approve_invoice":   "invoice.approve",
+    "approval.reject_invoice":    "invoice.approve",
+    "approval.approve_purchase":  "purchase.approve",
+    "approval.reject_purchase":   "purchase.approve",
+
     # ── Projects ─────────────────────────────────────────────────────────────
     "project.list_projects":      "project.view",
     "projectview.view_project":   "project.view",
@@ -470,6 +500,11 @@ BUILTIN_ROLES = {
             "proforma.view", "proforma.create", "invoice.view", "invoice.create",
             "receipt.create", "receipt.edit", "receipt.delete", "client.edit",
             "charge.view", "charge.create", "charge.edit", "charge.delete",
+            # B6 — the Director rung appears on all four ladders: the first of
+            # the charges ladder and one half of the pair on RA / Tax Invoice /
+            # PO. CC-2: "Any one Director's approval is sufficient."
+            "charge.approve", "ra.approve", "invoice.approve",
+            "purchase.approve",
             # C4. A Director is the Admin tier and sits inside the HR wall —
             # B4 keeps employee information from Sales, Purchase and Accounts,
             # and names none of those three here.
@@ -485,7 +520,14 @@ BUILTIN_ROLES = {
     ),
     "operation-head": (
         "Operation Head",
-        sorted(set(_OPERATIONS + ["charge.view", "charge.create", "charge.edit"])),
+        # B6 — the Operation Head rung is on all four ladders too: the middle of
+        # the charges ladder and the other half of the pair on RA / Tax Invoice
+        # / PO. ⚠ The role is spelled "Operation Head" here; CC-2 writes
+        # "Operations Head". The application's spelling is the one a lookup has
+        # to match, and `approval.role_slugs_of()` reads the slug, not the name.
+        sorted(set(_OPERATIONS + ["charge.view", "charge.create", "charge.edit",
+                                  "charge.approve", "ra.approve",
+                                  "invoice.approve", "purchase.approve"])),
     ),
     "hr": (
         "HR",
@@ -500,8 +542,13 @@ BUILTIN_ROLES = {
         # carries no 3A/3B/3C tag, appears nowhere in MG/SF/2026-02, and is
         # recorded as an open item. C4 is an employee master carrying salary;
         # it is not a decision about who may change a figure on it.
+        # B6 — HR holds `charge.approve` and NOTHING ELSE from the approval
+        # set. It is the third and last rung of the charges ladder, and CC-2
+        # puts HR on no other ladder: RA / Tax Invoice / PO are Operation Head +
+        # Director. Granting the other three "for symmetry" would put HR on
+        # documents the client never placed it on.
         ["dashboard.view", "charge.view", "charge.create", "charge.edit",
-         "charge.delete", "address.view",
+         "charge.delete", "charge.approve", "address.view",
          "employee.view", "employee.create", "employee.edit",
          "employee.delete",
          # C5. HR keeps the muster for the same reason it keeps the master: a

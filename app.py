@@ -41,6 +41,7 @@ from projectview import projectview_bp # UI for Project Detail
 from charge import charge_bp             # Employee & Misc Charges Ledger
 from employee import employee_bp         # Employee master: details and salary
 from attendance import attendance_bp     # Attendance + site-wise labour cost (C5)
+from approval import approval_bp         # Approval ladder + creator guard (B6/B7)
                                  # (CC-2 C4). A LEAF, and deliberately NOT on
                                  # the nav or the dashboard — _nav() is on every
                                  # printed page, so one more entry moves every
@@ -143,6 +144,11 @@ app.register_blueprint(attendance_bp)         # Mounted at /attendance — impor
                                               #   employee_bp's module for the
                                               #   master and settings for the OT
                                               #   multiplier; nothing imports it
+app.register_blueprint(approval_bp)           # Mounted at /approval — B6's ladder.
+                                              #   Eight endpoints minted from
+                                              #   approval.DOCUMENTS; imports no
+                                              #   document module, so any of them
+                                              #   may import it back
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,

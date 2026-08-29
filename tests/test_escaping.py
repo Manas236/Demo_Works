@@ -117,6 +117,13 @@ DO_NOT_POISON = {
     "quotation_id", "proforma_id", "invoice_id", "draft_id", "vendor_id",
     "consignee_id", "address_id", "user_id", "role_ids", "permissions",
     "password_hash", "norm_name", "type", "status", "username", "builtin",
+    # B6 (29 Aug 2026). `created_by` holds a user id and is compared against the
+    # session's id by `approval.can_approve()` — the creator guard. Poisoning it
+    # would not test an escaping sink (it never reaches HTML); it would silently
+    # make every record look as though somebody else raised it, and the guard
+    # would stop refusing on the pages this sweep walks. `approval_status` is a
+    # closed vocabulary like `status` beside it, for the same reason.
+    "created_by", "approval_status", "role",
 }
 
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")

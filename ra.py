@@ -3408,6 +3408,7 @@ def view_ra(id: str):
   {lock_html}
   {rate_note}
   {drift_note}
+  {approval.panel("ra", bill)}
   <div class="ra-meta">
     <div class="ra-fact"><b>Our reference</b><span>{_esc(bill.get('ref'))}</span></div>
     <div class="ra-fact"><b>Date</b><span>{_esc(bill.get('date'))}</span></div>

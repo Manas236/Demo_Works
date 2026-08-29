@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 69 permissions · 95 classified endpoints.**
+**7 roles · 73 permissions · 103 classified endpoints.**
 
 ---
 
@@ -14,7 +14,7 @@
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **483 cells**. **40** of them can be traced to a line of the specification. The rest — **443** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **511 cells**. **52** of them can be traced to a line of the specification. The rest — **459** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -58,6 +58,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Issue an RA bill<br/>`ra.issue` | · | · | · |  |  |  |  |
 | Cancel an issued RA bill<br/>`ra.cancel` | · | · | · |  |  |  |  |
 | Print an RA bill<br/>`ra.print` | · | · | · |  | · |  | · |
+| Approve or reject an RA bill<br/>`ra.approve` | · | § | § |  |  |  |  |
 
 ### Money in
 
@@ -81,6 +82,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Raise a proforma invoice<br/>`proforma.create` | · | · |  |  | · |  |  |
 | View tax invoices<br/>`invoice.view` | · | · |  |  | · |  | · |
 | Raise a tax invoice<br/>`invoice.create` | · | · |  |  | · |  |  |
+| Approve or reject a tax invoice<br/>`invoice.approve` | · | § | § |  |  |  |  |
 
 ### Buy side
 
@@ -89,6 +91,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | View purchase orders<br/>`purchase.view` | · | · | · |  |  | · | · |
 | Raise a purchase order<br/>`purchase.create` | · | · | · |  |  | · |  |
 | Update a purchase order's status<br/>`purchase.edit` | · | · | · |  |  | · |  |
+| Approve or reject a purchase order<br/>`purchase.approve` | · | § | § |  |  |  |  |
 | View draft purchase orders<br/>`po.view` | · | · | · |  |  | · |  |
 | Raise a draft purchase order<br/>`po.create` | · | · | · |  |  | · |  |
 | Edit a draft purchase order<br/>`po.edit` | · | · | · |  |  | · |  |
@@ -113,6 +116,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Record a charge<br/>`charge.create` | · | · | · | · | § | § | § |
 | Edit a charge<br/>`charge.edit` | · | · | · | · | § | § | § |
 | Delete a charge<br/>`charge.delete` | · | · |  | · | § | § | § |
+| Approve or reject a charge<br/>`charge.approve` | · | § | § | § | § | § | § |
 | View the employee master<br/>`employee.view` | · | · | – | · | § | § | § |
 | Add an employee<br/>`employee.create` | · | · | – | · | § | § | § |
 | Edit an employee's details and salary<br/>`employee.edit` | · | · | – | · | § | § | § |
@@ -160,7 +164,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **69** | **68** | **39** | **14** | **21** | **20** | **13** |
+| **Total permissions held** | **73** | **72** | **43** | **15** | **21** | **20** | **13** |
 
 ---
 
@@ -174,6 +178,7 @@ Every cell marked `§` above, with the line it comes from. This list is short, a
 - Accountant **does not hold** `attendance.delete`
 - Accountant **does not hold** `attendance.edit`
 - Accountant **does not hold** `attendance.view`
+- Accountant **does not hold** `charge.approve`
 - Accountant **does not hold** `charge.create`
 - Accountant **does not hold** `charge.delete`
 - Accountant **does not hold** `charge.edit`
@@ -186,6 +191,7 @@ Every cell marked `§` above, with the line it comes from. This list is short, a
 - Purchase Manager **does not hold** `attendance.delete`
 - Purchase Manager **does not hold** `attendance.edit`
 - Purchase Manager **does not hold** `attendance.view`
+- Purchase Manager **does not hold** `charge.approve`
 - Purchase Manager **does not hold** `charge.create`
 - Purchase Manager **does not hold** `charge.delete`
 - Purchase Manager **does not hold** `charge.edit`
@@ -198,6 +204,7 @@ Every cell marked `§` above, with the line it comes from. This list is short, a
 - Sales Manager **does not hold** `attendance.delete`
 - Sales Manager **does not hold** `attendance.edit`
 - Sales Manager **does not hold** `attendance.view`
+- Sales Manager **does not hold** `charge.approve`
 - Sales Manager **does not hold** `charge.create`
 - Sales Manager **does not hold** `charge.delete`
 - Sales Manager **does not hold** `charge.edit`
@@ -215,6 +222,21 @@ Every cell marked `§` above, with the line it comes from. This list is short, a
 
 - Director holds `admin.users`
 
+**CLIENT_CHANGES-2.md B6 — "Charges: three-step ladder — Director → Operations Head → HR, in sequence."**
+
+- Director holds `charge.approve`
+- HR holds `charge.approve`
+- Operation Head holds `charge.approve`
+
+**CLIENT_CHANGES-2.md B6 — "RA / Tax Invoice / PO: Operations Head + Director."**
+
+- Director holds `invoice.approve`
+- Director holds `purchase.approve`
+- Director holds `ra.approve`
+- Operation Head holds `invoice.approve`
+- Operation Head holds `purchase.approve`
+- Operation Head holds `ra.approve`
+
 **CLIENT_CHANGES-2.md B3 — the Owner tier "Defines what a role *means*."**
 
 - Owner holds `admin.roles`
@@ -230,7 +252,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*69 of 69 permissions.*
+*73 of 73 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -238,7 +260,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*68 of 69 permissions.*
+*72 of 73 permissions.*
 
 **What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings.
 
@@ -246,7 +268,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Operation Head
 
-*39 of 69 permissions.*
+*43 of 73 permissions.*
 
 **What they can do.** Run the work. Write and revise schedules, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
 
@@ -254,7 +276,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### HR
 
-*14 of 69 permissions.*
+*15 of 73 permissions.*
 
 **What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. **And attendance** (C5): mark who was on which site each day, record overtime, and read the site-wise labour cost that comes out of it. Also the wages and site-expense ledger, and the address book.
 
@@ -262,7 +284,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Sales Manager
 
-*21 of 69 permissions.*
+*21 of 73 permissions.*
 
 **What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills.
 
@@ -270,7 +292,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Purchase Manager
 
-*20 of 69 permissions.*
+*20 of 73 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules, the catalogue and the specification library, and keep the address book current.
 
@@ -278,7 +300,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Accountant
 
-*13 of 69 permissions.*
+*13 of 73 permissions.*
 
 **What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
@@ -316,6 +338,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `ra.issue` | `ra.issue_ra` |
 | `ra.cancel` | `ra.cancel_ra` |
 | `ra.print` | `ra.print_ra` |
+| `ra.approve` | `approval.approve_ra`, `approval.reject_ra` |
 | `receipt.view` | `receipt.list_receipts` |
 | `receipt.create` | `receipt.new_receipt` |
 | `receipt.edit` | `receipt.edit_receipt` |
@@ -329,9 +352,11 @@ Read off the live route registry, so it cannot drift from what the application a
 | `proforma.create` | `proforma.create_proforma` |
 | `invoice.view` | `invoice.list_invoices`, `invoice.view_invoice` |
 | `invoice.create` | `invoice.create_invoice` |
+| `invoice.approve` | `approval.approve_invoice`, `approval.reject_invoice` |
 | `purchase.view` | `purchase.list_purchases`, `purchase.view_purchase` |
 | `purchase.create` | `purchase.create_purchase`, `purchase.edit_purchase_rates`, `purchase.from_boq`, `purchase.from_draft` |
 | `purchase.edit` | `purchase.update_purchase` |
+| `purchase.approve` | `approval.approve_purchase`, `approval.reject_purchase` |
 | `po.view` | `po_draft.list_pos`, `po_draft.view_po` |
 | `po.create` | `po_draft.create_po` |
 | `po.edit` | `po_draft.edit_po` |
@@ -346,6 +371,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `charge.create` | `charge.new_charge` |
 | `charge.edit` | `charge.edit_charge` |
 | `charge.delete` | `charge.delete_charge` |
+| `charge.approve` | `approval.approve_charge`, `approval.reject_charge` |
 | `employee.view` | `employee.list_employees`, `employee.view_employee` |
 | `employee.create` | `employee.new_employee` |
 | `employee.edit` | `employee.edit_employee` |

@@ -80,6 +80,10 @@ _B3_NOT_ROLES = ('CLIENT_CHANGES-2.md B3 — the Admin tier "Cannot alter role '
                  'definitions."')
 _B4_HR_WALL = ('CLIENT_CHANGES-2.md B4 — "HR information is restricted from '
                'Sales, Purchase and Accounts."')
+_B6_CHARGE_LADDER = ('CLIENT_CHANGES-2.md B6 — "Charges: three-step ladder — '
+                     'Director → Operations Head → HR, in sequence."')
+_B6_DOC_LADDER = ('CLIENT_CHANGES-2.md B6 — "RA / Tax Invoice / PO: Operations '
+                  'Head + Director."')
 
 SPEC_BACKED = {
     # The Owner tier. B3 gives it everything, and `admin.roles` is the
@@ -109,11 +113,28 @@ SPEC_BACKED = {
 }
 for _role in ("sales-manager", "purchase-manager", "accountant"):
     for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete",
+                  # B6 minted `charge.approve` on 29 August 2026 and it is a
+                  # charge permission like the four beside it. B4's sentence is
+                  # about the ledger, not about four of its five verbs, so the
+                  # wall covers it too — approving a wages entry is reading it.
+                  "charge.approve",
                   "employee.view", "employee.create", "employee.edit",
                   "employee.delete",
                   "attendance.view", "attendance.create", "attendance.edit",
                   "attendance.delete"):
         SPEC_BACKED[(_role, _perm)] = _B4_HR_WALL
+
+# ⚠ **B6's ladder rungs are QUOTED, not derived.** CC-2 names, in one sentence
+# each, exactly which roles approve which documents — so unlike almost every
+# other grant in this file these cells carry `§` rather than `·`. The three
+# charge rungs are the ladder in order; the two on RA / Tax Invoice / PO are the
+# pair. Owner is deliberately NOT listed: it holds these four the same way it
+# holds everything (B3), which is the tier, not a line about approvals.
+for _role in ("director", "operation-head", "hr"):
+    SPEC_BACKED[(_role, "charge.approve")] = _B6_CHARGE_LADDER
+for _role in ("operation-head", "director"):
+    for _perm in ("ra.approve", "invoice.approve", "purchase.approve"):
+        SPEC_BACKED[(_role, _perm)] = _B6_DOC_LADDER
 
 # Cells the specification requires to be EMPTY rather than filled. Marked in
 # the grid so a reader can see the restriction was applied rather than merely
@@ -124,6 +145,7 @@ SPEC_REQUIRES_ABSENT = {
 }
 for _role in ("sales-manager", "purchase-manager", "accountant"):
     for _perm in ("charge.view", "charge.create", "charge.edit", "charge.delete",
+                  "charge.approve",
                   "employee.view", "employee.create", "employee.edit",
                   "employee.delete",
                   "attendance.view", "attendance.create", "attendance.edit",

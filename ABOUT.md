@@ -1086,6 +1086,75 @@ nobody wrote.
 
 ---
 
+### 2i. `approval.py` — the ladder, and the guard the registry cannot hold
+
+CC-2 **B6** and **B7**, built 29 August 2026 under the fourth override block of
+that date. One module, imported by the four document modules and importing none
+of them, so it sits beside `auth.py` at the bottom of the graph rather than
+between the documents.
+
+**Two questions, answered in two different places, and keeping them apart is the
+design.**
+
+| question | answered by | why there |
+|---|---|---|
+| May you reach the approve route at all? | `auth.ROUTE_PERMISSIONS` | B5's default-deny registry, doing its ordinary job |
+| Does your approval move *this record* one rung? | `approval.can_approve()` | B6 states the ladder in **role** names, and a permission cannot say which rung somebody is on |
+| May you approve a record **you raised**? | `approval.can_approve()` | ⚠ **not expressible in the registry** — see below |
+
+⚠ **The creator guard is why this module exists at all.** PROGRESS.md had
+already established that `ROUTE_PERMISSIONS` cannot carry a per-record
+condition: it maps an endpoint to one permission string and knows nothing about
+which row is being acted on. B6's load-bearing rule — *a user cannot approve a
+record they created* — is exactly such a condition, so it has to be a per-view
+check. It is written **once**, in `can_approve()`, and
+`tests/test_approval.py::test_every_approval_endpoint_reaches_the_guard` walks
+this module's AST to assert every approval view reaches it. A rule enforced in
+six places is a rule that will be enforced in five after the next change.
+
+**Eight endpoints, not one.** `/approval/approve/<doc_key>/<id>` would need four
+different permissions on one endpoint, which the registry cannot express — it
+would have to be classified `AUTHENTICATED` with the real check hidden inside
+the view, and that is the precise weakening B5 exists to prevent. So
+`_register_routes()` mints `approve_<key>` and `reject_<key>` from
+`DOCUMENTS`, each with its own registry row, while the two view bodies are
+still written once.
+
+**A refusal is a redirect, not a 403.** Two reasons, and both matter. It is the
+house shape for a per-record rule — `ra.edit_ra()` and `ra.delete_ra()` bounce
+to the record with the reason. And `auth._gate()` refuses with a 403 or a bounce
+to `/login`, which is exactly what
+`tests/test_nav_visibility.py::_is_refused` reads: a 403 here would make every
+approval endpoint look permanently unreachable to that sweep, when what is
+refused is this record, today, for this person. It is still a refusal **by
+URL** — nothing is written, and `tests/test_approval.py` posts to the address
+and reads the record back to prove it.
+
+**The two ladder shapes are CC-2's, not a tidying.** Charges are specified
+"Director → Operations Head → HR, **in sequence**"; RA / Tax Invoice / PO are
+"Operations Head + Director" with no ordering word at all. `sequential` carries
+that difference rather than smoothing it, and the unordered reading is a
+**judgement call on CC-2's wording** — if the client wants the pair ordered it
+is a one-word change here.
+
+⚠ **The spelling is "Operation Head".** CC-2 writes "Operations Head"; the app's
+role is `role-operation-head` / "Operation Head", and the app's spelling is what
+a lookup has to match. `role_slugs_of()` reads the **slug** off the role id, not
+the display name, so renaming the role in `/roles` does not silently detach it
+from its rung.
+
+**Two rules here are ours, not CC-2's**, and both are listed as judgement calls:
+
+- **One user, one rung.** B4 lets one user hold several roles, so without it a
+  user holding Director *and* HR climbs two thirds of the charges ladder alone
+   — which is the "union permissions defeat the ladder" failure CC-2 names,
+  reached by a different route.
+- **The Owner satisfies any rung** (B3: "Everything") and is still bound by the
+  creator guard and the one-rung rule, which is what keeps "Everything" from
+  meaning "alone".
+
+---
+
 ## 3. Data model
 
 `store.py` exposes one module-level dict. Because Python caches modules, every
@@ -2135,8 +2204,31 @@ only module that reads or writes any of it.
 {...,                                # the document's own fields, unchanged
  "created_by": "<user id>" | None,   # WHO RAISED IT — captured at the write site
  "pre_approval_system": True,        # ONLY on a record the migration marked
+
+ # The ladder. Absent on a record nobody has acted on, which reads as PENDING.
+ "approval_status": "pending" | "approved" | "rejected",
+ "approvals": [                      # one entry per RUNG CLIMBED, oldest first
+   {"role": "director",              # the role slug — the rung, not the person
+    "role_name": "Director",         # snapshot, so a renamed role stays legible
+    "user_id": "<user id>", "user_name": "Y. Bankar",
+    "at": "2026-08-29 19:55"},
+ ],
+ "approved_at": "…",                 # set when the LAST rung is climbed
+ "rejected_by": "<user id>", "rejected_by_name": "…",
+ "rejected_at": "…", "reject_reason": "…",
 }
 ```
+
+**`approvals` is a list of rungs climbed, not a set of people who agreed.**
+`role` is the slug, so `outstanding_steps()` is a set difference against the
+ladder rather than a scan; `role_name` and `user_name` are **snapshots** for the
+same reason `attendance` snapshots a salary — a renamed role or a departed user
+must not make a historical approval unreadable.
+
+**Rejection keeps the rungs already climbed.** The record still says who agreed
+with it before somebody did not. `approval.clear_approvals()` is what empties
+them, and it runs when the document is corrected — an approval describes the
+document somebody read, so a changed document has not been approved.
 
 **`created_by` is captured at the write site, by `approval.stamp_creator()`.**
 Not derived later and not inferred from a log: B6's load-bearing rule is that a

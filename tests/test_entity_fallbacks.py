@@ -170,7 +170,22 @@ def populated(client):
         "id": "ch-1", "date": "2026-08-16", "person": "Test Person", "head": "Travel",
         "description": "Test", "project_id": "proj-1", "project_name": "Test Project",
         "taxable_amount": 100.0, "gst_rate": 0.0, "gst_amount": 0.0,
-        "notes": "", "created_at": "2026-08-16T12:00:00Z", "updated_at": "2026-08-16T12:00:00Z"
+        "notes": "", "created_at": "2026-08-16T12:00:00Z", "updated_at": "2026-08-16T12:00:00Z",
+        # B6 — one rung already climbed, by somebody who is NOT the sweep's
+        # Owner. Three things ride on that:
+        #   * `approval.ladder_summary()` renders a row, so `role_name` and
+        #     `user_name` — both free text on the record, both poisoned by
+        #     `test_escaping._poison` — actually reach HTML and get checked;
+        #   * the record stays PENDING, so `/approval/approve/charge/ch-1`
+        #     renders its confirmation page instead of bouncing off the guard;
+        #   * and the climber is a different user, so the one-user-one-rung
+        #     rule does not refuse the Owner the sweep signs in as.
+        "approval_status": "pending",
+        "approvals": [{
+            "role": "director", "role_name": "Director",
+            "user_id": "sweep-other-user", "user_name": "Another Person",
+            "at": "2026-08-29 10:00",
+        }],
     }
 
     # C4's employee master (29 Aug 2026). Every field on this record is typed
@@ -205,6 +220,26 @@ def populated(client):
         "sweep-spare", "", "sweep-spare-pw", ["role-hr"], created_by="fixture")
     spare_uid = spare["id"]
 
+    # B6's creator guard, and why these three records change hands here.
+    #
+    # The invoice, the purchase order and the RA bill above were all raised
+    # THROUGH THE APP by the Owner this sweep signs in as, so each carries that
+    # Owner as its `created_by` — and `approval.can_approve()` refuses, exactly
+    # as CC-2 B6 requires, because a user may not approve a record they created.
+    # The refusal is correct and is asserted directly in
+    # `tests/test_approval.py`; here it would simply stop three pages from
+    # rendering, and a page that does not render is a page this sweep cannot
+    # check for an unescaped payload.
+    #
+    # So they are handed to the spare user. That is a fixture arrangement, not a
+    # weakening: the guard still runs on every one of these requests, and it now
+    # runs on the branch where it ALLOWS, which is the branch that renders the
+    # markup being swept.
+    for _rec in (STORE["invoices"].get(iid), STORE["ra_bills"].get(rid),
+                 STORE["purchases"].get(next(iter(STORE["purchases"])))):
+        if _rec is not None:
+            _rec["created_by"] = spare_uid
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
@@ -223,12 +258,21 @@ def populated(client):
             "/boq/view/<id>":       bid,
             "/charge/delete/<id>":  "ch-1",
             "/charge/edit/<id>":    "ch-1",
+            # B6's eight approval routes (29 Aug 2026). Every one renders a
+            # confirmation page carrying `role_name`, `user_name` and — on a
+            # rejected record — `reject_reason`, all of them free text on the
+            # record and all of them poisoned by the sweep. They are exercised
+            # rather than SKIPped for exactly that reason.
+            "/approval/approve/charge/<id>":   "ch-1",
+            "/approval/reject/charge/<id>":    "ch-1",
             "/employee/delete/<id>": "emp-1",
             "/employee/edit/<id>":   "emp-1",
             "/employee/view/<id>":   "emp-1",
             "/attendance/delete/<id>": "att-1",
             "/attendance/edit/<id>":   "att-1",
             "/client/edit-party/<id>": bid2,
+            "/approval/approve/invoice/<id>":  iid,
+            "/approval/reject/invoice/<id>":   iid,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
             "/product/delete/<id>": deletable_pid,
@@ -238,6 +282,8 @@ def populated(client):
             "/projects/view/<id>":   "proj-1",
             "/proforma/from/<qid>": qid,
             "/proforma/view/<id>":  pid,
+            "/approval/approve/purchase/<id>": next(iter(STORE["purchases"])),
+            "/approval/reject/purchase/<id>":  next(iter(STORE["purchases"])),
             "/purchase/view/<id>":  next(iter(STORE["purchases"])),
             # A1's repricing form. The seeded order above is raised as a
             # **Draft** on purpose, which is the only status `can_edit_rates()`
@@ -252,6 +298,8 @@ def populated(client):
             "/purchase/from-boq/<boq_id>":     bid,
             "/purchase/from-draft/<draft_id>": dpid,
             "/quotation/view/<id>": qid,
+            "/approval/approve/ra/<id>":       rid,
+            "/approval/reject/ra/<id>":        rid,
             "/ra/delete/<id>":      rid,
             "/ra/edit/<id>":        rid,
             # RA2 is the draft, so both lifecycle confirmations render a page

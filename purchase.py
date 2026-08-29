@@ -1763,6 +1763,11 @@ def list_purchases():
               <td class="col-h">{P.esc(po.get('delivery_date'))}</td>
               <td>{_status_badge(po.get('status'))}</td>
               <td class="td-total">&#8377;&nbsp;{float(po.get('grand_total') or 0):,.0f}</td>
+              <!-- B6 - the approval state and ladder actions. SCREEN ONLY, and
+                   deliberately on the LIST rather than on /purchase/view/<id>:
+                   that route renders the A4 sheet itself and is pinned
+                   byte-for-byte by tests/test_print_golden.py. -->
+              <td>{approval.cell("purchase", po)}</td>
               <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
@@ -1770,7 +1775,7 @@ def list_purchases():
           <thead><tr>
             <th>PO No.</th><th>Date</th><th>Vendor</th>
             <th class="col-h">For Job</th><th class="col-h">Wanted By</th>
-            <th>Status</th><th>Order Value</th><th></th>
+            <th>Status</th><th>Order Value</th><th>Approval</th><th></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""

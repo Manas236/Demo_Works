@@ -437,11 +437,40 @@ def test_no_new_permission_was_minted_for_this(client):
       strictly more specific than the count it replaces, and it goes on being
       true no matter what the rest of the application mints.
     """
+    # ⚠ **Rewritten 29 August 2026 for B6, and the reason is the one this
+    #   docstring already anticipated one item early.** The assertion below
+    #   stood verbatim as:
+    #
+    #       assert buy_side == {"purchase.view", "purchase.create", "purchase.edit"}, (
+    #           "A1 minted a purchase permission. Repricing is gated by "
+    #           "`purchase.create`, which already exists.")
+    #
+    #   B6 — the approval ladder — mints `purchase.approve`, and CC-2 names the
+    #   PO as one of the four approvable documents outright. That is the exact
+    #   case the docstring above describes for C4: an *unrelated* item minting a
+    #   permission, which a set-equality over the whole prefix cannot tell apart
+    #   from "A1 quietly grew one". Only the first is a defect and B6 is not it.
+    #
+    #   So the claim is narrowed the same way it was narrowed once before —
+    #   toward the property A1 actually asserted — rather than deleted or
+    #   loosened to `>=`. **A1's three are still exactly A1's three**, every
+    #   later addition has to be named here to pass, and repricing is still
+    #   gated by one of the original three.
+    A1_ERA = {"purchase.view", "purchase.create", "purchase.edit"}
+    MINTED_SINCE = {
+        # item that minted it -> permission
+        "B6, the approval ladder (29 Aug 2026)": "purchase.approve",
+    }
+
     buy_side = {p for p in auth.PERMISSIONS if p.startswith("purchase.")}
-    assert buy_side == {"purchase.view", "purchase.create", "purchase.edit"}, (
-        "A1 minted a purchase permission. Repricing is gated by "
-        "`purchase.create`, which already exists.")
-    assert auth.ROUTE_PERMISSIONS["purchase.edit_purchase_rates"] in buy_side
+    assert buy_side == A1_ERA | set(MINTED_SINCE.values()), (
+        "The buy-side permission set is not A1's three plus the additions named "
+        "in MINTED_SINCE. If a later item minted this, name it there; if A1 "
+        "grew one, that is the defect this test exists for — repricing is gated "
+        "by `purchase.create`, which already exists.")
+    assert auth.ROUTE_PERMISSIONS["purchase.edit_purchase_rates"] in A1_ERA, (
+        "Repricing is no longer gated by one of A1's original three "
+        "permissions, which is what A1 claimed.")
 
 
 # ── The record — A1's other half, 28 August 2026 ───────────────────────────

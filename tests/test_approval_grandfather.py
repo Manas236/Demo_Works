@@ -133,12 +133,24 @@ def test_no_record_created_after_the_migration_lacks_a_creator(client):
         for key in approval.DOCUMENTS:
             for rid, rec in approval.records(key).items():
                 created = str(rec.get("created_at") or "")
-                if created and created > pinned_at and not rec.get("created_by"):
-                    offenders.append(f"{key}/{rid} created {created}")
+                if not created or created <= pinned_at:
+                    continue
+                if not rec.get("created_by"):
+                    offenders.append(f"{key}/{rid} created {created} "
+                                     f"- no created_by")
+                # ⚠ And the mark itself must not appear on anything written
+                #   after the migration. Without this the pin is walked around
+                #   by the one move that defeats it: a record with no creator
+                #   that ALSO claims to predate the system. A grandfathered
+                #   record legitimately carries `created_by = None`, so the
+                #   check above cannot see that case on its own.
+                if approval.is_grandfathered(rec):
+                    offenders.append(f"{key}/{rid} created {created} "
+                                     f"- marked as predating the system")
         assert not offenders, (
-            "These records were created AFTER the approval migration and carry "
-            "no creator, so B6's creator guard cannot apply to them and they "
-            "have silently joined the grandfathered set:\n  "
+            "These records were created AFTER the approval migration and have "
+            "silently joined the grandfathered set, where B6's creator guard "
+            "does not apply to them:\n  "
             + "\n  ".join(offenders))
     finally:
         STORE.get("settings", {}).pop(approval.MIGRATION_KEY, None)

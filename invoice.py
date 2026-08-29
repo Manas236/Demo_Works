@@ -588,6 +588,11 @@ def list_invoices():
                   <span class="td-muted">({P.esc(ti.get('pos_code'))})</span></td>
               <td class="td-muted">&#8377;&nbsp;{float(ti.get('grand_total') or 0):,.0f}</td>
               <td class="td-total">{badge}</td>
+              <!-- B6 - the approval state and ladder actions. SCREEN ONLY, and
+                   deliberately on the LIST rather than on /invoice/view/<id>:
+                   that route renders the Rule 46 A4 sheet itself and is pinned
+                   byte-for-byte by tests/test_print_golden.py. -->
+              <td>{approval.cell("invoice", ti)}</td>
               <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
@@ -595,7 +600,7 @@ def list_invoices():
           <thead><tr>
             <th>Invoice No.</th><th>Date</th><th>Customer</th>
             <th class="col-h">From PI</th><th class="col-h">Place of Supply</th>
-            <th>Invoice Value</th><th>Status</th><th></th>
+            <th>Invoice Value</th><th>Status</th><th>Approval</th><th></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""

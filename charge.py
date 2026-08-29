@@ -174,12 +174,16 @@ def list_charges():
         f'<td class="cl-amt">{rupees(r.get("taxable_amount", 0.0))}</td>'
         f'<td class="cl-amt">{rupees(r.get("gst_amount", 0.0))}</td>'
         f'<td class="cl-amt">{rupees(r.get("taxable_amount", 0.0) + r.get("gst_amount", 0.0))}</td>'
+        # B6 — the approval state, the ladder actions, and the "creator
+        # unknown" chip for a record that predates the approval system. Screen
+        # only; no charge is printed anywhere and nothing here reaches paper.
+        f'<td>{approval.cell("charge", r)}</td>'
         f'<td><a class="btn btn-ghost" href="{url_for("charge.edit_charge", id=r.get("id"))}">Edit</a> '
         f'<a class="btn btn-ghost" href="{url_for("charge.delete_charge", id=r.get("id"))}">Delete</a></td>'
         f'</tr>'
         for r in rows
     )
-    empty = '<tr><td colspan="9" style="color:var(--muted); text-align:center;">No charges found.</td></tr>'
+    empty = '<tr><td colspan="10" style="color:var(--muted); text-align:center;">No charges found.</td></tr>'
     
     proj_options = '<option value="">All Projects</option>'
     for pid, p in sorted(STORE.get("projects", {}).items(), key=lambda kv: kv[1].get("name", "")):
@@ -227,6 +231,7 @@ def list_charges():
         <th class="cl-amt">Taxable</th>
         <th class="cl-amt">GST</th>
         <th class="cl-amt">Gross</th>
+        <th>Approval</th>
         <th></th>
       </tr></thead>
       <tbody>{body or empty}</tbody>
@@ -236,6 +241,7 @@ def list_charges():
             <td class="cl-amt">{rupees(total_taxable)}</td>
             <td class="cl-amt">{rupees(total_gst)}</td>
             <td class="cl-amt">{rupees(total_gross)}</td>
+            <td></td>
             <td></td>
         </tr>
       </tfoot>
