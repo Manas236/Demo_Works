@@ -2235,6 +2235,45 @@ An `item` row — the challan's four fields plus one:
    draft / issued / cancelled here, which is why `approval.DOCUMENTS`
    ["measurement"] carries no `print_exempt_states`.
 
+#### The pre-measurement pin — two extra fields on the **RA bill**
+
+Every installation bill that already existed was raised before C1 and C2 did,
+with a quantity typed straight into the claim grid. Requiring a measurement
+retrospectively breaks live records; allowing it silently pretends the rule held
+when it did not. So the set is **counted at migration and closed**:
+
+```python
+# on an RA bill, written ONLY by tools/backfill_measurement_pin.py
+{"pre_measurement": True}
+
+# and in STORE["settings"], written once and never moved
+{"measurement_migration": {"at": "2026-08-29 23:27", "count": 1,
+                           "ids": ["<ra id>"]}}
+```
+
+1. A marked bill **keeps its typed quantity.** Nothing is recomputed and no
+   figure moves.
+2. It renders with a "Typed quantity" marker **on screen only** — the note on
+   `/ra/view`, a chip in the register. It never reaches a printed sheet: a note
+   on an issued claim saying its figures were typed is exactly the sentence
+   nobody wants read by a main contractor, and CC-2 asks for nothing about
+   measurement on paper.
+3. **The mark is never inferred from a missing measurement.** Inferring it is
+   how the set would grow — a bill written next year through a route with a bug
+   in it would quietly join a set closed in August.
+   `approval.is_grandfathered()` makes the same argument for `created_by`.
+4. **The supply leg is not marked.** C1's supply proof is a delivery challan and
+   no quantity flows from it, so a supply bill has nothing to be grandfathered
+   against.
+5. **`tests/test_measurement_pin.py` is the point of the whole rule.** It fails
+   if an installation bill created after `at` has no measurement behind it, and
+   a second test plants exactly such a bill to prove the sweep can see one — an
+   empty sweep that passes because it found nothing to look at proves nothing.
+
+⚠ **Measured on the live database, 29 August 2026: ONE bill** —
+`SF/RA/26-27/0006`, RA1 on project *Work2*, claiming a quantity of 1. Seven RA
+bills exist and one is on the installation leg.
+
 ### Address
 
 ```python

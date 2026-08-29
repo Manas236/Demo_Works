@@ -180,6 +180,115 @@ _REF_CAP = 64
 _QTY_EPSILON = 1e-6
 
 
+# =============================================================================
+# THE PIN — the closed set of RA bills that predate measurement
+# =============================================================================
+# ⚠ **This is the point of the whole grandfather arrangement, and it is the same
+#   shape as `approval.MIGRATION_KEY`.** Existing RA-Installation bills carry a
+#   typed quantity with no measurement behind them. Requiring one outright would
+#   break live records; allowing it silently would pretend the rule held when it
+#   did not. So the set is **counted at migration and closed**, and
+#   `tests/test_measurement_pin.py` fails if an installation bill created after
+#   that moment claims quantity with no measurement behind it.
+#
+#   Without that test "pre-measurement" stops being a closed historical set and
+#   becomes a state any future bill can fall into, which is the same as not
+#   having the rule at all.
+
+# Where the migration writes its own record, under STORE["settings"].
+PIN_KEY = "measurement_migration"
+
+# The mark a grandfathered RA bill carries. Named once so the migration, the
+# predicate, the renderer and the test cannot spell it four different ways.
+PRE_MEASUREMENT_FIELD = "pre_measurement"
+
+
+def migration_record() -> dict:
+    """
+    What the migration recorded about itself: when it ran and what it marked.
+
+    `{}` when it has never run — the state of a fresh database, where there is
+    nothing to grandfather because there is nothing older than this module.
+    """
+    got = STORE.get("settings", {}).get(PIN_KEY)
+    return dict(got) if isinstance(got, dict) else {}
+
+
+def is_pre_measurement(bill) -> bool:
+    """
+    Does this RA bill predate the measurement document?
+
+    True only for the explicit mark `tools/backfill_measurement_pin.py` writes.
+    ⚠ **Never inferred from a missing measurement**, which is exactly how the
+    pinned set would grow: a bill written next year through a route with a bug
+    in it would quietly join a set that was closed in August.
+    `approval.is_grandfathered()` makes the same argument one document along.
+    """
+    return bool((bill or {}).get(PRE_MEASUREMENT_FIELD))
+
+
+PRE_MEASUREMENT_NOTE = (
+    "This claim predates the measurement document, so its installation "
+    "quantity was typed rather than measured. Later claims on this project are "
+    "checked against an approved measurement sheet.")
+
+PRE_MEASUREMENT_CHIP_TITLE = (
+    "Typed quantity - this claim predates the measurement document")
+
+_CHIP = ("display:inline-block;padding:2px 9px;border-radius:12px;"
+         "font-size:0.74rem;font-weight:700;letter-spacing:.02em;"
+         "border:1px solid;background:#f4f1ea;color:#5b513c;"
+         "border-color:#ddd5c4;")
+
+
+def pre_measurement_marker(bill) -> str:
+    """
+    The visible "typed quantity" marker for a grandfathered RA bill.
+
+    ⚠ **Screen only, and never on any printed sheet.** CC-2 carries no
+    requirement that anything about measurement appears on paper, and a note on
+    an issued claim saying its figures were typed is exactly the sentence
+    nobody wants read by a main contractor. `approval.grandfather_marker()`
+    makes the same argument; `tests/test_measurement_pin.py` renders every
+    printed document and asserts the string is absent from all of them.
+    """
+    if not is_pre_measurement(bill):
+        return ""
+    return (
+        '<div style="margin:.6rem 0;padding:.55rem .8rem;border-radius:8px;'
+        'background:#f4f1ea;border:1px solid #ddd5c4;color:#5b513c;'
+        'font-size:0.82rem;line-height:1.45">'
+        '<b>Typed quantity.</b> ' + _esc(PRE_MEASUREMENT_NOTE) + '</div>')
+
+
+def pre_measurement_chip(bill) -> str:
+    """The compact form, for a register row. Screen only, like the marker."""
+    if not is_pre_measurement(bill):
+        return ""
+    return (f'<span title="{_esc(PRE_MEASUREMENT_CHIP_TITLE)}" '
+            f'style="{_CHIP}">TYPED QUANTITY</span>')
+
+
+def needs_pin(bill) -> bool:
+    """
+    Is this an RA bill the migration would mark?
+
+    An **installation** bill claiming a quantity, on a chain with no approved
+    measurement, that nobody has marked either way. The supply leg is not here:
+    C1's supply proof is a delivery challan and no quantity flows from it, so a
+    supply bill has nothing to be grandfathered against.
+    """
+    if not isinstance(bill, dict):
+        return False
+    if str(bill.get("leg") or "") != "installation":
+        return False
+    if PRE_MEASUREMENT_FIELD in bill:
+        return False
+    if not any(float(c.get("qty") or 0.0) > 0 for c in bill.get("claims") or []):
+        return False
+    return not has_approved_measurement(str(bill.get("boq_id") or ""))
+
+
 def new_id() -> str:
     return str(uuid.uuid4())
 

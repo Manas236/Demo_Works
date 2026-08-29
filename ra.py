@@ -2756,7 +2756,7 @@ def list_ras():
               <td><a href="{boq_link}">{_esc(b.get('boq_ref'))}</a></td>
               <td class="td-num" style="font-weight:600;">{net_cell}</td>
               <td class="td-num">{out_cell}</td>
-              <td>{status_badge(b)}</td>
+              <td>{status_badge(b)}{(" " + MS.pre_measurement_chip(b)) if MS.is_pre_measurement(b) else ""}</td>
               <td>{latest_badge}</td>
               <td>
                 <a href="{view_url}" class="btn-view">&#128269; View</a>
@@ -3489,6 +3489,7 @@ def view_ra(id: str):
   {lock_html}
   {rate_note}
   {drift_note}
+  {MS.pre_measurement_marker(bill)}
   {approval.panel("ra", bill)}
   <div class="ra-meta">
     <div class="ra-fact"><b>Our reference</b><span>{_esc(bill.get('ref'))}</span></div>
