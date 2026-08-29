@@ -155,8 +155,15 @@ def sify_form(client):
     import boq as BQ
     from store import STORE
 
+    from conftest import chain_ready
+
     BQ.ensure_demo_boq()
     bid = next(iter(STORE["boqs"]))
+    # CC-2 C1 — the order of working, enforced by URL from 29 August 2026. The
+    # tests here are about the FORM and the claim grid, not about the chain, so
+    # the fixture describes a project a claim can actually be raised on. See
+    # `conftest.chain_ready()`.
+    chain_ready(bid)
     res = client.get(f"/ra/create?boq={bid}&leg=supply")
     assert res.status_code == 200
     return res.get_data(as_text=True)

@@ -38,7 +38,7 @@ import demo_data as DD
 import ra
 from quotation import _inr
 from store import STORE
-from conftest import printable
+from conftest import chain_ready, printable
 
 # ⚠ The printed figures below moved to `_inr()`'s Indian digit grouping when
 # `/ra/print` was rebuilt on the shared A4 sheet. Same figures, same
@@ -92,6 +92,11 @@ def _priced(boq_id, n=None):
 def seeded(client):
     STORE["ra_bills"].clear()
     BQ.ensure_demo_boq()
+    # CC-2 C1 — the order of working, enforced by URL from 29 August 2026.
+    # Every test in this file is about the BILL and not about the chain, so the
+    # fixture describes a project a claim can actually be raised on. Read
+    # `conftest.chain_ready()` for why it writes the two records directly.
+    chain_ready(DD.BOQ_META["id"])
     yield DD.BOQ_META["id"]
     STORE["ra_bills"].clear()
 

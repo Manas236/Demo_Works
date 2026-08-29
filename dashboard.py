@@ -1289,6 +1289,16 @@ def _metrics():
         # a count answers "is anything moving" already.
         "dc_total": len(STORE.get("delivery_challans", {})),
 
+        # C2 — measurement sheets. A count and how many are APPROVED, because
+        # the second figure is the one that matters: only an approved sheet
+        # feeds an installation claim, so "4 raised" with none approved is a
+        # project that cannot bill installation and the card should say so.
+        # A sum of measured quantity would be meaningless across units.
+        "ms_total": len(STORE.get("measurements", {})),
+        "ms_approved": sum(
+            1 for m in (STORE.get("measurements") or {}).values()
+            if str(m.get("approval_status") or "").strip().lower() == "approved"),
+
         # Client register. **Issued bills only, less receipts** — a draft has
         # not been sent and a cancelled one was withdrawn, and the same two
         # exclusions hold on `/client/` itself. Status strings are matched
@@ -1800,6 +1810,13 @@ def index():
                 _card("challan.list_dcs", "purchase", "Delivery Challans",
                       f"""{m['dc_total']} raised · goods leaving the
                   yard against a schedule, no rates and no tax"""),
+                # C2 — the measurement sheet. It sits between the schedule and
+                # the claim on this strip because that is where it sits in the
+                # work: CC-2 C1 is BoQ -> Measurement -> RA-Installation, and
+                # an installation claim cannot be raised until an approved
+                # sheet exists.
+                _card("measurement.list_ms", "boq", "Measurement Sheets",
+                      f"""{m['ms_total']} raised{f" · {m['ms_approved']} approved" if m['ms_total'] else " · what was found on site, and the ceiling for installation claims"}"""),
             ]),
         _module_group(
             "mg-buy", "Buy side &mdash; money out",

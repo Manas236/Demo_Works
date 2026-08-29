@@ -81,9 +81,80 @@ def printable(record):
     return record
 
 
+def chain_ready(boq_id, legs=("supply", "installation")):
+    """
+    Satisfy CC-2 **C1**'s order of working for one BOQ, so `/ra/create` opens.
+
+    C1 (29 August 2026, fifth override block) states the chain and `ra.py`
+    enforces it **by URL**:
+
+        BoQ -> Delivery Challan -> RA-Supply
+        BoQ -> Measurement      -> RA-Installation
+
+    Every test written before C1 raises its bill straight off a seeded schedule
+    with neither step behind it, and every one of them is about the **bill** —
+    the over-claim arithmetic, the tax slabs, the carried balance, the printed
+    sheet — rather than about the chain. So their fixtures now have to describe
+    a project a claim can actually be raised on. This is what says so, in one
+    place, rather than a challan and a measurement pasted into eleven files with
+    no explanation attached to any of them. It is `printable()` above, one item
+    along, and it exists for the same reason.
+
+    ⚠ **It writes the records directly and does not go through the forms**, for
+    `printable()`'s reason: the suite signs in as the Owner, and an Owner cannot
+    approve a measurement the Owner raised (B6's creator guard, working exactly
+    as specified). Climbing the ladder properly would mean inventing two more
+    users in every one of those files to test something they are not about.
+    `tests/test_c1_order_of_working.py` is where the chain is exercised for
+    real, through the routes, and it deliberately does **not** call this.
+
+    The measurement carries **every line of the schedule at its full BOQ
+    quantity**, so it moves no ceiling that was not already there: before C1 the
+    installation ceiling was the BOQ quantity, and after this helper it is the
+    BOQ quantity again. A test that was measuring the over-claim guard is still
+    measuring the same numbers.
+    """
+    import approval
+    import boq as BQ
+    from store import STORE
+
+    boq = (STORE.get("boqs") or {}).get(boq_id) or {}
+
+    if "supply" in legs:
+        STORE.setdefault("delivery_challans", {})[f"c1-dc-{boq_id}"] = {
+            "id": f"c1-dc-{boq_id}", "ref": "C1/DC/0001",
+            "date": "2026-08-01", "boq_id": boq_id,
+            "boq_ref": boq.get("ref", ""), "items": [],
+        }
+
+    if "installation" in legs:
+        items = [{"line_id": li.get("line_id"),
+                  "item_no": li.get("item_no"),
+                  "description": li.get("description", ""),
+                  "unit": li.get("unit", ""),
+                  "is_header": False,
+                  "qty": float(li.get("total_qty") or 0.0),
+                  "boq_qty": float(li.get("total_qty") or 0.0)}
+                 for li in boq.get("line_items") or []
+                 if not li.get("is_header") and BQ._line_id(li.get("line_id"))]
+        STORE.setdefault("measurements", {})[f"c1-ms-{boq_id}"] = {
+            "id": f"c1-ms-{boq_id}", "ref": "C1/MS/0001",
+            "fy": "26-27", "date": "2026-08-01", "boq_id": boq_id,
+            "boq_ref": boq.get("ref", ""), "items": items,
+            "created_by": "conftest",
+            "approval_status": approval.APPROVED,
+        }
+
+
 def _fresh_store():
     """The per-test reset the `client` fixture has always done."""
-    for key in ("boqs", "specs", "quotations", "proformas", "invoices", "purchases"):
+    for key in ("boqs", "specs", "quotations", "proformas", "invoices", "purchases",
+                # C1/C2 (29 August 2026). `chain_ready()` plants a challan and
+                # an approved measurement keyed on the BOQ id, and the demo BOQ
+                # has ONE fixed id — so without clearing these two a sheet
+                # planted by one test would satisfy C1 for the next one and the
+                # chain guard would be untestable.
+                "measurements", "delivery_challans"):
         STORE[key].clear()
     # Seed flags are per-test too: a test that clears `specs` must be able to
     # let the seeder refill it, which is exactly the "drop the database and

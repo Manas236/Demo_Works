@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 73 permissions · 103 classified endpoints.**
+**7 roles · 79 permissions · 111 classified endpoints.**
 
 ---
 
@@ -14,7 +14,7 @@
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **511 cells**. **52** of them can be traced to a line of the specification. The rest — **459** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **553 cells**. **52** of them can be traced to a line of the specification. The rest — **501** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -46,6 +46,12 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | View bills of quantities<br/>`boq.view` | · | · | · |  | · | · | · |
 | Create and revise a BOQ<br/>`boq.create` | · | · | · |  | · |  |  |
 | Print a BOQ<br/>`boq.print` | · | · | · |  | · |  |  |
+| View measurement sheets<br/>`measurement.view` | · | · | · |  | · |  | · |
+| Raise a measurement sheet<br/>`measurement.create` | · | · | · |  |  |  |  |
+| Edit a measurement sheet<br/>`measurement.edit` | · | · | · |  |  |  |  |
+| Delete a measurement sheet<br/>`measurement.delete` | · | · | · |  |  |  |  |
+| Print a measurement sheet<br/>`measurement.print` | · | · | · |  | · |  | · |
+| Approve or reject a measurement sheet<br/>`measurement.approve` | · | · | · |  |  |  |  |
 
 ### RA billing
 
@@ -164,7 +170,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **73** | **72** | **43** | **15** | **21** | **20** | **13** |
+| **Total permissions held** | **79** | **78** | **49** | **15** | **23** | **20** | **15** |
 
 ---
 
@@ -252,7 +258,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*73 of 73 permissions.*
+*79 of 79 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -260,7 +266,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*72 of 73 permissions.*
+*78 of 79 permissions.*
 
 **What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings.
 
@@ -268,15 +274,15 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Operation Head
 
-*43 of 73 permissions.*
+*49 of 79 permissions.*
 
-**What they can do.** Run the work. Write and revise schedules, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
+**What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
 
 **What they explicitly cannot do.** Touch the sell chain — no quotations, proforma invoices or tax invoices. Record or edit money received. Administer users or roles. Delete a charge once it is recorded, or change the company identity.
 
 ### HR
 
-*15 of 73 permissions.*
+*15 of 79 permissions.*
 
 **What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. **And attendance** (C5): mark who was on which site each day, record overtime, and read the site-wise labour cost that comes out of it. Also the wages and site-expense ledger, and the address book.
 
@@ -284,15 +290,15 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Sales Manager
 
-*21 of 73 permissions.*
+*23 of 79 permissions.*
 
-**What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills.
+**What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills and measurement sheets.
 
 **What they explicitly cannot do.** **See the wages ledger** — this is B4's one stated restriction, applied literally. They cannot raise or issue an RA bill (reading and printing only), record money received, touch the buy side at all, or administer users.
 
 ### Purchase Manager
 
-*20 of 73 permissions.*
+*20 of 79 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules, the catalogue and the specification library, and keep the address book current.
 
@@ -300,9 +306,9 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Accountant
 
-*13 of 73 permissions.*
+*15 of 79 permissions.*
 
-**What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
+**What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills and the measurement sheets those bills were built from, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
 **What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction, and the one most likely to be questioned, because an accountant booking wages is ordinary. It is withheld because the specification says Accounts is on the far side of the HR wall; if the client wants it, it is a checkbox and not a deployment. They also cannot create or edit any document — no quotation, no invoice, no bill, no purchase order — and cannot administer users.
 
@@ -331,6 +337,12 @@ Read off the live route registry, so it cannot drift from what the application a
 | `boq.view` | `boq.list_boqs`, `boq.view_boq` |
 | `boq.create` | `boq.create_boq` |
 | `boq.print` | `boq.print_boq` |
+| `measurement.view` | `measurement.list_ms`, `measurement.view_ms` |
+| `measurement.create` | `measurement.create_ms` |
+| `measurement.edit` | `measurement.edit_ms` |
+| `measurement.delete` | `measurement.delete_ms` |
+| `measurement.print` | `measurement.print_ms` |
+| `measurement.approve` | `approval.approve_measurement`, `approval.reject_measurement` |
 | `ra.view` | `ra.list_ras`, `ra.view_ra` |
 | `ra.create` | `ra.create_ra` |
 | `ra.edit` | `ra.edit_ra` |

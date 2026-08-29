@@ -150,6 +150,7 @@ def populated(client):
     rcid = _a_receipt(paid_rid, bid)
     dpid = _a_draft_po(bid)
     dcid = _a_challan(bid)
+    msid = _a_measurement(bid)
 
     # `/product/delete` renders its confirmation page only for a product that
     # may actually be deleted; one locked into an assembly redirects with the
@@ -340,6 +341,16 @@ def populated(client):
             "/po/edit/<id>":        dpid,
             "/po/print/<id>":       dpid,
             "/po/view/<id>":        dpid,
+            # C2's six, plus B6's ninth and tenth approval routes. `ms-2` is
+            # the approved sheet — the only one `/measurement/print` renders —
+            # and `msid` is the pending one, which is the only one the edit,
+            # delete and approval pages render. See `_a_measurement()`.
+            "/measurement/view/<id>":   msid,
+            "/measurement/edit/<id>":   msid,
+            "/measurement/delete/<id>": msid,
+            "/measurement/print/<id>":  "ms-2",
+            "/approval/approve/measurement/<id>": msid,
+            "/approval/reject/measurement/<id>":  msid,
             "/dc/delete/<id>":      dcid,
             "/dc/edit/<id>":        dcid,
             "/dc/print/<id>":       dcid,
@@ -361,6 +372,7 @@ def populated(client):
     STORE["receipts"].clear()
     STORE.setdefault("purchase_orders", {}).clear()
     STORE.setdefault("delivery_challans", {}).clear()
+    STORE.setdefault("measurements", {}).clear()
     STORE.setdefault("projects", {}).clear()
     STORE.setdefault("charges", {}).clear()
     # `conftest._fresh_store()` clears only six collections, so a fixture that
@@ -369,6 +381,48 @@ def populated(client):
     # seeds an employee, and a leaked fixture row reads exactly like a seeder.
     STORE.setdefault("employees", {}).clear()
     STORE.setdefault("attendance", {}).clear()
+
+
+def _a_measurement(boq_id: str) -> str:
+    """
+    Two measurement sheets — one PENDING, one APPROVED — and the split matters.
+
+    `approval.can_modify()` locks an approved record, so `/measurement/edit` and
+    `/measurement/delete` would redirect rather than render if the only sheet
+    were the approved one. `approval.can_print()` refuses an unapproved one, so
+    `/measurement/print` would redirect if the only sheet were the pending one.
+    The `/approval/*/measurement/<id>` pair needs a sheet that can still take a
+    rung, which is the pending one again.
+
+    `location`, `measured_by` and `witnessed_by` are left blank on the pending
+    sheet on purpose: those cells are exactly where the register and the
+    document fall back to the house em-dash, which is the branch this file
+    exists to check. `_a_challan()` leaves `dispatch_to` blank for the same
+    reason.
+    """
+    line = next(li for li in STORE["boqs"][boq_id]["line_items"]
+                if not li["is_header"] and li["total_qty"] > 0)
+    rows = [{"line_id": line["line_id"], "is_header": False,
+             "item_no": line["item_no"], "description": line["description"],
+             "unit": line["unit"], "qty": 1.0,
+             "boq_qty": float(line["total_qty"])}]
+    base = {
+        "fy": "26-27", "date": "2026-08-16",
+        "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore", "site_location": "",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "location": "", "measured_by": "", "witnessed_by": "", "notes": "",
+        "items": rows, "company_branch": "", "auth_signatory": "",
+        "created_at": "2026-08-16 12:00",
+        # NOT the sweep's own user — the creator guard would otherwise refuse
+        # the approval routes and they would render a redirect, not a page.
+        "created_by": "somebody-else",
+    }
+    STORE.setdefault("measurements", {})["ms-1"] = dict(
+        base, id="ms-1", ref="SF/MS/26-27/0001", approval_status="pending")
+    STORE["measurements"]["ms-2"] = dict(
+        base, id="ms-2", ref="SF/MS/26-27/0002", approval_status="approved")
+    return "ms-1"
 
 
 def _a_challan(boq_id: str) -> str:
@@ -526,7 +580,8 @@ def _urls(populated):
             # string; without it there is no schedule to claim/draft against.
             if rule.rule == "/ra/create":
                 urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}&leg=supply")
-            elif rule.rule in ("/po/create", "/dc/create"):
+            elif rule.rule in ("/po/create", "/dc/create",
+                               "/measurement/create"):
                 urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}")
             else:
                 urls.append(rule.rule)

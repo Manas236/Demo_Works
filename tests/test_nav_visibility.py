@@ -87,6 +87,12 @@ ALL_CARDS = [
     #   and from nowhere on the launcher. The old assertion had no such line.
     "Receipts",
     "Delivery Challans",
+    # ⚠ Added 29 August 2026 (fifth pass) with CC-2 **C2**. It sits between
+    #   "Delivery Challans" and the buy side because that is where it sits in
+    #   the work: CC-2 C1 is BoQ -> Measurement -> RA-Installation, so the sheet
+    #   comes after the schedule and before the claim. The old assertion had no
+    #   such line.
+    "Measurement Sheets",
     # ⚠ Read "Employee & Misc Charges" until 29 August 2026. The label was
     #   corrected when C4 shipped a REAL employee master (`employee.py`): this
     #   ledger has never had an employee record behind it, only a typed name,
@@ -122,12 +128,19 @@ EXPECTED_CARDS = {
     "operation-head": [
         "Projects", "Bills of Quantities", "Running Account Bills",
         "Receipts",
-        "Delivery Challans", "Purchase Orders", "Draft Purchase Orders",
+        "Delivery Challans", "Measurement Sheets",
+        "Purchase Orders", "Draft Purchase Orders",
         # was "Employee & Misc Charges" — see the note on ALL_CARDS above
         # ⚠ No "Attendance": Operation Head holds no `attendance.*`, on the
         #   same reversible derivation that withholds `employee.*`. It DOES
         #   hold the wages ledger beside it, so the line is drawn at
         #   pay-derived data rather than at site cost, and that line is ours.
+        # ⚠ Gains "Measurement Sheets" on 29 August 2026 (fifth pass): C2's six
+        #   permissions are inside `_OPERATIONS`, so Operation Head raises,
+        #   corrects and approves the sheet an installation claim is built
+        #   from. The old assertion, verbatim:
+        #       "Expenses & Charges", "Product Catalogue", "Spec Library",
+        #       "Client Register", "Address Book"],
         "Expenses & Charges", "Product Catalogue", "Spec Library",
         "Client Register", "Address Book"],
     # B4's one stated restriction, seen from the other side: HR is the narrowest
@@ -155,9 +168,19 @@ EXPECTED_CARDS = {
     "hr": ["Expenses & Charges", "Attendance", "Employees", "Address Book"],
     # Unchanged by this pass: a Sales Manager holds neither `receipt.view`
     # nor `employee.view`, so neither new card is drawn for them.
+    # ⚠ Gains "Measurement Sheets" on 29 August 2026 (fifth pass), on
+    #   `ra.view` / `ra.print`'s terms: a role that may read a claim may read
+    #   the measurement the claim was built from. It holds neither
+    #   `measurement.create` nor `measurement.approve`. The old assertion,
+    #   verbatim:
+    #       "sales-manager": [
+    #           "Quotations", "Proforma Invoices", "Tax Invoices", "Projects",
+    #           "Bills of Quantities", "Running Account Bills", "Product Catalogue",
+    #           "Spec Library", "Client Register", "Address Book"],
     "sales-manager": [
         "Quotations", "Proforma Invoices", "Tax Invoices", "Projects",
-        "Bills of Quantities", "Running Account Bills", "Product Catalogue",
+        "Bills of Quantities", "Running Account Bills", "Measurement Sheets",
+        "Product Catalogue",
         "Spec Library", "Client Register", "Address Book"],
     "purchase-manager": [
         "Projects", "Bills of Quantities", "Delivery Challans",
@@ -170,9 +193,17 @@ EXPECTED_CARDS = {
     #           "Proforma Invoices", "Tax Invoices", "Projects",
     #           "Bills of Quantities", "Running Account Bills",
     #           "Purchase Orders", "Client Register"],
+    # ⚠ Gains "Measurement Sheets" on 29 August 2026 (fifth pass), on the same
+    #   `ra.view` / `ra.print` terms as the Sales Manager above. The assertion
+    #   that stood between "Receipts" arriving and this, verbatim:
+    #       "accountant": [
+    #           "Proforma Invoices", "Tax Invoices", "Projects",
+    #           "Bills of Quantities", "Running Account Bills", "Receipts",
+    #           "Purchase Orders", "Client Register"],
     "accountant": [
         "Proforma Invoices", "Tax Invoices", "Projects",
         "Bills of Quantities", "Running Account Bills", "Receipts",
+        "Measurement Sheets",
         "Purchase Orders", "Client Register"],
 }
 
@@ -198,6 +229,7 @@ CARD_ENDPOINT = {
     "Running Account Bills":      "ra.list_ras",
     "Receipts":                   "receipt.list_receipts",
     "Delivery Challans":          "challan.list_dcs",
+    "Measurement Sheets":         "measurement.list_ms",
     "Purchase Orders":            "purchase.list_purchases",
     "Draft Purchase Orders":      "po_draft.list_pos",
     "Attendance":                 "attendance.list_attendance",

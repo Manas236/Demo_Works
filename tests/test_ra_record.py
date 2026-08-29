@@ -64,7 +64,26 @@ def boq_line(item_no, qty, s_rate=100.0, i_rate=50.0, section="A",
     }
 
 
-def make_boq(bid, lines, rev_no=0, supersedes="", ref="SF/BOQ/26-27/0001"):
+def make_boq(bid, lines, rev_no=0, supersedes="", ref="SF/BOQ/26-27/0001",
+             chain=True):
+    """
+    A BOQ record, and — from 29 August 2026 — the two documents CC-2 **C1**
+    puts in front of a claim.
+
+    `chain=True` plants a delivery challan and an approved measurement against
+    this schedule, so `/ra/create` opens on it. Every caller of this factory is
+    testing the **bill** — the tax block, the printed sheet, the carried
+    balance — and not the order of working, so their fixtures have to describe a
+    project a claim can actually be raised on. `conftest.chain_ready()` carries
+    the full reasoning and is the one place it is written.
+
+    The measurement carries every line at its **full BOQ quantity**, so the
+    installation ceiling after it is the BOQ quantity — exactly what it was
+    before C2 existed. No arithmetic in any of these tests moves.
+
+    Pass `chain=False` for a schedule that must have nothing in front of it;
+    `tests/test_c1_order_of_working.py` is the file that needs it.
+    """
     STORE["boqs"][bid] = {
         "id": bid, "ref": ref, "fy": "26-27", "date": "2026-07-31",
         "rev_no": rev_no, "supersedes": supersedes,
@@ -78,6 +97,9 @@ def make_boq(bid, lines, rev_no=0, supersedes="", ref="SF/BOQ/26-27/0001"):
         "payment_terms": "", "delivery_terms": "", "notes": "",
         "company_branch": "", "auth_signatory": "",
     }
+    if chain:
+        from conftest import chain_ready
+        chain_ready(bid)
     return bid
 
 

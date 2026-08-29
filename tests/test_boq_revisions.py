@@ -47,7 +47,26 @@ def _line(lid, item_no="1", qty=100.0, s_rate=100.0):
 
 
 def _mkboq(bid, rev=0, supersedes="", lines=None,
-           project="Sify Bangalore", account="Prudent Teqtis Pvt Ltd"):
+           project="Sify Bangalore", account="Prudent Teqtis Pvt Ltd",
+           chain=True):
+    """
+    A BOQ record, and — from 29 August 2026 — the two documents CC-2 **C1**
+    puts in front of a claim.
+
+    `chain=True` plants a delivery challan and an approved measurement, so the
+    two RA chips are drawn on `/boq/view` and `/ra/create` opens. Every caller
+    is testing the revision chain or the link, not the order of working, so
+    their fixtures describe a project a claim can actually be raised on.
+    `conftest.chain_ready()` carries the reasoning.
+
+    ⚠ **Each revision gets its own pair**, because `chain_ready()` keys on the
+    BOQ id. That is closer to life than one pair at the head would be: a
+    revision is a new schedule and the challans and sheets raised against it are
+    its own. `ra.challan_exists()` and `measurement.approved_qty_by_line()` both
+    walk the whole chain, so it makes no difference to either guard.
+
+    Pass `chain=False` for a schedule that must have nothing in front of it.
+    """
     STORE["boqs"][bid] = {
         "id": bid, "ref": f"SF/BOQ/26-27/{rev + 1:04d}", "fy": "26-27",
         "date": "2026-08-11", "rev_no": rev, "supersedes": supersedes,
@@ -60,6 +79,9 @@ def _mkboq(bid, rev=0, supersedes="", lines=None,
         "payment_terms": "", "delivery_terms": "", "notes": "",
         "company_branch": "", "auth_signatory": "",
     }
+    if chain:
+        from conftest import chain_ready
+        chain_ready(bid)
     return bid
 
 

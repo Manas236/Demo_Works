@@ -93,8 +93,14 @@ def test_every_reference_collection_has_a_seeder(client):
     # one step further: a seeded marking says somebody was **on a site on a day**
     # and puts a wage against it. Inventing a day's labour cost is worse than
     # inventing the person it is attributed to.
+    # `measurements` (C2, 29 Aug 2026) is transactional and is the sharpest case
+    # in the set after `attendance`: a seeded sheet asserts that somebody stood
+    # on a site and found a quantity, and once approved it is the ceiling every
+    # installation claim is checked against. Inventing one would invent the
+    # ceiling on somebody's money.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
-                     "ra_bills", "receipts", "delivery_challans", "projects", "charges",
+                     "ra_bills", "receipts", "delivery_challans", "measurements",
+                     "projects", "charges",
                      "employees", "attendance", "users"}
     assert seeded | transactional == set(db.COLLECTIONS)
 

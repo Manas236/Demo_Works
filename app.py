@@ -34,6 +34,10 @@ from challan import challan_bp   # Delivery challans: goods leaving the yard
                                  # against a BOQ. Its own collection, beside
                                  # the RA bill on the project chain and
                                  # deliberately not reconciled with it.
+from measurement import measurement_bp  # Measurement sheets from a BOQ (CC-2
+                                 # C2). Its own collection. ra.py imports it
+                                 # for approved_qty_by_line(); it must never
+                                 # import ra.py back.
 from project import project_bp   # Projects: the commercial engagement BOQs
                                  # are grouped under. A LEAF — it must not
                                  # import any document module.
@@ -134,6 +138,13 @@ app.register_blueprint(challan_bp)            # Mounted at /dc — REQUIRED by
                                               # /boq/view, which builds
                                               # url_for("challan.create_dc")
                                               # in its action bar.
+app.register_blueprint(measurement_bp)        # Mounted at /measurement —
+                                              # REQUIRED by /boq/view, which
+                                              # builds
+                                              # url_for("measurement.create_ms")
+                                              # in its action bar, and by
+                                              # /ra/create's C1 refusal, which
+                                              # links to it.
 app.register_blueprint(client_bp)             # Mounted at /client
 app.register_blueprint(project_bp)            # Mounted at /projects — LEAF, must
                                               # not import any document module.

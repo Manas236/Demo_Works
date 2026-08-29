@@ -27,6 +27,8 @@ create route has stopped stamping and the guard has a hole in it.
 
 import approval
 import auth
+import json
+
 from store import STORE
 
 from conftest import ensure_test_user
@@ -66,15 +68,71 @@ def test_a_charge_created_through_the_form_carries_its_creator(client):
         "write it.")
 
 
+def test_a_measurement_created_through_the_form_carries_its_creator(client):
+    """
+    ⚠ **The fifth document, added with CC-2 C2 on 29 August 2026.**
+
+    The assertion below refused to be widened without this test, which is what
+    that assertion is for: a document added to `approval.DOCUMENTS` inherits the
+    grandfather leniency — *"a record with no creator is approvable by anyone"* —
+    and inherits it silently. So the create route is posted for real and the
+    record is read back, exactly as the charge above it is.
+
+    A measurement is the sharpest case of the four to leave unstamped: an
+    approved sheet is the ceiling every installation claim is checked against,
+    so a creator who can approve their own sheet can raise their own ceiling and
+    then claim against it.
+    """
+    import boq as BQ
+    import demo_data as DD
+
+    client.get("/boq/")                       # seeds the demo schedule
+    BQ.ensure_demo_boq()
+    bid = DD.BOQ_META["id"]
+    line = next(li for li in STORE["boqs"][bid]["line_items"]
+                if not li["is_header"] and li["total_qty"] > 0)
+
+    before = dict(STORE.setdefault("measurements", {}))
+    r = client.post(f"/measurement/create?boq={bid}", data={
+        "date": "2026-08-29", "location": "Block A", "measured_by": "R. Kadam",
+        "witnessed_by": "", "notes": "",
+        "ms_json": json.dumps({"lines": [{"line_id": line["line_id"],
+                                          "qty": "1"}]}),
+    }, follow_redirects=False)
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:600]
+
+    rec = _only_new(before, STORE["measurements"])
+    user = ensure_test_user()
+    assert rec.get("created_by") == user["id"], (
+        "A measurement raised through /measurement/create did not record who "
+        "raised it. B6's creator guard has nothing to check against, so the "
+        "person who measured can approve their own sheet — and an approved "
+        "sheet is the ceiling their own installation claim is checked against.")
+    assert not approval.is_grandfathered(rec), (
+        "A measurement created today carries the grandfather mark. That mark "
+        "means 'this record predates the approval system' and only the "
+        "migration may write it.")
+
+
 def test_every_approvable_collection_is_covered_by_this_file():
     """
-    The four document types B6 names are the four this file tests.
+    Every document type in `approval.DOCUMENTS` is one this file tests.
 
-    A fifth added to `approval.DOCUMENTS` without a create-route test here would
-    inherit the grandfather leniency with nothing proving its create route
-    stamps anybody — so adding one has to break this test.
+    A new one added without a create-route test here would inherit the
+    grandfather leniency with nothing proving its create route stamps anybody —
+    so adding one has to break this test.
+
+    ⚠ **Widened on 29 August 2026 for `measurement` (CC-2 C2), and only after
+    the test above it was written.** The previous assertion, kept verbatim so
+    the widening is legible rather than invisible:
+
+        assert set(approval.DOCUMENTS) == {"charge", "ra", "invoice", "purchase"}, (
+            "approval.DOCUMENTS has changed. Add a create-route stamping test for "
+            "the new document type before widening this assertion — the "
+            "grandfather rule is only safe while every create route stamps.")
     """
-    assert set(approval.DOCUMENTS) == {"charge", "ra", "invoice", "purchase"}, (
+    assert set(approval.DOCUMENTS) == {"charge", "ra", "invoice", "purchase",
+                                       "measurement"}, (
         "approval.DOCUMENTS has changed. Add a create-route stamping test for "
         "the new document type before widening this assertion — the "
         "grandfather rule is only safe while every create route stamps.")

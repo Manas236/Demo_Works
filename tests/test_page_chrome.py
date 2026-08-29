@@ -50,7 +50,8 @@ NO_CHROME = {
 # The screen routes the last three passes added. Listed explicitly as well as
 # swept, so that deleting one from the app is a red test rather than a quietly
 # smaller sweep.
-NEW_PAGES = ["/client/", "/po/", "/dc/", "/projects/", "/charge/"]
+NEW_PAGES = ["/client/", "/po/", "/dc/", "/projects/", "/charge/",
+             "/measurement/"]
 
 
 @pytest.fixture()
@@ -61,6 +62,12 @@ def populated(client):
     import address
     address.ensure_demo_addresses()
     bid = next(b for b, rec in STORE["boqs"].items() if not rec.get("supersedes"))
+    # CC-2 C1 — the order of working, enforced by URL from 29 August 2026.
+    # `/ra/create?leg=supply` refuses a schedule with no challan behind it, so
+    # a chrome sweep would be checking a redirect rather than a page. See
+    # `conftest.chain_ready()`.
+    from conftest import chain_ready
+    chain_ready(bid)
     yield {"boq": bid}
 
 
@@ -86,7 +93,8 @@ def test_every_screen_page_carries_the_shared_nav(populated, client):
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
            "/po/create": f"?boq={populated['boq']}",
-           "/dc/create": f"?boq={populated['boq']}"}
+           "/dc/create": f"?boq={populated['boq']}",
+           "/measurement/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         r = client.get(url)
@@ -107,7 +115,8 @@ def test_every_page_layers_its_css_after_the_shared_stylesheet(populated, client
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
            "/po/create": f"?boq={populated['boq']}",
-           "/dc/create": f"?boq={populated['boq']}"}
+           "/dc/create": f"?boq={populated['boq']}",
+           "/measurement/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         html = client.get(url).get_data(as_text=True)
@@ -229,7 +238,8 @@ def test_no_page_uses_a_browser_confirm_dialog(populated, client):
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
            "/po/create": f"?boq={populated['boq']}",
-           "/dc/create": f"?boq={populated['boq']}"}
+           "/dc/create": f"?boq={populated['boq']}",
+           "/measurement/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         html = client.get(url).get_data(as_text=True)

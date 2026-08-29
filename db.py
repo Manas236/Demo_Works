@@ -73,7 +73,8 @@ load_dotenv(override=False)
 # Collections in STORE that get persisted. Add a key here and it is durable —
 # the table is created automatically on next start.
 COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "purchase_orders",
-               "specs", "boqs", "ra_bills", "receipts", "delivery_challans", "projects",
+               "specs", "boqs", "ra_bills", "receipts", "delivery_challans", "measurements",
+               "projects",
                "charges", "employees", "attendance", "addresses", "settings", "users", "roles")
 
 # Seed flags (_seeded / _addr_seeded) are deliberately NOT persisted. Both

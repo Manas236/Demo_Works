@@ -59,6 +59,11 @@ from flask import Blueprint, redirect, request, url_for
 import approval
 import boq as BQ
 import branding as B
+# CC-2 **C1/C2**. The one-way arrow CC-2 states in its own words — *"approved
+# measurements become the source of installation quantity on RA-Installation"*.
+# `measurement.py` must never import this module back; it is refused at AST
+# level in `tests/test_import_directions.py`.
+import measurement as MS
 import pipeline as P
 from dashboard import BASE_STYLES, _nav
 from store import STORE
@@ -946,10 +951,47 @@ def overclaims(boq_id: str, leg: str, claims: list,
     no id, or an id absent from the approved revision, is `"not_in_boq"` — the
     same answer, because in both cases there is no approved quantity to claim
     against.
+
+    ⚠ **THE INSTALLATION CEILING IS THE APPROVED MEASUREMENT, NOT THE BOQ
+    QUANTITY** — CC-2 **C2**, 29 August 2026: *"Approved measurements become the
+    source of installation quantity on RA-Installation."* That sentence is
+    implemented here and nowhere else, so the cumulative arithmetic is not
+    duplicated: `claimed_by_line()` stays the single place anything asks how
+    much has been claimed, and the only thing that moved is the number it is
+    compared against.
+
+    ⚠ **A project with NO approved measurement keeps the BOQ ceiling, and that
+    is the whole of the grandfather rule at the arithmetic level.** Requiring a
+    measurement here would break every live installation bill raised before this
+    module existed — the same shape of problem as `created_by`, and it gets the
+    same treatment. The exception **cannot grow**, because
+    `/ra/create?leg=installation` refuses a BOQ with no approved measurement
+    so an empty answer from `MS.approved_qty_by_line()` can only describe a
+    project that already existed. The C1 route guard that closes it lands in the
+    next commit; `tests/test_measurement_pin.py` is what pins it.
+
+    ⚠ **Once ONE approved measurement exists on a chain, every line's ceiling
+    comes from it** — including a line the sheet did not measure, whose ceiling
+    is therefore zero. That is the rule, not an edge case: installation quantity
+    comes from measurement, and a line nobody measured has no measured quantity
+    to claim.
+
+    **The supply leg is untouched.** Its ceiling is still the approved BOQ
+    quantity, because supply is proven by a delivery challan and CC-2 asks for
+    no quantity to flow from one to the other. C1's supply guard is an ordering
+    check at the route, not a ceiling here.
     """
     approved = approved_by_line(boq_id)
     prior = claimed_by_line(boq_id, exclude_ra_id=exclude_ra_id)
     labels = approved_labels(boq_id)
+
+    # GUARD 2 (CC-2 C2). Non-empty only when an approved measurement exists on
+    # this chain; empty means "this project predates measurement" — see above.
+    # `approved` is left alone and a SEPARATE ceiling is derived from it, so the
+    # "is this line in the schedule at all" question below still reads the BOQ:
+    # a line that was never measured is a different refusal from a line that was
+    # never in the schedule, and one message must not wear the other's words.
+    measured = MS.approved_qty_by_line(boq_id) if leg == "installation" else {}
 
     out = []
     for c in claims or []:
@@ -974,10 +1016,24 @@ def overclaims(boq_id: str, leg: str, claims: list,
         app = approved[key]
         previously = prior.get(key, 0.0)
         cumulative = previously + qty
+
+        if measured:
+            app = measured.get(lid, 0.0)
+            if app <= 0.0:
+                # In the schedule, but no approved measurement covers it. Its
+                # own refusal, because "0 approved" would be a lie about the BOQ
+                # and would send the operator to revise a schedule that is fine.
+                out.append({"item_no": item, "line_id": lid, "leg": leg,
+                            "reason": "not_measured",
+                            "approved": 0.0, "previously": previously,
+                            "this": qty, "cumulative": cumulative,
+                            "allowed": 0.0, "over": cumulative})
+                continue
+
         allowed = app * (1.0 + OVERCLAIM_TOLERANCE)
         if round(cumulative - allowed, 6) > _QTY_EPSILON:
             out.append({"item_no": item, "line_id": lid, "leg": leg,
-                        "reason": "overclaim",
+                        "reason": "overmeasured" if measured else "overclaim",
                         "approved": app, "previously": previously,
                         "this": qty, "cumulative": cumulative,
                         "allowed": allowed, "over": cumulative - allowed})
@@ -985,11 +1041,28 @@ def overclaims(boq_id: str, leg: str, claims: list,
 
 
 def overclaim_message(v: dict) -> str:
-    """One over-claim, in words the person entering it can act on."""
+    """
+    One over-claim, in words the person entering it can act on.
+
+    Four reasons now, and the last two are C2's. Naming them separately is the
+    point: *"Item 24.d is over"* is not something anyone can act on, and each of
+    these sends the reader somewhere different — to the schedule, to the site,
+    or to the earlier bills.
+    """
+    q = BQ._fmt_qty
     if v["reason"] == "not_in_boq":
         return (f"Item {v['item_no']} is not in the approved BOQ, so there is "
                 f"nothing to claim against it.")
-    q = BQ._fmt_qty
+    if v["reason"] == "not_measured":
+        return (f"Item {v['item_no']} has no approved measurement behind it, so "
+                f"there is no installation quantity to claim. Measure it and "
+                f"have the sheet approved first.")
+    if v["reason"] == "overmeasured":
+        return (f"Item {v['item_no']} (installation): {q(v['approved'])} "
+                f"measured and approved, {q(v['previously'])} already claimed "
+                f"on earlier RA bills, {q(v['this'])} claimed here — that is "
+                f"{q(v['cumulative'])} in total, {q(v['over'])} over the "
+                f"measurement.")
     return (f"Item {v['item_no']} ({v['leg']}): {q(v['approved'])} approved, "
             f"{q(v['previously'])} already claimed on earlier RA bills, "
             f"{q(v['this'])} claimed here — that is {q(v['cumulative'])} in "

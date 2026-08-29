@@ -38,6 +38,7 @@ import demo_data as DD
 import ra
 import receipt as RC
 from store import STORE
+from conftest import chain_ready
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -48,6 +49,11 @@ def seeded(client):
     STORE["ra_bills"].clear()
     STORE["receipts"].clear()
     BQ.ensure_demo_boq()
+    # CC-2 C1 — the order of working, enforced by URL from 29 August 2026.
+    # Every test in this file is about the BILL and not about the chain, so the
+    # fixture describes a project a claim can actually be raised on. Read
+    # `conftest.chain_ready()` for why it writes the two records directly.
+    chain_ready(DD.BOQ_META["id"])
     yield DD.BOQ_META["id"]
     STORE["ra_bills"].clear()
     STORE["receipts"].clear()

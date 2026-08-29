@@ -204,6 +204,75 @@ FORBIDDEN = [
     ("ra", "spec",     "any", "the spec library is what a BOQ is WRITTEN from; a claim "
                               "is measured against the BOQ, which already copied it"),
 
+    # ── The measurement sheet (CC-2 C2 / C1, 29 August 2026) ────────────────
+    #
+    # ⚠ **`measurement -> ra` is the load-bearing one.** `ra.py` imports THIS
+    #   module for `approved_qty_by_line()`, which is CC-2's own sentence in
+    #   code — *"approved measurements become the source of installation
+    #   quantity on RA-Installation."* The arrow runs one way; importing back is
+    #   a cycle at boot. `measurement.py` links out with `url_for` and reads
+    #   nothing of `ra.py`'s, exactly as `boq.py` does.
+    ("measurement", "ra",        "any", "ra.py imports THIS module for the "
+                                        "approved measured quantity; importing "
+                                        "back is a cycle"),
+    # ⚠ **`ra -> challan` is refused in BOTH directions, and C1 did not change
+    #   that.** The supply leg's C1 guard needs one question — does a challan
+    #   exist on this chain — and `ra.challan_exists()` answers it by reading
+    #   `STORE["delivery_challans"]` directly, the one-way trick used between
+    #   boq/ra, boq/challan and ra/receipt. The stated reason for the existing
+    #   `challan -> ra` prohibition ("they diverge and neither answers the
+    #   other's questions") cuts both ways, and an existence check is not a
+    #   reason to couple two document modules.
+    ("ra",          "challan",   "any", "the supply leg's C1 guard reads "
+                                        "STORE['delivery_challans'] directly; "
+                                        "coupling the two modules is what the "
+                                        "challan -> ra prohibition already "
+                                        "refuses from the other side"),
+    ("measurement", "challan",   "any", "the two legs of C1 are separate: a "
+                                        "challan proves goods moved, a "
+                                        "measurement proves work was done, and "
+                                        "neither answers the other"),
+    ("measurement", "receipt",   "any", "a measurement is not a payment"),
+    ("measurement", "invoice",   "any", "a measurement has no tax block and no "
+                                        "relation to a tax invoice"),
+    ("measurement", "proforma",  "any", "the PI belongs to the quotation chain"),
+    ("measurement", "purchase",  "any", "the buy side is a separate pipeline"),
+    ("measurement", "po_draft",  "any", "two BOQ-chain documents that share a "
+                                        "PICKER, not each other"),
+    ("measurement", "quotation", "any", "the form furniture is read through "
+                                        "docsheet.py, which is the leaf both "
+                                        "this module and the sell chain depend "
+                                        "on"),
+    ("measurement", "product",   "any", "a measurement is written from the BOQ, "
+                                        "not the catalogue"),
+    ("measurement", "client",    "any", "a measurement is not a client ledger"),
+    ("measurement", "spec",      "any", "the BOQ already copied the clause"),
+    ("measurement", "settings",  "any", "settings.py imports quotation; nothing "
+                                        "downstream of it may import back. The "
+                                        "measurement series is FY-scoped "
+                                        "through pipeline.fy_ref and owns no "
+                                        "/settings counter"),
+    ("measurement", "employee",  "any", "who measured is a name on the sheet, "
+                                        "not a link to the employee master"),
+    ("measurement", "attendance", "any", "and emphatically not to the muster — "
+                                         "C6 is BLOCKED"),
+    ("measurement", "project",   "any", "measurement.py reads STORE['boqs'] and "
+                                        "links out with url_for"),
+    ("measurement", "auth",      "any", "the gate is central "
+                                        "(auth.ROUTE_PERMISSIONS) and no page "
+                                        "module asks it directly"),
+    ("boq",         "measurement", "any", "the BOQ view page links out with "
+                                          "url_for and reads STORE['measurements'] "
+                                          "directly — importing measurement.py "
+                                          "back would be a cycle"),
+    ("boqpick",     "measurement", "any", "the picker is a leaf: measurement.py "
+                                          "renders THROUGH it, at its FOURTH "
+                                          "consumer"),
+    ("docsheet",    "measurement", "any", "the sheet is a leaf: measurement.py "
+                                          "renders through it"),
+    ("challan",     "measurement", "any", "and the same edge from the other "
+                                          "side"),
+
     # ── Receipts (CLIENT_CHANGES.md item 8) ─────────────────────────────────
     # The load-bearing one is `ra -> receipt`. `receipt.py` imports `ra.py` for
     # the bill and the balance arithmetic, so importing back is a cycle — and
@@ -533,6 +602,37 @@ REQUIRED = [
                              "DERIVED from the GSTIN, never stored beside it"),
     ("challan", "store",     "the shared STORE dict"),
     ("challan", "branding",  "every company string, colour and image"),
+
+    # ── The measurement sheet (CC-2 C2, 29 August 2026) ──────────────────
+    #
+    # ⚠ **`ra -> measurement` is the arrow CC-2 states in its own words** —
+    #   "approved measurements become the source of installation quantity on
+    #   RA-Installation". It is the ONLY arrow into this module from a document
+    #   module, and `measurement.py` imports none of them back.
+    ("ra", "measurement", "approved_qty_by_line() and has_approved_measurement() "
+                          "— the installation ceiling and C1's ordering guard. "
+                          "This is CC-2 C2's own sentence in code and the reason "
+                          "measurement.py may never import ra.py"),
+    ("measurement", "boq",      "superseded_ids, _line_id, _item_no, _fmt_qty and "
+                                "_ancestor_ids — the revision chain the "
+                                "cumulative measured quantity is summed across"),
+    ("measurement", "boqpick",  "the same grid, at its FOURTH consumer. It was "
+                                "extracted so this would not be written a fourth "
+                                "time, and importing it is what makes that true"),
+    ("measurement", "docsheet", "the same A4 sheet as every other document that "
+                                "prints — NOTHING new was drawn for this "
+                                "document, which is what CC-2's silence on its "
+                                "appearance required"),
+    ("measurement", "approval", "the ladder (B6). measurement.py is the fifth "
+                                "entry in approval.DOCUMENTS and calls "
+                                "can_print / can_modify / panel like the other "
+                                "four"),
+    ("measurement", "dashboard", "BASE_STYLES and _nav"),
+    ("measurement", "pipeline",  "esc, fy_of, fy_ref and gstin_state_label — the "
+                                 "seller's State is DERIVED from the GSTIN, "
+                                 "never stored beside it"),
+    ("measurement", "store",     "the shared STORE dict"),
+    ("measurement", "branding",  "every company string, colour and image"),
 
     # ── project.py is a LEAF (Pass A) ────────────────────────────────────
     ("project", "dashboard", "BASE_STYLES and _nav"),

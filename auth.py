@@ -161,6 +161,32 @@ PERMISSIONS = {
     "po.delete":             ("Delete a draft purchase order",            "Buy side"),
     "po.print":              ("Print a draft purchase order",             "Buy side"),
 
+    # C2 — the measurement sheet (29 August 2026, fifth override block). It
+    # sits in the BOQ chain group beside the schedule it is raised from and the
+    # claim it feeds, not in Dispatch: a challan proves goods moved, a
+    # measurement proves work was done, and CC-2's C1 keeps the two legs apart.
+    #
+    # ⚠ **Purchase Manager is REFUSED all six, and that is OUR derivation, not
+    #   CC-2's.** They carry `dc.*` because dispatch is theirs; a measurement
+    #   feeds an installation claim and belongs to operations and billing. B4
+    #   says nothing either way, so this is a **reversible default** — an Owner
+    #   grants any of the six at /roles/edit/<id> with a checkbox, no code
+    #   change and no re-login.
+    #
+    #   It is deliberately NOT marked `–` in docs/ACCESS_MATRIX.md, and the
+    #   reason is consistency rather than modesty: Purchase Manager already
+    #   holds no `ra.*` at all and that absence carries no mark either. Marking
+    #   one and not the other would say the two withholdings were reached
+    #   differently when they were reached the same way.
+    "measurement.view":      ("View measurement sheets",                  "BOQ chain"),
+    "measurement.create":    ("Raise a measurement sheet",                "BOQ chain"),
+    "measurement.edit":      ("Edit a measurement sheet",                 "BOQ chain"),
+    "measurement.delete":    ("Delete a measurement sheet",               "BOQ chain"),
+    "measurement.print":     ("Print a measurement sheet",                "BOQ chain"),
+    # B6's ladder, on a document B6 does not name. Read approval.py's DOCUMENTS
+    # entry for why the RA ladder was chosen and that the choice is ours.
+    "measurement.approve":   ("Approve or reject a measurement sheet",    "BOQ chain"),
+
     "dc.view":               ("View delivery challans",                   "Dispatch"),
     "dc.create":             ("Raise a delivery challan",                 "Dispatch"),
     "dc.edit":               ("Edit a delivery challan",                  "Dispatch"),
@@ -377,6 +403,17 @@ ROUTE_PERMISSIONS = {
     "challan.delete_dc":          "dc.delete",
     "challan.print_dc":           "dc.print",
 
+    # ── The measurement sheet (CC-2 C2) ──────────────────────────────────────
+    # `/measurement/edit/<id>` and `/measurement/delete/<id>` each answer both
+    # GET and POST at one endpoint — the confirm page and the write — exactly as
+    # `/dc/delete/<id>` does, so each carries one row.
+    "measurement.list_ms":        "measurement.view",
+    "measurement.view_ms":        "measurement.view",
+    "measurement.create_ms":      "measurement.create",
+    "measurement.edit_ms":        "measurement.edit",
+    "measurement.delete_ms":      "measurement.delete",
+    "measurement.print_ms":       "measurement.print",
+
     # ── Employee costs ───────────────────────────────────────────────────────
     "charge.list_charges":        "charge.view",
     "charge.new_charge":          "charge.create",
@@ -423,6 +460,11 @@ ROUTE_PERMISSIONS = {
     "approval.reject_invoice":    "invoice.approve",
     "approval.approve_purchase":  "purchase.approve",
     "approval.reject_purchase":   "purchase.approve",
+    # C2 — minted by the same `approval._register_routes()` loop off the fifth
+    # entry in `approval.DOCUMENTS`. A document added to that table with no rows
+    # here is unreachable, and `test_access_control.py` fails until they exist.
+    "approval.approve_measurement": "measurement.approve",
+    "approval.reject_measurement":  "measurement.approve",
 
     # ── Projects ─────────────────────────────────────────────────────────────
     "project.list_projects":      "project.view",
@@ -475,6 +517,11 @@ _ALL_PERMS = tuple(PERMISSIONS)
 _OPERATIONS = [
     "dashboard.view", "boq.view", "boq.create", "boq.print",
     "ra.view", "ra.create", "ra.edit", "ra.delete", "ra.issue", "ra.cancel", "ra.print",
+    # C2. Operations raise and correct the sheet the installation claim is
+    # built from; `measurement.approve` is NOT here, because approving is a
+    # ladder rung and is granted per role below.
+    "measurement.view", "measurement.create", "measurement.edit",
+    "measurement.delete", "measurement.print",
     "dc.view", "dc.create", "dc.edit", "dc.delete", "dc.print",
     "po.view", "po.create", "po.edit", "po.delete", "po.print",
     "purchase.view", "purchase.create", "purchase.edit",
@@ -505,6 +552,9 @@ BUILTIN_ROLES = {
             # PO. CC-2: "Any one Director's approval is sufficient."
             "charge.approve", "ra.approve", "invoice.approve",
             "purchase.approve",
+            # C2 — the measurement ladder is the RA ladder (approval.py), so
+            # the Director rung appears on it too.
+            "measurement.approve",
             # C4. A Director is the Admin tier and sits inside the HR wall —
             # B4 keeps employee information from Sales, Purchase and Accounts,
             # and names none of those three here.
@@ -527,7 +577,9 @@ BUILTIN_ROLES = {
         # to match, and `approval.role_slugs_of()` reads the slug, not the name.
         sorted(set(_OPERATIONS + ["charge.view", "charge.create", "charge.edit",
                                   "charge.approve", "ra.approve",
-                                  "invoice.approve", "purchase.approve"])),
+                                  "invoice.approve", "purchase.approve",
+                                  # C2 — the other half of the RA ladder.
+                                  "measurement.approve"])),
     ),
     "hr": (
         "HR",
@@ -564,6 +616,10 @@ BUILTIN_ROLES = {
          "proforma.view", "proforma.create", "invoice.view", "invoice.create",
          "client.view", "client.edit", "boq.view", "boq.create", "boq.print",
          "ra.view", "ra.print", "product.view", "spec.view",
+         # C2, on `ra.view` / `ra.print`'s terms: a role that may read a claim
+         # may read the measurement the claim was built from. It may not raise
+         # or approve one.
+         "measurement.view", "measurement.print",
          "address.view", "address.create", "address.edit", "project.view"],
     ),
     "purchase-manager": (
@@ -578,7 +634,9 @@ BUILTIN_ROLES = {
         "Accountant",
         ["dashboard.view", "receipt.view", "receipt.create", "receipt.edit",
          "receipt.delete", "client.view", "invoice.view", "proforma.view",
-         "ra.view", "ra.print", "purchase.view", "boq.view", "project.view"],
+         "ra.view", "ra.print", "purchase.view", "boq.view", "project.view",
+         # C2, on `ra.view` / `ra.print`'s terms — see the Sales Manager note.
+         "measurement.view", "measurement.print"],
     ),
 }
 

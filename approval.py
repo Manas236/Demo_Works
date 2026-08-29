@@ -167,6 +167,39 @@ DOCUMENTS = {
         "permission": "purchase.approve",
         "list_endpoint": "purchase.list_purchases",
     },
+    # ── The FIFTH document, added 29 August 2026 with CC-2 **C2** ────────────
+    #
+    # ⚠ **B6 DOES NOT NAME THIS DOCUMENT.** CC-2's B6 gives a ladder to charges
+    #   (Director → Operation Head → HR, in sequence) and one to RA / Tax
+    #   Invoice / PO (Operation Head + Director). A measurement is on neither
+    #   list, and C2's three lines say nothing about approval beyond the word
+    #   "approved".
+    #
+    #   **The RA ladder was chosen, and the choice is OURS.** The reasoning: a
+    #   measurement exists for exactly one purpose, to feed an RA-Installation
+    #   bill, and the two documents claim against the same schedule. Putting a
+    #   different ladder under the number than under the claim built from it
+    #   would mean the quantity was agreed by one pair of people and the money
+    #   by another. The charges ladder is the alternative and is wrong for a
+    #   plain reason: it ends at HR, and HR has nothing to say about what was
+    #   measured on a site.
+    #
+    #   It is recorded as a judgement call in ABOUT.md §2i and in the fifth
+    #   29 August 2026 override block, and it is **one word to change here** if
+    #   the client wants a different one.
+    #
+    # ⚠ **No `print_exempt_states`.** The RA bill has two because it has a
+    #   lifecycle — draft / issued / cancelled — that predates the ladder and
+    #   carries its own overprint. A measurement's only state is where it stands
+    #   on its ladder, so an unapproved one simply does not print.
+    "measurement": {
+        "collection": "measurements",
+        "label":      "measurement sheet",
+        "steps":      ("operation-head", "director"),
+        "sequential": False,
+        "permission": "measurement.approve",
+        "list_endpoint": "measurement.list_ms",
+    },
 }
 
 # The collection a document key writes to. `db.py` persists every one of these

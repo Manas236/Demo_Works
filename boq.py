@@ -2174,6 +2174,15 @@ def view_boq(id: str):
     # the ordinary register with the ordinary series. `boq.py` may never import
     # `purchase.py`, so this is `url_for` and nothing else — the same one-way
     # trick as the RA chips, the draft PO and the challan above it.
+    # ⚠ **The Measurement chip.** A measurement is the installation leg's proof,
+    # exactly as the challan is the supply leg's, so it rides the same `is_tip`
+    # gate as its neighbours and for the same reason: a superseded revision is
+    # not the schedule anybody is measuring against. `/measurement/create`
+    # refuses one at the route as well — a link is not a guard.
+    #
+    # `boq.py` may import neither `ra.py` nor `measurement.py` (ABOUT.md §2b),
+    # so this is `url_for` and nothing else — the one-way trick every other chip
+    # in this bar uses.
     ra_btns = ""
     if is_tip:
         ra_btns = (
@@ -2183,6 +2192,8 @@ def view_boq(id: str):
             f'class="btn btn-ghost">&#43;&nbsp;Raise Purchase Order</a>'
             f'<a href="{url_for("challan.create_dc", boq=id)}" '
             f'class="btn btn-ghost">&#43;&nbsp;Delivery Challan</a>'
+            f'<a href="{url_for("measurement.create_ms", boq=id)}" '
+            f'class="btn btn-ghost">&#43;&nbsp;Measurement</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
             f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>'
             f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '

@@ -1086,6 +1086,68 @@ nobody wrote.
 
 ---
 
+### 2j. `measurement.py` — the middle term the installation claim never had
+
+CC-2 **C2** and **C1**, built 29 August 2026 under the fifth override block of
+that date. Before it, installation quantity was typed straight into the claim
+grid with nothing behind it — CC-2's own sentence.
+
+```
+BoQ ──► Delivery Challan ──► RA-Supply          goods, proven by a challan
+BoQ ──► Measurement      ──► RA-Installation    work, proven by a measurement
+```
+
+**Two arrows out of this module, and they are not the same shape.**
+
+| arrow | how | why |
+|---|---|---|
+| `ra.py` → `measurement.py` | a real **import** | CC-2 states it in its own words: *"approved measurements become the source of installation quantity."* A **quantity flows**, so the record's shape must live in one module and `ra.overclaims()` asks for it by name |
+| `ra.py` → `challan.py` | **no import** — `STORE["delivery_challans"]` read directly | C1's supply guard asks one question, *does a challan exist on this chain*. That needs a dict lookup, not a module. `challan → ra` is already refused because "they diverge and neither answers the other's questions", and that argument cuts both ways |
+
+Both directions are pinned in `tests/test_import_directions.py`, so the
+asymmetry is a decision rather than an omission. `measurement.py` imports
+neither `ra.py` nor `challan.py`.
+
+**Where each guard lives, and why it is not two places.**
+
+- **A measured quantity may not exceed the BOQ quantity** — `overmeasures()`,
+  here. A **hard block**, which is the opposite of `challan.over_dispatched()`:
+  a challan records goods that have physically moved and refusing a real
+  movement pushes people to write challans outside the system, whereas a
+  measurement is the number a claim will be built from.
+- **Cumulative claims may not exceed the approved measured quantity** — inside
+  `ra.overclaims()`, which already owns the cumulative arithmetic. **Nothing was
+  reimplemented**: `ra.claimed_by_line()` stays the single place anything asks
+  how much has been claimed, and the only thing that moved is the number it is
+  compared against.
+
+⚠ **A project with no approved measurement keeps the BOQ ceiling**, and that is
+the grandfather rule at the arithmetic level — requiring one would break every
+installation bill raised before this module existed. The exception **cannot
+grow**, because `/ra/create?leg=installation` refuses a BOQ with no approved
+measurement, so an empty answer can only describe a project that already
+existed. `tests/test_measurement_pin.py` is what pins it and is the point of the
+rule.
+
+⚠ **Once one approved sheet exists on a chain, a line the sheet did not measure
+has a ceiling of nil** — and it gets its **own** refusal (`not_measured`) rather
+than "0 approved", because the latter would be a lie about the schedule and
+would send the operator to revise a BOQ that is fine.
+
+⚠ **Almost all of this is OURS.** C2 is three lines. The two guards, the
+cumulative sum across sheets, the ladder, and that the sheet prints at all are
+unspecced and unpriced, and the fifth 29 August 2026 override block names each
+one. `PROGRESS.md` says the same wherever C2 is marked BUILT.
+
+**The printed sheet reuses `docsheet.py` exactly and invents nothing.** CC-2 is
+silent on whether a measurement prints, so the route exists — a sheet signed in
+the field has to reach paper — and **no golden is pinned on it**. Pinning one
+would freeze a design nobody specified and make the client's first sight of it a
+re-baselining exercise. The only additions to the shared sheet are two column
+widths and one signature label, which is what `challan.py` added.
+
+---
+
 ### 2i. `approval.py` — the ladder, and the guard the registry cannot hold
 
 CC-2 **B6** and **B7**, built 29 August 2026 under the fourth override block of
@@ -1119,6 +1181,18 @@ the view, and that is the precise weakening B5 exists to prevent. So
 `_register_routes()` mints `approve_<key>` and `reject_<key>` from
 `DOCUMENTS`, each with its own registry row, while the two view bodies are
 still written once.
+
+⚠ **A FIFTH document joined `DOCUMENTS` on 29 August 2026 with CC-2 C2 — the
+measurement sheet — and B6 does not name it.** B6 gives a ladder to charges and
+one to RA / Tax Invoice / PO. A measurement is on neither list, and C2's three
+lines say nothing about approval beyond the word "approved". **The RA ladder was
+chosen and the choice is ours**: a measurement exists to feed an
+RA-Installation bill and the two claim against the same schedule, so a different
+ladder under the number than under the claim would mean the quantity was agreed
+by one pair of people and the money by another. The charges ladder is wrong for
+a plainer reason — it ends at HR, who has nothing to say about what was measured
+on a site. It is **one word in `approval.DOCUMENTS`** if the client wants
+another.
 
 **A refusal is a redirect, not a 403.** Two reasons, and both matter. It is the
 house shape for a per-record rule — `ra.edit_ra()` and `ra.delete_ra()` bounce
@@ -2095,6 +2169,71 @@ Six properties this shape exists to guarantee:
    `challan.dispatched_by_line()`, summed across the whole revision chain —
    `ra.claimed_by_line()`'s rule and for its reason: a maintained counter that
    one code path forgets to update is worse than none, because it is trusted.
+
+### Measurement Sheet  (CC-2 **C2**, 29 August 2026)
+
+`STORE["measurements"]`, keyed by UUID, pointing at the BOQ revision it was
+raised against. Its own collection for CLIENT_CHANGES.md §1.3's reason — one BOQ
+accumulates many sheets over a project's life, and a list on the schedule would
+lose them on revision.
+
+⚠ **CC-2's C2 is three lines** — *"Raised from the BOQ. Approved measurements
+become the source of installation quantity on RA-Installation."* Everything
+below beyond those two facts is **ours**: the ceiling on a measured quantity,
+the cumulative sum across sheets, the ladder, and that it prints at all. The
+fifth 29 August 2026 override block in `CLIENT_CHANGES.md` §0 names each.
+
+```python
+{"id": "<uuid>",
+ "ref": "SF/MS/26-27/0001",   # FY-scoped, max+1 in the year. NOT a /settings series
+ "fy": "26-27", "date": "2026-08-20",
+
+ # The schedule it was raised against — a SPECIFIC revision, and both refs are
+ # STORED rather than looked up, exactly as a challan and an RA bill store them.
+ "boq_id": "<uuid>", "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+ "project_name": "Sify Bangalore", "site_location": "Bangalore",
+ "account_name": "Prudent Teqtis Pvt Ltd",
+
+ # The visit. All free text — nothing here links to the employee master (C4);
+ # `measurement -> employee` is refused at AST level, because linking a name on
+ # a site document to a payroll record is C5/C6 and both are gated or blocked.
+ "location": "Block A", "measured_by": "R. Kadam", "witnessed_by": "",
+ "notes": "",
+
+ "items": [ … ],
+ "company_branch": "", "auth_signatory": "",
+ "created_at": "2026-08-29 22:40",
+
+ # B6 / B7 — the approval fields, exactly as the other four approvable
+ # documents carry them. See "Approval fields" below.
+ "created_by": "<user id>", "approval_status": "pending", "approvals": [ … ]}
+```
+
+An `item` row — the challan's four fields plus one:
+
+```python
+{"line_id": "a3f19c0b7e42",   # THE MATCH KEY, copied off the BOQ line
+ "is_header": False,          # True = the specification clause, no quantity
+ "item_no": "24.b",           # snapshotted, and PRINTED as the Sr.No. column's neighbour
+ "description": str, "unit": "Nos",
+ "qty": 18.0,                 # what was FOUND on site
+ "boq_qty": 35.0}             # the schedule's quantity, SNAPSHOTTED at save
+```
+
+1. **`boq_qty` is stored, not looked up.** The printed sheet's `In BOQ` column
+   has to read as the record of what the engineer was holding, even after the
+   schedule is revised — CLIENT_CHANGES.md §1.2, and `print_ra()`'s original
+   defect is why the rule exists.
+2. **Cumulative measured quantity is NOT a field.** It is derived by
+   `measurement.measured_by_line()`, summed across the whole revision chain —
+   `ra.claimed_by_line()`'s rule again, and it is a **guard**, twice over, so a
+   stale counter would be worse than none.
+3. **A REJECTED sheet counts in neither sum.** Its quantity is released, exactly
+   as a cancelled RA bill's claim is. A refused number is not competing for the
+   schedule and is not available to a claim.
+4. **`approval_status` is the only lifecycle this document has.** There is no
+   draft / issued / cancelled here, which is why `approval.DOCUMENTS`
+   ["measurement"] carries no `print_exempt_states`.
 
 ### Address
 
@@ -5050,6 +5189,73 @@ the same call and `purchase.update_purchase()` made it first.
 single `is_tip` predicate that drives the RA links and the *Revise* button, so
 the controls cannot disagree. `/dc/create` **refuses a superseded BOQ at the
 route** as well, because a link is not a guard.
+
+⚠ **From 29 August 2026 the challan is also C1's supply gate.** `/boq/view`
+draws **+ RA · Supply** only when a challan exists on the chain, and
+`ra._c1_refusal()` refuses the typed URL when it does not. That is presentation
+and gate respectively — hiding the chip is not the guard, and
+`tests/test_c1_order_of_working.py` hits the address directly.
+
+---
+
+### `/measurement` — Measurement Sheets · [measurement.py](measurement.py) · **CC-2 C2**
+
+| Route | View |
+|---|---|
+| `GET /measurement/` | `list_ms` — the register, with each sheet's approval state |
+| `GET,POST /measurement/create?boq=` | `create_ms` — the picker, and guard 1 |
+| `GET /measurement/view/<id>` | `view_ms` — the sheet with the approval panel |
+| `GET /measurement/print/<id>` | `print_ms` — the sheet alone, B7-gated |
+| `GET,POST /measurement/edit/<id>` | `edit_ms` — header **and** lines, before approval |
+| `GET,POST /measurement/delete/<id>` | `delete_ms` — GET confirms, POST deletes |
+
+**What it is.** The middle term CC-2 **C1** puts between the schedule and an
+installation claim: what was found on site, against BOQ lines, going through an
+approval ladder, and — once approved — the ceiling `ra.overclaims()` checks every
+installation claim against. See §2j for the two guards and where each lives.
+
+**The edit route re-picks the LINES, which is the opposite of `/dc/edit`.** A
+challan is signed for on arrival and its lines are what left the yard, so moving
+them under a signature starts a dispute. A measurement is corrected *before* it
+is approved and locked afterwards by `approval.can_modify()`, so the lines are
+exactly the thing an edit is for. Editing calls `clear_approvals()`: an approval
+describes the document somebody read.
+
+**The printed sheet is `docsheet.py`'s and nothing else.** Two column widths and
+one signature label — the witness, who signs on the left where every other
+document prints GSTIN and PAN, `challan.py`'s receiver block being the
+precedent. No rate, no tax, no total, no bank block: a measurement is signed in
+the field by a site engineer, and a rate on it turns a measurement into a claim.
+The seller identity is read from `branding` at render time, and
+`tests/test_measurement.py` greps this module and fails if a State name or a
+GSTIN-shaped string appears in it.
+
+⚠ **No print golden is pinned on this page.** CC-2 is silent on whether a
+measurement prints at all, so pinning a layout nobody specified would make the
+client's first sight of it a re-baselining exercise. What *is* asserted is that
+the page carries the shared sheet's structural markers rather than a letterhead
+somebody drew.
+
+#### Numbering
+
+`SF/MS/26-27/0001` — FY-scoped, **max+1 within the year**, sharing
+`pipeline.fy_of` / `fy_ref` with the BOQ, the RA bill, the PO and the tax
+invoice. Deleting a sheet **spends** its number.
+
+⚠ **Deliberately NOT a `/settings` series.** The delivery challan has one
+because the client runs a single paper challan book and DC54 is a bare `54` from
+it. Nothing we hold says a measurement sheet is numbered from a book they keep,
+and inventing an editable series would be inventing a business practice.
+`measurement._REF_SERIES` is the one place it changes if their site records turn
+out to carry one.
+
+#### Entry point
+
+`/boq/view`'s action bar carries **+ Measurement**, on the same `is_tip`
+predicate as its neighbours; `/measurement/create` refuses a superseded BOQ at
+the route as well. **+ RA · Installation** is drawn only when an *approved*
+sheet exists on the chain, and `ra._c1_refusal()` refuses the typed URL when it
+does not.
 
 ---
 

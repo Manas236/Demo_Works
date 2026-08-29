@@ -237,15 +237,17 @@ ROLE_NOTES = {
                    "lacks": ["admin.roles"]},
     },
     "operation-head": {
-        "can": "Run the work. Write and revise schedules, raise and issue RA "
-               "bills, cancel them, print everything, raise delivery challans "
-               "and draft purchase orders, convert those into real purchase "
-               "orders, and record wages and site expenses against a project.",
+        "can": "Run the work. Write and revise schedules, raise measurement "
+               "sheets and approve them, raise and issue RA bills, cancel "
+               "them, print everything, raise delivery challans and draft "
+               "purchase orders, convert those into real purchase orders, and "
+               "record wages and site expenses against a project.",
         "cannot": "Touch the sell chain — no quotations, proforma invoices or "
                   "tax invoices. Record or edit money received. Administer "
                   "users or roles. Delete a charge once it is recorded, or "
                   "change the company identity.",
-        "claims": {"holds": ["boq.create", "ra.issue", "dc.create", "charge.create"],
+        "claims": {"holds": ["boq.create", "ra.issue", "dc.create", "charge.create",
+                             "measurement.create", "measurement.approve"],
                    "lacks": ["quotation.create", "invoice.create", "receipt.create",
                              "admin.users", "charge.delete", "settings.edit"]},
     },
@@ -282,15 +284,17 @@ ROLE_NOTES = {
         "can": "The whole sell chain: write quotations, raise proforma "
                "invoices, raise tax invoices, and keep the client register and "
                "the address book up to date. They can also write and print "
-               "schedules, and read and print RA bills.",
+               "schedules, and read and print RA bills and measurement "
+               "sheets.",
         "cannot": "**See the wages ledger** — this is B4's one stated "
                   "restriction, applied literally. They cannot raise or issue "
                   "an RA bill (reading and printing only), record money "
                   "received, touch the buy side at all, or administer users.",
         "claims": {"holds": ["quotation.create", "invoice.create", "client.edit",
-                             "boq.create", "ra.print"],
+                             "boq.create", "ra.print", "measurement.view"],
                    "lacks": ["charge.view", "ra.create", "ra.issue",
-                             "receipt.create", "purchase.view", "admin.users"]},
+                             "receipt.create", "purchase.view", "admin.users",
+                             "measurement.create", "measurement.approve"]},
     },
     "purchase-manager": {
         "can": "The whole buy side: raise purchase orders and update their "
@@ -304,13 +308,19 @@ ROLE_NOTES = {
         "claims": {"holds": ["purchase.create", "po.create", "dc.create",
                              "address.edit"],
                    "lacks": ["charge.view", "quotation.view", "ra.view",
-                             "receipt.view", "admin.users"]},
+                             "receipt.view", "admin.users",
+                             # C2. Withheld as OUR default, exactly as `ra.*`
+                             # above it is: dispatch is theirs, a measurement
+                             # feeds an installation claim. A checkbox reverses
+                             # it.
+                             "measurement.view"]},
     },
     "accountant": {
         "can": "Money in. Record, edit and delete receipts against RA bills, "
                "and read the client register. They can read — and print — RA "
-               "bills, and read tax invoices, proforma invoices, purchase "
-               "orders, schedules and projects.",
+               "bills and the measurement sheets those bills were built from, "
+               "and read tax invoices, proforma invoices, purchase orders, "
+               "schedules and projects.",
         "cannot": "**See the wages ledger** — B4's stated restriction, and the "
                   "one most likely to be questioned, because an accountant "
                   "booking wages is ordinary. It is withheld because the "
@@ -320,9 +330,10 @@ ROLE_NOTES = {
                   "no quotation, no invoice, no bill, no purchase order — and "
                   "cannot administer users.",
         "claims": {"holds": ["receipt.create", "receipt.delete", "client.view",
-                             "ra.print", "invoice.view"],
+                             "ra.print", "invoice.view", "measurement.print"],
                    "lacks": ["charge.view", "invoice.create", "ra.create",
-                             "quotation.create", "purchase.create", "admin.users"]},
+                             "quotation.create", "purchase.create", "admin.users",
+                             "measurement.create"]},
     },
 }
 
