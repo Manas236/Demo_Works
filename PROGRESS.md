@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 29 August 2026 *(the pass that opens Phase 3C and takes on work that is in no phase at all. It builds **C4**, the employee master — the first 3C item to move — and **extra free-text purchase-order lines**, which are ⚠ **NOT one of CC-2's twenty items**: a client request made after the 19 August meeting, untagged and priced in neither quotation. It also corrects `charge.py`'s title, which §6-E has carried as a defect since the board began and which a real employee master made actively misleading.)* |
+| **Date** | 29 August 2026, **second pass** *(a closing pass, not a building one. It builds no feature and starts no gated item: it closes findings the pass that produced `86902ef → 5605416` recorded against its own work. `quotation.py` was unfrozen **narrowly** for one figure; the extra-line prefill was inverted so the **server** performs it; the Operation Head cell was marked a derivation; and §6-E's third label site was closed. **The board does not move — no Phase 3 item is built or closed here.**)* |
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `4e4fa8a` — *"C4 — the employee master: details and salary, and nothing else"*, the last of the two code commits in this pass. This edition is written **after** them and describes the code as they leave it. |
-| **vs `origin/antigravity-dev`** | **3 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed. **The remote had caught up before this pass started**: 0 ahead / 0 behind at `44496c8`, which is the 24 the 28 August edition recorded, since pushed. This pass adds **four**: the §0 override block alone and first, then one commit per item so a single item can be reverted without losing the rest (extra PO lines, C4), then this docs commit. The count above is measured at the third of them; the fourth is this file. |
-| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass, and empty again at the end of it. A `mysqldump` was taken before any of it: `backups/samruddhi_qms-20260829-001552-po-extra-lines-c4-employee.sql`, **443,637 bytes**, and `backups/` is gitignored so it is not staged. |
-| **Test figure** | **measured at the end of the pass: 1,367 passed, 1 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,275 passed / 1 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched the figure the 28 August edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,368 passed, 3 skipped** against this commit and **1,276 / 3** at the start of the pass — both measured, neither derived, and both matched what the 28 August edition recorded. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+92 in both configurations, and the three parts reconcile exactly**: **+33** in the new `tests/test_po_extra_lines.py`, **+34** in the new `tests/test_employee.py`, and **+25** in `tests/test_import_directions.py` (231 → 256) — two asserting `po_parts.py` imports nothing and is not a collection, twenty-three the employee master's own import arrows. 33 + 34 + 25 = 92. <br><br>⚠ **One golden moved, and it was meant to.** `/purchase/view` is **+1,800 characters**, in the **`head` block only**, and the figure was **measured rather than reasoned**: the `.xl-*` stylesheet block added to `PURCHASE_STYLES` is 1,800 characters long and the page grew by 1,800, so the delta is the stylesheet and **not one other character of the document moved**. `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and `signature` are byte-identical. **Not one figure on the printed sheet moved** — the golden order carries no `extra_lines`, so the loop that draws them runs zero times and `subtotal` is the identical 260,600.00. The other pinned documents — proforma, tax invoice, RA bill, delivery challan and `/po/create` — did **not** move, asserted twice: once in `test_print_golden.py` and again by a control test in the new file, so that "a shared sheet moved" and "the buy side moved" are distinguishable from the failure message. <br><br>⚠ **Two existing tests were deliberately retargeted, and each keeps its old assertion verbatim in a comment.** `test_po_rate_edit.py::test_no_new_permission_was_minted_for_this` asserted `len(auth.PERMISSIONS) == 61` — a **global** count standing in for a claim about A1, which C4 legitimately breaks by minting four; it now asserts the property where it actually lives, that the buy side still has exactly its three permissions. And `test_nav_visibility.py` pinned the dashboard card label `"Employee & Misc Charges"` in four places, which §6-E's correction moves. Neither was weakened. Three further test files were **extended, not retargeted**: `test_entity_fallbacks.py` gains an employee record so the three new id-taking routes join the escaping sweep rather than the SKIP list, `test_hardening.py` classifies `employees` as transactional, and `test_import_directions.py` gains the arrows above. <br><br>⚠ **`docs/ACCESS_MATRIX.md` moved, and only where C4 put it.** It regenerated **byte-identical** through the extra-lines work — no route was added, and that was asserted rather than assumed. C4 then added four permission rows (`employee.view` / `create` / `edit` / `delete`), five endpoint classifications, and rewrote the prose that said *"the employee master HR actually needs does not exist yet"*, which has stopped being true. |
+| **HEAD** | `a42e366` — *"Operation Head marked a derivation; projectview label; §6-E closed"*, the last of the four commits in this pass. This edition is written **after** them and describes the code as they leave it. The pass began at `5605416`. |
+| **vs `origin/antigravity-dev`** | **8 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed. It was **4 ahead / 0 behind** at `5605416` when this pass started, so the four commits below are the whole of the difference. **Behind is 0**, which was the gate condition for starting at all. |
+| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260829-092531-prefill-quotation-unfreeze.sql`, **444,361 bytes**, and `backups/` is gitignored so it is not staged. `git add .` was not used at any point. |
+| **Test figure** | **measured at the end of the pass: 1,387 passed, 1 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,367 passed / 1 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,388 passed, 3 skipped** against this commit and **1,368 / 3** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+20 in both configurations, and the two parts reconcile exactly**: **+19** in `tests/test_po_extra_lines.py` (33 → 52) and **+1** in `tests/test_import_directions.py` (256 → 257, the `quotation` → `purchase` pair pinned at scope `"module"`). 19 + 1 = 20. `tests/test_nav_user_chip.py` stays at 23 — one test was rewritten in place, not added. <br><br>✅ **NOT ONE GOLDEN MOVED.** `/purchase/view` is **byte-identical** — same whole-document hash, the same **106,559** bytes, and all seven blocks unchanged. The chip wording changed but the pinned order carries no `extra_lines`, so the loop that would draw one runs zero times; and no stylesheet was touched, which is the block a `.xl-*` change lands in. The other five pinned documents did not move either. <br><br>⚠ **One existing test was rewritten, and it keeps its old assertion verbatim in a comment above it.** `test_nav_user_chip.py::test_the_frozen_modules_get_the_chip_without_being_edited` asserted `quotation.py` had not been edited since `eff0034`, which the narrow unfreeze deliberately breaks. It was **not weakened**: `product.py` must still be untouched on identical terms, and for `quotation.py` it now asserts **every edited line falls inside `view_quotation()`** — which pins the *narrowness* of the unfreeze rather than dropping the check. Verified non-vacuous: it matches five real hunks and would fail on an edit anywhere else in that file. <br><br>⚠ **`docs/ACCESS_MATRIX.md` moved in four cells and one legend row, and no grant moved with them.** `auth.py` is byte-identical and Operation Head holds the same 39 permissions it held before. What changed is the *claim* the grid makes about four blank cells. |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -259,9 +259,36 @@ against scope already sold under MG/SF/2026-01, and this is new capability.
 [purchase.py](purchase.py); `.xl-*` in `PURCHASE_STYLES`; the repeater on
 `/purchase/create` and `/purchase/edit/<id>`; rendered as ordinary item rows by
 `view_purchase()`. A new bottom-of-graph module [po_parts.py](po_parts.py)
-holds a 73-part seeded **prefill** list. 33 tests in
-[tests/test_po_extra_lines.py](tests/test_po_extra_lines.py), of which
+holds the seeded **prefill** list. **52** tests in
+[tests/test_po_extra_lines.py](tests/test_po_extra_lines.py) (33 when it was
+built, +19 in the second pass of 29 August 2026), of which
 `test_the_worked_example` is the load-bearing one.
+
+⚠ **THE PREFILL IS PERFORMED BY THE SERVER, and it was not on the day this was
+built.** *(Second pass, 29 August 2026 — a finding the building pass recorded
+against its own work.)* The seeded rate reached the form only through
+`xlFill()`, so the feature **did not exist with JavaScript disabled, broken, or
+never executed** — and never executed is what the repo actually does: there is
+no JS harness here and adding one was not authorised, so `xlFill()`, `addExtra()`
+and `recalc()` were asserted only as **strings present in the response.**
+
+Worse, the page carried **`xlNorm()`, a JavaScript reimplementation of
+`po_parts._norm()`, with nothing checking that the two agreed.** The day they
+diverged, the box would prefill a rate the server then declined to mark as a
+placeholder, and **an invented price would reach a vendor with no chip on it**
+— the exact failure the chip exists to prevent.
+
+The halves are now inverted. `_parse_extra_lines()` fills a blank rate and unit
+from `po_parts.py` **on POST**, so the whole feature is reachable by the ordinary
+pytest suite; the browser gets `PP.prefill_map()`, which is `po_parts.INDEX`
+flattened, and does **one dictionary lookup** on it. There is no second
+implementation of "matches" to drift, `xlNorm()` is gone, and a lookup the
+browser misses the server still fills. **A blank box only** — an explicit `0` is
+a figure somebody chose and survives untouched.
+
+⚠ **The map handed to the browser was also built from `PARTS` alone, so it
+carried canonical names ONLY** — not one of the client's own spellings ever
+prefilled, on either form. Fixed by the same change.
 
 **Three concepts now live on the PO record and the code says so in as many
 words**, because conflating them is the defect this shape exists to prevent:
@@ -282,10 +309,21 @@ counterfactual rather than describing it.
 verified price.** The client sent his list with **no prices and no units**;
 `po_parts.py` exists so an order can go out before the vendor has priced it, and
 every figure is expected to be overwritten. A line still carrying one is flagged
-on screen with an amber chip that is **`display:none` at print** — the vendor
-receives the order, not our note that we invented the price. **Nobody may
-present one of these figures as a real price**, in code, in the UI, or to the
-client.
+on screen with an amber chip reading **"placeholder · not quoted"** that is
+**`display:none` at print** — the vendor receives the order, not our note that
+we invented the price. **Nobody may present one of these figures as a real
+price**, in code, in the UI, or to the client.
+
+⚠ **`rate_is_assumed` means *this is the placeholder figure*, not *this was
+prefilled*.** It is true when the server supplied the rate **or** when the
+submitted rate is exactly the seeded one — one arithmetic test covering both
+limbs, derived on the server and never trusted from a hidden field. So typing a
+seeded part and its seeded rate by hand **is** flagged, although nobody
+prefilled it: a human who types the placeholder from memory has invented a price
+just as surely as the server has. The wording was chosen to be true in that case
+too — it is a claim about the **figure**, never about the operator — and the
+over-reporting is the safe direction, because the mark never prints and the
+opposite error would let an invented rate travel unmarked.
 
 ⚠ **OPEN QUESTION FOR THE CLIENT: is "PO red paint" red-oxide primer?** It is
 most likely `P.O. Red` or `R.O. Red` on his sheet. It is seeded **verbatim** and
@@ -300,12 +338,49 @@ reads as "purchase order". A test pins the question open.
    a free-text surface on a picker is a second design. A part on no schedule is
    added afterwards on the edit form, exactly as a charge is. **The same call A3
    made, made again.** Both routes still write `extra_lines: []`.
-2. **`quotation.py`'s deal panel folds extra-line value into `Committed` with no
-   breakout row.** `purchase.job_cost()` reports `extra_committed` and
-   `extra_count` on a row of their own and `/purchase/view` renders it, but the
-   deal panel **re-derives its own `committed`** rather than calling
-   `job_cost()`, and `quotation.py` is frozen against feature work
-   ([INTRODUCTION.md §7](INTRODUCTION.md)). Recorded rather than changed.
+2. ~~**`quotation.py`'s deal panel folds extra-line value into `Committed` with
+   no breakout row.**~~ ✅ **CLOSED, 29 August 2026, second pass.**
+
+   > **The finding as first recorded, unchanged:** *"`purchase.job_cost()`
+   > reports `extra_committed` and `extra_count` on a row of their own and
+   > `/purchase/view` renders it, but the deal panel **re-derives its own
+   > `committed`** rather than calling `job_cost()`, and `quotation.py` is
+   > frozen against feature work ([INTRODUCTION.md §7](INTRODUCTION.md)).
+   > Recorded rather than changed."*
+
+   ⚠ **The missing row was the symptom. The defect was two functions computing
+   the same commercial word**, and that is what was fixed: the panel now calls
+   `job_cost()` and computes nothing of its own. The breakout follows for free,
+   as a fourth `.jc-cell` reading **"Of which, extra parts"**, drawn only when
+   there is extra-line value — the same rule `/purchase/view` uses for the same
+   clause. `.jobcost-grid` is already `repeat(auto-fit, minmax(120px,1fr))`, so
+   it needed **no new CSS**.
+
+   `quotation.py` was **unfrozen NARROWLY** for it, by the client-facing owner,
+   under the second 29 August 2026 override block. The freeze is otherwise
+   intact and `product.py` is untouched.
+
+   ⚠ **MEASURED BEFORE THE CHANGE, on the §6-D precedent, with a stop
+   condition.** A Committed figure that moves is one somebody may already have
+   quoted to a client, so the rule was: **if any figure moves, stop and report,
+   do not ship.**
+
+   - **Live database: 3 quotations, 2 purchase orders, and ZERO POs carrying a
+     `quotation_id`.** So 0 figures move — **out of a population of 0.** The
+     job-costing block does not render for any record in that database, and the
+     honest reading is that **the live data cannot evidence this either way.**
+     Recorded as such rather than as a clean bill, because "0 differ" and "0
+     were comparable" are not the same sentence.
+   - **Supplemented, because 0-of-0 earns nothing.** Three POs swept across all
+     eleven statuses — the six real ones plus missing, blank, lower-case,
+     upper-case and unknown — is **1,331 combinations**, and nine shapes of
+     `grand_total` (absent, `None`, `""`, `0`, int, float, numeric string,
+     negative, whitespace). The two derivations disagreed on **0** of them and
+     raise the **identical** exception on the one malformed input.
+
+   Held by five tests in `tests/test_po_extra_lines.py` §11, and by
+   `tests/test_nav_user_chip.py`, which now asserts every edited line in
+   `quotation.py` falls inside `view_quotation()`.
 
 ## 4b. Untagged and NOT built — the open item beside C4
 
