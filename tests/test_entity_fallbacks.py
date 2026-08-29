@@ -420,8 +420,19 @@ def _a_measurement(boq_id: str) -> str:
     }
     STORE.setdefault("measurements", {})["ms-1"] = dict(
         base, id="ms-1", ref="SF/MS/26-27/0001", approval_status="pending")
+    # ⚠ **`ms-2` carries text in all four free-text fields, and that is not
+    #   decoration.** `test_escaping.py` poisons every non-empty string in this
+    #   collection and then walks these URLs — and `_poison()` **skips an empty
+    #   string**, while `_document_html()` renders its notes block only when
+    #   there is a note. A blank-everywhere fixture therefore leaves the printed
+    #   measurement sheet untested for escaping, which is exactly what happened
+    #   the first time this file was extended: the sweep went green with the
+    #   sheet's `notes` emitted RAW. `ms-1` keeps the blanks for the em-dash
+    #   fallback this file is about; `ms-2` is the one that has to be poisonable.
     STORE["measurements"]["ms-2"] = dict(
-        base, id="ms-2", ref="SF/MS/26-27/0002", approval_status="approved")
+        base, id="ms-2", ref="SF/MS/26-27/0002", approval_status="approved",
+        location="Tower B, 3rd floor", measured_by="R. Kadam",
+        witnessed_by="Site engineer", notes="Joints re-measured after rework")
     return "ms-1"
 
 

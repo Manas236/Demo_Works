@@ -124,6 +124,14 @@ DO_NOT_POISON = {
     # would stop refusing on the pages this sweep walks. `approval_status` is a
     # closed vocabulary like `status` beside it, for the same reason.
     "created_by", "approval_status", "role",
+    # C2 (29 Aug 2026). `boq_qty` is a float and `qty` is a float; neither is a
+    # string, so neither is reachable by `_poison()` anyway — they are named
+    # here so that a later pass storing either as a string does not silently
+    # poison a QUANTITY, which `BQ._fmt_qty()` would then raise on rather than
+    # escape. Nothing about a measurement's identity is in this set otherwise:
+    # `location`, `measured_by`, `witnessed_by` and `notes` are all free text
+    # and all four MUST be poisoned.
+    "boq_qty",
 }
 
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")
@@ -149,10 +157,23 @@ def _poison(node) -> int:
     return hit
 
 
+# ⚠ **A COLLECTION MISSING FROM THIS TUPLE MAKES THE SWEEP PASS OVER A WHOLE
+#   MODULE IN SILENCE**, and that is not hypothetical: `measurements` (CC-2 C2,
+#   29 August 2026) was added to `test_entity_fallbacks`'s URL map, every
+#   measurement route was walked, and the sweep still went green with
+#   `_document_html()` emitting the sheet's `notes` field RAW — because nothing
+#   had put a payload in it. **Adding a collection here is part of adding a
+#   module, not an afterthought**, and `test_the_sweep_really_did_reach_the_pages`
+#   below is what makes an empty poison count fail rather than pass.
+#
+# `employees` and `attendance` are deliberately absent for a different reason:
+# `test_hardening.py` asserts nothing seeds either, so a fixture row written
+# here would read exactly like a seeder to that test.
 POISONED_COLLECTIONS = (
     "products", "specs", "boqs", "ra_bills", "receipts", "quotations",
     "proformas", "invoices", "purchases", "purchase_orders",
-    "delivery_challans", "projects", "charges", "addresses", "settings",
+    "delivery_challans", "measurements", "projects", "charges", "addresses",
+    "settings",
 )
 
 
