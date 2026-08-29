@@ -710,7 +710,23 @@ def _line_total(rate: float, qty: float, disc_pct: float) -> float:
 
 def _extra_assumed(description: str, rate: float) -> bool:
     """
-    Whether this line's rate is still the seeded ASSUMED placeholder.
+    Whether this line's rate is the seeded PLACEHOLDER figure.
+
+    ── THE RULE, STATED EXACTLY ─────────────────────────────────────
+
+        `rate_is_assumed` is true when the server supplied the rate, **or**
+        when the submitted rate is exactly the seeded rate for that
+        description. It means *this is the placeholder figure*, not *this was
+        prefilled*. A human who types the placeholder from memory has invented
+        a price just as surely as the server has.
+
+    ───────────────────────────────────────────────────────────────
+
+    **One arithmetic test covers both limbs**, which is why there is no flag
+    threaded through from the fill site: `_parse_extra_lines()` fills a blank
+    box with the seeded figure itself, so a server-supplied rate *is* a rate
+    equal to the seeded one and this function is true for it. The two limbs are
+    one condition, not two branches that could disagree.
 
     Derived on the **server**, from the description and the rate themselves,
     rather than trusted from a hidden field the form posts. A hidden flag would
@@ -718,17 +734,17 @@ def _extra_assumed(description: str, rate: float) -> bool:
     a tampered or stale form could clear the mark and quietly present an
     invented figure as a real price.
 
-    So the rule is arithmetic, not memory: **the rate is assumed if and only if
-    the description matches a seeded part AND the submitted rate is still that
-    part's seeded figure.** Prefill the box and it is true; edit the rate to
-    anything else and it is false on the very next save, which is exactly
-    "clears the moment the rate is edited".
+    Edit the rate to anything else and it is false on the very next save.
 
-    ⚠ **It can say "assumed" about a rate nobody prefilled** — type
-    `Butane gas` and `130` by hand and the line is marked, because the figure
-    on it *is* the placeholder figure whatever route it took to get there. That
-    false positive is the safe one: it over-warns on screen and the mark never
-    prints. The opposite error would let an invented rate travel unmarked.
+    ⚠ **It deliberately over-reports, and the wording on screen was changed to
+    match rather than the rule being narrowed.** Type `Butane gas` and `130` by
+    hand and the line is marked, because the figure on it *is* the placeholder
+    figure whatever route it took to get there. The chip therefore says the
+    figure is a **placeholder nobody has quoted** — a fact about the number —
+    and does not say the operator was assisted, which would be a claim about
+    where it came from and would be wrong in exactly this case. Over-warning on
+    screen is the safe direction; the mark never prints, and the opposite error
+    would let an invented rate travel unmarked.
     """
     hit = PP.lookup(description)
     if not hit:
@@ -792,6 +808,36 @@ def _parse_extra_lines(form) -> tuple:
         rate = P.parse_money(rate_raw)
         if rate < 0:
             return [], f"Rate for '{desc}' cannot be negative."
+
+        # ── THE PREFILL HAPPENS HERE, ON THE SERVER, AND THAT IS THE POINT ──
+        #
+        # ⚠ **The browser is not the mechanism and never was.** Until
+        #   29 August 2026 the seeded rate reached the form only through
+        #   `xlFill()`, which meant the feature did not exist with JavaScript
+        #   disabled, broken, or — as was actually the case — never executed
+        #   under test at all. Worse, the page reimplemented `po_parts._norm()`
+        #   in JavaScript as `xlNorm()`, and **nothing checked that the two
+        #   agreed**: the day they diverged the box would prefill a rate this
+        #   function then declined to mark as assumed, and an invented price
+        #   would travel to a vendor with no amber chip on it. That is the exact
+        #   failure the chip exists to prevent.
+        #
+        # So the halves are inverted. The server fills the blank box from
+        # `po_parts.py` on POST; the JavaScript is a live preview that reads a
+        # map **this same module renders from `PP.prefill_map()`** and resolves
+        # nothing itself. There is one implementation of "matches", it is
+        # `PP.lookup()`, and it is reachable by the ordinary pytest suite.
+        #
+        # **A BLANK box only.** `rate_raw` is the string as posted, so a typed
+        # `0` is a rate somebody chose and is left exactly as typed — the same
+        # "suggest, never impose" contract `fillRate()` holds one repeater
+        # along. The unit follows the same rule and for the same reason.
+        seeded = PP.lookup(desc)
+        if seeded and not rate_raw:
+            _canonical, seed_unit, seed_rate = seeded
+            rate = seed_rate
+            if not unit:
+                unit = seed_unit
 
         disc, disc_err = _parse_discount(disc_raw, desc)
         if disc_err:
@@ -1968,15 +2014,18 @@ def create_purchase():
         for pid, p in STORE["products"].items()
     ) + "}"
 
-    # The seeded prefill table for the extra-line typeahead, keyed by the SAME
-    # normalisation `po_parts._norm()` applies — the browser and the server have
-    # to agree on what "matches", because the server decides from the same table
-    # whether a rate is still the assumed one.
+    # The seeded prefill table for the extra-line typeahead — **`prefill_map()`
+    # whole**, canonical names and every client spelling, aliases already
+    # resolved and every key already normalised by `po_parts._norm()`.
+    #
+    # ⚠ **The page gets a finished lookup table, never the rules for building
+    #   one.** It is `INDEX` flattened, so the browser's key set and the key set
+    #   `PP.lookup()` matches on are the same object's — there is no second
+    #   implementation of "matches" to drift. This replaced a map built from
+    #   `PARTS` alone, which held canonical names only and therefore never
+    #   prefilled one of the client's own spellings.
     # ⚠ Through `P.json_for_script()`, not `json.dumps` (ABOUT.md §7.9e).
-    seed_json = P.json_for_script({
-        PP._norm(name): {"u": row["unit"], "r": float(row["assumed_rate"])}
-        for name, row in PP.PARTS.items()
-    })
+    seed_json = P.json_for_script(PP.prefill_map())
 
     q_opts = '<option value="">&#8212; none / stock purchase &#8212;</option>'
     for qid_, q_ in sorted(STORE["quotations"].items(),
@@ -2186,21 +2235,25 @@ def create_purchase():
           recalc();
         }}
 
-        /* The same normalisation po_parts._norm() does: lowercase, and every
-           run of whitespace collapsed to one. The two have to agree, because
-           the server decides whether a rate is still the assumed one by looking
-           the description up in the same table. */
-        function xlNorm(s) {{
-          return String(s || '').toLowerCase().split(/\\s+/).filter(Boolean).join(' ');
-        }}
+        /* A LIVE PREVIEW, NOT THE MECHANISM. The server fills a blank rate
+           from po_parts.py on POST, so an extra line prefills correctly with
+           this script disabled, broken or never executed. All this does is put
+           the figure in front of the operator before they submit.
 
-        /* Suggest the seeded unit and rate, never impose them: an empty box is
-           filled, a typed one is left alone. That is fillRate()'s contract
-           above, and it is what makes "the assumed mark clears the moment the
-           rate is edited" true — the operator's own figure is never
-           overwritten. */
+           ⚠ It resolves NOTHING. XSEED above is a finished lookup table that
+           Python built from po_parts.INDEX — aliases already resolved, keys
+           already normalised — so this is one dictionary lookup. There is no
+           second implementation of "matches" on this page and there must not
+           be one added: a normalisation rule written here in JavaScript could
+           not be checked against the Python one that decides whether a rate is
+           the placeholder figure. Anything this lookup misses, the server
+           still fills on POST.
+
+           Suggest, never impose: an empty box is filled and a typed one is
+           left alone, which is fillRate()'s contract above and the server's
+           own rule on POST. */
         function xlFill(input) {{
-          var hit = XSEED[xlNorm(input.value)];
+          var hit = XSEED[input.value.toLowerCase().replace(/\\s+/g, ' ').trim()];
           if (!hit) {{ recalc(); return; }}
           var row = input.closest('.xl-row');
           var unit = row.querySelector('input[name="extra_unit"]');
@@ -3363,12 +3416,10 @@ def edit_purchase_rates(id: str):
                      f"corrected &mdash; but the vendor is holding the figures "
                      f"you are about to change, so tell them.")
 
-    # The same seeded prefill table the create form hands its typeahead, keyed
-    # by the same `po_parts._norm()` normalisation the server matches on.
-    seed_json = P.json_for_script({
-        PP._norm(name): {"u": row["unit"], "r": float(row["assumed_rate"])}
-        for name, row in PP.PARTS.items()
-    })
+    # The same finished lookup table the create form hands its typeahead — one
+    # call to `PP.prefill_map()`, not a second comprehension that could be
+    # written differently from the first one.
+    seed_json = P.json_for_script(PP.prefill_map())
 
     tax_info = po.get("tax_info") or {}
     tax_note = "no tax on this order"
@@ -3429,12 +3480,12 @@ def edit_purchase_rates(id: str):
           document.getElementById('xlines').appendChild(tpl.content.cloneNode(true));
         }}
 
-        function xlNorm(s) {{
-          return String(s || '').toLowerCase().split(/\\s+/).filter(Boolean).join(' ');
-        }}
-
+        /* One dictionary lookup on the table Python built, exactly as on
+           `/purchase/create`. No alias resolution and no rules about what
+           matches — and the server fills a blank rate on POST whether or not
+           this ever ran. */
         function xlFill(input) {{
-          var hit = XSEED[xlNorm(input.value)];
+          var hit = XSEED[input.value.toLowerCase().replace(/\\s+/g, ' ').trim()];
           if (!hit) {{ return; }}
           var row = input.closest('.xl-row');
           var unit = row.querySelector('input[name="extra_unit"]');
@@ -3567,7 +3618,13 @@ def view_purchase(id: str):
             # ⚠ **SCREEN ONLY.** `.xl-assumed` is `display:none` at print — see
             #   PURCHASE_STYLES. The vendor receives the order; the vendor does
             #   not receive our note that we invented the price.
-            chip = ('<span class="xl-assumed">assumed</span>'
+            # ⚠ **The wording is a claim about the FIGURE, not about the
+            #   operator.** `rate_is_assumed` is true whenever the rate equals
+            #   the seeded one — including when somebody typed it from memory
+            #   rather than being prefilled — so anything reading as "we filled
+            #   this in for you" would be a false statement in exactly that
+            #   case. "placeholder · not quoted" is true in both.
+            chip = ('<span class="xl-assumed">placeholder &middot; not quoted</span>'
                     if row.get("rate_is_assumed") else "")
             rate_cell = f"{_inr(rate)}{chip}"
         else:

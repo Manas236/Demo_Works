@@ -358,7 +358,15 @@ def test_the_assumed_chip_never_appears_in_the_printed_output(client):
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
 
     assert "xl-assumed" in html, "the chip must render on screen"
-    assert "assumed" in html
+    # Rewritten on 29 August 2026 when the chip wording changed. The previous
+    # assertion was, verbatim:
+    #
+    #     assert "assumed" in html
+    #
+    # It never failed and never could: `xl-assumed` is the CLASS name, so the
+    # substring was in the page whatever the chip said — it would have passed
+    # against a chip reading "verified market price". The text is asserted now.
+    assert "placeholder &middot; not quoted" in html,         "the chip must say the figure is a placeholder nobody has quoted"
 
     # ...and must be removed at print by a rule, not by hope.
     assert "@media print { .xl-assumed { display:none !important; } }" in html, \
@@ -724,3 +732,206 @@ def test_the_other_pinned_documents_did_not_move(client, golden, golden_ra,
         assert r.status_code == 200, f"{what} did not render"
         kw = {"markers": markers} if markers is not None else {}
         _check(r.get_data(as_text=True), whole, length, blocks, what=what, **kw)
+
+
+# ══ 8. The server is the mechanism, and the JavaScript is not ═════════════
+#
+# ⚠ **The pass that built this feature could not run a line of its own
+#   JavaScript, and neither can this file.** There is no JS test harness in this
+#   repo and adding one was not authorised. `xlFill()`, `addExtra()` and
+#   `recalc()` were asserted only as *strings present in the response* — which
+#   proves they were rendered and proves nothing about whether they work.
+#
+#   Worse, the page carried `xlNorm()`, a JavaScript reimplementation of
+#   `po_parts._norm()`, with **nothing checking that the two agreed**. The day
+#   they diverged, the box would prefill a rate the server then declined to mark
+#   as a placeholder, and an invented price would reach a vendor with no chip on
+#   it — the exact failure the chip exists to prevent.
+#
+#   The fix was not a test for the divergence. It was to **remove the
+#   possibility of one**: the server fills a blank rate on POST from
+#   `po_parts.py`, and the browser gets a finished lookup table it resolves
+#   nothing with. Every test below runs with **no JavaScript executed at all**,
+#   which is both the honest test condition and the condition the repo is in.
+
+
+def test_the_server_fills_a_blank_rate_for_a_seeded_part(client):
+    """
+    **The load-bearing test of the inversion.** A seeded description with an
+    empty rate box, posted with no JavaScript anywhere near it, comes back
+    priced from `po_parts.py` — and flagged, because the figure is the
+    placeholder.
+    """
+    _canon, unit, seeded = PP.lookup("Butane gas")
+    po = _po(client, extras=[("Butane gas", "", "4", "", "")])
+    row = po["extra_lines"][0]
+
+    assert row["rate"] == seeded, "the server must fill the rate, not the browser"
+    assert row["unit"] == unit, "and the unit with it"
+    assert row["total"] == round(seeded * 4, 2)
+    assert row["rate_is_assumed"] is True
+
+    # It is inside `subtotal`, exactly as a typed rate would be.
+    assert po["subtotal"] == round(10 * 1000 + seeded * 4, 2)
+
+
+def test_an_alias_fills_the_same_rate_as_its_canonical_name_on_POST(client):
+    """
+    Server-side, through the form, with a blank rate box. Until 29 August 2026
+    the map handed to the browser held **canonical names only**, so not one of
+    the client's own spellings ever prefilled anything.
+    """
+    _c, canon_unit, seeded = PP.lookup("Bullet fastener 8mm")
+    po = _po(client, extras=[("Bullet Fastner 8mm", "", "10", "", "")])
+    row = po["extra_lines"][0]
+
+    assert row["rate"] == seeded
+    assert row["unit"] == canon_unit
+    assert row["rate_is_assumed"] is True
+    assert row["description"] == "Bullet Fastner 8mm", \
+        "what was typed is what is stored — the alias resolves the RATE, not the text"
+
+
+def test_a_description_matching_nothing_is_stored_as_typed_with_a_blank_rate(client):
+    """
+    The list narrows nothing. A part on no seed row is accepted exactly as
+    typed, keeps its blank rate, and carries no flag — there is no figure to
+    call a placeholder.
+    """
+    po = _po(client, extras=[("Entirely bespoke bracket", "Nos", "2", "", "")])
+    row = po["extra_lines"][0]
+
+    assert row["description"] == "Entirely bespoke bracket"
+    assert row["rate"] == 0.0
+    assert row["total"] == 0.0
+    assert row["rate_is_assumed"] is False
+
+
+def test_a_rate_different_from_the_seed_is_stored_verbatim_and_not_flagged(client):
+    """
+    A real quoted price. The server must not touch it and must not call it a
+    placeholder — the box was not blank, so nothing is filled.
+    """
+    _c, _u, seeded = PP.lookup("Butane gas")
+    typed = seeded + 25.0
+    po = _po(client, extras=[("Butane gas", "Nos", "4", str(typed), "")])
+    row = po["extra_lines"][0]
+
+    assert row["rate"] == typed, "a typed rate is never overwritten"
+    assert row["rate_is_assumed"] is False
+
+
+def test_a_rate_equal_to_the_seed_IS_flagged_however_it_was_typed(client):
+    """
+    ⚠ **The marker is a claim about the FIGURE, not about who put it there.**
+
+    Type `Butane gas` and its seeded rate by hand, with the server filling
+    nothing, and the line is still flagged. A human who types the placeholder
+    from memory has invented a price just as surely as the server has, and the
+    chip says so in those terms rather than implying the operator was assisted.
+    """
+    _c, _u, seeded = PP.lookup("Butane gas")
+    po = _po(client, extras=[("Butane gas", "Nos", "4", str(seeded), "")])
+    assert po["extra_lines"][0]["rate_is_assumed"] is True
+
+
+def test_an_explicit_zero_rate_is_a_typed_rate_and_is_not_filled(client):
+    """
+    `0` is a figure somebody chose; an empty box is not. Only the empty box is
+    filled, which is the same "suggest, never impose" contract `fillRate()`
+    holds one repeater along.
+    """
+    po = _po(client, extras=[("Butane gas", "Nos", "4", "0", "")])
+    row = po["extra_lines"][0]
+    assert row["rate"] == 0.0, "an explicit zero must survive the prefill"
+    assert row["rate_is_assumed"] is False
+
+
+def test_a_typed_unit_is_never_overwritten_by_the_seeded_one(client):
+    po = _po(client, extras=[("Butane gas", "Cylinder", "4", "", "")])
+    row = po["extra_lines"][0]
+    assert row["unit"] == "Cylinder"
+    assert row["rate"] == PP.lookup("Butane gas")[2], \
+        "the rate still fills; only the unit was already given"
+
+
+# ══ 9. The lookup map handed to the browser ═══════════════════════════════
+
+def test_the_prefill_map_is_the_server_index_and_nothing_else():
+    """
+    Same keys as `po_parts.INDEX` — the set `PP.lookup()` matches on. Built
+    from it rather than beside it, so "what the browser thinks matches" and
+    "what the server matches" cannot become two different questions.
+    """
+    m = PP.prefill_map()
+    assert set(m) == set(PP.INDEX), \
+        "the browser's key set must BE the server's key set"
+    for key, canonical in PP.INDEX.items():
+        assert m[key]["r"] == float(PP.PARTS[canonical]["assumed_rate"])
+        assert m[key]["u"] == PP.PARTS[canonical]["unit"]
+
+
+def test_the_prefill_map_contains_no_un_normalised_keys():
+    """
+    Every key is already through `_norm()`. The browser is handed a finished
+    table, never the rules for building one.
+    """
+    for key in PP.prefill_map():
+        assert key == PP._norm(key), f"{key!r} reaches the page un-normalised"
+
+
+def test_the_prefill_map_resolves_aliases_before_it_reaches_the_page():
+    """
+    The alias keys must be IN the map. Until 29 August 2026 it was built from
+    `PARTS` alone — canonical names only, no aliases — so every one of the
+    client's own spellings missed in the browser.
+    """
+    m = PP.prefill_map()
+    for alias, canonical in [("soket 15mm", "Socket 15mm"),
+                             ("bullet fastner 8mm", "Bullet fastener 8mm"),
+                             ("lather hand gloves", "Leather hand gloves"),
+                             ("cutting wheel", "Cutting wheel 4 inch")]:
+        assert alias in m, f"{alias!r} must be a key the browser can hit"
+        assert m[alias]["r"] == float(PP.PARTS[canonical]["assumed_rate"])
+
+
+@pytest.mark.parametrize("page", ["create", "edit"])
+def test_the_page_carries_no_JS_normalisation_function(client, page):
+    """
+    ⚠ **`xlNorm()` is gone and must not come back.**
+
+    It was a second implementation of `po_parts._norm()`, in another language,
+    that nothing could check. One source of truth means the page holds a
+    finished table and no rules — so there is no normalisation *function* on it
+    to drift from the Python one.
+    """
+    po = _po(client, extras=[("Butane gas", "Nos", "4", "", "")])
+    path = "/purchase/create" if page == "create" else f"/purchase/edit/{po['id']}"
+    html = client.get(path).get_data(as_text=True)
+
+    assert "xlNorm" not in html, \
+        "the page must carry no JavaScript reimplementation of _norm()"
+    assert "XSEED" in html, "the rendered lookup table must still be there"
+    assert "function xlFill" in html
+
+
+@pytest.mark.parametrize("page", ["create", "edit"])
+def test_the_rendered_map_on_the_page_is_normalised_and_alias_resolved(client, page):
+    """
+    Asserted against the bytes actually served, not against `prefill_map()` —
+    the map is rendered through `json_for_script()` and it is the rendered form
+    the browser reads.
+    """
+    import json
+
+    po = _po(client, extras=[("Butane gas", "Nos", "4", "", "")])
+    path = "/purchase/create" if page == "create" else f"/purchase/edit/{po['id']}"
+    html = client.get(path).get_data(as_text=True)
+
+    raw = html.split("var XSEED = ", 1)[1].split(";", 1)[0]
+    served = json.loads(raw)
+
+    assert set(served) == set(PP.INDEX), "the served map must be the whole index"
+    for key in served:
+        assert key == PP._norm(key), f"{key!r} was served un-normalised"
+    assert "soket 15mm" in served, "aliases must reach the browser resolved"

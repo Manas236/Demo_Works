@@ -400,6 +400,36 @@ def lookup(description):
     return canonical, row["unit"], float(row["assumed_rate"])
 
 
+def prefill_map() -> dict:
+    """
+    `{normalised name or alias: {"u": unit, "r": assumed_rate}}` — the whole
+    seeded table, flattened for a **dictionary lookup and nothing more**.
+
+    Built from `INDEX`, deliberately, rather than from `PARTS`. `INDEX` is the
+    exact key set `lookup()` matches on, so this map and the server agree on
+    what "matches" **by construction** — the same keys, the same aliases
+    already resolved, the same normalisation applied once, here, in Python.
+
+    ⚠ **This exists so that the browser never has to know any of that.** The
+    page renders this map and does one lookup on it. It holds no alias table,
+    no canonical names and no rule about what counts as a match, so there is no
+    second implementation to drift from this one. Until 29 August 2026 the page
+    carried its own `xlNorm()` reimplementing `_norm()` in JavaScript, with
+    nothing checking that the two agreed; the map it fed also carried **only
+    canonical names**, so not one of the client's own spellings ever prefilled.
+
+    ⚠ **It is a convenience, not the mechanism.** `purchase._parse_extra_lines()`
+    fills a blank rate from this same table on POST, so the feature works with
+    JavaScript disabled, broken, or never executed. A miss here costs a live
+    preview and nothing else.
+
+    ⚠ Every `r` is an ASSUMED PLACEHOLDER — see the top of this file.
+    """
+    return {key: {"u": PARTS[canonical]["unit"],
+                  "r": float(PARTS[canonical]["assumed_rate"])}
+            for key, canonical in INDEX.items()}
+
+
 def suggestions() -> list:
     """
     Canonical names, sorted, for the form's `<datalist>`.

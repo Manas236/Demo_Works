@@ -3113,17 +3113,58 @@ BOQ, and he sent a list of them with **no prices and no units**.
 **Extra lines are free text typed onto each order.** There is no parts master,
 no catalogue collection, no picker and no per-vendor rate table — the owner
 chose that explicitly, and `po_parts.py` exists **only as a typeahead
-prefill**. Typing a description that matches a seeded name fills in the unit
-and a rate; typing anything else is accepted exactly as typed with a blank
-rate. The seeded figure is offered into an **empty** box and never overwrites
-what somebody typed, which is `fillRate()`'s contract one repeater along.
+prefill**. Typing a description that matches a seeded name (or one of the
+client's own spellings) fills in the unit and a rate; typing anything else is
+accepted exactly as typed with a blank rate. The seeded figure is offered into
+an **empty** box and never overwrites what somebody typed — an explicit `0`
+included, because a zero is a figure somebody chose and an empty box is not.
+That is `fillRate()`'s contract one repeater along.
+
+⚠ **THE SERVER IS THE MECHANISM. The JavaScript is a live preview and nothing
+more** (29 August 2026). `_parse_extra_lines()` fills a blank rate and unit
+from `po_parts.py` **on POST**, so the feature works with JavaScript disabled,
+broken, or never executed — and is reachable by the ordinary pytest suite,
+which has no JS harness and is not getting one.
+
+It was the other way round for one day, and the inversion closed a real hole
+rather than a stylistic one. The page carried **`xlNorm()`, a JavaScript
+reimplementation of `po_parts._norm()`, with nothing checking that the two
+agreed.** The day they diverged the box would prefill a rate the server then
+declined to mark as a placeholder, and an invented price would reach a vendor
+with **no chip on it** — the exact failure the chip exists to prevent. The fix
+was not a test for the divergence; it was to remove the possibility of one.
+
+`PP.prefill_map()` is now the single source of truth handed to the page: it is
+**`po_parts.INDEX` flattened**, so the browser's key set *is* the key set
+`PP.lookup()` matches on — aliases already resolved, every key already
+normalised, in Python, once. The browser does **one dictionary lookup** and
+holds no alias table, no canonical names and no rule about what "matches".
+`xlNorm()` is gone and must not come back.
+
+⚠ The map it replaced was built from `PARTS` alone and therefore carried
+**canonical names only** — so not one of the client's own spellings ever
+prefilled in the browser, on either form. That was live for one day and is
+fixed by the same change.
 
 ⚠ **Every seeded rate is an ASSUMED PLACEHOLDER, and nothing may present one as
 a real price.** It exists so an order can go out before the vendor has priced
 the list. A line still carrying one is flagged on screen with an amber
-`.xl-assumed` chip in the same shape as the blank-identity `todo-chip` — and
-that chip is **`display:none` at print**, for the same reason `.po-panel` is:
-the vendor receives the order, not our record of having guessed.
+`.xl-assumed` chip reading **"placeholder · not quoted"**, in the same shape as
+the blank-identity `todo-chip` — and that chip is **`display:none` at print**,
+for the same reason `.po-panel` is: the vendor receives the order, not our
+record of having guessed.
+
+⚠ **`rate_is_assumed` means *this is the placeholder figure*, not *this was
+prefilled*, and the wording is chosen to be true in both cases.** It is set
+when the server supplied the rate **or** when the submitted rate is exactly the
+seeded rate for that description — one arithmetic test covering both limbs,
+derived on the server rather than trusted from a hidden field. So typing
+`Butane gas` and `130` by hand is flagged although nobody prefilled it: a human
+who types the placeholder from memory has invented a price just as surely as
+the server has. The chip therefore makes a claim about the **figure** and never
+about the operator; anything reading as "we filled this in for you" would be
+false in exactly that case. Over-warning on screen is the safe direction and
+the mark never prints.
 
 The arithmetic is §3's, and all of it enters through **`_totals_of()`**:
 
