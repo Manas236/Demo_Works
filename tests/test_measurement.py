@@ -429,6 +429,41 @@ def test_an_approved_sheet_is_locked_at_its_edit_and_delete_URLs(client, seeded)
     assert ms["id"] in STORE["measurements"], "an approved sheet was deleted"
 
 
+def test_GET_on_the_delete_route_destroys_nothing(client, seeded):
+    """
+    ⚠ **The hand-written GET test every new delete route must ship.**
+    ABOUT.md §7.9f, and `tests/test_delete_methods.py` says in terms that its
+    URL-map sweep **cannot** catch a both-verbs route that destroys on GET — it
+    only proves the rule accepts POST. A browser prefetch, a crawler, a link
+    unfurler or the back button all issue a plain GET, and none of them sees a
+    `confirm()` dialog.
+    """
+    li = priced(seeded, 1)[0]
+    raise_sheet(client, seeded, [(li["line_id"], 1)])
+    mid = only_sheet()["id"]
+    before = dict(STORE["measurements"])
+
+    r = client.get(f"/measurement/delete/{mid}")
+
+    assert r.status_code == 200, "the GET must render a page, not redirect"
+    assert STORE["measurements"] == before
+    assert mid in STORE["measurements"]
+
+    h = r.get_data(as_text=True)
+    assert 'method="POST"' in h
+    assert "Delete it" in h and "Cancel" in h
+
+
+def test_POST_on_the_delete_route_destroys(client, seeded):
+    li = priced(seeded, 1)[0]
+    raise_sheet(client, seeded, [(li["line_id"], 1)])
+    mid = only_sheet()["id"]
+
+    r = client.post(f"/measurement/delete/{mid}", follow_redirects=False)
+    assert r.status_code in (302, 303)
+    assert mid not in STORE["measurements"]
+
+
 def test_a_measurement_records_who_raised_it(client, seeded):
     """B6's load-bearing rule needs a creator recorded at the write site."""
     li = priced(seeded, 1)[0]
