@@ -118,7 +118,7 @@ heading and read the rest.
 | 9 | **[SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md)** | What the client's own 18 source documents actually contain — structure, conventions and defects — and what that evidence does to DOMAIN.md's claims. Read it before asserting how the client's paperwork behaves; the documents themselves are gitignored | The domain model, the code facts, the work queue; every finding is OPEN and none is actioned |
 | 10 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
 | 11 | **[PROGRESS.md](PROGRESS.md)** | **Phase 3 build status**, one row per CLIENT_CHANGES-2.md item — BUILT / PARTIAL / NOT STARTED / BLOCKED, each with the `file:line`, route or test name it was established from, plus the blockers and the code-vs-docs drift found while establishing them. Regenerated from code; a pass that changes a Phase 3 item's build state updates it in the same commit | What the items *are* — that is CLIENT_CHANGES-2.md; permission to build any of them; anything about Phase 2 or Phase 4 |
-| 12 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 61 permissions grid, a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
+| 12 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 79 permissions grid (the document's own header line is the figure to trust; this one has been stale before), a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
 
 ### The boundary that is easiest to get wrong
 
@@ -218,7 +218,7 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,531 passed / 2 skipped** on 29 August 2026, verified by
+The baseline is **1,656 passed / 2 skipped** on 30 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
 *(The **fourth** 29 August pass added **67 passed and 0 skipped**, moving the

@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 29 August 2026, **fourth pass** *(a building pass, and the largest single item left. B6 — the approval ladder and the creator guard CC-2 calls load-bearing — and B7 — what an unapproved document may do. It is also **the first pass since the access-control layer that rewrites existing rows**: `created_by` did not exist, so 15 live records were marked as predating the approval system rather than given a creator nobody knows.)* |
+| **Date** | 29–30 August 2026, **fifth pass** *(a building pass. **C2** — the measurement document — and **C1** — the order of working — the chain B6 unblocked. It also narrowed B7's print gate by two named exceptions and pinned a second grandfathered set. The clock rolled past midnight during the pass; the override block it was authorised under is dated **29 August 2026** and is the fifth of that date.)* |
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `a719726` — *"The four documents carrying test figures are held in step by a test"*, the fifth of the five commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the sixth. |
-| **vs `origin/antigravity-dev`** | **20 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed**, which adds one more. |
-| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260829-193800-b6-b7-approvals.sql`, **444,771 bytes**. ⚠ **Unlike the last two passes this one CHANGED LIVE ROWS**, so that dump is the last one matching the pre-migration shape and the next backup will not match it: 15 records gained `created_by = None` and `pre_approval_system = True`, and four builtin roles gained the four approval permissions. `backups/` is gitignored and was not staged. |
-| **Test figure** | **measured at the end of the pass: 1,531 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,464 passed / 2 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,532 passed, 4 skipped** against this commit and **1,465 / 4** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+67 passed and +0 skipped in both configurations, reconciling exactly**: **+24** in `tests/test_approval.py` (new), **+10** in `tests/test_approval_grandfather.py` (new), **+24** in `tests/test_approval_b7.py` (new) and **+9** in `tests/test_doc_figures.py` (new). 24 + 10 + 24 + 9 = 67. <br><br>⚠ **NOT ONE GOLDEN MOVED, and that was the condition this pass was given.** All 11 tests in `tests/test_print_golden.py` pass against the digests recorded last pass; nothing was re-baselined. B7 gates printing, and an **approved** document emits no print-blanking block at all — so the three pinned documents are byte-for-byte the pages they were, and the golden records say `approval_status: approved` because after B7 a printable document *is* an approved one. `docs/ACCESS_MATRIX.md` moved in the four `*.approve` rows, their counts and the traced-cell list, **and nowhere else** — no existing grant moved by a cell. <br><br>⚠ **Four existing tests were rewritten; every one keeps its old assertion verbatim in a comment and every original assertion still runs.** `test_po_rate_edit.py::test_no_new_permission_was_minted_for_this` (narrowed to A1's three plus a named `MINTED_SINCE`, not loosened to `>=`); `test_ra_routes.py`'s draft-prints and cancelled-prints tests (both now assert the B7 refusal **first**, so the new rule is pinned by the same test that pins what it took away); and `test_escaping.py`'s `DO_NOT_POISON`, which gained `created_by` — poisoning it tests no escaping sink and would have switched the creator guard off across the whole sweep. |
+| **HEAD** | `89ecb95` — *"Navigation: the measurement register, and an isolated golden re-baseline"*, the sixth of the six commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the seventh. |
+| **vs `origin/antigravity-dev`** | **27 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed**, which adds one more. The pass began at **21 ahead, 0 behind**. |
+| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260829-223459-c2-c1-measurement.sql`, **446,310 bytes**. It does not match the previous pass's 444,771 because that pass mutated live rows. ⚠ **This one changed live rows too**, and less than the last: `tools/backfill_measurement_pin.py --write` marked **one** RA bill `pre_measurement = True` and wrote one `settings` record. ⚠ **It granted NO permission to any role** — `--grant-roles` exists, is off by default, and was **not run**; see §6-M. `backups/` is gitignored and was not staged. |
+| **Test figure** | **measured at the end of the pass: 1,656 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,531 passed / 2 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,657 passed, 4 skipped** against this commit and **1,532 / 4** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+125 passed and +0 skipped in both configurations, reconciling exactly**: **+28** in `tests/test_measurement.py` (new), **+19** in `tests/test_measurement_pin.py` (new), **+21** in `tests/test_c1_order_of_working.py` (new), **+6** in `tests/test_approval_b7.py` (the B7 narrowing), **+1** in `tests/test_approval_grandfather.py` (the create-route stamping test the fifth document needed), **+19** in `tests/test_nav_reachability.py` (its nav-confinement sweep is now parametrised over **both** recorded "before" nav states rather than only the newest), **+30** in `tests/test_import_directions.py` (21 forbidden edges and 9 required ones — measured off the AST, not counted by eye) and **+1** in `tests/test_page_chrome.py` (the new register in its sweep). 28+19+21+6+1+19+30+1 = 125. <br><br>⚠ **FIVE GOLDENS MOVED, in one commit that did nothing else, and the sixth did not.** `dashboard.NAV_ITEMS` gained the measurement register: **+342 bytes each** on the tax invoice, the proforma, the purchase order, the RA bill and the `/po/create` picker, in the `head` block **alone**; the delivery challan moved **0**, because it renders no nav. The 342 bytes are one `<a class="nav-link">` and nothing else — the anchor measures 342 characters and every page grew by exactly 342 — and stripping `<nav>…</nav>` makes the two renders byte-identical, so **nothing on any printed sheet changed**. `docs/ACCESS_MATRIX.md` moved in the six new `measurement.*` rows, the eight new endpoint rows, three role-description sentences and the counts, **and nowhere else** — no existing grant moved by a cell. <br><br>⚠ **Six existing tests were rewritten or widened; every one keeps its old assertion verbatim in a comment and every original assertion still runs.** `test_approval_b7.py`'s draft-prints and cancelled-prints tests (both now assert the *opposite* of what they asserted that morning, because the fifth override block answered the open question they were written to raise); the two comment blocks pass D added to `test_ra_routes.py` (extended, not replaced); `test_approval_grandfather.py`'s `DOCUMENTS` assertion (widened to five, and only after the create-route stamping test it demanded was written); and `test_nav_visibility.py`'s `EXPECTED_NAV` and `EXPECTED_CARDS`. |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -33,10 +33,10 @@ Only BUILT fills the bar. PARTIAL contributes nothing; BLOCKED contributes
 nothing.
 
 ```
-ALL  ███████████████░░░░░  15 of 20 BUILT · 0 PARTIAL · 2 BLOCKED ·  3 NOT STARTED
+ALL  █████████████████░░░  17 of 20 BUILT · 0 PARTIAL · 2 BLOCKED ·  1 NOT STARTED
 3A   ████████████████████   6 of 6 BUILT · 0 PARTIAL · 0 BLOCKED ·  0 NOT STARTED
 3B   █████████████████▌░░   7 of 8 BUILT · 0 PARTIAL · 0 BLOCKED ·  1 NOT STARTED
-3C   ██████▋░░░░░░░░░░░░░   2 of 6 BUILT · 0 PARTIAL · 2 BLOCKED ·  2 NOT STARTED
+3C   █████████████▎░░░░░░   4 of 6 BUILT · 0 PARTIAL · 2 BLOCKED ·  0 NOT STARTED
 ```
 
 ⚠ **The extra purchase-order lines are NOT on these bars, and must never be put
@@ -47,23 +47,26 @@ made to them is outside it too**: cutting 156 invented aliases out of
 `po_parts.py` repairs untagged work and does not become tagged by being
 repaired. **The denominator is still 20.**
 
-⚠ **Only B1–B5, the whole of 3A, C4 and now C5 were authorised.** The
+⚠ **THIS SECTION'S PROSE WAS TWO PASSES STALE AND IS REWRITTEN, NOT PATCHED.**
+The fourth 29 August pass moved the bars 13 → 15 and the header with them, and
+left every paragraph below saying what it said before — the same defect
+`tests/test_doc_figures.py` was written to close for the **test figure**, one
+field over, on a field that test does not cover. The stale sentence was *"The
+board moved 12 → 13, and 3C moved 1/6 → 2/6"*, and it is recorded here rather
+than deleted, because a board narrative nobody rewrites is a board narrative
+nobody reads.
+
+⚠ **Every BUILT item was named by an override block, one at a time.** The
 26 August 2026 OVERRIDE block in `CLIENT_CHANGES.md` §0 names the five 3B
 items; the **27 August 2026** block names A1, A2 and A5 and explicitly refuses
 A3; the **28 August 2026** block names A1's widening, A3 and A6; the first
 **29 August 2026** block names **C4** and the untagged extra-lines work; the
 **third 29 August 2026** block names **C5**, the navigation re-baseline and the
-`po_parts.py` alias cutback, **and nothing else**. Everything remaining —
-B6, B7, B8, C1, C2 and the two BLOCKED items C3 and C6 — is NOT STARTED *and
-still gated*. A filled bar is not permission to fill the next one.
-
-⚠ **C2 is the one to watch now, and it is NOT nearer than it was.** With C5
-built, C2 (the measurement document) is the obvious next 3C item — and its
-approved quantity feeds RA-Installation, so **it needs an approval concept and
-B6 does not exist**. Building it today means either no approval step, which
-defeats the document, or a second approval concept B6 must later reconcile
-with. **C2 follows B6.** The third 29 August block records that reasoning so it
-is not re-derived next pass.
+`po_parts.py` alias cutback; the **fourth** names **B6 and B7**; the **fifth**
+names **C2 and C1**, the B7 narrowing, and two things carried forward from the
+fourth. Everything remaining — **B8** and the two BLOCKED items **C3** and
+**C6** — is NOT STARTED *and still gated*. A filled bar is not permission to
+fill the next one.
 
 ✅ **3A IS CLOSED.** The three items that were not BUILT on 27 August each
 turned out to be held by a **question**, not by code: A1 by a commercial one
@@ -79,43 +82,84 @@ the item as sold is delivered and the limitation is recorded in language the
 client can be read; it is **not** a claim that arbitrary-bill editing works.
 That is new scope and is priced nowhere. §6-A carries the wording.
 
-✅ **3C IS OPEN, and C5 is the second item on it to move.** The previous edition
-said *"C4 being BUILT does not make C5 nearer than it was"* and it was right:
-what moved C5 was not C4 shipping but **an override naming it**. C4 was the
-prerequisite, not the permission, and the distinction is the whole of why that
-note was written.
+⚠ **B7 is BUILT, and a subsystem sitting beside it is OURS, unspecced and
+unpriced.** CC-2's B7 governs **printing and downloading only**. It says nothing
+whatever about editing. `approval.can_modify()` — an approved document is
+locked, a part-climbed ladder is locked, a rejected one goes back to its creator
+alone, an unstarted one is its creator's — was invented by the fourth 29 August
+pass to fill that silence. Building it was right; an approval a later edit can
+walk underneath is not an approval. **It is not B7, it is not delivered CC-2
+scope, and nobody may cite it as either.** The fifth override block records it.
 
-Of the four 3C items still open, **C1 is held by two unwired links, C2 by B6
-not existing, and C3 and C6 by open questions (§5)**. None of them is held only
-by the gate, which is what C4 and C5 both were.
+⚠ **B7's print gate was NARROWED the same day, by two named exceptions.** A
+**draft** RA bill prints, carrying its DRAFT overprint, and a **cancelled** one
+prints. The overprint is itself the safeguard B7 wants, and a cancelled bill is
+the audit record of a withdrawn claim rather than a claim. What B7 reduces to on
+an RA bill is now exactly *"an **issued** bill prints only once it is
+approved"*. No other unapproved state moved, and the exemption is data on one
+document rather than a rule in `can_print()` — a status test in the function
+would have leaked to every unapproved draft purchase order.
 
-⚠ **C5 is BUILT and is NOT wired into C6.** It consumes the employee master and
-produces a site-wise labour cost **displayed inside its own module and nowhere
-else** — no dashboard figure, no project-page figure, nothing exported, and a
-test asserting at AST level that no module imports it. **C6 stays BLOCKED** on
-CC-2's Open question 4: attendance-based wages and the BOQ's installation base
-rate both represent labour, and subtracting both counts it twice. C5 can be
-built without that answer; wiring it in cannot.
+✅ **3C IS OPEN, and C2 and C1 are the third and fourth items on it to move.**
+The previous edition said C2 was *"NOT nearer than it was"* because it needed
+an approval concept B6 had not yet supplied. B6 landed, which made C2
+**possible**; what made it **authorised** was an override block naming it. The
+distinction is the whole of why that note was written and it held.
+
+⚠ **C2 IS BUILT AND MOST OF IT IS OURS.** CC-2's C2 is three lines — *"Raised
+from the BOQ. Approved measurements become the source of installation quantity
+on RA-Installation."* Two facts, and no more. The ceiling on a measured
+quantity, that the ceiling is cumulative across sheets, **which ladder** a
+measurement climbs, and that the sheet **prints at all** are every one of them
+**ours, unspecced and unpriced**. They are named individually in the fifth
+29 August override block. A measurement document without them is a form that
+records a number nobody checks — and that does not make them delivered C2.
+
+⚠ **C1 IS BUILT, and the supply leg did not exist before it.** Nothing outside
+`challan.py` read `STORE["delivery_challans"]` — not `ra.py`, not the BOQ page.
+`BoQ → Delivery Challan → RA-Supply` was two unconnected documents. **Refusing
+by URL rather than by hiding a button is ours**: C1 states a domain model and no
+mechanism, and B5's rule supplied the mechanism. The two legs are deliberately
+asymmetrical — installation gets an ordering guard **and** a quantity ceiling,
+supply gets the ordering guard alone, because CC-2 puts no quantity on the
+challan arrow and `challan.BLOCK_OVER_DISPATCH` is False on purpose.
+
+⚠ **ONE live RA bill was grandfathered, and the set is closed.** Seven RA bills
+exist, one is on the installation leg, and it carries a typed quantity with no
+measurement behind it: `SF/RA/26-27/0006`, RA1 on project *Work2*. It keeps its
+figures, renders a "Typed quantity" marker **on screen only**, and
+`tests/test_measurement_pin.py` fails if an installation bill created after the
+pinned moment joins it. **That test is the point of the rule**, and a second
+test plants exactly such a bill to prove the sweep can see one.
+
+⚠ **C5 is BUILT and is NOT wired into C6**, and C2 did not change that. It
+consumes the employee master and produces a site-wise labour cost displayed
+inside its own module and nowhere else, held by an AST test asserting no module
+imports it. **C6 stays BLOCKED** on CC-2's Open question 4: attendance-based
+wages and the BOQ's installation base rate both represent labour, and
+subtracting both counts it twice.
 
 ⚠ **The OT multiplier is a SETTING and no literal multiplier is in the
-calculation code**, which is CC-2's own requirement and the sharpest thing in
-this item. The client's figure is 1× ordinary rate; statutory overtime is
-generally twice; hardcoding the first would make this software compute an
-**underpayment**. Held by a behavioural test and by an **AST walk** that fails
-on a numeric constant in a multiplication or a division inside `daily_wage()`,
-`ot_amount()` or `cost_of()`.
+calculation code**, which is CC-2's own requirement. The client's figure is 1×
+ordinary rate; statutory overtime is generally twice; hardcoding the first would
+make this software compute an **underpayment**. Held by a behavioural test and
+by an **AST walk** that fails on a numeric constant in a multiplication or a
+division inside `daily_wage()`, `ot_amount()` or `cost_of()`.
 
-**The board moved 12 → 13**, and 3C moved 1/6 → 2/6. One item moved, and it is
-the one the third 29 August override block names.
+**The board moved 15 → 17**, and 3C moved 2/6 → 4/6. Two items moved, and they
+are the two the fifth 29 August override block names. **After this, B8 is the
+only buildable item left** — C3 is blocked on BQ1 and BQ2, C6 on Open question 4
+— and that is emphatically not an authorisation to build it.
 
 ---
 
 ## 3. What the bars do not say
 
 **The item count does not measure the work.** These twenty items are not
-comparable units and the ratio 6/20 is close to meaningless as a measure of
+comparable units and the ratio 17/20 is close to meaningless as a measure of
 effort remaining. A2 is a column on one form. B5 was a decision applied to every
-route in the application.
+route in the application, and B8 — the one item left — breaks the storage model
+this whole application rests on.
 
 **B5 is now built, and it cost less than this section predicted.** The 25 August
 edition called it "a decorator on every route function in every module" and the
@@ -202,13 +246,13 @@ written for. The escalation found on 27 August walked through a **different**
 door on the same page — the password field — which no cell in this table had
 ever claimed anything about. **Read a BUILT row as "this exists and these tests
 hold it", never as "this was attacked".** [STATE.md §1.12](STATE.md) is the plain-English account;
-[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) is the generated 7×61 grid, with
+[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) is the generated 7×79 grid, with
 every cell marked specification-or-derivation.
 
 **B1–B5 built 26 August 2026** in [auth.py](auth.py) (1,670 lines), under the
 dated **26 August 2026 OVERRIDE** in `CLIENT_CHANGES.md` §0. The application is
 now closed: `auth.enforce(app)` [app.py:158](app.py#L158) installs a single
-`before_request` gate that refuses **any** of the 72 endpoints not classified in
+`before_request` gate that refuses **any** of the **111** endpoints not classified in
 `auth.ROUTE_PERMISSIONS` [auth.py:236](auth.py#L236).
 
 The `SECRET_KEY` demo fallback recorded here on 25 August is **gone**:
@@ -216,7 +260,7 @@ The `SECRET_KEY` demo fallback recorded here on 25 August is **gone**:
 `SAMRUDDHI_SECRET_KEY`, then `SECRET_KEY`, then a gitignored `secret_key.txt`,
 with no hardcoded fallback. ABOUT.md §7 gap 8 is closed.
 
-**B6, B7 and B8 remain NOT STARTED and remain gated.**
+~~**B6, B7 and B8 remain NOT STARTED and remain gated.**~~ **B6 and B7 were BUILT on 29 August 2026 (fourth pass) under the fourth override block of that date; B8 alone remains NOT STARTED and gated.** The struck sentence is kept rather than deleted because it stood through a pass that made it false — the same staleness §2 above records of itself.
 
 ⚠ **Two deliberate deviations from CLIENT_CHANGES-2.md**, both decided by the
 client-facing owner before code was written and both recorded in the override
@@ -227,20 +271,20 @@ ships as a seventh role beside B4's six. Do not read either as spec drift.
 | Tag | Requirement (short) | Status | Evidence | What is left | Browser? |
 |---|---|---|---|---|---|
 | **B1** | user accounts and login | **BUILT** | `users` collection [store.py:44](store.py#L44), persisted via [db.py:75](db.py#L75). `GET,POST /login` `auth.login()` [auth.py:944](auth.py#L944); `GET,POST /logout` [auth.py:990](auth.py#L990) (GET confirms, POST destroys); `GET,POST /setup` [auth.py:1090](auth.py#L1090); `GET,POST /account` [auth.py:1025](auth.py#L1025). Hashing is `werkzeug.security` — `create_user()` [auth.py:508](auth.py#L508). `SECRET_KEY` moved: `resolve_secret_key()` [auth.py:70](auth.py#L70). Bootstrap also non-interactive: [tools/seed_users.py](tools/seed_users.py). Tests: `test_a_correct_password_signs_in`, `test_a_wrong_password_does_not`, `test_a_deactivated_user_cannot_sign_in`, `test_logout_needs_a_post`, `test_the_demo_secret_key_is_gone_from_the_codebase` [tests/test_auth.py](tests/test_auth.py). | Nothing for B1. ✅ **§7 gap 21 is closed (27 Aug 2026)** — it needed a decision, the decision was *both*, and the install had already walked into the failure it described: the seeded Owner's password was recorded nowhere. [tools/set_password.py](tools/set_password.py) is the break-glass CLI and a **second active Owner** is the operational half. **§7 gap 22 is still open** — no rate limiting on `/login`, still not a code fix until a decision is taken. <br><br>✅ **27 Aug 2026:** `/login`'s username-enumeration **timing** oracle is closed (§7 gap 25) — a real username took 70 ms to reject and an unknown one 0.3 ms, **239x**, because only the real one hashed. The not-found path now hashes against `_DUMMY_HASH`; measured 1.00x. Gap 22 is **narrowed, not closed**. | ☑ |
-| **B2** | permissions are named strings, minted in code | **BUILT** | 61 permissions in `auth.PERMISSIONS` [auth.py:120](auth.py#L120), each with a label and display group, derived from `app.url_map`. Roles are editable data: `GET,POST /roles/edit/<id>` [auth.py:1562](auth.py#L1562) renders checkboxes over the catalogue. The client cannot mint a string — `_posted_permissions()` [auth.py:1514](auth.py#L1514) drops anything not a catalogue key. Effective permissions are the **union** of roles: `permissions_of()` [auth.py:540](auth.py#L540). Tests: `test_a_role_cannot_be_given_a_permission_that_does_not_exist`, `test_editing_a_role_takes_effect_without_signing_in_again`, `test_every_catalogue_permission_gates_something` [tests/test_access_control.py](tests/test_access_control.py). | Nothing for B2. **Deviation from CC-2's wording:** the assignment surface is `/roles`, not `/settings`. `/settings` is the company-identity form and mixing an access matrix into it would put a lockout one mis-click from a bank-details save. | ☑ |
+| **B2** | permissions are named strings, minted in code | **BUILT** | **79** permissions in `auth.PERMISSIONS` (61 when this row was written; the figure is measured off the catalogue each pass and this one had gone two passes stale) [auth.py:120](auth.py#L120), each with a label and display group, derived from `app.url_map`. Roles are editable data: `GET,POST /roles/edit/<id>` [auth.py:1562](auth.py#L1562) renders checkboxes over the catalogue. The client cannot mint a string — `_posted_permissions()` [auth.py:1514](auth.py#L1514) drops anything not a catalogue key. Effective permissions are the **union** of roles: `permissions_of()` [auth.py:540](auth.py#L540). Tests: `test_a_role_cannot_be_given_a_permission_that_does_not_exist`, `test_editing_a_role_takes_effect_without_signing_in_again`, `test_every_catalogue_permission_gates_something` [tests/test_access_control.py](tests/test_access_control.py). | Nothing for B2. **Deviation from CC-2's wording:** the assignment surface is `/roles`, not `/settings`. `/settings` is the company-identity form and mixing an access matrix into it would put a lockout one mis-click from a bank-details save. | ☑ |
 | **B3** | Owner / Admin split | **BUILT** | Modelled as *"Owner is exactly whoever holds `admin.roles`"* — `is_owner()` [auth.py:557](auth.py#L557) — so there is no tier field to disagree with the permissions beside it. Only an Owner may grant an Owner role: `_may_grant()` [auth.py:1150](auth.py#L1150). The last active Owner cannot be deactivated **or edited out of the tier**: `_would_strand_install()` [auth.py:1169](auth.py#L1169). Role floors: `_role_edit_refusal()` [auth.py:1197](auth.py#L1197). Tests: `test_the_last_owner_cannot_be_deactivated`, `test_the_last_owner_cannot_edit_their_own_owner_role_away`, `test_an_admin_cannot_grant_themselves_the_owner_role`, `test_an_admin_can_still_create_an_ordinary_user`, `test_the_owner_role_cannot_lose_the_permission_that_defines_it`. | ✅ **27 Aug 2026:** the recovery hole is closed. *"More than one Owner is permitted and untested in anger; a single-Owner install has no recovery path if that password is lost"* — that was written the day before this install proved it, and it is no longer true of this install: **two active accounts hold `admin.roles`**, either can reset the other at `/users/edit/<id>`, and [tools/set_password.py](tools/set_password.py) is the path back in when neither can sign in. Both were driven through the real `/login` against live MySQL — 33 of 33 checks. ⚠ **Still open:** password reset is **undocumented for the client** — `/account` says only *"an Owner sets a new password for you"*. That is the half of §7 gap 21 this pass did not close, and it is a client-facing writing job, not code. <br><br>🔴 **27 Aug 2026, the day's third pass: the tier split had a hole in it, and it was the password field this row had just finished celebrating.** `/users/edit/<id>` sets a password for any account `admin.users` can load. A **Director-only** account set the **Owner's** password, changed no role, signed in as the Owner and reached `/roles` with a 200 — the one page B3 says they may never reach. Four more of the same shape got through: the Owner role taken **off** a spare Owner, an Owner deactivated, a dormant Owner reactivated, and a limited `admin.users` role conferring `charge.*` it does not hold. ✅ **Closed in the same pass.** `_may_grant()` [auth.py:1181](auth.py#L1181) now tests the **whole** permission set of every role assigned, not just `admin.roles`; `_may_administer()` [auth.py:1227](auth.py#L1227) is its mirror and refuses any change to an account holding a permission the actor lacks; `_administer_refusal()` [auth.py:1272](auth.py#L1272) renders and **logs** it. Guards `/users/edit`, `/users/deactivate`, `/users/activate`, GET and POST. 17 tests in [tests/test_privilege_escalation.py](tests/test_privilege_escalation.py), **7 failing against the pre-fix code**. §7 gap 26; [STATE.md §1.14](STATE.md). 📌 **Tightened past the letter of B3**: a Director can no longer administer an Owner account at all, which B3 does not ask for — the reasoning is in gap 26. | ☑ |
 | **B4** | roles as discussed | **BUILT** | Seven builtin roles seeded idempotently by `ensure_builtin_roles()` [auth.py:469](auth.py#L469) from `BUILTIN_ROLES` [auth.py:392](auth.py#L392) — B4's six plus B3's Owner. Multi-role assignment is a checkbox list on `/users/create` and `/users/edit`; effective permissions are the union. HR restriction applied literally to `charge.*`, the wages ledger being the only employee data the app holds. Tests: `test_the_six_client_roles_and_the_owner_are_seeded`, `test_hr_information_is_kept_from_sales_purchase_and_accounts`, `test_permissions_are_the_union_of_several_roles`, `test_re_seeding_does_not_undo_an_owners_edit`. | ⚠ **The per-role permission sets are a derived starting position, not a client instruction.** CC-2 carries **no per-role grid** — B4 names the roles and states one restriction. Walk the seven roles through with the client. HR's real surface arrives with C4 (employee master); until then HR holds only the charge ledger. | ☑ |
-| **B5** | default deny, rolled out in audit mode | **BUILT — with a recorded deviation** | Central registry `ROUTE_PERMISSIONS` [auth.py:236](auth.py#L236) classifying all 72 endpoints; single hook `_gate()` [auth.py:669](auth.py#L669) installed by `enforce()` [auth.py:740](auth.py#L740) at [app.py:158](app.py#L158). **Absence refuses** — proved, not claimed, by `test_an_unregistered_endpoint_is_refused`. The sweep CC-2 asks for is `test_every_endpoint_is_classified`, over `app.url_map`; `test_no_non_public_endpoint_is_reachable_without_a_session` sweeps every endpoint anonymously. 13 tests in [tests/test_access_control.py](tests/test_access_control.py). | ⚠ **Audit mode was not run.** CC-2 asks for log-only then flip; this enforces from the start, by decision recorded in the override block. **The logging half was kept as the condition of that decision** — every refusal records user, endpoint, permission and reason to `REFUSAL_LOG` [auth.py:626](auth.py#L626) and `app.logger`, readable at `GET /access-log` [auth.py:1604](auth.py#L1604). Also: the registry is **endpoint-level only** — §7 gap 24, which B6 inherits. <br><br>✅ **27 Aug 2026, verified by attack rather than by its own tests.** Eleven adversarial probes in [tests/test_access_control_adversarial.py](tests/test_access_control_adversarial.py); **nine clean, two holes**. Forged/unsigned cookies refused, deactivation and role edits landing on the next request, all 7 roles correct on every admin URL by direct hit, every lockout guard refusing a direct POST, `/setup` refusing a POST, no error page rendering before the gate, a route added to the live `url_map` refused even to an Owner, and the refusal log carrying no credentials. The holes were the timing oracle (B1's cell) and **§7 gap 24b** — `POST /projects/view/<id>` wrote under the read permission `project.view`, because one endpoint carries one permission across both methods. Fixed with a per-view guard; a sweep now fails on any future rule that accepts POST under a `*.view` permission. <br><br>✅ **27 Aug 2026, third pass: the registry now also decides what is *shown*.** `can_reach(endpoint)` [auth.py:726](auth.py#L726) answers the gate's question from the same `ROUTE_PERMISSIONS` dict, and every nav entry and dashboard card is drawn only when it says yes — so a user is no longer offered fifteen doors, eleven of which refuse. **Derived, not listed:** `dashboard.py` names no permission id in code at all (asserted from its AST), and `test_can_reach_agrees_with_the_gate_on_every_endpoint_for_every_role` sweeps 7 roles × every classified GET endpoint comparing prediction with what the gate actually did. **Hiding did not replace anything:** every hidden card is hit by URL for every role and must still refuse, with a control requiring the visible ones to open. 49 tests in [tests/test_nav_visibility.py](tests/test_nav_visibility.py), 31 failing against the pre-pass code. [STATE.md §1.16](STATE.md); the figures on `/` are **not** filtered and that is [ABOUT.md §7 gap 27](ABOUT.md), open. | ☑ |
+| **B5** | default deny, rolled out in audit mode | **BUILT — with a recorded deviation** | Central registry `ROUTE_PERMISSIONS` [auth.py:236](auth.py#L236) classifying all **111** endpoints (72 when this row was written); single hook `_gate()` [auth.py:669](auth.py#L669) installed by `enforce()` [auth.py:740](auth.py#L740) at [app.py:158](app.py#L158). **Absence refuses** — proved, not claimed, by `test_an_unregistered_endpoint_is_refused`. The sweep CC-2 asks for is `test_every_endpoint_is_classified`, over `app.url_map`; `test_no_non_public_endpoint_is_reachable_without_a_session` sweeps every endpoint anonymously. 13 tests in [tests/test_access_control.py](tests/test_access_control.py). | ⚠ **Audit mode was not run.** CC-2 asks for log-only then flip; this enforces from the start, by decision recorded in the override block. **The logging half was kept as the condition of that decision** — every refusal records user, endpoint, permission and reason to `REFUSAL_LOG` [auth.py:626](auth.py#L626) and `app.logger`, readable at `GET /access-log` [auth.py:1604](auth.py#L1604). Also: the registry is **endpoint-level only** — §7 gap 24, which B6 inherits. <br><br>✅ **27 Aug 2026, verified by attack rather than by its own tests.** Eleven adversarial probes in [tests/test_access_control_adversarial.py](tests/test_access_control_adversarial.py); **nine clean, two holes**. Forged/unsigned cookies refused, deactivation and role edits landing on the next request, all 7 roles correct on every admin URL by direct hit, every lockout guard refusing a direct POST, `/setup` refusing a POST, no error page rendering before the gate, a route added to the live `url_map` refused even to an Owner, and the refusal log carrying no credentials. The holes were the timing oracle (B1's cell) and **§7 gap 24b** — `POST /projects/view/<id>` wrote under the read permission `project.view`, because one endpoint carries one permission across both methods. Fixed with a per-view guard; a sweep now fails on any future rule that accepts POST under a `*.view` permission. <br><br>✅ **27 Aug 2026, third pass: the registry now also decides what is *shown*.** `can_reach(endpoint)` [auth.py:726](auth.py#L726) answers the gate's question from the same `ROUTE_PERMISSIONS` dict, and every nav entry and dashboard card is drawn only when it says yes — so a user is no longer offered fifteen doors, eleven of which refuse. **Derived, not listed:** `dashboard.py` names no permission id in code at all (asserted from its AST), and `test_can_reach_agrees_with_the_gate_on_every_endpoint_for_every_role` sweeps 7 roles × every classified GET endpoint comparing prediction with what the gate actually did. **Hiding did not replace anything:** every hidden card is hit by URL for every role and must still refuse, with a control requiring the visible ones to open. 49 tests in [tests/test_nav_visibility.py](tests/test_nav_visibility.py), 31 failing against the pre-pass code. [STATE.md §1.16](STATE.md); the figures on `/` are **not** filtered and that is [ABOUT.md §7 gap 27](ABOUT.md), open. | ☑ |
 | **B6** | approvals | **BUILT** | New bottom-of-graph module [approval.py](approval.py), imported by the four approvable document modules and importing none of them. Both ladders read off CC-2 and **the difference between them kept**: charges are `("director", "operation-head", "hr")` with `sequential=True` — CC-2 writes *"in sequence"* — and RA / Tax Invoice / PO are `("operation-head", "director")` with `sequential=False`, because CC-2 writes *"Operations Head + Director"* with no ordering word. Any one Director's approval satisfies the Director rung. Eight endpoints (`approve_<key>` / `reject_<key>`) minted from `approval.DOCUMENTS` and classified individually in `auth.ROUTE_PERMISSIONS`; four permissions minted; `docs/ACCESS_MATRIX.md` regenerated and moved **only** in those four rows. **34 tests** across [tests/test_approval.py](tests/test_approval.py) (24) and [tests/test_approval_grandfather.py](tests/test_approval_grandfather.py) (10). <br><br>⚠ **THE CREATOR GUARD IS WHY THE MODULE EXISTS.** This document's previous edition recorded that `ROUTE_PERMISSIONS` cannot carry a per-record condition, and B6's load-bearing rule is exactly one. So it is a per-view check, written **once** in `can_approve()`, and an AST test asserts every approval view reaches it. It is checked against the **record's creator**, never the approver's role — CC-2's own reason being that union permissions defeat the ladder, and a role test cannot see a union. CC-2's worked example (*"a user holding both Sales Manager and HR"*) is built and asserted. <br><br>⚠ **`created_by` MUTATED LIVE RECORDS.** `tools/backfill_created_by.py` ran against the live database and marked **15 records** — **5 charges, 7 RA bills, 1 tax invoice, 2 purchase orders** — as predating the approval system, pinned at `2026-08-29 19:55` in `STORE["settings"]["approval_migration"]`. Grandfathered records **are** approvable, because the creator guard cannot apply where there is no creator, and they say so on screen and never on paper. **The pin is the deliverable, not the backfill**: `test_approval_grandfather.py` fails if any record created after that moment lacks a creator or carries the mark. | Nothing of B6 as CC-2 words it. **Three things to know rather than discover, all OURS and all flagged:** ⚠ **One user may not climb two rungs of the same ladder.** CC-2 does not say it; B4 lets one user hold several roles, so without it a Director-and-HR user climbs two thirds of the charges ladder alone — CC-2's own "union permissions defeat the ladder" failure by another route. ⚠ **The Owner satisfies any rung** (B3: "Everything") and stays bound by the creator guard and the one-rung rule, which is what keeps "Everything" from meaning "alone". ⚠ **The RA / Tax Invoice / PO pair is UNORDERED**, read off CC-2's omission of "in sequence". If the client wants it ordered it is a one-word change. | ☐ |
-| **B7** | unapproved documents are view-only | **BUILT** | `approval.can_print()` gates `GET /ra/print/<id>` [ra.py](ra.py) and refuses **by URL** with the reason, not by hiding the Print button. `approval.print_block()` supplies B7's second bullet — a `@media print` stylesheet that blanks the page — and an **approved** document emits nothing at all, which is why **not one digest in [tests/test_print_golden.py](tests/test_print_golden.py) moved**: all 11 golden tests pass against baselines that were re-measured, not re-baselined. A grandfathered document prints, for the reason the whole grandfather rule exists. **24 tests** in [tests/test_approval_b7.py](tests/test_approval_b7.py). <br><br>⚠ **`/invoice/view/<id>` and `/purchase/view/<id>` HAVE NO SEPARATE PRINT ROUTE** — they render the A4 sheet itself. B7's first bullet assumes view and print are different URLs, which is true of the RA bill and false of these two; gating them would refuse the viewing B7 explicitly permits. **So B7's second bullet is the whole gate there** and the route stays open. That is a finding about this application's shape, not a choice. | ⚠ **B7 SAYS NOTHING ABOUT EDITING, and `approval.can_modify()` is entirely OURS.** Who may edit before submission, whether an approved document may be changed, whether a rejected one returns to editable — CC-2 settles none of the three. Our rules, each the restrictive reading bar one: **approved is locked**; **part-climbed is locked**; **rejected returns to its creator only** — ⚠ the one place the restrictive option was *not* taken, because "no" strands the record: an issued RA bill that is rejected also cannot be deleted (`can_delete()` refuses an issued bill) and cannot be printed. <br><br>⚠ **TWO COLLISIONS WITH EXISTING DELIBERATE DESIGN, both carried as open questions.** The printed **DRAFT working copy is now gated** — `ra.py` gives a draft its DRAFT overprint precisely so a working copy exists — and a **CANCELLED bill no longer prints** unless it was approved before withdrawal, though `ra.py` keeps it printable on purpose as the record of what was withdrawn. Both are pinned by tests so they read as decisions rather than accidents. **The client has not been told.** <br><br>⚠ **`/purchase/<id>/update` is deliberately NOT gated** — it changes no figure, and locking a goods receipt behind an approval ladder would stop a storekeeper recording a delivery that has physically happened. | ☐ |
+| **B7** | unapproved documents are view-only | **BUILT** | `approval.can_print()` gates `GET /ra/print/<id>` [ra.py](ra.py) and refuses **by URL** with the reason, not by hiding the Print button. `approval.print_block()` supplies B7's second bullet — a `@media print` stylesheet that blanks the page — and an **approved** document emits nothing at all, which is why **not one digest in [tests/test_print_golden.py](tests/test_print_golden.py) moved**: all 11 golden tests pass against baselines that were re-measured, not re-baselined. A grandfathered document prints, for the reason the whole grandfather rule exists. **30 tests** in [tests/test_approval_b7.py](tests/test_approval_b7.py) (24 before this pass). <br><br>⚠ **NARROWED 29 August 2026 (fifth pass) by TWO NAMED EXCEPTIONS, and by no others.** `approval.DOCUMENTS["ra"]["print_exempt_states"] = ("draft", "cancelled")` — a **draft** RA bill prints carrying its DRAFT overprint, and a **cancelled** one prints. What B7 reduces to on this document is now exactly *"an **issued** bill prints only once it is approved"*, which is the document B7 is about. Pending, part-climbed and rejected all still refuse by URL on an issued bill, and every unapproved document of the other four types still refuses whatever its own status field says. The exemption is **data on one document, not a rule in `can_print()`**: `purchase.PO_STATUSES` also carries "Draft" and "Cancelled", so a status test in the function would have silently exempted every unapproved draft purchase order. <br><br>⚠ **`/invoice/view/<id>` and `/purchase/view/<id>` HAVE NO SEPARATE PRINT ROUTE** — they render the A4 sheet itself. B7's first bullet assumes view and print are different URLs, which is true of the RA bill and false of these two; gating them would refuse the viewing B7 explicitly permits. **So B7's second bullet is the whole gate there** and the route stays open. That is a finding about this application's shape, not a choice. | ⚠ **B7 SAYS NOTHING ABOUT EDITING. `approval.can_modify()` IS OURS, UNSPECCED AND UNPRICED, AND IT IS NOT PART OF DELIVERED B7.** CC-2's B7 governs **printing and downloading only** — *"an unapproved document may be viewed, but not printed or downloaded"*, the print and download routes gated, and a print stylesheet so `Ctrl+P` does not walk round the gate. That is the whole of the item. **Nobody may cite `can_modify()` as a delivered CC-2 requirement or as work MG/SF/2026-02 covers.** The fifth 29 August override block records it by name, on the fifth pass's own disclosure. Building it was right — an approval a later edit can walk underneath is not an approval — and that does not make it specified. <br><br>⚠ **The rules themselves.** Who may edit before submission, whether an approved document may be changed, whether a rejected one returns to editable — CC-2 settles none of the three. Our rules, each the restrictive reading bar one: **approved is locked**; **part-climbed is locked**; **rejected returns to its creator only** — ⚠ the one place the restrictive option was *not* taken, because "no" strands the record: an issued RA bill that is rejected also cannot be deleted (`can_delete()` refuses an issued bill) and cannot be printed. <br><br>✅ ~~**TWO COLLISIONS WITH EXISTING DELIBERATE DESIGN, both carried as open questions.**~~ **BOTH ANSWERED on 29 August 2026 by the fifth override block, the same day they were raised** — and the history is kept rather than deleted, because the way it went is the point. The strict reading gated the printed **DRAFT working copy** and the **CANCELLED** record that morning; both were readmitted that evening. The reasoning: the DRAFT overprint *is* the safeguard B7 wants, so gating the print removed the safeguard's purpose along with it; and a cancelled bill is not a claim but the audit record of a withdrawn one, and a record that cannot be produced is not a record. A test asserts the overprint renders on **every** draft print — plain, pending **and rejected** — because a draft that printed clean would be worse than either reading. ⚠ **A rejected DRAFT prints, and that ordering is OURS**: lifecycle state and approval state are orthogonal, the exemption is checked before the rejected clause, and the block's wording admits both readings. <br><br>⚠ **`/purchase/<id>/update` is deliberately NOT gated** — it changes no figure, and locking a goods receipt behind an approval ladder would stop a storekeeper recording a delivery that has physically happened. | ☐ |
 | **B8** | file attachments | NOT STARTED | No `request.files` and no upload handling anywhere in the application. Storage model unchanged: `MAX_JSON_BYTES = 300_000` [boq.py:192](boq.py#L192), no `/static` directory. | All of it: real file storage, path on the record, size and type gate, compulsory on charges, optional on payments, cascade delete with the parent. Call the attached file a **proof of payment**, never a "receipt" — that word is taken by the payment record itself. | ☐ |
 
 ### 3C — measurement, labour cost and project result
 
 | Tag | Requirement (short) | Status | Evidence | What is left | Browser? |
 |---|---|---|---|---|---|
-| **C1** | order of working | NOT STARTED | Neither leg of the stated ordering is wired. `ra.py` contains **no reference to `challan`** at all, so `BoQ → Delivery Challan → RA-Supply` is two unconnected documents rather than a chain; the challan blueprint stands alone at [challan.py:774](challan.py#L774)–[challan.py:1040](challan.py#L1040). `BoQ → Measurement → RA-Installation` has no middle term — no measurement module exists. Installation quantity is still typed straight into the claim grid [ra.py:1315](ra.py#L1315). | Both links. C1 is only closed once a challan constrains supply quantity and C2 supplies installation quantity. | ☐ |
-| **C2** | measurement document | NOT STARTED *(and **still gated** — C5 shipping does not open it)* | No measurement module, record, route or test. `db.py`'s collection map [db.py:259](db.py#L259) holds no measurement collection. | All of it: raise from the BOQ, approve, and feed approved quantity into RA-Installation. ⚠ **It depends on B6 for what "approved" means, and B6 does not exist** — which is why the third 29 August 2026 override block records C2 as deliberately not taken rather than merely not authorised. Building it now means either a measurement document with **no approval step**, which defeats the document since an unapproved measurement is a number somebody typed, or a **second approval concept** that B6 must later reconcile with. **C2 follows B6.** | ☐ |
+| **C1** | order of working | **BUILT** | Both legs, refused **by URL**. `ra._c1_refusal()` gates `GET,POST /ra/create`: the installation leg needs an **approved** measurement on the BOQ's revision chain (`measurement.has_approved_measurement()`), the supply leg needs a delivery challan on it (`ra.challan_exists()`, reading `STORE["delivery_challans"]` directly). `/boq/view` draws each RA chip only when its step exists — **presentation, not the gate**. **21 tests** in [tests/test_c1_order_of_working.py](tests/test_c1_order_of_working.py), every one of them requesting the address directly and **including the POST**, because a GET refusal with an open POST is not a gate. Both guards were proved to fail when the guard was removed. <br><br>⚠ **THE SUPPLY LEG DID NOT EXIST BEFORE THIS PASS.** Nothing outside `challan.py` read `STORE["delivery_challans"]` — not `ra.py`, not the BOQ page — and `challan → ra` was refused at AST level. The previous edition's *"two unconnected documents rather than a chain"* was exactly right, and this is the whole of the link. `ra → challan` is now refused too: the existence check is a dict lookup, not a module. | Nothing for C1 as CC-2 words it. **Three things to know rather than discover:** ⚠ **Refusing by URL is OURS.** C1 states a domain model and no mechanism; B5's rule supplied it. ⚠ **The two legs are deliberately asymmetrical** — installation gets an ordering guard **and** a quantity ceiling, supply gets the ordering guard **alone**, because CC-2 puts no quantity on the challan arrow and `challan.BLOCK_OVER_DISPATCH` is False on purpose, so dispatch figures are a warning and not tight enough to cap somebody's money. ⚠ **The guard is on raising a NEW claim.** An existing bill keeps its typed quantity and renders; widening it would strand live records. §6-L. | ☐ |
+| **C2** | measurement document | **BUILT** *(and most of it is OURS — read the next column)* | New module [measurement.py](measurement.py) and a `measurements` collection in [store.py](store.py) and [db.py](db.py). Six routes — `GET /measurement/`, `GET,POST /measurement/create?boq=`, `GET /measurement/view/<id>`, `GET /measurement/print/<id>`, `GET,POST /measurement/edit/<id>`, `GET,POST /measurement/delete/<id>` — the last two confirming on GET and writing only in the POST branch. Six permissions minted in `auth.PERMISSIONS`, eight endpoints classified in `auth.ROUTE_PERMISSIONS` (six routes plus B6's approve/reject pair). Fifth entry in `approval.DOCUMENTS`. **28 tests** in [tests/test_measurement.py](tests/test_measurement.py) and **19** in [tests/test_measurement_pin.py](tests/test_measurement_pin.py). <br><br>**Guard 1** — a measured quantity may not push its line past the BOQ quantity — `measurement.overmeasures()`, a **hard block** (unlike `challan.over_dispatched()`, which warns). **Guard 2** — cumulative claims may not exceed the approved measured quantity — inside `ra.overclaims()`, which already owns the cumulative arithmetic. **Nothing was reimplemented**: `ra.claimed_by_line()` stays the single place anything asks how much has been claimed, and only the number it is compared against moved. Six guards, each proved to fail with the guard removed. | ⚠ **FOUR THINGS HERE ARE OURS, NOT CC-2's, AND NONE IS DELIVERED C2.** CC-2's C2 is three lines — *"Raised from the BOQ. Approved measurements become the source of installation quantity on RA-Installation."* Ours: **(1)** that a measured quantity may not exceed the BOQ quantity; **(2)** that the ceiling is **cumulative across sheets** — stated per line, two sheets could each measure the whole of a line; **(3)** **which ladder** it climbs — B6 names charges and RA / Tax Invoice / PO and names measurement on neither, and the RA ladder was chosen because a measurement exists to feed an RA bill while the charges ladder ends at HR, who has nothing to say about what was measured on a site; **(4)** that it **prints at all** — CC-2 is silent, so the route exists but **no golden is pinned** and no letterhead was invented: the sheet is `docsheet.py`'s existing furniture plus two column widths and one signature label. All four are named individually in the fifth 29 August override block and are **unpriced**. ⚠ **The series is FY-scoped and deliberately NOT a `/settings` counter** — the challan has one because the client runs a paper challan book; nothing we hold says a measurement sheet is numbered from a book they keep. ⚠ **Purchase Manager holds none of the six**, as our reversible default, on the same terms as its existing absence of `ra.*`. | ☐ |
 | **C3** | merged RA | **BLOCKED** | No merge code exists — `merge` does not occur in any application `.py` file. Blocked on **BQ1 + BQ2** before it can be built at all; see §5. Two live code facts the design pass must start from: `tax_invoice_ref` is a **typed form field**, never minted [ra.py:2899](ra.py#L2899), and when left blank the printed tax-invoice number **silently falls back to the RA `ref`** [ra.py:3486](ra.py#L3486) — the two series are already conflated in code. | The design pass first, then the build. Note CC-2's instruction to put the merge action on the RA register from day one. | ☐ |
 | **C4** | employee master | **BUILT** | New leaf module [employee.py](employee.py) and an `employees` collection in [store.py](store.py) and [db.py](db.py). Fields: name, employee code, designation, site, monthly salary, date joined, active flag. Five routes — `GET /employee/`, `GET,POST /employee/new`, `GET /employee/view/<id>`, `GET,POST /employee/edit/<id>`, `GET,POST /employee/delete/<id>` — the last of which **confirms on GET and destroys only in the POST branch** (`9d060ee`'s shape), with its own hand-written GET test because `test_delete_methods.py` says in terms that its URL-map sweep cannot catch a both-verbs route that destroys on GET. Four permissions minted in `auth.PERMISSIONS` and five endpoints classified in `auth.ROUTE_PERMISSIONS`. 34 tests in [tests/test_employee.py](tests/test_employee.py). | Nothing for C4 as CC-2 words it — *"Employee details and salary"* is one sentence and this is the whole of it. **Three things to know rather than discover:** ✅ **The nav link and the dashboard card ARRIVED on 29 August 2026 (third pass).** The caveat that stood here — *"There is NO nav link and NO dashboard card, deliberately … the link is queued work, for a pass that expects to re-baseline the goldens"* — described the cost of protecting the goldens in an unattended pass, and that cost was that **the owner could not find a page he had paid for**. The pass it named arrived: five goldens moved +248 bytes each, in the `head` block alone, and nothing on any printed sheet changed. ⚠ **Owner, Director and HR only.** The *restriction* is spec-traced to B4 and marked `§` in the matrix; who *holds* it is still a derivation and marked `·`. Operation Head holds the wages ledger but not this — ours, and a checkbox if the client disagrees. ⚠ **The untagged item alongside it is NOT delivered** — HR's right to *edit* salary is outside C4 and outside MG/SF/2026-02. See §4a. | ☐ |
 | **C5** | attendance and site-wise labour cost | **BUILT** | New leaf module [attendance.py](attendance.py) and an `attendance` collection in [store.py](store.py) and [db.py](db.py). Four routes — `GET /attendance/` (the day's muster + the site-wise cost, `?date=` moves the day), `GET,POST /attendance/mark`, `GET,POST /attendance/edit/<id>`, `GET,POST /attendance/delete/<id>` — the last of which **confirms on GET and destroys only in the POST branch** (`9d060ee`'s shape), with its own hand-written GET test because `test_delete_methods.py` says in terms its URL-map sweep cannot catch a both-verbs route that destroys on GET. Four permissions minted in `auth.PERMISSIONS` and four endpoints classified in `auth.ROUTE_PERMISSIONS`. **33 tests** in [tests/test_attendance.py](tests/test_attendance.py). <br><br>⚠ **THE OT MULTIPLIER IS A SETTING AND NO LITERAL MULTIPLIER IS IN THE CALCULATION CODE.** `settings.ot_multiplier()`, defaulting to the client's own 1×, with `/settings` saying on its face that the Factories Act and most state Shops & Establishments Acts put overtime at generally **twice** — CC-2's point being that hardcoding 1× makes this software compute a **statutory underpayment**. Held two ways: a behavioural test (change the setting, ₹1,250 becomes ₹1,500, and nothing stored is rewritten) and an **AST walk** over `daily_wage()`, `ot_amount()` and `cost_of()` that fails on any numeric constant in a multiplication or a division. `STANDARD_HOURS_PER_DAY` is a **name**, not a literal — CC-2's own `÷ 8`. <br><br>⚠ **One employee = one site = one day, enforced at WRITE time** in `conflicting_record()`, called by both write routes before anything is stored — not in the form. Keyed `(employee, date)` and **deliberately not** `(employee, site, date)`: the second reading bills one day's wage three times for one person marked on three sites. The edit route passes its own id as `except_id`, which is how this constraint is usually got wrong. | Nothing for C5 as CC-2 words it — five bullets, all five built. **Four things to know rather than discover:** ⚠ **`wage_days_per_month` is a SECOND setting and it is OURS, not CC-2's.** A monthly salary needs a divisor before it is a daily wage and CC-2 never gives one; 26 is the usual convention, 30 is defensible, and they give different money. Defaulted to 26 and stated as ours on the page. **Nobody may record it as the client having chosen anything.** ⚠ **Site is FREE TEXT and is deliberately not a project** — a BOQ carries `project_name` *and* `site_location` as separate fields, `employee.site` is already free text by C4's choice, and a `project_id` here is the first half of C6. ⚠ **Overtime on an absent day is recorded, shown and NOT paid.** CC-2 does not rule on it; the hours stay visible so the contradiction is not swallowed. ⚠ **Owner, Director and HR only. Operation Head is REFUSED and marked `–`, not `§`** — ours, reversible at `/roles/edit/<id>`. See §4b. | ☐ |
@@ -1006,7 +1050,7 @@ raise a PO already chooses every rate on it — and a strictly larger authority
 than marking a delivery received.
 
 Every role holding `purchase.edit` today also holds `purchase.create`, so **the
-7×61 grid does not move**; the classification is for the day a storekeeper is
+grid does not move** (it was 7×61 when this was written and is 7×79 now); the classification is for the day a storekeeper is
 given status rights and must not be able to reprice an order. **No permission
 was minted**: inventing one would force a per-role decision CC-2's B4 does not
 authorise an agent to take on the client's behalf, and B4 states exactly one
@@ -1052,6 +1096,73 @@ closed.** It is ABOUT.md §7's first gap, it cost five documents +248 bytes each
 here, and it will cost the same five again on the next nav change. The fix is
 the delivery challan's shape — a document route with no nav at all, which is why
 the challan alone did not move — and re-baselining is not the fix.
+
+⚠ **It cost the same five again on 29 August 2026, fifth pass** — **+342 bytes
+each**, for the measurement register's nav entry — exactly as predicted, one
+pass later. Two nav entries, ten re-baselines, two passes. The prediction was
+right and the fix is still unbuilt.
+
+**L. The pre-measurement RA bills — a SECOND grandfathered set, and it is
+pinned. 29 August 2026, fifth pass.** *New.*
+
+`created_by` was the first. This is the second and its shape is identical: a
+rule arrived after the records it governs, and neither obvious answer is
+acceptable — refusing every existing installation bill strands live records,
+allowing them silently pretends the rule held when it did not.
+
+**Measured on the live database: ONE bill.** Seven RA bills exist, one is on the
+installation leg, and it claims a quantity with no measurement behind it —
+`SF/RA/26-27/0006`, RA1 on project *Work2*, quantity 1.
+`tools/backfill_measurement_pin.py --write` marked it `pre_measurement = True`
+and wrote `{"at": …, "count": 1, "ids": [...]}` to
+`STORE["settings"]["measurement_migration"]`.
+
+- The bill **keeps its typed quantity** — nothing recomputed, no figure moved.
+- It renders a **"Typed quantity"** marker **on screen only**. Never on paper: a
+  note on an issued claim saying its figures were typed is exactly the sentence
+  nobody wants read by a main contractor, and a test renders the printed sheet
+  and asserts every spelling of it is absent.
+- Its project keeps the **BOQ ceiling** in `ra.overclaims()`, so the chain is
+  not stranded — and a test asserts the ceiling **moves** the moment an approved
+  sheet lands, so the exception does not become a permanent exemption.
+- The mark is **never inferred** from a missing measurement. Inferring it is how
+  the set would grow.
+
+⚠ **`tests/test_measurement_pin.py` is the point of the whole rule**, and it
+carries its own vacuity check: the sweep passes on a fresh database because it
+finds nothing, so a **second** test plants exactly the record that must be
+caught and asserts the same walk catches it. That is the defect pass D found in
+two of its own tests, closed here by construction rather than by intention.
+
+**M. `/measurement/` is UNREACHABLE on the live database until an Owner acts,
+and that is a deliberate hand-off rather than an omission. 29 August 2026.**
+*New.*
+
+`auth.ensure_builtin_roles()` never rewrites an existing role's permission list
+— once an Owner has edited what Director means, a restart must not undo it — so
+the six new `measurement.*` permissions exist in `auth.BUILTIN_ROLES` and on a
+fresh database, and **not** on the role records the live database already holds.
+Nobody there holds `measurement.view`, so `auth._gate()` refuses the whole
+module, **including for an Owner**: there is no Owner bypass in the gate.
+
+The previous migration solved the identical problem by silently rewriting four
+live role records. That was disclosed by pass D and is acknowledged
+retrospectively in the fifth override block, **which says the next migration
+touching identity data must be authorised on its own terms.** So this one does
+not take that decision: `--grant-roles` exists, prints exactly what it would
+write, is **off by default**, and **was not run**.
+
+**One command closes it**, and it is the client-facing owner's to type:
+
+```
+python tools/backup_db.py --label pre-measurement-grants
+python tools/backfill_measurement_pin.py --write --grant-roles
+```
+
+or, with no code at all, four to six ticks per role at `/roles/edit/<id>` —
+Owner, Director and Operation Head take all six; Sales Manager and Accountant
+take `measurement.view` and `measurement.print`. Purchase Manager and HR take
+none, by our reversible default and by B4's wall respectively.
 
 ---
 

@@ -10,11 +10,12 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 29 August 2026 (**fourth pass** — B6 and
-B7 built, the board 13 → 15, 3B 5/8 → 7/8, and the first pass since the
-access-control layer to rewrite live rows).
-**Tests:** **1,531 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 29 August 2026 by running the suite in it. ⚠ *(It
+**As of:** branch `antigravity-dev`, 29–30 August 2026 (**fifth pass** — **C2**
+the measurement document and **C1** the order of working built, the board
+15 → 17, 3C 2/6 → 4/6; B7's print gate narrowed by two named exceptions; a
+second grandfathered set pinned at **one** live RA bill).
+**Tests:** **1,656 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It
 read **1,367 / 1** here until this edition, which was the 28 August figure: the
 two 29 August passes before this one added 20 and 92 tests and neither updated
 this line. The second skip is new and is not openpyxl's — see ABOUT.md's table.)*
@@ -47,7 +48,7 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,532 passed / 4 skipped** against the same commit, and read
+reports **1,657 passed / 4 skipped** against the same commit, and read
 **1,465 / 4** before this pass's 67,
 **1,388 / 3** before the third 29 August pass's 78,
 **1,276 / 3** before the 29 August pass's 92 tests,
@@ -344,7 +345,7 @@ What shipped, in [auth.py](auth.py) (1,639 lines, a new module):
 - **B1** — user accounts, login, logout, first-run `/setup`, `/account`, and a
   non-interactive [tools/seed_users.py](tools/seed_users.py). Passwords are
   `werkzeug.security` hashes. Users are **deactivated, never deleted**.
-- **B2** — 61 permissions minted in code, roles as editable data, effective
+- **B2** — **79** permissions minted in code (61 when this line was written), roles as editable data, effective
   permissions the **union** of a user's roles. A role edit lands on the user's
   next click, not their next login.
 - **B3** — the Owner / Admin split, modelled as "Owner is whoever holds
@@ -481,8 +482,10 @@ passwords, cookies or form contents.
 
 #### What is not trustworthy yet
 
-- **The role grid is still ours, not the client's.** Seven roles × 61
-  permissions is 427 decisions and **16** of them come from the specification.
+- **The role grid is still ours, not the client's.** Seven roles × **79**
+  permissions is **553** cells and **52** of them come from the specification.
+  (It read *"× 61 … is 427 decisions and 16"* until 30 August 2026; the
+  document's own generated header is the figure to trust.)
   [docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md) now marks every single cell as
   specification or derivation, and it exists to be walked through with the
   client rather than filed.
