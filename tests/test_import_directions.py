@@ -682,6 +682,35 @@ REQUIRED = [
                                "copy of the resolve-a-label rule here is the "
                                "SITE_TYPES defect one level up"),
 
+    # ── ⚠ THE ONE ARROW INTO attendance.py, and it did not exist until the
+    #    FIFTH override block of 30 August 2026 ────────────────────────────
+    ("projectview", "attendance", "marking_cells() and markings_at_site(), for "
+                                  "the Site Labour section. ⚠ NOTHING imported "
+                                  "attendance.py until 30 August 2026 and this "
+                                  "is still the ONLY module that may — "
+                                  "test_attendance.py holds it as an ALLOWLIST "
+                                  "OF ONE rather than a blacklist. The arrow "
+                                  "belongs to projectview.py rather than "
+                                  "project.py because the module that RENDERS "
+                                  "the section owns it, exactly as the arrow to "
+                                  "ra.py for revision_chain() does; putting it "
+                                  "on project.py would pull employee.py and "
+                                  "settings.py into the import graph of every "
+                                  "future reader of the project entity, for a "
+                                  "section project.py does not draw. ⚠ What "
+                                  "crosses is RENDERED CELLS, never the "
+                                  "arithmetic: C6 is BLOCKED on CC-2's Open "
+                                  "question 4, and a second module able to "
+                                  "compute a wage is a second place the OT "
+                                  "multiplier could be hardcoded"),
+    ("projectview", "settings", "ot_multiplier(), passed straight through to "
+                                "attendance.marking_cells(). ⚠ Read here rather "
+                                "than inside attendance.py because CC-2 requires "
+                                "the multiplier to be a SETTING and ot_amount() "
+                                "takes it as an argument for that reason — this "
+                                "page fetches it the same way /attendance/ does "
+                                "and performs no arithmetic of its own"),
+
     # ── auth.py — the whole of what it may reach for (Phase 3B) ──────────
     ("auth", "store",    "the shared STORE dict — users and roles are two "
                          "collections in it, like every other record"),

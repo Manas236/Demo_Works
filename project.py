@@ -167,6 +167,37 @@ def is_legacy_site(proj) -> bool:
             and not str(proj.get(SITE_ADDRESS_ID_FIELD) or "").strip())
 
 
+def others_on_site(address_id, except_id: str = "") -> list:
+    """
+    Every OTHER project whose site is this address, name order.
+
+    ⚠ **This is the evidence behind the ambiguity note on `/projects/view/<id>`,
+    and the count is the whole point of it.** The client has said *one project =
+    one site*; he has **not** said one site = one project, and this database
+    disproves the converse on its own: `'Bangalore, Karnataka'` carries several.
+    So anything read off a site — a delivery, an expense, a day's labour —
+    belongs to **all** of the projects on that site as far as the data can say,
+    and to exactly one of them in reality. Naming which is C6, BLOCKED on CC-2's
+    Open question 4.
+
+    ⚠ **A BLANK id returns nothing**, never "every project with no site". Two
+    records that share only an empty field share nothing, and `""` matching `""`
+    is how the unlinked projects would come back as each other's siblings.
+
+    Lives here rather than in `projectview.py` because a question about the
+    project collection belongs to the module that owns it —
+    `attached_boq_count()`'s precedent two functions up, and the reason
+    `site_drift()` is here and not on the page that draws its band.
+    """
+    aid = str(address_id or "").strip()
+    if not aid:
+        return []
+    return sorted((p for p in (STORE.get("projects") or {}).values()
+                   if str(p.get(SITE_ADDRESS_ID_FIELD) or "").strip() == aid
+                   and p.get("id") != except_id),
+                  key=lambda p: str(p.get("name") or "").lower())
+
+
 def site_drift(proj):
     """
     Where the snapshot and the live address have come apart, or `None`.

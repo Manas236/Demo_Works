@@ -33,6 +33,7 @@ somebody's wages are being counted against a site they never worked on.
 """
 
 import pathlib
+import re
 
 import pytest
 
@@ -280,7 +281,99 @@ def test_both_registers_report_the_unmapped_string(client):
     att_page = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
     assert "not in the address book" in att_page
     assert "Banglore" in att_page
-    assert "SITE NOT MAPPED" in att_page, "the row itself must carry the chip"
+    # ⚠ **REWRITTEN 30 August 2026 (fifth pass). The old assertion, verbatim:**
+    #
+    #     assert "SITE NOT MAPPED" in att_page, "the row itself must carry the chip"
+    #
+    # It passed while the page was broken, which is the point of the rewrite.
+    # `employee.unmapped_site_chip()` renders `.emp-badge .emp-stale-chip`, and
+    # both classes are declared in `EMPLOYEE_STYLES` — which `/attendance/` does
+    # not load. So the chip arrived on the row as bare unstyled inline text with
+    # no separator and the owner saw `BangloreSITE NOT MAPPED`. The assertion
+    # above could not tell a rendered chip from a broken one, because it only
+    # ever asked whether the string was in the bytes.
+    #
+    # The row still carries the marker; it carries the REGISTER spelling of it,
+    # `employee.unmapped_site_note()`, whose class this page actually declares.
+    # So the property is now stated as the two things that were really wanted:
+    # the marker is on the row, and the class it uses is defined on the page.
+    assert "reg-sub-line" in att_page
+    row = att_page[att_page.index("<td>Banglore"):]
+    row = row[:row.index("</td>") + 5]
+    assert "not in the address book" in row, (
+        "the row itself must carry the marker, not only the band below it")
+    assert ".reg-sub-line" in att_page, (
+        "the marker's class must be DECLARED on this page — a class the page "
+        "never styles renders as bare text welded onto the site string, which "
+        "is the defect this rewrite exists for")
+
+
+def test_the_unmapped_marker_is_separated_from_the_site_string(client):
+    """
+    ⚠ **The defect the rewrite above was written for, pinned directly.**
+
+    The owner opened `/attendance/` on 30 August 2026 and read
+    `BangloreSITE NOT MAPPED` — the marker concatenated onto the site string
+    with no separator and no styling. It is one of only two pages in this
+    application anybody has ever looked at.
+
+    There is no separator CHARACTER between the two and there must not be one:
+    `.reg-sub-line` is `display:block`, so **the line break is the separator**,
+    which is exactly what the site-wise table below the muster has always done.
+    So the property is not "a space exists" — it is "the marker is inside an
+    element this page renders as a block".
+
+    Held by mutation below.
+    """
+    _addr("Whitefield")
+    _legacy_marking(site="Banglore")
+    _run_migration()
+
+    html = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
+
+    cell = html[html.index("<td>Banglore"):]
+    cell = cell[:cell.index("</td>")]
+    assert 'class="reg-sub-line"' in cell, (
+        "the marker must be in a block element — without one it renders welded "
+        "onto the site string, which is what the owner reported")
+
+    block_rule = re.search(r"\.reg-sub-line\s*\{[^}]*\}", html)
+    assert block_rule, "the page must declare the rule that does the separating"
+    assert "display: block" in block_rule.group(0) or \
+           "display:block" in block_rule.group(0), (
+        f"`.reg-sub-line` is what separates the marker from the site string, "
+        f"and it is not a block: {block_rule.group(0)!r}")
+
+
+def test_the_separation_guard_is_not_vacuous(client):
+    """
+    ⚠ **Mutation proof for the test above.**
+
+    Put the OLD helper back — the chip whose classes this page does not declare
+    — and the guard must go red. A guard that passes on the broken render is the
+    one that let `BangloreSITE NOT MAPPED` ship in the first place.
+    """
+    _addr("Whitefield")
+    _legacy_marking(site="Banglore")
+    _run_migration()
+
+    original = EMP.unmapped_site_note
+    try:
+        EMP.unmapped_site_note = EMP.unmapped_site_chip
+        html = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
+    finally:
+        EMP.unmapped_site_note = original
+
+    cell = html[html.index("<td>Banglore"):]
+    cell = cell[:cell.index("</td>")]
+    assert "SITE NOT MAPPED" in cell, (
+        "the mutation did not take — retarget it, because a mutation that "
+        "changes nothing proves nothing")
+    assert 'class="reg-sub-line"' not in cell, "the mutation did not take"
+    assert ".emp-stale-chip" not in html, (
+        "this page does not declare the chip's classes — that is the whole "
+        "defect, and if it ever does declare them this mutation stops proving "
+        "anything and must be retargeted")
 
 
 def test_a_mapped_record_carries_no_band_or_chip(client):

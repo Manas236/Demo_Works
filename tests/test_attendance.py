@@ -751,15 +751,33 @@ def test_operation_head_can_be_granted_it_without_a_code_change(client):
 
 # ══ 7. ⚠ What C5 is NOT — C6 is BLOCKED and stays blocked ═════════════════
 
-def test_nothing_imports_the_attendance_module():
+def test_only_projectview_imports_the_attendance_module():
     """
-    ⚠ **The structural half of "not wired into C6".**
+    ⚠ **The structural half of "not wired into C6" — REWRITTEN 30 August 2026,
+    fifth pass. The old assertion, verbatim:**
 
-    C6 is BLOCKED on CC-2's Open question 4 — attendance wages or the BOQ
-    installation base rate — and subtracting both counts labour twice. C5 can
-    be built without the answer; wiring it into C6 cannot. So nothing consumes
-    this module, and that is checked at AST level rather than promised.
+        assert not offenders, (
+            f"{offenders} import attendance.py — a labour cost figure reaching "
+            f"another module is C6, which is BLOCKED")
+
+    …with `offenders` computed over every module but `attendance.py` and
+    `app.py`. It held from 29 August 2026 until the FIFTH override block of
+    30 August 2026 authorised the Site Labour section on `/projects/view/<id>`,
+    which needs `marking_cells()` and `markings_at_site()`.
+
+    ⚠ **The rule is NARROWED, not dropped, and C6 is still BLOCKED.** The
+    reasoning the old test carried is unchanged and still correct: C6 is blocked
+    on CC-2's Open question 4 — attendance wages or the BOQ installation base
+    rate — and subtracting both counts labour twice. **This pass answers that
+    question in no direction.** What it authorises is a *presentation* of
+    markings on a second page, and the override block says so in terms.
+
+    So the assertion becomes an **allowlist of exactly one**, which is stricter
+    than a blacklist for the reason `test_auth_imports_nothing_that_prints` is a
+    whitelist: a blacklist has to be remembered when somebody adds a module, and
+    a second consumer of this module is the thing that has to stay hard.
     """
+    permitted = {"projectview"}          # and nothing else, ever, without a block
     offenders = []
     for path in REPO.glob("*.py"):
         if path.name in ("attendance.py", "app.py"):
@@ -773,10 +791,42 @@ def test_nothing_imports_the_attendance_module():
             else:
                 continue
             if any(n.split(".")[0] == "attendance" for n in names):
-                offenders.append(path.name)
-    assert not offenders, (
-        f"{offenders} import attendance.py — a labour cost figure reaching "
-        f"another module is C6, which is BLOCKED")
+                offenders.append(path.stem)
+
+    assert set(offenders) <= permitted, (
+        f"{sorted(set(offenders) - permitted)} import attendance.py. Exactly "
+        f"one module may — projectview.py, under the FIFTH override block of "
+        f"30 August 2026 — and a labour figure reaching any OTHER module is C6, "
+        f"which is BLOCKED on CC-2's Open question 4.")
+    assert set(offenders) == permitted, (
+        "projectview.py no longer imports attendance.py. If the Site Labour "
+        "section was removed, narrow this allowlist back to empty and restore "
+        "the original assertion quoted in the docstring above — do not leave a "
+        "permission standing that nothing exercises.")
+
+
+def test_the_labour_section_consumes_the_module_and_does_not_reimplement_it():
+    """
+    ⚠ **What the narrowed import is allowed to be, and what it is not.**
+
+    The one permitted consumer takes *rendered answers* — `markings_at_site()`
+    and `marking_cells()`. It may not take the arithmetic: a second module able
+    to compute a wage is a second place the OT multiplier could be hardcoded,
+    which is the statutory-underpayment defect CC-2 names, and it is what would
+    make this an export of C6's figure rather than a presentation of C5's rows.
+    """
+    src = (REPO / "projectview.py").read_text(encoding="utf8")
+
+    assert "AT.markings_at_site(" in src and "AT.marking_cells(" in src, (
+        "the section must consume attendance.py's own accessors — reimplementing "
+        "either is the second copy this extraction exists to prevent")
+
+    for banned in ("cost_of", "ot_amount", "day_rate_of", "site_costs",
+                   "STANDARD_HOURS_PER_DAY"):
+        assert f"AT.{banned}" not in src, (
+            f"projectview.py reaches for attendance.{banned} — the arithmetic "
+            f"stays in the module that owns it, and a caller that can compute a "
+            f"wage can hardcode a multiplier")
 
 
 def test_the_employee_master_links_out_without_importing_back():
@@ -813,17 +863,285 @@ def test_the_charge_ledger_is_still_forbidden_in_both_directions():
                 assert b not in [mod] + names, f"{a}.py imports {b}.py"
 
 
-def test_the_project_page_still_shows_no_labour_cost(client):
+def test_the_project_page_builds_no_margin_total_or_net():
     """
-    `projectview.py` carries a standing prohibition — *"no revenue total, no
-    cost total, no margin, no profit, no net, no balance"* — that C6 requires be
-    reversed and this pass leaves alone. Asserted on the source, because that
-    docstring is the guard.
+    ⚠ **REWRITTEN 30 August 2026, fifth pass. The old assertions, verbatim:**
+
+        src = (REPO / "projectview.py").read_text(encoding="utf8")
+        assert "no cost total" in src, "the standing prohibition must be intact"
+        assert "attendance" not in src.lower(), \\
+            "a labour figure on the project page is C6, which is BLOCKED"
+
+    **The first line is kept below and is unchanged.** The second is what the
+    FIFTH override block of 30 August 2026 lifts, and it lifts *only* that
+    clause: the Site Labour section presents markings on the project page and is
+    explicitly not a P&L authority.
+
+    ⚠ **The prohibition the old test was really guarding is NOT relaxed**, and
+    this is now stated as what it always meant rather than as a proxy for it.
+    `projectview.py`'s docstring reads *"Each panel shows the documents' OWN
+    values and adds that one column up. What this page must never show is a
+    figure that only exists by combining two panels — no revenue total, no cost
+    total, no margin, no profit, no net, no balance."* The labour panel's sum is
+    the **first** sentence, which five panels already exercise. The second
+    sentence is what C6 would need reversed and what nothing here reverses.
     """
     src = (REPO / "projectview.py").read_text(encoding="utf8")
     assert "no cost total" in src, "the standing prohibition must be intact"
-    assert "attendance" not in src.lower(), \
-        "a labour figure on the project page is C6, which is BLOCKED"
+
+    # The panel sum goes through the SAME two helpers the other five panels use,
+    # so there is one arithmetic path on this page rather than a second one that
+    # could quietly start combining panels.
+    assert "_sum_cell(vals)" in src, (
+        "the labour panel must add its column up through _sum_cell(), the "
+        "helper whose own docstring says 'a sum down a single panel, never "
+        "across two'")
+
+    # ⚠ Nothing on this page may combine two panels. These are the names a P&L
+    #   would arrive under, and none of them may be computed here.
+    tree = ast.parse(src)
+    assigned = {t.id for n in ast.walk(tree)
+                if isinstance(n, ast.Assign)
+                for t in n.targets if isinstance(t, ast.Name)}
+    for banned in ("margin", "net", "profit", "project_total", "gross_margin",
+                   "cost_total", "revenue_total", "balance"):
+        assert banned not in assigned, (
+            f"projectview.py computes {banned!r} — that is C6, BLOCKED on "
+            f"CC-2's Open question 4")
+
+
+def test_the_labour_section_says_the_rows_are_not_tagged_to_the_project(client):
+    """
+    ⚠ **The wording is load-bearing and this is the test that says so.**
+
+    One panel up, *"Expenses tagged to this project"* is true: a charge carries a
+    `project_id` somebody picked off a dropdown. A marking carries none — it is
+    matched through the address book, on the **site** — and a reader who
+    conflates the two will add one day's labour onto every project that shares
+    the site.
+    """
+    aid = "addr-sl-1"
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": "Whitefield", "type": "site"}
+    pid = "proj-sl-1"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "Tower A", "client": "C",
+        "site_address": "Whitefield", "site_address_id": aid}
+    try:
+        html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
+        assert "Site Labour" in html
+        assert "not</b> tagged to this project" in html or \
+               "not tagged to this project" in html, (
+            "the section must say these rows are NOT tagged to the project")
+        assert "Whitefield" in html, "it must name the site"
+        # and the charges panel's wording must not have been copied onto it.
+        # Anchor on the HEADING, not the bare words — "Site Labour" also names
+        # a block in this page's stylesheet, which sits above the charges panel.
+        section = html[html.index("<h2>Site Labour</h2>"):]
+        assert "Expenses tagged to this project" not in section
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["addresses"].pop(aid, None)
+
+
+def test_the_labour_section_names_every_other_project_on_the_same_site(client):
+    """
+    ⚠ **The ambiguity note, end to end.** Two projects on one address: the
+    markings answer for both, the data cannot say which, and the page must not
+    imply otherwise.
+    """
+    aid = "addr-sl-2"
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": "Bangalore, Karnataka", "type": "site"}
+    ids = ("proj-sl-a", "proj-sl-b")
+    for pid, name in zip(ids, ("Sify Bangalore", "Sify3")):
+        STORE.setdefault("projects", {})[pid] = {
+            "id": pid, "name": name, "client": "C",
+            "site_address": "Bangalore, Karnataka", "site_address_id": aid}
+    try:
+        html = client.get(f"/projects/view/{ids[0]}").get_data(as_text=True)
+        assert "1 other project is recorded at this same site" in html
+        assert "Sify3" in html, "the note must NAME the other project"
+        assert "cannot be determined from this data" in html
+
+        # and the control: one project alone on a site raises no note
+        STORE["projects"].pop(ids[1])
+        alone = client.get(f"/projects/view/{ids[0]}").get_data(as_text=True)
+        assert "recorded at this same site" not in alone, (
+            "a note that appears when there is no ambiguity teaches people to "
+            "ignore it")
+    finally:
+        for pid in ids:
+            STORE["projects"].pop(pid, None)
+        STORE["addresses"].pop(aid, None)
+
+
+def test_a_project_with_no_site_gets_its_own_empty_state(client):
+    """
+    ⚠ **The trap this guards is `"" == ""`.** An unmapped marking stores
+    `site_address_id: ""` and so does a project with no site linked, so a plain
+    equality join would put **every unmapped marking in the database** onto
+    **every unlinked project's page**.
+    """
+    STORE.setdefault("attendance", {})["orphan-1"] = {
+        "id": "orphan-1", "date": DAY, "employee_id": "x",
+        "employee_name": "Nobody", "employee_code": "SF-999",
+        "day_rate": 900.0, "site": "Banglore", "site_address_id": "",
+        "site_source": "unmapped", "status": "present", "ot_hours": 0.0}
+    pid = "proj-sl-3"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "No Site", "client": "C",
+        "site_address": "", "site_address_id": ""}
+    try:
+        html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
+        assert "This project has no site linked" in html
+        assert "Nobody" not in html, (
+            "an unmapped marking was joined to an unlinked project — the two "
+            "share an empty string and nothing else")
+        assert "Edit Project" in html, "the empty state must offer the fix"
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["attendance"].pop("orphan-1", None)
+
+
+def test_a_linked_site_with_no_markings_says_so_plainly(client):
+    """The other empty state, and it must not be the same sentence as the first."""
+    aid = "addr-sl-4"
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": "Hinjewadi Project Site", "type": "site"}
+    pid = "proj-sl-4"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "Quiet", "client": "C",
+        "site_address": "Hinjewadi Project Site", "site_address_id": aid}
+    try:
+        html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
+        assert "No attendance has been marked at this site" in html
+        assert "This project has no site linked" not in html, (
+            "a site with no markings is not a project with no site — the two "
+            "need different answers and only one of them has a fix")
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["addresses"].pop(aid, None)
+
+
+@pytest.mark.parametrize("slug", WALLED_OFF)
+def test_the_labour_section_is_withheld_from_the_roles_B4_walls_off(client, slug):
+    """
+    ⚠ **THE ACCESS DEFECT THIS SECTION COULD EASILY HAVE SHIPPED.**
+
+    `/projects/view/<id>` is gated on `project.view`, which Sales Manager,
+    Purchase Manager and Accountant **all hold**. `attendance.*` is Owner,
+    Director and HR only, and that is SPEC-TRACED to CC-2 **B4**: *"HR
+    information is restricted from Sales, Purchase and Accounts."*
+
+    So a labour panel rendered under `project.view` alone would hand those three
+    roles the day rates and wages B4 exists to keep from them — through a page
+    they are perfectly entitled to read, and with `/attendance/` still correctly
+    refusing them. The registry cannot say "this panel needs a second
+    permission" (ABOUT.md §7 gap 24), so it is a per-view check and this is what
+    holds it.
+    """
+    aid = _site("Whitefield")
+    pid = "proj-sl-wall"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "Walled", "client": "C",
+        "site_address": "Whitefield", "site_address_id": aid}
+    STORE.setdefault("attendance", {})["w-1"] = {
+        "id": "w-1", "date": DAY, "employee_id": "e1",
+        "employee_name": "Ramesh Patil", "employee_code": "SF-014",
+        "day_rate": 1234.0, "site": "Whitefield", "site_address_id": aid,
+        "site_source": "book", "status": "present", "ot_hours": 0.0}
+    try:
+        _as(client, _user_with(slug))
+        r = client.get(f"/projects/view/{pid}")
+        assert r.status_code == 200, (
+            f"{slug} holds project.view and must still be able to read the page")
+        html = r.get_data(as_text=True)
+
+        assert "1,234" not in html, (
+            f"{slug} can read a day rate off the project page. B4 walls that "
+            f"role off from HR information and /attendance/ refuses it — this "
+            f"panel must not be the way round.")
+        assert "Ramesh Patil" not in html, f"{slug} can read the muster"
+        assert "attendance.view" in html, (
+            "the panel must say it is withheld rather than silently vanish — a "
+            "page that describes the project differently depending on who is "
+            "looking, with nothing saying so, is worse than one that refuses")
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["attendance"].pop("w-1", None)
+
+
+def test_the_withholding_guard_is_not_vacuous(client):
+    """
+    ⚠ **Mutation proof for the test above.** The control: an Owner holds
+    `attendance.view` and must see the very figure the three roles must not, or
+    the test above would pass on a panel that renders for nobody.
+    """
+    aid = _site("Whitefield")
+    pid = "proj-sl-owner"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "Open", "client": "C",
+        "site_address": "Whitefield", "site_address_id": aid}
+    STORE.setdefault("attendance", {})["o-1"] = {
+        "id": "o-1", "date": DAY, "employee_id": "e1",
+        "employee_name": "Ramesh Patil", "employee_code": "SF-014",
+        "day_rate": 1234.0, "site": "Whitefield", "site_address_id": aid,
+        "site_source": "book", "status": "present", "ot_hours": 0.0}
+    try:
+        html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
+        assert "1,234" in html, (
+            "the Owner cannot see the panel either — the guard above is "
+            "passing because nothing renders, which proves nothing")
+        assert "Ramesh Patil" in html
+        assert "attendance.view" not in html
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["attendance"].pop("o-1", None)
+
+
+def test_a_refused_marking_is_excluded_from_the_sum_and_the_page_says_so(client):
+    """
+    ⚠ **A total quietly short by an unknown amount looks exactly like a complete
+    one.** `/attendance/` states its own shortfall for that reason; so does this.
+    """
+    aid = "addr-sl-5"
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": "Whitefield", "type": "site"}
+    pid = "proj-sl-5"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "Mixed", "client": "C",
+        "site_address": "Whitefield", "site_address_id": aid}
+    STORE.setdefault("attendance", {}).update({
+        "ok-1": {"id": "ok-1", "date": DAY, "employee_id": "e1",
+                 "employee_name": "Paid", "employee_code": "SF-001",
+                 "day_rate": 1000.0, "site": "Whitefield",
+                 "site_address_id": aid, "site_source": "book",
+                 "status": "present", "ot_hours": 0.0},
+        "old-1": {"id": "old-1", "date": DAY, "employee_id": "e2",
+                  "employee_name": "Unpriced", "employee_code": "SF-002",
+                  "monthly_salary": 26000.0,
+                  EMP.RATE_MODEL_FIELD: EMP.PRE_DAY_RATE,
+                  "site": "Whitefield", "site_address_id": aid,
+                  "site_source": "book", "status": "present", "ot_hours": 0.0},
+    })
+    try:
+        html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
+        assert "Unpriced" in html, "a refused marking stays in the head count"
+        assert "day rate not confirmed" in html
+        assert "1 marking is not costed above" in html
+        assert "The total is short by that marking" in html
+        # the sum is the ONE confirmed marking, not two and not zero
+        # the LAST total row on the page is the labour panel's — anchor on the
+        # attribute, not the bare word, which also appears in the stylesheet
+        total = html[html.rindex('class="total-row"'):]
+        total = total[:total.index("</tr>")]
+        assert "1,000" in total, f"the sum took the refused marking in: {total!r}"
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["addresses"].pop(aid, None)
+        for k in ("ok-1", "old-1"):
+            STORE["attendance"].pop(k, None)
 
 
 def test_the_dashboard_card_carries_counts_and_no_money(client):

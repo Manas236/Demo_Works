@@ -362,12 +362,12 @@ Consequences you must respect when editing:
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 414 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
-| [projectview.py](projectview.py) | 334 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). ⚠ That prohibition is UNCHANGED. Imports `project.py` for `site_drift()` (30 Aug 2026) and raises the **amber divergence band** where a project's label snapshot and its live address have come apart. |
+| [projectview.py](projectview.py) | 706 | **Project Detail Page.** Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1134 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
-| [attendance.py](attendance.py) | 1135 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`; **nothing imports it**, and that is C6 being blocked rather than tidiness. ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
+| [attendance.py](attendance.py) | 1135 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()` and `markings_at_site()`, rendered cells and never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -424,9 +424,10 @@ app.py
  │                             │  quotation, employee (the master it consumes)
  │                             │  and settings (the OT multiplier CC-2 requires
  │                             │  to be configurable) — C5. NEVER charge.py in
- │                             │  either direction, and NOTHING imports it:
- │                             │  a labour figure reaching another module is C6,
- │                             │  which is BLOCKED
+ │                             │  either direction. ⚠ EXACTLY ONE module imports
+ │                             │  it — projectview.py, from 30 Aug 2026 — and
+ │                             │  what crosses is RENDERED CELLS, never the
+ │                             │  arithmetic. C6 is still BLOCKED
  ├─ project.py ─────────────────┤  imports dashboard, branding, store, pipeline
  │                             │  — and address.py, for the SITE picker and
  │                             │  SITE_TYPES (30 Aug 2026). address.py does NOT
@@ -434,10 +435,16 @@ app.py
  │                             │  directly, the one-way trick
  ├─ projectview.py ─────────────┤  imports dashboard, branding, store, pipeline,
  │                             │  quotation, ra — and auth, for the write guard
- │                             │  on its POST branch (§7 gap 24b) — and
- │                             │  project.py, for site_drift(). The drift
- │                             │  belongs to the module that WRITES both copies,
- │                             │  for the reason party_drift() lives in ra.py
+ │                             │  on its POST branch (§7 gap 24b) and the
+ │                             │  attendance.view check on the labour panel —
+ │                             │  and project.py, for site_drift() and
+ │                             │  others_on_site(). The drift belongs to the
+ │                             │  module that WRITES both copies, for the reason
+ │                             │  party_drift() lives in ra.py.
+ │                             │  ⚠ AND attendance.py + settings.py, from
+ │                             │  30 Aug 2026 (fifth pass): the Site Labour
+ │                             │  section. It is the ONLY importer attendance.py
+ │                             │  has ever had
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
@@ -2843,16 +2850,27 @@ the **label snapshot** written from the chosen address at save.
 ⚠ **THIS DOES NOT UNBLOCK C6, and nothing here should be read as groundwork
 for it.** C6 is BLOCKED on CC-2's **Open question 4** — whether attendance wages
 or the BOQ installation base rate is authoritative for labour cost — and
-subtracting both counts labour twice. **One of the two shortfalls is closed; the
-other is untouched.** No figure is exported, `projectview.py`'s margin / total /
-net prohibition is unchanged, and `attendance.py` is still imported by nothing.
+subtracting both counts labour twice. `projectview.py`'s margin / total / net
+prohibition is unchanged.
 
-⚠ **The muster's half of the roll-up is still MISSING.** An `attendance` record
-names a site, a project now names a site, and joining the two would attribute
-one site's whole labour cost to every project on that site. **The site→project
-ambiguity is real on this database** — `tools/backfill_project_sites.py` prints
-the count per address for exactly that reason — and **no guard is built on it**,
-deliberately. It is evidence for the pass that answers Open question 4.
+⚠ **The join was TAKEN on 30 August 2026 (fifth pass), and it is a
+PRESENTATION rather than a roll-up.** `/projects/view/<id>` grew a **Site
+Labour** section listing every marking whose `site_address_id` equals the
+project's. ⚠ **It attributes nothing.** The paragraph below said joining the two
+"would attribute one site's whole labour cost to every project on that site" —
+that is still exactly true, and the section's answer is to **say so on the
+page** rather than to pretend otherwise: it names the site, states that the rows
+are booked there and **not** tagged to the project, and where other projects
+share the address it names them and says the money appears on their pages too
+and must not be added across them. `project.others_on_site()` is that count.
+`attendance.py` is no longer imported by nothing; it is imported by exactly one
+module, and what crosses is rendered cells.
+
+⚠ **The site→project ambiguity is real on this database and STILL has no guard
+on it**, deliberately — `tools/backfill_project_sites.py` prints the count per
+address, `tools/clean_site_data.py` prints it before and after, and the project
+page renders it. Three places report it and none resolves it. Resolving it is
+the pass that answers Open question 4.
 
 Held by [tests/test_project_site.py](tests/test_project_site.py) and the
 rewritten pin in
@@ -6006,19 +6024,50 @@ employee whose own site is unmapped prefills nothing, because there is no option
 to select and a guess would be worse than a blank. No second site entity was
 invented.
 
-#### ⚠ Nothing is exported — C6 is BLOCKED and stays blocked
+#### ⚠ ONE page outside this module now reads it — C6 is STILL BLOCKED
 
-The site-wise labour cost is displayed on **this module's own pages and
-nowhere else.** No figure on the dashboard (the card carries counts only), none
-on `/projects/view/<id>`, none in `charge.py`, and no function any other module
-calls. **C6 is BLOCKED on CC-2's Open question 4** — whether attendance-based
+⚠ **This section read *"Nothing is exported"* until 30 August 2026 (fifth
+pass), and exactly one clause of it is lifted.** The sentence was: *"No figure
+on the dashboard (the card carries counts only), none on
+`/projects/view/<id>`, none in `charge.py`, and no function any other module
+calls."* **The `/projects/view/<id>` clause is lifted by the FIFTH override
+block of 30 August 2026** in `CLIENT_CHANGES.md` §0, which authorises a **Site
+Labour** section there. Every other clause stands: the dashboard card is still
+counts-only, `charge.py` is still forbidden in both directions, and no *other*
+module calls anything here.
+
+**C6 IS STILL BLOCKED** on CC-2's Open question 4 — whether attendance-based
 wages or the BOQ's installation base rate is authoritative for labour cost — and
-subtracting both counts labour twice. C5 can be built without that answer;
-wiring it into C6 cannot.
+subtracting both counts labour twice. **Nothing in that section answers the
+question.** It presents markings; it computes no margin, no project total and no
+net, and the override block says so in terms.
 
-`projectview.py`'s standing prohibition is untouched, `employee.py ↔ charge.py`
-stays forbidden in both directions, and `tests/test_attendance.py` asserts at
-AST level that **nothing imports this module**.
+**What crosses the boundary is rendered cells, not arithmetic.**
+`projectview.py` takes `marking_cells()` and `markings_at_site()` and passes
+`settings.ot_multiplier()` straight through. It may not reach `cost_of()`,
+`ot_amount()`, `day_rate_of()` or `site_costs()` — a second module able to
+compute a wage is a second place the OT multiplier could be hardcoded, which is
+the statutory-underpayment defect CC-2 names.
+`tests/test_attendance.py::test_the_labour_section_consumes_the_module_and_does_not_reimplement_it`
+holds that, and `test_only_projectview_imports_the_attendance_module` holds the
+import as an **allowlist of one** — stricter than the blacklist it replaced,
+because a blacklist has to be remembered when somebody adds a module.
+
+⚠ **`projectview.py`'s own prohibition is untouched**, and it always permitted
+this: its first sentence is *"Each panel shows the documents' OWN values and
+adds that one column up"*, which five panels already exercised through
+`_sum_cell()`. The prohibition is the second sentence — a figure that only
+exists by **combining two panels**.
+
+⚠ **The panel carries a SECOND permission check and it is not optional.**
+`/projects/view/<id>` is classified `project.view`, which Sales Manager,
+Purchase Manager and Accountant all hold; `attendance.*` is Owner, Director and
+HR only, spec-traced to B4's *"HR information is restricted from Sales, Purchase
+and Accounts."* Rendering wages under `project.view` alone would hand those
+three roles the figures B4 exists to withhold, through a page they may legitimately
+read. `auth.has_perm("attendance.view")` is checked in the view — the per-view
+shape §7 gap 24 prescribes, because the registry is endpoint-level — and a
+reader without it is told the panel is withheld rather than shown nothing.
 
 #### Access
 

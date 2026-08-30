@@ -521,15 +521,25 @@ def _validate(form, except_id: str = "", record=None) -> tuple:
 # No print stylesheet and no `@media print` block: this module renders no
 # document. A muster is not something that leaves this office.
 
-ATTENDANCE_STYLES = """
-<style>
-  /* ⚠ `.att-table` and `.att-amt` are GONE, 30 August 2026. Both tables on
-     this page use `dashboard.REGISTER_STYLES`' `.reg-table` and `.num`, which
-     is what makes them one visual language rather than two — and what fixes
-     the misalignment the owner reported: `.att-table th` was specificity
-     (0,1,1) and beat `.att-amt` at (0,1,0), so every money HEADER sat left
-     over a right-aligned column. `.reg-table th.num` is (0,2,1). Do not
-     reintroduce a table style here; the pattern is shared on purpose. */
+# ⚠ **The CELL rules, extracted so two pages can render one marking the same
+#   way.** `boqpick.PICKER_CSS` spliced into `po_draft.PO_STYLES` is the
+#   precedent and `docsheet.BANK_CSS` is the older one: raw CSS in a constant,
+#   spliced into this module's own sheet at the character position it has always
+#   occupied, and wrapped afresh by the other consumer.
+#
+#   The other consumer is `projectview.py`'s Site Labour section, which composes
+#   `marking_cells()` into a table of its own. Without these rules the status
+#   pill, the sub-lines and the refusal cell arrive on that page as bare
+#   unstyled text — which is precisely the defect this same pass fixed on
+#   `/attendance/`, where `employee.py`'s chip classes were never loaded.
+#
+#   ⚠ **`.reg-sub-line` is deliberately NOT in here.** It is
+#   `dashboard.REGISTER_STYLES`' rule, `marking_cells()` uses it only in the
+#   **site** cell, and the project page renders no site column — every row in
+#   that section is at the same site by construction. Copying the rule down here
+#   would put a second definition of a shared class in the repo to serve a cell
+#   nobody draws.
+MARKING_CELL_CSS = """
   .att-sub { display:block; font-size:.76rem; color:var(--muted); }
 
   .att-badge {
@@ -540,6 +550,21 @@ ATTENDANCE_STYLES = """
   .att-in  { background:#E4F3E7; color:#1E6B2E; }
   .att-out { background:#EDECF1; color:#4B4459; }
   .att-row-out td { opacity:.72; }
+
+  /* Sits where the money would be, so a reader never has to decide whether an
+     empty cell means nil or means unknown. Nil is a figure; this is not. */
+  .att-norate { color:#8A5A00; font-weight:600; font-size:.79rem;
+                white-space:nowrap; }
+"""
+
+ATTENDANCE_STYLES = "\n<style>\n" + MARKING_CELL_CSS + """
+  /* ⚠ `.att-table` and `.att-amt` are GONE, 30 August 2026. Both tables on
+     this page use `dashboard.REGISTER_STYLES`' `.reg-table` and `.num`, which
+     is what makes them one visual language rather than two — and what fixes
+     the misalignment the owner reported: `.att-table th` was specificity
+     (0,1,1) and beat `.att-amt` at (0,1,0), so every money HEADER sat left
+     over a right-aligned column. `.reg-table th.num` is (0,2,1). Do not
+     reintroduce a table style here; the pattern is shared on purpose. */
 
   .att-note {
     background:var(--surface); border:1px solid var(--border);
@@ -578,10 +603,9 @@ ATTENDANCE_STYLES = """
     color:#6B4E00;
   }
   .att-stale b { color:#8A5A00; }
-  /* Sits where the money would be, so a reader never has to decide whether an
-     empty cell means nil or means unknown. Nil is a figure; this is not. */
-  .att-norate { color:#8A5A00; font-weight:600; font-size:.79rem;
-                white-space:nowrap; }
+  /* ⚠ `.att-norate` moved into MARKING_CELL_CSS above, spliced back in at the
+     position the cell rules have always occupied. It is a CELL rule and the
+     project page's Site Labour section renders that cell too. */
 </style>
 """
 
@@ -601,6 +625,100 @@ def _shell(title: str, body: str) -> str:
 <footer><p>{B.COMPANY_NAME} &middot; {B.APP_SUBTITLE} &middot; attendance and labour cost</p></footer>
 </main>
 </body></html>"""
+
+
+def marking_cells(record, multiplier) -> dict:
+    """
+    One marking's cells, rendered once and composed by whoever is drawing a row.
+
+    ⚠ **This is an EXTRACTION, not a new renderer.** Every string below came out
+    of `list_attendance()`'s row loop unchanged, because a second module wanted
+    the same row and two copies of a money cell is how the four letterheads in
+    ABOUT.md §2d drifted apart. The keys are cells, not a finished `<tr>`: the
+    muster carries a Site column and an Actions column, and the project page's
+    Site Labour section carries a Date column and neither of those — so the
+    **composition** differs per page while the **cells** do not.
+
+    Returns `employee`, `site`, `status`, `ot`, `money`, plus `row_class` and
+    the `refused` flag its caller needs to count the shortfall.
+
+    ⚠ **`money` is one string spanning three columns, and it has to be**: a
+    refused marking renders a single `colspan="3"` reason cell where the three
+    figures would go. A caller must therefore drop it in whole and must give the
+    money block exactly three columns.
+
+    ⚠ **Only `attendance.py` may compute a wage.** `multiplier` arrives as an
+    argument for the reason `ot_amount()` takes one — the OT multiplier is a
+    setting and a literal is a statutory underpayment — and a caller passes
+    `settings.ot_multiplier()` rather than a figure of its own.
+    """
+    c = cost_of(record, multiplier)
+    present = str(record.get("status") or "") == PRESENT
+
+    badge = ('<span class="att-badge att-in">Present</span>' if present
+             else '<span class="att-badge att-out">Absent</span>')
+    code = str(record.get("employee_code") or "").strip()
+    sub = f'<span class="att-sub">{_esc(code)}</span>' if code else ""
+
+    hours = _num(record.get("ot_hours"))
+    # An absentee carrying overtime hours is a contradiction, and it is
+    # SHOWN rather than swallowed — see `cost_of()`.
+    ot_cell = P.esc(f"{hours:g}")
+    if hours and not present:
+        ot_cell += ' <span class="att-sub">not paid — marked absent</span>'
+
+    # ⚠ A refused marking shows a REASON where the money would be,
+    #   spanning the three money columns. A blank cell would read as
+    #   nil, and nil is a figure — the one thing this must not state.
+    if c["refused"]:
+        money = (f'<td class="num att-norate" colspan="3" '
+                 f'title="{_esc(EMP.PRE_DAY_RATE_CHIP_TITLE)}">'
+                 f'day rate not confirmed</td>')
+    else:
+        money = (f'<td class="num">{rupees(c["day"])}</td>'
+                 f'<td class="num">{rupees(c["ot"])}</td>'
+                 f'<td class="num"><b>{rupees(c["total"])}</b></td>')
+
+    site = (_esc(record.get('site'))
+            or '<span class="reg-sub-line">no site named</span>')
+
+    return {
+        "employee": f"{_esc(record.get('employee_name'))}{sub}",
+        "site": f"{site}{EMP.unmapped_site_note(record)}",
+        "status": badge,
+        "ot": ot_cell,
+        "money": money,
+        "row_class": "" if present else "att-row-out",
+        "refused": bool(c["refused"]),
+        "total": c["total"],
+    }
+
+
+def markings_at_site(address_id: str) -> list:
+    """
+    Every marking booked at one address-book site, newest day first.
+
+    ⚠ **A BLANK `address_id` MATCHES NOTHING, and that guard is the whole
+    function.** An unmapped marking stores `site_address_id: ""` and so does a
+    project with no site linked, so a plain `==` would put **every unmapped
+    marking in the database** onto **every unlinked project's page** — a join
+    between two records that share only the fact that neither was ever filled
+    in. The caller's empty state says the project has no site linked; it says so
+    because this returned nothing, not because the caller checked separately.
+
+    ⚠ **This answers "booked at this SITE", never "belonging to this PROJECT".**
+    Nothing on a marking names a project. Where several projects share one
+    address the same markings answer for all of them, and saying which is C6 —
+    BLOCKED on CC-2's Open question 4.
+    """
+    key = str(address_id or "").strip()
+    if not key:
+        return []
+    return sorted((r for r in records().values()
+                   if str(r.get("site_address_id") or "").strip() == key),
+                  key=lambda r: (str(r.get("date") or ""),
+                                 str(r.get("employee_name") or "").lower()),
+                  reverse=True)
 
 
 def _alert(msg: str, kind: str = "error") -> str:
@@ -676,39 +794,17 @@ def list_attendance():
     if rows:
         body_rows = []
         for r in rows:
-            c = cost_of(r, multiplier)
-            present = str(r.get("status") or "") == PRESENT
-            badge = ('<span class="att-badge att-in">Present</span>' if present
-                     else '<span class="att-badge att-out">Absent</span>')
-            code = str(r.get("employee_code") or "").strip()
-            sub = f'<span class="att-sub">{_esc(code)}</span>' if code else ""
-            hours = _num(r.get("ot_hours"))
-            # An absentee carrying overtime hours is a contradiction, and it is
-            # SHOWN rather than swallowed — see `cost_of()`.
-            ot_cell = P.esc(f"{hours:g}")
-            if hours and not present:
-                ot_cell += ' <span class="att-sub">not paid — marked absent</span>'
-
-            # ⚠ A refused marking shows a REASON where the money would be,
-            #   spanning the three money columns. A blank cell would read as
-            #   nil, and nil is a figure — the one thing this must not state.
-            if c["refused"]:
+            cells = marking_cells(r, multiplier)
+            if cells["refused"]:
                 refused_here += 1
-                money = (f'<td class="num att-norate" colspan="3" '
-                         f'title="{_esc(EMP.PRE_DAY_RATE_CHIP_TITLE)}">'
-                         f'day rate not confirmed</td>')
-            else:
-                money = (f'<td class="num">{rupees(c["day"])}</td>'
-                         f'<td class="num">{rupees(c["ot"])}</td>'
-                         f'<td class="num"><b>{rupees(c["total"])}</b></td>')
 
             body_rows.append(f"""
-      <tr class="{'' if present else 'att-row-out'}">
-        <td>{_esc(r.get('employee_name'))}{sub}</td>
-        <td>{_esc(r.get('site')) or '<span class="reg-sub-line">no site named</span>'}{EMP.unmapped_site_chip(r)}</td>
-        <td>{badge}</td>
-        <td class="num">{ot_cell}</td>
-        {money}
+      <tr class="{cells['row_class']}">
+        <td>{cells['employee']}</td>
+        <td>{cells['site']}</td>
+        <td>{cells['status']}</td>
+        <td class="num">{cells['ot']}</td>
+        {cells['money']}
         <td class="reg-acts">
           <a class="reg-sub" href="{url_for('attendance.edit_attendance', id=r['id'])}">Edit</a>
           <a class="reg-danger" href="{url_for('attendance.delete_attendance', id=r['id'])}">Delete</a>
@@ -807,8 +903,7 @@ def list_attendance():
         <td>{_esc(s['site'])}{
           f'<span class="reg-sub-line">{s["refused"]} not costed &mdash; day '
           f'rate not confirmed</span>' if s['refused'] else ''}{
-          '<span class="reg-sub-line">not in the address book</span>'
-          if s['unmapped'] else ''}</td>
+          EMP.unmapped_site_note_html() if s['unmapped'] else ''}</td>
         <td class="num">{s['present']} of {s['people']}</td>
         <td class="num">{P.esc(f"{s['ot_hours']:g}")}</td>
         <td class="num">{rupees(s['day_cost'])}</td>

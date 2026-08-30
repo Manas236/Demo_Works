@@ -391,11 +391,59 @@ def unmapped_sites_in(records) -> dict:
 
 
 def unmapped_site_chip(record) -> str:
-    """The register chip. One spelling, here, read by both modules."""
+    """
+    The register chip, for a page that loads **this module's** stylesheet.
+
+    ⚠ **`.emp-badge` and `.emp-stale-chip` are declared in `EMPLOYEE_STYLES`
+    and nowhere else**, so this spelling only renders as a chip on a page that
+    loads it — which today means `/employee/` and `/employee/view/<id>`. On any
+    other page the browser has no rule for either class, and the span collapses
+    to bare inline text welded onto whatever precedes it with no separator.
+    **That is not hypothetical**: `/attendance/` called this helper and printed
+    `BangloreSITE NOT MAPPED` on the one page besides `/dc/` the owner has ever
+    opened. `unmapped_site_note()` below is the spelling for a register page,
+    and the two are kept apart deliberately rather than merged into one that
+    guesses which stylesheet is loaded.
+    """
     if not is_unmapped_site(record):
         return ""
     return (f'<span title="{_esc(UNMAPPED_SITE_CHIP_TITLE)}" '
             f'class="emp-badge emp-stale-chip">SITE NOT MAPPED</span>')
+
+
+# The register spelling, in one place. `.reg-sub-line` is the `display:block`
+# sub-line rule in `dashboard.py`'s register stylesheet — the pattern the two
+# register screens are built out of — so the note drops onto its own line under
+# the site string. **The line break IS the separator**, which is why no
+# punctuation is written between them and why adding some would be wrong: the
+# site-wise table below the muster has always rendered this way and reads
+# correctly, and this is that same treatment rather than a second chip design.
+UNMAPPED_SITE_NOTE_TEXT = "not in the address book"
+
+
+def unmapped_site_note_html() -> str:
+    """The note markup itself, for a caller holding a bucket rather than a record."""
+    return (f'<span class="reg-sub-line" title="{_esc(UNMAPPED_SITE_CHIP_TITLE)}">'
+            f'{UNMAPPED_SITE_NOTE_TEXT}</span>')
+
+
+def unmapped_site_note(record) -> str:
+    """
+    The unmapped marker for a page built on the shared register pattern.
+
+    Same question as `unmapped_site_chip()`, same source of truth
+    (`is_unmapped_site()`), different stylesheet. A page built on the register
+    pattern — `/attendance/`, and the project page's Site Labour section — uses
+    this one; a page that loads `EMPLOYEE_STYLES` uses the chip.
+
+    ⚠ **The constant this depends on is deliberately NOT named in this file.**
+    `tests/test_registers.py` sweeps every module's source for that name to
+    catch a register being migrated to the shared pattern unannounced, and
+    `employee.py` has not been migrated — it still loads `EMPLOYEE_STYLES` and
+    draws `.emp-table`. Writing the name here would report a migration that has
+    not happened.
+    """
+    return unmapped_site_note_html() if is_unmapped_site(record) else ""
 
 
 def resolve_site(form, record=None) -> tuple:

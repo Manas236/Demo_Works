@@ -7,6 +7,17 @@ Mounted at : /projects (registered in app.py)
 This module replaces the dummy view in project.py.
 It displays project metadata and gathers documents attached to the project.
 
+⚠ **One panel on this page is NOT a document panel, and the difference is the
+first thing to understand about it.** *Site Labour* lists attendance markings
+booked at this project's **site**. Every other panel here finds its rows by an
+id somebody chose — a `project_id` on a BOQ, a proforma, a purchase order, a
+charge. A marking carries no `project_id` and never has: it is matched through
+a third record, the address book, which names no project at all. Where two
+projects share a site, **both pages show the same markings and the same money**,
+and the section says so on its face. See `_site_labour()` at the foot of this
+file, and CLIENT_CHANGES.md §0's fifth block of 30 August 2026, which is the
+authority for the section existing at all.
+
 Each panel shows the documents' OWN values and adds that one column up. What
 this page must never show is a figure that only exists by combining two panels
 — no revenue total, no cost total, no margin, no profit, no net, no balance.
@@ -16,10 +27,12 @@ project page becomes a P&L that nobody signed off on.
 """
 
 from flask import Blueprint, redirect, request, url_for
+import attendance as AT
 import auth
 import branding as B
 import pipeline as P
 import project as PJ
+import settings as S
 from store import STORE
 from dashboard import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
@@ -80,6 +93,198 @@ def _alert(msg: str, kind: str = "error") -> str:
         return ""
     icon = "&#10003;" if kind == "success" else "&#10007;"
     return f'<div class="alert alert-{P.esc(kind)}">{icon} {P.esc(msg)}</div>'
+
+
+# =============================================================================
+# SITE LABOUR — markings booked at this project's SITE
+# =============================================================================
+#
+# ⚠ **NOT CC-2 SCOPE.** Authorised by the FIFTH override block of 30 August 2026
+#   in CLIENT_CHANGES.md §0, recorded in PROGRESS.md §4c, and citable as neither
+#   a delivered CC-2 item nor anything MG/SF/2026-02 covers.
+#
+# ⚠ **C6 IS STILL BLOCKED** on CC-2's Open question 4 — whether attendance wages
+#   or the BOQ installation base rate is authoritative for labour cost. This
+#   section answers it in no direction. It **presents markings**; it is not a
+#   cost authority, and no figure it renders may be subtracted from anything.
+#
+# ⚠ **THE MECHANISM IS DIFFERENT FROM EVERY OTHER PANEL ON THIS PAGE, and that
+#   is the whole reason the wording below is written the way it is.**
+#
+#     Expenses & Charges   c["project_id"] == id     somebody CHOSE this project
+#     Site Labour          r["site_address_id"]      nobody chose anything; the
+#                            == proj["site_address_id"]   two records share a PLACE
+#
+#   A charge names the project. A marking names a **site**, and a site can carry
+#   several projects — this database has one address carrying three. Every one of
+#   those projects' pages then shows the same markings and the same money, and a
+#   reader who adds them up across projects has counted one day's labour more
+#   than once. The note is what stops that, and it is not decoration.
+
+def _labour_note(proj, others) -> str:
+    """
+    The line under the section heading. It has one job: say what these rows are.
+
+    ⚠ **It must NOT say "tagged to this project"** — the wording *"Expenses
+    tagged to this project"* one panel up is true of that panel and would be a
+    lie here. It names the site, because the site is the only thing the join
+    actually knows.
+    """
+    site = P.esc(str(proj.get("site_address") or "")) or "this project's site"
+    lead = (f'Attendance markings booked at <b>{site}</b> &mdash; this '
+            f'project&rsquo;s site. They are <b>not</b> tagged to this project: '
+            f'a marking records a person, a day and a <b>site</b>, and carries '
+            f'no project of any kind.')
+    if not others:
+        return lead
+
+    names = ", ".join(
+        f'<a href="{url_for("projectview.view_project", id=o.get("id"))}">'
+        f'{P.esc(o.get("name")) or "(unnamed)"}</a>' for o in others)
+    n = len(others)
+    return (
+        f'{lead}'
+        f'<div class="sl-ambig"><span class="sl-ambig-icon">&#9888;</span>'
+        f'<span><b>{n} other project{"" if n == 1 else "s"} '
+        f'{"is" if n == 1 else "are"} recorded at this same site: {names}.</b> '
+        f'These markings appear on {"that page" if n == 1 else "those pages"} '
+        f'too, showing the same money. Which project a day&rsquo;s labour '
+        f'belongs to <b>cannot be determined from this data</b> &mdash; nothing '
+        f'on a marking names a project &mdash; so nothing here attributes it to '
+        f'one, and these figures must not be added together across projects.'
+        f'</span></div>')
+
+
+def _site_labour(proj) -> str:
+    """
+    The Site Labour panel, or the empty state that explains why there is none.
+
+    ⚠ **Reads `attendance.py` through its own accessors and never reaches into
+    the collection.** `tests/test_attendance.py` asserts that only that module
+    and the launcher do, and that guard is **not** weakened by this pass — it is
+    still green, and it has to stay green. The markings arrive from
+    `markings_at_site()`, the cells from `marking_cells()`, and the wage
+    arithmetic never leaves the module that owns it. An import is a much
+    narrower thing to have opened than a second reader of the raw dict: one
+    module now consumes a published answer, and nothing outside `attendance.py`
+    can still compute a wage.
+    """
+    # ── ⚠ B4's WALL, and it is the first thing checked ──────────────────────
+    #
+    # `/projects/view/<id>` is classified `project.view`, which **Sales Manager,
+    # Purchase Manager and Accountant all hold**. `attendance.*` is granted to
+    # Owner, Director and HR only, and that restriction is SPEC-TRACED to CC-2
+    # **B4**: *"HR information is restricted from Sales, Purchase and
+    # Accounts."* A day rate and a wage are that information in its plainest
+    # form — it is why the whole muster is walled off.
+    #
+    # ⚠ **So rendering these rows under `project.view` alone would hand the
+    #   three walled-off roles exactly the figures B4 keeps from them**, through
+    #   a page they are entitled to read. The registry cannot express "this
+    #   panel needs a second permission" — it is endpoint-level, ABOUT.md §7
+    #   gap 24 — so this is a per-view check, the shape that gap prescribes and
+    #   the same one the POST branch above already uses.
+    #
+    # ⚠ **It says the section exists and is withheld, rather than rendering
+    #   nothing.** A panel that silently vanishes for some readers is a page
+    #   that describes the project differently depending on who is looking,
+    #   with nothing on screen saying so.
+    if not auth.has_perm("attendance.view"):
+        return ('<p class="sl-empty">Attendance detail for this site needs the '
+                '<b>View attendance</b> permission '
+                '(<code>attendance.view</code>), which your roles do not '
+                'include. Wage information is restricted to Owner, Director '
+                'and HR.</p>')
+
+    aid = str(proj.get(PJ.SITE_ADDRESS_ID_FIELD) or "").strip()
+
+    # ── Empty state 1: no site linked ───────────────────────────────────────
+    # ⚠ Checked FIRST and separately from "no markings", because the two need
+    #   different answers: this one has a fix and a link to it, and the other
+    #   does not. `markings_at_site("")` also returns nothing, so a single
+    #   combined branch would tell somebody with an unlinked project that
+    #   nobody worked, which is a statement about the site rather than the data.
+    if not aid:
+        legacy = PJ.is_legacy_site(proj)
+        why = ("Its site is free text from before the address book, so it "
+               "joins to nothing." if legacy else "No site has been recorded.")
+        return (
+            f'<p class="sl-empty"><b>This project has no site linked.</b> {why} '
+            f'Attendance is recorded against an address-book site, so there is '
+            f'nothing to match on. Link one on '
+            f'<a href="{url_for("project.edit_project", id=proj.get("id"))}">'
+            f'Edit Project</a>.</p>')
+
+    rows = AT.markings_at_site(aid)
+    others = PJ.others_on_site(aid, except_id=proj.get("id"))
+    note = _labour_note(proj, others)
+
+    # ── Empty state 2: a site, and nothing marked on it ─────────────────────
+    if not rows:
+        return (f'<p class="sl-lead">{note}</p>'
+                f'<p class="sl-empty">No attendance has been marked at this '
+                f'site. Nobody has been recorded as working here.</p>')
+
+    multiplier = S.ot_multiplier()
+    body = ""
+    vals, refused = [], 0
+    for r in rows:
+        cells = AT.marking_cells(r, multiplier)
+        if cells["refused"]:
+            refused += 1
+        else:
+            vals.append(cells["total"])
+        body += f"""
+        <tr class="{cells['row_class']}">
+          <td>{P.esc(r.get('date'))}</td>
+          <td>{cells['employee']}</td>
+          <td>{cells['status']}</td>
+          <td class="num">{cells['ot']}</td>
+          {cells['money']}
+        </tr>"""
+
+    # ⚠ **A SUM DOWN THIS PANEL'S OWN COLUMN, which is what the docstring at the
+    #   top of this file permits in its FIRST sentence** — *"Each panel shows the
+    #   documents' OWN values and adds that one column up"* — and what
+    #   `_sum_cell()` already does for the five panels above. The prohibition is
+    #   the second sentence, on a figure that only exists by combining two
+    #   panels: no revenue total, no cost total across panels, no margin, no
+    #   profit, no net, no balance. None of those is built here and none may be.
+    #
+    # ⚠ **A REFUSED MARKING SITS THE SUM OUT and the reader is told how many.**
+    #   `_sum_cell()` already drops a `None`; what it cannot do is say the total
+    #   is short. Silently excluding an old-model marking would understate the
+    #   site by an unknown amount that looks exactly like a complete figure —
+    #   `/attendance/` states its own shortfall for that reason and so does this.
+    short = ""
+    if refused:
+        one = refused == 1
+        short = (f'<div class="sl-short">&#9888; {refused} marking'
+                 f'{"" if one else "s"} {"is" if one else "are"} not costed '
+                 f'above &mdash; the day rate on {"it" if one else "them"} '
+                 f'predates the day-rate correction and was never re-entered. '
+                 f'The total is short by '
+                 f'{"that marking" if one else "those markings"}.</div>')
+
+    body += _total_row(6, _sum_cell(vals))
+
+    return f"""
+      <p class="sl-lead">{note}</p>
+      {short}
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Employee</th>
+            <th>Status</th>
+            <th class="num">OT hours</th>
+            <th class="num">Day rate</th>
+            <th class="num">Overtime</th>
+            <th class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>{body}</tbody>
+      </table>"""
 
 @projectview_bp.route("/view/<id>", methods=["GET", "POST"])
 def view_project(id: str):
@@ -313,6 +518,8 @@ def view_project(id: str):
             f'Map it on <a href="{url_for("project.edit_project", id=id)}">'
             f'Edit Project</a>.</span></div>')
 
+    labour_html = _site_labour(proj)
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -322,7 +529,7 @@ def view_project(id: str):
   {B.HEAD_ICON}
   {BASE_STYLES}
   {QUOTATION_STYLES}
-  <style>
+  <style>{AT.MARKING_CELL_CSS}
     .proj-meta {{ display:flex; gap:2rem; flex-wrap:wrap; margin-bottom:2rem; padding:1.25rem; background:#fff; border:1px solid var(--border); border-radius:8px; }}
     .pm-item {{ display:flex; flex-direction:column; gap:0.25rem; }}
     .pm-lbl {{ font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:700; }}
@@ -345,6 +552,35 @@ def view_project(id: str):
     table.data th {{ font-size:0.75rem; text-transform:uppercase; color:var(--muted); font-weight:700; background:var(--surface); }}
     table.data tr:last-child td {{ border-bottom:none; }}
     table.data tr.total-row td {{ font-weight:700; color:var(--navy); background:var(--surface); border-top:2px solid var(--border); }}
+
+    /* ── Site Labour ────────────────────────────────────────────────────
+       The status pill, the sub-lines and the refusal cell come from
+       `attendance.MARKING_CELL_CSS`, spliced into the block above — one copy,
+       shared with `/attendance/`, so a marking cannot look like two different
+       things on two pages. What is left here is this panel's own furniture. */
+    table.data th.num, table.data td.num {{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }}
+    .sl-lead {{ font-size:.85rem; color:var(--muted); line-height:1.6; margin:0 0 1rem; }}
+    .sl-lead b {{ color:var(--navy); }}
+    .sl-empty {{ font-size:.88rem; color:var(--muted); margin:0; }}
+    .sl-empty b {{ color:var(--navy); }}
+    .sl-empty a {{ color:#1d4ed8; }}
+    /* The ambiguity note. Amber, the same `.pm-drift` shape this page already
+       uses for the site divergence band — deliberately the house amber rather
+       than a second design, because it says the same KIND of thing: here is a
+       fact about the data that nothing may silently resolve. */
+    .sl-ambig {{ display:flex; gap:.6rem; align-items:flex-start;
+                 border:1px solid #fde68a; background:#fffbeb; border-radius:8px;
+                 padding:.75rem 1rem; margin-top:.85rem;
+                 font-size:.83rem; line-height:1.6; color:#6B4E00; }}
+    .sl-ambig-icon {{ color:#b45309; font-size:1rem; line-height:1.3; }}
+    .sl-ambig b {{ color:#8A5A00; }}
+    .sl-ambig a {{ color:#1d4ed8; }}
+    /* The shortfall line. Same amber, quieter — it is a caveat on a figure
+       rather than a warning about what the figure means. */
+    .sl-short {{ background:#FFF6E5; border:1px solid #F0D8A8;
+                 border-left:3px solid var(--saffron); border-radius:8px;
+                 padding:.6rem .9rem; margin:0 0 1rem;
+                 font-size:.82rem; line-height:1.5; color:#6B4E00; }}
   </style>
 </head>
 <body>
@@ -506,6 +742,22 @@ def view_project(id: str):
           {charge_html}
         </tbody>
       </table>
+    </div>
+
+    <!-- Site Labour Panel -->
+    <!-- ⚠ The sub-title here is NOT the charges panel's wording and must never
+         be made to match it. That one reads "Expenses tagged to this project"
+         and is true: a charge carries a project_id somebody picked. These rows
+         carry no project at all — they are matched through the address book, on
+         the site. `_site_labour()` says which site, by name, and says how many
+         other projects share it. Conflating the two mechanisms is how the same
+         day's labour gets counted on three projects. -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Site Labour</h2>
+        <span style="font-size:0.8rem;color:var(--muted);">Markings booked at this project&rsquo;s site &mdash; not tagged to the project</span>
+      </div>
+      {labour_html}
     </div>
 
   </main>
