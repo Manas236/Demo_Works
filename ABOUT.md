@@ -2613,7 +2613,41 @@ its own rule and not a failure.
 carried two and two. **Folding the duplicate concentrated the ambiguity rather
 than removing it**, and that is the honest description: the fold fixed a
 *spelling* defect, not the site→project one. `/projects/view/<id>`'s Site Labour
-section is where that count is now visible to a user, and it names them.
+section is where that count is now visible to a user, and it names them —
+measured on the live page, *"3 other projects are recorded at this same site:
+Banglore, Sify3, Test Supplier."*
+
+#### The demo scenario — MEASURED, 30 August 2026 (fifth pass)
+
+The cleanup left `employees` and `attendance` **empty**, so nothing on either
+register or in the new Site Labour section had anything to show.
+`tools/seed_demo_scenario.py --write` was run against the live MySQL between two
+`mysqldump`s.
+
+| | |
+|---|---|
+| records **created** | **15** — 2 addresses, 2 projects, 3 employees, 8 markings |
+| second `--write` | **0 created**, all 15 already present |
+| `--purge` | **15 removed**, and the inventory came back **byte-identical** to the post-cleanup one |
+| `--write` again | **15 created**, inventory **byte-identical** to the first seed |
+
+⚠ **It is a TOOL, not a seeder.** `employees` and `attendance` stay
+transactional in `tests/test_hardening.py`, a fresh install is still empty of
+both, and nothing in the application imports this file —
+`tests/test_seed_demo_scenario.py` walks every module in the repository root and
+fails if one so much as names it. Every record carries a `demo_scenario` marker
+so `--purge` is exact; the marker is a **distinct field**, never a value inside a
+name, because a name pattern would let `--purge` delete a record somebody typed.
+
+⚠ **The demo puts ONE project on each of its two sites.** It does not
+manufacture a second site→project ambiguity — the live one above is real, and a
+fixture that added another would make a data problem look like an artefact.
+
+**What it renders, measured on the live page:** *Magarpatta Tower B — Fire
+Protection* shows six markings totalling **₹7,291.25** with an absentee at
+**₹0**, and **no** ambiguity note. *Sify Bangalore* shows the note naming its
+three siblings and the plain empty state, because nobody has been marked at that
+site.
 
 ### User  (Phase 3B)
 
