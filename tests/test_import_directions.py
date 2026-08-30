@@ -534,6 +534,16 @@ REQUIRED = [
     ("employee", "store",     "the shared STORE dict"),
     ("employee", "branding",  "every company string, colour and image"),
     ("employee", "quotation", "QUOTATION_STYLES"),
+    ("employee", "address",   "the SITE picker over the shared address book "
+                              "(30 August 2026). `site` was free text on this "
+                              "record and on an attendance marking, which is "
+                              "why the live data spells one place more than "
+                              "one way. `po_draft.py` and `challan.py` already "
+                              "reach the same book the same way, and "
+                              "`attendance.py` reads the picker THROUGH this "
+                              "module rather than importing the book twice — "
+                              "one arrow, one definition, so the two forms "
+                              "cannot describe one field differently"),
 
     # ── The shared document sheet, and everything that renders through it ────
     ("docsheet", "quotation", "VIEW_DOC_STYLES and the document's own money "

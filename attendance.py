@@ -109,28 +109,47 @@ before anything is stored — not in the form, and not by a `<select>` that
 happens to omit the name. A form is a convenience; the refusal is the rule.
 
 ════════════════════════════════════════════════════════════════════════════
-⚠ SITE IS FREE TEXT AND IS DELIBERATELY NOT A PROJECT
+⚠ SITE IS AN ADDRESS-BOOK PICKER, AND IS STILL DELIBERATELY NOT A PROJECT
 ════════════════════════════════════════════════════════════════════════════
 
-The existing project record was considered first, as the brief for this pass
-required, and it does not fit. Three reasons, in order of weight:
+⚠ **It was free text until 30 August 2026 and that was the defect the owner
+reported.** Free text is why one place is spelled more than one way across this
+database, and a site-wise labour cost split across two spellings is wrong in a
+way nobody notices, because both halves look right. The vocabulary lives in
+`employee.py` — `site_field_html()`, `resolve_site()`, `unmapped_sites()` — and
+this module reads it through the import it already has, so the two forms cannot
+describe one field two ways.
+
+⚠ **An existing string that matched nothing is LEFT, MARKED and REPORTED.** It
+is never fuzzy-matched: a wrong automatic match moves labour cost to the wrong
+site, which is `po_parts.py`'s 156 invented aliases in a different register.
+The record carries `site_source == "unmapped"`, the row shows a chip, the
+register shows a band listing every unmapped string, and mapping one is a
+deliberate act on the edit form.
+
+**A project is still not a site**, and the reasons are unchanged:
 
 1. **A project is not a site in this application's own data model.** A BOQ
    carries `project_name` **and** `site_location` as two separate fields
    (ABOUT.md §3). One project runs at several sites; one site can carry work
    for more than one project. Reusing `project_id` here would assert an
    identity the rest of the app already denies.
-2. **`employee.site` is already free text**, and C4 chose that deliberately —
-   *"Linking a person to a project is C5/C6 territory and both are gated."*
-   Marking attendance against the field the master already carries is one
-   vocabulary; marking it against a different entity is two.
+2. **The employee master and the muster share one vocabulary**, which is the
+   address book for both. Marking attendance against the field the master
+   already carries is one vocabulary; marking it against a different entity is
+   two.
 3. **A `project_id` on an attendance record is the first half of C6**, which is
    BLOCKED on the client's Open question 4. The override authorising C5 says
    in terms not to lay groundwork for it.
 
-So the site is typed, and the form **prefills the employee's own posted site**
-so the common case is one keystroke. No second site entity was invented, which
-is the other thing the brief forbade.
+⚠ **And an address does not join to a project either.** The `addresses` record
+has fourteen keys and none of them names a project; `projects` carries a
+free-text `site_address` string. So site-wise labour cost **cannot** roll up to
+a project today — that is C6's shortfall, it is recorded in ABOUT.md, and it is
+deliberately not solved here.
+
+The form **prefills the employee's own posted site**, so the common case is
+still one selection. No second site entity was invented.
 
 ════════════════════════════════════════════════════════════════════════════
 ⚠ WHAT THIS MODULE DOES NOT DO — C6 IS BLOCKED AND STAYS BLOCKED
@@ -379,7 +398,13 @@ def site_costs(date: str) -> list:
         b = buckets.setdefault(site, {"site": site, "people": 0, "present": 0,
                                       "ot_hours": 0.0, "day_cost": 0.0,
                                       "ot_cost": 0.0, "total": 0.0,
-                                      "refused": 0})
+                                      "refused": 0, "unmapped": False})
+        # ⚠ A bucket is unmapped if ANY marking in it is. Buckets are keyed on
+        #   the site STRING, so a mapped and an unmapped record can only share
+        #   one when the strings are identical — which is the case a human has
+        #   to look at, not one to hide.
+        if EMP.is_unmapped_site(r):
+            b["unmapped"] = True
         b["people"] += 1
         if str(r.get("status") or "") == PRESENT:
             b["present"] += 1
@@ -397,7 +422,7 @@ def site_costs(date: str) -> list:
 # VALIDATION
 # =============================================================================
 
-def _validate(form, except_id: str = "") -> tuple:
+def _validate(form, except_id: str = "", record=None) -> tuple:
     """
     `(data, error)` for the mark and edit forms.
 
@@ -408,7 +433,10 @@ def _validate(form, except_id: str = "") -> tuple:
     data = {
         "date":        (form.get("date") or "").strip()[:10],
         "employee_id": (form.get("employee_id") or "").strip(),
-        "site":        (form.get("site") or "").strip()[:160],
+        # ⚠ Echoed back so a rejected form re-renders with the picker where
+        #   the operator left it — `address._validate()`'s always-return-data
+        #   contract, applied to a `<select>`.
+        "site_id":     (form.get("site_id") or "").strip(),
         "status":      (form.get("status") or "").strip().lower(),
         "ot_raw":      (form.get("ot_hours") or "").strip(),
         "notes":       (form.get("notes") or "").strip()[:500],
@@ -468,6 +496,11 @@ def _validate(form, except_id: str = "") -> tuple:
     else:
         hours = 0.0
     data["ot_hours"] = round(hours, 2)
+
+    site_fields, site_error = EMP.resolve_site(form, record)
+    if site_error:
+        return data, site_error
+    data.update(site_fields)
 
     clash = conflicting_record(data["employee_id"], data["date"], except_id)
     if clash:
@@ -611,8 +644,17 @@ def _employee_options(selected: str) -> str:
 
 
 def _site_of(employee_id: str) -> str:
+    """
+    The address-book id of where this person is posted, for the form's prefill.
+
+    ⚠ It returns the **link**, not the label. Prefilling a picker needs an
+    option value; the label is a snapshot the server takes at save from whatever
+    was actually chosen. An employee whose own site is unmapped prefills nothing
+    — there is no option to select — and the form opens with the picker blank,
+    which is the honest state rather than a guess.
+    """
     person = employees().get(str(employee_id or "")) or {}
-    return str(person.get("site") or "")
+    return str(person.get(EMP.SITE_ADDRESS_FIELD) or "")
 
 
 # =============================================================================
@@ -669,7 +711,7 @@ def list_attendance():
             body_rows.append(f"""
       <tr class="{'' if present else 'att-row-out'}">
         <td>{_esc(r.get('employee_name'))}{sub}</td>
-        <td>{_esc(r.get('site')) or '<span class="att-sub">no site named</span>'}</td>
+        <td>{_esc(r.get('site')) or '<span class="att-sub">no site named</span>'}{EMP.unmapped_site_chip(r)}</td>
         <td>{badge}</td>
         <td class="att-amt">{ot_cell}</td>
         {money}
@@ -708,13 +750,49 @@ def list_attendance():
     markings recorded after that carry the new rate.
   </div>"""
 
+    # ⚠ **The unmapped-site report, on the page rather than only in a tool.**
+    #   A string nothing surfaces is a silent drop by another route: the labour
+    #   cost is still attributed to a site nobody can find in the book, and
+    #   nobody is ever told. It lists EVERY unmapped string across both
+    #   collections, not only the ones on this day, because mapping is a job
+    #   somebody does once rather than a day at a time.
+    #   ⚠ Merged from the two collections HERE rather than inside
+    #   `unmapped_sites_in()`, because `employee.py` may not name a C5 concept
+    #   in code (`tests/test_employee.py` walks its source). This module may
+    #   read `STORE["employees"]` — it already imports the module — so the merge
+    #   belongs on the page that reports it.
+    by_emp = EMP.unmapped_sites_in(employees())
+    by_att = EMP.unmapped_sites_in(records())
+    unmapped = {s: (len(by_emp.get(s, [])), len(by_att.get(s, [])))
+                for s in sorted(set(by_emp) | set(by_att))}
+    if unmapped:
+        items = "".join(
+            f'<li><b>{_esc(site)}</b> &mdash; '
+            f'{n_emp} employee {"record" if n_emp == 1 else "records"}, '
+            f'{n_att} {"marking" if n_att == 1 else "markings"}</li>'
+            for site, (n_emp, n_att) in unmapped.items())
+        unmapped_band = f"""
+  <div class="att-stale">
+    <b>{len(unmapped)} site
+    {"string is" if len(unmapped) == 1 else "strings are"} not in the address
+    book.</b> {_esc(EMP.UNMAPPED_SITE_NOTE)}
+    <ul style="margin:.5rem 0 0 1.1rem;">{items}</ul>
+    <div style="margin-top:.5rem;">Map one by opening the record and choosing
+      the right address; add a missing site to the
+      <a href="{url_for('address.list_addresses')}">address book</a> first.</div>
+  </div>"""
+    else:
+        unmapped_band = ""
+
     sites = site_costs(date)
     if sites:
         site_rows = "".join(f"""
       <tr>
         <td>{_esc(s['site'])}{
           f'<span class="att-sub">{s["refused"]} not costed &mdash; day rate '
-          f'not confirmed</span>' if s['refused'] else ''}</td>
+          f'not confirmed</span>' if s['refused'] else ''}{
+          '<span class="att-sub">not in the address book</span>'
+          if s['unmapped'] else ''}</td>
         <td class="att-amt">{s['present']} of {s['people']}</td>
         <td class="att-amt">{P.esc(f"{s['ot_hours']:g}")}</td>
         <td class="att-amt">{rupees(s['day_cost'])}</td>
@@ -771,6 +849,7 @@ def list_attendance():
   </div>
 
   {stale_band}
+  {unmapped_band}
 
   <form method="GET" action="{url_for('attendance.list_attendance')}" class="att-daybar">
     <div class="form-group">
@@ -786,10 +865,9 @@ def list_attendance():
 
 
 def _form(data: dict, error: str, action: str, submit_label: str,
-          back: str) -> str:
+          back: str, record: dict = None) -> str:
     """One form for mark and edit, so the two cannot drift apart."""
     eid = str(data.get("employee_id") or "")
-    site = str(data.get("site") or "") or _site_of(eid)
     status = str(data.get("status") or PRESENT)
     return f"""
   {_alert(error) if error else ''}
@@ -822,14 +900,11 @@ def _form(data: dict, error: str, action: str, submit_label: str,
           <small class="field-hint">Active employees only. Somebody who has left
             cannot be marked &mdash; reactivate them on the register first.</small>
         </div>
-        <div class="form-group">
-          <label for="site">Site</label>
-          <input type="text" id="site" name="site" maxlength="160"
-                 value="{_esc(site)}" placeholder="where they worked that day"/>
-          <small class="field-hint">Free text, prefilled from where this person
-            is posted. It is deliberately <b>not</b> a project &mdash; one
-            project runs at several sites.</small>
-        </div>
+        {EMP.site_field_html(
+            record, str(data.get('site_id') or '') or _site_of(eid),
+            'Prefilled from where this person is posted. It is deliberately '
+            '<b>not</b> a project &mdash; one project runs at several sites, '
+            'and a project link here is C6, which is BLOCKED.')}
       </div>
     </div>
 
@@ -900,7 +975,13 @@ def mark_attendance():
                 # A marking written HERE can never be old-model, because
                 # `_validate()` refuses an employee whose rate is unconfirmed.
                 "day_rate":      float(person.get("day_rate") or 0.0),
+                # ⚠ Three keys. `site` is the address LABEL snapshotted, for
+                # the reason every other back-reference in this app is stored
+                # rather than looked up: renaming an address next March must
+                # not restate which site somebody worked on last August.
                 "site":          data["site"],
+                EMP.SITE_ADDRESS_FIELD: data[EMP.SITE_ADDRESS_FIELD],
+                EMP.SITE_SOURCE_FIELD:  data[EMP.SITE_SOURCE_FIELD],
                 "status":        data["status"],
                 "ot_hours":      data["ot_hours"],
                 "notes":         data["notes"],
@@ -936,7 +1017,7 @@ def edit_attendance(id):
     data = {
         "date":        record.get("date") or "",
         "employee_id": record.get("employee_id") or "",
-        "site":        record.get("site") or "",
+        "site_id":     str(record.get(EMP.SITE_ADDRESS_FIELD) or ""),
         "status":      record.get("status") or PRESENT,
         "ot_raw":      f"{_num(record.get('ot_hours')):g}",
         "notes":       record.get("notes") or "",
@@ -944,7 +1025,7 @@ def edit_attendance(id):
     error = ""
 
     if request.method == "POST":
-        data, error = _validate(request.form, except_id=id)
+        data, error = _validate(request.form, except_id=id, record=record)
         if not error:
             person = data["person"]
             record.update({
@@ -958,6 +1039,8 @@ def edit_attendance(id):
                 "employee_code":  person.get("code") or "",
                 "day_rate":       float(person.get("day_rate") or 0.0),
                 "site":           data["site"],
+                EMP.SITE_ADDRESS_FIELD: data[EMP.SITE_ADDRESS_FIELD],
+                EMP.SITE_SOURCE_FIELD:  data[EMP.SITE_SOURCE_FIELD],
                 "status":         data["status"],
                 "ot_hours":       data["ot_hours"],
                 "notes":          data["notes"],
@@ -968,7 +1051,7 @@ def edit_attendance(id):
                                     msg="Attendance updated.", type="success"))
 
     return _shell("Edit attendance", _form(
-        data, error,
+        data, error, record=record,
         action=url_for("attendance.edit_attendance", id=id),
         submit_label="Save attendance",
         back=url_for("attendance.list_attendance",

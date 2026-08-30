@@ -85,7 +85,17 @@ recorded daily, so a day rate serves a daily payout and a weekly one alike.
 A leaf, and one with no way in from the chrome
 -----------------------------------------------
 Imports `dashboard`, `branding`, `pipeline`, `store` and `quotation` — the same
-five `charge.py` takes, and nothing else. Nothing imports it.
+five `charge.py` takes — **plus `address`, from 30 August 2026**, for the site
+picker. `attendance.py` imports this module and reads the picker through it, so
+the arrow to the address book is taken once rather than twice.
+`po_draft.py` and `challan.py` already reach the same book the same way.
+Nothing imports this module except `attendance.py`.
+
+⚠ **`project` stays forbidden in both directions.** A site is an address, not a
+project — the `addresses` record carries no project key and `projects` carries a
+free-text `site_address` string, so the two do not join. Rolling site-wise
+labour cost up to a project is **C6**, which is BLOCKED, and the shortfall is
+recorded in ABOUT.md rather than worked around here.
 
 ✅ **IT IS NOW IN THE NAV AND ON THE LAUNCHER** (29 August 2026, third pass).
 It shipped with neither, deliberately: `dashboard._nav()` is embedded in every
@@ -123,6 +133,7 @@ import uuid
 
 from flask import Blueprint, redirect, request, url_for
 
+import address as AD
 import branding as B
 import pipeline as P
 from store import STORE
@@ -256,6 +267,195 @@ def pre_day_rate_chip(record) -> str:
             f'class="emp-badge emp-stale-chip">RATE NOT CONFIRMED</span>')
 
 
+# =============================================================================
+# THE SITE — a picker over the ADDRESS BOOK, not free text
+# =============================================================================
+#
+# Corrected 30 August 2026 under the third override block of that date. `site`
+# was free text on this record and on an attendance marking, which is why the
+# live data spells one place more than one way — `Banglore` here,
+# `Bangalore, Karnataka` on a BOQ, `Sify Bangalore` as a project name. A
+# site-wise labour cost that splits one site across two spellings is wrong in a
+# way nobody notices, because both halves look right.
+#
+# ⚠ **This module owns the vocabulary and `attendance.py` reads it**, exactly as
+#   it owns the old-model rate marker. `attendance.py` imports this file and
+#   never the reverse, so one definition serves both forms and they cannot
+#   describe one field two ways.
+#
+# ⚠ **It is deliberately NOT a link to a project**, and the prohibition
+#   `test_import_directions.py` holds on `employee → project` is untouched. A
+#   BOQ carries `project_name` *and* `site_location` as separate fields; one
+#   project runs at several sites. A `project_id` here is the first half of
+#   **C6**, which is BLOCKED.
+#
+#   ⚠ And an address does **not** join to a project in this application — the
+#   `addresses` record has fourteen keys and none of them names one, while
+#   `projects` carries a free-text `site_address` string. So site-wise labour
+#   cost **cannot** roll up to a project today. That shortfall belongs to C6, it
+#   is recorded in ABOUT.md rather than solved here, and nothing below pretends
+#   otherwise.
+
+SITE_ADDRESS_FIELD = "site_address_id"
+SITE_SOURCE_FIELD = "site_source"
+SITE_BOOK = "book"
+SITE_UNMAPPED = "unmapped"
+
+# ⚠ **Which address types may be a site, and the narrowing is OURS.** People
+#   work at sites and at the office; a **vendor**'s address is somebody we buy
+#   from, and offering it as a place somebody worked a shift would put labour
+#   cost against a supplier. `billing` and `shipping` are where paperwork and
+#   goods go, not where a fitter stands. It is one tuple to widen if a real site
+#   turns out to be filed under another type — `address.picker_options()` takes
+#   the same `only_types` argument `/purchase`'s vendor picker uses.
+SITE_TYPES = ("site", "office")
+
+UNMAPPED_SITE_NOTE = (
+    "this site was typed as free text before the address book became the "
+    "source, and nothing in the book matches it exactly. It has been left "
+    "exactly as recorded rather than guessed at — a wrong match moves labour "
+    "cost to the wrong site. Pick the right address to map it, or add it to "
+    "the address book first.")
+
+UNMAPPED_SITE_CHIP_TITLE = (
+    "Site not in the address book. Recorded as free text and left as it "
+    "stands; no wrong match has been guessed at.")
+
+
+def site_options(selected: str = "") -> str:
+    """The site picker's `<option>` list — `SITE_TYPES` only."""
+    return AD.picker_options("— choose a site from the address book —",
+                             only_types=SITE_TYPES, selected=selected)
+
+
+def site_label_of(address_id: str) -> str:
+    """
+    The address's label, or `""` when the id names nothing.
+
+    ⚠ **The label is SNAPSHOTTED onto the record**, alongside the id, for the
+    reason `challan.py` snapshots its consignee and `ra.py` its party block: a
+    marking is the record of a day that has happened, and renaming an address
+    next March must not silently restate which site somebody worked on.
+    """
+    a = (STORE.get("addresses") or {}).get(str(address_id or "")) or {}
+    return str(a.get("label") or "")
+
+
+def is_unmapped_site(record) -> bool:
+    """
+    Whether this record's site is a free-text string nothing in the book
+    matched.
+
+    ⚠ **Reads the explicit mark**, never "it has a `site` and no
+    `site_address_id`" — `is_pre_day_rate()`'s argument, and for the same
+    reason. A record written through the picker today either carries a book
+    link or carries no site at all, so an inferred mark could only ever be a
+    guess about a record that predates the picker.
+    """
+    return str((record or {}).get(SITE_SOURCE_FIELD) or "") == SITE_UNMAPPED
+
+
+def unmapped_sites_in(records) -> dict:
+    """
+    `{site string: [ids]}` — every site string in `records` a human still has to
+    map.
+
+    ⚠ **This is the report the migration promises and the pages render.** An
+    unmapped string that nothing surfaces is a silent drop by another route: the
+    figure is still attributed to a site nobody can find in the book, and nobody
+    is ever told.
+
+    ⚠ **It takes the collection as an ARGUMENT and names none.** This module is
+    held by `tests/test_employee.py` to mentioning no C5 concept in code — C4 is
+    details and a rate, and nothing else — so the muster passes its own
+    collection in and merges the two answers on its own page. That is the same
+    shape `boq.revision_blockers()` takes the claim map as an argument for, and
+    for the same reason: the import direction, not taste.
+    """
+    out = {}
+    for rid, r in (records or {}).items():
+        if not is_unmapped_site(r):
+            continue
+        out.setdefault(str(r.get("site") or ""), []).append(rid)
+    return out
+
+
+def unmapped_site_chip(record) -> str:
+    """The register chip. One spelling, here, read by both modules."""
+    if not is_unmapped_site(record):
+        return ""
+    return (f'<span title="{_esc(UNMAPPED_SITE_CHIP_TITLE)}" '
+            f'class="emp-badge emp-stale-chip">SITE NOT MAPPED</span>')
+
+
+def resolve_site(form, record=None) -> tuple:
+    """
+    `(fields, error)` — turn a posted `site_id` into the three stored keys.
+
+    Three outcomes and no fourth:
+
+    | posted | stored |
+    |---|---|
+    | a real address id | `site` = its label, `site_address_id` = the id, `site_source` = `"book"` |
+    | blank, on a record whose site is unmapped | ⚠ **the unmapped string is KEPT**, untouched |
+    | blank, otherwise | no site — all three cleared |
+
+    ⚠ **The middle row is the one that matters.** Leaving the picker alone on a
+    record carrying `Banglore` must not silently delete `Banglore`: the string
+    is evidence of where somebody worked, and the whole rule for this migration
+    is that an unmapped string is left, marked and reported rather than dropped.
+    Mapping it is a deliberate act, exactly as re-entering a day rate is.
+
+    ⚠ An id that names **nothing** is refused rather than stored blank. A stored
+    dangling id would be a link to a site that does not exist, which reads on
+    every page as a mapped record and is not one.
+    """
+    posted = (form.get("site_id") or "").strip()
+
+    if posted:
+        label = site_label_of(posted)
+        if not label:
+            return {}, ("That site is not in the address book any more. Pick "
+                        "another, or add it at the address book first.")
+        return {"site": label,
+                SITE_ADDRESS_FIELD: posted,
+                SITE_SOURCE_FIELD: SITE_BOOK}, ""
+
+    if record is not None and is_unmapped_site(record):
+        return {"site": str(record.get("site") or ""),
+                SITE_ADDRESS_FIELD: "",
+                SITE_SOURCE_FIELD: SITE_UNMAPPED}, ""
+
+    return {"site": "", SITE_ADDRESS_FIELD: "", SITE_SOURCE_FIELD: ""}, ""
+
+
+def site_field_html(record=None, selected: str = "", hint_extra: str = "") -> str:
+    """
+    The picker plus whatever the record needs said about it — one definition,
+    rendered on the employee form and on the attendance form, so the two cannot
+    describe one field two ways.
+    """
+    unmapped = ""
+    if record is not None and is_unmapped_site(record):
+        unmapped = (
+            f'<div class="emp-stale" style="margin:.5rem 0 0;">'
+            f'<b>Recorded as &ldquo;{_esc(record.get("site"))}&rdquo;, which is '
+            f'not in the address book.</b> {_esc(UNMAPPED_SITE_NOTE)} '
+            f'Leaving the picker alone keeps it exactly as it is.</div>')
+
+    return f"""
+        <div class="form-group">
+          <label for="site_id">Site</label>
+          <select id="site_id" name="site_id">{site_options(selected)}</select>
+          <small class="field-hint">From the <a
+            href="{url_for('address.list_addresses')}">address book</a>, not
+            typed. One site spelled two ways splits its labour cost in half
+            without either half looking wrong.{
+              ' ' + hint_extra if hint_extra else ''}</small>
+          {unmapped}
+        </div>"""
+
+
 def _now() -> str:
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -299,7 +499,8 @@ def _code_taken(code: str, except_id: str = "") -> bool:
                for eid, e in employees().items())
 
 
-def _validate(form, except_id: str = "", must_confirm_rate: bool = False) -> tuple:
+def _validate(form, except_id: str = "", must_confirm_rate: bool = False,
+              record=None) -> tuple:
     """
     `(data, error)` for the create and edit forms.
 
@@ -323,10 +524,13 @@ def _validate(form, except_id: str = "", must_confirm_rate: bool = False) -> tup
         "name":        (form.get("name") or "").strip()[:120],
         "code":        (form.get("code") or "").strip()[:40],
         "designation": (form.get("designation") or "").strip()[:120],
-        "site":        (form.get("site") or "").strip()[:160],
         "date_joined": (form.get("date_joined") or "").strip()[:10],
         "salary_raw":  (form.get("day_rate") or "").strip(),
         "notes":       (form.get("notes") or "").strip()[:500],
+        # ⚠ Echoed back so a rejected form re-renders with the picker where the
+        #   operator left it — `address._validate()`'s always-return-data
+        #   contract, applied to a `<select>` rather than an `<input>`.
+        "site_id":     (form.get("site_id") or "").strip(),
         # An unchecked checkbox posts nothing at all, so this reads as False —
         # which is why the FORM ships it ticked on a new record. The default
         # lives where the field is created, not where it is read. Same rule
@@ -340,6 +544,11 @@ def _validate(form, except_id: str = "", must_confirm_rate: bool = False) -> tup
         return data, (f"Employee code '{data['code']}' is already used by "
                       f"somebody else. Codes identify a person on a wage "
                       f"sheet, so two people cannot share one.")
+
+    site_fields, site_error = resolve_site(form, record)
+    if site_error:
+        return data, site_error
+    data.update(site_fields)
 
     raw = data["salary_raw"]
     if raw:
@@ -516,7 +725,8 @@ def list_employees():
             f'<tr class="{"" if live else "emp-row-off"}">'
             f'<td><b>{_esc(e.get("name"))}</b>{code_sub}</td>'
             f'<td>{_esc(e.get("designation")) or "&#8212;"}</td>'
-            f'<td>{_esc(e.get("site")) or "&#8212;"}</td>'
+            f'<td>{_esc(e.get("site")) or "&#8212;"}'
+            f'{unmapped_site_chip(e)}</td>'
             f'<td>{_esc(e.get("date_joined")) or "&#8212;"}</td>'
             f'<td class="emp-amt">{rate_cell}</td>'
             f'<td><span class="emp-badge {"emp-on" if live else "emp-off"}">'
@@ -537,7 +747,27 @@ def list_employees():
     This register used to hold a <b>monthly salary</b>; it holds a
     <b>day rate</b> now. {_esc(PRE_DAY_RATE_NOTE)}
     Until each one is re-entered, no wage is computed from it anywhere &mdash;
-    on this page or on Attendance.
+    on this page or on the muster.
+  </div>"""
+
+    # ⚠ The unmapped-site report for THIS register's own records. A string that
+    #   nothing surfaces is a silent drop by another route.
+    unmapped = unmapped_sites_in(employees())
+    unmapped_band = ""
+    if unmapped:
+        items = "".join(
+            f'<li><b>{_esc(site)}</b> &mdash; {len(ids)} '
+            f'{"record" if len(ids) == 1 else "records"}</li>'
+            for site, ids in sorted(unmapped.items()))
+        unmapped_band = f"""
+  <div class="emp-stale">
+    <b>{len(unmapped)} site {"string is" if len(unmapped) == 1 else
+    "strings are"} not in the address book.</b>
+    {_esc(UNMAPPED_SITE_NOTE)}
+    <ul style="margin:.5rem 0 0 1.1rem;">{items}</ul>
+    <div style="margin-top:.5rem;">Map one by opening the record and choosing
+      the right address; add a missing site to the
+      <a href="{url_for('address.list_addresses')}">address book</a> first.</div>
   </div>"""
 
     toggle = (f'<a href="{url_for("employee.list_employees")}" class="btn btn-ghost">Active only</a>'
@@ -570,6 +800,7 @@ def list_employees():
       <a href="{url_for('attendance.list_attendance')}">Attendance</a>.</div>
   </div>
   {stale_band}
+  {unmapped_band}
 
   <div class="form-section">
     <table class="emp-table">
@@ -584,7 +815,8 @@ def list_employees():
 
 
 def _form(data: dict, error: str, action: str, submit_label: str,
-          heading: str, back: str, stale: dict = None) -> str:
+          heading: str, back: str, stale: dict = None,
+          stale_site: dict = None) -> str:
     """The create and edit forms, which are one form with two labels."""
     checked = " checked" if data.get("active") else ""
 
@@ -639,14 +871,9 @@ def _form(data: dict, error: str, action: str, submit_label: str,
                  value="{_esc(data.get('designation'))}"
                  placeholder="e.g. Fitter, Site Supervisor"/>
         </div>
-        <div class="form-group">
-          <label for="site">Site</label>
-          <input type="text" id="site" name="site" maxlength="160"
-                 value="{_esc(data.get('site'))}"
-                 placeholder="where they are posted"/>
-          <small class="field-hint">Free text. This is where somebody is
-            posted, not a link to a project.</small>
-        </div>
+        {site_field_html(stale_site, str(data.get('site_id') or ''),
+                         'Where this person is posted — it prefills the '
+                         'attendance form and is not a link to a project.')}
         <div class="form-group">
           <label for="date_joined">Date Joined</label>
           <input type="date" id="date_joined" name="date_joined"
@@ -709,7 +936,13 @@ def new_employee():
                 "name":        data["name"],
                 "code":        data["code"],
                 "designation": data["designation"],
-                "site":        data["site"],
+                # ⚠ Three keys, not one. `site` is the address LABEL
+                # snapshotted, `site_address_id` is the link, and
+                # `site_source` says which of `resolve_site()`'s three
+                # outcomes applied.
+                "site":             data["site"],
+                SITE_ADDRESS_FIELD: data[SITE_ADDRESS_FIELD],
+                SITE_SOURCE_FIELD:  data[SITE_SOURCE_FIELD],
                 "date_joined": data["date_joined"],
                 # ⚠ A DAY rate. A record written here carries no `rate_model`
                 # key at all, which is what `tests/test_day_rate_pin.py` sweeps
@@ -767,7 +1000,7 @@ def view_employee(id: str):
     <div class="emp-grid">
       {cell("Employee code", _esc(e.get("code")))}
       {cell("Designation", _esc(e.get("designation")))}
-      {cell("Site", _esc(e.get("site")))}
+      {cell("Site", _esc(e.get("site")) + unmapped_site_chip(e))}
       {cell("Date joined", _esc(e.get("date_joined")))}
       {rate_cell}
       {cell("Status", "Currently employed" if e.get("active") else "No longer employed")}
@@ -799,7 +1032,10 @@ def edit_employee(id: str):
     #   the band has to be decided on the state the operator was shown.
     stale = dict(e) if is_pre_day_rate(e) else None
 
+    stale_site = dict(e) if is_unmapped_site(e) else None
+
     data = dict(e)
+    data["site_id"] = str(e.get(SITE_ADDRESS_FIELD) or "")
     # ⚠ A marked record's box starts BLANK — see `_form()`. The old monthly
     #   figure is shown in the band, never in a box labelled "Day rate".
     data["salary_raw"] = ("" if stale else
@@ -809,13 +1045,19 @@ def edit_employee(id: str):
 
     if request.method == "POST":
         data, error = _validate(request.form, except_id=id,
-                                must_confirm_rate=bool(stale))
+                                must_confirm_rate=bool(stale), record=e)
         if not error:
             e.update({
                 "name":        data["name"],
                 "code":        data["code"],
                 "designation": data["designation"],
-                "site":        data["site"],
+                # ⚠ Three keys, not one. `site` is the address LABEL
+                # snapshotted, `site_address_id` is the link, and
+                # `site_source` says which of `resolve_site()`'s three
+                # outcomes applied.
+                "site":             data["site"],
+                SITE_ADDRESS_FIELD: data[SITE_ADDRESS_FIELD],
+                SITE_SOURCE_FIELD:  data[SITE_SOURCE_FIELD],
                 "date_joined": data["date_joined"],
                 "day_rate":    data["day_rate"],
                 "active":      data["active"],
@@ -839,7 +1081,7 @@ def edit_employee(id: str):
                  submit_label="Save changes",
                  heading="Edit <span>Employee</span>",
                  back=url_for("employee.view_employee", id=id),
-                 stale=stale)
+                 stale=stale, stale_site=stale_site)
 
 
 @employee_bp.route("/delete/<id>", methods=["GET", "POST"])

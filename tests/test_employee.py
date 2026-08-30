@@ -52,6 +52,32 @@ EMPLOYEE_ROUTES = [
 WALLED_OFF = ("sales-manager", "purchase-manager", "accountant")
 
 
+# Ids minted by `_site()`, so `_clean()` can take them back out of the shared
+# address book. See its note.
+_MINTED = set()
+
+
+def _site(client, label="Whitefield", aid=None):
+    """
+    A site in the address book, and its id — which is what the picker posts.
+
+    ⚠ Written straight into `STORE["addresses"]` rather than through
+    `/address/add`, so the id is known to the caller and the fixture does not
+    depend on that form's validation. The three fields below are the ones
+    `_validate()` there requires, so the record is a real one either way.
+    """
+    aid = aid or f"addr-{label.lower().replace(' ', '-')}"
+    _MINTED.add(aid)
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": label, "type": "site",
+        "contact_name": "", "company": "", "line1": "1 Site Road",
+        "line2": "", "landmark": "", "city": "Bengaluru",
+        "state": "Karnataka", "pincode": "560066", "country": "India",
+        "phone": "", "email": "", "gstin": "",
+    }
+    return aid
+
+
 def _add(client, **over):
     """Add somebody through the real route and return the stored record."""
     # ⚠ `day_rate` since 30 August 2026. The old line was, verbatim:
@@ -61,7 +87,11 @@ def _add(client, **over):
     #   arithmetic anywhere converts one to the other, deliberately.
     data = {
         "name": "Ramesh Patil", "code": "SF-014", "designation": "Fitter",
-        "site": "Whitefield", "date_joined": "2026-04-01",
+        # ⚠ `site_id` since 30 August 2026 — a picker over the address book,
+        #   not free text. The old line was, verbatim:
+        #       "site": "Whitefield", "date_joined": "2026-04-01",
+        #   Free text is why the live data spells one place more than one way.
+        "site_id": _site(client, "Whitefield"), "date_joined": "2026-04-01",
         "day_rate": "1200", "notes": "", "active": "1",
     }
     data.update(over)
@@ -98,8 +128,16 @@ def _clean():
     exactly like a seeder to `test_hardening.py`.
     """
     STORE.setdefault("employees", {}).clear()
+    _MINTED.clear()
     yield
     STORE.setdefault("employees", {}).clear()
+    # ⚠ **And the site addresses this file mints.** They go into the SHARED
+    #   address book, and `tests/test_challan.py` picks `next(iter(...))` out of
+    #   it to prove the consignee prefill works — so a leaked skeleton address
+    #   fails a test in another file, which is exactly what happened once.
+    for aid in _MINTED:
+        STORE.setdefault("addresses", {}).pop(aid, None)
+    _MINTED.clear()
 
 
 # ══ 1. The register renders ═══════════════════════════════════════════════
@@ -125,7 +163,12 @@ def test_create_round_trips(client):
     assert e["name"] == "Ramesh Patil"
     assert e["code"] == "SF-014"
     assert e["designation"] == "Fitter"
+    # ⚠ `site` is now the address LABEL, snapshotted, beside the link. The
+    #   assertion below is the OLD one unchanged — the label is "Whitefield" —
+    #   and the two after it are what the picker added.
     assert e["site"] == "Whitefield"
+    assert e[EM.SITE_ADDRESS_FIELD] == "addr-whitefield"
+    assert e[EM.SITE_SOURCE_FIELD] == EM.SITE_BOOK
     assert e["date_joined"] == "2026-04-01"
     # ⚠ The old line was, verbatim:  assert e["monthly_salary"] == 24000.0
     assert e["day_rate"] == 1200.0
@@ -219,9 +262,11 @@ def test_a_rejected_form_keeps_what_was_typed(client):
 
 def test_edit_round_trips(client):
     e = _add(client)
+    _site(client, "Hebbal")
     r = client.post(f"/employee/edit/{e['id']}", data={
         "name": "Ramesh V. Patil", "code": "SF-014",
-        "designation": "Site Supervisor", "site": "Hebbal",
+        # ⚠ The old fragment was, verbatim:  "site": "Hebbal",
+        "designation": "Site Supervisor", "site_id": "addr-hebbal",
         "date_joined": "2026-04-01", "day_rate": "1550",
         "notes": "promoted", "active": "1"})
     assert r.status_code == 302
@@ -230,6 +275,7 @@ def test_edit_round_trips(client):
     assert e["name"] == "Ramesh V. Patil"
     assert e["designation"] == "Site Supervisor"
     assert e["site"] == "Hebbal"
+    assert e[EM.SITE_ADDRESS_FIELD] == "addr-hebbal"
     # ⚠ The old line was, verbatim:  assert e["monthly_salary"] == 31000.0
     assert e["day_rate"] == 1550.0
     assert e["notes"] == "promoted"

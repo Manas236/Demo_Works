@@ -52,6 +52,7 @@ import pytest
 
 import attendance as AT
 import auth
+import employee as EMP
 import settings as S
 from store import STORE
 
@@ -81,10 +82,43 @@ def _clean():
     STORE.setdefault("employees", {}).clear()
     STORE.setdefault("attendance", {}).clear()
     STORE.setdefault("settings", {}).pop(S.LABOUR_RECORD, None)
+    _MINTED.clear()
     yield
     STORE.setdefault("employees", {}).clear()
     STORE.setdefault("attendance", {}).clear()
     STORE.setdefault("settings", {}).pop(S.LABOUR_RECORD, None)
+    # ⚠ **And the site addresses this file mints.** They go into the SHARED
+    #   address book, and `tests/test_challan.py` picks `next(iter(...))` out of
+    #   it to prove the consignee prefill works — so a leaked skeleton address
+    #   fails a test in another file, which is exactly what happened once.
+    for aid in _MINTED:
+        STORE.setdefault("addresses", {}).pop(aid, None)
+    _MINTED.clear()
+
+
+# Ids minted by `_site()`, so `_clean()` can take them back out of the shared
+# address book. See its note.
+_MINTED = set()
+
+
+def _site(label="Whitefield"):
+    """
+    A site in the address book, and its id — which is what the picker posts.
+
+    ⚠ Written straight into `STORE["addresses"]` rather than through
+    `/address/add`, so the id is known to the caller and the fixture does not
+    depend on that form's validation.
+    """
+    aid = f"addr-{label.lower().replace(' ', '-')}"
+    _MINTED.add(aid)
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": label, "type": "site",
+        "contact_name": "", "company": "", "line1": "1 Site Road",
+        "line2": "", "landmark": "", "city": "Bengaluru",
+        "state": "Karnataka", "pincode": "560066", "country": "India",
+        "phone": "", "email": "", "gstin": "",
+    }
+    return aid
 
 
 def _person(client, **over):
@@ -95,7 +129,10 @@ def _person(client, **over):
     #   is unchanged and only the route it arrives by has moved.
     data = {
         "name": "Ramesh Patil", "code": "SF-014", "designation": "Fitter",
-        "site": "Whitefield", "date_joined": "2026-04-01",
+        # ⚠ `site_id` since 30 August 2026 — a picker over the address book,
+        #   not free text. The old fragment was, verbatim:
+        #       "site": "Whitefield", "date_joined": "2026-04-01",
+        "site_id": _site("Whitefield"), "date_joined": "2026-04-01",
         "day_rate": "1000", "notes": "", "active": "1",
     }
     data.update(over)
@@ -108,7 +145,10 @@ def _person(client, **over):
 
 def _mark(client, person, **over):
     """Mark a day through the real route. Returns the response."""
-    data = {"date": DAY, "employee_id": person["id"], "site": "Whitefield",
+    # ⚠ The old line was, verbatim:
+    #       data = {"date": DAY, "employee_id": person["id"], "site": "Whitefield",
+    data = {"date": DAY, "employee_id": person["id"],
+            "site_id": _site("Whitefield"),
             "status": "present", "ot_hours": "2", "notes": ""}
     data.update(over)
     return client.post("/attendance/mark", data=data)
@@ -416,7 +456,11 @@ def test_a_marking_round_trips_through_the_routes(client):
     rec = list(STORE["attendance"].values())[0]
     assert rec["date"] == DAY
     assert rec["employee_id"] == person["id"]
+    # ⚠ `site` is the address LABEL, snapshotted — the assertion is the OLD
+    #   one unchanged, and the two after it are what the picker added.
     assert rec["site"] == "Whitefield"
+    assert rec[EMP.SITE_ADDRESS_FIELD] == "addr-whitefield"
+    assert rec[EMP.SITE_SOURCE_FIELD] == EMP.SITE_BOOK
     assert rec["status"] == "present"
     assert rec["ot_hours"] == 2.0
     assert rec["notes"] == "half day rain"
@@ -492,10 +536,17 @@ def test_the_site_wise_labour_cost_is_the_presentation_table(client):
     CC-2's fifth bullet — Employee, Site, OT time — plus the cost the item is
     named for. Two people on two sites must not be summed into one figure.
     """
-    a = _person(client, name="A Person", code="SF-101", site="Site A")
-    b = _person(client, name="B Person", code="SF-102", site="Site B")
-    _mark(client, a, site="Site A", ot_hours="0")
-    _mark(client, b, site="Site B", ot_hours="8")
+    # ⚠ The old four lines were, verbatim:
+    #       a = _person(client, name="A Person", code="SF-101", site="Site A")
+    #       b = _person(client, name="B Person", code="SF-102", site="Site B")
+    #       _mark(client, a, site="Site A", ot_hours="0")
+    #       _mark(client, b, site="Site B", ot_hours="8")
+    #   Both sites are address-book entries now. Every figure below is
+    #   unchanged; only how the site is chosen has moved.
+    a = _person(client, name="A Person", code="SF-101", site_id=_site("Site A"))
+    b = _person(client, name="B Person", code="SF-102", site_id=_site("Site B"))
+    _mark(client, a, site_id=_site("Site A"), ot_hours="0")
+    _mark(client, b, site_id=_site("Site B"), ot_hours="8")
 
     rows = AT.site_costs(DAY)
     assert [r["site"] for r in rows] == ["Site A", "Site B"]
