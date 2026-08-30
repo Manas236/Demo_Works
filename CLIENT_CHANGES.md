@@ -1291,6 +1291,85 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > against a quotation that has **lapsed**, and this pass has now made three of
 > those items reachable by the people meant to use them.
 
+> ### ⚠ OVERRIDE — 30 August 2026, by Manas Gawde — B8, file attachments, stored as BLOBs in their own table
+>
+> **A new block, not an amendment, and the SECOND one dated 30 August 2026.**
+> The fourteen blocks above it — including the cleanup block of this same date
+> — **have not been edited, reformatted, re-scoped or extended by a single
+> character.** This is the **fifteenth occasion overall**, and the ninth that
+> reaches into Phase 3.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a seventh time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** A seventh
+> restatement is not evidence that the first six made it routine.
+>
+> #### What is authorised
+>
+> **B8 — file attachments, AUTHORISED**, with attachments stored as **BLOBs in
+> their own table**. The storage shape is the owner's own decision, taken on
+> **30 August 2026**, and it is recorded here because it **departs from the
+> letter of CC-2's B8**, which says "real file storage with a path held on the
+> record". A filesystem path is what this application has no home for — there
+> is no `/static` and no upload directory — so the owner chose a side table of
+> BLOBs instead. **CC-2 is not edited to match**; the specification says what
+> it says and this block is the decision that departs from it.
+>
+> The reasoning for a **side** table rather than bytes on the document record is
+> architectural and is recorded so it is not undone by a later pass:
+> `db.py` persists by **snapshot-and-diff**, re-serialising and re-hashing every
+> record on every request. A multi-megabyte payload on a charge record would be
+> re-hashed on every unrelated edit to that charge.
+>
+> #### ⚠ WHAT THIS BLOCK AUTHORISES, IT DOES NOT THEREBY DELIVER
+>
+> **B8 is authorised here and is NOT built.** The pass commissioned to build it
+> **stopped before writing any attachment code**, on a gate its own brief set:
+> establish first whether `db.py`'s snapshot-and-diff layer can carry a binary
+> side table at all, and stop if it cannot rather than invent a second
+> persistence mechanism beside it while the owner is away. **It cannot**, and
+> the finding is recorded in the pass report and in ABOUT.md rather than worked
+> around. **The board does not move. B8 stands AUTHORISED and UNBUILT**, and
+> needs a decision from the owner on storage mechanism before it can proceed.
+>
+> An authorisation is not a delivery, and this block is deliberately worded so
+> that a later reader cannot mistake the one for the other.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **C3** and **C6**, both **BLOCKED** — C3 on the owner's answers to BQ2 and
+>   then BQ1, C6 on CC-2's Open question 4. Neither is opened, and no
+>   groundwork is laid for either.
+> - `attendance.py` stays unimported. `product.py` stays frozen.
+>
+> #### Chargeability
+>
+> **B8 is new scope priced into MG/SF/2026-02, which has lapsed**, and it
+> remains chargeable there. Authorising it early changes **when** it is built,
+> not **what it costs** or **who agreed to it**. Nothing was built under this
+> block, so nothing is billable under it yet.
+>
+> The field-level escaping guard that this pass did deliver is priced
+> **nowhere at all**, like the other engineering the blocks above record as
+> unspecced. It is a defect fix against a guard that was asserting less than it
+> appeared to, and it is recorded as **Delivered — no charge**.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises B8 does
+> not authorise C3, C6, or anything else**, and no override above is a
+> precedent that clears the next.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above was
+> built against a quotation that has **lapsed**.
+
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
