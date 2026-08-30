@@ -116,9 +116,9 @@ happens to omit the name. A form is a convenience; the refusal is the rule.
 reported.** Free text is why one place is spelled more than one way across this
 database, and a site-wise labour cost split across two spellings is wrong in a
 way nobody notices, because both halves look right. The vocabulary lives in
-`employee.py` — `site_field_html()`, `resolve_site()`, `unmapped_sites()` — and
-this module reads it through the import it already has, so the two forms cannot
-describe one field two ways.
+`employee.py` — `site_field_html()`, `resolve_site()`, `unmapped_sites_in()` —
+and this module reads it through the import it already has, so the two forms
+cannot describe one field two ways.
 
 ⚠ **An existing string that matched nothing is LEFT, MARKED and REPORTED.** It
 is never fuzzy-matched: a wrong automatic match moves labour cost to the wrong
@@ -205,7 +205,7 @@ import employee as EMP
 import pipeline as P
 import settings as S
 from store import STORE
-from dashboard import BASE_STYLES, _nav, rupees
+from dashboard import BASE_STYLES, REGISTER_STYLES, _nav, rupees
 from employee import active_employees, employees
 from quotation import QUOTATION_STYLES
 
@@ -523,18 +523,13 @@ def _validate(form, except_id: str = "", record=None) -> tuple:
 
 ATTENDANCE_STYLES = """
 <style>
-  .att-table { width:100%; border-collapse:collapse; margin-top:1rem; }
-  .att-table th {
-    text-align:left; padding:.5rem; border-bottom:2px solid var(--border);
-    font-size:.72rem; font-weight:700; color:var(--muted);
-    text-transform:uppercase; letter-spacing:.05em;
-  }
-  .att-table td {
-    padding:.55rem .5rem; border-bottom:1px solid var(--border);
-    font-size:.86rem; vertical-align:top;
-  }
-  .att-table tr:nth-child(even) { background:var(--surface); }
-  .att-amt { text-align:right; font-variant-numeric:tabular-nums; }
+  /* ⚠ `.att-table` and `.att-amt` are GONE, 30 August 2026. Both tables on
+     this page use `dashboard.REGISTER_STYLES`' `.reg-table` and `.num`, which
+     is what makes them one visual language rather than two — and what fixes
+     the misalignment the owner reported: `.att-table th` was specificity
+     (0,1,1) and beat `.att-amt` at (0,1,0), so every money HEADER sat left
+     over a right-aligned column. `.reg-table th.num` is (0,2,1). Do not
+     reintroduce a table style here; the pattern is shared on purpose. */
   .att-sub { display:block; font-size:.76rem; color:var(--muted); }
 
   .att-badge {
@@ -568,11 +563,10 @@ ATTENDANCE_STYLES = """
     color:var(--muted); line-height:1.45; font-weight:400;
     text-transform:none; letter-spacing:0;
   }
-  .att-warn {
-    background:#FFF6E5; border:1px solid #F0D8A8; border-left:3px solid var(--saffron);
-    border-radius:var(--radius); padding:.7rem 1rem; margin:.8rem 0;
-    font-size:.83rem;
-  }
+  /* ⚠ `.att-warn` is GONE, 30 August 2026 — it was declared and never used by
+     a single element in this module, and `.att-stale` below is the amber band
+     that is. A rule nobody renders is a rule the next reader has to check
+     before changing anything near it. */
 
   /* The old-model band and the in-row refusal. Amber, which in this app means
      "incomplete but working": the marking is real and the day happened, and
@@ -598,7 +592,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{ATTENDANCE_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{REGISTER_STYLES}{ATTENDANCE_STYLES}
 </head>
 <body>
 {_nav()}
@@ -700,38 +694,60 @@ def list_attendance():
             #   nil, and nil is a figure — the one thing this must not state.
             if c["refused"]:
                 refused_here += 1
-                money = (f'<td class="att-amt att-norate" colspan="3" '
+                money = (f'<td class="num att-norate" colspan="3" '
                          f'title="{_esc(EMP.PRE_DAY_RATE_CHIP_TITLE)}">'
                          f'day rate not confirmed</td>')
             else:
-                money = (f'<td class="att-amt">{rupees(c["day"])}</td>'
-                         f'<td class="att-amt">{rupees(c["ot"])}</td>'
-                         f'<td class="att-amt"><b>{rupees(c["total"])}</b></td>')
+                money = (f'<td class="num">{rupees(c["day"])}</td>'
+                         f'<td class="num">{rupees(c["ot"])}</td>'
+                         f'<td class="num"><b>{rupees(c["total"])}</b></td>')
 
             body_rows.append(f"""
       <tr class="{'' if present else 'att-row-out'}">
         <td>{_esc(r.get('employee_name'))}{sub}</td>
-        <td>{_esc(r.get('site')) or '<span class="att-sub">no site named</span>'}{EMP.unmapped_site_chip(r)}</td>
+        <td>{_esc(r.get('site')) or '<span class="reg-sub-line">no site named</span>'}{EMP.unmapped_site_chip(r)}</td>
         <td>{badge}</td>
-        <td class="att-amt">{ot_cell}</td>
+        <td class="num">{ot_cell}</td>
         {money}
-        <td>
-          <a class="btn btn-ghost" href="{url_for('attendance.edit_attendance', id=r['id'])}">Edit</a>
-          <a class="btn btn-ghost" href="{url_for('attendance.delete_attendance', id=r['id'])}">Delete</a>
+        <td class="reg-acts">
+          <a class="reg-sub" href="{url_for('attendance.edit_attendance', id=r['id'])}">Edit</a>
+          <a class="reg-danger" href="{url_for('attendance.delete_attendance', id=r['id'])}">Delete</a>
         </td>
       </tr>""")
+        # ⚠ **`.num` is on every money HEADER as well as every money cell.**
+        #   That is the misalignment the owner reported: the class was on both
+        #   before, and `.att-table th { text-align:left }` (0,1,1) beat
+        #   `.att-amt` (0,1,0), so every money header sat left over a
+        #   right-aligned column. `dashboard.REGISTER_STYLES` carries
+        #   `.reg-table th.num` at 0,2,1 and it wins.
+        #
+        # ⚠ **"Day rate" is the column's name in BOTH tables**, and the filter
+        #   above is "Date". The page used to carry a DAY filter meaning a date,
+        #   a DAY column meaning wages, and a DAY WAGES column meaning the same
+        #   figure — one name for two things and two names for one.
         table = f"""
-    <table class="att-table">
+  <div class="reg-card">
+    <div class="reg-head">
+      <span class="reg-title">Muster &mdash; {_esc(date)}</span>
+      <span class="reg-note">Who was on site, and what the day came to.</span>
+    </div>
+    <div class="reg-scroll">
+    <table class="reg-table">
       <thead><tr>
         <th>Employee</th><th>Site</th><th>Status</th>
-        <th class="att-amt">OT hours</th><th class="att-amt">Day rate</th>
-        <th class="att-amt">Overtime</th><th class="att-amt">Total</th><th></th>
+        <th class="num">OT hours</th><th class="num">Day rate</th>
+        <th class="num">Overtime</th><th class="num">Total</th>
+        <th class="reg-acts">Actions</th>
       </tr></thead>
       <tbody>{''.join(body_rows)}</tbody>
-    </table>"""
+    </table>
+    </div>
+  </div>"""
     else:
-        table = ('<p class="att-sub" style="margin-top:1rem;">Nobody is marked '
-                 'for this day yet.</p>')
+        table = """
+  <div class="reg-card">
+    <div class="reg-empty">Nobody is marked for this day yet.</div>
+  </div>"""
 
     stale_band = ""
     if refused_here:
@@ -789,45 +805,55 @@ def list_attendance():
         site_rows = "".join(f"""
       <tr>
         <td>{_esc(s['site'])}{
-          f'<span class="att-sub">{s["refused"]} not costed &mdash; day rate '
-          f'not confirmed</span>' if s['refused'] else ''}{
-          '<span class="att-sub">not in the address book</span>'
+          f'<span class="reg-sub-line">{s["refused"]} not costed &mdash; day '
+          f'rate not confirmed</span>' if s['refused'] else ''}{
+          '<span class="reg-sub-line">not in the address book</span>'
           if s['unmapped'] else ''}</td>
-        <td class="att-amt">{s['present']} of {s['people']}</td>
-        <td class="att-amt">{P.esc(f"{s['ot_hours']:g}")}</td>
-        <td class="att-amt">{rupees(s['day_cost'])}</td>
-        <td class="att-amt">{rupees(s['ot_cost'])}</td>
-        <td class="att-amt"><b>{rupees(s['total'])}</b></td>
+        <td class="num">{s['present']} of {s['people']}</td>
+        <td class="num">{P.esc(f"{s['ot_hours']:g}")}</td>
+        <td class="num">{rupees(s['day_cost'])}</td>
+        <td class="num">{rupees(s['ot_cost'])}</td>
+        <td class="num"><b>{rupees(s['total'])}</b></td>
       </tr>""" for s in sites)
         day_total = round(sum(s["total"] for s in sites), 2)
         short_by = sum(s["refused"] for s in sites)
+        # ⚠ **The same card, the same table, the same column names as the
+        #   muster above.** The two used to be styled differently — the top one
+        #   bare and the bottom one in a white card with a red header — which is
+        #   two visual languages for one page of one kind of data.
         site_panel = f"""
-    <div class="att-card">
-      <div class="section-title">Site-wise labour cost &mdash; {_esc(date)}</div>
-      <table class="att-table">
+  <div class="reg-card">
+    <div class="reg-head">
+      <span class="reg-title">Site-wise labour cost &mdash; {_esc(date)}</span>
+      <span class="reg-note">CC-2's presentation table: employee, site, OT
+        time.</span>
+    </div>
+    <div class="reg-scroll">
+      <table class="reg-table">
         <thead><tr>
-          <th>Site</th><th class="att-amt">Present</th>
-          <th class="att-amt">OT hours</th><th class="att-amt">Day rate</th>
-          <th class="att-amt">Overtime</th><th class="att-amt">Total</th>
+          <th>Site</th><th class="num">Present</th>
+          <th class="num">OT hours</th><th class="num">Day rate</th>
+          <th class="num">Overtime</th><th class="num">Total</th>
         </tr></thead>
         <tbody>{site_rows}</tbody>
         <tfoot><tr>
-          <td colspan="5" class="att-amt"><b>All sites</b></td>
-          <td class="att-amt"><b>{rupees(day_total)}</b></td>
+          <td colspan="5" class="num"><b>All sites</b></td>
+          <td class="num"><b>{rupees(day_total)}</b></td>
         </tr></tfoot>
       </table>
-      <p class="att-sub" style="margin-top:.8rem;">
-        Computed from this day's markings at
-        <b>&times;{P.esc(f"{multiplier:g}")}</b> overtime, from
-        <a href="{url_for('settings.edit_settings')}">Settings</a>. A day's wage
-        is the employee's own <b>day rate</b> &mdash; there is no divisor and no
-        monthly figure. Nothing is stored; change the multiplier and this page
-        changes with it.{
-          f' <b>This total is short by {short_by} '
-          f'{"marking" if short_by == 1 else "markings"}</b> whose day rate is '
-          f'not confirmed.' if short_by else ''}
-      </p>
-    </div>"""
+    </div>
+    <p class="reg-note" style="padding:.8rem 1.1rem;margin:0;">
+      Computed from this day's markings at
+      <b>&times;{P.esc(f"{multiplier:g}")}</b> overtime, from
+      <a href="{url_for('settings.edit_settings')}">Settings</a>. A day's wage
+      is the employee's own <b>day rate</b> &mdash; there is no divisor and no
+      monthly figure. Nothing is stored; change the multiplier and this page
+      changes with it.{
+        f' <b>This total is short by {short_by} '
+        f'{"marking" if short_by == 1 else "markings"}</b> whose day rate is '
+        f'not confirmed.' if short_by else ''}
+    </p>
+  </div>"""
     else:
         site_panel = ""
 

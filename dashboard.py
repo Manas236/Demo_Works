@@ -742,6 +742,147 @@ USER_CHIP_STYLES = """
 </style>
 """
 
+# =============================================================================
+# REGISTER_STYLES — one affordance pattern for the register SCREENS
+# =============================================================================
+#
+# Added 30 August 2026, under the third override block of that date, after the
+# owner opened `/attendance/` and `/dc/` — **the only two pages in this
+# application that have ever been rendered to a human eye** — and reported that
+# they are confusing, that the attendance table is misaligned, and that on
+# Delivery Challans he cannot tell what to click.
+#
+# ⚠ **IT IS A SEPARATE CONSTANT AND IS DELIBERATELY NOT IN `BASE_STYLES`.**
+#   `BASE_STYLES` is on every page in this app **including every printed one**,
+#   so a rule added there moves five pinned print goldens for a change that has
+#   nothing to do with paper (ABOUT.md §7's first gap). `USER_CHIP_STYLES` above
+#   is the precedent: a constant that lives here and is emitted only where it is
+#   wanted. This one is loaded by `/attendance/` and `/dc/` and by nothing else,
+#   so **no golden moves and none could.**
+#
+# ⚠ **It lives HERE rather than being written twice**, and that is the whole
+#   point of it. `attendance.py` and `challan.py` share no ancestor except this
+#   module, so two copies of "what a register row looks like" is two copies that
+#   drift — which is the defect `docsheet.py` was extracted to end, four
+#   letterheads along. The brief for this pass required the two registers to
+#   match each other; one definition is how that stays true after the next edit.
+#
+# ⚠ **The other thirteen registers do NOT load it, and must not be given it
+#   without somebody looking at them.** The owner has not seen them. Restyling a
+#   page nobody has opened is how a pass ships a regression that only surfaces
+#   months later, and the pass report names every register now inconsistent with
+#   these two so the next one can take them deliberately.
+#
+# Four rules, and each answers something the owner actually said:
+#
+#   1. **Numeric columns are right-aligned WITH THEIR HEADERS.** `.num` on the
+#      `<th>` as well as the `<td>`. The attendance table had the class on both
+#      and still came out ragged, because `.att-table th { text-align:left }`
+#      (specificity 0,1,1) beat `.att-amt` (0,1,0) — so every money header sat
+#      left over a right-aligned column. `.reg-table th.num` is 0,2,1 and wins.
+#   2. **One primary action per row**, `.reg-open`: a bordered pill with a word
+#      in it. A bare number rendered as a link is a reference, not a target.
+#   3. **Secondary links are visibly secondary** (`.reg-sub`), and the
+#      destructive one is de-weighted (`.reg-danger`) rather than carrying the
+#      same weight as Edit.
+#   4. **Actions live inside a real column** with a real header. Buttons hanging
+#      off the right edge are what pushed the TOTAL column out of the table.
+REGISTER_STYLES = """
+<style>
+  /* One card per table, so two tables on one page are one visual language
+     rather than one bare and one boxed. */
+  .reg-card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 1.2rem; overflow: hidden;
+  }
+  .reg-head {
+    display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+    padding: .85rem 1.1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .reg-title {
+    font-size: .78rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--navy);
+  }
+  .reg-note { font-size: .8rem; color: var(--muted); }
+  .reg-scroll { overflow-x: auto; }
+
+  .reg-table { width: 100%; border-collapse: collapse; }
+  .reg-table th {
+    text-align: left; padding: .55rem .8rem;
+    border-bottom: 1px solid var(--border);
+    font-size: .7rem; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  }
+  .reg-table td {
+    padding: .6rem .8rem; border-bottom: 1px solid var(--border);
+    font-size: .86rem; vertical-align: middle;
+  }
+  .reg-table tbody tr:last-child td { border-bottom: none; }
+  .reg-table tbody tr:hover { background: var(--surface); }
+
+  /* ⚠ RULE 1. The header carries `.num` too, and this selector is what makes
+     that stick against the bare `th` rule above. */
+  .reg-table th.num, .reg-table td.num {
+    text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .reg-table tfoot td {
+    padding: .6rem .8rem; border-top: 2px solid var(--border);
+    font-size: .86rem; background: var(--surface);
+  }
+  .reg-sub-line { display: block; font-size: .76rem; color: var(--muted); }
+
+  /* A reference code must never break mid-code — `SF/BOQ/26-27/` on one line
+     and `0001` on the next makes the row taller and reads as broken. */
+  .reg-ref { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* ⚠ RULE 4. A real column with a real header, and its contents on one line. */
+  .reg-acts { text-align: right; white-space: nowrap; }
+  .reg-acts > * + * { margin-left: .45rem; }
+
+  /* ⚠ RULE 2. THE primary action. A bordered pill with a word in it, because a
+     bare number rendered as a link reads as a reference and not as a target. */
+  .reg-open {
+    display: inline-block; text-decoration: none;
+    font-size: .78rem; font-weight: 700; white-space: nowrap;
+    color: var(--brand); background: #fff;
+    border: 1px solid var(--brand); border-radius: 6px;
+    padding: .28rem .7rem;
+  }
+  .reg-open:hover { background: var(--brand); color: #fff; }
+  .reg-open .ro-arrow { opacity: .65; margin-left: .25rem; }
+
+  /* ⚠ RULE 3. Secondary, and visibly so: no border, muted until hovered. */
+  .reg-sub {
+    display: inline-block; text-decoration: none;
+    font-size: .78rem; font-weight: 600; white-space: nowrap;
+    color: var(--muted); border: 1px solid transparent; border-radius: 6px;
+    padding: .28rem .5rem;
+  }
+  .reg-sub:hover { color: var(--navy); border-color: var(--border); }
+
+  /* ⚠ RULE 3, the destructive half. Quieter than Edit until it is hovered,
+     because it destroys a record and Edit does not. */
+  .reg-danger {
+    display: inline-block; text-decoration: none;
+    font-size: .78rem; font-weight: 600; white-space: nowrap;
+    color: var(--muted); border: 1px solid transparent; border-radius: 6px;
+    padding: .28rem .5rem;
+  }
+  .reg-danger:hover { color: var(--brand); border-color: var(--brand); }
+
+  .reg-empty {
+    padding: 2rem 1.1rem; text-align: center; color: var(--muted);
+    font-size: .88rem;
+  }
+
+  /* Registers are screens. Nothing here prints, and this rule is what keeps a
+     future printed page that happens to load this sheet from carrying it. */
+  @media print { .reg-card { display: none !important; } }
+</style>
+"""
+
+
 # The endpoints whose exact response bytes `tests/test_print_golden.py` hashes.
 #
 # ⚠ **This is not a list of print routes.** `/invoice/view`, `/proforma/view`
