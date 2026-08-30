@@ -1686,6 +1686,204 @@ one automatic.
 > **one day**, and was authorised on its own date instead. Item 4's own entry
 > carries the same note.
 
+> ### ⚠ OVERRIDE — 30 August 2026, by Manas Gawde — FIFTH block of this date: site labour on the project page, and a live data cleanup
+>
+> **A new block, not an amendment, and the FIFTH one dated 30 August 2026.**
+> The seventeen blocks above it — including all four of this same date — **have
+> not been edited, reformatted, re-scoped or extended by a single character.**
+> This is the **eighteenth occasion overall**, and the SECOND consecutive one
+> that reaches into no Phase at all.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a tenth time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** A tenth
+> restatement is not evidence that the first nine made it routine.
+>
+> **This work proceeds anyway, and Manas took that decision.** It is recorded
+> here rather than assumed, on the terms every block above states: an override
+> is a decision the client-facing owner takes and records; it is never one an
+> agent may take, infer, or extend.
+>
+> #### ⚠ NEITHER ITEM BELOW IS IN CC-2. Both belong in PROGRESS.md §4c.
+>
+> **This is the load-bearing sentence of the block**, and it is the fourth block
+> running to have to write it. `CLIENT_CHANGES-2.md` was re-read against this
+> work rather than trusted from memory, and it contains **no item covering a
+> labour section on the project page and no item covering a data-cleanup or
+> demo-seeding tool.** C6 — *"project profit and loss"* — is the item that would
+> eventually want a labour figure on that page, and **C6 is BLOCKED** on CC-2's
+> **Open question 4**: whether attendance wages or the BOQ installation base
+> rate is authoritative for labour cost. **Nothing below answers that question,
+> and nothing below may be read as having answered it.**
+>
+> So both items go into **PROGRESS.md §4c**, the register of work built beyond
+> CC-2's text, and **nobody may cite either as delivered CC-2 scope or as work
+> MG/SF/2026-02 covers.** §4c's standing chargeability sentence applies to both
+> without amendment: they are priced **nowhere at all**.
+>
+> #### What proceeds under this override
+>
+> **1. A SITE LABOUR section on `/projects/view/<id>`. AUTHORISED, and narrowly.**
+>
+> It lists **every attendance marking whose `site_address_id` equals this
+> project's** — date, employee, status, OT hours, day rate, overtime and total,
+> using `attendance.py`'s own cell rendering rather than a second copy of it.
+>
+> ⚠ **It is a PRESENTATION OF MARKINGS, and it is not a P&L authority.** It
+> states what the muster already records, on the page of the project that shares
+> the site. It performs no subtraction, states no margin, no project total and
+> no net, and it is **not** an answer to Open question 4. A reader who takes the
+> figure in it as "this project's labour cost" has taken a step this block does
+> not authorise and the page itself refuses to make.
+>
+> ⚠ **THE MARKINGS ARE BOOKED AT A SITE, NOT TAGGED TO A PROJECT — and the
+> section says so on its face.** This is the difference that makes the section
+> honest or misleading, and there is nothing subtle about it. *"Expenses &
+> Charges"* one panel up finds its rows by `charge.project_id`, an id somebody
+> chose from a dropdown when they entered the charge. This section finds its
+> rows by a join through a **third record, the address**, which nobody chose and
+> which names no project at all. Where one address carries several live
+> projects, **every one of those markings appears on every one of those project
+> pages, showing the same money each time.** The section renders a visible note
+> saying how many other projects share the site and naming them. It is not
+> decoration and it may not be removed to tidy the page up.
+>
+> ⚠ **THIS BLOCK LIFTS TWO STANDING PROHIBITIONS, and names both rather than
+> letting a test failure discover them.**
+>
+> - `ABOUT.md` §5 `/attendance` reads *"No figure on the dashboard, none on
+>   `/projects/view/<id>`, none in `charge.py`, and no function any other module
+>   calls."* **The clause about the project page is lifted by this block, and
+>   only that clause.** The dashboard card stays counts-only and `charge.py`
+>   stays forbidden in both directions.
+> - `attendance.py` is imported by **nothing**, asserted at AST level by
+>   `tests/test_attendance.py::test_nothing_imports_the_attendance_module`.
+>   **`projectview.py` may now import it, and it is the only module that may.**
+>   The guard is rewritten to assert exactly that rather than deleted, and the
+>   old assertion is kept verbatim in a comment above it.
+>
+> **`projectview.py`'s own prohibition — lines 10–15 of its docstring — is NOT
+> lifted and is not touched.** It reads *"Each panel shows the documents' OWN
+> values and adds that one column up. What this page must never show is a figure
+> that only exists by combining two panels — no revenue total, no cost total, no
+> margin, no profit, no net, no balance."* A sum down the labour section's own
+> single column is the **first** sentence, which five panels on that page
+> already exercise through `_sum_cell()`; the prohibition is on the second.
+> **No margin, project total or net is built under any reading.**
+>
+> **2. A LIVE DATA CLEANUP, `tools/clean_site_data.py`. AUTHORISED.**
+>
+> Dry-run by default, `--write` to apply, idempotent, printing a before/after
+> inventory. It does three things and no fourth:
+>
+> - **Folds one duplicate address.** *"Banglore, Karnataka"* and *"Bangalore,
+>   Karnataka"* are one place; the correctly-spelled record is canonical. Every
+>   reference is repointed off the misspelled record via
+>   `address.references_of()`, and the record — now unreferenced — is deleted.
+>   ⚠ **This is a one-off repoint of ONE named pair. It is not a
+>   merge-addresses engine and no reusable one is built.** The fourth block of
+>   this date said the resolution of this pair is *"a HUMAN's to resolve"*;
+>   this block is that human resolving it, in writing, before it is run.
+> - **Repoints the unmapped `Banglore` site strings** onto the canonical
+>   address, skipping any record the purge below removes.
+> - **Purges five named test records** and what they cascade to.
+>
+> ⚠ **`Sify Bangalore`, `Sify 2` and `Sify3` are NOT purged**, nor are their
+> clients or their BOQs. **`Sify3`'s `site_address_id` IS repointed** by the
+> fold above, because it sits on the misspelled record and the misspelled record
+> cannot be deleted while anything points at it. **A repoint onto the correct
+> spelling of the same physical place is not a change to the project**: its
+> name, client, BOQs, charges and documents are untouched, and the site it names
+> is the site it always named. That distinction is authorised here explicitly so
+> that no later reader has to guess whether the two instructions collided.
+>
+> ⚠ **`Hinjewadi Project Site` is a real address and stays.** No spelling is
+> corrected in any record not named above.
+>
+> ⚠ **A PURGE THAT WOULD ORPHAN A DOCUMENT MUST STOP AND REPORT.** It may not
+> force a delete and it may not decide on the human's behalf that a document is
+> disposable.
+>
+> **3. A DEMO SCENARIO SEEDER, `tools/seed_demo_scenario.py`. AUTHORISED, with
+> the standing rule it bends named in full.**
+>
+> ⚠ **`employees` and `attendance` are TRANSACTIONAL collections**, classified
+> so by `tests/test_hardening.py` for reasons that are still exactly right: *a
+> seeded employee is a person who does not exist carrying a salary they are not
+> paid*, and *a seeded marking says somebody was on a site on a day and puts a
+> wage against it.* **That rule is NOT relaxed.** What is authorised is a
+> **command-line tool the operator runs deliberately**, which:
+>
+> - is **not called from any route, any render path, or any import** — nothing
+>   in the application may seed it as a side effect, and a test asserts it;
+> - marks every record it writes so `--purge` removes exactly what it created
+>   and nothing else;
+> - leaves `test_hardening.py`'s guarantee intact — a fresh install still has
+>   an empty `employees` and an empty `attendance`, because the tool is not part
+>   of the application.
+>
+> The marker exists for `--purge`, not to evade a test. **`test_hardening.py`
+> inspects no record's fields**; it runs the app's seeders and looks for rows.
+> Nothing an operator writes from a terminal is visible to it.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **C6 stays BLOCKED**, on Open question 4, exactly as it was. No margin, no
+>   project total, no net, no P&L, and no answer to which labour figure is
+>   authoritative.
+> - **C3** stays BLOCKED on BQ1 and BQ2.
+> - `employee.py ↔ charge.py` and `attendance.py ↔ charge.py` stay forbidden in
+>   **both** directions.
+> - **No Phase 3 item is built, closed, or advanced by this pass**, and the
+>   board denominator stays **20**. The board does not move.
+> - `product.py` and `quotation.py` are not opened.
+> - The fifteen-module register table inconsistency recorded by
+>   `tests/test_registers.py` is **not** taken on here. It is its own pass.
+>
+> #### Permissions
+>
+> **No permission is minted.** The section renders inside `/projects/view/<id>`,
+> which is already classified `project.view`, and its labour detail is drawn
+> only for a holder of `attendance.view` — a grant that already exists and
+> already reaches Owner, Director and HR. A reader without it sees the section
+> and a line saying the detail needs that permission, which is the honest answer
+> and not a blank space. **Nothing is added to `auth.PERMISSIONS`, so
+> `tools/reconcile_role_permissions.py` has nothing to reconcile** — and that is
+> a measured claim, not an intention.
+>
+> #### Chargeability
+>
+> **Nothing here is chargeable.** It is not the §0 MG/SF/2026-01 exemption that
+> makes it so: neither item is a defect or reachability fix against scope sold
+> under MG/SF/2026-01, because neither item was ever sold. They are priced
+> **nowhere at all**, like the other §4c engineering the blocks above record as
+> unspecced. The cleanup and the seeder repair and populate a **development**
+> database and deliver the client nothing.
+>
+> **One exception, and it is a real defect fix against work already delivered:**
+> the attendance day table renders the unmapped-site marker as
+> `BangloreSITE NOT MAPPED` — the chip's CSS class is defined only in
+> `employee.py`'s stylesheet, which `/attendance/` never loads, so it prints as
+> bare unstyled text welded onto the site string with no separator. That is a
+> defect in C5 as shipped, on a page the owner has actually opened, and fixing
+> it is covered by the standing exemption.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises a live
+> data mutation does not authorise the next one**, and a future tool reaching
+> into live records needs a block of its own that names it. **An override is a
+> decision the client-facing owner takes and records; it is never one an agent
+> may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, C4, C5, C2, C1 and the B6/B7 ladder were all
+> built against a quotation that has **lapsed**, and this pass has now put a
+> reading of C5's data onto a second page.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
