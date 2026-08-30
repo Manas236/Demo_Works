@@ -1500,6 +1500,164 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > C5 among them, and now their correction too — was built against a quotation
 > that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 30 August 2026, by Manas Gawde — FOURTH block of this date: the project→site link and the address-book guards
+>
+> **A new block, not an amendment, and the FOURTH one dated 30 August 2026.**
+> The sixteen blocks above it — including the cleanup block, the B8 block and
+> the day-rate / site-picker block of this same date — **have not been edited,
+> reformatted, re-scoped or extended by a single character.** This is the
+> **seventeenth occasion overall**, and the FIRST since 14 August 2026 that
+> reaches into no Phase at all — it builds no CC-2 item and no MG/SF/2026-01
+> item either.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a ninth time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** A ninth
+> restatement is not evidence that the first eight made it routine.
+>
+> **This work proceeds anyway, and Manas took that decision.** It is recorded
+> here rather than assumed, on the terms every block above states: an override
+> is a decision the client-facing owner takes and records; it is never one an
+> agent may take, infer, or extend.
+>
+> #### ⚠ NEITHER ITEM BELOW IS IN CC-2. Both belong in PROGRESS.md §4c.
+>
+> **This is the load-bearing sentence of the block.** `CLIENT_CHANGES-2.md` was
+> re-read against this work rather than trusted from memory, and it contains
+> **no item covering a project→address join and no item covering address-book
+> integrity guards**. C6 — *"project profit and loss"* — is the item that would
+> eventually WANT the join, and **C6 is BLOCKED** on CC-2's Open question 4.
+> Building the join is not building C6 and must never be presented as such.
+>
+> So both items go into **PROGRESS.md §4c**, the register of work built beyond
+> CC-2's text, and **nobody may cite either as delivered CC-2 scope or as work
+> MG/SF/2026-02 covers.** §4c's standing chargeability sentence applies to both
+> without amendment: they are priced **nowhere at all**.
+>
+> #### What proceeds under this override
+>
+> **1. A project takes its site from the ADDRESS BOOK. AUTHORISED.**
+>
+> `projects.site_address` is free text somebody types, which is why this
+> database holds *"Banglore, Karnataka"* on two projects and
+> *"Bangalore, Karnataka"* on a third — one place, two spellings, on three of
+> the four projects that exist. It gains `site_address_id`, an address-book
+> link, and `site_address` is **demoted to the snapshot label** written from the
+> chosen address at save. `/projects/create` and `/projects/edit` become a
+> picker with no free-text fallback, beside an **"Add a new address"** link
+> without which a user standing in front of an unfiled site has no move.
+>
+> ⚠ **The same rule as the employee and attendance backfill applies in full:
+> nothing is fuzzy-matched.** An existing string matches an address label
+> **exactly** or it creates one **verbatim, misspelling included**. Near misses
+> and duplicate pairs are **printed and never applied**. A wrong automatic match
+> puts a project on the wrong site and looks exactly like a right one.
+>
+> ⚠ **NO SPELLING IN LIVE DATA IS CORRECTED.** *"Banglore, Karnataka"* becomes
+> an address record spelled *"Banglore, Karnataka"*. Resolving the pair against
+> *"Bangalore, Karnataka"* is a **human** decision, taken by repointing one
+> project and deleting the address that is then unreferenced.
+>
+> ⚠ **This does NOT unblock C6 and lays no groundwork claim.** It closes one
+> of the two shortfalls C6 would have to close; the other — which of attendance
+> wages and the BOQ installation base rate is authoritative — is Open question 4
+> and is untouched. **The site→project ambiguity count** the backfill prints
+> (the client has said one project = one site; he has **not** said one site =
+> one project, and the live data already has two projects on one string) is
+> **evidence recorded for a later pass and no guard is built on it.**
+>
+> **2. The address book gets integrity guards. AUTHORISED.**
+>
+> The book is now a master that four other modules point into — vendor on a
+> draft PO and on a real PO, consignee on a challan, site on an employee, an
+> attendance marking and now a project — and it has had **no delete guard at
+> all**. Deleting a referenced address silently dangles every reference.
+>
+> - **Delete is refused** while anything references the address, and the
+>   refusal **names the referencing records as chips**, `ra.party_lock_bills()`'s
+>   shape. A refusal that does not say what is blocking it is a dead end.
+> - **Archive** is added beside it, because a delete-refusal with no archive is
+>   **a trap rather than a guard** — the finding the measurement delete guard
+>   already made. An archived address leaves every picker, still resolves for
+>   existing records, and can be un-archived. An address nothing references
+>   stays hard-deletable; that is the cleanup path for duplicates.
+> - **Editing a referenced address stays ALLOWED, and is logged** — user id,
+>   timestamp, field, old value, new value, surfaced on the address page.
+>   Freezing edits would make *"Banglore"* permanent with no repoint UI to fix
+>   it. ⚠ The log records a **user id**, not a display name: `reprice_log`
+>   records a display name and that is a known open gap, and this does not
+>   repeat it.
+> - **`type` is the one field locked** while references exist. Flipping a site
+>   to a vendor drops it out of the site picker with nothing on screen saying
+>   why.
+>
+> ⚠ **No merge-two-addresses operation is built**, and none is authorised. It is
+> out of scope for this pass.
+>
+> #### Permissions — no new permission is minted
+>
+> Archive and un-archive sit under the **existing `address.delete`**, and the
+> new address page under the existing `address.view`. Nothing is added to
+> `auth.PERMISSIONS`, no role changes, and `tools/reconcile_role_permissions.py`
+> therefore has nothing to reconcile. That is deliberate: three modules have
+> already shipped unopenable on the live database because a pass minted a
+> permission and never reconciled it, and the cheapest way not to repeat it is
+> not to mint one. Archive is put with **delete** rather than with **edit**
+> because it is what a refused delete becomes — the person who is stopped is the
+> person who needs the alternative — and because pulling an address out of every
+> picker is a wider act than correcting one field on it. Owner and Director hold
+> `address.delete`; Sales Manager, Purchase Manager and Operation Head hold
+> `address.edit` and do not.
+>
+> #### ⚠ THIS PASS MUTATES LIVE RECORDS
+>
+> `tools/backfill_project_sites.py` creates address records and writes
+> `site_address_id` onto live projects. Dry-run by default, run dry first, and a
+> `mysqldump` was taken before anything. `site_address` is **not** rewritten —
+> it already holds the value the snapshot should hold.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **C6** — project profit and loss, still **BLOCKED** on Open question 4. No
+>   figure is exported, `projectview.py`'s margin / total / net prohibition is
+>   untouched, and `attendance.py` stays unimported by everything.
+> - **C3** — the merged RA, **BLOCKED** on BQ2 and then BQ1.
+> - **B8** — file attachments, **AUTHORISED on 30 August 2026 and still
+>   UNBUILT**. Nothing here starts it.
+> - The employee and attendance site pickers are **not changed**. `product.py`
+>   and `quotation.py` stay frozen. No merge operation. No spelling corrected.
+>
+> **The board does not move. It stays at 17 of 20**, and the denominator stays
+> 20. This block builds **no CC-2 item** — that is the whole reason both items
+> land in §4c.
+>
+> #### Chargeability
+>
+> **Priced nowhere at all**, on §4c's standing sentence. It is not §0's
+> MG/SF/2026-01 exemption, which covers defect and reachability fixes against
+> scope already sold — the project→site link is new capability, not a repair to
+> something sold. It is not MG/SF/2026-02 either, which prices C4, C5 and C6 but
+> not the join that sits between them. ⚠ **Whether the address guards are a
+> DEFECT the client is owed for free** — the book has shipped with no
+> referential integrity since it was built — **is a commercial question, it is
+> the client-facing owner's, and it has NOT been taken here.**
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises the
+> project→site link does not authorise C6**, and no override above is a
+> precedent that clears the next.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above — and
+> now this pass's work, which that quotation never covered at all — was built
+> against a quotation that has **lapsed**.
+
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
 already been paid for actually work is not new scope. Both are recorded here as
