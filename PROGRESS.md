@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 29–30 August 2026, **fifth pass** *(a building pass. **C2** — the measurement document — and **C1** — the order of working — the chain B6 unblocked. It also narrowed B7's print gate by two named exceptions and pinned a second grandfathered set. The clock rolled past midnight during the pass; the override block it was authorised under is dated **29 August 2026** and is the fifth of that date.)* |
+| **Date** | 30 August 2026, **sixth pass** *(a **cleanup** pass. It builds no feature and closes no Phase 3 item: the bars below do not move. Three defects and three recurring failures — a permission no role held, a page no link reached, tests that asserted nothing, a measurement a claim rested on, and two document figures that drift. Every one of them is closed with a guard rather than a fix, because each had already happened more than once.)* |
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `89ecb95` — *"Navigation: the measurement register, and an isolated golden re-baseline"*, the sixth of the six commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the seventh. |
-| **vs `origin/antigravity-dev`** | **27 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed**, which adds one more. The pass began at **21 ahead, 0 behind**. |
-| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260829-223459-c2-c1-measurement.sql`, **446,310 bytes**. It does not match the previous pass's 444,771 because that pass mutated live rows. ⚠ **This one changed live rows too**, and less than the last: `tools/backfill_measurement_pin.py --write` marked **one** RA bill `pre_measurement = True` and wrote one `settings` record. ⚠ **It granted NO permission to any role** — `--grant-roles` exists, is off by default, and was **not run**; see §6-M. `backups/` is gitignored and was not staged. |
-| **Test figure** | **measured at the end of the pass: 1,658 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,531 passed / 2 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,659 passed, 4 skipped** against this commit and **1,532 / 4** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+127 passed and +0 skipped in both configurations, reconciling exactly**: **+30** in `tests/test_measurement.py` (new), **+19** in `tests/test_measurement_pin.py` (new), **+21** in `tests/test_c1_order_of_working.py` (new), **+6** in `tests/test_approval_b7.py` (the B7 narrowing), **+1** in `tests/test_approval_grandfather.py` (the create-route stamping test the fifth document needed), **+19** in `tests/test_nav_reachability.py` (its nav-confinement sweep is now parametrised over **both** recorded "before" nav states rather than only the newest), **+30** in `tests/test_import_directions.py` (21 forbidden edges and 9 required ones — measured off the AST, not counted by eye) and **+1** in `tests/test_page_chrome.py` (the new register in its sweep). 30+19+21+6+1+19+30+1 = 127. <br><br>⚠ **FIVE GOLDENS MOVED, in one commit that did nothing else, and the sixth did not.** `dashboard.NAV_ITEMS` gained the measurement register: **+342 bytes each** on the tax invoice, the proforma, the purchase order, the RA bill and the `/po/create` picker, in the `head` block **alone**; the delivery challan moved **0**, because it renders no nav. The 342 bytes are one `<a class="nav-link">` and nothing else — the anchor measures 342 characters and every page grew by exactly 342 — and stripping `<nav>…</nav>` makes the two renders byte-identical, so **nothing on any printed sheet changed**. `docs/ACCESS_MATRIX.md` moved in the six new `measurement.*` rows, the eight new endpoint rows, three role-description sentences and the counts, **and nowhere else** — no existing grant moved by a cell. <br><br>⚠ **Six existing tests were rewritten or widened; every one keeps its old assertion verbatim in a comment and every original assertion still runs.** `test_approval_b7.py`'s draft-prints and cancelled-prints tests (both now assert the *opposite* of what they asserted that morning, because the fifth override block answered the open question they were written to raise); the two comment blocks pass D added to `test_ra_routes.py` (extended, not replaced); `test_approval_grandfather.py`'s `DOCUMENTS` assertion (widened to five, and only after the create-route stamping test it demanded was written); and `test_nav_visibility.py`'s `EXPECTED_NAV` and `EXPECTED_CARDS`. |
+| **HEAD** | `24fb253` — *"The measurement a claim rests on, and the grid figures that go stale"*, the fifth of the five commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the sixth. |
+| **vs `origin/antigravity-dev`** | **35 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed**, which adds one more. The pass began at **30 ahead, 0 behind**. |
+| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260830-050256-cleanup.sql`, **447,640 bytes**. It does not match the previous pass's 446,310 because that pass mutated live rows and so did this one. ⚠ **This pass mutated live ROLE records** — `tools/reconcile_role_permissions.py --write` granted **46 permissions across 6 roles**, authorised in advance by the **30 August 2026 override block**, which is the first commit of this pass and was taken before the mutation rather than acknowledged after it. No document row was touched. `backups/` is gitignored and was not staged. |
+| **Test figure** | **measured at the end of the pass: 1,681 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,658 passed / 2 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,682 passed, 4 skipped** against this commit and **1,659 / 4** at the start of the pass — both measured, neither derived, and both matched the previous edition. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+23 passed and +0 skipped in both configurations, reconciling exactly**: **+9** in `tests/test_permission_reachability.py` (new), **+5** in `tests/test_page_reachability.py` (new), **+4** in `tests/test_measurement.py` (`can_delete()`), and **+5** in `tests/test_doc_figures.py` (the grid-figure pin). 9+5+4+5 = 23. <br><br>⚠ **NO GOLDEN MOVED, and none should have.** Nothing in this pass touches a printed document; the two link fixes are on `/dc/view` and `/po/view`, neither of which is pinned, and `/dc/print` — which is — was not edited. `docs/ACCESS_MATRIX.md` did **not** move by one byte: it is generated from `auth.BUILTIN_ROLES` in code, and this pass changed no role definition in code, only the live database rows that had fallen behind it. <br><br>⚠ **Five existing tests were strengthened and none was weakened or deleted.** `test_escaping.py`'s poison control (aggregate → per-collection, aggregate kept beside it), and the classification sweeps in `test_access_control.py`, `test_attendance.py`, `test_approval.py` and `test_nav_visibility.py`, each of which was true of the empty set and now asserts a floor first. Every original assertion still runs unchanged. |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -81,6 +81,13 @@ latest-bill-only restriction was ruled **correct and kept**. A6 is BUILT because
 the item as sold is delivered and the limitation is recorded in language the
 client can be read; it is **not** a claim that arbitrary-bill editing works.
 That is new scope and is priced nowhere. §6-A carries the wording.
+
+📌 **Everything in this section that is ours rather than CC-2's is now listed in
+one place: [§4c](#4c-built-beyond-cc-2--the-register).** The individual notes
+below are kept exactly as their passes wrote them — this is a pointer, not a
+replacement. §4c exists because a fact scattered across five override blocks is
+a fact nobody can total, and the question *"what did we build that nobody
+specified?"* deserves a single answer.
 
 ⚠ **B7 is BUILT, and a subsystem sitting beside it is OURS, unspecced and
 unpriced.** CC-2's B7 governs **printing and downloading only**. It says nothing
@@ -632,6 +639,75 @@ wage is HR information on the same terms the master is.
 
 ---
 
+## 4c. Built beyond CC-2 — the register
+
+**⚠ This is a REGISTER, not a revision.** Nothing here is removed, re-argued,
+downgraded or defended. Every entry was disclosed by the pass that built it and
+is recorded in a `CLIENT_CHANGES.md` §0 override block; this section pulls them
+into one list so the question *"what did we build that nobody specified?"* has a
+single answer instead of five blocks to read.
+
+**Why it exists.** These items were scattered across §0 override blocks, one
+pass each, and a fact that lives in five places is a fact nobody can total. The
+risk is specific and commercial: somebody presents a subsystem to the client as
+delivered CC-2 scope, or prices a phase against a quotation that never covered
+it. **Nobody may cite anything below as a delivered CC-2 requirement, or as work
+MG/SF/2026-02 covers.** Building each was the right call — that is argued in the
+blocks and is not re-argued here — and it does not make any of it specified.
+
+**Chargeability, stated once for the whole table.** Every item below is priced
+**nowhere at all**. It is not §0's MG/SF/2026-01 exemption, which covers defect
+and reachability fixes against scope already sold; and it is not MG/SF/2026-02,
+which prices the CC-2 items these things sit beside but not the things
+themselves. **MG/SF/2026-02 is in any case expired and unsigned.**
+
+Passes are lettered as the override blocks order them: **A** extra PO lines and
+C4, **B** the prefill and the narrow `quotation.py` unfreeze, **C** C5, the
+navigation re-baseline and the alias cutback, **D** B6 and B7, **E** C2 and C1 —
+all five dated 29 August 2026 — and **F** this cleanup pass, 30 August 2026.
+
+| # | What was built | Sits beside | Pass | Why it is ours |
+|---|---|---|---|---|
+| 1 | **`approval.can_modify()` and every edit rule in it** — approved is locked, a part-climbed ladder is locked, a rejected document returns to its creator alone, an unstarted one is its creator's | B7 | **D** | B7 governs **printing and downloading only** — *"an unapproved document may be viewed, but not printed or downloaded"*. It says nothing whatever about editing. The whole subsystem fills that silence. |
+| 2 | **B7's print gate narrowed by two named exceptions** — a **draft** RA bill prints carrying its DRAFT overprint, and a **cancelled** one prints | B7 | **D→E** | Read strictly, B7 took away two things the client does today. The overprint *is* the safeguard B7 wants, and a cancelled bill is the audit record of a withdrawn claim rather than a claim. Raised by D, answered by E's override block. |
+| 3 | **A rejected DRAFT prints** — the exemption is checked before the rejected clause | B7 | **E** | Lifecycle state and approval state are orthogonal, and the block's wording admits both orderings. The ordering is a choice we made. |
+| 4 | **A measured quantity may not exceed the BOQ quantity for its line** (`measurement.overmeasures()`, a hard block) | C2 | **E** | C2 is three lines and states no ceiling of any kind. Without it the sheet is a form that records a number nobody checks. |
+| 5 | **The measured ceiling is cumulative across sheets** | C2 | **E** | Stated per line, two sheets could each measure the whole of a line. C2 says nothing about accumulation. |
+| 6 | **Which approval ladder a measurement climbs** — the RA ladder | C2 | **E** | B6 names ladders for charges and for RA / Tax Invoice / PO, and names measurement on **neither**. The RA ladder was chosen because a measurement exists to feed an RA bill, while the charges ladder ends at HR. |
+| 7 | **That a measurement sheet prints at all, and what it looks like** | C2 | **E** | C2 is silent on printing. The route exists; **no golden is pinned** and no letterhead was invented, deliberately, so the client's first sight of it is not a re-baselining exercise. |
+| 8 | **The measurement series is FY-scoped and not a `/settings` counter** | C2 | **E** | The challan has a counter because the client runs a paper challan book. Nothing we hold says a measurement sheet is numbered from a book they keep. |
+| 9 | **C1 is enforced BY URL rather than by hiding a control** | C1 | **E** | C1 states a domain model and no mechanism. B5's established rule supplied one. |
+| 10 | **The two C1 legs are asymmetrical** — installation gets an ordering guard **and** a quantity ceiling, supply gets the ordering guard alone | C1 | **E** | CC-2 puts no quantity on the challan arrow, and `challan.BLOCK_OVER_DISPATCH` is False on purpose, so dispatch figures are a warning and not tight enough to cap somebody's money. |
+| 11 | **`settings.wage_days_per_month`** — the divisor turning a monthly salary into a daily wage, defaulted to **26** | C5 | **C** | CC-2 never gives a divisor. 26 is the usual convention and 30 is defensible, and **they give different money**. Stated as ours on the page itself. ⚠ Still an open question. |
+| 12 | **Attendance `site` is free text and is deliberately not a project** | C5 | **C** | `employee.site` is already free text by C4's choice, and a `project_id` here is the first half of **C6**, which is BLOCKED. |
+| 13 | **Overtime on an absent day is recorded and shown, and not paid** | C5 | **C** | CC-2 does not rule on it. The hours stay visible so the contradiction is not swallowed silently. |
+| 14 | **Operation Head is refused `employee.*` and `attendance.*`** — marked `–` in the access matrix, not `§` | C4 / C5 | **A / C** | B4 states exactly one restriction — HR information is kept from Sales, Purchase and Accounts — and names Operations Head in **neither** direction. A reversible default, changed with a checkbox at `/roles/edit/<id>`. §4b carries the ruling. |
+| 15 | **Purchase Manager is refused all six `measurement.*`** | C2 | **E** | B4 says nothing either way. They carry `dc.*` because dispatch is theirs; a measurement feeds an installation claim. A reversible default on the same terms as row 14. |
+| 16 | **`measurement.can_delete()`** — a sheet an installation claim rests on cannot be deleted | C2 | **F** | C2 says nothing about deleting a sheet. Deleting one lowers the ceiling under a claim already raised; the issued figures do not move but the project's remaining balance does. |
+
+⚠ **Row 16 is the only entry this pass added, and it closes a hole rather than
+opening scope.** Pass E shipped the delete route with the gap recorded in the
+route's own docstring and carried it into its report as an open question. It is
+in this register because CC-2 is silent on it, exactly like the fifteen above,
+not because the cleanup pass built a feature.
+
+### What is NOT in this register, and why
+
+- **The extra purchase-order lines (§4a) and the alias cutback that repaired
+  them.** They are not *beyond CC-2*; they are **outside CC-2 entirely** — no
+  3A/3B/3C tag, requested after the 19 August meeting that produced the list,
+  and priced in neither quotation. §4a is their register and it is deliberately
+  a separate one, outside the bars and outside the denominator.
+- **Tests, tools and guards.** `tools/reconcile_role_permissions.py`, the
+  reachability walk, the vacuity floors and the doc-figure pins are engineering
+  on work already sold, not capability delivered to the client. They are
+  unpriced in the same way a `.gitignore` is.
+- **Anything on the bars.** Every one of the seventeen BUILT items is CC-2's
+  own, and this section changes none of their statuses. **The board does not
+  move for anything written here.**
+
+---
+
 ## 5. BLOCKED
 
 ### C3 — merged RA · blocked on BQ1, which is blocked on BQ2
@@ -1134,9 +1210,36 @@ finds nothing, so a **second** test plants exactly the record that must be
 caught and asserts the same walk catches it. That is the defect pass D found in
 two of its own tests, closed here by construction rather than by intention.
 
-**M. `/measurement/` is UNREACHABLE on the live database until an Owner acts,
-and that is a deliberate hand-off rather than an omission. 29 August 2026.**
-*New.*
+✅ ~~**M. `/measurement/` is UNREACHABLE on the live database until an Owner
+acts, and that is a deliberate hand-off rather than an omission. 29 August
+2026.**~~ **RESOLVED 30 August 2026 (pass F) — and it was worse than this entry
+knew.** *Kept in full below, because the reasoning is right and only the
+disposition changed.*
+
+The hand-off was never taken up. On 30 August the live database was measured and
+held **fourteen** permissions that reached **no role at all** — not six. The
+other eight are `employee.*` (**C4**) and `attendance.*` (**C5**), minted on
+29 August and unreachable ever since, so **C4 and C5 stood on the board as BUILT
+while nobody, the Owner included, could open either page.**
+
+All fourteen are now granted — **46 grants across 6 roles** — authorised in
+advance by the **30 August 2026 override block**, which was written and
+committed **before** the mutation rather than acknowledging it afterwards. That
+is the discipline the fifth block asked for, and it is the whole reason this
+entry could be closed rather than repeated.
+
+⚠ **The class is closed, not the instance.** The repair is now general —
+`auth.role_permission_drift()`, `auth.orphan_permissions()` and
+`auth.apply_drift()`, driven by `tools/reconcile_role_permissions.py`, a dry run
+by default that prints the entire proposal before it writes — instead of a
+fourth copy of the same twenty lines pasted into a migration written for
+something else. `tests/test_permission_reachability.py` is the guard, and its
+docstring records that **the obvious form of that test cannot fail**, because
+the Owner role is `list(_ALL_PERMS)` and holds every permission by
+construction. See ABOUT.md §2g.
+
+The original entry, unchanged:
+
 
 `auth.ensure_builtin_roles()` never rewrites an existing role's permission list
 — once an Owner has edited what Director means, a restart must not undo it — so
