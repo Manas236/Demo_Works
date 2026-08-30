@@ -176,6 +176,25 @@ POISONED_COLLECTIONS = (
     "settings",
 )
 
+# ⚠ Collections that are still poisoned, but whose **count** may legitimately be
+#   zero — so they are exempt from the per-collection floor in
+#   `test_the_sweep_really_did_reach_the_pages` and from nothing else.
+#
+#   `settings` is not a register of documents; it is a bag of config entries —
+#   number series, migration pins, the charge-head list and the `company`
+#   identity — and almost all of it is dicts and integers rather than free text.
+#   Its **user-facing half is poisoned by a different mechanism entirely**: the
+#   fixture pushes a hostile company identity through `B.apply_settings()`,
+#   because the letterhead reads module globals rather than the store. So the
+#   payload does reach every printed document; it just does not arrive by
+#   `_poison()` counting strings in `STORE["settings"]`.
+#
+#   Measured 30 August 2026: 9 fields poisoned when this file runs alone, and
+#   **0 when the whole suite runs**, because what the bag happens to hold
+#   depends on which tests ran first. A floor that fails on test ORDER rather
+#   than on a real gap is a flaky test, and a flaky test gets deleted.
+POISON_COUNT_NOT_GUARANTEED = {"settings"}
+
 
 @pytest.fixture()
 def hostile(populated_store, client):
@@ -189,14 +208,24 @@ def hostile(populated_store, client):
     rather than the store. Poisoning the store alone leaves every printed
     document untested — which is exactly how this sink survived until now.
     """
-    fields = 0
-    for name in POISONED_COLLECTIONS:
-        fields += _poison(STORE.get(name, {}))
+    # ⚠ **Counted PER COLLECTION, not just in total.** The total is what the
+    #   fixture reported until 30 August 2026, and a total cannot see the
+    #   failure this file exists to remember: `measurements` was in the tuple
+    #   above, every measurement route was walked, and not one field was
+    #   poisoned because the fixture's fields were all `""`, which `_poison()`
+    #   skips. The other fifteen collections contributed over a thousand fields
+    #   between them, so the aggregate guard was comfortably green while five
+    #   sinks emitted raw. A per-collection count is what makes that arithmetic
+    #   impossible.
+    per_collection = {name: _poison(STORE.get(name, {}))
+                      for name in POISONED_COLLECTIONS}
+    fields = sum(per_collection.values())
 
     saved = {key: B.DEFAULTS[key] for key in B.SETTINGS_KEYS}
     B.apply_settings({k: v + PAYLOAD for k, v in saved.items()})
     try:
-        yield {"fields": fields, "urls": EF._urls(populated_store)}
+        yield {"fields": fields, "per_collection": per_collection,
+               "urls": EF._urls(populated_store)}
     finally:
         # Put the identity back. These are module globals, so a test that left
         # them hostile would corrupt the letterhead for every later test in the
@@ -234,6 +263,22 @@ def test_the_sweep_really_did_reach_the_pages(hostile, client):
     assert hostile["fields"] > 100, (
         f"only {hostile['fields']} fields were poisoned; the fixture is not "
         f"populating the store any more")
+
+    # ⚠ **The assertion above is an AGGREGATE and cannot see one dead
+    #   collection.** That is not a hypothetical weakness — it is the exact
+    #   arithmetic that let `measurements` sit in `POISONED_COLLECTIONS` with a
+    #   fixture whose fields were all `""`, contributing nothing, while the
+    #   other fifteen kept the total over 100 and five sinks emitted raw.
+    #   Added 30 August 2026, with the aggregate kept above rather than
+    #   replaced: the two guard different things, and the total still catches a
+    #   fixture that has stopped populating the store at all.
+    empty = sorted(name for name, n in hostile["per_collection"].items()
+                   if n == 0 and name not in POISON_COUNT_NOT_GUARANTEED)
+    assert not empty, (
+        f"{len(empty)} collection(s) in POISONED_COLLECTIONS contributed NO "
+        f"poisoned field, so every route reading them is being swept with inert "
+        f"data and asserting nothing: {', '.join(empty)}. Give the fixture "
+        f"record real free text, or take the collection out of the tuple.")
 
     carrying = []
     for url in hostile["urls"]:

@@ -355,6 +355,15 @@ def test_every_approval_endpoint_is_classified_with_its_own_permission():
     with the real check hidden in the view. That is the weakening B5 exists to
     prevent, and it is why there are eight.
     """
+    # ⚠ "Each of the eight" is the claim, so count them. Looping over
+    #   `DOCUMENTS` alone asserts nothing at all if the registry is ever emptied
+    #   or narrowed, and this test would go green while approval routes lost
+    #   their per-document gating. Five documents x two verbs on 30 August 2026:
+    #   charge, RA bill, tax invoice, purchase order, measurement.
+    assert len(approval.DOCUMENTS) >= 5, (
+        f"only {len(approval.DOCUMENTS)} documents in approval.DOCUMENTS — the "
+        f"loop below would assert nothing")
+
     for key, spec in approval.DOCUMENTS.items():
         for verb in ("approve", "reject"):
             endpoint = f"approval.{verb}_{key}"

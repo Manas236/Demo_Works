@@ -77,7 +77,20 @@ def test_every_endpoint_is_classified():
     is refused at runtime for everybody including an Owner, so this red test is
     the cheap version of that discovery.
     """
-    unclassified = sorted({r.endpoint for r in _rules()} - set(auth.ROUTE_PERMISSIONS))
+    endpoints = {r.endpoint for r in _rules()}
+
+    # ⚠ **A set difference against an empty left-hand side is empty**, so this
+    #   test passes perfectly if `_rules()` ever stops returning anything — an
+    #   import that quietly fails to register a blueprint, a filter that stops
+    #   matching. The floor is what stops "every endpoint is classified" being
+    #   true because there are no endpoints. Measured at 111 classified
+    #   endpoints on 30 August 2026; 80 leaves room to delete a module without
+    #   forcing an edit here, and none to delete the application.
+    assert len(endpoints) > 80, (
+        f"only {len(endpoints)} endpoints in the URL map — the sweep below is "
+        f"asserting almost nothing. Has a blueprint failed to register?")
+
+    unclassified = sorted(endpoints - set(auth.ROUTE_PERMISSIONS))
     assert not unclassified, (
         f"these endpoints have no entry in auth.ROUTE_PERMISSIONS and are "
         f"therefore refused to everybody, including an Owner: {unclassified}. "

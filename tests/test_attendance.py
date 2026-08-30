@@ -474,10 +474,21 @@ def test_every_attendance_endpoint_is_classified():
     per-module form of `test_every_endpoint_is_classified`.
     """
     import app as app_module
-    for rule in app_module.app.url_map.iter_rules():
-        if rule.endpoint.startswith("attendance."):
-            assert rule.endpoint in auth.ROUTE_PERMISSIONS, \
-                f"{rule.endpoint} is unclassified and therefore unreachable"
+    found = [r.endpoint for r in app_module.app.url_map.iter_rules()
+             if r.endpoint.startswith("attendance.")]
+
+    # ⚠ Without this the loop below is green when the blueprint is not
+    #   registered at all: nothing matches the prefix, nothing is asserted, and
+    #   "every attendance endpoint is classified" is true of the empty set.
+    #   Four routes on 30 August 2026 — list, mark, edit and delete. The
+    #   site-wise labour cost is a panel on the list page, not a route.
+    assert len(found) >= 4, (
+        f"only {len(found)} attendance endpoints are registered; the sweep "
+        f"below would assert nothing")
+
+    for endpoint in found:
+        assert endpoint in auth.ROUTE_PERMISSIONS, \
+            f"{endpoint} is unclassified and therefore unreachable"
 
 
 @pytest.mark.parametrize("slug", WALLED_OFF)

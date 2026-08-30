@@ -598,6 +598,15 @@ def test_every_endpoint_the_launcher_names_is_classified():
     application.
     """
     named = set(CARD_ENDPOINT.values()) | {e for e, _, _ in dashboard.NAV_ITEMS}
+
+    # ⚠ A comprehension over an empty `named` yields an empty `unclassified`,
+    #   so this passes when the launcher names nothing — which is the one state
+    #   it exists to make impossible. Fifteen cards plus four nav entries on
+    #   30 August 2026.
+    assert len(named) >= 15, (
+        f"the launcher names only {len(named)} endpoints; the check below "
+        f"would assert nothing")
+
     unclassified = sorted(e for e in named if e not in auth.ROUTE_PERMISSIONS)
     assert not unclassified, (
         f"the launcher offers unclassified endpoints: {unclassified}")
