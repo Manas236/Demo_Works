@@ -91,9 +91,19 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 1,063 passed, 3 skipped — this is what THESE
+python -m pytest -q                     # 1,928 passed, 4 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
+                                        #   ⚠ THIS FIGURE IS NOT COVERED BY
+                                        #   tests/test_doc_figures.py, whose ABOUT.md
+                                        #   locator anchors on the TABLE ROW below and
+                                        #   cannot see a number in a shell comment. It
+                                        #   read "1,063 passed, 3 skipped" from 27 Aug
+                                        #   2026 until 30 Aug — FIVE passes stale, and
+                                        #   stale in the skip count too, which is the
+                                        #   tell: row 2 has said 4 since the day it was
+                                        #   first measured. Move it when you move the
+                                        #   table.
                                         #   (It said "923 passed, 1 skipped — openpyxl
                                         #   ABSENT" until 23 Aug 2026, quoting row 3 at the
                                         #   foot of a sequence that installs openpyxl. Skip
@@ -134,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,898 passed, 4 skipped** | **30 Aug 2026** *(TENTH pass — site labour on the project view, the live data cleanup and the demo seeder)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,897 passed, 2 skipped** | **30 Aug 2026** *(TENTH pass — site labour on the project view, the live data cleanup and the demo seeder)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,928 passed, 4 skipped** | **30 Aug 2026** *(ELEVENTH pass — a marking gains a PROJECT, the two-group Site Labour panel, and the backfill that maps the unambiguous ones)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,927 passed, 2 skipped** | **30 Aug 2026** *(ELEVENTH pass — a marking gains a PROJECT, the two-group Site Labour panel, and the backfill that maps the unambiguous ones)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -195,9 +205,17 @@ individually via `conftest.require_fixture()` because the workbooks are absent
 ⚠ **The gap is now 1 passed and 2 skipped rather than 1 and 2, and the second
 skip is not openpyxl's.** `tests/test_nav_reachability.py` skips one of its own
 cases in **both** configurations — a print-rule check that does not apply to the
-one pinned page that is a form. So row 3 reads 1,464 / 2 and row 2 reads
-1,465 / 4: openpyxl still accounts for +1 passed and +2 skipped, and the new
-file accounts for the remaining skip in both.
+one pinned page that is a form. So **row 2 is always exactly `row 3 + 1 passed
+and + 2 skipped`**: openpyxl accounts for that, and `test_nav_reachability.py`
+accounts for the remaining skip in both rows.
+
+⚠ **That relationship is stated as a RELATIONSHIP and no longer as two
+figures**, which is the fix rather than the tidying. It read *"so row 3 reads
+1,464 / 2 and row 2 reads 1,465 / 4"* and was **five passes stale** by
+30 August 2026 — a restatement of the table two screens up, which nobody
+re-reads when they move the table. The invariant does not go stale;
+`tests/test_doc_figures.py::test_the_venv_configuration_reports_at_least_as_many_as_the_global_one`
+is what holds the weaker half of it.
 
 ⚠ **These two rows stood at 1,367 / 1 and 1,368 / 3 — the FIRST 29 August
 measurement — through the whole of the second pass of that date**, which
@@ -362,19 +380,19 @@ Consequences you must respect when editing:
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
-| [projectview.py](projectview.py) | 766 | **Project Detail Page.** Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
+| [projectview.py](projectview.py) | 894 | **Project Detail Page.** Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
-| [attendance.py](attendance.py) | 1230 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
+| [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
 | `tools/backfill_project_sites.py` | 300 | One-time migration: links `projects.site_address` strings to the address book, **creating** an address per distinct unmatched string, **verbatim**. Dry-run by default, idempotent. ⚠ **Nothing is fuzzy-matched and no spelling is corrected.** Prints three advisory reports it never applies: near misses, the duplicate pairs, and the **site→project ambiguity count** &mdash; evidence for C6, with no guard built on it. |
 | `tools/clean_site_data.py` | 518 | One-off cleanup (30 Aug 2026, fifth pass): folds ONE named duplicate address, maps the unmapped `Banglore` strings, purges five named test records. Dry-run by default, idempotent. ⚠ **Not a merge engine** &mdash; every label is a module constant, and there is no `--force`. ⚠ **Refuses any purge that would orphan a document** and prints what it saved; it refused one of its five targets on the live database. |
-| `tools/backfill_marking_projects.py` | 253 | One-time migration (30 Aug 2026, sixth pass): links an attendance marking to its project **where the site carries exactly one**. Dry-run by default, idempotent. ⚠ **It never guesses** &mdash; zero or several projects on the site and the marking is left alone and **printed with every candidate named**, for a human to resolve on `/attendance/edit/<id>`. Never takes the oldest or the newest. ⚠ **Writes one field on one collection** and never re-snapshots a marking that already carries a project. |
+| `tools/backfill_marking_projects.py` | 245 | One-time migration (30 Aug 2026, sixth pass): links an attendance marking to its project **where the site carries exactly one**. Dry-run by default, idempotent. ⚠ **It never guesses** &mdash; zero or several projects on the site and the marking is left alone and **printed with every candidate named**, for a human to resolve on `/attendance/edit/<id>`. Never takes the oldest or the newest. ⚠ **Writes one field on one collection** and never re-snapshots a marking that already carries a project. |
 | `tools/seed_demo_scenario.py` | 404 | A coherent demo set (30 Aug 2026, fifth pass): two sites, one project each, three employees on confirmed day rates, eight markings including one absentee. `--write` / `--purge`, idempotent. ⚠ **Not a seeder** &mdash; nothing in the app imports it, a fresh install is still empty of `employees` and `attendance`, and a test fails if a module so much as names it. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
@@ -2562,6 +2580,24 @@ after a `mysqldump`, and then run again to prove the second run is a no-op.
 | duplicate pairs printed | **1** — `'Bangalore, Karnataka'` / `'Banglore, Karnataka'`, **edit distance 1**, **NOT folded** |
 | second run | **0 created, 0 linked**, all 4 projects skipped |
 
+⚠ **THE `4` IN THAT FIRST ROW IS CORRECT, AND IT LOOKS WRONG NEXT TO THE NEXT
+BLOCK, WHICH SAYS `projects 6→5`.** It has now been queried once and a pass was
+briefed to "fix" it. **Do not.** Both figures are measured and they describe
+different moments; **two projects were created by hand in between**, and the
+`mysqldump`s settle it without anybody having to reason about it:
+
+| dump | projects |
+|---|---|
+| `…-164819-pre-project-sites.sql` | **4** — Banglore, Sify Bangalore, Sify 2, Sify3 (3 name a site, 1 does not) |
+| `…-164839-post-project-sites.sql` | **4**, the same four |
+| `…-181604-pre-clean-write.sql` | **6** — the same four plus *"Test Supplier"* and *"Test Supplier2"* |
+| `…-181629-post-clean-write.sql` | **5** — *"Test Supplier2"* purged |
+
+The gap between 16:48 and 18:16 is where the two test projects were typed in.
+**A number that disagrees with a later number is not automatically the stale
+one**, and this is the second time this document has nearly lost a measured
+figure to that assumption.
+
 ⚠ **The duplicate pair was the live data's own defect and it was a HUMAN's to
 resolve.** ✅ **RESOLVED 30 August 2026 (fifth pass)** — see the next block.
 The resolution this note prescribed is exactly the one taken: repoint everything
@@ -2617,14 +2653,26 @@ belonged to SF-100, who was on the purge list, so it was skipped and deleted.
 **5b therefore repointed nothing at all**, which is the correct outcome under
 its own rule and not a failure.
 
-⚠ **`'Bangalore, Karnataka'` now carries FOUR projects** — *"Banglore"*,
-*"Sify Bangalore"*, *"Sify3"* and *"Test Supplier"* — where the two spellings
+⚠ **`'Bangalore, Karnataka'` carries FOUR projects** — where the two spellings
 carried two and two. **Folding the duplicate concentrated the ambiguity rather
 than removing it**, and that is the honest description: the fold fixed a
-*spelling* defect, not the site→project one. `/projects/view/<id>`'s Site Labour
-section is where that count is now visible to a user, and it names them —
-measured on the live page, *"3 other projects are recorded at this same site:
-Banglore, Sify3, Test Supplier."*
+*spelling* defect, not the site→project one.
+
+⚠ **Two of the four were RENAMED on 30 August 2026 (sixth pass)** and the list
+here is corrected rather than left to rot: they are *"Sify Bangalore"*,
+*"Sify3"*, **`ZZ TEST — Banglore (do not use)`** and **`ZZ TEST — Test Supplier
+(do not use)`**. Neither was deleted — see *"The two records the fifth pass left
+hanging"* below for what hangs off each.
+
+⚠ **The live-page quote that stood here is WITHDRAWN, and how it went stale is
+the useful part.** It read *"measured on the live page, `3 other projects are
+recorded at this same site: Banglore, Sify3, Test Supplier.`"* Two of those
+names have changed, and — more to the point — **that note no longer renders at
+all on this database.** From the sixth pass the ambiguity note is conditional on
+there being an *unattributed* marking to be ambiguous about, and every marking
+is now attributed. `'Bangalore, Karnataka'` still carries four projects and
+still carries **no markings**, so the page correctly says nothing. **The count
+is unchanged; what changed is that the page only reports it when it bites.**
 
 #### The demo scenario — MEASURED, 30 August 2026 (fifth pass)
 
@@ -2654,9 +2702,43 @@ fixture that added another would make a data problem look like an artefact.
 
 **What it renders, measured on the live page:** *Magarpatta Tower B — Fire
 Protection* shows six markings totalling **₹7,291.25** with an absentee at
-**₹0**, and **no** ambiguity note. *Sify Bangalore* shows the note naming its
-three siblings and the plain empty state, because nobody has been marked at that
-site.
+**₹0**, and **no** ambiguity note. ⚠ **The second sentence here read *"Sify
+Bangalore shows the note naming its three siblings and the plain empty state"*
+and is corrected:** from the sixth pass the note is conditional on an
+unattributed marking existing, and that site has **no markings at all**, so
+*Sify Bangalore* now shows the plain empty state and **nothing else**. The four
+projects on that address are unchanged; the page reports the ambiguity only when
+there is a row it could bite.
+
+#### The live inventory — MEASURED, 30 August 2026 (sixth pass)
+
+⚠ **One place holding today's counts, because five passes running have had a
+count go stale in a document nobody re-read.** Every figure measured against the
+live MySQL after this pass's writes.
+
+| collection | count | | collection | count |
+|---|---|---|---|---|
+| `projects` | **7** | | `quotations` | **3** |
+| `addresses` | **9** | | `proformas` | **1** |
+| `employees` | **3** | | `invoices` | **1** |
+| `attendance` | **8** | | `purchases` | **2** |
+| `boqs` | **7** | | `purchase_orders` (draft PO) | **3** |
+| `ra_bills` | **7** | | `delivery_challans` | **3** |
+| `receipts` | **1** | | `measurements` | **1** |
+| `charges` | **5** | | `products` | **14** |
+| `users` | **3** | | `specs` | **56** |
+| `roles` | **7** | | `settings` | **7** |
+
+**All 8 markings carry a `project_id`**; none carries an unmapped site. **6 of
+the 7 projects name a site**; *"Sify 2"* still does not. `'Bangalore,
+Karnataka'` carries **4** projects and **0** markings; the two demo sites carry
+**1** project each and **6** and **2** markings.
+
+⚠ **The counts the two blocks above quote are HISTORICAL and are not
+contradicted by this table.** `projects 6→5` and `addresses 8→7` were the fifth
+pass's cleanup; the demo seeder then added 2 and 2, which is how 5 becomes 7 and
+7 becomes 9. `boqs` 7, `charges` 5, `purchases` 2, `delivery_challans` 3,
+`measurements` 1 and `ra_bills` 7 have not moved since and match here exactly.
 
 #### The marking→project backfill — MEASURED, 30 August 2026 (sixth pass)
 

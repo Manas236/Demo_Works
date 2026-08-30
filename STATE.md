@@ -10,12 +10,36 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 30 August 2026 (**TENTH pass** — **site
-labour on the project view, a live data cleanup, and a demo scenario tool**; the
-board does not move and stands at **17 of 20**).
+**As of:** branch `antigravity-dev`, 30 August 2026 (**ELEVENTH pass** — **a
+marking gains a PROJECT, the Site Labour panel splits into two groups, and a
+backfill maps the unambiguous ones**; the board does not move and stands at
+**17 of 20**).
 
-⚠ **Five passes have run since this line last named the current one**, which is
+⚠ **Six passes have run since this line last named the current one**, which is
 this file's own predicted failure mode:
+
+- **ELEVENTH pass, 30 August 2026 — BEYOND CC-2, and no bar moved.** ⚠ **None
+  of it is a CC-2 item** — C5's five bullets name no project — so all of it is
+  registered in **PROGRESS.md §4c** (rows 22–24) and in the **sixth**
+  `CLIENT_CHANGES.md` §0 block of this date. **An attendance marking now carries
+  a `project_id`**, with `project_name` snapshotted beside it: `charge.py`'s
+  shape, read the way `charge.py` reads it, with `attendance → project` refused
+  at AST level. The form's picker is **filtered to the projects at the marking's
+  own site** — one project preselects, ⚠ **several REQUIRE a choice rather than
+  getting one**, none saves blank, and a project at another site is dropped and
+  never stored. ⚠ **Absent means LEGACY, not "no project"**, and nothing on a
+  render path backfills it. **`/projects/view/<id>`'s Site Labour section now
+  renders two labelled groups** — *Booked to this project* and *At this site,
+  unattributed* — **summed separately and never added together**, with the
+  ambiguity note **conditional** on there being an unattributed row to be
+  ambiguous about. ⚠ **It mutated live records:** `tools/backfill_marking_projects.py`
+  linked **8** markings, left **0** ambiguous, and a second run was a no-op;
+  the two projects the tenth pass left hanging were **renamed, not deleted** —
+  *"Test Supplier"* turned out to carry a BOQ and two RA bills, so the delete
+  branch did not apply. ⚠ **C6 is NOT unblocked.** Open question 4 asks which
+  labour figure is authoritative; this records which project a day was worked
+  for. **Attributing a day is not costing a project**, and no margin, project
+  total or net is built.
 
 - **TENTH pass, 30 August 2026 — BEYOND CC-2, and no bar moved.** ⚠ **None of
   the three is a CC-2 item**, and all three are registered in **PROGRESS.md
@@ -100,10 +124,10 @@ this file's own predicted failure mode:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **1,897 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It read **1,847 / 2** until this
-edition — the ninth pass's figure, measured the same day and re-measured at the
-start of the tenth rather than quoted, matching exactly. This pass's own +50 is: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
+**Tests:** **1,927 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It read **1,897 / 2** until this
+edition — the tenth pass's figure, measured the same day and re-measured at the
+start of the eleventh rather than quoted, matching exactly. This pass's own +30 is: `tests/test_backfill_marking_projects.py` (15), plus +14 in `tests/test_attendance.py` (44→58) and +1 parametrised case in `tests/test_import_directions.py` (`attendance → project`). The tenth pass's +50 was: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
 **92**: `tests/test_address_guards.py` (42), `tests/test_project_site.py` (24)
 and `tests/test_project_site_backfill.py` (21), plus **+1** in
 `tests/test_site_picker.py` (its project-join pin was rewritten into two) and
@@ -140,8 +164,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,898 passed / 4 skipped** against the same commit, and read
-**1,848 / 4** before this pass's 50,
+reports **1,928 passed / 4 skipped** against the same commit, and read
+**1,898 / 4** before this pass's 30,
+**1,848 / 4** before the tenth pass's 50,
 **1,756 / 4** before the ninth pass's 92,
 **1,684 / 4** before the eighth pass's 72,
 **1,465 / 4** before this pass's 67,

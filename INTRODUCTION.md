@@ -218,8 +218,22 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,897 passed / 2 skipped** on 30 August 2026, verified by
+The baseline is **1,927 passed / 2 skipped** on 30 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The **ELEVENTH** pass, 30 August 2026, added **30 passed and 0 skipped** and
+moved **no bar**: `tests/test_backfill_marking_projects.py` (15, the
+marking→project backfill — that it **never guesses** above all, with the
+tie-breaks somebody will be tempted to add named so that adding either goes
+red), plus **+14** in `tests/test_attendance.py` (the project field, the
+filtered picker's three rules, the cross-site mutation, and the two Site Labour
+groups summed apart) and **+1** parametrised case in
+`tests/test_import_directions.py` (`attendance → project`, refused for the
+reason `charge → project` already is). 15+14+1 = 30. ⚠ **None of it is a CC-2
+item** — C5's five bullets name no project — and all of it is registered in
+PROGRESS.md §4c, rows 22–24. ⚠ **Not one print golden moved**, and
+`docs/ACCESS_MATRIX.md` did not move either: no permission was minted and no
+route was added.)*
 
 *(The **TENTH** pass, 30 August 2026, added **50 passed and 0 skipped** and
 moved **no bar**: `tests/test_clean_site_data.py` (20, the live-data cleanup —
