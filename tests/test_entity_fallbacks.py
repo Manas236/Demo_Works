@@ -216,7 +216,11 @@ def populated(client):
     STORE.setdefault("employees", {})["emp-1"] = {
         "id": "emp-1", "name": "Test Employee", "code": "SF-001",
         "designation": "Fitter", "site": "Test Site",
-        "date_joined": "2026-04-01", "monthly_salary": 24000.0,
+        # ⚠ `day_rate` since 30 August 2026. The old line was, verbatim:
+        #       "date_joined": "2026-04-01", "monthly_salary": 24000.0,
+        # The fixture has to match what the real routes write, or the sweep
+        # renders a shape the application no longer produces.
+        "date_joined": "2026-04-01", "day_rate": 1200.0,
         "active": True, "notes": "",
         "created_at": "2026-08-29T12:00:00Z", "updated_at": "2026-08-29T12:00:00Z",
     }
@@ -228,7 +232,9 @@ def populated(client):
     STORE.setdefault("attendance", {})["att-1"] = {
         "id": "att-1", "date": "2026-08-29",
         "employee_id": "emp-1", "employee_name": "Test Employee",
-        "employee_code": "SF-001", "monthly_salary": 24000.0,
+        # ⚠ The old line was, verbatim:
+        #       "employee_code": "SF-001", "monthly_salary": 24000.0,
+        "employee_code": "SF-001", "day_rate": 1200.0,
         "site": "Test Site", "status": "present", "ot_hours": 2.0, "notes": "",
         "created_at": "2026-08-29T12:00:00Z", "updated_at": "2026-08-29T12:00:00Z",
     }

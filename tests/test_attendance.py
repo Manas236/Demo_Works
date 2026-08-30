@@ -89,10 +89,14 @@ def _clean():
 
 def _person(client, **over):
     """Somebody on the register, added through the real employee route."""
+    # ⚠ `day_rate` since 30 August 2026. It was
+    #   `"monthly_salary": "26000"` and a divisor of 26 turned that into a
+    #   day's ₹1,000; the day rate IS ₹1,000, so every figure this file asserts
+    #   is unchanged and only the route it arrives by has moved.
     data = {
         "name": "Ramesh Patil", "code": "SF-014", "designation": "Fitter",
         "site": "Whitefield", "date_joined": "2026-04-01",
-        "monthly_salary": "26000", "notes": "", "active": "1",
+        "day_rate": "1000", "notes": "", "active": "1",
     }
     data.update(over)
     if data.get("active") is None:
@@ -141,11 +145,27 @@ def test_no_literal_multiplier_exists_in_the_calculation_path():
     literal — which is exactly why this test can be written this strictly. It
     is CC-2's own `÷ 8`: a divisor defining what an hour of a working day is,
     not a rate anybody is paid at.
+
+    ⚠ **RETARGETED 30 August 2026, not weakened — and this test told the last
+    pass to do exactly that** ("this test names functions that no longer exist —
+    retarget it, do not delete it"). The old line was, verbatim:
+
+        guarded = {"daily_wage", "ot_amount", "cost_of"}
+
+    `daily_wage(monthly_salary, days_per_month)` divided a monthly figure by
+    `settings.wage_days_per_month()`. There is no monthly figure and no divisor
+    any more — the employee master carries a **day rate**, so a day's wage is
+    the stored number and there is nothing to compute. The function is gone and
+    `day_rate_of()` replaced it. **The teeth are unchanged**: `ot_amount()` is
+    where the multiplier and the `÷ 8` live, and it is still the function a
+    literal `1` or a literal `8` would turn into a statutory underpayment.
+    `test_the_guard_would_catch_a_literal_multiplier` below proves this walk
+    still catches one.
     """
     src = (REPO / "attendance.py").read_text(encoding="utf8")
     tree = ast.parse(src)
 
-    guarded = {"daily_wage", "ot_amount", "cost_of"}
+    guarded = {"day_rate_of", "ot_amount", "cost_of"}
     offenders = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.FunctionDef) and node.name in guarded):
@@ -172,23 +192,75 @@ def test_no_literal_multiplier_exists_in_the_calculation_path():
         "delete it"
 
 
+def test_the_guard_would_catch_a_literal_multiplier():
+    """
+    ⚠ **The vacuity check on the test above, and it is the point of writing
+    one.** An AST walk that finds no offenders passes whether it is looking
+    hard or not looking at all — and this pass narrowed the guarded set from
+    three functions to three different ones, which is exactly the edit that
+    could have quietly emptied it.
+
+    So: take the real source, put a literal multiplier into the real
+    `ot_amount()` the way a well-meaning simplification would, and run the same
+    walk. It must go red.
+    """
+    src = (REPO / "attendance.py").read_text(encoding="utf8")
+    poisoned = src.replace(
+        "    hourly = _num(day_wage) / STANDARD_HOURS_PER_DAY",
+        "    hourly = _num(day_wage) / 8.0")
+    assert poisoned != src, (
+        "the line this mutation targets has moved — retarget the mutation, "
+        "because a mutation that changes nothing proves nothing")
+
+    tree = ast.parse(poisoned)
+    guarded = {"day_rate_of", "ot_amount", "cost_of"}
+    offenders = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name in guarded):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.BinOp) and isinstance(
+                    inner.op, (ast.Mult, ast.Div)):
+                for side in (inner.left, inner.right):
+                    if isinstance(side, ast.Constant) and isinstance(
+                            side.value, (int, float)) and not isinstance(
+                            side.value, bool):
+                        offenders.append(node.name)
+
+    assert offenders == ["ot_amount"], (
+        f"the AST guard cannot see a rate written into the calculation path — "
+        f"it found {offenders!r} in a source that plainly contains one, so its "
+        f"passing on the real file means nothing")
+
+
 def test_the_ot_figure_reads_the_setting_and_moves_when_it_moves(client):
     """
     The behavioural half. **Change the setting and the money changes** — which
     is the whole of what "configurable" means and the only thing a user can
     check.
 
-    At 26 days and a ₹26,000 salary a day is ₹1,000 and an hour is ₹125, so two
-    hours of overtime is ₹250 at 1× and ₹500 at 2×.
+    On a ₹1,000 day rate an hour is ₹125, so two hours of overtime is ₹250 at
+    1× and ₹500 at 2×.
+
+    ⚠ **Rewritten 30 August 2026 and every figure is the same.** The two old
+    lines were, verbatim:
+
+        wage = AT.daily_wage(26000.0, 26.0)
+        assert wage == 1000.0
+
+    A ₹26,000 month over 26 days was a ₹1,000 day, and ₹1,000 is now the stored
+    day rate — so the arithmetic below is untouched and only the way the day's
+    wage is arrived at has changed. `daily_wage()` is gone because the division
+    it performed was the defect.
     """
     assert S.ot_multiplier() == 1.0, "the client's own figure is the default"
 
-    wage = AT.daily_wage(26000.0, 26.0)
-    assert wage == 1000.0
+    wage, ok = AT.day_rate_of({"day_rate": 1000.0})
+    assert (wage, ok) == (1000.0, True)
 
     assert AT.ot_amount(wage, 2, S.ot_multiplier()) == 250.0
 
-    S.save_labour_settings("2", "26")
+    S.save_labour_settings("2")
     assert S.ot_multiplier() == 2.0
     assert AT.ot_amount(wage, 2, S.ot_multiplier()) == 500.0, \
         "the statutory rate must double the figure, not be ignored"
@@ -206,7 +278,9 @@ def test_changing_the_setting_changes_what_the_page_shows(client):
     before = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
     assert "1,250" in before, "1,000 day + 250 overtime at the client's 1x"
 
-    S.save_labour_settings("2", "26")
+    # ⚠ `save_labour_settings` lost its second argument with the divisor. The
+    #   old line was, verbatim:  S.save_labour_settings("2", "26")
+    S.save_labour_settings("2")
     after = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
     assert "1,500" in after, "1,000 day + 500 overtime at 2x"
     assert "1,250" not in after
@@ -223,25 +297,46 @@ def test_the_settings_page_carries_the_field_and_says_what_it_is_for(client):
     """
     html = client.get("/settings/").get_data(as_text=True)
     assert 'name="ot_multiplier"' in html
-    assert 'name="wage_days_per_month"' in html
+    # ⚠ The divisor's field is GONE. The old line was, verbatim:
+    #       assert 'name="wage_days_per_month"' in html
+    # `tests/test_day_rate_pin.py::test_the_settings_page_no_longer_offers_the_divisor`
+    # is the assertion that replaces it, and it asserts the opposite fact.
     assert "Factories Act" in html, \
         "the page must say why the client's 1x may understate what is owed"
 
 
-def test_the_wage_divisor_is_a_setting_too_and_is_ours(client):
+def test_the_wage_divisor_is_gone_and_the_rate_is_a_day_rate(client):
     """
-    ⚠ **Recorded as OURS rather than the client's.** CC-2 never says what a
-    monthly salary is divided by to get a daily wage. 26 is the ordinary Indian
-    convention and 30 is defensible; they give different money, so the choice
-    is a field with a default rather than a number in the code.
-    """
-    assert S.wage_days_per_month() == 26.0
-    assert AT.daily_wage(30000.0, 30.0) == 1000.0
-    assert AT.daily_wage(30000.0, 26.0) != AT.daily_wage(30000.0, 30.0)
+    ⚠ **REPLACES `test_the_wage_divisor_is_a_setting_too_and_is_ours`, which
+    asserted a fact that has stopped being true.** Its body was, verbatim:
 
-    # A nonsense value must not crash a page somebody opens daily.
-    S.save_labour_settings("1", "0")
-    assert S.wage_days_per_month() == 26.0, "a zero divisor falls back"
+        assert S.wage_days_per_month() == 26.0
+        assert AT.daily_wage(30000.0, 30.0) == 1000.0
+        assert AT.daily_wage(30000.0, 26.0) != AT.daily_wage(30000.0, 30.0)
+
+        # A nonsense value must not crash a page somebody opens daily.
+        S.save_labour_settings("1", "0")
+        assert S.wage_days_per_month() == 26.0, "a zero divisor falls back"
+
+    and its docstring recorded the divisor as **ours, not CC-2's**. That was
+    right, and the correct response to "we invented this" turned out to be
+    removing it rather than defending it: CC-2's `salary` was a **day rate** all
+    along, so there was never anything to divide. The divisor is retired, and
+    with it the whole question of 26 versus 30 that this test existed to keep
+    open. `tests/test_day_rate_pin.py` holds the rest of the property.
+    """
+    assert not hasattr(S, "wage_days_per_month")
+    assert not hasattr(AT, "daily_wage")
+    assert "wage_days_per_month" not in S.LABOUR_DEFAULTS
+
+    # A day's wage is the stored rate and nothing else — no arithmetic between
+    # the record and the figure, which is what makes a divisor impossible.
+    assert AT.day_rate_of({"day_rate": 1000.0}) == (1000.0, True)
+
+    # The multiplier survives, and a nonsense value still falls back rather than
+    # crashing a page somebody opens daily.
+    S.save_labour_settings("not a number")
+    assert S.ot_multiplier() == 1.0, "a nonsense multiplier falls back"
 
 
 # ══ 2. ⚠ One employee = one site = one day ════════════════════════════════
@@ -331,7 +426,15 @@ def test_a_marking_round_trips_through_the_routes(client):
     # salary is revised.
     assert rec["employee_name"] == "Ramesh Patil"
     assert rec["employee_code"] == "SF-014"
-    assert rec["monthly_salary"] == 26000.0
+    # ⚠ A DAY rate since 30 August 2026. The old line was, verbatim:
+    #       assert rec["monthly_salary"] == 26000.0
+    # A ₹26,000 month over the old divisor of 26 was a ₹1,000 day, so the money
+    # the page shows is unchanged; what moved is that the day rate is now the
+    # thing stored rather than a figure derived from a monthly one.
+    assert rec["day_rate"] == 1000.0
+    assert "monthly_salary" not in rec, (
+        "a marking written today carries a monthly figure — the write route "
+        "is still on the old model")
 
     html = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
     assert "Ramesh Patil" in html and "Whitefield" in html
@@ -346,7 +449,9 @@ def test_a_salary_revision_does_not_move_a_day_already_recorded(client):
     _mark(client, person)
     before = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
 
-    person["monthly_salary"] = 52000.0
+    # ⚠ The old line was, verbatim:  person["monthly_salary"] = 52000.0
+    #   The field it revises has been renamed; the property is identical.
+    person["day_rate"] = 2000.0
     after = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
     assert before == after, \
         "a wage already recorded must not move when the master changes"
@@ -367,8 +472,16 @@ def test_an_absent_day_costs_nothing_and_its_overtime_is_not_paid(client):
     rec = list(STORE["attendance"].values())[0]
     assert rec["ot_hours"] == 3.0, "the hours are recorded"
 
-    c = AT.cost_of(rec, 26.0, 1.0)
-    assert c == {"day": 0.0, "ot": 0.0, "total": 0.0}
+    # ⚠ `cost_of` lost its divisor argument and gained a refusal. The old two
+    #   lines were, verbatim:
+    #       c = AT.cost_of(rec, 26.0, 1.0)
+    #       assert c == {"day": 0.0, "ot": 0.0, "total": 0.0}
+    #   The three money figures are identical; `refused` is False because this
+    #   marking carries a day rate, and it is asserted so that a refusal can
+    #   never be mistaken for an absent day — both would once have read 0.0.
+    c = AT.cost_of(rec, 1.0)
+    assert c == {"day": 0.0, "ot": 0.0, "total": 0.0,
+                 "refused": False, "reason": ""}
 
     html = client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
     assert "not paid" in html, "the contradiction must be visible on the page"

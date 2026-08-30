@@ -21,6 +21,51 @@ a register of people with what each is paid, and nothing else.
 Built under the **29 August 2026** override block in `CLIENT_CHANGES.md` §0.
 Before that block, C4 was one of the seven NOT STARTED items and was gated.
 
+════════════════════════════════════════════════════════════════════════════
+⚠ THE RATE IS A **DAY RATE**. IT WAS A MONTHLY SALARY AND THAT WAS OUR ERROR.
+════════════════════════════════════════════════════════════════════════════
+
+Corrected 30 August 2026 under the third override block of that date, after the
+owner said that **Samruddhi pays daily or weekly, never monthly**.
+
+The monthly reading was never CC-2's. Read C5's own two bullets together:
+
+    - Salary as 0 or 1 based on attendance
+    - OT = (salary ÷ 8) × hours
+
+and CC-2's note on the second, which calls it **"1× ordinary rate"**. That is
+only true if `salary ÷ 8` is an **hourly** rate — so `salary` is a **day's**
+wage and 8 is hours in a day. On the monthly reading, one day present pays a
+whole month's salary and `salary ÷ 8` is three days' pay per overtime hour.
+**CC-2's `salary` was a day rate from the beginning.** `wage_days_per_month`,
+the divisor invented to turn a monthly figure into a daily one, solved a
+problem that never existed and is **deleted** rather than re-tuned.
+
+⚠ **NO STORED FIGURE IS CONVERTED.** Rereading a monthly salary as a day rate
+multiplies every wage by roughly twenty-six, and we do not know which records
+were entered as what. So every employee that existed at the migration is
+**marked** — `rate_model == PRE_DAY_RATE` — the page says on screen that the
+rate needs re-entering, and `day_rate_of()` **refuses to answer** for a marked
+record rather than answer wrongly. `attendance.cost_of()` reads that refusal and
+produces no figure at all.
+
+The marker is a **closed historical set**, exactly as `measurement.py`'s
+pre-measurement pin is. `tools/backfill_day_rate.py` counts it and writes the
+moment to `STORE["settings"]["day_rate_migration"]`;
+`tests/test_day_rate_pin.py` fails if an employee created after that moment
+carries the mark. Without that test the marker stops being a set somebody
+counted and becomes a state any future record can fall into, which is the same
+as not having the rule.
+
+⚠ **The mark is never inferred from a missing `day_rate`.** It is read from the
+explicit field and nothing else — `measurement.is_pre_measurement()`'s argument,
+one register along: inferring it is precisely how a record written next year
+through a route with a bug in it would quietly join a set closed in August.
+
+⚠ **No pay-frequency field exists and none may be added without CC-2 asking for
+one.** Weekly payment is a payout *cadence*, not a rate *unit*. Attendance is
+recorded daily, so a day rate serves a daily payout and a weekly one alike.
+
 ⚠ **OUT OF SCOPE HERE, AND STILL TRUE OF THIS FILE:**
 
 * **No attendance and no overtime in this module.** Presentee / absentee, OT
@@ -28,10 +73,10 @@ Before that block, C4 was one of the seven NOT STARTED items and was gated.
   (third pass) — but it lives in its own module, [attendance.py](attendance.py),
   which imports this one. **Nothing was added here for it.** The register links
   out with `url_for`, which needs no import; importing back would be a cycle.
-* **No salary calculation.** `monthly_salary` is a number recorded against a
-  person. Nothing in *this* file multiplies, prorates or divides it —
-  `attendance.py` reads the figure and does the arithmetic there, against an
-  OT multiplier that is a **setting rather than a constant**.
+* **No wage calculation.** `day_rate` is a number recorded against a person.
+  Nothing in *this* file multiplies, prorates or divides it — `attendance.py`
+  reads the figure and does the arithmetic there, against an OT multiplier that
+  is a **setting rather than a constant**.
 * **No link to `charge.py` and none to a P&L.** `employee.py ↔ charge.py` stays
   forbidden in **both** directions at AST level, and that prohibition did *not*
   expire when C5 was authorised: joining the wages ledger to the people data is
@@ -91,13 +136,124 @@ employee_bp = Blueprint("employee", __name__, url_prefix="/employee")
 # BUSINESS RULES
 # =============================================================================
 
-# A salary bigger than this is a typo, not a salary — the same class of guard as
-# `purchase.MAX_CHARGE_AMOUNT`. Ten lakh a month is somebody's stray zero.
-MAX_MONTHLY_SALARY = 1000000.0
+# A day rate bigger than this is a typo, not a rate — the same class of guard as
+# `purchase.MAX_CHARGE_AMOUNT`.
+#
+# ⚠ **It moved with the unit and had to.** It was `MAX_MONTHLY_SALARY =
+# 1000000.0`, and a guard sized for a month catches almost nothing on a day: a
+# day rate with two stray zeros still walks through ten lakh. One lakh **a day**
+# is already far beyond any site wage this register will see, so it still
+# refuses nothing real. ⚠ **The number is OURS** — CC-2 gives no ceiling of any
+# kind — and it is one line to change if a real rate is ever refused by it.
+MAX_DAY_RATE = 100000.0
+
+# ── The old-model marker, and why this module owns it ────────────────────────
+#
+# `attendance.py` imports this module and never the reverse (a cycle), so the
+# vocabulary for "this rate was entered under the monthly model" lives here and
+# is read there. That is `measurement.py` owning the marker `ra.py` renders,
+# one register along.
+RATE_MODEL_FIELD = "rate_model"
+PRE_DAY_RATE = "pre_day_rate"
+
+# Where the migration writes its moment and its count. Read by
+# `tests/test_day_rate_pin.py`, which is what keeps the set closed.
+PIN_KEY = "day_rate_migration"
+
+PRE_DAY_RATE_NOTE = (
+    "the figure on this record was entered when this register held a MONTHLY "
+    "salary. It has not been converted and it will not be guessed at — a "
+    "monthly figure read as a day rate is about twenty-six times too big. "
+    "Open the record and type the day rate.")
+
+PRE_DAY_RATE_CHIP_TITLE = (
+    "Day rate not confirmed. This record carries a figure entered under the "
+    "old monthly model and no wage is computed from it.")
+
+PRE_DAY_RATE_REFUSAL = (
+    "No wage is computed for this person until the day rate is re-entered. "
+    "A figure here would be the old monthly salary read as a day's pay.")
 
 
 def employees() -> dict:
     return STORE.setdefault("employees", {})
+
+
+def migration_record() -> dict:
+    """
+    What `tools/backfill_day_rate.py` wrote, or `{}` on a database it has never
+    been run against.
+
+    ⚠ **Absent means the migration has not run**, and that is the honest answer
+    rather than a default — a fresh database claiming a migration happened would
+    measure every later record against a moment that never existed.
+    """
+    got = STORE.get("settings", {}).get(PIN_KEY)
+    return got if isinstance(got, dict) else {}
+
+
+def is_pre_day_rate(record) -> bool:
+    """
+    Whether this record carries a rate entered under the monthly model.
+
+    ⚠ **Reads the explicit mark and nothing else.** Never `not record.get(
+    "day_rate")`, and never "it has a `monthly_salary` key": inferring it is how
+    a record written next year through a route with a bug in it joins a set that
+    was closed in August. `measurement.is_pre_measurement()` makes the identical
+    argument and for the identical reason.
+    """
+    return str((record or {}).get(RATE_MODEL_FIELD) or "") == PRE_DAY_RATE
+
+
+def needs_rate_pin(record) -> bool:
+    """
+    Whether the migration would mark this record.
+
+    True for a record that predates the day rate — it carries no `day_rate` and
+    is not already marked. Idempotent by construction: a marked record is not
+    marked twice.
+    """
+    if not isinstance(record, dict):
+        return False
+    if RATE_MODEL_FIELD in record:
+        return False
+    return "day_rate" not in record
+
+
+def day_rate_of(record) -> tuple:
+    """
+    `(rate, ok)` — the one place anything asks what a person is paid a day.
+
+    ⚠ **`ok` is False for a marked record and the rate is then `None`, not
+    zero.** Zero is a figure somebody could have chosen (C4 permits a
+    proprietor drawing nothing) and returning it here would be a wrong answer
+    wearing a right answer's shape. Every caller has to handle the refusal,
+    which is the point.
+    """
+    if is_pre_day_rate(record):
+        return None, False
+    try:
+        return round(float((record or {}).get("day_rate") or 0.0), 2), True
+    except (TypeError, ValueError):
+        return None, False
+
+
+def pre_day_rate_marker(record) -> str:
+    """The on-screen band. One spelling, here, read by both this module and
+    `attendance.py` — a second copy is a marker that says something different
+    after the next edit."""
+    if not is_pre_day_rate(record):
+        return ""
+    return ('<div class="emp-stale"><b>Day rate not confirmed.</b> '
+            + _esc(PRE_DAY_RATE_NOTE) + '</div>')
+
+
+def pre_day_rate_chip(record) -> str:
+    """The register chip, same rule and same single spelling."""
+    if not is_pre_day_rate(record):
+        return ""
+    return (f'<span title="{_esc(PRE_DAY_RATE_CHIP_TITLE)}" '
+            f'class="emp-badge emp-stale-chip">RATE NOT CONFIRMED</span>')
 
 
 def _now() -> str:
@@ -143,18 +299,25 @@ def _code_taken(code: str, except_id: str = "") -> bool:
                for eid, e in employees().items())
 
 
-def _validate(form, except_id: str = "") -> tuple:
+def _validate(form, except_id: str = "", must_confirm_rate: bool = False) -> tuple:
     """
     `(data, error)` for the create and edit forms.
 
     A rejected form re-renders with what was typed and writes nothing — the
     `address._validate()` contract this app holds to everywhere.
 
-    Required: a name, and a monthly salary that is a non-negative number.
+    Required: a name, and a day rate that is a non-negative number.
     Everything else is optional, because a register nobody can add to until
-    they have every field is a register that stays empty. **Salary may be
+    they have every field is a register that stays empty. **The rate may be
     zero** — a proprietor or a family member drawing nothing is real, and
     refusing it would force somebody to invent a figure.
+
+    ⚠ **`must_confirm_rate` makes the rate REQUIRED, and it is passed exactly
+    when the record being edited still carries the old monthly marker.** On
+    every other record a blank means "nothing recorded" and reads as zero, which
+    is C4's rule and stays. Here a blank would clear the marker while recording
+    nothing, so the one record whose whole problem is an unconfirmed rate would
+    end up confirmed at zero by somebody pressing Save.
     """
     data = {
         "name":        (form.get("name") or "").strip()[:120],
@@ -162,7 +325,7 @@ def _validate(form, except_id: str = "") -> tuple:
         "designation": (form.get("designation") or "").strip()[:120],
         "site":        (form.get("site") or "").strip()[:160],
         "date_joined": (form.get("date_joined") or "").strip()[:10],
-        "salary_raw":  (form.get("monthly_salary") or "").strip(),
+        "salary_raw":  (form.get("day_rate") or "").strip(),
         "notes":       (form.get("notes") or "").strip()[:500],
         # An unchecked checkbox posts nothing at all, so this reads as False —
         # which is why the FORM ships it ticked on a new record. The default
@@ -180,15 +343,21 @@ def _validate(form, except_id: str = "") -> tuple:
 
     raw = data["salary_raw"]
     if raw:
-        salary = P.parse_money(raw)
-        if salary < 0:
-            return data, "Monthly salary cannot be negative."
-        if salary > MAX_MONTHLY_SALARY:
-            return data, ("That monthly salary is larger than this register "
-                          "allows. Check for a stray zero.")
+        rate = P.parse_money(raw)
+        if rate < 0:
+            return data, "Day rate cannot be negative."
+        if rate > MAX_DAY_RATE:
+            return data, ("That day rate is larger than this register allows. "
+                          "It is a rate for ONE DAY, not a month — check for a "
+                          "stray zero.")
+    elif must_confirm_rate:
+        return data, ("Type this person's day rate before saving. The figure "
+                      "already on the record is a MONTHLY salary and cannot be "
+                      "carried over — leaving this blank would record a rate of "
+                      "zero, not keep the old one.")
     else:
-        salary = 0.0
-    data["monthly_salary"] = round(salary, 2)
+        rate = 0.0
+    data["day_rate"] = round(rate, 2)
 
     return data, ""
 
@@ -224,6 +393,22 @@ EMPLOYEE_STYLES = """
   .emp-on  { background:#E4F3E7; color:#1E6B2E; }
   .emp-off { background:#EDECF1; color:#4B4459; }
   .emp-row-off td { opacity:.62; }
+
+  /* The old-model marker. Amber, because this app's amber means "incomplete
+     but working" — the person is on the register and everything about them
+     reads correctly except the one figure nobody may guess at. */
+  .emp-stale-chip { background:#FFF3D6; color:#7A5300; }
+  .emp-stale {
+    background:#FFF6E5; border:1px solid #F0D8A8;
+    border-left:3px solid var(--saffron); border-radius:var(--radius);
+    padding:.7rem 1rem; margin:.8rem 0; font-size:.84rem; line-height:1.55;
+    color:#6B4E00;
+  }
+  .emp-stale b { color:#8A5A00; }
+  /* A refusal sits where the money would have been, so a reader never has to
+     work out whether a blank cell means nil or means unknown. */
+  .emp-norate { color:#8A5A00; font-weight:600; font-size:.8rem;
+                white-space:nowrap; }
 
   .emp-note {
     background:var(--surface); border:1px solid var(--border);
@@ -309,28 +494,51 @@ def list_employees():
 
     total_active = sum(1 for e in employees().values() if e.get("active"))
     total_all = len(employees())
-    monthly = sum(float(e.get("monthly_salary") or 0.0)
-                  for e in employees().values() if e.get("active"))
+
+    # ⚠ The daily total counts CONFIRMED rates only, and says how many it left
+    #   out. Silently summing a marked record's monthly figure into a figure
+    #   labelled "a day" is the exact error this whole change exists to undo.
+    unconfirmed = sum(1 for e in employees().values()
+                      if e.get("active") and is_pre_day_rate(e))
+    daily = sum(day_rate_of(e)[0] or 0.0
+                for e in employees().values()
+                if e.get("active") and day_rate_of(e)[1])
 
     body = ""
     for e in rows:
         code_sub = (f'<span class="emp-sub">{_esc(e.get("code"))}</span>'
                     if e.get("code") else "")
         live = bool(e.get("active"))
+        rate, ok = day_rate_of(e)
+        rate_cell = (rupees(rate) if ok else
+                     f'<span class="emp-norate">not confirmed</span>')
         body += (
             f'<tr class="{"" if live else "emp-row-off"}">'
             f'<td><b>{_esc(e.get("name"))}</b>{code_sub}</td>'
             f'<td>{_esc(e.get("designation")) or "&#8212;"}</td>'
             f'<td>{_esc(e.get("site")) or "&#8212;"}</td>'
             f'<td>{_esc(e.get("date_joined")) or "&#8212;"}</td>'
-            f'<td class="emp-amt">{rupees(e.get("monthly_salary") or 0.0)}</td>'
+            f'<td class="emp-amt">{rate_cell}</td>'
             f'<td><span class="emp-badge {"emp-on" if live else "emp-off"}">'
-            f'{"Active" if live else "Inactive"}</span></td>'
+            f'{"Active" if live else "Inactive"}</span>'
+            f'{pre_day_rate_chip(e)}</td>'
             f'<td><a class="btn btn-ghost" '
             f'href="{url_for("employee.view_employee", id=e.get("id"))}">Open</a></td>'
             f'</tr>')
     empty = ('<tr><td colspan="7" style="color:var(--muted);text-align:center;">'
              'Nobody on the register yet.</td></tr>')
+
+    stale_band = ""
+    if unconfirmed:
+        stale_band = f"""
+  <div class="emp-stale">
+    <b>{unconfirmed} {"record carries" if unconfirmed == 1 else "records carry"}
+    a rate entered under the old monthly model.</b>
+    This register used to hold a <b>monthly salary</b>; it holds a
+    <b>day rate</b> now. {_esc(PRE_DAY_RATE_NOTE)}
+    Until each one is re-entered, no wage is computed from it anywhere &mdash;
+    on this page or on Attendance.
+  </div>"""
 
     toggle = (f'<a href="{url_for("employee.list_employees")}" class="btn btn-ghost">Active only</a>'
               if show_all else
@@ -349,20 +557,25 @@ def list_employees():
   {_flash()}
 
   <div class="emp-note">
-    Who works here, and what each is paid.
+    Who works here, and what each is paid <b>a day</b>.
     <div class="en-sub">{total_active} active
       {"person" if total_active == 1 else "people"} &middot;
-      {rupees(monthly)} a month in salary.
-      This register records <b>details and salary only</b>. Attendance,
-      overtime and site-wise labour cost are a separate piece of work and are
-      not built.</div>
+      {rupees(daily)} a day in wages{
+        f" across the {total_active - unconfirmed} whose rate is confirmed"
+        if unconfirmed else ""}.
+      Wages here are <b>daily</b> &mdash; the register held a monthly salary
+      until 30 August 2026 and that was our error, not the client's.
+      This register records <b>details and the day rate only</b>; attendance,
+      overtime and site-wise labour cost live on
+      <a href="{url_for('attendance.list_attendance')}">Attendance</a>.</div>
   </div>
+  {stale_band}
 
   <div class="form-section">
     <table class="emp-table">
       <thead><tr>
         <th>Name</th><th>Designation</th><th>Site</th><th>Joined</th>
-        <th class="emp-amt">Monthly salary</th><th>Status</th><th></th>
+        <th class="emp-amt">Day rate</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>{body or empty}</tbody>
     </table>
@@ -371,15 +584,38 @@ def list_employees():
 
 
 def _form(data: dict, error: str, action: str, submit_label: str,
-          heading: str, back: str) -> str:
+          heading: str, back: str, stale: dict = None) -> str:
     """The create and edit forms, which are one form with two labels."""
     checked = " checked" if data.get("active") else ""
+
+    # ⚠ **A marked record opens with the rate box EMPTY and the old figure only
+    #   named in the band above it.** Prefilling the box with the monthly
+    #   salary under a label reading "Day rate" invites the operator to confirm
+    #   a figure roughly twenty-six times too large by pressing Save, which is
+    #   the whole failure this change exists to prevent. Re-entering has to be
+    #   a deliberate act, so the box starts blank and `_validate()` refuses a
+    #   blank on exactly this record.
+    stale_band = ""
+    if stale:
+        old = stale.get("monthly_salary")
+        old_txt = (f" The figure it carries is <b>{rupees(old)}</b>, recorded "
+                   f"as a MONTHLY salary." if old not in (None, "") else "")
+        stale_band = f"""
+  <div class="emp-stale">
+    <b>Type this person's day rate.</b>{old_txt}
+    It has <b>not</b> been converted: we do not know whether it was entered as a
+    month, a week or something else, and dividing it would put a guess on a wage
+    sheet. Type what this person is paid <b>for one day</b> &mdash; do not divide
+    the figure above.
+  </div>"""
+
     return _shell(heading, f"""
   <div class="page-top">
     <h1>{heading}</h1>
     <a href="{back}" class="btn btn-ghost">&#8592; Back</a>
   </div>
   {_alert(error)}
+  {stale_band}
 
   <form method="POST" action="{action}">
     <div class="form-section">
@@ -417,12 +653,15 @@ def _form(data: dict, error: str, action: str, submit_label: str,
                  value="{_esc(data.get('date_joined'))}"/>
         </div>
         <div class="form-group">
-          <label for="monthly_salary">Monthly Salary (&#8377;)</label>
-          <input type="number" id="monthly_salary" name="monthly_salary"
-                 min="0" step="0.01" value="{_esc(data.get('salary_raw'))}"/>
-          <small class="field-hint">What this person is paid a month. Nothing
-            here calculates from it &mdash; no attendance, no overtime, no
-            proration.</small>
+          <label for="day_rate">Day Rate (&#8377;){' *' if stale else ''}</label>
+          <input type="number" id="day_rate" name="day_rate"
+                 min="0" max="{int(MAX_DAY_RATE)}" step="0.01"
+                 {'required' if stale else ''}
+                 value="{_esc(data.get('salary_raw'))}"/>
+          <small class="field-hint">What this person is paid for <b>one
+            day</b> &mdash; not a month and not a week. Attendance multiplies it
+            by the days worked and computes overtime from it; nothing on this
+            page calculates anything.</small>
         </div>
       </div>
     </div>
@@ -466,17 +705,21 @@ def new_employee():
         if not error:
             eid = str(uuid.uuid4())
             employees()[eid] = {
-                "id":             eid,
-                "name":           data["name"],
-                "code":           data["code"],
-                "designation":    data["designation"],
-                "site":           data["site"],
-                "date_joined":    data["date_joined"],
-                "monthly_salary": data["monthly_salary"],
-                "active":         data["active"],
-                "notes":          data["notes"],
-                "created_at":     _now(),
-                "updated_at":     _now(),
+                "id":          eid,
+                "name":        data["name"],
+                "code":        data["code"],
+                "designation": data["designation"],
+                "site":        data["site"],
+                "date_joined": data["date_joined"],
+                # ⚠ A DAY rate. A record written here carries no `rate_model`
+                # key at all, which is what `tests/test_day_rate_pin.py` sweeps
+                # for: an employee created after the migration must never carry
+                # the old-model marker, or the closed set has grown.
+                "day_rate":    data["day_rate"],
+                "active":      data["active"],
+                "notes":       data["notes"],
+                "created_at":  _now(),
+                "updated_at":  _now(),
             }
             return redirect(url_for("employee.view_employee", id=eid,
                                     msg=f"{data['name']} added to the register.",
@@ -485,6 +728,7 @@ def new_employee():
     return _form(data, error, action=url_for("employee.new_employee"),
                  submit_label="Add employee", heading="New <span>Employee</span>",
                  back=url_for("employee.list_employees"))
+
 
 
 @employee_bp.route("/view/<id>")
@@ -502,6 +746,11 @@ def view_employee(id: str):
         return (f'<div><div class="emp-lbl">{label}</div>'
                 f'<div class="emp-val">{value or "&#8212;"}</div></div>')
 
+    rate, ok = day_rate_of(e)
+    rate_cell = (cell("Day rate", rupees(rate)) if ok else
+                 cell("Day rate",
+                      '<span class="emp-norate">not confirmed</span>'))
+
     return _shell(str(e.get("name")), f"""
   <div class="page-top">
     <h1>{_esc(e.get('name'))} {badge}</h1>
@@ -512,6 +761,7 @@ def view_employee(id: str):
     </div>
   </div>
   {_flash()}
+  {pre_day_rate_marker(e)}
 
   <div class="emp-card">
     <div class="emp-grid">
@@ -519,7 +769,7 @@ def view_employee(id: str):
       {cell("Designation", _esc(e.get("designation")))}
       {cell("Site", _esc(e.get("site")))}
       {cell("Date joined", _esc(e.get("date_joined")))}
-      {cell("Monthly salary", rupees(e.get("monthly_salary") or 0.0))}
+      {rate_cell}
       {cell("Status", "Currently employed" if e.get("active") else "No longer employed")}
     </div>
   </div>
@@ -527,10 +777,12 @@ def view_employee(id: str):
   {f'<div class="emp-card">{cell("Notes", _esc(e.get("notes")))}</div>' if e.get("notes") else ""}
 
   <div class="emp-note">
-    <b>Details and salary only.</b>
-    <div class="en-sub">There is no attendance against this record, no overtime,
-      and nothing that computes a wage from the figure above. Those are a
-      separate piece of work and are not built.</div>
+    <b>Details and the day rate only.</b>
+    <div class="en-sub">The rate above is what this person is paid for
+      <b>one day</b>. Nothing on this page computes anything from it &mdash;
+      <a href="{url_for('attendance.list_attendance')}">Attendance</a> is where a
+      day worked becomes a figure, and it reads this record rather than the
+      other way round.</div>
   </div>
 """)
 
@@ -543,32 +795,51 @@ def edit_employee(id: str):
         return redirect(url_for("employee.list_employees",
                                 msg="Employee not found.", type="error"))
 
+    # ⚠ Read BEFORE the POST branch writes, because saving clears the mark and
+    #   the band has to be decided on the state the operator was shown.
+    stale = dict(e) if is_pre_day_rate(e) else None
+
     data = dict(e)
-    data["salary_raw"] = (f"{float(e.get('monthly_salary') or 0.0):.2f}"
-                          if e.get("monthly_salary") else "")
+    # ⚠ A marked record's box starts BLANK — see `_form()`. The old monthly
+    #   figure is shown in the band, never in a box labelled "Day rate".
+    data["salary_raw"] = ("" if stale else
+                          f"{float(e.get('day_rate') or 0.0):.2f}"
+                          if e.get("day_rate") else "")
     error = ""
 
     if request.method == "POST":
-        data, error = _validate(request.form, except_id=id)
+        data, error = _validate(request.form, except_id=id,
+                                must_confirm_rate=bool(stale))
         if not error:
             e.update({
-                "name":           data["name"],
-                "code":           data["code"],
-                "designation":    data["designation"],
-                "site":           data["site"],
-                "date_joined":    data["date_joined"],
-                "monthly_salary": data["monthly_salary"],
-                "active":         data["active"],
-                "notes":          data["notes"],
-                "updated_at":     _now(),
+                "name":        data["name"],
+                "code":        data["code"],
+                "designation": data["designation"],
+                "site":        data["site"],
+                "date_joined": data["date_joined"],
+                "day_rate":    data["day_rate"],
+                "active":      data["active"],
+                "notes":       data["notes"],
+                "updated_at":  _now(),
             })
+            # ⚠ **Confirming the rate ends the old model for this record, and
+            #   the superseded monthly figure goes with the marker.** Leaving
+            #   `monthly_salary` behind would leave two rate fields on one
+            #   record with nothing saying which is live — the next reader picks
+            #   one, and half the time it is the wrong one. Every old figure is
+            #   printed and recorded by `tools/backfill_day_rate.py` before it
+            #   marks anything, and the pre-migration `mysqldump` holds them all.
+            if stale:
+                e.pop(RATE_MODEL_FIELD, None)
+                e.pop("monthly_salary", None)
             return redirect(url_for("employee.view_employee", id=id,
                                     msg="Record updated.", type="success"))
 
     return _form(data, error, action=url_for("employee.edit_employee", id=id),
                  submit_label="Save changes",
                  heading="Edit <span>Employee</span>",
-                 back=url_for("employee.view_employee", id=id))
+                 back=url_for("employee.view_employee", id=id),
+                 stale=stale)
 
 
 @employee_bp.route("/delete/<id>", methods=["GET", "POST"])

@@ -368,27 +368,46 @@ def _validate_po_series(form) -> tuple:
 #   calculation code**, which `tests/test_attendance.py` asserts at AST level
 #   rather than by reading the source for a number.
 #
-# ⚠ **`wage_days_per_month` is OURS, not CC-2's, and it is a setting for the
-#   same reason.** CC-2 says "salary as 0 or 1 based on attendance" and
-#   "OT = (salary ÷ 8) × hours" — both need a **daily** wage, and CC-2 never
-#   says what a monthly salary is divided by to get one. 26 is the ordinary
-#   Indian wage convention (a month less its weekly offs); 30, and the actual
-#   length of the month, are both defensible and give different money. Picking
-#   one in code would be exactly the hardcoding the paragraph above forbids, so
-#   it is a field with a stated default and this comment says whose decision it
-#   is. **Nobody may record 26 as the client having chosen anything.**
+# ⚠ **`wage_days_per_month` USED TO LIVE HERE AND IS DELETED — 30 August 2026.**
+#   It was a divisor **we** invented to turn a monthly salary into a daily wage,
+#   defaulted to 26, on the reading that CC-2's `salary` was a monthly figure.
+#   The owner corrected that reading: Samruddhi pays **daily or weekly**, and
+#   CC-2 had always agreed — its own note calls `salary ÷ 8 × hours` **"1×
+#   ordinary rate"**, which is true only if `salary ÷ 8` is an HOURLY rate, so
+#   `salary` is a **day's** wage. The employee master carries a **day rate**
+#   now, there is nothing to divide, and the setting is **retired rather than
+#   re-tuned** — including its row in PROGRESS.md §4c, where a beyond-CC-2 item
+#   is removed rather than added.
+#
+#   ⚠ **Do not reintroduce it.** A divisor here would mean somebody had gone
+#   back to storing a monthly figure, which is the defect this deletion closes.
+#   `tests/test_day_rate_pin.py` fails if the name reappears in this file, in
+#   `attendance.py` or on this page.
+#
+#   ⚠ A **stale stored value survives on an old database** — the record is
+#   `{"wage_days_per_month": "1"}` on this one, which is why the owner's own
+#   screenshot read *"1 working days a month"* and made a day's wage the whole
+#   monthly salary. `labour_settings()` cannot see a key that is not in
+#   `LABOUR_DEFAULTS`, so it is inert — and `tools/backfill_day_rate.py` strips
+#   it anyway, because a dead key in a live settings row is a trap for the next
+#   reader.
 LABOUR_RECORD = "labour_cost"
 
 LABOUR_DEFAULTS = {
-    # The client's own figure. Strings, because they are form fields and are
-    # parsed where they are used — `po_series()`'s convention.
-    "ot_multiplier":       "1",
-    "wage_days_per_month": "26",
+    # The client's own figure. A string, because it is a form field and is
+    # parsed where it is used — `po_series()`'s convention.
+    "ot_multiplier": "1",
 }
 
 
 def labour_settings() -> dict:
-    """The OT multiplier and the wage divisor, defaults filled in."""
+    """
+    The OT multiplier, default filled in.
+
+    ⚠ Keyed off `LABOUR_DEFAULTS`, so a key the app no longer knows — a stored
+    `wage_days_per_month` on a database that predates 30 August 2026 — is not
+    read and cannot reach any calculation.
+    """
     saved = STORE["settings"].get(LABOUR_RECORD) or {}
     return {k: (str(saved.get(k) or "").strip() or v)
             for k, v in LABOUR_DEFAULTS.items()}
@@ -409,22 +428,15 @@ def ot_multiplier() -> float:
         return float(LABOUR_DEFAULTS["ot_multiplier"])
 
 
-def wage_days_per_month() -> float:
-    """The divisor that turns a monthly salary into a daily wage."""
-    raw = labour_settings()["wage_days_per_month"]
-    try:
-        days = float(raw)
-    except (TypeError, ValueError):
-        days = float(LABOUR_DEFAULTS["wage_days_per_month"])
-    # A zero divisor is a crash on a page somebody opens daily and a negative
-    # one is a negative wage. Both fall back rather than raise.
-    return days if days > 0 else float(LABOUR_DEFAULTS["wage_days_per_month"])
+def save_labour_settings(multiplier) -> None:
+    """
+    Only non-default values are stored — `save_po_series()`'s contract.
 
-
-def save_labour_settings(multiplier, days) -> None:
-    """Only non-default values are stored — `save_po_series()`'s contract."""
-    values = {"ot_multiplier":       str(multiplier or "").strip(),
-              "wage_days_per_month": str(days or "").strip()}
+    ⚠ It writes the record **whole**, so saving `/settings` is also what drops a
+    stale `wage_days_per_month` off a database that predates 30 August 2026.
+    `tools/backfill_day_rate.py` does not rely on somebody visiting the page.
+    """
+    values = {"ot_multiplier": str(multiplier or "").strip()}
     keep = {k: v for k, v in values.items()
             if v and v != LABOUR_DEFAULTS[k]}
     if keep:
@@ -435,8 +447,7 @@ def save_labour_settings(multiplier, days) -> None:
 
 def _validate_labour(form) -> tuple:
     """Returns (data, error), and **always returns data**."""
-    data = {"ot_multiplier":       (form.get("ot_multiplier") or "").strip(),
-            "wage_days_per_month": (form.get("wage_days_per_month") or "").strip()}
+    data = {"ot_multiplier": (form.get("ot_multiplier") or "").strip()}
 
     raw = data["ot_multiplier"]
     if raw:
@@ -449,17 +460,6 @@ def _validate_labour(form) -> tuple:
         if mult > 10:
             return data, ("Overtime multiplier: 10x is not an overtime rate, "
                           "it is a typo.")
-
-    raw = data["wage_days_per_month"]
-    if raw:
-        try:
-            days = float(raw)
-        except ValueError:
-            return data, "Working days a month: enter a number, e.g. 26 or 30."
-        if days <= 0:
-            return data, "Working days a month: must be more than zero."
-        if days > 31:
-            return data, "Working days a month: no month has more than 31 days."
 
     return data, ""
 
@@ -622,8 +622,7 @@ def edit_settings():
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
             save_charge_heads(ch_data)
-            save_labour_settings(lb_data["ot_multiplier"],
-                                 lb_data["wage_days_per_month"])
+            save_labour_settings(lb_data["ot_multiplier"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -792,19 +791,27 @@ def edit_settings():
         </div>
 
         <div class="form-section">
-          <div class="section-title">Labour Cost &mdash; overtime and the daily wage</div>
+          <div class="section-title">Labour Cost &mdash; the overtime multiplier</div>
           <p class="fld-hint" style="margin:-.5rem 0 1rem;">
             Read by <b>Attendance</b> when it works out what a day on site
-            cost. ⚠ <b>The overtime multiplier is a setting and not a fixed
-            number on purpose.</b> The figure below is the one the client gave
-            &mdash; <b>1&times;</b>, from <i>salary &divide; 8 &times;
-            hours</i>. Statutory overtime under the Factories Act and most
-            state Shops &amp; Establishments Acts is generally <b>twice</b>
-            ordinary wages, so leaving it at 1 may understate what is owed.
-            This software does not decide that; it computes what is set here.
-            Neither figure appears anywhere else, and nothing already recorded
-            is rewritten &mdash; changing them changes what the attendance
-            pages show from now on.
+            cost. ⚠ <b>It is a setting and not a fixed number on purpose.</b>
+            The figure below is the one the client gave &mdash; <b>1&times;</b>,
+            from <i>day rate &divide; 8 &times; hours</i>. Statutory overtime
+            under the Factories Act and most state Shops &amp; Establishments
+            Acts is generally <b>twice</b> ordinary wages, so leaving it at 1
+            may understate what is owed. This software does not decide that; it
+            computes what is set here. Nothing already recorded is rewritten
+            &mdash; changing it changes what the attendance pages show from now
+            on.
+          </p>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            ⚠ <b>&ldquo;Working days a month&rdquo; used to sit beside this box
+            and is gone (30 August 2026).</b> It divided a monthly salary into a
+            daily wage. Wages here are <b>daily</b> &mdash; the employee master
+            carries a <b>day rate</b> &mdash; so there is nothing left to
+            divide. Every employee record that existed before that date is
+            marked as needing its rate re-entered, and no wage is computed from
+            one until it is.
           </p>
           <div class="fg2">
             <div class="form-group">
@@ -815,17 +822,6 @@ def edit_settings():
                      placeholder="{P.esc(LABOUR_DEFAULTS['ot_multiplier'])}"/>
               <div class="fld-hint">1 = the client's figure. 2 = the usual
                 statutory rate. Applied to the hourly rate, never to the day.</div>
-            </div>
-            <div class="form-group">
-              <label for="wage_days_per_month">Working days a month</label>
-              <input type="text" id="wage_days_per_month" name="wage_days_per_month"
-                     inputmode="decimal"
-                     value="{P.esc(lb_values.get('wage_days_per_month', ''))}"
-                     placeholder="{P.esc(LABOUR_DEFAULTS['wage_days_per_month'])}"/>
-              <div class="fld-hint">What a monthly salary is divided by to get
-                one day's wage. ⚠ <b>Ours, not the client's</b> &mdash; he did
-                not specify a divisor. 26 is the usual convention; 30 is also
-                defensible and gives different money.</div>
             </div>
           </div>
         </div>

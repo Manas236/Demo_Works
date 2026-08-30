@@ -54,10 +54,15 @@ WALLED_OFF = ("sales-manager", "purchase-manager", "accountant")
 
 def _add(client, **over):
     """Add somebody through the real route and return the stored record."""
+    # ⚠ `day_rate` since 30 August 2026. The old line was, verbatim:
+    #       "monthly_salary": "24000", "notes": "", "active": "1",
+    #   The field carries a DAY rate now — CC-2's `salary` always was one — so
+    #   the figure is a day's ₹1,200 rather than a month's ₹24,000. No
+    #   arithmetic anywhere converts one to the other, deliberately.
     data = {
         "name": "Ramesh Patil", "code": "SF-014", "designation": "Fitter",
         "site": "Whitefield", "date_joined": "2026-04-01",
-        "monthly_salary": "24000", "notes": "", "active": "1",
+        "day_rate": "1200", "notes": "", "active": "1",
     }
     data.update(over)
     # A caller passing active=None means "leave the box unticked", which is what
@@ -122,7 +127,12 @@ def test_create_round_trips(client):
     assert e["designation"] == "Fitter"
     assert e["site"] == "Whitefield"
     assert e["date_joined"] == "2026-04-01"
-    assert e["monthly_salary"] == 24000.0
+    # ⚠ The old line was, verbatim:  assert e["monthly_salary"] == 24000.0
+    assert e["day_rate"] == 1200.0
+    assert "monthly_salary" not in e, (
+        "a record written today carries a monthly figure — the create route "
+        "is still on the old model, and tests/test_day_rate_pin.py says why "
+        "that matters")
     assert e["active"] is True
 
     html = client.get(f"/employee/view/{e['id']}").get_data(as_text=True)
@@ -131,25 +141,56 @@ def test_create_round_trips(client):
 
 
 def test_a_name_is_required(client):
-    r = client.post("/employee/new", data={"name": "", "monthly_salary": "100"})
+    r = client.post("/employee/new", data={"name": "", "day_rate": "100"})
     assert r.status_code == 200, "a rejected form re-renders rather than redirecting"
     assert "name is required" in r.get_data(as_text=True).lower()
     assert not STORE["employees"], "nothing may be written on a refused POST"
 
 
-def test_a_salary_of_zero_is_allowed(client):
+def test_a_rate_of_zero_is_allowed(client):
     """
     A proprietor or a family member drawing nothing is real, and refusing it
-    would force somebody to invent a figure on a salary register.
+    would force somebody to invent a figure on a wage register.
+
+    ⚠ Renamed from `test_a_salary_of_zero_is_allowed`; its body was, verbatim:
+
+        e = _add(client, monthly_salary="")
+        assert e["monthly_salary"] == 0.0
+
+    The rule is untouched — only the field it applies to has been renamed. The
+    ONE place a blank is now refused is a record still carrying the old-model
+    marker, and `tests/test_day_rate_pin.py` holds both halves of that.
     """
-    e = _add(client, monthly_salary="")
-    assert e["monthly_salary"] == 0.0
+    e = _add(client, day_rate="")
+    assert e["day_rate"] == 0.0
 
 
-def test_a_negative_salary_is_refused(client):
-    r = client.post("/employee/new", data={"name": "X", "monthly_salary": "-1"})
+def test_a_negative_rate_is_refused(client):
+    # ⚠ The old two lines were, verbatim:
+    #       r = client.post("/employee/new", data={"name": "X", "monthly_salary": "-1"})
+    #       assert "cannot be negative" in r.get_data(as_text=True)
+    r = client.post("/employee/new", data={"name": "X", "day_rate": "-1"})
     assert r.status_code == 200
     assert "cannot be negative" in r.get_data(as_text=True)
+    assert not STORE["employees"]
+
+
+def test_a_rate_the_size_of_a_MONTHLY_salary_is_refused(client):
+    """
+    ⚠ **The guard moved with the unit and had to.** `MAX_MONTHLY_SALARY` was
+    ₹10,00,000 — sized for a month, so on a day rate it caught almost nothing
+    and a figure with two stray zeros walked through. `MAX_DAY_RATE` is
+    ₹1,00,000, which still refuses nothing any site wage will ever be, and it
+    catches the specific mistake this rename invites: typing the monthly salary
+    into a box that now means a day.
+
+    ⚠ **The number is OURS.** CC-2 gives no ceiling of any kind.
+    """
+    r = client.post("/employee/new", data={"name": "X", "day_rate": "240000"})
+    assert r.status_code == 200
+    assert "ONE DAY" in r.get_data(as_text=True), (
+        "the refusal must say the box means one day, or the person typing a "
+        "monthly figure has no idea what they got wrong")
     assert not STORE["employees"]
 
 
@@ -161,7 +202,7 @@ def test_a_duplicate_employee_code_is_refused(client):
     """
     _add(client)
     r = client.post("/employee/new", data={
-        "name": "Someone Else", "code": "sf-014", "monthly_salary": "1000"})
+        "name": "Someone Else", "code": "sf-014", "day_rate": "1000"})
     assert r.status_code == 200
     assert "already used" in r.get_data(as_text=True)
     assert len(STORE["employees"]) == 1
@@ -170,7 +211,7 @@ def test_a_duplicate_employee_code_is_refused(client):
 def test_a_rejected_form_keeps_what_was_typed(client):
     _add(client)
     r = client.post("/employee/new", data={
-        "name": "Someone Else", "code": "SF-014", "monthly_salary": "1000"})
+        "name": "Someone Else", "code": "SF-014", "day_rate": "1000"})
     assert "Someone Else" in r.get_data(as_text=True)
 
 
@@ -181,7 +222,7 @@ def test_edit_round_trips(client):
     r = client.post(f"/employee/edit/{e['id']}", data={
         "name": "Ramesh V. Patil", "code": "SF-014",
         "designation": "Site Supervisor", "site": "Hebbal",
-        "date_joined": "2026-04-01", "monthly_salary": "31000",
+        "date_joined": "2026-04-01", "day_rate": "1550",
         "notes": "promoted", "active": "1"})
     assert r.status_code == 302
 
@@ -189,7 +230,8 @@ def test_edit_round_trips(client):
     assert e["name"] == "Ramesh V. Patil"
     assert e["designation"] == "Site Supervisor"
     assert e["site"] == "Hebbal"
-    assert e["monthly_salary"] == 31000.0
+    # ⚠ The old line was, verbatim:  assert e["monthly_salary"] == 31000.0
+    assert e["day_rate"] == 1550.0
     assert e["notes"] == "promoted"
 
 
@@ -197,14 +239,15 @@ def test_the_edit_form_is_prefilled(client):
     e = _add(client)
     html = client.get(f"/employee/edit/{e['id']}").get_data(as_text=True)
     assert 'value="Ramesh Patil"' in html
-    assert 'value="24000.00"' in html
+    # ⚠ The old line was, verbatim:  assert 'value="24000.00"' in html
+    assert 'value="1200.00"' in html
 
 
 def test_an_employee_may_keep_its_own_code_on_edit(client):
     """The uniqueness check must not refuse a record for clashing with itself."""
     e = _add(client)
     r = client.post(f"/employee/edit/{e['id']}", data={
-        "name": "Ramesh Patil", "code": "SF-014", "monthly_salary": "24000",
+        "name": "Ramesh Patil", "code": "SF-014", "day_rate": "1200",
         "active": "1"})
     assert r.status_code == 302
 
@@ -298,10 +341,12 @@ def test_the_register_hides_inactive_by_default_and_can_show_them(client):
 def test_deactivating_through_the_edit_form_keeps_the_record(client):
     e = _add(client)
     r = client.post(f"/employee/edit/{e['id']}", data={
-        "name": "Ramesh Patil", "code": "SF-014", "monthly_salary": "24000"})
+        "name": "Ramesh Patil", "code": "SF-014", "day_rate": "1200"})
     assert r.status_code == 302
     assert STORE["employees"][e["id"]]["active"] is False
-    assert STORE["employees"][e["id"]]["monthly_salary"] == 24000.0
+    # ⚠ The old line was, verbatim:
+    #       assert STORE["employees"][e["id"]]["monthly_salary"] == 24000.0
+    assert STORE["employees"][e["id"]]["day_rate"] == 1200.0
 
 
 # ══ 6. Every endpoint is classified ═══════════════════════════════════════
@@ -388,17 +433,19 @@ def test_hr_is_admitted_everywhere(client):
 def test_hr_can_actually_add_and_edit(client):
     _as(client, _user_with("hr"))
     r = client.post("/employee/new", data={
-        "name": "Added By HR", "code": "SF-020", "monthly_salary": "18000",
+        "name": "Added By HR", "code": "SF-020", "day_rate": "900",
         "active": "1"})
     assert r.status_code == 302
     e = list(STORE["employees"].values())[-1]
     assert e["name"] == "Added By HR"
 
     r = client.post(f"/employee/edit/{e['id']}", data={
-        "name": "Added By HR", "code": "SF-020", "monthly_salary": "19000",
+        "name": "Added By HR", "code": "SF-020", "day_rate": "950",
         "active": "1"})
     assert r.status_code == 302
-    assert STORE["employees"][e["id"]]["monthly_salary"] == 19000.0
+    # ⚠ The old line was, verbatim:
+    #       assert STORE["employees"][e["id"]]["monthly_salary"] == 19000.0
+    assert STORE["employees"][e["id"]]["day_rate"] == 950.0
 
 
 def test_owner_and_director_hold_all_four(client):
