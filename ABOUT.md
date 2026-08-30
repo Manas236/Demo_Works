@@ -2734,6 +2734,59 @@ the one experiment a real MySQL cannot easily be made to run.
   block, which executes before `app.secret_key = os.getenv("SECRET_KEY", ...)`.
   Don't move the db import below that line.
 
+#### ⚠ This layer cannot carry a BLOB, and CC-2 **B8** is blocked on it
+
+**Measured 30 August 2026**, when B8 (file attachments) was authorised and the
+pass sent to build it stopped here instead. The question asked was narrow —
+*can snapshot-and-diff carry a binary side table?* — and the answer is **no**,
+for three independent reasons. It is recorded here rather than in a report
+because the next pass to attempt B8 will otherwise re-derive it.
+
+**1. `_blob()` corrupts bytes SILENTLY.** It is
+`json.dumps(record, sort_keys=True, ensure_ascii=False, default=str)`. Bytes
+are not JSON-serialisable, so `default=str` catches them and writes the Python
+**repr**:
+
+```
+in    b'\x89PNG' ......... 8 raw bytes
+out   "b'\\x89PNG'" ..... a 12-character STRING
+back  "b'\\x89PNG'" ..... reloads as that string, not as bytes
+```
+
+No exception is raised at any point. The record persists, reloads, and is
+wrong. This is the worst available failure mode for a payload: not a refusal,
+a quiet substitution.
+
+**2. There is one table shape and it is JSON.** `_ensure_schema()` creates
+every collection as `data JSON NOT NULL`, and `load_into()` answers it with
+`json.loads`. There is no column a BLOB could go in without a second shape.
+
+**3. Diff-on-every-request is the wrong discipline for an immutable payload.**
+`_sync_collection()` re-serialises and re-hashes **every record of every
+collection on every request** — that is what makes in-place nested mutation
+visible, and it is the whole design. An attachment is written once and never
+edited, so 100% of that work is waste. Measured on this machine, a 3 MB
+attachment held as base64 in a JSON record costs **18.6 ms per record per
+request**:
+
+| attachments held | added to **every** request |
+|---:|---:|
+| 10 | 186 ms |
+| 50 | 930 ms |
+| 100 | 1.86 s |
+
+Base64 also inflates the payload **1.333×**, so the 5 MB supplier bill CC-2
+names is 6.7 MB on the row and 6.7 MB through the hash on every page load.
+
+**What this does NOT mean.** It is not that attachments are impossible — it is
+that they need a **write-once, no-diff** path, which is a different persistence
+discipline from the one this module implements, sitting beside it rather than
+inside it. Designing that is a decision with a schema change behind it, and
+[CLIENT_CHANGES.md §0](CLIENT_CHANGES.md)'s second 30 August 2026 block records
+B8 as **authorised and unbuilt** pending it. The server's
+`max_allowed_packet` here is **67,108,864 bytes (64 MB)** on MySQL 8.0.39,
+which is *not* the binding constraint — the diff loop is.
+
 ---
 
 ## 5. Page-by-page guide
