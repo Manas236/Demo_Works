@@ -425,6 +425,20 @@ FORBIDDEN = [
     ("project", "settings",  "any", "settings.py imports quotation; nothing downstream "
                                     "may import back"),
 
+    # ⚠ The two reverses of the arrows added on 30 August 2026 (fourth pass).
+    #   `project.py -> address.py` and `projectview.py -> project.py` both
+    #   exist and are in REQUIRED below; these are what stop either becoming a
+    #   cycle at boot.
+    ("address", "project",   "any", "project.py imports address.py for the SITE "
+                                    "picker and SITE_TYPES. address.py reads "
+                                    "STORE['projects'] DIRECTLY for "
+                                    "references_of() — the one-way trick, and it "
+                                    "has to be: five other modules import "
+                                    "address.py, so an import back from it "
+                                    "would put project.py under all of them"),
+    ("project", "projectview", "any", "projectview.py imports project.py for "
+                                      "site_drift(); the reverse is a cycle"),
+
     # ── auth.py sits at the BOTTOM of the graph (Phase 3B) ───────────────
     #
     # It has to, because it is imported by `dashboard.py` — which every other
@@ -649,6 +663,24 @@ REQUIRED = [
     ("project", "pipeline",  "esc / norm_name"),
     ("project", "store",     "the shared STORE dict"),
     ("project", "branding",  "every company string, colour and image"),
+    ("project", "address",   "the SITE picker over the shared address book "
+                             "(30 August 2026, fourth pass). `site_address` was "
+                             "free text on this record, which is why the live "
+                             "data spells one place two ways — and a project's "
+                             "site is a JOIN KEY, which free text cannot be. "
+                             "⚠ `SITE_TYPES` is read from address.py and never "
+                             "redefined here: two pickers that can disagree "
+                             "about what counts as a site is the defect, and "
+                             "employee.py reads the same tuple from the same "
+                             "place. address.py does NOT import back — it reads "
+                             "STORE['projects'] directly, the one-way trick"),
+
+    ("projectview", "project", "site_drift() — where the label snapshot and the "
+                               "live address have come apart. The drift belongs "
+                               "to the module that WRITES both copies, for the "
+                               "reason party_drift() lives in ra.py; a second "
+                               "copy of the resolve-a-label rule here is the "
+                               "SITE_TYPES defect one level up"),
 
     # ── auth.py — the whole of what it may reach for (Phase 3B) ──────────
     ("auth", "store",    "the shared STORE dict — users and roles are two "

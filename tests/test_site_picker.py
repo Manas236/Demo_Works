@@ -510,31 +510,116 @@ def test_an_address_LABEL_is_escaped_in_the_picker(client):
 
 # ═══ 4. THE SHORTFALL THIS DELIBERATELY DOES NOT CLOSE ═════════════════════
 
-def test_an_address_does_not_join_to_a_project():
+# ⚠ **REWRITTEN on 30 August 2026 (fourth pass). The join now EXISTS.** The test
+# that pinned its ABSENCE is kept here VERBATIM rather than deleted — a comment
+# block rather than a quote inside the new docstring, because it carries its own
+# triple quotes. Nothing in it is reworded, and its first assertion is still LIVE
+# below because the direction of the arrow still matters:
+#
+# def test_an_address_does_not_join_to_a_project():
+#     """
+#     ⚠ **Recorded rather than solved, because it belongs to C6, which is
+#     BLOCKED.** Site-wise labour cost cannot roll up to a project: an `addresses`
+#     record carries no project key, and `projects` carries a free-text
+#     `site_address` string rather than an address id. This test is the evidence
+#     for the note in ABOUT.md, and it fails the day somebody adds the join — at
+#     which point the note is what needs rewriting, not this.
+#     """
+#     aid = _addr("Whitefield")
+#     a = STORE["addresses"][aid]
+#     assert not any(k.startswith("project") for k in a), (
+#         "an address now carries a project key — the C6 shortfall recorded in "
+#         "ABOUT.md has changed and the note must be rewritten")
+#
+#     STORE.setdefault("projects", {})["p-1"] = {
+#         "id": "p-1", "name": "A Project", "norm_name": "a project",
+#         "client": "", "site_address": "Whitefield, Karnataka", "notes": "",
+#         "created_at": "", "updated_at": ""}
+#     p = STORE["projects"]["p-1"]
+#     assert isinstance(p["site_address"], str)
+#     assert p["site_address"] != aid, (
+#         "a project now names an address by id — the join exists and the C6 "
+#         "shortfall note is out of date")
+#     STORE["projects"].pop("p-1", None)
+#
+# ── and this is what replaces it ────────────────────────────────────────────
+
+
+def test_an_address_joins_to_a_project_THROUGH_THE_PROJECT():
     """
-    ⚠ **Recorded rather than solved, because it belongs to C6, which is
-    BLOCKED.** Site-wise labour cost cannot roll up to a project: an `addresses`
-    record carries no project key, and `projects` carries a free-text
-    `site_address` string rather than an address id. This test is the evidence
-    for the note in ABOUT.md, and it fails the day somebody adds the join — at
-    which point the note is what needs rewriting, not this.
+    The join runs FROM the project, and this pins its direction and its shape.
+
+    ⚠ **Note what did NOT happen.** It was built as `projects.site_address_id`,
+    **not** as an `address.project_id`. ABOUT.md §4 named three ways out and
+    called `address.project_id` the wrong shape — *"one site can carry work for
+    more than one project"* — and the live data proves it, with two projects on
+    one string. What was built is the **second** way out, narrowed from a list
+    to a single id because the client has said *one project = one site*. The old
+    test's first assertion is what holds that, and it is kept unchanged below.
+
+    ⚠ **`site_address` is still a string and still renders.** It is the label
+    SNAPSHOT now rather than free text, which is what makes every existing
+    reader unchanged and existing records unharmed **by construction** rather
+    than by migration.
+
+    ⚠ **This does NOT unblock C6.** C6 is BLOCKED on CC-2's Open question 4 —
+    whether attendance wages or the BOQ installation base rate is authoritative
+    for labour cost — and nothing here answers it. One of the two shortfalls is
+    closed; the other is untouched.
     """
+    import project as PJ
+
     aid = _addr("Whitefield")
     a = STORE["addresses"][aid]
+    # ⚠ Unchanged from the old test and still load-bearing: an address carrying
+    #   a project key is the shape §4 rejects.
     assert not any(k.startswith("project") for k in a), (
-        "an address now carries a project key — the C6 shortfall recorded in "
-        "ABOUT.md has changed and the note must be rewritten")
+        "an address now carries a project key — that is the shape ABOUT.md §4 "
+        "calls wrong, because one site can carry work for more than one project")
 
     STORE.setdefault("projects", {})["p-1"] = {
         "id": "p-1", "name": "A Project", "norm_name": "a project",
-        "client": "", "site_address": "Whitefield, Karnataka", "notes": "",
-        "created_at": "", "updated_at": ""}
+        "client": "", "site_address": "Whitefield", "site_address_id": aid,
+        "notes": "", "created_at": "", "updated_at": ""}
     p = STORE["projects"]["p-1"]
-    assert isinstance(p["site_address"], str)
-    assert p["site_address"] != aid, (
-        "a project now names an address by id — the join exists and the C6 "
-        "shortfall note is out of date")
-    STORE["projects"].pop("p-1", None)
+    try:
+        assert p[PJ.SITE_ADDRESS_ID_FIELD] == aid, "the join does not resolve"
+        assert isinstance(p["site_address"], str), (
+            "site_address stopped being a string — every existing reader "
+            "renders it and none of them changed")
+        assert p["site_address"] != aid, (
+            "site_address holds the id — it is the label SNAPSHOT, and a "
+            "register printing a UUID is what that mistake looks like")
+        assert PJ.site_label_of(aid) == "Whitefield"
+        assert PJ.site_drift(p) is None
+        assert PJ.is_legacy_site(p) is False
+    finally:
+        STORE["projects"].pop("p-1", None)
+
+
+def test_a_project_written_before_the_picker_is_LEGACY_and_is_not_rewritten():
+    """
+    The other half of the same shape: a string with no id joins to nothing, says
+    so, and is left exactly as it stands. `Banglore` stays `Banglore`.
+    """
+    import project as PJ
+
+    _addr("Bangalore, Karnataka")
+    STORE.setdefault("projects", {})["p-2"] = {
+        "id": "p-2", "name": "Legacy", "norm_name": "legacy",
+        "client": "", "site_address": "Banglore, Karnataka",
+        "notes": "", "created_at": "", "updated_at": ""}
+    p = STORE["projects"]["p-2"]
+    try:
+        assert PJ.is_legacy_site(p) is True
+        assert PJ.site_drift(p) is None, (
+            "a record with no id has nothing to compare against; reporting "
+            "drift on it would name a disagreement that does not exist")
+        assert p["site_address"] == "Banglore, Karnataka", (
+            "the legacy string was rewritten — a wrong automatic match puts a "
+            "project on the wrong site and looks exactly like a right one")
+    finally:
+        STORE["projects"].pop("p-2", None)
 
 
 def test_employee_py_still_does_not_import_project():

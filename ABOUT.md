@@ -361,8 +361,8 @@ Consequences you must respect when editing:
 | [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
-| [project.py](project.py) | 414 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. |
-| [projectview.py](projectview.py) | 334 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). |
+| [project.py](project.py) | 414 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
+| [projectview.py](projectview.py) | 334 | **Project Detail Page.** Displays grouped documents attached to a project without showing any financial figures (to avoid misinterpreting revenue as profit). ⚠ That prohibition is UNCHANGED. Imports `project.py` for `site_drift()` (30 Aug 2026) and raises the **amber divergence band** where a project's label snapshot and its live address have come apart. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
@@ -426,9 +426,17 @@ app.py
  │                             │  either direction, and NOTHING imports it:
  │                             │  a labour figure reaching another module is C6,
  │                             │  which is BLOCKED
+ ├─ project.py ─────────────────┤  imports dashboard, branding, store, pipeline
+ │                             │  — and address.py, for the SITE picker and
+ │                             │  SITE_TYPES (30 Aug 2026). address.py does NOT
+ │                             │  import back; it reads STORE["projects"]
+ │                             │  directly, the one-way trick
  ├─ projectview.py ─────────────┤  imports dashboard, branding, store, pipeline,
  │                             │  quotation, ra — and auth, for the write guard
- │                             │  on its POST branch (§7 gap 24b)
+ │                             │  on its POST branch (§7 gap 24b) — and
+ │                             │  project.py, for site_drift(). The drift
+ │                             │  belongs to the module that WRITES both copies,
+ │                             │  for the reason party_drift() lives in ra.py
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
@@ -2476,6 +2484,52 @@ they both already import. `employee.SITE_TYPES` is an alias onto it, so
 
 Held by [tests/test_address_guards.py](tests/test_address_guards.py).
 
+### Project  (CLIENT_CHANGES.md items 9 and 10)
+
+```python
+{ "id", "name", "norm_name", "client", "notes", "created_at", "updated_at",
+
+  # ── The site is an ADDRESS-BOOK LINK from 30 August 2026 (fourth pass) ──
+  "site_address_id": "<addr uuid>",     # the JOIN; "" on a legacy record
+  "site_address":    "Banglore, Karnataka",  # the LABEL SNAPSHOT
+}
+```
+
+⚠ **`site_address` was FREE TEXT until 30 August 2026 and both fields now
+exist**, which is the shape and not a duplication:
+
+- `site_address_id` is the **join**. A project's site is a join key and free
+  text cannot join — which is why the live database holds *"Banglore,
+  Karnataka"* on two projects and *"Bangalore, Karnataka"* on a third.
+- `site_address` is the **label snapshot**, written from the chosen address at
+  save. ⚠ **Every existing reader — the register's SITE column,
+  `projectview.py` — goes on reading it unchanged**, so *"existing records
+  unharmed"* is true **by construction** rather than by migration. It is the
+  house pattern: `charge.py` stores `project_id` **and** snapshots
+  `project_name`.
+
+⚠ **Two copies of one string can disagree, and nothing reconciles them
+silently.** `project.site_drift()` reports it and `/projects/view/<id>` raises an
+**amber band** — `ra.party_drift()`'s shape on `/ra/view`, deliberately rather
+than a second design, and DOMAIN.md §6's rule: surface it, name it, never
+silently correct it. Re-saving the project takes the new label; nothing else
+does.
+
+⚠ **A LEGACY record — a string with no id — is never rewritten by the form.**
+`project.is_legacy_site()` reads that from the **shape** rather than from a mark,
+which is the one place it differs from `employee.is_unmapped_site()`: the muster
+needed `site_source` to tell "matched exactly" from "left alone", and here there
+is nothing to distinguish. The form shows the string, marks it, opens the picker
+**empty** (a near miss is never pre-selected), and **requires a pick to save**.
+`tools/backfill_project_sites.py` is what maps them in bulk.
+
+The form is a **picker with no free-text fallback**, and an **"Add a new
+address"** link beside it — required, not decoration: without it a user in front
+of an unfiled site has no move at all. ⚠ `challan.py`'s consignee keeps a
+free-text fallback and this deliberately does not; the tie-breaker is the join
+key. Only `address.SITE_TYPES` addresses are offered, and that is enforced on
+the **POST** and not only in the option list.
+
 ### User  (Phase 3B)
 
 ```python
@@ -2726,40 +2780,55 @@ worse than inventing the person it is attributed to. `tests/test_hardening.py`
 classifies `attendance` as transactional and asserts the collection is empty on
 a fresh install.
 
-#### ⚠ An ADDRESS does not join to a PROJECT — recorded, not solved
+#### ✅ An address NOW joins to a project — one direction, built 30 August 2026
 
-**Measured 30 August 2026**, when `site` became a picker over the address book,
-and written down here so the pass that eventually builds **C6** does not have to
-re-derive it.
+⚠ **This note said "recorded, not solved" and it is kept rather than
+rewritten**, because how the shape was chosen is the useful part. The version it
+replaced, from earlier the same day:
 
-The question is narrow: *can site-wise labour cost roll up to a project?* The
-answer today is **no**, and it is a fact about two record shapes rather than a
-missing function:
+> **The question is narrow:** *can site-wise labour cost roll up to a project?*
+> The answer today is **no**, and it is a fact about two record shapes rather
+> than a missing function: an `addresses` record has fourteen keys and **not one
+> of them names a project**; a `projects` record carries `site_address`, which
+> is a **free-text string** (`"Banglore, Karnataka"` on this database) and not
+> an address id. So the join runs through free text in the one direction it
+> exists at all, which is the thing the site picker was built to stop relying
+> on.
+>
+> 📌 **Three ways out, none of them built, and the choice is a design decision
+> with the client-facing owner rather than an agent's:** an `address.project_id`
+> (wrong shape — one site can carry work for more than one project); a
+> `projects.site_address_ids` list (better, and it is the direction `boq_id` on
+> a challan already points); or a join through the BOQ, which already carries
+> `project_id` *and* `site_location* and is where the two words already meet.
 
-| | |
+**What was built is the SECOND way out, narrowed to one id.**
+`projects.site_address_id` is the link and `projects.site_address` is demoted to
+the **label snapshot** written from the chosen address at save.
+
+| way out | what happened |
 |---|---|
-| an `addresses` record | fourteen keys — `label`, `type`, `contact_name`, `company`, `line1`, `line2`, `landmark`, `city`, `state`, `pincode`, `country`, `phone`, `email`, `gstin` — and **not one of them names a project** |
-| a `projects` record | carries `site_address`, which is a **free-text string** (`"Banglore, Karnataka"` on this database) and not an address id |
+| `address.project_id` | **not built.** It is the shape the note called wrong, and the live data proves it: two projects carry *"Banglore, Karnataka"*. `tests/test_site_picker.py` keeps the old assertion **live** — an `addresses` record still carries no key beginning `project`. |
+| `projects.site_address_ids` **list** | **built, narrowed to a single `site_address_id`.** The client has said **one project = one site**. ⚠ He has **not** said one site = one project, and this shape does not claim he has: several projects may name one address, and `address.references_of()` returns all of them. Widening the field to a list later is additive. |
+| a join **through the BOQ** | **not built.** A BOQ carries `project_id` *and* `site_location`, but `site_location` is free text of its own, so that route joins two strings rather than closing one. It would also have put the join in the module with the largest blast radius in the repo. |
 
-So the join runs through free text in the one direction it exists at all, which
-is the thing the site picker was built to stop relying on. `ADDRESS_TYPES`
-carries a `site` type — *"Project Site"* — so the book can **hold** a site; it
-just cannot say which project the site belongs to.
+⚠ **THIS DOES NOT UNBLOCK C6, and nothing here should be read as groundwork
+for it.** C6 is BLOCKED on CC-2's **Open question 4** — whether attendance wages
+or the BOQ installation base rate is authoritative for labour cost — and
+subtracting both counts labour twice. **One of the two shortfalls is closed; the
+other is untouched.** No figure is exported, `projectview.py`'s margin / total /
+net prohibition is unchanged, and `attendance.py` is still imported by nothing.
 
-⚠ **This is C6's problem and C6 is BLOCKED** on CC-2's Open question 4 (whether
-attendance wages or the BOQ installation base rate is authoritative for labour
-cost). Nothing was built toward it: no field was added "ready for" one, which is
-how this gate is most likely to be walked through by accident.
+⚠ **The muster's half of the roll-up is still MISSING.** An `attendance` record
+names a site, a project now names a site, and joining the two would attribute
+one site's whole labour cost to every project on that site. **The site→project
+ambiguity is real on this database** — `tools/backfill_project_sites.py` prints
+the count per address for exactly that reason — and **no guard is built on it**,
+deliberately. It is evidence for the pass that answers Open question 4.
 
-📌 **Three ways out, none of them built, and the choice is a design decision with
-the client-facing owner rather than an agent's:** an `address.project_id` (wrong
-shape — one site can carry work for more than one project); a
-`projects.site_address_ids` list (better, and it is the direction `boq_id` on a
-challan already points); or a join through the BOQ, which already carries
-`project_id` *and* `site_location` and is where the two words already meet.
-`tests/test_site_picker.py::test_an_address_does_not_join_to_a_project` pins the
-absence, so **this note fails the day it stops being true** rather than quietly
-going stale.
+Held by [tests/test_project_site.py](tests/test_project_site.py) and the
+rewritten pin in
+[tests/test_site_picker.py](tests/test_site_picker.py)::`test_an_address_joins_to_a_project_THROUGH_THE_PROJECT`.
 
 ---
 

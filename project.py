@@ -25,15 +25,57 @@ nothing, and shows no money.
 **It is not a display label.**  `project_name` stays on the BOQ as a display
 field, but the grouping key is `project_id` — a UUID minted here.
 
-Import direction — LEAF
------------------------
+The site comes from the ADDRESS BOOK
+------------------------------------
+⚠ **`site_address` was free text somebody typed until 30 August 2026 (fourth
+pass), and that is why this database spells one place two ways** — *"Banglore,
+Karnataka"* on two projects and *"Bangalore, Karnataka"* on a third. A project's
+site is a **join key**, and free text cannot join.
+
+The record now carries **two** fields and they are not duplicates:
+
+    site_address_id   the address-book link  — the join
+    site_address      the address LABEL, snapshotted at save — the display
+
+**Why the snapshot, and not a pure reference.** Every current reader — the SITE
+column on the register below, `projectview.py`, anything printing a project —
+already reads `site_address`. Making the existing field the snapshot means those
+readers do not change and existing records keep rendering exactly as they do
+today: *"existing records unharmed"* is true **by construction** rather than by
+migration. It is also the house pattern — `charge.py` stores `project_id` **and**
+snapshots `project_name`.
+
+**Where that falls short, and what is built for it.** Two copies of one string
+can disagree after an address is edited. ⚠ **Nothing here silently reconciles
+them.** `site_drift()` below reports the disagreement and `/projects/view/<id>`
+raises an amber band over it — `ra.party_drift()`'s shape on `/ra/view`, and
+DOMAIN.md §6's rule: surface it, name it, never silently correct it.
+
+⚠ **This is NOT C6 and does not unblock it.** C6 is BLOCKED on CC-2's Open
+question 4. This closes one of the two shortfalls C6 would have to close and
+touches neither the other one nor `projectview.py`'s margin prohibition.
+
+Import direction — a LEAF that now reaches the book
+---------------------------------------------------
     project.py ──► dashboard.py  BASE_STYLES / _nav
     project.py ──► pipeline.py   esc / norm_name
     project.py ──► store         the shared STORE dict
     project.py ──► branding      company strings, page title
+    project.py ──► address.py    the SITE picker and SITE_TYPES  (30 Aug 2026)
 
-Nothing imports this module at module level EXCEPT boq.py. boq.py imports
-project.py to use its API rather than coupling directly to STORE["projects"].
+⚠ **`address.py` does NOT import back**, and cannot: it is imported by five
+other modules already. It reads `STORE["projects"]` directly for
+`references_of()` — the one-way trick, exactly as `boq.py` reads
+`STORE["ra_bills"]`.
+
+⚠ **`SITE_TYPES` is read from `address.py`, never redefined here.** Two pickers
+that can disagree about what counts as a site is the defect this arrow exists to
+prevent; `employee.py` reads the same tuple from the same place.
+
+boq.py imports project.py to use its API rather than coupling directly to
+STORE["projects"], and projectview.py imports it for `site_drift()` — the drift
+belongs to the module that writes both copies, for the reason `party_drift()`
+lives in `ra.py`.
 
 project.py does NOT import: boq, challan, purchase, po_draft, invoice, ra,
 receipt, quotation, product, docsheet, boqpick.  That list is asserted in
@@ -45,6 +87,7 @@ from datetime import datetime
 
 from flask import Blueprint, redirect, request, url_for
 
+import address as AD
 import branding as B
 import pipeline as P
 from store import STORE
@@ -52,6 +95,9 @@ from store import STORE
 from dashboard import BASE_STYLES, _nav
 
 project_bp = Blueprint("project", __name__, url_prefix="/projects")
+
+# The link. `site_address` beside it is the label snapshot — see the docstring.
+SITE_ADDRESS_ID_FIELD = "site_address_id"
 
 
 # =============================================================================
@@ -85,6 +131,167 @@ def attached_boq_count(project_id: str) -> int:
     """How many BOQs are attached to this project."""
     return sum(1 for b in STORE.get("boqs", {}).values()
                if str(b.get("project_id", "")) == project_id)
+
+
+# =============================================================================
+# THE SITE — the link, the snapshot, and what to do when they disagree
+# =============================================================================
+
+def site_label_of(address_id) -> str:
+    """
+    The address's label as the book holds it **now**, or `""` when the id names
+    nothing.
+
+    ⚠ **An ARCHIVED address still resolves here.** Archiving takes an address
+    out of the pickers; it does not take it away from the records that already
+    name it, and a project whose site was archived must go on saying where the
+    work is.
+    """
+    a = (STORE.get("addresses") or {}).get(str(address_id or "")) or {}
+    return str(a.get("label") or "")
+
+
+def is_legacy_site(proj) -> bool:
+    """
+    Whether this project's site is a free-text string nothing has mapped.
+
+    ⚠ **Read from the SHAPE, not from a mark**, and that is the one place this
+    differs from `employee.is_unmapped_site()`. The muster carries an explicit
+    `site_source` because its backfill had to distinguish "matched exactly" from
+    "left alone"; here there is nothing to distinguish. A project either has an
+    id or it does not, and one with a string and no id is unambiguously a record
+    written before the picker. No third state exists and none is invented.
+    """
+    proj = proj or {}
+    return (bool(str(proj.get("site_address") or "").strip())
+            and not str(proj.get(SITE_ADDRESS_ID_FIELD) or "").strip())
+
+
+def site_drift(proj):
+    """
+    Where the snapshot and the live address have come apart, or `None`.
+
+    Returns `(snapshot, live)`. `live` is `""` when the id names nothing at all,
+    which is the dangling case rather than the renamed one, and the band says
+    which.
+
+    ⚠ **This REPORTS and never reconciles.** `ra.party_drift()`'s shape and
+    exactly its reason: a stored figure is what it is, and correcting it behind
+    somebody's back is worse than showing them two numbers and saying which is
+    which. DOMAIN.md §6 — surface it, name it, never silently correct it.
+
+    A project with no id has no drift to report: there is nothing to compare the
+    snapshot against, and `is_legacy_site()` is the state that describes it.
+    """
+    proj = proj or {}
+    aid = str(proj.get(SITE_ADDRESS_ID_FIELD) or "").strip()
+    if not aid:
+        return None
+    snapshot = str(proj.get("site_address") or "").strip()
+    live = site_label_of(aid)
+    return None if live == snapshot else (snapshot, live)
+
+
+def _site_from(form, proj=None) -> tuple:
+    """
+    `(fields, error)` — the two site keys a project record carries, or why not.
+
+    ⚠ **The picker is the ONLY path. There is no free-text fallback**, and that
+    is a deliberate departure from `challan.py`'s consignee, which keeps one. The
+    tie-breaker is that a project's site is a **join key**: a site store that
+    exists for four months is not worth an address-book entry, but a project's
+    site has to be the same object the muster and the register are talking
+    about, and free text cannot join.
+
+    ⚠ **A LEGACY project must be picked before it can be saved.** Its string is
+    left exactly as it stands until then — the form does not rewrite it, and
+    `tools/backfill_project_sites.py` is what maps it in bulk. Saving a legacy
+    record with the picker untouched would write the id-less shape back
+    permanently, one edit at a time.
+
+    An empty pick on a project that is **not** legacy clears both keys, which is
+    how a site is deliberately removed.
+    """
+    site_id = (form.get(SITE_ADDRESS_ID_FIELD) or "").strip()[:64]
+
+    if not site_id:
+        if proj is not None and is_legacy_site(proj):
+            return {}, ("This project's site is a free-text string from before "
+                        "the address book: "
+                        f"'{str(proj.get('site_address') or '').strip()}'. "
+                        "Choose the matching address to map it — or add it to "
+                        "the address book first. It has been left exactly as "
+                        "recorded rather than guessed at.")
+        return {SITE_ADDRESS_ID_FIELD: "", "site_address": ""}, ""
+
+    addr = (STORE.get("addresses") or {}).get(site_id)
+    if not addr:
+        return {}, "That site is no longer in the address book."
+    if addr.get("type") not in AD.SITE_TYPES:
+        # The picker offers `SITE_TYPES` only, so this is a hand-made POST.
+        # Refused rather than stored: a vendor is somebody we buy from, not a
+        # place work happens.
+        return {}, ("That address is not a site or an office, so it cannot be "
+                    "a project's site.")
+
+    # ⚠ The label is SNAPSHOTTED, not looked up on every render. See the module
+    #   docstring: every existing reader goes on reading `site_address`.
+    return {SITE_ADDRESS_ID_FIELD: site_id,
+            "site_address": str(addr.get("label") or "").strip()}, ""
+
+
+def _site_field(selected: str = "", proj=None) -> str:
+    """
+    The site form group — one widget, so two forms cannot offer two.
+
+    Carries three things the picker on its own cannot survive without:
+
+    * ⚠ **an "Add a new address" link.** Without it a user standing in front of
+      a project whose site is not in the book has **no move at all**. It is
+      required, not decoration.
+    * ⚠ **the empty-book case**, said in words rather than as a `<select>` with
+      one placeholder in it. `picker_options()` no longer seeds, so an empty
+      book is now a state a form can genuinely open in.
+    * **the legacy string**, shown and marked, so somebody mapping a record can
+      see what they are mapping it to.
+    """
+    add_url = url_for("address.add_address")
+
+    legacy = ""
+    if proj is not None and is_legacy_site(proj):
+        legacy = (f'<div class="pf-legacy"><b>Recorded as free text: '
+                  f'&ldquo;{P.esc(proj.get("site_address"))}&rdquo;</b> '
+                  f'&mdash; from before the site came from the address book. '
+                  f'It has been left exactly as it stands and nothing has been '
+                  f'guessed at. Choose the matching address to map it; saving '
+                  f'needs a pick.</div>')
+
+    if not AD.has_options(AD.SITE_TYPES):
+        return (f'<label>Site Address</label>{legacy}'
+                f'<div class="pf-empty">No sites in the address book &mdash; '
+                f'<a href="{add_url}">add one</a>. A project\'s site is a link '
+                f'to the book, not typed text.</div>')
+
+    opts = AD.picker_options("— choose a site from the address book —",
+                             only_types=AD.SITE_TYPES, selected=selected)
+    return (f'<label for="{SITE_ADDRESS_ID_FIELD}">Site Address</label>{legacy}'
+            f'<select id="{SITE_ADDRESS_ID_FIELD}" '
+            f'name="{SITE_ADDRESS_ID_FIELD}">{opts}</select>'
+            f'<div class="pf-hint">Not in the list? '
+            f'<a href="{add_url}">Add a new address</a> &mdash; give it the '
+            f'type <b>Project Site</b>.</div>')
+
+
+PROJECT_FORM_STYLES = """
+        .pf-hint {{ font-size:.78rem; color:#666; margin-top:.35rem; }}
+        .pf-hint a {{ color:#1d4ed8; }}
+        .pf-legacy {{ border:1px solid #fde68a; background:#fffbeb;
+                      border-radius:8px; padding:.6rem .8rem; margin:.4rem 0;
+                      font-size:.79rem; line-height:1.55; font-weight:400; }}
+        .pf-empty {{ border:1px dashed #ccc; background:#fafafa;
+                     border-radius:8px; padding:.6rem .8rem; margin:.4rem 0;
+                     font-size:.79rem; line-height:1.55; font-weight:400; }}
+"""
 
 
 # =============================================================================
@@ -187,6 +394,11 @@ def create_project():
                          f"'{P.esc(existing.get('name'))}'. "
                          f"Edit it instead, or use a distinct name.")
 
+        site_fields = {SITE_ADDRESS_ID_FIELD: "", "site_address": ""}
+        if not error:
+            site_fields, site_error = _site_from(request.form)
+            error = error or site_error
+
         if not error:
             pid = str(uuid.uuid4())
             now = _now()
@@ -195,7 +407,9 @@ def create_project():
                 "name":         name,
                 "norm_name":    P.norm_name(name),
                 "client":       (request.form.get("client") or "").strip(),
-                "site_address": (request.form.get("site_address") or "").strip(),
+                # Two keys, not one. `site_address` is the LABEL SNAPSHOT
+                # written from the chosen address — see the module docstring.
+                **site_fields,
                 "notes":        (request.form.get("notes") or "").strip(),
                 "created_at":   now,
                 "updated_at":   now,
@@ -206,6 +420,9 @@ def create_project():
 
     # GET or rejected POST
     _v = lambda k: P.esc(request.form.get(k, "")) if request.method == "POST" else ""
+    site_field = _site_field(
+        selected=(request.form.get(SITE_ADDRESS_ID_FIELD, "")
+                  if request.method == "POST" else ""))
 
     html = f"""
     <!DOCTYPE html>
@@ -219,10 +436,11 @@ def create_project():
       <style>
         .pf {{ max-width:600px; margin:1.5rem auto; }}
         .pf label {{ display:block; margin-top:1rem; font-weight:600; font-size:.88rem; }}
-        .pf input, .pf textarea {{ width:100%; padding:.45rem .6rem; font-size:.92rem;
+        .pf input, .pf textarea, .pf select {{ width:100%; padding:.45rem .6rem; font-size:.92rem;
                                    border:1px solid #ccc; border-radius:4px; }}
         .pf textarea {{ min-height:4rem; resize:vertical; }}
         .pf .acts {{ margin-top:1.25rem; }}
+{PROJECT_FORM_STYLES}
       </style>
     </head>
     <body>
@@ -239,9 +457,7 @@ def create_project():
           <input type="text" id="client" name="client" value="{_v('client')}"
                  placeholder="Prudent Teqtis Pvt Ltd"/>
 
-          <label for="site_address">Site Address</label>
-          <input type="text" id="site_address" name="site_address" value="{_v('site_address')}"
-                 placeholder="Bangalore, Karnataka"/>
+          {site_field}
 
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes" placeholder="Optional">{_v('notes')}</textarea>
@@ -282,11 +498,19 @@ def edit_project(id: str):
                          f"'{P.esc(existing.get('name'))}'. "
                          f"Use a distinct name.")
 
+        site_fields = {}
+        if not error:
+            site_fields, site_error = _site_from(request.form, proj)
+            error = error or site_error
+
         if not error:
             proj["name"]         = name
             proj["norm_name"]    = P.norm_name(name)
             proj["client"]       = (request.form.get("client") or "").strip()
-            proj["site_address"] = (request.form.get("site_address") or "").strip()
+            # ⚠ Both keys move together or neither does. A form that wrote the
+            #   id and left the snapshot would manufacture the exact drift
+            #   `site_drift()` exists to report.
+            proj.update(site_fields)
             proj["notes"]        = (request.form.get("notes") or "").strip()
             proj["updated_at"]   = _now()
             return redirect(url_for("project.list_projects",
@@ -298,6 +522,12 @@ def edit_project(id: str):
         if request.method == "POST":
             return P.esc(request.form.get(k, ""))
         return P.esc(proj.get(k, ""))
+
+    site_field = _site_field(
+        selected=(request.form.get(SITE_ADDRESS_ID_FIELD, "")
+                  if request.method == "POST"
+                  else str(proj.get(SITE_ADDRESS_ID_FIELD) or "")),
+        proj=proj)
 
     html = f"""
     <!DOCTYPE html>
@@ -311,10 +541,11 @@ def edit_project(id: str):
       <style>
         .pf {{ max-width:600px; margin:1.5rem auto; }}
         .pf label {{ display:block; margin-top:1rem; font-weight:600; font-size:.88rem; }}
-        .pf input, .pf textarea {{ width:100%; padding:.45rem .6rem; font-size:.92rem;
+        .pf input, .pf textarea, .pf select {{ width:100%; padding:.45rem .6rem; font-size:.92rem;
                                    border:1px solid #ccc; border-radius:4px; }}
         .pf textarea {{ min-height:4rem; resize:vertical; }}
         .pf .acts {{ margin-top:1.25rem; }}
+{PROJECT_FORM_STYLES}
       </style>
     </head>
     <body>
@@ -329,8 +560,7 @@ def edit_project(id: str):
           <label for="client">Client</label>
           <input type="text" id="client" name="client" value="{_v('client')}"/>
 
-          <label for="site_address">Site Address</label>
-          <input type="text" id="site_address" name="site_address" value="{_v('site_address')}"/>
+          {site_field}
 
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes">{_v('notes')}</textarea>

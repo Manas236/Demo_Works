@@ -19,6 +19,7 @@ from flask import Blueprint, redirect, request, url_for
 import auth
 import branding as B
 import pipeline as P
+import project as PJ
 from store import STORE
 from dashboard import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
@@ -270,6 +271,47 @@ def view_project(id: str):
     for b in eligible_boqs:
         boq_opts += f'<option value="{b.get("id")}">{P.esc(b.get("ref"))} - {P.esc(b.get("account_name"))}</option>'
 
+    # ── The site: the snapshot, the link, and where they disagree ────────────
+    #
+    # ⚠ **This page reads `site_address` exactly as it always did.** That field
+    #   is now the label SNAPSHOT rather than free text, which is the whole
+    #   point of the shape: existing records render identically and this block
+    #   changes nothing about the figure above.
+    #
+    # ⚠ **The band REPORTS and never reconciles** — `ra.party_drift()`'s shape
+    #   on `/ra/view`, deliberately rather than a second design, and DOMAIN.md
+    #   §6's rule: surface it, name it, never silently correct it. Rewriting the
+    #   snapshot here would restate history from a page that is supposed to be
+    #   reading it.
+    site_band = ""
+    drift = PJ.site_drift(proj)
+    if drift:
+        snapshot, live = drift
+        if live:
+            site_band = (
+                f'<div class="pm-drift"><span class="pm-drift-icon">&#9888;</span>'
+                f'<span><b>This project\'s site was recorded as '
+                f'&ldquo;{P.esc(snapshot) or "(blank)"}&rdquo;, and the address '
+                f'book now reads &ldquo;{P.esc(live)}&rdquo;.</b> The address '
+                f'has been edited since. The figure above is the one stored on '
+                f'this project and is deliberately <b>not</b> restated &mdash; '
+                f're-save the project to take the new label.</span></div>')
+        else:
+            site_band = (
+                f'<div class="pm-drift"><span class="pm-drift-icon">&#9888;</span>'
+                f'<span><b>This project points at an address that is no longer '
+                f'in the book.</b> It still shows the label it was saved with, '
+                f'&ldquo;{P.esc(snapshot) or "(blank)"}&rdquo;. Re-pick the '
+                f'site on <a href="{url_for("project.edit_project", id=id)}">'
+                f'Edit Project</a>.</span></div>')
+    elif PJ.is_legacy_site(proj):
+        site_band = (
+            f'<div class="pm-drift"><span class="pm-drift-icon">&#9888;</span>'
+            f'<span><b>This project\'s site is free text from before the '
+            f'address book.</b> It has been left exactly as recorded and '
+            f'nothing has been guessed at, so it does not join to anything. '
+            f'Map it on <a href="{url_for("project.edit_project", id=id)}">'
+            f'Edit Project</a>.</span></div>')
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -285,7 +327,15 @@ def view_project(id: str):
     .pm-item {{ display:flex; flex-direction:column; gap:0.25rem; }}
     .pm-lbl {{ font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); font-weight:700; }}
     .pm-val {{ font-size:1.05rem; font-weight:700; color:var(--navy); }}
-    
+    /* The amber divergence band. `ra.party_drift()`'s `.form-hint` on
+       /ra/view is the shape; this is that shape in this page's own metrics. */
+    .pm-drift {{ display:flex; gap:.6rem; align-items:flex-start;
+                 border:1px solid #fde68a; background:#fffbeb; border-radius:8px;
+                 padding:.75rem 1rem; margin-bottom:1.25rem;
+                 font-size:.83rem; line-height:1.6; }}
+    .pm-drift-icon {{ color:#b45309; font-size:1rem; line-height:1.3; }}
+    .pm-drift a {{ color:#1d4ed8; }}
+
     .panel {{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:1.25rem; margin-bottom:2rem; }}
     .panel-head {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; padding-bottom:0.75rem; border-bottom:1px solid var(--border); }}
     .panel-head h2 {{ margin:0; font-size:1.1rem; color:var(--navy); }}
@@ -309,6 +359,7 @@ def view_project(id: str):
     </div>
     
     {_alert(msg, msg_type)}
+    {site_band}
 
     <div class="proj-meta">
       <div class="pm-item">
