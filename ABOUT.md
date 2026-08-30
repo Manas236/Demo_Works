@@ -362,7 +362,7 @@ Consequences you must respect when editing:
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
-| [projectview.py](projectview.py) | 766 | **Project Detail Page.** Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). |
+| [projectview.py](projectview.py) | 766 | **Project Detail Page.** Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
@@ -2991,24 +2991,44 @@ or the BOQ installation base rate is authoritative for labour cost — and
 subtracting both counts labour twice. `projectview.py`'s margin / total / net
 prohibition is unchanged.
 
-⚠ **The join was TAKEN on 30 August 2026 (fifth pass), and it is a
+⚠ **The join was TAKEN on 30 August 2026 (fifth pass), and it was a
 PRESENTATION rather than a roll-up.** `/projects/view/<id>` grew a **Site
 Labour** section listing every marking whose `site_address_id` equals the
-project's. ⚠ **It attributes nothing.** The paragraph below said joining the two
-"would attribute one site's whole labour cost to every project on that site" —
-that is still exactly true, and the section's answer is to **say so on the
-page** rather than to pretend otherwise: it names the site, states that the rows
-are booked there and **not** tagged to the project, and where other projects
-share the address it names them and says the money appears on their pages too
-and must not be added across them. `project.others_on_site()` is that count.
-`attendance.py` is no longer imported by nothing; it is imported by exactly one
-module, and what crosses is rendered cells.
+project's. ⚠ **It attributed nothing**, and said so on the page: it named the
+site, stated that the rows were booked there and **not** tagged to the project,
+and where other projects shared the address it named them and said the money
+appeared on their pages too. `project.others_on_site()` is that count.
 
-⚠ **The site→project ambiguity is real on this database and STILL has no guard
-on it**, deliberately — `tools/backfill_project_sites.py` prints the count per
-address, `tools/clean_site_data.py` prints it before and after, and the project
-page renders it. Three places report it and none resolves it. Resolving it is
-the pass that answers Open question 4.
+✅ **AND ON THE SIXTH PASS THE SECTION LEARNED TO ATTRIBUTE — because the
+MARKING did.** A marking carries a `project_id` (§3's Attendance record,
+property 5), so the section now renders **two labelled groups, visibly
+separated and summed separately**:
+
+| group | found by | what it is |
+|---|---|---|
+| **Booked to this project** | `attendance.markings_for_project(id)` | an id somebody picked off a picker filtered to this site — the same mechanism the charges panel uses |
+| **At this site, unattributed** | `attendance.unattributed_at_site(aid)` | the legacy rows: booked at the site, naming no project. Shown here because of the **site**, and the caption says so |
+
+⚠ **The two are never added together, anywhere.** A combined figure would state
+exactly the thing the page says cannot be determined. Two sums inside one panel
+is still one panel — `projectview.py`'s first sentence — and its prohibition on
+a figure combining two *panels* is untouched.
+
+⚠ **The ambiguity note is CONDITIONAL now.** It appears only where the
+unattributed group is **non-empty** *and* other projects share the site: those
+are the conditions under which the double count is real. Where every marking is
+attributed the note is dropped, because **a page that goes on warning about a
+resolved ambiguity teaches its reader to ignore the warning**. Where the site
+carries siblings but everything is attributed, the page says nothing at all.
+
+⚠ **The site→project ambiguity now has a RESOLUTION PATH, and still no guard.**
+`tools/backfill_project_sites.py` prints the count per address,
+`tools/clean_site_data.py` prints it before and after, the project page renders
+it, and `tools/backfill_marking_projects.py` **links a marking where the site
+carries exactly one project and refuses to guess where it carries more**. Four
+places report it; one resolves the unambiguous half and prints the rest for a
+human. ⚠ **None of that answers Open question 4** — which labour figure is
+authoritative — so **C6 stays BLOCKED**.
 
 Held by [tests/test_project_site.py](tests/test_project_site.py) and the
 rewritten pin in
@@ -6221,12 +6241,16 @@ subtracting both counts labour twice. **Nothing in that section answers the
 question.** It presents markings; it computes no margin, no project total and no
 net, and the override block says so in terms.
 
-**What crosses the boundary is rendered cells, not arithmetic.**
-`projectview.py` takes `marking_cells()` and `markings_at_site()` and passes
-`settings.ot_multiplier()` straight through. It may not reach `cost_of()`,
-`ot_amount()`, `day_rate_of()` or `site_costs()` — a second module able to
-compute a wage is a second place the OT multiplier could be hardcoded, which is
-the statutory-underpayment defect CC-2 names.
+**What crosses the boundary is rendered cells and readers, not arithmetic.**
+`projectview.py` takes `marking_cells()`, `markings_for_project()` and
+`unattributed_at_site()` — and passes `settings.ot_multiplier()` straight
+through. ⚠ **It no longer takes `markings_at_site()` and that is deliberate**:
+asking for the whole site list and splitting it on the page would put a second
+definition of *attributed* there, which is the `SITE_TYPES` defect one register
+along. It may not reach `cost_of()`, `ot_amount()`, `day_rate_of()` or
+`site_costs()` — a second module able to compute a wage is a second place the OT
+multiplier could be hardcoded, which is the statutory-underpayment defect CC-2
+names.
 `tests/test_attendance.py::test_the_labour_section_consumes_the_module_and_does_not_reimplement_it`
 holds that, and `test_only_projectview_imports_the_attendance_module` holds the
 import as an **allowlist of one** — stricter than the blacklist it replaced,

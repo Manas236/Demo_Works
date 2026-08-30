@@ -826,17 +826,40 @@ def test_the_labour_section_consumes_the_module_and_does_not_reimplement_it():
     """
     ⚠ **What the narrowed import is allowed to be, and what it is not.**
 
-    The one permitted consumer takes *rendered answers* — `markings_at_site()`
-    and `marking_cells()`. It may not take the arithmetic: a second module able
-    to compute a wage is a second place the OT multiplier could be hardcoded,
-    which is the statutory-underpayment defect CC-2 names, and it is what would
-    make this an export of C6's figure rather than a presentation of C5's rows.
+    The one permitted consumer takes *rendered answers*. It may not take the
+    arithmetic: a second module able to compute a wage is a second place the OT
+    multiplier could be hardcoded, which is the statutory-underpayment defect
+    CC-2 names, and it is what would make this an export of C6's figure rather
+    than a presentation of C5's rows.
+
+    ⚠ **REWRITTEN 30 August 2026, sixth pass. The old assertion, verbatim:**
+
+        assert "AT.markings_at_site(" in src and "AT.marking_cells(" in src, (
+            "the section must consume attendance.py's own accessors — "
+            "reimplementing either is the second copy this extraction exists "
+            "to prevent")
+
+    **Nothing about the rule changed; the accessor list grew.** The section now
+    renders two groups, so it asks `markings_for_project()` and
+    `unattributed_at_site()` instead of taking one list and splitting it here —
+    which is the point: splitting locally would put a second definition of
+    "attributed" on this page. ⚠ **The banned list below is UNCHANGED**, which
+    is the half of this test that was ever load-bearing.
     """
     src = (REPO / "projectview.py").read_text(encoding="utf8")
 
-    assert "AT.markings_at_site(" in src and "AT.marking_cells(" in src, (
-        "the section must consume attendance.py's own accessors — reimplementing "
-        "either is the second copy this extraction exists to prevent")
+    for accessor in ("marking_cells", "markings_for_project",
+                     "unattributed_at_site"):
+        assert f"AT.{accessor}(" in src, (
+            f"the section must consume attendance.{accessor}() — "
+            f"reimplementing it is the second copy this extraction exists to "
+            f"prevent")
+
+    # ⚠ And it must not have gone back to filtering a raw list itself: the
+    #   question "is this marking attributed?" has one owner.
+    assert "AT.markings_at_site(" not in src, (
+        "the section takes the whole site list again — the two groups must "
+        "come from the module that owns what 'attributed' means")
 
     for banned in ("cost_of", "ot_amount", "day_rate_of", "site_costs",
                    "STANDARD_HOURS_PER_DAY"):
@@ -931,11 +954,21 @@ def test_the_labour_section_says_the_rows_are_not_tagged_to_the_project(client):
     """
     ⚠ **The wording is load-bearing and this is the test that says so.**
 
-    One panel up, *"Expenses tagged to this project"* is true: a charge carries a
-    `project_id` somebody picked off a dropdown. A marking carries none — it is
-    matched through the address book, on the **site** — and a reader who
-    conflates the two will add one day's labour onto every project that shares
-    the site.
+    ⚠ **REWRITTEN 30 August 2026, sixth pass. The old assertion, verbatim:**
+
+        assert "not</b> tagged to this project" in html or \\
+               "not tagged to this project" in html, (
+            "the section must say these rows are NOT tagged to the project")
+
+    **It was true of every row and is now true of only one of the two groups.**
+    A marking gained a `project_id` picked off a filtered dropdown, so group 1's
+    rows *are* tagged to this project by the same mechanism a charge is. Saying
+    otherwise across the whole panel would now be the lie the old assertion
+    existed to prevent, pointing the other way.
+
+    **What is asserted instead is the substance the old line was protecting**:
+    the *unattributed* group must say, of its own rows, that they belong to no
+    project — and the charges panel's wording must still not be copied onto it.
     """
     aid = "addr-sl-1"
     STORE.setdefault("addresses", {})[aid] = {
@@ -944,28 +977,53 @@ def test_the_labour_section_says_the_rows_are_not_tagged_to_the_project(client):
     STORE.setdefault("projects", {})[pid] = {
         "id": pid, "name": "Tower A", "client": "C",
         "site_address": "Whitefield", "site_address_id": aid}
+    # An unattributed marking, so the group that carries the wording renders.
+    STORE.setdefault("attendance", {})["sl-1-loose"] = {
+        "id": "sl-1-loose", "date": DAY, "employee_id": "e1",
+        "employee_name": "Nobody's Project", "employee_code": "SF-001",
+        "day_rate": 1000.0, "site": "Whitefield", "site_address_id": aid,
+        "site_source": "book", "status": "present", "ot_hours": 0.0}
     try:
         html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
         assert "Site Labour" in html
-        assert "not</b> tagged to this project" in html or \
-               "not tagged to this project" in html, (
-            "the section must say these rows are NOT tagged to the project")
-        assert "Whitefield" in html, "it must name the site"
-        # and the charges panel's wording must not have been copied onto it.
-        # Anchor on the HEADING, not the bare words — "Site Labour" also names
-        # a block in this page's stylesheet, which sits above the charges panel.
         section = html[html.index("<h2>Site Labour</h2>"):]
+
+        assert "At this site, unattributed" in section, (
+            "the unattributed rows need a heading of their own — merging them "
+            "into the attributed ones is the whole defect")
+        assert "attributed to no project at all" in section, (
+            "the section must say these rows belong to no project")
+        assert "Booked to this project" in section, (
+            "and the attributed group must be labelled as what it is")
+        assert "Whitefield" in html, "it must name the site"
+
+        # The charges panel's wording must not have been copied onto it.
         assert "Expenses tagged to this project" not in section
     finally:
         STORE["projects"].pop(pid, None)
         STORE["addresses"].pop(aid, None)
+        STORE["attendance"].pop("sl-1-loose", None)
 
 
 def test_the_labour_section_names_every_other_project_on_the_same_site(client):
     """
-    ⚠ **The ambiguity note, end to end.** Two projects on one address: the
-    markings answer for both, the data cannot say which, and the page must not
-    imply otherwise.
+    ⚠ **The ambiguity note, end to end.** Two projects on one address with an
+    **unattributed** marking on it: that marking answers for both, the data
+    cannot say which, and the page must not imply otherwise.
+
+    ⚠ **REWRITTEN 30 August 2026, sixth pass. The old body created the two
+    projects and NO markings, and asserted:**
+
+        html = client.get(f"/projects/view/{ids[0]}").get_data(as_text=True)
+        assert "1 other project is recorded at this same site" in html
+        assert "Sify3" in html, "the note must NAME the other project"
+        assert "cannot be determined from this data" in html
+
+    **All three still hold — under the condition that now has to be true for the
+    note to be honest.** The note claims the same money shows on another
+    project's page, and that is only true of markings nobody has attributed. So
+    the fixture gains the unattributed marking the note is about, and the test
+    gains a **second control**: attribute it, and the note goes away.
     """
     aid = "addr-sl-2"
     STORE.setdefault("addresses", {})[aid] = {
@@ -975,13 +1033,31 @@ def test_the_labour_section_names_every_other_project_on_the_same_site(client):
         STORE.setdefault("projects", {})[pid] = {
             "id": pid, "name": name, "client": "C",
             "site_address": "Bangalore, Karnataka", "site_address_id": aid}
+    loose = {"id": "sl-2-loose", "date": DAY, "employee_id": "e1",
+             "employee_name": "Unattributed", "employee_code": "SF-001",
+             "day_rate": 1000.0, "site": "Bangalore, Karnataka",
+             "site_address_id": aid, "site_source": "book",
+             "status": "present", "ot_hours": 0.0}
+    STORE.setdefault("attendance", {})["sl-2-loose"] = loose
     try:
         html = client.get(f"/projects/view/{ids[0]}").get_data(as_text=True)
         assert "1 other project is recorded at this same site" in html
         assert "Sify3" in html, "the note must NAME the other project"
         assert "cannot be determined from this data" in html
 
-        # and the control: one project alone on a site raises no note
+        # ⚠ CONTROL 1 — attribute the marking, and the note is no longer true.
+        #   The sibling project is still there; the double count is not.
+        loose["project_id"] = ids[0]
+        loose["project_name"] = "Sify Bangalore"
+        resolved = client.get(f"/projects/view/{ids[0]}").get_data(as_text=True)
+        assert "recorded at this same site" not in resolved, (
+            "every marking is attributed, so the ambiguity is resolved — a "
+            "page that goes on warning about it teaches people to ignore the "
+            "warning")
+        assert "Unattributed" in resolved, "the marking is still shown"
+        loose.pop("project_id"), loose.pop("project_name")
+
+        # CONTROL 2 — one project alone on a site raises no note either.
         STORE["projects"].pop(ids[1])
         alone = client.get(f"/projects/view/{ids[0]}").get_data(as_text=True)
         assert "recorded at this same site" not in alone, (
@@ -991,6 +1067,68 @@ def test_the_labour_section_names_every_other_project_on_the_same_site(client):
         for pid in ids:
             STORE["projects"].pop(pid, None)
         STORE["addresses"].pop(aid, None)
+        STORE["attendance"].pop("sl-2-loose", None)
+
+
+def test_the_two_groups_are_summed_separately_and_never_added_together(client):
+    """
+    ⚠ **The whole point of splitting the panel.** One group is attributed and
+    the other is not, so a combined figure would state exactly the thing the
+    page says cannot be determined.
+
+    Two markings at one site, one booked to the project and one not, at
+    deliberately different day rates so the three candidate figures — 1,000,
+    250 and 1,250 — cannot be confused with each other.
+    """
+    aid = "addr-sl-6"
+    STORE.setdefault("addresses", {})[aid] = {
+        "id": aid, "label": "Split Site", "type": "site"}
+    pid = "proj-sl-6"
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": "Split", "client": "C",
+        "site_address": "Split Site", "site_address_id": aid}
+    STORE.setdefault("attendance", {}).update({
+        "sl6-booked": {"id": "sl6-booked", "date": DAY, "employee_id": "e1",
+                       "employee_name": "Booked", "employee_code": "SF-001",
+                       "day_rate": 1000.0, "site": "Split Site",
+                       "site_address_id": aid, "site_source": "book",
+                       "project_id": pid, "project_name": "Split",
+                       "status": "present", "ot_hours": 0.0},
+        "sl6-loose": {"id": "sl6-loose", "date": DAY, "employee_id": "e2",
+                      "employee_name": "Loose", "employee_code": "SF-002",
+                      "day_rate": 250.0, "site": "Split Site",
+                      "site_address_id": aid, "site_source": "book",
+                      "status": "present", "ot_hours": 0.0},
+    })
+    try:
+        html = client.get(f"/projects/view/{pid}").get_data(as_text=True)
+        section = html[html.index("<h2>Site Labour</h2>"):]
+
+        totals = re.findall(r'class="total-row"><td colspan="6">Total</td>'
+                            r'<td style="text-align:right;">([^<]*)</td>',
+                            section)
+        assert len(totals) == 2, (
+            f"the panel must carry exactly two group totals, got {totals!r}")
+        assert totals[0].strip() == "1,000.00", (
+            f"the booked group must total only what is booked: {totals!r}")
+        assert totals[1].strip() == "250.00", (
+            f"the unattributed group must total only what is loose: {totals!r}")
+
+        # ⚠ THE MUTATION THAT MATTERS: the combined figure must appear nowhere.
+        assert "1,250" not in section, (
+            "the two groups were added together — that is a figure combining "
+            "an attributed total with an unattributed one, which states the "
+            "very thing this page says cannot be determined")
+
+        # The control: each row really is in the group it belongs to.
+        booked_block = section[section.index("Booked to this project"):
+                               section.index("At this site, unattributed")]
+        assert "Booked" in booked_block and "Loose" not in booked_block
+    finally:
+        STORE["projects"].pop(pid, None)
+        STORE["addresses"].pop(aid, None)
+        for k in ("sl6-booked", "sl6-loose"):
+            STORE["attendance"].pop(k, None)
 
 
 def test_a_project_with_no_site_gets_its_own_empty_state(client):

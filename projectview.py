@@ -7,16 +7,34 @@ Mounted at : /projects (registered in app.py)
 This module replaces the dummy view in project.py.
 It displays project metadata and gathers documents attached to the project.
 
-⚠ **One panel on this page is NOT a document panel, and the difference is the
-first thing to understand about it.** *Site Labour* lists attendance markings
-booked at this project's **site**. Every other panel here finds its rows by an
-id somebody chose — a `project_id` on a BOQ, a proforma, a purchase order, a
-charge. A marking carries no `project_id` and never has: it is matched through
-a third record, the address book, which names no project at all. Where two
-projects share a site, **both pages show the same markings and the same money**,
-and the section says so on its face. See `_site_labour()` at the foot of this
-file, and CLIENT_CHANGES.md §0's fifth block of 30 August 2026, which is the
-authority for the section existing at all.
+⚠ **One panel on this page shows its rows in TWO groups, and the difference
+between them is the first thing to understand about it.** *Site Labour* is that
+panel, and it renders:
+
+    1. Booked to this project    r["project_id"] == id   somebody CHOSE this
+    2. At this site, unattributed  r["site_address_id"] == the project's site,
+                                   and r["project_id"] is empty
+
+Group 1 is the same mechanism as every other panel here — an id somebody picked,
+exactly as a BOQ, a proforma, a purchase order and a charge carry one. **Group 2
+is not**: those rows are matched through a third record, the address book, which
+names no project at all, so where two projects share a site **both pages show
+those same markings and the same money**. Each group carries a caption saying
+which it is, they are summed **separately**, and nothing anywhere adds the two
+together.
+
+⚠ **The ambiguity note is conditional now and that is deliberate.** It appears
+only where group 2 is non-empty **and** other projects share the site — the
+conditions under which the double count is real. Where every marking is
+attributed the ambiguity is resolved and the page says nothing, because a page
+that goes on warning about a resolved ambiguity teaches its reader to ignore the
+warning.
+
+See `_site_labour()` and `_labour_group()` at the foot of this file.
+CLIENT_CHANGES.md §0's **fifth** block of 30 August 2026 is the authority for
+the section existing at all; its **sixth** block is the authority for the two
+groups. ⚠ **Neither is CC-2 scope** and **C6 stays BLOCKED** on Open question 4:
+attributing a day is not costing a project.
 
 Each panel shows the documents' OWN values and adds that one column up. What
 this page must never show is a figure that only exists by combining two panels
@@ -112,47 +130,81 @@ def _alert(msg: str, kind: str = "error") -> str:
 #   is the whole reason the wording below is written the way it is.**
 #
 #     Expenses & Charges   c["project_id"] == id     somebody CHOSE this project
-#     Site Labour          r["site_address_id"]      nobody chose anything; the
+#     Site Labour, group 1 r["project_id"] == id     somebody CHOSE this project
+#     Site Labour, group 2 r["site_address_id"]      nobody chose anything; the
 #                            == proj["site_address_id"]   two records share a PLACE
 #
-#   A charge names the project. A marking names a **site**, and a site can carry
-#   several projects — this database has one address carrying three. Every one of
-#   those projects' pages then shows the same markings and the same money, and a
-#   reader who adds them up across projects has counted one day's labour more
-#   than once. The note is what stops that, and it is not decoration.
+#   ⚠ **The middle row is new on 30 August 2026 (sixth pass) and it is the fix.**
+#   A marking now carries a `project_id` picked off a dropdown filtered to its
+#   own site, so group 1 answers the same way a charge does. Group 2 is the
+#   legacy shape — a marking written before the field, matched through the
+#   address book — and a site can carry several projects, this database having
+#   one address that carries four. Those rows appear on every one of those
+#   projects' pages showing the same money, and a reader who adds them across
+#   projects has counted one day's labour more than once. **Keeping the two
+#   groups apart, and summing them apart, is what stops that.** It is not
+#   decoration and the groups may not be merged to tidy the page up.
 
-def _labour_note(proj, others) -> str:
+def _labour_note(proj, others, unattributed) -> str:
     """
     The line under the section heading. It has one job: say what these rows are.
 
-    ⚠ **It must NOT say "tagged to this project"** — the wording *"Expenses
-    tagged to this project"* one panel up is true of that panel and would be a
-    lie here. It names the site, because the site is the only thing the join
-    actually knows.
+    ⚠ **REWRITTEN 30 August 2026, sixth pass. It used to be true of every row on
+    the page and is now true of only one of the two groups.** Its old lead was,
+    verbatim:
+
+        Attendance markings booked at <b>{site}</b> — this project's site. They
+        are <b>not</b> tagged to this project: a marking records a person, a day
+        and a <b>site</b>, and carries no project of any kind.
+
+    The last clause stopped being true when a marking gained a `project_id`.
+    **Group 1's rows now ARE tagged to this project**, by an id somebody picked
+    off a filtered dropdown — the same mechanism *"Expenses tagged to this
+    project"* one panel up describes. So the sentence moved: it is the caption
+    on group **2**, where it is still exactly right, and group 1 gets a caption
+    of its own that says the opposite.
+
+    ⚠ **The ambiguity note has to EARN its place now, and this is where it is
+    decided.** It appears only where `unattributed` is non-empty **and** other
+    projects share the site: those are the conditions under which the same money
+    really does appear on another project's page. Where every marking is
+    attributed the ambiguity is **resolved**, and a page that goes on warning
+    about a resolved ambiguity teaches its reader to ignore the warning.
     """
     site = P.esc(str(proj.get("site_address") or "")) or "this project's site"
-    lead = (f'Attendance markings booked at <b>{site}</b> &mdash; this '
-            f'project&rsquo;s site. They are <b>not</b> tagged to this project: '
-            f'a marking records a person, a day and a <b>site</b>, and carries '
-            f'no project of any kind.')
-    if not others:
+    lead = (f'Attendance markings at <b>{site}</b> &mdash; this project&rsquo;s '
+            f'site &mdash; in two groups: the ones <b>booked to this '
+            f'project</b>, and the ones booked at the site that name no project '
+            f'at all. <b>The two are never added together.</b>')
+
+    # ⚠ Both conditions, and neither alone. Siblings with nothing unattributed
+    #   is a resolved ambiguity; unattributed rows with no siblings is a gap in
+    #   the data but not a double count, and the group's own caption says so.
+    if not others or not unattributed:
         return lead
 
     names = ", ".join(
         f'<a href="{url_for("projectview.view_project", id=o.get("id"))}">'
         f'{P.esc(o.get("name")) or "(unnamed)"}</a>' for o in others)
     n = len(others)
+    u = len(unattributed)
     return (
         f'{lead}'
         f'<div class="sl-ambig"><span class="sl-ambig-icon">&#9888;</span>'
         f'<span><b>{n} other project{"" if n == 1 else "s"} '
         f'{"is" if n == 1 else "are"} recorded at this same site: {names}.</b> '
-        f'These markings appear on {"that page" if n == 1 else "those pages"} '
-        f'too, showing the same money. Which project a day&rsquo;s labour '
-        f'belongs to <b>cannot be determined from this data</b> &mdash; nothing '
-        f'on a marking names a project &mdash; so nothing here attributes it to '
-        f'one, and these figures must not be added together across projects.'
-        f'</span></div>')
+        f'The <b>{u} unattributed marking{"" if u == 1 else "s"}</b> below '
+        f'appear{"s" if u == 1 else ""} on {"that page" if n == 1 else "those pages"} '
+        f'too, showing the same money. Which project '
+        f'{"that day" if u == 1 else "those days"} of labour belongs to '
+        f'<b>cannot be determined from this data</b> &mdash; nothing on '
+        f'{"that marking" if u == 1 else "those markings"} names a project '
+        f'&mdash; so nothing here attributes '
+        f'{"it" if u == 1 else "them"} to one, and '
+        f'{"that figure" if u == 1 else "those figures"} must not be added '
+        f'together across projects. Attribute '
+        f'{"it" if u == 1 else "them"} on the marking to make this note go '
+        f'away.</span></div>')
 
 
 def _site_labour(proj) -> str:
@@ -215,17 +267,79 @@ def _site_labour(proj) -> str:
             f'<a href="{url_for("project.edit_project", id=proj.get("id"))}">'
             f'Edit Project</a>.</p>')
 
-    rows = AT.markings_at_site(aid)
+    # ⚠ **TWO GROUPS, and they are read from the module rather than split
+    #   here.** `markings_for_project()` answers by the id somebody picked;
+    #   `unattributed_at_site()` answers by the site, for the rows that name no
+    #   project. Splitting one list locally would put a second definition of
+    #   "attributed" on this page, which is the `SITE_TYPES` defect one register
+    #   along.
+    booked = AT.markings_for_project(proj.get("id"))
+    loose = AT.unattributed_at_site(aid)
     others = PJ.others_on_site(aid, except_id=proj.get("id"))
-    note = _labour_note(proj, others)
+    note = _labour_note(proj, others, loose)
 
     # ── Empty state 2: a site, and nothing marked on it ─────────────────────
-    if not rows:
+    if not booked and not loose:
         return (f'<p class="sl-lead">{note}</p>'
                 f'<p class="sl-empty">No attendance has been marked at this '
                 f'site. Nobody has been recorded as working here.</p>')
 
     multiplier = S.ot_multiplier()
+    return (f'<p class="sl-lead">{note}</p>'
+            f'{_labour_group(booked, multiplier, "booked")}'
+            f'{_labour_group(loose, multiplier, "loose")}')
+
+
+# ⚠ **The two groups render through ONE function, so they cannot drift into two
+#   designs.** What differs is the caption and the wording of the shortfall
+#   line; the row, the columns and the sum are the same, because they are the
+#   same kind of record shown twice.
+_GROUP_CAPTION = {
+    "booked": (
+        "Booked to this project",
+        'Markings whose project is <b>this</b> one &mdash; an id somebody chose '
+        'from a picker filtered to this site, exactly as a charge carries the '
+        'project it was entered against.'),
+    "loose": (
+        "At this site, unattributed",
+        '&#9888; Markings booked at this project&rsquo;s <b>site</b> that are '
+        '<b>attributed to no project at all</b>. They are shown here because '
+        'they were booked at this site &mdash; not because they belong to this '
+        'project, which nothing in the data says. Open one and pick its project '
+        'to attribute it.'),
+}
+
+
+def _labour_group(rows, multiplier, kind: str) -> str:
+    """
+    One labelled group of markings, its own column added up.
+
+    ⚠ **A SUM DOWN THIS GROUP'S OWN COLUMN, which is what the docstring at the
+    top of this file permits in its FIRST sentence** — *"Each panel shows the
+    documents' OWN values and adds that one column up"* — and what `_sum_cell()`
+    already does for the five panels above. **Two sums inside one panel is still
+    one panel**, and the prohibition is the second sentence: a figure that only
+    exists by **combining** two of them. ⚠ **Nothing anywhere adds these two
+    together**, and nothing may: the whole point of separating them is that one
+    is attributed and the other is not, so a combined figure would state
+    precisely the thing the page says cannot be determined.
+
+    ⚠ **A REFUSED MARKING SITS THE SUM OUT and the reader is told how many.**
+    `_sum_cell()` already drops a `None`; what it cannot do is say the total is
+    short. Silently excluding an old-model marking would understate the group by
+    an unknown amount that looks exactly like a complete figure —
+    `/attendance/` states its own shortfall for that reason and so does this.
+    """
+    title, blurb = _GROUP_CAPTION[kind]
+    if not rows:
+        # ⚠ An empty group is stated, not hidden. "No unattributed markings" is
+        #   a fact worth reading — it is what says the figure above is complete.
+        empty = ("No markings are booked to this project."
+                 if kind == "booked" else
+                 "Every marking at this site is attributed to a project.")
+        return (f'<div class="sl-group"><div class="sl-group-head">{title}</div>'
+                f'<p class="sl-empty">{empty}</p></div>')
+
     body = ""
     vals, refused = [], 0
     for r in rows:
@@ -243,19 +357,10 @@ def _site_labour(proj) -> str:
           {cells['money']}
         </tr>"""
 
-    # ⚠ **A SUM DOWN THIS PANEL'S OWN COLUMN, which is what the docstring at the
-    #   top of this file permits in its FIRST sentence** — *"Each panel shows the
-    #   documents' OWN values and adds that one column up"* — and what
-    #   `_sum_cell()` already does for the five panels above. The prohibition is
-    #   the second sentence, on a figure that only exists by combining two
-    #   panels: no revenue total, no cost total across panels, no margin, no
-    #   profit, no net, no balance. None of those is built here and none may be.
-    #
-    # ⚠ **A REFUSED MARKING SITS THE SUM OUT and the reader is told how many.**
-    #   `_sum_cell()` already drops a `None`; what it cannot do is say the total
-    #   is short. Silently excluding an old-model marking would understate the
-    #   site by an unknown amount that looks exactly like a complete figure —
-    #   `/attendance/` states its own shortfall for that reason and so does this.
+    # ⚠ **The shortfall sits BELOW the table, next to the figure it qualifies.**
+    #   It read "not costed above" while rendering above the table, which was
+    #   true of nothing; moving it under the Total row makes the sentence true
+    #   and puts the caveat where the number is. The wording is unchanged.
     short = ""
     if refused:
         one = refused == 1
@@ -269,22 +374,27 @@ def _site_labour(proj) -> str:
     body += _total_row(6, _sum_cell(vals))
 
     return f"""
-      <p class="sl-lead">{note}</p>
-      {short}
-      <table class="data">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Employee</th>
-            <th>Status</th>
-            <th class="num">OT hours</th>
-            <th class="num">Day rate</th>
-            <th class="num">Overtime</th>
-            <th class="num">Total</th>
-          </tr>
-        </thead>
-        <tbody>{body}</tbody>
-      </table>"""
+      <div class="sl-group">
+        <div class="sl-group-head">{title}
+          <span class="sl-group-count">{len(rows)} marking{"" if len(rows) == 1 else "s"}</span>
+        </div>
+        <p class="sl-group-note">{blurb}</p>
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Employee</th>
+              <th>Status</th>
+              <th class="num">OT hours</th>
+              <th class="num">Day rate</th>
+              <th class="num">Overtime</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>{body}</tbody>
+        </table>
+        {short}
+      </div>"""
 
 @projectview_bp.route("/view/<id>", methods=["GET", "POST"])
 def view_project(id: str):
@@ -581,6 +691,25 @@ def view_project(id: str):
                  border-left:3px solid var(--saffron); border-radius:8px;
                  padding:.6rem .9rem; margin:0 0 1rem;
                  font-size:.82rem; line-height:1.5; color:#6B4E00; }}
+    /* ── The two groups ─────────────────────────────────────────────────
+       ⚠ The separation has to be VISIBLE, not implied by a blank line. One
+       group is attributed and the other is not, and a reader who runs the two
+       tables together has read one figure where the page states two. Hence a
+       ruled heading per group and a gap between them that is wider than the
+       gap inside one. */
+    .sl-group {{ margin-top:1.5rem; }}
+    .sl-group:first-of-type {{ margin-top:0; }}
+    .sl-group-head {{ display:flex; justify-content:space-between;
+                      align-items:baseline; gap:1rem;
+                      font-size:.82rem; font-weight:700; color:var(--navy);
+                      text-transform:uppercase; letter-spacing:.05em;
+                      padding-bottom:.4rem; margin-bottom:.5rem;
+                      border-bottom:2px solid var(--border); }}
+    .sl-group-count {{ font-weight:400; text-transform:none; letter-spacing:0;
+                       color:var(--muted); }}
+    .sl-group-note {{ font-size:.8rem; color:var(--muted); line-height:1.6;
+                      margin:0 0 .8rem; }}
+    .sl-group-note b {{ color:var(--navy); }}
   </style>
 </head>
 <body>
@@ -747,15 +876,14 @@ def view_project(id: str):
     <!-- Site Labour Panel -->
     <!-- ⚠ The sub-title here is NOT the charges panel's wording and must never
          be made to match it. That one reads "Expenses tagged to this project"
-         and is true: a charge carries a project_id somebody picked. These rows
-         carry no project at all — they are matched through the address book, on
-         the site. `_site_labour()` says which site, by name, and says how many
-         other projects share it. Conflating the two mechanisms is how the same
-         day's labour gets counted on three projects. -->
+         and is true of every row in it. Here it is true of the FIRST group and
+         false of the second, which is exactly why the panel is split and why
+         each group carries its own caption. Conflating the two mechanisms is how
+         the same day's labour gets counted on four projects. -->
     <div class="panel">
       <div class="panel-head">
         <h2>Site Labour</h2>
-        <span style="font-size:0.8rem;color:var(--muted);">Markings booked at this project&rsquo;s site &mdash; not tagged to the project</span>
+        <span style="font-size:0.8rem;color:var(--muted);">Booked to this project, and booked at its site with no project &mdash; summed separately</span>
       </div>
       {labour_html}
     </div>
