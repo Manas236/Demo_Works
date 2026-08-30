@@ -10,11 +10,30 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 29–30 August 2026 (**fifth pass** — **C2**
-the measurement document and **C1** the order of working built, the board
-15 → 17, 3C 2/6 → 4/6; B7's print gate narrowed by two named exceptions; a
-second grandfathered set pinned at **one** live RA bill).
-**Tests:** **1,681 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**As of:** branch `antigravity-dev`, 30 August 2026 (**seventh pass** — **B8
+authorised and NOT built**; the board does not move and stands at **17 of 20**).
+
+⚠ **Two passes have run since this line last named the current one**, which is
+this file's own predicted failure mode:
+
+- **Sixth pass, 30 August 2026 — a cleanup pass.** No Phase 3 item; three
+  defects and three recurring failures closed with guards. It reconciled
+  **14 permissions held by no role at all**, which is why C4, C5 and C2 were
+  reachable by nobody — including the Owner — until it ran.
+- **Seventh pass, 30 August 2026 — B8.** **Authorised** by the owner (BLOBs in
+  their own table) and then **not built**: `db.py` persists by
+  snapshot-and-diff and cannot carry a binary side table
+  ([ABOUT.md §4](ABOUT.md)). The pass stopped there rather than invent a second
+  persistence mechanism while he was away. What it did deliver is a
+  **field-level** escaping guard — the collection-level one added by the sixth
+  pass cannot see a single dead field, which is the exact shape of the bug pass
+  E shipped.
+
+*(The line this replaces described the fifth pass — **C2** and **C1** built, the
+board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
+and a second grandfathered set pinned at one live RA bill. It is summarised here
+rather than deleted because it stood through two passes that made it stale.)*
+**Tests:** **1,683 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It
 read **1,367 / 1** here until this edition, which was the 28 August figure: the
 two 29 August passes before this one added 20 and 92 tests and neither updated
@@ -48,7 +67,7 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,682 passed / 4 skipped** against the same commit, and read
+reports **1,684 passed / 4 skipped** against the same commit, and read
 **1,465 / 4** before this pass's 67,
 **1,388 / 3** before the third 29 August pass's 78,
 **1,276 / 3** before the 29 August pass's 92 tests,
