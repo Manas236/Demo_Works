@@ -218,8 +218,17 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,847 passed / 2 skipped** on 30 August 2026, verified by
+The baseline is **1,897 passed / 2 skipped** on 30 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The **TENTH** pass, 30 August 2026, added **50 passed and 0 skipped** and
+moved **no bar**: `tests/test_clean_site_data.py` (20, the live-data cleanup —
+the orphan refusal above all), `tests/test_seed_demo_scenario.py` (16, the demo
+tool and its purge exactness), plus **+10** in `tests/test_attendance.py` (the
+Site Labour section, its B4 permission wall and its empty states), **+2** in
+`tests/test_site_picker.py` (the unmapped-marker separation defect and its
+mutation) and **+2** parametrised cases in `tests/test_import_directions.py`.
+20+16+10+2+2 = 50.)*
 
 *(The **ninth** pass, 30 August 2026, added **92 passed and 0 skipped** and
 moved **no bar**: `tests/test_address_guards.py` (42, the address book as a

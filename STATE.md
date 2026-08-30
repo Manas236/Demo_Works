@@ -10,12 +10,40 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 30 August 2026 (**ninth pass** — **a
-project takes its site from the address book, and the address book gets
-integrity guards**; the board does not move and stands at **17 of 20**).
+**As of:** branch `antigravity-dev`, 30 August 2026 (**TENTH pass** — **site
+labour on the project view, a live data cleanup, and a demo scenario tool**; the
+board does not move and stands at **17 of 20**).
 
-⚠ **Four passes have run since this line last named the current one**, which is
+⚠ **Five passes have run since this line last named the current one**, which is
 this file's own predicted failure mode:
+
+- **TENTH pass, 30 August 2026 — BEYOND CC-2, and no bar moved.** ⚠ **None of
+  the three is a CC-2 item**, and all three are registered in **PROGRESS.md
+  §4c** (rows 19–21) and in the **fifth** `CLIENT_CHANGES.md` §0 block of this
+  date. **`/projects/view/<id>` gained a SITE LABOUR section** listing every
+  attendance marking booked at the project's site. ⚠ **It is a presentation of
+  markings and is NOT a P&L authority.** It says on its face that the rows are
+  booked at a **site** and **not tagged to the project** — the mechanism the
+  *"Expenses & Charges"* panel above it uses — names the site, and where other
+  projects share that address **names them and says the money appears on their
+  pages too and must not be added across them**. It adds its own one column up,
+  which five panels on that page already did; it states no margin, project total
+  or net. ⚠ **C6 is NOT unblocked**: Open question 4 is untouched and the
+  section chooses between no labour bases because it carries only one.
+  ⚠ **Two standing prohibitions were lifted and both are named** — ABOUT.md §5's
+  *"none on `/projects/view/<id>`"* clause, and `attendance.py` being imported by
+  nothing, now an **allowlist of exactly one**. ⚠ **It also fixed a defect on a
+  page the owner has actually opened**: the attendance day table printed
+  `BangloreSITE NOT MAPPED`, because the chip's CSS classes live only in
+  `employee.py`'s stylesheet, which `/attendance/` never loads. ⚠ **And it
+  deleted live records** — `tools/clean_site_data.py` folded the
+  `'Banglore, Karnataka'` / `'Bangalore, Karnataka'` duplicate the ninth pass
+  left for a human, and purged four of its five named test targets. **It refused
+  the fifth**: deleting project *"Banglore"* would have stranded a delivery
+  challan, the only measurement sheet in the database and a draft PO. That
+  project is still there and **nobody has decided whether those are disposable.**
+  ⚠ **Folding the duplicate made the site→project ambiguity WORSE, not better** —
+  one address now carries four projects where two carried two and two.
 
 - **Ninth pass, 30 August 2026 — BEYOND CC-2, and no bar moved.** ⚠ **Neither
   half is a CC-2 item**, which is the sentence to carry away: CC-2 has no item
@@ -72,9 +100,10 @@ this file's own predicted failure mode:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **1,847 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It read **1,755 / 2** until this
-edition — the eighth pass's figure, measured the same day. The ninth pass added
+**Tests:** **1,897 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It read **1,847 / 2** until this
+edition — the ninth pass's figure, measured the same day and re-measured at the
+start of the tenth rather than quoted, matching exactly. This pass's own +50 is: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
 **92**: `tests/test_address_guards.py` (42), `tests/test_project_site.py` (24)
 and `tests/test_project_site_backfill.py` (21), plus **+1** in
 `tests/test_site_picker.py` (its project-join pin was rewritten into two) and
@@ -111,8 +140,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,848 passed / 4 skipped** against the same commit, and read
-**1,756 / 4** before this pass's 92,
+reports **1,898 passed / 4 skipped** against the same commit, and read
+**1,848 / 4** before this pass's 50,
+**1,756 / 4** before the ninth pass's 92,
 **1,684 / 4** before the eighth pass's 72,
 **1,465 / 4** before this pass's 67,
 **1,388 / 3** before the third 29 August pass's 78,
