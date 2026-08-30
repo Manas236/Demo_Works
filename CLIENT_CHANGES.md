@@ -1884,6 +1884,221 @@ one automatic.
 > built against a quotation that has **lapsed**, and this pass has now put a
 > reading of C5's data onto a second page.
 
+> ### ⚠ OVERRIDE — 30 August 2026, by Manas Gawde — SIXTH block of this date: an attendance marking gains a PROJECT, and the two records left hanging are resolved
+>
+> **A new block, not an amendment, and the SIXTH one dated 30 August 2026.** The
+> eighteen blocks above it — including all five of this same date — **have not
+> been edited, reformatted, re-scoped or extended by a single character.** This
+> is the **nineteenth occasion overall**, and the THIRD consecutive one that
+> reaches into no Phase at all.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated an eleventh time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** An eleventh
+> restatement is not evidence that the first ten made it routine.
+>
+> **This work proceeds anyway, and Manas took that decision.** It is recorded
+> here rather than assumed, on the terms every block above states: an override
+> is a decision the client-facing owner takes and records; it is never one an
+> agent may take, infer, or extend.
+>
+> #### ⚠ NOTHING BELOW IS IN CC-2. It all belongs in PROGRESS.md §4c.
+>
+> **This is the load-bearing sentence of the block**, and it is the fifth block
+> running to have to write it. `CLIENT_CHANGES-2.md` was **re-read in full
+> against this work rather than trusted from memory**, and it contains **no item
+> linking an attendance marking to a project.** C5's five bullets are
+> presentee/absentee recorded daily, salary as 0 or 1 on attendance, *one
+> employee = one site = one day*, `OT = (salary ÷ 8) × hours`, and a presentation
+> table of *Employee — Site — OT time*. **Not one of them names a project.** The
+> item that would eventually want the link is **C6** — *"project profit and
+> loss"* — and **C6 is BLOCKED** on CC-2's **Open question 4**: whether
+> attendance wages or the BOQ installation base rate is authoritative for labour
+> cost. **Nothing below answers that question, and nothing below may be read as
+> having answered it.**
+>
+> ⚠ **Attributing a marking is not the same act as costing a project**, and the
+> distinction is the whole reason this is authorised while C6 is not. Open
+> question 4 asks *which labour figure is authoritative*. This block asks *which
+> project a day was worked for*. The second is a fact somebody on site knows and
+> can record; the first is a commercial ruling nobody has taken. Recording the
+> second does not take the first, and **a reader who treats the sum in the new
+> panel as "this project's labour cost" has taken a step this block does not
+> authorise and the page itself refuses to make.**
+>
+> So everything below goes into **PROGRESS.md §4c**, the register of work built
+> beyond CC-2's text, and **nobody may cite any of it as delivered CC-2 scope or
+> as work MG/SF/2026-02 covers.** §4c's standing chargeability sentence applies
+> without amendment: it is priced **nowhere at all**.
+>
+> #### What proceeds under this override
+>
+> **1. A `project_id` ON AN ATTENDANCE MARKING. AUTHORISED, and narrowly.**
+>
+> The problem it exists for, stated plainly: `'Bangalore, Karnataka'` carries
+> **four** live projects, and the fifth block of this date is what concentrated
+> them there. **The site is not a strong enough key to attribute labour**, so a
+> marking now says which project it is for.
+>
+> The shape is **`charge.py`'s and no second one is invented**: an **id somebody
+> picked**, with the **name snapshotted beside it**. On `/attendance/mark` and on
+> the marking edit form, a project picker **filtered to the projects carrying the
+> chosen site's `site_address_id`**:
+>
+> - exactly **one** project on that site → **preselected**, so the common case
+>   costs the operator no extra decision;
+> - **more than one** → ⚠ **a choice is REQUIRED to save.** It is not defaulted,
+>   not the first, not the most recent. Defaulting it is the whole defect wearing
+>   a different hat: it would put a figure against a project nobody chose, which
+>   is `po_parts.py`'s 156 invented aliases in a third register;
+> - **zero** projects on that site → **blank is allowed and saves fine.** An
+>   office or a store is a legitimate place to be marked and belongs to no
+>   project.
+>
+> ⚠ **Changing the site clears a `project_id` that no longer belongs to it**, and
+> **a marking may not carry a project whose site is not the marking's site.**
+> That is asserted at the write and proved by mutation, not left to the form.
+>
+> ⚠ **AN ABSENT `project_id` MEANS LEGACY, NOT "NO PROJECT".** No third state
+> marker is invented and **nothing is backfilled inside the application** —
+> `project.is_legacy_site()` reading the **shape** rather than a mark is the
+> precedent, one collection along. The bulk mapping is a tool an operator runs
+> deliberately, below.
+>
+> **2. SITE LABOUR READS THE PROJECT — TWO GROUPS, VISIBLY SEPARATED.**
+> **AUTHORISED.**
+>
+> `/projects/view/<id>`'s Site Labour section, built under the fifth block of
+> this date, now shows **two labelled groups and never one silently merged
+> list**:
+>
+> 1. **Booked to this project** — markings whose `project_id` is this project,
+>    summed;
+> 2. **At this site, unattributed** — markings on this project's site carrying no
+>    `project_id`, **summed separately**, with the page saying in plain words
+>    that they are attributed to no project and appear here because they were
+>    booked at this site.
+>
+> ⚠ **The ambiguity note earns its place or it goes.** Where group 2 is non-empty
+> **and** the site carries other projects, the note naming them **stays** — the
+> money genuinely does appear on those pages too. Where group 2 is **empty** the
+> note is **no longer true and is dropped**. Where the site carries other
+> projects but every marking is attributed, the page **says nothing**: the
+> ambiguity is resolved and a page that goes on warning about a resolved
+> ambiguity teaches its reader to ignore the warning.
+>
+> ⚠ **`projectview.py`'s own prohibition — lines 21–26 of its docstring — is NOT
+> lifted and is not touched.** *"Each panel shows the documents' OWN values and
+> adds that one column up. What this page must never show is a figure that only
+> exists by combining two panels — no revenue total, no cost total, no margin, no
+> profit, no net, no balance."* **Two sums inside one panel is still one panel**,
+> and neither is added to the other, to a charge, to a BOQ or to anything else on
+> the page. **No margin, project total or net is built under any reading.**
+>
+> **3. `tools/backfill_marking_projects.py`. AUTHORISED.**
+>
+> Dry-run by default, `--write` to apply, idempotent, printing a before/after
+> inventory. For each marking carrying a `site_address_id` and no `project_id`:
+> if that site carries **exactly one** project, link it. If it carries **zero or
+> more than one**, ⚠ **leave it and print it** — with the candidate project names
+> in full, so a human resolves it by hand in the UI. **It never guesses, never
+> takes the oldest and never takes the newest.**
+>
+> **4. THE TWO RECORDS LEFT HANGING BY THE FIFTH BLOCK ARE RESOLVED.**
+>
+> ⚠ **Project *"Banglore"* is NOT deleted, and this is the ruling the fifth block
+> left to a human.** That block's tool **refused** the purge and said so;
+> the refusal was correct and it stands. Hanging off it are
+> `SF/BOQ/26-27/0007` and, under that schedule, **delivery challan 3**,
+> **measurement sheet `SF/MS/26-27/0001` — the only measurement sheet in the
+> database** — and **draft PO `SF/DPO/0003`**; the project also carries
+> `SF/PO/26-27/0002` and **three charges**. **Losing the only measurement sheet
+> costs more than keeping a test-looking project.** It is **renamed** to
+> `ZZ TEST — Banglore (do not use)` so nobody demos it by accident, and **every
+> attached document is left untouched.**
+>
+> ⚠ **The rename is authorised only while it breaks nothing.** If it would move a
+> snapshot, a stored reference or anything on a printed document, it is **not to
+> be done either** — report it and leave the record exactly as it stands. The
+> expectation is that it breaks nothing, because every dependant snapshots
+> `project_name` at its own write and none re-reads the live project; **that is
+> to be verified rather than assumed.**
+>
+> **Project *"Test Supplier"* (client Manas)** — deleted **only if it has zero
+> dependants**: no BOQ, delivery challan, measurement, purchase order, charge, RA
+> bill or attendance marking. If it has **any**, it is renamed the same way and
+> **not** deleted. What was found is enumerated either way.
+>
+> #### ⚠ THE SIFY3 REPOINT OF THE FIFTH BLOCK IS RATIFIED, NOT REVERTED — and this closes it
+>
+> The fifth block of this date authorised folding `'Banglore, Karnataka'` into
+> `'Bangalore, Karnataka'` and repointing everything off the misspelling,
+> **`Sify3` included**. That fold ran, the misspelled address is **gone**, and
+> the pass that ran it recorded the collision between *"do not touch Sify3"* and
+> *"delete the address Sify3 points at"* rather than resolving it silently.
+>
+> **It is ratified here.** ⚠ **Leaving `Sify3` pointing at a deleted record would
+> be strictly worse than the contradiction that was resolved** — a dangling link
+> reads on every page as a mapped record and is not one, which is exactly what
+> `employee.resolve_site()` refuses to store. A repoint onto the correct spelling
+> of **the same physical place** changes no fact about the project: its name,
+> client, BOQs, charges and documents are untouched, and the site it names is the
+> site it always named. **The call was made correctly and it is closed. Nobody is
+> to revert it, and no later reader need re-open it.**
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **C6 stays BLOCKED**, on Open question 4, exactly as it was. No margin, no
+>   project total, no net, no P&L, and no answer to which labour figure is
+>   authoritative. **A marking knowing its project is not a project knowing its
+>   cost.**
+> - **C3** stays BLOCKED on BQ1 and BQ2. **No RA bill is merged, split or
+>   restructured.**
+> - `employee.py ↔ charge.py` and `attendance.py ↔ charge.py` stay forbidden in
+>   **both** directions.
+> - **No Phase 3 item is built, closed, or advanced by this pass**, and the board
+>   denominator stays **20**. The board does not move.
+> - `product.py` and `quotation.py` are not opened.
+> - **`Sify Bangalore`, `Sify 2` and `Sify3` are not touched**, nor are their
+>   clients, their BOQs, or the address they now point at.
+> - The fifteen-module table-helper refactor recorded by `tests/test_registers.py`
+>   is **not** taken on here. It is still its own pass.
+>
+> #### Permissions
+>
+> **No permission is minted and no route is added.** The picker renders inside
+> `/attendance/mark` and `/attendance/edit/<id>`, both already classified and
+> both already write permissions; the two groups render inside
+> `/projects/view/<id>`, already classified `project.view` with its labour detail
+> already drawn only for a holder of `attendance.view`. The backfill is a
+> command-line tool and owns no endpoint. **So `docs/ACCESS_MATRIX.md` must not
+> move and `tools/reconcile_role_permissions.py` has nothing to reconcile —
+> both to be MEASURED at the end of the pass, not intended at the start of it.**
+>
+> #### Chargeability
+>
+> **Nothing here is chargeable.** It is not the §0 MG/SF/2026-01 exemption that
+> makes it so: none of it is a defect or reachability fix against scope sold
+> under MG/SF/2026-01, because none of it was ever sold. It is priced **nowhere
+> at all**, like the other §4c engineering the blocks above record as unspecced.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises a second
+> live data mutation does not authorise the next one**, and a future tool
+> reaching into live records needs a block of its own that names it. **An
+> override is a decision the client-facing owner takes and records; it is never
+> one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, C4, C5, C2, C1 and the B6/B7 ladder were all
+> built against a quotation that has **lapsed**, and this pass has now put a
+> project key onto C5's records and a second reading of them onto the project
+> page.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
