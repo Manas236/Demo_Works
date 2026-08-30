@@ -10,12 +10,33 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 30 August 2026 (**eighth pass** — **the
-wage unit and the site vocabulary corrected, and the two register screens the
-owner has actually seen**; the board does not move and stands at **17 of 20**).
+**As of:** branch `antigravity-dev`, 30 August 2026 (**ninth pass** — **a
+project takes its site from the address book, and the address book gets
+integrity guards**; the board does not move and stands at **17 of 20**).
 
-⚠ **Three passes have run since this line last named the current one**, which is
+⚠ **Four passes have run since this line last named the current one**, which is
 this file's own predicted failure mode:
+
+- **Ninth pass, 30 August 2026 — BEYOND CC-2, and no bar moved.** ⚠ **Neither
+  half is a CC-2 item**, which is the sentence to carry away: CC-2 has no item
+  for a project→address join and none for the address book, so both are
+  registered in **PROGRESS.md §4c** (rows 16–18) and in a new `CLIENT_CHANGES.md`
+  §0 block. **A project's site is now an address-book link** —
+  `site_address_id` is the join and `site_address` is demoted to the label
+  snapshot, so every existing reader is unchanged and existing records are
+  unharmed by construction. The form is a picker with no free-text fallback and
+  an *"Add a new address"* link beside it; a legacy string is left, marked, and
+  must be picked before it saves. ⚠ **And the address book became a MASTER with
+  guards**: it has had six collections pointing into it and **no delete guard at
+  all**. Delete is now refused while referenced, the refusal names the records,
+  an **archive** is the escape (*a delete-refusal with no archive is a trap
+  rather than a guard*), editing stays allowed and is logged **by user id**, and
+  `type` is locked while referenced. ⚠ **It mutated live records:** 2 addresses
+  created **verbatim** and 3 of 4 projects linked. **NO SPELLING WAS
+  CORRECTED** — the migration found `'Banglore, Karnataka'` and
+  `'Bangalore, Karnataka'`, printed them as a pair, and **did not fold them**.
+  ⚠ **C6 is NOT unblocked.** It had two obstacles; this closes the one about
+  record shapes and leaves Open question 4 exactly where it was.
 
 - **Eighth pass, 30 August 2026 — a CORRECTION pass, and no bar moved.** The
   owner opened `/attendance/` and `/dc/` — **the only two pages in this
@@ -51,11 +72,16 @@ this file's own predicted failure mode:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **1,755 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It
-read **1,367 / 1** here until this edition, which was the 28 August figure: the
-two 29 August passes before this one added 20 and 92 tests and neither updated
-this line. The second skip is new and is not openpyxl's — see ABOUT.md's table.)*
+**Tests:** **1,847 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It read **1,755 / 2** until this
+edition — the eighth pass's figure, measured the same day. The ninth pass added
+**92**: `tests/test_address_guards.py` (42), `tests/test_project_site.py` (24)
+and `tests/test_project_site_backfill.py` (21), plus **+1** in
+`tests/test_site_picker.py` (its project-join pin was rewritten into two) and
+**+4** parametrised cases in `tests/test_import_directions.py` (the two new
+arrows and their two reverses). 42+24+21+1+4 = 92. It read **1,367 / 1** before
+that, which was the 28 August figure. The second skip is not openpyxl's — see
+ABOUT.md's table.)*
 *(It read
 1,225 / 1 before §1.18 added 50 tests closing Phase 3A
 ([tests/test_po_charges.py](tests/test_po_charges.py) 25,
@@ -85,8 +111,9 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,756 passed / 4 skipped** against the same commit, and read
-**1,684 / 4** before this pass's 72,
+reports **1,848 passed / 4 skipped** against the same commit, and read
+**1,756 / 4** before this pass's 92,
+**1,684 / 4** before the eighth pass's 72,
 **1,465 / 4** before this pass's 67,
 **1,388 / 3** before the third 29 August pass's 78,
 **1,276 / 3** before the 29 August pass's 92 tests,
@@ -1148,7 +1175,18 @@ than struck through, per §5.* `requirements.txt` is committed and pinned and
 `.venv` is the supported way to run the repo ([ABOUT.md §1](ABOUT.md));
 `Quote.html` is in `.gitignore`; `SAMRUDHI_SPEC.md` is gone from the repo root.
 
-Nothing is outstanding here.
+⚠ **One item is outstanding, and it is a HUMAN's — 30 August 2026, ninth pass.**
+The live database now holds **two address records for one place**:
+`'Banglore, Karnataka'` (carrying two projects) and `'Bangalore, Karnataka'`
+(carrying one). `tools/backfill_project_sites.py` created both **verbatim**,
+printed them as a duplicate pair, and **did not fold them** — picking a spelling
+for the client is not an agent's call.
+
+**How to resolve it**, when he says which spelling is right: open the project on
+the wrong one, re-pick the site on `/projects/edit/<id>`, then delete the address
+that is left unreferenced. `/address/view/<id>` shows the reference count and the
+delete is refused until it reaches zero. ⚠ **No merge-two-addresses operation
+exists and none is to be built without being asked for.**
 
 ### 3.2 Specified but not built
 

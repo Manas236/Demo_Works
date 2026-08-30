@@ -134,8 +134,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,756 passed, 4 skipped** | **30 Aug 2026** *(eighth pass — the day rate, the site picker and the two register screens)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,755 passed, 2 skipped** | **30 Aug 2026** *(eighth pass — the day rate, the site picker and the two register screens)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,848 passed, 4 skipped** | **30 Aug 2026** *(ninth pass — the project→site link and the address-book guards)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,847 passed, 2 skipped** | **30 Aug 2026** *(ninth pass — the project→site link and the address-book guards)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across

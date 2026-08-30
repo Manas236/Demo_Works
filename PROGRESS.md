@@ -14,13 +14,13 @@ softened.
 
 | | |
 |---|---|
-| **Date** | 30 August 2026, **eighth pass** *(a **correction** pass. It builds no new Phase 3 item and closes none: the bars below do not move, and C4 and C5 stay BUILT. The owner opened `/attendance/` and `/dc/` — **the only two pages in this application that have ever been rendered to a human eye** — and corrected two facts about his own business that we had got wrong. **Wages are paid daily or weekly, not monthly**, so the employee record carries a **day rate** and the `wage_days_per_month` divisor we invented is retired. **Sites come from the address book**, so `site` is a picker and every existing string is linked, or left, marked and reported. Plus the two register screens he actually looked at.)* |
+| **Date** | 30 August 2026, **ninth pass** *(a **beyond-CC-2** pass. It builds no Phase 3 item and closes none: the bars below do not move and the denominator stays 20. Two things, both recorded in §4c and in a new `CLIENT_CHANGES.md` §0 block, and **neither is in CC-2**. **A project takes its site from the address book** — `site_address_id` is the join, `site_address` is demoted to the label snapshot — which closes one of the two shortfalls C6 would need and leaves the other, Open question 4, exactly where it was. **And the address book gets integrity guards** — it has been a master that six collections point into, with no delete guard at all.)*
 | **Machine** | home laptop — `c:\Users\manas\OneDrive\Desktop\Demo_Works` |
 | **Branch** | `antigravity-dev` |
-| **HEAD** | `ffacca8` — *"Two guards strengthened, both found by mutation rather than by reading"*, the sixth of the six commits in this pass. This edition is written **after** them and describes the code as they leave it; it is itself the seventh. **B8 is still AUTHORISED and UNBUILT** and this pass did not touch it — see the B8 row in §3B and ABOUT.md §4. |
-| **vs `origin/antigravity-dev`** | **46 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count` after a `git fetch`, not assumed, and measured **before this edition was itself committed**, which adds one more. The pass began at **40 ahead, 0 behind**. |
-| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260830-113208-dayrate-site-ui.sql`, **451,207 bytes**. It is 2,553 bytes larger than the previous pass's 448,654 because the intervening work wrote live records. ⚠ **This pass MUTATED LIVE EMPLOYEE AND ATTENDANCE RECORDS, under the third 30 August 2026 override block, and the counts are measured rather than estimated: 1 employee and 1 attendance marking marked old-model by `tools/backfill_day_rate.py`; the same 1 and 1 marked `site_source: unmapped` by `tools/backfill_site_links.py`; and one dead `wage_days_per_month` key stripped from the labour settings row.** ⚠ **NO STORED FIGURE WAS CONVERTED.** Both records still carry `monthly_salary: 100.0` and the marking still carries `ot_hours: 5.0`, untouched — what changed is that no wage is computed from either. Both migrations are dry-run by default and were run dry first. `backups/` is gitignored and was not staged. |
-| **Test figure** | **measured at the end of the pass: 1,755 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,683 passed / 2 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded, exactly. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,756 passed, 4 skipped** against this commit and **1,684 / 4** at the start of the pass — both measured, neither derived, and both matched the previous edition exactly. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+72 passed and +0 skipped in both configurations, reconciling exactly**: three new files — `tests/test_day_rate_pin.py` (**22**, the closed old-model set), `tests/test_site_picker.py` (**29**, the address book, the six-row near-miss guard and the two new escaping sinks) and `tests/test_registers.py` (**18**, the two screens the owner has seen) — plus **+1** in `tests/test_attendance.py` (a mutation check on the AST guard), **+1** in `tests/test_employee.py` (a day rate the size of a monthly salary is refused) and **+1** parametrised case in `tests/test_import_directions.py` (the new `employee → address` arrow). 22+29+18+1+1+1 = 72. <br><br>⚠ **NO GOLDEN MOVED.** All eleven assertions in `tests/test_print_golden.py` pass unchanged, as do `test_nav_reachability.py` and `test_page_chrome.py`. `dashboard.REGISTER_STYLES` is a **separate constant deliberately kept out of `BASE_STYLES`** for exactly that reason, it is loaded by `/attendance/` and `/dc/` and by nothing else, and two tests assert both halves. `docs/ACCESS_MATRIX.md` did **not** move by one byte: no permission was minted, no role changed, no route classified. <br><br>⚠ **Nine existing tests were rewritten and NONE was weakened or deleted**, each keeping its old assertion verbatim in a comment above it. The AST guard on the calculation path was **retargeted exactly as its own final assertion instructed** (*"this test names functions that no longer exist — retarget it, do not delete it"*). <br><br>⚠ **18 mutations were applied to the real source, one at a time and each reverted, and 18 were caught.** Two guards were NOT vacuous-proof on the first attempt and were strengthened rather than accepted — see the last commit of this pass. |
+| **HEAD** | `bdaa05b` — *"The migration was run on the live database, and the result is measured"*, the fifth of the five commits before this one. This edition is written **after** them and describes the code as they leave it; it is itself the sixth. **B8 is still AUTHORISED and UNBUILT** and this pass did not touch it. **C6 is still BLOCKED** and this pass did not unblock it.
+| **vs `origin/antigravity-dev`** | **52 ahead, 0 behind, unpushed** — measured with `git rev-list --left-right --count`, not assumed, and measured **before this edition was itself committed**, which adds one more. The pass began at **47 ahead, 0 behind**.
+| **Dirty files** | 0 — `git status --porcelain` empty at the start of this pass and empty again at the end of it. A `mysqldump` was taken before any change: `backups/samruddhi_qms-20260830-142221.sql`, **452,750 bytes**, and a second labelled one immediately before the migration wrote (`…-164819-pre-project-sites.sql`, the same 452,750 bytes — nothing between them touched a live record). ⚠ **THIS PASS MUTATED LIVE PROJECT RECORDS AND CREATED ADDRESS RECORDS, under the fourth 30 August 2026 override block, and the counts are measured rather than estimated: 2 addresses created by `tools/backfill_project_sites.py` — `'Bangalore, Karnataka'` and `'Banglore, Karnataka'`, each VERBATIM — and 3 of 4 projects linked.** The fourth carries no site string and was left alone; none was invented. ⚠ **NO SPELLING WAS CORRECTED**, and the duplicate pair the migration found is printed and **not folded** — a human resolves it. The post-migration dump is `…-164839-post-project-sites.sql`, **453,732 bytes**, 982 larger. Both runs were dry first, and the second `--write` changed nothing. `backups/` is gitignored and was not staged.
+| **Test figure** | **measured at the end of the pass: 1,847 passed, 2 skipped.** Configuration: global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**, openpyxl **absent**, both client workbooks **absent**. The baseline it moved from was **1,755 passed / 2 skipped**, re-measured in that same configuration at the start of this pass rather than quoted — it matched what the previous edition recorded, exactly. <br><br>The `.venv` configuration (CPython 3.10.11, **openpyxl 3.1.5 present**, workbooks absent) reports **1,848 passed, 4 skipped** against this commit and **1,756 / 4** at the start of the pass — both measured, neither derived, and both matched the previous edition exactly. The third configuration (*openpyxl present, workbooks present*) is still unmeasured; neither client workbook is on this box. <br><br>**+92 passed and +0 skipped in both configurations, reconciling exactly**: three new files — `tests/test_address_guards.py` (**42**, the book as a master: references, the delete refusal, the archive, the edit log, the `type` lock), `tests/test_project_site.py` (**24**, the link, the snapshot, the legacy branch and the drift band) and `tests/test_project_site_backfill.py` (**21**, driving the REAL `main()` in process rather than a model of it) — plus **+1** in `tests/test_site_picker.py` (its project-join pin was rewritten into two tests) and **+4** parametrised cases in `tests/test_import_directions.py` (`project → address` and `projectview → project`, and their two reverses added to FORBIDDEN). 42+24+21+1+4 = 92. <br><br>⚠ **NO GOLDEN MOVED.** All eleven assertions in `tests/test_print_golden.py` pass unchanged, as do `test_nav_reachability.py` and `test_page_chrome.py`. Nothing in this pass touches a printed sheet or the nav. <br><br>⚠ **`docs/ACCESS_MATRIX.md` DID move, by three endpoints and nothing else** — `111 → 114` classified endpoints, **7 roles and 79 permissions unchanged**. `address.view_address` is under the existing `address.view`; `address.archive_address` and `address.unarchive_address` are under the existing `address.delete`. **No permission was minted**, so `tools/reconcile_role_permissions.py` had nothing to reconcile. It was regenerated with `python tools/dump_access_matrix.py` in the same commit as the routes. <br><br>⚠ **Two existing tests were rewritten and NEITHER was weakened or deleted**, each keeping its old assertion **verbatim** in a comment above it: `tests/test_site_picker.py::test_an_address_does_not_join_to_a_project` (⚠ **it did not actually fail** — all three of its assertions still held; its *docstring* claimed it would fail the day the join was built, and that stopped being true) and `tests/test_page_reachability.py`'s computed-endpoint tripwire, raised 10 → 11, which is what its own docstring instructs. <br><br>⚠ **49 mutations were applied to the real source, one at a time and each reverted, and 49 were caught.** ⚠ **One guard was NOT vacuous-proof on the first attempt and was strengthened rather than accepted:** a mutation clearing `site_address` on the migration's `link` branch went uncaught, because the test only exercised the `create` branch. (Two further "misses" in the second batch were **bad mutations rather than vacuous guards** — one was a no-op comment, one used a 5-character prefix where the two live spellings differ at the 5th character — and both were rewritten to bite before being counted.) |
 
 **Item source.** `CLIENT_CHANGES-2.md` only. Count found: **3A ×6 (A1–A6),
 3B ×8 (B1–B8), 3C ×6 (C1–C6) = 20.** Matches expectation.
@@ -67,6 +67,15 @@ and stay BUILT; the board stays at **17 of 20**, 3C stays at **4/6**, and the
 denominator stays **20**. Anybody reading a moved bar out of this pass has read
 it wrong. The same pass restyled the two register screens the owner has actually
 opened, which is a §0 reachability item and on no bar at all.
+
+⚠ **The NINTH pass of 30 August 2026 built NO CC-2 ITEM AT ALL, and this is the
+easiest bar to move by accident.** It linked a project to the address book and
+gave the address book integrity guards. **Neither is in CC-2**: there is no item
+for a project→address join and none for the address book. The join sits
+*adjacent to* **C6**, which is **BLOCKED** on Open question 4 and is **not
+unblocked by it** — see §5. Both went into **§4c** as work beyond CC-2's text,
+rows 16–18. **The board stays at 17 of 20, 3C stays at 4/6, and the denominator
+stays 20.**
 
 ⚠ **Every BUILT item was named by an override block, one at a time.** The
 26 August 2026 OVERRIDE block in `CLIENT_CHANGES.md` §0 names the five 3B
@@ -698,8 +707,9 @@ themselves. **MG/SF/2026-02 is in any case expired and unsigned.**
 Passes are lettered as the override blocks order them: **A** extra PO lines and
 C4, **B** the prefill and the narrow `quotation.py` unfreeze, **C** C5, the
 navigation re-baseline and the alias cutback, **D** B6 and B7, **E** C2 and C1 —
-all five dated 29 August 2026 — **F** the cleanup pass and **G** the day rate,
-the site picker and the two register screens, both 30 August 2026.
+all five dated 29 August 2026 — **F** the cleanup pass, **G** the day rate, the
+site picker and the two register screens, and **H** the project→site link and
+the address-book guards, all three 30 August 2026.
 
 | # | What was built | Sits beside | Pass | Why it is ours |
 |---|---|---|---|---|
@@ -718,6 +728,9 @@ the site picker and the two register screens, both 30 August 2026.
 | 13 | **Operation Head is refused `employee.*` and `attendance.*`** — marked `–` in the access matrix, not `§` | C4 / C5 | **A / C** | B4 states exactly one restriction — HR information is kept from Sales, Purchase and Accounts — and names Operations Head in **neither** direction. A reversible default, changed with a checkbox at `/roles/edit/<id>`. §4b carries the ruling. |
 | 14 | **Purchase Manager is refused all six `measurement.*`** | C2 | **E** | B4 says nothing either way. They carry `dc.*` because dispatch is theirs; a measurement feeds an installation claim. A reversible default on the same terms as row 13. |
 | 15 | **`measurement.can_delete()`** — a sheet an installation claim rests on cannot be deleted | C2 | **F** | C2 says nothing about deleting a sheet. Deleting one lowers the ceiling under a claim already raised; the issued figures do not move but the project's remaining balance does. |
+| 16 | **A project's site is an ADDRESS-BOOK LINK** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, the form is a picker with no free-text fallback, and a legacy string is left, marked and required to be picked before it saves | C6 (adjacent) | **H** | ⚠ **CC-2 contains no item for this at all.** C6 — *"project profit and loss"* — is the item that would eventually want the join, and **C6 is BLOCKED** on Open question 4. Building the join is **not** building C6 and nobody may present it as such. `site_address` was free text, which is why the live data spelled one place two ways on three of the four projects; a project's site is a **join key** and free text cannot join. ⚠ **And so is every rule around it:** that only `site` and `office` addresses may be a site, that an existing string is matched only on an **exact** label and otherwise gets an address created **verbatim, misspelling included**, that near misses and duplicate pairs are printed and never applied, and that the snapshot and the live label are never silently reconciled — the amber band reports it. |
+| 17 | **The address book's integrity guards** — delete refused while referenced with the records named as chips, an archive beside it, an edit log keyed on **user id**, and `type` locked while referenced | *(nothing)* | **H** | ⚠ **CC-2 contains no item for the address book at all**, and neither does MG/SF/2026-01. The book has been a master six collections point into since long before this pass and had **no delete guard whatever**; deleting a row dangled every reference silently. ⚠ **Whether that is a DEFECT the client is owed for free is a commercial question, it is the client-facing owner's, and it has NOT been taken** — it is recorded in the §0 block instead. The archive exists because *a delete-refusal with no archive is a trap rather than a guard*, which is `measurement.can_delete()`'s own finding (row 15) applied one register over. |
+| 18 | **The site→project ambiguity is COUNTED and not guarded** | C6 (adjacent) | **H** | The client has said *one project = one site*; he has **not** said one site = one project, and the live data already has two projects on one string. `tools/backfill_project_sites.py` prints the count per address. ⚠ **No guard is built on it, deliberately** — it is evidence for the pass that answers Open question 4, and a constraint invented here would be one CC-2 never stated. |
 
 ⚠ **THIS PASS REMOVED A ROW AND ADDED NONE — 30 August 2026, eighth pass.**
 The retired entry was:
@@ -740,14 +753,22 @@ any of them comes back.
 
 📌 **A register of things we built beyond the specification is most useful when
 entries can LEAVE it.** One that only ever grows records that we kept adding;
-this one now records that we took something away. The remaining fifteen are
-unchanged and none was re-argued.
+this one now records that we took something away. The fifteen that were here
+before pass H are unchanged and none was re-argued.
 
-⚠ **Row 15 (was 16) is the previous pass's only addition, and it closes a hole
-rather than opening scope.** Pass E shipped the delete route with the gap
-recorded in the route's own docstring and carried it into its report as an open
-question. It is in this register because CC-2 is silent on it, exactly like the
-fourteen above, not because the cleanup pass built a feature.
+⚠ **Row 15 (was 16) closed a hole rather than opening scope.** Pass E shipped
+the delete route with the gap recorded in the route's own docstring and carried
+it into its report as an open question. It is in this register because CC-2 is
+silent on it, exactly like the fourteen above, not because the cleanup pass
+built a feature.
+
+⚠ **ROWS 16, 17 AND 18 ARE PASS H's, AND THEY ARE THE LARGEST SINGLE ADDITION
+THIS REGISTER HAS TAKEN.** That is the point of writing them here rather than
+letting them read as C6 groundwork. Row 16 sits *adjacent to* C6 and **does not
+deliver any part of it**; row 17 sits beside **nothing at all** — there is no
+CC-2 item for the address book, and no MG/SF/2026-01 item either; row 18 is a
+number, recorded so the pass that answers Open question 4 does not have to
+re-derive it. **The board does not move for any of the three.**
 
 ### What is NOT in this register, and why
 
@@ -830,6 +851,25 @@ imports it (asserted at AST level), the dashboard card carries counts and no
 money, and `projectview.py`'s standing prohibition is untouched. A pass that
 "just adds a labour line to the project page" has answered Open question 4 on
 the client's behalf.
+
+⚠ **A PROJECT NOW JOINS TO AN ADDRESS, AND C6 IS STILL EXACTLY AS BLOCKED —
+30 August 2026, ninth pass.** This is the entry most likely to be misread, so it
+is stated in terms. C6 had **two** obstacles, not one:
+
+1. **an address did not join to a project at all** — recorded in ABOUT.md §4 and
+   pinned by a test. ✅ **Closed.** `projects.site_address_id` is the link.
+2. **which labour base is authoritative** — Open question 4. 🔴 **Untouched, and
+   it is the one that blocks.**
+
+Closing (1) makes C6 *possible to build once (2) is answered*. It does not
+answer (2), it is not part of C6, and **PROGRESS.md §4c row 16 is where it is
+registered — as work beyond CC-2, sitting adjacent to C6 and delivering none of
+it.** ⚠ **The muster's half of the roll-up is still missing on purpose:** an
+attendance marking names a *site*, a project now names a *site*, and joining
+those two would attribute one site's whole labour cost to every project standing
+on it. The live data already has **two projects on one address**. That count is
+printed by `tools/backfill_project_sites.py` as evidence and **no guard is built
+on it** — a constraint invented here would be one CC-2 never stated.
 
 ### Phase-wide gate — not an item status
 

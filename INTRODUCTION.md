@@ -218,8 +218,24 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,755 passed / 2 skipped** on 30 August 2026, verified by
+The baseline is **1,847 passed / 2 skipped** on 30 August 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The **ninth** pass, 30 August 2026, added **92 passed and 0 skipped** and
+moved **no bar**: `tests/test_address_guards.py` (42, the address book as a
+master — references, the delete refusal, the archive, the edit log, the `type`
+lock), `tests/test_project_site.py` (24, a project's site as an address-book
+link) and `tests/test_project_site_backfill.py` (21, driving the real migration
+in process), plus **+1** in `tests/test_site_picker.py` and **+4** parametrised
+cases in `tests/test_import_directions.py`. ⚠ **Neither half is a CC-2 item** —
+both are registered in PROGRESS.md §4c, rows 16–18. ⚠ **Not one print golden
+moved**, and `docs/ACCESS_MATRIX.md` moved by three classified endpoints with
+**no permission minted**. The baseline it moved from, **1,755 / 2**, was
+re-measured at the start of the pass rather than quoted, and matched.)*
+
+*(The **eighth** pass, 30 August 2026, added **72** and corrected two delivered
+items rather than delivering one: the day rate, the site picker and the two
+register screens.)*
 
 *(The **fourth** 29 August pass added **67 passed and 0 skipped**, moving the
 board 13 → 15 and 3B from 5/8 to 7/8: `tests/test_approval.py` (24, **B6** — the
