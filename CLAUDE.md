@@ -38,6 +38,14 @@ Fast facts so you don't get it wrong before reading:
   values). JSON going into a `<script>` uses `pipeline.json_for_script()`.
   `render_template_string` is gone from every module; do not reintroduce it.
   ABOUT.md §9 has the rule, §7.7 has the sinks that are easy to miss.
+- **The employee rate is a DAY rate, not a monthly salary** (30 Aug 2026), and
+  `wage_days_per_month` is deleted. ⚠ **A record carrying `monthly_salary` and
+  `rate_model: "pre_day_rate"` is a closed historical set — NEVER convert one
+  arithmetically.** A monthly figure reread as a day rate is about twenty-six
+  times too large; `employee.day_rate_of()` refuses to answer for a marked
+  record and `attendance.cost_of()` produces no figure at all. `site` on both
+  those records is an **address-book picker**, and an unmatched legacy string is
+  left, marked `unmapped` and reported — never fuzzy-matched. ABOUT.md §3.
 - **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
   `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
   refused, not opened** — so a route you add is unreachable until you classify

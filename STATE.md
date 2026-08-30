@@ -10,11 +10,29 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 30 August 2026 (**seventh pass** — **B8
-authorised and NOT built**; the board does not move and stands at **17 of 20**).
+**As of:** branch `antigravity-dev`, 30 August 2026 (**eighth pass** — **the
+wage unit and the site vocabulary corrected, and the two register screens the
+owner has actually seen**; the board does not move and stands at **17 of 20**).
 
-⚠ **Two passes have run since this line last named the current one**, which is
+⚠ **Three passes have run since this line last named the current one**, which is
 this file's own predicted failure mode:
+
+- **Eighth pass, 30 August 2026 — a CORRECTION pass, and no bar moved.** The
+  owner opened `/attendance/` and `/dc/` — **the only two pages in this
+  application that have ever been rendered to a human eye** — and corrected two
+  facts about his own business. ⚠ **Wages are paid daily or weekly, not
+  monthly**, so the employee record carries a **day rate** and
+  `settings.wage_days_per_month` — a divisor **we** invented — is **deleted**,
+  including its row in PROGRESS.md §4c. CC-2 had always agreed: its own note
+  calls `salary ÷ 8 × hours` *"1× ordinary rate"*, which is true only if
+  `salary ÷ 8` is an hourly rate. ⚠ **Sites come from the address book**, so
+  `site` is a picker; existing strings are linked only on an exact label match
+  and are otherwise left, marked and reported. ⚠ **NO STORED FIGURE WAS
+  CONVERTED** — a monthly figure reread as a day rate is about twenty-six times
+  too large, so the existing set is marked, counted and closed, and the wage
+  calculation **refuses to produce a figure** rather than produce a wrong one.
+  It mutated live records: 1 employee, 1 attendance marking, 1 dead settings
+  key. **C4 and C5 stay BUILT — a correction is not a bar.**
 
 - **Sixth pass, 30 August 2026 — a cleanup pass.** No Phase 3 item; three
   defects and three recurring failures closed with guards. It reconciled
@@ -33,7 +51,7 @@ this file's own predicted failure mode:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **1,683 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**Tests:** **1,755 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 30 August 2026 by running the suite in it. ⚠ *(It
 read **1,367 / 1** here until this edition, which was the 28 August figure: the
 two 29 August passes before this one added 20 and 92 tests and neither updated
@@ -67,7 +85,8 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **1,684 passed / 4 skipped** against the same commit, and read
+reports **1,756 passed / 4 skipped** against the same commit, and read
+**1,684 / 4** before this pass's 72,
 **1,465 / 4** before this pass's 67,
 **1,388 / 3** before the third 29 August pass's 78,
 **1,276 / 3** before the 29 August pass's 92 tests,

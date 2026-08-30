@@ -22,6 +22,11 @@ notices, because both halves look right.
    exist reads on every page as a mapped record and is not one.
 5. **The picker offers sites and offices only** — a vendor is somebody we buy
    from, not a place somebody worked a shift.
+6. ⚠ **The new sinks are escaped**, and `tests/test_escaping.py` cannot cover
+   them: its `POISONED_COLLECTIONS` deliberately excludes `employees` and
+   `attendance`, because `test_hardening.py` asserts nothing seeds either and a
+   fixture row would read to it exactly like a seeder. §5 of this file is the
+   substitute.
 
 ⚠ **Do not weaken any of these to make a red suite green.** If (1) fails,
 somebody's wages are being counted against a site they never worked on.
@@ -457,6 +462,50 @@ def test_an_employee_whose_own_site_is_unmapped_prefills_nothing(client):
 
     import attendance as AT
     assert AT._site_of("old-1") == ""
+
+
+# ═══ 5. ⚠ THE NEW SINKS ARE ESCAPED, AND THE SWEEP CANNOT COVER THEM ═══════
+
+PAYLOAD = "<script>alert(1)</script>"
+
+
+def test_an_unmapped_site_string_is_escaped_everywhere_it_renders(client):
+    """
+    ⚠ **`tests/test_escaping.py` CANNOT cover this, and that is why the test is
+    here.** Its `POISONED_COLLECTIONS` deliberately excludes `employees` and
+    `attendance` — `test_hardening.py` asserts that nothing seeds either, so a
+    fixture row written by that sweep would read exactly like a seeder to it.
+    The unmapped-site band and chip are therefore **new sinks the standing sweep
+    is blind to**, and they render a string that was free text somebody typed.
+
+    ABOUT.md §9: escape at the interpolation site, never a response filter.
+    """
+    _addr("Whitefield")
+    _legacy_employee(site=PAYLOAD)
+    _legacy_marking(site=PAYLOAD)
+    _run_migration()
+
+    for url in ("/employee/", "/employee/view/old-1", "/employee/edit/old-1",
+                f"/attendance/?date={DAY}", "/attendance/edit/am-1",
+                "/attendance/delete/am-1"):
+        html = client.get(url).get_data(as_text=True)
+        assert html, f"{url} did not render"
+        assert PAYLOAD not in html, f"{url} emitted the payload raw"
+        assert "&lt;script&gt;" in html, (
+            f"{url} did not render the site string at all — the assertion "
+            f"above passes for the wrong reason")
+
+
+def test_an_address_LABEL_is_escaped_in_the_picker(client):
+    """
+    The other half of the same surface: an address label is typed by a user at
+    `/address/add`, and it now reaches two more forms through `site_options()`.
+    """
+    _addr(PAYLOAD)
+    for url in ("/employee/new", "/attendance/mark"):
+        html = client.get(url).get_data(as_text=True)
+        assert PAYLOAD not in html, f"{url} emitted a raw address label"
+        assert "&lt;script&gt;" in html, f"{url} did not render the label"
 
 
 # ═══ 4. THE SHORTFALL THIS DELIBERATELY DOES NOT CLOSE ═════════════════════

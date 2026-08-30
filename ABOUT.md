@@ -134,8 +134,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,684 passed, 4 skipped** | **30 Aug 2026** *(seventh pass — B8 stopped; field-level poison guard)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,683 passed, 2 skipped** | **30 Aug 2026** *(seventh pass — B8 stopped; field-level poison guard)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,756 passed, 4 skipped** | **30 Aug 2026** *(eighth pass — the day rate, the site picker and the two register screens)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,755 passed, 2 skipped** | **30 Aug 2026** *(eighth pass — the day rate, the site picker and the two register screens)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -366,8 +366,8 @@ Consequences you must respect when editing:
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
-| [employee.py](employee.py) | 520 | **Employee master** &mdash; details and salary (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf. ✅ **Linked from the nav and the launcher since 29 Aug 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). |
-| [attendance.py](attendance.py) | 897 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`; **nothing imports it**, and that is C6 being blocked rather than tidiness. ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. Owner, Director and HR only. |
+| [employee.py](employee.py) | 1134 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
+| [attendance.py](attendance.py) | 1135 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`; **nothing imports it**, and that is C6 being blocked rather than tidiness. ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -407,8 +407,12 @@ app.py
  │                             │  dashboard, pipeline, store, branding — and NOT
  │                             │  quotation; it reads that sheet through docsheet
  ├─ charge.py ─────────────────┤  imports dashboard, pipeline, store, branding, quotation
- ├─ employee.py ───────────────┤  imports dashboard, pipeline, store, branding, quotation
- │                             │  — C4. NEVER charge.py, in either direction, and
+ ├─ employee.py ───────────────┤  imports dashboard, pipeline, store, branding,
+ │                             │  quotation — and address, for the SITE picker
+ │                             │  (30 Aug 2026); attendance.py reads that picker
+ │                             │  THROUGH this module, so the arrow to the book
+ │                             │  is taken once. C4. NEVER charge.py, in either
+ │                             │  direction; NEVER project.py, which is C6; and
  │                             │  NEVER attendance.py — the arrow runs the other
  │                             │  way and /employee/ links out with url_for
  ├─ attendance.py ─────────────┤  imports dashboard, pipeline, store, branding,
@@ -2452,19 +2456,60 @@ with the permissions sitting next to it. Two guards hold the split:
 
 ```python
 {"id": uuid, "name": "Ramesh Patil", "code": "SF-014",
- "designation": "Fitter", "site": "Whitefield",
- "date_joined": "2026-04-01", "monthly_salary": 24000.0,
+ "designation": "Fitter",
+
+ # The site — an address-book LINK plus the label snapshotted beside it.
+ "site": "Whitefield",             # the address's label, frozen at save
+ "site_address_id": "<addr uuid>", # "" when unmapped or when none was chosen
+ "site_source": "book" | "unmapped" | "",
+
+ "date_joined": "2026-04-01",
+ "day_rate": 1200.0,               # a DAY's wage — see below
  "active": True, "notes": "",
  "created_at": "…", "updated_at": "…"}
+
+# ⚠ ONLY on a record that predates 30 August 2026, and never written again:
+{"monthly_salary": 24000.0, "rate_model": "pre_day_rate"}
 ```
 
-**Details and salary. That is the whole of C4** — CC-2's text for it is one
-sentence long and this record is the entire answer to it.
+**Details and the day rate. That is the whole of C4** — CC-2's text for it is
+one sentence long and this record is the entire answer to it.
 
-- **`name` is the only required field**, and `monthly_salary` **may be zero**: a
+⚠ **THE RATE IS A DAY RATE, AND IT WAS A MONTHLY SALARY UNTIL 30 AUGUST 2026.**
+The monthly reading was **ours**, not CC-2's. Read C5's two bullets together —
+*"Salary as 0 or 1 based on attendance"* and *"OT = (salary ÷ 8) × hours"* —
+with CC-2's own note calling the second **"1× ordinary rate"**: that is true
+only if `salary ÷ 8` is an *hourly* rate, so `salary` is a **day's** wage and 8
+is the hours in a day. On the monthly reading one day present pays a whole
+month. `settings.wage_days_per_month`, the divisor invented to bridge the two,
+solved a problem that never existed and is **deleted**.
+
+⚠ **NO STORED FIGURE WAS CONVERTED**, and the closed set is the mechanism:
+
+| `day_rate` | `rate_model` | means |
+|---|---|---|
+| present | absent | ordinary: a confirmed day rate, and a wage is computed from it |
+| absent | `pre_day_rate` | **old model** — the figure beside it is a monthly salary, counted at migration, closed. `day_rate_of()` returns `(None, False)` and **nothing computes a wage** |
+| absent | absent | a fixture or a hand-written record. Not in the set, reads as a rate of nil |
+
+Collapsing rows 2 and 3 is the mistake this shape exists to prevent, and it is
+`approval.py`'s `created_by` / `pre_approval_system` table one register along.
+A monthly figure reread as a day rate is about twenty-six times too large; the
+page says the rate needs re-entering, and re-entering it is **required** on that
+record rather than optional, because a blank would clear the marker while
+recording nothing. Confirming a rate drops both the marker and the superseded
+`monthly_salary`, so one record never carries two rate fields with nothing
+saying which is live. `tools/backfill_day_rate.py` marked **1 employee** on the
+live database and recorded every old figure;
+[tests/test_day_rate_pin.py](tests/test_day_rate_pin.py) fails if a record
+created after that moment carries the mark.
+
+- **`name` is the only required field**, and `day_rate` **may be zero**: a
   proprietor or a family member drawing nothing is real, and refusing it would
-  force somebody to invent a figure on a salary register. A register nobody can
-  add to until they have every field is a register that stays empty.
+  force somebody to invent a figure on a wage register. A register nobody can
+  add to until they have every field is a register that stays empty. ⚠ The one
+  exception is a record still carrying the old-model marker, where a blank is
+  refused — see above.
 - **`code` is unique, case-insensitively.** It is how a person is identified on
   a muster or a wage sheet, so two people holding one is the same defect as two
   customers sharing an invoice number.
@@ -2473,8 +2518,30 @@ sentence long and this record is the entire answer to it.
   `employee.active_employees()`, which is the accessor anything downstream
   should use. `/employee/delete` exists for a row entered by mistake, and its
   confirmation page says so and offers deactivating instead.
-- **`site` is free text**, not a link to a project. Linking a person to a
-  project is C5/C6 territory and both are gated.
+- ⚠ **`site` is a PICKER over the address book, and was free text until
+  30 August 2026.** Free text is why the live data spells one place more than
+  one way, and a site-wise labour cost split across two spellings is wrong in a
+  way nobody notices because both halves look right. Three keys are stored, not
+  one: the address's **label snapshotted** (so renaming an address next March
+  cannot restate where somebody worked), the **link**, and a **source**.
+  `employee.py` owns the vocabulary — `site_field_html()`, `resolve_site()`,
+  `unmapped_sites_in()` — and `attendance.py` reads it through the import it
+  already has, so the two forms cannot describe one field two ways.
+
+  ⚠ **An existing string is matched only on an EXACT label** (`strip()` and
+  nothing else — no casefolding, no whitespace-collapsing, no prefix match) and
+  is otherwise **left exactly as recorded, marked `unmapped`, and reported** on
+  both registers. Nothing is fuzzy-matched: a wrong automatic match moves labour
+  cost to the wrong site and looks exactly like a right one, which is §2h's
+  lesson in another register. Near misses are printed by
+  `tools/backfill_site_links.py` and **never applied**. On the live database
+  that migration linked **nothing** and left **one** string — `Banglore`, on 1
+  employee and 1 marking — because nothing in the book is close to it.
+
+  ⚠ **It is still not a link to a project**, and `employee → project` stays
+  forbidden at AST level. Linking a person to a project is C6, which is BLOCKED.
+  **And an address does not join to a project either** — see the note at the end
+  of this section.
 - ⚠ **Nothing seeds an employee.** A seeded one is a person who does not exist
   carrying a salary they are not paid, on the register HR reads. Demo data is a
   convenience everywhere else in this app; here it would be a fiction about
@@ -2494,12 +2561,31 @@ sentence long and this record is the entire answer to it.
  "employee_id": uuid,                # THE KEY, into `employees`
  "employee_name": "Ramesh Patil",    # snapshot
  "employee_code": "SF-014",          # snapshot
- "monthly_salary": 26000.0,          # snapshot — see property 2
- "site": "Whitefield",               # FREE TEXT, never a project id
+ "day_rate": 1000.0,                 # snapshot — see property 2
+ "site": "Whitefield",               # the address's LABEL, snapshotted
+ "site_address_id": "<addr uuid>",   # the link; "" when unmapped or none
+ "site_source": "book" | "unmapped" | "",
  "status": "present" | "absent",
  "ot_hours": 2.0, "notes": "",
  "created_at": "…", "updated_at": "…"}
+
+# ⚠ ONLY on a marking that predates 30 August 2026, and never written again:
+{"monthly_salary": 26000.0, "rate_model": "pre_day_rate"}
 ```
+
+⚠ **A MARKING NEVER LEAVES THE OLD-MODEL SET, and an employee does.** An
+employee is a master record and re-entering the rate corrects it; a marking is
+**history** — the record of what a day that has already happened was assessed
+at — so its snapshot keeps its key, keeps its number, and is never recomputed.
+What changes is that `cost_of()` returns `refused` for it rather than a figure
+that would be about twenty-six times too large. A refused marking is **excluded
+from every site total and kept in the head count**, and the page says how many
+markings the total is short by: dropping the person would hide that they were on
+site, and folding the old figure in would overstate the site.
+
+⚠ **A NEW marking can never join that set**, because `/attendance/mark` refuses
+an employee whose rate is unconfirmed. That is what keeps the set closed at the
+write rather than only at the sweep.
 
 **Its own collection**, never a list on the employee (CLIENT_CHANGES.md §1.3):
 one person accumulates a record per working day for as long as they are
@@ -2513,25 +2599,66 @@ Four properties this shape exists to guarantee:
    Keying on `(employee, site, date)` instead would let one person be marked
    present on three sites in one day and bill a full day's wage three times —
    silently, on the only figure this module produces.
-2. ⚠ **The three employee fields are SNAPSHOTS, not lookups.** A wage figure for
-   a day already worked must not move when a salary is revised or a name
-   corrected — `proforma.prior_invoiced` and `ra.prev_balance` one chain over.
-   An **edit** re-snapshots, because an edit restates what that day was.
+2. ⚠ **The employee fields are SNAPSHOTS, not lookups** — the name, the code,
+   the **day rate** and the **site label**. A wage figure for a day already
+   worked must not move when a rate is revised or a name corrected, and a
+   renamed address must not restate which site somebody stood on —
+   `proforma.prior_invoiced` and `ra.prev_balance` one chain over. An **edit**
+   re-snapshots, because an edit restates what that day was.
 3. **No cost is stored.** Day wage, overtime and the site total are derived by
-   `cost_of()` and `site_costs()` from the settings in force at render time. A
+   `cost_of()` and `site_costs()` from the setting in force at render time. A
    maintained total is a number one code path can forget to update, and this
    repo has paid for that twice — `ra.claimed_by_line()` and
    `challan.dispatched_by_line()` derive for the same reason.
-4. ⚠ **`site` is FREE TEXT and is never a `project_id`.** A BOQ carries
-   `project_name` *and* `site_location` as separate fields, so a project is not
-   a site here; and a project link on this record is the first half of C6,
-   which is BLOCKED. §5 `/attendance` has the full reasoning.
+4. ⚠ **`site` is an ADDRESS-BOOK LINK and is never a `project_id`.** It was
+   free text until 30 August 2026 — see the Employee record above for the
+   correction, the exact-match rule and the unmapped set, all of which apply
+   here identically. A BOQ carries `project_name` *and* `site_location` as
+   separate fields, so a project is not a site here; a project link on this
+   record is the first half of C6, which is BLOCKED; **and an address does not
+   join to a project either**, so site-wise labour cost cannot roll up to one
+   today. §5 `/attendance` has the full reasoning.
 
 ⚠ **Nothing seeds an attendance record.** A seeded marking says somebody was on
 a site on a day and puts a wage against it — inventing a day's labour cost is
 worse than inventing the person it is attributed to. `tests/test_hardening.py`
 classifies `attendance` as transactional and asserts the collection is empty on
 a fresh install.
+
+#### ⚠ An ADDRESS does not join to a PROJECT — recorded, not solved
+
+**Measured 30 August 2026**, when `site` became a picker over the address book,
+and written down here so the pass that eventually builds **C6** does not have to
+re-derive it.
+
+The question is narrow: *can site-wise labour cost roll up to a project?* The
+answer today is **no**, and it is a fact about two record shapes rather than a
+missing function:
+
+| | |
+|---|---|
+| an `addresses` record | fourteen keys — `label`, `type`, `contact_name`, `company`, `line1`, `line2`, `landmark`, `city`, `state`, `pincode`, `country`, `phone`, `email`, `gstin` — and **not one of them names a project** |
+| a `projects` record | carries `site_address`, which is a **free-text string** (`"Banglore, Karnataka"` on this database) and not an address id |
+
+So the join runs through free text in the one direction it exists at all, which
+is the thing the site picker was built to stop relying on. `ADDRESS_TYPES`
+carries a `site` type — *"Project Site"* — so the book can **hold** a site; it
+just cannot say which project the site belongs to.
+
+⚠ **This is C6's problem and C6 is BLOCKED** on CC-2's Open question 4 (whether
+attendance wages or the BOQ installation base rate is authoritative for labour
+cost). Nothing was built toward it: no field was added "ready for" one, which is
+how this gate is most likely to be walked through by accident.
+
+📌 **Three ways out, none of them built, and the choice is a design decision with
+the client-facing owner rather than an agent's:** an `address.project_id` (wrong
+shape — one site can carry work for more than one project); a
+`projects.site_address_ids` list (better, and it is the direction `boq_id` on a
+challan already points); or a join through the BOQ, which already carries
+`project_id` *and* `site_location` and is where the two words already meet.
+`tests/test_site_picker.py::test_an_address_does_not_join_to_a_project` pins the
+absence, so **this note fails the day it stops being true** rather than quietly
+going stale.
 
 ---
 
@@ -5265,7 +5392,7 @@ another draft PO, which is cheap and leaves a trail.
 
 | Route | View |
 |---|---|
-| `GET /dc/` | `list_dcs` — register, newest first |
+| `GET /dc/` | `list_dcs` — register, newest first. ⚠ **One of only two pages in this app an owner has ever opened**, and the one he could not tell what to click on — see *"The two register SCREENS"* under `/attendance` |
 | `GET,POST /dc/create?boq=<id>` | `create_dc` — the **line picker**, then the consignee |
 | `GET /dc/view/<id>` | `view_dc` — the document, its action bar, and the over-dispatch band |
 | `GET /dc/print/<id>` | `print_dc` — the document alone |
@@ -5491,7 +5618,7 @@ does not.
 
 | Route | View |
 |---|---|
-| `GET /employee/` | `list_employees` — the register; `?all=1` shows inactive too |
+| `GET /employee/` | `list_employees` — the register; `?all=1` shows inactive too. The daily wage total counts **confirmed day rates only** and names the shortfall |
 | `GET,POST /employee/new` | `new_employee` |
 | `GET /employee/view/<id>` | `view_employee` |
 | `GET,POST /employee/edit/<id>` | `edit_employee` |
@@ -5502,7 +5629,19 @@ Before it, C4 was one of the seven NOT STARTED items and was gated.
 
 **CC-2's C4 is one sentence — *"Employee details and salary"* — and this is the
 whole of it.** The record shape and its rules are §3. What matters at page
-level is three things, each of which is a decision rather than a detail:
+level is four things, each of which is a decision rather than a detail:
+
+⚠ **0. THE RATE IS A DAY RATE AND THE SITE IS AN ADDRESS-BOOK LINK** (30 August
+2026). Both were wrong and both were **our** errors rather than a change of mind
+by the client — §3's Employee entry has the reasoning, the closed old-model set
+and the exact-match rule for sites. At page level: the register's daily total
+counts **confirmed rates only** and says how many it left out; a marked record
+shows an amber band and a `RATE NOT CONFIRMED` chip; its rate box opens
+**blank** with the old monthly figure named only in the band, because prefilling
+a box labelled *Day rate* with a monthly salary invites somebody to confirm a
+figure twenty-six times too large by pressing Save; and a blank is **refused** on
+exactly that record. An unmapped site shows a `SITE NOT MAPPED` chip and the
+register lists every unmapped string.
 
 ✅ **1. IT IS NOW LINKED, from the nav AND the launcher** (29 August 2026,
 third pass). It shipped with neither, deliberately: `dashboard._nav()` is
@@ -5561,7 +5700,7 @@ Held by [tests/test_employee.py](tests/test_employee.py).
 
 | Route | View |
 |---|---|
-| `GET /attendance/` | `list_attendance` — one day's muster + the site-wise cost; `?date=` moves the day |
+| `GET /attendance/` | `list_attendance` — one day's muster + the site-wise cost; `?date=` moves the day. ⚠ **One of only two pages in this app an owner has ever opened** — see *"The two register screens"* below |
 | `GET,POST /attendance/mark` | `mark_attendance` |
 | `GET,POST /attendance/edit/<id>` | `edit_attendance` |
 | `GET,POST /attendance/delete/<id>` | `delete_attendance` — **GET confirms, POST destroys** |
@@ -5592,17 +5731,38 @@ walks the AST of `daily_wage`, `ot_amount` and `cost_of` and fails on any
 numeric constant in a multiplication or a division. That is the test that
 survives somebody simplifying the behavioural one.
 
-⚠ **`wage_days_per_month` is a second setting and it is OURS, not CC-2's.** A
-monthly salary needs a divisor before it is a daily wage and CC-2 never gives
-one. **26** is the ordinary Indian convention (a month less its weekly offs);
-30, and the actual length of the month, are both defensible and give different
-money. Writing one into the code would be exactly the hardcoding above, so it
-is a field with a stated default. **Nobody may record 26 as the client having
-chosen anything.**
-
 `STANDARD_HOURS_PER_DAY = 8.0` is the one figure that *is* a constant, and it
 is CC-2's own `÷ 8` — a divisor defining what an hour of a working day is, not
 a rate anybody is paid at.
+
+#### ⚠ The rate is a DAY RATE, and `wage_days_per_month` is deleted
+
+**Corrected 30 August 2026**, under the third override block of that date, after
+the owner said Samruddhi pays **daily or weekly, never monthly**.
+
+`wage_days_per_month` was a second setting, **ours rather than CC-2's**,
+defaulting to 26, invented to divide a monthly salary into a daily wage. The
+premise was wrong. CC-2 settles the unit twice in its own five bullets:
+*"Salary as 0 or 1 based on attendance"* pays a whole month for one day present
+on a monthly figure, and *"OT = (salary ÷ 8) × hours"* is called **"1× ordinary
+rate"** by CC-2's own note — which is true only if `salary ÷ 8` is an hourly
+rate. **CC-2's `salary` was a day rate from the beginning.**
+
+So the divisor is **retired, not re-tuned**, `attendance.daily_wage()` went with
+it (a day's wage is the stored rate, with no arithmetic between), and
+`day_rate_of()` replaced it. The AST guard was **retargeted** from
+`{daily_wage, ot_amount, cost_of}` to `{day_rate_of, ot_amount, cost_of}` — as
+its own final assertion instructed — and it now ships a mutation test proving it
+still catches a literal multiplier.
+
+⚠ **Nothing was converted and nothing is recomputed.** A marking made before the
+correction snapshotted a monthly salary; it keeps its key and its number, is
+marked `rate_model: pre_day_rate`, and `cost_of()` returns **refused** for it —
+`{"day": None, "ot": None, "total": None}`, never `0.0`, because zero is a
+figure somebody could have chosen and would be silently absorbed into a site
+total. **A refused marking is excluded from the money and kept in the head
+count**, and the page states how many markings the total is short by. §3's
+Employee entry has the closed-set table and the migration counts.
 
 #### ⚠ One employee = one site = one day — a uniqueness constraint, enforced at write
 
@@ -5621,18 +5781,32 @@ The edit route passes its own id as `except_id`, which is the way this
 constraint is usually got wrong: without it, saving a record unchanged finds
 itself and every edit refuses.
 
-#### ⚠ Site is free text and is deliberately NOT a project
+#### ⚠ Site is an ADDRESS-BOOK PICKER, and is deliberately NOT a project
 
-The project record was considered first and does not fit:
+⚠ **It was free text until 30 August 2026, and that was the defect the owner
+reported.** Free text is why this database spells one place more than one way,
+and a site-wise labour cost split across two spellings is wrong in a way nobody
+notices because both halves look right. §3's Employee entry has the record
+shape, the exact-match rule and the unmapped set.
+
+The project record was considered first and still does not fit:
 
 1. **A project is not a site in this app's own data model.** A BOQ carries
    `project_name` **and** `site_location` as two separate fields (§3). One
-   project runs at several sites.
-2. **`employee.site` is already free text**, and C4 chose that deliberately.
+   project runs at several sites, and one site can carry work for more than one.
+2. **The master and the muster share one vocabulary**, which is the address book
+   for both. `employee.py` owns it and this module reads it through the import
+   it already has.
 3. **A `project_id` here is the first half of C6**, which is BLOCKED.
+4. ⚠ **And an address does not join to a project**, so the roll-up C6 would want
+   is not available even through the book — see §4's note, which pins the two
+   record shapes and names the three ways out.
 
-The form prefills the employee's own posted site, so the common case is one
-keystroke. No second site entity was invented.
+The form prefills the employee's own posted site — the **link**, because a
+picker needs an option value — so the common case is still one selection. An
+employee whose own site is unmapped prefills nothing, because there is no option
+to select and a guess would be worse than a blank. No second site entity was
+invented.
 
 #### ⚠ Nothing is exported — C6 is BLOCKED and stays blocked
 
@@ -5666,13 +5840,74 @@ re-login. PROGRESS.md carries the same ruling for `employee.*`.
 
 #### The snapshot
 
-`employee_name`, `employee_code` and `monthly_salary` are **copied onto the
-marking**, not looked up. A wage figure for a day already worked must not move
-when somebody's salary is revised — the freeze contract `proforma.prior_invoiced`
-and `ra.prev_balance` hold one chain over. An **edit** re-snapshots, because an
-edit is a restatement of what that day was.
+`employee_name`, `employee_code`, `day_rate` and the **site label** are **copied
+onto the marking**, not looked up. A wage figure for a day already worked must
+not move when somebody's rate is revised, and a renamed address must not restate
+which site they stood on — the freeze contract `proforma.prior_invoiced` and
+`ra.prev_balance` hold one chain over. An **edit** re-snapshots, because an edit
+is a restatement of what that day was.
 
-Held by [tests/test_attendance.py](tests/test_attendance.py).
+Held by [tests/test_attendance.py](tests/test_attendance.py),
+[tests/test_day_rate_pin.py](tests/test_day_rate_pin.py) and
+[tests/test_site_picker.py](tests/test_site_picker.py).
+
+---
+
+### The two register SCREENS — `dashboard.REGISTER_STYLES`
+
+⚠ **`/attendance/` and `/dc/` are the ONLY two pages in this application that
+have ever been rendered to a human eye.** Everything else has been built, tested
+and never opened. On 30 August 2026 the owner opened those two and reported that
+the pages are confusing, that the attendance table is misaligned, and that on
+Delivery Challans he could not tell what to click. All three were right.
+
+**One pattern, in `dashboard.py`, emitted only where it is wanted.**
+`REGISTER_STYLES` sits beside `USER_CHIP_STYLES` and follows its precedent
+exactly, for the reason §7's first gap gives: `BASE_STYLES` is on every page in
+this app **including every printed one**, so a register rule added there moves
+five pinned digests for a change that never reaches paper. It is loaded by
+`/attendance/` and `/dc/` and by nothing else, so **no golden moved and none
+could**. Two tests hold both halves — one against `BASE_STYLES`, one sweeping
+who loads it — and a third asserts the **pinned** `challan.print_dc` does not
+carry it, because `challan.py` loads it on the register and owns that golden.
+
+What it fixes, and what each answers:
+
+| | The report | The fix |
+|---|---|---|
+| **Alignment** | the money columns looked ragged | `.num` on the `<th>` **as well as** the `<td>`. It was a **specificity** bug, not a missing class: `.att-table th { text-align:left }` is (0,1,1) and beat `.att-amt` at (0,1,0), so every money header sat left over a right-aligned column. `.reg-table th.num` is (0,2,1) |
+| **Naming** | the page was confusing | a `DAY` filter meaning a date, a `DAY` column meaning wages and a `DAY WAGES` column meaning the same figure — **one name for two things and two names for one**. The filter is `Date`; the column is `Day rate` in both tables |
+| **Actions** | the TOTAL column was pushed out | Edit and Delete are in a real column with a real header instead of hanging off the right edge, and **Delete is de-weighted** — it destroys a record and Edit does not |
+| **One language** | two tables, two designs | both in the same card with the same table. The top one was bare and the bottom boxed with a red header |
+| **Click affordance** | *"I cannot tell what to click"* | their challan series has no prefix, so challan 54 rendered as the two characters `54` — a **bare number reads as a reference, not an action**, and it is the smallest target this app offers. It is `Open 54 →` in a bordered pill now |
+| **One primary action** | two link styles in one row | `AGAINST BOQ` was also a link, in a different colour, so neither read as primary. It is marked secondary |
+| **Wrapping** | a row looked broken | `SF/BOQ/26-27/` on one line and `0001` on the next. `.reg-ref` is `nowrap` |
+| **Print reachable** | nothing to click | `challan.print_dc` was reachable from the document page only. It is an action on every register row |
+
+⚠ **The `/dc/` register no longer borrows `.pk-table` from
+`boqpick.PICKER_CSS`, and that was a live coupling rather than tidiness.**
+`PICKER_CSS` is spliced into `po_draft.PO_STYLES` and `/po/create` is hashed
+byte-for-byte (§2e), so restyling this register would have moved a golden for a
+page that renders no register at all. The picker on `/dc/create` still uses it,
+which is what it is for.
+
+⚠ **THE REGISTERS DO NOT SHARE A TABLE-RENDERING HELPER, and these two are now
+the odd ones out.** Each module writes its own `<table>` and its own class —
+`.q-table`, `.emp-table`, `.cl-table`, `.ledger-table`, `.proj-tbl`, `.claims`,
+`.data`, `.tbl`, `.pk-table`, and several bare `<table>` elements —
+and `BASE_STYLES` carries `.btn` and `.alert` and **no table rule at all**. So
+fixing the pattern once did *not* fix every register. **Fifteen modules are now
+inconsistent with these two**: `boq`, `charge`, `client`, `employee`, `invoice`,
+`measurement`, `po_draft`, `proforma`, `product`, `project`, `purchase`,
+`quotation`, `ra`, `receipt`, `spec`.
+
+📌 **They were deliberately left alone and that is a decision, not an omission.**
+The owner has not seen them, and restyling a page nobody has opened is how a
+pass ships a regression that surfaces months later. Several of those modules
+also render inside pages a golden pins.
+`tests/test_registers.py::test_the_other_registers_are_recorded_as_inconsistent`
+carries the list and goes red the moment one is migrated without the list being
+updated, so the next pass takes them deliberately.
 
 ---
 
@@ -5731,13 +5966,29 @@ challan series, the charge heads, and **Labour Cost**. Reached from the
 ⚠ **Labour Cost is CC-2 C5's, and the OT multiplier is there because a constant
 would be a statutory underpayment.** `ot_multiplier` defaults to the client's
 own 1× and the page says on its face that the Factories Act and most state Shops
-& Establishments Acts put overtime at generally twice. `wage_days_per_month`
-defaults to 26 and is **ours rather than the client's** — CC-2 never says what a
-monthly salary is divided by to get a daily wage, and the page says so.
-`settings.ot_multiplier()` and `settings.wage_days_per_month()` are the only
-accessors; `attendance.py` takes both as arguments and holds neither figure.
-Changing either changes what `/attendance/` shows from the next render, and
+& Establishments Acts put overtime at generally twice. `settings.ot_multiplier()`
+is the only accessor; `attendance.py` takes it as an argument and holds no
+figure. Changing it changes what `/attendance/` shows from the next render, and
 **rewrites nothing already recorded**.
+
+⚠ **`wage_days_per_month` used to sit beside it and is DELETED — 30 August
+2026.** It divided a monthly salary into a daily wage and defaulted to 26, and
+it was **ours rather than the client's** on the reading that CC-2's `salary` was
+monthly. That reading was wrong: CC-2's own note calls `salary ÷ 8 × hours`
+**"1× ordinary rate"**, which is true only if `salary ÷ 8` is an *hourly* rate,
+so `salary` is a **day's** wage. The employee master carries a day rate and
+there is nothing to divide, so the setting is **retired rather than re-tuned** —
+including its row in PROGRESS.md §4c, where a beyond-CC-2 item is **removed**.
+
+⚠ **A stale stored value survived on this database and is what the owner saw.**
+The record was `{"wage_days_per_month": "1"}`, which made a day's wage the whole
+monthly salary and put *"1 working days a month"* in the footnote on his screen.
+`labour_settings()` reads off `LABOUR_DEFAULTS` so a key the app no longer knows
+is invisible to it, and `tools/backfill_day_rate.py` strips it anyway: a dead
+key in a live settings row is a trap for the next reader, and this one reads as
+a live divisor. `tests/test_day_rate_pin.py` fails if the name reappears in
+`settings.py`, `attendance.py` or `employee.py`, **or if a save writes it back**
+— which is a mutation that walked through the first three assertions.
 
 `branding.py` values are the **defaults**; this page saves *overrides*.
 
@@ -7031,6 +7282,37 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
 
     The tripwire did its job and is retargeted, not deleted, with all three of
     its old assertions kept verbatim in a comment. PROGRESS.md §6-D.
+
+30. 🟠 **The fifteen other registers do not share the two the owner has seen —
+    OPEN, and deliberately so.** `/attendance/` and `/dc/` were rebuilt on
+    `dashboard.REGISTER_STYLES` on 30 August 2026 because they are **the only
+    two pages in this application that have ever been rendered to a human
+    eye**. Every other register still writes its own `<table>` and its own CSS
+    class — `.q-table`, `.emp-table`, `.cl-table`, `.ledger-table`,
+    `.proj-tbl`, `.claims`, `.data`, `.tbl`, `.pk-table` and several bare
+    `<table>` elements — and `BASE_STYLES` carries no table rule at all, so
+    there was never a helper to fix once.
+
+    **Why it was left open.** Restyling a page nobody has opened is how a pass
+    ships a regression that surfaces months later, and several of those modules
+    render inside pages a golden pins — `/purchase/view`, `/proforma/view`,
+    `/invoice/view` and `/po/create` among them. The brief for that pass said
+    in terms not to restyle a page nobody has seen without reporting it first.
+
+    📌 **What it would take.** The pattern already exists and is one constant;
+    the work is per module and is mechanical — swap the table class, put `.num`
+    on the numeric `<th>`s as well as the `<td>`s, give the actions column a
+    header, and check the module does not also feed a pinned page. **Take them
+    when somebody has actually looked at them**, and one at a time.
+    `tests/test_registers.py::test_the_other_registers_are_recorded_as_inconsistent`
+    holds the list and goes red the moment one is migrated without it being
+    updated, so this cannot quietly half-happen.
+
+    ⚠ **This is not the nav/golden coupling** (the first gap in this section).
+    That one is about `_nav()` being embedded in printed pages; this one is
+    about registers having no shared table at all. They meet only in that both
+    are reasons a screen change must be checked against the goldens before it
+    is made.
 
 ---
 
