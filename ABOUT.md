@@ -2658,6 +2658,68 @@ Protection* shows six markings totalling **₹7,291.25** with an absentee at
 three siblings and the plain empty state, because nobody has been marked at that
 site.
 
+#### The marking→project backfill — MEASURED, 30 August 2026 (sixth pass)
+
+`tools/backfill_marking_projects.py --write` was run once against the live MySQL
+between two `mysqldump`s, then again to prove the second run is a no-op.
+Authorised by the **SIXTH override block of 30 August 2026**. Every figure here
+was measured, none derived.
+
+| | |
+|---|---|
+| markings in the database | **8**, all carrying a `site_address_id`, **none** carrying a `project_id` |
+| markings **linked** | **8** — 6 to *Magarpatta Tower B — Fire Protection*, 2 to *Bommasandra Shed — Hydrant & Sprinkler* |
+| markings left **ambiguous** | **0** |
+| markings left, **no project at the site** | **0** |
+| markings left, **no site linked** | **0** |
+| second `--write` | **0 linked**, all 8 reported as already carrying a project |
+| collection counts | **every one unchanged** — nothing was created and nothing deleted |
+
+⚠ **THE AMBIGUOUS LIST CAME BACK EMPTY, AND THAT IS NOT THE SAME AS THE
+AMBIGUITY BEING GONE.** `'Bangalore, Karnataka'` still carries **four** projects
+— now *Sify Bangalore*, *Sify3*, *ZZ TEST — Banglore* and *ZZ TEST — Test
+Supplier* — and the backfill would have refused to guess for any marking booked
+there. **There are none.** Every marking in this database belongs to the demo
+scenario, which deliberately puts **one project on each of its two sites**, so
+the tool's hard case was never exercised on live data. It is exercised by
+`tests/test_backfill_marking_projects.py`, which is where that guard is proved.
+
+⚠ **The premise that the two spellings' markings were rendering on four project
+pages was NOT true of this database at the time of the run.** The hazard is real
+and structural — four projects on one address — but no marking was booked at
+that address, so the double count had no rows to occur on. The fifth pass's own
+cleanup is why: it purged every marking that existed, and the demo seeder
+replaced them on two single-project sites.
+
+#### The two records the fifth pass left hanging — RESOLVED, 30 August 2026
+
+Both were renamed and **neither was deleted**. Ruled by the sixth override
+block; the dependants below were enumerated before the rename, not assumed.
+
+| project | dependants found | what was done |
+|---|---|---|
+| *"Banglore"* (client Manas) | `SF/BOQ/26-27/0007`, `SF/PO/26-27/0002`, **3 charges**, and under that BOQ **delivery challan 3**, **measurement sheet `SF/MS/26-27/0001`** and **draft PO `SF/DPO/0003`** | renamed **`ZZ TEST — Banglore (do not use)`**, every attached document untouched |
+| *"Test Supplier"* (client Manas) | `SF/BOQ/26-27/0006` and, under it, RA bills `SF/RA/26-27/0006` and `SF/RA/26-27/0007` | ⚠ **NOT deleted** — the delete branch required **zero** dependants and it has three. Renamed **`ZZ TEST — Test Supplier (do not use)`** |
+
+⚠ **THE RENAME BREAKS NOTHING, AND THAT WAS VERIFIED RATHER THAN ASSUMED.**
+Every dependant snapshots `project_name` at its own write and none re-reads the
+live project — `purchase._project_name_of()` is called at create only. All
+**36** stored `project_name` snapshots in the database were captured before the
+rename and compared after: **0 moved.** Neither new name collides on
+`norm_name`.
+
+⚠ **One future behaviour is named rather than discovered later:**
+`charge.edit_charge()` re-resolves `project_name` from the live project on save,
+so editing one of the three charges on *ZZ TEST — Banglore* would rewrite that
+charge's snapshot to the new name. That is existing behaviour triggered by a
+human act, not by the rename.
+
+⚠ **`tools/clean_site_data.py`'s purge list no longer matches either record.**
+`PURGE_PROJECTS` names them by `(name, client)` and both names have changed, so
+a re-run is a no-op for them. That is consistent with the ruling — the tool had
+already **refused** *"Banglore"* — and it is recorded so nobody reads the tool's
+silence as the project having gone.
+
 ### User  (Phase 3B)
 
 ```python
