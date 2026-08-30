@@ -376,7 +376,7 @@ Consequences you must respect when editing:
 | [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
 | [auth.py](auth.py) | 1670 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
-| [address.py](address.py) | 1029 | Address book + the pickers that quotations and purchase orders use. |
+| [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 130 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 494 | **Dead file.** Stale docs only — see §8. |
@@ -389,6 +389,10 @@ app.py
  ├─ product.py ────────────────┤  imports dashboard, branding, store, pipeline
  │                             │  (pipeline is new — P.esc, §7.7)
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
+ │                             │  and auth INSIDE `_editor_id()` only (purchase._repricer()'s
+ │                             │  arrangement). It reads six OTHER collections out of STORE
+ │                             │  directly and imports none of them — the one-way trick, and
+ │                             │  it has to be, because five of the six import THIS module.
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
@@ -2369,11 +2373,108 @@ bills exist and one is on the installation leg.
 ```python
 { "id", "label", "type", "contact_name", "company",
   "line1", "line2", "landmark", "city", "state", "pincode", "country",
-  "phone", "email", "gstin" }
+  "phone", "email", "gstin",
+
+  # ── The book became a MASTER on 30 August 2026 (fourth pass) ──────────
+  "active":   True,          # ⚠ ABSENT MEANS TRUE. The archive flag.
+  "edit_log": [              # absent until a REFERENCED address is edited
+    {"at": "2026-08-30 14:22",
+     "by_user_id": "<user id>",   # ⚠ an ID, never a display name
+     "changes": [{"field": "city", "from": "Bengaluru", "to": "Bangalore"}]},
+  ],
+}
 ```
 
 `type` ∈ `office | site | billing | shipping | vendor`.
 Validated: PIN `^[1-9][0-9]{5}$`, GSTIN full 15-char pattern.
+
+#### ⚠ Six collections point INTO this book, and until 30 August 2026 nothing checked
+
+`address.py`'s docstring said *"nothing else in the app reads
+STORE['addresses']"* and `delete_address()` said *"there is no integrity check to
+run here"*. Both were true when written and neither had been for weeks.
+
+| collection | field | holds |
+|---|---|---|
+| `projects` | `site_address_id` | **an id** (fourth pass) — and `site_address` beside it, the label snapshot |
+| `employees` | `site_address_id` | an id, with `site` the label snapshot |
+| `attendance` | `site_address_id` | an id, with `site` the label snapshot |
+| `purchase_orders` (draft PO) | `vendor_id` | an id, with `vendor_name` snapshotted; **`""` on a typed one-off supplier** |
+| `purchases` (real PO) | `vendor_id` | an id, with `vendor_name` snapshotted |
+| `delivery_challans` | `consignee_id` | an id, with `consignee_name` snapshotted; **`""` on a typed consignee** |
+
+⚠ **Some live references are still STRINGS, not ids.** Those fields were free
+text before the pickers arrived, and the backfills deliberately left an
+unmatched string exactly as it stood rather than guess. So
+`address.references_of()` matches on **both** — the id and the snapshot string —
+and a guard reading only the id would pass a legacy record straight through and
+delete the address underneath it.
+
+⚠ **The string comparison is EXACT after `strip()` and nothing else.** No
+casefolding, no whitespace collapsing, no prefix match. `banglore` is not
+`Banglore`. This is `tools/backfill_site_links.py`'s rule and `po_parts.py`'s
+lesson (§2h). ⚠ It compares against three strings the address can legitimately
+produce — `label`, `company`, `contact_name` — because those are what the
+writers actually copy (`employee.py` takes the label; `purchase.py` writes
+`company or label`; `po_draft.py` and `challan.py` write
+`company or contact_name`). **Blank values are excluded and that is
+load-bearing:** an address with no company would otherwise claim every record
+whose company field is empty, and every deletion in the book would be refused.
+It can therefore **over**-report and never under-reports, which is the direction
+a guard should err in; the refusal names the records, so an over-report is
+visible.
+
+⚠ **Quotations and BOQs are deliberately NOT on that list.** `picker_payload()`
+is a *fill* helper: JavaScript copies the fields into the form and the document
+stores its own party block with **no id and no label pointing back**. Deleting
+an address cannot dangle a quotation because a quotation never referenced one.
+
+#### What the guards do
+
+- **Delete is refused** while `references_of()` is non-empty, on the **POST as
+  well as the GET** (`client.edit_party()`'s arrangement — the page and the
+  guard cannot say different things). The refusal **names the records as
+  chips**, `ra.party_lock_bills()`'s shape rather than a second design.
+- **Archive** (`active: False`) is the escape. ⚠ **A delete-refusal with no
+  archive is a trap rather than a guard** — `measurement.can_delete()`'s finding
+  one register along. An archived address leaves every picker, still resolves
+  for the records that point at it, and can be un-archived. ⚠ **An address
+  nothing references stays HARD-deletable**; that is the cleanup path for a
+  duplicate and the archive does not replace it.
+- ⚠ **`active` ABSENT MEANS ACTIVE.** Six live records and every seeded one
+  carry no such key. `address.is_active()` is the only reader; never
+  `addr["active"]`, never `... is True`, either of which archives the whole book
+  at a stroke.
+- **An archived address is still offered as the CURRENT `selected` option**,
+  marked, so an edit form re-rendering a record whose vendor was archived
+  afterwards does not silently drop the vendor the record already carries.
+- **Editing a referenced address is ALLOWED and logged.** ⚠ **This is a decision
+  and not an omission:** `Banglore` is misspelled on the live database, on two
+  of the three projects that name a site, and **nothing in this application
+  repoints a record onto a different address** — so a freeze would make that
+  misspelling permanent. The record is **updated, not replaced**; it used to be
+  `STORE["addresses"][id] = {"id": id, **data}`, which would now discard
+  `active` and `edit_log`.
+- ⚠ **The log records a USER ID, never a display name.** `purchase.reprice_log`
+  stores `display_name or username` and that is a **known open gap**: rename the
+  user and the history restates itself, delete them and it names nobody. The id
+  is stored; `address.editor_label()` resolves it **at render time** and says
+  *"deleted user …"* when the account is gone.
+- **`type` is the one field locked while references exist.** It is what the
+  pickers filter on: flip a `site` to a `vendor` and it leaves `SITE_TYPES`, the
+  pickers stop offering it, and every existing reference dangles **with nothing
+  on screen explaining why**. The refusal names the references. The form shows
+  the control read-only with a **hidden input** beside it — a disabled `<select>`
+  submits nothing and `_validate()` would then read `type` as its `office`
+  default and rewrite the field the lock exists to protect.
+
+`SITE_TYPES = ("site", "office")` lives here too, moved out of `employee.py` in
+the same pass. ⚠ **Two pickers that can disagree about what counts as a site is
+the defect** — `project.py` and `employee.py` both read it from the one module
+they both already import. `employee.SITE_TYPES` is an alias onto it, so
+`attendance.py` and `tools/backfill_site_links.py` are unchanged.
+
+Held by [tests/test_address_guards.py](tests/test_address_guards.py).
 
 ### User  (Phase 3B)
 
@@ -5916,9 +6017,27 @@ updated, so the next pass takes them deliberately.
 | Route | View |
 |---|---|
 | `GET /address/` | `list_addresses` |
+| `GET /address/view/<id>` | `view_address` — the record, what points at it, its edit history |
 | `GET,POST /address/add` | `add_address` |
-| `GET,POST /address/edit/<id>` | `edit_address` |
-| `GET,POST /address/delete/<id>` | `delete_address` — GET confirms, POST deletes |
+| `GET,POST /address/edit/<id>` | `edit_address` — `type` read-only while referenced |
+| `GET,POST /address/delete/<id>` | `delete_address` — GET confirms, POST deletes; **refused while referenced, on both** |
+| `POST /address/archive/<id>` | `archive_address` — out of every picker, reversibly |
+| `POST /address/unarchive/<id>` | `unarchive_address` |
+
+⚠ **The last three arrived on 30 August 2026 (fourth pass) and NO PERMISSION WAS
+MINTED.** `view_address` is `address.view`; **archive and un-archive are
+`address.delete`, not `address.edit`** — archiving is what a refused delete
+becomes, so the role stopped by the guard has to be the role that can take the
+alternative, and pulling an address out of every picker in the application is a
+wider act than correcting one field on it. Owner and Director hold
+`address.delete`; Sales Manager, Purchase Manager and Operation Head hold
+`address.edit` and deliberately do not get this. §3's Address record has the
+guards themselves.
+
+**Archive is POST-only and has no GET half**, deliberately: `delete` has a
+confirmation page because deletion is irreversible, and this is reversible in
+one click from the same page, so a confirmation step would be ceremony rather
+than a guard.
 
 Indian postal format, rendered top-to-bottom by `format_address_lines()`:
 contact/company → line1 (building) → line2 (street) → landmark →
@@ -5947,6 +6066,17 @@ Omitted, it returns the whole book, which is what the quotation's pickers want.
 Note the "Other" orphan group is **suppressed when filtering**: an address whose
 type is not in `ADDRESS_TYPES` is being rescued from disappearing, not offered
 as a match for a filter it does not satisfy.
+
+⚠ **`picker_options()` and `picker_payload()` no longer call
+`ensure_demo_addresses()` (30 August 2026, fourth pass).** Rendering a form is
+not a reason to write six demo records into a client's database, and these two
+are reached from **five other modules'** forms. Nothing lost a seed: it still
+runs where the repo's other seeds run — `dashboard.index()` calls it beside
+`ensure_demo_products()`, which is exactly the arrangement §1's cold-start block
+describes — and every route in this module still calls it. `has_options()` is
+the other half: a form whose picker would open empty can say *"the address book
+has no sites — add one"* rather than render a `<select>` with a placeholder and
+no way out.
 
 ---
 

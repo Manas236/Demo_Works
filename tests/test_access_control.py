@@ -84,7 +84,9 @@ def test_every_endpoint_is_classified():
     #   import that quietly fails to register a blueprint, a filter that stops
     #   matching. The floor is what stops "every endpoint is classified" being
     #   true because there are no endpoints. Measured at 111 classified
-    #   endpoints on 30 August 2026; 80 leaves room to delete a module without
+    #   endpoints on 30 August 2026, and at **114** later the same day when the
+    #   address book grew a view page and the two archive routes; 80 leaves room
+    #   to delete a module without
     #   forcing an edit here, and none to delete the application.
     assert len(endpoints) > 80, (
         f"only {len(endpoints)} endpoints in the URL map — the sweep below is "

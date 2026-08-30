@@ -353,8 +353,30 @@ def test_the_link_graph_is_built_from_literal_endpoints_almost_everywhere():
     # An eleventh is not forbidden; it just has to be checked, because a
     # computed endpoint whose name appears as a literal nowhere is a link this
     # file cannot see.
-    assert computed <= 10, (
+    #
+    # ⚠ **RAISED 10 → 11 on 30 August 2026 (fourth pass), which is what the
+    #   docstring above instructs rather than a weakening of it.** The old
+    #   assertion, kept verbatim:
+    #
+    #       assert computed <= 10, (
+    #           f"{computed} url_for() call sites use a computed endpoint, up from the "
+    #           f"10 measured on 30 August 2026. The sweep can only see one if its "
+    #           f"endpoint name appears as a literal too. Check the new one, then raise "
+    #           f"this bound deliberately.")
+    #
+    #   The eleventh is `address._ref_chips()`, which renders the records
+    #   pointing at an address as chips: `url_for(r["endpoint"], id=r["id"])`,
+    #   where `endpoint` comes off `address.REFERENCE_SOURCES`.
+    #
+    #   ⚠ **It is the first computed site whose endpoint names appear as
+    #   literals NOWHERE the walk looks** — they are elements of a module-level
+    #   data tuple, not arguments at a call site — so unlike the ten above, this
+    #   one contributes no edges at all. That makes the sweep *more*
+    #   pessimistic, never less: `/address/view/<id>` is reached on its own
+    #   merits from the address list, and the six pages the chips link to are
+    #   each already reachable from their own registers. Checked, then raised.
+    assert computed <= 11, (
         f"{computed} url_for() call sites use a computed endpoint, up from the "
-        f"10 measured on 30 August 2026. The sweep can only see one if its "
-        f"endpoint name appears as a literal too. Check the new one, then raise "
-        f"this bound deliberately.")
+        f"11 measured on 30 August 2026 (fourth pass). The sweep can only see "
+        f"one if its endpoint name appears as a literal too. Check the new one, "
+        f"then raise this bound deliberately.")

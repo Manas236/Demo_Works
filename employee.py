@@ -308,7 +308,17 @@ SITE_UNMAPPED = "unmapped"
 #   goods go, not where a fitter stands. It is one tuple to widen if a real site
 #   turns out to be filed under another type — `address.picker_options()` takes
 #   the same `only_types` argument `/purchase`'s vendor picker uses.
-SITE_TYPES = ("site", "office")
+#
+# ⚠ **MOVED to `address.py` on 30 August 2026 (fourth pass); this is an ALIAS.**
+#   A project now takes its site from the same book, and `project.py` may not
+#   import this module — `test_import_directions.py` forbids `employee → project`
+#   and the reverse arrow would put the muster in the project's import graph. So
+#   the tuple went one level down, to the module that owns the vocabulary and
+#   that both of them already import. **Two pickers that can disagree about what
+#   counts as a site is the defect**, and one definition is the fix. The name
+#   stays here because `attendance.py` and `tools/backfill_site_links.py` read
+#   it through this module; both keep working unchanged.
+SITE_TYPES = AD.SITE_TYPES
 
 UNMAPPED_SITE_NOTE = (
     "this site was typed as free text before the address book became the "

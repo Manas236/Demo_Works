@@ -272,6 +272,7 @@ def populated(client):
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
             "/address/edit/<id>":   next(iter(STORE["addresses"])),
+            "/address/view/<id>":   next(iter(STORE["addresses"])),
             # The access-control pages. `spare_uid` is a second, ordinary user
             # so that `/users/deactivate` renders its confirmation rather than
             # the "this is the only Owner" refusal — both are real pages, but

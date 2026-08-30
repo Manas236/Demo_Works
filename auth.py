@@ -484,9 +484,19 @@ ROUTE_PERMISSIONS = {
     "product.add_product":        "product.create",
     "product.delete_product":     "product.delete",
     "address.list_addresses":     "address.view",
+    "address.view_address":       "address.view",
     "address.add_address":        "address.create",
     "address.edit_address":       "address.edit",
     "address.delete_address":     "address.delete",
+    # ⚠ Archive and un-archive are `address.delete`, NOT `address.edit`, and no
+    #   permission was minted for them. Archiving is what a refused delete
+    #   becomes, so the role stopped by the guard has to be the role that can
+    #   take the alternative; and pulling an address out of every picker in the
+    #   application is a wider act than correcting one field on it. Owner and
+    #   Director hold `address.delete`. Sales Manager, Purchase Manager and
+    #   Operation Head hold `address.edit` and deliberately do not get this.
+    "address.archive_address":    "address.delete",
+    "address.unarchive_address":  "address.delete",
 }
 
 

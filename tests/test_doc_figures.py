@@ -228,7 +228,7 @@ def test_this_check_would_notice_a_document_left_behind(tmp_path):
 
 MATRIX = "docs/ACCESS_MATRIX.md"
 
-# **7 roles · 79 permissions · 111 classified endpoints.**
+# **7 roles · 79 permissions · 114 classified endpoints.**
 MATRIX_HEADER = (r"\*\*(\d+) roles?\s*[·.]\s*(\d+) permissions?\s*[·.]\s*"
                  r"(\d+) classified endpoints?\.?\*\*")
 
