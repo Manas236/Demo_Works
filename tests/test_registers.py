@@ -7,10 +7,6 @@ opened. He reported three things about them: the pages are confusing, the
 attendance table is misaligned, and on Delivery Challans he cannot tell what to
 click.
 
-⚠ **This edition covers the attendance day view only.** The delivery challan
-register lands in the next commit, and the sections below grow with it — which
-is why `SHARED` names one module and `challan` is still on the not-yet list.
-
 ### What this file pins
 
 1. ⚠ **Numeric headers are right-aligned, not only numeric cells.** That is the
@@ -93,6 +89,10 @@ def _a_day(client):
         "status": "present", "ot_hours": "2", "notes": ""})
     assert r.status_code == 302, r.get_data(as_text=True)[:400]
     return client.get(f"/attendance/?date={DAY}").get_data(as_text=True)
+
+
+def _dc_register(client):
+    return client.get("/dc/").get_data(as_text=True)
 
 
 # ═══ 1. ⚠ ALIGNMENT — the headers too, not only the cells ══════════════════
@@ -184,6 +184,25 @@ def test_delete_is_de_weighted_relative_to_edit(client):
         "page")
 
 
+def _seed_dc():
+    """One challan, written straight into the store."""
+    STORE.setdefault("delivery_challans", {})["dc-1"] = {
+        "id": "dc-1", "ref": "54", "date": "2026-07-28",
+        "boq_id": "boq-x", "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore", "site_location": "Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "consignee_id": "", "consignee_source": "typed",
+        "consignee_name": "Samruddhi Fire", "consignee_addr": "",
+        "consignee_phone": "", "dispatch_mode": "Transport",
+        "dispatch_to": "Bangalore", "po_no": "", "po_date": "", "notes": "",
+        "items": [{"line_id": "aaaaaaaaaaaa", "is_header": False,
+                   "item_no": "1", "description": "Pipe", "unit": "Mtrs",
+                   "qty": 2.0}],
+        "company_branch": "", "auth_signatory": "",
+    }
+    return STORE["delivery_challans"]["dc-1"]
+
+
 # ═══ 4. ⚠ ONE VISUAL LANGUAGE ══════════════════════════════════════════════
 
 def test_both_tables_on_the_attendance_page_are_the_same_shape(client):
@@ -197,6 +216,101 @@ def test_both_tables_on_the_attendance_page_are_the_same_shape(client):
     assert html.count('<table class="reg-table">') == 2, (
         "the two tables are not both the shared table")
     assert 'class="att-table"' not in html, "the old private table style is back"
+
+
+def test_the_two_registers_share_one_pattern(client):
+    """
+    ⚠ **The point of the whole exercise.** Two registers at opposite ends of the
+    affordance spectrum in one application is the problem, not the styling of
+    either one.
+    """
+    att = _a_day(client)
+    _seed_dc()
+    try:
+        dc = _dc_register(client)
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
+
+    for marker in ('class="reg-card"', '<table class="reg-table">',
+                   'class="reg-head"', 'class="reg-acts"', 'class="num"'):
+        assert marker in att, f"the attendance register lacks {marker}"
+        assert marker in dc, f"the delivery challan register lacks {marker}"
+
+
+# ═══ 5. ⚠ THE DELIVERY CHALLAN'S CLICK AFFORDANCE ══════════════════════════
+
+def test_the_challan_number_is_a_labelled_target_and_not_a_bare_digit(client):
+    """
+    ⚠ **THE ACTUAL DEFECT the owner reported: he could not tell what to click.**
+    The only link on the row was the challan number, and their series has no
+    prefix — so challan 54 rendered as the two characters `54`. A bare number is
+    a reference, not an action, and it is the smallest target in this app.
+    """
+    _seed_dc()
+    try:
+        html = _dc_register(client)
+        assert 'class="reg-open"' in html, (
+            "the row has no primary action — the number is still the only "
+            "thing to click")
+        m = re.search(r'<a class="reg-open"[^>]*>(.*?)</a>', html, re.S)
+        assert m, "the primary action did not render"
+        text = re.sub(r"<[^>]+>", "", m.group(1))
+        assert "Open" in text or "Challan" in text, (
+            f"the primary action carries no word, only {text.strip()!r} — "
+            f"which is the bare digit this fixes")
+        assert "54" in text, "the challan number is not on the control"
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
+
+
+def test_there_is_exactly_one_primary_action_per_row(client):
+    """
+    ⚠ **`AGAINST BOQ` was a link in a different colour**, so neither it nor the
+    challan number read as primary. One per row.
+    """
+    _seed_dc()
+    try:
+        html = _dc_register(client)
+        body = html.split("<tbody>")[1].split("</tbody>")[0]
+        assert body.count('class="reg-open"') == 1, (
+            "a row carries more or less than one primary action")
+        assert 'class="reg-sub"' in body, (
+            "the BOQ link is not marked secondary, so it competes with the "
+            "primary one")
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
+
+
+def test_the_boq_reference_cannot_wrap_mid_code(client):
+    """
+    `SF/BOQ/26-27/` on one line and `0001` on the next makes the row taller and
+    reads as broken.
+    """
+    _seed_dc()
+    try:
+        html = _dc_register(client)
+        assert "reg-ref" in html, "the reference carries no no-wrap class"
+        assert re.search(r'class="[^"]*reg-ref[^"]*"[^>]*>\s*SF/BOQ', html), (
+            "the BOQ reference is not the thing marked no-wrap")
+        assert "white-space: nowrap" in D.REGISTER_STYLES
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
+
+
+def test_the_print_sheet_is_reachable_from_the_register(client):
+    """
+    ⚠ **The concrete answer to "what is the person supposed to click".** The
+    cleanup pass linked `challan.print_dc` after finding it reachable only by a
+    typed URL — from the document page. From the register there was nothing.
+    """
+    _seed_dc()
+    try:
+        html = _dc_register(client)
+        assert 'href="/dc/print/dc-1"' in html, (
+            "the printed challan is still reachable only from the document "
+            "page somebody has to open first")
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
 
 
 # ═══ 6. ⚠ NO PINNED GOLDEN MOVES, AND NONE COULD ═══════════════════════════
@@ -217,6 +331,67 @@ def test_the_register_styles_are_not_in_BASE_STYLES():
     assert ".reg-table" in D.REGISTER_STYLES
 
 
+def test_no_page_a_golden_pins_loads_the_register_styles():
+    """
+    The other half, checked against `PINNED_PAGES` rather than a hand-written
+    list, so a golden added later is covered the day it is pinned.
+    """
+    loaders = set()
+    for path in REPO.glob("*.py"):
+        src = path.read_text(encoding="utf8")
+        if "REGISTER_STYLES" in src and path.name != "dashboard.py":
+            loaders.add(path.stem)
+
+    assert loaders, "nothing loads the register styles — the pattern is dead"
+    pinned_modules = {ep.split(".")[0] for ep in D.PINNED_PAGES}
+    # `challan` appears in both: it loads REGISTER_STYLES on `/dc/` and it owns
+    # the pinned `challan.print_dc`. So the check is at ROUTE level, below.
+    assert loaders <= {"attendance", "challan"}, (
+        f"{sorted(loaders - {'attendance', 'challan'})} now load the register "
+        f"pattern. The owner has seen two pages; restyling one he has not is "
+        f"how a regression ships unnoticed. Take them deliberately.")
+    assert "challan" in pinned_modules
+
+
+def test_the_pinned_challan_sheet_does_not_carry_the_register_styles(client):
+    """
+    ⚠ `challan.py` loads `REGISTER_STYLES` on `/dc/` **and** owns the pinned
+    `challan.print_dc`. This is the assertion that the two do not meet — a
+    module-level constant is easy to splice into the wrong shell.
+    """
+    _seed_dc()
+    try:
+        html = client.get("/dc/print/dc-1").get_data(as_text=True)
+        assert html, "the printed challan did not render"
+        assert ".reg-table" not in html, (
+            "the printed delivery challan carries the register stylesheet — "
+            "its golden has moved for a screen change")
+        assert ".reg-card" not in html
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
+
+
+def test_the_picker_css_is_untouched_by_the_register_work():
+    """
+    ⚠ **`boqpick.PICKER_CSS` is spliced into `po_draft.PO_STYLES` and
+    `/po/create` is hashed byte-for-byte.** The `/dc/` register used to borrow
+    `.pk-table` from it, which meant restyling the register would have moved a
+    golden for a page that renders no register at all. It uses `.reg-table` now
+    and the picker's sheet is not touched.
+    """
+    import boqpick as BP
+    assert ".pk-table" in BP.PICKER_CSS, "the picker's own table style is gone"
+    assert ".reg-table" not in BP.PICKER_CSS, (
+        "the register pattern was written into PICKER_CSS, which /po/create "
+        "loads and a golden hashes")
+
+    src = (REPO / "challan.py").read_text(encoding="utf8")
+    reg = src.split("def list_dcs")[1].split("def create_dc")[0]
+    assert "pk-table" not in reg, (
+        "the delivery challan register still renders the line picker's table "
+        "class, so its styling is coupled to a pinned golden")
+
+
 # ═══ 7. ⚠ WHAT WAS DELIBERATELY LEFT ALONE ═════════════════════════════════
 
 # Every register in this application, and whether it uses the shared pattern.
@@ -225,11 +400,11 @@ def test_the_register_styles_are_not_in_BASE_STYLES():
 #   of those is how a pass ships a regression nobody notices for months. When
 #   somebody does take them, this is the list and this test is what tells them
 #   the job is finished.
-SHARED = ("attendance",)
+SHARED = ("attendance", "challan")
 NOT_YET_SHARED = (
-    "boq", "challan", "charge", "client", "employee", "invoice",
-    "measurement", "po_draft", "proforma", "product", "project", "purchase",
-    "quotation", "ra", "receipt", "spec",
+    "boq", "charge", "client", "employee", "invoice", "measurement",
+    "po_draft", "proforma", "product", "project", "purchase", "quotation",
+    "ra", "receipt", "spec",
 )
 
 

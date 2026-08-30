@@ -60,9 +60,23 @@ Import direction
     challan.py ──► address.py   the consignee picker
     challan.py ──► settings.py  the number series
     challan.py ──► quotation.py QUOTATION_STYLES + _inr — the form widgets
-    challan.py ──► dashboard.py BASE_STYLES / _nav
+    challan.py ──► dashboard.py BASE_STYLES / _nav / REGISTER_STYLES
     challan.py ──► pipeline.py  esc / gstin_state_label
     challan.py ──► store, branding
+
+⚠ **`REGISTER_STYLES` is loaded by `/dc/` ONLY, and that matters.** This module
+owns `challan.print_dc`, which `tests/test_print_golden.py` hashes byte for
+byte, and `dashboard.REGISTER_STYLES` is a **screen** sheet. Splicing it into
+the wrong shell moves a pinned digest for a change that never reaches paper —
+`tests/test_registers.py::test_the_pinned_challan_sheet_does_not_carry_the_register_styles`
+is what stops that happening quietly.
+
+⚠ **The REGISTER no longer borrows `.pk-table` from `boqpick.PICKER_CSS`**
+(30 August 2026). It did, and that was a live coupling rather than a tidiness
+point: `PICKER_CSS` is spliced into `po_draft.PO_STYLES` and `/po/create` is
+hashed byte for byte, so restyling this register would have moved a golden for
+a page that renders no register at all. The picker on `/dc/create` still uses
+it, which is what it is for.
 
 `boq.py` must **never** import this module: `/boq/view` links out with
 `url_for` and reads `STORE["delivery_challans"]` directly, the one-way trick
@@ -84,7 +98,7 @@ import docsheet as DS
 import pipeline as P
 import settings as SET
 from address import picker_options, format_address_lines
-from dashboard import BASE_STYLES, _nav
+from dashboard import BASE_STYLES, REGISTER_STYLES, _nav
 from store import STORE
 
 # ⚠ **`QUOTATION_STYLES` is read through `docsheet`, not imported from
@@ -780,21 +794,35 @@ def list_dcs():
     rows = ""
     for cid, dc in dcs:
         n = sum(1 for r in dc.get("items", []) if not r.get("is_header"))
+        # ⚠ **THE PRIMARY ACTION, and it is the actual defect the owner
+        #   reported: he could not tell what to click.** Their series has no
+        #   prefix (ABOUT.md §5 `/dc`), so challan 54 rendered as the two
+        #   characters `54` — a bare number, which reads as a reference rather
+        #   than an action and is the smallest target this application offers.
+        #   It carries a word and a border now, and `AGAINST BOQ` beside it is
+        #   marked secondary so there is exactly one primary action per row.
         rows += f"""
         <tr>
-          <td><a href="{url_for('challan.view_dc', id=cid)}"><b>{P.esc(dc.get("ref"))}</b></a></td>
+          <td>
+            <a class="reg-open" href="{url_for('challan.view_dc', id=cid)}"
+               title="Open delivery challan {P.esc(dc.get("ref"))}">Open
+              <span class="reg-ref">{P.esc(dc.get("ref"))}</span>
+              <span class="ro-arrow">&rarr;</span></a>
+          </td>
           <td>{P.esc(dc.get("date"))}</td>
           <td>{P.esc(dc.get("consignee_name")) or '&mdash;'}</td>
           <td>{P.esc(dc.get("dispatch_to")) or '&mdash;'}</td>
-          <td><a href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}">{P.esc(dc.get("boq_ref"))}</a></td>
+          <td><a class="reg-sub reg-ref" href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}">{P.esc(dc.get("boq_ref"))}</a></td>
           <td>{P.esc(dc.get("project_name")) or '&mdash;'}</td>
-          <td style="text-align:right;">{n}</td>
+          <td class="num">{n}</td>
+          <td class="reg-acts">
+            <a class="reg-sub" href="{url_for('challan.print_dc', id=cid)}"
+               title="The printed challan, on its own">&#128438;&nbsp;Print</a>
+          </td>
         </tr>"""
 
-    if not rows:
-        rows = ('<tr><td colspan="7" style="text-align:center;color:var(--muted);'
-                'padding:2rem;">No delivery challans yet. Raise one from a '
-                'bill of quantities.</td></tr>')
+    empty = ('<div class="reg-empty">No delivery challans yet. Raise one from '
+             'a bill of quantities.</div>')
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -802,7 +830,7 @@ def list_dcs():
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Delivery Challans")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{CHALLAN_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{REGISTER_STYLES}{CHALLAN_STYLES}
 </head>
 <body>
 {_nav()}
@@ -823,15 +851,22 @@ def list_dcs():
     <a href="{url_for('settings.edit_settings')}">Settings</a>.
   </p>
 
-  <div class="pk-wrap">
-    <table class="pk-table">
+  <div class="reg-card">
+    <div class="reg-head">
+      <span class="reg-title">Delivery challans</span>
+      <span class="reg-note">Newest first. Open one to see the note, its
+        dispatch details and the over-dispatch band.</span>
+    </div>
+    {f'''<div class="reg-scroll">
+    <table class="reg-table">
       <thead><tr>
-        <th>Challan No.</th><th>Date</th><th>Consignee</th><th>Dispatch to</th>
+        <th>Challan</th><th>Date</th><th>Consignee</th><th>Dispatch to</th>
         <th>Against BOQ</th><th>Project</th>
-        <th style="text-align:right;">Lines</th>
+        <th class="num">Lines</th><th class="reg-acts">Actions</th>
       </tr></thead>
       <tbody>{rows}</tbody>
     </table>
+    </div>''' if rows else empty}
   </div>
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · delivery challans</p></footer>
