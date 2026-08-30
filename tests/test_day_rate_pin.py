@@ -424,6 +424,24 @@ def test_the_wage_divisor_setting_is_gone():
         "attendance.daily_wage() divided a monthly figure by the divisor and "
         "has no meaning on a day rate")
 
+    # ⚠ **And it is not WRITTEN BACK either, which the four assertions above
+    #   cannot see.** A mutation that made `save_labour_settings()` store the
+    #   key again walked straight through them: the accessor was still gone,
+    #   `LABOUR_DEFAULTS` was still clean, and `labour_settings()` still could
+    #   not read it — so nothing reached a calculation, and the guard stayed
+    #   green while `tools/backfill_day_rate.py`'s whole cleanup was undone on
+    #   the next visit to `/settings`. A dead key in a live settings row is a
+    #   trap for the next reader, and this one in particular reads as a live
+    #   divisor.
+    S.save_labour_settings("2")
+    stored = STORE.get("settings", {}).get(S.LABOUR_RECORD) or {}
+    assert "wage_days_per_month" not in stored, (
+        "saving /settings writes the retired divisor back into the labour "
+        "record")
+    assert set(stored) <= set(S.LABOUR_DEFAULTS), (
+        f"the labour settings row grew keys the app does not know: "
+        f"{sorted(set(stored) - set(S.LABOUR_DEFAULTS))}")
+
 
 def test_no_calculation_path_reads_a_divisor():
     """

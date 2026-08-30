@@ -97,17 +97,52 @@ def _dc_register(client):
 
 # ═══ 1. ⚠ ALIGNMENT — the headers too, not only the cells ══════════════════
 
+# A `<th>` whose text is one of these and which does NOT carry `class="num"`.
+# ⚠ **Written as a NEGATIVE search on purpose.** The first version of this test
+#   asked whether the label appeared *somewhere* with the class, which a
+#   mutation walked straight through: `Day rate` heads BOTH tables on the
+#   attendance page, so stripping the class off one of them left the other to
+#   satisfy the search and the guard stayed green over a visibly ragged column.
+#   Asking "is there any bare one" cannot be satisfied by a sibling.
+def _bare_numeric_heads(html, labels):
+    return [label for label in labels
+            if re.search(rf'<th(?![^>]*class="num")[^>]*>\s*'
+                         rf'{re.escape(label)}\s*</th>', html)]
+
+
+NUMERIC_HEADS = ("OT hours", "Day rate", "Overtime", "Total", "Present",
+                 "Lines")
+
+
 def test_the_numeric_headers_carry_the_alignment_class(client):
     """
     Every money and count column heads with `.num`, which is what
     `REGISTER_STYLES` right-aligns. Before this the class was on the cells and
     not on the `<th>`.
+
+    ⚠ **EVERY occurrence, not one of them.** See `_bare_numeric_heads()`.
     """
     html = _a_day(client)
     for label in ("OT hours", "Day rate", "Overtime", "Total"):
         assert re.search(rf'<th class="num">{re.escape(label)}</th>', html), (
-            f"the {label!r} header is not marked numeric, so it renders left "
-            f"over a right-aligned column")
+            f"the {label!r} header is not on the page at all")
+
+    bare = _bare_numeric_heads(html, NUMERIC_HEADS)
+    assert not bare, (
+        f"these headers are numeric and are NOT marked as such, so each "
+        f"renders left over a right-aligned column: {bare}. Both tables on "
+        f"this page head the same figures, and marking one is not marking it.")
+
+
+def test_the_delivery_challan_headers_are_marked_too(client):
+    """The same rule on the other register the owner has seen."""
+    _seed_dc()
+    try:
+        html = _dc_register(client)
+    finally:
+        STORE.get("delivery_challans", {}).pop("dc-1", None)
+    assert '<th class="num">Lines</th>' in html
+    assert not _bare_numeric_heads(html, NUMERIC_HEADS)
 
 
 def test_the_rule_actually_beats_the_bare_th_rule():
