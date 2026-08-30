@@ -109,6 +109,64 @@ before anything is stored — not in the form, and not by a `<select>` that
 happens to omit the name. A form is a convenience; the refusal is the rule.
 
 ════════════════════════════════════════════════════════════════════════════
+⚠ A MARKING SAYS WHICH PROJECT IT IS FOR — AND THE SITE STILL IS NOT ONE
+════════════════════════════════════════════════════════════════════════════
+
+Added 30 August 2026 under the **SIXTH** override block of that date. ⚠ **It is
+not CC-2 scope**: C5's five bullets name no project, it belongs to PROGRESS.md
+§4c, and nobody may cite it as a delivered CC-2 item.
+
+**The problem it exists for.** `'Bangalore, Karnataka'` carries **four** live
+projects, and folding the duplicate address on 30 August concentrated them there
+rather than thinning them out. Every marking booked at that address answers for
+all four, so `/projects/view/<id>` rendered the same money on four pages with a
+note apologising for it. **The site is not a strong enough key to attribute
+labour**, and a note is not a fix. So the marking carries the answer:
+
+    project_id     the JOIN — an id somebody picked
+    project_name   the LABEL, snapshotted at save
+
+⚠ **This is `charge.py`'s shape and not a second one.** That ledger has stored
+`project_id` beside a snapshotted `project_name` since it was written, and this
+module reads `STORE["projects"]` directly exactly as it does — `charge → project`
+is forbidden at AST level with the reason *"a charge reads STORE['projects']
+directly"*, and **`attendance → project` is forbidden on the same terms.** The
+one-way trick, used for the eighth time.
+
+⚠ **AN ABSENT `project_id` MEANS LEGACY, NOT "NO PROJECT".** Nothing in this
+application backfills it and **no third state marker is invented** —
+`project.is_legacy_site()` reading the **shape** rather than a mark is the
+precedent one collection along. `tools/backfill_marking_projects.py` is the bulk
+mapping, and it is a tool an operator runs deliberately.
+
+**The picker is filtered to the site, and the rules are three:**
+
+| projects on the chosen site | what the form does |
+|---|---|
+| exactly one | ⚠ **preselected** — the common case costs no extra decision |
+| more than one | ⚠ **a choice is REQUIRED to save.** Not defaulted, not the first, not the most recent |
+| none | blank, and it **saves fine** — an office or a store belongs to no project |
+
+Defaulting the middle row is the whole defect wearing a different hat: it would
+put a day's labour against a project nobody chose, which is `po_parts.py`'s 156
+invented aliases in a third register. `resolve_project()` owns all three, both
+write routes call it, and the `<script>` on the form only re-renders options —
+**a form is a convenience; the refusal is the rule.**
+
+⚠ **A MARKING MAY NOT CARRY A PROJECT WHOSE SITE IS NOT THE MARKING'S SITE.**
+`resolve_project()` takes the **resolved** site id, so changing the site drops a
+`project_id` that no longer belongs to it before anything is stored — and a
+hand-made POST naming a project at another address stores nothing.
+
+⚠ **THIS DOES NOT UNBLOCK C6 AND NOTHING HERE MAY BE READ AS GROUNDWORK FOR
+IT.** C6 is BLOCKED on CC-2's **Open question 4** — whether attendance wages or
+the BOQ installation base rate is authoritative for labour cost. **Attributing a
+day is not costing a project.** Open question 4 asks which figure is
+authoritative; this asks which project a day was worked for, which is a fact
+somebody on site knows. Recording the second does not answer the first, and no
+margin, project total or net is built anywhere.
+
+════════════════════════════════════════════════════════════════════════════
 ⚠ SITE IS AN ADDRESS-BOOK PICKER, AND IS STILL DELIBERATELY NOT A PROJECT
 ════════════════════════════════════════════════════════════════════════════
 
@@ -127,46 +185,74 @@ The record carries `site_source == "unmapped"`, the row shows a chip, the
 register shows a band listing every unmapped string, and mapping one is a
 deliberate act on the edit form.
 
-**A project is still not a site**, and the reasons are unchanged:
+⚠ **A project is still not a site, and `site` is still NOT `project_id`.** The
+marking now carries **both**, as two fields answering two questions, and the
+reasons the site keeps its own field are unchanged:
 
 1. **A project is not a site in this application's own data model.** A BOQ
    carries `project_name` **and** `site_location` as two separate fields
    (ABOUT.md §3). One project runs at several sites; one site can carry work
-   for more than one project. Reusing `project_id` here would assert an
-   identity the rest of the app already denies.
+   for more than one project. Collapsing the two into one key would assert an
+   identity the rest of the app already denies — and would make the filtered
+   picker above impossible, because it is precisely a question about *which
+   projects are at this site*.
 2. **The employee master and the muster share one vocabulary**, which is the
    address book for both. Marking attendance against the field the master
    already carries is one vocabulary; marking it against a different entity is
-   two.
-3. **A `project_id` on an attendance record is the first half of C6**, which is
-   BLOCKED on the client's Open question 4. The override authorising C5 says
-   in terms not to lay groundwork for it.
+   two. The project is a **third** field, not a replacement for either.
+3. **The site is what the employee record can prefill**; the project is what
+   only the person marking the day knows. That asymmetry is why one is
+   defaulted and the other is asked for.
 
-⚠ **And an address does not join to a project either.** The `addresses` record
-has fourteen keys and none of them names a project; `projects` carries a
-free-text `site_address` string. So site-wise labour cost **cannot** roll up to
-a project today — that is C6's shortfall, it is recorded in ABOUT.md, and it is
-deliberately not solved here.
+✅ **An address DOES join to a project, since 30 August 2026 (fourth pass).**
+This paragraph used to read *"an address does not join to a project either …
+site-wise labour cost cannot roll up to a project today"*, and it is corrected
+rather than deleted, because the shortfall it named is what the field above
+closes. `projects.site_address_id` is the link, and `projects_on_site()` below
+is the whole of how this module reads it.
 
 The form **prefills the employee's own posted site**, so the common case is
-still one selection. No second site entity was invented.
+still one selection, and the project picker preselects when the site carries
+exactly one project. No second site entity was invented and no project entity
+was invented either — `STORE["projects"]` is read as it stands.
 
 ════════════════════════════════════════════════════════════════════════════
 ⚠ WHAT THIS MODULE DOES NOT DO — C6 IS BLOCKED AND STAYS BLOCKED
 ════════════════════════════════════════════════════════════════════════════
 
-**Nothing here is exported and nothing consumes it.** The site-wise labour cost
-is displayed on **this module's own pages and nowhere else**. There is no
-figure on the dashboard, none on `/projects/view/<id>`, none in `charge.py`,
-and no function any other module calls.
+⚠ **THIS PARAGRAPH WAS TWO PASSES STALE AND IS CORRECTED RATHER THAN DELETED**,
+because what it used to claim is the thing a reader must not carry away. It read:
 
-That is not tidiness. **C6 is BLOCKED on CC-2's Open question 4** — whether
-attendance-based wages or the BOQ's installation base rate is authoritative for
-labour cost. Subtracting both counts labour twice. C5 can be built without that
-answer; **wiring it into C6 cannot**, so it is not wired.
-`projectview.py`'s standing prohibition — *"no revenue total, no cost total, no
-margin, no profit, no net, no balance"* — is untouched, and
-`tests/test_attendance.py` asserts at AST level that no module imports this one.
+    **Nothing here is exported and nothing consumes it.** The site-wise labour
+    cost is displayed on **this module's own pages and nowhere else**. There is
+    no figure on the dashboard, none on `/projects/view/<id>`, none in
+    `charge.py`, and no function any other module calls. … and
+    `tests/test_attendance.py` asserts at AST level that no module imports this
+    one.
+
+**Both of those stopped being true on 30 August 2026 (fifth pass)**, when the
+Site Labour section was authorised: `projectview.py` imports this module and
+`/projects/view/<id>` carries figures out of it. The guard was rewritten in the
+same pass — `test_only_projectview_imports_the_attendance_module` is an
+**allowlist of exactly one** — and this sentence was left behind. What still
+stands, unweakened:
+
+* the dashboard card is **counts only**;
+* **`charge.py` is forbidden in both directions** and that has not moved;
+* **`projectview.py` is the only importer**, it takes **rendered cells** —
+  `marking_cells()`, `markings_at_site()`, and now `markings_for_project()` and
+  `unattributed_at_site()` — and it may not reach `cost_of()`, `ot_amount()`,
+  `day_rate_of()` or `site_costs()`. A second module able to compute a wage is a
+  second place the OT multiplier could be hardcoded.
+
+**C6 is BLOCKED on CC-2's Open question 4** — whether attendance-based wages or
+the BOQ's installation base rate is authoritative for labour cost. Subtracting
+both counts labour twice. ⚠ **The `project_id` above does not answer it**: it
+records which project a day was worked for, not which figure is authoritative
+for what that day cost. `projectview.py`'s standing prohibition — *"no revenue
+total, no cost total, no margin, no profit, no net, no balance"* — is untouched,
+and the two sums the Site Labour section now draws are two columns inside **one**
+panel, which its first sentence has always permitted.
 
 Imports, and why `settings` is on the list
 ------------------------------------------
@@ -174,7 +260,17 @@ Imports, and why `settings` is on the list
 attendance.py ──► employee.py   active_employees() — the master C4 shipped
 attendance.py ──► settings.py   the OT multiplier and the wage divisor
 attendance.py ──► dashboard, branding, pipeline, store, quotation
+attendance.py ──► project.py    ⚠ NEVER. STORE["projects"] is read directly.
 ```
+
+⚠ **`project.py` is forbidden and the marking still carries a `project_id`** —
+which is not a contradiction, it is `charge.py`'s arrangement copied exactly.
+`test_import_directions.py` already refuses `charge → project` with the reason
+*"a charge reads STORE['projects'] directly"*, and it now refuses
+`attendance → project` on the same terms. Importing the module would buy one
+`.get("name")` and would pull `address.py` — and through it `product.py`'s
+stylesheet — into the import graph of the muster, for a dict lookup. The link is
+an id, a name and a `url_for`, and `STORE["projects"]` carries all three.
 
 `employee.py ──► attendance.py` is **NEVER**: the register links out with
 `url_for` and imports nothing, which is the one-way trick this codebase already
@@ -373,6 +469,131 @@ def conflicting_record(employee_id: str, date: str, except_id: str = "") -> dict
     return {}
 
 
+# =============================================================================
+# THE PROJECT — an id somebody picked, filtered to the site
+# =============================================================================
+#
+# ⚠ **`charge.py`'s shape, read the way `charge.py` reads it.** That ledger has
+#   stored `project_id` beside a snapshotted `project_name` since it was
+#   written, and it reaches `STORE["projects"]` directly rather than importing
+#   `project.py` — `test_import_directions.py` refuses that arrow with the
+#   reason *"a charge reads STORE['projects'] directly"*, and refuses this
+#   module's on the same terms. One shape, two ledgers, no second pattern.
+
+def projects_on_site(address_id) -> list:
+    """
+    Every project whose site is this address-book id, name order.
+
+    ⚠ **A BLANK id matches NOTHING, and that guard is the whole function** —
+    `markings_at_site()`'s rule, for the same reason one register along. An
+    unmapped marking stores `site_address_id: ""` and so does a project with no
+    site linked, so a plain `==` would offer **every unlinked project in the
+    database** as a candidate for **every unmapped marking** — a join between two
+    records that share only the fact that neither was ever filled in.
+
+    ⚠ **It answers about the SITE, and the site is the filter the picker uses.**
+    A project is not a site (see the header); this is the question *which
+    projects are recorded at this place*, which is the only question the address
+    can answer and the reason `site` keeps its own field.
+    """
+    aid = str(address_id or "").strip()
+    if not aid:
+        return []
+    return sorted((p for p in (STORE.get("projects") or {}).values()
+                   if str(p.get("site_address_id") or "").strip() == aid),
+                  key=lambda p: str(p.get("name") or "").lower())
+
+
+def resolve_project(form, site_address_id) -> tuple:
+    """
+    `(fields, error)` — the two project keys a marking carries, or why not.
+
+    Takes the **resolved** site id rather than reading the form's, so the answer
+    is always about the site the marking is actually being saved with.
+
+    Four outcomes and no fifth:
+
+    | posted | projects on that site | stored |
+    |---|---|---|
+    | one of them | any | `project_id` = the id, `project_name` = its name **snapshotted** |
+    | not one of them | any | ⚠ **DROPPED** — see below |
+    | blank | 0 or 1 | no project; both keys cleared |
+    | blank | 2 or more | ⚠ **REFUSED.** A choice is required |
+
+    ⚠ **Row 2 is how "changing the site clears a project that no longer belongs
+    to it" is implemented, and it is a drop rather than a refusal on purpose.**
+    The server cannot tell a re-picked site from a hand-made POST: both arrive as
+    a `project_id` that is not at this address. Dropping it is safe in both
+    readings — **the stored record can never carry a project whose site is not
+    its own** — and the operator is not left staring at an error about a field
+    the browser changed underneath them. Where the new site carries several
+    projects the next rule then asks for a fresh choice, which is the honest
+    prompt; where it carries one, the form has already preselected it.
+
+    ⚠ **Row 4 is the point of the whole change and it is NOT defaulted.**
+    `'Bangalore, Karnataka'` carries four projects. Picking the first, the newest
+    or the only-one-that-looks-right would put a day's labour against a project
+    nobody chose — silently, on the figure this module exists to produce.
+
+    ⚠ **The NAME is snapshotted, not looked up**, exactly as `employee_name` and
+    the site label beside it are. Renaming a project next March must not restate
+    which project a day in August was worked for.
+    """
+    candidates = projects_on_site(site_address_id)
+    by_id = {str(p.get("id")): p for p in candidates}
+
+    posted = (form.get("project_id") or "").strip()[:64]
+    chosen = by_id.get(posted)          # None for blank AND for "not here"
+
+    if chosen is not None:
+        return {"project_id": str(chosen.get("id")),
+                "project_name": str(chosen.get("name") or "")}, ""
+
+    if len(candidates) > 1:
+        names = ", ".join(str(p.get("name") or "(unnamed)") for p in candidates)
+        return {}, (
+            f"{len(candidates)} projects are recorded at this site — {names}. "
+            f"Choose which one this day was worked for. It is not defaulted: "
+            f"this marking's wage appears on the project you pick, and picking "
+            f"for you would put it against one nobody chose.")
+
+    return {"project_id": "", "project_name": ""}, ""
+
+
+def markings_for_project(project_id) -> list:
+    """
+    Every marking booked TO one project, newest day first.
+
+    ⚠ **A BLANK id matches nothing** — `markings_at_site()`'s guard again, and
+    here it is load-bearing twice over: a legacy marking carries no
+    `project_id`, so `""` matching `""` would hand **every unattributed marking
+    in the database** to any caller that lost track of its own id.
+    """
+    key = str(project_id or "").strip()
+    if not key:
+        return []
+    return sorted((r for r in records().values()
+                   if str(r.get("project_id") or "").strip() == key),
+                  key=lambda r: (str(r.get("date") or ""),
+                                 str(r.get("employee_name") or "").lower()),
+                  reverse=True)
+
+
+def unattributed_at_site(address_id) -> list:
+    """
+    Markings booked at one site that name **no project** — the legacy rows.
+
+    ⚠ **Absent means LEGACY, not "no project", and this function does not claim
+    to tell them apart.** It reads the shape — a marking at this site with an
+    empty `project_id` — exactly as `project.is_legacy_site()` reads a project's,
+    and no third state marker is invented to distinguish "nobody has mapped this
+    yet" from "this genuinely belongs to no project". The page says what is true
+    of both: they are booked here and attributed to nothing.
+    """
+    return [r for r in markings_at_site(address_id)
+            if not str(r.get("project_id") or "").strip()]
+
+
 def site_costs(date: str) -> list:
     """
     `[{site, people, present, ot_hours, day_cost, ot_cost, total, refused}, …]`
@@ -437,6 +658,10 @@ def _validate(form, except_id: str = "", record=None) -> tuple:
         #   the operator left it — `address._validate()`'s always-return-data
         #   contract, applied to a `<select>`.
         "site_id":     (form.get("site_id") or "").strip(),
+        # ⚠ Echoed for the same reason `site_id` is: a rejected form re-renders
+        #   with the picker where the operator left it. It is the RAW post —
+        #   `resolve_project()` below is what decides whether it may be stored.
+        "project_id":  (form.get("project_id") or "").strip(),
         "status":      (form.get("status") or "").strip().lower(),
         "ot_raw":      (form.get("ot_hours") or "").strip(),
         "notes":       (form.get("notes") or "").strip()[:500],
@@ -501,6 +726,19 @@ def _validate(form, except_id: str = "", record=None) -> tuple:
     if site_error:
         return data, site_error
     data.update(site_fields)
+
+    # ⚠ **The project is resolved AFTER the site and AGAINST it**, never against
+    #   whatever the form happened to post as `site_id`. That ordering is the
+    #   whole of "a marking may not carry a project whose site is not the
+    #   marking's site": `resolve_project()` is handed the site that is about to
+    #   be stored, so a project belonging to any other address cannot survive it.
+    #   Re-picking the site therefore drops a stale project by construction
+    #   rather than by a second check somebody has to remember to write.
+    project_fields, project_error = resolve_project(
+        form, site_fields.get(EMP.SITE_ADDRESS_FIELD))
+    if project_error:
+        return data, project_error
+    data.update(project_fields)
 
     clash = conflicting_record(data["employee_id"], data["date"], except_id)
     if clash:
@@ -755,6 +993,77 @@ def _employee_options(selected: str) -> str:
     return "".join(out)
 
 
+def _project_options(site_address_id, selected: str) -> str:
+    """
+    The project picker's `<option>` list for one site, and the three rules are
+    visible in the placeholder rather than hidden in the validator.
+
+    ⚠ **The placeholder's WORDING carries the rule.** *"— choose which project —"*
+    on a site with several says a decision is owed; *"— none —"* on a site with
+    one says leaving it is a real option; *"— no project at this site —"* says
+    there is nothing to choose and the save will go through. A single generic
+    placeholder would make the required case look optional, which is the one
+    thing this control exists to prevent.
+
+    ⚠ **The preselect happens HERE and only for a single candidate.** With two
+    or more, `selected` is honoured if it is still one of them and otherwise
+    nothing is chosen — never the first, never the newest.
+    """
+    projects = projects_on_site(site_address_id)
+    ids = [str(p.get("id")) for p in projects]
+
+    if not projects:
+        placeholder = "— no project at this site —"
+    elif len(projects) == 1:
+        placeholder = "— none —"
+    else:
+        placeholder = "— choose which project —"
+
+    keep = str(selected or "")
+    if keep not in ids:
+        # Not one of this site's projects: either the site was just changed, or
+        # the marking predates the field. One candidate preselects; several do
+        # not — `resolve_project()` refuses the blank and says why.
+        keep = ids[0] if len(ids) == 1 else ""
+
+    out = [f'<option value=""{"" if keep else " selected"}>'
+           f'{_esc(placeholder)}</option>']
+    for p in projects:
+        pid = str(p.get("id"))
+        sel = " selected" if pid == keep else ""
+        out.append(f'<option value="{_esc(pid)}"{sel}>'
+                   f'{_esc(p.get("name") or "(unnamed)")}</option>')
+    return "".join(out)
+
+
+def _projects_by_site_json() -> str:
+    """
+    `{site id: [[project id, project name], …]}` for the form's `<script>`.
+
+    ⚠ **Through `pipeline.json_for_script()`, never `json.dumps`** — a project
+    named with the seven characters `</script>` would otherwise close the block
+    and every byte after it would be parsed as HTML (ABOUT.md §7.9e). A project
+    name is free text somebody typed, which is exactly the input that rule
+    exists for.
+
+    ⚠ **This is a CONVENIENCE and carries no authority.** It re-renders the
+    options when the site changes so the operator is not offered projects from
+    somewhere else; `resolve_project()` is what refuses a save, and it re-reads
+    `STORE["projects"]` rather than trusting anything that came back from the
+    browser. A form is a convenience; the refusal is the rule.
+    """
+    out = {}
+    for p in (STORE.get("projects") or {}).values():
+        aid = str(p.get("site_address_id") or "").strip()
+        if not aid:
+            continue
+        out.setdefault(aid, []).append([str(p.get("id")),
+                                        str(p.get("name") or "(unnamed)")])
+    for rows in out.values():
+        rows.sort(key=lambda r: r[1].lower())
+    return P.json_for_script(out)
+
+
 def _site_of(employee_id: str) -> str:
     """
     The address-book id of where this person is posted, for the form's prefill.
@@ -990,6 +1299,11 @@ def _form(data: dict, error: str, action: str, submit_label: str,
     """One form for mark and edit, so the two cannot drift apart."""
     eid = str(data.get("employee_id") or "")
     status = str(data.get("status") or PRESENT)
+    # ⚠ The site is resolved ONCE and the project picker is filtered by that
+    #   same value, so the two controls cannot open describing different sites.
+    site_id = str(data.get("site_id") or "") or _site_of(eid)
+    project_options = _project_options(site_id, data.get("project_id"))
+    projects_by_site = _projects_by_site_json()
     return f"""
   {_alert(error) if error else ''}
   <div class="page-top">
@@ -1022,10 +1336,24 @@ def _form(data: dict, error: str, action: str, submit_label: str,
             cannot be marked &mdash; reactivate them on the register first.</small>
         </div>
         {EMP.site_field_html(
-            record, str(data.get('site_id') or '') or _site_of(eid),
+            record, site_id,
             'Prefilled from where this person is posted. It is deliberately '
-            '<b>not</b> a project &mdash; one project runs at several sites, '
-            'and a project link here is C6, which is BLOCKED.')}
+            '<b>not</b> the project &mdash; one project runs at several sites '
+            'and one site can carry several projects, which is what the next '
+            'field is for.')}
+      </div>
+
+      <div class="form-group">
+        <label for="project_id">Project</label>
+        <select id="project_id" name="project_id">{project_options}</select>
+        <small class="field-hint">Which project this day was worked for.
+          <b>Only the projects recorded at the site above are offered</b> &mdash;
+          a marking may not name a project somewhere else. Where the site
+          carries <b>one</b> project it is filled in for you; where it carries
+          <b>several</b>, choosing is required, because picking for you would
+          put this day&rsquo;s wage against a project nobody chose. Where it
+          carries <b>none</b>, leave it &mdash; an office or a store belongs to
+          no project.</small>
       </div>
     </div>
 
@@ -1064,6 +1392,56 @@ def _form(data: dict, error: str, action: str, submit_label: str,
       <a href="{back}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+
+<script>
+/* Re-render the project picker when the SITE changes, so the operator is never
+   offered a project from somewhere else.
+
+   ⚠ It runs on `change` and NOT on load. The server has already rendered the
+     correct options — including the preselect, and including whatever a
+     rejected form is echoing back — and re-deriving them here on load would
+     make the browser the authority on a value the server just decided.
+
+   ⚠ It decides NOTHING. `resolve_project()` re-reads STORE["projects"] and
+     refuses the save; this only keeps the control honest while it is being
+     used. The three placeholder wordings are the same three the server writes,
+     because a control that says "— none —" under JS and "— choose which
+     project —" without it is two forms. */
+(function () {{
+  var BY_SITE = {projects_by_site};
+  var site = document.getElementById("site_id");
+  var proj = document.getElementById("project_id");
+  if (!site || !proj) {{ return; }}
+
+  site.addEventListener("change", function () {{
+    var list = BY_SITE[site.value] || [];
+    var keep = proj.value;
+
+    while (proj.firstChild) {{ proj.removeChild(proj.firstChild); }}
+
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = list.length > 1 ? "\\u2014 choose which project \\u2014"
+                      : list.length === 1 ? "\\u2014 none \\u2014"
+                      : "\\u2014 no project at this site \\u2014";
+    proj.appendChild(blank);
+
+    var still = false, i;
+    for (i = 0; i < list.length; i++) {{
+      var o = document.createElement("option");
+      o.value = list[i][0];
+      /* textContent, never innerHTML — a project name is free text. */
+      o.textContent = list[i][1];
+      proj.appendChild(o);
+      if (list[i][0] === keep) {{ still = true; }}
+    }}
+
+    /* One candidate preselects. Several never do — that is the decision the
+       operator is being asked for, and defaulting it is the whole defect. */
+    proj.value = still ? keep : (list.length === 1 ? list[0][0] : "");
+  }});
+}})();
+</script>
 """
 
 
@@ -1103,6 +1481,13 @@ def mark_attendance():
                 "site":          data["site"],
                 EMP.SITE_ADDRESS_FIELD: data[EMP.SITE_ADDRESS_FIELD],
                 EMP.SITE_SOURCE_FIELD:  data[EMP.SITE_SOURCE_FIELD],
+                # ⚠ Two keys, `charge.py`'s shape: the id somebody picked and
+                # the name SNAPSHOTTED beside it. Both come out of
+                # `resolve_project()` and neither is ever read off the form
+                # directly, which is what guarantees the project stored here is
+                # one of the projects at the site stored two lines up.
+                "project_id":    data["project_id"],
+                "project_name":  data["project_name"],
                 "status":        data["status"],
                 "ot_hours":      data["ot_hours"],
                 "notes":         data["notes"],
@@ -1139,6 +1524,12 @@ def edit_attendance(id):
         "date":        record.get("date") or "",
         "employee_id": record.get("employee_id") or "",
         "site_id":     str(record.get(EMP.SITE_ADDRESS_FIELD) or ""),
+        # ⚠ The STORED project, echoed as it stands. A marking written before
+        #   this field existed has none, and the form opens with the picker on
+        #   whatever the site's own rule gives it — preselected where the site
+        #   carries one project, and asking where it carries several. Nothing
+        #   here backfills the record; saving the form is what writes one.
+        "project_id":  str(record.get("project_id") or ""),
         "status":      record.get("status") or PRESENT,
         "ot_raw":      f"{_num(record.get('ot_hours')):g}",
         "notes":       record.get("notes") or "",
@@ -1162,6 +1553,13 @@ def edit_attendance(id):
                 "site":           data["site"],
                 EMP.SITE_ADDRESS_FIELD: data[EMP.SITE_ADDRESS_FIELD],
                 EMP.SITE_SOURCE_FIELD:  data[EMP.SITE_SOURCE_FIELD],
+                # ⚠ Re-snapshotted like the three above, and **cleared when the
+                # site moves**: `resolve_project()` was handed the new site, so
+                # a project that belonged to the old one is already gone from
+                # `data`. Writing it unconditionally is what makes that true of
+                # the stored record rather than only of the form.
+                "project_id":     data["project_id"],
+                "project_name":   data["project_name"],
                 "status":         data["status"],
                 "ot_hours":       data["ot_hours"],
                 "notes":          data["notes"],

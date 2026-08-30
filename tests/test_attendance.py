@@ -40,8 +40,25 @@ absentee, salary as 0 or 1 on attendance, **one employee = one site = one day**,
 6. ⚠ **C5 IS NOT WIRED INTO C6 OR ANY P&L.** C6 is BLOCKED on CC-2's Open
    question 4 — whether attendance wages or the BOQ installation base rate is
    authoritative for labour cost — and subtracting both counts labour twice.
-   Asserted structurally: nothing imports this module, and the labour cost
-   appears on no other page.
+
+   ⚠ **This entry read *"Asserted structurally: nothing imports this module,
+   and the labour cost appears on no other page"* until 30 August 2026, and
+   both halves stopped being true in the fifth pass of that date** — when the
+   Site Labour section was authorised, `projectview.py` became an importer and
+   the project page began carrying figures out of here. The **guards** were
+   rewritten then and this summary was not, which is the same drift §7 of
+   ABOUT.md keeps recording one field over. What is asserted today:
+   `projectview.py` is the **only** importer (an allowlist of one), what
+   crosses is **rendered cells** and never the arithmetic, and
+   `projectview.py` still builds no margin, project total or net.
+
+7. ⚠ **A MARKING SAYS WHICH PROJECT IT IS FOR** (30 August 2026, sixth override
+   block) — **not CC-2 scope**, PROGRESS.md §4c. `charge.py`'s two keys, an id
+   somebody picked and a snapshotted name, with the picker **filtered to the
+   projects at the marking's own site**. One project preselects, several
+   **require** a choice, none saves blank, and a project at another site is
+   **dropped and never stored**. ⚠ **It does not answer Open question 4 and C6
+   stays BLOCKED**: attributing a day is not costing a project. Section 7 below.
 """
 
 import ast
@@ -1204,3 +1221,385 @@ def test_only_this_module_and_the_launcher_touch_the_collection():
                    "cost_of", "site_costs"):
         assert banned not in window, \
             f"the launcher is computing labour cost ({banned}) — that is C6"
+
+
+# ══ 7. ⚠ A MARKING SAYS WHICH PROJECT IT IS FOR ═══════════════════════════
+#
+# Added 30 August 2026 under the **SIXTH** override block of that date. ⚠ **Not
+# CC-2 scope** — C5's five bullets name no project — and it belongs to
+# PROGRESS.md §4c. C6 stays BLOCKED on Open question 4; attributing a day is not
+# costing a project, and nothing below computes a margin, a total or a net.
+#
+# The four rules under test, all owned by `attendance.resolve_project()`:
+#
+#   exactly one project on the site  -> preselected, no extra decision
+#   more than one                    -> A CHOICE IS REQUIRED to save
+#   none                             -> blank, and it saves fine
+#   a project at another site        -> DROPPED, never stored
+#
+# ⚠ Every guard below ships its **control** in the same test. A refusal test
+#   with no control passes just as well when nothing is ever stored at all,
+#   which is the way this class of test lies.
+
+def _project(pid, name, site_id):
+    """A project in the shared collection. The caller pops it — `_clean()`
+    deliberately does not clear `projects`, and the try/finally shape here is
+    `test_the_labour_section_names_every_other_project_on_the_same_site`'s."""
+    STORE.setdefault("projects", {})[pid] = {
+        "id": pid, "name": name, "norm_name": name.lower(),
+        "client": "", "notes": "", "site_address_id": site_id,
+        "site_address": "", "created_at": "", "updated_at": "",
+    }
+    return STORE["projects"][pid]
+
+
+def test_projects_on_site_refuses_a_blank_id():
+    """
+    ⚠ **The guard `markings_at_site()` already carries, one function along, and
+    it matters more here.** A project with no site linked stores
+    `site_address_id: ""` and so does an unmapped marking. A plain `==` would
+    offer **every unlinked project in the database** as a candidate for **every
+    unmapped marking** — a join between two records that share only the fact
+    that neither was ever filled in.
+    """
+    site = _site("Blank Guard Site")
+    _project("blank-guard-none", "No Site At All", "")
+    try:
+        # The control: the guard is not passing because the collection is empty.
+        _project("blank-guard-real", "Real One", site)
+        assert [p["id"] for p in AT.projects_on_site(site)] == ["blank-guard-real"]
+
+        assert AT.projects_on_site("") == []
+        assert AT.projects_on_site(None) == []
+        assert AT.projects_on_site("   ") == []
+    finally:
+        STORE["projects"].pop("blank-guard-none", None)
+        STORE["projects"].pop("blank-guard-real", None)
+
+
+def test_markings_for_project_refuses_a_blank_id(client):
+    """
+    Same guard from the other side, and here it is load-bearing twice: a legacy
+    marking carries no `project_id`, so an empty id matching an empty field
+    would hand **every unattributed marking in the database** to any caller that
+    lost track of its own id.
+    """
+    site = _site("For Project Site")
+    _project("mfp-1", "Attributed", site)
+    try:
+        person = _person(client)
+        _mark(client, person, site_id=site, project_id="mfp-1")
+
+        # The control: it does find the marking when asked properly.
+        assert len(AT.markings_for_project("mfp-1")) == 1
+
+        assert AT.markings_for_project("") == []
+        assert AT.markings_for_project(None) == []
+    finally:
+        STORE["projects"].pop("mfp-1", None)
+
+
+def test_the_picker_offers_only_the_projects_at_the_chosen_site(client):
+    """
+    ⚠ **The filter is the feature.** A marking may not name a project somewhere
+    else, so the control may not offer one — and the control and the validator
+    have to agree, which is why both are exercised in this section.
+    """
+    here, elsewhere = _site("Picker Here"), _site("Picker Elsewhere")
+    _project("pick-a", "Alpha Here", here)
+    _project("pick-b", "Beta Here", here)
+    _project("pick-z", "Zulu Elsewhere", elsewhere)
+    try:
+        person = _person(client, site_id=here)
+        _mark(client, person, site_id=here, project_id="pick-a")
+        rid = list(STORE["attendance"].values())[-1]["id"]
+
+        html = client.get(f"/attendance/edit/{rid}").get_data(as_text=True)
+        picker = html[html.index('<select id="project_id"'):]
+        picker = picker[:picker.index("</select>")]
+
+        assert "Alpha Here" in picker and "Beta Here" in picker
+        assert "Zulu Elsewhere" not in picker, (
+            "the picker offered a project from another site — the one thing "
+            "the filter exists to prevent")
+    finally:
+        for pid in ("pick-a", "pick-b", "pick-z"):
+            STORE["projects"].pop(pid, None)
+
+
+def test_one_project_on_the_site_is_preselected(client):
+    """
+    The operator should not have to make a decision that has only one answer.
+    ⚠ **The control is the several-projects case below:** preselecting is only
+    defensible while it never happens where a real choice exists.
+    """
+    site = _site("Lone Project Site")
+    _project("lone-1", "The Only One", site)
+    try:
+        person = _person(client, site_id=site)
+        _mark(client, person, site_id=site, project_id="lone-1")
+        rid = list(STORE["attendance"].values())[-1]["id"]
+        html = client.get(f"/attendance/edit/{rid}").get_data(as_text=True)
+        picker = html[html.index('<select id="project_id"'):]
+        picker = picker[:picker.index("</select>")]
+
+        assert '<option value="lone-1" selected>' in picker, (
+            "a site carrying exactly one project must preselect it")
+        assert "\u2014 none \u2014" in picker, (
+            "the placeholder must say that leaving it is a real option")
+    finally:
+        STORE["projects"].pop("lone-1", None)
+
+
+def test_several_projects_on_the_site_require_a_choice(client):
+    """
+    ⚠ **THE POINT OF THE WHOLE CHANGE.** `'Bangalore, Karnataka'` carries four
+    live projects. Defaulting the pick — to the first, the newest, or the one
+    that looks right — would put a day's wage against a project **nobody
+    chose**, silently, on the only figure this module produces.
+
+    The control is in the same test: choosing one saves. Without it this would
+    pass just as well on a route that refused everything.
+    """
+    site = _site("Crowded Site")
+    _project("crowd-a", "Alpha", site)
+    _project("crowd-b", "Bravo", site)
+    try:
+        person = _person(client, site_id=site)
+
+        refused = _mark(client, person, site_id=site, project_id="")
+        assert refused.status_code == 200, "a blank pick must not save"
+        body = refused.get_data(as_text=True)
+        assert "2 projects are recorded at this site" in body
+        assert "Alpha" in body and "Bravo" in body, \
+            "the refusal must NAME the candidates, not just count them"
+        assert not STORE["attendance"], "nothing may be stored on a refusal"
+
+        # ⚠ Nothing is preselected either — not the first, not the newest.
+        picker = body[body.index('<select id="project_id"'):]
+        picker = picker[:picker.index("</select>")]
+        assert '<option value="crowd-a" selected>' not in picker
+        assert '<option value="crowd-b" selected>' not in picker
+
+        # THE CONTROL: the same post with a choice goes through.
+        ok = _mark(client, person, site_id=site, project_id="crowd-b")
+        assert ok.status_code == 302
+        stored = list(STORE["attendance"].values())[-1]
+        assert stored["project_id"] == "crowd-b"
+        assert stored["project_name"] == "Bravo"
+    finally:
+        for pid in ("crowd-a", "crowd-b"):
+            STORE["projects"].pop(pid, None)
+
+
+def test_a_site_with_no_project_saves_blank(client):
+    """
+    An office or a store is a legitimate place to be marked and belongs to no
+    project. Refusing it would make the register unusable for exactly the sites
+    that never carry one.
+    """
+    site = _site("Head Office Store")
+    person = _person(client, site_id=site)
+    r = _mark(client, person, site_id=site, project_id="")
+    assert r.status_code == 302, r.get_data(as_text=True)[:600]
+    stored = list(STORE["attendance"].values())[-1]
+    assert stored["project_id"] == ""
+    assert stored["project_name"] == ""
+
+
+def test_a_marking_may_not_carry_a_project_whose_site_is_not_its_own(client):
+    """
+    ⚠ **THE INVARIANT, PROVED BY MUTATION.** The posted `project_id` names a
+    real project that sits at a **different** address. It must not reach the
+    record.
+
+    It is **dropped rather than refused**, and that is deliberate: the server
+    cannot tell a re-picked site from a hand-made POST — both arrive as a
+    project that is not at this address — and dropping is safe under both
+    readings. What is asserted here is the property that holds either way:
+    **the stored record never carries a project whose site is not its own.**
+
+    The control is the second half: the identical post, with the project that
+    *is* at that site, does store it. Without that, this test would pass on a
+    route that stored no project ever.
+    """
+    here, elsewhere = _site("Mutation Here"), _site("Mutation Elsewhere")
+    _project("mut-here", "Belongs Here", here)
+    _project("mut-away", "Belongs Elsewhere", elsewhere)
+    try:
+        person = _person(client, site_id=here)
+
+        # THE MUTATION: a real project id, at the wrong site.
+        r = _mark(client, person, site_id=here, project_id="mut-away")
+        assert r.status_code == 302
+        stored = list(STORE["attendance"].values())[-1]
+        assert stored["site_address_id"] == here
+        assert stored["project_id"] == "", (
+            "a project at another site reached the record — the invariant this "
+            "field exists under is broken")
+        assert stored["project_name"] == ""
+
+        # THE CONTROL: the right project at the same site does land.
+        STORE["attendance"].clear()
+        r = _mark(client, person, site_id=here, project_id="mut-here")
+        assert r.status_code == 302
+        stored = list(STORE["attendance"].values())[-1]
+        assert stored["project_id"] == "mut-here", (
+            "the control failed: nothing is ever stored, so the assertion "
+            "above proves nothing")
+    finally:
+        for pid in ("mut-here", "mut-away"):
+            STORE["projects"].pop(pid, None)
+
+
+def test_changing_the_site_clears_a_project_that_no_longer_belongs(client):
+    """
+    The edit path, which is where this actually bites: a marking booked to a
+    project at site A is corrected to site B. The project cannot come with it.
+
+    ⚠ Site B here carries **one** project, so the picker's own rule does not
+    turn the correction into a refusal — the stale link simply goes.
+    """
+    a, b = _site("Move From"), _site("Move To")
+    _project("move-a", "At A", a)
+    _project("move-b", "At B", b)
+    try:
+        person = _person(client, site_id=a)
+        _mark(client, person, site_id=a, project_id="move-a")
+        rec = list(STORE["attendance"].values())[-1]
+        assert rec["project_id"] == "move-a"          # the precondition
+
+        # The browser posts the project it was showing; the site has moved.
+        r = client.post(f"/attendance/edit/{rec['id']}", data={
+            "date": DAY, "employee_id": person["id"], "site_id": b,
+            "project_id": "move-a", "status": "present", "ot_hours": "2",
+            "notes": ""})
+        assert r.status_code == 302, r.get_data(as_text=True)[:600]
+
+        assert rec["site_address_id"] == b
+        assert rec["project_id"] == "", (
+            "the marking kept a project belonging to the site it just left")
+        assert rec["project_name"] == ""
+    finally:
+        for pid in ("move-a", "move-b"):
+            STORE["projects"].pop(pid, None)
+
+
+def test_the_project_name_is_a_snapshot_and_a_rename_does_not_restate_it(client):
+    """
+    Same freeze contract as `employee_name`, `employee_code`, `day_rate` and the
+    site label beside it. Renaming a project next March must not restate which
+    project a day in August was worked for.
+    """
+    site = _site("Snapshot Site")
+    proj = _project("snap-1", "Original Name", site)
+    try:
+        person = _person(client, site_id=site)
+        _mark(client, person, site_id=site, project_id="snap-1")
+        stored = list(STORE["attendance"].values())[-1]
+        assert stored["project_name"] == "Original Name"
+
+        proj["name"] = "Renamed Afterwards"
+        assert stored["project_name"] == "Original Name", (
+            "the marking restated itself when the project was renamed")
+        assert stored["project_id"] == "snap-1", "the join still resolves"
+    finally:
+        STORE["projects"].pop("snap-1", None)
+
+
+def test_an_absent_project_id_is_legacy_and_nothing_in_the_app_backfills_it(client):
+    """
+    ⚠ **Absent means LEGACY, not "no project", and no third state marker is
+    invented** — `project.is_legacy_site()` reading the shape rather than a mark
+    is the precedent. The bulk mapping is a tool an operator runs deliberately
+    (`tools/backfill_marking_projects.py`), and **nothing on a render path may
+    write one**.
+    """
+    site = _site("Legacy Site")
+    _project("legacy-1", "The Only Project", site)
+    try:
+        person = _person(client, site_id=site)
+        _mark(client, person, site_id=site, project_id="")
+        rec = list(STORE["attendance"].values())[-1]
+        rec.pop("project_id", None)           # a marking written before the field
+        rec.pop("project_name", None)
+
+        # Every page that reads a marking, hit in turn. None may write one.
+        client.get("/attendance/")
+        client.get(f"/attendance/edit/{rec['id']}")
+        client.get("/")
+        assert "project_id" not in rec, (
+            "a render path backfilled project_id — that is a migration, and a "
+            "migration is a tool somebody runs on purpose")
+
+        assert rec in AT.unattributed_at_site(site)
+        assert AT.markings_for_project("legacy-1") == []
+    finally:
+        STORE["projects"].pop("legacy-1", None)
+
+
+def test_the_forms_project_json_cannot_close_the_script_block(client):
+    """
+    ABOUT.md §7.9e: `json.dumps` does not escape `<`, so a project named with
+    the seven characters that close a script element would end the block and
+    every byte after it would be parsed as HTML. A project name is free text
+    somebody typed, which is exactly the input that rule exists for.
+    """
+    site = _site("Injection Site")
+    payload = "Tower </" + "script><img src=x onerror=alert(1)>"
+    _project("inj-1", payload, site)
+    try:
+        _person(client, site_id=site)
+        html = client.get("/attendance/mark").get_data(as_text=True)
+        script = html[html.index("var BY_SITE ="):]
+        script = script[:script.index("</" + "script>")]
+        assert "</" + "script>" not in script
+        assert "\\u003c/script\\u003e" in script, (
+            "the payload must arrive escaped, not stripped — stripping would "
+            "change the data as well as its spelling")
+    finally:
+        STORE["projects"].pop("inj-1", None)
+
+
+def test_the_project_link_is_read_without_importing_the_project_module():
+    """
+    ⚠ **`charge.py`'s arrangement, copied rather than re-invented.** That ledger
+    stores `project_id` beside a snapshotted `project_name` and reaches
+    `STORE["projects"]` directly; `test_import_directions.py` refuses
+    `charge -> project` with the reason *"a charge reads STORE['projects']
+    directly"* and refuses this module's arrow on the same terms.
+
+    Importing the module would buy one name lookup and would pull `address.py` —
+    and through it `product.py`'s stylesheet — into the import graph of the
+    muster.
+    """
+    tree = ast.parse((REPO / "attendance.py").read_text(encoding="utf8"))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            mod = getattr(node, "module", None) or ""
+            names = [a.name for a in getattr(node, "names", [])]
+            assert "project" not in [mod] + names, (
+                "attendance.py imports project.py — read STORE['projects'] "
+                "directly, the way charge.py does")
+
+    # The control: it really does reach the collection, so the assertion above
+    # is not passing because the link was never built.
+    src = (REPO / "attendance.py").read_text(encoding="utf8")
+    assert '"projects"' in src
+
+
+def test_the_project_field_is_charge_pys_shape_and_not_a_second_one():
+    """
+    Two keys, named the same two things, meaning the same two things. A second
+    spelling of one pattern is how `docsheet.py`'s four letterheads drifted.
+    """
+    site = _site("Shape Site")
+    _project("shape-1", "Shapely", site)
+    try:
+        fields, err = AT.resolve_project({"project_id": "shape-1"}, site)
+        assert not err
+        assert set(fields) == {"project_id", "project_name"}, (
+            "the marking's project keys must be exactly charge.py's two")
+        assert fields == {"project_id": "shape-1", "project_name": "Shapely"}
+    finally:
+        STORE["projects"].pop("shape-1", None)

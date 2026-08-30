@@ -348,6 +348,22 @@ FORBIDDEN = [
     ("employee", "client",    "any", "an employee is not a client"),
     ("employee", "project",   "any", "linking a person to a project is C5/C6, "
                                      "both gated"),
+
+    # ⚠ **A MARKING CARRIES A `project_id` AND THIS ARROW IS STILL REFUSED**
+    #   (30 August 2026, sixth override block). That is not a contradiction; it
+    #   is `charge.py`'s arrangement four lines up, copied rather than
+    #   re-invented. A charge has stored `project_id` beside a snapshotted
+    #   `project_name` since it was written and reaches `STORE["projects"]`
+    #   directly — the one-way trick — and the muster does the same.
+    #
+    #   The import would buy one name lookup and would pull `address.py`, and
+    #   through it `product.py`'s stylesheet, into the import graph of a page
+    #   that renders neither. `project.py` does not import back either: it is a
+    #   leaf that five modules already depend on.
+    ("attendance", "project", "any", "a marking reads STORE['projects'] "
+                                     "directly, exactly as a charge does — the "
+                                     "link is an id, a name and a url_for, and "
+                                     "the collection carries all three"),
     ("employee", "settings",  "any", "settings.py imports quotation; nothing "
                                      "downstream may import back"),
     ("employee", "auth",      "any", "the gate is central (auth.ROUTE_PERMISSIONS) "

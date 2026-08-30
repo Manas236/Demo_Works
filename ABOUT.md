@@ -367,7 +367,7 @@ Consequences you must respect when editing:
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
-| [attendance.py](attendance.py) | 1230 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()` and `markings_at_site()`, rendered cells and never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
+| [attendance.py](attendance.py) | 1230 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -426,7 +426,12 @@ app.py
  │                             │  quotation, employee (the master it consumes)
  │                             │  and settings (the OT multiplier CC-2 requires
  │                             │  to be configurable) — C5. NEVER charge.py in
- │                             │  either direction. ⚠ EXACTLY ONE module imports
+ │                             │  either direction. ⚠ NEVER project.py either,
+ │                             │  and the marking still carries a project_id:
+ │                             │  STORE["projects"] is read DIRECTLY, exactly
+ │                             │  as charge.py reads it and refused at AST
+ │                             │  level for the same reason (30 Aug 2026,
+ │                             │  sixth pass). ⚠ EXACTLY ONE module imports
  │                             │  it — projectview.py, from 30 Aug 2026 — and
  │                             │  what crosses is RENDERED CELLS, never the
  │                             │  arithmetic. C6 is still BLOCKED
@@ -1438,7 +1443,8 @@ STORE = {
     "receipts":     {},     # uuid -> payment RECEIVED against one RA bill
     "delivery_challans": {},# uuid -> goods-movement note against a BOQ
     "employees":    {},     # uuid -> employee master record: details and salary (C4)
-    "attendance":   {},     # uuid -> one employee, one site, one day (C5)
+    "attendance":   {},     # uuid -> one employee, one site, one day (C5) — and
+                            #         from 30 Aug 2026 one PROJECT, beyond CC-2
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -2841,6 +2847,11 @@ created after that moment carries the mark.
  "site": "Whitefield",               # the address's LABEL, snapshotted
  "site_address_id": "<addr uuid>",   # the link; "" when unmapped or none
  "site_source": "book" | "unmapped" | "",
+
+ # ── The PROJECT — 30 August 2026, sixth override block. NOT CC-2 scope. ──
+ "project_id":   "<project uuid>",   # the JOIN; "" = LEGACY, see property 5
+ "project_name": "Sify Bangalore",   # the LABEL snapshot, charge.py's shape
+
  "status": "present" | "absent",
  "ot_hours": 2.0, "notes": "",
  "created_at": "…", "updated_at": "…"}
@@ -2867,7 +2878,7 @@ write rather than only at the sweep.
 one person accumulates a record per working day for as long as they are
 employed, which is exactly the shape that rule exists for.
 
-Four properties this shape exists to guarantee:
+Five properties this shape exists to guarantee:
 
 1. ⚠ **`(employee_id, date)` is unique, and the constraint is the item.** CC-2's
    *"one employee = one site = one day"*, enforced by
@@ -2890,10 +2901,51 @@ Four properties this shape exists to guarantee:
    free text until 30 August 2026 — see the Employee record above for the
    correction, the exact-match rule and the unmapped set, all of which apply
    here identically. A BOQ carries `project_name` *and* `site_location` as
-   separate fields, so a project is not a site here; a project link on this
-   record is the first half of C6, which is BLOCKED; **and an address does not
-   join to a project either**, so site-wise labour cost cannot roll up to one
-   today. §5 `/attendance` has the full reasoning.
+   separate fields, so a project is not a site here.
+
+   ⚠ **This property used to continue *"a project link on this record is the
+   first half of C6, which is BLOCKED; and an address does not join to a
+   project either, so site-wise labour cost cannot roll up to one today"*, and
+   both clauses are superseded rather than deleted.** An address joins to a
+   project from the fourth pass of 30 August 2026 (`projects.site_address_id`),
+   and the marking carries its own project from the sixth — property 5. **What
+   is unchanged is that they are two fields answering two questions**: `site` is
+   where somebody stood, `project_id` is what they were working on, and one site
+   can carry several projects, which is precisely why the second field is needed
+   and why it cannot be derived from the first.
+
+5. ⚠ **`project_id` is the JOIN, `project_name` is the snapshot, and ABSENT
+   MEANS LEGACY** (30 August 2026, sixth override block — **not CC-2 scope**,
+   PROGRESS.md §4c). It is **`charge.py`'s shape**, which has stored exactly
+   those two keys since it was written; `attendance.py` reads
+   `STORE["projects"]` directly and `attendance → project` is refused at AST
+   level with the same reason `charge → project` is.
+
+   **The picker is filtered to the projects at the marking's own site**, and the
+   three rules are `attendance.resolve_project()`'s:
+
+   | projects on that site | what happens |
+   |---|---|
+   | exactly one | preselected — no decision where there is only one answer |
+   | more than one | ⚠ **a choice is REQUIRED to save.** Not defaulted, not the first, not the most recent |
+   | none | blank, and it saves fine — an office or a store belongs to no project |
+
+   ⚠ **A marking may not carry a project whose site is not the marking's site.**
+   `resolve_project()` takes the **resolved** site id, so changing the site
+   drops a `project_id` that no longer belongs to it and a hand-made POST naming
+   a project at another address stores nothing.
+
+   ⚠ **Absent is LEGACY, not "no project", and no third state marker is
+   invented** — `project.is_legacy_site()` reading the shape rather than a mark
+   is the precedent. Nothing on a render path backfills it;
+   `tools/backfill_marking_projects.py` is the bulk mapping and an operator runs
+   it deliberately.
+
+   ⚠ **THIS DOES NOT UNBLOCK C6.** C6 is BLOCKED on CC-2's Open question 4 —
+   whether attendance wages or the BOQ installation base rate is authoritative
+   for labour cost. **Attributing a day is not costing a project.** The first is
+   a fact somebody on site knows; the second is a commercial ruling nobody has
+   taken, and nothing here takes it.
 
 ⚠ **Nothing seeds an attendance record.** A seeded marking says somebody was on
 a site on a day and puts a wage against it — inventing a day's labour cost is
@@ -6083,7 +6135,7 @@ The edit route passes its own id as `except_id`, which is the way this
 constraint is usually got wrong: without it, saving a record unchanged finds
 itself and every edit refuses.
 
-#### ⚠ Site is an ADDRESS-BOOK PICKER, and is deliberately NOT a project
+#### ⚠ Site is an ADDRESS-BOOK PICKER, and is STILL not the project
 
 ⚠ **It was free text until 30 August 2026, and that was the defect the owner
 reported.** Free text is why this database spells one place more than one way,
@@ -6091,24 +6143,65 @@ and a site-wise labour cost split across two spellings is wrong in a way nobody
 notices because both halves look right. §3's Employee entry has the record
 shape, the exact-match rule and the unmapped set.
 
-The project record was considered first and still does not fit:
+The site does **not** become the project, and the marking now carries **both**:
 
 1. **A project is not a site in this app's own data model.** A BOQ carries
    `project_name` **and** `site_location` as two separate fields (§3). One
    project runs at several sites, and one site can carry work for more than one.
+   ⚠ **That last clause is exactly why two fields are needed**: the project
+   picker is filtered by *which projects are at this site*, which is a question
+   only the site can answer and which collapsing the two would destroy.
 2. **The master and the muster share one vocabulary**, which is the address book
    for both. `employee.py` owns it and this module reads it through the import
-   it already has.
-3. **A `project_id` here is the first half of C6**, which is BLOCKED.
-4. ⚠ **And an address does not join to a project**, so the roll-up C6 would want
-   is not available even through the book — see §4's note, which pins the two
-   record shapes and names the three ways out.
+   it already has. The project is a **third** field and replaces neither.
+3. **The site is what the employee record can prefill**; the project is what only
+   the person marking the day knows. One is defaulted, the other is asked for.
 
-The form prefills the employee's own posted site — the **link**, because a
-picker needs an option value — so the common case is still one selection. An
-employee whose own site is unmapped prefills nothing, because there is no option
-to select and a guess would be worse than a blank. No second site entity was
-invented.
+⚠ **Points 3 and 4 of this list used to read *"a `project_id` here is the first
+half of C6, which is BLOCKED"* and *"an address does not join to a project"*.
+Both are superseded and the history is kept** rather than deleted, because the
+distinction they blurred is the one a reader has to hold: **attributing a day is
+not costing a project.** C6 is BLOCKED on **Open question 4** — *which* labour
+figure is authoritative — and knowing which project a day was worked for answers
+none of it.
+
+#### ⚠ A marking says which PROJECT it is for — beyond CC-2, sixth pass
+
+Added 30 August 2026 under the **SIXTH** override block of that date. ⚠ **Not
+CC-2 scope**: C5's five bullets name no project, it is recorded in PROGRESS.md
+§4c, and nobody may cite it as a delivered CC-2 item or as MG/SF/2026-02 work.
+
+**Why.** `'Bangalore, Karnataka'` carries **four** live projects — folding the
+duplicate address in the fifth pass concentrated them there rather than thinning
+them out — so every marking booked at that address answered for all four, and
+`/projects/view/<id>` rendered the same money on four pages with a note
+apologising for it. **The site is not a strong enough key to attribute labour**,
+and a note is not a fix.
+
+`project_id` + `project_name` on the record (§3's property 5 has the shape and
+the three picker rules). At page level:
+
+- the picker sits under the site on `/attendance/mark` and the edit form, and is
+  **filtered to the projects carrying that site's `site_address_id`**;
+- ⚠ **several projects on the site REQUIRE a choice.** Not defaulted, not the
+  first, not the most recent — defaulting it would put a day's wage against a
+  project nobody chose;
+- the `<script>` re-renders the options when the site changes and **decides
+  nothing**: `resolve_project()` re-reads `STORE["projects"]` and refuses the
+  save. A form is a convenience; the refusal is the rule.
+
+The form still prefills the employee's own posted site — the **link**, because a
+picker needs an option value. An employee whose own site is unmapped prefills
+nothing, because there is no option to select and a guess would be worse than a
+blank. No second site entity was invented, and no project entity was invented
+either: `STORE["projects"]` is read as it stands.
+
+⚠ **The muster table does NOT carry a Project column**, and that is a stated
+gap rather than an oversight — the sixth override block authorises the picker
+and the project page's two groups and names no third surface. `marking_cells()`
+is shared with `/projects/view/<id>` and its `money` cell carries a
+three-column contract, so widening it is a change to two pages and is its own
+pass.
 
 #### ⚠ ONE page outside this module now reads it — C6 is STILL BLOCKED
 
