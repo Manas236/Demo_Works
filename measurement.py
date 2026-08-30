@@ -445,6 +445,104 @@ def has_approved_measurement(boq_id: str, chain: set = None) -> bool:
                for _mid, m in sheets_on_chain(boq_id, chain))
 
 
+def installation_claims_on_chain(boq_id: str, chain: set = None) -> list:
+    """
+    `[ra_no, ...]` — installation RA bills claiming quantity anywhere on this
+    BOQ's revision chain, lowest first.
+
+    ⚠ **Reads `STORE["ra_bills"]` directly, and must.** `ra.py` imports THIS
+    module for `approved_qty_by_line()` — CC-2's C2 sentence in code — so
+    `measurement -> ra` would be a cycle at boot and is refused by
+    `tests/test_import_directions.py` in terms. This is the one-way trick
+    `boq.claims_against_chain()` already uses for exactly the same reason, one
+    document along.
+
+    **Installation leg only.** A supply claim is proved by a delivery challan
+    (C1's other chain) and no quantity flows to it from a measurement, so a
+    supply bill has nothing resting on this sheet.
+    """
+    if chain is None:
+        chain = BQ._ancestor_ids(boq_id) if boq_id else set()
+    out = []
+    for bill in (STORE.get("ra_bills") or {}).values():
+        if str(bill.get("boq_id") or "") not in chain:
+            continue
+        if str(bill.get("leg") or "") != "installation":
+            continue
+        claimed = sum(float(c.get("qty") or 0.0) for c in bill.get("claims") or [])
+        if claimed <= 0:
+            continue
+        try:
+            out.append(int(bill.get("ra_no") or 0))
+        except (TypeError, ValueError):
+            out.append(0)
+    return sorted(set(out))
+
+
+def has_ladder_history(ms: dict) -> bool:
+    """
+    Has this sheet ever been more than a draft nobody submitted?
+
+    True once it has been approved, rejected, or had a single rung climbed. It
+    is the question `can_delete()` needs and `approval.status_of()` cannot
+    answer on its own: a rejected sheet reads REJECTED whether it was rejected
+    at the first rung or after somebody had already approved it.
+    """
+    return bool(approval.is_approved(ms) or approval.is_rejected(ms)
+                or approval.approvals_of(ms))
+
+
+def can_delete(ms: dict) -> tuple:
+    """
+    `(allowed, reason)` — may this measurement sheet be destroyed?
+
+    ⚠ **Refuses a sheet an installation claim rests on.** Pass E shipped the
+    delete route with this left open and said so: deleting the sheet lowers the
+    ceiling `ra.overclaims()` reads, so a bill that was legal becomes one that
+    could not be raised today. The issued figures do not move — every claim row
+    is a snapshot — but **the project's remaining balance does**, and the
+    document the claim was measured from stops existing.
+
+    It **layers on top of `approval.can_modify()` and replaces none of it**,
+    which is `ra.can_edit()`'s arrangement with the same function. That matters
+    for what this actually adds, and the honest account is:
+
+    * an **approved** sheet was already undeletable — `can_modify()` rule 1
+      locks it, an Owner included — and an approved sheet is the only kind that
+      feeds the ceiling. So the common case was closed before this existed.
+    * a sheet that was approved and has since been **rejected** was NOT. It is
+      editable and deletable by its creator, and deleting it destroys the basis
+      document for a claim already raised. That is the hole this closes.
+
+    ⚠ **A draft nobody ever submitted stays deletable, deliberately.** Refusing
+    on "a claim exists anywhere on the chain" alone would strand a sheet raised
+    by mistake on a live project with no way to remove it ever, which is a trap
+    rather than a guard. A sheet that never entered the ladder was never the
+    basis of anything, so `has_ladder_history()` is the second condition.
+
+    Refuses **by URL**, in the route, and not by hiding the button — B5's
+    established rule and `ra.can_delete()`'s shape.
+    """
+    if not ms:
+        return False, "That measurement sheet no longer exists."
+
+    if not has_ladder_history(ms):
+        return True, ""
+
+    claims = installation_claims_on_chain(str(ms.get("boq_id") or ""))
+    if claims:
+        bills = ", ".join(f"RA{n}" for n in claims)
+        plural = "bills" if len(claims) != 1 else "bill"
+        return False, (
+            f"{ms.get('ref') or 'This sheet'} cannot be deleted — installation "
+            f"{plural} {bills} were raised against this project while it stood. "
+            f"Deleting it would lower the measured ceiling under a claim that "
+            f"has already been made, and destroy the document that claim was "
+            f"measured from. Correct the quantities on the next sheet instead.")
+
+    return True, ""
+
+
 def boq_qty_by_line(boq_id: str) -> dict:
     """
     `{line_id: total_qty}` from the BOQ this sheet was raised against.
@@ -1240,15 +1338,14 @@ def edit_ms(id: str):
 @measurement_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_ms(id: str):
     """
-    GET confirms, POST deletes. Gated by the same `can_modify()` as the edit.
+    GET confirms, POST deletes. Gated by `can_modify()` **and** `can_delete()`.
 
-    ⚠ **A sheet an installation claim has already been built on is still
-    deletable, and that is a known limitation rather than a decision.** Deleting
-    it lowers the ceiling `ra.overclaims()` reads, so a bill that was legal
-    becomes one that could not be raised today — the figures on the issued bill
-    do not change, because every claim row is a snapshot, but the project's
-    remaining balance does. Nothing in CC-2 covers it and no receipt-style guard
-    was invented here; it is carried into the pass report as an open question.
+    ⚠ **The limitation this docstring used to record is now closed.** It said a
+    sheet an installation claim had been built on was still deletable, and
+    carried that into the pass report as an open question. `can_delete()` above
+    is the answer, and it refuses **on both verbs** — a guard on POST alone
+    would let the confirm page render an offer the app will not honour, which
+    is ABOUT.md §7.9f's standing complaint about both-verb routes.
     """
     ms = records().get(id)
     if not ms:
@@ -1260,6 +1357,15 @@ def delete_ms(id: str):
     if not may:
         return redirect(url_for("measurement.view_ms", id=id, msg=why_not,
                                 type="error"))
+
+    # Layered on top of `can_modify()`, not folded into it: that function
+    # answers "has this been signed off", this one answers "does anything
+    # downstream rest on it". `ra.can_edit()` and `can_modify()` are paired the
+    # same way.
+    may_delete, why_not_delete = can_delete(ms)
+    if not may_delete:
+        return redirect(url_for("measurement.view_ms", id=id,
+                                msg=why_not_delete, type="error"))
 
     if request.method != "POST":
         return _page(f"""<!DOCTYPE html><html lang="en">

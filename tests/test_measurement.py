@@ -464,6 +464,124 @@ def test_POST_on_the_delete_route_destroys(client, seeded):
     assert mid not in STORE["measurements"]
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# A SHEET A CLAIM RESTS ON — `MS.can_delete()`, 30 August 2026
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Pass E shipped `/measurement/delete/<id>` with this open and said so in the
+# route's own docstring: deleting a sheet an installation claim was built on
+# lowers the ceiling `ra.overclaims()` reads, so a bill that was legal becomes
+# one that could not be raised today. The issued figures do not move — claim
+# rows are snapshots — but the project's remaining balance does.
+#
+# ⚠ **What this actually closes is narrower than it first looks, and the
+#   narrowness is the point.** An APPROVED sheet was already undeletable:
+#   `approval.can_modify()` rule 1 locks it, an Owner included, and
+#   `test_an_approved_sheet_is_locked_at_its_edit_and_delete_URLs` above has
+#   asserted that since pass E. Since only an approved sheet feeds the ceiling,
+#   the common case was shut before `can_delete()` existed. The hole was the
+#   sheet that was approved and has since been REJECTED — editable and
+#   deletable by its creator, and deleting it destroys the basis document for a
+#   claim already raised.
+
+
+def _installation_bill(boq_id, lines, ra_no=1):
+    """One issued installation claim resting on the chain."""
+    STORE.setdefault("ra_bills", {})[f"ms-guard-ra{ra_no}"] = {
+        "id": f"ms-guard-ra{ra_no}", "ref": f"GUARD/RA{ra_no}", "ra_no": ra_no,
+        "leg": "installation", "boq_id": boq_id, "status": "issued",
+        "claims": [{"line_id": li["line_id"], "qty": 1.0} for li in lines],
+        "created_by": "somebody-else", "approval_status": approval.APPROVED,
+    }
+
+
+def test_a_rejected_sheet_with_a_claim_against_it_refuses_deletion_by_URL(
+        client, seeded):
+    """
+    ⚠ **The hole pass E left, closed and asserted by URL rather than by hiding
+    the button** — B5's standing rule and `ra.can_delete()`'s shape.
+
+    Approved, claimed against, then rejected. `can_modify()` hands a rejected
+    sheet back to its creator, so without `can_delete()` this POST destroys the
+    document the claim was measured from.
+    """
+    li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
+    raise_sheet(client, seeded, [(li["line_id"], 2)])
+    ms = _approve(only_sheet())
+    _installation_bill(seeded, [li])
+
+    ms["approval_status"] = approval.REJECTED
+    assert approval.can_modify("measurement", ms)[0], (
+        "fixture is wrong: can_modify must ALLOW here, or this test proves "
+        "nothing about can_delete")
+
+    allowed, why = MS.can_delete(ms)
+    assert not allowed
+    assert "RA1" in why, f"the refusal must name the bill that rests on it: {why}"
+
+    assert client.get(f"/measurement/delete/{ms['id']}").status_code in (302, 303), \
+        "the GET confirm page must refuse too, not offer a delete it will not honour"
+    assert client.post(f"/measurement/delete/{ms['id']}").status_code in (302, 303)
+    assert ms["id"] in STORE["measurements"], (
+        "a sheet an installation claim rests on was deleted by URL")
+
+
+def test_a_draft_nobody_submitted_is_still_deletable_on_a_claimed_project(
+        client, seeded):
+    """
+    ⚠ **The trap the guard must NOT set.** Refusing on "a claim exists anywhere
+    on this chain" alone would strand a sheet raised by mistake on a live
+    project with no way to remove it, ever. A sheet that never entered the
+    ladder was never the basis of anything.
+    """
+    li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
+    raise_sheet(client, seeded, [(li["line_id"], 2)])
+    ms = only_sheet()
+    _installation_bill(seeded, [li])
+
+    assert not MS.has_ladder_history(ms)
+    assert MS.can_delete(ms)[0], "an unsubmitted draft must stay deletable"
+
+    assert client.post(f"/measurement/delete/{ms['id']}").status_code in (302, 303)
+    assert ms["id"] not in STORE["measurements"]
+
+
+def test_a_supply_claim_does_not_lock_a_measurement(client, seeded):
+    """
+    C1 keeps the two legs apart: a supply claim is proved by a delivery challan
+    and no quantity flows to it from a measurement. So a supply bill rests on
+    nothing here, and locking the sheet for one would be a refusal with no
+    reason behind it.
+    """
+    li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
+    raise_sheet(client, seeded, [(li["line_id"], 2)])
+    ms = _approve(only_sheet())
+    _installation_bill(seeded, [li])
+    STORE["ra_bills"]["ms-guard-ra1"]["leg"] = "supply"
+
+    ms["approval_status"] = approval.REJECTED
+    assert MS.installation_claims_on_chain(seeded) == []
+    assert MS.can_delete(ms)[0], "a supply claim locked a measurement sheet"
+
+
+def test_a_claim_with_no_quantity_locks_nothing(client, seeded):
+    """
+    A bill claiming zero has taken nothing off the ceiling, so nothing rests on
+    the sheet. `boq.claims_against_chain()` skips a zero-quantity claim for the
+    same reason and this agrees with it by construction.
+    """
+    li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
+    raise_sheet(client, seeded, [(li["line_id"], 2)])
+    ms = _approve(only_sheet())
+    _installation_bill(seeded, [li])
+    for c in STORE["ra_bills"]["ms-guard-ra1"]["claims"]:
+        c["qty"] = 0.0
+
+    ms["approval_status"] = approval.REJECTED
+    assert MS.installation_claims_on_chain(seeded) == []
+    assert MS.can_delete(ms)[0]
+
+
 def test_a_measurement_records_who_raised_it(client, seeded):
     """B6's load-bearing rule needs a creator recorded at the write site."""
     li = priced(seeded, 1)[0]

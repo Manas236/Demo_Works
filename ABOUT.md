@@ -5358,7 +5358,7 @@ and gate respectively — hiding the chip is not the guard, and
 | `GET /measurement/view/<id>` | `view_ms` — the sheet with the approval panel |
 | `GET /measurement/print/<id>` | `print_ms` — the sheet alone, B7-gated |
 | `GET,POST /measurement/edit/<id>` | `edit_ms` — header **and** lines, before approval |
-| `GET,POST /measurement/delete/<id>` | `delete_ms` — GET confirms, POST deletes |
+| `GET,POST /measurement/delete/<id>` | `delete_ms` — GET confirms, POST deletes; refuses a sheet a claim rests on |
 
 **What it is.** The middle term CC-2 **C1** puts between the schedule and an
 installation claim: what was found on site, against BOQ lines, going through an
@@ -5371,6 +5371,30 @@ them under a signature starts a dispute. A measurement is corrected *before* it
 is approved and locked afterwards by `approval.can_modify()`, so the lines are
 exactly the thing an edit is for. Editing calls `clear_approvals()`: an approval
 describes the document somebody read.
+
+**A sheet a claim rests on cannot be deleted — `measurement.can_delete()`, added
+30 August 2026.** Deleting one lowers the ceiling `ra.overclaims()` reads, so a
+bill that was legal becomes one that could not be raised today: the issued
+figures do not move, because every claim row is a snapshot, but the project's
+remaining balance does and the document the claim was measured from stops
+existing. The route refuses **by URL on both verbs**, `ra.can_delete()`'s shape,
+and it **layers on top of `approval.can_modify()` rather than replacing it** —
+that function answers "has this been signed off", this one answers "does
+anything downstream rest on it".
+
+⚠ **What it adds is narrower than it sounds, and the narrowness is the point.**
+An *approved* sheet was already undeletable (`can_modify()` rule 1 locks it, an
+Owner included), and an approved sheet is the only kind that feeds the ceiling —
+so the common case was shut before this existed. The hole was the sheet that was
+approved and has since been **rejected**: `can_modify()` hands a rejected
+document back to its creator, and deleting it destroys the basis document for a
+claim already raised. **A draft nobody ever submitted stays deletable**, checked
+by `has_ladder_history()`; refusing on "a claim exists on this chain" alone would
+strand a sheet raised by mistake on a live project with no way to remove it ever.
+Installation leg only — a supply claim is proved by a challan and no quantity
+flows to it from here. `installation_claims_on_chain()` reads `STORE["ra_bills"]`
+**directly**, because `measurement → ra` is a cycle and is refused at AST level;
+it is `boq.claims_against_chain()`'s one-way trick, one document along.
 
 **The printed sheet is `docsheet.py`'s and nothing else.** Two column widths and
 one signature label — the witness, who signs on the left where every other
