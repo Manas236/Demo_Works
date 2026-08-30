@@ -137,23 +137,41 @@ DO_NOT_POISON = {
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")
 
 
-def _poison(node) -> int:
-    """Append `PAYLOAD` to every free-text string in a record tree."""
+def _poison(node, paths=None, prefix="") -> int:
+    """
+    Append `PAYLOAD` to every free-text string in a record tree.
+
+    Returns the number of fields poisoned, and — when `paths` is a set —
+    **also records the dotted path of each one**. The two answers come out of
+    **one traversal on purpose.** A second function that re-walked the tree to
+    build the inventory could drift from the one that does the poisoning, and
+    then the field-level guard below would be pinning a set of fields that is
+    not the set actually being poisoned. There is no second traversal to drift.
+
+    A path names the FIELD, not the record: `items[]/description`, not
+    `ms-2/items/0/description`. Record ids and list indices are deliberately
+    collapsed, because the guard's question is "is this field still carrying
+    the payload", and a fixture that renames a record or appends a row has not
+    stopped testing the field.
+    """
     hit = 0
     if isinstance(node, dict):
         for key, value in list(node.items()):
             if key in DO_NOT_POISON:
                 continue
+            here = f"{prefix}/{key}" if prefix else key
             if isinstance(value, str):
                 if value and not _LOOKS_LIKE_AN_ID.match(value):
                     node[key] = value + PAYLOAD
                     hit += 1
+                    if paths is not None:
+                        paths.add(here)
             else:
-                hit += _poison(value)
+                hit += _poison(value, paths, here)
     elif isinstance(node, list):
         for value in node:
             if isinstance(value, (dict, list)):
-                hit += _poison(value)
+                hit += _poison(value, paths, f"{prefix}[]")
     return hit
 
 
@@ -196,6 +214,128 @@ POISONED_COLLECTIONS = (
 POISON_COUNT_NOT_GUARANTEED = {"settings"}
 
 
+# ══ The field-level pin ════════════════════════════════════════════════════
+#
+# ⚠ **THE COLLECTION-LEVEL GUARD ABOVE CANNOT SEE A DEAD FIELD, AND THAT IS THE
+#   BUG THIS PIN EXISTS FOR.** The history is worth keeping verbatim, because
+#   the same mistake has now been made twice at two different granularities:
+#
+#   1. The **aggregate** count (`fields > 100`) could not see one dead
+#      COLLECTION. `measurements` sat in `POISONED_COLLECTIONS` contributing
+#      nothing while fifteen others kept the total over 100, and five sinks in
+#      `/measurement/*` emitted raw. Fixed by the per-collection floor.
+#   2. The **per-collection** count cannot see one dead FIELD. Blank `ms-2`'s
+#      four free-text fields — `location`, `measured_by`, `witnessed_by` and
+#      `notes`, which is *precisely* the regression a previous pass shipped —
+#      and `measurements` still counts 9 through `ref`, `project_name`,
+#      `account_name` and the item rows. The per-collection guard stays green
+#      while the four sinks that pass wrote go untested.
+#
+#   A count cannot answer "is THIS field still carrying the payload". Only an
+#   inventory can, so this is an inventory: the exact set of field paths the
+#   fixture poisons, pinned. A field that stops being poisoned disappears from
+#   the set and the guard goes red naming it.
+#
+# **Paths name fields, not records** — `items[]/description`, never
+# `ms-2/items/0/description`. Record ids and list indices are collapsed by
+# `_poison()`, so renaming a fixture record or appending a row does not move
+# this pin. What moves it is a field that stopped carrying the payload, or a
+# new one that started.
+#
+# **Measured 30 August 2026: 156 fields across 15 collections**, and measured
+# in BOTH orderings — this file alone and the whole suite — which came out
+# byte-identical for all fifteen. `settings` is the sole collection whose
+# inventory depends on what ran first (9 alone, 0 under the full suite), and it
+# is exempt here for exactly the reason it is exempt from the count floor.
+#
+# **To update it:** if you added a free-text field to a fixture record, add its
+# path. If a path vanished, do NOT delete the line until you have established
+# the sink it covered is still escaped — that deletion is the regression.
+POISONED_FIELDS = {
+    "products": (
+        "description", "name", "part_no", "unit",
+    ),
+    "specs": (
+        "category", "code", "install_sac", "spec_text", "title",
+        "variants[]/dim_unit", "variants[]/dimension", "variants[]/label",
+        "variants[]/unit",
+    ),
+    "boqs": (
+        "account_name", "bill_city", "bill_state", "delivery_terms", "fy",
+        "line_items[]/description", "line_items[]/install_sac",
+        "line_items[]/item_no", "line_items[]/parent_item_no",
+        "line_items[]/remark", "line_items[]/section", "line_items[]/unit",
+        "notes", "payment_terms", "project_name", "rate_basis_label", "ref",
+        "sections[]/code", "sections[]/title", "ship_acct_name",
+        "ship_addr", "ship_city", "ship_state", "site_location", "to",
+    ),
+    "ra_bills": (
+        "boq_ref", "claims[]/description", "claims[]/item_no",
+        "claims[]/section", "claims[]/unit", "fy", "leg", "ref",
+    ),
+    "receipts": (
+        "account_name", "boq_ref", "fy", "leg", "mode", "project_name",
+        "ra_ref", "ref",
+    ),
+    "quotations": (
+        "account_name", "bill_state", "line_items[]/name",
+        "line_items[]/part_no", "line_items[]/unit", "ref", "sales_stage",
+        "ship_same", "stage_history[]/at", "stage_history[]/from",
+        "stage_history[]/note", "stage_history[]/to", "tax_type", "to",
+    ),
+    "proformas": (
+        "account_name", "line_items[]/name", "line_items[]/part_no",
+        "line_items[]/unit", "quotation_ref", "ref", "ship_same",
+        "tax_type", "to",
+    ),
+    "invoices": (
+        "account_name", "fy", "line_items[]/name", "line_items[]/part_no",
+        "line_items[]/unit", "place_of_supply", "pos_code", "proforma_ref",
+        "quotation_ref", "ref", "ship_same", "tax_type", "to",
+    ),
+    "purchases": (
+        "fy", "line_items[]/name", "line_items[]/part_no",
+        "line_items[]/unit", "ref", "status_history[]/at",
+        "status_history[]/note", "tax_type", "to", "vendor_gstin",
+        "vendor_name",
+    ),
+    "purchase_orders": (
+        "account_name", "boq_ref", "items[]/description", "items[]/item_no",
+        "items[]/unit", "project_name", "ref", "vendor_source",
+    ),
+    "delivery_challans": (
+        "account_name", "boq_ref", "consignee_name", "consignee_source",
+        "dispatch_mode", "items[]/description", "items[]/item_no",
+        "items[]/unit", "project_name", "ref",
+    ),
+    "measurements": (
+        "account_name", "boq_ref", "created_at", "fy",
+        "items[]/description", "items[]/item_no", "items[]/unit",
+        "location", "measured_by", "notes", "project_name", "ref",
+        "witnessed_by",
+    ),
+    "projects": (
+        "created_at", "name",
+    ),
+    "charges": (
+        "approvals[]/at", "approvals[]/role_name", "approvals[]/user_name",
+        "created_at", "description", "head", "person", "project_name",
+        "updated_at",
+    ),
+    "addresses": (
+        "city", "company", "contact_name", "country", "email", "gstin",
+        "label", "landmark", "line1", "line2", "phone", "pincode", "state",
+    ),}
+
+# `settings` is exempt from the field pin for the SAME measured reason it is
+# exempt from the per-collection floor, and not for a new one: its inventory
+# depends on which tests ran first (9 fields alone, 0 under the full suite),
+# and a pin that fails on test ORDER is a flaky test. Its user-facing half is
+# poisoned through `B.apply_settings()` in the fixture below, which is not
+# order-dependent and does reach every printed document.
+FIELD_PIN_EXEMPT = POISON_COUNT_NOT_GUARANTEED
+
+
 @pytest.fixture()
 def hostile(populated_store, client):
     """
@@ -217,14 +357,29 @@ def hostile(populated_store, client):
     #   between them, so the aggregate guard was comfortably green while five
     #   sinks emitted raw. A per-collection count is what makes that arithmetic
     #   impossible.
-    per_collection = {name: _poison(STORE.get(name, {}))
-                      for name in POISONED_COLLECTIONS}
+    #
+    # ⚠ **AND counted PER FIELD.** A per-collection count still cannot see one
+    #   dead FIELD — see `POISONED_FIELDS` above for why that is not
+    #   hypothetical either. `_poison()` fills `per_field[name]` with the path
+    #   of every field it poisoned, in the same traversal that does the
+    #   poisoning, so the inventory cannot drift from the act.
+    #   Walked one RECORD at a time rather than one collection at a time, so
+    #   that a path starts at the field and not at the record id: poisoning the
+    #   collection dict whole would produce `ms-2/notes`, and the pin would
+    #   then move every time a fixture record was renamed.
+    per_field = {name: set() for name in POISONED_COLLECTIONS}
+    per_collection = {}
+    for name in POISONED_COLLECTIONS:
+        per_collection[name] = sum(
+            _poison(record, per_field[name])
+            for record in (STORE.get(name) or {}).values())
     fields = sum(per_collection.values())
 
     saved = {key: B.DEFAULTS[key] for key in B.SETTINGS_KEYS}
     B.apply_settings({k: v + PAYLOAD for k, v in saved.items()})
     try:
         yield {"fields": fields, "per_collection": per_collection,
+               "per_field": per_field,
                "urls": EF._urls(populated_store)}
     finally:
         # Put the identity back. These are module globals, so a test that left
@@ -290,6 +445,89 @@ def test_the_sweep_really_did_reach_the_pages(hostile, client):
     assert len(carrying) > len(hostile["urls"]) // 2, (
         f"only {len(carrying)} of {len(hostile['urls'])} pages carried the "
         f"payload at all. The sweep below is asserting almost nothing.")
+
+
+def _lines(by_collection: dict) -> str:
+    """One indented line per collection, so a failure is readable."""
+    return "\n".join(
+        f"  {coll}: {', '.join(fields)}"
+        for coll, fields in sorted(by_collection.items()))
+
+
+def test_every_pinned_field_still_carries_the_payload(hostile):
+    """
+    **The field-level guard.** Fails when any INDIVIDUAL free-text field stops
+    carrying the payload — not when a collection as a whole goes quiet.
+
+    The guard above this one counts per collection, and a count cannot see a
+    dead field. Blank `ms-2`'s `location`, `measured_by`, `witnessed_by` and
+    `notes` — the exact regression a previous pass shipped — and the
+    per-collection count for `measurements` stays comfortably non-zero through
+    `ref`, `project_name`, `account_name` and the item rows, while the four
+    sinks that pass wrote are swept with inert data. This test goes red on
+    that, naming the four fields.
+
+    Both directions are checked, and the second is not pedantry:
+
+    - **A path that vanished** is a sink that is no longer being tested. That
+      is the regression, and it is the whole reason this file has a pin.
+    - **A path that appeared** is a new free-text field reaching a page nobody
+      has decided is escaped. Making that red forces the decision to be taken
+      once, here, rather than assumed. It is the same discipline
+      `docs/ACCESS_MATRIX.md` is under.
+    """
+    for coll in sorted(POISONED_FIELDS):
+        assert coll in POISONED_COLLECTIONS, (
+            f"{coll} is pinned in POISONED_FIELDS but is not in "
+            f"POISONED_COLLECTIONS, so nothing ever poisons it")
+
+    missing, added = {}, {}
+    for coll, pinned in POISONED_FIELDS.items():
+        actual = hostile["per_field"][coll]
+        gone = sorted(set(pinned) - actual)
+        new = sorted(actual - set(pinned))
+        if gone:
+            missing[coll] = gone
+        if new:
+            added[coll] = new
+
+    assert not missing, (
+        "FIELD-LEVEL REGRESSION - these fields are pinned as poisoned but "
+        "no longer carry the payload, so every sink reading them is being "
+        "swept with inert data and asserting nothing:\n"
+        + _lines(missing)
+        + "\n\nEither the fixture stopped giving the field real free "
+          "text - put it back - or the field was removed from the record, "
+          "in which case check the sink is gone too BEFORE editing "
+          "POISONED_FIELDS.")
+
+    assert not added, (
+        "New free-text field(s) are being poisoned that the pin does not "
+        "know about:\n"
+        + _lines(added)
+        + "\n\nAdd them to POISONED_FIELDS once you have checked "
+          "every page that renders them escapes them. This is red on "
+          "purpose: a new sink is exactly when that decision is cheap "
+          "to take.")
+
+
+def test_the_field_pin_covers_every_collection_it_should(hostile):
+    """
+    The pin cannot be quietly outgrown by a new collection.
+
+    `POISONED_COLLECTIONS` is the tuple a new module gets added to. If someone
+    adds one there and not here, the collection is swept but not pinned — back
+    to a count as its only protection, which is the state this file has twice
+    had to fix. The only permitted absentees are the measured order-dependent
+    ones in `FIELD_PIN_EXEMPT`.
+    """
+    unpinned = sorted(set(POISONED_COLLECTIONS)
+                      - set(POISONED_FIELDS) - set(FIELD_PIN_EXEMPT))
+    assert not unpinned, (
+        f"{len(unpinned)} collection(s) are swept but have no field-level pin, "
+        f"so a single dead field in them is invisible: {', '.join(unpinned)}. "
+        f"Add them to POISONED_FIELDS, or to FIELD_PIN_EXEMPT with the measured "
+        f"reason their inventory is not stable.")
 
 
 # ══ 2. No route emits the payload raw ══════════════════════════════════════
