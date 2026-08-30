@@ -2553,17 +2553,67 @@ after a `mysqldump`, and then run again to prove the second run is a no-op.
 | duplicate pairs printed | **1** — `'Bangalore, Karnataka'` / `'Banglore, Karnataka'`, **edit distance 1**, **NOT folded** |
 | second run | **0 created, 0 linked**, all 4 projects skipped |
 
-⚠ **The duplicate pair is the live data's own defect and it is a HUMAN's to
-resolve.** One place is spelled two ways and now has two address records, one
-carrying two projects and one carrying one. Nothing folds them: the resolution
-is to repoint the project on the wrong spelling and then **delete** the address
-that is left unreferenced — which `address.references_of()` refuses until it is,
-and `/address/view/<id>` shows the count for. **No spelling was corrected.**
+⚠ **The duplicate pair was the live data's own defect and it was a HUMAN's to
+resolve.** ✅ **RESOLVED 30 August 2026 (fifth pass)** — see the next block.
+The resolution this note prescribed is exactly the one taken: repoint everything
+off the wrong spelling, then **delete** the address left unreferenced, which
+`address.references_of()` refuses until it is. **No spelling was corrected in
+any record**; one duplicate *address* was folded into the other, under a written
+override naming the pair.
 
-⚠ **`'Banglore, Karnataka'` carries TWO projects, and no guard was built on
-that.** The client has said *one project = one site*; he has **not** said one
-site = one project. The count is printed by the migration as evidence for the
-pass that answers CC-2's Open question 4.
+⚠ **The site→project ambiguity is UNCHANGED and no guard is built on it.** The
+client has said *one project = one site*; he has **not** said one site = one
+project. Folding the duplicate made the count **worse, not better** — see below.
+
+#### The cleanup — MEASURED, 30 August 2026 (fifth pass)
+
+`tools/clean_site_data.py --write` was run once against the live MySQL between
+two `mysqldump`s, then run twice more to prove the second run is a no-op.
+Authorised by the **FIFTH override block of 30 August 2026**. Every figure here
+was measured, none derived.
+
+| operation | count |
+|---|---|
+| references **repointed** off `'Banglore, Karnataka'` | **2** — the projects *"Banglore"* and *"Sify3"* |
+| addresses **deleted** | **1** — `'Banglore, Karnataka'`, unreferenced after the repoint |
+| unmapped site strings **mapped** | **0** — see below |
+| unmapped strings **skipped** as purge-listed | **1** |
+| projects **purged** | **1** — *"Test Supplier2"*. Nothing hung off it. |
+| projects **REFUSED** | **1** — *"Banglore"*. See below. |
+| employees **purged** | **3** — SF-100, SF-101, SF-102 |
+| attendance markings **purged** | **3** — every marking in the database |
+| BOQs / purchase orders / charges deleted | **0, 0, 0** |
+| second and third runs | **all zero**, nothing written |
+
+Collections that moved: `projects` 6→5, `addresses` 8→7, `employees` 3→0,
+`attendance` 3→0. **Every other collection is byte-for-byte the count it was** —
+`boqs` 7, `charges` 5, `purchases` 2, `delivery_challans` 3, `measurements` 1,
+`ra_bills` 7.
+
+⚠ **ONE PURGE WAS REFUSED AND THE PROJECT IS STILL THERE.** Deleting project
+*"Banglore"* would have cascaded to `SF/BOQ/26-27/0007`, and hanging off that
+BOQ are **delivery challan 3**, **measurement sheet `SF/MS/26-27/0001`** — the
+only measurement sheet in the database — and **draft PO `SF/DPO/0003`**. A
+challan is the record that goods physically moved and a measurement is the
+ceiling every installation claim on that chain is checked against. The tool
+refuses rather than deleting, has no `--force`, and prints what it saved.
+**Whether those documents are disposable is a human's decision and it has not
+been taken.**
+
+⚠ **The brief for that pass expected an employee to carry the bare string
+`Banglore`; none did.** ABOUT.md recorded *"1 employee and 1 marking"* when
+`tools/backfill_site_links.py` ran, and that was true then — the employee has
+since been mapped through the form. The one marking that still carried it
+belonged to SF-100, who was on the purge list, so it was skipped and deleted.
+**5b therefore repointed nothing at all**, which is the correct outcome under
+its own rule and not a failure.
+
+⚠ **`'Bangalore, Karnataka'` now carries FOUR projects** — *"Banglore"*,
+*"Sify Bangalore"*, *"Sify3"* and *"Test Supplier"* — where the two spellings
+carried two and two. **Folding the duplicate concentrated the ambiguity rather
+than removing it**, and that is the honest description: the fold fixed a
+*spelling* defect, not the site→project one. `/projects/view/<id>`'s Site Labour
+section is where that count is now visible to a user, and it names them.
 
 ### User  (Phase 3B)
 
