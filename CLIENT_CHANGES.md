@@ -1369,6 +1369,136 @@ commercial gate, not an engineering one, and it is not yours to reach a view on.
 > MG/SF/2026-02 is never signed, everything built under the blocks above was
 > built against a quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 30 August 2026, by Manas Gawde — the wage unit is a DAY RATE, sites come from the address book, and two register screens
+>
+> **A new block, not an amendment, and the THIRD one dated 30 August 2026.**
+> The fifteen blocks above it — including the cleanup block and the B8 block of
+> this same date — **have not been edited, reformatted, re-scoped or extended by
+> a single character.** This is the **sixteenth occasion overall**, and the tenth
+> that reaches into Phase 3.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated an eighth time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** An eighth
+> restatement is not evidence that the first seven made it routine.
+>
+> #### What this block records — the owner has corrected two facts about his own business
+>
+> These are not new requirements. They are **two things we got wrong about how
+> Samruddhi actually operates**, told to us by the owner on 30 August 2026 after
+> he opened the pages for the first time. Both change **delivered** items, and
+> both **mutate live records**.
+>
+> **1. Wages are paid DAILY or WEEKLY, not monthly. AUTHORISED.**
+>
+> C4 stores `salary` as a **monthly** figure and C5 divides it by
+> `wage_days_per_month`, a second setting invented during the C5 pass to fill a
+> silence in CC-2. ⚠ **The silence was not there.** CC-2's C5 says *"Salary as 0
+> or 1 based on attendance"* and *"OT = (salary ÷ 8) × hours"*, and its own note
+> calls that formula **"1× ordinary rate"** — which is only true if `salary ÷ 8`
+> is an **hourly** rate, i.e. if `salary` is a **day's** wage and 8 is hours in a
+> day. Read as a monthly figure, "0 or 1 based on attendance" pays a whole
+> month's salary for one day present. **CC-2's `salary` was always a day rate**,
+> the monthly reading was ours, and the divisor solved a problem that never
+> existed.
+>
+> So: the employee record carries a **day rate**, and `wage_days_per_month` is
+> **deleted** — from `/settings`, from every calculation path, and from
+> PROGRESS.md §4c, where a beyond-CC-2 item is **retired rather than added**.
+> The OT multiplier stays a setting: that one is CC-2's own, and hardcoding it
+> would still make this software compute a statutory underpayment.
+>
+> ⚠ **NO STORED FIGURE MAY BE CONVERTED ARITHMETICALLY.** A monthly figure
+> silently reread as a day rate multiplies every wage by roughly twenty-six.
+> Existing employee records are **marked** as carrying a figure entered under the
+> old model, the page says on screen that the rate needs re-entering, and the
+> wage calculation **refuses to produce a figure** for an unconfirmed employee
+> rather than produce a wrong one. Attendance markings that snapshotted a salary
+> are **history**: they are marked as computed under the old model and **their
+> numbers are left exactly as they stand**.
+>
+> ⚠ **No pay-frequency field is added.** Weekly payment is a payout *cadence*,
+> not a rate *unit* — attendance is daily, so a day rate serves both — and CC-2
+> asks for no such field. If one turns out to be needed it is to be reported, not
+> built.
+>
+> **2. Sites come from the ADDRESS BOOK, not from free text. AUTHORISED.**
+>
+> `site` on the employee master and on an attendance marking is free text
+> somebody types, which is why the live data spells one place more than one way.
+> It becomes a **picker over the address book**.
+>
+> ⚠ **Existing site strings must not be silently dropped or fuzzy-matched.**
+> Where a stored string matches an address exactly it is linked; where it does
+> not it is **left as it stands, marked unmapped, and reported in full** so a
+> person can map it. A wrong automatic match moves labour cost to the wrong site,
+> which is the failure this repository has already paid for once when
+> `po_parts.py` shipped 156 invented aliases.
+>
+> **3. The two register screens the owner has actually seen. AUTHORISED, and
+> no-charge.**
+>
+> `/attendance/` and `/dc/` are the **only two pages in this application that
+> have ever been rendered to a human eye.** He reports that they are confusing,
+> that the attendance table is misaligned, and that on Delivery Challans he
+> cannot tell what to click. That is a reachability and usability defect against
+> work already delivered, which is §0's standing exemption in its plainest form.
+>
+> ⚠ **No page the owner has not seen may be restyled**, and **no pinned print
+> golden may move.** These are screen registers, not print sheets. If a change
+> would reach a shared CSS constant a printed page also loads, the instruction is
+> to **stop and report**, never to re-baseline a golden for a styling change.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **B8** — file attachments. **AUTHORISED on 30 August 2026 by the block above
+>   and still UNBUILT.** It needs a **write-once, no-diff persistence path beside
+>   `db.py`**, which is a decision with a schema change behind it and is the
+>   owner's to take. ABOUT.md §4 carries the measurement that establishes
+>   snapshot-and-diff cannot carry a BLOB. Nothing here starts it and no
+>   groundwork is laid.
+> - **C3** — the merged RA, **BLOCKED** on the owner's answers to BQ2 and then
+>   BQ1.
+> - **C6** — project profit and loss, **BLOCKED** on CC-2's Open question 4.
+>   ⚠ Site-wise labour cost rolling up to a **project** is C6's, and an address
+>   does **not** join to a project in this application. That shortfall is
+>   **recorded in ABOUT.md and deliberately not solved here.**
+> - `attendance.py` stays unimported by everything. `product.py` stays frozen.
+>   `quotation.py` stays frozen except the narrow `view_quotation()` unfreeze.
+>
+> **The board does not move. It stays at 17 of 20.** C4 and C5 stay BUILT — this
+> block **corrects** two delivered items rather than delivering a new one, and a
+> correction is not a bar.
+>
+> #### Chargeability
+>
+> **The day rate and the site picker are corrections to C4 and C5, which are
+> priced in MG/SF/2026-02 and stay priced there.** They are not §0 no-charge
+> items: the §0 exemption covers defect and reachability fixes against scope sold
+> under MG/SF/2026-**01**, and these two correct scope sold under
+> MG/SF/2026-**02**. ⚠ **Nor are they a defect the client is owed for free
+> merely because we read his specification wrongly** — that is a commercial
+> question, it is the client-facing owner's, and **it has not been taken here.**
+> What is recorded is that the work was done and against which quotation; who
+> absorbs it is not an agent's call.
+>
+> **The two register screens are no-charge**, on §0's reachability exemption.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block corrects C4 and C5
+> does not authorise B8, C3 or C6**, and no override above is a precedent that
+> clears the next.
+> **An override is a decision the client-facing owner takes and records; it is
+> never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above — C4 and
+> C5 among them, and now their correction too — was built against a quotation
+> that has **lapsed**.
 
 **Exempt: anything already sold under MG/SF/2026-01** — defect and reachability
 fixes against scope already sold. Making something we have
