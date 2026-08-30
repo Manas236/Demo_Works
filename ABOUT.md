@@ -2531,6 +2531,33 @@ free-text fallback and this deliberately does not; the tie-breaker is the join
 key. Only `address.SITE_TYPES` addresses are offered, and that is enforced on
 the **POST** and not only in the option list.
 
+#### The live database after the migration — MEASURED, 30 August 2026
+
+`tools/backfill_project_sites.py --write` was run once against the live MySQL,
+after a `mysqldump`, and then run again to prove the second run is a no-op.
+
+| | |
+|---|---|
+| projects | **4**, of which **3** name a site and **1** does not |
+| addresses **created** | **2** — `'Bangalore, Karnataka'` and `'Banglore, Karnataka'`, each **verbatim** |
+| projects **linked** | **3** (0 to an address that already existed; all 3 to one of the two created) |
+| projects left **unlinked** | **1** — *"Sify 2"*, whose `site_address` is `""`. No site was recorded and none was invented. |
+| near misses printed | **0**. Neither string casefolds or whitespace-collapses onto anything already in the book. |
+| duplicate pairs printed | **1** — `'Bangalore, Karnataka'` / `'Banglore, Karnataka'`, **edit distance 1**, **NOT folded** |
+| second run | **0 created, 0 linked**, all 4 projects skipped |
+
+⚠ **The duplicate pair is the live data's own defect and it is a HUMAN's to
+resolve.** One place is spelled two ways and now has two address records, one
+carrying two projects and one carrying one. Nothing folds them: the resolution
+is to repoint the project on the wrong spelling and then **delete** the address
+that is left unreferenced — which `address.references_of()` refuses until it is,
+and `/address/view/<id>` shows the count for. **No spelling was corrected.**
+
+⚠ **`'Banglore, Karnataka'` carries TWO projects, and no guard was built on
+that.** The client has said *one project = one site*; he has **not** said one
+site = one project. The count is printed by the migration as evidence for the
+pass that answers CC-2's Open question 4.
+
 ### User  (Phase 3B)
 
 ```python
