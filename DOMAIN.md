@@ -438,6 +438,30 @@ fails silently on every bill where it is not.
 ⚠ **`CLIENT_CHANGES-2.md` BQ1 depends on this.** 3C.02 sells a merged document
 minting **one** tax invoice number; there is nothing minting a first one yet.
 
+> **[PART-ANSWERED 2 September 2026 — C3 mints one, and ONLY for the merged
+> document.]** The first `CLIENT_CHANGES.md` §0 block of that date answers BQ2
+> and then BQ1, and [merged_ra.py](merged_ra.py) is the code:
+> `SF/MI/26-27/0001`, its own counter, **capped at 16 characters** under Rule
+> 46(b), and derived from **neither** leg's reference.
+>
+> ⚠ **This section's STATUS paragraph above is NOT superseded and still
+> describes every single-leg bill.** `tax_invoice_ref` on an ordinary RA bill is
+> still a plain typed form field with no counter behind it, and `print_ra()`
+> still falls back `tax_invoice_ref` → `ref` → a string built from `ra_no` when
+> it is left empty — so on a bill with the field blank the printed Tax Invoice
+> No. **is** still derived from `ra_no`, which is the one thing this section
+> forbids. **That gap is real, it was explicitly out of C3's scope, and closing
+> it needs an override block of its own.**
+> `tests/test_merged_ra.py::test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED`
+> pins it so nobody reads C3 as having closed it.
+>
+> ⚠ **The series is `MI`, not `TI`.** `invoice.py` mints `SF/TI/...` at the
+> same cap for the sell-side tax invoice, and one serial on two documents is the
+> precise failure Rule 46(b) prevents. This section's *"the seller's own
+> statutory serial across all work"* is satisfied by two **distinct** series,
+> each consecutive and unique within the year, rather than by one counter shared
+> across two pipelines that may not import each other.
+
 ### 4.3 CGST + SGST versus IGST is a stored determination, not a hardcoded comparison
 
 India's GST splits into a central and a state component for a supply within one

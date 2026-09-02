@@ -151,6 +151,44 @@ DOCUMENTS = {
         #   over every status value rather than left to this comment.
         "print_exempt_states": ("draft", "cancelled"),
     },
+    # ── The SIXTH document, added 2 September 2026 with CC-2 **C3** ────────
+    #
+    # ⚠ **THE RA LADDER, AND THIS ONE CC-2 DOES SETTLE.** Unlike the
+    #   measurement below — which B6 does not name and where the ladder was our
+    #   choice — B6 gives *"RA / Tax Invoice / PO: Operations Head + Director"*,
+    #   and a merged RA is **both** of the first two at once: it is built from RA
+    #   bills and its entire purpose is to raise the tax invoice. Both of B6's
+    #   named documents carry this ladder, so there is nothing to choose between.
+    #   Nothing in CC-2 or in this module exempts a merged document.
+    #
+    # ⚠ **The permission is `ra.approve`, and no new one is minted.** A merged
+    #   document is an RA document: whoever may approve the two legs may approve
+    #   their sum. `invoice.approve` was the alternative and was checked rather
+    #   than assumed — **exactly the same three roles hold both** (Owner,
+    #   Director, Operation Head), so the choice confers nothing on anybody and
+    #   takes nothing from anybody. Minting `merged_ra.approve` instead would be
+    #   a seventh permission for the same three roles to be granted, and a
+    #   permission that reaches no role is the failure ABOUT.md §2g records
+    #   shipping three times.
+    #
+    # ⚠ **No `print_exempt_states`.** The RA bill has two because it has a
+    #   lifecycle that predates the ladder and a DRAFT overprint of its own. A
+    #   merged document has no draft state at all — it is raised from two bills
+    #   that are already issued — so there is no working copy to protect, and an
+    #   unapproved one simply does not print. Its **cancelled** state is
+    #   deliberately NOT exempt either: unlike a cancelled RA bill, which is the
+    #   audit record of a withdrawn claim, a cancelled merged document withdraws
+    #   only an invoice while both underlying claims go on standing on their own
+    #   and remain printable in their own right. The record that must be
+    #   producible is still producible.
+    "merged_ra": {
+        "collection": "merged_ras",
+        "label":      "merged RA document",
+        "steps":      ("operation-head", "director"),
+        "sequential": False,
+        "permission": "ra.approve",
+        "list_endpoint": "merged_ra.list_merged",
+    },
     "invoice": {
         "collection": "invoices",
         "label":      "tax invoice",

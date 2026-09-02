@@ -154,7 +154,14 @@ def _fresh_store():
                 # has ONE fixed id — so without clearing these two a sheet
                 # planted by one test would satisfy C1 for the next one and the
                 # chain guard would be untestable.
-                "measurements", "delivery_challans"):
+                "measurements", "delivery_challans",
+                # C3 (2 Sep 2026), and for a sharper version of the same
+                # reason. A merged document is keyed on two RA bill ids, and
+                # the fixtures use FIXED ids (`r1-supply`, `r3-install`) — so a
+                # merged document planted by one test goes on holding the next
+                # test's bills, and `merged_ra.create()` correctly refuses to
+                # merge them again. The guard is right; the leak was the store.
+                "merged_ras"):
         STORE[key].clear()
     # B8 (2 Sep 2026). Metadata rows are per-test for the same reason every
     # other collection is: a charge id planted by one test must not arrive

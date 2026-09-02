@@ -279,6 +279,30 @@ UNLINKED_ON_PURPOSE = {
     # ⚠ Added a link on 29 August 2026 and kept OFF the launcher deliberately:
     # a diagnostic is not a register (ABOUT.md §7 gap 23). `/users` carries it.
     "auth.access_log":   "a diagnostic, linked from /users rather than the launcher",
+    # ── C3, 2 September 2026 ────────────────────────────────────────────────
+    #
+    # ⚠ **Kept OFF the nav and the launcher DELIBERATELY, and CC-2 is the
+    #   reason rather than a golden.** C3 says: *"Build the merge action ON THE
+    #   RA REGISTER from day one. The draft-PO → PO bridge was initially shipped
+    #   without its entry point; do not repeat that."* CC-2 names the RA
+    #   register as this document's home, and `ra.list_ras()` carries the link —
+    #   `test_the_merge_action_is_on_the_ra_register` asserts it directly, so
+    #   this entry is not a way of avoiding that requirement.
+    #
+    #   A merged document is a **sub-register of the RA register** in exactly
+    #   the sense `/roles` is a sub-page of `/users`, which is the precedent
+    #   three entries above.
+    #
+    # ⚠ **It is NOT here to protect the print goldens**, and that is worth
+    #   stating because it would be a real motive: `_nav()` is embedded in every
+    #   printed page, so a sixth nav entry would move the `head` digest of every
+    #   document by roughly 248 bytes (the 29 August 2026 re-baseline measured
+    #   exactly that for `Employees`). Nothing on any printed sheet would
+    #   change. If the owner asks for a menu entry, add it and re-baseline —
+    #   that is a decision about a menu, and this comment must not be read as an
+    #   argument against it.
+    "merged_ra.list_merged": "a sub-register of the RA register, which CC-2 names "
+                          "as the merge action's home; linked from there",
 }
 
 

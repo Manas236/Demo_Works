@@ -348,6 +348,26 @@ ROUTE_PERMISSIONS = {
     "ra.cancel_ra":               "ra.cancel",
     "ra.print_ra":                "ra.print",
 
+    # ── C3, the merged RA document (2 September 2026) ───────────────────
+    #
+    # ⚠ **NO NEW PERMISSION IS MINTED, deliberately.** A merged document is an
+    #   RA document — it is built from two RA bills, it lives beside them in the
+    #   register, and whoever may see the legs may see their sum. A
+    #   `merged_ra.*` family would be four more ids for the same roles to be
+    #   granted, and one that reaches no role is the failure §2g records
+    #   shipping three times.
+    #
+    # ⚠ **`create` carries `ra.create` and `cancel` carries `ra.cancel`**, not
+    #   `ra.view`. Both write; a read verb on a writing route is §7 gap 24b.
+    #   `/merged/create` answers GET and POST under one permission, which is the
+    #   ordinary case this registry's caveat covers: the GET renders the picker
+    #   and writes nothing, so the stricter of the two is right for both.
+    "merged_ra.list_merged":         "ra.view",
+    "merged_ra.view_merged":         "ra.view",
+    "merged_ra.create_merged":       "ra.create",
+    "merged_ra.print_merged":        "ra.print",
+    "merged_ra.cancel_merged":       "ra.cancel",
+
     # ── Money in ─────────────────────────────────────────────────────────────
     "receipt.list_receipts":      "receipt.view",
     "receipt.new_receipt":        "receipt.create",
@@ -483,6 +503,11 @@ ROUTE_PERMISSIONS = {
     "approval.reject_charge":     "charge.approve",
     "approval.approve_ra":        "ra.approve",
     "approval.reject_ra":         "ra.approve",
+    # C3's merged document climbs the same ladder under the same permission —
+    # see the note in approval.DOCUMENTS for why it is `ra.approve` and not
+    # `invoice.approve`, and for the check that the two reach the same roles.
+    "approval.approve_merged_ra": "ra.approve",
+    "approval.reject_merged_ra":  "ra.approve",
     "approval.approve_invoice":   "invoice.approve",
     "approval.reject_invoice":    "invoice.approve",
     "approval.approve_purchase":  "purchase.approve",

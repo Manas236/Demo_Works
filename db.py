@@ -74,6 +74,7 @@ load_dotenv(override=False)
 # the table is created automatically on next start.
 COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "purchase_orders",
                "specs", "boqs", "ra_bills", "receipts", "delivery_challans", "measurements",
+               "merged_ras",
                "projects",
                "charges", "employees", "attendance", "attachments",
                "addresses", "settings", "users", "roles")
@@ -257,6 +258,7 @@ LABELS = {
     "specs":      "specifications",
     "boqs":       "bills of quantities",
     "ra_bills":   "RA bills",
+    "merged_ras": "merged RA documents",
     "projects":   "projects",
     "charges":    "employee and misc charges",
     "employees":  "employee records",

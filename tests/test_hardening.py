@@ -98,6 +98,12 @@ def test_every_reference_collection_has_a_seeder(client):
     # on a site and found a quantity, and once approved it is the ceiling every
     # installation claim is checked against. Inventing one would invent the
     # ceiling on somebody's money.
+    # `merged_ras` (C3, 2 Sep 2026) is transactional and is the sharpest case in
+    # the set full stop: a seeded merged document **mints a tax invoice serial**.
+    # Rule 46(b) numbers are consecutive and unique within the financial year, so
+    # a fresh install that invented one would spend a statutory number nobody
+    # raised, against two RA bills nobody billed. It also asserts that those two
+    # bills are covered by an invoice, which is a claim about money.
     # `attachments` (B8, 2 Sep 2026) is transactional, and it is the one entry in
     # this set that would be a **lie on disk** as well as in the database. A
     # seeded row names a file under `attachment.root()`, so either that file does
@@ -107,7 +113,7 @@ def test_every_reference_collection_has_a_seeder(client):
     # charge, so inventing one would invent the proof that a payment was owed.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "measurements",
-                     "projects", "charges", "attachments",
+                     "projects", "charges", "attachments", "merged_ras",
                      "employees", "attendance", "users"}
     assert seeded | transactional == set(db.COLLECTIONS)
 

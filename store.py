@@ -37,6 +37,7 @@ STORE: dict = {
     "boqs":         {},   # keyed by UUID string → bill of quantities (head of the BOQ → RA chain)
     "ra_bills":     {},   # keyed by UUID string → Running Account bill (progressive claim against a BOQ revision, carries tax block per DOMAIN.md §4)
     "receipts":     {},   # keyed by UUID string → payment RECEIVED against one RA bill. Its OWN collection, never a list on the bill or the BOQ — CLIENT_CHANGES.md §1.3
+    "merged_ras":   {},   # keyed by UUID string → merged RA document (CC-2 C3): ONE issued supply bill + ONE issued installation bill from the same revision chain, stacked onto one sheet under ONE minted tax invoice number. Its OWN collection — a separate document type, the same relationship as Draft PO → PO. ⚠ It holds NO claims of its own: copying claim rows in would make ra.claimed_by_line() count the same quantity twice, and every over-claim guard downstream would then be wrong in the direction that lets money through
     "measurements": {},   # keyed by UUID string → measurement sheet raised against a BOQ revision (CC-2 C2). Its OWN collection for §1.3's reason — one BOQ accumulates many sheets over a project's life, and an approved sheet's quantity is the ceiling for RA-Installation
     "delivery_challans": {},  # keyed by UUID string → goods-movement note against a BOQ. Its OWN collection for §1.3's reason — one BOQ accumulates many challans over a project's life
     "projects":     {},   # keyed by UUID string → project record (the commercial engagement BOQs are grouped under)

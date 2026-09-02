@@ -129,6 +129,70 @@ def test_a_measurement_created_through_the_form_carries_its_creator(client):
         "migration may write it.")
 
 
+def test_a_merged_ra_created_through_the_form_carries_its_creator(client):
+    """
+    ⚠ **The sixth document, added with CC-2 C3 on 2 September 2026.**
+
+    The assertion below refused to be widened without this test, which is what
+    that assertion is for: a document added to `approval.DOCUMENTS` inherits the
+    grandfather leniency — *"a record with no creator is approvable by anyone"* —
+    and inherits it **silently**. So the create route is posted for real and the
+    record is read back, exactly as the four above it are.
+
+    A merged document is the sharpest case in the set: it is the one record in
+    this application that **mints a statutory tax invoice serial**. A creator who
+    can approve their own merge can raise a Rule 46(b) number over two bills and
+    sign it off alone.
+    """
+    import boq as BQ
+    import demo_data as DD
+    import merged_ra
+    import ra as RA
+
+    client.get("/boq/")
+    BQ.ensure_demo_boq()
+    bid = DD.BOQ_META["id"]
+    line = next(li for li in STORE["boqs"][bid]["line_items"]
+                if not li["is_header"] and li["total_qty"] > 0)
+
+    def _bill(rid, ra_no, leg, ref):
+        claims = [RA.build_claim(line, 1.0, line["supply_rate"], 0.0,
+                                 line["supply_rate"], leg=leg)]
+        subtotal, drows, dtotal, net = RA.bill_totals(claims, [])
+        STORE.setdefault("ra_bills", {})[rid] = {
+            "id": rid, "ref": ref, "fy": "26-27", "date": "2026-09-01",
+            "boq_id": bid, "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+            "ra_no": ra_no, "leg": leg, "claims": claims,
+            "claim_subtotal": subtotal, "deductions": drows,
+            "deduction_total": dtotal, "net_payable": net,
+            "grand_total": net, "status": "issued",
+        }
+        return rid
+
+    _bill("gf-supply", 1, "supply", "SF/RA/26-27/0021")
+    _bill("gf-install", 2, "installation", "SF/RA/26-27/0022")
+
+    before = dict(STORE.setdefault("merged_ras", {}))
+    r = client.post("/merged/create", data={
+        "boq_id": bid,
+        "supply_ra_id": "gf-supply",
+        "installation_ra_id": "gf-install",
+        "notes": "",
+    }, follow_redirects=False)
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:600]
+
+    rec = _only_new(before, STORE["merged_ras"])
+    user = ensure_test_user()
+    assert rec.get("created_by") == user["id"], (
+        "A merged document raised through /merged/create did not record who "
+        "raised it. B6's creator guard has nothing to check against, so the "
+        "person who merged the two bills can approve their own tax invoice.")
+    assert not approval.is_grandfathered(rec), (
+        "A merged document created today carries the grandfather mark. That "
+        "mark means 'this record predates the approval system' and only the "
+        "migration may write it.")
+
+
 def test_every_approvable_collection_is_covered_by_this_file():
     """
     Every document type in `approval.DOCUMENTS` is one this file tests.
@@ -145,9 +209,19 @@ def test_every_approvable_collection_is_covered_by_this_file():
             "approval.DOCUMENTS has changed. Add a create-route stamping test for "
             "the new document type before widening this assertion — the "
             "grandfather rule is only safe while every create route stamps.")
+
+    ⚠ **Widened again on 2 September 2026 for `merged_ra` (CC-2 C3), on the
+    same terms and in the same order — the stamping test directly above was
+    written first.** The assertion it replaces, also kept verbatim:
+
+        assert set(approval.DOCUMENTS) == {"charge", "ra", "invoice", "purchase",
+                                           "measurement"}, (
+            "approval.DOCUMENTS has changed. Add a create-route stamping test for "
+            "the new document type before widening this assertion — the "
+            "grandfather rule is only safe while every create route stamps.")
     """
     assert set(approval.DOCUMENTS) == {"charge", "ra", "invoice", "purchase",
-                                       "measurement"}, (
+                                       "measurement", "merged_ra"}, (
         "approval.DOCUMENTS has changed. Add a create-route stamping test for "
         "the new document type before widening this assertion — the "
         "grandfather rule is only safe while every create route stamps.")

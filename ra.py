@@ -242,9 +242,36 @@ MAX_RA_JSON_BYTES = 150_000
 
 _REF_SERIES = "RA"
 
-# No 16-character cap. That is Rule 46(b)'s limit on a TAX INVOICE number, and
-# this document is not one. The series still has to be unique and
-# non-repeating, because it is the key a payment gets filed against.
+# No 16-character cap.
+#
+# ⚠ **THE CONCLUSION IS UNCHANGED AND ITS REASON IS NOT.** This comment used
+#   to read *"That is Rule 46(b)'s limit on a TAX INVOICE number, and this
+#   document is not one"* — and the second half of that sentence is a **dead
+#   premise**. The `[AMENDED 8 Aug 2026]` note in `PHASE4_RA_DESIGN.md` §5,
+#   carried into §7, rules that an RA bill **IS** a tax invoice. CC-2's **BQ2**
+#   recorded the contradiction and required whoever answered it to correct this
+#   line. The first block of 2 September 2026 in `CLIENT_CHANGES.md` §0 is that
+#   answer, and this is that correction.
+#
+# ⚠ **THE RULING SPLITS THE QUESTION rather than picking a side**, which is
+#   why `ref` keeps its 64 characters while the premise under it changes:
+#
+#     * `ref` is **our document number** — the key a payment gets filed
+#       against, and the thing quoted in correspondence. It is not the
+#       statutory serial, so Rule 46(b) does not reach it. `PHASE4_RA_DESIGN.md`
+#       §5 was right about `ref`.
+#     * `tax_invoice_ref` is **the statutory serial**, it is a different field
+#       on this same record, and it **does** inherit Rule 46(b)'s 16 characters.
+#       §2 was right about the tax invoice number. The two sections of that file
+#       were never arguing about the same field.
+#
+#   `merged_ra._REF_CAP = 16` is where the 16 is enforced, on the one document
+#   that mints a tax invoice serial today. **Do not "reconcile" the two numbers
+#   — they govern different fields**, and lowering this one would shorten every
+#   RA reference in the database for no statutory reason at all.
+#
+# The series still has to be unique and non-repeating, because it is the key a
+# payment gets filed against.
 _REF_CAP = 64
 
 
@@ -1846,6 +1873,39 @@ def can_issue(bill: dict) -> tuple:
     return True, ""
 
 
+def _live_merge_holding(ra_id: str):
+    """
+    The **live** merged document holding this bill (CC-2 **C3**), or `None`.
+
+    ⚠ **Read straight out of `STORE`, deliberately.** `merged_ra.py` imports
+    this module for the revision chain, the status predicates and the
+    outstanding arithmetic, so importing it back would be a cycle at boot. This
+    is the one-way trick `receipts_for()` above already uses on
+    `STORE["receipts"]`, one document further along.
+
+    ⚠ **Live only.** Cancelling a merged document is exactly how both its legs
+    are released, so a cancelled row must not go on blocking them — that is
+    CC-2's rule, not a convenience: *"Cancel the merged document first, which
+    releases both legs."* `merged_ra.live_merge_of()` is the same question asked
+    from the other side and the two must agree;
+    `tests/test_merged_ra.py::test_the_two_sides_agree_on_what_a_live_merge_is`
+    holds them together over every status value.
+    """
+    ra_id = str(ra_id or "")
+    if not ra_id:
+        return None
+    for m in (STORE.get("merged_ras") or {}).values():
+        status = str(m.get("status") or "").strip().lower()
+        # Unrecognised reads as live, matching `merged_ra.status_of()`: a record
+        # whose status cannot be read must not silently release its two legs.
+        if status == "cancelled":
+            continue
+        if ra_id in (str(m.get("supply_ra_id") or ""),
+                     str(m.get("installation_ra_id") or "")):
+            return m
+    return None
+
+
 def can_cancel(bill: dict) -> tuple:
     """
     (allowed, reason) — may this bill be cancelled?
@@ -1866,6 +1926,26 @@ def can_cancel(bill: dict) -> tuple:
         return False, cancelled_reason(bill)
     if receipts_exist_for(str(bill.get("id") or "")):
         return False, _receipts_refusal(bill, "cancelled", "cancelling it")
+
+    # ⚠ **CC-2 C3's invariant, and it is enforced HERE rather than in
+    #   `merged_ra.py`, because this is where cancelling happens.** *"A source
+    #   bill inside a live merged document cannot be cancelled. Cancel the
+    #   merged document first, which releases both legs."* Without this, a
+    #   cancelled leg would leave a live tax invoice standing over a claim that
+    #   claims nothing — the invoice would be for money no bill supports.
+    #
+    # ⚠ `STORE["merged_ras"]` is read DIRECTLY and `merged_ra.py` is not
+    #   imported. That module imports this one, so the arrow runs one way and
+    #   this is the same one-way trick `ra.py` already uses for receipts and
+    #   `boq.py` uses for bills. `tests/test_import_directions.py` holds it.
+    held = _live_merge_holding(str(bill.get("id") or ""))
+    if held is not None:
+        return False, (
+            f"RA{int(bill.get('ra_no') or 0)} is inside live merged document "
+            f"{held.get('tax_invoice_ref')}, which has raised a tax invoice over "
+            f"it. Cancel that document first — doing so releases both of its "
+            f"bills, and this one can then be cancelled on its own.")
+
     return True, ""
 
 
@@ -2786,6 +2866,9 @@ def list_ras():
     bills = STORE.get("ra_bills") or {}
     dash_url = url_for("dashboard.index")
     create_url = url_for("ra.create_ra")
+    # C3. `url_for` and nothing else — merged_ra.py imports THIS module, so the
+    # arrow runs one way and the link is how the register reaches it.
+    merge_url = url_for("merged_ra.list_merged")
 
     msg = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -2906,6 +2989,11 @@ def list_ras():
         </h1>
         <div style="display:flex;gap:.7rem;">
           <a href="{dash_url}" class="btn btn-ghost">&#8592; Dashboard</a>
+          <!-- CC-2 C3: "Build the merge action ON THE RA REGISTER from day one.
+               The draft-PO -> PO bridge was initially shipped without its entry
+               point; do not repeat that." This is that entry point, and
+               test_the_merge_action_is_on_the_ra_register is what holds it. -->
+          <a href="{merge_url}" class="btn btn-ghost">&#129527; Merged bills</a>
           <a href="{create_url}" class="btn">+ Create RA Bill</a>
         </div>
       </div>

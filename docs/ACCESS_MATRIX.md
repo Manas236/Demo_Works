@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 79 permissions · 120 classified endpoints.**
+**7 roles · 79 permissions · 127 classified endpoints.**
 
 ---
 
@@ -343,14 +343,14 @@ Read off the live route registry, so it cannot drift from what the application a
 | `measurement.delete` | `measurement.delete_ms` |
 | `measurement.print` | `measurement.print_ms` |
 | `measurement.approve` | `approval.approve_measurement`, `approval.reject_measurement` |
-| `ra.view` | `ra.list_ras`, `ra.view_ra` |
-| `ra.create` | `ra.create_ra` |
+| `ra.view` | `merged_ra.list_merged`, `merged_ra.view_merged`, `ra.list_ras`, `ra.view_ra` |
+| `ra.create` | `merged_ra.create_merged`, `ra.create_ra` |
 | `ra.edit` | `ra.edit_ra` |
 | `ra.delete` | `ra.delete_ra` |
 | `ra.issue` | `ra.issue_ra` |
-| `ra.cancel` | `ra.cancel_ra` |
-| `ra.print` | `ra.print_ra` |
-| `ra.approve` | `approval.approve_ra`, `approval.reject_ra` |
+| `ra.cancel` | `merged_ra.cancel_merged`, `ra.cancel_ra` |
+| `ra.print` | `merged_ra.print_merged`, `ra.print_ra` |
+| `ra.approve` | `approval.approve_merged_ra`, `approval.approve_ra`, `approval.reject_merged_ra`, `approval.reject_ra` |
 | `receipt.view` | `attachment.download_receipt`, `attachment.view_receipt`, `receipt.list_receipts` |
 | `receipt.create` | `receipt.new_receipt` |
 | `receipt.edit` | `receipt.edit_receipt` |

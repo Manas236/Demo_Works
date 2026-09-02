@@ -103,6 +103,42 @@ def _module_path(name: str):
     return p if p.exists() else None
 
 
+def test_every_blueprint_is_named_after_the_file_it_lives_in():
+    """
+    ⚠ **The invariant `_module_path()` rests on, and it failed SILENTLY once.**
+
+    The link walk finds a module's source by taking the endpoint prefix and
+    appending `.py` — `ra.list_ras` → `ra.py`. A blueprint whose name does not
+    match its filename therefore resolves to **no file at all**, and
+    `_module_path()` returns `None` and moves on. The consequence is not an
+    error: it is that **every page in that module becomes invisible to the walk
+    and every page it links to looks like an island**, which is the opposite of
+    what this file is for — a sweep that has stopped looking reports a clean
+    result.
+
+    Found on 2 September 2026, when C3 shipped `merged_ra.py` carrying a
+    blueprint named `merged`. Its four sub-pages were reported as islands while
+    the register that links to them was reported as reachable, which is the
+    shape this failure always takes. The blueprint was renamed; this is what
+    stops the next one being diagnosed from scratch.
+    """
+    import app as app_module
+
+    missing = {}
+    for endpoint in sorted(auth.ROUTE_PERMISSIONS):
+        mod = endpoint.split(".", 1)[0]
+        if mod == "static":                    # Flask's own, registered for us
+            continue
+        if _module_path(mod) is None:
+            missing[mod] = endpoint
+
+    assert not missing, (
+        f"these blueprint names have no matching .py file, so the link walk "
+        f"cannot see the module at all and every page in it will read as an "
+        f"island: {missing}. Name the Blueprint after its file — the url_prefix "
+        f"is a separate argument and may still differ.")
+
+
 def _link_edges():
     """
     `(precise, module_wide, computed)`.

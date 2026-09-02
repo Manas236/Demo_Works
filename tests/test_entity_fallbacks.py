@@ -29,6 +29,7 @@ import address
 import demo_data as DD
 import pipeline as P
 import ra
+import merged_ra
 import spec
 from store import STORE
 
@@ -161,11 +162,86 @@ def populated(client):
     # receipt may only be recorded against an issued bill (`ra.can_receipt`), so
     # a draft RA1 with money against it would be a fixture asserting a state the
     # app refuses to produce.
+    #
+    # ⚠ **RENUMBERED 2 September 2026 for C3, and the ORDER is what matters
+    #   rather than the numbers.** A merged document needs one **issued supply**
+    #   bill and one **issued installation** bill, so a third was added — and it
+    #   had to slot in BELOW the draft, because `ra.claim_is_frozen()` refuses to
+    #   edit or delete a bill that is not the highest-numbered in its chain. A
+    #   new bill numbered above `r2-supply` would have made `/ra/edit` and
+    #   `/ra/delete` redirect, and the sweep would have lost two pages without
+    #   saying so. The draft therefore stays the LATEST and moves 2 -> 3.
     paid_rid = _an_ra_bill(bid, ra_no=1, rid="r1-supply", ref="SF/RA/26-27/0001",
                            status="issued")
-    rid = _an_ra_bill(bid, ra_no=2, rid="r2-supply", ref="SF/RA/26-27/0002",
+    install_rid = _an_ra_bill(bid, ra_no=2, rid="r3-install",
+                              ref="SF/RA/26-27/0003", status="issued",
+                              leg="installation")
+    # A SECOND issued pair, for a second merged document. See the note below.
+    supply2_rid = _an_ra_bill(bid, ra_no=3, rid="r4-supply",
+                              ref="SF/RA/26-27/0004", status="issued")
+    install2_rid = _an_ra_bill(bid, ra_no=4, rid="r5-install",
+                               ref="SF/RA/26-27/0005", status="issued",
+                               leg="installation")
+    rid = _an_ra_bill(bid, ra_no=5, rid="r2-supply", ref="SF/RA/26-27/0002",
                       approval_status="pending",
                       status="draft")
+
+    # C3. Built through `merged_ra.create()` rather than pasted in, so the
+    # fixture exercises the real gate and the real minting — a hand-written
+    # record could carry a state the application refuses to produce.
+    #
+    # ⚠ It is marked APPROVED for `printable()`'s reason: B7 refuses to print a
+    #   document that has not finished its ladder, and `/merged/print/<id>` would
+    #   walk a redirect carrying no markup for the sweep to read.
+    #
+    # ⚠ **TWO merged documents, and it is B6 and B7 pulling in opposite
+    #   directions once more** — the same split `_an_ra_bill` needed one
+    #   collection over, and `ch-1`/`ch-2` needed one collection before that.
+    #
+    #     B7: `/merged/print/<id>` refuses a document that has not finished its
+    #         ladder, so the printed sheet needs an APPROVED one.
+    #     B6: `/approval/approve/merged_ra/<id>` refuses one that is ALREADY
+    #         approved — there is nothing left to approve — so the approval
+    #         pages need a PENDING one.
+    #
+    #   They cannot be the same document, and they cannot share a leg either:
+    #   CC-2's *"a bill may appear in at most one live merged document"* is
+    #   enforced in `create()`, so the second merge needs its own pair. That
+    #   refusal is not in the way here — it is the invariant working, and it
+    #   caught a real store leak between tests when this fixture was written.
+    merged_doc, _merge_err = merged_ra.create(
+        STORE["ra_bills"][paid_rid], STORE["ra_bills"][install_rid],
+        notes="Fixture merge")
+    assert merged_doc is not None, f"the fixture merge was refused: {_merge_err}"
+    merged_doc["approval_status"] = "approved"
+    mgid = merged_doc["id"]
+
+    merged_pending, _merge_err2 = merged_ra.create(
+        STORE["ra_bills"][supply2_rid], STORE["ra_bills"][install2_rid],
+        notes="Fixture merge, part-way up its ladder")
+    assert merged_pending is not None, (
+        f"the second fixture merge was refused: {_merge_err2}")
+    # One rung climbed, by somebody who is NOT the sweep's Owner — so
+    # `ladder_summary()` renders a row carrying `role_name` and `user_name`,
+    # both free text on the record and both poisoned by the escaping sweep, and
+    # the one-user-one-rung rule does not refuse the Owner.
+    merged_pending["approval_status"] = "pending"
+    # ⚠ **The creator is cleared, and that is the same leniency `ch-1` above
+    #   relies on.** `merged_ra.create()` stamps whoever raised the document,
+    #   and the sweep signs in as the Owner — so B6's creator guard would
+    #   correctly refuse the Owner their own record and
+    #   `/approval/approve/merged_ra/<id>` would bounce, carrying no markup.
+    #   A record with no known creator is approvable by anyone
+    #   (`approval.creator_is_known()`), which is the grandfather rule, and it
+    #   is what lets this page render. The guard itself is exercised for real in
+    #   `tests/test_merged_ra.py`, never here.
+    merged_pending["created_by"] = ""
+    merged_pending["approvals"] = [{
+        "role": "operation-head", "role_name": "Operation Head",
+        "user_id": "sweep-other-user", "user_name": "Another Person",
+        "at": "2026-09-02 10:00",
+    }]
+    mgid_pending = merged_pending["id"]
     rcid = _a_receipt(paid_rid, bid)
     dpid = _a_draft_po(bid)
     dcid = _a_challan(bid)
@@ -315,6 +391,16 @@ def populated(client):
             # rather than SKIPped for exactly that reason.
             "/approval/approve/charge/<id>":   "ch-1",
             "/approval/reject/charge/<id>":    "ch-1",
+            # C3, 2 September 2026. All five render real HTML carrying record
+            # text — the project name, the account name, the notes and the
+            # cancel reason — so they are exercised rather than SKIPped.
+            # `/merged/print` needs the approved document, which is why the
+            # fixture marks it so.
+            "/merged/view/<id>":   mgid,
+            "/merged/print/<id>":  mgid,
+            "/merged/cancel/<id>": mgid,
+            "/approval/approve/merged_ra/<id>": mgid_pending,
+            "/approval/reject/merged_ra/<id>":  mgid_pending,
             "/employee/delete/<id>": "emp-1",
             "/employee/edit/<id>":   "emp-1",
             "/employee/view/<id>":   "emp-1",
@@ -548,7 +634,7 @@ def _a_quotation() -> str:
 
 def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
                 ref: str = "SF/RA/26-27/0001", status: str = "draft",
-                approval_status: str = "approved") -> str:
+                approval_status: str = "approved", leg: str = "supply") -> str:
     """One claim against the demo BOQ, so /ra/view and /boq/view have a bill."""
     li = next(li for li in STORE["boqs"][boq_id]["line_items"]
               if not li["is_header"] and li["total_qty"] > 0)
@@ -557,7 +643,7 @@ def _an_ra_bill(boq_id: str, ra_no: int = 1, rid: str = "r1-supply",
     STORE["ra_bills"][rid] = {
         "id": rid, "ref": ref, "fy": "26-27",
         "date": "2026-08-06", "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001",
-        "boq_rev_no": 0, "ra_no": ra_no, "leg": "supply", "claims": claims,
+        "boq_rev_no": 0, "ra_no": ra_no, "leg": leg, "claims": claims,
         "claim_subtotal": subtotal, "deductions": drows,
         "deduction_total": dtotal, "net_payable": net,
         "status": status, "issued_on": "", "cancelled_on": "",

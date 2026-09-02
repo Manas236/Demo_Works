@@ -7,6 +7,34 @@
 > changed what the proposal originally said. §7's open questions are now
 > answered and kept only as a record of what was decided.
 
+
+> ### ⚠ [RESOLVED 2 September 2026 — §2 and §5 were never arguing about the same field]
+>
+> `CLIENT_CHANGES-2.md` **BQ2** recorded that this file says both things: §2
+> (line ~167) says `ref` inherits Rule 46(b)'s **≤ 16 characters** *if* the RA
+> bill is a tax invoice, and §5's prohibition table (line ~326) says `ref` is
+> *"our document number, not a tax-invoice serial; no 16-character cap"*. The
+> `[AMENDED 8 Aug 2026]` note satisfies §2's antecedent while §5's conclusion,
+> written before that amendment, still denies the consequent.
+>
+> **The ruling, taken by the client-facing owner in the first `CLIENT_CHANGES.md`
+> §0 block of 2 September 2026, splits the question rather than picking a side:**
+>
+> * **§5 is right about `ref`.** It is our document number — the key a payment is
+>   filed against — and it keeps `ra._REF_CAP = 64`. **Nothing was shortened.**
+> * **§2 is right about the tax invoice number.** That is `tax_invoice_ref`, a
+>   **different field** on the same record, and it **does** inherit Rule 46(b)'s
+>   16 characters. `merged_ra._REF_CAP = 16` is where it is enforced.
+>
+> Neither section's wording is edited, because neither was wrong about its own
+> subject. What was wrong was `ra.py`'s comment, which justified the missing cap
+> by saying the RA bill *"is not"* a tax invoice — the premise the 8 August
+> amendment reversed. **That comment is corrected**, and it quotes what it
+> corrected. `tests/test_merged_ra.py` holds both halves.
+>
+> ⚠ **[STATE.md](STATE.md) §2.1's Dead-Premise Cleanup Checklist can be ticked
+> against this file for BQ2**, and for BQ2 only.
+
 ## Build order
 
 1. **Record shape + `claimed_by_line()` walking the revision chain**, with

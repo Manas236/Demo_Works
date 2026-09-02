@@ -25,6 +25,11 @@ from boq import boq_bp           # BOQ: the priced schedule for a project. Head 
 from ra import ra_bp             # RA bills: progressive claims against a BOQ
                                   # revision. Headed TAX INVOICE per DOMAIN.md §4.
 from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
+from merged_ra import merged_bp  # CC-2 C3: one issued supply bill + one
+                                 # issued installation bill, stacked onto one
+                                 # sheet under ONE minted tax invoice number.
+                                 # Imports ra.py; ra.py links back with url_for
+                                 # and reads STORE['merged_ras'] directly.
                                  # Its own collection, never a list on the bill
                                  # or the BOQ. It imports ra.py; ra.py links
                                  # back with url_for only.
@@ -137,6 +142,11 @@ app.register_blueprint(receipt_bp)            # Mounted at /receipt — REQUIRED
                                               # /ra/view, which builds
                                               # url_for("receipt.new_receipt")
                                               # on every bill and 500s without it.
+app.register_blueprint(merged_bp)             # Mounted at /merged — CC-2 C3.
+                                              #   Must come after ra_bp: it
+                                              #   imports ra.py for the chain,
+                                              #   the status predicates and the
+                                              #   outstanding arithmetic.
 app.register_blueprint(po_draft_bp)           # Mounted at /po (Draft PO from BOQ)
 app.register_blueprint(challan_bp)            # Mounted at /dc — REQUIRED by
                                               # /boq/view, which builds

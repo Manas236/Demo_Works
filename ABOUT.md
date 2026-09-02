@@ -387,6 +387,7 @@ Consequences you must respect when editing:
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
 | [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [attachment.py](attachment.py) | 817 | **File attachments on a charge and on a receipt** (CC-2 **B8**, 2 Sep 2026). The **only** module that returns file bytes, and the first record in this app whose payload is not in the database — the file is on disk under `attachment.root()`, the record holds a **relative path**. A **bottom-of-graph** module like `approval.py`: `charge.py` and `receipt.py` import it, so it imports neither. Type is decided by **magic bytes**, never by extension or the browser's `Content-Type`; 5 MB cap refused before the store is touched; the cascade deletes the file **and** the row. ⚠ **Compulsory on a charge, optional on a receipt** — CC-2's asymmetry, carried as data in `PARENTS`. ⚠ **Mints no permission**: each of its six endpoints carries the PARENT's own. ⚠ **B7 gates the download and that is OURS** — through `approval.can_print()`, not a second copy of the rule. See §3. |
+| [merged_ra.py](merged_ra.py) | 1022 | **The merged RA bill** (CC-2 **C3**, 2 Sep 2026) — one issued RA-Supply bill and one issued RA-Installation bill from the same revision chain, stacked onto one sheet under **one minted tax invoice number**. Its own `merged_ras` collection; a separate document type, the same relationship as Draft PO → PO. ⚠ **It holds NO claims of its own** — copying them in would make the over-claim guard count the same quantity twice. ⚠ Totals are the **sum of the two bills' stored totals**, never recomputed from the live BOQ. ⚠ **Imports `ra.py`; `ra.py` may NOT import it back** — it reads `STORE['merged_ras']` directly and links with `url_for`, the one-way trick. ⚠ **Mints `SF/MI/...`, never `TI`** — `invoice.py` owns that series and a second counter under it would put one statutory serial on two documents. ⚠ **Mints no permission**: every route carries `ra.*`. See §3. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -3250,6 +3251,161 @@ nothing to check against. `tests/test_approval_grandfather.py` is what keeps the
 set closed, and it is load-bearing: it asserts every create route stamps, that
 no record created after the pinned moment lacks a creator, and that nothing but
 the migration ever writes the mark.
+
+### Merged RA  (CC-2 **C3**, 2 September 2026)
+
+A **separate document type**, the same relationship as Draft PO → PO. RA-Supply
+and RA-Installation go on being raised separately and each keeps its own
+`ra_no`, its own `ref` and its own status; the merge produces one further
+document carrying both legs' rows **stacked**, one combined total, and **one
+minted tax invoice number**.
+
+```
+STORE["merged_ras"][uuid] = {
+  "id": uuid,
+  "tax_invoice_ref": "SF/MI/26-27/0001",  # THE statutory serial. Minted here.
+  "fy": "26-27", "date": "2026-09-02",
+
+  "supply_ra_id": uuid,   "installation_ra_id": uuid,
+  "supply_ref": str,      "installation_ref": str,
+  "supply_ra_no": int,    "installation_ra_no": int,
+
+  "boq_id": uuid, "boq_ref": str,
+  "project_name": str, "site_location": str, "account_name": str,
+  "contact_person": str, "to": str, "bill_gstin": str,
+
+  # SUMMED AT CREATION from what the two bills STORED. Never recomputed.
+  "claim_subtotal": float, "deduction_total": float, "net_payable": float,
+  "tax_amount": float, "rounding_off": float, "grand_total": float,
+
+  "status": "live" | "cancelled",
+  "cancelled_on": "", "cancel_reason": "", "notes": str,
+}
+```
+
+⚠ **THERE IS NO `claims` KEY AND THERE MUST NEVER BE ONE.** CC-2: *"The merged
+record never holds claims of its own. It references the two source bills.
+Copying claim rows into it would make the over-claim guard count the same
+quantity twice."* The printed rows are read from the two sources at render by
+`stacked_rows()`. `test_the_merged_record_holds_no_claims_of_its_own` fails if
+one appears.
+
+**CC-2's six invariants, and where each is enforced:**
+
+| invariant | where |
+|---|---|
+| no claims of its own | no `claims` key; `stacked_rows()` reads the sources |
+| totals are the **sum of the two stored totals** | `merged_ra._sum_totals()` |
+| a bill is in **at most one live** merged document | `live_merge_of()`, checked in `create()` |
+| a merged leg **cannot be cancelled** | ⚠ **`ra.can_cancel()`** — see below |
+| **receipts stay on the source bills** | nothing writes one; `balance()` sums the legs |
+| the merge action is **on the RA register** | `ra.list_ras()` renders the link |
+
+⚠ **The cancel guard lives in `ra.py`, not here, because that is where
+cancelling happens.** `ra._live_merge_holding()` reads `STORE["merged_ras"]`
+**directly** — the one-way trick this codebase already runs for
+`ra.py`/`receipt.py` and `boq.py`/`ra.py` — because `merged_ra.py` imports
+`ra.py` for the revision chain, the status predicates and the outstanding
+arithmetic, so importing back would be a cycle at boot. The two functions ask
+the same question from opposite sides and must agree;
+`test_the_two_sides_agree_on_what_a_live_merge_is` holds them together over
+every status value rather than leaving it to a comment.
+
+⚠ **"Live" is the whole of that rule.** A cancelled merged document **releases
+both legs** — that is what cancelling it is for — so a cancelled row must not go
+on blocking them. Both sides default an unrecognised status to `live`, which is
+the safe direction here: a record whose status cannot be read must not silently
+release its legs for a second merge.
+
+⚠ **Totals are summed, never recomputed, and `grand_total` is summed rather
+than re-derived from the summed parts.** Each leg already rounded once per tax
+slab; re-deriving would round the sum a second time and the merged sheet would
+disagree with its own two legs by a rupee. CC-2 names the defect class by name —
+*"same defect class as the `print_ra` bug already fixed once"* — and
+`test_revising_the_boq_does_not_move_a_merged_document` multiplies every live
+rate by ten and asserts the document does not move.
+
+⚠ **The tax block is the one figure that IS recomputed**, and the reason is that
+a slab is not a total: supply at 18% and installation at 18% are **one** 18%
+slab on the merged sheet, not two rows saying 18% twice. It is computed from the
+two bills' **frozen** claim rows, so it is as frozen as the sums beside it, and
+it is **not** what `grand_total` is built from. If the two ever disagree, the
+stored sum wins.
+
+#### BQ1 and BQ2 — answered before the code, in `CLIENT_CHANGES.md` §0
+
+**BQ2 first**, because BQ1 is not stable without it. `PHASE4_RA_DESIGN.md` §2
+said `ref` inherits Rule 46(b)'s 16-character cap; §5 of the same file said it
+does not; the code sided with §5. **The ruling splits the question rather than
+picking a side:**
+
+- an RA bill's **`ref` is our document number** and keeps `ra._REF_CAP = 64`.
+  **Not changed by this pass** — lowering it would shorten every RA reference in
+  the database for no statutory reason. §5 was right about `ref`.
+- the **statutory serial is `tax_invoice_ref`**, a different field, and it **is**
+  capped at 16. §2 was right about the tax invoice number. The two sections were
+  never arguing about the same field.
+
+`ra.py`'s comment above `_REF_CAP` said *"this document is not one"* — the
+premise the 8 August amendment reversed — and BQ2 required whoever answered it
+to correct that line. It is corrected, and it **quotes what it corrected** so
+the history is legible; `test_the_dead_premise_is_marked_as_one_in_ra_py` holds
+both halves.
+
+**BQ1 then dissolves**: the two legs never spent a statutory serial, so there is
+no third. The merged document mints its own from its own counter, derived from
+neither leg — `SF/RA/26-27/0004` is **exactly 16 characters**, so there is no
+room inside Rule 46(b)'s budget to decorate one into a unique merged variant.
+
+⚠ **The series is `MI`, and it must never become `TI`.** `invoice.py` mints
+`SF/TI/26-27/0001` at `cap=16` for the sell-side tax invoice; a second counter
+under that series would put **one statutory serial on two different documents**,
+which is the precise failure Rule 46(b) exists to prevent and strictly worse
+than the ambiguity being resolved. Multiple invoice series are permitted
+provided each is consecutive and unique within the year, which a separate
+counter gives by construction. `ra.py`'s prohibition on importing `invoice.py`
+is **not** relaxed to share a counter.
+
+⚠ **WHAT THIS DOES NOT DO.** A **single-leg** RA bill's `tax_invoice_ref` is
+still a typed field with no counter behind it, falling back to `ref` when blank —
+exactly as [DOMAIN.md §4.2](DOMAIN.md) records. **That gap is not closed**, it
+was not in C3's scope, and §4.2's STATUS paragraph stands.
+`test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED` pins it so nobody reads
+C3 as having closed it.
+
+#### The ladder, and the permissions
+
+The merged document is the **sixth** entry in `approval.DOCUMENTS` and carries
+the **RA ladder** — Operation Head + Director, unordered, any one Director
+sufficient. ⚠ **Unlike the measurement (§2i), this one CC-2 does settle:** B6
+gives *"RA / Tax Invoice / PO: Operations Head + Director"*, and a merged RA is
+both of the first two at once. Nothing in CC-2 or `approval.py` exempts it.
+
+⚠ **No permission was minted.** All five pages carry `ra.*` — `ra.view`,
+`ra.create`, `ra.print`, `ra.cancel` — and the two approval endpoints carry
+`ra.approve`. `invoice.approve` was the alternative and was **checked rather
+than assumed**: exactly the same three roles hold both (Owner, Director,
+Operation Head), so the choice confers nothing on anybody.
+`test_ra_approve_and_invoice_approve_reach_the_same_roles` fails the day that
+stops being true, so the decision is re-taken deliberately rather than inherited.
+
+⚠ **`/merged/` is deliberately NOT on the nav or the launcher.** CC-2 names the
+**RA register** as the merge action's home — *"Build the merge action on the RA
+register from day one. The draft-PO → PO bridge was initially shipped without
+its entry point; do not repeat that."* It is a sub-register in the sense
+`/roles` is a sub-page of `/users`, and it is named in
+`tests/test_nav_reachability.py::UNLINKED_ON_PURPOSE` with that reason.
+
+⚠ **The blueprint is named `merged_ra`, matching the FILE, and that is
+load-bearing.** `tests/test_page_reachability.py` finds a module's source by
+appending `.py` to the endpoint prefix, so a blueprint named `merged` in
+`merged_ra.py` resolves to no file — and the walk then reports **every page in
+the module as an island** while raising no error of its own. It shipped that way
+for an hour on 2 September 2026 and
+`test_every_blueprint_is_named_after_the_file_it_lives_in` is what stops the
+next one being diagnosed from scratch.
+
+---
 
 ### Attachment  (CC-2 **B8**, 2 September 2026)
 
