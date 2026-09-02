@@ -386,6 +386,7 @@ Consequences you must respect when editing:
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
 | [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
+| [attachment.py](attachment.py) | 817 | **File attachments on a charge and on a receipt** (CC-2 **B8**, 2 Sep 2026). The **only** module that returns file bytes, and the first record in this app whose payload is not in the database — the file is on disk under `attachment.root()`, the record holds a **relative path**. A **bottom-of-graph** module like `approval.py`: `charge.py` and `receipt.py` import it, so it imports neither. Type is decided by **magic bytes**, never by extension or the browser's `Content-Type`; 5 MB cap refused before the store is touched; the cascade deletes the file **and** the row. ⚠ **Compulsory on a charge, optional on a receipt** — CC-2's asymmetry, carried as data in `PARENTS`. ⚠ **Mints no permission**: each of its six endpoints carries the PARENT's own. ⚠ **B7 gates the download and that is OURS** — through `approval.can_print()`, not a second copy of the rule. See §3. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -3250,6 +3251,138 @@ set closed, and it is load-bearing: it asserts every create route stamps, that
 no record created after the pinned moment lacks a creator, and that nothing but
 the migration ever writes the mark.
 
+### Attachment  (CC-2 **B8**, 2 September 2026)
+
+The first record in this application whose **payload is not in the database**.
+
+```
+STORE["attachments"][uuid] = {
+  "id": uuid,
+  "filename":    "supplier-bill.jpg",   # AS UPLOADED. Display only.
+  "stored_path": "charge/<uuid>.jpg",   # RELATIVE to attachment.root()
+  "size_bytes":  482913,
+  "mime_type":   "image/jpeg",          # SNIFFED, never the claimed one
+  "parent_type": "charge" | "receipt",
+  "parent_id":   uuid,
+  "uploaded_by": "<user id>",           # "" when there is no session
+  "uploaded_at": "2026-09-02 23:41",
+  "sha256":      "<64 hex>",            # of what was written
+}
+```
+
+The file itself lives at `attachment.root() / stored_path` — by default
+`<repo>/attachments/`, **gitignored**, overridable with `ATTACHMENT_DIR`, and
+**served by no static route** because this application has none (§1). §4 is why
+the bytes are not on the record and what would break if they were.
+
+**Six properties this shape exists to guarantee:**
+
+1. **The bytes are not in it.** `db._blob()` writes bytes through
+   `json.dumps(default=str)` and reloads them as a corrupted **string** with no
+   exception raised — §4. The payload is a file; this record is its index card.
+2. **`stored_path` is RELATIVE and is minted here, never supplied.** It is
+   `<parent_type>/<uuid><sniffed extension>`. An absolute path would publish the
+   host's disk layout into a database that gets dumped and handed around, and it
+   would stop the store being relocatable. `attachment.abs_path()` re-validates
+   it against the root on **every read** — not because `save()` is distrusted,
+   but because the value arrives from the *database*, which is a different trust
+   boundary from the one it was written across.
+3. **`filename` never builds a path.** It is the operator's own string, kept so
+   a download arrives with the name they recognise, escaped where it renders.
+   A file called `../../app.py` is a display string and not a write target, and
+   `tests/test_attachments.py` uploads exactly that name to prove it.
+4. **`mime_type` is SNIFFED from the leading bytes**, and the extension on disk
+   is derived from the sniffed type rather than the upload's name — so the name
+   on disk can never disagree with the bytes in it. The browser's
+   `Content-Type` and the file's extension are both the uploader's to choose and
+   neither is consulted. A renamed `.exe` labelled `image/png` is refused.
+5. **`parent_type` + `parent_id` is the link and it points ONE way.** The charge
+   carries no list of attachment ids. One parent accumulates several files —
+   CLIENT_CHANGES.md §1.3's rule — and it is what makes the cascade a query
+   rather than a second thing to keep in step.
+6. **Deleting the parent deletes both halves.** `attachment.delete_for_parent()`
+   is called from `charge.delete_charge()` and `receipt.delete_receipt()` before
+   the parent is popped. The test asserts the file is **gone from disk**, not
+   merely that the row is gone — a cascade that left a 5 MB file behind forever
+   would satisfy the weaker assertion.
+
+**⚠ Compulsory on a charge, optional on a receipt, and the asymmetry is CC-2's.**
+It is data on `attachment.PARENTS`, not a branch, so it is visible in one place.
+The charge side is the 19 August list read literally — *"Compulsory document
+ATTACHMENT in the charge section"*. The receipt side carries CC-2's own reason:
+*"bank transfers often have no separate slip, and compulsory would block honest
+entries."* **A later pass must not make the two symmetrical** without an override
+block; `test_the_requirement_is_data_and_not_a_branch` fails if it does.
+
+⚠ **The requirement is enforced at two doors, not one.** `charge.new_charge()`
+refuses to save without a file, and `attachment._do_delete()` refuses to remove
+the **last** one. A rule checked only at creation is a speed bump.
+
+⚠ **It is NOT enforced on an edit, and that is the grandfather rule.** Every
+charge raised before 2 September 2026 has no attachment, and requiring one to fix
+a typo would mean finding a two-month-old paper bill first. Same reasoning as
+`approval.is_grandfathered()`: a gate applies to what happens next.
+
+⚠ **"Receipt" is not overloaded.** CC-2 warns explicitly: the payment record is
+the receipt; what is attached to it is a **proof of payment** (bank slip, cheque,
+UTR advice). `PARENTS["receipt"]["noun"]` carries that string and a test asserts
+the word "receipt" does not appear in it.
+
+**Six endpoints, three per parent type, and that is the registry's doing.**
+`auth.ROUTE_PERMISSIONS` maps one endpoint to one permission, and an
+attachment's permission is its *parent's* — `charge.view` for one row,
+`receipt.view` for the next. One shared endpoint could only be classified
+`AUTHENTICATED` with the real check hidden in the view, which is the precise
+weakening B5 exists to prevent. So the parent type is in the URL and each
+endpoint gets its own row; `approval._register_routes()` solved the identical
+problem the identical way (§2i). The type in the URL is **checked against the
+record**, or the split would be decoration — a charge's file reached through the
+receipt endpoint would be served under the weaker permission.
+
+⚠ **No `attachment.*` permission was minted**, deliberately. Whoever may view a
+charge may view what it is evidenced by. A separate family would be four more ids
+to grant and to leave ungranted, which is the failure §2g records shipping three
+times. `delete_*` carries the parent's **delete** permission rather than its view
+one, because it answers POST and destroys — a read verb on a writing POST is §7
+gap 24b.
+
+⚠ **B7 IS APPLIED TO THE DOWNLOAD, AND THAT IS OURS, NOT CC-2's.** B7 gates an
+unapproved *document*; it says nothing about that document's supporting file.
+Leaving the supplier bill downloadable while the charge is not would be a hole
+big enough to drive the document through — photograph the attachment and you have
+the figures. `attachment.may_download()` therefore applies **B7's own function**,
+`approval.can_print()`, rather than restating the rule; a second copy would have
+to be kept in step with the two named print exemptions, the grandfather clause and
+the rejected case, and would not be. `test_the_download_gate_calls_b7_rather_than_restating_it`
+walks the AST to hold that. The consequence is exactly B7's shape: an unapproved
+attachment **still views inline** and refuses only the raw download. Recorded in
+PROGRESS.md §4c as unspecced-but-consistent scope.
+
+⚠ **A receipt is on no ladder, so nothing about it is gated** — `approval.DOCUMENTS`
+has no `receipt` entry and `can_print()` returns True for a key it does not know.
+That is a fact about the ladder rather than an exemption written in
+`attachment.py`: if a receipt ever joins `DOCUMENTS`, the gate starts applying with
+no change to that module.
+
+**The three response headers are not decoration.** `X-Content-Type-Options:
+nosniff` stops a browser disregarding our `Content-Type` and guessing from the
+bytes, which would re-open the hole the magic-byte check closes.
+`Content-Security-Policy: sandbox; frame-ancestors 'none'` matters because a
+**PDF is an active document format** — it can carry JavaScript and same-origin
+requests, and served from this app's own origin it would run with the operator's
+session. `sandbox` drops it into an opaque origin where it can still be read.
+
+⚠ **`attachments` must never be seeded.** It is transactional in
+`tests/test_hardening.py`'s sense and is the one entry there that would be a lie
+**on disk** as well as in the database: a seeded row either names a file that does
+not exist, or ships a fabricated supplier bill against a fabricated charge. It is
+also the evidence CC-2 makes compulsory on a charge.
+
+⚠ **A `mysqldump` is no longer a complete backup of this application.** The
+metadata rows are in the dump; the files are not. See §4.
+
+---
+
 ---
 
 ## 4. Persistence — how `db.py` works
@@ -3380,7 +3513,7 @@ the one experiment a real MySQL cannot easily be made to run.
   block, which executes before `app.secret_key = os.getenv("SECRET_KEY", ...)`.
   Don't move the db import below that line.
 
-#### ⚠ This layer cannot carry a BLOB, and CC-2 **B8** is blocked on it
+#### ⚠ This layer cannot carry a BLOB — and CC-2 **B8** is built AROUND that, not through it
 
 **Measured 30 August 2026**, when B8 (file attachments) was authorised and the
 pass sent to build it stopped here instead. The question asked was narrow —
@@ -3427,11 +3560,50 @@ names is 6.7 MB on the row and 6.7 MB through the hash on every page load.
 **What this does NOT mean.** It is not that attachments are impossible — it is
 that they need a **write-once, no-diff** path, which is a different persistence
 discipline from the one this module implements, sitting beside it rather than
-inside it. Designing that is a decision with a schema change behind it, and
-[CLIENT_CHANGES.md §0](CLIENT_CHANGES.md)'s second 30 August 2026 block records
-B8 as **authorised and unbuilt** pending it. The server's
-`max_allowed_packet` here is **67,108,864 bytes (64 MB)** on MySQL 8.0.39,
-which is *not* the binding constraint — the diff loop is.
+inside it. The server's `max_allowed_packet` here is **67,108,864 bytes
+(64 MB)** on MySQL 8.0.39, which is *not* the binding constraint — the diff
+loop is.
+
+#### ✅ RESOLVED 2 September 2026 — the write-once path is a FILE, and B8 is built
+
+The paragraph above described the shape the fix would have to take, and
+[attachment.py](attachment.py) is that shape. **The bytes never enter STORE.**
+They are written once to a file under `attachment.root()` — `<repo>/attachments/`,
+gitignored, served by nothing — and what enters STORE is a small metadata record
+carrying the **relative path**, the size, the sniffed mime type and the record it
+belongs to. That record diffs like any other small record and costs
+`_sync_collection()` nothing measurable.
+
+So all three findings above stand exactly as measured, and none of them is
+worked around:
+
+1. `_blob()` still corrupts bytes silently — **and no bytes are ever handed to
+   it.** `tests/test_attachments.py::test_the_bytes_are_not_in_the_store`
+   serialises `STORE["attachments"]` the way `_blob()` would and asserts the
+   payload is not in it, so a later pass that "simplifies" by putting the file
+   on the record re-opens the corruption **and goes red** rather than silently.
+2. There is still one table shape and it is JSON — **and the metadata record
+   is ordinary JSON.** `attachments` is an ordinary entry in `COLLECTIONS`.
+3. Diff-on-every-request is still the wrong discipline for an immutable payload
+   — **and the immutable payload is not in the diff loop.** What is in it is a
+   record of roughly 300 bytes.
+
+⚠ **The storage decision is the owner's**, taken in the **first
+[CLIENT_CHANGES.md §0](CLIENT_CHANGES.md) block of 2 September 2026**, which
+supersedes the second 30 August 2026 block's choice of BLOBs **without editing
+it**. That block is still there and still reads as it did; a reader who finds it
+first is pointed here. Note that the 2 September decision is not a departure from
+CC-2 — it is a **return to it**: CC-2's B8 says *"real file storage with a path
+held on the record"*, and the BLOB choice was the departure.
+
+⚠ **`attachments/` is gitignored and is NOT in a database dump.** `backups/`
+holds `mysqldump` output, which now covers strictly less than the whole of the
+application's state: the metadata rows are in the dump and **the files are not**.
+A restore from a dump alone produces rows pointing at files that are not there —
+`attachment.abs_path()` resolves them to a path that does not exist and every
+download 404s. **A real backup of this application is the dump plus the
+directory.** This is the first time that has been true and it is recorded here
+because nothing else would say so.
 
 ---
 

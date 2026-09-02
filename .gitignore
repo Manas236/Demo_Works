@@ -32,6 +32,14 @@ desktop.ini
 # Database dumps — confidential, and large
 backups/
 
+# Attachments — CC-2 B8. Real files: a scanned supplier bill, a bank slip, a
+# cheque image. Commercial data belonging to the client, written at runtime by
+# attachment.py and served by nothing. Same reasoning as backups/ above, and
+# the same convention: a gitignored runtime directory at the repository root.
+# ⚠ Overridable with ATTACHMENT_DIR, so a deployment can put it on another
+#   volume. The tests point it at a temporary directory and never write here.
+attachments/
+
 # Timestamped editor backups — `ABOUT.md.bak.20260809-1305`, `ra.py.bak.…-corr`.
 # They were untracked but NOT ignored, so every `git status` listed twenty of
 # them and a `git add -A` would have committed the lot. Git history is the

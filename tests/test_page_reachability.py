@@ -375,8 +375,41 @@ def test_the_link_graph_is_built_from_literal_endpoints_almost_everywhere():
     #   pessimistic, never less: `/address/view/<id>` is reached on its own
     #   merits from the address list, and the six pages the chips link to are
     #   each already reachable from their own registers. Checked, then raised.
-    assert computed <= 11, (
+    #
+    # ⚠ **RAISED 11 → 16 on 2 September 2026 (B8, file attachments), which is
+    #   again what the docstring instructs rather than a weakening of it.** The
+    #   previous assertion, kept verbatim:
+    #
+    #       assert computed <= 11, (
+    #           f"{computed} url_for() call sites use a computed endpoint, up from the "
+    #           f"11 measured on 30 August 2026 (fourth pass). The sweep can only see "
+    #           f"one if its endpoint name appears as a literal too. Check the new one, "
+    #           f"then raise this bound deliberately.")
+    #
+    #   All five new sites are in `attachment.py`, and all five are computed for
+    #   the SAME structural reason: B8's routes are minted per parent type from
+    #   `attachment.PARENTS` — `view_charge`, `view_receipt`, and so on — because
+    #   `auth.ROUTE_PERMISSIONS` maps one endpoint to one permission and an
+    #   attachment's permission is its PARENT's. One shared endpoint would have
+    #   to be classified `AUTHENTICATED`, which is the weakening B5 exists to
+    #   prevent. `approval.py`'s two computed sites above exist for the identical
+    #   reason and are the precedent.
+    #
+    #     _rows()        x3   url_for(f"attachment.view_{parent_type}"), and the
+    #                         same for download_ and delete_
+    #     _do_download() x1   url_for(spec["list_endpoint"]) — where a refusal
+    #                         bounces to, read off PARENTS
+    #     _do_delete()   x1   the same, after the cascade
+    #
+    #   ⚠ **Like `address._ref_chips()`, none of the five contributes an edge**:
+    #   the endpoint names live in a module-level dict, not as literals at a call
+    #   site, so the walk cannot resolve them. That makes the sweep MORE
+    #   pessimistic, never less. The pages they point at are reached on their own
+    #   merits — `charge.list_charges` and `receipt.list_receipts` are both
+    #   already roots of this walk — and the four file routes render no page at
+    #   all, which is why `tests/test_entity_fallbacks.py` skips them too.
+    assert computed <= 16, (
         f"{computed} url_for() call sites use a computed endpoint, up from the "
-        f"11 measured on 30 August 2026 (fourth pass). The sweep can only see "
+        f"16 measured on 2 September 2026 (B8). The sweep can only see "
         f"one if its endpoint name appears as a literal too. Check the new one, "
         f"then raise this bound deliberately.")

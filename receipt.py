@@ -71,6 +71,7 @@ from datetime import date as _date
 
 from flask import Blueprint, redirect, request, url_for
 
+import attachment
 import boq as BQ
 import branding as B
 import pipeline as P
@@ -328,7 +329,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{attachment.ATTACHMENT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -407,7 +408,9 @@ def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
   {_alert(error)}
   {extra_note}
   {_bill_facts(bill, exclude_id)}
-  <form method="POST" action="{action}">
+  <!-- ⚠ enctype is load-bearing — without it request.files is silently empty.
+       See the same note on charge.py's form. -->
+  <form method="POST" action="{action}" enctype="multipart/form-data">
     <div class="form-section">
       <div class="section-title">&#128176; What arrived</div>
       <div class="fg2">
@@ -454,6 +457,19 @@ def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
         no number, and appears on nothing that leaves this office &mdash; the
         bill still says what it says. Leave it blank on an ordinary
         payment.</span></div>
+    </div>
+    <div class="form-section">
+      <div class="section-title">&#128206; Proof of payment</div>
+      <!-- ⚠ CC-2's VOCABULARY WARNING, and it is the reason this section is
+           not called "receipt": *"receipt" already means the payment record.
+           What is attached to it is a proof of payment (bank slip / cheque /
+           UTR). Do not overload the word.*
+
+           ⚠ OPTIONAL, and NOT to be made compulsory without an override block.
+           CC-2 gives the reason in its own words: *"bank transfers often have
+           no separate slip, and compulsory would block honest entries."* The
+           asymmetry with a charge is the specification, not an oversight. -->
+      {attachment.upload_field("receipt", data.get("id") or "")}
     </div>
     <div style="display:flex;gap:.7rem;">
       <button type="submit" class="btn">{_esc(submit_label)}</button>
@@ -622,6 +638,17 @@ def new_receipt():
 
     if request.method == "POST":
         data, error = _validate(request.form, bill)
+
+        # ── B8, OPTIONAL on a receipt. See the form section for CC-2's own
+        #    reason. Validated before the record is written so a bad file does
+        #    not produce a saved receipt plus an error page; an ABSENT file is
+        #    not an error at all here, which is the whole of the asymmetry.
+        upload = request.files.get("attachment")
+        has_file = bool(upload and (upload.filename or "").strip())
+        if not error and has_file:
+            ok, why, _m, _sz = attachment.validate(upload)
+            if not ok:
+                error = why
         if not error:
             rid = new_id()
             STORE["receipts"][rid] = {
@@ -653,6 +680,9 @@ def new_receipt():
             # NOTHING is written to the RA bill here. Not its `prev_balance`,
             # not any later bill's. That is the contract this module exists to
             # keep — see the module docstring.
+            if has_file:
+                attachment.save(upload, "receipt", rid)
+
             note = _overpay_note(bill, data["amount"], exclude_id=rid,
                                  write_off=data["write_off"])
             return redirect(url_for("ra.view_ra", id=ra_id,
@@ -697,6 +727,9 @@ def edit_receipt(id: str):
         "notes": str(rec.get("notes") or ""),
         "write_off_raw": (f'{float(rec.get("write_off") or 0.0):g}'
                           if rec.get("write_off") else ""),
+        # B8 — so the form can list what is already attached and offer to
+        # remove it. Display only; nothing here is written back to the record.
+        "id": id,
     }
     error = ""
 
@@ -714,6 +747,16 @@ def edit_receipt(id: str):
 
     if request.method == "POST":
         data, error = _validate(request.form, bill)
+        data["id"] = id
+
+        # B8 — an edit may add another proof of payment. Still optional, for
+        # the same reason it is optional at creation.
+        upload = request.files.get("attachment")
+        has_file = bool(upload and (upload.filename or "").strip())
+        if not error and has_file:
+            ok, why, _m, _sz = attachment.validate(upload)
+            if not ok:
+                error = why
         if not error:
             rec["date"] = data["date"]
             rec["fy"] = P.fy_of(data["date"])
@@ -726,6 +769,9 @@ def edit_receipt(id: str):
             # `ref` is NOT reissued on an edit. It may already be on a
             # remittance advice, and a number that moves is a number nobody can
             # quote back. Same reason `ra_no` is never reassigned.
+            if has_file:
+                attachment.save(upload, "receipt", id)
+
             over = _overpay_note(bill, data["amount"], exclude_id=id,
                                  write_off=data["write_off"])
             return redirect(url_for("ra.view_ra", id=ra_id,
@@ -769,6 +815,10 @@ def delete_receipt(id: str):
     ra_id = str(rec.get("ra_id") or "")
 
     if request.method == "POST":
+        # B8's cascade — the proof-of-payment file and its metadata row go with
+        # the receipt. CC-2: *"Deleting the parent record deletes its file. No
+        # orphans."* Same ordering as charge.delete_charge().
+        attachment.delete_for_parent("receipt", id)
         STORE["receipts"].pop(id, None)
         # Again: no RA bill is touched. A bill that stated a balance including
         # this money goes on stating it.

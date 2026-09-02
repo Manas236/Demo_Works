@@ -98,9 +98,16 @@ def test_every_reference_collection_has_a_seeder(client):
     # on a site and found a quantity, and once approved it is the ceiling every
     # installation claim is checked against. Inventing one would invent the
     # ceiling on somebody's money.
+    # `attachments` (B8, 2 Sep 2026) is transactional, and it is the one entry in
+    # this set that would be a **lie on disk** as well as in the database. A
+    # seeded row names a file under `attachment.root()`, so either that file does
+    # not exist — every fresh install shipping a broken download — or the seeder
+    # writes bytes, and a fresh install ships a fabricated supplier bill against
+    # a fabricated charge. It is also the evidence CC-2 makes compulsory on a
+    # charge, so inventing one would invent the proof that a payment was owed.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "measurements",
-                     "projects", "charges",
+                     "projects", "charges", "attachments",
                      "employees", "attendance", "users"}
     assert seeded | transactional == set(db.COLLECTIONS)
 

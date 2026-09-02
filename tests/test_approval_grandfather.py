@@ -31,7 +31,7 @@ import json
 
 from store import STORE
 
-from conftest import ensure_test_user
+from conftest import ensure_test_user, charge_form
 
 
 # ── 1. Every create route stamps a creator ─────────────────────────────────
@@ -49,11 +49,26 @@ def _only_new(before: dict, after: dict):
 
 
 def test_a_charge_created_through_the_form_carries_its_creator(client):
+    """
+    ⚠ **REWRITTEN 2 September 2026 for B8, and NOT weakened.** Both assertions
+    below are the originals, unchanged. What changed is the post: CC-2's B8
+    makes an attachment **compulsory on a charge**, so a form without a file no
+    longer creates one and `_only_new()` had nothing to find. The old post,
+    kept verbatim:
+
+        r = client.post("/charge/new", data={
+            "date": "2026-08-29", "person": "R. Kadam", "head": "Travel",
+            "description": "Site visit", "taxable_amount": "1200", "gst_rate": "0",
+        }, follow_redirects=False)
+
+    `charge_form()` is that same dict with a real PNG added, in `conftest.py`, so
+    the next change to what a valid charge post looks like lands in one place.
+    The redirect assertion is what now also proves the attachment was accepted —
+    a refused file re-renders the form with a 200.
+    """
     before = dict(STORE.setdefault("charges", {}))
-    r = client.post("/charge/new", data={
-        "date": "2026-08-29", "person": "R. Kadam", "head": "Travel",
-        "description": "Site visit", "taxable_amount": "1200", "gst_rate": "0",
-    }, follow_redirects=False)
+    r = client.post("/charge/new", data=charge_form(),
+                    content_type="multipart/form-data", follow_redirects=False)
     assert r.status_code in (302, 303), r.status_code
 
     rec = _only_new(before, STORE["charges"])

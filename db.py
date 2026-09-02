@@ -75,7 +75,8 @@ load_dotenv(override=False)
 COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "purchase_orders",
                "specs", "boqs", "ra_bills", "receipts", "delivery_challans", "measurements",
                "projects",
-               "charges", "employees", "attendance", "addresses", "settings", "users", "roles")
+               "charges", "employees", "attendance", "attachments",
+               "addresses", "settings", "users", "roles")
 
 # Seed flags (_seeded / _addr_seeded) are deliberately NOT persisted. Both
 # seeders use fixed IDs and skip existing rows, so re-running them after a
@@ -260,6 +261,7 @@ LABELS = {
     "charges":    "employee and misc charges",
     "employees":  "employee records",
     "attendance": "attendance and labour cost",
+    "attachments": "attached documents",
     "addresses":  "addresses",
     "settings":   "company settings",
     "users":      "user accounts",

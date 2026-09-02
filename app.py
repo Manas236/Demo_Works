@@ -46,6 +46,10 @@ from charge import charge_bp             # Employee & Misc Charges Ledger
 from employee import employee_bp         # Employee master: details and salary
 from attendance import attendance_bp     # Attendance + site-wise labour cost (C5)
 from approval import approval_bp         # Approval ladder + creator guard (B6/B7)
+from attachment import attachment_bp     # File attachments on a charge / receipt
+                                 # (CC-2 B8). Bottom-of-graph like approval.py:
+                                 # charge.py and receipt.py import it, so it may
+                                 # import neither.
                                  # (CC-2 C4). A LEAF, and deliberately NOT on
                                  # the nav or the dashboard — _nav() is on every
                                  # printed page, so one more entry moves every
@@ -160,6 +164,14 @@ app.register_blueprint(approval_bp)           # Mounted at /approval — B6's la
                                               #   approval.DOCUMENTS; imports no
                                               #   document module, so any of them
                                               #   may import it back
+app.register_blueprint(attachment_bp)         # Mounted at /attachment — CC-2 B8.
+                                              #   The ONLY route in this app that
+                                              #   returns file bytes. There is no
+                                              #   /static and this is not one: the
+                                              #   store is outside the tree and
+                                              #   every read passes auth._gate()
+                                              #   under the PARENT record's own
+                                              #   view permission.
 app.register_blueprint(address_bp)            # Mounted at /address
 app.register_blueprint(settings_bp)           # Mounted at /settings
 app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,

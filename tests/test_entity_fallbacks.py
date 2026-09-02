@@ -55,6 +55,25 @@ SKIP = {
     # asserted directly in tests/test_auth.py::test_setup_disables_itself.
     # `/login` is NOT skipped — it renders a real form and is swept normally.
     "/setup": "renders only while no user exists; the fixtures all sign in",
+    # ── B8's four file routes, 2 September 2026 ──────────────────────────────
+    #
+    # ⚠ **These render no HTML at all.** They are the only routes in this
+    #   application that return file bytes — a JPEG, a PNG or a PDF, straight
+    #   off disk through `send_file()`, with a sniffed `Content-Type` and
+    #   `X-Content-Type-Options: nosniff`. There is no template, no f-string and
+    #   no entity to fall back to, so an HTML-entity sweep has nothing to read.
+    #
+    # ⚠ **The reason is "renders no HTML", NOT "is inconvenient to fixture".**
+    #   If one of these ever grows a page — an error sheet, a preview wrapper —
+    #   it must come out of this list, because at that moment it starts having
+    #   exactly the sink this sweep exists to find. What they carry today that
+    #   *is* user text — the original filename — reaches HTML only through
+    #   `attachment._rows()`, which renders inside the charge register and the
+    #   receipt form and IS swept there.
+    "/attachment/charge/view/<id>":      "returns file bytes, not HTML",
+    "/attachment/charge/download/<id>":  "returns file bytes, not HTML",
+    "/attachment/receipt/view/<id>":     "returns file bytes, not HTML",
+    "/attachment/receipt/download/<id>": "returns file bytes, not HTML",
 }
 
 

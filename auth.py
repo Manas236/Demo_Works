@@ -419,6 +419,33 @@ ROUTE_PERMISSIONS = {
     "charge.new_charge":          "charge.create",
     "charge.edit_charge":         "charge.edit",
     "charge.delete_charge":       "charge.delete",
+
+    # ── B8, file attachments (CC-2, 2 September 2026) ────────────────────────
+    #
+    # ⚠ **NO NEW PERMISSION IS MINTED FOR AN ATTACHMENT, deliberately.** Whoever
+    #   may view a charge may view the document that charge is evidenced by;
+    #   whoever may delete a charge may remove its supporting file. A separate
+    #   `attachment.*` family would be four more ids to grant, and a role that
+    #   held `charge.view` without it would see a list of files it could not
+    #   open — a permission that reaches no role is exactly the failure ABOUT.md
+    #   §2g records shipping three times.
+    #
+    # ⚠ **Three endpoints PER PARENT rather than three in total**, because this
+    #   registry maps one endpoint to one permission and an attachment's
+    #   permission depends on which record it hangs off. `attachment.py` mints
+    #   them from `PARENTS` for exactly that reason; the alternative was one
+    #   endpoint classified `AUTHENTICATED` with the real check hidden in the
+    #   view, which is the weakening B5 exists to prevent.
+    #
+    # ⚠ **`delete_*` carries the parent's DELETE permission, not its view one.**
+    #   It answers POST only and it destroys a file. A read verb on a writing
+    #   POST is §7 gap 24b, and this is the registry caveat that catches it.
+    "attachment.view_charge":      "charge.view",
+    "attachment.download_charge":  "charge.view",
+    "attachment.delete_charge":    "charge.delete",
+    "attachment.view_receipt":     "receipt.view",
+    "attachment.download_receipt": "receipt.view",
+    "attachment.delete_receipt":   "receipt.delete",
     # C4, the employee master. `/employee/delete/<id>` answers both verbs and is
     # classified once, as `employee.delete`: its GET renders a confirmation and
     # destroys nothing, so the stricter of the two permissions is the right one

@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 79 permissions · 114 classified endpoints.**
+**7 roles · 79 permissions · 120 classified endpoints.**
 
 ---
 
@@ -351,10 +351,10 @@ Read off the live route registry, so it cannot drift from what the application a
 | `ra.cancel` | `ra.cancel_ra` |
 | `ra.print` | `ra.print_ra` |
 | `ra.approve` | `approval.approve_ra`, `approval.reject_ra` |
-| `receipt.view` | `receipt.list_receipts` |
+| `receipt.view` | `attachment.download_receipt`, `attachment.view_receipt`, `receipt.list_receipts` |
 | `receipt.create` | `receipt.new_receipt` |
 | `receipt.edit` | `receipt.edit_receipt` |
-| `receipt.delete` | `receipt.delete_receipt` |
+| `receipt.delete` | `attachment.delete_receipt`, `receipt.delete_receipt` |
 | `client.view` | `client.list_clients` |
 | `client.edit` | `client.edit_party` |
 | `quotation.view` | `quotation.list_quotations`, `quotation.view_quotation` |
@@ -379,10 +379,10 @@ Read off the live route registry, so it cannot drift from what the application a
 | `dc.edit` | `challan.edit_dc` |
 | `dc.delete` | `challan.delete_dc` |
 | `dc.print` | `challan.print_dc` |
-| `charge.view` | `charge.list_charges` |
+| `charge.view` | `attachment.download_charge`, `attachment.view_charge`, `charge.list_charges` |
 | `charge.create` | `charge.new_charge` |
 | `charge.edit` | `charge.edit_charge` |
-| `charge.delete` | `charge.delete_charge` |
+| `charge.delete` | `attachment.delete_charge`, `charge.delete_charge` |
 | `charge.approve` | `approval.approve_charge`, `approval.reject_charge` |
 | `employee.view` | `employee.list_employees`, `employee.view_employee` |
 | `employee.create` | `employee.new_employee` |

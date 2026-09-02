@@ -156,11 +156,87 @@ def _fresh_store():
                 # chain guard would be untestable.
                 "measurements", "delivery_challans"):
         STORE[key].clear()
+    # B8 (2 Sep 2026). Metadata rows are per-test for the same reason every
+    # other collection is: a charge id planted by one test must not arrive
+    # carrying the previous test's supplier bill. The FILES are isolated
+    # separately and more strongly — see `_attachment_store` below.
+    STORE.setdefault("attachments", {}).clear()
     # Seed flags are per-test too: a test that clears `specs` must be able to
     # let the seeder refill it, which is exactly the "drop the database and
     # restart" path the demo data exists to support.
     STORE["_spec_seeded"] = False
     STORE["_boq_seeded"] = False
+
+
+# ── B8: attachments never touch the developer's real store ─────────────────
+#
+# ⚠ **AUTOUSE, and it has to be.** `attachment.root()` defaults to
+# `<repo>/attachments/`, which is where the running application keeps real
+# scanned supplier bills. A test that posts a charge writes a file, and without
+# this fixture it would write it **there** — and `test_attachments.py`'s cascade
+# tests would then delete files out of that same directory. Opting in per test
+# would mean the one test that forgot was the one that did the damage.
+#
+# `attachment.root()` re-reads the environment on every call rather than caching
+# it in a module constant, precisely so this fixture works.
+@pytest.fixture(autouse=True)
+def _attachment_store(tmp_path, monkeypatch):
+    """Point the attachment store at a per-test temporary directory."""
+    d = tmp_path / "attachments"
+    d.mkdir()
+    monkeypatch.setenv("ATTACHMENT_DIR", str(d))
+    yield d
+
+
+# ── The smallest real files of each type B8 accepts ────────────────────────
+#
+# ⚠ **Real headers, not `b"fake png"`.** `attachment.sniff()` reads the leading
+# bytes, so a fixture that is not really a PNG would be rejected — and a test
+# that passed against a fake would be asserting nothing about the guard it is
+# there to exercise. Each of these begins with the exact signature
+# `attachment.SIGNATURES` looks for.
+# No escape sequences here on purpose: `bytes.fromhex()` states each signature
+# as the hex a file viewer shows, and `bytes(n)` is n zero bytes. A literal
+# backslash escape in a fixture is one transcription error away from being a
+# file that is not the type it claims, which is the one thing these must not be.
+PNG_BYTES = bytes.fromhex("89504e470d0a1a0a") + bytes(64)
+JPEG_BYTES = bytes.fromhex("ffd8ffe0") + bytes(64)
+PDF_BYTES = b"%PDF-1.4" + bytes.fromhex("0a25c7ec8fa20a") + bytes(32)
+
+# ⚠ **A real Windows executable header, labelled as an image.** This is the
+# file CC-2's type gate exists for and the one the mutation proof uses: the
+# name says .png, the browser says image/png, and only the bytes disagree.
+EXE_BYTES = bytes.fromhex("4d5a9000") + bytes(64)
+
+
+def upload(data: bytes, filename: str = "bill.png", content_type: str = "image/png"):
+    """
+    One multipart file part, as Werkzeug's test client wants it.
+
+    ⚠ **`filename` and `content_type` are the CALLER's to lie with**, and
+    several tests do exactly that. They are what a browser sends and what an
+    attacker controls; `attachment.sniff()` reads neither.
+    """
+    import io
+
+    return (io.BytesIO(data), filename, content_type)
+
+
+def charge_form(**over):
+    """
+    A complete, valid `/charge/new` post — attachment included.
+
+    B8 makes the attachment **compulsory on a charge**, so every test that
+    creates one through the form has to send a file. This is that form in one
+    place rather than in each of them.
+    """
+    form = {
+        "date": "2026-08-29", "person": "R. Kadam", "head": "Travel",
+        "description": "Site visit", "taxable_amount": "1200", "gst_rate": "0",
+        "attachment": upload(PNG_BYTES),
+    }
+    form.update(over)
+    return form
 
 
 @pytest.fixture()

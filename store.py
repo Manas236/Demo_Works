@@ -43,6 +43,7 @@ STORE: dict = {
     "charges":      {},   # keyed by UUID string → employee/misc expense record (travel, wages, consumables — not in any BOQ)
     "employees":    {},   # keyed by UUID string → employee master record: details and salary (CC-2 C4). Its OWN collection — a person is not a charge, and the charges ledger has never had an employee record behind it
     "attendance":   {},   # keyed by UUID string → one employee, one site, one day (CC-2 C5). Its OWN collection, never a list on the employee — one person accumulates a record per working day for as long as they are employed, which is CLIENT_CHANGES.md §1.3's rule exactly
+    "attachments":  {},   # keyed by UUID string → attachment METADATA (CC-2 B8). ⚠ The BYTES ARE NOT HERE and must never be — db._blob() writes them through json.dumps(default=str), which reloads a repr STRING with no exception raised. The file is on disk under attachment.root(); this row holds its relative path, size, sniffed mime type and the record it belongs to. Its OWN collection per CLIENT_CHANGES.md §1.3 — one charge accumulates several files
     "addresses":    {},   # keyed by UUID string → address dict (address book)
     "users":        {},   # keyed by UUID string → user account (auth.py). Its OWN collection — never a list on a role, per CLIENT_CHANGES.md §1.3
     "roles":        {},   # keyed by UUID string → role: a named bundle of permission strings. Separate from users for the same §1.3 reason: one role is held by many users
