@@ -2099,6 +2099,207 @@ one automatic.
 > project key onto C5's records and a second reading of them onto the project
 > page.
 
+> ### ⚠ OVERRIDE — 2 September 2026, by Manas Gawde — B8's storage mechanism is DECIDED, and C3 is unblocked by answering BQ2 then BQ1
+>
+> **A new block, not an amendment, and the FIRST one dated 2 September 2026.**
+> The nineteen blocks above it — including all six dated 30 August 2026, and
+> **including the B8 block of that date whose storage choice this one replaces**
+> — **have not been edited, reformatted, re-scoped or extended by a single
+> character.** This is the **twentieth occasion overall**. ⚠ **A block that
+> supersedes an earlier decision does so by standing beside it and saying so,
+> never by editing it.** The second 30 August 2026 block still reads exactly as
+> it did, BLOBs and all, and a reader who finds it first must be able to reach
+> this one — so it is named here in full rather than quietly outranked.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a twelfth time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** A twelfth
+> restatement is not evidence that the first eleven made it routine, and this
+> block authorises the **last unbuilt item of 3B** and the **first of the two
+> BLOCKED items of 3C** against a quotation that nobody has signed.
+>
+> **This work proceeds anyway, and Manas took that decision.** It is recorded
+> here rather than assumed, on the terms every block above states: an override
+> is a decision the client-facing owner takes and records; it is never one an
+> agent may take, infer, or extend.
+>
+> ---
+>
+> #### 1. B8 — the storage mechanism, DECIDED: real files on disk, path on the record
+>
+> **B8 was authorised on 30 August 2026 and has stood AUTHORISED and UNBUILT
+> since**, because the storage shape that block chose — **BLOBs in their own
+> table** — was put to the test its own brief demanded and **failed it**. That
+> finding is not disputed here; it is ratified. `db.py` persists by
+> snapshot-and-diff, `_blob()` writes bytes through `json.dumps(default=str)`
+> and reloads them as a **corrupted string with no exception raised**, every
+> collection is one `data JSON NOT NULL` column, and `_sync_collection()`
+> re-serialises every record of every collection on every request. ABOUT.md §4
+> carries the measurements.
+>
+> ⚠ **The pass that stopped was RIGHT to stop**, and this block says so plainly
+> because the alternative — inventing a second persistence mechanism beside
+> `db.py` while the owner was away — is the failure mode the gate exists to
+> prevent. Stopping on a gate is the system working.
+>
+> **THE DECISION: attachments are real files on disk, with a relative path held
+> on a metadata record.** This is CC-2's own B8 text — *"real file storage with
+> a path held on the record"* — so this block does not depart from the
+> specification; **it returns to it**, and it is the 30 August storage choice
+> that was the departure. CC-2 is not edited, in either direction: it said this
+> all along.
+>
+> The terms of the decision, each of which is the owner's and is revisable:
+>
+> - **Files live outside any served directory.** There is no `/static` in this
+>   application and none is created. The store sits beside `backups/` — a
+>   gitignored runtime directory at the repository root, which is the
+>   convention `tools/backup_db.py` already established for data that is
+>   confidential, large, and not part of the source tree.
+> - **The path stored on the record is RELATIVE**, never absolute. An absolute
+>   path publishes the disk layout of the machine the app runs on into a
+>   database that gets dumped, and the dumps are handled.
+> - **Only JPEG, PNG and PDF**, and the check is on the **file's actual leading
+>   bytes**, not on its extension and not on the `Content-Type` the browser
+>   claims. A renamed executable labelled `image/png` is refused.
+> - **5 MB per file**, refused **before anything is written to disk**.
+> - **Compulsory on a charge** — the 19 August list says *"Compulsory document
+>   ATTACHMENT in the charge section"* and it is read literally.
+> - **Optional on a receipt**, and this is not an inconsistency to be tidied
+>   away later: CC-2 gives the reason in its own words — *"bank transfers often
+>   have no separate slip, and compulsory would block honest entries."* ⚠ **A
+>   later pass must not make it compulsory** without a block of its own.
+> - **Deleting the parent deletes the file and the metadata row.** No orphans,
+>   in either direction.
+>
+> ⚠ **CC-2's vocabulary warning is carried, not paraphrased.** *"Receipt"*
+> already means the payment record in this application. What is attached to one
+> is a **proof of payment** — a bank slip, a cheque image, a UTR advice — and
+> the word "receipt" is not to be overloaded to mean the attachment.
+>
+> #### 2. C3 — UNBLOCKED, by answering BQ2 and then BQ1, in that order
+>
+> **C3 has been BLOCKED since 30 August 2026** on the owner's answers to **BQ2**
+> and then **BQ1** — CC-2's own open build questions, explicitly *"not to be put
+> to the client"* and explicitly to be settled **before** C3 is built, never
+> inside a build step. They are settled here, in a block of their own, ahead of
+> any code.
+>
+> ⚠ **BOTH ANSWERS ARE THE OWNER'S AND NEITHER IS THE CLIENT'S.** They are
+> recorded in this style precisely so that a chartered accountant who disagrees
+> can find them, name them, and have them changed. Neither is a finding; both
+> are rulings.
+>
+> ##### BQ2 — answered FIRST, because BQ1 is not stable without it
+>
+> The repo says both. `PHASE4_RA_DESIGN.md` §2 says `ref` inherits Rule 46(b)'s
+> 16-character cap **if** the RA bill is a tax invoice; §5 of the same file says
+> it does not; the `[AMENDED 8 Aug 2026]` note satisfies §2's antecedent while
+> §5's conclusion still denies the consequent; and the code sides with §5 at
+> `_REF_CAP = 64`.
+>
+> **THE RULING, and it splits the question rather than picking a side:**
+>
+> - **An RA bill's `ref` is OUR document number and keeps its 64-character
+>   budget.** `_REF_CAP` is **not** changed and no existing reference moves. §5
+>   is right about `ref`.
+> - **The statutory serial is `tax_invoice_ref`, it is a different field, and
+>   it IS subject to Rule 46(b)'s 16-character cap.** §2 is right about the tax
+>   invoice number. The two documents were never arguing about the same field.
+>
+> ⚠ **This makes `ra.py`'s comment above `_REF_CAP` a DEAD PREMISE and it is to
+> be corrected in the same pass**, not left standing: *"No 16-character cap.
+> That is Rule 46(b)'s limit on a TAX INVOICE number, and **this document is not
+> one**"*. The conclusion survives — `ref` genuinely has no cap — but the reason
+> given for it is the ruling the 8 August amendment reversed. A right answer
+> resting on a dead reason is how the next reader gets it wrong.
+>
+> ##### BQ1 — answered SECOND: an independent series, and the collision dissolves
+>
+> BQ1 asks which of **three** serials is the statutory invoice when a merged
+> document mints one over two source bills that *"each already carry one"*.
+>
+> **THE RULING: the two source bills never spent a statutory serial, so there is
+> no third.** BQ2's answer is what dissolves it. A leg's `ref` is our document
+> number; the statutory number is `tax_invoice_ref`; and the merged document
+> mints **its own**, from **its own dedicated counter**, **derived from neither
+> leg's reference**.
+>
+> Derivation was refused for a measured reason rather than a stylistic one:
+> `SF/RA/26-27/0004` is **exactly 16 characters**, so there is **no room inside
+> Rule 46(b)'s budget to decorate a leg's number into a unique merged variant**.
+> A scheme that must truncate to fit is a scheme that will collide.
+>
+> ⚠ **The new series must NOT collide with `invoice.py`'s.** `invoice.py`
+> already mints `SF/TI/26-27/0001` at `cap=16` for the sell-side tax invoice.
+> Two counters both emitting a `TI` number would put **the same statutory serial
+> on two different documents**, which is the precise failure Rule 46(b) exists
+> to prevent and would be strictly worse than the ambiguity being resolved. The
+> merged document therefore takes a **distinct series string of its own**, and
+> `ra.py`'s standing prohibition on importing `invoice.py` is **not** to be
+> relaxed to share a counter.
+>
+> **Multiple invoice series are permitted** provided each is consecutive and
+> unique within the financial year, which is what a separate counter under a
+> distinct series delivers by construction.
+>
+> ⚠ **WHAT THIS RULING DOES NOT DO, stated so it is not read as more than it
+> is:** it mints a series for the **merged** document **only**. A single-leg RA
+> bill's `tax_invoice_ref` stays exactly what DOMAIN.md §4.2 already records — a
+> **typed field with no counter behind it**, falling back to `ref` when left
+> blank. **That gap is NOT closed here**, it is not in C3's scope, and a later
+> pass that closes it needs a block of its own. §4.2's STATUS paragraph stands.
+>
+> ##### What is authorised, and on what terms
+>
+> **C3 — merged RA, AUTHORISED**, built to **CC-2's own invariants**, which are
+> the specification and are not restated loosely here: the merged record holds
+> **no claims of its own**; totals are the **sum of the two bills' stored
+> totals** and are never recomputed from the live BOQ; a bill appears in **at
+> most one live merged document**; a source bill inside a live merged document
+> **cannot be cancelled**; **receipts stay attached to the source bills**; and
+> the merge action is built **on the RA register from day one**.
+>
+> The merged document **follows the existing RA / TI / PO approval ladder** —
+> Operation Head + Director, any one Director sufficient — because it is the
+> document that raises the tax invoice and nothing in CC-2 or `approval.py`
+> exempts it.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **C6** stays **BLOCKED** on CC-2's Open question 4. Nothing here answers it
+>   and no groundwork is laid for it.
+> - `quotation.py` and `product.py` stay frozen beyond their existing narrow
+>   unfreeze.
+> - **The single-leg `tax_invoice_ref` gap above is not closed.**
+> - No attachment is made compulsory anywhere CC-2 does not say it is.
+>
+> #### Chargeability
+>
+> **B8 and C3 are both scope priced into MG/SF/2026-02, which has lapsed**, and
+> both remain chargeable there. Authorising them changes **when** they are
+> built, not **what they cost** or **who agreed to them**.
+>
+> Anything this pass builds that CC-2 does not name — and the approval-gating of
+> an attachment behind its parent document's ladder is such a thing — is priced
+> **nowhere at all** and goes to **PROGRESS.md §4c** under that section's
+> standing sentence.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises B8 and C3
+> does not authorise C6, or anything else**, and no override above is a
+> precedent that clears the next. **An override is a decision the client-facing
+> owner takes and records; it is never one an agent may take, infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above — now
+> including the whole of 3B and five of 3C's six items — was built against a
+> quotation that has **lapsed**.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
