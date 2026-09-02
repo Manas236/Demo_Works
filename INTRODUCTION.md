@@ -218,7 +218,7 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **1,927 passed / 2 skipped** on 30 August 2026, verified by
+The baseline is **2,000 passed / 2 skipped** on 2 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
 *(The **ELEVENTH** pass, 30 August 2026, added **30 passed and 0 skipped** and

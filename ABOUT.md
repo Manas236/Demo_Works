@@ -91,7 +91,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 1,928 passed, 4 skipped — this is what THESE
+python -m pytest -q                     # 2,001 passed, 4 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
                                         #   ⚠ THIS FIGURE IS NOT COVERED BY
@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **1,928 passed, 4 skipped** | **30 Aug 2026** *(ELEVENTH pass — a marking gains a PROJECT, the two-group Site Labour panel, and the backfill that maps the unambiguous ones)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **1,927 passed, 2 skipped** | **30 Aug 2026** *(ELEVENTH pass — a marking gains a PROJECT, the two-group Site Labour panel, and the backfill that maps the unambiguous ones)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,001 passed, 4 skipped** | **2 Sep 2026** *(TWELFTH pass — B8 file attachments and C3 the merged RA; 3B closes at 8 of 8)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,000 passed, 2 skipped** | **2 Sep 2026** *(TWELFTH pass — B8 file attachments and C3 the merged RA; 3B closes at 8 of 8)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
