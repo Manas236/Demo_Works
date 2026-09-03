@@ -2300,6 +2300,196 @@ one automatic.
 > including the whole of 3B and five of 3C's six items — was built against a
 > quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 3 September 2026, by Manas Gawde — the single-leg `tax_invoice_ref` gap, the backup's missing half, and one guard made non-vacuous
+>
+> **A new block, not an amendment, and the FIRST one dated 3 September 2026.**
+> The twenty blocks above it — including the 2 September 2026 block whose own
+> closing words asked for this one — **have not been edited, reformatted,
+> re-scoped or extended by a single character.** This is the **twenty-first
+> occasion overall**.
+>
+> ⚠ **This block is the one the 2 September block named in advance.** That block
+> wrote, of the single-leg `tax_invoice_ref`: *"That gap is NOT closed here, it
+> is not in C3's scope, and a later pass that closes it needs a block of its
+> own."* This is that block. It is a fresh dated authorisation, not a
+> retrospective widening of the one that asked for it — amending an override to
+> cover work it does not mention is precisely the act §0 forbids.
+>
+> #### ⚠ MG/SF/2026-02 REMAINS EXPIRED AND UNSIGNED — restated a thirteenth time
+>
+> The quotation lapsed on **28 August 2026** and that has not changed. It was
+> sent on 21 August 2026, read by the client the same day, and **has never been
+> answered** — no signature, no advance, no reply of any kind. It is not
+> "pending" and it is not "with the client". **It is expired.** A thirteenth
+> restatement is not evidence that the first twelve made it routine.
+>
+> **This work proceeds anyway, and Manas took that decision.** It is recorded
+> here rather than assumed, on the terms every block above states: an override
+> is a decision the client-facing owner takes and records; it is never one an
+> agent may take, infer, or extend.
+>
+> ---
+>
+> #### 0. FIRST, AND IT AUTHORISES NOTHING: the reported RA over-claim was not one
+>
+> This pass was opened on an observation from the browser — that BOQ
+> `SF/BOQ/26-27/0006` (*Work2*) showed a Total Basic Value of **₹9,585** while
+> the two RA bills attributed to it, `SF/RA/26-27/0006` and `SF/RA/26-27/0007`,
+> showed **₹885** and **₹10,425**, summing to **₹11,310** — **₹1,725 over**, with
+> RA2 alone apparently exceeding the whole schedule.
+>
+> **It was investigated before anything was authorised, and there is no
+> over-claim.** The two figures are not the same kind of figure:
+>
+> - **₹9,585 is tax-EXCLUSIVE** — the BOQ's basic value, and the tile that
+>   carries it says *"taxes extra"* on its own face.
+> - **₹885 and ₹10,425 are tax-INCLUSIVE** — each chip on the *"Running Account
+>   bills raised"* strip renders that bill's `grand_total`.
+> - The two bills' **`claim_subtotal`s** are **₹750 + ₹8,835 = ₹9,585**, which
+>   reconciles against the schedule **exactly**.
+> - **₹1,725 is the GST**: ₹135 + ₹1,590.30, less ₹0.30 of rounding.
+>
+> Each leg is claimed **once, at exactly its approved quantity** — one line,
+> `line_id` `59e2b4b8afd2`, quantity 1 approved and 1 claimed on each of supply
+> and installation. `ra.claimed_by_line()` and `ra.approved_by_line()` were run
+> against the live records and agree to the unit; `ra.overclaims()` returns
+> empty for both bills, and returns a breach for both the moment either claim is
+> mutated to 2. **The guard did not fail to fire. There was nothing to fire on.**
+>
+> ⚠ **NO RA, BOQ OR CLAIM RECORD IS TOUCHED BY THIS PASS**, and none may be.
+> The records are live financial data, they are not test fixture data — the
+> strings *Work2*, `SF/RA/26-27/0006` and `SF/RA/26-27/0007` appear nowhere in
+> `tests/`, `tools/` or `demo_data.py`, and the suite writes to an in-memory
+> `STORE` under `DB_ENABLED=false` and never to MySQL at all.
+>
+> **What IS worth knowing** is that the `/boq/view` panel puts a tax-exclusive
+> total beside tax-inclusive chips with nothing on the chips saying so. That is
+> a presentation defect, it is **reported and NOT fixed here**, and it is not
+> authorised by this block.
+>
+> ---
+>
+> #### 1. The single-leg `tax_invoice_ref` — AUTHORISED, and the gap closes forward only
+>
+> **DOMAIN.md §4.2 forbids deriving the tax invoice number from `ra_no`**, and
+> `print_ra()` does exactly that whenever the field is left blank: it falls back
+> `tax_invoice_ref` → `ref` → a string built from `ra_no`. The prohibition holds
+> on every bill where the field is filled and fails silently on every bill where
+> it is not.
+>
+> **THE DECISION: a single-leg RA bill mints its own statutory serial, from its
+> own counter, on the same pattern C3 already established for the merged
+> document** — and *the same pattern* is meant literally, not loosely. A second
+> scheme invented beside the first is two things to keep in step.
+>
+> - **Its own series string**, distinct from every other series in the
+>   application. It must not be `TI` (`invoice.py`'s sell-side serial) and it
+>   must not be `MI` (the merged document's). One statutory serial on two
+>   different documents is the precise failure Rule 46(b) exists to prevent.
+> - **Capped at 16 characters** under Rule 46(b), through the same
+>   `pipeline.fy_ref()` cap the other two use.
+> - **FY-scoped and max+1 within the year, never len+1** — a gap must never
+>   re-issue a number already quoted in somebody else's ledger.
+> - **Minted at creation**, where C3 mints its own, and **never at print** — a
+>   print route that writes is a print route that changes a document by being
+>   looked at.
+> - **A typed value still wins.** The field stays typeable; minting fills it
+>   when the operator leaves it blank, which is the case §4.2 names.
+> - ⚠ **`ra.py`'s prohibition on importing `invoice.py` is NOT relaxed** to
+>   share a counter, and neither is any other import direction.
+>
+> ##### ⚠ Existing bills are a CLOSED HISTORICAL SET and NOT ONE IS REWRITTEN
+>
+> **No already-issued document's number is corrected by this pass**, and this is
+> the term of the decision most easily lost. A tax invoice number that has been
+> printed has been quoted in somebody else's books; silently replacing it is the
+> act the max+1 rule exists to prevent, one register along.
+>
+> So the fallback in `print_ra()` **survives for records that predate this
+> block, and for them alone**, exactly as `pre_measurement` and `created_by`
+> preserve their own grandfathered sets. It is unreachable for every bill
+> created afterwards, because every such bill carries a minted number.
+>
+> **The set is counted rather than estimated**, and the count belongs in the
+> pass report, not here. **Whether any of it is backfilled is the owner's
+> decision and is NOT taken in this block.** No agent may take it.
+>
+> ⚠ **`tests/test_merged_ra.py::test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED`
+> pins the old behaviour and will fail.** It is to be **rewritten, never
+> deleted and never weakened**, keeping its old assertion verbatim in a comment
+> above the new one — it was right on the day it was written and it is the
+> record of what changed.
+>
+> #### 2. The attachments directory joins the backup — AUTHORISED, no charge
+>
+> B8 shipped on 2 September 2026 with a hole its own documentation named:
+> *"A `mysqldump` is no longer a complete backup of this application. The
+> metadata rows are in the dump; the files are not."* A restore from a dump
+> alone produces rows pointing at files that do not exist.
+>
+> `tools/backup_db.py` is extended to snapshot `attachment.root()` alongside the
+> dump, under the **same stamp, the same label and the same directory** — the
+> convention that file already established. **Proof is a restore**, not a green
+> test: take a backup, delete a file, restore, and confirm the *file* comes
+> back.
+>
+> **This is a defect fix against work delivered on 2 September 2026** and is
+> **no charge**, on §0's standing exemption in its plainest form.
+>
+> #### 3. `claimed_by_line()` learns about merged documents — AUTHORISED, no charge
+>
+> CC-2 warns that copying claim rows onto a merged record *"would make the
+> over-claim guard count the same quantity twice"*. The guard built for that
+> warning does not currently look: `ra.claimed_by_line()` walks
+> `STORE["ra_bills"]` and a merged document lives in `STORE["merged_ras"]`.
+> `tests/test_merged_ra.py::test_merging_does_not_move_the_overclaim_guard`
+> **says so in its own docstring** and records that the mutation was caught by a
+> neighbouring shape test rather than by itself.
+>
+> A test that cannot fail for its own reason is not a guard. `claimed_by_line()`
+> is extended to walk both collections, and the mutation must be caught **by
+> that function**, proved by mutation rather than asserted.
+>
+> **This is a defect fix against work delivered on 2 September 2026** and is
+> **no charge**.
+>
+> #### What is NOT authorised, and is not touched
+>
+> - **C6** stays **BLOCKED** on CC-2's Open question 4. Nothing here answers it.
+> - `quotation.py` and `product.py` stay frozen beyond their existing narrow
+>   unfreeze.
+> - **No RA, BOQ, claim, receipt or merged record is created, edited or
+>   deleted** on the live database.
+> - **No already-printed `tax_invoice_ref` is rewritten**, and no backfill tool
+>   for them is authorised.
+> - The `/boq/view` tax-inclusive-versus-exclusive presentation defect is
+>   **reported and not fixed**.
+> - No attachment is made compulsory anywhere CC-2 does not say it is.
+>
+> #### Chargeability
+>
+> **Items 2 and 3 are defect fixes against scope already delivered and are no
+> charge**, on §0's standing exemption.
+>
+> **Item 1 is priced NOWHERE.** It is not in MG/SF/2026-01, and MG/SF/2026-02
+> tags it nowhere — DOMAIN.md §4.2 is a requirement this application has carried
+> since Phase 2 and has satisfied *in part* ever since. It goes to
+> **PROGRESS.md §4c** under that section's standing sentence. **No agent may
+> invent a price for it or record it as delivered under either quotation.**
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises these
+> three items does not authorise C6, or anything else**, and no override above
+> is a precedent that clears the next. **An override is a decision the
+> client-facing owner takes and records; it is never one an agent may take,
+> infer, or extend.**
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above — now
+> including the whole of 3B and five of 3C's six items — was built against a
+> quotation that has **lapsed**.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
