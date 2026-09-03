@@ -454,6 +454,48 @@ minting **one** tax invoice number; there is nothing minting a first one yet.
 > it needs an override block of its own.**
 > `tests/test_merged_ra.py::test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED`
 > pins it so nobody reads C3 as having closed it.
+
+> **[ANSWERED 3 September 2026 — the single-leg bill mints one too, and this
+> section is SATISFIED for every bill raised from that date.]** The override
+> block the paragraph above asks for is the **first `CLIENT_CHANGES.md` §0 block
+> of 3 September 2026**, and `ra.next_tax_invoice_ref()` is the code:
+> `SF/RI/26-27/0001`, its own counter, **capped at 16 characters** under Rule
+> 46(b), FY-scoped, max+1 so a spent serial is never re-issued, and reading
+> `tax_invoice_ref` **only** — never `ref` and never `ra_no`, which is what stops
+> the derivation this section forbids being re-created by arithmetic.
+>
+> **Minted at creation, never at print.** `create_ra()` fills the field when the
+> operator leaves it blank; a typed value still wins, because an operator may be
+> transcribing a serial from a book the client keeps. A print route that wrote
+> would make the number depend on who opened the document first.
+>
+> ⚠ **The series is `RI`.** Three counters now mint tax invoice numbers here —
+> `SF/TI/…` (`invoice.py`, sell side), `SF/MI/…` (`merged_ra.py`, the merged
+> document) and `SF/RI/…` (the single-leg RA bill) — and each has a series of its
+> own. Two counters under one series would put the same statutory serial on two
+> different documents, which is the precise failure Rule 46(b) prevents.
+> Multiple invoice series are permitted provided each is consecutive and unique
+> within the year. No import prohibition was relaxed to share a counter.
+>
+> ⚠ **THE STATUS PARAGRAPH ABOVE STILL DESCRIBES EVERY BILL RAISED BEFORE THAT
+> DATE, AND THAT SET IS DELIBERATELY LEFT ALONE.** Measured on the live database
+> on 3 September 2026: **7 RA bills, of which 6 carry a blank `tax_invoice_ref`
+> — 3 of them ISSUED**, and those three print a `ref`-derived Tax Invoice No.
+> exactly as this section forbids. They keep it. Their numbers have been quoted
+> in somebody else's books, and replacing one silently — or printing a dash where
+> a number used to be — is the act the max+1 discipline exists to prevent.
+> **Whether any is backfilled is the owner's decision**; the §0 block reserves it
+> and authorises no backfill tool. `tests/test_ra_tax_invoice_ref.py` pins both
+> halves: that a new bill never reaches the fallback, and that a legacy bill
+> still prints exactly what it printed before.
+>
+> ⚠ **A SEPARATE FINDING, REPORTED AND NOT ACTIONED.** The one bill that does
+> carry a typed value — `SF/RA/26-27/0001`, a draft — carries
+> **`SF/TI/26-27/0007`**, which is a number in **`invoice.py`'s** series. The
+> live tax-invoice counter stands at `SF/TI/26-27/0001`, so there is no
+> collision today; there will be one the day that counter reaches 0007, and it
+> is the exact Rule 46(b) failure described above. Nothing in this pass changed
+> that record.
 >
 > ⚠ **The series is `MI`, not `TI`.** `invoice.py` mints `SF/TI/...` at the
 > same cap for the sell-side tax invoice, and one serial on two documents is the

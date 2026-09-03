@@ -1930,6 +1930,42 @@ Eight properties this shape exists to guarantee:
 Written by `ra.py`. Progressive claim against a specific BOQ revision, carrying a tax block per DOMAIN.md §4 (headed TAX INVOICE). Does not import `quotation._tax_lines()` nor `invoice.py` (asserted by `tests/test_ra_record.py`).
 
 - **Identity:** `id`, `ref` (`SF/RA/26-27/0004`), `fy`, `date`, `tax_invoice_ref`, `tax_invoice_date`, `po_ref`, `po_date` (`po_ref` & `po_date` default to previous bill for same BOQ; stored as known duplication)
+
+  ⚠ **`ref` and `tax_invoice_ref` are TWO SERIES AND TWO COUNTERS**
+  ([DOMAIN.md §4.2](DOMAIN.md)). `ref` is *our* document number —
+  `ra._REF_SERIES = "RA"` at `_REF_CAP = 64`, the key a payment gets filed
+  against. `tax_invoice_ref` is **the statutory serial** — `_TAXREF_SERIES =
+  "RI"` at `_TAXREF_CAP = 16`, Rule 46(b)'s budget, minted by
+  `ra.next_tax_invoice_ref()`. **Do not "reconcile" the two caps: they govern
+  different fields**, and lowering `_REF_CAP` would shorten every RA reference
+  in the database for no statutory reason.
+
+  ⚠ **Minted at CREATION, never at print** (3 September 2026). `create_ra()`
+  fills the field when the operator leaves it blank; a **typed value still
+  wins**, because an operator may be transcribing a serial from a book the
+  client keeps. A print route that wrote would make the number depend on who
+  opened the document first — and `print_ra()`'s fallback
+  (`tax_invoice_ref` → `ref` → a string built from `ra_no`) is what §4.2 forbids
+  outright.
+
+  ⚠ **That fallback is a CLOSED HISTORICAL SET and is unreachable for anything
+  new.** Every bill created from 3 September 2026 carries a minted serial, so
+  the first `or` always short-circuits. What survives is the reading for records
+  written before it — **6 of the 7 bills on the live database, 3 of them
+  issued** — and for those the printed Tax Invoice No. *is* still derived from
+  `ref`. They keep it: those numbers have been quoted in somebody else's books,
+  and printing a dash where one used to be is the same act as replacing it.
+  Whether any is backfilled is the owner's decision, reserved in the first §0
+  block of 3 September 2026, which authorises no backfill tool. Same treatment
+  `pre_measurement` and `created_by` give their own grandfathered sets: count
+  the set, close it, leave the records alone. `tests/test_ra_tax_invoice_ref.py`
+  pins both halves.
+
+  ⚠ **`next_tax_invoice_ref()` reads `tax_invoice_ref` and nothing else** — not
+  `ref`, not `ra_no` — and skips a tail that is not all digits. Seeding the
+  counter off either would re-create by arithmetic the derivation §4.2 forbids,
+  and a legacy `SF/TI/26-27/0007` typed into the field is not an `RI` number and
+  must not move an `RI` counter.
 - **Back-link:** `boq_id` (a **specific revision**), `boq_ref`, `boq_rev_no` — refs stored, not looked up
 - **Position in the run:** `ra_no` (int, sequence within project), `leg` ∈ `supply | installation`
 - **Copied from BOQ at issue:** `project_name`, `site_location`, `account_name`, `contact_person`, `to`, `bill_gstin`
@@ -3372,6 +3408,19 @@ exactly as [DOMAIN.md §4.2](DOMAIN.md) records. **That gap is not closed**, it
 was not in C3's scope, and §4.2's STATUS paragraph stands.
 `test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED` pins it so nobody reads
 C3 as having closed it.
+
+✅ **CLOSED 3 September 2026, by a block of its own** — the paragraph above is
+kept because it is the record of what C3's scope was, and a reader who finds it
+first must be able to reach this. `ra.next_tax_invoice_ref()` mints
+`SF/RI/26-27/0001` from its own counter at `ra._TAXREF_CAP = 16`, on exactly the
+pattern this module established. **Three series now, and no two may share
+one**: `TI` (`invoice.py`), `MI` (here) and `RI` (`ra.py`). The single-leg
+counter is in `ra.py` rather than shared, because the import prohibitions that
+forbid `ra.py → invoice.py` and would make `ra.py → merged_ra.py` a cycle at
+boot are not relaxed for a counter. `test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED`
+is **rewritten** — it now holds the invariant that survives, which is that
+merging writes no serial onto either leg, and it says why it could never have
+seen the gap close. See §3 (RA Bill) and [DOMAIN.md §4.2](DOMAIN.md).
 
 #### The ladder, and the permissions
 

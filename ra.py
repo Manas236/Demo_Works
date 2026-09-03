@@ -275,6 +275,41 @@ _REF_SERIES = "RA"
 _REF_CAP = 64
 
 
+# ⚠ **THE STATUTORY SERIAL, AND IT IS A DIFFERENT SERIES FROM `ref`**
+#   (3 September 2026, under the first `CLIENT_CHANGES.md` §0 block of that
+#   date — the one the 2 September block asked for in advance).
+#
+#   The comment above settles that `tax_invoice_ref` is the field Rule 46(b)
+#   governs. Until this pass **nothing minted one for a single-leg bill**: the
+#   field was typed by hand, and `print_ra()` fell back
+#   `tax_invoice_ref` → `ref` → a string built from `ra_no` when it was left
+#   blank — so on a bill with the field empty the printed Tax Invoice No. **was**
+#   derived from `ra_no`, which is the one thing [DOMAIN.md §4.2](DOMAIN.md)
+#   forbids. C3 closed that for the merged document only and said so in terms.
+#
+# ⚠ **`RI`, and it must never become `TI` or `MI`.** Three counters mint tax
+#   invoice numbers in this application and each needs a series of its own:
+#   `invoice.py` mints `SF/TI/…` for the sell-side tax invoice and
+#   `merged_ra.py` mints `SF/MI/…` for the merged document. Two counters under
+#   one series would put **the same statutory serial on two different
+#   documents**, which is the precise failure Rule 46(b) exists to prevent and
+#   is strictly worse than the ambiguity being resolved. Multiple invoice series
+#   are permitted provided each is consecutive and unique within the year, which
+#   a separate counter under a distinct series gives by construction.
+#
+# ⚠ **The import prohibitions are NOT relaxed to share a counter.** `ra.py` may
+#   not import `invoice.py` (the load-bearing one) and does not import
+#   `merged_ra.py` (which imports this module). Each counter reads its own
+#   collection; none reads another's.
+#
+#   16 characters, because this one IS the statutory serial —
+#   `SF/RI/26-27/0001` is exactly 16, the same budget `merged_ra._REF_CAP`
+#   works to. **Do not "reconcile" this with `_REF_CAP` above: they govern
+#   different fields.**
+_TAXREF_SERIES = "RI"
+_TAXREF_CAP = 16
+
+
 # =============================================================================
 # THE RECORD
 # =============================================================================
@@ -933,6 +968,49 @@ def next_ref(datestr: str) -> str:
         if tail.isdigit():
             highest = max(highest, int(tail))
     return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+
+
+def next_tax_invoice_ref(datestr: str) -> str:
+    """
+    The next single-leg RA tax invoice number — `SF/RI/26-27/0001`.
+
+    **THE STATUTORY SERIAL**, and a different series from `ref` — see the note
+    above `_TAXREF_SERIES` for why it is `RI` and why it may never be `TI` or
+    `MI`. Capped at 16 characters under Rule 46(b), through the same
+    `P.fy_ref()` cap `invoice.py` and `merged_ra.py` both work to.
+
+    FY-scoped and **max+1 within the year, not len+1**: a gap left by a deleted
+    bill must never re-issue a number that has already been quoted in somebody
+    else's ledger. Every series in this application follows that rule and this
+    one is a **statutory** serial, where it is not a preference.
+
+    ⚠ **Cancelled bills are counted**, exactly as `next_ra_no()` counts them and
+    for the identical reason — a cancelled bill's serial is **spent**, not
+    returned to the pool. `merged_ra.next_tax_invoice_ref()` says the same thing
+    one document along.
+
+    ⚠ **It reads `tax_invoice_ref`, never `ref`.** The two series count
+    independently, which is the whole of DOMAIN.md §4.2. Seeding this counter
+    off `ra_no` or off the RA reference would re-create by arithmetic exactly
+    the derivation that section forbids.
+
+    ⚠ **A bill carrying a hand-typed value in a foreign shape is skipped, not
+    parsed.** Only a tail that is all digits advances the counter, so a legacy
+    `SF/TI/26-27/0007` typed into this field by an operator contributes nothing
+    to the `RI` sequence — it is not an `RI` number and must not move one.
+    """
+    fy = P.fy_of(datestr)
+    highest = 0
+    prefix = f"/{_TAXREF_SERIES}/{fy}/"
+    for b in (STORE.get("ra_bills") or {}).values():
+        ref = str(b.get("tax_invoice_ref") or "")
+        if prefix not in ref and not ref.startswith(f"{_TAXREF_SERIES}/{fy}/"):
+            continue
+        tail = ref.rpartition("/")[2]
+        if tail.isdigit():
+            highest = max(highest, int(tail))
+    return P.fy_ref(B.COMPANY_SHORT, _TAXREF_SERIES, fy, highest + 1,
+                    cap=_TAXREF_CAP)
 
 
 # =============================================================================
@@ -3291,6 +3369,21 @@ def create_ra():
             this_ra_no = next_ra_no(boq_id)
             prev_balance, prev_balance_refs = previous_balance(boq_id, this_ra_no)
 
+            # THE STATUTORY SERIAL, minted here and nowhere else.
+            #
+            # ⚠ **MINTED AT CREATION, NEVER AT PRINT.** C3 mints the merged
+            #   document's serial at creation for the same reason: a print route
+            #   that writes is a print route that changes a document by being
+            #   looked at, and the number would then depend on who opened it
+            #   first. `print_ra()` reads this field and does not compute one.
+            #
+            # ⚠ **A TYPED VALUE STILL WINS.** The field stays typeable — the
+            #   operator may be transcribing a serial from a book the client
+            #   keeps — and minting only fills it when it is left blank, which
+            #   is the case DOMAIN.md §4.2 names and the only one that was
+            #   falling back to `ra_no`.
+            tax_invoice_ref = tax_invoice_ref or next_tax_invoice_ref(date_val)
+
             STORE["ra_bills"][rid] = {
                 "id": rid,
                 "ref": next_ref(date_val),
@@ -3884,6 +3977,29 @@ def print_ra(id: str):
         <div class="lc-band lc-{status}">{band}</div>"""
 
     # References
+    #
+    # ⚠ **THE FALLBACK IS A CLOSED HISTORICAL SET AND IT IS NOT REACHABLE FOR
+    #   ANY BILL RAISED AFTER 3 SEPTEMBER 2026.** `create_ra()` mints
+    #   `tax_invoice_ref` from `next_tax_invoice_ref()` whenever the operator
+    #   leaves it blank, so from that date every new bill carries one and the
+    #   first `or` always short-circuits. What survives here is the reading for
+    #   records written **before** it — and for those, DOMAIN.md §4.2's
+    #   prohibition is still being broken: `ref` is our document number, not a
+    #   statutory serial, and the last branch is built from `ra_no` outright.
+    #
+    # ⚠ **IT SURVIVES DELIBERATELY, AND REMOVING IT WOULD BE THE WORSE BUG.**
+    #   These bills have been printed and sent. A tax invoice number that has
+    #   been quoted in somebody else's books cannot be silently replaced — and
+    #   printing a dash where a number used to be is the same act with a
+    #   different result. **The owner decides whether any of them is backfilled**
+    #   (first `CLIENT_CHANGES.md` §0 block of 3 September 2026, which reserves
+    #   that decision in terms and authorises no backfill tool). This is the same
+    #   treatment `pre_measurement` and `created_by` give their own grandfathered
+    #   sets: count the set, close it, and leave the records alone.
+    #
+    #   `tests/test_ra_tax_invoice_ref.py` pins **both** halves — that a new bill
+    #   never reaches this line, and that a legacy bill still renders exactly
+    #   what it rendered before.
     tax_inv_ref = bill.get("tax_invoice_ref") or bill.get("ref") or f"SF/RA/{bill.get('fy') or '26-27'}/{int(bill.get('ra_no') or 1):04d}"
     tax_inv_date = bill.get("tax_invoice_date") or bill.get("date") or ""
     # (`po_ref` / `po_date` are rendered below as `po_ref_disp` / `po_date_disp`,

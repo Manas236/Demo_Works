@@ -224,20 +224,54 @@ def test_the_series_counts_max_plus_one_and_never_reissues(pair):
 
 def test_a_single_leg_bills_tax_invoice_ref_is_UNCHANGED(pair):
     """
-    ⚠ **The limitation the override block states in its own words**, pinned so
-    nobody reads C3 as having closed it: this pass mints a series for the
-    MERGED document only. A single-leg RA bill's `tax_invoice_ref` is still a
-    typed field with no counter behind it — DOMAIN.md §4.2's STATUS paragraph
-    stands.
+    ⚠ **REWRITTEN 3 September 2026. "UNCHANGED" now means "unchanged BY THE
+    MERGE", and the standalone gap this used to pin is CLOSED.**
+
+    What it said, and it was true on the day it was written:
+
+        ⚠ **The limitation the override block states in its own words**, pinned
+        so nobody reads C3 as having closed it: this pass mints a series for the
+        MERGED document only. A single-leg RA bill's `tax_invoice_ref` is still
+        a typed field with no counter behind it — DOMAIN.md §4.2's STATUS
+        paragraph stands.
+
+    Its two original assertions, kept verbatim so what changed is legible:
+
+        assert not s.get("tax_invoice_ref"), (
+            "an RA bill acquired a minted tax_invoice_ref. That gap is real and "
+            "is explicitly NOT in C3's scope — closing it needs an override "
+            "block of its own.")
+        assert not i.get("tax_invoice_ref")
+
+    **The override block it asked for is the first of 3 September 2026**, and
+    `ra.next_tax_invoice_ref()` is the counter. So the first assertion is now
+    the opposite of the rule and is gone — but note what it was really testing:
+    `_bill()` writes its record **directly** rather than posting `/ra/create`,
+    so it asserted a property of the fixture and would have gone on passing
+    unchanged after the gap closed. ⚠ **The 3 September §0 block predicted this
+    test would fail and it does not.** The prediction was wrong, it is recorded
+    rather than quietly dropped, and `tests/test_ra_tax_invoice_ref.py` is where
+    the closing of the gap is actually held — through the route, which is the
+    only place minting happens.
+
+    **What survives is C3's own invariant and it is the half worth keeping:**
+    merging must not write a serial onto either leg. That was previously
+    unfalsifiable here, because a leg had no serial for the merge to overwrite.
+    It does now, so this asserts it against a value that a bug could plausibly
+    clobber.
     """
     _chain, s, i = pair
-    assert not s.get("tax_invoice_ref"), (
-        "an RA bill acquired a minted tax_invoice_ref. That gap is real and is "
-        "explicitly NOT in C3's scope — closing it needs an override block of "
-        "its own.")
-    merged_ra.create(s, i)
-    assert not s.get("tax_invoice_ref"), "merging wrote a serial onto a leg"
-    assert not i.get("tax_invoice_ref")
+    s["tax_invoice_ref"] = "SF/RI/26-27/0009"
+    i["tax_invoice_ref"] = "SF/RI/26-27/0010"
+
+    doc, err = merged_ra.create(s, i)
+    assert doc is not None, err
+
+    assert s["tax_invoice_ref"] == "SF/RI/26-27/0009", "merging wrote a serial onto a leg"
+    assert i["tax_invoice_ref"] == "SF/RI/26-27/0010", "merging wrote a serial onto a leg"
+    assert doc["tax_invoice_ref"] == "SF/MI/26-27/0001", (
+        "the merged document's serial is derived from a leg's. BQ1's answer is "
+        "that it is minted from its own counter, derived from NEITHER leg.")
 
 
 # =============================================================================
