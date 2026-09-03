@@ -91,7 +91,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 2,001 passed, 4 skipped — this is what THESE
+python -m pytest -q                     # 2,035 passed, 4 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
                                         #   ⚠ THIS FIGURE IS NOT COVERED BY
@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,001 passed, 4 skipped** | **2 Sep 2026** *(TWELFTH pass — B8 file attachments and C3 the merged RA; 3B closes at 8 of 8)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,000 passed, 2 skipped** | **2 Sep 2026** *(TWELFTH pass — B8 file attachments and C3 the merged RA; 3B closes at 8 of 8)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,035 passed, 4 skipped** | **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,034 passed, 2 skipped** | **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -8410,6 +8410,74 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     about registers having no shared table at all. They meet only in that both
     are reasons a screen change must be checked against the goldens before it
     is made.
+
+
+31. 🟠 **`/boq/view` puts a tax-EXCLUSIVE total beside tax-INCLUSIVE RA chips,
+    and nothing on the chips says so — OPEN, reported 3 September 2026 and
+    deliberately not fixed in that pass.**
+
+    The panel's *Total Basic Value* tile renders `boq_totals()` and carries the
+    sub-label **"taxes extra"** on its own face. Immediately below it, the
+    *"Running Account bills raised"* strip renders one chip per bill showing
+    that bill's **`grand_total`** — which includes GST — with no label of any
+    kind. The two figures sit inches apart, in the same panel, in the same
+    currency, and are not the same kind of number.
+
+    ⚠ **It has already cost a real investigation.** On 3 September 2026 BOQ
+    `SF/BOQ/26-27/0006` (*Work2*) was reported as over-claimed: ₹9,585 approved
+    against chips of ₹885 and ₹10,425 — ₹11,310, apparently **₹1,725 over**,
+    with RA2 alone apparently exceeding the whole schedule. There is no
+    over-claim. The two bills' `claim_subtotal`s are ₹750 + ₹8,835 = **₹9,585**,
+    reconciling against the schedule exactly, one leg each, each at exactly its
+    approved quantity; `ra.overclaims()` returns empty for both and returns a
+    breach for both the moment either claim is mutated to 2. **The ₹1,725 is the
+    GST** — ₹135 + ₹1,590.30 less ₹0.30 of rounding, which is 18% of ₹9,585.
+
+    The reason it reads as an overage on the seeded *Sify Bangalore* schedule
+    and not there is arithmetic rather than luck: the claims on that project are
+    a small fraction of a ₹91 lakh total, so 18% of them does not cross the
+    line. **A project claimed to completion always will.** Every BOQ that
+    reaches 100% claimed will look ~18% over on this panel.
+
+    📌 **What it would take.** Either label the chips (*"incl. tax"*), or render
+    `claim_subtotal` so the strip and the tile are the same kind of figure and
+    can legitimately be added up. The second is the smaller change and the
+    likelier right one — the tile is the **basic value**, and what a reader
+    wants to know is how much of it has been claimed — but it changes what a
+    screen shows, and the pass that found this had no authority to redesign a
+    panel. ⚠ **`/boq/view` is not golden-pinned, but `boq.py` feeds pages that
+    are**, so check before touching.
+
+32. 🟠 **One live RA bill carries a `tax_invoice_ref` from `invoice.py`'s
+    series, and it will collide — OPEN, reported 3 September 2026.**
+
+    `SF/RA/26-27/0001` — a **draft** — has `tax_invoice_ref` typed as
+    **`SF/TI/26-27/0007`**. `TI` is the sell-side tax invoice series minted by
+    `invoice.next_ref()`, and that counter stands at **`SF/TI/26-27/0001`** on
+    the live database.
+
+    There is **no collision today**. There is one the day `invoice.py` mints its
+    seventh tax invoice of the financial year, at which point the same statutory
+    serial is on two different documents — the precise failure Rule 46(b) exists
+    to prevent, and the one the three-series rule (`TI` / `MI` / `RI`) was built
+    to make impossible for anything minted from now on. A **typed** value is
+    outside that protection by design: the field stays typeable so an operator
+    can transcribe a serial from a book the client keeps, and nothing validates
+    what they type against another module's series.
+
+    ⚠ **The record was NOT touched.** It is live commercial data and correcting
+    it is the owner's decision, not an agent's — the same rule that leaves the
+    six blank-field bills alone (§3, RA Bill). ⚠ **Nor was a validator added**,
+    which is the tempting fix and the wrong one to take unasked: `ra.py` may not
+    import `invoice.py`, so a check would have to read `STORE["invoices"]`
+    directly, and refusing a typed serial that merely *looks* like another
+    series would block an operator transcribing a number the client genuinely
+    uses.
+
+    📌 **What it would take.** A decision on whether a typed `tax_invoice_ref`
+    should be checked against the other two series at all, and if so whether the
+    answer is a refusal or a warning. Gap 15's rule applies: do not encode a
+    guess about somebody's statutory numbering.
 
 ---
 
