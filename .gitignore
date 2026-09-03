@@ -54,3 +54,15 @@ Quote.html
 # are read once for structure and never at runtime. SOURCE_DOCUMENTS.md is the
 # findings record and IS tracked — the documents themselves are not.
 client_docs/
+
+# Dated scratch notes — `31AUG.md`, `2SEP.md`. A day's working notes, written
+# to the repository root and named after the date. They are not part of the
+# document set: INTRODUCTION.md §4 is the map, every file on it is deliberate,
+# and a 36-byte note reading "Updated Measurement Sheet" is a reminder to its
+# author rather than a record anyone else can read. Git history is where a
+# change is explained; PROGRESS.md is where a build state is recorded.
+# ⚠ They were untracked but NOT ignored, so every `git status --porcelain`
+#   reported the tree dirty and each pass had to take the same judgement call
+#   about a file nobody meant to commit. Same reasoning as `*.bak` above.
+[0-9][A-Z][A-Z][A-Z].md
+[0-9][0-9][A-Z][A-Z][A-Z].md
