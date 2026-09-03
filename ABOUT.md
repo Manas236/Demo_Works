@@ -3535,7 +3535,11 @@ not exist, or ships a fabricated supplier bill against a fabricated charge. It i
 also the evidence CC-2 makes compulsory on a charge.
 
 ⚠ **A `mysqldump` is no longer a complete backup of this application.** The
-metadata rows are in the dump; the files are not. See §4.
+metadata rows are in the dump; the files are not. ✅ **`tools/backup_db.py`
+takes both halves as of 3 September 2026** — one run writes the dump *and* a
+`-attachments.zip` beside it under the same stamp, and `--restore-attachments`
+puts the files back. The statement above is still true of `mysqldump` itself,
+which is why it stands rather than being deleted. See §4.
 
 ---
 
@@ -3760,6 +3764,61 @@ A restore from a dump alone produces rows pointing at files that are not there �
 download 404s. **A real backup of this application is the dump plus the
 directory.** This is the first time that has been true and it is recorded here
 because nothing else would say so.
+
+#### ✅ RESOLVED 3 September 2026 — `tools/backup_db.py` takes BOTH halves
+
+The paragraph above stands as the statement of the problem and is **not**
+withdrawn: a `mysqldump` still covers strictly less than this application's
+state, and anyone restoring one on its own still gets rows pointing at files
+that are not there. What changed is that **the tool no longer leaves it to the
+operator to remember.** One run writes a **pair**, under one stamp and one
+label:
+
+```
+backups/samruddhi_qms-20260903-2242-pre-ra.sql              the database
+backups/samruddhi_qms-20260903-2242-pre-ra-attachments.zip  the files
+```
+
+- **The pair shares a stem**, so the two halves of one moment cannot be
+  mismatched by eye at restore time. That is the whole of the naming rule, and
+  retention is unchanged: dated files, never pruned, gitignored, confidential.
+- **Paths inside the archive are RELATIVE to `attachment.root()`** — the same
+  contract `stored_path` keeps on the record, for the same reason. An absolute
+  path publishes the disk layout of the machine that took the backup and cannot
+  be restored anywhere else.
+- **The store is read through `attachment.root()`, never `<repo>/attachments/`.**
+  `ATTACHMENT_DIR` exists so a deployment can move the store to another volume,
+  and a backup that hardcoded the default would snapshot an empty directory on
+  exactly the machine that had moved it — and report success.
+- **The zip is written even when the store is empty.** An absent file cannot be
+  told apart from a snapshot that failed.
+- **The archive half raises rather than warning**, and the `.sql` is deliberately
+  *not* unlinked when it does: the dump is valid, it is the more expensive half
+  to retake, and destroying data on the way out of a backup tool is
+  indefensible.
+- `--restore-attachments <zip>` is the other half of the contract. It is
+  **additive** — a restore is run when files are missing, and deleting a file
+  that survived the incident would make the tool cause the loss it exists to
+  undo — and it **re-validates every member against the root**, because the
+  archive reaches the tool from the filesystem, which is a different trust
+  boundary from the one it was written across. `abs_path()` makes the identical
+  argument about a `stored_path` arriving from the database.
+
+**Proved by restore, not by a green test**: a file was planted in a nested
+store, the pair taken, the whole `charge/` directory destroyed, and the file
+restored from the archive alone — back at the same relative path with the same
+sha256. 13 tests in
+[tests/test_backup_attachments.py](tests/test_backup_attachments.py), three of
+them mutation-checked against the source.
+
+⚠ **One of those tests was VACUOUS when written and the mutation is what found
+it.** It asserted only that no archive member was absolute, carried a drive
+letter or held a backslash — and `zipfile.write()` with no `arcname` already
+strips the drive and the leading separator, so an archive of
+`Users/…/attachments/charge/x.png` passed all three checks while being exactly
+the unrestorable thing the test forbade. It now asserts an **equality** against
+the store's own relative paths. A guard nobody has tried to break is a guard
+nobody has tested.
 
 ---
 
