@@ -457,18 +457,27 @@ def test_merging_does_not_move_the_overclaim_guard(pair):
     """
     The consequence, measured rather than argued.
 
-    ⚠ **AND IT IS WEAKER THAN THE TEST ABOVE IT TODAY — stated so nobody reads
-    it as more.** `ra.claimed_by_line()` walks `STORE["ra_bills"]`, and a merged
-    document lives in `STORE["merged_ras"]`, so copying claim rows onto the
-    merged record does **not** move this figure as things stand: mutation-tested
-    on 2 September 2026, and this test went on passing while
-    `test_the_merged_record_holds_no_claims_of_its_own` caught it. **The shape
-    test is the one that bites.**
+    ⚠ **NO LONGER THE WEAKER OF THE TWO — 3 September 2026.** What this said,
+    and it was honest on the day it was written:
 
-    This is kept anyway, as the guard for the change that would make CC-2's
-    warning real: a later pass that files merged documents in `ra_bills` — to
-    put them on one register, say — and this fails the day it does. That is the
-    arrangement worth having, but it must not be mistaken for a live proof.
+        ⚠ **AND IT IS WEAKER THAN THE TEST ABOVE IT TODAY — stated so nobody
+        reads it as more.** `ra.claimed_by_line()` walks `STORE["ra_bills"]`,
+        and a merged document lives in `STORE["merged_ras"]`, so copying claim
+        rows onto the merged record does **not** move this figure as things
+        stand: mutation-tested on 2 September 2026, and this test went on
+        passing while `test_the_merged_record_holds_no_claims_of_its_own`
+        caught it. **The shape test is the one that bites.**
+
+        This is kept anyway, as the guard for the change that would make CC-2's
+        warning real: a later pass that files merged documents in `ra_bills` —
+        to put them on one register, say — and this fails the day it does. That
+        is the arrangement worth having, but it must not be mistaken for a live
+        proof.
+
+    `claimed_by_line()` now walks **both** collections, so the mutation that
+    docstring describes is caught **here**, by the function CC-2's warning is
+    about, rather than by a neighbour. The original assertion is unchanged and
+    still runs; what follows it is the half that was missing.
     """
     _chain, s, i = pair
     boq_id = s["boq_id"]
@@ -480,6 +489,81 @@ def test_merging_does_not_move_the_overclaim_guard(pair):
     assert after == before, (
         "merging two bills changed the claimed quantity against the schedule. "
         "The merged document is being counted as a third claim.")
+
+    # THE MUTATION, RUN IN-TEST. This is the exact act CC-2 forbids — *"Copying
+    # claim rows into it would make the over-claim guard count the same quantity
+    # twice"* — and until 3 September 2026 it moved nothing here.
+    doc["claims"] = list(s["claims"]) + list(i["claims"])
+    mutated = dict(RA.claimed_by_line(boq_id))
+
+    assert mutated != before, (
+        "claim rows were copied onto the merged record and ra.claimed_by_line() "
+        "did not notice. That is CC-2's double-count, and the over-claim guard "
+        "reads this function — so the same quantity is claimable twice.")
+    for key, qty in before.items():
+        assert mutated[key] > qty, (
+            f"{key} was not double-counted after the rows were copied: "
+            f"{mutated[key]} vs {qty}")
+
+
+def test_a_CANCELLED_merged_document_releases_its_rows_too(pair):
+    """
+    ⚠ The other half of the walk above, and it follows CC-2's own rule rather
+    than a convenience: cancelling a merged document exists to **release both
+    legs**, so a cancelled row must not go on adding quantity either.
+
+    `ra._merge_is_live()` is the single place that question is answered and
+    `_live_merge_holding()` reads the same helper, so the two cannot drift.
+    """
+    _chain, s, i = pair
+    boq_id = s["boq_id"]
+    before = dict(RA.claimed_by_line(boq_id))
+
+    doc, _e = merged_ra.create(s, i)
+    doc["claims"] = list(s["claims"]) + list(i["claims"])
+    assert dict(RA.claimed_by_line(boq_id)) != before, "the fixture proved nothing"
+
+    doc["status"] = "cancelled"
+
+    assert dict(RA.claimed_by_line(boq_id)) == before, (
+        "a cancelled merged document is still adding quantity to the guard")
+
+
+def test_an_UNRECOGNISED_merged_status_counts_as_live(pair):
+    """
+    ⚠ The safe direction, and the same one `merged_ra.status_of()` takes: a
+    record whose status cannot be read must not silently release anything.
+    """
+    _chain, s, i = pair
+    boq_id = s["boq_id"]
+    before = dict(RA.claimed_by_line(boq_id))
+
+    doc, _e = merged_ra.create(s, i)
+    doc["claims"] = list(s["claims"]) + list(i["claims"])
+    doc["status"] = "something-nobody-wrote"
+
+    assert dict(RA.claimed_by_line(boq_id)) != before, (
+        "an unreadable status released the rows. Unrecognised must read as live.")
+
+
+def test_a_merged_document_on_ANOTHER_project_is_not_counted(chain):
+    """
+    Scoped to the revision chain exactly as the `ra_bills` walk is. A merged
+    document belonging to a different schedule must not move this one's ceiling.
+    """
+    s = _bill(chain, "x-supply", 1, "supply", "SF/RA/26-27/0001")
+    i = _bill(chain, "x-install", 2, "installation", "SF/RA/26-27/0002")
+    boq_id = s["boq_id"]
+    before = dict(RA.claimed_by_line(boq_id))
+
+    STORE.setdefault("merged_ras", {})["foreign"] = {
+        "id": "foreign", "boq_id": "some-other-boq", "status": "live",
+        "supply_ra_id": "x-supply", "installation_ra_id": "x-install",
+        "claims": list(s["claims"]) + list(i["claims"]),
+    }
+
+    assert dict(RA.claimed_by_line(boq_id)) == before, (
+        "a merged document on another project moved this project's guard")
 
 
 def test_the_rows_are_stacked_and_not_combined(pair):

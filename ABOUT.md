@@ -2070,6 +2070,12 @@ two femtometres against an approved 12.
 `claimed_by_line()` counts **draft and issued** bills and **excludes
 cancelled** ones. Both halves are load-bearing and neither is obvious:
 
+⚠ **It also walks `STORE["merged_ras"]` from 3 September 2026**, and on correct
+data that walk finds nothing — a merged record holds no claims of its own and
+must never hold any. It is there so that CC-2's double-count warning is enforced
+by the guard the warning is *about*, rather than by a neighbouring shape test.
+See §3 (Merged RA) for the three properties and the mutation proof.
+
 - **A draft counts.** It is not yet a document, but its quantity is committed
   the moment it is saved. If drafts were skipped, two of them could each claim a
   line's whole remaining balance and the guard would see nothing until the
@@ -3325,6 +3331,37 @@ Copying claim rows into it would make the over-claim guard count the same
 quantity twice."* The printed rows are read from the two sources at render by
 `stacked_rows()`. `test_the_merged_record_holds_no_claims_of_its_own` fails if
 one appears.
+
+✅ **AND THE OVER-CLAIM GUARD NOW SEES ONE — 3 September 2026.** Until that
+date the warning above was enforced only by the **shape** test: `ra.claimed_by_line()`
+walked `STORE["ra_bills"]` and a merged document lives in `STORE["merged_ras"]`,
+so copying claim rows onto the merged record moved no figure at all.
+`test_merging_does_not_move_the_overclaim_guard` **said so in its own
+docstring** — it was mutation-tested on 2 September, passed while the shape test
+beside it caught the defect, and recorded that it must not be mistaken for a
+live proof. A test that cannot fail for its own reason is not a guard.
+
+`claimed_by_line()` now walks **both** collections. On correct data the second
+walk finds nothing and costs one dict lookup; the day a `claims` key appears —
+a "simplifying" pass, a hand-edited row, a restore from a dump — the quantity is
+counted and the block refuses it. Three properties, each mutation-proved:
+
+- **A row is counted against BOTH legs the document spans.** A claim row carries
+  no `leg` of its own (`build_claim()` uses the leg to pick a rate and does not
+  store it), so there is nothing to attribute it by, and guessing one leg would
+  let the other through. On a hard block over somebody's money the guard errs
+  toward refusing, loudly.
+- **A cancelled merged document releases its rows**, because releasing both legs
+  is what cancelling one is *for* — and an **unrecognised status reads as live**,
+  which is the safe direction. `ra._merge_is_live()` is now the single place that
+  question is answered and `_live_merge_holding()` reads the same helper, so the
+  two cannot drift.
+- **It is scoped to the revision chain**, exactly as the `ra_bills` walk is.
+
+⚠ **The proof is that reverting the walk fails
+`test_merging_does_not_move_the_overclaim_guard` while the neighbouring shape
+test goes on passing** — which is what "caught by the function CC-2's warning is
+about, rather than by a neighbour" means, measured rather than asserted.
 
 **CC-2's six invariants, and where each is enforced:**
 

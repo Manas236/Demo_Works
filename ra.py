@@ -580,6 +580,24 @@ def approved_labels(boq_id: str) -> dict:
     return out
 
 
+def _merge_is_live(m: dict) -> bool:
+    """
+    Is this merged document live? **The one place that question is answered.**
+
+    ⚠ **An unrecognised status reads as LIVE**, matching `merged_ra.status_of()`.
+    That is the safe direction here and not a default chosen for tidiness: a
+    cancelled merged document exists precisely to **release both its legs**, so
+    a record whose status cannot be read must not silently release them.
+
+    Extracted 3 September 2026 because there are now **two** readers in this
+    module — `_live_merge_holding()` and `claimed_by_line()` — and two copies of
+    a rule are two copies to keep in step.
+    `tests/test_merged_ra.py::test_the_two_sides_agree_on_what_a_live_merge_is`
+    holds this against `merged_ra.py`'s own answer over every status value.
+    """
+    return str(m.get("status") or "").strip().lower() != "cancelled"
+
+
 def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
     """
     {(line_id, leg): qty} summed over every RA bill in the revision chain.
@@ -616,6 +634,37 @@ def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
     exactly the collapse this key exists to end, on the lines where item numbers
     are ambiguous, and would do it silently. `boq.backfill_line_ids()` counts
     such rows so they are visible instead.
+
+    ⚠ **IT WALKS `merged_ras` AS WELL AS `ra_bills`, AND ON CORRECT DATA THAT
+    SECOND WALK FINDS NOTHING** (3 September 2026). CC-2 warns that copying
+    claim rows onto a merged record *"would make the over-claim guard count the
+    same quantity twice"* — and until this pass **the guard could not see one**:
+    a merged document lives in `STORE["merged_ras"]` and this function read only
+    `STORE["ra_bills"]`.
+    `tests/test_merged_ra.py::test_merging_does_not_move_the_overclaim_guard`
+    said so in its own docstring, having been mutation-tested on 2 September
+    2026 and found to pass while a **neighbouring shape test** caught the
+    defect. A test that cannot fail for its own reason is not a guard.
+
+    So the invariant is now enforced where it is stated rather than nearby.
+    `merged_ra.py` never writes a `claims` key, so this loop is a no-op on every
+    correct record and costs one dict lookup; the day one appears — a
+    "simplifying" pass, a hand-edited row, a restore from a dump — the quantity
+    is **counted** and the over-claim block refuses it, instead of the same
+    quantity being claimable a second time in silence.
+
+    ⚠ **A row found there is counted against BOTH legs the document spans**, and
+    that is deliberate. A claim row carries no `leg` of its own — `build_claim()`
+    uses the leg to pick a rate and does not store it — so there is nothing to
+    attribute it by, and a merged document is exactly the record that covers
+    both. Guessing one leg would let the other through. This is a hard block on
+    somebody's money, so where the data is already malformed the guard errs
+    toward **refusing**, and it errs loudly rather than picking a side.
+
+    ⚠ **`ra.py` does not import `merged_ra.py`** — that module imports this one,
+    so the arrow would be a cycle at boot. `STORE["merged_ras"]` is read
+    directly, the one-way trick this file already runs for `STORE["receipts"]`
+    and `_live_merge_holding()`.
     """
     ids = set(revision_chain(boq_id))
     if not ids:
@@ -636,6 +685,26 @@ def claimed_by_line(boq_id: str, exclude_ra_id: str = None) -> dict:
                 continue
             key = (lid, leg)
             out[key] = out.get(key, 0.0) + float(c.get("qty") or 0.0)
+
+    # CC-2's double-count warning, enforced rather than assumed. See above.
+    for doc in (STORE.get("merged_ras") or {}).values():
+        if str(doc.get("boq_id") or "") not in ids:
+            continue
+        if not _merge_is_live(doc):
+            continue                  # cancelled — it released both its legs
+        rows = doc.get("claims") or []
+        if not rows:
+            continue                  # the correct case, and the only one today
+        legs = [lg for lg, key in (("supply", "supply_ra_id"),
+                                   ("installation", "installation_ra_id"))
+                if doc.get(key)]
+        for c in rows:
+            lid = BQ._line_id(c.get("line_id"))
+            if not lid:
+                continue
+            qty = float(c.get("qty") or 0.0)
+            for lg in legs:
+                out[(lid, lg)] = out.get((lid, lg), 0.0) + qty
     return out
 
 
@@ -1973,10 +2042,12 @@ def _live_merge_holding(ra_id: str):
     if not ra_id:
         return None
     for m in (STORE.get("merged_ras") or {}).values():
-        status = str(m.get("status") or "").strip().lower()
         # Unrecognised reads as live, matching `merged_ra.status_of()`: a record
         # whose status cannot be read must not silently release its two legs.
-        if status == "cancelled":
+        # ⚠ **The rule moved into `_merge_is_live()` on 3 September 2026** and is
+        #   not restated here, because `claimed_by_line()` is now a second reader
+        #   of it and two copies would drift.
+        if not _merge_is_live(m):
             continue
         if ra_id in (str(m.get("supply_ra_id") or ""),
                      str(m.get("installation_ra_id") or "")):
