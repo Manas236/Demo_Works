@@ -444,8 +444,40 @@ def test_the_link_graph_is_built_from_literal_endpoints_almost_everywhere():
     #   merits — `charge.list_charges` and `receipt.list_receipts` are both
     #   already roots of this walk — and the four file routes render no page at
     #   all, which is why `tests/test_entity_fallbacks.py` skips them too.
-    assert computed <= 16, (
+    # ⚠ **RAISED 16 → 17 on 5 September 2026 (the dashboard's BOQ/RA visual
+    #   cues), which is what the docstring instructs rather than a weakening of
+    #   it.** The previous assertion, kept verbatim:
+    #
+    #       assert computed <= 16, (
+    #           f"{computed} url_for() call sites use a computed endpoint, up from the "
+    #           f"16 measured on 2 September 2026 (B8). The sweep can only see "
+    #           f"one if its endpoint name appears as a literal too. Check the new one, "
+    #           f"then raise this bound deliberately.")
+    #
+    #   ⚠ **The pass that raised it added THREE computed sites and then removed
+    #   two of them**, which is the check this tripwire is for working as
+    #   intended rather than a bound nudged to make a suite green. The two
+    #   removed were `url_for(target)` in `dashboard._activity_html()` and
+    #   `dashboard._chain_html()`, each picking a register by permission; both
+    #   are now `if auth.can_reach("boq.list_boqs") / elif ...` branches naming
+    #   `boq.list_boqs` and `ra.list_ras` as literals, so they contribute real
+    #   edges instead of being invisible here.
+    #
+    #   The seventeenth is `dashboard._activity_html()`'s row link,
+    #   `url_for(r["endpoint"], id=r["id"])`, where `endpoint` is `boq.view_boq`
+    #   or `ra.view_ra` off a row dict built by `_activity_rows()`. It is the
+    #   same shape as `address._ref_chips()` above and is computed for the same
+    #   structural reason: one loop renders both document kinds, and the feed is
+    #   permission-filtered per row against that endpoint.
+    #
+    #   ⚠ **Like the six computed sites above it, it contributes no edges** —
+    #   the names are dict values, not literals at a call site — so it makes the
+    #   sweep MORE pessimistic, never less. Both pages it points at are reached
+    #   on their own merits: `/boq/view/<id>` and `/ra/view/<id>` are already
+    #   linked literally from their own registers, which are themselves roots of
+    #   this walk. Checked, then raised.
+    assert computed <= 17, (
         f"{computed} url_for() call sites use a computed endpoint, up from the "
-        f"16 measured on 2 September 2026 (B8). The sweep can only see "
-        f"one if its endpoint name appears as a literal too. Check the new one, "
-        f"then raise this bound deliberately.")
+        f"17 measured on 5 September 2026 (the dashboard's BOQ/RA visual cues). "
+        f"The sweep can only see one if its endpoint name appears as a literal "
+        f"too. Check the new one, then raise this bound deliberately.")

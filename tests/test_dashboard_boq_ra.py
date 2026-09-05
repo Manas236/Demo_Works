@@ -329,3 +329,179 @@ def test_claimed_value_is_the_claim_and_not_the_net_of_deductions(client):
     assert bill["net_payable"] == 900.0, "the fixture must distinguish the two"
     assert dashboard._boq_ra()["ra_claimed_value"] == 1000.0, (
         "the claim, not the claim net of retention")
+
+
+# ── Item 3: the activity feed, and the permission filter on it ──────────────
+
+def _role(slug, *permissions):
+    """A throwaway role holding exactly the permissions named, and a user on it."""
+    import auth
+
+    auth.ensure_builtin_roles()
+    auth.roles()[f"role-{slug}"] = {
+        "id": f"role-{slug}", "name": slug, "builtin": False,
+        "permissions": ["dashboard.view", *permissions]}
+    existing = auth.find_user(f"act-{slug}")
+    if existing:
+        del STORE["users"][existing["id"]]
+    return auth.create_user(f"act-{slug}", slug, f"pw-act-{slug}-12345",
+                            [f"role-{slug}"], created_by="activity-test")
+
+
+def _as(client, user):
+    import auth
+
+    with client.session_transaction() as session:
+        session[auth.SESSION_KEY] = user["id"]
+
+
+def _seed_activity():
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _boq("b1", "SF/BOQ/26-27/0001", 5000.0, date="2026-08-01")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 1200.0, date="2026-08-20")
+
+
+def test_the_feed_interleaves_boqs_and_ra_bills_newest_first(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _boq("b1", "SF/BOQ/26-27/0001", 100.0, date="2026-08-01")
+    _boq("b2", "SF/BOQ/26-27/0002", 200.0, date="2026-08-15")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 50.0, date="2026-08-10")
+    _bill("r2", "SF/RA/26-27/0002", "b1", 60.0, date="2026-08-20")
+
+    refs = [r["ref"] for r in dashboard._boq_ra()["activity"]]
+    assert refs == ["SF/RA/26-27/0002", "SF/BOQ/26-27/0002",
+                    "SF/RA/26-27/0001", "SF/BOQ/26-27/0001"]
+
+
+def test_the_feed_orders_by_the_documents_own_date_not_insertion_order(client):
+    """
+    There is no `created_at` on either record — see `_activity_rows()`. The key
+    is `(date, ref)` descending, which is `projectview.py`'s existing key for
+    the same collections.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _boq("b_old", "SF/BOQ/26-27/0009", 100.0, date="2026-01-01")
+    _boq("b_new", "SF/BOQ/26-27/0001", 100.0, date="2026-12-01")
+
+    refs = [r["ref"] for r in dashboard._boq_ra()["activity"]]
+    assert refs[0] == "SF/BOQ/26-27/0001", "the later date leads, not the later insert"
+
+
+def test_the_feed_carries_tax_exclusive_amounts(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _bill("r1", "SF/RA/26-27/0001", "b1", 1000.0)
+
+    row = dashboard._boq_ra()["activity"][0]
+    assert row["amount"] == 1000.0, "claim_subtotal, never grand_total (1180)"
+
+
+def test_a_cancelled_bill_stays_in_the_feed_and_is_labelled(client):
+    """
+    The feed answers "what moved", and a withdrawn claim moved. It is out of
+    the money totals — where its claim genuinely is nothing — and in the record
+    of what happened.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _bill("r1", "SF/RA/26-27/0001", "b1", 100.0, status="cancelled")
+
+    rows = dashboard._boq_ra()["activity"]
+    assert len(rows) == 1
+    assert "cancelled" in rows[0]["note"]
+
+
+def test_the_feed_is_capped_and_says_how_many_it_left_out(client):
+    """
+    ⚠ Both halves, and the count of DRAWN ROWS is the half that matters. An
+    earlier version asserted only the "+ 3 more" label — which is computed from
+    `len(rows)` and goes on rendering correctly even when the cap on the loop is
+    removed, so removing the cap passed. The row count is what pins it.
+    """
+    import re
+
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    for i in range(dashboard.ACTIVITY_LIMIT + 3):
+        _boq(f"b{i}", f"SF/BOQ/26-27/{i:04d}", 100.0, date=f"2026-08-{i + 1:02d}")
+
+    html = client.get("/").get_data(as_text=True)
+    feed = html[html.find("Recent BOQ &amp; RA activity"):]
+    feed = feed[:feed.find("</section>")]
+    drawn = re.findall(r'href="/boq/view/b\d+"', feed)
+
+    assert len(drawn) == dashboard.ACTIVITY_LIMIT, (
+        f"{len(drawn)} rows drawn, cap is {dashboard.ACTIVITY_LIMIT}")
+    assert "+ 3 more" in html
+
+
+def test_the_feed_renders_a_link_to_each_document(client):
+    _seed_activity()
+    html = client.get("/").get_data(as_text=True)
+    assert "Recent BOQ &amp; RA activity" in html
+    assert "/boq/view/b1" in html
+    assert "/ra/view/r1" in html
+
+
+# ── The judgement call, proved non-vacuous by role ──────────────────────────
+
+def test_a_user_without_ra_view_is_not_shown_ra_bills_in_the_feed(client):
+    """
+    ⚠ **THE ITEM 3 JUDGEMENT CALL, asserted.** This panel names a document, its
+    project and its amount — a materially bigger disclosure than the aggregate
+    counts above it, which ABOUT.md §7 gap 27 deliberately leaves unfiltered.
+    A BOQ-only role sees schedules and no claims.
+    """
+    _seed_activity()
+    _as(client, _role("boqonly", "boq.view"))
+
+    html = client.get("/").get_data(as_text=True)
+    assert "SF/BOQ/26-27/0001" in html, "a schedule it may open was hidden"
+    assert "SF/RA/26-27/0001" not in html, "a bill it may NOT open was named"
+    assert "/ra/view/r1" not in html
+
+
+def test_a_user_without_boq_view_is_not_shown_boqs_in_the_feed(client):
+    """The mirror image — the two kinds filter independently."""
+    _seed_activity()
+    _as(client, _role("raonly", "ra.view"))
+
+    html = client.get("/").get_data(as_text=True)
+    assert "SF/RA/26-27/0001" in html, "a bill it may open was hidden"
+    assert "SF/BOQ/26-27/0001" not in html, "a schedule it may NOT open was named"
+    assert "/boq/view/b1" not in html
+
+
+def test_a_user_reaching_neither_register_gets_no_activity_panel_at_all(client):
+    _seed_activity()
+    _as(client, _role("neither"))
+
+    html = client.get("/").get_data(as_text=True)
+    assert "Recent BOQ &amp; RA activity" not in html
+    assert "SF/BOQ/26-27/0001" not in html
+    assert "SF/RA/26-27/0001" not in html
+
+
+def test_the_feed_filter_agrees_with_the_gate_that_would_refuse_the_link(client):
+    """
+    ⚠ Every row the feed draws must be a row whose own link actually opens.
+
+    This is the property the filter exists for, and it is asserted end-to-end
+    rather than by inspecting `can_reach()`: each document link rendered on the
+    page is requested, and none of them may refuse. ABOUT.md §7 gap 24 is why
+    the check is endpoint-level — this application has no object-level gate on
+    `/boq/view/<id>` or `/ra/view/<id>` for the feed to consult.
+    """
+    import re
+
+    _seed_activity()
+    _as(client, _role("boqonly2", "boq.view"))
+
+    html = client.get("/").get_data(as_text=True)
+    links = set(re.findall(r'href="(/(?:boq|ra)/view/[^"]+)"', html))
+    assert links, "the feed drew no document links at all — test is vacuous"
+    for href in links:
+        assert client.get(href).status_code == 200, f"{href} was drawn but refuses"

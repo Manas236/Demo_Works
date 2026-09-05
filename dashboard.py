@@ -556,6 +556,15 @@ DASH_STYLES = """
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     max-width: 22ch; }
   .rq-meta { display: flex; align-items: center; gap: .5rem; }
+  /* The activity feed's type badge. Deliberately quieter than
+     `P.stage_badge()` beside it in the recent-quotations panel: this one
+     separates two document kinds, it does not carry a status. */
+  .act-kind { font-size: .62rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; padding: 1px 6px; border-radius: 9px;
+    border: 1px solid var(--border); color: var(--muted); }
+  .act-kind.ak-boq { color: var(--navy); border-color: var(--navy); }
+  .act-kind.ak-ra  { color: var(--c-won); border-color: var(--c-won); }
+
   .rq-right { text-align: right; }
   .rq-val { font-size: .84rem; font-weight: 600;
     font-variant-numeric: tabular-nums; }
@@ -1527,7 +1536,72 @@ def _boq_ra() -> dict:
         # than it is.
         "boq_open_value": sum(float(boqs[bid].get("subtotal") or 0.0)
                               for bid in open_ids),
+
+        # The activity feed's raw rows, NOT yet permission-filtered — that
+        # happens at render, where the request context exists. See
+        # `_activity_html()`.
+        "activity": _activity_rows(boqs, bills),
     }
+
+
+def _activity_rows(boqs: dict, bills: dict) -> list:
+    """
+    BOQs and RA bills interleaved, newest first.
+
+    ⚠ **Ordered by the document's own `date`, because there is no `created_at`
+    on either record and inventing one is not this pass's to do.** Neither
+    `boq.py` nor `ra.py` has ever written a creation timestamp; what both carry
+    is the document date the operator typed. The sort key is `(date, ref)`
+    descending, which is exactly the key `projectview.py` already uses to order
+    the same two collections — so the feed agrees with the project page rather
+    than inventing a second order. `ref` breaks the tie deterministically, since
+    both series are zero-padded and sort lexically in mint order.
+
+    ⚠ **A cancelled RA bill still appears.** The feed answers "what moved", and
+    a withdrawn claim moved — it is excluded from the *money* totals, where its
+    claim genuinely is nothing, but suppressing it here would make a bill vanish
+    from the record of what happened. Its status is on the row.
+
+    Returns rows as dicts rather than rendered HTML so that the permission
+    filter can drop them before any of them reaches a page.
+    """
+    rows = []
+
+    for bid, b in boqs.items():
+        rows.append({
+            "kind":     "BOQ",
+            "endpoint": "boq.view_boq",
+            "id":       bid,
+            "ref":      str(b.get("ref") or "—"),
+            "party":    str(b.get("project_name") or b.get("account_name") or ""),
+            # Tax-exclusive, the field behind the sheet's "Total Basic Value".
+            "amount":   float(b.get("subtotal") or 0.0),
+            "date":     str(b.get("date") or ""),
+            "note":     "",
+        })
+
+    for rid, r in bills.items():
+        # `ra_no` is the client's own sequence and is what they will say on the
+        # phone; the ref is ours. Show the ref and carry the leg, which is the
+        # one thing that distinguishes two bills of the same date on one job.
+        leg = str(r.get("leg") or "").strip()
+        note = leg.capitalize() if leg else ""
+        if _ra_is_cancelled(r):
+            note = f"{note} · cancelled".strip(" ·")
+        rows.append({
+            "kind":     "RA",
+            "endpoint": "ra.view_ra",
+            "id":       rid,
+            "ref":      str(r.get("ref") or "—"),
+            "party":    str(r.get("project_name") or r.get("account_name") or ""),
+            # Tax-exclusive. Gap 31 — never `grand_total`.
+            "amount":   float(r.get("claim_subtotal") or 0.0),
+            "date":     str(r.get("date") or ""),
+            "note":     note,
+        })
+
+    rows.sort(key=lambda x: (x["date"], x["ref"]), reverse=True)
+    return rows
 
 
 def _metrics():
@@ -1944,6 +2018,93 @@ def _chain_tiles_html(m) -> str:
           </div>"""
 
 
+def _activity_html(m) -> str:
+    """
+    What moved on the BOQ/RA chain — newest first, and PERMISSION-FILTERED.
+
+    ⚠ **THIS IS THE ONE PANEL ON THIS PAGE THAT FILTERS PER RECORD, AND THE
+    DEPARTURE IS DELIBERATE.** ABOUT.md §7 gap 27 is the standing position that
+    dashboard *figures* are not permission-filtered — counts and totals still
+    summarise records the reader may not open one by one, and the pass that
+    closed gaps 28 and 29 was explicitly instructed to leave that open. This
+    panel does not extend that precedent, because it is not an aggregate: it
+    names a document, its client or project, and its value. **Naming a specific
+    document and its amount to somebody who cannot open it is a materially
+    bigger disclosure than telling them how many exist**, and it is the exact
+    thing an aggregate count protects against. So the feed is filtered and the
+    tiles above it are not, and that inconsistency is the intended outcome
+    rather than an oversight.
+
+    ⚠ **THE FILTER IS ENDPOINT-LEVEL, BECAUSE THERE IS NO PER-RECORD CHECK IN
+    THIS APPLICATION TO REUSE.** ABOUT.md §7 gap 24 is explicit: `ROUTE_PERMISSIONS`
+    maps an endpoint to a permission, so it answers *"may this user view RA
+    bills"* and **cannot** answer *"may this user view THIS RA bill"*. There is
+    no object-level gate on `/boq/view/<id>` or `/ra/view/<id>` — a holder of
+    `ra.view` may open every bill in the store. `auth.can_reach()` is therefore
+    not an approximation of the real gate here, it **is** the real gate, and
+    filtering on it delivers exactly the property this panel needs: a row is
+    shown only when its own link would open. **If object-level access is ever
+    built, this function is one of the places that must learn about it** — and
+    until then it must not be described as doing more than it does.
+
+    The two kinds are filtered independently: a role holding `boq.view` and not
+    `ra.view` gets a feed of schedules with the claims removed, rather than the
+    whole panel.
+    """
+    import auth
+
+    rows = [r for r in m["activity"] if auth.can_reach(r["endpoint"])]
+    if not rows:
+        # Silent when this user reaches neither register — the caller drops the
+        # panel entirely rather than showing an empty one.
+        if not (auth.can_reach("boq.view_boq") or auth.can_reach("ra.view_ra")):
+            return ""
+        return '<div class="none">Nothing raised on the BOQ chain yet.</div>'
+
+    out = ""
+    for r in rows[:ACTIVITY_LIMIT]:
+        href = url_for(r["endpoint"], id=r["id"])
+        d    = _pdate(r["date"])
+        when = d.strftime("%d %b %Y") if d else "—"
+        # `party` and `ref` are operator-typed and reach HTML here, so both are
+        # escaped at the interpolation site (ABOUT.md §9). `kind`, `when` and
+        # the amount are ours and are not user text.
+        party = P.esc(r["party"] or "Unnamed")
+        note  = f' · {P.esc(r["note"])}' if r["note"] else ""
+        out += f"""
+          <a class="rq-row" href="{href}">
+            <div>
+              <div class="rq-ref">{P.esc(r['ref'])}</div>
+              <div class="rq-meta">
+                <span class="act-kind ak-{r['kind'].lower()}">{r['kind']}</span>
+                <span class="rq-acct">{party}{note}</span>
+              </div>
+            </div>
+            <div class="rq-right">
+              <div class="rq-val">{rupees(r['amount'])}</div>
+              <div class="rq-date">{when}</div>
+            </div>
+          </a>"""
+
+    extra = len(rows) - ACTIVITY_LIMIT
+    if extra > 0:
+        # The "+N more" link goes to whichever register this user can actually
+        # open, and is omitted rather than dangling when neither is reachable.
+        #
+        # ⚠ **Written as literal `url_for()` branches rather than
+        # `url_for(target)`.** A computed endpoint is invisible to the AST walk
+        # in `tests/test_page_reachability.py`, so the branchier form is the one
+        # that actually contributes edges to the link graph — see the tripwire
+        # `test_the_link_graph_is_built_from_literal_endpoints_almost_everywhere`.
+        tail = ""
+        if auth.can_reach("boq.list_boqs"):
+            tail = f' — <a href="{url_for("boq.list_boqs")}">open the BOQ register</a>'
+        elif auth.can_reach("ra.list_ras"):
+            tail = f' — <a href="{url_for("ra.list_ras")}">open the RA register</a>'
+        out += f'<div class="attn-more">+ {extra} more{tail}</div>'
+    return out
+
+
 def _chain_html(m) -> str:
     """
     The whole project-billing band, or "" when this user reaches none of it.
@@ -1953,9 +2114,42 @@ def _chain_html(m) -> str:
     Sales Manager there is a section they are missing rather than not mentioning
     one.
     """
-    tiles = _chain_tiles_html(m)
-    if not tiles:
+    import auth
+
+    tiles    = _chain_tiles_html(m)
+    activity = _activity_html(m)
+    if not (tiles or activity):
         return ""
+
+    panels = ""
+    if activity:
+        # The register link in the header follows the same rule as the "+N
+        # more" tail: it points at a register this user can open, or is absent,
+        # and it names its endpoint as a literal for the reachability walk.
+        #
+        # ⚠ **The label says WHICH register, and that is not cosmetic.** It read
+        # "Register" until `tests/test_nav_visibility.py` caught the collision:
+        # that file asserts an Operation Head is shown no `>Register<` anywhere,
+        # because until now the only register linked from this page was the
+        # quotation one. There are two on this page now, and an unqualified
+        # "Register" beside a BOQ panel is ambiguous to a reader as well as to
+        # that test.
+        link = ""
+        if auth.can_reach("boq.list_boqs"):
+            link = f'<a href="{url_for("boq.list_boqs")}">BOQ register</a>'
+        elif auth.can_reach("ra.list_ras"):
+            link = f'<a href="{url_for("ra.list_ras")}">RA register</a>' 
+        panels = f"""
+        <section class="cols">
+          <div class="panel">
+            <div class="panel-hd">
+              <h2>Recent BOQ &amp; RA activity</h2>
+              {link}
+            </div>
+            <div class="panel-bd">{activity}</div>
+          </div>
+        </section>"""
+
     return f"""
         <div class="zone">
           <div class="zone-hd">
@@ -1963,6 +2157,7 @@ def _chain_html(m) -> str:
             <span class="zn-sub">basic value, taxes extra</span>
           </div>
 {tiles}
+{panels}
         </div>"""
 
 
