@@ -565,6 +565,18 @@ DASH_STYLES = """
   .act-kind.ak-boq { color: var(--navy); border-color: var(--navy); }
   .act-kind.ak-ra  { color: var(--c-won); border-color: var(--c-won); }
 
+  /* Per-project progress. The bar is `.meter`, reused verbatim from the
+     win-rate tile — same track, same fill, same 5px height. */
+  .pp-row { padding: .7rem 0; }
+  .pp-row + .pp-row { border-top: 1px solid var(--border); }
+  .pp-hd { display: flex; justify-content: space-between; align-items: baseline;
+    gap: .8rem; margin-bottom: .35rem; }
+  .pp-name { font-size: .82rem; font-weight: 700; }
+  .pp-name a { color: inherit; text-decoration: none; }
+  .pp-name a:hover { color: var(--brand); }
+  .pp-fig { font-size: .76rem; color: var(--muted); white-space: nowrap; }
+  .pp-note { font-size: .7rem; color: var(--muted); margin-top: .3rem; }
+
   .rq-right { text-align: right; }
   .rq-val { font-size: .84rem; font-weight: 600;
     font-variant-numeric: tabular-nums; }
@@ -1541,7 +1553,99 @@ def _boq_ra() -> dict:
         # happens at render, where the request context exists. See
         # `_activity_html()`.
         "activity": _activity_rows(boqs, bills),
+
+        # Claimed against approved, per project. See `_project_progress()`.
+        "proj_progress": _project_progress(boqs, bills, open_ids),
     }
+
+
+def _project_progress(boqs: dict, bills: dict, open_ids: list) -> list:
+    """
+    `[{name, approved, claimed, pct, ...}]` — claimed against approved, per
+    project, most recently active first.
+
+    ⚠ **THERE WAS NOTHING IN `projectview.py` TO REUSE, and that was checked
+    rather than assumed.** That module rolls up BOQs, proformas, tax invoices,
+    purchase orders and labour for one project — and it **never reads
+    `STORE["ra_bills"]` at all**, so no claimed-versus-approved figure exists
+    anywhere in this application for this to duplicate. What IS reused is its
+    rule for reading a total: `_total_of()` takes a document's own stored figure
+    and never recomputes one from line items, because a second arithmetic path
+    is how two copies of one number start to disagree. `subtotal` off the BOQ
+    and `claim_subtotal` off the bill are those stored figures.
+
+    Two different sets of BOQs are walked, and the asymmetry is the point:
+
+    * **The approved side counts OPEN schedules only.** A superseded revision
+      was replaced, not added to; summing the chain would inflate the
+      denominator and make every revised project look under-claimed.
+    * **The claimed side counts bills against EVERY revision.** A bill names the
+      specific revision it was measured against (`boq_id`), and an old claim
+      against RA2's schedule is still money claimed on that project after RA3
+      supersedes it. Dropping those would under-count the numerator — the
+      opposite error, in the same project.
+
+    ⚠ **A BOQ with no project gets an "Unassigned" row rather than being
+    dropped**, and on the live database that is not hypothetical: three of the
+    eight schedules carry no `project_id` and one of them is worth ₹91.9 lakh.
+    Omitting them would silently remove more approved value from this panel than
+    every assigned project on the box put together. The row is labelled, not
+    disguised as a project, and it links nowhere because there is no project
+    page to link to.
+    """
+    # Which project each BOQ belongs to — over ALL revisions, for the claimed
+    # side. `""` is the Unassigned bucket.
+    project_of = {bid: str(b.get("project_id") or "") for bid, b in boqs.items()}
+    projects   = STORE.get("projects") or {}
+
+    rows = {}
+
+    def _row(pid):
+        if pid not in rows:
+            rows[pid] = {"pid": pid,
+                         "name": (str((projects.get(pid) or {}).get("name") or "").strip()
+                                  or "Unassigned"),
+                         "approved": 0.0, "claimed": 0.0, "last": ""}
+        return rows[pid]
+
+    # The approved side: open schedules only.
+    for bid in open_ids:
+        b = boqs[bid]
+        r = _row(project_of.get(bid, ""))
+        r["approved"] += float(b.get("subtotal") or 0.0)
+        r["last"] = max(r["last"], str(b.get("date") or ""))
+
+    # The claimed side: every revision, cancelled bills excluded — the money
+    # counterpart of `claimed_by_line()`'s rule, exactly as `ra_claimed_value`
+    # above. Tax-exclusive throughout (gap 31).
+    for b in bills.values():
+        bid = str(b.get("boq_id") or "")
+        if bid not in project_of:
+            # A bill whose schedule has been deleted. It is real money and is
+            # not silently dropped — it lands in Unassigned, where the total
+            # still reconciles against `ra_claimed_value`.
+            r = _row("")
+        else:
+            r = _row(project_of[bid])
+        r["last"] = max(r["last"], str(b.get("date") or ""))
+        if _ra_is_cancelled(b):
+            continue
+        r["claimed"] += float(b.get("claim_subtotal") or 0.0)
+
+    out = []
+    for r in rows.values():
+        approved = r["approved"]
+        # ⚠ **`pct` is None rather than 0.0 when there is nothing approved.** A
+        # project carrying claims against a schedule that has been deleted or
+        # superseded away has claimed something against nothing, and "0%" would
+        # state the opposite of what happened. `_progress_html()` draws no bar
+        # for it. This is `projectview._total_of()`'s rule — None is not 0.0.
+        r["pct"] = (r["claimed"] / approved * 100.0) if approved else None
+        out.append(r)
+
+    # Most recently active first, by the latest document date on the project.
+    out.sort(key=lambda r: (r["last"], r["name"]), reverse=True)
+    return out
 
 
 def _activity_rows(boqs: dict, bills: dict) -> list:
@@ -2105,6 +2209,74 @@ def _activity_html(m) -> str:
     return out
 
 
+def _progress_html(m) -> str:
+    """
+    Claimed against approved, per project — a bar each, most recent first.
+
+    ⚠ **Gated on BOTH registers, for `_chain_tiles_html()`'s reason.** Every row
+    is a ratio of BOQ value to RA value, so a user holding one permission and
+    not the other would be reading a bar half of which they cannot see.
+
+    ⚠ **This panel names projects and their values, so the same reasoning as the
+    activity feed applies** — but the gate available is coarser. A project is not
+    a BOQ or an RA bill, `project.view` is its own permission, and there is no
+    per-record check on any of the three (ABOUT.md §7 gap 24). Requiring all
+    three permissions is the honest reading of "could this user open the things
+    this row is built from".
+    """
+    import auth
+
+    if not (auth.can_reach("boq.list_boqs") and auth.can_reach("ra.list_ras")):
+        return ""
+
+    rows = m["proj_progress"]
+    if not rows:
+        return '<div class="none">No schedules on any project yet.</div>'
+
+    can_open = auth.can_reach("projectview.view_project")
+
+    out = ""
+    for r in rows[:PROGRESS_LIMIT]:
+        pct = r["pct"]
+        # A project with claims and no live schedule has claimed against
+        # nothing. It gets no bar and says so — "0%" would state the opposite.
+        if pct is None:
+            bar  = ""
+            note = "no open schedule"
+        else:
+            # The fill is clamped at 100% so an over-claim cannot run the bar
+            # off its track, and the FIGURE beside it is not clamped — an
+            # over-claim must still be readable as one.
+            bar  = (f'<div class="meter"><i style="width:{min(pct, 100.0):.1f}%">'
+                    f'</i></div>')
+            note = f"{pct:.0f}% claimed"
+
+        # `name` is operator-typed and reaches HTML here (ABOUT.md §9).
+        label = P.esc(r["name"])
+        if r["pid"] and can_open:
+            href  = url_for("projectview.view_project", id=r["pid"])
+            label = f'<a href="{href}">{label}</a>'
+
+        out += f"""
+          <div class="pp-row">
+            <div class="pp-hd">
+              <span class="pp-name">{label}</span>
+              <span class="pp-fig">{rupees(r['claimed'])} of {rupees(r['approved'])}</span>
+            </div>
+            {bar}
+            <div class="pp-note">{note}</div>
+          </div>"""
+
+    extra = len(rows) - PROGRESS_LIMIT
+    if extra > 0 and auth.can_reach("project.list_projects"):
+        href = url_for("project.list_projects")
+        out += (f'<div class="attn-more">+ {extra} more — '
+                f'<a href="{href}">all projects</a></div>')
+    elif extra > 0:
+        out += f'<div class="attn-more">+ {extra} more</div>'
+    return out
+
+
 def _chain_html(m) -> str:
     """
     The whole project-billing band, or "" when this user reaches none of it.
@@ -2118,11 +2290,12 @@ def _chain_html(m) -> str:
 
     tiles    = _chain_tiles_html(m)
     activity = _activity_html(m)
-    if not (tiles or activity):
+    progress = _progress_html(m)
+    if not (tiles or activity or progress):
         return ""
 
     panels = ""
-    if activity:
+    if activity or progress:
         # The register link in the header follows the same rule as the "+N
         # more" tail: it points at a register this user can open, or is absent,
         # and it names its endpoint as a literal for the reachability walk.
@@ -2138,16 +2311,34 @@ def _chain_html(m) -> str:
         if auth.can_reach("boq.list_boqs"):
             link = f'<a href="{url_for("boq.list_boqs")}">BOQ register</a>'
         elif auth.can_reach("ra.list_ras"):
-            link = f'<a href="{url_for("ra.list_ras")}">RA register</a>' 
-        panels = f"""
-        <section class="cols">
+            link = f'<a href="{url_for("ra.list_ras")}">RA register</a>'
+
+        # Each panel goes with its own content, so a role reaching one and not
+        # the other gets one panel rather than an empty half — `_module_group()`
+        # drops an empty heading for the same reason.
+        blocks = ""
+        if activity:
+            blocks += f"""
           <div class="panel">
             <div class="panel-hd">
               <h2>Recent BOQ &amp; RA activity</h2>
               {link}
             </div>
             <div class="panel-bd">{activity}</div>
-          </div>
+          </div>"""
+        if progress:
+            proj_link = (f'<a href="{url_for("project.list_projects")}">All projects</a>'
+                         if auth.can_reach("project.list_projects") else "")
+            blocks += f"""
+          <div class="panel">
+            <div class="panel-hd">
+              <h2>Claimed against approved</h2>
+              {proj_link}
+            </div>
+            <div class="panel-bd">{progress}</div>
+          </div>"""
+        panels = f"""
+        <section class="cols-eq">{blocks}
         </section>"""
 
     return f"""

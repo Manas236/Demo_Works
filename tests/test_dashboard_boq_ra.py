@@ -505,3 +505,210 @@ def test_the_feed_filter_agrees_with_the_gate_that_would_refuse_the_link(client)
     assert links, "the feed drew no document links at all — test is vacuous"
     for href in links:
         assert client.get(href).status_code == 200, f"{href} was drawn but refuses"
+
+
+# ── Item 4: per-project progress ────────────────────────────────────────────
+
+def _project(pid, name):
+    STORE.setdefault("projects", {})[pid] = {"id": pid, "name": name}
+
+
+def _by_name(rows):
+    return {r["name"]: r for r in rows}
+
+
+def test_progress_is_claimed_over_approved_both_tax_exclusive(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 250.0)
+
+    row = _by_name(dashboard._boq_ra()["proj_progress"])["Tower B"]
+    assert row["approved"] == 1000.0
+    assert row["claimed"] == 250.0
+    assert row["pct"] == 25.0, "118% would mean grand_total leaked in"
+
+
+def test_the_approved_side_counts_open_schedules_only(client):
+    """A superseded revision was replaced, not added to."""
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _boq("b2", "SF/BOQ/26-27/0002", 3000.0, project_id="p1", supersedes="b1")
+
+    row = _by_name(dashboard._boq_ra()["proj_progress"])["Tower B"]
+    assert row["approved"] == 3000.0, "the chain was summed instead of its tip"
+
+
+def test_the_claimed_side_counts_bills_against_superseded_revisions_too(client):
+    """
+    The asymmetry, and it is deliberate. A bill names the specific revision it
+    was measured against; an old claim against rev 0 is still money claimed on
+    that project after rev 1 supersedes it. Dropping it under-counts the
+    numerator in the same project the rule above protects the denominator of.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _boq("b2", "SF/BOQ/26-27/0002", 2000.0, project_id="p1", supersedes="b1")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 300.0)   # against the OLD revision
+    _bill("r2", "SF/RA/26-27/0002", "b2", 200.0)
+
+    row = _by_name(dashboard._boq_ra()["proj_progress"])["Tower B"]
+    assert row["claimed"] == 500.0, "the claim against rev 0 was dropped"
+    assert row["approved"] == 2000.0
+
+
+def test_a_cancelled_bill_does_not_count_toward_a_projects_claimed(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 100.0)
+    _bill("r2", "SF/RA/26-27/0002", "b1", 900.0, status="cancelled")
+
+    row = _by_name(dashboard._boq_ra()["proj_progress"])["Tower B"]
+    assert row["claimed"] == 100.0
+
+
+def test_unassigned_boqs_get_their_own_row_and_are_not_dropped(client):
+    """
+    Not hypothetical. On the live database on 5 September 2026 three of eight
+    schedules carry no `project_id`, one of them worth Rs 91.9 lakh - more
+    approved value than every assigned project on the box put together.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _boq("b2", "SF/BOQ/26-27/0002", 9000.0, project_id="")
+
+    rows = _by_name(dashboard._boq_ra()["proj_progress"])
+    assert "Unassigned" in rows, "a schedule with no project vanished"
+    assert rows["Unassigned"]["approved"] == 9000.0
+
+
+def test_the_unassigned_row_does_not_link_anywhere(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _boq("b1", "SF/BOQ/26-27/0001", 9000.0, project_id="")
+
+    html = client.get("/").get_data(as_text=True)
+    panel = html[html.find("Claimed against approved"):]
+    panel = panel[:panel.find("</section>")]
+    assert "Unassigned" in panel
+    assert "/projects/view/" not in panel, "Unassigned was linked as a project"
+
+
+def test_a_bill_whose_schedule_is_gone_lands_in_unassigned_not_nowhere(client):
+    """Real money must not silently leave the panel."""
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _bill("r1", "SF/RA/26-27/0001", "deleted-boq", 700.0)
+
+    rows = _by_name(dashboard._boq_ra()["proj_progress"])
+    assert rows["Unassigned"]["claimed"] == 700.0
+
+
+def test_the_panel_total_reconciles_with_the_claimed_tile(client):
+    """
+    The two items must agree. Every non-cancelled bill lands in exactly one
+    row, so the rows sum to `ra_claimed_value` - including the bills whose
+    schedule is missing.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _boq("b2", "SF/BOQ/26-27/0002", 500.0, project_id="")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 300.0)
+    _bill("r2", "SF/RA/26-27/0002", "b2", 200.0)
+    _bill("r3", "SF/RA/26-27/0003", "gone", 50.0)
+    _bill("r4", "SF/RA/26-27/0004", "b1", 999.0, status="cancelled")
+
+    m = dashboard._boq_ra()
+    assert sum(r["claimed"] for r in m["proj_progress"]) == m["ra_claimed_value"]
+
+
+def test_no_bar_is_drawn_for_a_project_with_nothing_approved(client):
+    """
+    A project with claims against a schedule that is gone has claimed against
+    nothing. `pct` is None, not 0.0 - `projectview._total_of()`'s rule.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _bill("r1", "SF/RA/26-27/0001", "gone", 700.0)
+
+    rows = _by_name(dashboard._boq_ra()["proj_progress"])
+    assert rows["Unassigned"]["pct"] is None
+
+    html = client.get("/").get_data(as_text=True)
+    assert "no open schedule" in html
+
+
+def test_an_over_claim_shows_its_real_figure_with_the_bar_clamped(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 100.0, project_id="p1")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 150.0)
+
+    row = _by_name(dashboard._boq_ra()["proj_progress"])["Tower B"]
+    assert row["pct"] == 150.0
+
+    html = client.get("/").get_data(as_text=True)
+    assert "150% claimed" in html, "the real figure must stay readable"
+    assert "width:150.0%" not in html, "the bar must not run off its track"
+
+
+def test_the_project_list_is_capped_with_a_link_to_the_rest(client):
+    import re
+
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    for i in range(dashboard.PROGRESS_LIMIT + 2):
+        _project(f"p{i}", f"Project {i}")
+        _boq(f"b{i}", f"SF/BOQ/26-27/{i:04d}", 100.0, project_id=f"p{i}",
+             date=f"2026-08-{i + 1:02d}")
+
+    html = client.get("/").get_data(as_text=True)
+    panel = html[html.find("Claimed against approved"):]
+    panel = panel[:panel.find("</section>")]
+    assert len(re.findall(r'class="pp-row"', panel)) == dashboard.PROGRESS_LIMIT
+    assert "+ 2 more" in panel
+    assert "all projects" in panel
+
+
+def test_the_progress_panel_needs_both_registers(client):
+    """A ratio half of which the reader cannot see is not a figure to show."""
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Tower B")
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0, project_id="p1")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 250.0)
+
+    _as(client, _role("boqonly3", "boq.view", "project.view"))
+    html = client.get("/").get_data(as_text=True)
+    assert "Claimed against approved" not in html
+
+
+def test_the_gap_31_project_reconciles_at_one_hundred_percent(client):
+    """
+    The live case, end to end. BOQ SF/BOQ/26-27/0006 approved Rs 9,585 and its
+    two bills claimed Rs 750 + Rs 8,835. The bar reads 100%, not 118%.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p6", "Work2")
+    _boq("b6", "SF/BOQ/26-27/0006", 9585.0, project_id="p6")
+    _bill("r6", "SF/RA/26-27/0006", "b6", 750.0, leg="installation")
+    _bill("r7", "SF/RA/26-27/0007", "b6", 8835.0, leg="supply")
+
+    row = _by_name(dashboard._boq_ra()["proj_progress"])["Work2"]
+    assert row["pct"] == 100.0
+
+    html = client.get("/").get_data(as_text=True)
+    assert "100% claimed" in html
