@@ -2490,6 +2490,105 @@ one automatic.
 > including the whole of 3B and five of 3C's six items — was built against a
 > quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 5 September 2026, by Manas Gawde — the dashboard's BOQ/RA visual cues, and a ruling that does NOT exist
+>
+> **A new block, not an amendment**, and the twenty-second occasion overall.
+> **MG/SF/2026-02 is still unsigned and has in any case lapsed.** Manas
+> instructed this work and instructed that it be recorded rather than the rule
+> deleted, exactly as on every occasion above.
+>
+> #### What proceeded
+>
+> Four visual cues on the **existing** dashboard (`dashboard.py`, ABOUT.md §5,
+> `/`): an open-BOQ count and an RAs-pending-approval count, a claimed-to-date
+> total shown against open BOQ value, a recent BOQ/RA activity feed, and
+> per-project claimed-against-approved bars. No new route, no new page, no new
+> permission, no new nav entry; `docs/ACCESS_MATRIX.md` regenerates
+> byte-identical.
+>
+> #### ⚠ THE BRIEF CITED A RULING THAT IS NOT IN THIS RECORD, AND IT IS NOT INVENTED HERE
+>
+> The instruction for this pass said to record the work as continuing an
+> existing ***"Visual Dashboard is free, not chargeable"*** ruling of
+> **19 August / 24 August 2026**. **No such ruling exists.** It was searched for
+> in this file, in CLIENT_CHANGES-2.md, in ABOUT.md, in PROGRESS.md and in
+> INTRODUCTION.md before this block was written, and what the record actually
+> contains is close to its opposite:
+>
+> **CLIENT_CHANGES-2.md's *"Stated by the client, NOT in MG/SF/2026-02"* section
+> carries "visual dashboard" as untagged lines 1 (Director) and 2 (Operation
+> Head)**, and says of them, in terms:
+>
+> > *"Items 1 and 2 need a client ruling before they can be priced at all. A
+> > dashboard already exists in this software (`dashboard.py`). Whether 'visual
+> > dashboard' meant that dashboard, restricted by role, or a new analytics view
+> > is **not answerable from any document we hold**, and the two differ by an
+> > order of magnitude in cost. Ask him. **Do not take the cheaper reading
+> > because it is cheaper**, and do not take the dearer one because it is
+> > safer."*
+>
+> **So the question is open, and this pass does not answer it.** Recording this
+> work as "free, not chargeable under an existing ruling" would have done three
+> things the record forbids: asserted a client decision nobody has taken,
+> silently adopted the cheaper of two readings that differ by an order of
+> magnitude, and closed a question CC-2 exists to keep open. The nearest true
+> statement is the one made here instead.
+>
+> #### Chargeability — unsettled, and left unsettled
+>
+> ⚠ **This work is priced NOWHERE.** It is not in MG/SF/2026-01 (the dashboard
+> it extends predates that quotation, but these four cues did not exist), and
+> MG/SF/2026-02 tags it nowhere — "visual dashboard" is untagged in CC-2 by that
+> file's own finding. **No agent may invent a price for it, record it as
+> delivered under either quotation, or record it as delivered no-charge.**
+>
+> **It is NOT a §0 no-charge exemption.** That exemption covers defect and
+> reachability fixes against scope already sold under MG/SF/2026-01. Four new
+> surfaces on a page are new capability, however modest, and calling them a
+> defect fix would be the same silent inclusion this block refuses.
+>
+> ⚠ **One half of it genuinely is a defect fix, and only that half.** Every
+> amount on the new band is tax-exclusive, which is the second of the two
+> options ABOUT.md §7 **gap 31** sets out — the display bug that made
+> `SF/BOQ/26-27/0006` read ~18% over-claimed on 3 September 2026 when it was
+> claimed to exactly 100%. **`/boq/view` itself is untouched and gap 31 stays
+> open there**, so this is a demonstration of the fix and not the fix; nothing
+> here may be recorded as closing that gap.
+>
+> **Whether this is charged, absorbed, folded into a replacement quotation, or
+> taken as part-answer to CC-2's untagged lines 1 and 2 is a commercial decision
+> the client-facing owner has not yet taken.** It is recorded as unpriced so the
+> decision stays visible when it is taken, rather than foreclosed by silence —
+> the same treatment the extra purchase-order lines have carried since
+> 29 August 2026.
+>
+> #### Not a Phase 3 item, and the denominator is still 20
+>
+> ⚠ **This is not one of CC-2's twenty items and must never be counted toward
+> them.** It carries no 3A/3B/3C tag. The board stays at **19 of 20 BUILT ·
+> 1 BLOCKED** — C6, still blocked on Open question 4, untouched by this pass.
+> PROGRESS.md §4a carries this work outside the bars, beside the extra
+> purchase-order lines, for the identical reason.
+>
+> *(⚠ The brief for this pass also stated the board "stays at 18/20". It was
+> **19 of 20 BUILT** before this pass and is 19 of 20 after it. The figure is
+> not moved by this work; the citation was simply stale, and is corrected here
+> rather than propagated.)*
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises four
+> dashboard cues does not authorise C6, does not answer CC-2's untagged lines 1
+> and 2, and does not authorise anything else.** An override is a decision the
+> client-facing owner takes and records; it is never one an agent may take,
+> infer, or extend — and neither is a *ruling*, which is what the citation this
+> block declines to repeat would have been.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above was
+> built against a quotation that has **lapsed**.
+
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -3112,8 +3211,11 @@ is what it still records. **This file as a whole is later than that**: §0 has
 since taken dated blocks on **14, 15 and 16 August 2026** (three overrides and
 one authorisation) and a **SUPERSEDED IN PART** block on **23 August 2026** — so
 a reader who takes the 10 August date as the file's currency will miss every
-commercial decision taken since, which is most of them. **Last updated 23 August
-2026.** Phase 3 is a different meeting and a different file:
+commercial decision taken since, which is most of them. **Last updated 5 September
+2026** — the most recent §0 block is the **dashboard's BOQ/RA visual cues** of
+that date, which also records that a *"Visual Dashboard is free, not
+chargeable"* ruling **was cited to that pass and does not exist in this
+record**.** Phase 3 is a different meeting and a different file:
 [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md), 19 August 2026.*
 
 *When an item's status changes, change it here and in [STATE.md](STATE.md) —

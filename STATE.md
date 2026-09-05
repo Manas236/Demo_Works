@@ -124,8 +124,8 @@ this file's own predicted failure mode:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **2,034 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 3 September 2026 by running the suite in it. ⚠ *(This pass's own **+34** is: `tests/test_backup_attachments.py` (13) and `tests/test_ra_tax_invoice_ref.py` (18), plus **+3** in `tests/test_merged_ra.py` (33→36). 13+18+3 = 34. It read **2,000 / 2** at the start of this pass, re-measured rather than quoted, matching the twelfth pass exactly. It read **1,897 / 2** until the eleventh
+**Tests:** **2,081 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 5 September 2026 by running the suite in it. ⚠ *(This pass's own **+47** is one new file, `tests/test_dashboard_boq_ra.py` (47) — the dashboard's BOQ/RA visual cues — and **no existing test file changed its count**. It read **2,034 / 2** at the start of this pass, re-measured rather than quoted, matching the thirteenth pass exactly. The thirteenth pass's own **+34** was: `tests/test_backup_attachments.py` (13) and `tests/test_ra_tax_invoice_ref.py` (18), plus **+3** in `tests/test_merged_ra.py` (33→36). 13+18+3 = 34. It read **2,000 / 2** at the start of this pass, re-measured rather than quoted, matching the twelfth pass exactly. It read **1,897 / 2** until the eleventh
 edition — the tenth pass's figure, measured the same day and re-measured at the
 start of the eleventh rather than quoted, matching exactly. This pass's own +30 is: `tests/test_backfill_marking_projects.py` (15), plus +14 in `tests/test_attendance.py` (44→58) and +1 parametrised case in `tests/test_import_directions.py` (`attendance → project`). The tenth pass's +50 was: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
 **92**: `tests/test_address_guards.py` (42), `tests/test_project_site.py` (24)
@@ -164,7 +164,8 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **2,035 passed / 4 skipped** against the same commit, and read
+reports **2,082 passed / 4 skipped** against the same commit, and read
+**2,035 / 4** before this pass's 47,
 **1,898 / 4** before this pass's 30,
 **1,848 / 4** before the tenth pass's 50,
 **1,756 / 4** before the ninth pass's 92,

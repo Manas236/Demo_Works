@@ -1466,6 +1466,24 @@ def _ra_awaits_approval(bill) -> bool:
     return status not in ("approved", "rejected")
 
 
+def _pct_label(pct: float) -> str:
+    """
+    A percentage for display, where **a non-zero share never reads as `0%`**.
+
+    `f"{0.104:.0f}%"` is `"0%"`, and "₹9,585 claimed · 0% of open schedules" reads
+    as a figure that failed to load rather than as a portfolio barely started —
+    which is what a small claim against a ₹92 lakh book of schedules actually is.
+    `<1%` says the true thing in the same width. The reverse case matters for the
+    same reason: 99.6% must not round to `100%` on a schedule that is not
+    finished, so anything short of complete rounds DOWN to `>99%`.
+    """
+    if pct > 0.0 and pct < 1.0:
+        return "&lt;1%"
+    if 99.0 < pct < 100.0:
+        return "&gt;99%"
+    return f"{pct:.0f}%"
+
+
 def _boq_ra() -> dict:
     """
     The project-billing figures, in one pass over `boqs` and `ra_bills`.
@@ -2100,7 +2118,7 @@ def _chain_tiles_html(m) -> str:
         pct      = (claimed / approved * 100.0) if approved else 0.0
         if approved:
             sub = (f"of {rupees(approved)} approved &middot; "
-                   f"{pct:.0f}% of open schedules")
+                   f"{_pct_label(pct)} of open schedules")
             meter = f'<div class="meter"><i style="width:{min(pct, 100.0):.1f}%"></i></div>'
         else:
             # No open schedule to claim against. A percentage of nothing is not
@@ -2249,7 +2267,7 @@ def _progress_html(m) -> str:
             # over-claim must still be readable as one.
             bar  = (f'<div class="meter"><i style="width:{min(pct, 100.0):.1f}%">'
                     f'</i></div>')
-            note = f"{pct:.0f}% claimed"
+            note = f"{_pct_label(pct)} claimed"
 
         # `name` is operator-typed and reaches HTML here (ABOUT.md §9).
         label = P.esc(r["name"])

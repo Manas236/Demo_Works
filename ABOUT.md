@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,035 passed, 4 skipped** | **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,034 passed, 2 skipped** | **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,082 passed, 4 skipped** | **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,081 passed, 2 skipped** | **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -3937,6 +3937,91 @@ change no figure, link or metric.
    - **Quoted value by month** — stacked columns, last 6 months, won/open/lost.
    - **Recent quotations** — last 6, with `P.stage_badge()` so the badges match
      the register exactly.
+4b. **Zone “Projects & site billing”** — the BOQ/RA visual cues, added
+   **5 September 2026**. Three tiles over two panels, all built by `_boq_ra()`:
+
+   | Surface | Shows | Built from |
+   |---|---|---|
+   | **Open BOQs** tile | live schedules, and how many are superseded | `boq.superseded_ids()`, mirrored |
+   | **RAs pending approval** tile | bills genuinely waiting on an approver | `approval_status`, less the grandfathered set |
+   | **Claimed to date** tile | `claim_subtotal` summed, **with its denominator on the tile** | non-cancelled bills vs open-BOQ `subtotal` |
+   | **Recent BOQ & RA activity** panel | last 6 documents, newest first, each linking to itself | `(date, ref)` descending |
+   | **Claimed against approved** panel | one bar per project, most recent 6 | claimed vs approved, per project |
+
+   ⚠ **EVERY AMOUNT ON THIS BAND IS TAX-EXCLUSIVE AND `grand_total` APPEARS
+   NOWHERE IN IT.** That is §7 gap 31, which is a live display bug on
+   `/boq/view` and has already cost one real over-claim investigation: a
+   tax-exclusive tile inches from tax-inclusive chips made
+   `SF/BOQ/26-27/0006` read ~18% over-claimed when it was claimed to exactly
+   100%. `subtotal` and `claim_subtotal` are the same kind of number and may
+   legitimately be compared; `grand_total` is not and may not.
+
+   ⚠ **`net_payable` is also tax-exclusive and is still the wrong field** for
+   a claimed total — it is `claim_subtotal − deduction_total`, and retention
+   withheld does not reduce what was *claimed* against the schedule. The older
+   `ra_value` key keeps using it and is unchanged: it answers a different
+   question on the module card.
+
+   ⚠ **“Open” is not a status field and none was invented.** `boq.py` has no
+   BOQ status at all; the only thing separating a live schedule from a dead one
+   is whether another BOQ names it in `supersedes`, which is what `view_boq()`
+   calls `is_tip`.
+
+   ⚠ **“Pending approval” EXCLUDES GRANDFATHERED BILLS, and that exclusion is
+   load-bearing rather than tidy.** `approval.status_of()` reads a record with
+   no `approval_status` as `pending` — right for a gate, since it grants
+   nothing; wrong for a count. Every bill written before the B6 ladder carries
+   `pre_approval_system` and can never climb it, so on the live database, where
+   **all seven RA bills are grandfathered**, the naive count reads “7 awaiting
+   approval” when the number anybody could action is **0**.
+
+   ⚠ **The band is deliberately NOT inside the quotation `insight` block**,
+   which is suppressed wholesale for anybody without `quotation.view`. An
+   Operation Head holds `boq.view` and `ra.view` and no quotation permission;
+   folding these panels in would hide the BOQ chain from exactly the role whose
+   job it is. Each surface gates on its own register instead, and the two-figure
+   surfaces (the claimed tile, the progress bars) require **both**, because a
+   ratio half of which the reader cannot see is not a figure to show them.
+
+   ⚠ **The activity feed is PERMISSION-FILTERED PER RECORD, and it is the only
+   thing on this page that is** — see §7 gap 27, which this deliberately does
+   **not** close. A row names a document, its project and its amount, which is a
+   materially bigger disclosure than an aggregate count; the tiles above it stay
+   unfiltered and that inconsistency is intended. The filter is **endpoint-level
+   because §7 gap 24 means there is no per-record check in this application to
+   reuse** — `auth.can_reach()` is not an approximation of the gate here, it
+   *is* the gate. **If object-level access is ever built, `_activity_html()` is
+   one of the places that must learn about it.**
+
+   ⚠ **There is no `created_at` on a BOQ or an RA bill** — neither module has
+   ever written one — so the feed orders on `(date, ref)` descending, which is
+   the key `projectview.py` already uses for these two collections.
+
+   ⚠ **There was nothing in `projectview.py` to reuse for the progress bars**,
+   and it was checked rather than assumed: that module rolls up BOQs,
+   proformas, tax invoices, purchase orders and labour, and **never reads
+   `STORE["ra_bills"]` at all.** What is reused is its rule that a total is read
+   off the record and never recomputed, and that `None` is not `0.0`.
+
+   The two sides of a progress bar walk **different sets of BOQs**, and the
+   asymmetry is the point: the **approved** side counts open schedules only (a
+   superseded revision was replaced, not added to), while the **claimed** side
+   counts bills against **every** revision (a claim against rev 0 is still money
+   claimed on that project after rev 1 supersedes it). Unassigned schedules get
+   their own labelled row rather than being dropped — on the live database three
+   of eight carry no `project_id` and one is worth ₹91.9 lakh — and a bill whose
+   schedule has been deleted lands there too, so the rows sum to the claimed
+   tile exactly and the two items cannot disagree.
+
+   `ACTIVITY_LIMIT` and `PROGRESS_LIMIT` are **6, not 10**, following
+   `ATTENTION_LIMIT` and `RECENT_LIMIT`: these panels sit in the same grid as
+   those two and a panel of ten beside a panel of six makes the row ragged.
+
+   `tests/test_dashboard_boq_ra.py` (**47**) holds all of it, and holds the
+   **equivalences** rather than asserting them in comments: sweeps over every
+   value of `ra.STATUSES` and `approval.STATUSES` fail the day the literal
+   readings stop agreeing with `ra.is_cancelled()`, `approval.status_of()` and
+   `boq.superseded_ids()`.
 5. **Zone “Modules”** — the card launcher, at the foot, carrying live counts
    instead of prose. Its **15 cards are split into four `.mod-group` blocks**
    rather than one undifferentiated run, each with a label, a one-line note and
@@ -8447,6 +8532,24 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     screen shows, and the pass that found this had no authority to redesign a
     panel. ⚠ **`/boq/view` is not golden-pinned, but `boq.py` feeds pages that
     are**, so check before touching.
+
+    ⚠ **STILL OPEN ON `/boq/view`, and the dashboard now demonstrates the fix
+    rather than applying it there (5 September 2026).** The BOQ/RA band on `/`
+    (§5) compares `claim_subtotal` against `subtotal` throughout — the second of
+    the two options above — and the live case is a regression test in
+    `tests/test_dashboard_boq_ra.py`: `SF/BOQ/26-27/0006`'s ₹750 + ₹8,835
+    against ₹9,585 renders as **100% claimed** on the dashboard, while the same
+    two bills still render as ₹11,310 of unlabelled chips on `/boq/view`.
+
+    **The two screens now disagree, visibly, and that is a reason to close this
+    sooner rather than a new defect.** The dashboard pass deliberately did not
+    touch `/boq/view`: that panel redesign is still a change to what a screen
+    shows, it was outside that pass's four declared items, and the warning above
+    about `boq.py` feeding golden-pinned pages is unchanged. ⚠ **Whoever closes
+    this should read `dashboard._boq_ra()` first** — the arithmetic, and the
+    reasoning for preferring `claim_subtotal` over `net_payable` (which is also
+    tax-exclusive and still wrong, being net of retention), are already written
+    down and mutation-tested there.
 
 32. 🟠 **One live RA bill carries a `tax_invoice_ref` from `invoice.py`'s
     series, and it will collide — OPEN, reported 3 September 2026.**

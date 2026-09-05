@@ -712,3 +712,35 @@ def test_the_gap_31_project_reconciles_at_one_hundred_percent(client):
 
     html = client.get("/").get_data(as_text=True)
     assert "100% claimed" in html
+
+
+# ── The percentage label ────────────────────────────────────────────────────
+
+def test_a_non_zero_share_never_reads_as_zero_percent(client):
+    """
+    On the live database the claimed share is ~0.1% of a Rs 92 lakh book of
+    schedules. "Rs 9,585 claimed - 0% of open schedules" reads as a figure that
+    failed to load; "<1%" says the true thing in the same width.
+    """
+    assert dashboard._pct_label(0.104) == "&lt;1%"
+    assert dashboard._pct_label(0.9) == "&lt;1%"
+    assert dashboard._pct_label(0.0) == "0%", "a genuine zero still reads as 0%"
+
+
+def test_an_incomplete_share_never_reads_as_one_hundred_percent(client):
+    """The mirror: 99.6% must not round to 100% on a schedule still open."""
+    assert dashboard._pct_label(99.6) == "&gt;99%"
+    assert dashboard._pct_label(100.0) == "100%", "a genuine 100% still reads so"
+    assert dashboard._pct_label(150.0) == "150%"
+
+
+def test_the_live_shape_shows_a_sub_one_percent_share_rather_than_zero(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p1", "Big Job")
+    _boq("b1", "SF/BOQ/26-27/0001", 9_191_313.0, project_id="p1")
+    _bill("r1", "SF/RA/26-27/0001", "b1", 9585.0)
+
+    html = client.get("/").get_data(as_text=True)
+    assert "&lt;1% of open schedules" in html
+    assert "0% of open schedules" not in html
