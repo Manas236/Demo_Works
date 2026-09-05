@@ -1460,6 +1460,32 @@ def _boq_ra() -> dict:
 
     open_ids = [bid for bid in boqs if _boq_is_open(bid, supersede)]
 
+    # ── The money, and the ONE rule that governs all of it ────────────────
+    #
+    # ⚠ **EVERY FIGURE BELOW IS TAX-EXCLUSIVE, AND `grand_total` APPEARS
+    # NOWHERE.** This is ABOUT.md §7 gap 31, which is a live display bug on
+    # `/boq/view` and has already cost one real over-claim investigation: that
+    # panel puts a *Total Basic Value* tile (tax-exclusive, labelled "taxes
+    # extra") inches from RA chips rendering `grand_total` (tax-inclusive,
+    # labelled nothing). BOQ `SF/BOQ/26-27/0006` was reported as ~18% over-
+    # claimed on 3 September 2026 and was not over-claimed at all — the
+    # ₹1,725 "overage" was the GST.
+    #
+    # So the two sides here are the same KIND of number and can legitimately be
+    # compared: `subtotal` is the BOQ's stored basic value (the field behind the
+    # sheet's "Total Basic Value" label) and `claim_subtotal` is the bill's
+    # claim before tax and before deductions.
+    #
+    # ⚠ **`net_payable` is NOT the figure either**, though it is also tax-
+    # exclusive. It is `claim_subtotal - deduction_total`, and retention
+    # withheld against a claim does not reduce what was *claimed* against the
+    # schedule — it is money held back from a claim that still stands at its
+    # full value. The existing `ra_value` key above uses `net_payable` and is
+    # left exactly as it is: it answers a different question on a different
+    # card, and changing it is not this pass's to do.
+    claimed = sum(float(b.get("claim_subtotal") or 0.0)
+                  for b in bills.values() if not _ra_is_cancelled(b))
+
     return {
         # Open BOQs — the live schedules. A superseded revision is not a second
         # schedule, it is the same one before it was corrected, so counting both
@@ -1471,6 +1497,36 @@ def _boq_ra() -> dict:
         # the grandfathered set is excluded and that exclusion is load-bearing.
         "ra_pending_count": sum(1 for b in bills.values()
                                 if _ra_awaits_approval(b)),
+
+        # ── What has actually been claimed, and against what ──────────────
+        #
+        # ⚠ **`claimed_by_line()`'s SEMANTICS, in money.** That helper is the
+        # single place anything asks how much has been claimed, and it answers
+        # in QUANTITY keyed by `(line_id, leg)` — there is no money in it to
+        # reuse, so what is borrowed here is its rule rather than its return
+        # value: **drafts and issued bills both count, cancelled ones do not.**
+        # A draft's claim is committed against the schedule the moment it is
+        # saved; a cancelled bill released its claim, which is the entire point
+        # of having a cancel. `claims_by_line_id()` is the wrong helper to
+        # follow — it deliberately keeps cancelled bills because it answers
+        # "has this line ever been billed", which is a different question.
+        #
+        # ⚠ **`merged_ras` is deliberately NOT summed in.** `claimed_by_line()`
+        # walks it as a *guard*, because a claim row appearing there would be a
+        # quantity claimable twice — and `merged_ra.py` never writes one, so on
+        # correct data that walk finds nothing. A merged document's MONEY is a
+        # different matter: it is built from two RA bills that are already in
+        # this sum, so adding its `claim_subtotal` would double-count every
+        # merged claim. The legs are the source of truth; the merged document
+        # re-presents them.
+        "ra_claimed_value": claimed,
+
+        # The denominator. Open schedules only — a superseded revision's value
+        # was replaced rather than added to, so summing the whole chain would
+        # inflate the approved side and make the claimed share look smaller
+        # than it is.
+        "boq_open_value": sum(float(boqs[bid].get("subtotal") or 0.0)
+                              for bid in open_ids),
     }
 
 
@@ -1845,6 +1901,40 @@ def _chain_tiles_html(m) -> str:
               <div class="k-lbl">RAs pending approval</div>
               <div class="k-val">{pending}</div>
               <div class="k-sub">{sub}</div>
+            </div>""")
+
+    # ── Claimed value, and never as a bare number ────────────────────────
+    #
+    # ⚠ **The denominator is on the face of the tile.** "₹10.3 L claimed" says
+    # almost nothing on its own — against ₹2.1 Cr of live schedules it is an
+    # early-stage portfolio, against ₹11 L it is one nearly finished. Both
+    # figures are tax-exclusive and are therefore the same kind of number, which
+    # is the only reason they may be shown as a share at all (gap 31).
+    #
+    # It needs BOTH registers: the numerator is RA data and the denominator is
+    # BOQ data, so a user holding only one of the two permissions would be shown
+    # a ratio half of which they cannot see. That is a stronger reason than
+    # tidiness — it is the one place on this band where hiding a figure is about
+    # what the reader is entitled to rather than about what would look empty.
+    if auth.can_reach("boq.list_boqs") and auth.can_reach("ra.list_ras"):
+        approved = m["boq_open_value"]
+        claimed  = m["ra_claimed_value"]
+        pct      = (claimed / approved * 100.0) if approved else 0.0
+        if approved:
+            sub = (f"of {rupees(approved)} approved &middot; "
+                   f"{pct:.0f}% of open schedules")
+            meter = f'<div class="meter"><i style="width:{min(pct, 100.0):.1f}%"></i></div>'
+        else:
+            # No open schedule to claim against. A percentage of nothing is not
+            # 0% and must not be drawn as one.
+            sub = "no open schedule to claim against"
+            meter = ""
+        tiles.append(f"""
+            <div class="panel kpi k-won">
+              <div class="k-lbl">Claimed to date</div>
+              <div class="k-val">{rupees(claimed)}</div>
+              <div class="k-sub">{sub}</div>
+              {meter}
             </div>""")
 
     if not tiles:

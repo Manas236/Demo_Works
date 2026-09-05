@@ -36,7 +36,18 @@ def _boq(bid, ref, subtotal, project_id="", supersedes="", date="2026-08-10"):
 
 
 def _bill(rid, ref, boq_id, claim, status="issued", approval_status=None,
-          grandfathered=False, date="2026-08-12", leg="supply"):
+          grandfathered=False, date="2026-08-12", leg="supply", deduction=None):
+    """
+    One RA bill carrying THREE money fields that are all different on purpose.
+
+    ⚠ **`net_payable` deliberately differs from `claim_subtotal`.** It defaults
+    to a 10% retention withheld, because a fixture where the two are equal
+    cannot tell them apart — and a mutation swapping one for the other passed
+    silently against the first version of this file until the mutation run
+    caught it. `grand_total` is the tax-inclusive figure gap 31 is about, and no
+    assertion in this file may ever match it.
+    """
+    ded = float(claim) * 0.10 if deduction is None else float(deduction)
     rec = {
         "id": rid, "ref": ref, "date": date, "boq_id": boq_id, "leg": leg,
         "claim_subtotal": float(claim),
@@ -44,7 +55,9 @@ def _bill(rid, ref, boq_id, claim, status="issued", approval_status=None,
         # sum: any panel that reaches for it instead of `claim_subtotal` will
         # produce a number no assertion here matches. Gap 31, made testable.
         "grand_total": float(claim) * 1.18,
-        "net_payable": float(claim), "claims": [], "status": status,
+        "deduction_total": ded,
+        "net_payable": float(claim) - ded,
+        "claims": [], "status": status,
         "project_name": "Site A", "account_name": "Main Contractor",
     }
     if approval_status is not None:
@@ -175,3 +188,144 @@ def test_the_tiles_reuse_the_existing_kpi_classes(client):
     assert 'class="panel kpi k-rate"' in band
     assert 'class="panel kpi k-hot"' in band
     assert 'class="k-lbl"' in band and 'class="k-val"' in band
+
+
+# ── Item 2: claimed value, tax-exclusive, against its denominator ───────────
+
+def test_claimed_value_sums_claim_subtotal_and_never_grand_total(client):
+    """
+    ⚠ ABOUT.md §7 gap 31, made a failing test rather than a comment. The
+    fixture's `grand_total` is `claim_subtotal * 1.18`, so a panel reaching for
+    the tax-inclusive field produces 118 rather than 100 and this fails.
+    """
+    STORE["ra_bills"].clear()
+    _bill("r1", "RA1", "b1", 60.0)
+    _bill("r2", "RA2", "b1", 40.0)
+
+    assert dashboard._boq_ra()["ra_claimed_value"] == 100.0
+
+
+def test_a_cancelled_bill_is_excluded_from_the_claimed_total(client):
+    """`claimed_by_line()`'s rule in money: a withdrawn claim claims nothing."""
+    STORE["ra_bills"].clear()
+    _bill("r1", "RA1", "b1", 100.0)
+    _bill("r2", "RA2", "b1", 500.0, status="cancelled")
+
+    assert dashboard._boq_ra()["ra_claimed_value"] == 100.0
+
+
+def test_a_draft_bill_is_included_in_the_claimed_total(client):
+    """
+    The other half of `claimed_by_line()`'s rule, and the half that separates
+    it from `claims_by_line_id()`. A draft's claim is committed on save.
+    """
+    STORE["ra_bills"].clear()
+    _bill("r1", "RA1", "b1", 100.0, status="draft")
+    assert dashboard._boq_ra()["ra_claimed_value"] == 100.0
+
+
+def test_an_unrecognised_status_counts_rather_than_vanishing(client):
+    """
+    `ra.status_of()` reads anything unrecognised as `issued`, so a hand-edited
+    record keeps its money in the total instead of silently dropping out.
+    """
+    STORE["ra_bills"].clear()
+    _bill("r1", "RA1", "b1", 100.0, status="submitted")
+    assert dashboard._boq_ra()["ra_claimed_value"] == 100.0
+
+
+def test_the_denominator_counts_only_open_schedules(client):
+    STORE["boqs"].clear()
+    _boq("b1", "R1", 1000.0)
+    _boq("b2", "R2", 4000.0, supersedes="b1")
+
+    m = dashboard._boq_ra()
+    assert m["boq_open_value"] == 4000.0, "b1 was replaced by b2, not added to"
+
+
+def test_merged_ra_documents_are_not_summed_into_the_claimed_total(client):
+    """
+    A merged document is built from two bills that are already in the sum.
+    Adding its own `claim_subtotal` would double-count every merged claim —
+    the money counterpart of the warning `claimed_by_line()` enforces on
+    quantity.
+    """
+    STORE["ra_bills"].clear()
+    STORE["merged_ras"].clear()
+    _bill("r1", "RA1", "b1", 100.0, leg="supply")
+    _bill("r2", "RA2", "b1", 50.0, leg="installation")
+    STORE["merged_ras"]["m1"] = {
+        "id": "m1", "ref": "SF/RI/26-27/0001", "boq_id": "b1",
+        "supply_ra_id": "r1", "installation_ra_id": "r2",
+        "claim_subtotal": 150.0, "status": "issued",
+    }
+
+    assert dashboard._boq_ra()["ra_claimed_value"] == 150.0, (
+        "the two legs, counted once — not 300")
+
+
+def test_the_claimed_tile_shows_its_denominator(client):
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _boq("b1", "SF/BOQ/26-27/0001", 1000.0)
+    _bill("r1", "RA1", "b1", 250.0)
+
+    html = client.get("/").get_data(as_text=True)
+    assert "Claimed to date" in html
+    assert "approved" in html and "of open schedules" in html
+    assert "25% of open schedules" in html
+
+
+def test_no_percentage_is_drawn_when_there_is_no_open_schedule(client):
+    """A percentage of nothing is not 0% and must not be rendered as one."""
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _bill("r1", "RA1", "b1", 250.0)
+
+    html = client.get("/").get_data(as_text=True)
+    assert "no open schedule to claim against" in html
+    assert "% of open schedules" not in html
+
+
+def test_the_gap_31_reconciliation_reproduces_on_the_clients_own_figures(client):
+    """
+    ⚠ The real case from ABOUT.md §7 gap 31, as a regression test.
+
+    BOQ SF/BOQ/26-27/0006 approved ₹9,585; two bills claimed ₹750 and ₹8,835,
+    one leg each, at exactly their approved quantities. Read tax-INCLUSIVE the
+    chips are ₹885 + ₹10,425 = ₹11,310 and the schedule looks ₹1,725 over.
+    Read tax-exclusive it reconciles to the rupee at 100%.
+    """
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _boq("b6", "SF/BOQ/26-27/0006", 9585.0)
+    _bill("r6", "SF/RA/26-27/0006", "b6", 750.0, leg="installation")
+    _bill("r7", "SF/RA/26-27/0007", "b6", 8835.0, leg="supply")
+
+    m = dashboard._boq_ra()
+    assert m["ra_claimed_value"] == 9585.0
+    assert m["boq_open_value"] == 9585.0
+    assert m["ra_claimed_value"] / m["boq_open_value"] == 1.0, "100%, not 118%"
+
+
+def test_claimed_value_is_the_claim_and_not_the_net_of_deductions(client):
+    """
+    ⚠ `net_payable` is also tax-exclusive, and is still the wrong field.
+
+    It is `claim_subtotal - deduction_total`. Retention withheld against a
+    claim does not reduce what was CLAIMED against the schedule — the claim
+    stands at its full value and the money is held back from it. A panel
+    summing `net_payable` under-states the claimed share of every schedule with
+    a retention on it, which is most of them.
+
+    This test exists because a mutation swapping the two fields passed against
+    the first version of this file: every fixture had `net_payable` equal to
+    `claim_subtotal`, so nothing could tell them apart.
+    """
+    STORE["ra_bills"].clear()
+    _bill("r1", "RA1", "b1", 1000.0, deduction=100.0)
+
+    bill = STORE["ra_bills"]["r1"]
+    assert bill["net_payable"] == 900.0, "the fixture must distinguish the two"
+    assert dashboard._boq_ra()["ra_claimed_value"] == 1000.0, (
+        "the claim, not the claim net of retention")
