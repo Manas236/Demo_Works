@@ -389,6 +389,14 @@ DASH_STYLES = """
     margin-bottom: 0; }
   .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
 
+  /* The project-billing tile row. `.kpi` and its three colour variants are
+     reused verbatim — this rule changes the TRACK COUNT and nothing else, so
+     the tiles are the same shape and the same colours as the quotation band's.
+     auto-fit rather than a fixed three because this row is drawn per-permission
+     and can legitimately hold one tile, two or three. */
+  .kpis-chain { display: grid; gap: 1.1rem;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+
   /* The one hero number on the page. Proportional figures, not tabular —
      tabular digits make a large standalone number look loose. */
   .hero-fig {
@@ -642,7 +650,7 @@ DASH_STYLES = """
     main.dash { padding: 1.5rem 1rem 3rem; }
     .zone { margin-top: 2.1rem; }
     .mod-group + .mod-group { margin-top: 1.4rem; }
-    .kpis { grid-template-columns: 1fr; }
+    .kpis, .kpis-chain { grid-template-columns: 1fr; }
     .mods { grid-template-columns: 1fr; }
     /* The group note is context, not content — it doubles the header height on
        a phone and the coloured tick already separates the groups. */
@@ -1283,6 +1291,15 @@ TREND_MONTHS    = 6    # columns in the monthly activity chart
 ATTENTION_LIMIT = 6    # rows shown in the work queue before "+N more"
 RECENT_LIMIT    = 6    # rows shown in the recent-quotations panel
 
+# The BOQ/RA panels below follow the two caps above rather than picking their
+# own. Six is not arbitrary here: the activity feed and the progress list sit in
+# the same `.cols` grid as the work queue and the recent-quotations panel, and a
+# panel of ten beside a panel of six makes the row ragged for no gain. If these
+# ever need to differ from `RECENT_LIMIT`, they are separate names so that they
+# can — they are not aliases.
+ACTIVITY_LIMIT  = 6    # rows in the BOQ/RA activity feed before "+N more"
+PROGRESS_LIMIT  = 6    # projects shown in the claimed-vs-approved list
+
 
 def _month_sequence(today, n=TREND_MONTHS):
     """The last `n` calendar months, oldest first, as (year, month) pairs."""
@@ -1330,6 +1347,131 @@ def _attention(quotations, today):
     # Most urgent first, then biggest money first inside a tier.
     rows.sort(key=lambda r: (r[0], -r[5]))
     return rows
+
+
+# ── The BOQ/RA chain, read the way `_metrics()` already reads the PO chain ────
+#
+# ⚠ **Every predicate below matches a string LITERALLY rather than importing the
+# module that owns it**, and that is the same one-way trick `_metrics()` already
+# runs for `purchase.PO_STATUSES` and for `ra.STATUSES` under
+# `client_outstanding`. dashboard.py is imported BY boq.py and ra.py for
+# `BASE_STYLES` and `_nav()`, so an import back is a cycle at boot — and
+# `boq.py` may not import `ra.py` either (ABOUT.md §2b). There is no arrangement
+# of imports that lets this file call the canonical helpers.
+#
+# **The equivalences are asserted rather than commented.**
+# `tests/test_dashboard_boq_ra.py` sweeps every value of `ra.STATUSES` and every
+# value of `approval.STATUSES` against these predicates and fails on any
+# disagreement, which is the shape `tests/test_approval_b7.py` already uses to
+# hold `print_exempt_states` against `ra.status_of()`. A comment claiming two
+# functions agree is worth nothing; a test that fails when they stop agreeing is
+# worth what this depends on.
+
+
+def _boq_is_open(bid: str, superseded: set) -> bool:
+    """
+    Is this BOQ the live schedule rather than one a revision has replaced?
+
+    ⚠ **"Open" is NOT a status field, and inventing one would have been the
+    wrong answer.** `boq.py` has no BOQ status at all: the only thing that
+    distinguishes a live schedule from a dead one is whether some *other* BOQ
+    names it in `supersedes`, which is exactly what `boq.superseded_ids()`
+    computes and what `view_boq()` calls `is_tip`. This mirrors that set rather
+    than adding a second notion of open-ness for the dashboard to disagree with.
+    """
+    return bid not in superseded
+
+
+def _superseded_boq_ids() -> set:
+    """`boq.superseded_ids()`, computed here for the import reason above."""
+    return {str(b.get("supersedes") or "")
+            for b in (STORE.get("boqs") or {}).values()
+            if str(b.get("supersedes") or "")}
+
+
+def _ra_is_cancelled(bill) -> bool:
+    """
+    `ra.is_cancelled()`, literally.
+
+    ⚠ **A literal match is exactly equivalent here, and the reason is worth
+    stating.** `ra.status_of()` returns the normalised value unchanged when it
+    is one of `ra.STATUSES` and returns `"issued"` for everything else —
+    `"cancelled"` is in `STATUSES`, so a raw value normalising to it is the only
+    way `is_cancelled()` is true. **An unrecognised status reads as issued, not
+    as cancelled**, which is the safe direction: it counts a hand-edited record
+    toward the claimed total rather than silently dropping money out of it.
+    """
+    return str((bill or {}).get("status") or "").strip().lower() == "cancelled"
+
+
+def _ra_awaits_approval(bill) -> bool:
+    """
+    Is this bill actually waiting on somebody's approval?
+
+    Three exclusions, and **the grandfather one is the whole reason this is a
+    function rather than an inline `== "pending"`:**
+
+    * ⚠ **A GRANDFATHERED bill is not pending.** `approval.status_of()` reads a
+      record carrying no `approval_status` as `pending`, which is the right
+      default for a *gate* — it is the state that grants nothing. It is the
+      wrong answer for a *count*: every bill written before the B6 ladder
+      existed carries `pre_approval_system`, reads as `pending` forever, and
+      will never be approved by anybody because `approval.can_print()` exempts
+      it from the ladder entirely. On the live database on 5 September 2026
+      **all seven RA bills are grandfathered**, so a naive count reports "7
+      awaiting approval" when the true figure — the number of bills a Director
+      or Operation Head could actually action — is **0**. A work-queue tile that
+      is permanently wrong by the size of the historical set is worse than no
+      tile.
+    * **A cancelled bill is not pending.** A withdrawn claim is waiting on
+      nobody, exactly as `claimed_by_line()` releases its quantity.
+    * **A rejected bill is not pending.** It is waiting on its author, not on an
+      approver, and `approval.status_of()` already tells the two apart.
+
+    A **draft** bill DOES count, and that half is deliberate: the ladder applies
+    to it, `approval.can_approve()` will act on it, and its claim is committed
+    against the schedule the moment it is saved — the same reasoning that makes
+    `claimed_by_line()` count drafts.
+    """
+    if bill is None:
+        return False
+    if bill.get("pre_approval_system"):
+        return False
+    if _ra_is_cancelled(bill):
+        return False
+    status = str(bill.get("approval_status") or "").strip().lower()
+    # `approval.status_of()`: anything unrecognised — including absent — is
+    # `pending`. Mirrored exactly, minus the grandfathered set removed above.
+    return status not in ("approved", "rejected")
+
+
+def _boq_ra() -> dict:
+    """
+    The project-billing figures, in one pass over `boqs` and `ra_bills`.
+
+    Split out of `_metrics()` rather than inlined because it is the one block on
+    this page whose correctness depends on a *unit* — every amount it returns is
+    tax-exclusive — and a function boundary is where that can be stated once and
+    tested.
+    """
+    boqs      = STORE.get("boqs") or {}
+    bills     = STORE.get("ra_bills") or {}
+    supersede = _superseded_boq_ids()
+
+    open_ids = [bid for bid in boqs if _boq_is_open(bid, supersede)]
+
+    return {
+        # Open BOQs — the live schedules. A superseded revision is not a second
+        # schedule, it is the same one before it was corrected, so counting both
+        # would report two jobs where the client has one.
+        "boq_open_count":   len(open_ids),
+        "boq_revised_count": len(boqs) - len(open_ids),
+
+        # Bills genuinely waiting on an approver. See `_ra_awaits_approval()` —
+        # the grandfathered set is excluded and that exclusion is load-bearing.
+        "ra_pending_count": sum(1 for b in bills.values()
+                                if _ra_awaits_approval(b)),
+    }
 
 
 def _metrics():
@@ -1469,6 +1611,13 @@ def _metrics():
         "ra_total":  len(STORE.get("ra_bills", {})),
         "ra_value":  sum(float(r.get("net_payable") or 0.0)
                          for r in STORE.get("ra_bills", {}).values()),
+
+        # ── The BOQ/RA visual cues ────────────────────────────────────────
+        # Counts and money for the project-billing band. Every figure here is
+        # TAX-EXCLUSIVE and the two sides are the same kind of number, which is
+        # the whole point — see `_boq_ra()` for why `grand_total` appears
+        # nowhere in it (ABOUT.md §7 gap 31).
+        **_boq_ra(),
 
         # Draft POs — the BOQ chain's procurement document. A count only: its
         # rates are blank by design (ABOUT.md §5, `/po`), so there is no value
@@ -1653,6 +1802,78 @@ def _recent_html(m) -> str:
             </div>
           </a>"""
     return out
+
+
+def _chain_tiles_html(m) -> str:
+    """
+    The project-billing tile row: open schedules and bills awaiting approval.
+
+    ⚠ **Each tile is drawn only when `auth.can_reach()` says this user could
+    open the register it counts**, which is the rule `_card()` already applies
+    to the module launcher. That is *not* a fix for ABOUT.md §7 gap 27 and must
+    not be recorded as one — gap 27 is about aggregate figures summarising
+    records the reader may not open ONE BY ONE, and these two tiles still do
+    exactly that for anybody holding `boq.view`. What this gating buys is
+    narrower and worth having anyway: a role that cannot reach the BOQ register
+    at all is not shown a count of it.
+    """
+    import auth
+
+    tiles = []
+    if auth.can_reach("boq.list_boqs"):
+        revised = m["boq_revised_count"]
+        # A revised schedule is not a second schedule. Say how many are out of
+        # the count when there are any, and say nothing when there are none —
+        # "0 superseded" is noise on the overwhelming majority of installs.
+        sub = (f"{revised} superseded by a revision" if revised
+               else "live schedules, none revised")
+        tiles.append(f"""
+            <div class="panel kpi k-rate">
+              <div class="k-lbl">Open BOQs</div>
+              <div class="k-val">{m['boq_open_count']}</div>
+              <div class="k-sub">{sub}</div>
+            </div>""")
+
+    if auth.can_reach("ra.list_ras"):
+        pending = m["ra_pending_count"]
+        # Empty is a good outcome and is said so, exactly as the work queue
+        # says it — a bare "0" reads as a figure that failed to load.
+        sub = ("waiting on an approver" if pending
+               else "nothing waiting on an approver")
+        tiles.append(f"""
+            <div class="panel kpi k-hot">
+              <div class="k-lbl">RAs pending approval</div>
+              <div class="k-val">{pending}</div>
+              <div class="k-sub">{sub}</div>
+            </div>""")
+
+    if not tiles:
+        return ""
+    return f"""
+          <div class="kpis-chain">{"".join(tiles)}
+          </div>"""
+
+
+def _chain_html(m) -> str:
+    """
+    The whole project-billing band, or "" when this user reaches none of it.
+
+    A zone whose every panel is hidden goes with its last panel, for the reason
+    `_module_group()` drops an empty heading: a heading over nothing tells a
+    Sales Manager there is a section they are missing rather than not mentioning
+    one.
+    """
+    tiles = _chain_tiles_html(m)
+    if not tiles:
+        return ""
+    return f"""
+        <div class="zone">
+          <div class="zone-hd">
+            <h2>Projects &amp; site billing</h2>
+            <span class="zn-sub">basic value, taxes extra</span>
+          </div>
+{tiles}
+        </div>"""
 
 
 def _insight_html(m) -> str:
@@ -2102,10 +2323,18 @@ def index():
     insight = (_insight_html(m) if auth.can_reach("quotation.list_quotations")
                else "")
 
+    # ⚠ **The project-billing band is NOT inside `insight`**, and that is the
+    # point of it being a separate call. `insight` is suppressed wholesale for
+    # anybody without `quotation.view` — an Operation Head holds `boq.view` and
+    # `ra.view` and none of the quotation permissions, so folding these panels
+    # into the quotation band would hide the BOQ chain from precisely the role
+    # whose job it is. Each panel gates on its own register instead.
+    chain = _chain_html(m)
+
     # Somebody whose roles reach no register at all would otherwise get a title
     # and an empty page, which looks broken rather than restricted. Say which
     # it is, and say who fixes it.
-    nothing_here = "" if any(groups) else """
+    nothing_here = "" if (any(groups) or chain) else """
         <div class="zone">
           <div class="card" style="padding:1.5rem;">
             <div class="card-title">Nothing to show here yet</div>
@@ -2140,6 +2369,7 @@ def index():
         </header>
 
         {insight}
+{chain}
 {modules_zone}{nothing_here}
 
         <footer>
