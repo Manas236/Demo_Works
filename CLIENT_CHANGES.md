@@ -2588,6 +2588,214 @@ one automatic.
 > MG/SF/2026-02 is never signed, everything built under the blocks above was
 > built against a quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 6 September 2026, by Manas Gawde — the end-to-end chain driver, and the JOINT MEASUREMENT SHEET
+>
+> **A new block, not an amendment**, and the twenty-third occasion overall. The
+> twenty-two blocks above it have not been edited, reformatted, re-scoped or
+> extended by a single character. **MG/SF/2026-02 is still unsigned and has in
+> any case lapsed** — it lapsed on 28 August 2026 and has never been answered.
+> Manas instructed this work and instructed that it be recorded rather than the
+> rule deleted, exactly as on every occasion above.
+>
+> #### What proceeds — two items, and only these two
+>
+> - **`tools/e2e_chain.py`, an end-to-end HTTP chain driver.** A standalone
+>   script, in `tools/` beside `backup_db.py`, imported by no application
+>   module and referenced by no committed application code. It drives a running
+>   dev app over HTTP from an empty project to a fully claimed BOQ and asserts
+>   the money tallies at every hop. **It is not a Phase 3 item, carries no
+>   3A/3B/3C tag, and must never be counted toward CC-2's twenty.**
+>
+> - **The JOINT MEASUREMENT SHEET** — a redesign of the printed measurement
+>   document (`measurement.py`) onto the client's own workbook layout: a
+>   location × diameter matrix, countersigned by both parties.
+>
+> #### ⚠ THE BRIEF FOR THIS PASS CARRIED FOUR WRONG PREMISES, AND THEY ARE CORRECTED HERE RATHER THAN PROPAGATED
+>
+> Every one was found by reading the source, which is the only thing that has
+> ever caught one. They are recorded because the first of them would have
+> destroyed a shipped guard.
+>
+> **1. ⚠ "Measurement does not control the RA claim" — IT ALREADY DOES, and the
+> instruction to decouple was WITHDRAWN.** The brief's §4.1 instructed that the
+> installation claim must not be capped to the measured quantity, that the claim
+> must not be prefilled from it, and that no per-line link from a measurement row
+> to a BOQ `line_id` be added — describing the C1 gate as the only existing
+> coupling. **All of that coupling already exists and ships today.**
+> `ra.overclaims()` replaces the BOQ ceiling with `MS.approved_qty_by_line()`
+> for the installation leg, and measurement rows are keyed by `line_id` through
+> the shared picker. §4.1 was therefore not an instruction to leave things
+> alone; **it was an instruction to delete two live guards**, and the new
+> (location, dia) grid — which carries no `line_id` — would have deleted them as
+> a side effect whether or not anybody intended it.
+>
+> Worse, it would have deleted them **silently and through a path that means
+> something else**: `approved_qty_by_line()` returning `{}` is read by `ra.py` as
+> *"this project predates measurement, keep the BOQ ceiling"*, the grandfather
+> path `tests/test_measurement_pin.py` exists to pin. Every new sheet would have
+> taken that path while showing as approved.
+>
+> And it contradicts **CC-2's C2**, which is two sentences long and one of them
+> is *"Approved measurements become the source of installation quantity on
+> RA-Installation."* That is the **only** thing about measurement CC-2 actually
+> specifies; everything else in the module is ours.
+>
+> **The decision taken, by Manas on 6 September 2026, is that the cap STAYS.**
+> The record keeps its `items` rows (`line_id` + quantity), which go on feeding
+> `approved_qty_by_line()` untouched, **and** gains the joint grid, which is what
+> prints. `ra.py` is not modified by this pass. No existing test is rewritten or
+> weakened. **§4.1 as written is withdrawn and is not to be re-applied from the
+> brief.**
+>
+> **2. "There is exactly one live measurement record" — there are TWO.**
+> `SF/MS/26-27/0001` (BOQ `SF/BOQ/26-27/0007`, project *Banglore*, 2 priced
+> rows) and `SF/MS/26-27/0002` (BOQ `SF/BOQ/26-27/0008`, project *Sify
+> Bangalore*, 87 priced rows and 10 headers, 5,865 measured). Neither is
+> approved. The second is the larger record and the brief did not know it
+> existed.
+>
+> **3. "Two accounts, not one" — the RA ladder needs THREE.** The brief's §2.3
+> is right that the creator guard checks the record's creator and not the
+> approver's role (`approval.can_approve()`, rule 4 — verified by reading, as
+> that paragraph asked). But the RA ladder is **two rungs** (`operation-head`,
+> `director`, unordered) and rule 5 — *one user, one rung* — stops a single
+> approver climbing both. A creator plus **two** distinct approvers is the
+> minimum, and the driver takes three accounts accordingly.
+>
+> **4. "Escalated rate == base × (1 + esc%)" is NOT an invariant of this repo.**
+> The brief's §2.7 assertion 2 called it *"the definition the whole P&L rests
+> on"*. `boq._derived_rate()` is explicit that it is **only ever a suggestion**
+> and that the stored rate is whatever was entered, because the client's own
+> sheets carry a dozen lines where the two disagree for a documented reason.
+> The driver therefore pins the derivation only where it controls the input, and
+> pins `amount == rate × qty` — which *is* enforced unconditionally — everywhere.
+>
+> #### The rulings behind the sheet — OURS, not the client's, and revisitable
+>
+> Every one of these is Manas's or ours. **None is a delivered CC-2
+> requirement and nobody may later cite one as one.** They are listed so Yogesh
+> can disagree with any of them individually.
+>
+> - **SITE is inherited, never typed.** It comes from the BOQ's project's
+>   `site_address_id` with the label snapshotted at save, and falls back to what
+>   the BOQ carries behind the existing amber drift band. Three spellings of one
+>   city are already live in this database because site was free text in three
+>   places; a fourth free-text site field would repeat the 30 August cleanup.
+>   `SYSTEM`, `MATERIAL` and `AREA` are free text per sheet. `DIA METER` is free
+>   text **and is not auto-filled** — the client's own sample reads *"25 mm To
+>   150 mm"* while their grid carries a 200 NB column, so it is a stated scope
+>   for the system and not a summary of the grid. A derived hint beside the
+>   input lists which columns actually carry values.
+>
+> - **Columns and rows are DATA, not code.** The 12 numeric columns and 17
+>   location rows are seeded exactly as the client's paper has them, but the
+>   column definitions live in `/settings` in the same shape the charge heads
+>   use, and rows may be added, renamed and removed per sheet. Their paper omits
+>   15 NB and 20 NB while their BOQs have carried other diameters; a new site
+>   with a different pipe schedule must not need a code change.
+>
+> - **⚠ The column set is SNAPSHOTTED onto the record at create.** A later
+>   settings change must not restate an already-issued sheet. This is the same
+>   invariant as the RA bill's own claim rows, and it has already shipped as a
+>   defect once in this repo.
+>
+> - **Every column carries a unit** — metres for the dia columns, kg for MSA,
+>   Nos for pendant and upright — and the unit prints in the head. A TOTAL row
+>   that adds metres to kilograms is a lie the client's sheet currently tells
+>   quietly.
+>
+> - **⚠ DELIBERATE DEPARTURE FROM THE CLIENT'S OWN ARITHMETIC.** Their workbook's
+>   TOTAL row is wrong in three ways: `25 NB` has no total at all; an unlabelled
+>   column immediately left of it *does*, and it sums rows 9–35 where every other
+>   column sums 9–25; and `SUPPORTS (MSA kgs)` has no total either. **We total
+>   every numeric column over every row and drop the unlabelled column.** This is
+>   recorded so nobody later "fixes" it back to match their paper.
+>
+> - **No blank filler rows print.** Their paper form carries about ten ruled
+>   blanks before the TOTAL row. The delivery challan pass already took this
+>   decision on the argument that blank ruled rows underneath a signature invite
+>   post-signature insertion, and **this document is countersigned by the
+>   customer**, so the argument is stronger here than it was there.
+>   ⚠ **Still needs Yogesh's confirmation**, exactly as the DC one still does.
+>
+> - **The right-hand sign-off party** comes from the BOQ's bill-to snapshot, and
+>   the four label rows stay blank for a wet signature. Where the BOQ carries no
+>   bill-to party the band prints **empty** rather than carrying an invented
+>   placeholder.
+>
+> - **Both live records take the LEGACY BRANCH.** Neither carries per-row
+>   location or diameter as structured data — `location` is a single free-text
+>   field on the record, not a property of a row — so neither maps onto the grid
+>   and migrating them would mean inventing data. They are marked old-model and
+>   rendered through a legacy branch, the same treatment the day-rate migration
+>   gave the one old employee record. **Nothing is deleted, nothing is reshaped,
+>   and both stay in the register.**
+>
+> #### What this pass does NOT do
+>
+> **Gap 31 is not fixed.** `/boq/view` still compares a tax-exclusive subtotal
+> against tax-inclusive RA `grand_total`s. The driver **asserts the disagreement
+> is exactly the GST delta** and labels that line `KNOWN-BAD (gap 31)`, so the
+> line flips to FAIL and tells us when somebody does fix it. Nothing here may be
+> recorded as closing it.
+>
+> Also untouched: the `_nav()`-in-print-routes coupling, the shared table-helper
+> refactor across 15 modules, and the linear "Measurement Sheet" shape from
+> sheets 2 and 3 of the client's workbook — **the joint matrix is the document**,
+> and both were not built.
+>
+> #### ⚠ THE DRIVER WRITES TO THE LIVE DEV DATABASE
+>
+> That is the whole reason it is worth having — 2,081 green tests run with
+> `DB_ENABLED=false`, a cleared `STORE` and a tmpdir, and therefore say nothing
+> about real MySQL, real sessions, real permission checks or real form posts.
+> Three defects in this project's history were invisible to the suite and
+> visible only in a browser. The containment is a dated backup pair taken before
+> any write, a tagged run, a reverse-dependency-order teardown, and a dump diff
+> against that backup.
+>
+> #### Chargeability — unsettled, and left unsettled
+>
+> ⚠ **Both items are priced NOWHERE, and for different reasons.**
+>
+> **The driver** is test tooling for scope already sold; it is the closest thing
+> in this pass to a §0 no-charge exemption, and it is still not recorded as one,
+> because §0 exempts *defect and reachability fixes* and a new harness is
+> neither.
+>
+> **The measurement sheet redesign** is not covered either. CC-2's C2 says
+> nothing whatever about whether a measurement prints or what it looks like —
+> the fifth block of 29 August 2026 already recorded that as ours, unspecced and
+> unpriced, and this pass **replaces that unspecced layout with a different
+> unspecced layout**. It does not become specified by being redrawn from the
+> client's own workbook: a transcribed layout is evidence of what they use, not
+> an instruction we were given or a thing they agreed to pay for.
+>
+> **No agent may invent a price for either, record either as delivered under
+> either quotation, or record either as delivered no-charge.** Whether this is
+> charged, absorbed or folded into a replacement quotation is a commercial
+> decision the client-facing owner has not yet taken.
+>
+> #### Not a Phase 3 item, and the denominator is still 20
+>
+> ⚠ **Neither item is one of CC-2's twenty and neither may be counted toward
+> them.** The board stays at **19 of 20 BUILT · 1 BLOCKED** — C6, still blocked
+> on Open question 4, untouched by this pass. C2 was already BUILT before this
+> pass and is still BUILT after it; **redrawing its printed sheet does not move
+> it**, and the guards that make C2's own sentence true are deliberately
+> unchanged.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises a test
+> harness and a redrawn sheet does not authorise C6, does not answer CC-2's
+> untagged lines 1 and 2, and does not authorise anything else.** An override is
+> a decision the client-facing owner takes and records; it is never one an agent
+> may take, infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above was
+> built against a quotation that has **lapsed**.
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
@@ -3211,11 +3419,14 @@ is what it still records. **This file as a whole is later than that**: §0 has
 since taken dated blocks on **14, 15 and 16 August 2026** (three overrides and
 one authorisation) and a **SUPERSEDED IN PART** block on **23 August 2026** — so
 a reader who takes the 10 August date as the file's currency will miss every
-commercial decision taken since, which is most of them. **Last updated 5 September
-2026** — the most recent §0 block is the **dashboard's BOQ/RA visual cues** of
-that date, which also records that a *"Visual Dashboard is free, not
-chargeable"* ruling **was cited to that pass and does not exist in this
-record**.** Phase 3 is a different meeting and a different file:
+commercial decision taken since, which is most of them. **Last updated 6 September
+2026** — the most recent §0 block is the **end-to-end chain driver and the
+JOINT MEASUREMENT SHEET** of that date, which also records that the brief for
+that pass carried **four wrong premises**, the first of which would have deleted
+two shipped guards and contradicted CC-2's C2. The block before it is the
+**dashboard's BOQ/RA visual cues** of 5 September 2026, which records that a
+*"Visual Dashboard is free, not chargeable"* ruling **was cited to that pass and
+does not exist in this record**.** Phase 3 is a different meeting and a different file:
 [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md), 19 August 2026.*
 
 *When an item's status changes, change it here and in [STATE.md](STATE.md) —
