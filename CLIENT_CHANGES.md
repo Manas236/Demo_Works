@@ -2754,6 +2754,41 @@ one automatic.
 > any write, a tagged run, a reverse-dependency-order teardown, and a dump diff
 > against that backup.
 >
+> #### ⚠ THE DRIVER WAS NEVER RUN AGAINST THE LIVE DATABASE, and an authorisation was taken and NOT exercised
+>
+> **Added later on 6 September 2026, within the same pass and by the same
+> person.** It is written into this block rather than into a new one because it
+> records what this block's own work did and did not do; nothing above it has
+> been edited.
+>
+> **Manas authorised the creation of three throwaway user accounts** — an Owner
+> to create, an Operation Head and a Director to take one ladder rung each —
+> so that `tools/e2e_chain.py` could be driven end to end against the running
+> dev app. That is a **live identity mutation**, the class the fifth 29 August
+> 2026 block says must be authorised on its own terms and may never cite a
+> previous migration as precedent. It was authorised on its own terms, here.
+>
+> ⚠ **It was not exercised. No account was created, and no live record was
+> written by this pass at all.** The orchestration was refused by the
+> environment the agent runs in before it executed, and rather than work around
+> that refusal the work stopped and was reported. So:
+>
+> - the authorisation **stands unused** and does not carry forward — a later
+>   pass wanting those accounts needs its own;
+> - **`STORE["users"]` and `STORE["roles"]` are untouched**, and so is every
+>   document collection;
+> - **`tools/backfill_measurement_grid.py` ships in this pass and has NOT been
+>   run.** The two live measurement sheets carry no `grid_model` mark and
+>   render legacy through its *absence*, which is correct behaviour but is not
+>   the same fact as having been migrated, and the two must not be confused;
+> - and **every one of the twelve tally assertions in the driver is
+>   UNEXERCISED.** Its 63 offline helper tests pass and its seven mutations are
+>   caught, which covers the arithmetic, the form parser and the teardown
+>   ordering. **It covers none of the money.**
+>
+> **A driver reported as working on the strength of having been written is
+> exactly what this block refuses to record.**
+>
 > #### Chargeability — unsettled, and left unsettled
 >
 > ⚠ **Both items are priced NOWHERE, and for different reasons.**

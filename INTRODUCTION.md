@@ -218,14 +218,12 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,081 passed / 2 skipped** on 5 September 2026, verified by
+The baseline is **2,204 passed / 2 skipped** on 6 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
-*(The **FOURTEENTH** pass, 5 September 2026, added **47 passed and 0 skipped**
-in one new file — `tests/test_dashboard_boq_ra.py`, the dashboard's BOQ/RA
-visual cues — and moved **no bar**: it is UX on an existing page and touches
-none of CC-2's twenty items. It read **2,034 / 2** at the start of that pass,
-re-measured rather than quoted, matching the thirteenth exactly.)*
+*(The **FIFTEENTH** pass, 6 September 2026, added **123 passed and 0 skipped** — `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123** — and moved **no bar**: an end-to-end HTTP chain driver and a redrawn measurement sheet touch none of CC-2's twenty items. It read **2,081 / 2** at the start of that pass, re-measured rather than quoted, matching the fourteenth exactly.)*
+
+*(The **FOURTEENTH** pass, 5 September 2026, added **47 passed and 0 skipped** in one new file — `tests/test_dashboard_boq_ra.py`, the dashboard's BOQ/RA visual cues — and moved **no bar**. It read **2,034 / 2** at the start of that pass, re-measured rather than quoted, matching the thirteenth exactly.)*
 
 *(The **ELEVENTH** pass, 30 August 2026, added **30 passed and 0 skipped** and
 moved **no bar**: `tests/test_backfill_marking_projects.py` (15, the
