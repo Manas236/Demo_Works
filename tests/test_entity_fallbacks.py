@@ -27,9 +27,11 @@ import pytest
 
 import address
 import demo_data as DD
+import measurement as MS
 import pipeline as P
 import ra
 import merged_ra
+import settings as ST
 import spec
 from store import STORE
 
@@ -541,10 +543,33 @@ def _a_measurement(boq_id: str) -> str:
     #   the first time this file was extended: the sweep went green with the
     #   sheet's `notes` emitted RAW. `ms-1` keeps the blanks for the em-dash
     #   fallback this file is about; `ms-2` is the one that has to be poisonable.
+    #
+    # ⚠ **AND `ms-2` IS THE JOINT MODEL, for that same lesson a second time**
+    #   (6 September 2026). `/measurement/print/<id>` renders `ms-2` — it is the
+    #   only approved sheet — so if `ms-2` stayed the legacy linear shape the
+    #   sweep would walk the OLD template and the whole joint sheet would be
+    #   untested for escaping: the four header fields, every row label and every
+    #   remarks cell. **That was measured, not assumed**: with `ms-2` left
+    #   legacy, unescaping all four of those sinks kept `test_escaping.py`
+    #   green at 33 passed.
+    #
+    #   `ms-1` stays legacy on purpose, so the legacy branch keeps a fixture
+    #   too and `/measurement/edit` still renders the pre-grid record shape.
     STORE["measurements"]["ms-2"] = dict(
         base, id="ms-2", ref="SF/MS/26-27/0002", approval_status="approved",
         location="Tower B, 3rd floor", measured_by="R. Kadam",
-        witnessed_by="Site engineer", notes="Joints re-measured after rework")
+        witnessed_by="Site engineer", notes="Joints re-measured after rework",
+        grid_model=MS.GRID_MODEL_JOINT,
+        grid_columns=[dict(c) for c in ST.DEFAULT_MEASUREMENT_COLUMNS],
+        grid_rows=[
+            {"label": "H1", "values": {"d25": 12.5, "msa": 4.0},
+             "remarks": "riser at the lift lobby"},
+            {"label": "Hosereel", "values": {"d100": 30.0, "pendant": 6.0},
+             "remarks": "basement main run"},
+        ],
+        system="Hydrant & Sprinkler Line", material="MS Pipe",
+        dia_meter="25 mm To 150 mm", area="All Area",
+        site_label="Bangalore, Karnataka", site_source="project")
     return "ms-1"
 
 

@@ -2364,6 +2364,18 @@ below beyond those two facts is **ours**: the ceiling on a measured quantity,
 the cumulative sum across sheets, the ladder, and that it prints at all. The
 fifth 29 August 2026 override block in `CLIENT_CHANGES.md` §0 names each.
 
+⚠⚠ **THE INSTALLATION CAP IS CC-2's OWN SENTENCE AND IT STAYS.** The brief for
+  the 6 September 2026 pass instructed that measurement stop capping the RA
+  claim and that no per-line `line_id` link exist, describing both as things
+  not to *add*. **Both already existed and shipped**: `ra.overclaims()`
+  replaces the BOQ ceiling with `MS.approved_qty_by_line()` for the
+  installation leg, and that reads `items[].line_id`. Removing them would have
+  deleted two live guards — silently, through the grandfather path that means
+  *"this project predates measurement"* — and contradicted the only sentence
+  CC-2 actually specifies about measurement. **Manas withdrew the instruction
+  on 6 September 2026; the cap stays and `ra.py` was not modified.** The
+  twenty-third §0 block is the record.
+
 ```python
 {"id": "<uuid>",
  "ref": "SF/MS/26-27/0001",   # FY-scoped, max+1 in the year. NOT a /settings series
@@ -2387,8 +2399,81 @@ fifth 29 August 2026 override block in `CLIENT_CHANGES.md` §0 names each.
 
  # B6 / B7 — the approval fields, exactly as the other four approvable
  # documents carry them. See "Approval fields" below.
- "created_by": "<user id>", "approval_status": "pending", "approvals": [ … ]}
+ "created_by": "<user id>", "approval_status": "pending", "approvals": [ … ],
+
+ # ── THE JOINT SHEET, 6 September 2026 (twenty-third §0 block) ────────────
+ #
+ # ⚠ CARRIED BESIDE `items`, NEVER INSTEAD OF IT. The grid is keyed by
+ #   (location, dia); the installation ceiling is keyed by `line_id`. A sheet
+ #   with only the grid would make `approved_qty_by_line()` return `{}`, which
+ #   `ra.py` reads as "this project predates measurement" — so every new
+ #   project would silently lose its cap while showing as approved.
+ "grid_model": "joint-v1",     # or "legacy-linear"; NEVER inferred from absence
+ "grid_columns": [ … ],        # SNAPSHOT of /settings at create — see below
+ "grid_rows": [ … ],
+ "system": "Hydrant & Sprinkler Line",   # free text, per sheet
+ "material": "MS Pipe",
+ "dia_meter": "25 mm To 150 mm",         # a STATED SCOPE, never auto-filled
+ "area": "All Area",
+ "site_label": "Bangalore, Karnataka",   # INHERITED, snapshotted, never typed
+ "site_source": "project"}               # project | boq | none | snapshot
 ```
+
+A `grid_columns` entry, snapshotted from `/settings` at create:
+
+```python
+{"key": "d25",        # a FORM FIELD NAME — letters, digits, underscore only
+ "label": "25 NB",    # what prints in the head
+ "group": "",         # "" spans both head rows; "SPRINKLER" draws a span above
+ "unit": "m"}         # printed in the head. m / kgs / Nos
+```
+
+A `grid_rows` entry — one location:
+
+```python
+{"label": "H1",                      # editable, addable, removable per sheet
+ "values": {"d25": 12.5, "msa": 4.0},   # keyed by COLUMN KEY; absent = blank
+ "remarks": "riser at the lift lobby"}
+```
+
+5. **The column set is SNAPSHOTTED at create and re-read on edit from the
+   record, never from `/settings`.** A later settings change must not restate a
+   sheet somebody has already signed — the RA bill's own claim-row invariant,
+   which has already shipped as a defect once in this repo. The seed lives in
+   `settings.DEFAULT_MEASUREMENT_COLUMNS` (twelve columns) so a new site with a
+   different pipe schedule needs no code change; the charge heads are the
+   precedent.
+6. **Every column carries a unit and the unit prints.** A TOTAL row that adds
+   metres to kilograms is a lie the client's own sheet tells quietly.
+7. **The TOTAL row sums EVERY numeric column over EVERY row** — a deliberate
+   departure from the client's workbook, where `25 NB` and `SUPPORTS (MSA kgs)`
+   have no total at all and an unlabelled column sums a different row range
+   (9–35 against 9–25). We drop the unlabelled column. Recorded in the
+   twenty-third §0 block so nobody "fixes" it back.
+8. **A row with no label, no values and no remarks is DROPPED at save**, so no
+   blank filler row reaches the printed sheet. A named row with no values is
+   KEPT — a location visited and found empty is a fact worth printing, and the
+   two must not be confused.
+9. **`site_label` is inherited from the BOQ's project's `site_address_id` and
+   snapshotted**, exactly as `project.site_address` is. There is no site input
+   on the form. Three spellings of one city are already live in this database
+   because site was free text in three places; a fourth would repeat the
+   30 August cleanup. `site_source` selects the amber band and is never printed.
+10. **`grid_model` is WRITTEN, never inferred from a missing field.**
+    `pre_measurement`'s rule and `pre_approval_system`'s, a third time: "has no
+    grid" and "predates grids" are different facts, and a branch that cannot
+    tell them apart will one day render a new sheet through the old template
+    because somebody's grid failed to save.
+    `tools/backfill_measurement_grid.py` writes the mark.
+
+⚠ **THE TWO LIVE SHEETS ARE LEGACY AND STAY THAT WAY.** `SF/MS/26-27/0001`
+  (BOQ 0007, *Banglore*, 2 priced rows) and `SF/MS/26-27/0002` (BOQ 0008,
+  *Sify Bangalore*, 87 priced rows). Neither carries a location or a diameter
+  as structured data — `location` is one free-text field on the **sheet**, not
+  a property of a row — so neither maps onto the grid and migrating them would
+  mean **inventing data**. Both are marked `legacy-linear` and render through
+  `measurement._legacy_document_html()`, the treatment the day-rate migration
+  gave the one old employee record.
 
 An `item` row — the challan's four fields plus one:
 

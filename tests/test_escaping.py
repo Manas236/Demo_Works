@@ -132,6 +132,32 @@ DO_NOT_POISON = {
     # `location`, `measured_by`, `witnessed_by` and `notes` are all free text
     # and all four MUST be poisoned.
     "boq_qty",
+    # ── The JOINT MEASUREMENT SHEET, 6 September 2026 ────────────────────────
+    #
+    # ⚠ **`grid_model` is the branch selector and poisoning it DEFEATS THIS
+    #   WHOLE SWEEP.** `measurement.is_joint()` compares it to `"joint-v1"`;
+    #   a payload appended to that value makes every joint sheet read as legacy,
+    #   so the sweep would walk the OLD template and report green while every
+    #   new sink on the joint sheet emitted raw. It is a closed vocabulary
+    #   exactly like `status` and `approval_status` above.
+    #
+    # ⚠ **`grid_columns[]/key` is a FORM FIELD NAME, not prose.** It is used as
+    #   a dict key against `grid_rows[]/values` and as a `data-key` attribute;
+    #   poisoning it silently detaches every cell from its column, so the grid
+    #   would render empty and the TOTAL row would read nil. That is a broken
+    #   fixture, not an escaping test. The three column fields that ARE prose —
+    #   `label`, `group` and `unit` — are poisoned and pinned below.
+    #
+    # ⚠ **`site_source` drives a branch too** — it selects which of four amber
+    #   band messages renders, and it is never itself printed.
+    "grid_model", "site_source",
+}
+
+# ⚠ Nested under `grid_columns[]`, so it cannot be expressed by key name alone
+# in the flat set above — `key` is too common a word to blanket-exclude. See
+# `_poison()`, which consults this by path.
+DO_NOT_POISON_PATHS = {
+    "grid_columns[]/key",
 }
 
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")
@@ -160,6 +186,8 @@ def _poison(node, paths=None, prefix="") -> int:
             if key in DO_NOT_POISON:
                 continue
             here = f"{prefix}/{key}" if prefix else key
+            if here in DO_NOT_POISON_PATHS:
+                continue
             if isinstance(value, str):
                 if value and not _LOOKS_LIKE_AN_ID.match(value):
                     node[key] = value + PAYLOAD
@@ -308,11 +336,20 @@ POISONED_FIELDS = {
         "dispatch_mode", "items[]/description", "items[]/item_no",
         "items[]/unit", "project_name", "ref",
     ),
+    # ⚠ **The joint measurement sheet's own sinks were added 6 September 2026,
+    #   and every one of them was checked by MUTATION before being pinned here**
+    #   — the pin's own instruction ("add them once you have checked every page
+    #   that renders them escapes them"), followed rather than assumed.
+    #   `grid_model`, `site_source` and `grid_columns[]/key` are deliberately
+    #   NOT here: all three are branch selectors or field names, and each is
+    #   excluded in `DO_NOT_POISON` / `DO_NOT_POISON_PATHS` with the reason.
     "measurements": (
-        "account_name", "boq_ref", "created_at", "fy",
+        "account_name", "area", "boq_ref", "created_at", "dia_meter", "fy",
+        "grid_columns[]/group", "grid_columns[]/label", "grid_columns[]/unit",
+        "grid_rows[]/label", "grid_rows[]/remarks",
         "items[]/description", "items[]/item_no", "items[]/unit",
-        "location", "measured_by", "notes", "project_name", "ref",
-        "witnessed_by",
+        "location", "material", "measured_by", "notes", "project_name", "ref",
+        "site_label", "system", "witnessed_by",
     ),
     "projects": (
         "created_at", "name",

@@ -621,13 +621,45 @@ def test_the_printed_sheet_reuses_the_shared_document_furniture(client, seeded):
     _approve(only_sheet())
     h = client.get(f"/measurement/print/{only_sheet()['id']}").get_data(as_text=True)
 
-    # The shared sheet's own structural markers, the ones test_print_golden.py
-    # splits every A4 document on.
+    # ⚠ **REWRITTEN 6 September 2026 for the JOINT MEASUREMENT SHEET.** The old
+    #   assertion is kept here verbatim rather than edited away, because what it
+    #   asserted is still mostly true and the two markers that moved are the
+    #   interesting part:
+    #
+    #       for marker in ('<table class="page-frame">', '<div class="doc-box">',
+    #                      '<div class="doc-header', '<div class="items-wrap">',
+    #                      '<div class="sig-block">'):
+    #           assert marker in h, f"the printed sheet does not carry {marker}"
+    #       assert "MEASUREMENT SHEET" in h
+    #
+    #   `items-wrap` and `sig-block` are gone from THIS sheet, and neither is a
+    #   letterhead somebody drew:
+    #
+    #   * **`items-wrap`** comes from `docsheet.items_table()`, which builds a
+    #     ONE-row table head. The joint sheet's head is two rows deep with
+    #     spanning `SUPPORTS` and `SPRINKLER` cells above their sub-columns —
+    #     a shape `items_table()` cannot express and must not be bent into
+    #     expressing, because every other document depends on it.
+    #   * **`sig-block`** is a single-signatory block. This document is
+    #     *joint*: it is countersigned by the main contractor's site engineer,
+    #     so the foot is two parties side by side with four label rows each.
+    #     That structure is the whole reason the document has its name.
+    #
+    #   Everything that CAN be shared still is, and that is what is asserted
+    #   below — the page frame, the letterhead inside it, the doc box and the
+    #   header block. See CLIENT_CHANGES.md §0, twenty-third block.
     for marker in ('<table class="page-frame">', '<div class="doc-box">',
-                   '<div class="doc-header', '<div class="items-wrap">',
-                   '<div class="sig-block">'):
+                   '<div class="doc-header'):
         assert marker in h, f"the printed sheet does not carry {marker}"
-    assert "MEASUREMENT SHEET" in h
+    assert "JOINT MEASUREMENT SHEET" in h
+
+    # The letterhead is `docsheet.letterhead()`'s and not a second one drawn
+    # here — the standing rule that a new document derived from an existing
+    # chain reuses the printed layout that already exists.
+    assert '<div class="lh">' in h and '<div class="lh-addr">' in h
+    # ...and it is inside the page frame's own <thead>, which is what makes it
+    # repeat on page two.
+    assert h.index("<thead>") < h.index('<div class="lh">')
 
 
 def test_no_money_reaches_the_printed_sheet(client, seeded):

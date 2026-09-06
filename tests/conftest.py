@@ -116,6 +116,8 @@ def chain_ready(boq_id, legs=("supply", "installation")):
     """
     import approval
     import boq as BQ
+    import measurement as MS
+    import settings as ST
     from store import STORE
 
     boq = (STORE.get("boqs") or {}).get(boq_id) or {}
@@ -137,12 +139,35 @@ def chain_ready(boq_id, legs=("supply", "installation")):
                   "boq_qty": float(li.get("total_qty") or 0.0)}
                  for li in boq.get("line_items") or []
                  if not li.get("is_header") and BQ._line_id(li.get("line_id"))]
+        # ⚠ **THE JOINT MODEL, and the fixture carries BOTH halves on purpose**
+        #   (6 September 2026). `items` is what feeds `approved_qty_by_line()`
+        #   and therefore the installation ceiling; `grid_*` is what prints.
+        #   A fixture carrying only `items` would leave every new output sink on
+        #   the joint sheet — the four header fields, the row labels and the
+        #   remarks — unpoisoned by `tests/test_escaping.py`, which is exactly
+        #   the failure that file exists to remember: `measurements` sat in
+        #   `POISONED_COLLECTIONS` while its fields were all `""`, so the sweep
+        #   walked every route and tested nothing.
         STORE.setdefault("measurements", {})[f"c1-ms-{boq_id}"] = {
             "id": f"c1-ms-{boq_id}", "ref": "C1/MS/0001",
             "fy": "26-27", "date": "2026-08-01", "boq_id": boq_id,
             "boq_ref": boq.get("ref", ""), "items": items,
             "created_by": "conftest",
             "approval_status": approval.APPROVED,
+            "grid_model": MS.GRID_MODEL_JOINT,
+            "grid_columns": [dict(c) for c in ST.DEFAULT_MEASUREMENT_COLUMNS],
+            "grid_rows": [
+                {"label": "H1", "values": {"d25": 12.5, "msa": 4.0},
+                 "remarks": "riser at the lift lobby"},
+                {"label": "B1", "values": {"d100": 30.0, "pendant": 6.0},
+                 "remarks": "basement main"},
+            ],
+            "system": "Hydrant & Sprinkler Line",
+            "material": "MS Pipe",
+            "dia_meter": "25 mm To 150 mm",
+            "area": "All Area",
+            "site_label": "Bangalore, Karnataka",
+            "site_source": "project",
         }
 
 

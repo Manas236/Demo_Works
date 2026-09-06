@@ -937,6 +937,13 @@ PINNED_PAGES = frozenset({
     "ra.print_ra",
     "challan.print_dc",
     "po_draft.create_po",
+    # 6 September 2026 — the JOINT MEASUREMENT SHEET gained a print golden, so
+    # its page joins the set for the reason every other member is here: a nav
+    # change must not be able to move a document's recorded digest.
+    # `tests/test_nav_user_chip.py` derives this set from the URLs the golden
+    # file actually requests and fails if the two disagree, which is how this
+    # entry came to be needed rather than remembered.
+    "measurement.print_ms",
 })
 
 

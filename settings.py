@@ -480,6 +480,104 @@ def charge_heads() -> list:
 def save_charge_heads(heads_list: list) -> None:
     STORE["settings"][CHARGE_HEADS_RECORD] = {"heads": heads_list}
 
+# =============================================================================
+# THE JOINT MEASUREMENT SHEET'S COLUMNS — data, not code
+# =============================================================================
+#
+# ⚠ **A NEW SITE WITH A DIFFERENT PIPE SCHEDULE MUST NOT NEED A CODE CHANGE.**
+#   The client's own paper form omits 15 NB and 20 NB, and their BOQs have
+#   carried other diameters. The twelve below are exactly what their workbook
+#   has, seeded here and editable at `/settings` — the same shape, the same
+#   record collection and the same textarea idiom the charge heads use, because
+#   that precedent already proves the pattern in this codebase.
+#
+# ⚠ **EVERY COLUMN CARRIES A UNIT, and the unit prints in the head.** Their
+#   sheet totals a metres column and a kilograms column into the same TOTAL row
+#   without saying so. A TOTAL row that adds metres to kilograms is a lie the
+#   sheet tells quietly; naming the unit is what stops it.
+#
+# ⚠ **The column set is SNAPSHOTTED onto each sheet at create** —
+#   `measurement.grid_columns_of()`. Editing this list must never restate a
+#   sheet somebody has already signed. That is the RA bill's own claim-row
+#   invariant, and it has already shipped as a defect once in this repo.
+#
+# The wire format is one column per line, `key|label|group|unit`. An empty
+# group means the column's head spans both rows of the table head; a group is
+# what draws `SUPPORTS` and `SPRINKLER` above their sub-columns.
+MEASUREMENT_COLUMNS_RECORD = "measurement_columns"
+
+DEFAULT_MEASUREMENT_COLUMNS = [
+    {"key": "d25",  "label": "25 NB",   "group": "",          "unit": "m"},
+    {"key": "d32",  "label": "32 NB",   "group": "",          "unit": "m"},
+    {"key": "d40",  "label": "40 NB",   "group": "",          "unit": "m"},
+    {"key": "d50",  "label": "50 NB",   "group": "",          "unit": "m"},
+    {"key": "d65",  "label": "65 NB",   "group": "",          "unit": "m"},
+    {"key": "d80",  "label": "80 NB",   "group": "",          "unit": "m"},
+    {"key": "d100", "label": "100 NB",  "group": "",          "unit": "m"},
+    {"key": "d150", "label": "150 NB",  "group": "",          "unit": "m"},
+    {"key": "d200", "label": "200 NB",  "group": "",          "unit": "m"},
+    {"key": "msa",     "label": "MSA",     "group": "SUPPORTS",  "unit": "kgs"},
+    {"key": "pendant", "label": "PENDANT", "group": "SPRINKLER", "unit": "Nos"},
+    {"key": "upright", "label": "UPRIGHT", "group": "SPRINKLER", "unit": "Nos"},
+]
+
+
+def measurement_columns() -> list:
+    """The numeric columns a new joint measurement sheet is created with."""
+    saved = STORE["settings"].get(MEASUREMENT_COLUMNS_RECORD, {})
+    cols = saved.get("columns")
+    return cols if cols else [dict(c) for c in DEFAULT_MEASUREMENT_COLUMNS]
+
+
+def save_measurement_columns(cols: list) -> None:
+    STORE["settings"][MEASUREMENT_COLUMNS_RECORD] = {"columns": cols}
+
+
+def measurement_columns_text(cols: list = None) -> str:
+    """The column list as the textarea shows it, `key|label|group|unit`."""
+    return "\n".join(
+        f"{c.get('key','')}|{c.get('label','')}|{c.get('group','')}|{c.get('unit','')}"
+        for c in (cols if cols is not None else measurement_columns()))
+
+
+def _validate_measurement_columns(raw: str) -> tuple:
+    """
+    `(columns, error)` — parsed, de-duplicated by key, order preserved.
+
+    A blank box restores the seeded twelve rather than leaving a sheet with no
+    numeric columns at all, which is `_validate_charge_heads()`'s rule one
+    field over and is the same judgement: an empty list is far more likely to
+    be a cleared box than a deliberate choice to have no columns.
+    """
+    if not raw.strip():
+        return [dict(c) for c in DEFAULT_MEASUREMENT_COLUMNS], ""
+
+    out, seen = [], set()
+    for n, line in enumerate(raw.split("\n"), start=1):
+        line = line.strip()
+        if not line:
+            continue
+        bits = [b.strip() for b in line.split("|")]
+        key = bits[0] if bits else ""
+        if not key:
+            return [], f"Line {n}: every column needs a key."
+        if not key.replace("_", "").isalnum():
+            return [], (f"Line {n}: the key {key!r} must be letters, digits or "
+                        f"underscores &mdash; it names a form field.")
+        if key in seen:
+            return [], f"Line {n}: the column key {key!r} is used twice."
+        seen.add(key)
+        out.append({
+            "key":   key[:32],
+            "label": (bits[1] if len(bits) > 1 else key)[:32] or key,
+            "group": (bits[2] if len(bits) > 2 else "")[:32],
+            "unit":  (bits[3] if len(bits) > 3 else "")[:16],
+        })
+    if not out:
+        return [dict(c) for c in DEFAULT_MEASUREMENT_COLUMNS], ""
+    return out, ""
+
+
 def _validate_charge_heads(raw: str) -> tuple:
     """Returns (heads_list, error)"""
     if not raw.strip():
@@ -616,12 +714,15 @@ def edit_settings():
         po_data, po_error = _validate_po_series(request.form)
         dc_data, dc_error = _validate_dc_series(request.form)
         ch_data, ch_error = _validate_charge_heads(request.form.get("charge_heads", ""))
+        mc_data, mc_error = _validate_measurement_columns(
+            request.form.get("measurement_columns", ""))
         lb_data, lb_error = _validate_labour(request.form)
-        error = error or po_error or dc_error or ch_error or lb_error
+        error = error or po_error or dc_error or ch_error or lb_error or mc_error
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
             save_charge_heads(ch_data)
+            save_measurement_columns(mc_data)
             save_labour_settings(lb_data["ot_multiplier"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
@@ -639,12 +740,15 @@ def edit_settings():
         po_values = po_data
         dc_values = dc_data
         ch_values = "\n".join(ch_data)
+        mc_values = (measurement_columns_text(mc_data) if mc_data
+                     else request.form.get("measurement_columns", ""))
         lb_values = lb_data
     else:
         values = B.current_settings()
         po_values = po_series()
         dc_values = dc_series()
         ch_values = "\n".join(charge_heads())
+        mc_values = measurement_columns_text()
         lb_values = labour_settings()
 
     msg      = request.args.get("msg")
@@ -834,6 +938,28 @@ def edit_settings():
           <div class="form-group">
             <label for="charge_heads">Charge Heads (one per line)</label>
             <textarea id="charge_heads" name="charge_heads" rows="6">{P.esc(ch_values)}</textarea>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Joint Measurement Sheet &mdash; columns</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            The numeric columns on the joint measurement sheet, one per line as
+            <code>key|label|group|unit</code>. The <b>group</b> draws a spanning
+            head above its columns (that is what makes <code>SPRINKLER</code>
+            sit over <code>PENDANT</code> and <code>UPRIGHT</code>); leave it
+            empty for a column whose head spans both rows. The <b>unit</b>
+            prints in the head, so a TOTAL row cannot silently add metres to
+            kilograms.
+            <br/>
+            <b>Changing this list does not restate a sheet that already
+            exists</b> &mdash; every sheet keeps the columns it was created
+            with.
+          </p>
+          <div class="form-group">
+            <label for="measurement_columns">Columns (key|label|group|unit)</label>
+            <textarea id="measurement_columns" name="measurement_columns"
+                      rows="13">{P.esc(mc_values)}</textarea>
           </div>
         </div>
 

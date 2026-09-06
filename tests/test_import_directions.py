@@ -247,11 +247,31 @@ FORBIDDEN = [
                                         "not the catalogue"),
     ("measurement", "client",    "any", "a measurement is not a client ledger"),
     ("measurement", "spec",      "any", "the BOQ already copied the clause"),
-    ("measurement", "settings",  "any", "settings.py imports quotation; nothing "
-                                        "downstream of it may import back. The "
-                                        "measurement series is FY-scoped "
-                                        "through pipeline.fy_ref and owns no "
-                                        "/settings counter"),
+    # ⚠ **THIS ROW WAS REMOVED ON 6 SEPTEMBER 2026, and the arrow it banned is
+    #   now ALLOWED.** The old row is kept verbatim below rather than deleted,
+    #   because a ban that is lifted silently is a ban nobody can audit:
+    #
+    #     ("measurement", "settings",  "any", "settings.py imports quotation; nothing "
+    #                                         "downstream of it may import back. The "
+    #                                         "measurement series is FY-scoped "
+    #                                         "through pipeline.fy_ref and owns no "
+    #                                         "/settings counter"),
+    #
+    #   **Its stated premise stopped being true.** The reason given was that
+    #   measurement "owns no /settings counter" — and as of the joint
+    #   measurement sheet it owns a /settings **record**: the twelve numeric
+    #   column definitions, held there so a new site with a different pipe
+    #   schedule does not need a code change (CLIENT_CHANGES.md §0, twenty-third
+    #   block).
+    #
+    #   **The cycle half of the reason does not survive checking either.**
+    #   `settings.py` imports `quotation.py`, and nothing reachable from
+    #   `settings.py` imports `measurement.py` — asserted below rather than
+    #   argued, so the day that stops being true this test says so.
+    #
+    #   **And the arrow is precedented twice over.** `challan.py` and
+    #   `po_draft.py` are both BOQ-chain documents that own a /settings series
+    #   and import `settings` to read it. This is that pattern, a third time.
     ("measurement", "employee",  "any", "who measured is a name on the sheet, "
                                         "not a link to the employee master"),
     ("measurement", "attendance", "any", "and emphatically not to the muster — "
@@ -1004,3 +1024,44 @@ def test_the_balance_arithmetic_lives_upstream_in_ra():
     for name in ("receipts_for", "received_against", "outstanding_of",
                  "previous_balance", "prev_balance_drift"):
         assert hasattr(ra, name), f"ra.{name}() moved — the import direction depends on it"
+
+
+def test_measurement_may_import_settings_because_it_now_OWNS_a_settings_record():
+    """
+    ⚠ The row banning `measurement -> settings` was removed on 6 September 2026.
+    This is the check that replaces it, and it is deliberately three separate
+    assertions rather than a comment, because each half of the old reason has to
+    stay false for the arrow to stay safe.
+
+    1. **No cycle.** Nothing reachable from `settings.py` imports
+       `measurement.py`. The moment that changes, this fails and the arrow has
+       to go back.
+    2. **The premise really has changed.** The ban's stated reason was that
+       measurement "owns no /settings counter". It now owns the joint sheet's
+       column definitions there.
+    3. **It is the established pattern.** Two sibling BOQ-chain documents
+       already take the same arrow for the same kind of record.
+    """
+    # 1 — the cycle, walked rather than asserted from memory.
+    seen, stack = set(), ["settings"]
+    while stack:
+        mod = stack.pop()
+        if mod in seen:
+            continue
+        seen.add(mod)
+        for dep in imports_of(mod):
+            if (REPO / f"{dep}.py").exists():
+                stack.append(dep)
+    assert "measurement" not in seen, (
+        "settings.py now reaches measurement.py, so measurement -> settings is "
+        "a real cycle and the ban must be restored")
+
+    # 2 — measurement owns a /settings record, which is why it reads one.
+    import settings as ST
+    assert hasattr(ST, "measurement_columns")
+    assert hasattr(ST, "MEASUREMENT_COLUMNS_RECORD")
+    assert len(ST.DEFAULT_MEASUREMENT_COLUMNS) == 12
+
+    # 3 — the precedent this follows.
+    assert "settings" in imports_of("challan")
+    assert "settings" in imports_of("po_draft")

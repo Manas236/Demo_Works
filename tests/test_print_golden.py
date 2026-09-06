@@ -1063,3 +1063,207 @@ def test_the_goldens_are_hashing_a_real_document(client, golden, golden_ra):
     bill = client.get("/ra/print/gold-ra").get_data(as_text=True)
     assert "TAX INVOICE" in bill and "73063090" in bill
     assert "150 mm dia" in bill, "the claim row rendered nothing"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE JOINT MEASUREMENT SHEET — NEW COVERAGE, NOT A RE-BASELINE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⚠ **NOTHING ABOVE THIS LINE MOVED, AND THAT IS THE POINT.** The measurement
+#   sheet has never had a golden — `measurement._legacy_document_html()`'s own
+#   docstring records the deliberate decision not to pin one, on the reasoning
+#   that CC-2 is silent on whether a measurement prints at all and freezing an
+#   unspecified design would make the client's first sight of it a re-baselining
+#   exercise.
+#
+#   That reasoning still holds for the LEGACY sheet, which is why no golden is
+#   added for it here. It does not hold for the joint sheet, because the joint
+#   sheet is **transcribed from the client's own workbook** — its layout is no
+#   longer a design nobody specified, it is a document they already use, and the
+#   thing worth pinning is that we go on drawing theirs.
+#
+#   Authorised by the twenty-third §0 block of CLIENT_CHANGES.md,
+#   6 September 2026. Every ruling behind the layout is recorded there as OURS.
+
+GOLD_MS = "gold-joint-ms"
+
+
+@pytest.fixture()
+def golden_ms(client, pinned_identity):
+    """
+    One joint measurement sheet, fixed end to end.
+
+    Built directly rather than through `/measurement/create` for the reason
+    every other golden fixture is: the route mints a uuid and spends a number
+    from the FY series, and neither is a thing a golden can hold still.
+
+    ⚠ It carries **both halves** — `items` and the grid. A fixture with only
+      the grid would be pinning a sheet the application cannot produce, because
+      the `items` rows are what feed the installation ceiling and every real
+      sheet has them.
+    """
+    import measurement as MS
+    import settings as ST
+
+    STORE.setdefault("measurements", {}).clear()
+    STORE["measurements"][GOLD_MS] = {
+        "id": GOLD_MS, "ref": "SF/MS/26-27/0007", "fy": "26-27",
+        "date": "2026-09-06",
+        "boq_id": "gold-boq", "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore — Fire Protection",
+        "site_location": "Whitefield, Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "location": "", "measured_by": "R. Kadam",
+        "witnessed_by": "Site engineer", "notes": "",
+        "company_branch": "", "auth_signatory": "",
+        "approval_status": "approved",
+        "grid_model": MS.GRID_MODEL_JOINT,
+        "grid_columns": [dict(c) for c in ST.DEFAULT_MEASUREMENT_COLUMNS],
+        "grid_rows": [
+            {"label": "H1", "values": {"d25": 12.5, "d100": 30.0, "msa": 4.0},
+             "remarks": "riser at the lift lobby"},
+            {"label": "SH 1", "values": {"d32": 8.0, "pendant": 6.0},
+             "remarks": ""},
+            {"label": "B1", "values": {"d150": 22.0, "upright": 2.0},
+             "remarks": "basement main"},
+        ],
+        "system": "Hydrant & Sprinkler Line", "material": "MS Pipe",
+        "dia_meter": "25 mm To 150 mm", "area": "All Area",
+        "site_label": "Whitefield, Bangalore", "site_source": "project",
+        "items": [
+            {"line_id": "aaaaaaaaaaaa", "is_header": False, "item_no": "1",
+             "description": "80mm Butterfly valve- SANT", "unit": "Nos",
+             "qty": 2.0, "boq_qty": 4.0},
+        ],
+    }
+
+    yield
+
+    STORE["measurements"].clear()
+
+
+# The joint sheet carries no `.items-wrap` and no `.sig-block` — its grid head
+# is two rows deep with spanning group cells, which `docsheet.items_table()`
+# cannot express, and its foot is two parties side by side rather than one
+# signatory. So it is pinned on the blocks it DOES share, which is the whole of
+# what it can share.
+MS_SHEET_BLOCKS = [
+    ("head",       "<head>"),
+    ("letterhead", "<thead><tr><td>"),
+    ("foot-strip", "<tfoot><tr><td>"),
+    ("doc-box",    '<div class="doc-box">'),
+    ("party",      '<div class="doc-header'),
+]
+
+
+def test_the_joint_measurement_sheet_carries_the_SAME_letterhead(
+        client, golden, golden_ms):
+    """
+    ⚠ **THE ASSERTION THIS DOCUMENT WAS ADDED TO THE FILE FOR.**
+
+    The standing architectural rule is that a new document derived from an
+    existing chain reuses the printed layout that already exists — separate
+    behaviour, shared appearance. The delivery challan's letterhead hashes
+    identically to the tax invoice's and the test above is what says so; the
+    joint measurement sheet now joins that set.
+
+    A measurement is not a tax invoice and shares almost nothing else with one:
+    no GST block, no bank block, no money at all, a thirteen-column grid, a
+    landscape page and a two-party countersignature. **The letterhead is still
+    the same bytes**, because it is the same office — and the client's
+    complaint was never that one document was wrong, it was that they did not
+    look like they came from the same place.
+    """
+    ti = _blocks(client.get(f"/invoice/view/{GOLD_TI}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+    ms = _blocks(client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True),
+                 MS_SHEET_BLOCKS)
+
+    assert ms["letterhead"] == ti["letterhead"], (
+        "the joint measurement sheet and the tax invoice print different "
+        "letterheads. Both render through docsheet.letterhead() precisely so "
+        "they cannot diverge — and if the title band is what moved it, it "
+        "belongs in the <caption>, not in the <thead>.")
+    assert ms["foot-strip"] == ti["foot-strip"], (
+        "the measurement sheet's foot strip differs from every other document's")
+
+
+def test_the_joint_sheet_takes_the_address_from_settings_not_a_constant(
+        client, golden_ms, pinned_identity):
+    """
+    ⚠ **Take the address from `/settings`, never from a constant.** A second
+    letterhead drawn inside `measurement.py` is exactly what `docsheet.py` was
+    extracted to stop, and it had already found four that had drifted apart.
+    """
+    import branding as B
+    html = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+    assert B.COMPANY_ADDR in html
+    assert '<div class="lh-addr">' in html
+
+
+def test_the_joint_sheet_golden_is_hashing_a_real_document(client, golden_ms):
+    """
+    The control. A digest passes just as well against an error page, and every
+    other golden in this file carries one of these for that reason.
+    """
+    html = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+
+    assert "JOINT MEASUREMENT SHEET" in html
+    # The five header rows.
+    for label in ("SITE", "SYSTEM", "MATERIAL", "DIA METER", "AREA"):
+        assert f">{label}<" in html, f"the header block is missing {label}"
+    assert "Hydrant &amp; Sprinkler Line" in html
+    # The grid: a spanning group head, a dia column, a unit, and a location.
+    assert ">SUPPORTS<" in html and ">SPRINKLER<" in html
+    assert ">PENDANT<" in html and ">UPRIGHT<" in html
+    assert "200 NB" in html and "(kgs)" in html
+    assert "riser at the lift lobby" in html, "the remarks column rendered nothing"
+    # The TOTAL row, and figures only a real total can produce.
+    assert "TOTAL" in html
+    assert "12.5" in html and "22" in html
+    # Both parties.
+    assert html.count('class="jm-party"') == 2
+    assert "Prudent Teqtis Pvt Ltd" in html
+
+
+def test_the_joint_sheet_is_LANDSCAPE_and_no_other_document_became_one(
+        client, golden, golden_ms):
+    """
+    The `@page` override is layered after the shared sheet and must reach this
+    document and no other — `boq.BOQ_STYLES`'s rule, and the reason it is an
+    override rather than an edit to `VIEW_DOC_STYLES`.
+    """
+    ms = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+    assert "A4 landscape" in ms
+
+    for url in (f"/invoice/view/{GOLD_TI}", f"/proforma/view/{GOLD_PI}",
+                f"/purchase/view/{GOLD_PO}"):
+        assert "A4 landscape" not in client.get(url).get_data(as_text=True), (
+            f"{url} became landscape — the measurement sheet's @page override "
+            f"has leaked into the shared stylesheet")
+
+
+def test_no_blank_filler_row_reaches_the_printed_sheet(client, golden_ms):
+    """
+    ⚠ The client's paper carries about ten ruled blanks before the TOTAL row.
+    We print none. A blank ruled row underneath a countersignature is an
+    invitation to write on the document after both parties have signed it — the
+    delivery challan pass's argument, and stronger here because this document
+    is signed by the customer too.
+
+    ⚠ **Still needs Yogesh's confirmation**, exactly as the DC one does.
+    """
+    html = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+    # ⚠ Split on the GRID's own table, not on the first `<tbody>` on the page —
+    #   that one belongs to `.page-frame`, the outer table the letterhead
+    #   repeats through, and counting its rows measures the page furniture
+    #   instead of the measurement. The first draft of this test did exactly
+    #   that and reported 3 rows for a 4-row grid.
+    grid = html.split('<table class="jm-grid">')[1].split("</table>")[0]
+    body = grid.split("<tbody>")[1].split("</tbody>")[0]
+    # Three seeded locations plus the TOTAL row, and nothing else.
+    assert body.count("<tr") == 4, (
+        f"the grid printed {body.count('<tr')} rows against 3 locations "
+        f"plus TOTAL — a filler row has appeared")
+    for label in ("H1", "SH 1", "B1", "TOTAL"):
+        assert f">{label}<" in body
