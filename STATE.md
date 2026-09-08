@@ -10,9 +10,9 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 6 September 2026 (**FIFTEENTH pass** —
-**an end-to-end HTTP chain driver, and the JOINT MEASUREMENT SHEET**; the board
-does not move and stands at **19 of 20 BUILT · 1 BLOCKED**).
+**As of:** branch `antigravity-dev`, 8–9 September 2026 (**SIXTEENTH pass** —
+**a VERIFICATION pass: the two unrun things were run, and two defects fixed**;
+the board does not move and stands at **19 of 20 BUILT · 1 BLOCKED**).
 
 ⚠ **This file's own predicted failure mode has happened again, and it is
 recorded rather than papered over.** Before this pass the line above still
@@ -26,6 +26,35 @@ record, and this file is the index that fell behind.**
 
 The entries below are therefore **not contiguous**:
 
+- **SIXTEENTH pass, 8–9 September 2026 — a VERIFICATION pass, and no bar
+  moved.** ⚠ **It builds no CC-2 item and closes none.** Registered in
+  **PROGRESS.md §4c** (rows 31–33) and in the **twenty-fourth**
+  `CLIENT_CHANGES.md` §0 block, which **re-takes** the three-account identity
+  authorisation rather than citing the unexercised one from the block before.
+  **`tools/backfill_measurement_grid.py` was RUN with `--write`** — 2 sheets
+  marked `legacy-linear`, quantities untouched, and **idempotence proved from
+  the second run's own output** rather than by reading the code.
+  **`tools/e2e_chain.py` was RUN against the live app for the first time** —
+  **25 PASS, 0 FAIL, 1 KNOWN-BAD, 0 SKIP**, where every one of those assertions
+  had been unexercised the day before. ⚠ **Its first run found six defects in
+  the driver and one in the application**, none of which its 63 offline tests
+  could see; the driver had been looking for a `data-line-id` attribute that no
+  module in this app emits, and had been reporting BOQ deletions it never made.
+  **`ABOUT.md` §7 gap 31 is CLOSED** — `/boq/view`'s RA chips are
+  `claim_subtotal`, so that page and the dashboard now agree on Work2 at 100%
+  instead of contradicting each other by the GST in front of the client; no RA,
+  BOQ or claim record was touched. **`SECRET_KEY`'s fallback now warns loudly
+  at startup** and still does not refuse to boot. ⚠ **NEW §7 gap 33, found by
+  running the driver**: `/boq/create` cannot attach a BOQ to a project, so a
+  schedule raised through the screen files its claims under *Unassigned*. It is
+  recorded with a live tripwire and **not fixed** — a project picker changes
+  what a screen shows and is new scope. ⚠ **Live records were mutated, under
+  authorisation, and the closing dump diff shows every collection identical
+  except the three throwaway accounts going away.** ⚠ **C1 and C2 do not
+  move**: both were BUILT before this pass and are BUILT after it — running a
+  driver over an item is not building it. ⚠ **C6 is STILL BLOCKED on Open
+  question 4.**
+
 - **FIFTEENTH pass, 6 September 2026 — BEYOND CC-2, and no bar moved.**
   ⚠ **Neither item is a CC-2 item**, so both are registered in **PROGRESS.md
   §4c** (rows 29 and 30) and in the **twenty-third** `CLIENT_CHANGES.md` §0
@@ -36,7 +65,9 @@ The entries below are therefore **not contiguous**:
   tests say nothing about real MySQL, real sessions or real form posts.
   ⚠⚠ **IT HAS NOT BEEN RUN AGAINST THE LIVE DATABASE** — its 63 offline helper
   tests pass and all seven mutations are caught, but **every one of the twelve
-  tally assertions is UNEXERCISED.** **The JOINT MEASUREMENT SHEET** redraws
+  tally assertions is UNEXERCISED.** *(True on 6 September and left standing as
+  written. It was run on 8 September 2026 by the sixteenth pass, above, which
+  found six defects in it doing so.)* **The JOINT MEASUREMENT SHEET** redraws
   C2's printed document onto the client's own workbook layout: landscape, the
   shared `docsheet.py` letterhead (its block now hashes identically to the tax
   invoice's), five header rows with **SITE inherited and never typed**, twelve
@@ -49,7 +80,8 @@ The entries below are therefore **not contiguous**:
   Manas withdrew the instruction — the cap stays, and `ra.py` is untouched.**
   ⚠ **No live record was mutated.** `tools/backfill_measurement_grid.py` ships
   and **has not been run**; both live sheets render legacy through the absence
-  of a mark. ⚠ **C2 does not move**: it was BUILT before this pass and is BUILT
+  of a mark. *(True on 6 September. It was run with `--write` on 8 September
+  2026 and both sheets now carry the mark itself.)* ⚠ **C2 does not move**: it was BUILT before this pass and is BUILT
   after it, because redrawing a document's printed sheet is not building an
   item. ⚠ **C6 is STILL BLOCKED on Open question 4.**
 
@@ -159,7 +191,7 @@ The entries below are therefore **not contiguous**:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **2,204 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**Tests:** **2,235 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 6 September 2026 by running the suite in it. ⚠ *(This pass's own **+123** reconciles per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. It read **2,081 / 2** at the start of this pass, re-measured rather than quoted, matching the fourteenth exactly. The fourteenth pass's own **+47** is one new file, `tests/test_dashboard_boq_ra.py` (47) — the dashboard's BOQ/RA visual cues — and **no existing test file changed its count**. It read **2,034 / 2** at the start of this pass, re-measured rather than quoted, matching the thirteenth pass exactly. The thirteenth pass's own **+34** was: `tests/test_backup_attachments.py` (13) and `tests/test_ra_tax_invoice_ref.py` (18), plus **+3** in `tests/test_merged_ra.py` (33→36). 13+18+3 = 34. It read **2,000 / 2** at the start of this pass, re-measured rather than quoted, matching the twelfth pass exactly. It read **1,897 / 2** until the eleventh
 edition — the tenth pass's figure, measured the same day and re-measured at the
 start of the eleventh rather than quoted, matching exactly. This pass's own +30 is: `tests/test_backfill_marking_projects.py` (15), plus +14 in `tests/test_attendance.py` (44→58) and +1 parametrised case in `tests/test_import_directions.py` (`attendance → project`). The tenth pass's +50 was: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
@@ -199,7 +231,7 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **2,205 passed / 4 skipped** against the same commit, and read
+reports **2,236 passed / 4 skipped** against the same commit, and read
 **2,082 / 4** before this pass's 123,
 **2,035 / 4** before the fourteenth pass's 47,
 **1,898 / 4** before this pass's 30,

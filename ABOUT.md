@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,205 passed, 4 skipped** | **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,204 passed, 2 skipped** | **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,236 passed, 4 skipped** | **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,235 passed, 2 skipped** | **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -8706,6 +8706,38 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     should be checked against the other two series at all, and if so whether the
     answer is a refusal or a warning. Gap 15's rule applies: do not encode a
     guess about somebody's statutory numbering.
+
+33. 🟠 **`/boq/create` cannot attach a BOQ to a project — OPEN, found
+    8 September 2026 by running `tools/e2e_chain.py` against the live app for
+    the first time.**
+
+    `boq.create_boq()` reads `request.args.get("project_id")` into its prefill
+    on GET, and its POST branch reads `(form.get("project_id") or "").strip()`.
+    **The rendered form contains no `project_id` control of any kind**, so the
+    two halves never meet: every BOQ raised through the UI is stored with
+    `project_id: ""`. A *revision* is fine — it inherits `prev["project_id"]`
+    — so the defect is confined to the first BOQ of a chain, which is the one
+    that decides the project for every revision after it.
+
+    ⚠ **The linkage on the live database is real, and none of it came from
+    this form.** `SF/BOQ/26-27/0001`, `0002`, `0003`, `0006` and `0007` carry a
+    `project_id` because `tools/backfill_projects.py` wrote one.
+    `SF/BOQ/26-27/0004`, `0005` and `0008` carry none, which is what a BOQ
+    created through the screen looks like.
+
+    **What it costs:** `dashboard._project_progress()` groups by `project_id`,
+    so an unattached schedule's claims roll up under **Unassigned** — on the
+    live band that is ₹3.08 L of ₹94.99 L, three separate jobs' money in one
+    bar — while the project the operator created sits at 0% or is absent. The
+    money is right everywhere; it is filed against nobody.
+
+    📌 **What it would take.** A project picker on the BOQ form, populated from
+    `STORE["projects"]`, defaulting to `?project_id=` when the page was reached
+    from a project. That is a change to what a screen shows and is new scope,
+    which is why the pass that found it did not take it.
+    `tools/e2e_chain.py`'s assertion 8 is **KNOWN-BAD** against this and flips
+    to FAIL the day the field appears — so this gap has a live tripwire rather
+    than only an entry here.
 
 ---
 
