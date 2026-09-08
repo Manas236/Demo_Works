@@ -546,6 +546,121 @@ def test_a_key_is_minted_and_reused_when_the_environment_is_silent(
     assert auth.resolve_secret_key() == first, "a new key on every boot logs everybody out"
 
 
+# ── SECRET_KEY: the startup warning (CC-2, security items promoted by 3B) ──
+
+def test_the_source_is_reported_alongside_the_key(monkeypatch, tmp_path):
+    """
+    `install()` has to say WHERE the key came from without deriving it twice.
+    All four sources, because the warning fires on exactly two of them.
+    """
+    monkeypatch.setattr(auth, "SECRET_FILE", tmp_path / "secret_key.txt")
+
+    monkeypatch.setenv("SAMRUDDHI_SECRET_KEY", "deployment-key")
+    monkeypatch.setenv("SECRET_KEY", "other-key")
+    assert auth.resolve_secret_key_with_source() == (
+        "deployment-key", "SAMRUDDHI_SECRET_KEY")
+
+    monkeypatch.delenv("SAMRUDDHI_SECRET_KEY")
+    assert auth.resolve_secret_key_with_source() == ("other-key", "SECRET_KEY")
+
+    monkeypatch.delenv("SECRET_KEY")
+    key, source = auth.resolve_secret_key_with_source()
+    assert source == "minted", "the first boot with no variable mints one"
+
+    again, source2 = auth.resolve_secret_key_with_source()
+    assert (again, source2) == (key, "file"), "the second boot reuses the file"
+
+
+def test_the_one_value_form_still_answers_exactly_the_same_key(
+        monkeypatch, tmp_path):
+    """
+    ⚠ `resolve_secret_key()` is what `install()` used to call and what three
+    other tests still call. Splitting the source out must not have changed the
+    key it returns, on any of the four paths.
+    """
+    monkeypatch.setattr(auth, "SECRET_FILE", tmp_path / "secret_key.txt")
+    monkeypatch.setenv("SAMRUDDHI_SECRET_KEY", "deployment-key")
+    assert auth.resolve_secret_key() == "deployment-key"
+
+    monkeypatch.delenv("SAMRUDDHI_SECRET_KEY")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    assert auth.resolve_secret_key() == auth.resolve_secret_key_with_source()[0]
+
+
+def test_a_supplied_key_produces_NO_warning_at_all(monkeypatch):
+    """
+    ⚠ The silence is the load-bearing half. A banner that printed on every boot
+    would be scrolled past on the one boot that matters, and the suite itself
+    runs with `SECRET_KEY` set by `conftest.py`.
+    """
+    assert auth.secret_key_warning("SAMRUDDHI_SECRET_KEY") == ""
+    assert auth.secret_key_warning("SECRET_KEY") == ""
+
+
+def test_the_fallback_warns_loudly_and_says_which_variable_to_set():
+    """
+    CC-2 names the demo default a session-forgery blocker. The default is long
+    gone — the key is a real random 256-bit value — but nobody has *decided*
+    it, and the consequences are specific enough to be worth printing.
+    """
+    for source in ("file", "minted"):
+        warning = auth.secret_key_warning(source)
+        assert warning, f"no warning for the {source!r} fallback"
+        assert "SECRET_KEY IS NOT SET" in warning
+        assert "SAMRUDDHI_SECRET_KEY" in warning, (
+            "the warning must name the variable that silences it")
+        assert "signs every user out" in warning
+        assert str(auth.SECRET_FILE) in warning
+
+    assert "just generated" in auth.secret_key_warning("minted")
+    assert "secret_key.txt" in auth.secret_key_warning("file")
+
+
+def test_the_warning_never_raises_and_never_stops_the_app(monkeypatch, tmp_path):
+    """
+    ⚠ **It must not fail hard.** Refusing to boot on a missing variable breaks
+    the dev flow and the suite, and a developer who cannot start the app sets
+    the variable to anything at all — which is worse than the fallback.
+    `install()` prints and carries on, and the app still gets a working key.
+    """
+    import app as app_module
+
+    monkeypatch.setattr(auth, "SECRET_FILE", tmp_path / "secret_key.txt")
+    monkeypatch.delenv("SAMRUDDHI_SECRET_KEY", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    auth.install(app_module.app)          # must not raise
+    assert app_module.app.secret_key
+    assert len(app_module.app.secret_key) >= 32
+
+    # Put the suite's own key back on the app; the fixture-level env var is
+    # restored by monkeypatch, but this object is module-level and shared.
+    auth.install(app_module.app)
+
+
+def test_the_warning_goes_to_stderr_not_into_a_page(monkeypatch, tmp_path,
+                                                    capsys):
+    """
+    ⚠ A signing-key warning must never reach a rendered page — it would be
+    telling an unauthenticated visitor how the sessions they want to forge are
+    signed. stderr, where the operator is.
+    """
+    import app as app_module
+
+    monkeypatch.setattr(auth, "SECRET_FILE", tmp_path / "secret_key.txt")
+    monkeypatch.delenv("SAMRUDDHI_SECRET_KEY", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    capsys.readouterr()
+    auth.install(app_module.app)
+    captured = capsys.readouterr()
+
+    assert "SECRET_KEY IS NOT SET" in captured.err
+    assert "SECRET_KEY IS NOT SET" not in captured.out
+
+    auth.install(app_module.app)
+
+
 # ── tools/set_password.py ──────────────────────────────────────────────────
 #
 # The break-glass CLI that closed ABOUT.md §7 gap 21. Its behaviour needs a live

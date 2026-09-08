@@ -7715,6 +7715,26 @@ Real, verified, and safe to pick up:
    then a `secret_key.txt` it mints beside the code and which is gitignored.
    **The hardcoded literal is deleted, not demoted** — a fallback that only
    fires "in development" is a fallback that ships, and
+
+   ⚠ **The fallback now SAYS SO at startup (8 September 2026).**
+   `resolve_secret_key_with_source()` returns `(key, source)` and
+   `auth.install()` prints `secret_key_warning(source)` to **stderr** when the
+   source is `file` or `minted` — the two that mean nobody configured a key for
+   this deployment. `resolve_secret_key()` is unchanged and still the one-value
+   form. **It warns and does not refuse to start**, deliberately: failing hard
+   on a missing variable breaks the dev flow and the test suite, and a
+   developer who cannot start the app sets the variable to anything at all,
+   which is worse than the fallback. The banner names the variable that
+   silences it and the three things the fallback actually costs — sessions
+   dropped if the file is lost, no sharing between instances, and the key
+   sitting beside the code rather than in the deployment's configuration.
+   Nothing about it reaches a rendered page; telling an anonymous visitor how
+   sessions are signed is the opposite of the point. Six tests in
+   `tests/test_auth.py`, and the suite itself never sees the banner because
+   `conftest.py` sets `SECRET_KEY`. On this machine `.env` supplies one, so a
+   normal `python app.py` is silent — the fallback path was exercised by
+   clearing the variable after `db.py`'s `load_dotenv()`.
+
    `tests/test_auth.py::test_the_demo_secret_key_is_gone_from_the_codebase`
    reads every root module's AST to keep it deleted. It became urgent rather
    than untidy the moment sessions went live: a signing key published in this

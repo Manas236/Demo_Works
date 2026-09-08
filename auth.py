@@ -37,6 +37,7 @@ import datetime
 import os
 import pathlib
 import secrets
+import sys
 import uuid
 from collections import deque
 
@@ -85,15 +86,28 @@ def resolve_secret_key() -> str:
     3. `secret_key.txt` beside this file — read if present, minted if not. It is
        gitignored alongside `backups/`.
     """
+    return resolve_secret_key_with_source()[0]
+
+
+def resolve_secret_key_with_source() -> tuple:
+    """
+    `(key, source)` — the same three steps, saying which one answered.
+
+    Split out so `install()` can say **where the key came from** without
+    re-deriving it. `source` is one of the two environment variable names,
+    `"file"` for an existing `secret_key.txt`, or `"minted"` for one written on
+    this boot. `resolve_secret_key()` is the unchanged one-value form and every
+    existing caller and test still uses it.
+    """
     for var in ("SAMRUDDHI_SECRET_KEY", "SECRET_KEY"):
         env = (os.getenv(var) or "").strip()
         if env:
-            return env
+            return env, var
 
     try:
         existing = SECRET_FILE.read_text(encoding="utf8").strip()
         if existing:
-            return existing
+            return existing, "file"
     except OSError:
         pass
 
@@ -104,7 +118,51 @@ def resolve_secret_key() -> str:
         # A read-only checkout still gets a working key; it just will not
         # survive a restart, which logs everybody out rather than failing open.
         pass
-    return minted
+    return minted, "minted"
+
+
+# The two sources that mean "nobody configured a key for this deployment".
+FALLBACK_SOURCES = ("file", "minted")
+
+
+def secret_key_warning(source: str) -> str:
+    """
+    The startup banner for a key nobody supplied, or `""` when one was.
+
+    ⚠ **IT WARNS, IT DOES NOT REFUSE TO START** (CC-2, "Security items promoted
+      by this phase"). Failing hard on a missing variable would break the dev
+      flow and take the test suite with it, and a developer who cannot start
+      the app does not read the reason — they set the variable to anything at
+      all, which is worse than the fallback. The fallback key is a real random
+      256-bit value either way; what is missing is a *deployment* deciding it,
+      and the thing worth saying is that sessions will not survive losing that
+      file and are not shared with any other instance.
+
+    Returned rather than printed so it can be asserted without capturing
+    stdout — `tests/test_auth.py` checks the text, and `install()` prints it.
+    """
+    if source not in FALLBACK_SOURCES:
+        return ""
+    minted = source == "minted"
+    return "\n".join((
+        "",
+        "  " + "=" * 72,
+        "  ⚠  SECRET_KEY IS NOT SET — this app is signing sessions with a",
+        "     LOCAL key it " + ("just generated." if minted else "keeps in secret_key.txt."),
+        "",
+        "     Set SAMRUDDHI_SECRET_KEY (or SECRET_KEY) for anything that is not",
+        "     one developer's own machine. Until then:",
+        "",
+        "       * every session cookie is invalidated if secret_key.txt is lost,",
+        "         which signs every user out;",
+        "       * a second instance of this app cannot read the first's sessions;",
+        "       * the key is on disk beside the code rather than in the",
+        "         deployment's own configuration.",
+        "",
+        f"     key source: {'newly minted ' if minted else ''}{SECRET_FILE}",
+        "  " + "=" * 72,
+        "",
+    ))
 
 
 # =============================================================================
@@ -1122,7 +1180,14 @@ def install(app) -> None:
     `enforce()` is what makes it *required*, and the two are separate functions
     so that the commit which turns access control on is one line and one revert.
     """
-    app.secret_key = resolve_secret_key()
+    key, source = resolve_secret_key_with_source()
+    app.secret_key = key
+    # ⚠ Loud, and only when nobody supplied a key. It goes to **stderr** so a
+    #   deployment that pipes stdout to a log still puts it in front of whoever
+    #   started the process, and it never raises — see `secret_key_warning()`.
+    warning = secret_key_warning(source)
+    if warning:
+        print(warning, file=sys.stderr, flush=True)
     app.permanent_session_lifetime = datetime.timedelta(hours=SESSION_HOURS)
     ensure_builtin_roles()
 
