@@ -4034,12 +4034,14 @@ change no figure, link or metric.
    | **Claimed against approved** panel | one bar per project, most recent 6 | claimed vs approved, per project |
 
    ⚠ **EVERY AMOUNT ON THIS BAND IS TAX-EXCLUSIVE AND `grand_total` APPEARS
-   NOWHERE IN IT.** That is §7 gap 31, which is a live display bug on
-   `/boq/view` and has already cost one real over-claim investigation: a
-   tax-exclusive tile inches from tax-inclusive chips made
-   `SF/BOQ/26-27/0006` read ~18% over-claimed when it was claimed to exactly
-   100%. `subtotal` and `claim_subtotal` are the same kind of number and may
-   legitimately be compared; `grand_total` is not and may not.
+   NOWHERE IN IT.** That was §7 gap 31, a live display bug on `/boq/view` which
+   cost one real over-claim investigation: a tax-exclusive tile inches from
+   tax-inclusive chips made `SF/BOQ/26-27/0006` read ~18% over-claimed when it
+   was claimed to exactly 100%. `subtotal` and `claim_subtotal` are the same
+   kind of number and may legitimately be compared; `grand_total` is not and
+   may not. **Gap 31 was closed on 8 September 2026 by giving `/boq/view`'s
+   chips this band's rule**, so the two screens now answer with the same
+   number; this band is unchanged, and was already correct.
 
    ⚠ **`net_payable` is also tax-exclusive and is still the wrong field** for
    a claimed total — it is `claim_subtotal − deduction_total`, and retention
@@ -8582,9 +8584,11 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     is made.
 
 
-31. 🟠 **`/boq/view` puts a tax-EXCLUSIVE total beside tax-INCLUSIVE RA chips,
-    and nothing on the chips says so — OPEN, reported 3 September 2026 and
-    deliberately not fixed in that pass.**
+31. ✅ **`/boq/view` put a tax-EXCLUSIVE total beside tax-INCLUSIVE RA chips,
+    and nothing on the chips said so — CLOSED 8 September 2026.** Reported
+    3 September 2026, left open by two passes on purpose, fixed by the third.
+    The entry is kept in full because the reasoning is the record of why the
+    figure is `claim_subtotal` and not either of the two numbers beside it.
 
     The panel's *Total Basic Value* tile renders `boq_totals()` and carries the
     sub-label **"taxes extra"** on its own face. Immediately below it, the
@@ -8635,6 +8639,22 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     reasoning for preferring `claim_subtotal` over `net_payable` (which is also
     tax-exclusive and still wrong, being net of retention), are already written
     down and mutation-tested there.
+
+    ✅ **CLOSED, 8 September 2026 — the second option, as predicted.**
+    `boq.view_boq()`'s `_chip()` renders **`claim_subtotal`**, by the same
+    expression `dashboard._boq_ra()` sums, and the strip carries the unit on its
+    face: *"claimed basic value · taxes extra"*, matching the tile's own
+    sub-label. Live `SF/BOQ/26-27/0006` now renders chips of **₹750 + ₹8,835 =
+    ₹9,585** against a ₹9,585 tile — **100% claimed, and the two screens agree**.
+    No RA, BOQ or claim record was touched: this was always a display defect,
+    and the money was always right.
+
+    Four assertions in `tests/test_dashboard_boq_ra.py` hold it, on the live
+    Work2 shape, and the equality between the two screens is asserted rather
+    than each figure being pinned to a literal. Both mutations were caught:
+    reverting the chip to **`grand_total`** fails four of them, and swapping it
+    to **`net_payable`** — the other tax-exclusive field, and the one this entry
+    warns is still wrong — fails three. The print goldens did not move.
 
 32. 🟠 **One live RA bill carries a `tax_invoice_ref` from `invoice.py`'s
     series, and it will collide — OPEN, reported 3 September 2026.**

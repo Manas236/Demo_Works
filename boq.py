@@ -2092,20 +2092,49 @@ def view_boq(id: str):
         # `ra.STATUSES`: boq.py may never import ra.py (§2b), and this is
         # `dashboard._metrics()`'s precedent for `PO_STATUSES`. If the
         # vocabulary is ever renamed, this is the second place to change.
+        # ⚠ **THE CHIP IS `claim_subtotal`, AND IT MAY NEVER BE `grand_total`
+        #   AGAIN** — ABOUT.md §7 gap 31, closed 8 September 2026.
+        #
+        #   These chips sit inches from the *Total Basic Value* tile, which is
+        #   tax-EXCLUSIVE and says "taxes extra" underneath itself. Rendering a
+        #   tax-INCLUSIVE `grand_total` beside it invited the only comparison
+        #   the layout affords — add the strip up, read it against the tile —
+        #   and made every BOQ claimed to completion look ~18% over-claimed.
+        #   That is not hypothetical: `SF/BOQ/26-27/0006` (project Work2) was
+        #   investigated as an over-claim on 3 September 2026 and was billed
+        #   exactly to its schedule. Its ₹9,585 of claims read as ₹11,310
+        #   because ₹1,725 of GST was being compared against a figure that
+        #   excludes GST.
+        #
+        #   `claim_subtotal` is the claim before tax and before deductions, and
+        #   it is **the same field, by the same expression, that
+        #   `dashboard._billing_metrics()` sums** — which is why that page
+        #   always showed Work2 correctly at 100% while this one cried over.
+        #   The two screens now answer with the same number because they read
+        #   the same number. `net_payable` is NOT the alternative: it nets off
+        #   retention, and money withheld from a claim was still claimed
+        #   against the schedule.
+        #
+        #   `tests/test_dashboard_boq_ra.py` asserts the two agree on
+        #   Work2-shaped data; changing this line back fails it.
         def _chip(rid, r) -> str:
             void = str(r.get("status") or "").strip().lower() == "cancelled"
             money = ("cancelled" if void else
-                     f'&#8377;&nbsp;{float(r.get("grand_total") or 0):,.0f}')
+                     f'&#8377;&nbsp;{float(r.get("claim_subtotal") or 0):,.0f}')
             style = ' style="opacity:.55;"' if void else ""
             return (f'<a class="ra-chip" href="{url_for("ra.view_ra", id=rid)}"'
                     f'{style}>RA{P.esc(r.get("ra_no"))} &middot; '
                     f'{P.esc(r.get("ref"))} &middot; {money}</a>')
 
         chips = "".join(_chip(rid, r) for rid, r in ra_rows)
+        # The unit is written on the strip for the same reason it is written
+        # under the tile: the two figures are only comparable because they are
+        # the same kind of number, and a reader cannot see that from a bare ₹.
         ra_html = f"""
         <div class="ra-block">
           <span class="ra-lbl">Running Account bills raised</span>
           <div class="ra-strip">{chips}</div>
+          <div class="bp-sub" style="margin-top:.4rem;">claimed basic value &middot; taxes extra</div>
         </div>"""
 
     msg      = request.args.get("msg")

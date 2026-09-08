@@ -744,3 +744,122 @@ def test_the_live_shape_shows_a_sub_one_percent_share_rather_than_zero(client):
     html = client.get("/").get_data(as_text=True)
     assert "&lt;1% of open schedules" in html
     assert "0% of open schedules" not in html
+
+
+# =============================================================================
+# GAP 31 — /boq/view and the dashboard, on the same data, in the same unit
+# =============================================================================
+#
+# Closed 8 September 2026. Until then `/boq/view` rendered its RA chips from
+# `grand_total` (tax-INCLUSIVE) inches beneath a *Total Basic Value* tile
+# (tax-EXCLUSIVE, "taxes extra"), so a BOQ billed exactly to its schedule read
+# as ~18% over-claimed. The dashboard, summing `claim_subtotal`, always said
+# 100% on the same records — two screens contradicting each other in front of
+# the client on data that was never wrong.
+#
+# WORK2 IS NOT AN INVENTED SHAPE. `SF/BOQ/26-27/0006` on the live database has
+# subtotal 9,585.00 and carries exactly two issued bills, 750.00 and 8,835.00,
+# which sum to the schedule to the rupee. Its `grand_total`s sum to 11,310.00,
+# and the 1,725.00 difference is the GST that was being read as an over-claim.
+
+WORK2_SUBTOTAL = 9585.0
+WORK2_CLAIMS = (750.0, 8835.0)          # RA/0006 and RA/0007, live figures
+WORK2_TAX_INCLUSIVE = 11310.0           # what the chips used to add up to
+
+
+def _chip_figures(html: str) -> list:
+    """
+    Every rupee figure inside the `.ra-strip` on `/boq/view`, as floats.
+
+    Scoped to the strip on purpose: the page also carries the Total Basic Value
+    tile and the document itself, and a test that matched money anywhere on it
+    would pass while the chips were still wrong.
+    """
+    import re
+
+    m = re.search(r'<div class="ra-strip">(.*?)</div>', html, re.S)
+    assert m, "no RA chip strip on the page"
+    return [float(x.replace(",", ""))
+            for x in re.findall(r"&#8377;&nbsp;([\d,]+)", m.group(1))]
+
+
+def _work2(client):
+    """The live Work2 shape: one schedule, two issued bills, billed to 100%."""
+    STORE["boqs"].clear()
+    STORE["ra_bills"].clear()
+    _project("p-work2", "Work2")
+    _boq("b-work2", "SF/BOQ/26-27/0006", WORK2_SUBTOTAL, project_id="p-work2")
+    for i, claim in enumerate(WORK2_CLAIMS, start=1):
+        bill = _bill(f"r-work2-{i}", f"SF/RA/26-27/000{5 + i}", "b-work2", claim)
+        bill["ra_no"] = i
+    return client.get("/boq/view/b-work2").get_data(as_text=True)
+
+
+def test_boq_view_chips_are_tax_exclusive_and_foot_to_the_schedule(client):
+    """
+    The claim side and the schedule side are the same kind of number.
+
+    ⚠ The assertion is on the SUM against `subtotal`, because that is the
+      comparison the layout invites a reader to make and the one that was
+      producing a false over-claim.
+    """
+    html = _work2(client)
+    figures = _chip_figures(html)
+
+    assert figures == list(WORK2_CLAIMS), (
+        f"the chips show {figures}, not the claimed basic values "
+        f"{list(WORK2_CLAIMS)} — gap 31 is back")
+    assert sum(figures) == WORK2_SUBTOTAL, (
+        "a BOQ billed exactly to its schedule must foot to it, not over it")
+    assert sum(figures) != WORK2_TAX_INCLUSIVE, (
+        "the chips are summing a tax-inclusive figure again")
+
+
+def test_boq_view_and_the_dashboard_agree_on_the_same_boq(client):
+    """
+    The two screens, side by side, on one set of records — the actual defect.
+
+    Neither figure is asserted against a literal alone: the point is that the
+    page a client is shown and the panel the office reads report the SAME
+    number, so the assertion is the equality between them.
+    """
+    html = _work2(client)
+    from_boq_view = sum(_chip_figures(html))
+    from_dashboard = dashboard._boq_ra()["ra_claimed_value"]
+
+    assert from_boq_view == from_dashboard, (
+        f"/boq/view says {from_boq_view} and the dashboard says "
+        f"{from_dashboard} about the same two bills")
+    assert from_boq_view == WORK2_SUBTOTAL
+
+
+def test_boq_view_never_renders_the_tax_inclusive_figure(client):
+    """
+    The negative half, and the one that catches a partial revert.
+
+    A fix that summed correctly but still printed `grand_total` somewhere in
+    the strip would leave the same two numbers on the same screen for a reader
+    to compare, which is the whole of gap 31.
+    """
+    html = _work2(client)
+    strip = html[html.index('<div class="ra-strip">'):]
+    strip = strip[:strip.index("</div>")]
+
+    for claim in WORK2_CLAIMS:
+        assert f"{claim * 1.18:,.0f}" not in strip, (
+            f"the tax-inclusive {claim * 1.18:,.0f} is on the chip strip")
+
+
+def test_a_cancelled_bill_still_shows_no_figure_at_all(client):
+    """
+    Unchanged by the gap 31 fix, and asserted so the fix cannot have quietly
+    started printing a withdrawn claim's money.
+    """
+    _work2(client)
+    STORE["ra_bills"]["r-work2-1"]["status"] = "cancelled"
+
+    html = client.get("/boq/view/b-work2").get_data(as_text=True)
+    figures = _chip_figures(html)
+
+    assert figures == [WORK2_CLAIMS[1]], "a cancelled bill contributed a figure"
+    assert "cancelled" in html
