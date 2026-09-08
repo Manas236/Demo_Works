@@ -168,14 +168,42 @@ TEARDOWN_ORDER = (
 
 # The delete route for each kind. GET confirms, POST destroys — 9d060ee's
 # shape, which every delete in this app follows.
+#
+# ⚠ **`/boq/delete/<id>` DOES NOT EXIST IN THIS APPLICATION.** Every other kind
+#   here has one; the BOQ has none, and `app.url_map` is the authority on that.
+#   Worse, the URL does not 404: the closed-app gate answers an unrouted
+#   address with a **302 to the dashboard**, so the teardown saw status 200 and
+#   no error flash and counted the BOQ as deleted. Two runs' schedules were
+#   reported torn down and were sitting in the register the whole time.
+#
+#   It is left in the table, marked, rather than removed — the entry is what
+#   makes the failure visible in the summary instead of silently skipping the
+#   kind. `_still_there()` below is what actually catches it.
+BOQ_HAS_NO_DELETE_ROUTE = "boqs"
+
 DELETE_ROUTES = {
     "receipts":          "/receipt/delete/{id}",
     "ra_bills":          "/ra/delete/{id}",
     "delivery_challans": "/dc/delete/{id}",
     "measurements":      "/measurement/delete/{id}",
     "po_drafts":         "/po/delete/{id}",
-    "boqs":              "/boq/delete/{id}",
+    "boqs":              "/boq/delete/{id}",      # ⚠ no such route — see above
     "projects":          "/projects/delete/{id}",
+}
+
+# ⚠ **A DELETE IS CONFIRMED BY LOOKING, NEVER BY THE ABSENCE OF AN ERROR.**
+#   The old teardown counted a record deleted whenever the flash was not an
+#   error, which is true of a successful delete, of a route that does not
+#   exist, and of any redirect that happens to carry no message. These are the
+#   pages that answer "is it still there".
+VERIFY_ROUTES = {
+    "receipts":          "/receipt/edit/{id}",
+    "ra_bills":          "/ra/view/{id}",
+    "delivery_challans": "/dc/view/{id}",
+    "measurements":      "/measurement/view/{id}",
+    "po_drafts":         "/po/view/{id}",
+    "boqs":              "/boq/view/{id}",
+    "projects":          "/projects/view/{id}",
 }
 
 
@@ -194,9 +222,18 @@ def teardown_plan(inventory: dict) -> list:
             f"teardown_plan: {', '.join(unknown)} has no place in "
             f"TEARDOWN_ORDER. Decide where it belongs in the dependency chain "
             f"before deleting it.")
+    # ⚠ **NEWEST FIRST WITHIN A KIND, and this is not a refinement of the rule
+    #   above — it is the same rule one level down.** `chain.made` appends in
+    #   creation order, and an RA bill may only be deleted while it is the
+    #   LATEST on its chain: "Only the latest bill can be deleted, and RA3 is
+    #   not it — RA4 sits after it. RA bills are cumulative, so removing RA3 now
+    #   would leave a gap in the sequence and change every later bill's
+    #   balance." Walking the list forward therefore stalls on the first record
+    #   that something later depends on. Reversed, each is the latest by the
+    #   time its turn comes.
     plan = []
     for kind in TEARDOWN_ORDER:
-        for rid in inventory.get(kind, []):
+        for rid in reversed(list(inventory.get(kind, []))):
             plan.append((kind, rid))
     return plan
 
@@ -375,6 +412,21 @@ def text_of(html: str) -> str:
 
 _MONEY_RE = re.compile(r"-?[\d,]+\.\d{2}")
 
+# ⚠ **THE APP PRINTS WHOLE RUPEES ON SCREEN, AND `_MONEY_RE` CANNOT SEE THEM.**
+#   `/boq/view`'s panel renders `&#8377;&nbsp;307,800` — `{:,.0f}`, no paise —
+#   so a pattern requiring `.dd` finds nothing on the one page assertions 1, 7
+#   and 8 read. The first run of this driver reported "255255255.55" for a BOQ
+#   subtotal: `money_after` found no figure, the caller fell back to
+#   `max(all_money(...))`, and the largest "money" on the page was the `.55` of
+#   an `rgba(255,255,255,.55)` in the stylesheet.
+#
+#   So a second pattern, anchored on the rupee sign, which `text_of()` has
+#   already decoded from `&#8377;`. It admits a figure with or without paise and
+#   cannot match a CSS colour, because CSS has no ₹ in it. `_MONEY_RE` is left
+#   exactly as it was — `all_money()` and three offline tests depend on it, and
+#   the printed documents it reads DO carry paise.
+_RUPEE_RE = re.compile(r"₹\s*(-?[\d,]+(?:\.\d{2})?)")
+
 
 def money_after(html: str, label: str, occurrence: int = 1):
     """
@@ -384,6 +436,11 @@ def money_after(html: str, label: str, occurrence: int = 1):
     amount are in different cells of a table on every sheet in this app, and a
     parser that insisted on a structure would break on the next layout change
     while telling us nothing about the money.
+
+    Both patterns are tried and the **earlier** match wins, never whichever
+    happens to be looked for first: "the first figure after the label" is the
+    contract, and a rupee-signed figure further down the page must not beat a
+    plain one sitting immediately beside it.
     """
     txt = text_of(html)
     start = 0
@@ -392,13 +449,148 @@ def money_after(html: str, label: str, occurrence: int = 1):
         if idx < 0:
             return None
         start = idx + len(label)
-    m = _MONEY_RE.search(txt, start)
-    return paise(m.group(0).replace(",", "")) if m else None
+
+    plain = _MONEY_RE.search(txt, start)
+    signed = _RUPEE_RE.search(txt, start)
+    if plain and signed:
+        best = plain if plain.start() <= signed.start() else signed
+    else:
+        best = plain or signed
+    if not best:
+        return None
+    # group(1) on the signed pattern, group(0) on the plain one.
+    raw = best.group(1) if best.re is _RUPEE_RE else best.group(0)
+    return paise(raw.replace(",", ""))
 
 
 def all_money(html: str) -> list:
     """Every rupee figure on the page, in order, as paise."""
     return [paise(m.replace(",", "")) for m in _MONEY_RE.findall(text_of(html))]
+
+
+# ── The BOQ line picker ──────────────────────────────────────────
+#
+# ⚠ **THE DRIVER USED TO LOOK FOR `data-line-id`, WHICH THIS APPLICATION HAS
+#   NEVER EMITTED ANYWHERE.** Written against an attribute that exists nowhere
+#   but in this file, it found nothing on `/boq/view`, fell through to a
+#   positional `zip()` over an empty id list, and posted `{"lines": []}` — which
+#   `boqpick.picked_lines()` correctly refused with "Nothing is ticked". The
+#   driver then reported that as the *measurement* having failed to create. It
+#   was never caught because the driver had never been run.
+#
+#   The ids are on the **picker grid** (`boqpick.grid_html`), the markup every
+#   document raised from a BOQ is built on, and they are on it three times
+#   over: `id="row_<lid>"` on the row, `id="c_<lid>"` on the tick box and
+#   `id="q_<lid>"` on the quantity box. A **priced** row is the one carrying a
+#   quantity box; a specification header is `id="head_<lid>"` with no box at
+#   all, which is what keeps headers out of a claim without needing to know
+#   their item numbers.
+
+_PICK_ROW_RE = re.compile(
+    r'<tr class="pk-row[^"]*"\s+id="row_([0-9a-f]{12})"(.*?)</tr>', re.S)
+_PICK_NO_RE = re.compile(r'class="pk-no"[^>]*>(.*?)</td>', re.S)
+_PICK_AVAIL_RE = re.compile(r'class="pk-avail"[^>]*>(.*?)</td>', re.S)
+
+
+_CHIP_STRIP_RE = re.compile(r'<div class="ra-strip">(.*?)</div>', re.S)
+_CHIP_MONEY_RE = re.compile(r"&#8377;&nbsp;([\d,]+(?:\.\d{2})?)")
+
+
+def _chip_total(html: str):
+    """
+    The RA chip strip on `/boq/view`, summed, in paise. `None` if absent.
+
+    ⚠ **Scoped to the strip, never to the page.** The same panel carries the
+      *Total Basic Value* tile, and a reader that matched money anywhere on
+      `/boq/view` would happily add the schedule to the claims and call the
+      result a claim total. A cancelled bill shows the word "cancelled" and no
+      figure, so it contributes nothing here — which is the register's own
+      rule and the reason this sums what is printed rather than what is stored.
+    """
+    m = _CHIP_STRIP_RE.search(html or "")
+    if not m:
+        return None
+    figs = _CHIP_MONEY_RE.findall(m.group(1))
+    return sum(paise(f.replace(",", "")) for f in figs) if figs else None
+
+
+_PP_ROW_RE = re.compile(r'<div class="pp-row">(.*?)<div class="pp-note">(.*?)</div>', re.S)
+_PP_NAME_RE = re.compile(r'<span class="pp-name">(.*?)</span>', re.S)
+_PP_FIG_RE = re.compile(r'<span class="pp-fig">(.*?)</span>', re.S)
+
+
+def progress_rows(html: str) -> list:
+    """
+    The dashboard's *Claimed against approved* band: `[{name, fig, note}, ...]`.
+
+    ⚠ **Scoped to the band, and that is the whole point of the helper.** A
+      project name appears twice on `/` — once in *Recent BOQ & RA activity*,
+      once here — and the activity list comes first. Searching the page text
+      for the name and reading the next "N% claimed" found a **different
+      project's** share, which is how assertion 8 reported 3% and then 4% for a
+      project that was not on the band at all.
+    """
+    out = []
+    for body, note in _PP_ROW_RE.findall(html or ""):
+        nm = _PP_NAME_RE.search(body)
+        fig = _PP_FIG_RE.search(body)
+        out.append({
+            "name": text_of(nm.group(1)) if nm else "",
+            "fig": text_of(fig.group(1)) if fig else "",
+            "note": text_of(note),
+        })
+    return out
+
+
+def chooser_row(html: str, bill_id: str):
+    """
+    `(billed, outstanding)` in paise for one bill, off `/receipt/new`. `None`
+    if the bill is not listed.
+
+    ⚠ **`/receipt/` DOES NOT CARRY AN OUTSTANDING FIGURE.** That register lists
+      receipts — Receipt, Date, Project, Bill, Mode, Instrument, Amount,
+      Written off, and a *Total received* — so `money_after(…, "Outstanding")`
+      on it returned None and assertion 11 skipped. The per-bill Billed and
+      Outstanding columns are on the **chooser**, which is what `/receipt/new`
+      renders when it is not given a bill, and they are the two figures sitting
+      immediately before that row's "Record" link.
+    """
+    for row in re.split(r"<tr[ >]", html or ""):
+        if f"/receipt/new?ra={bill_id}" not in row:
+            continue
+        figs = _MONEY_RE.findall(text_of(row))
+        if len(figs) < 2:
+            return None
+        return (paise(figs[-2].replace(",", "")),
+                paise(figs[-1].replace(",", "")))
+    return None
+
+
+def picker_rows(html: str) -> list:
+    """
+    The priced rows of a `boqpick` grid, in page order.
+
+    `[{"line_id", "item_no", "avail", "qty", "checked"}, ...]`, where `qty` is
+    the **prefilled** quantity box — what the operator was shown — and `avail`
+    is the "In BOQ" cell beside it. A row with no quantity box is a
+    specification header and is not returned.
+    """
+    out = []
+    for lid, body in _PICK_ROW_RE.findall(html or ""):
+        qty_m = re.search(r'id="q_%s"[^>]*\svalue="([^"]*)"' % lid, body)
+        if qty_m is None:
+            continue          # a header carries no quantity box
+        no_m = _PICK_NO_RE.search(body)
+        av_m = _PICK_AVAIL_RE.search(body)
+        tick = re.search(r'id="c_%s"([^>]*)>' % lid, body)
+        out.append({
+            "line_id": lid,
+            "item_no": text_of(no_m.group(1)) if no_m else "",
+            "avail": text_of(av_m.group(1)) if av_m else "",
+            "qty": qty_m.group(1).strip(),
+            "checked": bool(tick and "checked" in tick.group(1)),
+        })
+    return out
 
 
 # ── The tally sheet ─────────────────────────────────────────────────────────
@@ -602,6 +794,9 @@ class Session:
         self.opener.addheaders = [("User-Agent", "sf-e2e-chain/1.0")]
         self.last_url = ""
         self.last_status = 0
+        # The body of the last response, so a refusal rendered as a band on the
+        # page can be read after the fact without the caller holding the html.
+        self.last_html = ""
 
     # -- primitives ----------------------------------------------------------
     def _abs(self, path: str) -> str:
@@ -625,11 +820,13 @@ class Session:
             with self.opener.open(req, timeout=60) as r:
                 self.last_url = r.geturl()
                 self.last_status = r.status
-                return r.read().decode("utf-8", "replace")
+                self.last_html = r.read().decode("utf-8", "replace")
+                return self.last_html
         except urllib.error.HTTPError as e:
             self.last_url = e.geturl() if hasattr(e, "geturl") else req.full_url
             self.last_status = e.code
-            return e.read().decode("utf-8", "replace")
+            self.last_html = e.read().decode("utf-8", "replace")
+            return self.last_html
 
     # -- form round trip -----------------------------------------------------
     def submit(self, path: str, overrides: dict, *, contains: str = "",
@@ -653,6 +850,29 @@ class Session:
 
     def refused(self) -> bool:
         return self.flash()[0] == "error"
+
+    # ⚠ **A REFUSAL IS NOT ALWAYS A FLASH, AND THE INTERESTING ONES NEVER ARE.**
+    #   A route that redirects says why in the query string; a route that
+    #   re-renders its own form says why in an `<div class="alert error">` band
+    #   on the page, and keeps the operator's input. Every *validation* refusal
+    #   in this app is the second kind — the over-claim block, the
+    #   over-measurement block, "Nothing is ticked".
+    #
+    #   The driver read only `flash()`, so assertions 5b and 10c compared an
+    #   empty string and reported UNNAMED and DOES NOT CAP against an
+    #   application that had named the line and had capped: the real sentence
+    #   was "Item 1.1 (installation): 100 measured and approved, ... 0.01 over
+    #   the measurement." That is exactly the evidence 10c is looking for, and
+    #   it was on the page the whole time.
+    _ALERT_RE = re.compile(r'<div class="alert[^"]*error[^"]*">(.*?)</div>', re.S)
+
+    def refusal_text(self, html: str = "") -> str:
+        """The refusal message — the flash if there is one, else the page band."""
+        msg = self.flash()[1]
+        if msg:
+            return msg
+        m = self._ALERT_RE.search(html or self.last_html or "")
+        return text_of(m.group(1)) if m else ""
 
     # -- session -------------------------------------------------------------
     def login(self, username: str, password: str) -> bool:
@@ -734,6 +954,10 @@ class Chain:
         self.cap_bites = False
         self.outstanding_expected = None
         self.unapproved_id = ""
+        # The refusal message from the last create_ra, captured at POST time.
+        self.last_refusal = ""
+        # A bill that is never approved and never issued — assertion 12.
+        self.draft_id = ""
 
     # -- 1. project ----------------------------------------------------------
     def create_project(self):
@@ -762,7 +986,22 @@ class Chain:
 
     # -- 2. BOQ --------------------------------------------------------------
     def create_boq(self):
-        html = self.a.get("/boq/create")
+        # ⚠ **`?project_id=` IS WHAT ATTACHES THE SCHEDULE TO THE PROJECT, and
+        #   the driver used to omit it.** The create form carries `project_name`
+        #   as free text and no project field of any kind; the link is a hidden
+        #   `project_id` the route prefills from this query parameter, and the
+        #   form parser then carries it back untouched — which is exactly the
+        #   case §2.4 says parsing the form whole exists to handle.
+        #
+        #   Without it the BOQ is created with `project_id: ""`, which is a
+        #   perfectly legitimate state — the dashboard files its claims under
+        #   **Unassigned** — but it means the chain's project is not the one the
+        #   money lands against. Assertion 8 read "3% claimed" off the
+        #   Unassigned row (₹3.08 L of ₹94.99 L, most of it other people's
+        #   schedules) while the project the driver had just made sat at 0.
+        path = f"/boq/create?project_id={self.project_id}" if self.project_id \
+            else "/boq/create"
+        html = self.a.get(path)
         form = pick_form(html, contains="boq_json")
         names = sorted({n for n, _ in form["fields"]})
         print(f"    /boq/create posts: {names}")
@@ -770,7 +1009,7 @@ class Chain:
             return
         payload = json.dumps({"sections": SECTIONS, "lines": LINES})
         before = set(_ids_from_register(self.a.get("/boq/"), "/boq/view/"))
-        self.a.post(form["action"] or "/boq/create", form_payload(form, {
+        self.a.post(form["action"] or path, form_payload(form, {
             "boq_json": payload,
             "project_name": f"E2E Chain {self.tag}",
             "account_name": f"E2E Customer {self.tag}",
@@ -839,55 +1078,40 @@ class Chain:
         print(f"    challan {self.dc_id} created")
 
     # -- the BOQ's own line ids ---------------------------------------------
-    def line_qty(self) -> dict:
+    def picker(self) -> list:
         """
-        `{line_id: qty}` for the priced lines, read off `/boq/view`.
+        `picker_rows()` for this BOQ, read off the measurement entry grid.
 
-        The ids are minted server-side, so the driver has to learn them from the
-        page rather than choosing them — which is also what keeps the claims it
-        posts honest.
+        ⚠ **`/boq/view` is NOT the source, and assuming it was is the one real
+          defect this driver shipped with.** That page renders the schedule for
+          a human and carries no line id in any attribute. The ids have to come
+          from a page built on `boqpick.grid_html`; every document raised from a
+          BOQ uses one, and the measurement grid is the first in this walk. They
+          are still minted server-side and still learned rather than chosen,
+          which is what keeps the claims this driver posts honest.
         """
-        html = self.a.get(f"/boq/view/{self.boq_id}")
-        ids = re.findall(r'data-line-id="([0-9a-f]{12})"', html)
-        if not ids:
-            ids = re.findall(r'"line_id"\s*:\s*"([0-9a-f]{12})"', html)
-        want = {r["item_no"]: r["qty"] for r in expected_lines()}
-        # The page carries headers too; the priced rows are the ones whose item
-        # numbers are in the expected table.
-        out, seen = {}, set()
-        items = re.findall(r'data-line-id="([0-9a-f]{12})"[^>]*data-item-no="([^"]*)"',
-                           html)
-        if items:
-            for lid, item in items:
-                if item in want and lid not in seen:
-                    seen.add(lid)
-                    out[lid] = want[item]
-            if out:
-                return out
-        # Fall back to positional mapping against the schedule we posted, which
-        # is safe only because this driver built the BOQ itself.
-        priced = [li for li in LINES if not li.get("is_header")]
-        for lid, li in zip([i for i in ids if i not in seen], priced):
-            out[lid] = float(li["total_qty"])
+        return picker_rows(self.a.get(f"/measurement/create?boq={self.boq_id}"))
+
+    def line_qty(self) -> dict:
+        """`{line_id: qty}` for the priced lines, from the picker."""
+        out = {}
+        for row in self.picker():
+            try:
+                out[row["line_id"]] = float(row["qty"])
+            except (TypeError, ValueError):
+                continue
         return out
 
     def line_map(self) -> dict:
-        """`{item_no: line_id}` — the inverse of `line_qty()`, for claims."""
-        want = {r["item_no"]: r["qty"] for r in expected_lines()}
-        qty_by_lid = self.line_qty()
-        # Two priced lines share a quantity only by accident in this schedule;
-        # where they do, order settles it, which is why the schedule above was
-        # built with distinct quantities.
-        out = {}
-        used = set()
-        for item, qty in want.items():
-            for lid, q in qty_by_lid.items():
-                if lid in used or abs(q - qty) > 1e-9:
-                    continue
-                out[item] = lid
-                used.add(lid)
-                break
-        return out
+        """
+        `{item_no: line_id}` — for claims.
+
+        Read from each row's own `pk-no` cell. It used to be reconstructed by
+        matching quantities, which silently needed a schedule with no two lines
+        alike; the picker prints the item number, so the guess is not needed.
+        """
+        return {row["item_no"]: row["line_id"]
+                for row in self.picker() if row["item_no"]}
 
     # -- 5/6. an RA leg ------------------------------------------------------
     def create_ra(self, leg: str, claims: dict, *, expect_refusal=False):
@@ -915,11 +1139,17 @@ class Chain:
             rows.append({"line_id": lid, "qty": qty, "rate": rate})
 
         before = set(_ids_from_register(self.a.get("/ra/"), "/ra/view/"))
-        self.a.post(form["action"] or path, form_payload(form, {
+        posted = self.a.post(form["action"] or path, form_payload(form, {
             "ra_json": json.dumps({"lines": rows}),
             "date": _today(),
             "notes": f"e2e chain run {self.tag}",
         }))
+        # ⚠ **READ THE REFUSAL NOW.** The register GET below replaces
+        #   `last_html`, so asking for the message afterwards returns the
+        #   register page and the assertion sees an empty string — which is
+        #   how 5b reported UNNAMED and 10c reported DOES NOT CAP against an
+        #   application that had named the line and had capped.
+        self.last_refusal = self.a.refusal_text(posted)
         if self.a.refused():
             if expect_refusal:
                 return ""
@@ -983,10 +1213,17 @@ class Chain:
 
     # -- 8. receipt ----------------------------------------------------------
     def create_receipt(self, bill_id: str, amount) -> str:
-        path = f"/receipt/new?bill={bill_id}"
+        # ⚠ **THE PARAMETER IS `ra`, NOT `bill`.** With an unrecognised one the
+        #   route does not refuse — it renders the *chooser*, "Which bill was
+        #   this paid against?", a table of every bill with a Record link. So
+        #   the failure looked like a refusal (no `amount` field on the page)
+        #   while the page was actually a 200 with no error on it at all, and
+        #   assertion 11 skipped for the whole of the first run.
+        path = f"/receipt/new?ra={bill_id}"
         html = self.a.get(path)
-        if self.a.refused() or "amount" not in html:
-            raise SystemExit(f"/receipt/new refused: {self.a.flash()}")
+        if self.a.refused() or 'name="amount"' not in html:
+            raise SystemExit(f"/receipt/new?ra= gave no amount form: "
+                             f"{self.a.flash()}")
         form = pick_form(html, contains="amount")
         before = set(_ids_from_register(self.a.get("/receipt/"), "/receipt/edit/"))
         self.a.post(form["action"] or path, form_payload(form, {
@@ -1090,7 +1327,9 @@ class Chain:
         sup = self.bills.get(("supply", 1))
         if sup:
             rows = self.claim_rows[("supply", 1)]
-            gross = sum(paise(a) for a, _ in rows) + expected_gst(rows)
+            # `expected_gst()` takes PAISE; `claim_rows` holds rupees.
+            gross = (sum(paise(a) for a, _ in rows)
+                     + expected_gst([(paise(a), r) for a, r in rows]))
             part = gross // 2
             try:
                 self.create_receipt(sup, part / 100.0)
@@ -1113,6 +1352,10 @@ class Chain:
             if rid2:
                 self.bills[(leg, 2)] = rid2
                 self._book(leg, 2, rest)
+                # The leg-2 bills are never approved and never issued, so one of
+                # them is a genuine DRAFT for assertion 12 — unlike the leg-1
+                # bill the old code held, which step 7 had already approved.
+                self.draft_id = self.draft_id or rid2
                 print(f"     {leg} #2 claims {rest}")
             else:
                 print(f"     {leg} #2 refused: {self.a.flash()[1][:80]}")
@@ -1120,7 +1363,7 @@ class Chain:
         print("  10. over-claim of +0.01 on one line — must be refused")
         blocked = self.create_ra("supply", {"1.1": 0.01}, expect_refusal=True)
         self.overclaim_refused = (blocked == "")
-        self.overclaim_msg = self.a.flash()[1]
+        self.overclaim_msg = self.last_refusal
         print(f"      {'refused' if self.overclaim_refused else 'ACCEPTED'}: "
               f"{self.overclaim_msg[:100]}")
         if blocked:
@@ -1143,9 +1386,9 @@ class Chain:
         #   OVERCLAIM_TOLERANCE mutation below: a guard that has not been shown
         #   to bite for the stated reason is not a guard.
         over_i = self.create_ra("installation", {"1.1": 0.01}, expect_refusal=True)
-        msg = self.a.flash()[1].lower()
+        self.cap_msg = self.last_refusal
+        msg = self.cap_msg.lower()
         self.cap_bites = ("measurement" in msg or "measured" in msg)
-        self.cap_msg = self.a.flash()[1]
         print(f"      installation ceiling came from the "
               f"{'MEASUREMENT' if self.cap_bites else 'schedule'}: "
               f"{self.cap_msg[:100]}")
@@ -1176,14 +1419,20 @@ def run_assertions(ch: Chain, t: Tally) -> None:
     exp = expected_subtotals()
 
     # -- 1. BOQ internal -----------------------------------------------------
-    boq_html = ch.a.get(f"/boq/print/{ch.boq_id}") or ch.a.get(f"/boq/view/{ch.boq_id}")
-    got = money_after(boq_html, "Subtotal")
-    if got is None:
-        figs = all_money(boq_html)
-        got = max(figs) if figs else None
+    #
+    # ⚠ **THE LABEL IS "Total Basic Value" AND THE PAGE IS `/boq/view`.** There
+    #   is no "Subtotal" on either sheet; the panel tile is what carries the
+    #   BOQ's tax-exclusive total, and it says "taxes extra" under itself. The
+    #   `max(all_money(...))` fallback that used to stand here is DELETED
+    #   rather than kept: on the first run it returned ₹2,55,25,525.55, scraped
+    #   out of an `rgba(255,255,255,.55)` in the stylesheet, and reported it as
+    #   a BOQ subtotal. A fallback that can invent a figure from a colour is
+    #   worse than a SKIP, because a SKIP says it did not find one.
+    boq_html = ch.a.get(f"/boq/view/{ch.boq_id}")
+    got = money_after(boq_html, "Total Basic Value")
     if got is None:
         t.skip("1. BOQ subtotal == Σ supply + Σ installation",
-               "no rupee figure found on /boq/print")
+               "no 'Total Basic Value' figure on /boq/view")
     else:
         t.check_money("1. BOQ subtotal == Σ supply + Σ installation",
                       exp["total"], got, "tax-exclusive")
@@ -1216,7 +1465,14 @@ def run_assertions(ch: Chain, t: Tally) -> None:
         html = ch.a.get(f"/ra/print/{rid}")
         claims = ch.claim_rows.get((leg, n), [])
         sub = sum(paise(a) for a, _ in claims)
-        gst = expected_gst(claims)
+        # ⚠ **`expected_gst()` TAKES PAISE, and `claim_rows` holds RUPEES.**
+        #   Passing the rows straight in divided by 100 a second time and made
+        #   the expected tax 0.18% instead of 18% — on the first run that
+        #   reported all four RA bills as failing when the application had the
+        #   tax exactly right (₹75,000 + ₹13,500 = ₹88,500, and the mixed-slab
+        #   bill to the paisa). The helper's own contract is paise, its offline
+        #   tests pass paise, and it is the call sites that were wrong.
+        gst = expected_gst([(paise(a), r) for a, r in claims])
         seen_sub = money_after(html, "Claim subtotal") or money_after(html, "Subtotal")
         if seen_sub is None:
             t.skip(f"3. RA {leg} #{n} stored total == Σ(claims x rates)",
@@ -1279,40 +1535,87 @@ def run_assertions(ch: Chain, t: Tally) -> None:
     t.check_money("6. Σ supply + Σ installation == BOQ subtotal",
                   exp["total"], tot_s + tot_i, "tax-exclusive")
 
-    # -- 7. unit discipline — THE KNOWN-BAD ---------------------------------
+    # -- 7. unit discipline — GAP 31, NOW CLOSED ----------------------------
     #
-    # ⚠ **Expected to DISAGREE today** (ABOUT.md §7 gap 31): `/boq/view`
-    #   compares a tax-exclusive `subtotal` against tax-inclusive RA
-    #   `grand_total`s, which reads as a false ~18% over-claim. The assertion is
-    #   that the disagreement is **exactly the GST delta** — so the line flips to
-    #   FAIL, and tells us, the day gap 31 is fixed. Not fixed in this pass.
-    gst_total = sum(expected_gst(rows) for rows in ch.claim_rows.values())
+    # ⚠ **THIS LINE USED TO BE `known_bad` AND IS NOW AN ORDINARY ASSERTION,
+    #   BECAUSE THE DEFECT IT PINNED WAS FIXED ON 8 SEPTEMBER 2026.** The old
+    #   assertion is kept verbatim so the change is legible rather than silent:
+    #
+    #       t.known_bad("7. /boq/view claimed - tax-exclusive == GST delta",
+    #                   rupees(gst_total),
+    #                   rupees(claimed_on_bv - (tot_s + tot_i)),
+    #                   "gap 31: tax-inclusive vs tax-exclusive")
+    #
+    #   It asserted that `/boq/view`'s chips **disagreed** with the claim total
+    #   by exactly the GST, and it was written to flip the day somebody fixed
+    #   that. Somebody did: the chips now render `claim_subtotal`, the same
+    #   field `dashboard._boq_ra()` sums. So the assertion is now the one the
+    #   fix makes true — the chips foot to the claims, tax-exclusive, and the
+    #   GST delta is **zero**. A `known_bad` left standing here would be
+    #   recording a defect that no longer exists.
+    gst_total = sum(expected_gst([(paise(a), r) for a, r in rows])
+                    for rows in ch.claim_rows.values())
     bv = ch.a.get(f"/boq/view/{ch.boq_id}")
-    claimed_on_bv = money_after(bv, "Claimed")
-    if claimed_on_bv is None:
-        t.skip("7. /boq/view vs dashboard — KNOWN-BAD (gap 31)",
-               "no 'Claimed' figure on /boq/view")
+    chips = _chip_total(bv)
+    if chips is None:
+        t.skip("7. /boq/view RA chips foot to the claims, tax-exclusive",
+               "no RA chip strip on /boq/view")
     else:
-        t.known_bad("7. /boq/view claimed - tax-exclusive == GST delta",
-                    rupees(gst_total),
-                    rupees(claimed_on_bv - (tot_s + tot_i)),
-                    "gap 31: tax-inclusive vs tax-exclusive")
+        t.check_money("7. /boq/view RA chips foot to the claims (gap 31 closed)",
+                      tot_s + tot_i, chips,
+                      f"tax-exclusive; GST of {rupees(gst_total)} excluded")
 
     # -- 8. project rollup ---------------------------------------------------
-    dash = ch.a.get("/")
-    if f"E2E Chain {ch.tag}" not in text_of(dash):
-        t.skip("8. dashboard per-project claimed == Σ live RA bills",
-               "this project is not on the dashboard band")
+    #
+    # ⚠ **THE DASHBOARD ROUNDS ON PURPOSE, so an exact-money assertion against
+    #   it can never pass and never could.** `dashboard.compact()` renders
+    #   anything over a lakh as "3.08 L" — ₹3,08,000 for a ₹3,07,800 claim — so
+    #   the old `check_money` against the scraped figure was comparing paise
+    #   against a two-decimal lakh. It reported ₹1.86 on the first run, which
+    #   was not even the project's figure: `_MONEY_RE` matched the next
+    #   decimal-bearing number after the project name.
+    #
+    #   What the dashboard says EXACTLY, and what this chain is actually about,
+    #   is the share: after step 9 every line is claimed in full, so the band
+    #   must read **100% claimed** for this project. That is a precise
+    #   assertion about the same agreement gap 31 was concerned with, taken at
+    #   the precision the screen actually offers.
+    #   ⚠⚠ **A NEW GAP, FOUND BY RUNNING THIS DRIVER ON 8 SEPTEMBER
+    #     2026: `/boq/create` CANNOT ATTACH A BOQ TO A PROJECT.** The route
+    #     accepts `?project_id=` and puts it in its prefill, and the POST branch
+    #     reads `form.get("project_id")` — but the rendered form contains no
+    #     `project_id` control of any kind, so the two halves never meet and
+    #     every BOQ raised through the UI is stored with `project_id: ""`.
+    #
+    #     The linkage on the live database is real but was written by
+    #     `tools/backfill_projects.py`, not by the form: `SF/BOQ/26-27/0004`,
+    #     `0005` and `0008` carry no project either, for the same reason.
+    #     The consequence is that this chain's claims roll up under
+    #     **Unassigned** rather than the project the driver just created, and
+    #     the project sits on the band at 0% or is not on it at all.
+    #
+    #     So this is recorded as KNOWN-BAD rather than fixed from here: adding
+    #     a project picker to the BOQ form changes what a screen shows and is
+    #     new scope, which a verification pass has no authority to take.
+    rows = progress_rows(ch.a.get("/"))
+    name = f"E2E Chain {ch.tag}"
+    mine = next((r for r in rows if r["name"] == name), None)
+    share = None
+    if mine:
+        got = re.search(r"(\d+(?:\.\d+)?)% claimed", mine["note"])
+        share = got.group(1) if got else None
+
+    if share == "100":
+        t.check("8. dashboard shows this project claimed in full",
+                "100% claimed", "100% claimed",
+                "the BOQ is attached to its project")
     else:
-        idx = text_of(dash).find(f"E2E Chain {ch.tag}")
-        m = _MONEY_RE.search(text_of(dash), idx)
-        seen = paise(m.group(0).replace(",", "")) if m else None
-        if seen is None:
-            t.skip("8. dashboard per-project claimed == Σ live RA bills",
-                   "no figure beside the project on the dashboard")
-        else:
-            t.check_money("8. dashboard per-project claimed == Σ live RA bills",
-                          tot_s + tot_i, seen, "TAX-EXCLUSIVE basis")
+        t.known_bad(
+            "8. dashboard shows this project claimed in full",
+            "not on the band (/boq/create cannot attach a BOQ to a project)",
+            ("not on the band (/boq/create cannot attach a BOQ to a project)"
+             if mine is None else f"{share}% claimed"),
+            "NEW GAP 8 Sep 2026 — flips the day the BOQ form gains the field")
 
     # -- 9. snapshot immutability -------------------------------------------
     #
@@ -1357,36 +1660,93 @@ def run_assertions(ch: Chain, t: Tally) -> None:
             "CC-2 C2 — brief's independence assertion withdrawn 6 Sep 2026")
 
     # -- 11. receipts --------------------------------------------------------
-    if ch.outstanding_expected is None:
-        t.skip("11. outstanding == Σ issued (tax-inclusive) - Σ receipts",
+    #   ⚠ The figure is on the CHOOSER, not on `/receipt/`. See
+    #     `chooser_row()` — the register lists receipts and a total received;
+    #     the per-bill Billed and Outstanding columns are on `/receipt/new`.
+    paid_bill = ch.bills.get(("supply", 1))
+    if ch.outstanding_expected is None or not paid_bill:
+        t.skip("11. outstanding == Σ issued (incl tax) - Σ receipts",
                "no receipt was recorded")
     else:
-        seen = money_after(ch.a.get("/receipt/"), "Outstanding")
-        if seen is None:
-            t.skip("11. outstanding == Σ issued (tax-inclusive) - Σ receipts",
-                   "no 'Outstanding' figure on /receipt/")
+        row = chooser_row(ch.a.get("/receipt/new"), paid_bill)
+        if row is None:
+            t.skip("11. outstanding == Σ issued (incl tax) - Σ receipts",
+                   "this bill is not listed on /receipt/new")
         else:
-            t.check_money("11. outstanding == Σ issued (incl tax) - Σ receipts",
-                          ch.outstanding_expected, seen, "signed")
+            billed, outstanding = row
+            t.check_money("11. outstanding == bill total - receipt recorded",
+                          ch.outstanding_expected, outstanding,
+                          f"billed {rupees(billed)}, tax-inclusive")
 
-    # -- 12. approval ladder: view yes, print no ----------------------------
-    if not ch.unapproved_id:
-        t.skip("12. unapproved document views but does not print", "none held back")
+    # -- 12. approval ladder: B7, as this application actually defines it ----
+    #
+    # ⚠⚠ **12b USED TO ASSERT THE OPPOSITE OF WHAT B7 SAYS, AND IT ASSERTED IT
+    #     ABOUT A BILL THIS DRIVER HAD ALREADY APPROVED.** The old line was:
+    #
+    #         t.check("12b. an unapproved document cannot be PRINTED", "refused",
+    #                 "refused" if not printable else "PRINTED",
+    #                 "CC-2 B7 — draft RA is a named exception")
+    #
+    #     Two things were wrong with it. First, `walk()` captures
+    #     `unapproved_id` before step 7 and then step 7 approves and issues
+    #     that very bill, so by the time this ran the document was approved and
+    #     printing it was correct. Second — and this is why the line could
+    #     never have been right — `approval.can_print()` names `("draft",
+    #     "cancelled")` as `print_exempt_states` on the RA bill, so **a draft
+    #     prints by design**, carrying its DRAFT overprint. B7 on an RA bill
+    #     reduces to *"an ISSUED bill prints only once it is approved"*, and
+    #     this chain cannot produce an issued-but-unapproved bill because
+    #     issuing runs after the ladder.
+    #
+    #     So 12b now asserts the exemption AND its safeguard, which is the
+    #     condition the narrowing of 29 August 2026 was taken under: the draft
+    #     prints, and it prints stamped DRAFT. A draft that printed clean is
+    #     the thing B7 exists to prevent.
+    draft_id = ch.draft_id or ch.unapproved_id
+    if not draft_id:
+        t.skip("12. unapproved document views, and prints only stamped DRAFT",
+               "no draft bill held back")
     else:
-        v = ch.a.get(f"/ra/view/{ch.unapproved_id}")
+        ch.a.get(f"/ra/view/{draft_id}")
         viewable = ch.a.last_status == 200 and not ch.a.refused()
-        ch.a.get(f"/ra/print/{ch.unapproved_id}")
+        printed = ch.a.get(f"/ra/print/{draft_id}")
         printable = not ch.a.refused()
+        stamped = '<div class="lc-mark lc-draft">DRAFT</div>' in printed
+        banded = "This is a DRAFT and has not been issued" in printed
+
         t.check("12a. an unapproved document can be VIEWED", "viewable",
                 "viewable" if viewable else "REFUSED", "CC-2 B7")
-        t.check("12b. an unapproved document cannot be PRINTED", "refused",
-                "refused" if not printable else "PRINTED",
-                "CC-2 B7 — draft RA is a named exception")
+        t.check("12b. a DRAFT bill prints — the named exemption", "prints",
+                "prints" if printable else "REFUSED",
+                "approval.can_print print_exempt_states")
+        t.check("12c. and it prints stamped DRAFT — the safeguard", "stamped",
+                "stamped" if (stamped and banded) else "CLEAN",
+                "a draft printing clean is what B7 guards against")
 
 
 # =============================================================================
 # TEARDOWN
 # =============================================================================
+
+def _still_there(sess: Session, kind: str, rid: str) -> bool:
+    """
+    Is the record still readable? The only honest test of a delete.
+
+    Every view route in this app answers a missing id the same way — a redirect
+    carrying an error flash ("BOQ not found.", "That document no longer
+    exists.") — so a refusal here means gone and a clean 200 means present.
+    A 404 is gone too, for the routes that answer that way.
+    """
+    route = VERIFY_ROUTES.get(kind)
+    if not route:
+        return True          # unverifiable is never reported as deleted
+    html = sess.get(route.format(id=rid))
+    if sess.last_status == 404 or sess.refused():
+        return False
+    if "no longer exists" in text_of(html).lower():
+        return False
+    return sess.last_status == 200
+
 
 def teardown(sess: Session, tag: str, inventory: dict) -> int:
     """
@@ -1404,25 +1764,37 @@ def teardown(sess: Session, tag: str, inventory: dict) -> int:
     plan = teardown_plan(inventory)
     deleted, missing, blocked = 0, 0, []
     for kind, rid in plan:
-        route = DELETE_ROUTES[kind].format(id=rid)
-        html = sess.get(route)
-        if sess.last_status == 404 or "no longer exists" in text_of(html).lower():
+        if not _still_there(sess, kind, rid):
             missing += 1
             continue
+
+        route = DELETE_ROUTES[kind].format(id=rid)
+        html = sess.get(route)
         forms = parse_forms(html)
         if forms:
             sess.post(forms[0]["action"] or route, form_payload(forms[0], {}))
         else:
             sess.post(route, [])
-        kind_, msg = sess.flash()
-        if kind_ == "error":
-            blocked.append(f"{kind}/{rid}: {msg}")
+        msg = sess.refusal_text()
+
+        # ⚠ **THE RECORD IS RE-READ. The flash is not evidence.**
+        if _still_there(sess, kind, rid):
+            blocked.append(f"{kind}/{rid}: "
+                           f"{msg or 'the route reported no error and the record is still there'}")
         else:
             deleted += 1
+
     print(f"\nteardown: {deleted} deleted, {missing} already gone, "
-          f"{len(blocked)} blocked")
+          f"{len(blocked)} still present")
     for b in blocked:
-        print(f"  BLOCKED {b}")
+        print(f"  STILL PRESENT {b}")
+    if blocked:
+        print("\n  ⚠ These records are LIVE and this run did not remove them.\n"
+              "    An issued RA bill and an approved measurement sheet are\n"
+              "    refused deletion BY DESIGN, and a BOQ has no delete route at\n"
+              "    all, so a chain that issues and approves cannot fully tear\n"
+              "    itself down over HTTP. Remove them deliberately, or the next\n"
+              "    run raises its documents alongside these.")
     return 1 if blocked else 0
 
 
@@ -1515,16 +1887,30 @@ def main(argv=None) -> int:
         return 0
 
     if args.run:
-        chain.walk()
-        print("\n--- TALLY -------------------------------------------------")
-        run_assertions(chain, t)
-        print("\n" + t.summary())
-        # The inventory is written beside the run so --teardown can find it
-        # again from a different process.
+        # ⚠ **THE INVENTORY IS WRITTEN THE MOMENT THE WALK ENDS, BEFORE A
+        #   SINGLE ASSERTION RUNS.** It used to be written after `t.summary()`,
+        #   so anything raising inside `run_assertions` stranded every record
+        #   the walk had just created with no inventory to tear them down from.
+        #   That is not hypothetical: on the first run this driver ever made, a
+        #   `UnicodeEncodeError` from printing "Σ" to a cp1252 console did
+        #   exactly that. The teardown file IS the containment, so it is written
+        #   as soon as there is anything to contain, and again afterwards
+        #   whether the assertions pass, fail or raise.
         inv_path = REPO / "backups" / f"e2e-inventory-{args.tag}.json"
         inv_path.parent.mkdir(exist_ok=True)
-        inv_path.write_text(json.dumps(chain.made, indent=2), encoding="utf-8")
+
+        def _save_inventory():
+            inv_path.write_text(json.dumps(chain.made, indent=2), encoding="utf-8")
+
+        chain.walk()
+        _save_inventory()
         print(f"inventory written: {inv_path}")
+        try:
+            print("\n--- TALLY -------------------------------------------------")
+            run_assertions(chain, t)
+            print("\n" + t.summary())
+        finally:
+            _save_inventory()
 
     if args.teardown:
         inv_path = REPO / "backups" / f"e2e-inventory-{args.tag}.json"
