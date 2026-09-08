@@ -2832,6 +2832,94 @@ one automatic.
 > MG/SF/2026-02 is never signed, everything built under the blocks above was
 > built against a quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 8 September 2026, by Manas Gawde — a VERIFICATION pass: two unrun things run, and two things that make working software look broken
+>
+> **This block authorises a pass that builds almost nothing.** Its purpose is to
+> convert two claims of the form "it was written" into claims of the form "it was
+> run", and to fix two defects whose only symptom is that correct software
+> presents itself as wrong. MG/SF/2026-02 was **still unsigned** on 8 September
+> 2026. The twenty-third block, of 6 September 2026, stands exactly as recorded
+> and is **not edited** by this one; where this block reports on that block's
+> work it is reporting an outcome, not revising the record.
+>
+> #### What proceeded, and under which tag
+>
+> **1. `tools/backfill_measurement_grid.py` was RUN with `--write`** — CC-2 **C2**.
+> The twenty-third block records it as shipped and unrun, and is explicit that
+> rendering legacy through the *absence* of a mark is correct behaviour but is
+> **not the same fact** as having been migrated. This pass ran it against the
+> live dev database and made the two facts one. It is a **defect-class data
+> migration against scope already sold**, not new scope.
+>
+> **2. `tools/e2e_chain.py` was RUN against the running dev app** — CC-2 **C1**,
+> exercising **C2** and the **B6**/**B7** ladder. The twenty-third block took an
+> authorisation for three throwaway user accounts and recorded, in terms, that
+> **it was not exercised** and does not carry forward. **This block takes that
+> authorisation again, on its own terms, and it is not a citation of the
+> previous one.** A live identity mutation is the class the fifth block of
+> 29 August 2026 says must be authorised on its own terms and may never cite a
+> previous migration as precedent; that rule is honoured here by re-taking the
+> authorisation rather than by pointing at the unused one.
+>
+> ⚠ **Three throwaway accounts are authorised**, because approval rule 5 gives
+> one user one rung and the creator-guard bars the creator from either rung.
+> They are authorised **to be created and to be torn down within this pass**.
+> Any account still standing at the end of it is a defect, not a leftover
+> permission.
+>
+> **3. Gap 31 was FIXED** — ABOUT.md §7, **not** a CC-2 item and **not** one of
+> CC-2's twenty. `/boq/view` compared a **tax-exclusive** Total Basic Value
+> against **tax-inclusive** RA `grand_total`s and showed a false ~18% over-claim
+> on any BOQ claimed to completion. It is a **display/unit mismatch, not a
+> billing error** — no RA, BOQ or claim record is touched, and none was. This is
+> a defect fix against scope already sold under MG/SF/2026-01 and is therefore
+> a **§0 no-charge exemption**, not chargeable work.
+>
+> ⚠ **The twenty-third block's `KNOWN-BAD (gap 31)` assertion inverts as a
+> direct consequence.** That driver line asserts the disagreement **equals** the
+> GST delta, and it was written precisely so that it would fail when somebody
+> fixed this. Somebody has. The line is re-pointed to assert **agreement**, and
+> the old assertion is kept verbatim in a comment above it. That is the
+> assertion doing its job, not a test being weakened to fit.
+>
+> **4. `SECRET_KEY` now reads from the environment** — CC-2, **"Security items
+> promoted by this phase"**, inside **3B**. CC-2 names the demo default a
+> **blocker** and session-forgery risk, calls it a **narrow security fix**, and
+> says explicitly that it carries **no separate quotation line**. It is
+> therefore neither gated nor chargeable. The fallback is kept and the app
+> **warns loudly rather than failing hard**, because failing hard would break
+> the dev flow and the test suite — a deliberate choice recorded here so that
+> nobody later "hardens" it into an outage.
+>
+> #### What this pass does NOT do
+>
+> It builds **no Phase 3 item**, closes none, and moves none. **The board stays
+> at 19 of 20 BUILT · 1 BLOCKED** — C6 still blocked on Open question 4 and
+> untouched. C1 and C2 were BUILT before this pass and are BUILT after it;
+> **running a driver over them does not move them**, in exactly the way the
+> twenty-third block says redrawing a sheet did not move C2. Gap 31 and the
+> `SECRET_KEY` default are not among CC-2's twenty and **the denominator is
+> still 20**.
+>
+> Also untouched, and still open: the `_nav()`-in-print-routes coupling, the
+> shared table-helper refactor across 15 modules, and the linear "Measurement
+> Sheet" shape from sheets 2 and 3 of the client's workbook.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block authorises a
+> migration run, a live-database test run, three throwaway accounts and two
+> narrow fixes does not authorise C6, does not answer CC-2's untagged lines 1
+> and 2, and does not authorise anything else.** The identity authorisation in
+> particular is spent when the accounts are torn down. An override is a decision
+> the client-facing owner takes and records; it is never one an agent may take,
+> infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above was
+> built against a quotation that has **lapsed**.
+
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
