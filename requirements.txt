@@ -74,3 +74,30 @@ Werkzeug==3.1.7
 # numpy
 # Pillow
 # scipy
+#
+# ── Production WSGI server (9 September 2026) ────────────────────────────────
+# `python app.py` is the DEVELOPMENT server and must never face a network:
+# `app.run(debug=True, ...)` serves Werkzeug's interactive debugger, which is a
+# remote shell. `wsgi.py` is the production entry point:
+#
+#     pip install gunicorn==23.0.0
+#     gunicorn --workers 1 --threads 4 --bind 0.0.0.0:8000 wsgi:application
+#
+# ⚠ --workers 1 IS NOT A TUNING CHOICE. store.STORE is one dict in ONE
+#   process's RAM and db.sync() writes all of it back after every request, so a
+#   second worker is a second divergent copy of the whole application state,
+#   overwriting the first's records with no error of any kind. wsgi.py REFUSES
+#   to start under a second worker rather than let that happen silently —
+#   wsgi.py's header has the worked sequence and
+#   tests/test_wsgi_single_worker.py is the proof. Scale with --threads, which
+#   share one STORE; never with --workers.
+#
+# Commented out for the same reason as openpyxl: it is not needed to run the
+# dev server or the suite, and requirements.txt's pins exist so that installing
+# this file into a shared interpreter does not downgrade anything. gunicorn
+# does not run on Windows — on a Windows host use waitress instead, which has
+# no worker concept and so trips neither guard:
+#     pip install waitress==3.0.2
+#     waitress-serve --listen=0.0.0.0:8000 wsgi:application
+# gunicorn==23.0.0
+# waitress==3.0.2
