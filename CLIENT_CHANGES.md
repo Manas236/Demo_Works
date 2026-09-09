@@ -2918,6 +2918,98 @@ one automatic.
 > **The commercial risk is the client's to carry and ours to have flagged:** if
 > MG/SF/2026-02 is never signed, everything built under the blocks above was
 > built against a quotation that has **lapsed**.
+>
+> ---
+>
+> ### ⚠ OVERRIDE — 9 September 2026, by Manas Gawde — gap 33 RECLASSIFIED as a defect and built, and a float-comparison audit that changed no code
+>
+> **This block does two things, and only the first of them writes code.** It
+> overrules a classification made by the twenty-fourth block, and it authorises
+> an audit whose most likely outcome — the one it in fact had — is a negative
+> result and no change at all. MG/SF/2026-02 was **still unsigned** on
+> 9 September 2026. The twenty-fourth block, of 8 September 2026, stands
+> exactly as recorded and is **not edited** by this one.
+>
+> #### 1. Gap 33 is a DEFECT, not new scope — the twenty-fourth block's classification is OVERRULED
+>
+> ABOUT.md §7 gap 33 records that `/boq/create` cannot attach a BOQ to a
+> project, and closes with *"That is a change to what a screen shows and is new
+> scope, which is why the pass that found it did not take it."* **That
+> classification is wrong and is set aside here.**
+>
+> The reason is in MG/SF/2026-02 §3 itself. That section lists **five** items,
+> F.01 to F.05, *"all stated to the client as built, included in the handover,
+> and not charged for"*, and **F.04 is "Project grouping — BOQs grouped under a
+> project"**. A defect is the system not doing what the quotation says it does.
+> The quotation says BOQs are grouped under a project; on a client box, which
+> starts from an empty database and on which `tools/backfill_projects.py` will
+> never run, **no BOQ raised through the screen can ever be grouped under one**.
+> The only linkage in this repo's own database was written by that backfill
+> tool, and `SF/BOQ/26-27/0004`, `0005` and `0008` — the ones raised through the
+> form — carry no project at all.
+>
+> So this is a **defect fix against scope already sold**, under
+> MG/SF/2026-01 and restated as delivered in MG/SF/2026-02 §3. It is a **§0
+> no-charge exemption** and is **not chargeable**. It is **not** CC-2 scope, it
+> is **not** one of CC-2's twenty, and **the denominator stays 20**.
+>
+> ⚠ **What is authorised is the linkage, and nothing beyond it.** A project
+> control on the BOQ create form, a detach path to correct a wrong one, and the
+> revision-inheritance rule proved rather than assumed. **No P&L, no margin, no
+> cost roll-up** — C6 stays BLOCKED on Open question 4 and is untouched. CC-2's
+> own note that *"the project entity is built; the project P&L view (C6) is
+> not"* is the boundary this block works inside.
+>
+> #### 2. A float-comparison audit on the over-claim and measurement guards
+>
+> Authorised as an **audit first**: measure whether accumulated binary-float
+> error can make a final, legitimate, exactly-to-the-BOQ claim land above a
+> zero-tolerance ceiling and be refused in front of a main contractor.
+>
+> ⚠ **`OVERCLAIM_TOLERANCE` may not be raised above 0.0 under this block.**
+> That constant encodes a business rule the client agreed to, and changing it is
+> a commercial conversation, not an engineering one. Any fix was authorised only
+> at the **comparison site**.
+>
+> **The audit's result was negative and no code was changed**, which is the
+> outcome this block was written to permit. It is recorded as an ABOUT.md §7 gap
+> carrying the measured residuals rather than as a fix, and a **negative result
+> stated with figures is the deliverable**, not a failure to find one.
+>
+> #### 3. Live dev database, the running dev app, and throwaway accounts
+>
+> ⚠ **This authorisation is taken on its own terms and is NOT a citation of the
+> twenty-fourth block's.** The fifth block of 29 August 2026 rules that a live
+> identity mutation must be authorised on its own terms and may never cite a
+> previous one as precedent. That rule is honoured here by re-taking it.
+>
+> Authorised, on the **local dev MySQL on Manas's own machine, backed up before
+> any write**: starting the dev app, making HTTP requests to it, reading and
+> writing that database, and creating throwaway user accounts **to be torn down
+> within this pass**. Any account still standing at the end of it is a defect,
+> not a leftover permission. Nothing here reaches a client.
+>
+> #### What this pass does NOT do
+>
+> It builds **no Phase 3 item**, closes none, and moves none. **The board stays
+> at 19 of 20 BUILT · 1 BLOCKED.** Gap 33 is not among CC-2's twenty. Also
+> untouched, and still open: the `_nav()`-in-print-routes coupling, the shared
+> table-helper refactor across 15 modules, the linear "Measurement Sheet" shape
+> from sheets 2 and 3 of the client's workbook, and gap 32's typed
+> `tax_invoice_ref`.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. **That this block reclassifies one gap
+> as a defect does not authorise reclassifying another**, does not authorise C6,
+> does not answer CC-2's untagged lines 1 and 2, and does not authorise anything
+> else. The identity authorisation is spent when the accounts are torn down. An
+> override is a decision the client-facing owner takes and records; it is never
+> one an agent may take, infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above was
+> built against a quotation that has **lapsed**.
 
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
