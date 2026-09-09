@@ -127,7 +127,14 @@ OVERCLAIM_TOLERANCE = 0.0
 # of two femtometres against an approved 12 would be a bug. Six orders of
 # magnitude below the two decimal places real quantities carry, so it cannot
 # absorb anything a human would call an over-claim.
-_QTY_EPSILON = 1e-6
+#
+# ⚠ **The figure lives in `pipeline.py` from 9 September 2026, not here.** It was
+#   a literal in this module, another in `measurement.py` and a third inline in
+#   `challan.py:283`, agreeing by coincidence while a comment claimed they were
+#   one figure. The name is kept — `_QTY_EPSILON` is what the comparison at
+#   line 1216 and `tests/test_qty_float_precision.py` both read — so this is now
+#   an alias and no longer an independent value.
+_QTY_EPSILON = P.QTY_EPSILON
 
 # Rates are money at two decimal places; half a paisa apart is the same rate.
 _RATE_EPSILON = 0.005
@@ -2727,8 +2734,15 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
             f"{app_rate:g}" if app_rate else "")
         amt = BQ._num(row.get("qty"), 0.0) * BQ._num(r_val, 0.0)
 
-        done = " cl-done" if balance <= 1e-6 else ""
-        bal_cls = "cl-num cl-bal-0" if balance <= 1e-6 else "cl-num"
+        # A fourth and fifth copy of the tolerance lived here as bare `1e-6`
+        # literals until 9 September 2026 — found by the AST sweep in
+        # `tests/test_qty_float_precision.py`, not by the pass that went looking
+        # for the other three. These two only choose a CSS class, so the stakes
+        # are a greyed-out row rather than a refusal; they are converted anyway,
+        # because "the ones that matter use the constant" is how three copies
+        # became five.
+        done = " cl-done" if balance <= _QTY_EPSILON else ""
+        bal_cls = "cl-num cl-bal-0" if balance <= _QTY_EPSILON else "cl-num"
 
         out.append(f"""
         <tr class="cl-line{child_cls}{done}" id="row_{lid}"{hide}

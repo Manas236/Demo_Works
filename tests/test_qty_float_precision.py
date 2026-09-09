@@ -280,3 +280,127 @@ def test_the_two_ceilings_share_one_epsilon_value():
     quantity that measures cleanly refuses to bill.
     """
     assert ra._QTY_EPSILON == MS._QTY_EPSILON == 1e-6
+
+
+# ── The relationship, made real on 9 September 2026 (eighteenth pass) ──────
+#
+# The test above asserts the three AGREE. It does not, and cannot, assert that
+# anything HOLDS them together — and until this pass nothing did: `ra.py` and
+# `measurement.py` each carried their own `1e-6` literal and `challan.py:283`
+# carried a third one inline, while `measurement.py`'s comment asserted they
+# were one figure. The note in ABOUT.md §7 gap 34 recorded that as a loose end.
+#
+# These four tests are the difference between "they agree today" and "they
+# cannot disagree".
+
+def test_all_three_epsilons_are_the_SAME_OBJECT_not_merely_equal():
+    """
+    ⚠ **The assertion the old one could not make.** `==` passes for three
+    independent literals; `is` does not. This is what fails the day somebody
+    reintroduces a local `1e-6`.
+    """
+    import challan
+    import pipeline as P
+
+    assert ra._QTY_EPSILON is P.QTY_EPSILON
+    assert MS._QTY_EPSILON is P.QTY_EPSILON
+    # `challan.py` holds no constant of its own — it reads `P.QTY_EPSILON` at the
+    # comparison site, so the check is that no module-level epsilon exists there
+    # to drift.
+    assert not hasattr(challan, "_QTY_EPSILON"), (
+        "challan.py has grown its own epsilon constant again — the whole point "
+        "is that there is one figure, in pipeline.py")
+
+
+def test_changing_the_shared_figure_moves_THE_COMPARISON_SITES(clean, monkeypatch):
+    """
+    The behavioural form, and the one that matters: widen the shared tolerance
+    and the readers must widen with it.
+
+    Without this, the test above could be satisfied by aliases that the
+    comparison sites then ignore in favour of a re-inlined literal.
+
+    ⚠ **A tolerance of 5.0 is absurd and that is the point** — a 2.0 breach is
+      eight orders of magnitude outside the real epsilon, so a site still
+      carrying its own `1e-6` goes on reporting it and this test fails.
+    """
+    import challan
+    import pipeline as P
+
+    monkeypatch.setattr(P, "QTY_EPSILON", 5.0)
+    monkeypatch.setattr(ra, "_QTY_EPSILON", P.QTY_EPSILON)
+    monkeypatch.setattr(MS, "_QTY_EPSILON", P.QTY_EPSILON)
+
+    _mkboq("b1", 10.0)          # the schedule's ceiling, typed
+
+    # 12 against an approved 10 is two whole metres over.
+    breaches = MS.overmeasures(
+        "b1", [{"line_id": _LID, "item_no": "1", "qty": 12.0, "is_header": False}])
+    assert breaches == [], (
+        "measurement.overmeasures() still refused a 2.0 breach after the shared "
+        "tolerance was widened to 5.0 — it is reading its own figure, not "
+        "pipeline.QTY_EPSILON")
+
+    overs = ra.overclaims("b1", "supply",
+                          [{"line_id": _LID, "item_no": "1", "qty": 12.0,
+                            "is_header": False}])
+    assert overs == [], (
+        "ra.overclaims() still refused a 2.0 breach after the shared tolerance "
+        "was widened — it is not reading pipeline.QTY_EPSILON")
+
+    assert challan.P.QTY_EPSILON == 5.0, (
+        "challan.py does not see the shared figure at all")
+
+
+def test_the_widened_tolerance_really_would_have_caught_it_at_the_real_figure(clean):
+    """
+    The control for the test above, and it is not optional.
+
+    A `monkeypatch` that silenced the guard for some unrelated reason — a broken
+    fixture, a line id that does not match — would produce the same empty list
+    and the test would pass while proving nothing. This is the same breach at
+    the REAL epsilon, and it must be refused.
+    """
+    _mkboq("b1", 10.0)
+    breaches = MS.overmeasures(
+        "b1", [{"line_id": _LID, "item_no": "1", "qty": 12.0, "is_header": False}])
+    assert len(breaches) == 1 and breaches[0]["reason"] == "overmeasure", (
+        "a 2.0 over-measurement was NOT refused at the real epsilon, so the "
+        "widened-tolerance test above proves nothing")
+
+
+def test_no_root_module_carries_a_bare_1e_6_quantity_literal_any_more():
+    """
+    Read from the **AST**, so the explanatory comments that still say `1e-6` do
+    not count — a comment is not in the AST. This is the guard against the
+    literal coming back somewhere new, which is exactly how the three drifted
+    apart in the first place.
+
+    `pipeline.py` is the one place it is allowed to be, because it is the one
+    place it is defined.
+    """
+    import ast
+    import pathlib
+
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    offenders = []
+    for path in sorted(repo.glob("*.py")):
+        if path.name == "pipeline.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value == 1e-6:
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, (
+        f"a bare 1e-6 quantity tolerance is live at {offenders}. There is one "
+        f"figure and it lives in pipeline.QTY_EPSILON — three copies agreeing "
+        f"by coincidence is the defect this replaced.")
+
+
+def test_the_shared_figure_is_still_the_value_the_audit_measured_against():
+    """
+    Moving a constant must not quietly change it. §7 gap 34's whole negative
+    result — eight orders of magnitude of headroom — was measured against 1e-6.
+    """
+    import pipeline as P
+    assert P.QTY_EPSILON == 1e-6

@@ -121,6 +121,41 @@ def stage_tone(stage: str) -> str:
 
 
 # =============================================================================
+# QUANTITY COMPARISON TOLERANCE — one figure, three readers
+# =============================================================================
+#
+# The slack allowed when comparing two quantities for "is this more than that".
+# `1.1 + 2.2 + 8.7` is `12.000000000000002` in binary floating point, and that
+# is not an over-claim of two femtometres against an approved `12`.
+#
+# ⚠ **It lives HERE because three modules need it and none of them may import
+#   another.** It was three separate literals until 9 September 2026:
+#
+#     ra._QTY_EPSILON          = 1e-6     the over-claim ceiling — a HARD refusal
+#     measurement._QTY_EPSILON = 1e-6     the measurement ceiling — a HARD refusal
+#     challan.py:283            1e-6      over-dispatch — a WARNING, never a refusal
+#
+#   and `measurement.py`'s own comment asserted that *"`ra._QTY_EPSILON` and
+#   `challan.over_dispatched()` both use the same figure"* — which was true by
+#   **coincidence** and by nothing else. Changing one would have left the others
+#   silently behind, in the direction that lets quantity through.
+#
+#   `pipeline.py` is the bottom of the graph beside `branding.py` and
+#   `store.py`: it imports nothing of ours, everything may import it, and all
+#   three of those modules already do (`import pipeline as P`). So this is the
+#   one place the three can share a figure without creating an arrow that
+#   `tests/test_import_directions.py` forbids — `ra` ← `measurement` is
+#   one-directional and `challan` may import neither.
+#
+# ⚠ **The comparison sites round to 6 places BEFORE testing against this**, and
+#   that rounding is load-bearing rather than decoration: §7 gap 34's audit found
+#   a naive `cumulative > allowed` would wrongly refuse a 25.7 m run split over
+#   four bills. Do not "simplify" it away.
+#   `tests/test_qty_float_precision.py` is what holds all of this.
+QTY_EPSILON = 1e-6
+
+
+# =============================================================================
 # PARSING / FORMATTING
 # =============================================================================
 

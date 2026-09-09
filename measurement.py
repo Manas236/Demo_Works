@@ -175,9 +175,16 @@ _REF_CAP = 64
 
 # Quantity comparisons round here before they are called a breach. 1.1 + 2.2 +
 # 8.7 is 12.000000000000002, and that is not an over-measurement of two
-# femtometres against an approved 12. `ra._QTY_EPSILON` and
-# `challan.over_dispatched()` both use the same figure.
-_QTY_EPSILON = 1e-6
+# femtometres against an approved 12.
+#
+# ⚠ **This comment used to ASSERT that `ra._QTY_EPSILON` and
+#   `challan.over_dispatched()` "both use the same figure", and that was true by
+#   coincidence only** — three separate literals, nothing holding them together,
+#   so changing one would have left the other two silently behind. It is a real
+#   relationship from 9 September 2026: all three now read `pipeline.QTY_EPSILON`,
+#   which is where the reasoning lives. The name is kept because the comparison
+#   at line 629 and `tests/test_qty_float_precision.py` both read it.
+_QTY_EPSILON = P.QTY_EPSILON
 
 
 # =============================================================================

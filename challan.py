@@ -277,10 +277,17 @@ def over_dispatched(dc: dict) -> list:
         if not lid or lid not in approved:
             continue
         total = others.get(lid, 0.0) + float(row.get("qty") or 0.0)
-        # Rounded at 1e-6 for `ra.py`'s reason: 1.1 + 2.2 + 8.7 is
+        # Rounded at `P.QTY_EPSILON` for `ra.py`'s reason: 1.1 + 2.2 + 8.7 is
         # 12.000000000000002, and that is not an over-dispatch of two
         # femtometres against an approved 12.
-        if total - approved[lid] > 1e-6:
+        #
+        # ⚠ **This was the literal `1e-6` until 9 September 2026**, while
+        #   `measurement.py`'s comment asserted it and `ra._QTY_EPSILON` were the
+        #   same figure. They agreed by coincidence. `challan.py` may import
+        #   neither `ra.py` nor `measurement.py`, so the shared figure lives in
+        #   `pipeline.py` — the bottom of the graph, which this module already
+        #   imports as `P`.
+        if total - approved[lid] > P.QTY_EPSILON:
             out.append((str(row.get("item_no") or ""),
                         str(row.get("description") or ""),
                         total, approved[lid]))
