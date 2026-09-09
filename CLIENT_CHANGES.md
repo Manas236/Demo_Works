@@ -3011,6 +3011,128 @@ one automatic.
 > MG/SF/2026-02 is never signed, everything built under the blocks above was
 > built against a quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 9 September 2026, by Manas Gawde — SECOND block of this date: the first COLD START, deployment configuration, and a single-worker guard
+>
+> **A new block, not an amendment.** The twenty-fifth block, earlier on this
+> date, stands exactly as recorded and is **not edited** by this one.
+> MG/SF/2026-02 was **still unsigned** on 9 September 2026.
+>
+> **The reason this block exists is one sentence: this application has never
+> once been run against an empty database.** Every test, every driver and every
+> figure in ABOUT.md was produced against a dev database carrying 85+ seeded
+> records. The client's server starts empty. What proceeds here is the work of
+> finding out what that breaks *here*, rather than on go-live day.
+>
+> #### 1. A cold start against a BRAND NEW, SEPARATE, EMPTY schema
+>
+> Authorised: creating a new MySQL schema on the **local dev MySQL on Manas's
+> own machine**, pointing a fresh app process at it, and walking every
+> classified endpoint as every builtin role against it. ⚠ **The existing dev
+> database is not touched, migrated or reused beyond one gate backup**, and the
+> scratch schema is dropped within this pass.
+>
+> Authorised on the same terms as the twenty-fifth block's §3 and **not by
+> citing it** — the fifth block of 29 August 2026 rules that a live identity
+> mutation is authorised on its own terms and may never cite a previous one as
+> precedent, and that rule is honoured here by re-taking the decision:
+> creating throwaway user accounts, **in the scratch schema only**, to be torn
+> down within this pass. Any account still standing at the end of it is a
+> defect, not a leftover permission.
+>
+> #### 2. Deployment configuration moved to the environment
+>
+> Authorised: moving the remaining deployment-varying values to environment
+> variables with safe local-dev fallbacks, and documenting **every** variable
+> the application reads in one place.
+>
+> ⚠ **Most of this was already done, and the audit is the deliverable rather
+> than the code.** The database host, port, name, user and password are
+> env-driven in `db.py` and have been since it was written; `ATTACHMENT_DIR` is
+> env-driven in `attachment.py` and is deliberately re-read on every call;
+> `SECRET_KEY` / `SAMRUDDHI_SECRET_KEY` are env-driven in `auth.py`. **Verified,
+> not rebuilt.** What is genuinely absent is the **bind host and port** (hard
+> coded in `app.py`) and the **session cookie flags** (Flask's defaults, never
+> set) — those are what this block authorises building.
+>
+> **No secret, password or connection string may be written into any tracked
+> file, test, document or rendered page**, and nothing here relaxes that.
+>
+> #### 3. A production entry point, and a multi-process deployment that fails LOUDLY
+>
+> `store.STORE` is one dict in **one process's RAM**, and `db.sync()`
+> re-serialises it per request. Two workers means two divergent copies of the
+> whole application state overwriting each other **with no error of any kind** —
+> the deadliest deployment mistake this architecture makes available, and it
+> produces wrong data rather than a crash.
+>
+> Authorised: a production WSGI entry point, and a guard that makes a
+> multi-process deployment **refuse to run** rather than run wrong. It must be
+> loud, must not break the suite, and must not break the local dev flow.
+>
+> #### 4. A backup proven BY RESTORE, not by the file existing
+>
+> Authorised: one non-interactive scheduler-ready command covering the database
+> **and** the attachments directory together, a stated retention rule, and a
+> restore **into a scratch schema** with figures. ⚠ The restore target is a
+> scratch schema and **never the live one**; a backup proven only by a file
+> existing is not proven.
+>
+> #### 5. Three loose ends the previous pass declared, and one documentation item
+>
+> Authorised, as defect fixes: the dead `import project` in `boq.py`; the
+> `1e-6` literal in `challan.py` that agrees with `ra._QTY_EPSILON` **by
+> coincidence** while a comment in `measurement.py` asserts they are the same
+> figure; and `project_id` posted to `/boq/create` and stored unvalidated, to be
+> defended **at render time on `purchase.py`'s existing precedent and no wider**.
+> Also authorised: a cold-start document recording only what was actually run.
+>
+> #### Classification — and it is NOT a no-charge exemption
+>
+> ⚠ **Do not record any of this as chargeable, as delivered under either
+> quotation, or as covered by a §0 no-charge exemption.** That exemption covers
+> **defect and reachability fixes against scope already sold under
+> MG/SF/2026-01**, and deployment configuration, a WSGI entry point, a worker
+> guard and a restore drill are **none of those things** — they are not a
+> feature the client asked for and not a defect in one. They are the cost of
+> putting software that works on a machine that is not a developer's laptop.
+> **The three items in §5 above ARE defect fixes and ARE the §0 exemption**, and
+> they are the only part of this pass that is.
+>
+> **It builds no Phase 3 item, closes none, and moves none. The board stays at
+> 19 of 20 BUILT · 1 BLOCKED**, and the denominator stays 20.
+>
+> #### What this pass does NOT do
+>
+> ⚠ **It does not build a settable starting number for the eight document series
+> that lack one.** The cold start found that 8 of this application's 10 number
+> series cannot be seeded to continue the client's existing paper numbers, and
+> **that is recorded as an ABOUT.md §7 gap, not fixed.** Three reasons, and the
+> third is the one that settles it: `quotation.py` is frozen against feature
+> work; a seeded start interacts with Rule 46(b)'s financial-year reset in a way
+> that is a question for the client and not an engineering choice; and
+> **SOURCE_DOCUMENTS.md §7.5 records that the client's own 18 documents contain
+> no RA bill, no tax invoice, no proforma and no purchase order at all**, so
+> there is no evidence any of those eight series is running on paper. The one
+> series the evidence *does* show running — the challan book — is already
+> settable, and this pass proved it takes the number.
+>
+> Also untouched and still open: the `_nav()`-in-print-routes coupling, the
+> shared table-helper refactor across 15 modules, C6's project P&L, and the
+> demo-data seeders, whose behaviour on an empty database this pass measures and
+> reports rather than changes.
+>
+> #### The gate is not lifted and this is not a precedent
+>
+> It stands, and it is still the default. Authorising a deployment pass
+> authorises **no CC-2 item**, does not answer CC-2's untagged lines 1 and 2,
+> does not authorise C6, and does not authorise the numbering control above. The
+> identity authorisation is spent when the scratch schema is dropped. An
+> override is a decision the client-facing owner takes and records; it is never
+> one an agent may take, infer, or extend.
+>
+> **The commercial risk is the client's to carry and ours to have flagged:** if
+> MG/SF/2026-02 is never signed, everything built under the blocks above was
+> built against a quotation that has **lapsed**.
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
