@@ -987,11 +987,22 @@ class Chain:
     # -- 2. BOQ --------------------------------------------------------------
     def create_boq(self):
         # ⚠ **`?project_id=` IS WHAT ATTACHES THE SCHEDULE TO THE PROJECT, and
-        #   the driver used to omit it.** The create form carries `project_name`
-        #   as free text and no project field of any kind; the link is a hidden
-        #   `project_id` the route prefills from this query parameter, and the
-        #   form parser then carries it back untouched — which is exactly the
-        #   case §2.4 says parsing the form whole exists to handle.
+        #   the driver used to omit it.**
+        #
+        # ⚠ **THE DESCRIPTION THAT STOOD HERE WAS WRONG, and it is corrected
+        #   rather than left to mislead the next reader.** It said *"the link is
+        #   a hidden `project_id` the route prefills from this query parameter,
+        #   and the form parser then carries it back untouched"*. **There was no
+        #   such hidden field.** The route read `?project_id=` into its prefill
+        #   and the POST branch read `form.get("project_id")`, but the rendered
+        #   form contained no control of that name at all — which is precisely
+        #   what ABOUT.md §7 gap 33 was, and what running this driver found.
+        #
+        #   From 9 September 2026 the form carries a real `<select
+        #   name="project_id">`, and `_FormParser` takes a select's selected
+        #   option — so the value now genuinely does travel back untouched, and
+        #   the sentence above is true of the tree for the first time. That is
+        #   exactly the case §2.4 says parsing the form whole exists to handle.
         #
         #   Without it the BOQ is created with `project_id: ""`, which is a
         #   perfectly legitimate state — the dashboard files its claims under
@@ -1580,23 +1591,32 @@ def run_assertions(ch: Chain, t: Tally) -> None:
     #   must read **100% claimed** for this project. That is a precise
     #   assertion about the same agreement gap 31 was concerned with, taken at
     #   the precision the screen actually offers.
-    #   ⚠⚠ **A NEW GAP, FOUND BY RUNNING THIS DRIVER ON 8 SEPTEMBER
-    #     2026: `/boq/create` CANNOT ATTACH A BOQ TO A PROJECT.** The route
-    #     accepts `?project_id=` and puts it in its prefill, and the POST branch
-    #     reads `form.get("project_id")` — but the rendered form contains no
-    #     `project_id` control of any kind, so the two halves never meet and
-    #     every BOQ raised through the UI is stored with `project_id: ""`.
+    #   ⚠ **THIS LINE USED TO BE `known_bad` AND IS NOW AN ORDINARY ASSERTION,
+    #     BECAUSE THE DEFECT IT PINNED WAS FIXED ON 9 SEPTEMBER 2026** —
+    #     ABOUT.md §7 gap 33. The old branch is kept verbatim so the change is
+    #     legible rather than silent:
     #
-    #     The linkage on the live database is real but was written by
-    #     `tools/backfill_projects.py`, not by the form: `SF/BOQ/26-27/0004`,
-    #     `0005` and `0008` carry no project either, for the same reason.
-    #     The consequence is that this chain's claims roll up under
-    #     **Unassigned** rather than the project the driver just created, and
-    #     the project sits on the band at 0% or is not on it at all.
+    #         t.known_bad(
+    #             "8. dashboard shows this project claimed in full",
+    #             "not on the band (/boq/create cannot attach a BOQ to a project)",
+    #             ("not on the band (/boq/create cannot attach a BOQ to a project)"
+    #              if mine is None else f"{share}% claimed"),
+    #             "NEW GAP 8 Sep 2026 — flips the day the BOQ form gains the field")
     #
-    #     So this is recorded as KNOWN-BAD rather than fixed from here: adding
-    #     a project picker to the BOQ form changes what a screen shows and is
-    #     new scope, which a verification pass has no authority to take.
+    #     The gap was that `/boq/create` accepted `?project_id=` into its
+    #     prefill and read `form.get("project_id")` on POST, while the rendered
+    #     form contained no control of that name — so the two halves never met
+    #     and every BOQ raised through the UI stored `project_id: ""`. The form
+    #     now carries a real project selector, so the driver's own
+    #     `?project_id=` reaches the record and this chain's claims land against
+    #     the project the driver created rather than under **Unassigned**.
+    #
+    #     ⚠ **It is now a hard assertion and no longer degrades to KNOWN-BAD.**
+    #       A `known_bad` fallback left standing here would quietly absorb a
+    #       regression of exactly the defect it was written for — the linkage
+    #       breaking again would read as "known bad" rather than as a failure.
+    #       That is the whole reason the fallback is removed rather than kept
+    #       "just in case".
     rows = progress_rows(ch.a.get("/"))
     name = f"E2E Chain {ch.tag}"
     mine = next((r for r in rows if r["name"] == name), None)
@@ -1605,17 +1625,11 @@ def run_assertions(ch: Chain, t: Tally) -> None:
         got = re.search(r"(\d+(?:\.\d+)?)% claimed", mine["note"])
         share = got.group(1) if got else None
 
-    if share == "100":
-        t.check("8. dashboard shows this project claimed in full",
-                "100% claimed", "100% claimed",
-                "the BOQ is attached to its project")
-    else:
-        t.known_bad(
-            "8. dashboard shows this project claimed in full",
-            "not on the band (/boq/create cannot attach a BOQ to a project)",
-            ("not on the band (/boq/create cannot attach a BOQ to a project)"
+    t.check("8. dashboard shows this project claimed in full (gap 33 closed)",
+            "100% claimed",
+            ("not on the band — the BOQ carries no project_id"
              if mine is None else f"{share}% claimed"),
-            "NEW GAP 8 Sep 2026 — flips the day the BOQ form gains the field")
+            "the BOQ is attached to its project by the form's own selector")
 
     # -- 9. snapshot immutability -------------------------------------------
     #
