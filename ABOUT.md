@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,236 passed, 4 skipped** | **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,235 passed, 2 skipped** | **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,284 passed, 4 skipped** | **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,283 passed, 2 skipped** | **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -380,7 +380,7 @@ Consequences you must respect when editing:
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
-| [projectview.py](projectview.py) | 894 | **Project Detail Page.** Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
+| [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
@@ -1810,7 +1810,27 @@ purchase order and unlike every other sell-side document — there is no upstrea
 record to freeze a copy of, because the schedule is the source.
 
 - **Identity:** `id`, `ref` (`SF/BOQ/26-27/0001`), `fy`, `date`, `rev_no`
-- **The project:** `project_name`, `site_location`
+- **The project:** `project_id`, `project_name`, `site_location`
+
+  ⚠ **`project_id` is the JOIN and `project_name` is FREE TEXT typed on the
+  form — they are two different things and neither is derived from the other.**
+  `dashboard._project_progress()` and `/projects/view/<id>` group on
+  `project_id`; nothing groups on `project_name`, which is the label printed on
+  the sheet and may legitimately differ in spelling from the project's own name.
+  It is `""` on a BOQ filed under no project, which is a valid record whose
+  claims roll up under *Unassigned*.
+
+  ⚠ **It was UNWRITABLE THROUGH THE FORM until 9 September 2026** — §7 gap 33.
+  The route read it on GET and POST and the form rendered no control, so every
+  BOQ raised through the screen stored `""`. The form now carries a selector.
+
+  ⚠ **A revision INHERITS its ancestor's `project_id` and the form cannot
+  override it** (`create_boq()` reads `prev["project_id"]` whenever
+  `supersedes` is set). Changing it on one revision and not another would split
+  a chain across two projects, and every claim summed across that chain by
+  `ra.claimed_by_line()` would then be filed twice or not at all. Attaching or
+  detaching from `/projects/view/<id>` therefore moves the **whole chain**, both
+  directions from the record named, via `ra.revision_chain()`.
 - **Customer:** `account_name` (usually a main contractor), `contact_person`,
   `to`, `bill_gstin`, `ship_same`, `ship_*`
 - **Pricing basis:** `rate_basis_label` — what the base-rate column is headed
@@ -5335,6 +5355,16 @@ Sections first, then lines. **Areas are declared on the section**, as a
 comma-separated list, because one section may break its quantities down by
 floor while the next does not break them down at all.
 
+⚠ **The form carries a `project_id` SELECTOR from 9 September 2026** (§7 gap
+33), beside the free-text `project_name`. The two are different things: the
+selector is the **join** every roll-up groups on, and the text is the **label**
+printed on the sheet. It is **optional** — a schedule is often priced before the
+job is opened — and defaults to `?project_id=`, which is how
+`/projects/view/<id>`'s *"Raise new BOQ"* link arrives. On a **revision** the
+control is ignored and the predecessor's project is inherited; the paragraph
+under the field says so on the page. Correcting a wrong choice is done from
+`/projects/view/<id>`, not here: **there is no `/boq/edit` route.**
+
 The line editor is a **browser-side model serialised into one hidden field**
 (`boq_json`) on submit — the quotation's `selections_json` pattern, not
 `purchase.py`'s parallel form-field lists. It has to be: the area quantity
@@ -8707,9 +8737,11 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     answer is a refusal or a warning. Gap 15's rule applies: do not encode a
     guess about somebody's statutory numbering.
 
-33. 🟠 **`/boq/create` cannot attach a BOQ to a project — OPEN, found
-    8 September 2026 by running `tools/e2e_chain.py` against the live app for
-    the first time.**
+33. ✅ ~~**`/boq/create` cannot attach a BOQ to a project**~~ — **CLOSED
+    9 September 2026.** Found 8 September 2026 by running `tools/e2e_chain.py`
+    against the live app for the first time; closed by the next pass. The entry
+    is kept in full because the reasoning is the record of why a picker was the
+    right shape and why this was a defect rather than new scope.
 
     `boq.create_boq()` reads `request.args.get("project_id")` into its prefill
     on GET, and its POST branch reads `(form.get("project_id") or "").strip()`.
@@ -8733,11 +8765,126 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
 
     📌 **What it would take.** A project picker on the BOQ form, populated from
     `STORE["projects"]`, defaulting to `?project_id=` when the page was reached
-    from a project. That is a change to what a screen shows and is new scope,
-    which is why the pass that found it did not take it.
-    `tools/e2e_chain.py`'s assertion 8 is **KNOWN-BAD** against this and flips
-    to FAIL the day the field appears — so this gap has a live tripwire rather
-    than only an entry here.
+    from a project. ⚠ **That paragraph went on to call this "a change to what a
+    screen shows and new scope", and THAT CLASSIFICATION WAS WRONG.** It is
+    struck rather than deleted, because the correction is the useful part:
+    MG/SF/2026-02 §3 lists **F.04 — *"Project grouping — BOQs grouped under a
+    project"*** among the five items stated to the client as **built, handed
+    over and not charged for**. A defect is the system not doing what the
+    quotation says it does. The linkage on this database was written by
+    `tools/backfill_projects.py`; on a client box, which starts empty, that tool
+    never runs, so the sold behaviour was **unreachable**. CLIENT_CHANGES.md
+    §0's block of 9 September 2026 overrules the classification in terms.
+
+    ✅ **CLOSED, 9 September 2026 — exactly the picker the paragraph above
+    describes, plus the half it did not think of.**
+
+    - **The control.** `/boq/create` renders `<select name="project_id">`,
+      populated from `STORE["projects"]` — the pattern `attendance.py`,
+      `charge.py`, `dashboard.py`, `measurement.py`, `proforma.py` and
+      `purchase.py` all use, and the one `tests/test_import_directions.py`
+      names in terms for two of them. **Optional**, labelled so, matching
+      `purchase.py`'s own *"Project (optional)"*: a schedule is often priced
+      before the job is opened. ⚠ `boq.py` carries a module-level
+      `import project` from commit 119f9d8 that **nothing in the file has ever
+      used**; it was deliberately not reached through, because doing so would
+      make this the one module that gets project data a different way.
+    - **The correction path, which the paragraph above missed.** There is **no
+      `/boq/edit` route in this application**, and the attach control on
+      `/projects/view/<id>` offers only BOQs carrying *no* project — so a BOQ
+      filed against the wrong one was filed there permanently. A **detach**
+      action now sits beside attach, walks the same `ra.revision_chain()`, and
+      clears only members currently on that project.
+    - **Revision inheritance was already correct** and is now held by two tests
+      rather than assumed, one of which proves the form cannot move a single
+      revision out of its chain.
+
+    17 assertions in [tests/test_boq_project_link.py](tests/test_boq_project_link.py)
+    hold it. Eight mutations were caught: the control removed, the preselection
+    dropped, the POST not storing, the revision reading the form, detach not
+    walking the chain, detach ignoring which project a member is on, the
+    `project.edit` guard disabled, and attach not walking the chain.
+
+    ⚠ **The live tripwire is spent and has been re-pointed.**
+    `tools/e2e_chain.py`'s assertion 8 was **KNOWN-BAD** against this and was
+    written to flip the day the field appeared. It has. It is now an ordinary
+    assertion measuring **100% claimed** on the dashboard band, the old
+    `known_bad` branch is kept verbatim in a comment above it, and the
+    degrade-to-KNOWN-BAD fallback was **removed** rather than kept — left in, it
+    would quietly absorb a regression of the very defect it was written for.
+    Measured live on 9 September 2026: **PASS, expected 100% claimed, actual
+    100% claimed**, in a 26-row run with 0 failed and 0 known-bad.
+
+34. ✅ **Float accumulation CANNOT push a legitimate final claim past the
+    over-claim ceiling — AUDITED 9 September 2026, NEGATIVE RESULT, no code
+    changed.** Recorded here because a negative result nobody wrote down gets
+    re-investigated, and this one has a real cost to re-run.
+
+    **The concern, which is sound in shape.** Quantities and money are Python
+    floats serialised to JSON. `ra.OVERCLAIM_TOLERANCE` is **0.0** — a
+    zero-tolerance hard block. Cumulative claimed quantity is **derived** by
+    summing every prior claim and is never stored. So a final, legitimate,
+    exactly-to-the-BOQ claim could in principle land a fraction above the
+    ceiling and be refused on a completed job, in front of the main contractor,
+    reading as the software being wrong.
+
+    **It does not happen, because both comparison sites already normalise:**
+
+    | site | expression |
+    |---|---|
+    | `ra.py:1216` | `round(cumulative - allowed, 6) > _QTY_EPSILON` |
+    | `measurement.py:629` | `round(cumulative - app_qty, 6) > _QTY_EPSILON` |
+    | `challan.py:283` | `total - approved[lid] > 1e-6` |
+
+    with `_QTY_EPSILON = 1e-6` in the first two. **Measured**, on quantities of
+    the shape the client's real sheets carry — a typed BOQ ceiling against an
+    accumulated sum, which is the only combination that can produce a residual
+    at all:
+
+    | shape | ceiling | cumulative | residual |
+    |---|---|---|---|
+    | 9.3 + 1.5 + 2.9 + 12 | `25.7` | `25.700000000000003` | `3.552713678800501e-15` |
+    | six metre bills to 48.6 | `48.6` | `48.60000000000001` | `7.105427357601002e-15` |
+    | 0.1 + 0.1 + 0.1 | `0.3` | `0.30000000000000004` | `5.551115123125783e-17` |
+    | 1.1 + 2.2 + 8.7 | `12.0` | `12.0` | `0.0` |
+    | 116.6 × 5 + 117 | `700.0` | `700.0` | `0.0` |
+    | 208.45 × 5 + 208.5 | `1250.75` | `1250.75` | `0.0` |
+
+    **Worst residual measured: `7.105427357601002e-15`, against a `1e-6`
+    epsilon — about 1.4 × 10⁸ times of headroom**, and no shape tested comes
+    within a *thousandth* of the epsilon. Nothing plausible closes eight orders
+    of magnitude, so the guard is not at risk and **nothing was changed**.
+    `OVERCLAIM_TOLERANCE` stays **0.0**; CLIENT_CHANGES.md §0's block of
+    9 September 2026 bars raising it in terms, because that constant encodes a
+    business rule the client agreed to.
+
+    ⚠ **The rounding is LOAD-BEARING, and that is the finding worth keeping.**
+    A naive `cumulative > allowed` **would** wrongly refuse three of the eight
+    shapes above, including a 25.7 m run split over four bills. So the negative
+    result depends entirely on an expression somebody could "simplify" away in
+    good faith. [tests/test_qty_float_precision.py](tests/test_qty_float_precision.py)
+    is what now stops that — 31 assertions, five mutations all caught (rounding
+    removed from each module, the guard disabled, the tolerance raised, the two
+    epsilons made to disagree).
+
+    📌 **Two loose ends, neither of them the reported concern, both left open.**
+
+    - **`challan.py` hardcodes the literal `1e-6`** rather than importing a
+      named constant, while `measurement.py`'s own comment claims *"`ra._QTY_EPSILON`
+      and `challan.over_dispatched()` both use the same figure"*. They agree in
+      **value** today and nothing holds them together: changing `_QTY_EPSILON`
+      would leave `challan.py` silently behind. It is the lowest-stakes of the
+      three — over-dispatch is a **warning, never a refusal** — which is why
+      this is a note and not a change.
+    - **The money side was checked and compares nothing for equality.** Every
+      tax figure is `round(..., 2)` at the point it is produced, per slab, and
+      `ra.compute_rounding_off()` takes the grand total to a whole rupee. The
+      only float equalities on money anywhere are `proforma.py:727` and
+      `proforma.py:1148`, both `bal == 0` on `balance_due` — which is stored as
+      `round(grand - invoiced - due, 2)`, so the comparison is on an
+      already-rounded value — and both choose **wording** (an audit-trail
+      sentence, a printed row) rather than gating anything. No stored figure was
+      touched and no print golden moved.
 
 ---
 
