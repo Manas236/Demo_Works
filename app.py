@@ -5,6 +5,9 @@ Entry point for the Quotation Management System.
 Registers all Blueprints and defines global error handling.
 """
 
+import os                         # the bind address, read at the foot of this file
+import sys                        # stderr for a bind-port complaint
+
 from flask import Flask, redirect, url_for
 import dashboard                  # too_large_page() for the 413 handler
 from dashboard import dashboard_bp
@@ -247,10 +250,43 @@ def payload_too_large(error):
     return dashboard.too_large_page(), 413
 
 
+# ── Bind address ──────────────────────────────────────────────────────────────
+# Deployment-varying, so read from the environment with the local-dev values as
+# the fallback (9 September 2026). Two names each, the same two-step
+# `auth.resolve_secret_key()` uses and for the same reason: `SAMRUDDHI_*` is
+# this application's own namespace, and the bare name is what a host is likely
+# to set already.
+#
+# ⚠ **The default host is 127.0.0.1 and not 0.0.0.0.** `app.run()` below is the
+#   Werkzeug development server, which must never be the thing listening on a
+#   public interface — `wsgi.py` is the production entry point. Binding the dev
+#   server to every interface by default would put a debug console on the LAN.
+DEV_HOST = os.getenv("SAMRUDDHI_HOST") or os.getenv("HOST") or "127.0.0.1"
+DEV_PORT_RAW = os.getenv("SAMRUDDHI_PORT") or os.getenv("PORT") or "5000"
+
+
+def _dev_port(raw: str) -> int:
+    """The bind port, or 5000 with a named complaint — never a traceback."""
+    try:
+        port = int(str(raw).strip())
+    except (TypeError, ValueError):
+        print(f"  * WARNING: SAMRUDDHI_PORT={raw!r} is not a number - using 5000.",
+              file=sys.stderr, flush=True)
+        return 5000
+    if not (1 <= port <= 65535):
+        print(f"  * WARNING: SAMRUDDHI_PORT={raw!r} is out of range - using 5000.",
+              file=sys.stderr, flush=True)
+        return 5000
+    return port
+
+
 # ── Dev Server ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # debug=True enables auto-reload; NEVER ship this flag to production.
+    # `wsgi.py` is the entry point that does not set it — and that refuses to
+    # run under more than one worker, because STORE is this process's RAM.
     # reloader_type="stat" avoids the watchdog reloader, which recursively
     # watches every sys.path dir (incl. site-packages) and reload-storms when
     # antivirus/indexers touch file attributes there.
-    app.run(debug=True, port=5000, reloader_type="stat")
+    app.run(debug=True, host=DEV_HOST, port=_dev_port(DEV_PORT_RAW),
+            reloader_type="stat")

@@ -54,6 +54,97 @@ auth_bp = Blueprint("auth", __name__)
 # covers a working day without leaving a browser logged in overnight.
 SESSION_HOURS = 12
 
+
+# =============================================================================
+# SESSION COOKIE FLAGS  (deployment-varying, 9 September 2026)
+# =============================================================================
+#
+# These three were Flask's defaults and were never set, which meant the one
+# that matters was wrong for a real server: `SESSION_COOKIE_SECURE` defaults to
+# **False**, so the cookie that carries `SESSION_KEY` is sent over plain HTTP.
+# On a TLS deployment that is a session token travelling in clear on any request
+# that is not https, and `enforce()` is only as strong as the cookie it trusts.
+#
+# They live here rather than in `app.py` because `install()` already owns the
+# session — it sets `permanent_session_lifetime` eight lines from where these
+# are applied, and splitting one subject across two files is how half of it
+# gets changed.
+#
+# ⚠ **The defaults are the LOCAL-DEV values, not the production ones.** Secure
+#   defaults to False because local dev is `http://127.0.0.1:5000` and a Secure
+#   cookie is never sent over that — a browser simply drops it, the operator
+#   cannot sign in, and nothing says why. A default that breaks `python app.py`
+#   is a default that gets deleted. Production sets it; `docs/ENVIRONMENT.md`
+#   marks it mandatory and `wsgi.py` warns when it is off.
+SESSION_COOKIE_DEFAULTS = {
+    "SESSION_COOKIE_HTTPONLY": True,    # JavaScript may never read the cookie
+    "SESSION_COOKIE_SECURE":   False,   # ⚠ MUST be true in production — see above
+    "SESSION_COOKIE_SAMESITE": "Lax",   # Flask leaves this unset; Lax is safe here
+}
+
+# `Strict` is rejected rather than silently accepted as a typo for `Lax`, and
+# `None` is spelled as the string because a SameSite=None cookie is only legal
+# alongside Secure — the browser drops it otherwise.
+_SAMESITE_ALLOWED = ("Lax", "Strict", "None")
+
+
+def _env_bool(name: str, default: bool):
+    """
+    A tri-state read: `True`, `False`, or `None` for "that is not a boolean".
+
+    `None` rather than a raise, because the caller turns it into a message that
+    names the variable and the value. `db._flag()` does the same job and
+    deliberately silently defaults instead — that is right for `DB_ENABLED`,
+    where a typo costing persistence is loud in its own banner, and wrong for
+    `SESSION_COOKIE_SECURE`, where a typo costs the cookie its protection and
+    shows no symptom at all.
+    """
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    txt = raw.strip().lower()
+    if txt in ("1", "true", "yes", "on"):
+        return True
+    if txt in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def session_cookie_config() -> tuple:
+    """
+    `(config, problems)` — the three flags as read from the environment.
+
+    **Always returns a usable config**, which is `address._validate()`'s
+    contract and every form in this app holds to it. A value that does not parse
+    is reported in `problems` and the *default* is used for it, so a typo in a
+    deployment's environment cannot stop the app booting — it is named instead.
+    The one thing it must never do is quietly treat an unparseable
+    `SESSION_COOKIE_SECURE` as true: `problems` is what `install()` prints.
+    """
+    config, problems = dict(SESSION_COOKIE_DEFAULTS), []
+
+    for name in ("SESSION_COOKIE_HTTPONLY", "SESSION_COOKIE_SECURE"):
+        got = _env_bool(name, SESSION_COOKIE_DEFAULTS[name])
+        if got is None:
+            problems.append(f"{name}={os.getenv(name)!r} is not a boolean — "
+                            f"using {SESSION_COOKIE_DEFAULTS[name]!r}. "
+                            f"Use true or false.")
+        else:
+            config[name] = got
+
+    raw = (os.getenv("SESSION_COOKIE_SAMESITE") or "").strip()
+    if raw:
+        match = [v for v in _SAMESITE_ALLOWED if v.lower() == raw.lower()]
+        if match:
+            config["SESSION_COOKIE_SAMESITE"] = match[0]
+        else:
+            problems.append(
+                f"SESSION_COOKIE_SAMESITE={raw!r} is not one of "
+                f"{', '.join(_SAMESITE_ALLOWED)} — using "
+                f"{SESSION_COOKIE_DEFAULTS['SESSION_COOKIE_SAMESITE']!r}.")
+
+    return config, problems
+
 # The session holds the user id and nothing else. Permissions are resolved from
 # the store on every request, so an Owner editing a role takes effect on that
 # user's next click rather than on their next login — which is the entire point
@@ -1189,6 +1280,17 @@ def install(app) -> None:
     if warning:
         print(warning, file=sys.stderr, flush=True)
     app.permanent_session_lifetime = datetime.timedelta(hours=SESSION_HOURS)
+
+    # The three session cookie flags, from the environment. Applied here because
+    # this function already owns the session, and before `enforce()` closes the
+    # app — the gate is only as strong as the cookie it trusts.
+    cookie_config, cookie_problems = session_cookie_config()
+    app.config.update(cookie_config)
+    # stderr for the same reason as the key banner above: a deployment that
+    # pipes stdout to a log still puts this in front of whoever started it.
+    for problem in cookie_problems:
+        print(f"  * WARNING: {problem}", file=sys.stderr, flush=True)
+
     ensure_builtin_roles()
 
 
