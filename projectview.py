@@ -449,6 +449,50 @@ def view_project(id: str):
                 return redirect(url_for("projectview.view_project", id=id,
                                         msg="No BOQ selected.", type="error"))
 
+        # ── DETACH — the other half of attach, and the only way back ────────
+        #
+        # ⚠ **THERE IS NO `/boq/edit` ROUTE IN THIS APPLICATION**, so without
+        #   this branch a BOQ filed against the wrong project is filed there
+        #   permanently: the attach control above offers only BOQs carrying no
+        #   project at all, precisely because moving one between projects
+        #   splits a P&L and wants deliberation. Detach is that deliberation —
+        #   it puts the schedule back in the unattached pool, where attach can
+        #   then pick it up for the right project.
+        #
+        # ⚠ **It walks the revision chain exactly as attach does, and it must.**
+        #   Attach sets `project_id` on every revision; a detach that cleared
+        #   only the revision named would leave the rest of the chain pointing
+        #   here, which is the split-chain state the attach rule exists to
+        #   prevent. `revision_chain()` walks back to the root and forward
+        #   through every descendant, so both directions are covered.
+        #
+        # ⚠ **Only members currently on THIS project are cleared.** A chain
+        #   member somehow attached elsewhere is left alone rather than being
+        #   silently detached from a project this page is not looking at —
+        #   DOMAIN.md §6's rule: this page may not quietly rewrite a record
+        #   belonging to somebody else's job.
+        if action == "detach_boq":
+            boq_id = request.form.get("boq_id")
+            if not boq_id:
+                return redirect(url_for("projectview.view_project", id=id,
+                                        msg="No BOQ selected.", type="error"))
+            cleared = 0
+            for c_id in revision_chain(boq_id):
+                b = STORE["boqs"].get(c_id)
+                if b and b.get("project_id") == id:
+                    b["project_id"] = ""
+                    cleared += 1
+            if not cleared:
+                return redirect(url_for("projectview.view_project", id=id,
+                                        msg="That schedule is not attached to "
+                                            "this project.", type="error"))
+            return redirect(url_for(
+                "projectview.view_project", id=id,
+                msg=(f"BOQ chain detached from this project "
+                     f"({cleared} revision{'s' if cleared != 1 else ''}). "
+                     f"It can now be attached to another."),
+                type="success"))
+
     msg = request.args.get("msg")
     msg_type = request.args.get("type", "success")
     
@@ -585,6 +629,17 @@ def view_project(id: str):
     boq_opts = '<option value="">-- Select an unattached BOQ --</option>'
     for b in eligible_boqs:
         boq_opts += f'<option value="{b.get("id")}">{P.esc(b.get("ref"))} - {P.esc(b.get("account_name"))}</option>'
+
+    # ── Detachable BOQs — what is on this project right now ────────────────
+    # The mirror of the list above. Offered as a picker rather than a button
+    # per row because the unit of both operations is the whole revision chain,
+    # not the revision the row happens to show, and a control that sits beside
+    # Attach says that where a button inside a row would not.
+    detach_opts = '<option value="">-- Select an attached BOQ --</option>'
+    for b in attached_boqs:
+        detach_opts += (f'<option value="{P.esc(b.get("id"))}">'
+                        f'{P.esc(b.get("ref"))} - '
+                        f'{P.esc(b.get("account_name") or "unnamed")}</option>')
 
     # ── The site: the snapshot, the link, and where they disagree ────────────
     #
@@ -761,6 +816,16 @@ def view_project(id: str):
               {boq_opts}
             </select>
             <button type="submit" class="btn btn-ghost">Attach</button>
+          </form>
+        </div>
+        <div style="border-left:1px solid var(--border); padding-left:1.5rem;">
+          <p style="margin:0 0 0.5rem 0; font-weight:600; font-size:0.9rem;">Detach (Detaches entire revision chain)</p>
+          <form method="POST" action="{url_for('projectview.view_project', id=id)}" style="display:flex; gap:0.5rem;">
+            <input type="hidden" name="action" value="detach_boq">
+            <select name="boq_id" class="form-control" style="min-width:250px;" required>
+              {detach_opts}
+            </select>
+            <button type="submit" class="btn btn-ghost">Detach</button>
           </form>
         </div>
       </div>

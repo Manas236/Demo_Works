@@ -3788,6 +3788,43 @@ def create_boq():
     supersedes_html = ('<select id="supersedes" name="supersedes">'
                        + "".join(_opts) + "</select>")
 
+    # ── The project selector ───────────────────────────────────────────────
+    #
+    # ⚠ **THIS CONTROL IS THE OTHER HALF OF A LINK THAT WAS ONLY EVER HALF
+    #   BUILT** (ABOUT.md §7 gap 33, closed 9 September 2026). The route has
+    #   read `?project_id=` into its prefill and the POST branch has read
+    #   `form.get("project_id")` since the projects collection landed, but the
+    #   rendered form carried no control of that name — so the two halves never
+    #   met and **every BOQ raised through this screen stored `project_id: ""`**.
+    #   The only linkage on the live database was written by
+    #   `tools/backfill_projects.py`, which will never run on a client box.
+    #
+    # ⚠ **Read from `STORE["projects"]` directly, and that is the house
+    #   pattern rather than a shortcut.** `attendance.py`, `charge.py`,
+    #   `dashboard.py`, `measurement.py`, `proforma.py` and `purchase.py` all
+    #   reach project data this way, and `tests/test_import_directions.py`
+    #   names it in terms for two of them — *"a charge reads STORE['projects']
+    #   directly"*. `boq.py` also carries a module-level `import project` from
+    #   commit 119f9d8 that **nothing in this file has ever used**; introducing
+    #   a second pattern by reaching through it would make this the one module
+    #   that gets project data a different way. See the options block below.
+    #
+    # **Optional, deliberately.** A BOQ may legitimately precede its project —
+    # a schedule is often priced before the job is opened — so this is not a
+    # required field and an unattached BOQ stays a valid record. The detach and
+    # attach controls on `/projects/view/<id>` are how one is corrected later,
+    # because there is no `/boq/edit` route in this application.
+    _proj_cur = ((request.form.get("project_id") if request.method == "POST"
+                  else prefill.get("project_id")) or "").strip()
+    _p_opts = ['<option value="">&#8212; None: not filed under a project &#8212;</option>']
+    for _pid, _p in sorted((STORE.get("projects") or {}).items(),
+                           key=lambda kv: str(kv[1].get("name", "")).lower()):
+        _p_sel = " selected" if _pid == _proj_cur else ""
+        _p_opts.append(f'<option value="{P.esc(_pid)}"{_p_sel}>'
+                       f'{P.esc(_p.get("name"))}</option>')
+    project_html = ('<select id="project_id" name="project_id">'
+                    + "".join(_p_opts) + "</select>")
+
     # A refused revision names every line it would have dropped and the bills
     # that claimed them. `revision_blocker_message()` writes each one in words
     # the person revising it can act on — the alert alone would say "some lines"
@@ -3869,6 +3906,10 @@ def create_boq():
           {supersedes_html}
         </div>
         <div class="form-group span2">
+          <label for="project_id">Project <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+          {project_html}
+        </div>
+        <div class="form-group span2">
           <label for="project_name">Project Name</label>
           <input type="text" id="project_name" name="project_name"
                  value="{_v('project_name')}" placeholder="Sify Bangalore" required/>
@@ -3895,6 +3936,17 @@ def create_boq():
         revision. The link is what lets the over-claim guard sum a line&#39;s claims
         across the whole chain &mdash; <b>a Revision No. above 0 must name one</b>,
         or every line&#39;s claimed quantity silently restarts at zero.
+      </p>
+      <p style="margin-top:.5rem;font-size:.78rem;color:var(--muted);">
+        <b>Project</b> is what files this schedule&#39;s claims under a job on the
+        dashboard and on the project page. It is <b>optional</b> &mdash; a schedule
+        is often priced before the job is opened, and an unattached BOQ is a valid
+        record whose claims simply roll up under <i>Unassigned</i>. There is no BOQ
+        edit screen, so a BOQ filed against the wrong project is corrected from
+        <b>the project page</b>, which can detach it and attach it elsewhere.
+        <b>A revision inherits its predecessor&#39;s project</b> and this control is
+        ignored on one &mdash; changing it on one revision and not another would
+        split a chain across two projects.
       </p>
     </div>
 

@@ -210,12 +210,28 @@ def test_the_refusal_reaches_the_access_log(client, director, owner):
     "somebody tried to change the Owner's password" is precisely the line an
     Owner should find there.
     """
-    before = len(auth.REFUSAL_LOG)
+    before = list(auth.REFUSAL_LOG)
     client.post(f"/users/edit/{owner['id']}",
                 data={"display_name": "x", "role_ids": owner["role_ids"],
                       "password": "another-attempt"})
 
-    assert len(auth.REFUSAL_LOG) > before, "the refusal was not logged"
+    # ⚠ **THIS ASSERTION COUNTED THE LOG, AND THE COUNT SATURATES.** It was:
+    #
+    #       assert len(auth.REFUSAL_LOG) > before, "the refusal was not logged"
+    #
+    #   `auth.REFUSAL_LOG` is a `deque(maxlen=500)` and `_log_refusal()`
+    #   appendleft()s into it. Once the suite as a whole has logged 500
+    #   refusals — measured at exactly 500 on 9 September 2026 — eviction from
+    #   the tail keeps the length pinned at the cap, so `len()` can never grow
+    #   and the old form became first unfalsifiable and then false. It failed
+    #   the day one more refusal was logged anywhere in the suite, which says
+    #   nothing about this refusal.
+    #
+    #   The rewrite asserts what this test's own name claims: that the newest
+    #   entry IS this refusal. That is strictly stronger than a count — the old
+    #   form passed for a refusal logged by anything at all — and it does not
+    #   saturate.
+    assert list(auth.REFUSAL_LOG) != before, "the refusal was not logged"
     entry = auth.REFUSAL_LOG[0]
     assert entry["user"] == "esc-director"
     assert entry["endpoint"] == "auth.edit_user"
