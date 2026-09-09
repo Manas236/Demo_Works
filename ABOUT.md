@@ -397,7 +397,7 @@ Consequences you must respect when editing:
 | `tools/backfill_marking_projects.py` | 245 | One-time migration (30 Aug 2026, sixth pass): links an attendance marking to its project **where the site carries exactly one**. Dry-run by default, idempotent. ⚠ **It never guesses** &mdash; zero or several projects on the site and the marking is left alone and **printed with every candidate named**, for a human to resolve on `/attendance/edit/<id>`. Never takes the oldest or the newest. ⚠ **Writes one field on one collection** and never re-snapshots a marking that already carries a project. |
 | `tools/seed_demo_scenario.py` | 404 | A coherent demo set (30 Aug 2026, fifth pass): two sites, one project each, three employees on confirmed day rates, eight markings including one absentee. `--write` / `--purge`, idempotent. ⚠ **Not a seeder** &mdash; nothing in the app imports it, a fresh install is still empty of `employees` and `attendance`, and a test fails if a module so much as names it. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
-| [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. |
+| [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. ⚠ **Those two are the ONLY settable series of the ten in this app** — the other eight are `max+1` over existing records with no control anywhere, so a go-live restarts them at `0001`. §7 gap 36, with the measured table. |
 | [auth.py](auth.py) | 1670 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. |
@@ -8885,6 +8885,112 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
       already-rounded value — and both choose **wording** (an audit-trail
       sentence, a printed row) rather than gating anything. No stored figure was
       touched and no print golden moved.
+
+35. 🔴 **A brand new install fills itself with 84 demo records — including
+    another company's ₹91.9 lakh BOQ — and deleting them does not make them stay
+    deleted.** Found 9 September 2026 (eighteenth pass), on the first occasion
+    this application was ever started against an empty database.
+
+    **The reproduction is four page visits.** Point `DB_NAME` at a schema that
+    does not exist, start the app, sign in, and visit four pages in the order a
+    new operator would:
+
+    | Visit | What appears, from nothing |
+    |---|---|
+    | boot | `ensure_demo_settings()` — the specimen company identity and the default charge heads |
+    | `GET /` | `ensure_demo_products()` → **12 products**, `ensure_demo_addresses()` → **6 addresses** |
+    | `GET /spec/` | `ensure_demo_specs()` → **56 clauses** |
+    | `GET /boq/` | `ensure_demo_boq()` → **1 BOQ, 97 lines, subtotal 9,191,313.30** |
+
+    **84 records, measured, not estimated.** None of it was typed by anybody.
+
+    ⚠ **What it is, rather than how much of it there is, is the problem.** The
+    address book arrives holding **Sunteck Realty Ltd.**, **Torrent Power Ltd.**
+    and **Kohinoor Techpark Pvt. Ltd.** with **15-character GSTINs that pass the
+    `/settings` validator** — real company names, invented tax registrations. The
+    BOQ is headed **Prudent Teqtis Pvt Ltd**. The products carry placeholder
+    prices and, as `ensure_demo_products()`'s own docstring says, *"HSN codes
+    [that] are plausible chapter headings, not a classification Samruddhi's CA
+    has signed off"*. On the client's server that is not demo data, it is a
+    catalogue, an address book and a customer's priced schedule that somebody
+    will reasonably believe is theirs.
+
+    ⚠ **And the seed flags are deliberately NOT persisted** — `db.py` says so,
+    and gives the reason: *"leaving them unpersisted means a manually emptied
+    table refills itself instead of staying mysteriously blank"*. That is right
+    for a demo box and exactly wrong for a client's. **Delete the 12 demo
+    products, restart, visit `/`, and they are back**, because `STORE["_seeded"]`
+    went with the process. The operator cannot get rid of them by using the
+    application.
+
+    **Not fixed in the pass that found it, and the reason is that the fix is a
+    decision rather than a line.** The seeders are load-bearing for the demo the
+    app is shown with, for `tools/e2e_chain.py`, and for five print goldens that
+    pin the seeded BOQ by id. Switching them off behind an env flag is the
+    obvious shape — `SAMRUDDHI_DEMO_DATA=false` — but which of the four it should
+    cover is a product question: the **charge heads** are a genuine default and
+    the **company identity** is overwritten on first use of `/settings`, while
+    the products, addresses, specs and BOQ are somebody else's data.
+    **Nothing about this is authorised by the twenty-sixth §0 block**, which
+    records it as measured-and-reported rather than changed.
+
+    **Until it is fixed, a go-live step has to delete them and the deletion has
+    to outlive a restart** — which, as above, it currently does not. That is the
+    part to put in front of the client-facing owner.
+
+36. 🟠 **Eight of the ten document number series cannot be set to a starting
+    number, so a go-live restarts them at 0001 beside the client's running paper
+    book.** Found 9 September 2026 (eighteenth pass), measured against an empty
+    database.
+
+    Every series minted from an empty database, and whether `/settings` can move
+    it:
+
+    | Series | On an empty DB | Settable? |
+    |---|---|---|
+    | Quotation | `QT-0001` | **no control** |
+    | Proforma invoice | `PI-0001` | **no control** |
+    | Tax invoice | `SF/TI/26-27/0001` | **no control** |
+    | BOQ | `SF/BOQ/26-27/0001` | **no control** |
+    | RA bill | `SF/RA/26-27/0001` | **no control** |
+    | Receipt | `SF/RCPT/26-27/0001` | **no control** |
+    | Measurement sheet | `SF/MS/26-27/0001` | **no control** |
+    | Purchase order (incoming) | `SF/PO/26-27/0001` | **no control** |
+    | Draft PO | `SF/PO/0037` | ✅ `po_next_no` |
+    | Delivery challan | `SF/DC/0055` | ✅ `dc_next_no` |
+
+    The eight are all `max+1` over the records already in the store
+    (`quotation._next_ref()` is `len()+1`, §7.5's own older finding), so with no
+    records there is nothing to count from and nothing to raise.
+
+    ⚠ **The series the client's own evidence shows running is one of the two that
+    already works, and it was built for exactly this.** SOURCE_DOCUMENTS.md §7.5
+    records that the 18 client documents contain *"no RA bill, no tax invoice, no
+    proforma and no purchase order"* at all, and that the only running series
+    observable in them is **the challan number — a bare running integer, no
+    prefix, no financial year**. `settings.dc_ref_of()` already handles precisely
+    that: *"Blank prefix → the bare integer, unpadded: `54`. That is the client's
+    own book and the reason the prefix defaults to blank."* Setting
+    `dc_next_no=55` was proved in this pass to mint `55`.
+
+    **So the exposure is eight series for which there is no evidence of a
+    running paper number**, and that is why this is 🟠 and was recorded rather
+    than built. Three things have to be true before it is worth writing:
+
+    - **`quotation.py` is frozen against feature work.** The quotation series
+      cannot be given a control without breaking that freeze.
+    - **A seeded start collides with Rule 46(b)'s financial-year reset.** Six of
+      the eight restart at `0001` each April by design. Does a start of `0150`
+      apply only to 26-27, or does it persist across the year boundary? That is
+      the client's numbering policy, not an engineering choice, and getting it
+      wrong produces a duplicate statutory invoice number.
+    - **Nobody has asked the client which of the eight are running.** One
+      question answers whether this is eight controls, one, or none.
+
+    **Reproduction:** against an empty schema, call each `_next_ref()` /
+    `next_ref()` and compare with the `/settings` form's controls — the form
+    posts `po_prefix`/`po_next_no` and `dc_prefix`/`dc_next_no` and nothing else
+    of this kind.
 
 ---
 
