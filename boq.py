@@ -72,7 +72,6 @@ from address import INDIAN_STATES, picker_options, picker_payload
 from dashboard import BASE_STYLES, _nav
 from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
 from store import STORE
-import project
 
 # The document's own formatters and stylesheet — see the module docstring.
 from quotation import (
