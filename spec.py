@@ -305,12 +305,41 @@ SPEC_STYLES = """
     display:flex; gap:.8rem; align-items:center; flex-wrap:wrap;
     margin-bottom:1.2rem;
   }
+  /* font-family is spelled out because this class is worn by both an <a> (the
+     category tabs, which inherit it) and a <button> (Search, which does not:
+     form controls take the browser's font unless told otherwise). Without it
+     the two halves of the same pill row are set in two different typefaces. */
   .filter-tab {
+    font-family:var(--font);
     font-size:.78rem; font-weight:600; padding:.4rem .85rem; border-radius:999px;
     border:1px solid var(--border); background:var(--surface); color:var(--muted);
     text-decoration:none; cursor:pointer;
   }
   .filter-tab.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+
+  /* The search box. `input[type="search"]` matches NONE of the form
+     selectors below — they name text, number, textarea and select — and
+     BASE_STYLES sets no input rule at all, so this field was rendering as a
+     raw browser control: system font, native border, native focus ring, in
+     a row of pills. Every other register gets the rule from
+     `P.PIPELINE_STYLES`; this page is the one that does not include it.
+     Sized to `.filter-tab` — same font, same padding, same border — so the
+     field and its Search button are one control at the tabs' own height.
+     No `margin-left:auto` on the form, unlike the shared rule: nine
+     category tabs never leave room for a search box on the same line, and
+     an auto margin only ever stranded it alone against the right edge.
+     Flowing, it wraps to the start of the next line, under the tabs. */
+  .filter-bar form { display:flex; gap:.45rem; flex-wrap:wrap; }
+  .filter-bar input[type="search"] {
+    font-family:var(--font); font-size:.78rem; color:var(--text);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:999px; padding:.4rem .9rem; width:15rem; max-width:100%;
+    transition:border-color .14s, box-shadow .14s; outline:none;
+  }
+  .filter-bar input[type="search"]:focus {
+    border-color:var(--brand); background:var(--surface);
+    box-shadow:0 0 0 3px rgba(79,70,229,.1);
+  }
 
   /* ── Forms ────────────────────────────────────────────────────────── */
   .form-section {
@@ -915,7 +944,7 @@ def list_specs():
       <div class="ref-note">{REFERENCE_NOTE}</div>
       <div class="filter-bar">
         {tabs}
-        <form method="GET" action="{url_for('spec.list_specs')}" style="display:flex;gap:.5rem;margin-left:auto;">
+        <form method="GET" action="{url_for('spec.list_specs')}">
           {f'<input type="hidden" name="cat" value="{P.esc(cur_cat)}"/>' if cur_cat else ''}
           <input type="search" name="q" value="{P.esc(query)}" placeholder="code, title or clause text"/>
           <button type="submit" class="filter-tab">Search</button>

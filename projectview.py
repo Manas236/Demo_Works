@@ -621,9 +621,28 @@ def view_project(id: str):
         charge_html = '<tr><td colspan="5" style="color:var(--muted);">No employee charges attached.</td></tr>'
 
     # ── Eligible BOQs for attachment ──────────────────────────────────────────
-    # BOQs not currently attached to this project. We list those with NO project attached, 
+    # BOQs not currently attached to this project. We list those with NO project attached,
     # as moving a BOQ from one project to another usually splits P&Ls and requires care.
-    eligible_boqs = [b for b in STORE.get("boqs", {}).values() if not b.get("project_id")]
+    #
+    # ⚠ **A `project_id` that names a project which no longer exists counts as
+    #   UNATTACHED** (9 September 2026). `/boq/create` stores what the form
+    #   posted without checking it against `STORE["projects"]`, and
+    #   `/projects/delete/<id>` does not walk the BOQs, so deleting a project
+    #   leaves every BOQ that was filed under it pointing at nothing. The
+    #   membership test below is what stops that being permanent: without it the
+    #   `not b.get("project_id")` above is False for an orphan, so the schedule
+    #   is offered by **no** project's attach picker and cannot be re-filed
+    #   through the screen at all — invisible, and unfixable without MySQL.
+    #
+    #   This is `purchase.py`'s existing precedent and deliberately nothing
+    #   wider: that module guards the same field at render time with
+    #   `if po.get("project_id") in (STORE.get("projects") or {})` and draws a
+    #   plain chip instead of a link when it fails. **No validation was added at
+    #   POST**, because `purchase.py` has none either and inventing one here
+    #   would put two different rules on one field.
+    _live_projects = STORE.get("projects") or {}
+    eligible_boqs = [b for b in STORE.get("boqs", {}).values()
+                     if (b.get("project_id") or "") not in _live_projects]
     eligible_boqs.sort(key=lambda b: (str(b.get("date") or ""), str(b.get("ref") or "")), reverse=True)
     
     boq_opts = '<option value="">-- Select an unattached BOQ --</option>'

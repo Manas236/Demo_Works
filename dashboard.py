@@ -414,7 +414,7 @@ DASH_STYLES = """
   .hero-fig .hf-sub { font-size: .84rem; color: var(--muted); }
   .hero-fig .hf-sub b { color: var(--text); font-weight: 600; }
 
-  .kpi { padding: 1.05rem 1.15rem; display: flex; flex-direction: column;
+  .kpi { padding: 1.05rem 1.25rem; display: flex; flex-direction: column;
     justify-content: center; }
   .kpi .k-lbl {
     font-size: .7rem; font-weight: 700; text-transform: uppercase;
@@ -426,6 +426,17 @@ DASH_STYLES = """
   .kpi.k-won  .k-val { color: var(--c-won); }
   .kpi.k-hot  .k-val { color: var(--c-serious); }
   .kpi.k-rate .k-val { color: var(--navy); }
+
+  /* The chain row has no hero to centre against, so its tiles are only as
+     tall as the tallest of them — which is whichever one carries a meter.
+     Centred, that tile's extra 14px lifted its label, figure and note ~7px
+     above its neighbours': three tiles side by side reading at three
+     different heights, which is what the row is for. Top-aligned, the
+     labels sit on one line and the figures on one baseline, and the slack
+     collects under the tiles that have no bar. The quotation band keeps
+     centring — there the tiles are stretched to the hero beside them and
+     there is real slack to centre in. */
+  .kpis-chain .kpi { justify-content: flex-start; }
 
   /* Meter under the win-rate tile — the track is a lighter step of the same
      ramp, so the state reads across the whole bar rather than only the fill. */
@@ -540,13 +551,17 @@ DASH_STYLES = """
   .attn-why { font-size: .74rem; color: var(--text); margin-top: .15rem; }
   .attn-val { font-size: .8rem; font-weight: 600; text-align: right;
     white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .attn-more { font-size: .75rem; color: var(--muted); padding: .45rem .55rem 0; }
+  .attn-more { font-size: .75rem; color: var(--muted); padding: .55rem 0 0; }
 
   /* ── Recent quotations ───────────────────────────────────────────── */
   .rq-row {
     display: grid; grid-template-columns: 1fr auto; gap: .7rem;
     align-items: center; padding: .55rem; border-radius: 9px;
     text-decoration: none; color: inherit;
+    /* Pulled back out by its own padding, so the hover background bleeds
+       into the panel's inner margin while the TEXT still starts on the
+       same line as the panel head. */
+    margin: 0 -.55rem;
   }
   .rq-row + .rq-row { border-top: 1px solid var(--border); border-radius: 0; }
   .rq-row:hover { background: var(--bg); }
@@ -566,8 +581,11 @@ DASH_STYLES = """
   .act-kind.ak-ra  { color: var(--c-won); border-color: var(--c-won); }
 
   /* Per-project progress. The bar is `.meter`, reused verbatim from the
-     win-rate tile — same track, same fill, same 5px height. */
-  .pp-row { padding: .7rem 0; }
+     win-rate tile — same track, same fill, same 5px height. The row is padded
+     and pulled back by the same .55rem as `.rq-row`, which leaves the text
+     where it was but starts and ends the separator where the activity panel
+     beside it starts and ends its own. */
+  .pp-row { padding: .7rem .55rem; margin: 0 -.55rem; }
   .pp-row + .pp-row { border-top: 1px solid var(--border); }
   .pp-hd { display: flex; justify-content: space-between; align-items: baseline;
     gap: .8rem; margin-bottom: .35rem; }
@@ -627,6 +645,14 @@ DASH_STYLES = """
   /* The rule takes whatever width is left, so the label sits flush left and the
      line always reaches the right edge at any viewport. */
   .zone-hd::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  /* A zone that stacks two blocks — the project zone puts a tile row on a
+     panel row — had nothing between them at all: every grid here sets its
+     gutter ACROSS and none of them set one DOWN, so the tiles sat flush on
+     the panels beneath while holding 1.1rem from each other. One gutter,
+     both directions. The head is exempt: it is a label for the block under
+     it, not another block, and keeps its own tighter gap. */
+  .zone > * + * { margin-top: 1.15rem; }
+  .zone-hd + * { margin-top: 0; }
 
   /* ── Module groups ───────────────────────────────────────────────── */
   /* The launcher is split by which pipeline a register belongs to (§1) rather

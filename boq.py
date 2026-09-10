@@ -1166,6 +1166,20 @@ BOQ_STYLES = """
   .line-card.is-child > .ls-row { padding-left:1.6rem; }
   .lc-body { padding:.8rem 1rem 1rem; border-top:1px solid var(--border); }
 
+  /* A row that was just inserted. Inserting a spec family no longer moves the
+     page — the picker has to stay under the cursor, because inserting one is
+     something you do six times in a row — so this ring is what says where the
+     family landed. It rings rather than fills so it reads the same on an open
+     card, a closed one and a child row, none of which share a background. */
+  @keyframes lc-flash {
+    0%   { box-shadow:0 0 0 2px #f59e0b; }
+    100% { box-shadow:0 0 0 2px rgba(245,158,11,0); }
+  }
+  .line-card.just-added { animation:lc-flash 1.6s ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .line-card.just-added { animation:none; box-shadow:0 0 0 2px #f59e0b; }
+  }
+
   /* Bulk insert — a spec expanded into a header row plus one child per size. */
   .bulk-bar {
     display:flex; gap:.7rem; align-items:end; flex-wrap:wrap;
@@ -3085,6 +3099,29 @@ function setAllOpen(open) {
 function expandAll() { setAllOpen(true); }
 function collapseAll() { setAllOpen(false); }
 
+/* ── Saying where a new row landed without moving the page ───────────
+   Both insert paths used to end with a jump to the bottom of the document,
+   which threw the user past the whole rest of the form and — for the bulk bar,
+   which sits above the list — put the control they were using off screen after
+   every single click. The rows flash instead. Everything from index `from`
+   onwards is new, because both paths append. */
+function flashLines(from) {
+  var host = el('line-editor'), first = null;
+  if (!host || !host.querySelectorAll) return null;
+  var cards = host.querySelectorAll('.line-card');
+  for (var c = 0; c < cards.length; c++) {
+    var n = parseInt(cards[c].getAttribute('data-line'), 10);
+    if (isNaN(n) || n < from) continue;
+    if (!first) first = cards[c];
+    /* Re-adding the class to a card already mid-flash does nothing until the
+       animation is torn down and reflowed. */
+    cards[c].classList.remove('just-added');
+    void cards[c].offsetWidth;
+    cards[c].classList.add('just-added');
+  }
+  return first;
+}
+
 /* Jump to a section: open it, render, then scroll to it. */
 function jumpTo(si) {
   if (si === '' || si === null) return;
@@ -3372,6 +3409,7 @@ function insertFamily() {
   if (!sp) return;
 
   var next = nextItemNo(code);
+  var from = MODEL.lines.length;
   /* Land the family somewhere visible: open its section, and open the header
      so its children show as summaries. The children themselves stay closed —
      ten expanded panels is the problem this is here to avoid. */
@@ -3412,7 +3450,11 @@ function insertFamily() {
   }
   el('bulk-spec').value = '';
   renderLines();
-  window.scrollTo(0, document.body.scrollHeight);
+  /* The viewport does not move: the next insert is another selection in the
+     picker directly above, and the section bar's line count updates in place. */
+  flashLines(from);
+  var pick = el('bulk-spec');
+  if (pick && pick.focus) pick.focus();
 }
 
 function applySpecFields(L, sp, sid) {
@@ -3442,6 +3484,7 @@ function nextItemNo(code) {
 }
 
 function addLine() {
+  var from = MODEL.lines.length;
   var L = blankLine();
   MODEL.lines.push(L);
   /* Adding a line to a section the user has collapsed would put it somewhere
@@ -3449,7 +3492,12 @@ function addLine() {
   var S = secByCode(L.section);
   if (S) S._open = true;
   renderLines();
-  window.scrollTo(0, document.body.scrollHeight);
+  /* `nearest` is the whole point: a row already on screen does not move the
+     page at all, and one below the fold is brought just far enough up to read.
+     A new line opens expanded and is there to be typed into, so unlike the
+     bulk bar this one does follow it. */
+  var card = flashLines(from);
+  if (card && card.scrollIntoView) card.scrollIntoView({block: 'nearest'});
 }
 
 function delLine(i) {

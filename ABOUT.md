@@ -4028,7 +4028,11 @@ The page is cut into **zones**: a `.zone` wrapper, opened by a `.zone-hd`
 margin). Before that, every block carried the same weight and the same gap, so
 the hero, four analysis panels and a fifteen-card launcher ran together as one
 mass. The zones are presentation only — they wrap the existing sections and
-change no figure, link or metric.
+change no figure, link or metric. A zone that stacks two blocks spaces them with
+`.zone > * + *`, because every grid on this page sets a gutter across and none
+sets one down — without it a tile row sits flush on the panel row beneath it.
+The `.zone-hd` is exempt: it labels the block under it and keeps its own tighter
+gap.
 
 1. **Page head** — title, today's date, `+ New quotation` / `Register`, closed
    by a hairline.
@@ -5585,6 +5589,17 @@ sheet is actually written in — one header row carrying the clause, then one
 child per variant, numbered `24`, `24.a`, `24.b`… taking the next whole number
 free in that section. An unsized spec inserts a single plain line. Without it,
 item 24 is ten rows of typing.
+
+⚠ **Neither insert path scrolls the page to the bottom of the document**, and
+re-adding that is a regression `tests/test_editor_nav.py` now fails on. The bulk
+bar sits *above* the list, and inserting a spec is something a user does six
+times in a row — jumping to the end of the form after each click put the very
+control being used off screen every time. `insertFamily()` therefore does not
+move the viewport at all: it returns focus to the spec picker, and `flashLines()`
+rings the new rows so they say where they landed. `addLine()` does follow its row
+— the row opens expanded and exists to be typed into — but with
+`scrollIntoView({block: 'nearest'})`, which is a no-op for a row already on
+screen and never overshoots one that is not.
 
 Those fill rules are the one piece of behaviour in this app that only exists in
 JavaScript, so [tests/test_picker_js.py](tests/test_picker_js.py) runs the real

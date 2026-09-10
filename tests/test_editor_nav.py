@@ -79,6 +79,34 @@ function summaryOf(i) {
 """
 
 
+_DOM = """
+/* A `line-editor` that answers a query, so the code that marks a newly
+   inserted row and scrolls to it runs here rather than being skipped. Nodes
+   are minted from the rendered HTML on every call, because the editor replaces
+   its innerHTML wholesale on every render and the real nodes go with it. */
+var FLASHED = [], SCROLLED = [], FOCUSED = '';
+function _stubNode(n) {
+  return {
+    offsetWidth: 0,
+    getAttribute: function(k) { return k === 'data-line' ? n : null; },
+    classList: {
+      add: function(c) { FLASHED.push(n + ':' + c); },
+      remove: function(c) {}
+    },
+    scrollIntoView: function(o) { SCROLLED.push([n, o.block]); }
+  };
+}
+STUB['line-editor'].querySelectorAll = function(sel) {
+  var out = [], re = /data-line="(\\d+)"/g, m;
+  while ((m = re.exec(STUB['line-editor'].innerHTML)) !== null) {
+    out.push(_stubNode(m[1]));
+  }
+  return out;
+};
+STUB['bulk-spec'].focus = function() { FOCUSED = 'bulk-spec'; };
+"""
+
+
 def _session(script: str, boot=None):
     import boq
 
@@ -91,7 +119,9 @@ def _session(script: str, boot=None):
         "'jump-bar': {innerHTML:''}, 'boq_json': {value:''} };\n"
         "var document = { body: {}, getElementById: function(id) "
         "{ return STUB[id] || null; } };\n"
-        "var window = { scrollTo: function(){} };\n"
+        "var SCROLLS = [];\n"
+        "var window = { scrollTo: function(x, y) { SCROLLS.push([x, y]); } };\n"
+        + _DOM
     )
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = js.replace("BOQ_SPECS", "BOQ_SPECS_JSON")
@@ -499,3 +529,64 @@ def test_a_rejected_post_keeps_input_and_open_state(seeded, client):
     assert model["lines"][3]["_open"] is True
     assert model["sections"][1]["_open"] is True
     assert len(model["lines"][5]["description"]) == 1500
+
+
+# ═══ Inserting a row does not throw the page away ════════════════════
+
+def test_inserting_a_family_leaves_the_viewport_where_it_was(seeded, client):
+    """
+    The bulk bar sits ABOVE the list, and inserting a spec is something you do
+    six times in a row. Ending the insert at the bottom of the document put the
+    control being used off screen after every single click — so the page must
+    not move at all, and the picker must still be the thing under the cursor.
+    """
+    import boq
+    sid = [k for k, v in json.loads(boq._spec_catalog_json()).items()
+           if v["code"] == "PIPE-MS-C-1239-AG"][0]
+    res = _session(f"""
+        STUB['bulk-spec'].value = '{sid}';
+        insertFamily();
+        console.log(JSON.stringify({{
+          scrolls: SCROLLS, scrolledInto: SCROLLED,
+          flashed: FLASHED, focused: FOCUSED
+        }}));
+    """)
+    assert res["scrolls"] == [], "jumping to the bottom of the page is the bug"
+    assert res["scrolledInto"] == [], "nor by any other name"
+    assert res["focused"] == "bulk-spec", "the next insert starts here"
+    assert res["flashed"] == [f"{n}:just-added" for n in range(10)], \
+        "the whole family says where it landed, header and all ten rows"
+
+
+def test_a_second_insert_marks_only_the_second_family(seeded, client):
+    """The mark says what just happened, not what has ever happened."""
+    import boq
+    specs = json.loads(boq._spec_catalog_json())
+    sid = [k for k, v in specs.items() if v["code"] == "PIPE-MS-C-1239-AG"][0]
+    res = _session(f"""
+        STUB['bulk-spec'].value = '{sid}';
+        insertFamily();
+        FLASHED = [];
+        STUB['bulk-spec'].value = '{sid}';
+        insertFamily();
+        console.log(JSON.stringify({{flashed: FLASHED, scrolls: SCROLLS}}));
+    """)
+    assert res["scrolls"] == []
+    assert res["flashed"] == [f"{n}:just-added" for n in range(10, 20)]
+
+
+def test_adding_a_line_scrolls_no_further_than_the_new_row(seeded, client):
+    """
+    `+ Add line` is different: the row opens expanded and is there to be typed
+    into, so the page does follow it — but only as far as `nearest`, which is a
+    no-op for a row already on screen and never overshoots one that is not.
+    """
+    res = _session("""
+        addLine();
+        console.log(JSON.stringify({
+          scrolls: SCROLLS, scrolledInto: SCROLLED, flashed: FLASHED
+        }));
+    """)
+    assert res["scrolls"] == [], "the document end is not where the row is"
+    assert res["scrolledInto"] == [["0", "nearest"]]
+    assert res["flashed"] == ["0:just-added"]
