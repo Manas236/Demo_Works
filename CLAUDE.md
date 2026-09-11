@@ -46,6 +46,14 @@ Fast facts so you don't get it wrong before reading:
   record and `attendance.cost_of()` produces no figure at all. `site` on both
   those records is an **address-book picker**, and an unmatched legacy string is
   left, marked `unmapped` and reported — never fuzzy-matched. ABOUT.md §3.
+- **The product catalogue is HIDDEN from everybody, an Owner included, and a
+  quotation is written from the SPEC LIBRARY** (11 Sep 2026). The hide is one
+  line — `auth.HIDDEN_BLUEPRINTS = {"product"}` — a toggle, not a deletion:
+  permissions, registry rows and every role's grants are untouched, and
+  `product.py` was not edited. `quotation.py` is unfrozen for exactly three
+  functions (`_product_catalog_json`, `_process_selections`,
+  `create_quotation`) and nothing else; `tests/test_nav_user_chip.py` holds
+  that. ABOUT.md §2g and §5 `/quotation`.
 - **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
   `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
   refused, not opened** — so a route you add is unreachable until you classify

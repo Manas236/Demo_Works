@@ -218,8 +218,18 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,283 passed / 2 skipped** on 9 September 2026, verified by
+The baseline is **2,432 passed / 2 skipped** on 11 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The pass of **11 September 2026** — the catalogue hidden behind a toggle and
+the quotation written from the spec library — added **88 passed and 0
+skipped**: `tests/test_product_hidden.py` (**40**, new) and
+`tests/test_quotation_spec_picker.py` (**48**, new, ten of them running the
+page's JavaScript under Node). 40+48 = **88** — and moved **no bar**. ⚠ It
+read **2,344 / 2** at the start of that pass, **measured, and 61 above the
+2,283 the documents recorded**: the 10 September commit `1d7725a` added
+`tests/test_editor_nav.py` and moved no figure in any document. The pass held
+itself to the measured baseline, not the quoted one. 2,344 + 88 = 2,432.)*
 
 *(The **SEVENTEENTH** pass, 9 September 2026, added **48 passed and 0 skipped** — two new files, `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48** — and moved **no bar**: ABOUT.md §7 gap 33 is a defect fix against **F.04** of MG/SF/2026-02 §3, and §7 gap 34 is a float audit that **changed no code at all**. It read **2,235 / 2** at the start of that pass, re-measured rather than quoted, matching the sixteenth exactly.)*
 
@@ -465,6 +475,24 @@ called out in the commit that makes them and in ABOUT.md. Two have now happened:
   parse from both files. That was the item CLIENT_CHANGES-2.md's own "Security
   items promoted by this phase" names, and it says in as many words that the
   freeze "explicitly permits" it.
+
+**Two NARROW UNFREEZES of `quotation.py` have also happened, and neither is the
+exception above** — each is a dated override by the client-facing owner in
+[CLIENT_CHANGES.md §0](CLIENT_CHANGES.md), naming the functions and nothing
+else, and `tests/test_nav_user_chip.py::test_the_frozen_modules_get_the_chip_without_being_edited`
+holds the diff since `eff0034` to exactly those functions:
+
+- **29 August 2026** — `view_quotation()`, for the deal panel's Committed
+  figure (it now calls `purchase.job_cost()` rather than re-deriving one).
+- **11 September 2026** — `_product_catalog_json()`, `_process_selections()`
+  and `create_quotation()`, so a new quotation is written from the
+  specification library. The product catalogue is **hidden from everybody**
+  the same day (`auth.HIDDEN_BLUEPRINTS`, [ABOUT.md §2g](ABOUT.md)) — and
+  `product.py` was **not** edited for it: the hide lives in `auth.py`.
+
+**`product.py` has never been unfrozen and still is not.** A fifth
+`quotation.py` function needs a fifth §0 block naming it; the test is what
+makes a quiet widening fail.
 
 ⚠ **This section used to say these files "carry known unescaped output".** They
 no longer do — [ABOUT.md §7.7 and §7.9d](ABOUT.md) are closed. **The

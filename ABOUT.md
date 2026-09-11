@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,284 passed, 4 skipped** | **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,283 passed, 2 skipped** | **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,433 passed, 4 skipped** | **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,432 passed, 2 skipped** | **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -370,12 +370,12 @@ Consequences you must respect when editing:
 | [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
 | [dashboard.py](dashboard.py) | 1572 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
-| [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. |
-| [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. |
+| [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
+| [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. ⚠ **The picker reads the SPEC LIBRARY from 11 September 2026** — `STORE["specs"]`, the same clauses a BOQ is written from — under a second narrow unfreeze (CLIENT_CHANGES.md §0, twenty-seventh block) covering exactly `_product_catalog_json()`, `_process_selections()` and `create_quotation()`. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
-| [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from. **Not a replacement for `product.py`.** |
+| [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from — **and, from 11 September 2026, what a quotation line is written from too** (`quotation.create_quotation()` reads `STORE["specs"]` and seeds through `ensure_demo_specs()`). **Not a replacement for `product.py`** in the sense of its record shape — a clause is priced per leg, a product at one `base_price` with a BOM — but with the catalogue hidden it is the one library the sell side now draws on. |
 | [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. |
 | [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
@@ -399,7 +399,7 @@ Consequences you must respect when editing:
 | `tools/seed_demo_scenario.py` | 404 | A coherent demo set (30 Aug 2026, fifth pass): two sites, one project each, three employees on confirmed day rates, eight markings including one absentee. `--write` / `--purge`, idempotent. ⚠ **Not a seeder** &mdash; nothing in the app imports it, a fresh install is still empty of `employees` and `attendance`, and a test fails if a module so much as names it. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. ⚠ **Those two are the ONLY settable series of the ten in this app** — the other eight are `max+1` over existing records with no control anywhere, so a go-live restarts them at `0001`. §7 gap 36, with the measured table. |
-| [auth.py](auth.py) | 1670 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. |
+| [auth.py](auth.py) | 1670 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
@@ -419,6 +419,12 @@ app.py
  │                             │  directly and imports none of them — the one-way trick, and
  │                             │  it has to be, because five of the six import THIS module.
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
+ │                             │  — and `spec.ensure_demo_specs` INSIDE
+ │                             │  create_quotation() only (11 Sep 2026), the
+ │                             │  arrangement the product seeder always had, so
+ │                             │  the module graph gains no edge for one call.
+ │                             │  Everything else it reads off STORE["specs"]
+ │                             │  directly. spec.py imports nothing back.
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address,
@@ -1116,6 +1122,34 @@ narrowed. The two that bite today are
 test, which reconstructs the real conditions: roles stored first, permission
 minted afterwards.
 
+#### Hidden blueprints — a module switched off for everybody (11 September 2026)
+
+`auth.HIDDEN_BLUEPRINTS = {"product"}`. A blueprint named there is **refused by
+`_gate()` for everyone, an Owner included**, with a page saying the module is
+switched off; `can_reach()` answers False for it, so every card and link
+vanishes. It is a **toggle, not a deletion**, and that is the whole design: the
+owner is not sure the twelve seeded catalogue items have anything to do with
+the client, so the hide has to be reversible in one line weeks from now — not
+a revert spread across the registry, the access matrix and a pile of tests.
+
+What it does and does not touch:
+
+| | |
+|---|---|
+| `PERMISSIONS`, `ROUTE_PERMISSIONS`, `BUILTIN_ROLES` | **untouched.** The three `product.*` permissions and the four rows stay as they were |
+| a stored role's grants | **frozen exactly as they stood.** `/roles` draws the hidden boxes disabled and labelled *module hidden*; `_posted_permissions()` drops a hidden id and `_merge_hidden_grants()` carries the stored ones through a save, so a POST can neither add nor remove one. Un-hide the module and every role reads as it did |
+| `hidden_permissions()` | **derived from the registry**, never listed — a permission whose routes are split across a hidden and a visible blueprint stays live |
+| the gate's order | hidden beats `PUBLIC`; a **stranger** still gets the ordinary login bounce rather than a page naming what is installed; a signed-in user is refused before their permissions are consulted, and the refusal is logged as `blueprint hidden` |
+| `docs/ACCESS_MATRIX.md` | marks a hidden grant `⊘` rather than `·` / `§`, so the grid never presents a grant nobody can use as a live one |
+| the other surfaces | `dashboard._metrics()` counts no catalogue item while hidden; the card was already dropped by `can_reach()`. ⚠ `/purchase/create`'s item rows deliberately still read the catalogue — §7 gap 38 |
+| `product.py` | **not edited.** Fully frozen, and the pass that hid it asserts so from both sides |
+
+The existing product-page tests run under `tests/conftest.py::catalogue_unhidden`,
+which empties the set for one test and restores it, so they keep proving
+`product.py` for the day it is un-hidden. `tests/test_product_hidden.py` proves
+the hidden state — every route, every role, both verbs, nothing destroyed — and
+the un-hidden control.
+
 
 ### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
 
@@ -1485,6 +1519,13 @@ STORE = {
 }
 ```
 
+⚠ **The catalogue is HIDDEN from everybody since 11 September 2026**
+(`auth.HIDDEN_BLUEPRINTS`, §2g). The record shape below is unchanged and every
+stored product is untouched; what changed is that no page reaches it, no
+quotation is written from it, and `dashboard._metrics()` counts none of it.
+`/purchase/create` still reads it for its item rows (§7 gap 38), and every
+document already carrying catalogue lines keeps them — they are snapshots.
+
 - `assembly` = has children (a BOM). `support` = a sub-component not sold
   alone. `standalone` = sold on its own. Only the badge and the picker treat
   these differently; nothing enforces that `support` items stay inside
@@ -1548,6 +1589,14 @@ Groups:
   `tax_info`, `subtotal`, `grand_total`, `total_qty`
 - **Content:** `selections` (raw JSON from the browser), `line_items` (flattened
   rows for printing), `to` (pre-joined multi-line address block)
+
+  ⚠ **`selections` has TWO shapes and nothing reads either except the create
+  form's own re-render.** A quotation written before 11 September 2026 holds
+  catalogue picks — `{pid, qty, price, show_price, components[]}`; one written
+  after holds library picks — `{sid, vidx, leg, qty, price, show_price}`, a
+  spec id, a variant index and `supply` | `install`. No module reads the key
+  (verified by grep across every module and tool on 11 September 2026); the
+  document, the PI and the TI read `line_items`, whose shape did not move.
 - **Pipeline** (added by `pipeline.ensure_fields`): `sales_stage`, `po_number`,
   `po_date`, `po_value`, `lost_reason`, `stage_history[]`
 
@@ -1563,6 +1612,15 @@ A `line_item` row:
 of its components. There is no recursive expansion at quotation time — the
 browser-side JS flattens the tree before POST. (`integration.py` documents a
 recursive `expand_product()` engine; **that engine does not exist**. See §8.)
+
+⚠ **From 11 September 2026 only depth 0 is WRITTEN.** A quotation line comes
+from the specification library, and a clause has no bill of materials, so
+there is nothing to indent. A new line is `type: "item"`, its `name` reads
+*Supply of …* or *Installation of …*, its `part_no` is the spec **code**, and
+its `hsn` is the clause's `supply_hsn` on a supply line and its `install_sac`
+on an installation line — never both on one row. Every quotation written
+before that date keeps whatever depth-1 rows it has. §5 `/quotation` has the
+whole mapping.
 
 ### Proforma Invoice
 
@@ -4144,7 +4202,7 @@ gap.
    | Sell side — the deal chain | `--brand` | Quotations, Proforma Invoices, Tax Invoices |
    | Projects & site billing | `--navy` | Projects, Bills of Quantities, Running Account Bills, Delivery Challans |
    | Buy side — money out | `--saffron` | Purchase Orders, Draft Purchase Orders, Employee & Misc Charges |
-   | Library & records | `--muted` | Product Catalogue, Spec Library, Client Register, Address Book, Market News |
+   | Library & records | `--muted` | Product Catalogue *(⚠ absent for everybody while `auth.HIDDEN_BLUEPRINTS` names `product` — 11 September 2026, §2g)*, Spec Library, Client Register, Address Book, Market News |
 
    The split is §1's two-pipelines model made visible — it is the same
    distinction that says a PO must never link to a proforma or a tax invoice.
@@ -4353,6 +4411,14 @@ never gets added is a red test rather than an unreachable route.
 
 ### `/product` — Catalogue · [product.py](product.py)
 
+⚠ **HIDDEN FROM EVERYBODY since 11 September 2026.** Every route below answers
+**403** to every role, an Owner included, with a page saying the module is
+switched off — `auth.HIDDEN_BLUEPRINTS`, §2g. The owner is not sure the twelve
+seeded items have anything to do with the client. Nothing here was edited and
+the module stays fully frozen (INTRODUCTION.md §7); the description below is
+what it does the day it is un-hidden, which is one line in `auth.py`. Its
+tests run with the toggle emptied and still pass.
+
 | Route | View |
 |---|---|
 | `GET /product/` | `list_products` |
@@ -4427,22 +4493,74 @@ address type; `address.picker_payload()` embeds the whole book as JSON. The JS
 round trip. It collapses `line1 + line2 + landmark` into the one address
 textarea, and picking a *shipping* address auto-unticks "same as billing".
 
-**Product picker (the part to understand before editing).** A vanilla-JS model
-in a `SEL` array, rendered by `render()` / `renderRoot()` / `renderComp()`.
-Adding an assembly pulls in its resolved children from the embedded catalog
-JSON (`_product_catalog_json()`). Per row the user can override **qty**,
-**price**, and a **show-price** toggle. On submit, `saveJSON()` serialises `SEL`
-into the hidden `<input name="selections_json">`.
+**The item picker reads the SPECIFICATION LIBRARY (11 September 2026).** ⚠ It
+read the product catalogue until then; the catalogue is hidden from everybody
+(§2g) and the three functions this needed — `_product_catalog_json()`,
+`_process_selections()` and `create_quotation()` — were unfrozen narrowly for
+it under CLIENT_CHANGES.md §0's twenty-seventh block. Nothing else in this
+file moved, and the freeze test holds that.
+
+The controls are **Spec → Size / variant → Quote → Qty → Add**. The spec list
+is grouped by category and carries the spec id; the size control is filled by
+the JS from the embedded library (`_product_catalog_json()` — **the name is
+kept** because the §0 block, the freeze test and §7.9e cite it) and is disabled
+for an unsized clause; **Quote** is *Supply + Installation* (the default),
+*Supply only* or *Installation only*. A vanilla-JS model in `SEL`, rendered by
+`render()` / `renderRoot()`; `saveJSON()` serialises it into the hidden
+`<input name="selections_json">`.
+
+| quotation line | from the library |
+|---|---|
+| `name` | *Supply of <title> — <variant>* or *Installation of <title> — <variant>* |
+| `part_no` | the spec `code` |
+| `hsn` | `supply_hsn` on a supply line, `install_sac` on an installation line — never both on one row |
+| `unit` | the variant's unit |
+| `price` | the variant's library rate, **suggested and editable** |
+
+**One pick, one row per leg.** *Supply + Installation* adds a row for each leg
+the library has a rate for; a leg with **no** library rate is added only when
+asked for by name, and then its price box opens **empty — never 0** — with a
+`no library rate` placeholder. A leg the picker skips is said so on the page.
+Measured on the seed: 36 of the 86 variants carry no supply rate and 29 carry
+no installation rate, every one of the 29 lacking both — so the one-sided case
+that exists is installation-only work, section C of the client's own schedule.
+The leg badge reuses `.badge-asm`, the one badge style `QUOTATION_STYLES`
+carries, because that sheet is frozen and this page may add no CSS.
+
+*Use Demo Data* picks the first clause whose first variant carries both rates
+and adds both legs at qty 2; it invents nothing, and says so if the library has
+no such clause.
 
 **On POST:**
 
 1. Read ~40 form fields. `sgst_rate` is **forced equal to `cgst_rate`**.
-2. Validate: `account_name` required → `selections_json` parses → at least one
-   product → every `pid` still exists in the catalogue.
-3. `_process_selections()` flattens `SEL` into `line_items` (depth 0 roots,
-   depth 1 components). **`show_price` false ⇒ `price` and `total` become 0.0
-   but the row still prints.** That is how "included, no separate charge" lines
-   are produced.
+2. Validate: `account_name` required → `selections_json` parses to a list of
+   dicts → at least one item.
+3. `_process_selections()` turns each pick into a depth-0 `line_item`, and
+   returns `(line_items, error, gst_rates)`. **Identity comes from the library
+   at POST** — name, code, HSN/SAC and unit are re-read from `STORE["specs"]`
+   and the form's copies are ignored; only qty, price and show-price are the
+   browser's. A spec or a size that has gone since the page loaded **refuses
+   the whole POST by line number** rather than dropping the line. So does a
+   quantity of nil, a negative or non-numeric price, and a leg that is neither
+   `supply` nor `install`. **`show_price` false ⇒ `price` and `total` become
+   0.0 but the row still prints.** That is how "included, no separate charge"
+   lines are produced.
+
+   ⚠ **A shown line with an EMPTY price is refused, naming the line.** Leaving
+   the box empty is not choosing zero, and `0.00` printed against work
+   somebody forgot to price is the figure the refusal exists to stop. A
+   deliberately typed `0` is a price and is kept.
+3b. **ONE tax per quotation, and nothing is ever applied for the user.** The
+   library stores a GST rate per leg of every clause; a quotation carries one
+   document-level tax. The POST is **refused, naming the lines and the rates**,
+   when the picked lines' library rates differ from each other or from the Tax
+   section's effective rate — CGST + SGST summed, or IGST; exempt and VAT are
+   not compared, and a clause whose library rate is blank makes no claim.
+   **Measured on the seed, 11 September 2026: every one of the 56 clauses is
+   18% on both legs — one distinct value each side, 0 clauses where the legs
+   differ** — so the guard cannot fire on the seed and exists for the library
+   as it is edited. **Per-line tax on the sell chain is not built.**
 4. `subtotal` = sum of all `total`s; `_tax_lines()` computes CGST+SGST / IGST /
    VAT / exempt; `grand_total = subtotal + tax`. `total_qty` counts depth-0 only.
 5. Build the `to` address block, assign uuid + `ref`, write to STORE.
@@ -7366,7 +7484,7 @@ Thirteen routes. The architecture is §2g; this is what each page does.
 | `/users/deactivate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | GET confirms, POST acts. **There is no delete route** — §3, User. The extra guard is what stops an Admin switching spare Owners off one at a time until only the one they can reset is left. |
 | `/users/activate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | The reverse, and it needs the guard for the mirror reason: a dormant Owner account is a live one after one POST, and whoever held it may still know its password. |
 | `/roles` | GET | `admin.roles` | **Owner only.** Shows each role's permission count and how many active users hold it. |
-| `/roles/create`, `/roles/edit/<id>` | GET, POST | `admin.roles` | Checkboxes over the 61-permission catalogue, grouped by module. A builtin role's **name** is fixed; its permissions are not. |
+| `/roles/create`, `/roles/edit/<id>` | GET, POST | `admin.roles` | Checkboxes over the 61-permission catalogue, grouped by module. A builtin role's **name** is fixed; its permissions are not. ⚠ **A hidden module's permissions render DISABLED and labelled *module hidden*** (11 September 2026, §2g): the box shows the stored state, posts nothing, and a save carries the stored grant through untouched — a POST can neither add nor remove one while the module is hidden. |
 | `/access-log` | GET | `admin.access_log` | The last 500 refusals — user, endpoint, permission wanted, why. §7 gap 23 on what it is not. |
 
 ✅ **The nav now carries the signed-in user chip** — display name, initials, a
@@ -7670,6 +7788,11 @@ Real, verified, and safe to pick up:
    deliberate copy of `product._valid_hsn()` for the same reason — the shared
    home is `pipeline.py`, and moving it means editing `product.py`. Fold the two
    together in the same pass.
+   ⚠ **Less urgent since 11 September 2026, not closed.** The catalogue is
+   hidden from everybody (§2g) and a quotation is no longer written from it, so
+   the missing HSN that this gap could not clear now reaches a tax invoice only
+   through a document that already carried it. The route is still missing and
+   the file is still frozen.
 3. **No quotation edit / delete / amend flow**, though `amend_no` is stored.
    Likewise **no cancel/void route for a proforma invoice** — an issued PI can
    only be superseded by raising another. A void flow (a `cancelled` flag plus
@@ -9007,6 +9130,34 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     `next_ref()` and compare with the `/settings` form's controls — the form
     posts `po_prefix`/`po_next_no` and `dc_prefix`/`dc_next_no` and nothing else
     of this kind.
+
+37. 🟠 **An installation line prints under column heads written for goods —
+    OPEN, recorded 11 September 2026 and deliberately not fixed.** A quotation
+    written from the specification library (§5 `/quotation`) carries one row
+    per leg, and the installation row's `hsn` is the clause's **SAC**. The
+    column is already headed **HSN/SAC** on the quotation, the proforma and the
+    tax invoice (`docsheet.SELL_COLUMNS`), so the code itself prints under the
+    right head. What does not fit are the two heads beside it: **"Description
+    of Goods"** over a line that is a service, and **"Part No"** over a spec
+    code. The printed sheet was not touched — the three sell-chain documents
+    are pinned byte-for-byte in `tests/test_print_golden.py` and the §0 block
+    of that date says the print is out of scope. **Two words on a frozen sheet,
+    and a golden re-baseline, when somebody rules on them.**
+
+38. 🟠 **`/purchase/create` still offers the hidden catalogue's items in its
+    rows — OPEN, reported 11 September 2026 rather than switched off.** The
+    brief for that pass said the picker rows should read `auth.HIDDEN_BLUEPRINTS`
+    like every other surface, **and to stop and report if a PO could then not
+    be created.** It could not: `purchase._parse_lines()` refuses an order with
+    no catalogue item (*"Add at least one item to the purchase order"*), and a
+    free-text extra line does not satisfy it, so removing the rows would have
+    left a from-scratch purchase order impossible to raise. `/purchase/from-boq`
+    and `/purchase/from-draft` are unaffected — they read the schedule, not the
+    catalogue. **This is the one place in the application where catalogue
+    items are still visible.** The fix is one decision and one line: let an
+    order of extra lines alone satisfy `_parse_lines()`, then point
+    `_product_options()` at the toggle. Not taken, because the §0 block
+    authorises the item editor to change "beyond reading the toggle" nowhere.
 
 ---
 
