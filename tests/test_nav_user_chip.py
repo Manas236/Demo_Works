@@ -153,6 +153,28 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
     narrow unfreeze, and this is what would catch it — an edit anywhere else in
     that file fails here, including the escaping-sensitive formatters the freeze
     was really protecting.
+
+    ⚠ **REWRITTEN AGAIN on 11 September 2026** under the twenty-seventh
+    override block in `CLIENT_CHANGES.md` §0, which unfreezes `quotation.py`
+    narrowly a second time, for exactly THREE more functions, so that a new
+    quotation is written from the specification library instead of the hidden
+    product catalogue: `_product_catalog_json()`, `_process_selections()` and
+    `create_quotation()`. `view_quotation()` keeps only its 29 August unfreeze.
+    The assertion this replaces was, in full and verbatim:
+
+        assert span[0] <= start and end <= span[1], (
+            f"quotation.py lines {start}-{end} were edited, outside "
+            f"view_quotation() ({span[0]}-{span[1]}). The 29 August 2026 "
+            f"unfreeze covers the deal panel's committed figure and its "
+            f"breakout row. Nothing else in that file is unfrozen.")
+
+    The claim is now that every edited line since `eff0034` falls inside ONE
+    of those four functions — `UNFROZEN_QUOTATION_FUNCTIONS` below is the
+    whole list, and a fifth name added to it without a §0 block naming it is
+    exactly what "an unfreeze that grows to fit the work" looks like.
+    `product.py` is STILL frozen with no exception at all, and the pass that
+    hid the catalogue did not touch it — `tests/test_product_hidden.py`
+    asserts the same thing from its own side.
     """
     import ast
     import re
@@ -164,8 +186,13 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
 
     def _diff(*args):
         try:
+            # ⚠ `encoding="utf8"`, not `text=True`: on Windows the latter decodes
+            #   with cp1252, and a diff carrying a `═` (byte 0x90, undefined
+            #   there) killed the reader thread and returned stdout=None —
+            #   which this test then read as a TypeError on 11 September 2026.
             r = subprocess.run(["git", "diff", *args], cwd=REPO,
-                               capture_output=True, text=True, timeout=30)
+                               capture_output=True, encoding="utf8",
+                               errors="replace", timeout=30)
         except (OSError, subprocess.SubprocessError):
             pytest.skip("git is not available here; the assertions above still hold")
         if r.returncode != 0:
@@ -177,10 +204,20 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
         "product.py is fully frozen and was edited. The chip is in _nav() "
         "precisely so it never has to be.")
 
-    # `quotation.py` — the narrow unfreeze, held to one function.
+    # `quotation.py` — two narrow unfreezes, held to four named functions.
+    UNFROZEN_QUOTATION_FUNCTIONS = {
+        "view_quotation",          # 29 Aug 2026 — the deal panel's committed figure
+        "_product_catalog_json",   # 11 Sep 2026 — the spec-library embed
+        "_process_selections",     # 11 Sep 2026 — a pick becomes a line
+        "create_quotation",        # 11 Sep 2026 — the picker and its POST
+    }
     src = (REPO / "quotation.py").read_text(encoding="utf8")
-    span = next((n.lineno, n.end_lineno) for n in ast.walk(ast.parse(src))
-                if isinstance(n, ast.FunctionDef) and n.name == "view_quotation")
+    spans = {n.name: (n.lineno, n.end_lineno) for n in ast.walk(ast.parse(src))
+             if isinstance(n, ast.FunctionDef) and n.name in UNFROZEN_QUOTATION_FUNCTIONS}
+    assert set(spans) == UNFROZEN_QUOTATION_FUNCTIONS, (
+        f"an unfrozen function is missing from quotation.py: "
+        f"{UNFROZEN_QUOTATION_FUNCTIONS - set(spans)} — renaming one is an edit "
+        f"outside every named span")
 
     for hunk in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@",
                             _diff("-U0", "eff0034", "--", "quotation.py"),
@@ -190,11 +227,13 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
         if count == 0:            # a pure deletion touches no new-file line
             continue
         end = start + count - 1
-        assert span[0] <= start and end <= span[1], (
-            f"quotation.py lines {start}-{end} were edited, outside "
-            f"view_quotation() ({span[0]}-{span[1]}). The 29 August 2026 "
-            f"unfreeze covers the deal panel's committed figure and its "
-            f"breakout row. Nothing else in that file is unfrozen.")
+        inside = any(lo <= start and end <= hi for lo, hi in spans.values())
+        assert inside, (
+            f"quotation.py lines {start}-{end} were edited, outside every "
+            f"unfrozen function {sorted(spans.items())}. The 29 August 2026 "
+            f"unfreeze covers view_quotation(); the 11 September 2026 one covers "
+            f"_product_catalog_json(), _process_selections() and "
+            f"create_quotation(). Nothing else in that file is unfrozen.")
 
 
 def test_the_display_name_is_escaped(client):

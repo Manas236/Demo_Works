@@ -133,7 +133,8 @@ def test_product_py_is_not_edited_by_the_hide():
     """
     try:
         r = subprocess.run(["git", "diff", "--name-only", "eff0034", "--", "product.py"],
-                           cwd=REPO, capture_output=True, text=True, timeout=30)
+                           cwd=REPO, capture_output=True, encoding="utf8",
+                           errors="replace", timeout=30)
     except (OSError, subprocess.SubprocessError):
         pytest.skip("git is not available here")
     if r.returncode != 0:

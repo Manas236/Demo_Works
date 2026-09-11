@@ -684,11 +684,16 @@ def test_stored_text_cannot_close_an_embedded_script_block(
     seven characters `</script>` closes the block it is embedded in and every
     byte after it parses as HTML — ABOUT.md §7 gap 9e.
 
-    Both these forms embed the whole address book, and `/quotation/create`
-    embeds the product catalogue as well. `pipeline.json_for_script()` spells
+    Both these forms embed the whole address book, and both embed the
+    SPECIFICATION LIBRARY as well — `/boq/create` always did, and
+    `/quotation/create` does from 11 September 2026, when its picker moved off
+    the (now hidden) product catalogue. `pipeline.json_for_script()` spells
     `<`, `>` and `&` as ordinary JSON escapes, which the browser decodes back
     unchanged, so the data is identical and only its spelling on the wire
     differs.
+
+    The product payload is kept: nothing should embed the catalogue on either
+    page any more, and a `PRODPWN` reaching the body would say something did.
     """
     breakout = "</script><img src=x onerror=alert(9)>"
     for address_record in STORE["addresses"].values():
@@ -696,8 +701,15 @@ def test_stored_text_cannot_close_an_embedded_script_block(
         address_record["company"] = "ADDRPWN" + breakout
     for product_record in STORE["products"].values():
         product_record["name"] = "PRODPWN" + breakout
+    import spec as spec_mod
+    spec_mod.ensure_demo_specs()
+    for spec_record in STORE["specs"].values():
+        spec_record["title"] = "SPECPWN" + breakout
+        spec_record["variants"][0]["label"] = "SPECPWN" + breakout
 
     body = client.get(url).get_data(as_text=True)
+    assert "SPECPWN" in body, f"{url} did not embed the library at all"
+    assert "PRODPWN" not in body, f"{url} still embeds the product catalogue"
     assert breakout not in body, (
         f"{url} embedded a stored `</script>` verbatim. The block closes early "
         f"and everything after it is parsed as HTML — use "
