@@ -3134,6 +3134,114 @@ one automatic.
 > MG/SF/2026-02 is never signed, everything built under the blocks above was
 > built against a quotation that has **lapsed**.
 
+> ### ⚠ OVERRIDE — 11 September 2026, by Manas Gawde — the product catalogue is HIDDEN behind a toggle, and the quotation picks from the SPEC LIBRARY
+>
+> **A new block, not an amendment.** The twenty-sixth block, dated 9 September
+> 2026, and every block before it stand exactly as recorded and are **not
+> edited** by this one. This is the twenty-seventh occasion.
+>
+> **This is my own decision, taken by me as the client-facing owner. It is
+> not a client request, it is not a CC-2 item, it is not chargeable under
+> either quotation, and it moves no bar.** The board stays at 19 of 20 BUILT ·
+> 1 BLOCKED, and the denominator stays 20. Nothing in this block says anything
+> about the commercial status of any quotation, and nothing in it may be read
+> as doing so.
+>
+> #### 1. The product catalogue is HIDDEN — behind a toggle, not deleted
+>
+> I am not sure the twelve seeded catalogue items have anything to do with the
+> client, so the catalogue is **hidden from everybody, an Owner included**,
+> until I am. Because I am not sure, the hide has to be **reversible in one
+> line weeks from now** — not a revert spread across `auth.py`, the access
+> matrix and a pile of tests — and every role's grants have to come back
+> exactly as they were.
+>
+> Authorised, and only this shape:
+>
+> - `auth.HIDDEN_BLUEPRINTS = {"product"}`. `_gate()` refuses every endpoint
+>   in a hidden blueprint **for everyone**, with a page saying the module is
+>   switched off; `can_reach()` mirrors it so the card and every link vanish.
+> - `product.view` / `product.create` / `product.delete` and the four registry
+>   rows **stay exactly as they are**. On `/roles` the three checkboxes render
+>   disabled and labelled *module hidden*; `docs/ACCESS_MATRIX.md` marks them
+>   hidden rather than showing grants nobody can use.
+> - Everything else that draws catalogue items or counts reads the **same
+>   toggle**: the dashboard's product metrics, and the catalogue rows in the
+>   `/purchase/create` item picker.
+> - **`product.py` is not edited** — it stays fully frozen. The existing
+>   product-page tests run against it with the toggle emptied by a fixture,
+>   so they keep proving the module works for the day it is unhidden.
+> - The demo-product seeder is **left alone** — ABOUT.md §7 gap 35 owns that
+>   question and this block does not answer it.
+> - Every existing quotation, proforma, tax invoice and purchase order keeps
+>   its catalogue lines. They are snapshots and are **not touched**.
+>
+> #### 2. `quotation.py` is UNFROZEN NARROWLY, for exactly THREE functions
+>
+> The freeze on `quotation.py` (INTRODUCTION.md §7) is **not lifted
+> generally**. It is set aside for exactly three functions, so that a new
+> quotation is written from the **specification library** (`/spec`) instead of
+> the product catalogue:
+>
+> - `_product_catalog_json()` — the embed becomes the spec library;
+> - `_process_selections()` — a pick becomes a quotation line;
+> - `create_quotation()` — the picker, its JavaScript, and the POST validation.
+>
+> `view_quotation()` keeps **only** its 29 August 2026 unfreeze and gains
+> nothing here. **Every other function in `quotation.py` stays frozen**, and
+> **`product.py` is not unfrozen by a single line.** If the work cannot be done
+> without a fourth function in `quotation.py` or any edit to `product.py`, the
+> instruction is to **stop and report**, not to widen this authorisation — an
+> unfreeze that grows to fit the work is not a narrow unfreeze.
+> `tests/test_nav_user_chip.py`'s freeze test is to be rewritten to hold
+> exactly this set, with its previous assertion kept verbatim in a comment.
+>
+> What a pick maps onto, and it is the whole of the mapping:
+>
+> | quotation line | from the spec library |
+> |---|---|
+> | picker | Spec (grouped by category) → Size / variant (hidden for an unsized spec) → Leg → Qty |
+> | `name` | *Supply of <title> — <variant>* or *Installation of <title> — <variant>* |
+> | `part_no` | the spec `code` |
+> | `hsn` | `supply_hsn` on a supply line, `install_sac` on an installation line — never both on one row |
+> | `unit` | the variant's unit |
+> | `price` | the variant's default supply or installation rate, **suggested and editable** |
+>
+> The leg defaults to **Supply + Installation** — one row per leg. A leg with
+> no library rate opens with an **empty** price box, never a zero, and the
+> POST refuses an empty price on a shown line; a deliberately typed `0` is
+> allowed. *Use Demo Data* picks from the library.
+>
+> ⚠ **GST — one tax per quotation, and nothing is auto-applied.** The library
+> stores a rate per leg; a quotation carries one document-level tax. The
+> distinct `supply_gst_rate` / `install_gst_rate` values across the library are
+> to be **counted and reported first**. The POST is **refused, naming the lines
+> and the rates**, when the picked lines' library rates differ from each other
+> or from the effective rate in the Tax section (CGST + SGST summed, or IGST;
+> skipped for exempt and VAT). **Per-line tax on the sell chain is not in this
+> pass.**
+>
+> ⚠ **The printed document is not touched.** An installation line prints a
+> SAC under the quotation's HSN column. If the column head does not already
+> read HSN/SAC, that is recorded as an ABOUT.md §7 gap, not fixed here.
+>
+> #### What halts the work
+>
+> A print golden moving; the test count dropping below its baseline in either
+> configuration; a fourth `quotation.py` function or any `product.py` edit; an
+> import-direction rule that would have to change; anything that would rewrite
+> stored data; or the Step 0 gate failing. Anything else is a judgement call to
+> be **declared**, every one of them, in the pass report.
+>
+> #### What this block does NOT do
+>
+> It does not build a product edit route (ABOUT.md §7.2), does not answer
+> gap 35, does not add per-line tax to the sell chain, does not change the
+> `/purchase/create` item editor beyond reading the toggle, and does not
+> authorise any CC-2 item. **The gate is not lifted and this is not a
+> precedent.** An override is a decision the client-facing owner takes and
+> records; it is never one an agent may take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
