@@ -24,6 +24,13 @@ import pytest
 
 from store import STORE
 
+# ⚠ The product catalogue is HIDDEN on the shipped configuration
+# (`auth.HIDDEN_BLUEPRINTS`, 11 September 2026). This module exercises its
+# pages, so it runs with the toggle emptied — it keeps proving `product.py`
+# for the day the module is un-hidden. The hidden state itself is covered by
+# `tests/test_product_hidden.py`.
+pytestmark = pytest.mark.usefixtures("catalogue_unhidden")
+
 
 # Rules that legitimately render no app chrome, each with its reason. A page
 # added later is checked unless it is named here, and naming one is a decision

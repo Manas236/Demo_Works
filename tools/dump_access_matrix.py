@@ -63,6 +63,13 @@ MARK_ABSENT = ""
 # the same idea and a reader must be able to tell them apart at a glance.
 MARK_DERIVED_ABSENT = "–"
 
+# ⊘ — the role HOLDS the grant, kept exactly as it was, but the module is
+# switched off in `auth.HIDDEN_BLUEPRINTS` so it opens nothing for anybody, an
+# Owner included. Shown instead of `§` / `·` so the grid never presents a grant
+# nobody can use as a live one. The day the module is un-hidden the cell goes
+# back to `·` by itself — nothing about the role changed.
+MARK_HIDDEN = "⊘"
+
 
 # ── What CLIENT_CHANGES-2.md actually settles ──────────────────────────────
 #
@@ -299,8 +306,10 @@ ROLE_NOTES = {
     "purchase-manager": {
         "can": "The whole buy side: raise purchase orders and update their "
                "status, write and price draft POs, and raise and print delivery "
-               "challans. They can read schedules, the catalogue and the "
-               "specification library, and keep the address book current.",
+               "challans. They can read schedules and the specification "
+               "library, and keep the address book current. (They hold "
+               "`product.view` too, but the catalogue is hidden — see the "
+               "`⊘` mark.)",
         "cannot": "**See the wages ledger** — B4's stated restriction again. "
                   "They cannot touch the sell chain, RA bills or money "
                   "received, delete a delivery challan once raised, or "
@@ -442,6 +451,12 @@ def build() -> str:
       f"specification says nothing either way; we chose not to grant it. A "
       f"**reversible default, not a policy** — an Owner grants it at "
       f"`/roles/edit/<id>` with a checkbox, no code change and no re-login. |")
+    w(f"| `{MARK_HIDDEN}` | **Module hidden.** The role holds this grant, kept "
+      f"exactly as it was, but the module is switched off in "
+      f"`auth.HIDDEN_BLUEPRINTS` and **opens nothing for anybody, an Owner "
+      f"included**. `/roles` draws the box disabled and a save cannot add or "
+      f"remove it. Un-hiding the module is one line in `auth.py`; every cell "
+      f"then reads as it did before. |")
     w("")
     w("Every derived cell is a question for the client, and none of them is "
       "expensive to change: an Owner reassigns any of it with checkboxes at "
@@ -460,6 +475,7 @@ def build() -> str:
     header = "| Permission | " + " | ".join(roles[s][0] for s in slugs) + " |"
     divider = "|---|" + "|".join([":-:"] * len(slugs)) + "|"
 
+    hidden = auth.hidden_permissions()
     for group, perms in auth._permission_groups():
         w(f"### {group}")
         w("")
@@ -470,7 +486,9 @@ def build() -> str:
             for slug in slugs:
                 held = pid in roles[slug][1]
                 key = (slug, pid)
-                if held:
+                if held and pid in hidden:
+                    cells.append(MARK_HIDDEN)
+                elif held:
                     cells.append(MARK_SPEC if key in SPEC_BACKED else MARK_DERIVED)
                 elif key in SPEC_REQUIRES_ABSENT:
                     cells.append(MARK_SPEC)
@@ -478,7 +496,8 @@ def build() -> str:
                     cells.append(MARK_DERIVED_ABSENT)
                 else:
                     cells.append(MARK_ABSENT)
-            w(f"| {label}<br/>`{pid}` | " + " | ".join(cells) + " |")
+            tag = f" {MARK_HIDDEN} *module hidden*" if pid in hidden else ""
+            w(f"| {label}{tag}<br/>`{pid}` | " + " | ".join(cells) + " |")
         w("")
 
     totals = "| **Total permissions held** | " + " | ".join(
@@ -601,6 +620,16 @@ def build() -> str:
     w(f"- **Any signed-in user, no permission needed:** "
       f"{', '.join(f'`{e}`' for e in authed)}.")
     w("")
+    hidden_eps = sorted(e for e in auth.ROUTE_PERMISSIONS if auth.is_hidden_endpoint(e))
+    if hidden_eps:
+        w(f"**Hidden modules — `auth.HIDDEN_BLUEPRINTS = "
+          f"{sorted(auth.HIDDEN_BLUEPRINTS)!r}`.** These endpoints are classified "
+          f"as shown above and are **refused to everybody, an Owner included**, "
+          f"until the module is switched back on: "
+          f"{', '.join(f'`{e}`' for e in hidden_eps)}. The permissions that "
+          f"gate them (`{MARK_HIDDEN}` in the grid) are held exactly as they "
+          f"were and grant nothing while the module is hidden.")
+        w("")
     w("**Anything not in the registry is refused to everybody, including an "
       "Owner.** That is the design: a page added later is unreachable until "
       "somebody classifies it, rather than being open until somebody notices.")

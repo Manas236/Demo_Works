@@ -68,6 +68,13 @@ import branding as B
 import test_entity_fallbacks as EF
 from store import STORE
 
+# ⚠ The product catalogue is HIDDEN on the shipped configuration
+# (`auth.HIDDEN_BLUEPRINTS`, 11 September 2026). This module exercises its
+# pages, so it runs with the toggle emptied — it keeps proving `product.py`
+# for the day the module is un-hidden. The hidden state itself is covered by
+# `tests/test_product_hidden.py`.
+pytestmark = pytest.mark.usefixtures("catalogue_unhidden")
+
 
 # ── The payloads ───────────────────────────────────────────────────────────
 #

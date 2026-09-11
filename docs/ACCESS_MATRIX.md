@@ -23,6 +23,7 @@ This grid has **553 cells**. **52** of them can be traced to a line of the speci
 | *(blank)* | The role does not hold this permission. |
 | `§` *on a blank cell* | The specification requires this to be **withheld**. Shown so a deliberate exclusion is not mistaken for an oversight. |
 | `–` | **Withheld by our derivation.** The specification says nothing either way; we chose not to grant it. A **reversible default, not a policy** — an Owner grants it at `/roles/edit/<id>` with a checkbox, no code change and no re-login. |
+| `⊘` | **Module hidden.** The role holds this grant, kept exactly as it was, but the module is switched off in `auth.HIDDEN_BLUEPRINTS` and **opens nothing for anybody, an Owner included**. `/roles` draws the box disabled and a save cannot add or remove it. Un-hiding the module is one line in `auth.py`; every cell then reads as it did before. |
 
 Every derived cell is a question for the client, and none of them is expensive to change: an Owner reassigns any of it with checkboxes at `/roles`, with no deployment and no developer.
 
@@ -149,9 +150,9 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Add a specification<br/>`spec.create` | · | · | · |  |  |  |  |
 | Edit a specification<br/>`spec.edit` | · | · | · |  |  |  |  |
 | Delete a specification<br/>`spec.delete` | · | · |  |  |  |  |  |
-| View the product catalogue<br/>`product.view` | · | · | · |  | · | · |  |
-| Add a product<br/>`product.create` | · | · |  |  |  |  |  |
-| Delete a product<br/>`product.delete` | · | · |  |  |  |  |  |
+| View the product catalogue ⊘ *module hidden*<br/>`product.view` | ⊘ | ⊘ | ⊘ |  | ⊘ | ⊘ |  |
+| Add a product ⊘ *module hidden*<br/>`product.create` | ⊘ | ⊘ |  |  |  |  |  |
+| Delete a product ⊘ *module hidden*<br/>`product.delete` | ⊘ | ⊘ |  |  |  |  |  |
 | View the address book<br/>`address.view` | · | · | · | · | · | · |  |
 | Add an address<br/>`address.create` | · | · | · |  | · | · |  |
 | Edit an address<br/>`address.edit` | · | · | · |  | · | · |  |
@@ -300,7 +301,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 *20 of 79 permissions.*
 
-**What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules, the catalogue and the specification library, and keep the address book current.
+**What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
 
 **What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction again. They cannot touch the sell chain, RA bills or money received, delete a delivery challan once raised, or administer users.
 
@@ -416,6 +417,8 @@ Two endpoint classes carry no permission at all:
 
 - **Reachable with no account at all:** `auth.login`, `auth.setup`, `static`. `auth.setup` is public only while no user exists and refuses — GET and POST both — the moment one does.
 - **Any signed-in user, no permission needed:** `auth.account`, `auth.logout`.
+
+**Hidden modules — `auth.HIDDEN_BLUEPRINTS = ['product']`.** These endpoints are classified as shown above and are **refused to everybody, an Owner included**, until the module is switched back on: `product.add_product`, `product.delete_product`, `product.list_products`, `product.view_product`. The permissions that gate them (`⊘` in the grid) are held exactly as they were and grant nothing while the module is hidden.
 
 **Anything not in the registry is refused to everybody, including an Owner.** That is the design: a page added later is unreachable until somebody classifies it, rather than being open until somebody notices.
 

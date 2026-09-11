@@ -449,6 +449,63 @@ def _permission_groups() -> list:
 PUBLIC = "__public__"                # reachable with no session at all
 AUTHENTICATED = "__authenticated__"  # any logged-in user, no permission needed
 
+# ── Hidden blueprints — a module switched OFF for everybody ──────────────────
+#
+# A blueprint named here is refused by `_gate()` for **everyone, an Owner
+# included**, and `can_reach()` answers False for it so every card and link
+# vanishes. Its permissions and its registry rows are NOT touched: they stay in
+# `PERMISSIONS`, they stay in `BUILTIN_ROLES`, and every stored role keeps
+# exactly the grants it had. That is the whole point of a toggle rather than a
+# deletion — **un-hiding is one line here**, weeks from now, with no revert
+# spread across the registry, the access matrix and a pile of tests, and every
+# role's grants come back precisely as they were.
+#
+# ⚠ **It is a hide, not a permission.** While a module is hidden its permissions
+#   gate nothing: `/roles` renders their checkboxes disabled and labelled
+#   *module hidden*, and a POST can neither add nor remove one — the stored
+#   value is carried through untouched (`_merge_hidden_grants()`), so the day
+#   the module comes back nobody has to remember who held what.
+#
+# The product catalogue was hidden on 11 September 2026 by the client-facing
+# owner, on the ground that the twelve seeded items may have nothing to do with
+# the client and he is not sure — CLIENT_CHANGES.md §0, the twenty-seventh
+# block. `dashboard._metrics()` and `purchase._product_options()` read the same
+# toggle, so nothing draws a catalogue item or a catalogue count while it is
+# hidden. Existing quotations, proformas, tax invoices and purchase orders keep
+# their catalogue lines — those are snapshots.
+HIDDEN_BLUEPRINTS = {"product"}
+
+
+def blueprint_hidden(name: str) -> bool:
+    """Is this blueprint switched off? The one reader every surface uses."""
+    return name in HIDDEN_BLUEPRINTS
+
+
+def is_hidden_endpoint(endpoint) -> bool:
+    """`product.list_products` → is the `product` blueprint hidden?"""
+    if not endpoint:
+        return False
+    return blueprint_hidden(endpoint.split(".", 1)[0])
+
+
+def hidden_permissions() -> set:
+    """
+    Permission ids that gate **nothing reachable** while the toggle stands —
+    every endpoint they classify sits in a hidden blueprint.
+
+    Derived from the registry rather than listed, so a permission whose routes
+    are split across a hidden and a visible blueprint stays live: hiding it
+    would take a reachable page with it.
+    """
+    gated: dict = {}
+    for endpoint, perm in ROUTE_PERMISSIONS.items():
+        if perm in (PUBLIC, AUTHENTICATED):
+            continue
+        gated.setdefault(perm, []).append(endpoint)
+    return {perm for perm, endpoints in gated.items()
+            if all(is_hidden_endpoint(e) for e in endpoints)}
+
+
 ROUTE_PERMISSIONS = {
     # ── Public ───────────────────────────────────────────────────────────────
     # `/setup` is public *conditionally*: it renders only while `users` is
@@ -1197,7 +1254,13 @@ def _gate():
             "this page, including an Owner. It needs an entry in "
             "<code>auth.ROUTE_PERMISSIONS</code>."), 403
 
-    if required == PUBLIC:
+    # A hidden blueprint beats PUBLIC: a switched-off module is off for a
+    # stranger as much as for an Owner. The stranger still gets the ordinary
+    # login bounce below rather than this page, because a refusal page that
+    # names a module tells somebody with no session what is installed.
+    hidden = is_hidden_endpoint(endpoint)
+
+    if required == PUBLIC and not hidden:
         return None
 
     user = current_user()
@@ -1208,6 +1271,18 @@ def _gate():
             return redirect(url_for("auth.setup"))
         _log_refusal(None, endpoint, required, "no session")
         return redirect(url_for("auth.login", next=request.full_path.rstrip("?")))
+
+    if hidden:
+        # Refused BEFORE the permission is consulted, so an Owner holding every
+        # permission is refused exactly as everybody else is. Nothing about
+        # the user's grants is changed by this; see HIDDEN_BLUEPRINTS.
+        _log_refusal(user, endpoint, required, "blueprint hidden")
+        return _refusal_page(
+            "This module is switched off",
+            "It has been hidden by configuration "
+            "(<code>auth.HIDDEN_BLUEPRINTS</code>) and nobody can reach it, "
+            "an Owner included, until it is switched back on. Your roles and "
+            "their permissions are unchanged."), 403
 
     if required == AUTHENTICATED:
         return None
@@ -1251,11 +1326,14 @@ def can_reach(endpoint: str, user=None) -> bool:
     required = ROUTE_PERMISSIONS.get(endpoint)
     if required is None:
         return False
-    if required == PUBLIC:
+    hidden = is_hidden_endpoint(endpoint)
+    if required == PUBLIC and not hidden:
         return True
 
     user = current_user() if user is None else user
     if user is None:
+        return False
+    if hidden:
         return False
     if required == AUTHENTICATED:
         return True
@@ -1394,6 +1472,8 @@ AUTH_ADMIN_STYLES = """
   }
   .perm-grid label { font-size: .85rem; display: flex; gap: .45rem; align-items: baseline; }
   .perm-grid code { font-size: .74rem; color: #8b93a1; }
+  .perm-grid label.perm-hidden { opacity: .55; cursor: not-allowed; }
+  .perm-grid label.perm-hidden em { color: #8b93a1; font-size: .78rem; }
   .auth-form label.fld {
     display: block; font-size: .78rem; font-weight: 600; margin: .9rem 0 .3rem;
     text-transform: uppercase; letter-spacing: .03em;
@@ -2198,11 +2278,25 @@ def list_roles():
 
 def _permission_checkboxes(selected) -> str:
     picked = set(selected or [])
+    hidden = hidden_permissions()
     blocks = []
     for group, perms in _permission_groups():
         boxes = []
         for pid, label in perms:
             mark = " checked" if pid in picked else ""
+            if pid in hidden:
+                # The module is switched off (HIDDEN_BLUEPRINTS). The box is
+                # drawn in its stored state and DISABLED, so the page does not
+                # offer a grant nobody can use. A disabled box posts nothing —
+                # which is exactly why the stored value is carried through by
+                # `_merge_hidden_grants()` on save rather than read off the
+                # form; otherwise every save of a role would silently drop it.
+                boxes.append(f'<label class="perm-hidden" title="This module is '
+                             f'switched off; the grant is kept as it is">'
+                             f'<input type="checkbox" disabled{mark}/>'
+                             f'<span>{_esc(label)} <em>&mdash; module hidden</em>'
+                             f'<br/><code>{_esc(pid)}</code></span></label>')
+                continue
             boxes.append(f'<label><input type="checkbox" name="permissions" '
                          f'value="{_esc(pid)}"{mark}/>'
                          f'<span>{_esc(label)}<br/><code>{_esc(pid)}</code></span></label>')
@@ -2218,8 +2312,33 @@ def _posted_permissions() -> list:
     The client bundles permissions; the client does not mint them. Anything
     posted that is not a key of `PERMISSIONS` is dropped rather than stored —
     a stored typo grants nothing and is invisible on the page that stored it.
+
+    ⚠ A permission of a HIDDEN module is dropped here too, whatever was posted:
+    the editor draws it disabled, and a hand-made POST must not be able to
+    confer a grant the page refuses to offer. `_merge_hidden_grants()` is the
+    other half — the stored value survives the save untouched.
     """
-    return sorted(p for p in request.form.getlist("permissions") if p in PERMISSIONS)
+    hidden = hidden_permissions()
+    return sorted(p for p in request.form.getlist("permissions")
+                  if p in PERMISSIONS and p not in hidden)
+
+
+def _merge_hidden_grants(posted: list, stored) -> list:
+    """
+    The permissions a role should hold after a save: what was posted, plus
+    whatever it ALREADY held for a hidden module.
+
+    While a module is hidden its grants can be neither added nor removed
+    through the editor — they are frozen exactly as they stood, so that
+    un-hiding it (one line in HIDDEN_BLUEPRINTS) brings every role back
+    precisely as it was. A new role starts with none, because it never held
+    any.
+    """
+    hidden = hidden_permissions()
+    kept = {p for p in (stored or []) if p in hidden}
+    # `_posted_permissions()` already drops a hidden id; dropping it again
+    # here keeps the rule whole in one function rather than split across two.
+    return sorted((set(posted) - hidden) | kept)
 
 
 @auth_bp.route("/roles/create", methods=["GET", "POST"])
@@ -2267,7 +2386,10 @@ def edit_role(id):
     error = ""
     perms = role.get("permissions") or []
     if request.method == "POST":
-        perms = _posted_permissions()
+        # Hidden-module grants ride through from the stored record: the form
+        # cannot post them (disabled boxes post nothing) and must not be able
+        # to drop them.
+        perms = _merge_hidden_grants(_posted_permissions(), role.get("permissions"))
         error = _role_edit_refusal(role, perms)
         if not error:
             role["permissions"] = perms

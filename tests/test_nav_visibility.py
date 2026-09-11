@@ -424,10 +424,16 @@ def test_the_nav_offers_exactly_what_the_role_may_reach(client, slug):
 
 
 @pytest.mark.parametrize("slug", ROLES)
+@pytest.mark.usefixtures("catalogue_unhidden")
 def test_the_launcher_offers_exactly_what_the_role_may_reach(client, slug):
     """
     Sixteen cards, seven roles. HR sees two of them, which is what B4's one
     stated restriction looks like from the dashboard.
+
+    ⚠ Runs with the product catalogue UN-hidden (`catalogue_unhidden`), so
+    `EXPECTED_CARDS` keeps describing what every role is granted. The shipped
+    configuration hides that one card from everybody — asserted, per role, in
+    `tests/test_product_hidden.py`.
     """
     titles = _card_titles(_dashboard(client, slug))
     assert titles == EXPECTED_CARDS[slug], (
@@ -523,10 +529,15 @@ def test_every_hidden_card_is_still_refused_when_hit_directly(client, slug):
 
 
 @pytest.mark.parametrize("slug", ROLES)
+@pytest.mark.usefixtures("catalogue_unhidden")
 def test_every_visible_card_actually_opens(client, slug):
     """
     The control. Without it, a role locked out of everything would score a
     clean pass on the test above.
+
+    Same fixture as the launcher test above, for the same reason: the shipped
+    configuration hides the catalogue card, and the hidden state has its own
+    control in `tests/test_product_hidden.py`.
     """
     from flask import url_for
 

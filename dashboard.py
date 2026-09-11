@@ -1765,8 +1765,18 @@ def _metrics():
     state, no mutation beyond pipeline's own idempotent ensure_fields().
     """
     quotations = STORE["quotations"]
-    products   = STORE["products"]
     today      = date.today()
+
+    # The product catalogue reads `auth.HIDDEN_BLUEPRINTS` (11 September 2026):
+    # while it is hidden nothing on this page counts a catalogue item, so the
+    # `p_*` figures are nil rather than a tally of records nobody can open.
+    # The card itself is already dropped by `_card()` through `can_reach()`;
+    # this is the same toggle read at the figure rather than at the link.
+    # Imported here, not at module level — auth.py is the bottom of the graph
+    # and this module is imported by every other, but the function-body import
+    # is the escape hatch `_card()` and `index()` already use.
+    import auth
+    products = {} if auth.blueprint_hidden("product") else STORE["products"]
 
     s = P.summarize(quotations)          # ensure_fields() runs inside
 

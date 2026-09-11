@@ -352,3 +352,31 @@ def annexure_xlsx():
 @pytest.fixture()
 def fixtures_dir():
     return REPO
+
+
+@pytest.fixture()
+def catalogue_unhidden():
+    """
+    Empty `auth.HIDDEN_BLUEPRINTS` for one test, and put it back afterwards.
+
+    The product catalogue is hidden from everybody on the shipped
+    configuration (11 September 2026, CLIENT_CHANGES.md §0 twenty-seventh
+    block) — `product.py` itself is untouched and fully frozen. The tests that
+    exercise its pages run under this fixture so they keep proving the module
+    works for the day it is un-hidden, rather than being rewritten into 403
+    checks that prove nothing about it. `tests/test_product_hidden.py` covers
+    the hidden state on its own.
+
+    The set is mutated in place, never rebound, so every reader that goes
+    through `auth.blueprint_hidden()` sees the change — and the teardown
+    restores the exact contents rather than assuming what they were.
+    """
+    import auth
+
+    saved = set(auth.HIDDEN_BLUEPRINTS)
+    auth.HIDDEN_BLUEPRINTS.clear()
+    try:
+        yield
+    finally:
+        auth.HIDDEN_BLUEPRINTS.clear()
+        auth.HIDDEN_BLUEPRINTS.update(saved)
