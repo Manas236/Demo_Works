@@ -218,8 +218,18 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,432 passed / 2 skipped** on 11 September 2026, verified by
+The baseline is **2,650 passed / 2 skipped** on 12 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The pass of **12 September 2026** — the quotation source following the
+catalogue switch, Supply only, gap 38 closed and the approval ladder switched
+off in code — added **218 passed and 0 skipped**, reconciling per change and
+per file: `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py`
+(**+2**), `tests/test_import_directions.py` (**+12**), `tests/test_quotation_spec_picker.py`
+(**+7**), `tests/test_po_gap38.py` (**28**, new), `tests/test_approvals_off.py`
+(**148**, new), `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3
+= **218** — and moved **no bar**. It read **2,432 / 2** at the start of that
+pass, re-measured and matching. 2,432 + 218 = 2,650.)*
 
 *(The pass of **11 September 2026** — the catalogue hidden behind a toggle and
 the quotation written from the spec library — added **88 passed and 0
@@ -489,6 +499,13 @@ holds the diff since `eff0034` to exactly those functions:
   specification library. The product catalogue is **hidden from everybody**
   the same day (`auth.HIDDEN_BLUEPRINTS`, [ABOUT.md §2g](ABOUT.md)) — and
   `product.py` was **not** edited for it: the hide lives in `auth.py`.
+- **12 September 2026** — the **same three functions, and no fourth**: the
+  product path was restored from `1d7725a` and each function now **branches
+  on the switch** (`auth.blueprint_hidden("product")`, by function-body
+  import), reaching the new leaf `specpick.py` while the catalogue is hidden
+  and rendering the `1d7725a` page **byte for byte** when it is not
+  (`tests/test_quotation_switch.py` holds a golden captured from that commit).
+  The library picker is **Supply only**.
 
 **`product.py` has never been unfrozen and still is not.** A fifth
 `quotation.py` function needs a fifth §0 block naming it; the test is what

@@ -10,10 +10,33 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 11 September 2026 (**the catalogue is
-HIDDEN and the quotation is written from the SPEC LIBRARY** — the owner's own
-decision, CLIENT_CHANGES.md §0 twenty-seventh block; not a CC-2 item, no
-charge, and the board does not move: **19 of 20 BUILT · 1 BLOCKED**).
+**As of:** branch `antigravity-dev`, 12 September 2026 (**the four-change
+pass** — the quotation source follows the catalogue switch, Supply only, gap
+38 closed, and **the approval ladder switched OFF in code** — the owner's own
+decisions, CLIENT_CHANGES.md §0 twenty-eighth block; changes 1–3 are not CC-2
+items and carry no charge; change 4 records 3B.05–3B.07 deferred under
+MG/SF/2026-06 as sequencing with the ladder returning after a trial period;
+**built code stays and the board does not move: 19 of 20 BUILT · 1 BLOCKED**).
+
+- **12 September 2026 — four changes, six commits, pushed.** `62ea74c` the §0
+  block alone and first; `c999afe` **change 1**: `/quotation/create` follows
+  `auth.HIDDEN_BLUEPRINTS` — hidden → the spec library through the new leaf
+  `specpick.py`, emptied → the product picker **byte-identical to `1d7725a`**
+  (a golden captured from that commit's own code, matching); `4086f82`
+  **change 2**: SUPPLY ONLY — no installation leg on a quotation, §7 gap 37
+  closed; `367dc81` **change 3**: §7 gap 38 closed — an order of extra lines
+  alone passes `purchase._parse_lines()` always, and the item rows read the
+  switch; `f89dff3` **change 4**: `approval.LADDER_ON = False`, read through
+  `ladder_on()`, every reader following it, the measurement cap still binding
+  on a saved sheet, every record raised while off stamped at create, the
+  access matrix marking the `*.approve` grants `⊗`. ABOUT.md §2g, §2i, §2j,
+  §5 `/quotation` and `/purchase`, §7 gaps 37 and 38. **The exact lines to
+  flip:** `LADDER_ON = False` in `approval.py`; `HIDDEN_BLUEPRINTS =
+  {"product"}` in `auth.py`.
+
+*(The line this replaces read: 11 September 2026, the catalogue is HIDDEN and
+the quotation is written from the SPEC LIBRARY — the owner's own decision; not
+a CC-2 item, no charge, and the board does not move.)*
 
 - **11 September 2026 — the product catalogue hidden behind
   `auth.HIDDEN_BLUEPRINTS`, and `quotation.py` unfrozen narrowly for three
@@ -207,8 +230,8 @@ The entries below are therefore **not contiguous**:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **2,432 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
-configuration — measured on 11 September 2026 by running the suite in it. ⚠ *(The 11 September pass's own **+88** reconciles per file: `tests/test_product_hidden.py` (**40**, new) and `tests/test_quotation_spec_picker.py` (**48**, new). 40+48 = **88**. ⚠ It read **2,344 / 2** at the start of that pass, measured — **61 above the 2,283 recorded here**, because the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no document. 2,344 + 88 = 2,432.)* ⚠ *(The **SEVENTEENTH** pass's own **+48** reconciles per file: `tests/test_boq_project_link.py` (**17**, new) and `tests/test_qty_float_precision.py` (**31**, new). 17+31 = **48**. It read **2,235 / 2** at the start of that pass, re-measured rather than quoted, matching the sixteenth exactly.)* ⚠ *(This pass's own **+123** reconciles per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. It read **2,081 / 2** at the start of this pass, re-measured rather than quoted, matching the fourteenth exactly. The fourteenth pass's own **+47** is one new file, `tests/test_dashboard_boq_ra.py` (47) — the dashboard's BOQ/RA visual cues — and **no existing test file changed its count**. It read **2,034 / 2** at the start of this pass, re-measured rather than quoted, matching the thirteenth pass exactly. The thirteenth pass's own **+34** was: `tests/test_backup_attachments.py` (13) and `tests/test_ra_tax_invoice_ref.py` (18), plus **+3** in `tests/test_merged_ra.py` (33→36). 13+18+3 = 34. It read **2,000 / 2** at the start of this pass, re-measured rather than quoted, matching the twelfth pass exactly. It read **1,897 / 2** until the eleventh
+**Tests:** **2,650 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+configuration — measured on 12 September 2026 by running the suite in it. ⚠ *(The 12 September pass's own **+218** reconciles per change and per file: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**), `tests/test_import_directions.py` (**+12**); change 2 `tests/test_quotation_spec_picker.py` (**+7**); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new), `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. It read **2,432 / 2** at the start of that pass, re-measured rather than quoted, matching the 11 September figure exactly.)* ⚠ *(The 11 September pass's own **+88** reconciles per file: `tests/test_product_hidden.py` (**40**, new) and `tests/test_quotation_spec_picker.py` (**48**, new). 40+48 = **88**. ⚠ It read **2,344 / 2** at the start of that pass, measured — **61 above the 2,283 recorded here**, because the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no document. 2,344 + 88 = 2,432.)* ⚠ *(The **SEVENTEENTH** pass's own **+48** reconciles per file: `tests/test_boq_project_link.py` (**17**, new) and `tests/test_qty_float_precision.py` (**31**, new). 17+31 = **48**. It read **2,235 / 2** at the start of that pass, re-measured rather than quoted, matching the sixteenth exactly.)* ⚠ *(This pass's own **+123** reconciles per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. It read **2,081 / 2** at the start of this pass, re-measured rather than quoted, matching the fourteenth exactly. The fourteenth pass's own **+47** is one new file, `tests/test_dashboard_boq_ra.py` (47) — the dashboard's BOQ/RA visual cues — and **no existing test file changed its count**. It read **2,034 / 2** at the start of this pass, re-measured rather than quoted, matching the thirteenth pass exactly. The thirteenth pass's own **+34** was: `tests/test_backup_attachments.py` (13) and `tests/test_ra_tax_invoice_ref.py` (18), plus **+3** in `tests/test_merged_ra.py` (33→36). 13+18+3 = 34. It read **2,000 / 2** at the start of this pass, re-measured rather than quoted, matching the twelfth pass exactly. It read **1,897 / 2** until the eleventh
 edition — the tenth pass's figure, measured the same day and re-measured at the
 start of the eleventh rather than quoted, matching exactly. This pass's own +30 is: `tests/test_backfill_marking_projects.py` (15), plus +14 in `tests/test_attendance.py` (44→58) and +1 parametrised case in `tests/test_import_directions.py` (`attendance → project`). The tenth pass's +50 was: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
 **92**: `tests/test_address_guards.py` (42), `tests/test_project_site.py` (24)
@@ -247,7 +270,8 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **2,433 passed / 4 skipped** against the same commit, and read
+reports **2,651 passed / 4 skipped** against the same commit, and read
+**2,433 / 4** at the start of the 12 September pass (measured, matching) and
 **2,345 / 4** at the start of the 11 September pass (measured; 61 above the
 2,284 recorded, for the reason given above) and **2,284 / 4** before that,
 **2,236 / 4** before the seventeenth pass's 48,

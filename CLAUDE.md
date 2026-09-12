@@ -46,14 +46,30 @@ Fast facts so you don't get it wrong before reading:
   record and `attendance.cost_of()` produces no figure at all. `site` on both
   those records is an **address-book picker**, and an unmatched legacy string is
   left, marked `unmapped` and reported — never fuzzy-matched. ABOUT.md §3.
-- **The product catalogue is HIDDEN from everybody, an Owner included, and a
-  quotation is written from the SPEC LIBRARY** (11 Sep 2026). The hide is one
-  line — `auth.HIDDEN_BLUEPRINTS = {"product"}` — a toggle, not a deletion:
-  permissions, registry rows and every role's grants are untouched, and
-  `product.py` was not edited. `quotation.py` is unfrozen for exactly three
-  functions (`_product_catalog_json`, `_process_selections`,
-  `create_quotation`) and nothing else; `tests/test_nav_user_chip.py` holds
+- **The product catalogue is HIDDEN from everybody, an Owner included, and
+  the quotation picker FOLLOWS that switch** (11–12 Sep 2026). The hide is
+  one line — `auth.HIDDEN_BLUEPRINTS = {"product"}` — a toggle, not a
+  deletion: permissions, registry rows and every role's grants are untouched,
+  and `product.py` was not edited. While hidden, `/quotation/create` is
+  written from the SPEC LIBRARY through the leaf `specpick.py` — **Supply
+  only, no installation leg**; empty the set and it is the product picker
+  **byte-identical to `1d7725a`** (a golden holds that). `quotation.py` is
+  unfrozen for exactly three functions (`_product_catalog_json`,
+  `_process_selections`, `create_quotation`), which branch on the switch by
+  function-body import and nothing else; `tests/test_nav_user_chip.py` holds
   that. ABOUT.md §2g and §5 `/quotation`.
+- **The APPROVAL LADDER is SWITCHED OFF in code** (12 Sep 2026) —
+  `approval.LADDER_ON = False`, read through `approval.ladder_on()` and
+  nothing else, no `/settings` control by design. Every approve/reject route
+  is refused for everyone, an Owner included; an undecided document prints
+  and downloads; a decision already taken (APPROVED / REJECTED) is never
+  overturned; every record created while off is stamped
+  `raised_while_approvals_off` at create and is never gated when the ladder
+  returns. ⚠ **The measurement cap still binds** — a saved sheet is the
+  installation ceiling (`measurement.feeds_ceiling()`), and `ra.py`'s
+  grandfather rule was not touched. Built code stays; B6, B7 and C2 stay
+  BUILT. The ladder-proving tests run ON through `conftest.ladder_on`;
+  `tests/test_approvals_off.py` is the OFF state. ABOUT.md §2i and §2j.
 - **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
   `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
   refused, not opened** — so a route you add is unreachable until you classify

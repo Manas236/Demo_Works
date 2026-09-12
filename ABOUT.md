@@ -91,7 +91,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 2,035 passed, 4 skipped — this is what THESE
+python -m pytest -q                     # 2,651 passed, 4 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
                                         #   ⚠ THIS FIGURE IS NOT COVERED BY
@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,433 passed, 4 skipped** | **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,432 passed, 2 skipped** | **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,651 passed, 4 skipped** | **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,650 passed, 2 skipped** | **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -371,7 +371,8 @@ Consequences you must respect when editing:
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
 | [dashboard.py](dashboard.py) | 1572 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
-| [quotation.py](quotation.py) | 2785 | Quotation form + printed document. The big one. ⚠ **The picker reads the SPEC LIBRARY from 11 September 2026** — `STORE["specs"]`, the same clauses a BOQ is written from — under a second narrow unfreeze (CLIENT_CHANGES.md §0, twenty-seventh block) covering exactly `_product_catalog_json()`, `_process_selections()` and `create_quotation()`. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
+| [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
+| [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
@@ -399,7 +400,7 @@ Consequences you must respect when editing:
 | `tools/seed_demo_scenario.py` | 404 | A coherent demo set (30 Aug 2026, fifth pass): two sites, one project each, three employees on confirmed day rates, eight markings including one absentee. `--write` / `--purge`, idempotent. ⚠ **Not a seeder** &mdash; nothing in the app imports it, a fresh install is still empty of `employees` and `attendance`, and a test fails if a module so much as names it. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. ⚠ **Those two are the ONLY settable series of the ten in this app** — the other eight are `max+1` over existing records with no control anywhere, so a go-live restarts them at `0001`. §7 gap 36, with the measured table. |
-| [auth.py](auth.py) | 1670 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). |
+| [auth.py](auth.py) | 2609 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). ⚠ **The `approval` blueprint is treated the same way while the ladder is switched off** (12 September 2026) — `blueprint_off_reason()` answers with its own reason, read from `approval.ladder_on()` through a function-body import, the five `*.approve` grants are frozen on `/roles` and marked `⊗` in the matrix (§2g, §2i). |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
@@ -419,12 +420,18 @@ app.py
  │                             │  directly and imports none of them — the one-way trick, and
  │                             │  it has to be, because five of the six import THIS module.
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
- │                             │  — and `spec.ensure_demo_specs` INSIDE
- │                             │  create_quotation() only (11 Sep 2026), the
- │                             │  arrangement the product seeder always had, so
- │                             │  the module graph gains no edge for one call.
- │                             │  Everything else it reads off STORE["specs"]
- │                             │  directly. spec.py imports nothing back.
+ │                             │  — and, INSIDE its three unfrozen functions
+ │                             │  only (12 Sep 2026): `auth`, for the one
+ │                             │  switch accessor, and `specpick`, the
+ │                             │  spec-library leaf. The freeze permits no
+ │                             │  module-level edit, so both are function-body
+ │                             │  imports; `product.ensure_demo_products` was
+ │                             │  always imported the same way, for the cycle.
+ ├─ specpick.py ───────────────┤  imports store, pipeline — and `spec.ensure_demo_specs`
+ │                             │  INSIDE ensure_seeded() only. NEVER quotation
+ │                             │  (it is reached BY it), NEVER auth (it does not
+ │                             │  read the switch), NEVER product, proforma,
+ │                             │  invoice, purchase, boq or dashboard.
  ├─ proforma.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ invoice.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, proforma
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address,
@@ -484,6 +491,11 @@ app.py
 
 pipeline.py  imports nothing from the app  ← keep it that way
 branding.py  imports nothing from the app  ← keep it that way
+approval.py  imports auth, pipeline, store — and dashboard INSIDE _decision_page()
+             only. boq.py and dashboard.py read `approval.accepted()` /
+             `approval.gated()` / `approval.ladder_on()` through FUNCTION-BODY
+             imports (12 Sep 2026), the hatch dashboard.index() and _shell()
+             use, so neither arrow joins the module-level graph.
 demo_data.py imports nothing AT ALL        ← keep it that way
 po_parts.py  imports nothing AT ALL        ← keep it that way, and see below
 auth.py      imports store, pipeline, branding — and NOTHING that prints ← §2g
@@ -1150,6 +1162,27 @@ which empties the set for one test and restores it, so they keep proving
 the hidden state — every route, every role, both verbs, nothing destroyed — and
 the un-hidden control.
 
+#### The approval blueprint, off the same way while the ladder is switched off (12 September 2026)
+
+`auth.blueprint_off_reason(name)` is what the gate, `can_reach()`, the roles
+editor and the matrix now read, and it answers with **one of two reasons**:
+`OFF_HIDDEN` for a name in `HIDDEN_BLUEPRINTS`, `OFF_APPROVALS` for the
+`approval` blueprint while `approval.ladder_on()` is False (§2i). The eight
+approve/reject routes are then refused **for everyone, an Owner included,
+before the permission is consulted** — a signed-in user gets a page saying
+approvals are switched off, a stranger the ordinary login bounce, and the
+refusal is logged as `approvals switched off`. The five `*.approve`
+permissions are `switched_off_permissions()`, derived from the registry
+exactly as `hidden_permissions()` is; `frozen_permissions()` is the union, and
+it is the one set `/roles` draws disabled (labelled *switched off* rather than
+*module hidden*), `_posted_permissions()` drops, and `_merge_hidden_grants()`
+carries through. `docs/ACCESS_MATRIX.md` marks them **`⊗`**, distinct from
+`⊘`, because a hidden module and a deferred ladder are two decisions with two
+ways back. ⚠ `auth.py` reads the switch through a **function-body import** of
+`approval.py` — which imports this module at module level — the `_shell()`
+hatch; its module-level whitelist is unchanged. `tests/test_approvals_off.py`
+proves all of it for all seven roles, both verbs, every document.
+
 
 ### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
 
@@ -1257,6 +1290,22 @@ measurement, so an empty answer can only describe a project that already
 existed. `tests/test_measurement_pin.py` is what pins it and is the point of the
 rule.
 
+⚠ **"Approved" is `measurement.feeds_ceiling()`'s reading from 12 September
+2026, and the branch is on measurement's side.** With the approval ladder
+switched off (§2i) every saved sheet that is not rejected feeds the ceiling;
+with it on, an approved sheet does and so does a sheet raised while it was
+off. `feeds_ceiling()` is `approval.accepted()` applied to a sheet, and
+`approved_qty_by_line()` / `has_approved_measurement()` read it — so **the cap
+still binds while the ladder is off** (a claim above the saved sheet is
+refused, `tests/test_approvals_off.py`), and `ra.py`'s `{}`-means-grandfather
+path **never fires for a project that has sheets**: `{}` still means *no sheet
+that counts exists on this chain*. `ra.py` changed at two call sites only —
+the C1 refusal's wording and the `not_measured` sentence, both owned by
+`measurement.py` now — and the grandfather rule itself was not touched. On the
+live database that means the two pending sheets `SF/MS/26-27/0001` and
+`0002` **became the installation ceiling on their chains** the moment the
+switch shipped, which is the intended effect and not a side one.
+
 ⚠ **Once one approved sheet exists on a chain, a line the sheet did not measure
 has a ceiling of nil** — and it gets its **own** refusal (`not_measured`) rather
 than "0 approved", because the latter would be a lie about the schedule and
@@ -1327,6 +1376,74 @@ CC-2 **B6** and **B7**, built 29 August 2026 under the fourth override block of
 that date. One module, imported by the four document modules and importing none
 of them, so it sits beside `auth.py` at the bottom of the graph rather than
 between the documents.
+
+#### ⚠ THE LADDER IS SWITCHED OFF — in code, for a trial period (12 September 2026)
+
+`approval.LADDER_ON = False`, beside `DOCUMENTS`, read through
+`approval.ladder_on()` and nothing else — `tests/test_approvals_off.py` walks
+every module's AST to keep it that way. CLIENT_CHANGES.md §0, the
+twenty-eighth block: **3B.05–3B.07 are deferred under MG/SF/2026-06 as
+sequencing, the ladder returns after a trial period, and measurement approval
+goes off with it by the owner's own decision.** Built code stays; B6, B7 and
+C2 stay BUILT in PROGRESS.md; **no bar moves**. **Code only — there is
+deliberately no `/settings` control**: a toggle the client could reach would
+let them switch on deferred scope. **The exact line to flip is
+`LADDER_ON = False` in `approval.py`**, and nothing else changes when it is.
+
+What OFF means, reader by reader — every reader of approval state in the
+application is on this list:
+
+| reader | while OFF |
+|---|---|
+| the eight `approval.*` routes | refused at `auth._gate()` for everyone, an Owner included, before the permission is consulted; `_do_approve()` / `_do_reject()` refuse again on their own (defence in depth). **Nothing is written.** Stranger → login bounce |
+| `can_approve()` | refuses everything with `SWITCHED_OFF_NOTE`, so `actions()` draws nothing and nothing can reach `approved` or `rejected` |
+| `can_print()` — B7, and B8's download through it | an undecided record **prints and downloads**; `gated()` is False. ⚠ Checked **after** the approved / rejected branches, so a decision already taken is never overturned: approved prints as today, **rejected still refuses** as today |
+| `can_modify()` | an undecided record follows its own module's rules and nothing here — 3A.06's draft-only RA edit still holds through `ra.can_edit()`. Approved is still locked, rejected still returns to its creator |
+| `cell()` / `panel()` | nothing for an undecided record — no AWAITING chip, no ladder, no creator-unknown marker; a decided record keeps its decision on the screen |
+| `dashboard._ra_awaits_approval()` / the *RAs pending approval* tile | False for every bill; the tile is not drawn |
+| `dashboard._metrics()["ms_approved"]` / the measurement card | counts the sheets that **count** (`accepted()`), and the card says *counting toward installation claims* rather than *approved* |
+| `measurement.feeds_ceiling()` → `approved_qty_by_line()`, `has_approved_measurement()` | **every saved sheet that is not rejected counts** — see §2j; the cap binds and the `{}` path never fires for a project with sheets |
+| `ra._c1_refusal()` and `ra.overclaim_message()` | a saved sheet satisfies C1; with no sheet it still refuses. The wording is `measurement.c1_installation_message()` / `not_measured_message()` — ra.py changed at the two call sites only |
+| `boq.view_boq()`'s *+ RA · Installation* chip | drawn on a saved sheet, through `approval.accepted()` |
+| `measurement.can_delete()` | refuses to delete a saved sheet a claim rests on — while OFF a saved sheet IS the basis of a claim |
+| `auth` — the roles editor and the matrix | `*.approve` boxes disabled and labelled *switched off*, grants frozen both ways, `⊗` in the grid (§2g) |
+| `tools/e2e_chain.py` | detects the switched-off page on its first approval, skips every ladder step and says so; assertion 10b names which regime it measured |
+| the DRAFT overprint and a CANCELLED bill | print again, exactly as before B7 |
+| stored approval data | **never rewritten** — no migration, no backfill, no state change on any existing record |
+
+**Every record created while OFF is stamped.** `stamp_creator()` — the one
+place the initial approval state of a record is set, called by every create
+route — writes `raised_while_approvals_off: True` beside `created_by` while
+the ladder is off, and nothing while it is on. **Written, never inferred from
+absence** (`pre_approval_system`'s rule, and `grid_model`'s). When the switch
+goes back ON such a record is **never gated or queued** — `gated()` is False
+for it, `accepted()` True, `can_approve()` refuses it by name — and it shows a
+read-only *RAISED WHILE APPROVALS WERE OFF* mark. **A record already PENDING
+before the switch went off carries no mark and returns to pending** when the
+ladder returns; it is deliberately not stamped, because that would rewrite
+stored data. On the live database at the moment the switch shipped, measured
+from the pre-pass dump: **3** such records — `SF/PO/26-27/0003` (a Draft PO,
+one rung already climbed) and the two measurement sheets `SF/MS/26-27/0001`
+and `0002`; every other approvable record (5 charges, 7 RA bills, 1 tax
+invoice, 2 purchase orders) is grandfathered and pending, and none is
+approved or rejected. `raised_while_off_ids()` is its own named set beside
+`grandfathered_ids()`, with one writer, and
+`tests/test_approval_grandfather.py` proves it only grows while OFF.
+
+The three predicates, so the table above is one rule and not fourteen:
+
+| | |
+|---|---|
+| `gated(record)` | `ladder_on() and not raised_while_off(record)` — may it be queued, and may an undecided one be held back |
+| `accepted(record)` | rejected → never; approved or raised-while-off → always; otherwise `not ladder_on()` — does it stand, for whatever depends on it |
+| `decided(record)` | approved or rejected — a decision taken is never overturned |
+
+The existing approval, B7-gate, B8-gate and measurement-cap tests run with
+the ladder **ON** through `tests/conftest.py::ladder_on` (module-wide
+`pytestmark` in nine files, plus one B2 test in `tests/test_auth.py`), so they
+keep proving the ladder for the day it returns; nothing was rewritten into an
+OFF check. `tests/test_approvals_off.py` (148) is the OFF state, and the cap,
+the `{}` path and the stamp are each mutation-proved there.
 
 **Two questions, answered in two different places, and keeping them apart is the
 design.**
@@ -1591,12 +1708,16 @@ Groups:
   rows for printing), `to` (pre-joined multi-line address block)
 
   ⚠ **`selections` has TWO shapes and nothing reads either except the create
-  form's own re-render.** A quotation written before 11 September 2026 holds
-  catalogue picks — `{pid, qty, price, show_price, components[]}`; one written
-  after holds library picks — `{sid, vidx, leg, qty, price, show_price}`, a
-  spec id, a variant index and `supply` | `install`. No module reads the key
-  (verified by grep across every module and tool on 11 September 2026); the
-  document, the PI and the TI read `line_items`, whose shape did not move.
+  form's own re-render.** A quotation written from the product catalogue
+  holds catalogue picks — `{pid, qty, price, show_price, components[]}`; one
+  written from the specification library holds library picks — `{sid, vidx,
+  leg, qty, price, show_price}`, a spec id, a variant index and, from
+  12 September 2026, always `supply`. **Which shape a new quotation gets
+  follows the catalogue switch** (§5 `/quotation`), and a form opened under
+  one shape and posted after a flip is refused by that shape rather than
+  saved half-and-half. No module reads the key (verified by grep across every
+  module and tool on 11 September 2026); the document, the PI and the TI read
+  `line_items`, whose shape did not move.
 - **Pipeline** (added by `pipeline.ensure_fields`): `sales_stage`, `po_number`,
   `po_date`, `po_value`, `lost_reason`, `stage_history[]`
 
@@ -1613,14 +1734,15 @@ of its components. There is no recursive expansion at quotation time — the
 browser-side JS flattens the tree before POST. (`integration.py` documents a
 recursive `expand_product()` engine; **that engine does not exist**. See §8.)
 
-⚠ **From 11 September 2026 only depth 0 is WRITTEN.** A quotation line comes
-from the specification library, and a clause has no bill of materials, so
-there is nothing to indent. A new line is `type: "item"`, its `name` reads
-*Supply of …* or *Installation of …*, its `part_no` is the spec **code**, and
-its `hsn` is the clause's `supply_hsn` on a supply line and its `install_sac`
-on an installation line — never both on one row. Every quotation written
-before that date keeps whatever depth-1 rows it has. §5 `/quotation` has the
-whole mapping.
+⚠ **While the catalogue is hidden only depth 0 is WRITTEN.** A quotation line
+then comes from the specification library, and a clause has no bill of
+materials, so there is nothing to indent. A new line is `type: "item"`, its
+`name` reads *Supply of …*, its `part_no` is the spec **code**, and its `hsn`
+is the clause's `supply_hsn` — **there is no installation line on a quotation
+from 12 September 2026** (Supply only, §5 `/quotation`). Every quotation
+written from the catalogue, before 11 September 2026 or with the switch
+emptied since, keeps or gets whatever depth-1 rows the product picker writes.
+§5 `/quotation` has the whole mapping.
 
 ### Proforma Invoice
 
@@ -3401,6 +3523,10 @@ only module that reads or writes any of it.
 {...,                                # the document's own fields, unchanged
  "created_by": "<user id>" | None,   # WHO RAISED IT — captured at the write site
  "pre_approval_system": True,        # ONLY on a record the migration marked
+ "raised_while_approvals_off": True, # ONLY on a record created while the ladder
+                                     #   was switched off (12 Sep 2026, §2i) —
+                                     #   written by stamp_creator() at create,
+                                     #   never inferred from absence
 
  # The ladder. Absent on a record nobody has acted on, which reads as PENDING.
  "approval_status": "pending" | "approved" | "rejected",
@@ -3447,6 +3573,13 @@ The three states, and why they are three and not two:
 | a user id | absent | ordinary: this person raised it, and may not approve it |
 | `None` | `True` | **grandfathered** — predates the system, counted, closed |
 | absent / `""` | absent | creator unknown (a fixture, a seed). Not in the set |
+
+And a fourth, orthogonal to those three (12 September 2026, §2i):
+
+| `raised_while_approvals_off` | means |
+|---|---|
+| `True` | raised while the ladder was switched off. **Never on the ladder** — once the ladder returns it is not gated, not queued, refused by `can_approve()` by name, and marked on screen. Its own named set, `raised_while_off_ids()`, with one writer |
+| absent | raised while the ladder was on, or before it was switched off — on the ladder whenever the ladder is |
 
 Collapsing rows 2 and 3 is the mistake this shape exists to prevent. A
 grandfathered record is a member of a set somebody counted; a record with a
@@ -4493,42 +4626,77 @@ address type; `address.picker_payload()` embeds the whole book as JSON. The JS
 round trip. It collapses `line1 + line2 + landmark` into the one address
 textarea, and picking a *shipping* address auto-unticks "same as billing".
 
-**The item picker reads the SPECIFICATION LIBRARY (11 September 2026).** ⚠ It
-read the product catalogue until then; the catalogue is hidden from everybody
-(§2g) and the three functions this needed — `_product_catalog_json()`,
-`_process_selections()` and `create_quotation()` — were unfrozen narrowly for
-it under CLIENT_CHANGES.md §0's twenty-seventh block. Nothing else in this
-file moved, and the freeze test holds that.
+**The item picker FOLLOWS THE CATALOGUE SWITCH (12 September 2026).** While
+`"product"` is in `auth.HIDDEN_BLUEPRINTS` — the shipped state — the page is
+written from the SPECIFICATION LIBRARY through the leaf `specpick.py`; the
+moment the switch is emptied it is **the product picker exactly as it stood
+at `1d7725a`, byte for byte**. That is measured, not asserted:
+`tests/test_quotation_switch.py` holds a golden captured by running its own
+fixture in a `git worktree` of `1d7725a` (whole page `b467ca97ab34d077`,
+87,068 bytes, ten blocks), and the restored page matches it. The switch is
+read through `auth.blueprint_hidden()` — the one accessor — inside the three
+narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`,
+`create_quotation()`) and nowhere else, by function-body import, because the
+freeze permits no edit elsewhere in the file. The library's own code — the
+embed, the POST rebuild, the GST guard — lives in `specpick.py`; the twelve
+rows in `tests/test_import_directions.py` pin the arrow one-way.
 
-The controls are **Spec → Size / variant → Quote → Qty → Add**. The spec list
-is grouped by category and carries the spec id; the size control is filled by
-the JS from the embedded library (`_product_catalog_json()` — **the name is
-kept** because the §0 block, the freeze test and §7.9e cite it) and is disabled
-for an unsized clause; **Quote** is *Supply + Installation* (the default),
-*Supply only* or *Installation only*. A vanilla-JS model in `SEL`, rendered by
-`render()` / `renderRoot()`; `saveJSON()` serialises it into the hidden
-`<input name="selections_json">`.
+**The page is ONE template with eight seams.** `create_quotation()` holds the
+`1d7725a` template with eight placeholders where the two pickers differ — the
+item section, the picker's JavaScript in three pieces, the demo pick, the
+restore loop and two messages. In the product mode they are filled with the
+`1d7725a` text held inside that function; in the library mode from
+`specpick.page_pieces()`. Everything that is not picker-specific — the form,
+the address book, the tax panel, the shared JavaScript — exists once, so the
+two modes cannot drift from each other in it. ⚠ The JavaScript fills carry
+**single** braces: `.format()` inserts a value verbatim and never re-parses
+it, while the template's own JS doubles every brace.
+
+⚠ **A form opened in one mode and submitted after a flip is REFUSED with a
+message, never saved half-and-half.** The page carries no mode field — it
+could not, since the OFF page must stay `1d7725a`'s bytes — so the payload's
+own shape is the tell: a catalogue pick carries `pid`, a library pick `sid`,
+and a payload shaped for the other library refuses the whole POST and names
+what happened. Quotations created in either mode view, print and raise a PI
+and a TI with the switch in either state; the line-item shape is one shape.
+
+**The library picker is SUPPLY ONLY (12 September 2026, change 2).** The
+controls are **Spec → Size / variant → Qty → Add** — the *Quote* leg
+selector the 11 September picker carried is gone, and so are installation
+lines. This chain is quotation → proforma → tax invoice for **goods going
+out**; installation is billed through BOQ → RA. The spec list is grouped by
+category and carries the spec id; the size control is filled by the JS from
+the embedded library (`_product_catalog_json()` — **the name is kept** because
+the §0 blocks, the freeze test and §7.9e cite it) and is disabled for an
+unsized clause. A vanilla-JS model in `SEL`, rendered by `render()` /
+`renderRoot()`; `saveJSON()` serialises it into the hidden
+`<input name="selections_json">`. The embed carries the supply side only —
+no SAC, no install rate, no install GST rate — because nothing on the page
+reads them.
 
 | quotation line | from the library |
 |---|---|
-| `name` | *Supply of <title> — <variant>* or *Installation of <title> — <variant>* |
+| `name` | *Supply of <title> — <variant>* |
 | `part_no` | the spec `code` |
-| `hsn` | `supply_hsn` on a supply line, `install_sac` on an installation line — never both on one row |
+| `hsn` | `supply_hsn` |
 | `unit` | the variant's unit |
-| `price` | the variant's library rate, **suggested and editable** |
+| `price` | the variant's default **supply** rate, **suggested and editable** |
 
-**One pick, one row per leg.** *Supply + Installation* adds a row for each leg
-the library has a rate for; a leg with **no** library rate is added only when
-asked for by name, and then its price box opens **empty — never 0** — with a
-`no library rate` placeholder. A leg the picker skips is said so on the page.
-Measured on the seed: 36 of the 86 variants carry no supply rate and 29 carry
-no installation rate, every one of the 29 lacking both — so the one-sided case
-that exists is installation-only work, section C of the client's own schedule.
-The leg badge reuses `.badge-asm`, the one badge style `QUOTATION_STYLES`
-carries, because that sheet is frozen and this page may add no CSS.
+**One pick, one row.** A size the library has no supply rate for is still
+added — every clause is offered and none is filtered — and its price box
+opens **empty — never 0** — with a `no library rate` placeholder; the POST
+refuses an empty price on a shown line. **Measured on the seed, 12 September
+2026 — 56 clauses, 86 variants: 5 clauses carry a blank `supply_hsn`
+(`INS-PR-GAUGE-20-A`, `INS-PR-GAUGE-20-B`, `OTH-AIR-VESSEL-450`,
+`OTH-FLOW-METER`, `OTH-CFO-LIAISON`) and 22 have no supply rate on any
+variant (36 of the 86 variants)**, so the empty box is the ordinary case for
+a fifth of the library rather than an edge; `tests/test_quotation_spec_picker.py`
+pins both counts. A posted `leg` other than `supply` — a hand-made POST, or a
+page rendered before the change — is **refused by line**, naming where
+installation is billed. No badge is drawn: there is no leg to label.
 
-*Use Demo Data* picks the first clause whose first variant carries both rates
-and adds both legs at qty 2; it invents nothing, and says so if the library has
+*Use Demo Data* picks the first clause whose first variant carries a supply
+rate and adds it at qty 2; it invents nothing, and says so if the library has
 no such clause.
 
 **On POST:**
@@ -4536,27 +4704,34 @@ no such clause.
 1. Read ~40 form fields. `sgst_rate` is **forced equal to `cgst_rate`**.
 2. Validate: `account_name` required → `selections_json` parses to a list of
    dicts → at least one item.
+2b. **The mode check.** A payload carrying `pid` while the library is in use,
+   or `sid` while the catalogue is, was opened under the other switch state;
+   it is refused with a message and nothing is saved.
 3. `_process_selections()` turns each pick into a depth-0 `line_item`, and
-   returns `(line_items, error, gst_rates)`. **Identity comes from the library
-   at POST** — name, code, HSN/SAC and unit are re-read from `STORE["specs"]`
-   and the form's copies are ignored; only qty, price and show-price are the
-   browser's. A spec or a size that has gone since the page loaded **refuses
-   the whole POST by line number** rather than dropping the line. So does a
-   quantity of nil, a negative or non-numeric price, and a leg that is neither
-   `supply` nor `install`. **`show_price` false ⇒ `price` and `total` become
-   0.0 but the row still prints.** That is how "included, no separate charge"
-   lines are produced.
+   returns `(line_items, error, gst_rates)` **in both modes** — in the product
+   mode it is the `1d7725a` body wrapped in the same tuple with an empty error
+   and no GST claims; in the library mode it is `specpick.process_selections()`.
+   **Identity comes from the library at POST** — name, code, HSN and unit are
+   re-read from `STORE["specs"]` and the form's copies are ignored; only qty,
+   price and show-price are the browser's. A spec or a size that has gone
+   since the page loaded **refuses the whole POST by line number** rather than
+   dropping the line. So does a quantity of nil, a negative or non-numeric
+   price, and a `leg` other than `supply`. **`show_price` false ⇒ `price` and
+   `total` become 0.0 but the row still prints.** That is how "included, no
+   separate charge" lines are produced.
 
    ⚠ **A shown line with an EMPTY price is refused, naming the line.** Leaving
    the box empty is not choosing zero, and `0.00` printed against work
    somebody forgot to price is the figure the refusal exists to stop. A
    deliberately typed `0` is a price and is kept.
-3b. **ONE tax per quotation, and nothing is ever applied for the user.** The
-   library stores a GST rate per leg of every clause; a quotation carries one
-   document-level tax. The POST is **refused, naming the lines and the rates**,
-   when the picked lines' library rates differ from each other or from the Tax
-   section's effective rate — CGST + SGST summed, or IGST; exempt and VAT are
-   not compared, and a clause whose library rate is blank makes no claim.
+3b. **ONE tax per quotation, and nothing is ever applied for the user** —
+   library mode only, `specpick.gst_guard()`. The library stores a GST rate
+   per leg of every clause and **only `supply_gst_rate` is read**; a quotation
+   carries one document-level tax. The POST is **refused, naming the lines and
+   the rates**, when the picked lines' library rates differ from each other or
+   from the Tax section's effective rate — CGST + SGST summed, or IGST; exempt
+   and VAT are not compared, and a clause whose library rate is blank makes no
+   claim.
    **Measured on the seed, 11 September 2026: every one of the 56 clauses is
    18% on both legs — one distinct value each side, 0 clauses where the legs
    differ** — so the guard cannot fire on the seed and exists for the library
@@ -5024,8 +5199,30 @@ move.
 
 Validation, in order: date → vendor chosen → vendor still exists → status valid
 → job (if given) still exists → lines parse, each with qty > 0 and rate ≥ 0 →
-at least one line. A rejected POST re-renders with the user's rows intact and
-writes nothing.
+extra lines parse → charges parse → **at least one line of EITHER kind** — a
+catalogue item or an extra free-text part; a charge alone is not an order. A
+rejected POST re-renders with the user's rows intact and writes nothing.
+
+⚠ **An order of extra lines alone is a valid order, ALWAYS — whatever the
+catalogue switch says (12 September 2026, §7 gap 38 closed).** Until that date
+`_parse_lines()` refused an empty list on its own, which is what made the
+11 September pass stop rather than point the item rows at the toggle. The
+rule is `create_purchase()`'s now, stated over both lists as
+`purchase.NO_LINES_ERROR`, and it deliberately does **not** read the switch:
+a validity rule that read a display switch would make the same order valid
+or invalid depending on the day you looked at it — and a `pid` that reaches
+the server while the catalogue is hidden is still a product in the store.
+**Then** `_product_options()` and the `catalog_rates` embed read the switch
+through `purchase._catalogue_hidden()`: hidden → the placeholder option
+alone, `var RATES = {}`, and a note on the item editor naming the extra parts
+as the way to write the order. That was the one place in the application
+where catalogue items were still visible; there is none now. Every reader of
+a PO's lines copes with zero catalogue lines — view/print, edit (a reprice
+with no item row posted), `job_cost()` and the deal panel's Committed figure
+with its extra-parts breakout, the project page, the register — and no figure
+on an existing PO moves: `_totals_of()` is unchanged and the pinned golden did
+not move. `tests/test_po_gap38.py` (28), most of it parametrised over both
+switch states.
 
 `?quotation_id=<id>` pre-selects the job, which is how the quotation's **Raise
 PO** button works. It is a query param rather than a path segment on purpose: a
@@ -6936,9 +7133,12 @@ out to carry one.
 
 `/boq/view`'s action bar carries **+ Measurement**, on the same `is_tip`
 predicate as its neighbours; `/measurement/create` refuses a superseded BOQ at
-the route as well. **+ RA · Installation** is drawn only when an *approved*
-sheet exists on the chain, and `ra._c1_refusal()` refuses the typed URL when it
-does not.
+the route as well. **+ RA · Installation** is drawn only when a sheet that
+**counts** exists on the chain — `approval.accepted()`, the predicate
+`measurement.feeds_ceiling()` reads: an *approved* one while the ladder is on,
+any saved sheet that is not rejected while it is switched off (§2i) — and
+`ra._c1_refusal()` refuses the typed URL when none does, with wording that
+never tells the operator to get an approval nobody can give.
 
 ---
 
@@ -9131,33 +9331,52 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     posts `po_prefix`/`po_next_no` and `dc_prefix`/`dc_next_no` and nothing else
     of this kind.
 
-37. 🟠 **An installation line prints under column heads written for goods —
-    OPEN, recorded 11 September 2026 and deliberately not fixed.** A quotation
-    written from the specification library (§5 `/quotation`) carries one row
-    per leg, and the installation row's `hsn` is the clause's **SAC**. The
-    column is already headed **HSN/SAC** on the quotation, the proforma and the
-    tax invoice (`docsheet.SELL_COLUMNS`), so the code itself prints under the
-    right head. What does not fit are the two heads beside it: **"Description
-    of Goods"** over a line that is a service, and **"Part No"** over a spec
-    code. The printed sheet was not touched — the three sell-chain documents
-    are pinned byte-for-byte in `tests/test_print_golden.py` and the §0 block
-    of that date says the print is out of scope. **Two words on a frozen sheet,
-    and a golden re-baseline, when somebody rules on them.**
+37. ✅ ~~🟠 **An installation line prints under column heads written for goods —
+    OPEN, recorded 11 September 2026 and deliberately not fixed.**~~ **CLOSED
+    12 September 2026 — by removing the installation line, not by changing
+    the heads.** A quotation is **Supply only** (§5 `/quotation`, change 2 of
+    the twenty-eighth §0 block): no selector, no installation rows, a posted
+    `leg` other than `supply` refused by line. No new quotation can carry an
+    installation line, so nothing prints a SAC under *"Description of Goods"*
+    or a service under *"Part No"*. The heads themselves and the three
+    sell-chain goldens did not move by a byte. The original finding follows,
+    unchanged, because the reasoning is the record of why it was a gap:
 
-38. 🟠 **`/purchase/create` still offers the hidden catalogue's items in its
-    rows — OPEN, reported 11 September 2026 rather than switched off.** The
-    brief for that pass said the picker rows should read `auth.HIDDEN_BLUEPRINTS`
-    like every other surface, **and to stop and report if a PO could then not
-    be created.** It could not: `purchase._parse_lines()` refuses an order with
-    no catalogue item (*"Add at least one item to the purchase order"*), and a
-    free-text extra line does not satisfy it, so removing the rows would have
-    left a from-scratch purchase order impossible to raise. `/purchase/from-boq`
-    and `/purchase/from-draft` are unaffected — they read the schedule, not the
-    catalogue. **This is the one place in the application where catalogue
-    items are still visible.** The fix is one decision and one line: let an
-    order of extra lines alone satisfy `_parse_lines()`, then point
-    `_product_options()` at the toggle. Not taken, because the §0 block
-    authorises the item editor to change "beyond reading the toggle" nowhere.
+    A quotation written from the specification library carried one row per
+    leg, and the installation row's `hsn` was the clause's **SAC**. The
+    column is headed **HSN/SAC** on the quotation, the proforma and the tax
+    invoice (`docsheet.SELL_COLUMNS`), so the code itself printed under the
+    right head. What did not fit were the two heads beside it: **"Description
+    of Goods"** over a line that is a service, and **"Part No"** over a spec
+    code. *(A quotation written from the library between 11 and 12 September
+    2026 with an installation row keeps it — it is a snapshot — and prints as
+    it did; none exists on the live database.)*
+
+38. ✅ ~~🟠 **`/purchase/create` still offers the hidden catalogue's items in its
+    rows — OPEN, reported 11 September 2026 rather than switched off.**~~
+    **CLOSED 12 September 2026, in the two steps the finding prescribed and in
+    that order** (change 3 of the twenty-eighth §0 block): an order of extra
+    lines alone satisfies `_parse_lines()` — **always**, not only while the
+    catalogue is hidden, because a validity rule that read a display switch
+    would make the same order valid or invalid depending on the day you looked
+    at it; the no-lines rule moved to `create_purchase()` and is stated over
+    both kinds of line — and then `_product_options()` and the `catalog_rates`
+    embed read the toggle: hidden → no catalogue row, no rate, and a note
+    naming the extra parts as the way to write the order. **There is now no
+    place in the application where catalogue items are visible while the
+    module is hidden.** Every reader of a PO's lines was checked against zero
+    catalogue lines and no figure on an existing PO moved. §5 `/purchase`;
+    `tests/test_po_gap38.py`. The original finding follows, unchanged:
+
+    The brief for the 11 September pass said the picker rows should read
+    `auth.HIDDEN_BLUEPRINTS` like every other surface, **and to stop and
+    report if a PO could then not be created.** It could not:
+    `purchase._parse_lines()` refused an order with no catalogue item (*"Add
+    at least one item to the purchase order"*), and a free-text extra line did
+    not satisfy it, so removing the rows would have left a from-scratch
+    purchase order impossible to raise. `/purchase/from-boq` and
+    `/purchase/from-draft` were unaffected — they read the schedule, not the
+    catalogue.
 
 ---
 
