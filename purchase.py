@@ -396,6 +396,11 @@ def _history_html(po: dict) -> str:
 #   a price we are not paying would overstate the input credit we could claim.
 MAX_DISCOUNT_PCT = 100.0
 
+# The refusal for an order carrying no line of EITHER kind — no catalogue item
+# and no extra free-text part. Stated once, in `create_purchase()`, over both
+# lists; see `_parse_lines()` for why it no longer lives there.
+NO_LINES_ERROR = "Add at least one item or extra part to the purchase order."
+
 
 def _parse_lines(form) -> tuple:
     """
@@ -404,6 +409,18 @@ def _parse_lines(form) -> tuple:
     Returns `(line_items, error)`. Rows with no product selected are skipped
     silently — the editor opens with blank rows on purpose, and an untouched
     one is not a mistake to shout about.
+
+    ⚠ **NO catalogue line at all is NOT an error here** (12 September 2026,
+    CLIENT_CHANGES.md §0 twenty-eighth block, change 3 — ABOUT.md §7 gap 38).
+    Until that date this returned *"Add at least one item to the purchase
+    order"* on an empty list, which made a from-scratch order of extra
+    free-text lines alone impossible to raise — and, once the catalogue was
+    hidden, would have made every from-scratch order impossible. The rule is
+    now `create_purchase()`'s and it is stated over BOTH kinds of line: an
+    order with no catalogue line and no extra line is refused there. **It
+    holds whatever the catalogue switch says**, deliberately — a validity
+    rule that read a display switch would make the same order valid or
+    invalid depending on the day you looked at it.
 
     A PO is **flat**: `depth` is always 0 and an assembly's children are not
     expanded. We are buying the thing the vendor sells us; if the components
@@ -457,8 +474,6 @@ def _parse_lines(form) -> tuple:
             "depth":   0,
         })
 
-    if not items:
-        return [], "Add at least one item to the purchase order."
     return items, ""
 
 
@@ -1334,16 +1349,37 @@ def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
     return subtotal, taxable_value, tax_info, grand, total_qty
 
 
+def _catalogue_hidden() -> bool:
+    """
+    Is the product catalogue switched off? `auth.blueprint_hidden()` — the one
+    accessor every surface reads the switch through — imported in the function
+    body exactly as `_repricer()` imports `auth`, so the arrow does not join
+    the module graph for one boolean.
+    """
+    import auth
+    return auth.blueprint_hidden("product")
+
+
 def _product_options(selected: str = "") -> str:
     """
-    Catalogue <option> list for a line row.
+    Catalogue <option> list for a line row — or the placeholder alone while
+    the catalogue is hidden.
 
     Includes **support** items prominently — a pump casing or a base frame is
     exactly the sort of thing that is bought rather than sold on its own, so
     the type that the sell-side picker treats as a sub-component is a
     first-class choice here.
+
+    ⚠ **Reads `auth.HIDDEN_BLUEPRINTS` from 12 September 2026** (ABOUT.md §7
+    gap 38, closed). While the catalogue is hidden no row is offered — the
+    control carries its placeholder and nothing else — because this was the
+    one place in the application where catalogue items were still visible.
+    The extra free-text lines are how a from-scratch order is written then,
+    and `create_purchase()` accepts an order of those alone.
     """
     opts = '<option value="">&#8212; select item &#8212;</option>'
+    if _catalogue_hidden():
+        return opts
     for pid, p in sorted(STORE["products"].items(),
                          key=lambda kv: (kv[1].get("name") or "").lower()):
         sel  = " selected" if pid == selected else ""
@@ -1869,6 +1905,13 @@ def create_purchase():
             error = extra_err
         elif charge_err:
             error = charge_err
+        elif not items and not extra_lines:
+            # The one refusal `_parse_lines()` used to make on its own, now
+            # stated over both kinds of line — and only here, so an order of
+            # extra parts alone is a valid order whatever the catalogue switch
+            # says (gap 38). A charge is not a line: an order carrying nothing
+            # but a transport charge is buying nothing.
+            error = NO_LINES_ERROR
 
         if not error:
             # Through `_totals_of()` rather than repeating its three lines here.
@@ -2016,11 +2059,23 @@ def create_purchase():
 
     # Rates the vendor charges us are NOT the catalogue's base_price (that is a
     # sell price), so the picker only suggests it — the field stays editable and
-    # is never overwritten once the user has typed something.
+    # is never overwritten once the user has typed something. While the
+    # catalogue is hidden the map is empty, for the reason `_product_options()`
+    # offers no row: nothing on this page may draw a catalogue item (gap 38).
     catalog_rates = "{" + ",".join(
         f'"{pid}":{float(p.get("base_price") or 0):.2f}'
-        for pid, p in STORE["products"].items()
+        for pid, p in ({} if _catalogue_hidden() else STORE["products"]).items()
     ) + "}"
+
+    # The item editor says so on its face while the catalogue is hidden — a
+    # picker with one placeholder option and no explanation reads as a broken
+    # form, and the way to write the order (the extra parts below) has to be
+    # named rather than discovered.
+    items_note = ("" if not _catalogue_hidden() else
+                  '<p style="font-size:.82rem;color:var(--muted);margin:-.3rem 0 .6rem;">'
+                  'The product catalogue is switched off, so no catalogue item can be '
+                  'picked here. Write the order as <strong>extra parts</strong> below '
+                  '&mdash; an order of extra parts alone is a complete order.</p>')
 
     # The seeded prefill table for the extra-line typeahead — **`prefill_map()`
     # whole**, canonical names and every client spelling, aliases already
@@ -2123,6 +2178,7 @@ def create_purchase():
 
         <div class="form-section">
           <div class="section-title">Items ordered</div>
+          {items_note}
           <div class="line-head">
             <span>Item</span><span>Qty</span><span>Rate (&#8377;)</span>
             <span>Disc %</span>
