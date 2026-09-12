@@ -673,28 +673,43 @@ def test_a_stored_jinja_expression_is_not_executed(populated_store, client, url)
 
 # ══ 5. JSON embedded in a <script> block ═══════════════════════════════════
 
-JSON_SCRIPT_PAGES = ("/quotation/create", "/boq/create")
+# `(url, switch)` — the switch is the catalogue's. This module runs with the
+# catalogue UN-hidden (`pytestmark` above), which is the product picker on
+# `/quotation/create`; the `"on"` row hides it again for one request so the
+# library picker is covered too. Change 1 of 12 September 2026: the quotation
+# source follows the switch, so BOTH embeds have to be proved — the product
+# catalogue in the OFF state and the specification library in the ON state.
+# `/boq/create` embeds the library whatever the switch says.
+JSON_SCRIPT_PAGES = (("/quotation/create", "off"),
+                     ("/quotation/create", "on"),
+                     ("/boq/create", "off"),
+                     ("/boq/create", "on"))
 
 
-@pytest.mark.parametrize("url", JSON_SCRIPT_PAGES)
+@pytest.mark.parametrize("url, switch", JSON_SCRIPT_PAGES)
 def test_stored_text_cannot_close_an_embedded_script_block(
-        populated_store, client, url):
+        populated_store, client, url, switch):
     """
     `json.dumps` does **not** escape `<`, so a stored value containing the
     seven characters `</script>` closes the block it is embedded in and every
     byte after it parses as HTML — ABOUT.md §7 gap 9e.
 
-    Both these forms embed the whole address book, and both embed the
-    SPECIFICATION LIBRARY as well — `/boq/create` always did, and
-    `/quotation/create` does from 11 September 2026, when its picker moved off
-    the (now hidden) product catalogue. `pipeline.json_for_script()` spells
-    `<`, `>` and `&` as ordinary JSON escapes, which the browser decodes back
-    unchanged, so the data is identical and only its spelling on the wire
+    Both these forms embed the whole address book. `/boq/create` embeds the
+    SPECIFICATION LIBRARY; `/quotation/create` embeds **whichever library the
+    catalogue switch selects** (12 September 2026, CLIENT_CHANGES.md §0,
+    twenty-eighth block) — the product catalogue while `auth.HIDDEN_BLUEPRINTS`
+    is empty, the specification library while `"product"` is in it — so both
+    of its embeds are covered here, one row each. `pipeline.json_for_script()`
+    spells `<`, `>` and `&` as ordinary JSON escapes, which the browser decodes
+    back unchanged, so the data is identical and only its spelling on the wire
     differs.
 
-    The product payload is kept: nothing should embed the catalogue on either
-    page any more, and a `PRODPWN` reaching the body would say something did.
+    Every row also asserts the OTHER library did not reach the page: a
+    `PRODPWN` on the library page, or a `SPECPWN` on the product page, would
+    say the switch is not the only thing choosing the embed.
     """
+    import auth
+
     breakout = "</script><img src=x onerror=alert(9)>"
     for address_record in STORE["addresses"].values():
         address_record["label"] = "ADDRPWN" + breakout
@@ -707,12 +722,26 @@ def test_stored_text_cannot_close_an_embedded_script_block(
         spec_record["title"] = "SPECPWN" + breakout
         spec_record["variants"][0]["label"] = "SPECPWN" + breakout
 
-    body = client.get(url).get_data(as_text=True)
-    assert "SPECPWN" in body, f"{url} did not embed the library at all"
-    assert "PRODPWN" not in body, f"{url} still embeds the product catalogue"
+    saved = set(auth.HIDDEN_BLUEPRINTS)
+    auth.HIDDEN_BLUEPRINTS.clear()
+    if switch == "on":
+        auth.HIDDEN_BLUEPRINTS.add("product")
+    try:
+        body = client.get(url).get_data(as_text=True)
+    finally:
+        auth.HIDDEN_BLUEPRINTS.clear()
+        auth.HIDDEN_BLUEPRINTS.update(saved)
+
+    library_page = url == "/boq/create" or switch == "on"
+    if library_page:
+        assert "SPECPWN" in body, f"{url} ({switch}) did not embed the library at all"
+        assert "PRODPWN" not in body, f"{url} ({switch}) embeds the product catalogue"
+    else:
+        assert "PRODPWN" in body, f"{url} ({switch}) did not embed the catalogue at all"
+        assert "SPECPWN" not in body, f"{url} ({switch}) embeds the specification library"
     assert breakout not in body, (
-        f"{url} embedded a stored `</script>` verbatim. The block closes early "
-        f"and everything after it is parsed as HTML — use "
+        f"{url} ({switch}) embedded a stored `</script>` verbatim. The block "
+        f"closes early and everything after it is parsed as HTML — use "
         f"pipeline.json_for_script().")
 
 

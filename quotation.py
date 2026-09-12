@@ -303,140 +303,128 @@ def _meta(label: str, val: str) -> str:
 
 def _product_catalog_json() -> str:
     """
-    The SPECIFICATION LIBRARY, embedded for the picker on `/quotation/create`.
+    The picker's embed for `/quotation/create` — WHICH library it holds
+    follows the catalogue switch (12 September 2026, CLIENT_CHANGES.md §0,
+    twenty-eighth block).
 
-    ⚠ **It embeds `STORE["specs"]`, not the product catalogue, from
-    11 September 2026** (CLIENT_CHANGES.md §0, twenty-seventh block). The
-    catalogue is hidden from everybody (`auth.HIDDEN_BLUEPRINTS`) and a new
-    quotation is written from the same library a BOQ is written from. **The
-    function keeps its name** because the §0 block, the freeze test in
+    While `"product"` is in `auth.HIDDEN_BLUEPRINTS` the embed is the
+    SPECIFICATION LIBRARY, built by `specpick.catalog_json()`. The moment the
+    switch is emptied it is the product catalogue exactly as this function
+    built it at `1d7725a`, which is the body below, unchanged. The switch is
+    read through `auth.blueprint_hidden()` — the one reader every surface uses
+    — imported in the function body because the freeze on this file
+    (INTRODUCTION.md §7) permits no edit outside the three unfrozen functions,
+    a module-level import included.
+
+    **The function keeps its name** because the §0 blocks, the freeze test in
     `tests/test_nav_user_chip.py` and ABOUT.md §7.9e all cite it by that name
     — `boq._json_for_script()`'s precedent — and renaming it would point every
     citation at nothing.
-
-    One entry per spec, keyed by spec id. A variant carries the two library
-    rates as numbers **or null** — null means the library has no rate for that
-    leg, and the picker then opens an EMPTY price box rather than a zero, so a
-    figure nobody chose cannot reach the document.
     """
-    library: dict = {}
-    for sid, s in STORE["specs"].items():
-        library[sid] = {
-            "code":             s.get("code", ""),
-            "title":            s.get("title", ""),
-            "category":         s.get("category", ""),
-            "supply_hsn":       s.get("supply_hsn", ""),
-            "install_sac":      s.get("install_sac", ""),
-            "supply_gst_rate":  s.get("supply_gst_rate"),
-            "install_gst_rate": s.get("install_gst_rate"),
-            "variants": [{
-                "label":        v.get("label", ""),
-                "unit":         v.get("unit", ""),
-                "supply_rate":  v.get("default_supply_base_rate"),
-                "install_rate": v.get("default_install_base_rate"),
-            } for v in (s.get("variants") or [])],
+    import auth
+    if auth.blueprint_hidden("product"):
+        import specpick
+        return specpick.catalog_json()
+
+    catalog: dict = {}
+    for pid, p in STORE["products"].items():
+        resolved_children = []
+        for c in p.get("children", []):
+            cp = STORE["products"].get(c["product_id"])
+            if cp:
+                resolved_children.append({
+                    "pid":      c["product_id"],
+                    "qty":      c["qty"],
+                    "name":     cp["name"],
+                    "part_no":  cp["part_no"],
+                    "unit":     cp["unit"],
+                    "price":    cp["base_price"],
+                    "type":     cp.get("type", "standalone"),
+                    "hsn":      cp.get("hsn", ""),
+                })
+        catalog[pid] = {
+            "name":     p["name"],
+            "part_no":  p["part_no"],
+            "unit":     p["unit"],
+            "price":    p["base_price"],
+            "type":     p.get("type", "standalone"),
+            "hsn":      p.get("hsn", ""),
+            "children": resolved_children,
         }
-    # NOT a bare json.dumps: `json.dumps` does not escape `<`, so a clause
-    # titled `…</script>…` would close the block this is embedded in and every
+    # NOT a bare json.dumps: `json.dumps` does not escape `<`, so a product
+    # named `…</script>…` would close the block this is embedded in and every
     # byte after it would parse as HTML. ABOUT.md §7 gap 9e.
-    return P.json_for_script(library)
+    return P.json_for_script(catalog)
 
 
 def _process_selections(data: list) -> tuple:
     """
     The browser's picks → quotation `line_items`, or a refusal.
 
-    Returns `(line_items, error, gst_rates)`. `error` is a plain sentence
-    (escaped by the caller at the interpolation site) and the other two are
-    empty when it is set. `gst_rates` is one `(line name, library GST rate)`
-    per line, for `create_quotation()`'s one-tax check — the line-item shape
-    itself is untouched, because a proforma and a tax invoice copy it.
+    Returns `(line_items, error, gst_rates)` in BOTH modes. While the
+    catalogue is hidden the picks are library picks and the work is
+    `specpick.process_selections()` — a spec or a size that has gone since
+    the page loaded refuses the whole POST by line, and `gst_rates` feeds the
+    one-tax guard. Otherwise the picks are catalogue picks and the body below
+    is the product path exactly as it stood at `1d7725a`, returned in the same
+    three-tuple with an empty error and no GST claims: the catalogue carries no
+    per-line GST rate, so there is nothing for the guard to compare, and a
+    missing product is caught by `create_quotation()` before this is called,
+    exactly as it always was.
 
-    A pick is `{sid, vidx, leg, qty, price, show_price}` — a spec id, a
-    variant index, and which leg of the work. **Identity comes from the
-    library at POST**: name, code, HSN/SAC and unit are re-read from
-    `STORE["specs"]` rather than trusted from the form, exactly as the
-    catalogue's name and part number were. Only the quantity, the price and
-    the show-price flag are the browser's. A spec that no longer exists, or a
-    variant index the spec no longer has, refuses the whole POST rather than
-    dropping the line silently — a quotation missing a line nobody removed is
-    worse than a form asking to be re-checked.
-
-    ⚠ **A shown line with no price is REFUSED.** A leg the library has no rate
-    for opens with an empty box; leaving it empty is not choosing zero, and a
-    `0.00` printed against work somebody forgot to price is the figure this
-    refusal exists to stop. A deliberately typed `0` is a price and is kept —
-    the same "included, no separate charge" convention `show_price` off gives.
-
-    ⚠ Two depths still exist in the record shape and only depth 0 is written
-    here: a clause has no bill of materials, so there is nothing to indent.
-    Every existing quotation keeps whatever depth-1 rows it has.
+    The switch is read here as well as in `create_quotation()`, deliberately:
+    `tests/test_quotation_spec_picker.py` calls this function directly and
+    has to get the library's answer while the library is what the page shows.
     """
+    import auth
+    if auth.blueprint_hidden("product"):
+        import specpick
+        return specpick.process_selections(data)
+
     line_items = []
-    gst_rates = []
-    for n, item in enumerate(data, start=1):
-        sid = str(item.get("sid") or "")
-        spec = STORE["specs"].get(sid)
-        if not spec:
-            return [], (f"Line {n}: that specification no longer exists in the "
-                        f"library. Remove it and pick again."), []
-        variants = spec.get("variants") or []
-        try:
-            vidx = int(item.get("vidx", 0))
-            variant = variants[vidx]
-        except (TypeError, ValueError, IndexError):
-            return [], (f"Line {n}: the size chosen for '{spec.get('title', '')}' "
-                        f"is no longer in the library. Remove it and pick again."), []
-        leg = str(item.get("leg") or "")
-        if leg not in ("supply", "install"):
-            return [], f"Line {n}: choose Supply or Installation.", []
-
-        label = (variant.get("label") or "").strip()
-        title = (spec.get("title") or "").strip()
-        name = ("Supply of " if leg == "supply" else "Installation of ") + title
-        if label:
-            name += " — " + label
-
-        try:
-            qty = float(item.get("qty") or 0)
-        except (TypeError, ValueError):
-            qty = 0.0
-        if qty <= 0:
-            return [], f"Line {n} ({name}): quantity must be greater than zero.", []
-
+    for item in data:
+        p = STORE["products"].get(item.get("pid", ""))
+        if not p:
+            continue
+        qty        = float(item.get("qty") or 1)
+        price      = float(item.get("price") if item.get("price") is not None else p["base_price"])
         show_price = bool(item.get("show_price", True))
-        raw_price = item.get("price")
-        if raw_price is None or str(raw_price).strip() == "":
-            if show_price:
-                return [], (f"Line {n} ({name}): no price. The library has no "
-                            f"rate for this leg — type one, or untick Show "
-                            f"Price to include it at no separate charge."), []
-            price = 0.0
-        else:
-            try:
-                price = float(raw_price)
-            except (TypeError, ValueError):
-                return [], f"Line {n} ({name}): the price is not a number.", []
-            if price < 0:
-                return [], f"Line {n} ({name}): the price cannot be negative.", []
-        eff_price = price if show_price else 0.0
+        eff_price  = price if show_price else 0.0
 
         line_items.append({
-            "type":    "item",
-            "name":    name,
-            "part_no": spec.get("code", ""),
-            "hsn":     spec.get("supply_hsn", "") if leg == "supply"
-                       else spec.get("install_sac", ""),
+            "type":    "assembly" if p.get("type") == "assembly" else "item",
+            "name":    p["name"],
+            "part_no": p["part_no"],
+            "hsn":     p.get("hsn", ""),
             "qty":     qty,
-            "unit":    variant.get("unit", ""),
+            "unit":    p["unit"],
             "price":   eff_price,
             "total":   eff_price * qty,
             "depth":   0,
         })
-        rate = spec.get("supply_gst_rate") if leg == "supply" else spec.get("install_gst_rate")
-        gst_rates.append((name, rate))
 
-    return line_items, "", gst_rates
+        for comp in item.get("components", []):
+            cp = STORE["products"].get(comp.get("pid", ""))
+            if not cp:
+                continue
+            cqty   = float(comp.get("qty") or 1)
+            cprice = float(comp.get("price") if comp.get("price") is not None else 0)
+            cshow  = bool(comp.get("show_price", False))
+            ceff   = cprice if cshow else 0.0
+
+            line_items.append({
+                "type":    "assembly" if cp.get("type") == "assembly" else "item",
+                "name":    cp["name"],
+                "part_no": cp["part_no"],
+                "hsn":     cp.get("hsn", ""),
+                "qty":     cqty,
+                "unit":    cp["unit"],
+                "price":   ceff,
+                "total":   ceff * cqty,
+                "depth":   1,
+            })
+
+    return line_items, "", []
 
 
 # =============================================================================
@@ -1218,16 +1206,29 @@ def _sel_opts(name, options, default, form_val=None):
 
 @quotation_bp.route("/create", methods=["GET", "POST"])
 def create_quotation():
-    # The picker reads the SPECIFICATION LIBRARY, not the product catalogue
-    # (11 September 2026, CLIENT_CHANGES.md §0 twenty-seventh block). The
-    # seeder is imported inside the function body exactly as the product
-    # seeder was — spec.py does not import this module, so a module-level
-    # import would be legal, but the arrangement is kept so the module graph in
-    # ABOUT.md §2 does not gain an edge for one seeding call.
-    from spec import ensure_demo_specs
-    ensure_demo_specs()
-
-    specs    = STORE["specs"]
+    # ── WHICH library the picker reads follows the catalogue switch ──────────
+    # (12 September 2026, CLIENT_CHANGES.md §0, twenty-eighth block). While
+    # `"product"` is in `auth.HIDDEN_BLUEPRINTS` the page is written from the
+    # SPECIFICATION LIBRARY through `specpick.py`; the moment the switch is
+    # emptied it is the product picker exactly as it stood at `1d7725a`, byte
+    # for byte — `tests/test_quotation_switch.py` holds a golden captured
+    # from that commit's own code. Every import here is in the function body:
+    # the freeze on this file permits no edit outside the three unfrozen
+    # functions, and the product seeder was always imported here for the
+    # cycle reason ABOUT.md §2 gives. `auth.blueprint_hidden()` is the one
+    # accessor every surface reads the switch through.
+    import auth
+    from_library = auth.blueprint_hidden("product")
+    if from_library:
+        import specpick as SPK
+        SPK.ensure_seeded()
+        specs    = STORE["specs"]
+        products = {}
+    else:
+        from product import ensure_demo_products
+        ensure_demo_products()
+        specs    = {}
+        products = STORE["products"]
     error    = None
     form     = request.form
 
@@ -1301,51 +1302,54 @@ def create_quotation():
             try:
                 sel_data = json.loads(selections_raw)
             except (json.JSONDecodeError, TypeError):
-                error = "Invalid item selection data. Please re-add your items."
+                error = (SPK.INVALID_ERROR if from_library else
+                         "Invalid product selection data. Please re-add your products.")
             else:
+                # A payload that is not a list of picks would raise inside
+                # either library's loop. Kept in both modes (11 September
+                # 2026); it changes no rendered byte.
                 if not isinstance(sel_data, list) or not all(isinstance(i, dict) for i in sel_data):
                     sel_data = []
-                    error = "Invalid item selection data. Please re-add your items."
+                    error = (SPK.INVALID_ERROR if from_library else
+                             "Invalid product selection data. Please re-add your products.")
 
         if not error and not sel_data:
-            error = "Please add at least one item from the specification library."
+            error = (SPK.EMPTY_ERROR if from_library else
+                     "Please add at least one product to the quotation.")
+
+        if not error:
+            # A form opened in the OTHER mode — the switch flipped between the
+            # page loading and the POST. A catalogue pick carries `pid`, a
+            # library pick carries `sid`, and a payload shaped for the other
+            # library is refused with a message rather than saved
+            # half-and-half or quietly dropped line by line.
+            has_pid = any("pid" in i for i in sel_data)
+            has_sid = any("sid" in i for i in sel_data)
+            if from_library and has_pid:
+                error = ("This form was opened while the quotation picker read the "
+                         "product catalogue; it now reads the specification library. "
+                         "Nothing was saved — reload the page and pick again.")
+            elif not from_library and has_sid:
+                error = ("This form was opened while the quotation picker read the "
+                         "specification library; it now reads the product catalogue. "
+                         "Nothing was saved — reload the page and pick again.")
+
+        if not error and not from_library:
+            for item in sel_data:
+                if item.get("pid") not in products:
+                    error = "Product no longer exists in catalog. Please re-add."
+                    break
 
         line_items, gst_rates = [], []
         if not error:
-            # Identity comes from the library at POST; a spec or a size that
-            # has gone since the page loaded refuses the whole form rather
-            # than dropping a line. See `_process_selections()`.
             line_items, error, gst_rates = _process_selections(sel_data)
             error = error or None
 
-        if not error:
-            # ── ONE tax per quotation, and nothing is auto-applied ──────────
-            # The library stores a GST rate per leg of every clause; a
-            # quotation carries one document-level tax (`_tax_lines()`). The
-            # two are reconciled here and NEVER by changing either: the POST
-            # is refused, naming the lines and the rates, when the picked
-            # lines' library rates disagree with each other or with the Tax
-            # section's effective rate. Exempt and VAT are outside the GST
-            # heads and are not compared. A clause whose library rate is
-            # blank makes no claim and is skipped. Per-line tax on the sell
-            # chain is not built — CLIENT_CHANGES.md §0, 11 September 2026.
-            effective = None
-            if tax_type == "cgst_sgst":
-                effective = cgst_rate + sgst_rate
-            elif tax_type == "igst":
-                effective = igst_rate
-            if effective is not None:
-                claimed = [(n, float(r)) for n, r in gst_rates if r is not None]
-                distinct = sorted({r for _, r in claimed})
-                if len(distinct) > 1 or (distinct and abs(distinct[0] - effective) > 1e-9):
-                    head = (f"CGST {_fmt_qty(cgst_rate)}% + SGST {_fmt_qty(sgst_rate)}%"
-                            if tax_type == "cgst_sgst" else f"IGST {_fmt_qty(igst_rate)}%")
-                    named = "; ".join(f"'{n}' at {_fmt_qty(r)}%" for n, r in claimed)
-                    error = (f"GST rates do not agree. A quotation carries one tax, "
-                             f"and the Tax section says {_fmt_qty(effective)}% ({head}), "
-                             f"but the library rates the picked lines at: {named}. "
-                             f"Change the Tax section to match, or pick lines that "
-                             f"share one rate — nothing is applied for you.")
+        if not error and from_library:
+            # ONE tax per quotation, and nothing is auto-applied — the guard
+            # lives with the library that carries a rate per leg.
+            error = SPK.gst_guard(gst_rates, tax_type, cgst_rate, sgst_rate,
+                                  igst_rate, _fmt_qty) or None
 
         if not error:
             subtotal    = sum(r["total"] for r in line_items)
@@ -1411,28 +1415,330 @@ def create_quotation():
     today_str    = str(_date.today())
     catalog_json = _product_catalog_json()
 
-    # The spec picker: one <optgroup> per category, in the library's own
-    # category order, each option carrying the spec id. The size and the leg
-    # are chosen in the two controls beside it, populated by the JS from the
-    # embedded library. Every value here is escaped at the interpolation site
-    # — option TEXT included, which is the half the old picker's
-    # `.replace('"', '&quot;')` missed (ABOUT.md §7.7).
-    by_cat: dict = {}
-    for sid, s in specs.items():
-        by_cat.setdefault((s.get("category") or "Other"), []).append((sid, s))
-    cat_order = ["Piping", "Valves", "Sprinklers", "Hydrant", "Pumps",
-                 "Panels", "Civil", "Other"]
-    cats = [c for c in cat_order if c in by_cat] + sorted(c for c in by_cat if c not in cat_order)
-    spec_opts = '<option value="">— select a specification —</option>'
-    for cat in cats:
-        rows = sorted(by_cat[cat], key=lambda kv: (kv[1].get("code") or "").lower())
-        spec_opts += f'<optgroup label="{P.esc(cat)}">'
-        for sid, s in rows:
-            spec_opts += (
-                f'<option value="{P.esc(sid)}">'
-                f'{P.esc(s.get("code", ""))} · {P.esc(s.get("title", ""))}</option>'
-            )
-        spec_opts += '</optgroup>'
+    # ── THE EIGHT SEAMS ──────────────────────────────────────────────────────
+    # The page below is ONE template — the one that stood at `1d7725a` — with
+    # eight placeholders where the two pickers differ: the item section, the
+    # picker's JavaScript in three pieces, the demo pick, the restore loop,
+    # and two messages. In the library mode `specpick.page_pieces()` fills
+    # them; in the product mode they are filled right here with the `1d7725a`
+    # text, so the rendered page is byte-identical to that commit's. Everything
+    # that is not picker-specific exists once, in the template, and the two
+    # modes cannot drift from each other in it.
+    #
+    # ⚠ The JavaScript fills carry SINGLE braces: `.format()` inserts a value
+    #   verbatim and never re-parses it, so a fill is written as the browser is
+    #   meant to see it, while the template's own JS doubles every brace.
+    if from_library:
+        pieces = SPK.page_pieces(specs)
+    else:
+        pieces = None   # built below, once the option lists exist
+
+    prod_opts = '<option value="">— select product —</option>'
+    for pid, p in products.items():
+        tag       = p.get("type", "standalone")[:3].upper()
+        # These two used to be `.replace('"', '&quot;')`, which is a quote-only
+        # half-escape: it kept the attribute from breaking but left `<` and `>`
+        # to reach the option TEXT raw. P.esc does both.
+        safe_name = P.esc(p["name"])
+        safe_pno  = P.esc(p["part_no"])
+        prod_opts += (
+            f'<option value="{P.esc(pid)}"'
+            f' data-name="{safe_name}"'
+            f' data-partno="{safe_pno}"'
+            f' data-type="{P.esc(p.get("type","standalone"))}"'
+            f' data-price="{p["base_price"]}">'
+            f'[{P.esc(tag)}] {safe_name} ({safe_pno})</option>'
+        )
+
+    comp_opts = '<option value="">— select component —</option>'
+    for pid, p in products.items():
+        tag       = p.get("type", "standalone")[:3].upper()
+        # Same half-escape as the picker above, closed the same way.
+        safe_name = P.esc(p["name"])
+        safe_pno  = P.esc(p["part_no"])
+        comp_opts += (
+            f'<option value="{P.esc(pid)}"'
+            f' data-name="{safe_name}"'
+            f' data-partno="{safe_pno}"'
+            f' data-price="{p["base_price"]}"'
+            f' data-unit="{P.esc(p["unit"])}">'
+            f'[{P.esc(tag)}] {safe_name} ({safe_pno})</option>'
+        )
+
+    if pieces is None:
+        pieces = {
+            "picker_section": """<!-- ════════ SECTION 3: PRODUCTS ════════ -->
+<div class="form-section">
+  <div class="section-title">&#128230;&nbsp; Item Details</div>
+
+  <div class="picker-bar">
+    <div class="form-group" style="margin:0;">
+      <label for="picker-prod">Product / Assembly</label>
+      <select id="picker-prod">{prod_opts}</select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label for="picker-qty">Qty</label>
+      <input type="number" id="picker-qty" value="1" min="1" step="1"/>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label style="visibility:hidden;">Add</label>
+      <button type="button" class="btn" onclick="addProduct()">+ Add</button>
+    </div>
+  </div>
+  <div id="add-error" class="add-error"></div>
+  <div id="sel-container"></div>
+  <div id="empty-notice">
+    No products added yet. Select a product above and click <strong>+ Add</strong>.
+  </div>
+  <template id="comp-opts-tpl">{comp_opts}</template>
+</div>""".format(prod_opts=prod_opts, comp_opts=comp_opts),
+            "catalog_load_error": "Product catalog failed to load — please refresh.",
+            "restore_component_rids": """
+          (item.components || []).forEach(function(c) {
+            if (!c.rid) c.rid = ++_rid;
+            else if (c.rid > _rid) _rid = c.rid;
+          });""",
+            "picker_add_js": """/* ═══ ADD ROOT PRODUCT ══════════════════════════════════════ */
+function addProduct() {
+  var errEl  = document.getElementById('add-error');
+  errEl.style.display = 'none';
+
+  var selEl  = document.getElementById('picker-prod');
+  var qtyEl  = document.getElementById('picker-qty');
+  var pid    = selEl ? selEl.value : '';
+
+  if (!pid) {
+    errEl.textContent = 'Please select a product.';
+    errEl.style.display = 'block'; return;
+  }
+  var qty = parseInt(qtyEl ? qtyEl.value : '1', 10);
+  if (!qty || qty < 1) {
+    errEl.textContent = 'Quantity must be at least 1.';
+    errEl.style.display = 'block'; return;
+  }
+  var prod = CATALOG[pid];
+  if (!prod) {
+    errEl.textContent = 'Product not found in catalog — try refreshing the page.';
+    errEl.style.display = 'block'; return;
+  }
+
+  SEL.push({
+    rid:        ++_rid,
+    pid:        pid,
+    name:       prod.name,
+    part_no:    prod.part_no,
+    unit:       prod.unit,
+    qty:        qty,
+    price:      prod.price,
+    show_price: true,
+    expanded:   false,
+    components: []
+  });
+
+  selEl.value = '';
+  qtyEl.value = '1';
+  render();
+}""",
+            "picker_render_js": """function renderRoot(item, idx) {
+  var prod    = CATALOG[item.pid] || {};
+  var isAsm   = prod.type === 'assembly';
+  var badge   = isAsm ? '<span class="badge-asm">Assembly</span>' : '';
+  var expBtn  = isAsm
+    ? '<button type="button" class="btn-expand" onclick="toggleExpand(' + idx + ')">'
+        + (item.expanded ? '&#9660; Hide Components' : '&#9658; Components')
+        + '</button>'
+    : '';
+
+  var compHtml = '';
+  if (item.expanded) {
+    compHtml = '<div class="comp-area">';
+    item.components.forEach(function(comp, cidx) {
+      compHtml += renderComp(comp, idx, cidx);
+    });
+    compHtml += renderAddCompRow(idx);
+    compHtml += '</div>';
+  }
+
+  /* Use data-* attributes for field names — avoids all quote-escaping issues */
+  return '<div class="sel-root" id="root-' + item.rid + '">'
+    + '<div class="sel-root-head">'
+    +   '<div class="sel-root-info">'
+    +     '<div class="sel-name">' + escHtml(item.name) + badge + '</div>'
+    +     '<div class="sel-pno">'  + escHtml(item.part_no) + '</div>'
+    +   '</div>'
+    +   '<div class="sel-root-ctrl">'
+    +     ctrlBlock('Qty',
+          '<input type="number" class="ctrl-input w-qty"'
+          + ' data-sel="' + idx + '" data-field="qty"'
+          + ' value="' + item.qty + '" min="1" step="1"'
+          + ' onchange="onRootFieldChange(this)"/>')
+    +     ctrlBlock('Price (&#8377;)',
+          '<input type="number" class="ctrl-input w-price"'
+          + ' data-sel="' + idx + '" data-field="price"'
+          + ' value="' + item.price + '" min="0" step="1"'
+          + ' onchange="onRootFieldChange(this)"/>')
+    +     ctrlBlock('Show Price',
+          '<input type="checkbox" class="ctrl-check"'
+          + ' data-sel="' + idx + '" data-field="show_price"'
+          + (item.show_price ? ' checked' : '')
+          + ' onchange="onRootFieldChange(this)"/>')
+    +     expBtn
+    +     '<button type="button" class="btn-rm" onclick="removeRoot(' + idx + ')">&#215;</button>'
+    +   '</div>'
+    + '</div>'
+    + compHtml
+    + '</div>';
+}
+
+function renderComp(comp, pidx, cidx) {
+  return '<div class="comp-row">'
+    + '<div class="comp-info">'
+    +   '<div class="comp-name">&#8627;&nbsp;' + escHtml(comp.name) + '</div>'
+    +   '<div class="comp-pno">' + escHtml(comp.part_no) + ' &nbsp;|&nbsp; ' + escHtml(comp.unit) + '</div>'
+    + '</div>'
+    + '<div class="comp-ctrl">'
+    +   ctrlBlock('Qty',
+        '<input type="number" class="ctrl-input w-qty"'
+        + ' data-pidx="' + pidx + '" data-cidx="' + cidx + '" data-field="qty"'
+        + ' value="' + comp.qty + '" min="0.001" step="any"'
+        + ' onchange="onCompFieldChange(this)"/>')
+    +   ctrlBlock('Price (&#8377;)',
+        '<input type="number" class="ctrl-input w-price"'
+        + ' data-pidx="' + pidx + '" data-cidx="' + cidx + '" data-field="price"'
+        + ' value="' + comp.price + '" min="0" step="1"'
+        + ' onchange="onCompFieldChange(this)"/>')
+    +   ctrlBlock('Show Price',
+        '<input type="checkbox" class="ctrl-check"'
+        + ' data-pidx="' + pidx + '" data-cidx="' + cidx + '" data-field="show_price"'
+        + (comp.show_price ? ' checked' : '')
+        + ' onchange="onCompFieldChange(this)"/>')
+    +   '<button type="button" class="btn-rm" style="width:26px;height:26px;font-size:.8rem;"'
+    +     ' onclick="removeComp(' + pidx + ',' + cidx + ')">&#215;</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function renderAddCompRow(pidx) {
+  var optHtml = document.getElementById('comp-opts-tpl').innerHTML;
+  return '<div class="comp-picker">'
+    + '<select id="cp-sel-' + pidx + '">' + optHtml + '</select>'
+    + '<input type="number" id="cp-qty-' + pidx + '" value="1" min="0.001" step="any" placeholder="Qty"/>'
+    + '<button type="button" class="btn-add-comp" onclick="addComp(' + pidx + ')">&#43; Add Component</button>'
+    + '</div>';
+}""",
+            "picker_mutation_js": """/* ═══ FIELD-CHANGE DISPATCHERS (read data-* — no string quoting needed) ═ */
+function onRootFieldChange(el) {
+  var idx   = parseInt(el.dataset.sel, 10);
+  var field = el.dataset.field;
+  var val   = (el.type === 'checkbox') ? el.checked : el.value;
+  onRootChange(idx, field, val);
+}
+
+function onCompFieldChange(el) {
+  var pidx  = parseInt(el.dataset.pidx, 10);
+  var cidx  = parseInt(el.dataset.cidx, 10);
+  var field = el.dataset.field;
+  var val   = (el.type === 'checkbox') ? el.checked : el.value;
+  onCompChange(pidx, cidx, field, val);
+}
+
+/* ═══ MUTATIONS ═════════════════════════════════════════════ */
+function onRootChange(idx, field, val) {
+  if (field === 'qty')        SEL[idx].qty        = parseFloat(val) || 1;
+  else if (field === 'price') SEL[idx].price      = parseFloat(val) || 0;
+  else if (field === 'show_price') SEL[idx].show_price = val;
+  saveJSON();
+}
+
+function onCompChange(pidx, cidx, field, val) {
+  var comp = SEL[pidx].components[cidx];
+  if (field === 'qty')        comp.qty        = parseFloat(val) || 1;
+  else if (field === 'price') comp.price      = parseFloat(val) || 0;
+  else if (field === 'show_price') comp.show_price = val;
+  saveJSON();
+}
+
+function removeRoot(idx) { SEL.splice(idx, 1); render(); }
+function removeComp(pidx, cidx) { SEL[pidx].components.splice(cidx, 1); render(); }
+
+function toggleExpand(idx) {
+  var item = SEL[idx];
+  item.expanded = !item.expanded;
+  if (item.expanded && item.components.length === 0) {
+    var prod = CATALOG[item.pid];
+    if (prod && prod.children) {
+      item.components = prod.children.map(function(ch) {
+        return {
+          rid:        ++_rid,
+          pid:        ch.pid,
+          name:       ch.name,
+          part_no:    ch.part_no,
+          unit:       ch.unit,
+          qty:        ch.qty * item.qty,
+          price:      ch.price,
+          show_price: false
+        };
+      });
+    }
+  }
+  render();
+}
+
+function addComp(pidx) {
+  var selEl = document.getElementById('cp-sel-' + pidx);
+  var qtyEl = document.getElementById('cp-qty-' + pidx);
+  var pid   = selEl ? selEl.value : '';
+  if (!pid) return;
+  var prod  = CATALOG[pid];
+  if (!prod) return;
+  var qty   = parseFloat(qtyEl ? qtyEl.value : '1') || 1;
+
+  SEL[pidx].components.push({
+    rid:        ++_rid,
+    pid:        pid,
+    name:       prod.name,
+    part_no:    prod.part_no,
+    unit:       prod.unit,
+    qty:        qty,
+    price:      prod.price,
+    show_price: false
+  });
+  render();
+}""",
+            "demo_pick_js": """  /* Add first assembly (or any product) from catalog */
+  var demoPid = null;
+  var keys = Object.keys(CATALOG);
+  for (var i = 0; i < keys.length; i++) {
+    if (CATALOG[keys[i]].type === 'assembly') { demoPid = keys[i]; break; }
+  }
+  if (!demoPid && keys.length) demoPid = keys[0];
+
+  if (demoPid) {
+    /* Don't add duplicate */
+    var already = SEL.some(function(s) { return s.pid === demoPid; });
+    if (!already) {
+      var prod = CATALOG[demoPid];
+      SEL.push({
+        rid:        ++_rid,
+        pid:        demoPid,
+        name:       prod.name,
+        part_no:    prod.part_no,
+        unit:       prod.unit,
+        qty:        2,
+        price:      prod.price,
+        show_price: true,
+        expanded:   false,
+        components: []
+      });
+      render();
+    }
+  } else {
+    var ae = document.getElementById('add-error');
+    ae.textContent = 'No products in catalog yet — go to Products and add some first.';
+    ae.style.display = 'block';
+  }""",
+            "submit_empty_message": "Add at least one product before generating the quotation.",
+        }
 
     def _fv(k, d=""):
         v = form.get(k, d)
@@ -1754,49 +2060,7 @@ def create_quotation():
   </div>
 </div>
 
-<!-- ════════ SECTION 3: ITEMS — from the specification library ════════ -->
-<div class="form-section">
-  <div class="section-title">&#128230;&nbsp; Item Details</div>
-  <p style="font-size:.8rem;color:var(--muted);margin:-.4rem 0 .8rem;">
-    Items are written from the <strong>specification library</strong> — the same
-    clauses a BOQ is written from. Pick a clause, its size where it has one, and
-    whether you are quoting the <em>supply</em>, the <em>installation</em>, or
-    both; each leg becomes its own line with its own HSN/SAC. Library rates are
-    suggestions and every price box stays editable.
-  </p>
-
-  <div class="picker-bar" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr) 170px 90px auto;">
-    <div class="form-group" style="margin:0;">
-      <label for="picker-spec">Specification</label>
-      <select id="picker-spec" onchange="onSpecPicked()">{spec_opts}</select>
-    </div>
-    <div class="form-group" style="margin:0;">
-      <label for="picker-variant">Size / variant</label>
-      <select id="picker-variant" disabled><option value="">&#8212;</option></select>
-    </div>
-    <div class="form-group" style="margin:0;">
-      <label for="picker-leg">Quote</label>
-      <select id="picker-leg">
-        <option value="both" selected>Supply + Installation</option>
-        <option value="supply">Supply only</option>
-        <option value="install">Installation only</option>
-      </select>
-    </div>
-    <div class="form-group" style="margin:0;">
-      <label for="picker-qty">Qty</label>
-      <input type="number" id="picker-qty" value="1" min="0.001" step="any"/>
-    </div>
-    <div class="form-group" style="margin:0;">
-      <label style="visibility:hidden;">Add</label>
-      <button type="button" class="btn" onclick="addProduct()">+ Add</button>
-    </div>
-  </div>
-  <div id="add-error" class="add-error"></div>
-  <div id="sel-container"></div>
-  <div id="empty-notice">
-    No items added yet. Pick a specification above and click <strong>+ Add</strong>.
-  </div>
-</div>
+{picker_section}
 
 <!-- ════════ SECTION 4: TAX / DUTY ════════ -->
 <div class="form-section">
@@ -1908,7 +2172,7 @@ var CATALOG = {{}};
     console.error('QMS: catalog parse error', e);
     var errEl = document.getElementById('add-error');
     if (errEl) {{
-      errEl.textContent = 'The specification library failed to load — please refresh.';
+      errEl.textContent = '{catalog_load_error}';
       errEl.style.display = 'block';
     }}
   }}
@@ -1931,7 +2195,7 @@ document.addEventListener('DOMContentLoaded', function() {{
         /* Re-assign rids so _rid counter stays ahead of restored items */
         SEL.forEach(function(item) {{
           if (!item.rid) item.rid = ++_rid;
-          else if (item.rid > _rid) _rid = item.rid;
+          else if (item.rid > _rid) _rid = item.rid;{restore_component_rids}
         }});
       }}
     }}
@@ -2039,118 +2303,7 @@ function applyAddr(kind, sel) {{
   }}
 }}
 
-/* ═══ THE LIBRARY PICKER ════════════════════════════════════
-   CATALOG holds the SPECIFICATION LIBRARY (see _product_catalog_json).
-   A pick is a spec, a variant (size) and a leg — supply or installation —
-   and each leg becomes its own row with its own HSN/SAC on the server.
-   Rows carry only what the browser owns: qty, price, show_price. Identity
-   is re-read from the library at POST.
-═══════════════════════════════════════════════════════════ */
-function legLabel(leg) {{ return leg === 'supply' ? 'Supply' : 'Installation'; }}
-
-function rateOf(spec, vidx, leg) {{
-  var v = (spec.variants || [])[vidx];
-  if (!v) return null;
-  var r = (leg === 'supply') ? v.supply_rate : v.install_rate;
-  return (r === null || r === undefined || r === '') ? null : r;
-}}
-
-/* The size control follows the spec: one option per variant, or a single
-   dash for an unsized clause (the library always carries exactly one
-   variant then — spec._clean_variants() guarantees it). */
-function onSpecPicked() {{
-  var specEl = document.getElementById('picker-spec');
-  var varEl  = document.getElementById('picker-variant');
-  var spec   = CATALOG[specEl ? specEl.value : ''];
-  varEl.innerHTML = '';
-  if (!spec) {{
-    varEl.disabled = true;
-    varEl.innerHTML = '<option value="">&#8212;</option>';
-    return;
-  }}
-  var vs = spec.variants || [];
-  var sized = vs.length > 1 || (vs.length === 1 && vs[0].label);
-  if (!sized) {{
-    varEl.disabled = true;
-    varEl.innerHTML = '<option value="0">' + (vs.length ? escHtml(vs[0].unit || '') : '') + '</option>';
-    return;
-  }}
-  varEl.disabled = false;
-  vs.forEach(function(v, i) {{
-    var opt = document.createElement('option');
-    opt.value = String(i);
-    opt.textContent = (v.label || ('variant ' + (i + 1))) + (v.unit ? '  (' + v.unit + ')' : '');
-    varEl.appendChild(opt);
-  }});
-}}
-
-function addProduct() {{
-  var errEl  = document.getElementById('add-error');
-  errEl.style.display = 'none';
-
-  var specEl = document.getElementById('picker-spec');
-  var varEl  = document.getElementById('picker-variant');
-  var legEl  = document.getElementById('picker-leg');
-  var qtyEl  = document.getElementById('picker-qty');
-  var sid    = specEl ? specEl.value : '';
-
-  if (!sid) {{
-    errEl.textContent = 'Please pick a specification.';
-    errEl.style.display = 'block'; return;
-  }}
-  var spec = CATALOG[sid];
-  if (!spec) {{
-    errEl.textContent = 'Specification not found in the library — try refreshing the page.';
-    errEl.style.display = 'block'; return;
-  }}
-  var qty = parseFloat(qtyEl ? qtyEl.value : '1');
-  if (!qty || qty <= 0) {{
-    errEl.textContent = 'Quantity must be greater than zero.';
-    errEl.style.display = 'block'; return;
-  }}
-  var vidx = parseInt(varEl && varEl.value !== '' ? varEl.value : '0', 10) || 0;
-  if (!(spec.variants || [])[vidx]) {{
-    errEl.textContent = 'Pick a size.';
-    errEl.style.display = 'block'; return;
-  }}
-  var want = legEl ? legEl.value : 'both';
-  var legs = (want === 'both') ? ['supply', 'install'] : [want];
-
-  /* "Supply + Installation" adds one row per leg the library has a rate
-     for. A leg with no library rate is added only when asked for by name,
-     and then its price box opens EMPTY — never 0 — so a figure nobody
-     chose cannot reach the document. The server refuses an empty price on
-     a shown line. */
-  var added = 0;
-  legs.forEach(function(leg) {{
-    var rate = rateOf(spec, vidx, leg);
-    if (want === 'both' && rate === null) return;
-    SEL.push({{
-      rid:        ++_rid,
-      sid:        sid,
-      vidx:       vidx,
-      leg:        leg,
-      name:       spec.title,
-      part_no:    spec.code,
-      unit:       (spec.variants[vidx].unit || ''),
-      label:      (spec.variants[vidx].label || ''),
-      qty:        qty,
-      price:      (rate === null ? '' : rate),
-      show_price: true
-    }});
-    added++;
-  }});
-  if (!added) {{
-    errEl.textContent = 'The library has no supply or installation rate for that size. '
-      + 'Choose "Supply only" or "Installation only" and type a price.';
-    errEl.style.display = 'block'; return;
-  }}
-
-  specEl.value = '';
-  onSpecPicked();
-  qtyEl.value = '1';
-  render();
-}}
+{picker_add_js}
 
 /* ═══ RENDER ════════════════════════════════════════════════ */
 function render() {{
@@ -2173,48 +2326,7 @@ function render() {{
   saveJSON();
 }}
 
-function renderRoot(item, idx) {{
-  /* The leg badge reuses `.badge-asm` — the one badge style QUOTATION_STYLES
-     carries — because that sheet is frozen and this page may not add CSS. */
-  var badge = '<span class="badge-asm">' + legLabel(item.leg) + '</span>';
-  var spec  = CATALOG[item.sid] || {{}};
-  var code  = spec.code || item.part_no || '';
-  var hsn   = (item.leg === 'supply') ? (spec.supply_hsn || '') : (spec.install_sac || '');
-  var codeLine = escHtml(code)
-    + (item.unit ? ' &nbsp;|&nbsp; ' + escHtml(item.unit) : '')
-    + (hsn ? ' &nbsp;|&nbsp; ' + (item.leg === 'supply' ? 'HSN ' : 'SAC ') + escHtml(hsn) : '');
-  var priceVal = (item.price === null || item.price === undefined) ? '' : item.price;
-  var priceHint = (priceVal === '') ? ' placeholder="no library rate"' : '';
-
-  /* Use data-* attributes for field names — avoids all quote-escaping issues */
-  return '<div class="sel-root" id="root-' + item.rid + '">'
-    + '<div class="sel-root-head">'
-    +   '<div class="sel-root-info">'
-    +     '<div class="sel-name">' + escHtml(item.name)
-    +       (item.label ? ' &mdash; ' + escHtml(item.label) : '') + badge + '</div>'
-    +     '<div class="sel-pno">'  + codeLine + '</div>'
-    +   '</div>'
-    +   '<div class="sel-root-ctrl">'
-    +     ctrlBlock('Qty',
-          '<input type="number" class="ctrl-input w-qty"'
-          + ' data-sel="' + idx + '" data-field="qty"'
-          + ' value="' + item.qty + '" min="0.001" step="any"'
-          + ' onchange="onRootFieldChange(this)"/>')
-    +     ctrlBlock('Price (&#8377;)',
-          '<input type="number" class="ctrl-input w-price"'
-          + ' data-sel="' + idx + '" data-field="price"'
-          + ' value="' + priceVal + '" min="0" step="any"' + priceHint
-          + ' onchange="onRootFieldChange(this)"/>')
-    +     ctrlBlock('Show Price',
-          '<input type="checkbox" class="ctrl-check"'
-          + ' data-sel="' + idx + '" data-field="show_price"'
-          + (item.show_price ? ' checked' : '')
-          + ' onchange="onRootFieldChange(this)"/>')
-    +     '<button type="button" class="btn-rm" onclick="removeRoot(' + idx + ')">&#215;</button>'
-    +   '</div>'
-    + '</div>'
-    + '</div>';
-}}
+{picker_render_js}
 
 function ctrlBlock(label, inputHtml) {{
   return '<div class="ctrl-block"><div class="ctrl-lbl">' + label + '</div>' + inputHtml + '</div>';
@@ -2226,25 +2338,7 @@ function escHtml(s) {{
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }}
 
-/* ═══ FIELD-CHANGE DISPATCHER (reads data-* — no string quoting needed) ═ */
-function onRootFieldChange(el) {{
-  var idx   = parseInt(el.dataset.sel, 10);
-  var field = el.dataset.field;
-  var val   = (el.type === 'checkbox') ? el.checked : el.value;
-  onRootChange(idx, field, val);
-}}
-
-/* ═══ MUTATIONS ═════════════════════════════════════════════ */
-function onRootChange(idx, field, val) {{
-  if (field === 'qty')        SEL[idx].qty        = parseFloat(val) || 1;
-  /* An emptied price box stays EMPTY — it is not zero. A typed 0 is kept
-     as 0: that is a price somebody chose. */
-  else if (field === 'price') SEL[idx].price      = (String(val).trim() === '') ? '' : (parseFloat(val) || 0);
-  else if (field === 'show_price') SEL[idx].show_price = val;
-  saveJSON();
-}}
-
-function removeRoot(idx) {{ SEL.splice(idx, 1); render(); }}
+{picker_mutation_js}
 
 /* ═══ SERIALISE ═════════════════════════════════════════════ */
 function saveJSON() {{
@@ -2312,44 +2406,7 @@ function fillDemoData() {{
   setVal('inp_cgst', '9');
   onGstRateChange('9');
 
-  /* One clause from the library, both legs — the first spec whose first
-     variant carries a supply AND an installation rate, so the demo shows a
-     priced row of each kind. Nothing is invented: if the library has no
-     such clause, nothing is added and the picker says so. */
-  var demoSid = null;
-  var keys = Object.keys(CATALOG);
-  for (var i = 0; i < keys.length; i++) {{
-    if (rateOf(CATALOG[keys[i]], 0, 'supply') !== null
-        && rateOf(CATALOG[keys[i]], 0, 'install') !== null) {{ demoSid = keys[i]; break; }}
-  }}
-
-  if (demoSid) {{
-    /* Don't add duplicate */
-    var already = SEL.some(function(s) {{ return s.sid === demoSid; }});
-    if (!already) {{
-      var spec = CATALOG[demoSid];
-      ['supply', 'install'].forEach(function(leg) {{
-        SEL.push({{
-          rid:        ++_rid,
-          sid:        demoSid,
-          vidx:       0,
-          leg:        leg,
-          name:       spec.title,
-          part_no:    spec.code,
-          unit:       (spec.variants[0].unit || ''),
-          label:      (spec.variants[0].label || ''),
-          qty:        2,
-          price:      rateOf(spec, 0, leg),
-          show_price: true
-        }});
-      }});
-      render();
-    }}
-  }} else {{
-    var ae = document.getElementById('add-error');
-    ae.textContent = 'The specification library has no clause with both rates — add one at /spec first.';
-    ae.style.display = 'block';
-  }}
+{demo_pick_js}
 
   window.scrollTo({{ top: 0, behavior: 'smooth' }});
 }}
@@ -2360,7 +2417,7 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
   if (SEL.length === 0) {{
     e.preventDefault();
     var errEl = document.getElementById('add-error');
-    errEl.textContent = 'Add at least one item before generating the quotation.';
+    errEl.textContent = '{submit_empty_message}';
     errEl.style.display = 'block';
     errEl.scrollIntoView({{ behavior:'smooth', block:'center' }});
   }}
@@ -2413,7 +2470,6 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         ship_phone          = _fv("ship_phone"),
         ship_fax            = _fv("ship_fax"),
         ship_gstin          = _fv("ship_gstin"),
-        spec_opts           = spec_opts,
         init_cgst           = init_cgst,
         init_sgst           = init_sgst,
         init_igst           = init_igst,
@@ -2439,6 +2495,8 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         sel_bill_state      = _sel_opts("bill_state",      _STATES_IN,     "Maharashtra",                        _fv("bill_state",   "Maharashtra")),
         sel_ship_country    = _sel_opts("ship_country",    _COUNTRIES,     "India",                              _fv("ship_country", "India")),
         sel_ship_state      = _sel_opts("ship_state",      _STATES_IN,     "Maharashtra",                        _fv("ship_state",   "Maharashtra")),
+        # the eight seams — see `pieces` above
+        **pieces,
     )
     return _page(html)              # NOT render_template_string — see _page()
 

@@ -364,10 +364,27 @@ def test_the_seeded_library_carries_one_rate_on_each_leg():
 
 # ══ 6. The create path reads the library and nothing else ══════════════════
 
-def test_the_create_path_reads_no_catalogue():
+def test_the_create_path_reads_the_catalogue_only_behind_the_switch():
     """
-    The three unfrozen functions, read at AST level: no `STORE["products"]`,
-    no `ensure_demo_products`, and the seeder they do call is the library's.
+    The three unfrozen functions, read at AST level.
+
+    ⚠ **RETARGETED 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth
+    block): the quotation source FOLLOWS the catalogue switch, so the product
+    path is back in these three functions, restored from `1d7725a`, and the
+    library path lives in `specpick.py`. The assertion this replaces was, in
+    full and verbatim:
+
+        for name, node in funcs.items():
+            body = ast.get_source_segment(src, node)
+            assert 'STORE["products"]' not in body and "STORE['products']" not in body, name
+            assert "ensure_demo_products" not in body, name
+        assert "ensure_demo_specs" in ast.get_source_segment(src, funcs["create_quotation"])
+
+    What holds now: every one of the three reads the switch through the one
+    accessor, `create_quotation()` seeds the catalogue in one branch and the
+    library (through the leaf) in the other, and the library's own code — the
+    embed, the POST rebuild, the GST guard — is no longer written here.
+    `tests/test_quotation_switch.py` proves the OFF page is `1d7725a`'s bytes.
     """
     src = (REPO / "quotation.py").read_text(encoding="utf8")
     tree = ast.parse(src)
@@ -376,9 +393,15 @@ def test_the_create_path_reads_no_catalogue():
     assert len(funcs) == 3
     for name, node in funcs.items():
         body = ast.get_source_segment(src, node)
-        assert 'STORE["products"]' not in body and "STORE['products']" not in body, name
-        assert "ensure_demo_products" not in body, name
-    assert "ensure_demo_specs" in ast.get_source_segment(src, funcs["create_quotation"])
+        assert 'auth.blueprint_hidden("product")' in body, name
+        assert "specpick" in body, name
+    create = ast.get_source_segment(src, funcs["create_quotation"])
+    assert "ensure_demo_products" in create and "SPK.ensure_seeded()" in create
+    assert "ensure_demo_specs" not in create, "the library is seeded through the leaf"
+    for moved in ("GST rates do not agree", "select a specification", "picker-leg"):
+        assert moved not in src, f"{moved!r} is library code and belongs in specpick.py"
+    leaf = (REPO / "specpick.py").read_text(encoding="utf8")
+    assert "GST rates do not agree" in leaf and "select a specification" in leaf
 
 
 def test_process_selections_returns_lines_error_and_rates(client, library):

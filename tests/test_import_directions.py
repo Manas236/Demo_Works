@@ -504,6 +504,37 @@ FORBIDDEN = [
     ("auth", "db",        "any",    "auth.py mutates STORE like every other module; "
                                     "db.py mirrors it. It must not reach for the "
                                     "database itself"),
+
+    # ── specpick.py — the spec-library picker for a quotation (12 Sep 2026) ──
+    #
+    # A leaf `quotation.py` reaches INSIDE its three unfrozen functions only:
+    # the freeze on that file (INTRODUCTION.md §7) permits no edit anywhere
+    # else, a module-level import included, and `tests/test_nav_user_chip.py`
+    # would refuse one. The leaf never imports `quotation.py` back — the one
+    # thing it needs from the sell chain, the quantity formatter for the GST
+    # message, is passed in as an argument — and it knows nothing of the
+    # chain's other documents or of the catalogue it is the alternative to.
+    ("quotation", "specpick", "module", "quotation.py is frozen outside three named "
+                                        "functions; the leaf is reached inside them"),
+    ("specpick", "quotation", "any", "the leaf is reached BY quotation.py; importing "
+                                     "back would be a cycle at call time and would "
+                                     "couple the picker to the frozen file"),
+    ("specpick", "product",   "any", "the library is the alternative to the "
+                                     "catalogue, not a reader of it — and "
+                                     "product.py is one of the two frozen files"),
+    ("specpick", "proforma",  "any", "a pick becomes a quotation line; the PI copies it"),
+    ("specpick", "invoice",   "any", "same, one link further down"),
+    ("specpick", "purchase",  "any", "the buy side has its own picker"),
+    ("specpick", "boq",       "any", "the BOQ writes from the same library through "
+                                     "its own picker; the two do not share code"),
+    ("specpick", "auth",      "any", "the SWITCH is read by quotation.py, not here — "
+                                     "the leaf answers what a library pick is, never "
+                                     "whether the library is in use"),
+    ("specpick", "dashboard", "any", "the leaf renders pieces of a page, not a page"),
+    ("specpick", "spec",      "module", "spec.py is imported inside ensure_seeded() "
+                                        "only — the arrangement create_quotation() "
+                                        "always had for its seeder, so the graph in "
+                                        "ABOUT.md §2 gains no edge for one call"),
 ]
 
 
@@ -753,6 +784,10 @@ REQUIRED = [
     ("auth", "pipeline", "esc. pipeline.py imports nothing from the app, which "
                          "is what makes it safe from the bottom of the graph"),
     ("auth", "branding", "the logo and company name on the login page"),
+
+    ("specpick", "store",    "STORE['specs'] — the library a pick is re-read from at POST"),
+    ("specpick", "pipeline", "esc and json_for_script — the embed goes through the "
+                             "shared helper, never a bare json.dumps (ABOUT.md §7.9e)"),
 ]
 
 
