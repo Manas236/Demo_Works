@@ -1458,6 +1458,12 @@ def _ra_is_cancelled(bill) -> bool:
     return str((bill or {}).get("status") or "").strip().lower() == "cancelled"
 
 
+def _ms_counts(sheet) -> bool:
+    """`measurement.feeds_ceiling()`, through the predicate it reads."""
+    import approval as _AP
+    return _AP.accepted(sheet)
+
+
 def _ra_awaits_approval(bill) -> bool:
     """
     Is this bill actually waiting on somebody's approval?
@@ -1488,6 +1494,14 @@ def _ra_awaits_approval(bill) -> bool:
     `claimed_by_line()` count drafts.
     """
     if bill is None:
+        return False
+    # ⚠ Nothing awaits an approver while the ladder is OFF, and a bill raised
+    #   while it was off never will (12 September 2026). `approval.gated()` is
+    #   that answer; imported in the function body because this module sits
+    #   at the bottom of the graph and approval.py reads it back through the
+    #   same hatch.
+    import approval as _AP
+    if not _AP.gated(bill):
         return False
     if bill.get("pre_approval_system"):
         return False
@@ -1927,15 +1941,18 @@ def _metrics():
         # a count answers "is anything moving" already.
         "dc_total": len(STORE.get("delivery_challans", {})),
 
-        # C2 — measurement sheets. A count and how many are APPROVED, because
-        # the second figure is the one that matters: only an approved sheet
-        # feeds an installation claim, so "4 raised" with none approved is a
-        # project that cannot bill installation and the card should say so.
+        # C2 — measurement sheets. A count and how many COUNT — approved, in
+        # `measurement.feeds_ceiling()`'s sense — because the second figure is
+        # the one that matters: only a sheet that counts feeds an installation
+        # claim, so "4 raised" with none counting is a project that cannot
+        # bill installation and the card should say so. `approval.accepted()`
+        # is that predicate; while the ladder is off every saved sheet counts
+        # and the card says "raised" rather than "approved" (12 Sep 2026).
         # A sum of measured quantity would be meaningless across units.
         "ms_total": len(STORE.get("measurements", {})),
         "ms_approved": sum(
             1 for m in (STORE.get("measurements") or {}).values()
-            if str(m.get("approval_status") or "").strip().lower() == "approved"),
+            if _ms_counts(m)),
 
         # Client register. **Issued bills only, less receipts** — a draft has
         # not been sent and a cancelled one was withdrawn, and the same two
@@ -2099,6 +2116,21 @@ def _recent_html(m) -> str:
     return out
 
 
+def _ms_card_sub(m) -> str:
+    """
+    The measurement card's second figure. With the ladder on: how many are
+    approved. With it off there is nothing to approve — every saved sheet
+    counts and saying "N approved" would name a rung nobody can climb — so
+    the card counts the sheets that are not rejected instead.
+    """
+    if not m["ms_total"]:
+        return " · what was found on site, and the ceiling for installation claims"
+    import approval as _AP
+    if _AP.ladder_on():
+        return f" · {m['ms_approved']} approved"
+    return f" · {m['ms_approved']} counting toward installation claims"
+
+
 def _chain_tiles_html(m) -> str:
     """
     The project-billing tile row: open schedules and bills awaiting approval.
@@ -2129,7 +2161,13 @@ def _chain_tiles_html(m) -> str:
               <div class="k-sub">{sub}</div>
             </div>""")
 
-    if auth.can_reach("ra.list_ras"):
+    # ⚠ No approval tile while the ladder is OFF (12 September 2026): there is
+    #   no queue for it to count, and a tile reading "0 pending approval" would
+    #   describe a rung nobody can climb. The count itself is already 0 then —
+    #   `_ra_awaits_approval()` reads the switch — so this is the tile's
+    #   absence rather than its figure.
+    import approval as _AP
+    if auth.can_reach("ra.list_ras") and _AP.ladder_on():
         pending = m["ra_pending_count"]
         # Empty is a good outcome and is said so, exactly as the work queue
         # says it — a bare "0" reads as a figure that failed to load.
@@ -2768,7 +2806,7 @@ def index():
                 # an installation claim cannot be raised until an approved
                 # sheet exists.
                 _card("measurement.list_ms", "boq", "Measurement Sheets",
-                      f"""{m['ms_total']} raised{f" · {m['ms_approved']} approved" if m['ms_total'] else " · what was found on site, and the ceiling for installation claims"}"""),
+                      f"""{m['ms_total']} raised{_ms_card_sub(m)}"""),
             ]),
         _module_group(
             "mg-buy", "Buy side &mdash; money out",

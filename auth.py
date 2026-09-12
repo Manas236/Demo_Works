@@ -488,6 +488,81 @@ def is_hidden_endpoint(endpoint) -> bool:
     return blueprint_hidden(endpoint.split(".", 1)[0])
 
 
+# ── The approval ladder, switched OFF in code (12 September 2026) ────────────
+#
+# `approval.LADDER_ON` is the switch and `approval.ladder_on()` its one
+# accessor (CLIENT_CHANGES.md §0, twenty-eighth block). While it is off the
+# `approval` blueprint — the eight approve/reject routes — is treated here
+# exactly as a hidden blueprint is, with its own reason: refused at the gate
+# for everyone, an Owner included, BEFORE any permission is consulted; a
+# stranger gets the ordinary login bounce; `can_reach()` says no; the five
+# `*.approve` permissions render disabled on `/roles`, labelled *switched off*,
+# and a save can neither add nor remove one (`_merge_hidden_grants()`); and
+# `docs/ACCESS_MATRIX.md` marks them. The permissions and the registry rows are
+# untouched, so the day the ladder returns every role reads as it did.
+#
+# ⚠ `approval.py` imports THIS module at module level, so the switch is read
+#   through a function-body import — the `_shell()` hatch — and never at
+#   module level: `test_auth_imports_nothing_that_prints` holds this module's
+#   module-level imports to three, and approval.py is not one of them.
+APPROVAL_BLUEPRINT = "approval"
+
+
+def _ladder_on() -> bool:
+    import approval
+    return approval.ladder_on()
+
+
+def approvals_switched_off() -> bool:
+    """Is the approval ladder switched off in code? Read, never cached."""
+    return not _ladder_on()
+
+
+# The two reasons a blueprint can be off for everybody. Logged verbatim on a
+# refusal, and what `/roles` and the access matrix label a frozen grant with.
+OFF_HIDDEN = "blueprint hidden"
+OFF_APPROVALS = "approvals switched off"
+
+
+def blueprint_off_reason(name: str) -> str:
+    """
+    Why this blueprint is off for everybody — `""` when it is not.
+
+    `OFF_HIDDEN` for a name in `HIDDEN_BLUEPRINTS`; `OFF_APPROVALS` for the
+    approval blueprint while the ladder is off. The gate, `can_reach()`, the
+    roles editor and the matrix all read THIS, so the two toggles cannot be
+    honoured in one place and forgotten in another.
+    """
+    if name in HIDDEN_BLUEPRINTS:
+        return OFF_HIDDEN
+    if name == APPROVAL_BLUEPRINT and approvals_switched_off():
+        return OFF_APPROVALS
+    return ""
+
+
+def endpoint_off_reason(endpoint) -> str:
+    """`approval.approve_ra` → why its blueprint is off, or `""`."""
+    if not endpoint:
+        return ""
+    return blueprint_off_reason(endpoint.split(".", 1)[0])
+
+
+def _permissions_gating_only(off_reason: str) -> set:
+    """
+    Permission ids whose EVERY classified endpoint sits in a blueprint that is
+    off for `off_reason`. Derived from the registry rather than listed, so a
+    permission whose routes are split across an off and a live blueprint
+    stays live: freezing it would take a reachable page with it.
+    """
+    gated: dict = {}
+    for endpoint, perm in ROUTE_PERMISSIONS.items():
+        if perm in (PUBLIC, AUTHENTICATED):
+            continue
+        gated.setdefault(perm, []).append(endpoint)
+    return {perm for perm, endpoints in gated.items()
+            if all(endpoint_off_reason(e) == off_reason for e in endpoints)}
+
+
 def hidden_permissions() -> set:
     """
     Permission ids that gate **nothing reachable** while the toggle stands —
@@ -497,13 +572,34 @@ def hidden_permissions() -> set:
     are split across a hidden and a visible blueprint stays live: hiding it
     would take a reachable page with it.
     """
-    gated: dict = {}
-    for endpoint, perm in ROUTE_PERMISSIONS.items():
-        if perm in (PUBLIC, AUTHENTICATED):
-            continue
-        gated.setdefault(perm, []).append(endpoint)
-    return {perm for perm, endpoints in gated.items()
-            if all(is_hidden_endpoint(e) for e in endpoints)}
+    return _permissions_gating_only(OFF_HIDDEN)
+
+
+def switched_off_permissions() -> set:
+    """
+    The `*.approve` permissions while the ladder is off — every endpoint each
+    of them classifies is an approval route. Empty while the ladder is on.
+    """
+    return _permissions_gating_only(OFF_APPROVALS)
+
+
+def frozen_permissions() -> set:
+    """
+    Every permission `/roles` draws disabled and a save carries through
+    untouched: the hidden module's and, while the ladder is off, the
+    approval ones. One set, so the editor, the POST filter and the merge
+    cannot freeze different things.
+    """
+    return hidden_permissions() | switched_off_permissions()
+
+
+def frozen_reason(perm: str) -> str:
+    """Why a frozen permission is frozen — for the label beside its box."""
+    if perm in hidden_permissions():
+        return OFF_HIDDEN
+    if perm in switched_off_permissions():
+        return OFF_APPROVALS
+    return ""
 
 
 ROUTE_PERMISSIONS = {
@@ -1257,10 +1353,11 @@ def _gate():
     # A hidden blueprint beats PUBLIC: a switched-off module is off for a
     # stranger as much as for an Owner. The stranger still gets the ordinary
     # login bounce below rather than this page, because a refusal page that
-    # names a module tells somebody with no session what is installed.
-    hidden = is_hidden_endpoint(endpoint)
+    # names a module tells somebody with no session what is installed. The
+    # approval blueprint is off the same way while the ladder is off.
+    off = endpoint_off_reason(endpoint)
 
-    if required == PUBLIC and not hidden:
+    if required == PUBLIC and not off:
         return None
 
     user = current_user()
@@ -1272,11 +1369,25 @@ def _gate():
         _log_refusal(None, endpoint, required, "no session")
         return redirect(url_for("auth.login", next=request.full_path.rstrip("?")))
 
-    if hidden:
+    if off == OFF_APPROVALS:
+        # The ladder is switched off in code. Refused BEFORE the permission is
+        # consulted, so an Owner holding `ra.approve` is refused exactly as
+        # everybody else is, and nothing is written. See approval.LADDER_ON.
+        _log_refusal(user, endpoint, required, OFF_APPROVALS)
+        return _refusal_page(
+            "Approvals are switched off",
+            "Nothing can be approved or rejected while the ladder is off; "
+            "documents stand as raised and print as they are. The ladder is "
+            "off in code (<code>approval.LADDER_ON</code>) for a trial period, "
+            "and nobody can reach this page, an Owner included, until it is "
+            "switched back on. Your roles and their permissions are "
+            "unchanged."), 403
+
+    if off:
         # Refused BEFORE the permission is consulted, so an Owner holding every
         # permission is refused exactly as everybody else is. Nothing about
         # the user's grants is changed by this; see HIDDEN_BLUEPRINTS.
-        _log_refusal(user, endpoint, required, "blueprint hidden")
+        _log_refusal(user, endpoint, required, OFF_HIDDEN)
         return _refusal_page(
             "This module is switched off",
             "It has been hidden by configuration "
@@ -1326,14 +1437,14 @@ def can_reach(endpoint: str, user=None) -> bool:
     required = ROUTE_PERMISSIONS.get(endpoint)
     if required is None:
         return False
-    hidden = is_hidden_endpoint(endpoint)
-    if required == PUBLIC and not hidden:
+    off = endpoint_off_reason(endpoint)
+    if required == PUBLIC and not off:
         return True
 
     user = current_user() if user is None else user
     if user is None:
         return False
-    if hidden:
+    if off:
         return False
     if required == AUTHENTICATED:
         return True
@@ -2276,25 +2387,36 @@ def list_roles():
     return _shell("Roles", body)
 
 
+# What the roles editor says beside a frozen box, per reason.
+_FROZEN_LABELS = {
+    OFF_HIDDEN:    ("module hidden",
+                    "This module is switched off; the grant is kept as it is"),
+    OFF_APPROVALS: ("switched off",
+                    "The approval ladder is switched off in code; the grant is "
+                    "kept as it is and returns with the ladder"),
+}
+
+
 def _permission_checkboxes(selected) -> str:
     picked = set(selected or [])
-    hidden = hidden_permissions()
+    frozen = frozen_permissions()
     blocks = []
     for group, perms in _permission_groups():
         boxes = []
         for pid, label in perms:
             mark = " checked" if pid in picked else ""
-            if pid in hidden:
-                # The module is switched off (HIDDEN_BLUEPRINTS). The box is
-                # drawn in its stored state and DISABLED, so the page does not
-                # offer a grant nobody can use. A disabled box posts nothing —
-                # which is exactly why the stored value is carried through by
+            if pid in frozen:
+                # The module is switched off (HIDDEN_BLUEPRINTS), or the
+                # ladder is (approval.LADDER_ON). The box is drawn in its
+                # stored state and DISABLED, so the page does not offer a
+                # grant nobody can use. A disabled box posts nothing — which
+                # is exactly why the stored value is carried through by
                 # `_merge_hidden_grants()` on save rather than read off the
                 # form; otherwise every save of a role would silently drop it.
-                boxes.append(f'<label class="perm-hidden" title="This module is '
-                             f'switched off; the grant is kept as it is">'
+                word, title = _FROZEN_LABELS[frozen_reason(pid)]
+                boxes.append(f'<label class="perm-hidden" title="{_esc(title)}">'
                              f'<input type="checkbox" disabled{mark}/>'
-                             f'<span>{_esc(label)} <em>&mdash; module hidden</em>'
+                             f'<span>{_esc(label)} <em>&mdash; {_esc(word)}</em>'
                              f'<br/><code>{_esc(pid)}</code></span></label>')
                 continue
             boxes.append(f'<label><input type="checkbox" name="permissions" '
@@ -2313,14 +2435,15 @@ def _posted_permissions() -> list:
     posted that is not a key of `PERMISSIONS` is dropped rather than stored —
     a stored typo grants nothing and is invisible on the page that stored it.
 
-    ⚠ A permission of a HIDDEN module is dropped here too, whatever was posted:
-    the editor draws it disabled, and a hand-made POST must not be able to
-    confer a grant the page refuses to offer. `_merge_hidden_grants()` is the
-    other half — the stored value survives the save untouched.
+    ⚠ A permission of a HIDDEN module is dropped here too, whatever was posted,
+    and so is an approval permission while the ladder is off: the editor draws
+    them disabled, and a hand-made POST must not be able to confer a grant the
+    page refuses to offer. `_merge_hidden_grants()` is the other half — the
+    stored value survives the save untouched.
     """
-    hidden = hidden_permissions()
+    frozen = frozen_permissions()
     return sorted(p for p in request.form.getlist("permissions")
-                  if p in PERMISSIONS and p not in hidden)
+                  if p in PERMISSIONS and p not in frozen)
 
 
 def _merge_hidden_grants(posted: list, stored) -> list:
@@ -2332,13 +2455,14 @@ def _merge_hidden_grants(posted: list, stored) -> list:
     through the editor — they are frozen exactly as they stood, so that
     un-hiding it (one line in HIDDEN_BLUEPRINTS) brings every role back
     precisely as it was. A new role starts with none, because it never held
-    any.
+    any. The `*.approve` grants are frozen the same way while the ladder is
+    off (one line, `approval.LADDER_ON`), for the same reason.
     """
-    hidden = hidden_permissions()
-    kept = {p for p in (stored or []) if p in hidden}
-    # `_posted_permissions()` already drops a hidden id; dropping it again
+    frozen = frozen_permissions()
+    kept = {p for p in (stored or []) if p in frozen}
+    # `_posted_permissions()` already drops a frozen id; dropping it again
     # here keeps the rule whole in one function rather than split across two.
-    return sorted((set(posted) - hidden) | kept)
+    return sorted((set(posted) - frozen) | kept)
 
 
 @auth_bp.route("/roles/create", methods=["GET", "POST"])

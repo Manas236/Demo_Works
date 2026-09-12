@@ -188,12 +188,21 @@ def test_hr_information_is_kept_from_sales_purchase_and_accounts(fresh_users):
     assert "charge.view" in auth.roles()["role-hr"]["permissions"]
 
 
+@pytest.mark.usefixtures("ladder_on")
 def test_a_role_cannot_be_given_a_permission_that_does_not_exist(client, fresh_users):
     """
     B2: the client bundles permissions, the client does not mint them.
 
     A stored typo grants nothing and is invisible on the page that stored it —
     it looks exactly like a permission that is simply not working.
+
+    ⚠ Runs with the approval ladder ON (12 September 2026): HR holds
+    `charge.approve`, and while the ladder is switched off that grant is
+    FROZEN — a save carries it through whether or not it was posted, exactly
+    as a hidden module's grants are — so the exact-list assertion below would
+    otherwise read `["charge.approve", "charge.view"]`. The freeze is proved
+    on its own in `tests/test_approvals_off.py`; this test is about B2 and is
+    left saying what it always said.
     """
     with _role_restored("hr"):
         client.post("/roles/edit/role-hr",

@@ -468,3 +468,93 @@ def test_the_migration_record_is_absent_until_the_migration_runs():
     """A fresh database has nothing to grandfather, and says so by staying empty."""
     STORE.get("settings", {}).pop(approval.MIGRATION_KEY, None)
     assert approval.migration_record() == {}
+
+
+# ── 5. The RAISED-WHILE-OFF set — its own named set, beside this one ───────
+#
+# 12 September 2026 (CLIENT_CHANGES.md §0, twenty-eighth block): the approval
+# ladder is switched OFF in code, and every record created while it is off is
+# stamped `raised_while_approvals_off` at create by `approval.stamp_creator()`
+# — the same moment `created_by` is written. It is NOT the grandfather set: a
+# grandfathered record predates the ladder and may still be approved; a record
+# raised while the ladder was off is never on it. The two marks are written by
+# two different writers for two different reasons, and neither is ever
+# inferred from absence. The pre-approval pin above keeps its assertion in
+# full; what follows is the second set's own.
+
+
+def test_the_raised_while_off_set_only_grows_while_the_ladder_is_off(client):
+    """
+    Created while OFF → in the set. Created while ON → not. The set is read
+    through `approval.raised_while_off_ids()` and never through the
+    grandfather predicate, because the two are different sets.
+    """
+    assert approval.LADDER_ON is False, "the shipped configuration is OFF"
+    before = dict(STORE["charges"])
+    r = client.post("/charge/new", data=charge_form(),
+                    content_type="multipart/form-data")
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:300]
+    off_rec = _only_new(before, STORE["charges"])
+    assert off_rec["id"] in approval.raised_while_off_ids("charge")
+    assert off_rec["id"] not in approval.grandfathered_ids("charge"), (
+        "a record raised while off joined the GRANDFATHERED set — the two "
+        "marks are different sets written by different writers")
+
+    approval.LADDER_ON = True
+    try:
+        before = dict(STORE["charges"])
+        r = client.post("/charge/new", data=charge_form(),
+                        content_type="multipart/form-data")
+        assert r.status_code in (302, 303)
+        on_rec = _only_new(before, STORE["charges"])
+        assert on_rec["id"] not in approval.raised_while_off_ids("charge"), (
+            "the raised-while-off set grew while the ladder was ON")
+        assert approval.RAISED_WHILE_OFF_FIELD not in on_rec
+    finally:
+        approval.LADDER_ON = False
+
+    # and the OFF record's membership survives the flip — the mark is stored,
+    # never re-derived from the switch's state now
+    assert off_rec["id"] in approval.raised_while_off_ids("charge")
+
+
+def test_the_raised_while_off_mark_is_written_by_stamp_creator_and_nowhere_else():
+    """
+    One writer, found at AST level exactly as the grandfather mark's is. A
+    second writer would let a record join a set that means "the ladder did not
+    apply when this was raised" without the ladder having been off.
+    """
+    import ast
+    import pathlib
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    field = approval.RAISED_WHILE_OFF_FIELD
+    writers = []
+    for path in list(repo.glob("*.py")) + list((repo / "tools").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Subscript):
+                        key = target.slice
+                        if ((isinstance(key, ast.Constant) and key.value == field)
+                                or (isinstance(key, ast.Name) and key.id == "RAISED_WHILE_OFF_FIELD")
+                                or (isinstance(key, ast.Attribute) and key.attr == "RAISED_WHILE_OFF_FIELD")):
+                            writers.append((path.name, node.lineno))
+    assert writers, "no writer of the raised-while-off mark was found — the stamp is gone"
+    assert {w[0] for w in writers} == {"approval.py"}, writers
+    assert len(writers) == 1, writers
+
+
+def test_the_grandfather_pin_keeps_its_assertion_under_the_switch(client):
+    """
+    A record raised while the ladder is OFF still carries its creator and is
+    still not grandfathered — the pin's two checks hold on it exactly as they
+    hold on a record raised while ON.
+    """
+    assert approval.LADDER_ON is False
+    before = dict(STORE["charges"])
+    client.post("/charge/new", data=charge_form(), content_type="multipart/form-data")
+    rec = _only_new(before, STORE["charges"])
+    assert rec.get("created_by"), "a record raised while off lost its creator"
+    assert not approval.is_grandfathered(rec)
+    assert approval.raised_while_off(rec)

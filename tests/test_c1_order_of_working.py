@@ -44,6 +44,16 @@ import measurement as MS
 import ra
 from store import STORE
 
+# ⚠ The approval ladder is switched OFF on the shipped configuration
+# (`approval.LADDER_ON`, 12 September 2026 — CLIENT_CHANGES.md §0, the
+# twenty-eighth block). This module proves the ladder, so it runs with the
+# switch ON through the `ladder_on` fixture and keeps proving it for the day
+# it returns; it is NOT rewritten into OFF checks. The OFF state itself is
+# covered by `tests/test_approvals_off.py`. The mark is in force before any
+# fixture creates a record, so nothing here is stamped raised-while-off.
+pytestmark = pytest.mark.usefixtures("ladder_on")
+
+
 # ⚠ `conftest.chain_ready()` is deliberately NOT imported. It exists so the
 #   other eleven files can raise a bill without describing the chain, and using
 #   it here would test the fixture rather than the guard. Everything below builds

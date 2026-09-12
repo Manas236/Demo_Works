@@ -33,6 +33,16 @@ import approval
 import attachment
 from store import STORE
 
+# ⚠ The approval ladder is switched OFF on the shipped configuration
+# (`approval.LADDER_ON`, 12 September 2026 — CLIENT_CHANGES.md §0, the
+# twenty-eighth block). This module proves the ladder, so it runs with the
+# switch ON through the `ladder_on` fixture and keeps proving it for the day
+# it returns; it is NOT rewritten into OFF checks. The OFF state itself is
+# covered by `tests/test_approvals_off.py`. The mark is in force before any
+# fixture creates a record, so nothing here is stamped raised-while-off.
+pytestmark = pytest.mark.usefixtures("ladder_on")
+
+
 from conftest import (EXE_BYTES, JPEG_BYTES, PDF_BYTES, PNG_BYTES,
                       charge_form, ensure_test_user, upload)
 

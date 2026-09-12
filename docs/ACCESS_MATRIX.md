@@ -24,6 +24,7 @@ This grid has **553 cells**. **52** of them can be traced to a line of the speci
 | `§` *on a blank cell* | The specification requires this to be **withheld**. Shown so a deliberate exclusion is not mistaken for an oversight. |
 | `–` | **Withheld by our derivation.** The specification says nothing either way; we chose not to grant it. A **reversible default, not a policy** — an Owner grants it at `/roles/edit/<id>` with a checkbox, no code change and no re-login. |
 | `⊘` | **Module hidden.** The role holds this grant, kept exactly as it was, but the module is switched off in `auth.HIDDEN_BLUEPRINTS` and **opens nothing for anybody, an Owner included**. `/roles` draws the box disabled and a save cannot add or remove it. Un-hiding the module is one line in `auth.py`; every cell then reads as it did before. |
+| `⊗` | **Approvals switched off.** The role holds this grant, kept exactly as it was, but the approval ladder is switched off in code (`approval.LADDER_ON = False`, 12 September 2026, for a trial period) and the approve/reject routes it gates are **refused to everybody, an Owner included**. `/roles` draws the box disabled, labelled *switched off*, and a save cannot add or remove it. Switching the ladder back on is one line in `approval.py`; every cell then reads as it did before. |
 
 Every derived cell is a question for the client, and none of them is expensive to change: an Owner reassigns any of it with checkboxes at `/roles`, with no deployment and no developer.
 
@@ -52,7 +53,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Edit a measurement sheet<br/>`measurement.edit` | · | · | · |  |  |  |  |
 | Delete a measurement sheet<br/>`measurement.delete` | · | · | · |  |  |  |  |
 | Print a measurement sheet<br/>`measurement.print` | · | · | · |  | · |  | · |
-| Approve or reject a measurement sheet<br/>`measurement.approve` | · | · | · |  |  |  |  |
+| Approve or reject a measurement sheet ⊗ *switched off*<br/>`measurement.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
 
 ### RA billing
 
@@ -65,7 +66,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Issue an RA bill<br/>`ra.issue` | · | · | · |  |  |  |  |
 | Cancel an issued RA bill<br/>`ra.cancel` | · | · | · |  |  |  |  |
 | Print an RA bill<br/>`ra.print` | · | · | · |  | · |  | · |
-| Approve or reject an RA bill<br/>`ra.approve` | · | § | § |  |  |  |  |
+| Approve or reject an RA bill ⊗ *switched off*<br/>`ra.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
 
 ### Money in
 
@@ -89,7 +90,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Raise a proforma invoice<br/>`proforma.create` | · | · |  |  | · |  |  |
 | View tax invoices<br/>`invoice.view` | · | · |  |  | · |  | · |
 | Raise a tax invoice<br/>`invoice.create` | · | · |  |  | · |  |  |
-| Approve or reject a tax invoice<br/>`invoice.approve` | · | § | § |  |  |  |  |
+| Approve or reject a tax invoice ⊗ *switched off*<br/>`invoice.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
 
 ### Buy side
 
@@ -98,7 +99,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | View purchase orders<br/>`purchase.view` | · | · | · |  |  | · | · |
 | Raise a purchase order<br/>`purchase.create` | · | · | · |  |  | · |  |
 | Update a purchase order's status<br/>`purchase.edit` | · | · | · |  |  | · |  |
-| Approve or reject a purchase order<br/>`purchase.approve` | · | § | § |  |  |  |  |
+| Approve or reject a purchase order ⊗ *switched off*<br/>`purchase.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
 | View draft purchase orders<br/>`po.view` | · | · | · |  |  | · |  |
 | Raise a draft purchase order<br/>`po.create` | · | · | · |  |  | · |  |
 | Edit a draft purchase order<br/>`po.edit` | · | · | · |  |  | · |  |
@@ -123,7 +124,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Record a charge<br/>`charge.create` | · | · | · | · | § | § | § |
 | Edit a charge<br/>`charge.edit` | · | · | · | · | § | § | § |
 | Delete a charge<br/>`charge.delete` | · | · |  | · | § | § | § |
-| Approve or reject a charge<br/>`charge.approve` | · | § | § | § | § | § | § |
+| Approve or reject a charge ⊗ *switched off*<br/>`charge.approve` | ⊗ | ⊗ | ⊗ | ⊗ | § | § | § |
 | View the employee master<br/>`employee.view` | · | · | – | · | § | § | § |
 | Add an employee<br/>`employee.create` | · | · | – | · | § | § | § |
 | Edit an employee's details and salary<br/>`employee.edit` | · | · | – | · | § | § | § |
@@ -419,6 +420,8 @@ Two endpoint classes carry no permission at all:
 - **Any signed-in user, no permission needed:** `auth.account`, `auth.logout`.
 
 **Hidden modules — `auth.HIDDEN_BLUEPRINTS = ['product']`.** These endpoints are classified as shown above and are **refused to everybody, an Owner included**, until the module is switched back on: `product.add_product`, `product.delete_product`, `product.list_products`, `product.view_product`. The permissions that gate them (`⊘` in the grid) are held exactly as they were and grant nothing while the module is hidden.
+
+**The approval ladder is switched off — `approval.LADDER_ON = False`** (12 September 2026, for a trial period; CLIENT_CHANGES.md §0, twenty-eighth block). These endpoints are classified as shown above and are **refused to everybody, an Owner included**, until the ladder is switched back on: `approval.approve_charge`, `approval.approve_invoice`, `approval.approve_measurement`, `approval.approve_merged_ra`, `approval.approve_purchase`, `approval.approve_ra`, `approval.reject_charge`, `approval.reject_invoice`, `approval.reject_measurement`, `approval.reject_merged_ra`, `approval.reject_purchase`, `approval.reject_ra`. The permissions that gate them (`⊗` in the grid) are held exactly as they were and grant nothing while the ladder is off. There is deliberately no `/settings` control for it.
 
 **Anything not in the registry is refused to everybody, including an Owner.** That is the design: a page added later is unreachable until somebody classifies it, rather than being open until somebody notices.
 

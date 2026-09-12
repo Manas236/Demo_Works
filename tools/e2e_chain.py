@@ -400,6 +400,26 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 
 
+# What the gate's page says on an approval route while the ladder is switched
+# off in code (`approval.LADDER_ON`, 12 September 2026). Matched on the page
+# title rather than the constant, because this driver imports no application
+# module and reads only what the server sends.
+LADDER_OFF_MARKER = "Approvals are switched off"
+
+
+def ladder_switched_off(html: str) -> bool:
+    """
+    Does this response say the approval ladder is switched off in code?
+
+    True for the refusal page `auth._gate()` renders on every approval route
+    while `approval.LADDER_ON` is False. The driver asks this once, on its
+    first approval, and then SKIPS every ladder step and says so — a chain
+    that fails halfway because nobody can approve is not a finding about the
+    chain.
+    """
+    return LADDER_OFF_MARKER in (html or "")
+
+
 def text_of(html: str) -> str:
     """The page with its tags stripped — for locating a figure by its label."""
     txt = _TAG_RE.sub(" ", html or "")
@@ -954,6 +974,9 @@ class Chain:
         self.cap_bites = False
         self.outstanding_expected = None
         self.unapproved_id = ""
+        # Set on the first approval attempt if the gate says the ladder is
+        # switched off in code; every later ladder step is then skipped.
+        self.ladder_off = False
         # The refusal message from the last create_ra, captured at POST time.
         self.last_refusal = ""
         # A bill that is never approved and never issued — assertion 12.
@@ -1185,11 +1208,23 @@ class Chain:
           rungs. Both refusals are surfaced rather than retried.
         """
         notes = []
+        if self.ladder_off:
+            return (False, "approvals switched off — skipped")
         for sess in (self.b, self.c):
             if sess is None:
                 continue
             path = f"/approval/approve/{doc_key}/{rid}"
             html = sess.get(path)
+            if ladder_switched_off(html):
+                # ⚠ The ladder is OFF in code (approval.LADDER_ON). Nothing
+                #   can be approved by anybody, so the rest of this step and
+                #   every later ladder step is skipped — and said so, rather
+                #   than reported as a refusal that reads like a defect.
+                self.ladder_off = True
+                print("     approvals are switched off in code "
+                      "(approval.LADDER_ON = False) — skipping the ladder; "
+                      "documents stand as raised")
+                return (False, "approvals switched off — skipped")
             if sess.refused():
                 notes.append(f"{sess.label}:{sess.flash()[1][:60]}")
                 continue
@@ -1296,12 +1331,15 @@ class Chain:
         self.create_challan()
 
         # The measurement has to be APPROVED before it is the source of
-        # installation quantity — CC-2's own word.
+        # installation quantity — CC-2's own word. ⚠ While the ladder is
+        # switched off in code a SAVED sheet is the source instead
+        # (measurement.feeds_ceiling), so the gate is probed either way and
+        # the step says which it measured.
         print("  -- approving the measurement (B then C)")
         self.approve("measurement", self.ms_id)
         html = self.a.get(f"/ra/create?boq={self.boq_id}&leg=installation")
         self.gate_opened = not (self.a.refused() or "ra_json" not in html)
-        print(f"     installation leg after approval: "
+        print(f"     installation leg after {'saving' if self.ladder_off else 'approval'}: "
               f"{'permitted' if self.gate_opened else 'REFUSED'}")
 
         half = {"1.1": 50.0, "2": 10.0}
@@ -1322,7 +1360,8 @@ class Chain:
         # Taken while the bill is still unapproved, for the same reason as 10a.
         self.unapproved_id = self.bills.get(("installation", 1)) or rid
 
-        print("  7. approve and issue both legs (B then C)")
+        print("  7. approve and issue both legs (B then C)"
+              + (" — approvals switched off, issuing only" if self.ladder_off else ""))
         for key in (("supply", 1), ("installation", 1)):
             bid = self.bills.get(key)
             if not bid:
@@ -1663,10 +1702,15 @@ def run_assertions(ch: Chain, t: Tally) -> None:
     #     Manas ruled on 6 September 2026 that **the cap stays**. So this
     #     assertion pins what is actually true: the gate refuses, and the
     #     measured quantity really is the ceiling. See the §0 block of that date.
-    t.check("10a. installation leg refused with no approved measurement",
+    t.check("10a. installation leg refused with no measurement at all",
             "refused", "refused" if ch.gate_refused else "ALLOWED",
             "CC-2 C1")
-    t.check("10b. installation leg permitted once a measurement is approved",
+    # ⚠ With the ladder switched off in code a SAVED sheet satisfies C1 — the
+    #   twenty-eighth §0 block, 12 September 2026 — so the assertion names
+    #   which regime it measured rather than claiming an approval that did not
+    #   happen.
+    t.check("10b. installation leg permitted once a measurement is "
+            + ("SAVED (approvals switched off)" if ch.ladder_off else "approved"),
             "permitted", "permitted" if ch.gate_opened else "REFUSED",
             "CC-2 C1")
     t.check("10c. measured qty IS the installation ceiling (RULING REVERSED)",

@@ -73,7 +73,11 @@ from store import STORE
 # pages, so it runs with the toggle emptied — it keeps proving `product.py`
 # for the day the module is un-hidden. The hidden state itself is covered by
 # `tests/test_product_hidden.py`.
-pytestmark = pytest.mark.usefixtures("catalogue_unhidden")
+# …and the approval ladder ON (`ladder_on`), because the sweep reaches
+# the approve/reject pages, which are refused at the gate while the
+# ladder is switched off in code (12 September 2026). The OFF state is
+# `tests/test_approvals_off.py`'s.
+pytestmark = pytest.mark.usefixtures("catalogue_unhidden", "ladder_on")
 
 
 # ── The payloads ───────────────────────────────────────────────────────────

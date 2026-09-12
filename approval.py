@@ -90,6 +90,52 @@ A record with neither a `created_by` nor the grandfather mark — a test fixture
 a demo seed — is treated as *creator unknown*: the guard cannot apply to it
 either. It is **not** counted in the pinned set, and the pin test is what stops
 that leniency reaching anything the application itself wrote.
+
+⚠ THE LADDER IS SWITCHED OFF — in code, for a trial period (12 September 2026)
+--------------------------------------------------------------------------------
+`LADDER_ON = False`, beside `DOCUMENTS`, read through `ladder_on()` and
+nothing else. CLIENT_CHANGES.md §0, the twenty-eighth block: 3B.05–3B.07 are
+deferred under MG/SF/2026-06 as sequencing, the ladder returns after a trial
+period, and measurement approval goes off with it by the owner's own decision.
+**Built code stays and no bar moves** — B6, B7 and C2 are BUILT and this is a
+switch, not a removal. **Code only, no `/settings` control**: a toggle the
+client could reach would let them switch on deferred scope.
+
+While OFF, in this module and in everything that reads it:
+
+* `can_approve()` refuses everything, so no Approve / Reject action is ever
+  drawn and nothing can reach `approved` or `rejected`. The eight routes are
+  refused **at the gate** for everyone, an Owner included — `auth._gate()`
+  treats the `approval` blueprint as switched off, the hidden-blueprint
+  arrangement with its own reason, so a signed-in user gets a page saying so
+  and a stranger gets the ordinary login bounce. Nothing is written.
+* `can_print()` and `can_modify()` do not gate a PENDING record: it prints,
+  downloads (B8 reads `can_print()`), and edits and deletes follow the
+  document's own status rules as they stood before B6/B7. ⚠ **A decision
+  already taken is never overturned**: a record already APPROVED or REJECTED
+  behaves exactly as today — approved is locked and prints, rejected refuses
+  to print and returns to its creator. Both branches are checked BEFORE the
+  switch is consulted, which is what makes that true.
+* `cell()` and `panel()` draw nothing for a record with no decision on it —
+  no AWAITING chip, no ladder, no creator-unknown marker — so no queue, tile,
+  chip or band renders. A decided record still shows its decision.
+* the measurement ceiling is `measurement.feeds_ceiling()`'s business, and
+  it reads `accepted()` below: while OFF every saved sheet that is not
+  rejected counts, so `ra.overclaims()` keeps binding and its `{}`-means-
+  grandfather path never fires for a project that has sheets.
+
+**Every record created while OFF is STAMPED** — `RAISED_WHILE_OFF_FIELD`,
+written by `stamp_creator()` at the same moment `created_by` is, so it is
+written wherever the initial approval state is set today and never inferred
+from absence (`pre_approval_system`'s rule, and `grid_model`'s). When the
+switch goes back ON such a record is **never gated or queued** — `accepted()`
+says so — and shows a read-only *raised while approvals were off* mark;
+`can_approve()` refuses it by name. A record already PENDING before the switch
+went off carries no mark, so it returns to pending when the switch returns;
+it is deliberately not stamped, because that would rewrite stored data.
+`tests/test_approvals_off.py` holds all of it, and
+`tests/test_approval_grandfather.py` holds the raised-while-off set as a
+named set that only grows while OFF.
 """
 
 import datetime
@@ -240,6 +286,32 @@ DOCUMENTS = {
     },
 }
 
+# ── THE SWITCH (12 September 2026, CLIENT_CHANGES.md §0 twenty-eighth block) ─
+#
+# ⚠ **Shipped OFF, for a trial period, and this is the ONE line to flip.**
+#   `LADDER_ON = True` brings the whole ladder back — the eight routes, the
+#   gates, the queues, the chips and the measurement ceiling's approved-only
+#   reading — with no other edit anywhere. Read through `ladder_on()` and never
+#   directly: a reader that bound the constant at import would not see a
+#   fixture flip it, and the tests that keep proving the ladder for the day it
+#   returns run with it ON through exactly such a fixture.
+#
+# ⚠ **Code only. There is deliberately no `/settings` control** — 3B.05–3B.07
+#   are deferred scope, and a toggle the client could reach would let them
+#   switch it on.
+LADDER_ON = False
+
+
+def ladder_on() -> bool:
+    """Is the approval ladder in force? The one reader every surface uses."""
+    return LADDER_ON
+
+
+# The mark a record raised while the ladder was OFF carries. Written at create
+# by `stamp_creator()` and read by `raised_while_off()`; named once so the
+# stamp, the predicate, the dump tool and the tests cannot spell it four ways.
+RAISED_WHILE_OFF_FIELD = "raised_while_approvals_off"
+
 # The collection a document key writes to. `db.py` persists every one of these
 # already — no new table and no new collection, because an approval is a fact
 # ABOUT a document and lives on it.
@@ -316,6 +388,61 @@ def is_grandfathered(record) -> bool:
     return bool((record or {}).get(GRANDFATHER_FIELD))
 
 
+def raised_while_off(record) -> bool:
+    """
+    Was this record created while the ladder was switched OFF?
+
+    True only for the explicit mark `stamp_creator()` writes at create. Never
+    inferred from a missing `approval_status` or from the switch's state now —
+    a PENDING record that predates the switch going off carries no mark and
+    returns to pending the day the ladder returns, which is the point of the
+    distinction. `is_grandfathered()` makes the identical argument for
+    `pre_approval_system`, one closed set along.
+    """
+    return bool((record or {}).get(RAISED_WHILE_OFF_FIELD))
+
+
+def decided(record) -> bool:
+    """Has a decision been taken on this record — approved or rejected?"""
+    return is_approved(record) or is_rejected(record)
+
+
+def accepted(record) -> bool:
+    """
+    Does this record stand as ACCEPTED for whatever depends on it — the
+    measurement ceiling, the installation gate, a count of approved sheets?
+
+    * a REJECTED record never does — a decision taken is never overturned;
+    * an APPROVED one always does;
+    * a record raised while the ladder was OFF does, whatever the switch says
+      now — it was raised under a regime that took it as it stood, and
+      it can never be approved (it is not on the ladder);
+    * with the ladder OFF, every other saved record does.
+
+    ⚠ This is what keeps `ra.overclaims()`'s ceiling binding while OFF:
+    `measurement.feeds_ceiling()` is this function applied to a sheet, so a
+    project with saved sheets never reads as "predates measurement".
+    """
+    if is_rejected(record):
+        return False
+    if is_approved(record) or raised_while_off(record):
+        return True
+    return not ladder_on()
+
+
+def gated(record) -> bool:
+    """
+    Does the ladder apply to this record at all — may it be queued, and may
+    an undecided one be held back from printing or editing?
+
+    False while the ladder is OFF, and false for a record raised while it was
+    OFF, whatever the switch says now. A grandfathered record is on the ladder
+    (it may be approved) but is never held back — `can_print()` handles that
+    on its own, as it always has.
+    """
+    return ladder_on() and not raised_while_off(record)
+
+
 def creator_of(record) -> str:
     """The user id that wrote this record, or `""` when nobody knows."""
     return str((record or {}).get("created_by") or "")
@@ -365,11 +492,21 @@ def stamp_creator(record, user=_UNSET) -> None:
     ⚠ It never writes `pre_approval_system`. That mark belongs to the migration
     alone, and `tests/test_approval_grandfather.py` fails if anything else sets
     it.
+
+    ⚠ **It DOES write `RAISED_WHILE_OFF_FIELD`, and only while the ladder is
+    OFF** (12 September 2026). This is the one place the initial approval
+    state of a record is set — every create route of every approvable
+    document calls it, and no create route writes `approval_status` — so it is
+    where the mark belongs: written at create, never inferred from absence.
+    With the ladder ON nothing is written and the key stays absent, so a
+    record raised while ON gets the normal ladder.
     """
     if not isinstance(record, dict):
         return
     user = session_user() if user is _UNSET else user
     record["created_by"] = str((user or {}).get("id") or "")
+    if not ladder_on():
+        record[RAISED_WHILE_OFF_FIELD] = True
 
 
 # =============================================================================
@@ -496,6 +633,17 @@ def can_approve(doc_key: str, record, user=_UNSET) -> tuple:
         return False, "That is not an approvable document."
     if not record:
         return False, "That document no longer exists."
+
+    # -- 0. THE SWITCH ------------------------------------------------------
+    # Before the session, before the creator guard, before the rung: while
+    # the ladder is OFF nobody approves anything, an Owner included, and a
+    # record raised while it was OFF is never on the ladder afterwards.
+    if not ladder_on():
+        return False, SWITCHED_OFF_NOTE
+    if raised_while_off(record):
+        return False, (
+            f"This {spec['label']} was raised while approvals were switched "
+            f"off, so it is not on the ladder. It stands as raised.")
 
     user = session_user() if user is _UNSET else user
     if not user:
@@ -624,6 +772,19 @@ def grandfathered_ids(doc_key: str) -> list:
                   if is_grandfathered(rec))
 
 
+def raised_while_off_ids(doc_key: str) -> list:
+    """
+    Every record of one type carrying the raised-while-off mark, sorted.
+
+    Its own named set beside the grandfathered one, and NOT the same set: a
+    grandfathered record predates the ladder and may still be approved; a
+    record raised while the ladder was OFF is never on it. The set grows only
+    while the ladder is OFF — `tests/test_approval_grandfather.py` proves it.
+    """
+    return sorted(rid for rid, rec in records(doc_key).items()
+                  if raised_while_off(rec))
+
+
 # =============================================================================
 # THE ON-SCREEN MARKER — screen only, NEVER on a printed sheet
 # =============================================================================
@@ -637,6 +798,18 @@ GRANDFATHER_NOTE = (
     "This record predates the approval system, so who raised it is not known. "
     "It can be approved by anyone on its ladder — the rule that a person "
     "cannot approve their own record has nobody to check against here.")
+
+# What the switch says when it refuses. One sentence, used by the gate's page,
+# by `can_approve()` and by the tests, so the three cannot drift.
+SWITCHED_OFF_NOTE = (
+    "Approvals are switched off. Nothing can be approved or rejected while the "
+    "ladder is off; documents stand as raised and print as they are.")
+
+# The read-only mark a record raised while the ladder was OFF shows once the
+# ladder is back. Screen only, like every other marker in this section.
+RAISED_WHILE_OFF_NOTE = (
+    "Raised while approvals were switched off. It is not on the ladder and "
+    "cannot be approved or rejected; it stands as raised.")
 
 
 # =============================================================================
@@ -726,10 +899,16 @@ def can_print(doc_key: str, record) -> tuple:
     if str(record.get("status") or "").strip().lower() in exempt:
         return True, ""
     if is_rejected(record):
+        # A decision taken is never overturned: a rejected document refuses
+        # to print whatever the switch says. Checked BEFORE the switch.
         return False, (
             f"This {spec['label']} was rejected, so it cannot be printed or "
             f"downloaded. Correct it and put it back through the ladder. You "
             f"can go on viewing it on screen.")
+    if not gated(record):
+        # The ladder is OFF, or this record was raised while it was: an
+        # undecided document is not held back. It prints, it downloads.
+        return True, ""
     waiting = ", ".join(role_label(s) for s in outstanding_steps(doc_key, record))
     return False, (
         f"This {spec['label']} has not been approved, so it cannot be printed "
@@ -849,6 +1028,13 @@ def can_modify(doc_key: str, record, user=_UNSET) -> tuple:
                 f"raised it. You did not raise it.")
         return True, ""
 
+    if not gated(record):
+        # The ladder is OFF, or this record was raised while it was: an
+        # undecided document follows its own module's rules and nothing here.
+        # The two decided branches above still bind — a decision taken is
+        # never overturned.
+        return True, ""
+
     if approvals_of(record):
         taken = ", ".join(sorted({str(a.get("role_name") or a.get("role") or "")
                                   for a in approvals_of(record)}))
@@ -921,14 +1107,53 @@ def grandfather_chip(record) -> str:
             f'border-color:#ddd5c4">CREATOR UNKNOWN</span>')
 
 
+RAISED_WHILE_OFF_CHIP_TITLE = RAISED_WHILE_OFF_NOTE
+
+
+def raised_while_off_chip(record) -> str:
+    """
+    The read-only mark a record raised while the ladder was OFF shows once
+    the ladder is back on. Screen only. Draws nothing while the ladder is OFF
+    — then every undecided record stands the same way and the mark would say
+    nothing — and nothing for a record that carries no mark.
+    """
+    if not (ladder_on() and raised_while_off(record)):
+        return ""
+    return (f'<span title="{_esc(RAISED_WHILE_OFF_CHIP_TITLE)}" '
+            f'style="{_BADGE}background:#eef2f7;color:#3b4a5e;'
+            f'border-color:#c9d3e0">RAISED WHILE APPROVALS WERE OFF</span>')
+
+
+def raised_while_off_marker(record) -> str:
+    """The long form of the mark, for a record's own page. Screen only."""
+    if not (ladder_on() and raised_while_off(record)):
+        return ""
+    return (
+        '<div style="margin:.6rem 0;padding:.55rem .8rem;border-radius:8px;'
+        'background:#eef2f7;border:1px solid #c9d3e0;color:#3b4a5e;'
+        'font-size:0.82rem;line-height:1.45">'
+        '<b>Raised while approvals were off.</b> ' + _esc(RAISED_WHILE_OFF_NOTE) + '</div>')
+
+
 def cell(doc_key: str, record) -> str:
     """
     The list-row form: badge, grandfather chip, and whatever actions apply.
 
     ⚠ **Screen only**, like everything else in this section.
+
+    ⚠ **While the ladder is OFF an undecided record draws NOTHING** — no
+    AWAITING chip, no creator-unknown chip, no actions: there is no queue for
+    it to be in. A record already decided still shows its decision. Once the
+    ladder is back, a record raised while it was off shows its read-only mark
+    and nothing else — it is not on the ladder.
     """
     if doc_key not in DOCUMENTS or not record:
         return ""
+    if not ladder_on() and not decided(record):
+        return ""
+    if raised_while_off(record) and not decided(record):
+        return (f'<div style="display:flex;flex-direction:column;gap:.3rem;'
+                f'align-items:flex-start">{raised_while_off_chip(record)}</div>')
     return (f'<div style="display:flex;flex-direction:column;gap:.3rem;'
             f'align-items:flex-start">{status_badge(record)}'
             f'{grandfather_chip(record)}'
@@ -998,6 +1223,12 @@ def panel(doc_key: str, record) -> str:
     """
     if doc_key not in DOCUMENTS or not record:
         return ""
+    # While OFF an undecided record has no panel — see `cell()`. A decided
+    # one keeps its decision on the page, actions and all (there are none).
+    if not ladder_on() and not decided(record):
+        return ""
+    if raised_while_off(record) and not decided(record):
+        return raised_while_off_marker(record)
     return (
         '<div style="margin:.8rem 0;padding:.8rem 1rem;border-radius:10px;'
         'background:#faf9f6;border:1px solid #e6e1d6">'
@@ -1072,7 +1303,27 @@ def _refusal(doc_key: str, reason: str):
     return redirect(url_for(spec["list_endpoint"], msg=reason, type="error"))
 
 
+def _switched_off_page():
+    """
+    The page a signed-in user gets on an approval route while the ladder is
+    OFF. `auth._gate()` answers this BEFORE the view runs — a stranger gets
+    the login bounce there, a user without the permission gets this rather
+    than a permission refusal — so this is defence in depth: were the gate
+    ever loosened, nothing here writes.
+    """
+    return _decision_page(
+        "Approvals are switched off",
+        "<div class='page-top'><h1>Approvals are <span>switched off</span></h1></div>"
+        f"<p style='max-width:40em;line-height:1.6'>{_esc(SWITCHED_OFF_NOTE)}</p>"
+        "<p style='max-width:40em;line-height:1.6;color:#6b6455;font-size:.9rem'>"
+        "The ladder is off in code (<code>approval.LADDER_ON</code>) for a trial "
+        "period. Nobody can reach this page, an Owner included, until it is "
+        "switched back on. Your roles and their permissions are unchanged.</p>"), 403
+
+
 def _do_approve(doc_key: str, id: str):
+    if not ladder_on():
+        return _switched_off_page()
     spec = DOCUMENTS[doc_key]
     back = url_for(spec["list_endpoint"])
     record = find(doc_key, id)
@@ -1104,6 +1355,8 @@ def _do_approve(doc_key: str, id: str):
 
 
 def _do_reject(doc_key: str, id: str):
+    if not ladder_on():
+        return _switched_off_page()
     spec = DOCUMENTS[doc_key]
     back = url_for(spec["list_endpoint"])
     record = find(doc_key, id)

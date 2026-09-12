@@ -70,6 +70,15 @@ MARK_DERIVED_ABSENT = "–"
 # back to `·` by itself — nothing about the role changed.
 MARK_HIDDEN = "⊘"
 
+# ⊗ — the role HOLDS the grant, kept exactly as it was, but the approval ladder
+# is switched off in code (`approval.LADDER_ON = False`, 12 September 2026) so
+# the eight approve/reject routes it gates are refused to everybody, an Owner
+# included. Distinct from `⊘` on purpose: a hidden module and a deferred ladder
+# are two different decisions with two different ways back, and a reader must
+# be able to tell which one a frozen cell is waiting on. The day the ladder
+# returns the cell goes back to `·` / `§` by itself.
+MARK_SWITCHED_OFF = "⊗"
+
 
 # ── What CLIENT_CHANGES-2.md actually settles ──────────────────────────────
 #
@@ -457,6 +466,14 @@ def build() -> str:
       f"included**. `/roles` draws the box disabled and a save cannot add or "
       f"remove it. Un-hiding the module is one line in `auth.py`; every cell "
       f"then reads as it did before. |")
+    w(f"| `{MARK_SWITCHED_OFF}` | **Approvals switched off.** The role holds this "
+      f"grant, kept exactly as it was, but the approval ladder is switched off "
+      f"in code (`approval.LADDER_ON = False`, 12 September 2026, for a trial "
+      f"period) and the approve/reject routes it gates are **refused to "
+      f"everybody, an Owner included**. `/roles` draws the box disabled, "
+      f"labelled *switched off*, and a save cannot add or remove it. Switching "
+      f"the ladder back on is one line in `approval.py`; every cell then reads "
+      f"as it did before. |")
     w("")
     w("Every derived cell is a question for the client, and none of them is "
       "expensive to change: an Owner reassigns any of it with checkboxes at "
@@ -476,6 +493,7 @@ def build() -> str:
     divider = "|---|" + "|".join([":-:"] * len(slugs)) + "|"
 
     hidden = auth.hidden_permissions()
+    switched_off = auth.switched_off_permissions()
     for group, perms in auth._permission_groups():
         w(f"### {group}")
         w("")
@@ -488,6 +506,8 @@ def build() -> str:
                 key = (slug, pid)
                 if held and pid in hidden:
                     cells.append(MARK_HIDDEN)
+                elif held and pid in switched_off:
+                    cells.append(MARK_SWITCHED_OFF)
                 elif held:
                     cells.append(MARK_SPEC if key in SPEC_BACKED else MARK_DERIVED)
                 elif key in SPEC_REQUIRES_ABSENT:
@@ -496,7 +516,8 @@ def build() -> str:
                     cells.append(MARK_DERIVED_ABSENT)
                 else:
                     cells.append(MARK_ABSENT)
-            tag = f" {MARK_HIDDEN} *module hidden*" if pid in hidden else ""
+            tag = (f" {MARK_HIDDEN} *module hidden*" if pid in hidden else
+                   f" {MARK_SWITCHED_OFF} *switched off*" if pid in switched_off else "")
             w(f"| {label}{tag}<br/>`{pid}` | " + " | ".join(cells) + " |")
         w("")
 
@@ -629,6 +650,19 @@ def build() -> str:
           f"{', '.join(f'`{e}`' for e in hidden_eps)}. The permissions that "
           f"gate them (`{MARK_HIDDEN}` in the grid) are held exactly as they "
           f"were and grant nothing while the module is hidden.")
+        w("")
+    off_eps = sorted(e for e in auth.ROUTE_PERMISSIONS
+                     if auth.endpoint_off_reason(e) == auth.OFF_APPROVALS)
+    if off_eps:
+        w(f"**The approval ladder is switched off — `approval.LADDER_ON = "
+          f"False`** (12 September 2026, for a trial period; CLIENT_CHANGES.md "
+          f"§0, twenty-eighth block). These endpoints are classified as shown "
+          f"above and are **refused to everybody, an Owner included**, until "
+          f"the ladder is switched back on: "
+          f"{', '.join(f'`{e}`' for e in off_eps)}. The permissions that gate "
+          f"them (`{MARK_SWITCHED_OFF}` in the grid) are held exactly as they "
+          f"were and grant nothing while the ladder is off. There is "
+          f"deliberately no `/settings` control for it.")
         w("")
     w("**Anything not in the registry is refused to everybody, including an "
       "Owner.** That is the design: a page added later is unreachable until "

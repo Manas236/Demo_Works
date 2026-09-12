@@ -1243,9 +1243,9 @@ def overclaim_message(v: dict) -> str:
         return (f"Item {v['item_no']} is not in the approved BOQ, so there is "
                 f"nothing to claim against it.")
     if v["reason"] == "not_measured":
-        return (f"Item {v['item_no']} has no approved measurement behind it, so "
-                f"there is no installation quantity to claim. Measure it and "
-                f"have the sheet approved first.")
+        # Worded by measurement.py, which knows whether anybody can approve a
+        # sheet today (12 September 2026). The reason and the guard are unchanged.
+        return MS.not_measured_message(v["item_no"])
     if v["reason"] == "overmeasured":
         return (f"Item {v['item_no']} (installation): {q(v['approved'])} "
                 f"measured and approved, {q(v['previously'])} already claimed "
@@ -1874,12 +1874,11 @@ def _c1_refusal(boq_id: str, leg: str):
         # The same chain `overclaims()` measures against — see the note there.
         if not MS.has_approved_measurement(boq_id,
                                            chain=set(revision_chain(boq_id))):
+            # The wording follows the approval switch and is measurement.py's
+            # (12 September 2026) — this call site changed, the rule did not.
             return redirect(url_for(
                 "boq.view_boq", id=boq_id, type="error",
-                msg="Installation is claimed against an approved measurement, "
-                    "not against the schedule. Raise a measurement sheet for "
-                    "this project and have it approved, then this claim can be "
-                    "made."))
+                msg=MS.c1_installation_message()))
         return None
 
     if leg == "supply" and not challan_exists(boq_id):

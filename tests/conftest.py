@@ -380,3 +380,35 @@ def catalogue_unhidden():
     finally:
         auth.HIDDEN_BLUEPRINTS.clear()
         auth.HIDDEN_BLUEPRINTS.update(saved)
+
+
+@pytest.fixture()
+def ladder_on():
+    """
+    Switch the approval ladder ON for one test, and put it back afterwards.
+
+    The ladder is switched OFF on the shipped configuration (12 September
+    2026, CLIENT_CHANGES.md §0 twenty-eighth block — `approval.LADDER_ON`).
+    The tests that prove the ladder — `tests/test_approval.py`, the B7 print
+    gate, the B8 download gate, the measurement cap and pin, the dashboard's
+    pending tile — run under this fixture so they keep proving it for the day
+    it returns, rather than being rewritten into OFF checks that prove nothing
+    about it. `tests/test_approvals_off.py` covers the OFF state on its own.
+
+    Applied module-wide with `pytestmark = pytest.mark.usefixtures("ladder_on")`
+    so it is in force BEFORE a test's own fixtures create records: a record
+    created while the ladder is off is stamped `raised_while_approvals_off`
+    at create and is never gated afterwards, which is exactly the thing an
+    ON-state test must not be handed by accident.
+
+    The module attribute is rebound rather than mutated because it is a bool;
+    every reader goes through `approval.ladder_on()`, which reads it fresh.
+    """
+    import approval
+
+    saved = approval.LADDER_ON
+    approval.LADDER_ON = True
+    try:
+        yield
+    finally:
+        approval.LADDER_ON = saved

@@ -2232,12 +2232,17 @@ def view_boq(id: str):
     #
     # `boq.py` may import neither `ra.py` nor `challan.py` nor `measurement.py`
     # (§2b), so both conditions are read off STORE directly — the same one-way
-    # trick every other chip in this bar uses.
+    # trick every other chip in this bar uses. Whether a sheet COUNTS is
+    # `approval.accepted()`'s answer — the same predicate
+    # `measurement.feeds_ceiling()` gives `ra.overclaims()` — read through a
+    # function-body import of the bottom-of-graph module rather than a literal
+    # `== "approved"`, so this chip and the gate cannot disagree about the
+    # switch (12 September 2026).
+    import approval as _AP
     _chain = _ancestor_ids(id) | {id}
     _has_dc = any(str(dc.get("boq_id") or "") in _chain
                   for dc in (STORE.get("delivery_challans") or {}).values())
-    _has_ms = any(str(m.get("boq_id") or "") in _chain
-                  and str(m.get("approval_status") or "") == "approved"
+    _has_ms = any(str(m.get("boq_id") or "") in _chain and _AP.accepted(m)
                   for m in (STORE.get("measurements") or {}).values())
 
     ra_btns = ""

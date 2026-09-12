@@ -405,6 +405,14 @@ def measured_by_line(boq_id: str, exclude_id: str = "",
     `approval.py`'s `rejected` state doing the same job `ra.is_cancelled()` does
     one document over — a withdrawn number releases the quantity it was holding.
 
+    ⚠ **"Approved" is `feeds_ceiling()`'s reading, not a literal status test**
+    (12 September 2026). While the approval ladder is switched off
+    (`approval.LADDER_ON`) every saved sheet that is not rejected feeds the
+    ceiling; with it on, an approved sheet does, and so does a sheet raised
+    while it was off. That is what keeps `ra.overclaims()`'s cap binding while
+    the ladder is off — and keeps its `{}`-means-grandfather path from firing
+    for a project that has sheets but nothing anybody could approve.
+
     `exclude_id` leaves one sheet out, so an edit can ask "what would the
     cumulative be without my own current figures in it" — `ra.claimed_by_line()`
     takes the same argument for the same reason.
@@ -415,7 +423,7 @@ def measured_by_line(boq_id: str, exclude_id: str = "",
             continue
         if approval.is_rejected(m):
             continue                 # refused — its quantity is released
-        if approved_only and not approval.is_approved(m):
+        if approved_only and not feeds_ceiling(m):
             continue
         for row in m.get("items") or []:
             if row.get("is_header"):
@@ -427,29 +435,85 @@ def measured_by_line(boq_id: str, exclude_id: str = "",
     return out
 
 
+def feeds_ceiling(ms: dict) -> bool:
+    """
+    Does this sheet count toward the installation ceiling — is it, for
+    `ra.overclaims()`'s purposes, an APPROVED measurement?
+
+    `approval.accepted()` applied to a sheet, and nothing else: a rejected
+    sheet never; an approved one always; a sheet raised while the ladder was
+    off always, whatever the switch says now; and with the ladder OFF every
+    other saved sheet. **The branch is on this side, never in `ra.py`** — the
+    twenty-eighth §0 block puts it here so `ra.py`'s grandfather rule is not
+    touched and its `{}` path keeps meaning what it always meant: no sheet
+    that counts exists on this chain.
+
+    ⚠ **The cap must still bind while the ladder is off.** A saved sheet is
+    the ceiling then, and `tests/test_approvals_off.py` proves a claim above
+    it is refused — with the switch OFF, and with it ON for a sheet raised
+    while it was OFF.
+    """
+    return approval.accepted(ms)
+
+
 def approved_qty_by_line(boq_id: str, chain: set = None) -> dict:
     """
-    `{line_id: qty}` from **approved** measurement sheets on the chain.
+    `{line_id: qty}` from **approved** measurement sheets on the chain — in
+    `feeds_ceiling()`'s sense of approved.
 
     ⚠ **THIS IS THE FUNCTION `ra.py` IMPORTS, and the whole of CC-2's C2
     sentence in code**: *"Approved measurements become the source of
     installation quantity on RA-Installation."* `ra.overclaims()` reads it and
     lowers the installation leg's ceiling to what it returns.
 
-    `{}` means **no approved measurement exists on this chain at all**, and
+    `{}` means **no sheet that counts exists on this chain at all**, and
     `ra.py` treats that as "this project predates measurement" and keeps the BOQ
     ceiling — which is what stops the pre-measurement bills being stranded. The
     exception cannot grow, because `/ra/create?leg=installation` refuses a BOQ
-    with no approved measurement, so an empty answer can only describe a project
-    that already existed. `tests/test_measurement_pin.py` is what pins that.
+    with no such sheet, so an empty answer can only describe a project that
+    already existed. `tests/test_measurement_pin.py` is what pins that. ⚠ With
+    the ladder OFF a saved sheet counts, so a project with sheets NEVER reads as
+    `{}` — `tests/test_approvals_off.py` mutation-proves the branch.
     """
     return measured_by_line(boq_id, approved_only=True, chain=chain)
 
 
 def has_approved_measurement(boq_id: str, chain: set = None) -> bool:
-    """Is there an approved measurement anywhere on this BOQ's chain?"""
-    return any(approval.is_approved(m)
+    """
+    Is there a measurement that counts anywhere on this BOQ's chain?
+
+    `feeds_ceiling()`'s reading, so C1's installation gate (`ra._c1_refusal()`)
+    is satisfied by a saved sheet while the ladder is off and by an approved
+    one while it is on — and with no sheet at all it still refuses.
+    """
+    return any(feeds_ceiling(m)
                for _mid, m in sheets_on_chain(boq_id, chain))
+
+
+def c1_installation_message() -> str:
+    """
+    What `ra._c1_refusal()` says when the installation leg has no sheet
+    behind it — worded for the switch, so an operator is never told to have a
+    sheet approved while nobody can approve one. Owned here because the
+    wording is about this document, and `ra.py` changes at the call site only.
+    """
+    if approval.ladder_on():
+        return ("Installation is claimed against an approved measurement, not "
+                "against the schedule. Raise a measurement sheet for this "
+                "project and have it approved, then this claim can be made.")
+    return ("Installation is claimed against a measurement, not against the "
+            "schedule. Raise a measurement sheet for this project, then this "
+            "claim can be made.")
+
+
+def not_measured_message(item_no) -> str:
+    """`ra.overclaim_message()`'s sentence for a line no counting sheet covers."""
+    if approval.ladder_on():
+        return (f"Item {item_no} has no approved measurement behind it, so "
+                f"there is no installation quantity to claim. Measure it and "
+                f"have the sheet approved first.")
+    return (f"Item {item_no} has no measurement behind it, so there is no "
+            f"installation quantity to claim. Measure it first.")
 
 
 def installation_claims_on_chain(boq_id: str, chain: set = None) -> list:
@@ -533,7 +597,13 @@ def can_delete(ms: dict) -> tuple:
     if not ms:
         return False, "That measurement sheet no longer exists."
 
-    if not has_ladder_history(ms):
+    # ⚠ A sheet that FEEDS THE CEILING is the basis of a claim whether or not
+    #   it ever entered the ladder — with the ladder off every saved sheet
+    #   does, and a sheet raised while it was off goes on doing so. The
+    #   never-submitted-draft exception below is for a sheet that was never
+    #   the basis of anything, and while the ladder is off no saved sheet is
+    #   that (12 September 2026).
+    if not has_ladder_history(ms) and not feeds_ceiling(ms):
         return True, ""
 
     claims = installation_claims_on_chain(str(ms.get("boq_id") or ""))
