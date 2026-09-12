@@ -33,24 +33,42 @@ library page looks like*; it does not decide whether it is in use. That keeps
 the decision in one place — the three functions that already branch on it —
 rather than in two that could disagree.
 
-What a pick is
---------------
-`{sid, vidx, leg, qty, price, show_price}` — a spec id, a variant index, and
-which leg of the work, `supply` or `install`. **Identity comes from the
-library at POST**: name, code, HSN/SAC and unit are re-read from
-`STORE["specs"]` and the form's copies are ignored; only the quantity, the
-price and the show-price flag are the browser's. The mapping is the
-twenty-seventh block's:
+What a pick is — SUPPLY ONLY
+----------------------------
+`{sid, vidx, qty, price, show_price}` — a spec id, a variant index, and the
+browser's three fields. **Identity comes from the library at POST**: name,
+code, HSN and unit are re-read from `STORE["specs"]` and the form's copies
+are ignored; only the quantity, the price and the show-price flag are the
+browser's. The mapping, from the twenty-eighth block:
 
-    name     "Supply of <title> — <variant>" / "Installation of <title> — <variant>"
+    name     "Supply of <title> — <variant>"
     part_no  the spec code
-    hsn      supply_hsn on a supply line, install_sac on an installation line
+    hsn      supply_hsn
     unit     the variant's unit
-    price    the variant's library rate, SUGGESTED and editable
+    price    the variant's default SUPPLY rate, SUGGESTED and editable
+
+⚠ **THERE IS NO INSTALLATION LEG ON A QUOTATION** (12 September 2026, change
+2 of the twenty-eighth block). The twenty-seventh block's picker offered
+*Supply + Installation* and wrote one row per leg; that selector and those
+rows are gone. This chain is quotation → proforma → tax invoice for **goods
+going out**; installation is billed through BOQ → RA, where a claim is
+measured against a schedule and proved by a measurement sheet. A posted
+`leg` other than `supply` is **refused**, naming the reason — a forged
+installation line must not reach the document by a hand-made POST when the
+page no longer offers it. The GST guard compares `supply_gst_rate` only.
+
+Every clause is offered and none is filtered: a variant with no supply rate
+opens with an EMPTY price box, exactly as before, and the POST refuses an
+empty price on a shown line. Measured on the seed on 12 September 2026 — 56
+clauses, 86 variants — **5** clauses carry a blank `supply_hsn` and **22**
+have no supply rate on any variant (36 of the 86 variants), so the empty box
+is the ordinary case for a fifth of the library rather than an edge.
 
 The line-item shape is `quotation.py`'s and is untouched — a proforma and a
 tax invoice copy it — so a quotation written from either library views,
-prints and raises a PI and a TI identically.
+prints and raises a PI and a TI identically. ABOUT.md §7 gap 37 — an
+installation line printing under heads written for goods — closed with this,
+because no new quotation can carry one.
 """
 
 import pipeline as P
@@ -86,10 +104,15 @@ def catalog_json() -> str:
     """
     The specification library, embedded for the picker.
 
-    One entry per spec, keyed by spec id. A variant carries the two library
-    rates as numbers **or null** — null means the library has no rate for that
-    leg, and the picker then opens an EMPTY price box rather than a zero, so a
-    figure nobody chose cannot reach the document.
+    One entry per spec, keyed by spec id, carrying the SUPPLY side only —
+    code, title, category, the supply HSN, the supply GST rate, and per
+    variant its label, unit and default supply rate. The installation SAC,
+    rate and GST rate are not embedded: nothing on the page reads them, and a
+    payload the page cannot use is a payload the page should not carry.
+
+    A variant's rate is a number **or null** — null means the library has no
+    supply rate for that size, and the picker then opens an EMPTY price box
+    rather than a zero, so a figure nobody chose cannot reach the document.
 
     NOT a bare `json.dumps`: `json.dumps` does not escape `<`, so a clause
     titled `…</script>…` would close the block this is embedded in and every
@@ -102,14 +125,11 @@ def catalog_json() -> str:
             "title":            s.get("title", ""),
             "category":         s.get("category", ""),
             "supply_hsn":       s.get("supply_hsn", ""),
-            "install_sac":      s.get("install_sac", ""),
             "supply_gst_rate":  s.get("supply_gst_rate"),
-            "install_gst_rate": s.get("install_gst_rate"),
             "variants": [{
                 "label":        v.get("label", ""),
                 "unit":         v.get("unit", ""),
                 "supply_rate":  v.get("default_supply_base_rate"),
-                "install_rate": v.get("default_install_base_rate"),
             } for v in (s.get("variants") or [])],
         }
     return P.json_for_script(library)
@@ -134,11 +154,18 @@ def process_selections(data: list) -> tuple:
     quotation missing a line nobody removed is worse than a form asking to be
     re-checked.
 
-    ⚠ **A shown line with no price is REFUSED.** A leg the library has no rate
-    for opens with an empty box; leaving it empty is not choosing zero, and a
-    `0.00` printed against work somebody forgot to price is the figure this
-    refusal exists to stop. A deliberately typed `0` is a price and is kept —
-    the same "included, no separate charge" convention `show_price` off gives.
+    ⚠ **A shown line with no price is REFUSED.** A size the library has no
+    supply rate for opens with an empty box; leaving it empty is not choosing
+    zero, and a `0.00` printed against goods somebody forgot to price is the
+    figure this refusal exists to stop. A deliberately typed `0` is a price
+    and is kept — the same "included, no separate charge" convention
+    `show_price` off gives.
+
+    ⚠ **A `leg` other than `supply` is REFUSED**, by line. The page offers no
+    installation leg (see the module docstring), and a pick carrying one can
+    only have been forged or posted from a page rendered before 12 September
+    2026. It is refused rather than silently rewritten as supply — a line the
+    operator meant as installation must not become a line of goods.
 
     ⚠ Two depths exist in the record shape and only depth 0 is written here:
     a clause has no bill of materials, so there is nothing to indent. Every
@@ -159,13 +186,15 @@ def process_selections(data: list) -> tuple:
         except (TypeError, ValueError, IndexError):
             return [], (f"Line {n}: the size chosen for '{spec.get('title', '')}' "
                         f"is no longer in the library. Remove it and pick again."), []
-        leg = str(item.get("leg") or "")
-        if leg not in ("supply", "install"):
-            return [], f"Line {n}: choose Supply or Installation.", []
+        leg = str(item.get("leg") or "supply")
+        if leg != "supply":
+            return [], (f"Line {n}: only the supply of goods is quoted here. "
+                        f"Installation is billed through the BOQ and its RA "
+                        f"bills, not on a quotation."), []
 
         label = (variant.get("label") or "").strip()
         title = (spec.get("title") or "").strip()
-        name = ("Supply of " if leg == "supply" else "Installation of ") + title
+        name = "Supply of " + title
         if label:
             name += " — " + label
 
@@ -197,16 +226,14 @@ def process_selections(data: list) -> tuple:
             "type":    "item",
             "name":    name,
             "part_no": spec.get("code", ""),
-            "hsn":     spec.get("supply_hsn", "") if leg == "supply"
-                       else spec.get("install_sac", ""),
+            "hsn":     spec.get("supply_hsn", ""),
             "qty":     qty,
             "unit":    variant.get("unit", ""),
             "price":   eff_price,
             "total":   eff_price * qty,
             "depth":   0,
         })
-        rate = spec.get("supply_gst_rate") if leg == "supply" else spec.get("install_gst_rate")
-        gst_rates.append((name, rate))
+        gst_rates.append((name, spec.get("supply_gst_rate")))
 
     return line_items, "", gst_rates
 
@@ -216,8 +243,9 @@ def gst_guard(gst_rates: list, tax_type: str, cgst_rate: float, sgst_rate: float
     """
     ONE tax per quotation, and nothing is auto-applied. The refusal, or `""`.
 
-    The library stores a GST rate per leg of every clause; a quotation carries
-    one document-level tax (`quotation._tax_lines()`). The two are reconciled
+    The library stores a GST rate per leg of every clause and only the SUPPLY
+    rate is read here; a quotation carries one document-level tax
+    (`quotation._tax_lines()`). The two are reconciled
     here and NEVER by changing either: the POST is refused, naming the lines
     and the rates, when the picked lines' library rates disagree with each
     other or with the Tax section's effective rate. Exempt and VAT are outside
@@ -294,13 +322,13 @@ SECTION_HTML = """<!-- ════════ SECTION 3: ITEMS — from the sp
   <div class="section-title">&#128230;&nbsp; Item Details</div>
   <p style="font-size:.8rem;color:var(--muted);margin:-.4rem 0 .8rem;">
     Items are written from the <strong>specification library</strong> — the same
-    clauses a BOQ is written from. Pick a clause, its size where it has one, and
-    whether you are quoting the <em>supply</em>, the <em>installation</em>, or
-    both; each leg becomes its own line with its own HSN/SAC. Library rates are
-    suggestions and every price box stays editable.
+    clauses a BOQ is written from — and a quotation prices the <em>supply</em>
+    of goods only: each line carries the clause's supply HSN and its library
+    supply rate, as a suggestion. Installation is not quoted here; it is billed
+    through the BOQ and its RA bills. Every price box stays editable.
   </p>
 
-  <div class="picker-bar" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr) 170px 90px auto;">
+  <div class="picker-bar" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr) 90px auto;">
     <div class="form-group" style="margin:0;">
       <label for="picker-spec">Specification</label>
       <select id="picker-spec" onchange="onSpecPicked()">{spec_opts}</select>
@@ -308,14 +336,6 @@ SECTION_HTML = """<!-- ════════ SECTION 3: ITEMS — from the sp
     <div class="form-group" style="margin:0;">
       <label for="picker-variant">Size / variant</label>
       <select id="picker-variant" disabled><option value="">&#8212;</option></select>
-    </div>
-    <div class="form-group" style="margin:0;">
-      <label for="picker-leg">Quote</label>
-      <select id="picker-leg">
-        <option value="both" selected>Supply + Installation</option>
-        <option value="supply">Supply only</option>
-        <option value="install">Installation only</option>
-      </select>
     </div>
     <div class="form-group" style="margin:0;">
       <label for="picker-qty">Qty</label>
@@ -341,18 +361,17 @@ SUBMIT_EMPTY_MESSAGE = "Add at least one item before generating the quotation."
 RESTORE_COMPONENT_RIDS_JS = ""
 
 PICKER_ADD_JS = """/* ═══ THE LIBRARY PICKER ════════════════════════════════════
-   CATALOG holds the SPECIFICATION LIBRARY (see _product_catalog_json).
-   A pick is a spec, a variant (size) and a leg — supply or installation —
-   and each leg becomes its own row with its own HSN/SAC on the server.
-   Rows carry only what the browser owns: qty, price, show_price. Identity
-   is re-read from the library at POST.
+   CATALOG holds the SPECIFICATION LIBRARY (see _product_catalog_json),
+   supply side only. A pick is a spec and a variant (size); it becomes ONE
+   row — the supply of those goods — with the clause's supply HSN on the
+   server. There is no installation leg on a quotation. Rows carry only
+   what the browser owns: qty, price, show_price. Identity is re-read from
+   the library at POST.
 ═══════════════════════════════════════════════════════════ */
-function legLabel(leg) { return leg === 'supply' ? 'Supply' : 'Installation'; }
-
-function rateOf(spec, vidx, leg) {
+function rateOf(spec, vidx) {
   var v = (spec.variants || [])[vidx];
   if (!v) return null;
-  var r = (leg === 'supply') ? v.supply_rate : v.install_rate;
+  var r = v.supply_rate;
   return (r === null || r === undefined || r === '') ? null : r;
 }
 
@@ -391,7 +410,6 @@ function addProduct() {
 
   var specEl = document.getElementById('picker-spec');
   var varEl  = document.getElementById('picker-variant');
-  var legEl  = document.getElementById('picker-leg');
   var qtyEl  = document.getElementById('picker-qty');
   var sid    = specEl ? specEl.value : '';
 
@@ -414,38 +432,24 @@ function addProduct() {
     errEl.textContent = 'Pick a size.';
     errEl.style.display = 'block'; return;
   }
-  var want = legEl ? legEl.value : 'both';
-  var legs = (want === 'both') ? ['supply', 'install'] : [want];
-
-  /* "Supply + Installation" adds one row per leg the library has a rate
-     for. A leg with no library rate is added only when asked for by name,
-     and then its price box opens EMPTY — never 0 — so a figure nobody
-     chose cannot reach the document. The server refuses an empty price on
-     a shown line. */
-  var added = 0;
-  legs.forEach(function(leg) {
-    var rate = rateOf(spec, vidx, leg);
-    if (want === 'both' && rate === null) return;
-    SEL.push({
-      rid:        ++_rid,
-      sid:        sid,
-      vidx:       vidx,
-      leg:        leg,
-      name:       spec.title,
-      part_no:    spec.code,
-      unit:       (spec.variants[vidx].unit || ''),
-      label:      (spec.variants[vidx].label || ''),
-      qty:        qty,
-      price:      (rate === null ? '' : rate),
-      show_price: true
-    });
-    added++;
+  /* One row: the supply of these goods. A size the library carries no
+     supply rate for is still added, and its price box opens EMPTY — never
+     0 — so a figure nobody chose cannot reach the document. The server
+     refuses an empty price on a shown line. */
+  var rate = rateOf(spec, vidx);
+  SEL.push({
+    rid:        ++_rid,
+    sid:        sid,
+    vidx:       vidx,
+    leg:        'supply',
+    name:       spec.title,
+    part_no:    spec.code,
+    unit:       (spec.variants[vidx].unit || ''),
+    label:      (spec.variants[vidx].label || ''),
+    qty:        qty,
+    price:      (rate === null ? '' : rate),
+    show_price: true
   });
-  if (!added) {
-    errEl.textContent = 'The library has no supply or installation rate for that size. '
-      + 'Choose "Supply only" or "Installation only" and type a price.';
-    errEl.style.display = 'block'; return;
-  }
 
   specEl.value = '';
   onSpecPicked();
@@ -454,15 +458,15 @@ function addProduct() {
 }"""
 
 PICKER_RENDER_JS = """function renderRoot(item, idx) {
-  /* The leg badge reuses `.badge-asm` — the one badge style QUOTATION_STYLES
-     carries — because that sheet is frozen and this page may not add CSS. */
-  var badge = '<span class="badge-asm">' + legLabel(item.leg) + '</span>';
+  /* Supply only — there is no leg to badge. The `.badge-asm` the two-leg
+     picker borrowed for its leg label is not drawn. */
+  var badge = '';
   var spec  = CATALOG[item.sid] || {};
   var code  = spec.code || item.part_no || '';
-  var hsn   = (item.leg === 'supply') ? (spec.supply_hsn || '') : (spec.install_sac || '');
+  var hsn   = spec.supply_hsn || '';
   var codeLine = escHtml(code)
     + (item.unit ? ' &nbsp;|&nbsp; ' + escHtml(item.unit) : '')
-    + (hsn ? ' &nbsp;|&nbsp; ' + (item.leg === 'supply' ? 'HSN ' : 'SAC ') + escHtml(hsn) : '');
+    + (hsn ? ' &nbsp;|&nbsp; HSN ' + escHtml(hsn) : '');
   var priceVal = (item.price === null || item.price === undefined) ? '' : item.price;
   var priceHint = (priceVal === '') ? ' placeholder="no library rate"' : '';
 
@@ -516,15 +520,14 @@ function onRootChange(idx, field, val) {
 
 function removeRoot(idx) { SEL.splice(idx, 1); render(); }"""
 
-DEMO_PICK_JS = """  /* One clause from the library, both legs — the first spec whose first
-     variant carries a supply AND an installation rate, so the demo shows a
-     priced row of each kind. Nothing is invented: if the library has no
-     such clause, nothing is added and the picker says so. */
+DEMO_PICK_JS = """  /* One clause from the library — the first spec whose first variant
+     carries a supply rate, so the demo shows a priced row. Nothing is
+     invented: if the library has no such clause, nothing is added and the
+     picker says so. */
   var demoSid = null;
   var keys = Object.keys(CATALOG);
   for (var i = 0; i < keys.length; i++) {
-    if (rateOf(CATALOG[keys[i]], 0, 'supply') !== null
-        && rateOf(CATALOG[keys[i]], 0, 'install') !== null) { demoSid = keys[i]; break; }
+    if (rateOf(CATALOG[keys[i]], 0) !== null) { demoSid = keys[i]; break; }
   }
 
   if (demoSid) {
@@ -532,26 +535,24 @@ DEMO_PICK_JS = """  /* One clause from the library, both legs — the first spec
     var already = SEL.some(function(s) { return s.sid === demoSid; });
     if (!already) {
       var spec = CATALOG[demoSid];
-      ['supply', 'install'].forEach(function(leg) {
-        SEL.push({
-          rid:        ++_rid,
-          sid:        demoSid,
-          vidx:       0,
-          leg:        leg,
-          name:       spec.title,
-          part_no:    spec.code,
-          unit:       (spec.variants[0].unit || ''),
-          label:      (spec.variants[0].label || ''),
-          qty:        2,
-          price:      rateOf(spec, 0, leg),
-          show_price: true
-        });
+      SEL.push({
+        rid:        ++_rid,
+        sid:        demoSid,
+        vidx:       0,
+        leg:        'supply',
+        name:       spec.title,
+        part_no:    spec.code,
+        unit:       (spec.variants[0].unit || ''),
+        label:      (spec.variants[0].label || ''),
+        qty:        2,
+        price:      rateOf(spec, 0),
+        show_price: true
       });
       render();
     }
   } else {
     var ae = document.getElementById('add-error');
-    ae.textContent = 'The specification library has no clause with both rates — add one at /spec first.';
+    ae.textContent = 'The specification library has no clause with a supply rate — add one at /spec first.';
     ae.style.display = 'block';
   }"""
 
