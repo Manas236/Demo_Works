@@ -3242,6 +3242,164 @@ one automatic.
 > precedent.** An override is a decision the client-facing owner takes and
 > records; it is never one an agent may take, infer, or extend.
 
+> ### ⚠ OVERRIDE — 12 September 2026, by Manas Gawde — the quotation source FOLLOWS the catalogue switch, Supply only, gap 38 closed, and the APPROVAL LADDER switched off in code
+>
+> **A new block, not an amendment.** The twenty-seventh block, dated
+> 11 September 2026, and every block before it stand exactly as recorded and
+> are **not edited** by this one. This is the twenty-eighth occasion. It
+> covers four changes and only those four; anything a pass builds beyond them
+> is outside this authorisation.
+>
+> #### 1, 2 and 3 are my own decisions
+>
+> **Changes 1 to 3 below are mine, taken by me as the client-facing owner.
+> They are not a client request, not a CC-2 item, not chargeable under either
+> quotation, and they move no bar.** The board stays at 19 of 20 BUILT ·
+> 1 BLOCKED, and the denominator stays 20.
+>
+> **1. The quotation source follows the switch.** The spec-library picker the
+> twenty-seventh block put on `/quotation/create` is **temporary**. While
+> `"product"` is in `auth.HIDDEN_BLUEPRINTS` a quotation is written from the
+> specification library; the moment the switch is emptied the page is the
+> **product picker exactly as it stood at `1d7725a`** — the same bytes, proved
+> by a golden captured from that commit's code with the date and the store
+> fixed. The product path is restored in the three unfrozen functions
+> (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`)
+> and the spec-picker code — the embed, the POST rebuild and the GST guard —
+> moves into a **new leaf module**; `quotation.py` only branches on the switch,
+> inside those three functions, and reads the switch through **one accessor**.
+> Needing a fourth function in `quotation.py` is a stop. If an import-direction
+> rule blocks the accessor, the switch moves into a new leaf with no app
+> imports that `auth.py` and everything else read; new rows for a new module
+> are fine, changing an existing rule is a stop. A quotation created in either
+> mode views, prints and raises a PI and a TI with the switch in either state,
+> and a form opened in one mode and submitted after a flip is **refused with a
+> message, never saved half-and-half**.
+>
+> **2. Supply only.** A quotation carries **no installation leg at all** — no
+> selector, no installation lines. Name, code, HSN, unit and rate come from the
+> supply side only, and the GST guard compares `supply_gst_rate` only. The
+> reason: this chain is quotation → proforma → tax invoice for **goods going
+> out**; installation is billed through BOQ → RA. A variant with no supply rate
+> opens with an empty box, as now. Every spec is offered, none filtered; the
+> pass reports how many carry a blank `supply_hsn` and how many have no supply
+> rate on any variant. The install-leg tests are **retargeted, not deleted**:
+> Installation is not offered, and a forged install-leg POST is refused.
+> ABOUT.md §7 gap 37 closes, struck through with its number kept — no new
+> quotation can carry an installation line.
+>
+> **3. Gap 38 closes — the PO form follows the switch too.** A from-scratch
+> purchase order carrying only extra lines passes `purchase._parse_lines()`,
+> **always** — not only while the catalogue is hidden — because a validity rule
+> that depends on a display switch makes the same PO valid or invalid depending
+> on the day you look at it. A PO with no lines of either kind is still
+> refused. Then `_product_options()` and the `catalog_rates` embed read the
+> switch: hidden → no catalogue rows. Every caller of `_parse_lines()` and every
+> reader of a PO's lines is checked to cope with zero catalogue lines. **No
+> figure on an existing PO moves.** ABOUT.md §7 gap 38 closes the same way.
+>
+> #### 4. The approval ladder is switched OFF — in code, for a trial period
+>
+> **3B.05 to 3B.07 are deferred under MG/SF/2026-06 as sequencing, and the
+> ladder returns after a trial period.** Measurement approval goes off with it
+> **by my own decision**. **Built code stays, and no bar moves**: B6, B7 and
+> C2 stay BUILT in PROGRESS.md, with one line saying the ladder is switched
+> off in code.
+>
+> **Why a switch and not a removal.** The ladder comes back. **Code only — no
+> `/settings` control**: a toggle the client can reach would let them switch
+> on deferred scope. One constant beside `approval.DOCUMENTS`, shipped OFF,
+> read through one accessor; the same import-direction fallback as change 1.
+>
+> **Scope:** every document in `approval.DOCUMENTS` — charges, RA bills, the
+> merged RA, tax invoices, purchase orders, measurement sheets — and
+> **everything that reads approval state**: the approve/reject routes, the B7
+> print and download gates, the B8 attachment gate, `can_modify()`, the pending
+> queues, the dashboard tiles, the nav, every chip and band, notifications, the
+> measurement cap, and `tools/e2e_chain.py`.
+>
+> **While OFF:**
+>
+> - every approve/reject route is refused for everyone, an Owner included — a
+>   signed-in user gets a page saying approvals are switched off, a stranger
+>   gets the ordinary login bounce, and **nothing is written**;
+> - every `*.approve` permission and registry row is **kept**; on `/roles` the
+>   boxes render disabled and labelled *switched off*, the grants frozen both
+>   ways (the `_merge_hidden_grants` pattern), and `docs/ACCESS_MATRIX.md`
+>   marks them;
+> - no approval queue, tile, nav link, chip, band or notification renders;
+> - a PENDING record, a grandfathered one and anything raised while OFF is
+>   **not gated** — print, download and attachments open; edit and delete
+>   follow the document's own status rules as they stood before B6/B7, and
+>   3A.06's draft-only RA edit still holds;
+> - the DRAFT overprint and a CANCELLED bill print again, as before B7;
+> - **a decision already taken is never overturned**: a record already
+>   APPROVED or REJECTED behaves exactly as today, and nothing can reach either
+>   state while OFF;
+> - **stored approval data is never rewritten** — no migration, no backfill,
+>   no state change on any existing record;
+> - `tools/e2e_chain.py` skips the ladder steps and says so instead of failing
+>   halfway. It is not run in this pass.
+>
+> **The measurement cap — the trap in this change.** `ra.overclaims()` caps
+> the installation leg at `MS.approved_qty_by_line()`. While OFF that figure
+> counts **every saved sheet** that is not cancelled, deleted or already
+> rejected, and **the cap must still bind**. `ra.py`'s `{}`-means-grandfather
+> path must never fire just because nothing is approved: a project with saved
+> sheets must never read as *predates measurement*. The branch goes on
+> measurement's side; if `ra.py` has to change, only the call site changes,
+> never the grandfather rule itself. `_c1_refusal()` is satisfied by a saved
+> sheet wherever it now needs an approved one, and with no sheet it still
+> refuses. Every other reader of approved measurement quantity follows the
+> same rule.
+>
+> **When the switch goes back ON.** Every document created while OFF carries a
+> field **written at create** saying so — written, never inferred from absence
+> (the `pre_approval_system` / `grid_model` rule) — set wherever the initial
+> approval state is set today. With the switch ON such a record is never
+> gated or queued and shows a read-only *raised while approvals were off*
+> mark; a record raised while ON gets the normal ladder. Records already
+> PENDING before the switch went off carry **no** mark, so they return to
+> pending when it comes back on — they are not stamped, because that would
+> rewrite stored data, and the pass lists them. The pre-approval grandfather
+> pin keeps its assertion; raised-while-off is its own named set, with a test
+> proving it only grows while OFF.
+>
+> **Tests.** The existing approval, B7-gate, B8-gate and measurement-cap tests
+> run with the ladder ON through a fixture, **not rewritten into OFF checks** —
+> they keep proving the ladder for the day it returns. New OFF tests: every
+> approve/reject route refused for all seven roles on both verbs with nothing
+> written; no queue, tile or chip; pending and raised-while-off records print
+> and download; approved and rejected unchanged; draft and cancelled RA bills
+> print with their overprints; `/roles` `*.approve` disabled and frozen; an
+> installation claim above the saved sheet's quantity refused; C1 still
+> refusing with no sheet. New ON tests: a raised-while-off record is not gated
+> and shows its mark; a record raised while ON is gated. The cap, the `{}` path
+> and the stamp are mutation-proved. If change 4 hits a stop, changes 1 to 3
+> stay committed, only change 4's uncommitted work is discarded, and the pass
+> reports.
+>
+> #### What halts the work
+>
+> A print golden moving; the OFF-state quotation golden not matching; the test
+> count dropping below its Step 0 baseline in either configuration; a fourth
+> `quotation.py` function or any `product.py` edit; an existing
+> import-direction rule that would have to change; anything that would rewrite
+> stored data; a figure on an existing PO moving; `ra.py`'s grandfather rule
+> having to change; or the Step 0 gate failing. Anything else is a judgement
+> call to be **declared**, every one of them, in the pass report.
+>
+> #### What this block does NOT do
+>
+> It does not un-hide the catalogue, does not build a product edit route
+> (ABOUT.md §7.2), does not answer gap 35, does not add per-line tax to the
+> sell chain, does not add a `/settings` control for either switch, does not
+> delete a line of the ladder, and does not authorise any CC-2 item. **The gate
+> is not lifted and this is not a precedent.** An override is a decision the
+> client-facing owner takes and records; it is never one an agent may take,
+> infer, or extend.
+
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
