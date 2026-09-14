@@ -254,11 +254,13 @@ def _helper_audience():
 
 
 def _roots() -> set:
-    """Where a user actually starts: the nav, the launcher, the named exceptions."""
-    src = (REPO / "dashboard.py").read_text(encoding="utf8")
-    roots = {ep for ep, _icon, _label in chrome.NAV_ITEMS}
-    roots |= set(re.findall(r'_card\(\s*"([a-z_]+\.[a-z_]+)"', src))
-    roots.add("auth.list_users")          # `_access_card()`, built by hand
+    """
+    Where a user actually starts: the rail and the dashboard's zones — one
+    table, `chrome.REGISTERS`, since 14 September 2026 — plus Settings, which
+    the rail's foot carries, plus the named exceptions.
+    """
+    roots = {r.endpoint for r in chrome.REGISTERS}
+    roots.add("settings.edit_settings")   # the rail's foot entry
     roots |= set(NO_INBOUND_LINK_BY_DESIGN)
     return roots
 
@@ -486,7 +488,27 @@ def test_the_link_graph_is_built_from_literal_endpoints_almost_everywhere():
     #   on their own merits: `/boq/view/<id>` and `/ra/view/<id>` are already
     #   linked literally from their own registers, which are themselves roots of
     #   this walk. Checked, then raised.
-    assert computed <= 17, (
+    # ⚠ **RAISED 17 → 18 on 14 September 2026 (the sidebar), on the same
+    #   terms.** The previous assertion, kept verbatim:
+    #
+    #       assert computed <= 17, (
+    #           f"{computed} url_for() call sites use a computed endpoint, up from the "
+    #           f"17 measured on 5 September 2026 (the dashboard's BOQ/RA visual cues). "
+    #           f"The sweep can only see one if its endpoint name appears as a literal too. "
+    #           f"Check the new one, then raise this bound deliberately.")
+    #
+    #   The rail, the top bar's primary action and the dashboard's zone cards
+    #   all render from ONE table, `chrome.REGISTERS`, so each of the three
+    #   draws its links with `url_for(reg.endpoint)` — a computed site by
+    #   construction, exactly as `address._ref_chips()` and the activity feed
+    #   are — and the hand-written `_card("boq.list_boqs", …)` sites they
+    #   replace were the literals the old walk read. Net +1. **They contribute
+    #   no edges and make the sweep more pessimistic, never less**: the
+    #   registry's endpoints are fed to the walk as ROOTS by `_roots()`
+    #   instead, which is stricter than a literal at a call site would have
+    #   been, because a register missing from the table is then a page nothing
+    #   reaches rather than one a stale literal still vouches for.
+    assert computed <= 18, (
         f"{computed} url_for() call sites use a computed endpoint, up from the "
         f"17 measured on 5 September 2026 (the dashboard's BOQ/RA visual cues). "
         f"The sweep can only see one if its endpoint name appears as a literal "

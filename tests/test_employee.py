@@ -556,7 +556,11 @@ def test_the_register_is_reachable_from_the_nav_and_the_launcher(client):
     assert html.count('href="/employee/"') >= 2, (
         "the employee master must be reachable from BOTH the nav and the "
         "dashboard launcher, not one of them")
-    assert 'class="nav-link">' in html
+    # Both surfaces render from one table since 14 September 2026 — the rail
+    # entry and the zone card come from `chrome.REGISTERS` — so this is now a
+    # check that the entry survived rather than that two lists agree.
+    assert '<nav class="rail"' in html
+    assert 'title="Employees"' in html, "the rail entry is missing"
 
 
 # ══ 9. What C4 is NOT ═════════════════════════════════════════════════════

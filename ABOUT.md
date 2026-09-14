@@ -369,8 +369,8 @@ Consequences you must respect when editing:
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
 | [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
-| [chrome.py](chrome.py) | 705 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
-| [dashboard.py](dashboard.py) | 2441 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
+| [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
+| [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
 | [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
@@ -1092,11 +1092,49 @@ docsheet.py ──► dashboard.py                  reads BASE_STYLES through th
 
 **What did not move, and why:** `REGISTER_STYLES` (a page pattern for two
 register screens, not the chrome — §5 *"The two register SCREENS"*),
-`ACTION_SEP`, `_access_card()`, `_footer_contact()`, the money helpers
-(`inr`, `compact`, `rupees`) and `too_large_page()` all stay in
-`dashboard.py`. `attendance.py`, `challan.py`, `charge.py` and `employee.py`
-therefore still import `dashboard` for one of those beside their `chrome`
-import, and `tests/test_import_directions.py` names which.
+`ACTION_SEP`, `_footer_contact()`, the money helpers (`inr`, `compact`,
+`rupees`) and `too_large_page()` all stay in `dashboard.py`. `attendance.py`,
+`challan.py`, `charge.py` and `employee.py` therefore still import
+`dashboard` for one of those beside their `chrome` import, and
+`tests/test_import_directions.py` names which. *(`_access_card()` went in the
+sidebar commit, one step later: the Users & Access card is a registry entry.)*
+
+#### The registry, the rail and the top bar — the sidebar (14 September 2026, the same day, the next commit)
+
+The shell was then redrawn, in the one commit of the pass allowed to change
+what anything looks like, and gated on the page goldens: **`main` byte-identical
+on all 21 register pages**, moved on the dashboard only, and **not one of the
+nine printed documents moved** (the `/po/create` picker did — it is a form and
+renders the shell — in its `head` block alone).
+
+**`chrome.REGISTERS` is the single source of truth**: one `Register` per
+register — `group`, `key`, `name`, `icon`, `endpoint`, a `count` callable that
+reads the store directly, its `unit` word, and a written-out `action_label`
+with its `action_endpoint` — grouped by `chrome.GROUPS` (sell · proj · buy ·
+lib, each carrying the brief's exact accent, tint and zone colours). **Both the
+rail and the dashboard's zones render from it**, filtered entry by entry
+through `auth.can_reach()`, the dict the gate reads; `tests/test_sidebar.py`
+asserts the two surfaces name the same set for every role, that no permission
+id appears in the table, and that a user who cannot reach a register is not
+shown it and is still refused it by URL. **That filter is endpoint-level
+because that is the only guarantee this application can make** — §7 gap 24,
+and the rail does not pretend otherwise.
+
+Three things the registry does not carry, each on purpose: the card
+**captions** (money `_metrics()` knows — `dashboard._card_caption()`); the
+zone **roll-ups** (`dashboard._rollup()`, from `_metrics()`, each half gated
+on its own register); and **Settings**, which is configuration rather than a
+register and rides in the rail's foot with the amber completeness dot. The
+hidden catalogue stays in the table and is drawn nowhere while hidden (§2g).
+
+**`CHROME_STYLES` and `CHROME_SCRIPT` are emitted by `_nav()` in the body,
+never in any `<head>`**, for the reason `USER_CHIP_STYLES` always was:
+`docsheet.SHEET_STYLES` opens with `BASE_STYLES`, nine print goldens hash it,
+and a rule added there re-baselines a customer's document for a change that
+never reaches paper. `BASE_STYLES` is therefore **byte-identical** to the
+extraction commit's — measured — and still carries the retired top-bar rules,
+which `nav.rail` overrides property by property (§7 gap 39). `chrome.py`
+imports `store` from this commit on: the counts read the collections.
 
 ### 2g. `auth.py` — a fourth bottom-of-graph module, and the one that renders
 
@@ -4432,34 +4470,55 @@ gap.
    value of `ra.STATUSES` and `approval.STATUSES` fail the day the literal
    readings stop agreeing with `ra.is_cancelled()`, `approval.status_of()` and
    `boq.superseded_ids()`.
-5. **Zone “Modules”** — the card launcher, at the foot, carrying live counts
-   instead of prose. Its **15 cards are split into four `.mod-group` blocks**
-   rather than one undifferentiated run, each with a label, a one-line note and
-   a 22×3px coloured tick:
+5. **Zone “Modules”** — the launcher, at the foot, carrying live figures
+   instead of prose. ✅ **Redrawn as four ZONES on 14 September 2026, rendered
+   from `chrome.REGISTERS`** — the same table the rail on every page draws
+   from, so the two surfaces cannot name different sets (§2k;
+   `tests/test_sidebar.py` asserts they agree per role). Each zone is one
+   group of §2k's registry on that group's own zone tint, with a 9px dot, a
+   15px title, a 12px subtitle, a hairline in the group colour at 22% and a
+   **roll-up pill** on the right — two live figures, computed from the store
+   and never hardcoded, each drawn only when the reader could open the
+   register it is summed from:
 
-   | Group | Tick | Cards |
-   |---|---|---|
-   | Sell side — the deal chain | `--brand` | Quotations, Proforma Invoices, Tax Invoices |
-   | Projects & site billing | `--navy` | Projects, Bills of Quantities, Running Account Bills, Delivery Challans |
-   | Buy side — money out | `--saffron` | Purchase Orders, Draft Purchase Orders, Employee & Misc Charges |
-   | Library & records | `--muted` | Product Catalogue *(⚠ absent for everybody while `auth.HIDDEN_BLUEPRINTS` names `product` — 11 September 2026, §2g)*, Spec Library, Client Register, Address Book, Market News |
+   | Zone | Accent / tint / zone | Registers | Roll-up |
+   |---|---|---|---|
+   | Sell side — money in | `#5B4BC4` / `#EDEBFA` / `#FAFAFE` | Quotations, Proforma Invoices, Tax Invoices | live pipeline value · tax-invoice outstanding (`net_payable`) |
+   | Projects & site billing | `#0A8F78` / `#E1F3EF` / `#F8FDFC` | Projects, Bills of Quantities, Running Account Bills, Receipts, Delivery Challans, Measurement Sheets | approved BOQ value · claimed to date — both tax-exclusive, gap 31's rule |
+   | Buy side — money out | `#B8600C` / `#FAEEE1` / `#FFFCF8` | Purchase Orders, Draft Purchase Orders, Expenses & Charges, Attendance | PO value committed (open orders) · charges spent |
+   | Library & records | `#5A5468` / `#EEECF2` / `#FBFAFC` | Product Catalogue *(absent while hidden, §2g)*, Spec Library, Client Register, Employees, Address Book, Market News, Users & Access | client count · spec clause count |
 
-   The split is §1's two-pipelines model made visible — it is the same
-   distinction that says a PO must never link to a proforma or a tax invoice.
-   The ticks are **identity tokens, never `CHART_*`**: a status colour spent on
-   decoration stops meaning good/critical/serious/warning (§6).
+   The colours were checked for colour-blind separation and are used exactly
+   (a magenta buy-side variant failed against the teal); the library is
+   achromatic on purpose, because reference data must not shout beside the
+   three chains that move money. They are **identity tokens, never
+   `CHART_*`** (§6). Each card carries a 38px icon chip in the group tint, the
+   register's name, its **live count** at 25px in the group accent with the
+   unit word beside it, and a 12px caption pinned to the foot — the money
+   figure `_metrics()` knows and the registry does not (`_card_caption()`).
+   The grid is `auto-fill` at a 238px floor: a zone is one group, so the
+   column-count drift that once forced a fixed four columns across groups has
+   nothing left to drift against.
 
-   ⚠ **`.mods` is a fixed 4-column grid, not `auto-fit`** (3 under 1080px, 2
+   ~~⚠ **`.mods` is a fixed 4-column grid, not `auto-fit`** (3 under 1080px, 2
    under 780px, 1 under 620px). Each group is its own grid, and under `auto-fit`
    a 3-card group and a 5-card group resolved to different column counts — so
    card widths changed from group to group and the launcher lost its vertical
    rhythm. Fixed columns cost a part-filled last row and buy an aligned page.
    Cards are `align-items: flex-start` for the same reason: descriptions run one
    to three lines, and centring them against a row-stretched box put every title
-   on its own baseline.
+   on its own baseline.~~ *(superseded by the zones above)*
 
-   Settings is reached from the nav, not from here — it is configuration, not a
-   module you work in.
+   Settings is reached from the rail's foot, not from here — it is
+   configuration, not a module you work in.
+
+   **The Needs-attention rows wear a status chip** from the same date: an
+   icon **and** a word — *Overdue* (critical), *PO awaited*, *Gone quiet*,
+   *No PO on file* (warning) — because amber and red are ~ΔE 2.2 apart under
+   deuteranopia and the panel used to tell the four reasons apart by the
+   colour of their row icon alone. `dashboard.ATTENTION_CHIPS` is the map,
+   `status_chip()` the one renderer; the status colours are `#0F7A52` on
+   `#E2F2EB`, `#9A6B00` on `#F7EFDC`, `#D5121A` on `#FCE9E9`.
 
    ✅ **Every card and both nav entries are filtered by what the signed-in user
    may reach** (27 August 2026). Before that the whole strip was shown to
@@ -4564,13 +4623,29 @@ in each module (`PRODUCT_STYLES`, `QUOTATION_STYLES`, `VIEW_STYLES`,
 `DASH_STYLES` is a **plain string, not an f-string**, so its CSS braces are
 written once — only the HTML f-strings below it need doubling.
 
-##### The entries, and the rule that was amended to fit them
+##### ~~The entries, and the rule that was amended to fit them~~ — the rail (14 September 2026)
 
-`NAV_ITEMS` is **Projects · Measurements · Employees · Settings**, and the nav
+✅ **The four-entry top bar is retired. The nav is a 248px left rail drawn by
+`chrome._nav()` on every screen page, and it names every register the
+signed-in user may reach**, in `chrome.REGISTERS`' four groups, with a live
+count beside each — plus Dashboard first and Settings in its foot (with the
+amber completeness dot). Collapsed to 68px it keeps the icons and turns each
+group's dot into an 18×3 rule; the state is remembered in `localStorage`
+inside `try/catch`, with no cookie, no route and no round-trip. Below 1000px
+it is the icon form whatever is stored; below 620px it is off-canvas behind
+the toggle with a scrim. The **top bar** — sticky, 56px, white at .88 with a
+blur — carries the wordmark, the page's title and subtitle (derived from the
+registry by blueprint, `chrome.page_title()`), the register's own written-out
+action (`+ New BOQ`, never "New market new"), the user chip and Sign out. The
+red `.db-down` strip sits in the same sticky stack **above** the bar and
+works exactly as it did. §2k has the registry; the paragraphs below are the
+history of the bar it replaced and are kept as such.
+
+~~`NAV_ITEMS` is **Projects · Measurements · Employees · Settings**, and the nav
 is deliberately **not** the launcher — fifteen registers live on the module
 strip below, and what belongs in a bar drawn on every page is what somebody
 needs from wherever they already are. Each of the four also carries a card,
-which is the Projects pattern rather than a duplication.
+which is the Projects pattern rather than a duplication.~~
 
 ⚠ **The rule was amended on 30 August 2026, and this paragraph is the record of
 it.** It used to read "why there are only three", and it named three *kinds* of
@@ -4647,13 +4722,15 @@ Money on this page uses **`inr()`** (Indian grouping) and **`compact()`**
 `quotation._inr()` on purpose: that one belongs to the printed document, and
 `quotation.py` imports *this* module, so it could not be shared the other way.
 
-To add a module card: copy an `<a class="card">` block into the `div.mods` of
-**whichever `.mod-group` the register belongs to** — decide its pipeline first
-(§9) — add an entry to `ICONS`, and link it with `url_for("<bp>.<view>")`. The
-grid is a fixed 4 columns, so a new card extends the group's last row or starts
-another; no layout change is needed either way. `tests/test_page_chrome.py`
-asserts every new register is reachable from this page by `href`, so a card that
-never gets added is a red test rather than an unreachable route.
+To add a register (14 September 2026): add **one entry to `chrome.REGISTERS`**
+— its group (decide its pipeline first, §9), key, display name, an `ICONS`
+key, the landing endpoint, a `count` callable over the store, the unit word,
+and a written-out action label with its endpoint if the register has a
+create form of its own. The rail and its zone both draw it from that entry;
+a caption for its card goes in `dashboard._card_caption()` if the generic
+one is too terse. Nothing else is written by hand. `tests/test_sidebar.py`
+asserts the rail and the dashboard name the same set, and
+`tests/test_page_chrome.py` that every register is reachable by `href`.
 
 ---
 
@@ -9678,6 +9755,39 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     purchase order impossible to raise. `/purchase/from-boq` and
     `/purchase/from-draft` were unaffected — they read the schedule, not the
     catalogue.
+
+39. 🟠 **What the sidebar pass knowingly left behind — OPEN, recorded
+    14 September 2026, none of it a defect a user sees.** Four loose ends,
+    each the cost of a gate this pass held rather than an oversight:
+
+    - **`BASE_STYLES` still carries the retired top-bar rules** — `nav {…}`,
+      `.nav-brand`, `.nav-link`, `.nav-pill`, the `.db-down` sticky offset —
+      dead on every page now (`nav.rail` and `.topstack .db-down` override
+      them property by property). They stay because `docsheet.SHEET_STYLES`
+      opens with that constant and nine print goldens hash it: deleting them
+      moves nine `head` digests for no visible change, which is a print
+      re-baseline of its own and was not this pass's to take. When one is
+      authorised, remove the rules and drop `BASE_STYLES` from the printed
+      sheet's stack in the same commit — a printed document has never needed
+      an app reset.
+    - **`/quotation/view/<id>` still calls `_nav()`** and so draws the rail
+      around a printed document. `quotation.py` is frozen; the sheet hides
+      `nav` at print and `CHROME_STYLES` hides the top stack, so the paper is
+      right and only the screen is odd. One line, the day that file is next
+      unfrozen.
+    - **`/extractor/` renders no shell.** Market News draws a dark look-alike
+      of the old bar, imports `branding` only, and is opened in a new tab; the
+      chrome sweep names it as exempt rather than giving a decorative page a
+      real shell without anybody asking for one.
+    - **`boq.py`'s sticky jump bar sits at `top:60px`** — the old bar's height;
+      the top bar is 56px. A four-pixel gap on `/boq/create`, in a file this
+      pass did not open.
+
+    📌 The `/po/create` picker's golden lives in `tests/test_print_golden.py`
+    beside the printed sheets and moved for the sidebar as a form should;
+    if a later pass adds more form goldens, they belong in
+    `tests/test_page_golden.py` with the other screen pages, and this one
+    could move there with them.
 
 ---
 

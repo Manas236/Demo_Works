@@ -25,14 +25,24 @@ of them a measurement rather than a hope:
    because a redesign of the navigation has no business touching a register's
    table. That re-baseline happens in that commit and only there.
 
+   ✅ **Both measured, 14 September 2026.** Across the extraction all 22 pages
+   were byte-identical (commit `efa3467`). Across the sidebar, **`main` is
+   byte-identical on all 21 register pages** and moved on the dashboard only,
+   where the module zones and the status chips ARE the content. The shell —
+   the stylesheet and script `_nav()` now emits first, then the rail and the
+   top bar — is what moved everywhere else. The pre-redesign three-block
+   digests are in commit `52ad1f8` rather than repeated here; every `main`
+   digest below is that commit's, unchanged, except the dashboard's.
+
 ### The shape
 
 Each page is rendered from a **fixed** store — fixed ids, fixed dates, fixed
 figures, a fixed signed-in user, today's date pinned — and hashed whole
-(sha256) and in three blocks split on the markers every screen page carries:
+(sha256) and in four blocks split on the markers every screen page carries:
 
-    head    <head>  …  up to the nav        the stylesheet stack
-    chrome  <nav    …  up to <main          what _nav() emits
+    head    <head>  …  up to the shell      the page's <head> and <body> opening
+    shell   the shell's <style> … up to <nav   chrome.CHROME_STYLES + CHROME_SCRIPT
+    chrome  <nav    …  up to <main          the rail and the top stack
     main    <main   …  end of the page       the page's own body
 
 `_blocks()` and `_sha()` are the print file's own, imported rather than
@@ -57,7 +67,7 @@ from store import STORE
 from test_print_golden import (  # noqa: F401  (fixtures are used by pytest)
     _blocks, _sha,
     pinned_identity, golden, golden_ra, golden_dc, golden_dpo, golden_merged,
-    golden_ms, golden_picker,
+    golden_ms, golden_picker, pinned_counts,
     GOLD_TI, GOLD_PI, GOLD_PO, GOLD_DC, GOLD_DPO, GOLD_MERGED, GOLD_MS,
     GOLD_PICK_BOQ,
 )
@@ -70,6 +80,15 @@ from test_print_golden import (  # noqa: F401  (fixtures are used by pytest)
 # survive the redesign and report which side of it a change landed on.
 PAGE_BLOCKS = [
     ("head",   "<head>"),
+    # ⚠ **A fourth block from the sidebar commit (14 September 2026).**
+    #   `_nav()` now emits the shell's own stylesheet and script FIRST, in the
+    #   body, before the rail — so a split at `<nav` alone put ~25 KB of chrome
+    #   in the `head` block and reported every page's head as moved when no
+    #   page's `<head>` element had changed. The shell is its own block now,
+    #   from the first byte of `chrome.CHROME_STYLES` to the rail; `head` is
+    #   the page's `<head>` element and its `<body>` opening, which is what it
+    #   was always meant to hold.
+    ("shell",  "<style>\n  :root {\n    --rail-w"),
     ("chrome", "<nav"),
     ("main",   "<main"),
 ]
@@ -271,50 +290,50 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks: dict,
 # refused while the ladder is off. Everything else that draws `_nav()` is here.
 PAGES = {
     # (name, url): (whole sha, byte length, {block: sha})
-    ("dashboard",       "/"):                          ("95cef7e806e76ebb", 75527,
-        {"head": "82ccf616ed396130", "chrome": "da45a50ca5a64535", "main": "6f7ab23be07cd879"}),
-    ("quotations",      "/quotation/"):                ("7a369fe5f706ed75", 45737,
-        {"head": "e97b6494b3902a0c", "chrome": "2cd225a442c6338d", "main": "7ec3c661ae9cc372"}),
-    ("proformas",       "/proforma/"):                 ("9894c6661b2e29c3", 51233,
-        {"head": "ecfb0bb956a7f1e4", "chrome": "2cd225a442c6338d", "main": "99ac6790fecd3140"}),
-    ("tax invoices",    "/invoice/"):                  ("e71d1a08911af4bb", 58140,
-        {"head": "907de192a97c19e7", "chrome": "2cd225a442c6338d", "main": "9acd0372dd4402aa"}),
-    ("purchase orders", "/purchase/"):                 ("5d2a63f96585b9ae", 55303,
-        {"head": "41f700a498f09c12", "chrome": "2cd225a442c6338d", "main": "80dfa73ee439cc3e"}),
-    ("spec library",    "/spec/"):                     ("a109ad85f172fd60", 73623,
-        {"head": "da7e18e4077bdbf5", "chrome": "2cd225a442c6338d", "main": "ffab9c68d1fb9d41"}),
-    ("BOQs",            "/boq/"):                      ("c83998bff52b2c9c", 62509,
-        {"head": "915ac3127da8e793", "chrome": "2cd225a442c6338d", "main": "413eaba106b25ef1"}),
-    ("RA bills",        "/ra/"):                       ("59aca7519c67ced7", 69731,
-        {"head": "2c8238a8f19c0d28", "chrome": "2cd225a442c6338d", "main": "148536cc5ea624cc"}),
-    ("merged RAs",      "/merged/"):                   ("ea8f559828f73add", 62269,
-        {"head": "fa47c4e53e7a731f", "chrome": "c59ddab4c4308401", "main": "16cffd227809676f"}),
-    ("receipts",        "/receipt/"):                  ("e86f3b47fbf55895", 61518,
-        {"head": "6a53f8c74fdbe478", "chrome": "c59ddab4c4308401", "main": "3fe4fb4699344259"}),
-    ("clients",         "/client/"):                   ("6a3e2d773bd11656", 47568,
-        {"head": "1e3f64d1fee60778", "chrome": "c59ddab4c4308401", "main": "9e3d19393d21eae4"}),
-    ("draft POs",       "/po/"):                       ("2907462f309cca75", 46296,
-        {"head": "586c5dde500683f0", "chrome": "c59ddab4c4308401", "main": "82ba49a010dd9872"}),
-    ("challans",        "/dc/"):                       ("3de2d83a559ff4dc", 51432,
-        {"head": "e2fef1b330f5cacd", "chrome": "c59ddab4c4308401", "main": "30651a1c7dcacad9"}),
-    ("measurements",    "/measurement/"):              ("93d8f41818e57292", 44035,
-        {"head": "ac59fe4b7d58ffcd", "chrome": "c59ddab4c4308401", "main": "357bd0902a7b8770"}),
-    ("projects",        "/projects/"):                 ("e4b6b54188fc09f7", 24456,
-        {"head": "ccdd5748cffa1046", "chrome": "da45a50ca5a64535", "main": "b61a7f3ca9178c9b"}),
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("23712fbf9ff4b2a7", 51871,
-        {"head": "a79fa7c98fc28dff", "chrome": "e3ced8a9d1568a98", "main": "85908eff05b3e868"}),
-    ("employees",       "/employee/"):                 ("a724f409acedba31", 41274,
-        {"head": "d3e6d4ea8d13c091", "chrome": "c59ddab4c4308401", "main": "14f4d8921e680fc4"}),
-    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("c3576cd950e234dd", 47634,
-        {"head": "64182c5b7ca8f13e", "chrome": "c59ddab4c4308401", "main": "bb8159e0b0291642"}),
-    ("charges",         "/charge/"):                   ("993ab8d61c40e5c3", 40901,
-        {"head": "20ca83f1acd7476b", "chrome": "c59ddab4c4308401", "main": "daf605a8f367bb3e"}),
-    ("address book",    "/address/"):                  ("3e244b60f80be2f2", 50564,
-        {"head": "cf5a57456c7f2d38", "chrome": "da45a50ca5a64535", "main": "7e67e775827dc7af"}),
-    ("settings",        "/settings/"):                 ("51cd28aa5a750a53", 49668,
-        {"head": "dcf782c1620f224f", "chrome": "2cd225a442c6338d", "main": "741824ea93f3b3cb"}),
-    ("users",           "/users"):                     ("9f6954438e49480e", 40406,
-        {"head": "24a4c49170999e75", "chrome": "c59ddab4c4308401", "main": "645012baa0685fdd"}),
+    ("dashboard",       "/"):                          ("5e225e0820d80885", 106453,
+        {"head": "6dc069f834093b21", "shell": "75cda0afbae27209", "chrome": "5c161e609be944c8", "main": "2b2035d29d7ba0bd"}),
+    ("quotations",      "/quotation/"):                ("36d5f6af2d97f948", 70833,
+        {"head": "6a1ba8490f2cdcd0", "shell": "75cda0afbae27209", "chrome": "b5fd1962d836d50d", "main": "7ec3c661ae9cc372"}),
+    ("proformas",       "/proforma/"):                 ("7d76c8fa785a4097", 76141,
+        {"head": "d4b0cd305b9e7989", "shell": "75cda0afbae27209", "chrome": "739e7979087b4d6a", "main": "99ac6790fecd3140"}),
+    ("tax invoices",    "/invoice/"):                  ("838b42d5894c49c6", 83043,
+        {"head": "28aee5e42e857421", "shell": "75cda0afbae27209", "chrome": "e3e943b1df420c01", "main": "9acd0372dd4402aa"}),
+    ("purchase orders", "/purchase/"):                 ("ddd6e71e5ba97679", 80408,
+        {"head": "cc38af98aba1744b", "shell": "75cda0afbae27209", "chrome": "20aa8d813a8d7958", "main": "80dfa73ee439cc3e"}),
+    ("spec library",    "/spec/"):                     ("f4df328387214170", 98711,
+        {"head": "f41ca0306fa77e16", "shell": "75cda0afbae27209", "chrome": "ac89f317bbc5800e", "main": "ffab9c68d1fb9d41"}),
+    ("BOQs",            "/boq/"):                      ("da65fd57390c41ea", 87604,
+        {"head": "6e81206dea905371", "shell": "75cda0afbae27209", "chrome": "606ce55e81259faa", "main": "413eaba106b25ef1"}),
+    ("RA bills",        "/ra/"):                       ("3a5536d4d6af4366", 94831,
+        {"head": "32281e51b669ef68", "shell": "75cda0afbae27209", "chrome": "55368f6b238833b4", "main": "148536cc5ea624cc"}),
+    ("merged RAs",      "/merged/"):                   ("c8c76cbaad9ecafa", 87366,
+        {"head": "7ceab0cd4d0e91dd", "shell": "75cda0afbae27209", "chrome": "602a5f1ea1698609", "main": "16cffd227809676f"}),
+    ("receipts",        "/receipt/"):                  ("0507f0420f7839fd", 86611,
+        {"head": "2cc6952bbfa08148", "shell": "75cda0afbae27209", "chrome": "3033c4bdc0669eaa", "main": "3fe4fb4699344259"}),
+    ("clients",         "/client/"):                   ("b539d6762348461b", 72469,
+        {"head": "a63bc41e9602defd", "shell": "75cda0afbae27209", "chrome": "34843c9b79426c0a", "main": "9e3d19393d21eae4"}),
+    ("draft POs",       "/po/"):                       ("fbbdae870b7c8492", 71208,
+        {"head": "6a649d567a7b3d0b", "shell": "75cda0afbae27209", "chrome": "1da3a693f583e9cc", "main": "82ba49a010dd9872"}),
+    ("challans",        "/dc/"):                       ("4ddb960f86b83e82", 76341,
+        {"head": "660a40e2abebd6f2", "shell": "75cda0afbae27209", "chrome": "07b78e62d2bbf81c", "main": "30651a1c7dcacad9"}),
+    ("measurements",    "/measurement/"):              ("087142596310c260", 68945,
+        {"head": "eb56381f8be8ac28", "shell": "75cda0afbae27209", "chrome": "604e1a5956a90ace", "main": "357bd0902a7b8770"}),
+    ("projects",        "/projects/"):                 ("1dcdc0e2798636eb", 49548,
+        {"head": "35ced4411e03de2e", "shell": "75cda0afbae27209", "chrome": "89e92c31f075ea28", "main": "b61a7f3ca9178c9b"}),
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("74f683d1a779159f", 76963,
+        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209", "chrome": "b03da1368479ad8b", "main": "85908eff05b3e868"}),
+    ("employees",       "/employee/"):                 ("fd7d40f31d63a52e", 66359,
+        {"head": "6419ee6d0d3ea045", "shell": "75cda0afbae27209", "chrome": "8ad3f37192de4e4d", "main": "14f4d8921e680fc4"}),
+    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("772b3d71abb8f8ee", 72731,
+        {"head": "f7e83482d5632c42", "shell": "75cda0afbae27209", "chrome": "864f7a2ba55bb64a", "main": "bb8159e0b0291642"}),
+    ("charges",         "/charge/"):                   ("52eec3cf3cd7c8cd", 66001,
+        {"head": "575d38b1b9bde174", "shell": "75cda0afbae27209", "chrome": "19250b6392869c12", "main": "daf605a8f367bb3e"}),
+    ("address book",    "/address/"):                  ("def4ca415fbc0f49", 75650,
+        {"head": "0a1c0d68158bc7e5", "shell": "75cda0afbae27209", "chrome": "35480409a092776b", "main": "7e67e775827dc7af"}),
+    ("settings",        "/settings/"):                 ("f12eaac1c07efbaa", 74589,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"}),
+    ("users",           "/users"):                     ("fe1cec1628dc3b6b", 65496,
+        {"head": "33b7bd724b226f57", "shell": "75cda0afbae27209", "chrome": "907015465e3197ed", "main": "645012baa0685fdd"}),
 }
 
 
@@ -361,12 +380,40 @@ def test_the_page_goldens_are_hashing_real_pages(client, world):
 
 def test_every_pinned_page_renders_the_shared_chrome(client, world):
     """
-    The shape the split relies on: every page here carries a `<nav` and a
-    `<main`, in that order, after its `<head>`. A page that lost either has
-    lost the chrome this file exists to measure.
+    The shape the split relies on: every page here carries the shell's
+    stylesheet, a `<nav` and a `<main`, in that order, after its `<head>`. A
+    page that lost any of them has lost the chrome this file exists to measure.
     """
     for (name, url) in PAGES:
         html = client.get(url).get_data(as_text=True)
         cuts = [html.find(m) for _n, m in PAGE_BLOCKS]
         assert all(c >= 0 for c in cuts), f"{name}: a marker is missing ({cuts})"
         assert cuts == sorted(cuts), f"{name}: the markers are out of order"
+
+
+def test_the_head_element_carries_none_of_the_shell(client, world):
+    """
+    ⚠ **What "the sidebar moved only the chrome" rests on.** The shell's
+    stylesheet and script are emitted by `_nav()` in the BODY, so a page's
+    `<head>` element is exactly what it was before the redesign — its own
+    `<title>`, the favicon, and the style constants it always loaded. That is
+    asserted two ways: nothing of the shell is inside `<head>…</head>`, and
+    nothing but whitespace and the `<body>` opening sits between `</head>` and
+    the shell's first byte. `chrome.BASE_STYLES` being byte-identical to the
+    extraction commit's (`efa3467`) is the third leg, and it was measured in
+    the sidebar commit rather than assumed.
+    """
+    import re
+
+    import chrome
+
+    shell_start = chrome.CHROME_STYLES.strip()
+    for (name, url) in PAGES:
+        html = client.get(url).get_data(as_text=True)
+        head = html[html.index("<head>"):html.index("</head>")]
+        for token in ("nav.rail", "railToggle", ".topbar", "--rail-w"):
+            assert token not in head, f"{name}: {token!r} leaked into <head>"
+        between = html[html.index("</head>") + len("</head>"):html.index(shell_start)]
+        assert re.fullmatch(r"\s*<body[^>]*>\s*", between), (
+            f"{name}: something other than <body> sits between </head> and the "
+            f"shell: {between!r}")

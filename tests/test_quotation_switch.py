@@ -44,6 +44,12 @@ from store import STORE
 # back afterwards. It is in `test_print_golden.py` at `1d7725a` too, which is
 # what lets the capture run there unchanged.
 from test_print_golden import pinned_identity  # noqa: F401
+# ⚠ Added 14 September 2026 with the sidebar: the rail counts every register
+#   on every screen page, so this form's `head` block now reads collections
+#   the fixture below never pinned (`projects`, `employees`, `users`, …) and
+#   its digest followed whichever tests had run first. The same helper the
+#   pinned `/po/create` form uses holds them still.
+from test_print_golden import pinned_counts  # noqa: F401
 
 
 # ── the fixed world ─────────────────────────────────────────────────────────
@@ -83,7 +89,7 @@ def _restore_hidden(saved):
 
 
 @pytest.fixture()
-def fixed_world(client, pinned_identity, monkeypatch):
+def fixed_world(client, pinned_identity, pinned_counts, monkeypatch):
     """
     `/quotation/create` with everything that moves on its own held still:
     today's date, the catalogue (cleared and re-seeded so the twelve fixed
@@ -107,6 +113,12 @@ def fixed_world(client, pinned_identity, monkeypatch):
     STORE["_addr_seeded"] = False
     address.ensure_demo_addresses()
 
+    # The two counted collections `conftest.client` leaves alone and no golden
+    # fixture here sets: the rail counts both (14 September 2026).
+    saved_counted = {k: dict(STORE.get(k) or {}) for k in ("ra_bills", "purchase_orders")}
+    for k in saved_counted:
+        STORE.setdefault(k, {}).clear()
+
     yield
 
     STORE["products"].clear()
@@ -115,6 +127,9 @@ def fixed_world(client, pinned_identity, monkeypatch):
     STORE["addresses"].clear()
     STORE["addresses"].update(saved_addresses)
     STORE["_addr_seeded"] = saved_addr_seed
+    for k, v in saved_counted.items():
+        STORE[k].clear()
+        STORE[k].update(v)
 
 
 @pytest.fixture()
@@ -142,8 +157,22 @@ def switch_on(fixed_world):
 # Captured 12 September 2026 by running `test_the_off_page_is_byte_identical_
 # to_1d7725a` in a `git worktree` of `1d7725a`, with this fixture. The page
 # there has no switch and no seams; it is the product picker and nothing else.
-OFF_WHOLE = "b467ca97ab34d077"
-OFF_LEN = 87068
+#
+# ⚠ **RE-BASELINED 14 September 2026 for the SIDEBAR — the `head` block ALONE,
+#   and the claim this file makes is unchanged.** The `head` block runs from
+#   `<head>` to the form's opening tag, so it carries the app shell `_nav()`
+#   emits, and the shell was redrawn: **+25,298 bytes, `head` only**. The nine
+#   blocks that ARE the product picker — `form`, `items`, `tax`, `script`,
+#   `picker`, `render`, `mutation`, `demo`, `guard` — are byte-identical to the
+#   `1d7725a` render, and `quotation.py` was not edited (the chip test holds
+#   that). The `1d7725a` render carried the old top bar in the same block; this
+#   file's assertion was always about the picker, and still is. The old
+#   values, verbatim:
+#       OFF_WHOLE = "b467ca97ab34d077"
+#       OFF_LEN = 87068
+#       OFF_BLOCKS = {"head": "a7fcb956a04f035f", …}
+OFF_WHOLE = "aa63e2c1d26261f6"
+OFF_LEN = 112366
 
 # The page split on its structural markers, so a failure names which part
 # moved: the chrome, the item section, the picker's script, or the demo fill.
@@ -159,7 +188,7 @@ OFF_MARKERS = [
     ("demo",     "function fillDemoData()"),
     ("guard",    "/* ═══ FORM GUARD"),
 ]
-OFF_BLOCKS = {"head":     "a7fcb956a04f035f",
+OFF_BLOCKS = {"head":     "7dbd9ab6dadddd9d",   # was a7fcb956a04f035f
               "form":     "370e5e115dc4c883",
               "items":    "374b85b7f0fd495d",
               "tax":      "ddb32a58ad86df59",

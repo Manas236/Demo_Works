@@ -85,14 +85,68 @@ ROLES = ["owner", "director", "operation-head", "hr", "sales-manager",
 #           "purchase-manager": ["Projects"],
 #           "accountant":       ["Projects"],
 #       }
+# ⚠ **THE NAV IS THE RAIL FROM 14 SEPTEMBER 2026, and it names every register
+#   the role may reach** — the four-entry bar above is retired. The rail and the
+#   dashboard's zones render from ONE table, `chrome.REGISTERS`, filtered by
+#   `can_reach()` entry by entry, so what a role sees on the rail is exactly
+#   what it sees on the launcher, plus Dashboard first and Settings last where
+#   the role holds it. Written out per role rather than derived from
+#   `EXPECTED_CARDS`, so a change to either surface is a change to a table
+#   somebody reads. The old assertion, verbatim:
+#       EXPECTED_NAV = {
+#           "owner":            ["Projects", "Measurements", "Employees", "Settings"],
+#           "director":         ["Projects", "Measurements", "Employees", "Settings"],
+#           "operation-head":   ["Projects", "Measurements"],
+#           "hr":               ["Employees"],
+#           "sales-manager":    ["Projects", "Measurements"],
+#           "purchase-manager": ["Projects"],
+#           "accountant":       ["Projects", "Measurements"],
+#       }
+#   ⚠ `Product Catalogue` is on no role's rail: the module is hidden from
+#   everybody (`auth.HIDDEN_BLUEPRINTS`), and this file runs the rail check in
+#   the shipped configuration. The launcher check below runs un-hidden.
+_FULL_RAIL = [
+    "Dashboard",
+    "Quotations", "Proforma Invoices", "Tax Invoices",
+    "Projects", "Bills of Quantities", "Running Account Bills", "Receipts",
+    "Delivery Challans", "Measurement Sheets",
+    "Purchase Orders", "Draft Purchase Orders", "Expenses &amp; Charges",
+    "Attendance",
+    "Spec Library", "Client Register", "Employees", "Address Book",
+    "Market News", "Users &amp; Access",
+    "Settings",
+]
 EXPECTED_NAV = {
-    "owner":            ["Projects", "Measurements", "Employees", "Settings"],
-    "director":         ["Projects", "Measurements", "Employees", "Settings"],
-    "operation-head":   ["Projects", "Measurements"],
-    "hr":               ["Employees"],
-    "sales-manager":    ["Projects", "Measurements"],
-    "purchase-manager": ["Projects"],
-    "accountant":       ["Projects", "Measurements"],
+    "owner":    _FULL_RAIL,
+    "director": _FULL_RAIL,
+    "operation-head": [
+        "Dashboard",
+        "Projects", "Bills of Quantities", "Running Account Bills", "Receipts",
+        "Delivery Challans", "Measurement Sheets",
+        "Purchase Orders", "Draft Purchase Orders", "Expenses &amp; Charges",
+        "Spec Library", "Client Register", "Address Book"],
+    "hr": [
+        "Dashboard",
+        "Expenses &amp; Charges", "Attendance",
+        "Employees", "Address Book"],
+    "sales-manager": [
+        "Dashboard",
+        "Quotations", "Proforma Invoices", "Tax Invoices",
+        "Projects", "Bills of Quantities", "Running Account Bills",
+        "Measurement Sheets",
+        "Spec Library", "Client Register", "Address Book"],
+    "purchase-manager": [
+        "Dashboard",
+        "Projects", "Bills of Quantities", "Delivery Challans",
+        "Purchase Orders", "Draft Purchase Orders",
+        "Spec Library", "Address Book"],
+    "accountant": [
+        "Dashboard",
+        "Proforma Invoices", "Tax Invoices",
+        "Projects", "Bills of Quantities", "Running Account Bills", "Receipts",
+        "Measurement Sheets",
+        "Purchase Orders",
+        "Client Register"],
 }
 
 ALL_CARDS = [
@@ -122,7 +176,7 @@ ALL_CARDS = [
     #   records": a day's wages and overtime is money going out, a register of
     #   who works here is a master record. ABOUT.md §9's own rule — decide the
     #   pipeline first — is what splits them.
-    "Purchase Orders", "Draft Purchase Orders", "Expenses & Charges",
+    "Purchase Orders", "Draft Purchase Orders", "Expenses &amp; Charges",
     "Attendance",
     "Product Catalogue", "Spec Library", "Client Register", "Employees",
     "Address Book",
@@ -157,7 +211,7 @@ EXPECTED_CARDS = {
         #   from. The old assertion, verbatim:
         #       "Expenses & Charges", "Product Catalogue", "Spec Library",
         #       "Client Register", "Address Book"],
-        "Expenses & Charges", "Product Catalogue", "Spec Library",
+        "Expenses &amp; Charges", "Product Catalogue", "Spec Library",
         "Client Register", "Address Book"],
     # B4's one stated restriction, seen from the other side: HR is the narrowest
     # role in the system and its dashboard is two cards.
@@ -181,7 +235,7 @@ EXPECTED_CARDS = {
     #   ⚠ **FOUR from the same pass, once C5 shipped** — the assertion between
     #     the link arriving and C5 arriving, verbatim:
     #         "hr": ["Expenses & Charges", "Employees", "Address Book"],
-    "hr": ["Expenses & Charges", "Attendance", "Employees", "Address Book"],
+    "hr": ["Expenses &amp; Charges", "Attendance", "Employees", "Address Book"],
     # Unchanged by this pass: a Sales Manager holds neither `receipt.view`
     # nor `employee.view`, so neither new card is drawn for them.
     # ⚠ Gains "Measurement Sheets" on 29 August 2026 (fifth pass), on
@@ -250,7 +304,7 @@ CARD_ENDPOINT = {
     "Draft Purchase Orders":      "po_draft.list_pos",
     "Attendance":                 "attendance.list_attendance",
     # was "Employee & Misc Charges" — see the note on ALL_CARDS above
-    "Expenses & Charges":         "charge.list_charges",
+    "Expenses &amp; Charges":     "charge.list_charges",
     "Product Catalogue":          "product.list_products",
     "Spec Library":               "spec.list_specs",
     "Client Register":            "client.list_clients",
@@ -303,11 +357,11 @@ def _dashboard(client, slug: str) -> str:
 
 
 def _nav_labels(html: str) -> list:
-    """The text of each `.nav-link`, in the order the nav renders them."""
+    """The label of each rail entry, in the order the rail renders them."""
     import re
 
-    block = html[html.index('<div class="nav-right">'):html.index("</nav>")]
-    return re.findall(r'class="nav-link">.*?</svg>([^<]+)</a>', block, re.S)
+    block = html[html.index('<nav class="rail"'):html.index("</nav>")]
+    return re.findall(r'<a class="rl[^"]*" href="[^"]*"[^>]*?title="([^"]+)"', block)
 
 
 def _card_titles(html: str) -> list:
@@ -608,7 +662,8 @@ def test_every_endpoint_the_launcher_names_is_classified():
     (absence is a refusal), which is a silent way to delete a module from the
     application.
     """
-    named = set(CARD_ENDPOINT.values()) | {e for e, _, _ in chrome.NAV_ITEMS}
+    named = (set(CARD_ENDPOINT.values()) | {r.endpoint for r in chrome.REGISTERS}
+             | {"settings.edit_settings"})
 
     # ⚠ A comprehension over an empty `named` yields an empty `unclassified`,
     #   so this passes when the launcher names nothing — which is the one state

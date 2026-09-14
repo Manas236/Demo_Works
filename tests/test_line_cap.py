@@ -400,7 +400,7 @@ def test_the_413_page_keeps_the_app_chrome(client):
     html = client.post("/boq/create",
                        data={"boq_json": "x" * (limit + 5000)}).get_data(as_text=True)
 
-    assert "<nav>" in html
+    assert '<nav class="rail"' in html
     assert "Back to dashboard" in html
 
 

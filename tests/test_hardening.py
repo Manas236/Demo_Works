@@ -275,7 +275,11 @@ def test_script_close_in_a_clause_cannot_break_out(seeded, client):
     sp["spec_text"] = '</script><script>alert(1)</script>'
     html = client.get("/boq/create").get_data(as_text=True)
     assert "</script><script>alert(1)" not in html
-    assert html.count("<script>") == html.count("</script>") == 1
+    # One block is the page's own, the other is the shell's collapse-state
+    # script that `chrome._nav()` emits on every screen page (14 Sep 2026).
+    import chrome
+    expected = 1 + chrome.CHROME_SCRIPT.count("<script>")
+    assert html.count("<script>") == html.count("</script>") == expected
 
 
 def test_script_safe_json_round_trips(seeded):

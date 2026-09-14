@@ -46,35 +46,40 @@ import chrome
 from test_print_golden import (  # noqa: F401  (fixtures are used by pytest)
     SHEET_BLOCKS, PICKER_BLOCKS, _blocks,
     GOLD_TI, GOLD_PI, GOLD_PO, GOLD_DC, GOLD_PICK_BOQ,
-    golden, golden_ra, golden_dc, golden_picker, pinned_identity,
+    golden, golden_ra, golden_dc, golden_dpo, golden_merged, golden_ms,
+    golden_picker, pinned_identity, pinned_counts,
 )
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-# The nav as it stood before each entry that has been added to it, used to
-# render the same page both ways in one process. Nothing else in the pass that
-# added the entry touches a pinned page, so the difference between the two
-# renders IS the nav change.
+# The registry as it stood before an entry was added to it, used to render the
+# same page both ways in one process. Nothing else in the pass that added the
+# entry touches a pinned page, so the difference between the two renders IS the
+# chrome change.
 #
-# ⚠ **Both are kept and both are swept.** A pass that adds an entry and edits
-#   this constant in place proves that ITS entry is confined to the nav and
-#   silently stops proving it of the last one — and the whole value of this file
-#   is that the property holds for the nav as a whole rather than for one link.
-NAV_BEFORE_THE_EMPLOYEE_LINK = (
-    ("project.list_projects",  "project",  "Projects"),
-    ("settings.edit_settings", "settings", "Settings"),
-)
+# ⚠ **14 September 2026 — the nav is the RAIL and its entries are
+#   `chrome.REGISTERS`.** The two hand-written "before" navs this file used to
+#   carry (`NAV_BEFORE_THE_EMPLOYEE_LINK`, `NAV_BEFORE_THE_MEASUREMENT_LINK`) are
+#   restated as the registry WITHOUT the same two entries, so each of the two
+#   additions ever measured here is still asserted to be confined to the chrome
+#   rather than quietly retired by the redesign. The old constants, verbatim:
+#
+#       NAV_BEFORE_THE_EMPLOYEE_LINK = (
+#           ("project.list_projects",  "project",  "Projects"),
+#           ("settings.edit_settings", "settings", "Settings"),
+#       )
+#       NAV_BEFORE_THE_MEASUREMENT_LINK = (
+#           ("project.list_projects",   "project",  "Projects"),
+#           ("employee.list_employees", "employee", "Employees"),
+#           ("settings.edit_settings",  "settings", "Settings"),
+#       )
+def _registry_without(key):
+    return tuple(r for r in chrome.REGISTERS if r.key != key)
 
-# 29 August 2026 (fifth pass) — before the measurement register's entry.
-NAV_BEFORE_THE_MEASUREMENT_LINK = (
-    ("project.list_projects",   "project",  "Projects"),
-    ("employee.list_employees", "employee", "Employees"),
-    ("settings.edit_settings",  "settings", "Settings"),
-)
 
-NAV_BEFORE_STATES = {
-    "before-employees":    NAV_BEFORE_THE_EMPLOYEE_LINK,
-    "before-measurements": NAV_BEFORE_THE_MEASUREMENT_LINK,
+REGISTRY_BEFORE_STATES = {
+    "before-employees":    "employee",
+    "before-measurements": "measurement",
 }
 
 # Every page a golden pins, with the markers it is split on.
@@ -92,38 +97,46 @@ PINNED = [
 PRINTED_SHEETS = [n for n, _u, _m in PINNED if n != "BOQ line picker"]
 
 
-@pytest.fixture(params=sorted(NAV_BEFORE_STATES), ids=sorted(NAV_BEFORE_STATES))
+@pytest.fixture(params=sorted(REGISTRY_BEFORE_STATES), ids=sorted(REGISTRY_BEFORE_STATES))
 def both_navs(request, client):
     """
-    Render any URL with the nav as it is now and as it stood before one entry.
+    Render any URL with the registry as it is now and without one entry.
 
     Parametrised over every recorded "before" state, so each entry ever added is
-    still asserted to be confined to `<nav>` rather than only the most recent
-    one.
+    still asserted to be confined to the chrome rather than only the most
+    recent one.
     """
-    after = chrome.NAV_ITEMS
-    before_items = NAV_BEFORE_STATES[request.param]
+    after = chrome.REGISTERS
+    before_items = _registry_without(REGISTRY_BEFORE_STATES[request.param])
 
     def render(url):
         out = {}
         for key, items in (("after", after), ("before", before_items)):
-            chrome.NAV_ITEMS = items
+            chrome.REGISTERS = items
             r = client.get(url)
             assert r.status_code == 200, f"{url} -> {r.status_code}"
             out[key] = r.get_data(as_text=True)
-        chrome.NAV_ITEMS = after
+        chrome.REGISTERS = after
         return out["before"], out["after"]
 
     yield render
-    chrome.NAV_ITEMS = after
+    chrome.REGISTERS = after
+
+
+# The shell runs from the first byte of `chrome.CHROME_STYLES` — the FIRST
+# thing `_nav()` emits, in the body — to the top bar's closing tag. Searching
+# for the constant's own text rather than for `<style>` is what keeps the span
+# from starting at the `<head>` stylesheet, which would put the whole page
+# inside it and make the assertion vacuous.
+_SHELL_END = "</header>"
 
 
 def _nav_span(html):
-    """`(before, nav, after)`, or `None` when the page renders no nav."""
-    if "<nav>" not in html:
+    """`(before, chrome, after)`, or `None` when the page renders no chrome."""
+    if '<nav class="rail"' not in html:
         return None
-    a = html.index("<nav>")
-    b = html.index("</nav>") + len("</nav>")
+    a = html.index(chrome.CHROME_STYLES.strip())
+    b = html.index(_SHELL_END) + len(_SHELL_END)
     return html[:a], html[a:b], html[b:]
 
 
@@ -137,8 +150,8 @@ def test_a_nav_entry_moves_the_nav_and_nothing_else(
     """
     **The condition the re-baseline was authorised under.**
 
-    Every byte that moved must be inside `<nav>…</nav>`. Everything before it
-    and everything after it — the whole document, the whole stylesheet, the
+    Every byte that moved must be inside the shell — the rail and the top bar.
+    Everything before it and everything after it — the whole document, the
     whole form — must be character-for-character what it was.
 
     Measured when this was written: **+248 bytes on five pages, 0 on the
@@ -153,8 +166,8 @@ def test_a_nav_entry_moves_the_nav_and_nothing_else(
         assert before == after, f"{name} has no nav and still moved"
         return
 
-    assert b_span[0] == a_span[0], f"{name}: bytes moved BEFORE <nav>"
-    assert b_span[2] == a_span[2], f"{name}: bytes moved AFTER </nav>"
+    assert b_span[0] == a_span[0], f"{name}: bytes moved BEFORE the shell"
+    assert b_span[2] == a_span[2], f"{name}: bytes moved AFTER the shell"
 
     delta = len(after) - len(before)
     assert delta == len(a_span[1]) - len(b_span[1]), (
@@ -194,7 +207,7 @@ def test_the_delivery_challan_does_not_move_at_all(both_navs, golden_dc):
     """
     before, after = both_navs(f"/dc/print/{GOLD_DC}")
     assert before == after, "the challan renders no nav and must not move"
-    assert "<nav>" not in after
+    assert '<nav class="rail"' not in after
 
 
 # ══ 2. ⚠ The bytes moved; the paper did not ═══════════════════════════════
@@ -244,8 +257,8 @@ def test_every_printed_sheet_hides_the_nav_at_print(
         pytest.skip("a form, not a printed sheet — it carries `.no-print`")
 
     html = client.get(url).get_data(as_text=True)
-    if "<nav>" not in html:
-        return                              # the challan; nothing to hide
+    if '<nav class="rail"' not in html:
+        return                              # a print route; nothing to hide
 
     assert "@media print" in html
     rule = re.search(r"@media print\s*\{.*?\bnav\b[^}]*display\s*:\s*none",
@@ -355,10 +368,10 @@ def test_every_classified_page_is_reachable_from_the_nav_or_the_launcher():
     """
     import app as app_module
 
-    src = (REPO / "dashboard.py").read_text(encoding="utf8")
-    drawn = {ep for ep, _icon, _label in chrome.NAV_ITEMS}
-    drawn |= set(re.findall(r'_card\(\s*"([a-z_]+\.[a-z_]+)"', src))
-    drawn.add("auth.list_users")            # `_access_card()`, built by hand
+    # The rail and the launcher render from one table (14 September 2026);
+    # Settings rides in the rail's foot outside it.
+    drawn = {r.endpoint for r in chrome.REGISTERS}
+    drawn.add("settings.edit_settings")
 
     landing = _classified_landing_pages(app_module.app)
     forms = _create_form_endpoints(app_module.app)

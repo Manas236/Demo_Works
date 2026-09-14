@@ -1,8 +1,8 @@
 """
 Every page in this app is the same page.
 
-`dashboard.BASE_STYLES` and `dashboard._nav()` are what make that true, and
-nothing enforced it — a module could render its own `<style>` block, its own
+`chrome.BASE_STYLES` and `chrome._nav()` are what make that true (they lived in
+`dashboard.py` until 14 September 2026), and nothing enforced it — a module could render its own `<style>` block, its own
 header and its own layout, look plausible on its own, and be visibly a
 different application the moment somebody clicked through to it. Two of them
 did: `/client/` and `/po/` shipped with a hand-rolled `.page-container` /
@@ -40,7 +40,9 @@ NO_CHROME = {
     # The print-only routes. `/boq/print` set this shape: the document alone
     # behind a `.no-print` action bar, because the nav is furniture and the
     # sheet is the deliverable. They still load the shared stylesheet, which is
-    # the half this file checks for them.
+    # the half this file checks for them. From 14 September 2026 EVERY print
+    # route has this shape — `tests/test_print_golden.py::
+    # test_no_print_route_renders_the_nav` sweeps all nine by name.
     "/po/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/dc/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/boq/print/<id>": "print-only: the document alone",
@@ -52,6 +54,18 @@ NO_CHROME = {
     # and the reason is the session, not the paper.
     "/login":  "reached logged out: no nav, because every nav link would refuse",
     "/setup":  "reached logged out, and only while no user exists; redirects after that",
+    # ⚠ Named on 14 September 2026, when the sweep started asking for the rail.
+    #   Market News never rendered `_nav()`: `extractor.py` imports `branding`
+    #   only and draws a dark look-alike of the OLD bar — a `<nav>` with a
+    #   `.nav-brand` span — which is why the old `<nav>` check passed on it.
+    #   It is four hard-coded articles behind a "+ Add to Quotation" button
+    #   that does nothing (ABOUT.md §5), and the rail opens it in a NEW TAB as
+    #   the standalone page it is. Giving it the shell means giving a decorative
+    #   page a real one, which is a decision about that page and not this
+    #   sweep's to take.
+    "/extractor/": "a standalone dark demo page that opens in a new tab; draws "
+                   "its own header, imports branding only, has never rendered "
+                   "_nav()",
 }
 
 # The screen routes the last three passes added. Listed explicitly as well as
@@ -90,12 +104,25 @@ def _screen_urls(app_module, ids):
     return out
 
 
+# What `chrome._nav()` puts on a screen page (14 September 2026): the rail,
+# the sticky top stack with the bar in it, the wordmark, and the shell's own
+# stylesheet and collapse script. A page that lost any one of these has lost
+# the chrome this file exists to sweep.
+SHELL_MARKUP = ('<nav class="rail"', '<div class="topstack">',
+                '<header class="topbar">', 'class="nav-brand"',
+                "window.railToggle")
+
+
 def test_every_screen_page_carries_the_shared_nav(populated, client):
     """
     `_nav()` is the only surface genuinely on every page, which is why both of
     the app's standing warnings ride on it: the amber settings dot, and the red
     persistence strip that means nothing is being saved. A page that draws its
     own header instead loses both and looks fine doing it.
+
+    ⚠ **Extended to the rail on 14 September 2026.** The shell is a left rail
+    and a top bar now, and every screen page must carry BOTH — the rail with
+    the register entries, the bar with the page title and the user chip.
     """
     import app as app_module
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
@@ -107,10 +134,43 @@ def test_every_screen_page_carries_the_shared_nav(populated, client):
         r = client.get(url)
         assert r.status_code == 200, f"{url} did not render"
         html = r.get_data(as_text=True)
-        assert '<nav>' in html and 'class="nav-brand"' in html, (
-            f"{url} does not render dashboard._nav(). Import it rather than "
-            f"drawing a header — the persistence strip and the settings dot "
-            f"both ride on it.")
+        for token in SHELL_MARKUP:
+            assert token in html, (
+                f"{url} does not render chrome._nav() ({token!r} is missing). "
+                f"Import it rather than drawing a header — the persistence "
+                f"strip and the settings dot both ride on it.")
+        # The rail names the registers; the bar names the page and the user.
+        assert 'title="Dashboard"' in html, f"{url}: the rail has no Dashboard entry"
+        assert '<div class="tb-name">' in html, f"{url}: the top bar has no title"
+
+
+def test_no_print_route_carries_the_rail(populated, client):
+    """
+    The other side of the sweep above, on two of the print routes the URL walk
+    skips: the shell must not reach a printed page. All nine print routes are
+    swept by name in `tests/test_print_golden.py`; this is the same fact from
+    this file's own exemption list, so the two cannot disagree about what a
+    print route is exempt from.
+    """
+    import json
+
+    vendor = next(a["id"] for a in STORE["addresses"].values()
+                  if a.get("type") == "vendor")
+    lines = [li for li in STORE["boqs"][populated["boq"]]["line_items"]
+             if not li.get("is_header")][:2]
+    r = client.post(f"/po/create?boq={populated['boq']}", data={
+        "date": "2026-08-15", "vendor_id": vendor, "notes": "",
+        "po_json": json.dumps({"lines": [{"line_id": li["line_id"],
+                                          "qty": "", "pcs": ""} for li in lines]})})
+    assert r.status_code == 302
+    pid = next(iter(STORE["purchase_orders"]))
+
+    for url in (f"/po/print/{pid}", f"/boq/print/{populated['boq']}"):
+        html = client.get(url).get_data(as_text=True)
+        for token in SHELL_MARKUP:
+            assert token not in html, f"{url} carries the app shell ({token!r})"
+
+    STORE["purchase_orders"].clear()
 
 
 def test_every_page_layers_its_css_after_the_shared_stylesheet(populated, client):
@@ -170,8 +230,8 @@ def test_the_printed_pages_load_the_shared_document_sheet(populated, client):
 def test_the_new_registers_are_reachable_from_the_dashboard(populated, client, path):
     """
     Not "the route exists" — **the user can get to it without typing a URL.**
-    The module strip on `/` is this app's launcher; the nav carries only
-    Settings, by design (ABOUT.md §5).
+    The module zones on `/` are this app's launcher, and from 14 September
+    2026 the rail on every page names the same registers (ABOUT.md §5).
     """
     home = client.get("/").get_data(as_text=True)
     assert f'href="{path}"' in home, (
@@ -212,8 +272,8 @@ def test_the_boq_side_purchase_forms_carry_the_shared_chrome(populated, client):
         res = client.get(url)
         assert res.status_code == 200, f"{url} did not render"
         html = res.get_data(as_text=True)
-        assert "<nav>" in html and 'class="nav-brand"' in html, (
-            f"{url} does not render dashboard._nav()")
+        for token in SHELL_MARKUP:
+            assert token in html, f"{url} does not render chrome._nav() ({token!r})"
         assert ".nav-brand" in html, f"{url} does not load BASE_STYLES"
         assert "confirm(" not in html, f"{url} carries a browser confirm() dialog"
         # Its own sheet is layered on top rather than replacing the shared one.

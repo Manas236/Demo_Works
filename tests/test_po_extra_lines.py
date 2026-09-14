@@ -833,6 +833,8 @@ def test_the_job_costing_chip_says_so_only_when_there_is_something_to_say(client
 # `pinned_identity` comes too because the other three depend on it.
 from test_print_golden import (  # noqa: E402
     golden, golden_dc, golden_picker, golden_ra, pinned_identity,  # noqa: F401
+    pinned_counts, golden_dpo, golden_merged, golden_ms,  # noqa: F401
+    # (golden_picker depends on every one of them — 14 Sep 2026)
 )
 
 

@@ -1310,7 +1310,9 @@ def test_the_dashboard_card_carries_counts_and_no_money(client):
     _mark(client, person)
 
     html = client.get("/").get_data(as_text=True)
-    card = html[html.index(">Attendance<"):]
+    # The zone card, not the rail entry above it: the rail also names the
+    # register (14 Sep 2026), so the locator is the card's own title element.
+    card = html[html.index('<div class="card-title">Attendance</div>'):]
     card = card[:card.index("</a>")]
     assert "marked" in card and "today" in card
     assert "8377" not in card, "no rupee figure belongs on this card"

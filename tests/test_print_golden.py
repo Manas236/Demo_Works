@@ -819,10 +819,59 @@ class _FixedToday:
         return _real_date(2026, 8, 16)
 
 
+# The collections the RAIL counts on every screen page (14 September 2026)
+# that `conftest.client` does not clear between tests AND no golden fixture in
+# this file owns. A form's golden reads every one of them now — `Projects 3`,
+# `Employees 2` — so a fixture that pinned only the picker's own records
+# rendered a different `head` block depending on which tests had run first.
+# `tests/test_page_golden.py::world` holds all of them still; this is the same
+# rule for the one pinned form. `ra_bills`, `boqs`, `delivery_challans`,
+# `measurements`, `purchase_orders` and the sell-side four are NOT here: each
+# is set by a golden fixture, and `golden_picker` depends on every one of those
+# so that the form renders in the same world whichever test asks for it.
+RAIL_COUNTED = ("projects", "employees", "attendance", "charges", "receipts")
+
+
 @pytest.fixture()
-def golden_picker(client, pinned_identity, monkeypatch):
+def pinned_counts(client):
+    """
+    Every counted collection no golden owns, emptied — and the user table cut
+    down to the signed-in test Owner alone, so `Users & Access` reads 1 — then
+    put back afterwards. Used by the pinned FORM (`/po/create`); the printed
+    documents render no rail and need none of this.
+    """
+    import auth
+
+    saved = {k: dict(STORE.get(k) or {}) for k in RAIL_COUNTED + ("users",)}
+    for k in RAIL_COUNTED:
+        STORE.setdefault(k, {}).clear()
+    with client.session_transaction() as session:
+        me = session.get(auth.SESSION_KEY)
+    # In place, never rebound: `STORE` is one shared dict and the collection
+    # object may be held by reference elsewhere.
+    keep = {uid: u for uid, u in saved["users"].items() if uid == me}
+    STORE["users"].clear()
+    STORE["users"].update(keep)
+    yield
+    for k, v in saved.items():
+        STORE[k].clear()
+        STORE[k].update(v)
+
+
+@pytest.fixture()
+def golden_picker(client, pinned_identity, pinned_counts, golden, golden_ra,
+                  golden_dc, golden_dpo, golden_merged, golden_ms, monkeypatch):
     """
     `/po/create?boq=<id>` — the BOQ line picker, held still.
+
+    ⚠ **It depends on EVERY other golden fixture in this file from 14 September
+      2026, and the order of the parameters is the order they run.** The rail
+      on this form counts every register, so its `head` block reads the RA
+      bills, the challans, the sheets and the sell-side documents — and one
+      digest can only hold in every test that renders it if every test renders
+      it in the same world. Alone it used to see whatever the previous test
+      left; beside `golden_ra` it saw one bill more. Now it always sees the
+      golden world, and `pinned_counts` holds still what no golden owns.
 
     Captured **before** the grid was lifted out of `po_draft.py` into
     `boqpick.py`, for exactly the reason the four sheets above were captured
@@ -934,9 +983,21 @@ GOLD_PICK_BOQ = "gold-pick"
 # **+342 bytes, the same one anchor**, and the same eight blocks are again
 # byte-identical. A form is not paper, so nothing here is a print claim; it is
 # pinned because `boqpick.py` is shared and this is where a drift would show.
-PICK_WHOLE = "fa67dd4e4be6ee70"
-PICK_LEN = 55088
-PICK_BLOCKS = {"head":    "8bf28275fa127606",   # was 2bf1b714db890d61,
+# was fa67dd4e4be6ee70 / 55088 before the 14 Sep 2026 SIDEBAR. ⚠ **This is the
+# ONE page in this file that moved for the sidebar, and it moved because it is
+# a FORM and not a printed document**: it renders the app shell, and the shell
+# was redrawn. **+26,282 bytes, in the `head` block ALONE** — the shell's
+# stylesheet and script, the rail, the top bar, and the user chip this page
+# had been denied while its chrome was hashed beside the printed sheets.
+# `intro`, `vendor`, `details`, `lines`, `tools`, `rows`, `payload` and `js` —
+# the picker itself, which is what this golden exists for — are byte-identical.
+# **Not one of the nine printed documents in this file moved**, because none of
+# them renders the shell (commit 1); `test_no_print_route_renders_the_nav`
+# below is what holds that.
+PICK_WHOLE = "060391842bc9e4fc"
+PICK_LEN = 81370
+PICK_BLOCKS = {"head":    "af77ecc07bfca6ff",   # was 8bf28275fa127606,
+                                                # was 2bf1b714db890d61,
                                                 # was 04f4809335b2c9e8
                "intro":   "5558f09cc783266e",
                "vendor":  "715e7c6cd4634448",

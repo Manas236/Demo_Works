@@ -61,6 +61,7 @@ from store import STORE
 # purpose: `product.py` and `quotation.py` — both frozen — still read them from
 # `dashboard`, and `docsheet.py` reads `BASE_STYLES` here by design, because
 # the printed sheet may not import the shell (ABOUT.md §2k).
+import chrome
 from chrome import BASE_STYLES, ICONS, _nav  # noqa: F401  (re-exported)
 
 # ── Blueprint Declaration ─────────────────────────────────────────────────────
@@ -405,27 +406,57 @@ DASH_STYLES = """
     color: var(--navy); }
   .mini .mn-lbl { font-size: .72rem; color: var(--muted); }
 
-  /* ── Module strip (the launcher, demoted to the foot of the page) ── */
-  /* A fixed column count, NOT auto-fit. Each group is its own grid, and
-     auto-fit let a 3-card group and a 5-card group resolve to different column
-     counts — so card widths changed from group to group and the launcher lost
-     the one vertical rhythm that makes fifteen cards scannable. Fixed columns
-     cost a part-filled last row and buy an aligned page. */
-  .mods { display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: .85rem; align-items: stretch; }
-  /* Two lines of description is the common case; holding the floor there stops
-     rows stepping up and down as counts change. */
-  .mods .card { min-height: 82px; }
-  /* Top-aligned, not centred: descriptions run one to three lines, and centring
-     each card's content against a row-stretched box left every title on its own
-     baseline. Aligning to the top gives each row one horizontal line to read
-     along, which is most of what makes fifteen cards scannable. */
-  .mods .card { flex-direction: row; align-items: flex-start; gap: .85rem;
-    padding: 1rem 1.1rem; }
-  .mods .card-icon { width: 38px; height: 38px; border-radius: 10px; }
-  .mods .card-icon svg { width: 19px; height: 19px; }
-  .mods .card-title { font-size: .9rem; margin-bottom: .1rem; }
-  .mods .card-desc { font-size: .74rem; }
+  /* ── Module zones (the launcher, redrawn 14 September 2026) ─────────── */
+  /* Four zones, one per group in `chrome.GROUPS`, each on its group's own
+     zone tint with the group's accent on the header dot, the rule and the
+     roll-up pill. The cards inside are auto-filled at a 238px floor: a zone
+     is one group, so the column-count drift that made a fixed four-column
+     grid necessary across groups no longer has anything to drift against. */
+  .mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+    gap: 12px; align-items: stretch; }
+  .mods .card {
+    min-height: 146px; padding: 15px 16px 16px; gap: .5rem;
+    flex-direction: column; align-items: stretch;
+    border-radius: 14px; border-color: var(--border);
+  }
+  /* The red hover bar belongs to the generic card; a zone card's hover is the
+     group accent on its border, a 2px lift and the chevron sliding right. */
+  .mods .card::before { display: none; }
+  .mods .card:hover { transform: translateY(-2px); border-color: var(--ga);
+    box-shadow: var(--shadow-md); }
+  .mods .card-icon { width: 38px; height: 38px; border-radius: 10px;
+    background: var(--gt); }
+  .mods .card-icon svg { width: 19px; height: 19px; stroke: var(--ga); }
+  .mods .card:hover .card-icon { background: var(--gt); }
+  .mods .card:hover .card-icon svg { stroke: var(--ga); }
+  .mods .card-body { display: flex; flex-direction: column; gap: .3rem; }
+  .mods .card-title { font-size: 14.5px; font-weight: 600; margin-bottom: 0; }
+  .mc-fig { display: flex; align-items: baseline; gap: .4rem; }
+  .mc-fig b { font-size: 25px; font-weight: 700; line-height: 1.1;
+    letter-spacing: -.5px; color: var(--ga); font-variant-numeric: tabular-nums; }
+  .mc-unit { font-size: 13px; font-weight: 600; color: var(--muted); }
+  /* Pinned to the foot of the card, whatever the figure row above it did. */
+  .mods .card-desc { font-size: 12px; line-height: 1.45; margin-top: auto;
+    padding-top: .35rem; }
+  .mc-chev { position: absolute; right: 14px; top: 17px; width: 16px; height: 16px;
+    color: var(--muted); transition: transform .15s ease; }
+  .mc-chev svg { width: 16px; height: 16px; stroke: currentColor; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mods .card:hover .mc-chev { transform: translateX(2px); }
+
+  /* ── Status chips — an icon AND a word, always ──────────────────────── */
+  /* Amber and red are ~ΔE 2.2 apart under deuteranopia, effectively one
+     colour; the word is what carries the meaning, the colour reinforces it. */
+  .chip { display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .66rem; font-weight: 700; letter-spacing: .03em;
+    padding: .12rem .5rem .12rem .4rem; border-radius: 999px; white-space: nowrap;
+    vertical-align: middle; }
+  .chip svg { width: 12px; height: 12px; stroke: currentColor; fill: none;
+    stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .chip-good { color: var(--st-good); background: var(--st-good-bg); }
+  .chip-warn { color: var(--st-warn); background: var(--st-warn-bg); }
+  .chip-crit { color: var(--st-crit); background: var(--st-crit-bg); }
+  .attn-ref .chip { margin-left: .35rem; }
 
   /* ── Zones — the page reads as bands, not as one wall ────────────── */
   /* Every block used to carry the same weight and the same 1.1rem gap, so the
@@ -452,23 +483,26 @@ DASH_STYLES = """
   .zone > * + * { margin-top: 1.15rem; }
   .zone-hd + * { margin-top: 0; }
 
-  /* ── Module groups ───────────────────────────────────────────────── */
-  /* The launcher is split by which pipeline a register belongs to (§1) rather
-     than being one auto-fit run of everything. The coloured tick is wayfinding
-     and nothing else: sell side brand-red, project chain navy, buy side
-     saffron, reference muted. These are identity tokens, never CHART_* — a
-     status colour must not be spent on decoration (§6). */
-  .mod-group + .mod-group { margin-top: 1.75rem; }
-  .mg-hd { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; }
-  .mg-bar {
-    width: 22px; height: 3px; border-radius: 2px;
-    background: var(--muted); flex-shrink: 0;
+  /* ── Module zones' headers ───────────────────────────────────────── */
+  /* The launcher is split by which pipeline a register belongs to (§1). The
+     group colours are `chrome.GROUPS`' four — carried as custom properties by
+     the `g-*` class the zone wears, so the rail and this page cannot disagree
+     about which colour the buy side is. They are identity tokens, never
+     CHART_*: a status colour must not be spent on decoration (§6). */
+  .mod-group {
+    border-radius: 16px; padding: 16px;
+    background: var(--gz, var(--surface)); border: 1px solid #EFECF4;
   }
-  .mg-sell .mg-bar { background: var(--brand); }
-  .mg-proj .mg-bar { background: var(--navy); }
-  .mg-buy  .mg-bar { background: var(--saffron); }
-  .mg-hd h3 { font-size: .82rem; font-weight: 700; color: var(--text); }
-  .mg-hd .mg-note { font-size: .74rem; color: var(--muted); }
+  .mod-group + .mod-group { margin-top: 1.1rem; }
+  .mg-hd { display: flex; align-items: center; gap: .6rem; margin-bottom: .9rem; }
+  .mg-dot { width: 9px; height: 9px; border-radius: 3px; background: var(--ga);
+    flex-shrink: 0; }
+  .mg-hd h3 { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .mg-hd .mg-note { font-size: 12px; color: var(--muted); }
+  .mg-rule { flex: 1; height: 1px; background: var(--ga); opacity: .22; }
+  .mg-pill { font-size: 12px; font-weight: 600; color: var(--ga); background: var(--gt);
+    border-radius: 999px; padding: .22rem .7rem; white-space: nowrap;
+    font-variant-numeric: tabular-nums; }
 
   /* ── Empty state ─────────────────────────────────────────────────── */
   .empty { text-align: center; padding: 2.6rem 1.5rem; }
@@ -481,25 +515,20 @@ DASH_STYLES = """
     text-align: center; margin: auto; max-width: 34ch; }
 
   /* ── Responsive ──────────────────────────────────────────────────── */
-  @media (max-width: 1080px) {
-    .mods { grid-template-columns: repeat(3, 1fr); }
-  }
+  /* The zone grid auto-fills, so it needs no column rules of its own; the
+     rail's one breakpoint (chrome.CHROME_STYLES) is what reflows the page. */
   @media (max-width: 1000px) {
     .band { grid-template-columns: 1fr; }
     .cols, .cols-eq { grid-template-columns: 1fr; }
   }
-  @media (max-width: 780px) {
-    .mods { grid-template-columns: repeat(2, 1fr); }
-  }
   @media (max-width: 620px) {
     main.dash { padding: 1.5rem 1rem 3rem; }
     .zone { margin-top: 2.1rem; }
-    .mod-group + .mod-group { margin-top: 1.4rem; }
     .kpis, .kpis-chain { grid-template-columns: 1fr; }
-    .mods { grid-template-columns: 1fr; }
-    /* The group note is context, not content — it doubles the header height on
-       a phone and the coloured tick already separates the groups. */
-    .mg-hd .mg-note { display: none; }
+    /* The group note and the roll-up pill are context, not content — together
+       they double the header height on a phone, and the coloured dot already
+       separates the zones. */
+    .mg-hd .mg-note, .mg-pill { display: none; }
     .hero-fig .hf-val { font-size: 2.4rem; }
     .fn-row { grid-template-columns: 6.5rem 1fr 4.4rem; gap: .5rem; }
     .dash-head { align-items: flex-start; }
@@ -657,43 +686,6 @@ REGISTER_STYLES = """
 
 # The same idea one level in, for the dashboard's own action bar.
 ACTION_SEP = "\n            "
-
-
-def _access_card() -> str:
-    """
-    The launcher for user and role administration — for administrators only.
-
-    `auth` is imported **inside the function body**, the same escape hatch
-    `index()` already uses for the `product` and `address` seeders: `auth._shell()`
-    imports `BASE_STYLES` and `_nav` from this module, so a module-level import
-    here would be a cycle (ABOUT.md §2).
-
-    Rendered only for a user holding `admin.users`. Everyone else gets nothing
-    rather than a card that refuses when clicked — the module strip is this
-    app's launcher, and a launcher that offers a locked door is worse than one
-    that does not mention it. The route is gated independently; this is
-    navigation, never the access check.
-    """
-    import auth
-
-    # `can_reach()` rather than `has_perm("admin.users")`: identical today,
-    # because that is what `/users` is classified as — but derived from the
-    # registry instead of naming the permission a second time, which is the
-    # rule the other fourteen cards now follow.
-    if not auth.can_reach("auth.list_users"):
-        return ""
-
-    n_users = sum(1 for u in auth.users().values() if u.get("active"))
-    n_roles = len(auth.roles())
-    return f"""
-          <a href="{url_for('auth.list_users')}" class="card">
-            <div class="card-icon">{ICONS['users']}</div>
-            <div class="card-body">
-              <div class="card-title">Users &amp; Access</div>
-              <div class="card-desc">{n_users} active user{"" if n_users == 1 else "s"}
-                  · {n_roles} roles · who may do what</div>
-            </div>
-          </a>"""
 
 
 def _footer_contact() -> str:
@@ -1505,6 +1497,26 @@ def _months_html(m) -> str:
     return f'<div class="mc-plot">{cols}</div><div class="lg">{legend}</div>'
 
 
+# The status chip each attention reason wears: a tone, an icon and a WORD.
+# Until 14 September 2026 the four reasons were told apart by the colour of
+# their row icon alone, and amber against red is ~ΔE 2.2 under deuteranopia —
+# effectively one colour. The word is what carries the meaning now; the two
+# reasons that used to share amber (`stale`, `nopo`) and the one that was
+# orange (`await`) all read as WARNING, because none of them is a breach the
+# way an overdue closing is, and each says which warning it is.
+ATTENTION_CHIPS = {
+    "overdue": ("crit", "crit", "Overdue"),
+    "await":   ("warn", "warn", "PO awaited"),
+    "stale":   ("warn", "warn", "Gone quiet"),
+    "nopo":    ("warn", "warn", "No PO on file"),
+}
+
+
+def status_chip(tone: str, icon: str, word: str) -> str:
+    """One status chip — tone class, its icon, and the word. Never colour alone."""
+    return f'<span class="chip chip-{tone}">{ICONS[icon]}{word}</span>'
+
+
 def _attention_html(m) -> str:
     """The work queue. Empty is a good outcome, so say so rather than showing nothing."""
     rows = m["attention"]
@@ -1515,12 +1527,13 @@ def _attention_html(m) -> str:
     out = ""
     for _prio, tone, icon, qid, q, value, why in rows[:ATTENTION_LIMIT]:
         href = url_for("quotation.view_quotation", id=qid)
+        chip = status_chip(*ATTENTION_CHIPS[icon])
         out += f"""
           <a class="attn-row t-{tone}" href="{href}">
             <div class="attn-ico">{ICONS[icon]}</div>
             <div>
               <div class="attn-ref">{P.esc(q.get('ref') or '—')}
-                <span class="attn-acct">· {P.esc(q.get('account_name') or 'Unnamed account')}</span></div>
+                <span class="attn-acct">· {P.esc(q.get('account_name') or 'Unnamed account')}</span>{chip}</div>
               <div class="attn-why">{why}</div>
             </div>
             <div class="attn-val">{rupees(value)}</div>
@@ -2093,13 +2106,14 @@ def _page(html: str) -> str:
     return html
 
 
-# ── The module launcher, filtered by what the user may reach ─────────────────
+# ── The module zones, rendered from chrome.REGISTERS ─────────────────────────
 #
-# The strip used to be fifteen cards written out longhand, shown to everybody.
-# Clicking one you had no permission for refused correctly — and a launcher that
-# offers a locked door is worse than one that does not mention it, which is the
-# argument `_access_card()` has made for the Users & Access card since 26 August.
-# These two helpers are that argument applied to the other fourteen.
+# The strip used to be fifteen cards written out longhand in `index()`, in
+# four hand-written groups — and a second hand-written list of the same
+# registers drew the nav. Both now render from **one** table, `chrome.REGISTERS`
+# (14 September 2026), so a register added there appears on the rail and in
+# its zone in the same commit, and `tests/test_sidebar.py` asserts the two
+# name the same set for the same user.
 #
 # **Visibility is derived from `auth.ROUTE_PERMISSIONS`** through
 # `auth.can_reach()` — the same dict `_gate()` answers from. Nothing here holds
@@ -2107,48 +2121,168 @@ def _page(html: str) -> str:
 # of "what to allow", and every drift is either a dead link or a hidden route
 # that is quietly open. **The gate still runs on every request regardless of
 # what was drawn.**
+#
+# What this module adds to the registry's figure is the CAPTION under it — the
+# money and the second count that only `_metrics()` knows — keyed by the
+# register's key. A register with no caption here gets its generic line, so a
+# new entry cannot break the page; it can only be terser than it should be.
 
-def _card(endpoint: str, icon: str, title: str, desc: str,
-          new_tab: bool = False) -> str:
-    """One launcher card, or "" when this user could not open it."""
+
+def _card_caption(reg, m) -> str:
+    """The 12px line pinned to the foot of a zone card, from the metrics dict."""
+    k = reg.key
+    if k == "quotation":
+        return f"{m['summary']['open']['count']} still live"
+    if k == "proforma":
+        return (f"{rupees(m['pi_due'])} requested" if m["pi_due"]
+                else "raised from a quotation")
+    if k == "invoice":
+        # Net of advances already adjusted — the figure genuinely still owed.
+        return (f"{rupees(m['ti_due'])} outstanding" if m["ti_due"]
+                else "raised from a proforma")
+    if k == "project":
+        return "groups BOQs, purchase orders and site labour"
+    if k == "boq":
+        return (f"{rupees(m['boq_value'])} basic value" if m["boq_value"]
+                else "project schedules, billed by RA")
+    if k == "ra":
+        return (f"{rupees(m['ra_value'])} claimed" if m["ra_value"]
+                else "interim claims against BOQs")
+    if k == "receipt":
+        return (f"{rupees(m['rcpt_value'])} received" if m["rcpt_value"]
+                else "payments against RA bills")
+    if k == "challan":
+        return "goods leaving the yard against a schedule, no rates and no tax"
+    if k == "measurement":
+        return _ms_card_sub(m).lstrip(" ·")
+    if k == "purchase":
+        # Open orders only — see `_metrics()`.
+        return (f"{rupees(m['po_committed'])} committed" if m["po_committed"]
+                else "what we buy, not what we sell")
+    if k == "po_draft":
+        return "sent to a supplier to be priced, no rates and no GST"
+    if k == "charge":
+        return f"{rupees(m['ch_spend'])} spent"
+    if k == "attendance":
+        # ⚠ Counts only, never a labour cost — see `_metrics()` and C6.
+        return f"{m['att_today']} marked today"
+    if k == "product":
+        std = m["p_total"] - m["p_assembly"] - m["p_support"]
+        return f"{m['p_assembly']} assemblies · {std} standalone"
+    if k == "spec":
+        return "what a BOQ line is written from"
+    if k == "client":
+        return (f"{rupees(m['client_outstanding'])} outstanding" if m["client_outstanding"]
+                else "schedules grouped by billed-to party")
+    if k == "employee":
+        # ⚠ No salary total — B4 keeps that figure from Sales, Purchase and
+        #   Accounts, and the landing page reaches all of them.
+        return "details and day rate"
+    if k == "address":
+        return "feeds the Bill To and Ship To pickers"
+    if k == "news":
+        return "pump, steel and fire-safety prices &#8599;"
+    if k == "users":
+        import auth
+        n = len(auth.roles())
+        return f"{n} role{'' if n == 1 else 's'} · who may do what"
+    return _group_caption(reg)
+
+
+def _group_caption(reg) -> str:
+    """The generic caption: the register's group, for an entry with no caption above."""
+    return chrome.GROUP_OF[reg.group].sub
+
+
+def _zone_card(reg, m) -> str:
+    """One zone card, or "" when this user could not open the register."""
     import auth
 
-    if not auth.can_reach(endpoint):
+    if not auth.can_reach(reg.endpoint):
         return ""
-    tab = ' target="_blank"' if new_tab else ""
+    tab = ' target="_blank" rel="noopener"' if reg.new_tab else ""
+    n = chrome.summary_count(reg)
+    fig = ("" if n is None else
+           f'<div class="mc-fig"><b>{n}</b><span class="mc-unit">{reg.unit}</span></div>')
     return f"""
-          <a href="{url_for(endpoint)}"{tab} class="card">
-            <div class="card-icon">{ICONS[icon]}</div>
+          <a href="{url_for(reg.endpoint)}"{tab} class="card">
+            <div class="card-icon">{ICONS[reg.icon]}</div>
             <div class="card-body">
-              <div class="card-title">{title}</div>
-              <div class="card-desc">{desc}</div>
+              <div class="card-title">{reg.name}</div>
+              {fig}
+              <div class="card-desc">{_card_caption(reg, m)}</div>
             </div>
+            <span class="mc-chev">{ICONS['chevron']}</span>
           </a>"""
 
 
-def _module_group(css: str, heading: str, note: str, cards: list) -> str:
+def _rollup(group, m) -> str:
     """
-    A titled block of cards, or "" when every card in it is hidden.
+    The zone's roll-up pill — two live figures, never hardcoded, each drawn
+    only when this user could open the register it is summed from. Both halves
+    hidden means no pill at all rather than an empty one.
+    """
+    import auth
 
-    A heading with nothing under it is worse than no heading: it tells a Sales
-    Manager there is a "Buy side" they are missing rather than simply not
-    mentioning one. So the group goes when its last card does.
+    parts = []
+    if group.key == "sell":
+        if auth.can_reach("quotation.list_quotations"):
+            parts.append(f"{rupees(m['summary']['open']['value'])} live pipeline")
+        if auth.can_reach("invoice.list_invoices"):
+            parts.append(f"{rupees(m['ti_due'])} outstanding")
+    elif group.key == "proj":
+        # Tax-exclusive on both sides, the same kind of number — gap 31's rule.
+        if auth.can_reach("boq.list_boqs"):
+            parts.append(f"{rupees(m['boq_open_value'])} approved")
+        if auth.can_reach("ra.list_ras"):
+            parts.append(f"{rupees(m['ra_claimed_value'])} claimed")
+    elif group.key == "buy":
+        if auth.can_reach("purchase.list_purchases"):
+            parts.append(f"{rupees(m['po_committed'])} committed")
+        if auth.can_reach("charge.list_charges"):
+            parts.append(f"{rupees(m['ch_spend'])} spent")
+    elif group.key == "lib":
+        if auth.can_reach("client.list_clients"):
+            n = m["client_total"]
+            parts.append(f"{n} client{'' if n == 1 else 's'}")
+        if auth.can_reach("spec.list_specs"):
+            parts.append(f"{m['spec_total']} clauses")
+    if not parts:
+        return ""
+    return f'<span class="mg-pill">{" &middot; ".join(parts)}</span>'
+
+
+def _zone(group, m) -> str:
     """
+    One group's zone, or "" when every register in it is hidden from this
+    user. A heading with nothing under it is worse than no heading: it tells a
+    Sales Manager there is a "Buy side" they are missing rather than simply
+    not mentioning one. So the zone goes when its last card does.
+    """
+    cards = [_zone_card(r, m) for r in chrome.registers_in(group.key)]
     live = [c for c in cards if c]
     if not live:
         return ""
     return f"""
-        <section class="mod-group {css}">
+        <section class="mod-group g-{group.key}">
           <div class="mg-hd">
-            <span class="mg-bar"></span>
-            <h3>{heading}</h3>
-            <span class="mg-note">{note}</span>
+            <span class="mg-dot"></span>
+            <h3>{group.title}</h3>
+            <span class="mg-note">{group.sub}</span>
+            <span class="mg-rule"></span>
+            {_rollup(group, m)}
           </div>
           <div class="mods">
 {"".join(live)}
 
           </div>
         </section>"""
+
+
+def _zones(m) -> list:
+    """Every zone this user gets, in `chrome.GROUPS` order; empty ones are ""."""
+    return [_zone(g, m) for g in chrome.GROUPS]
+
 
 
 def too_large_page() -> str:
@@ -2252,108 +2386,11 @@ def index():
     today   = m["today"]
     datestr = f"{today.strftime('%A')}, {today.day} {today.strftime('%B %Y')}"
 
-    std_count = m["p_total"] - m["p_assembly"] - m["p_support"]
-
     # ── The launcher, as data ────────────────────────────────────────────────
-    # Every card names the endpoint it opens; `_card()` drops the ones this user
-    # could not open, and `_module_group()` drops a heading whose cards have all
-    # gone. `extractor.index` is the one that opens in a new tab.
-    groups = [
-        _module_group(
-            "mg-sell", "Sell side &mdash; the deal chain",
-            "quotation &rarr; proforma &rarr; tax invoice", [
-                _card("quotation.list_quotations", "quotation", "Quotations",
-                      f"""{m['q_count']} raised ·
-                  {m['summary']['open']['count']} still live"""),
-                _card("proforma.list_proformas", "proforma", "Proforma Invoices",
-                      f"""{m['pi_total']} issued{f" · {rupees(m['pi_due'])} requested" if m['pi_due'] else " · raised from a quotation"}"""),
-                _card("invoice.list_invoices", "invoice", "Tax Invoices",
-                      f"""{m['ti_total']} issued{f" · {rupees(m['ti_due'])} outstanding" if m['ti_due'] else " · raised from a proforma"}"""),
-            ]),
-        _module_group(
-            "mg-proj", "Projects &amp; site billing",
-            "schedules, interim claims and despatch", [
-                _card("project.list_projects", "project", "Projects",
-                      f"{m['proj_total']} created · group BOQs"),
-                _card("boq.list_boqs", "boq", "Bills of Quantities",
-                      f"""{m['boq_total']} priced{f" · {rupees(m['boq_value'])} basic value" if m['boq_value'] else " · project schedules, billed by RA"}"""),
-                _card("ra.list_ras", "ra", "Running Account Bills",
-                      f"""{m['ra_total']} raised{f" · {rupees(m['ra_value'])} claimed" if m['ra_value'] else " · interim claims against BOQs"}"""),
-                # Money received against those claims. Reachable from
-                # `/client/` and `/ra/view` since it was built, but it had no
-                # card — the only top-level register in the app without one,
-                # which meant the ledger could be found only from inside a bill.
-                _card("receipt.list_receipts", "proforma", "Receipts",
-                      f"""{m['rcpt_total']} recorded{f" · {rupees(m['rcpt_value'])} received" if m['rcpt_value'] else " · payments against RA bills"}"""),
-                _card("challan.list_dcs", "purchase", "Delivery Challans",
-                      f"""{m['dc_total']} raised · goods leaving the
-                  yard against a schedule, no rates and no tax"""),
-                # C2 — the measurement sheet. It sits between the schedule and
-                # the claim on this strip because that is where it sits in the
-                # work: CC-2 C1 is BoQ -> Measurement -> RA-Installation, and
-                # an installation claim cannot be raised until an approved
-                # sheet exists.
-                _card("measurement.list_ms", "boq", "Measurement Sheets",
-                      f"""{m['ms_total']} raised{_ms_card_sub(m)}"""),
-            ]),
-        _module_group(
-            "mg-buy", "Buy side &mdash; money out",
-            "never linked to a proforma or a tax invoice", [
-                _card("purchase.list_purchases", "purchase", "Purchase Orders",
-                      f"""{m['po_total']} raised{f" · {rupees(m['po_committed'])} committed" if m['po_committed'] else " · what we buy, not what we sell"}"""),
-                _card("po_draft.list_pos", "purchase", "Draft Purchase Orders",
-                      f"""{m['dpo_total']} raised · sent to a supplier
-                  to be priced, no rates and no GST"""),
-                # ⚠ Labelled "Employee & Misc Charges" until 29 August 2026,
-                # when a real employee master arrived (employee.py, CC-2 C4)
-                # and made that label actively misleading — this ledger has
-                # never had an employee record behind it, only a typed name.
-                # The module keeps its name; the label is what was wrong.
-                # PROGRESS.md §6-E.
-                _card("charge.list_charges", "purchase", "Expenses & Charges",
-                      f"{m['ch_total']} entries · {rupees(m['ch_spend'])} spent"),
-                # ⚠ C5. It sits under "Buy side — money out" and the employee
-                # MASTER sits under "Library & records", which reads oddly
-                # until you apply §9's own rule: decide the pipeline first. A
-                # master record of who works here is a library; a day's wages
-                # and overtime is money going out, beside the expenses ledger
-                # where wages are recorded today. ⚠ The card carries COUNTS and
-                # no cost — see `_metrics()`.
-                _card("attendance.list_attendance", "employee", "Attendance",
-                      f"""{m['att_total']} marked · {m['att_today']} today"""),
-            ]),
-        _module_group(
-            "mg-ref", "Library &amp; records",
-            "what the documents above are written from", [
-                _card("product.list_products", "product", "Product Catalogue",
-                      f"""{m['p_total']} items · {m['p_assembly']} assemblies
-                  · {std_count} standalone"""),
-                _card("spec.list_specs", "spec", "Spec Library",
-                      f"{m['spec_total']} clauses · what a BOQ line is written from"),
-                _card("client.list_clients", "users", "Client Register",
-                      f"""{m['client_total']} client{"" if m['client_total'] == 1 else "s"}{f" · {rupees(m['client_outstanding'])} outstanding" if m['client_outstanding'] else " · schedules grouped by billed-to party"}"""),
-                # ⚠ The employee MASTER (CC-2 C4) — not the accounts register,
-                # which is `_access_card()` two rows down. It sits here rather
-                # than under "Buy side" because it is a master record like the
-                # client register and the address book beside it: it holds who
-                # works here, and holds no money movement at all. What money it
-                # feeds is C5's, and C5 has its own home.
-                #
-                # ⚠ Drawn only for a holder of `employee.view` — Owner,
-                # Director and HR (B4). `_card()` asks `can_reach()`, so an
-                # Operation Head, a Sales Manager, a Purchase Manager and an
-                # Accountant see nothing here at all, and the route still
-                # refuses them by URL. Hiding never replaces the gate.
-                _card("employee.list_employees", "employee", "Employees",
-                      f"""{m['emp_total']} active · details and salary"""),
-                _card("address.list_addresses", "address", "Address Book",
-                      f"""{m['a_total']} saved · feeds the Bill To and
-                  Ship To pickers"""),
-                _card("extractor.index", "news", "Market News",
-                      "Pump, steel and fire-safety prices ↗", new_tab=True),
-                _access_card(),
-            ]),
-    ]
+    # Every zone renders from `chrome.REGISTERS` — the same table the rail
+    # draws from — filtered by `can_reach()` card by card; `_zone()` drops a
+    # heading whose cards have all gone. See the zone builders above.
+    groups = _zones(m)
     # The zone itself goes when every group in it has gone — a "Modules"
     # heading over nothing at all is the same lie as an empty group heading.
     modules_zone = f"""

@@ -23,10 +23,13 @@ Import direction
 ----------------
 A LEAF, held to `docsheet.py`'s standard in `tests/test_import_directions.py`:
 
-    chrome.py ──► branding, db, pipeline, flask      and nothing else of ours
-                  at module level. `auth` is reached INSIDE `_nav_links()` and
-                  `_user_chip()` only — `auth.py` imports this module at module
-                  level for `_shell()`, so a top-level import back is a cycle.
+    chrome.py ──► branding, db, pipeline, store, flask   and nothing else of ours
+                  at module level. `auth` is reached INSIDE `_rail()`,
+                  `_primary_action()`, `reachable_registers()` and
+                  `_user_chip()` only — `auth.py` imports this module at
+                  module level for `_shell()`, so a top-level import back is
+                  a cycle. `store` arrived with the registry (14 Sep 2026):
+                  the rail's live counts read the collections directly.
 
 It may not import any module that prints, and the printed sheet
 (`docsheet.py`) may not import it: a printed document must not depend on the
@@ -48,11 +51,14 @@ holds it. `/quotation/view` is the one document page that still calls it,
 because `quotation.py` is frozen.
 """
 
+from collections import namedtuple
+
 from flask import has_request_context, request, url_for
 
 import branding as B
 import db
 import pipeline as P
+from store import STORE
 
 
 # ── Shared Styles (injected into every render_template_string call) ───────────
@@ -432,10 +438,12 @@ USER_CHIP_STYLES = """
 # ✅ **14 September 2026 — the coupling is broken, and the set means something
 #   simpler now.** Every print route renders NO nav at all (the challan's shape,
 #   given to the other five), so for every member but `po_draft.create_po` the
-#   suppression below is moot: there is no nav for a chip to be on. The set is
-#   kept because the chip test still derives it from the golden file, and
-#   `/po/create` — a form, not a printed document — still renders the nav with
-#   the chip suppressed on it.
+#   suppression was moot: there is no nav for a chip to be on. **And with the
+#   sidebar, the suppression itself is gone** — `_user_chip()` no longer reads
+#   this set, so `/po/create` (a form) carries the chip like every screen page
+#   and its golden was re-baselined for it in the same commit. The set is kept
+#   as the one place that says which endpoints a golden hashes, and the chip
+#   test still derives it from the golden file and holds it in step.
 PINNED_PAGES = frozenset({
     "invoice.view_invoice",
     "proforma.view_proforma",
@@ -468,13 +476,17 @@ def _user_chip() -> str:
     `auth._shell()` imports `_nav` from this module, so a module-level import
     here would be a cycle (ABOUT.md §2g).
 
-    Empty in three cases, each on purpose:
+    Empty in two cases, each on purpose:
 
     * **no request context** — nothing to read a session from;
     * **no signed-in user** — `/login` and `/setup` do not layer this chrome at
       all, but the 404 and 413 handlers can render before anybody has signed
-      in, and a chip saying nothing is worse than no chip;
-    * **a page a golden pins** — see `PINNED_PAGES`.
+      in, and a chip saying nothing is worse than no chip.
+
+    ⚠ A third case — *a page a golden pins* — was removed on 14 September
+      2026 with the sidebar. No print route renders the chrome at all any
+      more, and the one pinned form (`/po/create`) carries the chip like every
+      other screen page; its golden moved for it, in that commit, on purpose.
 
     The control is a **link to `GET /logout`**, not a POST button. `/logout`
     already confirms on GET and destroys on POST, the delete-route convention
@@ -483,7 +495,7 @@ def _user_chip() -> str:
     """
     import auth
 
-    if not has_request_context() or request.endpoint in PINNED_PAGES:
+    if not has_request_context():
         return ""
 
     user = auth.current_user()
@@ -551,155 +563,657 @@ def _persistence_strip() -> str:
     )
 
 
-# The nav's own entries, as data rather than as markup.
+# =============================================================================
+# THE REGISTRY — one data structure describing every register (14 Sep 2026)
+# =============================================================================
+#
+# **Both the rail and the dashboard's module zones render from this.** Two
+# hand-written lists — one for the nav, one for the launcher — drift the first
+# time a register is added, and `tests/test_sidebar.py` asserts the rail and
+# the dashboard name the same set for the same user.
 #
 # `endpoint` is the key into `auth.ROUTE_PERMISSIONS` — the **same** dict
-# `_gate()` answers from — so what the nav offers and what the gate allows
-# cannot drift apart. There is deliberately no permission id here: writing one
-# would be the second list, and the second list is how a hidden entry becomes an
-# open route (or a visible one becomes a dead link).
+# `_gate()` answers from — so what the rail offers and what the gate allows
+# cannot drift apart. There is deliberately no permission id anywhere in this
+# table: writing one would be the second list, and the second list is how a
+# hidden entry becomes an open route (or a visible one becomes a dead link).
+# **Hiding is presentation; the gate is the gate.** Every route is still
+# refused on the request itself whether or not it was drawn, and the filter is
+# endpoint-level because that is the only guarantee this application can make
+# (ABOUT.md §7 gap 24 — there is no per-record access control anywhere).
 #
-# ⚠ **The nav is not the launcher and must not become it.** Fifteen registers
-# live on the dashboard's module strip; what belongs *here* is what somebody
-# needs from wherever they already are. Every entry also carries a card, which
-# is the Projects pattern rather than a duplication introduced here.
+# `count` is the callable that produces the register's summary figure — the
+# live count on the rail, and the primary figure on its dashboard card. It
+# reads `STORE` directly and imports nothing, so the shell can draw it on every
+# page without reaching into the module that owns the register. `unit` is the
+# word printed beside that figure. `None` for a count means "no figure" —
+# Market News is four hard-coded articles and a figure would be a lie.
 #
-# ⚠ **THE RULE WAS AMENDED ON 30 AUGUST 2026, and the amendment is the point.**
-#   It used to name three kinds of page — the entity that groups the documents
-#   (Projects), the register the workforce pages hang off (Employees), and
-#   configuration (Settings) — and a measurement sheet is none of the three. The
-#   entry added the day before was correctly flagged as breaking the rule rather
-#   than argued into it, and the note below is that flag, kept verbatim.
+# ⚠ **Action labels are WRITTEN OUT, never derived.** Stripping a trailing `s`
+#   off a register name produces "New market new" and "New spec librar", which
+#   is why each entry carries its own `action_label` beside `action_endpoint`.
+#   A register whose create route needs a schedule behind it (`/dc/create`,
+#   `/po/create`, `/measurement/create` all redirect without `?boq=`) carries
+#   no action here; those are raised from `/boq/view`, which is where the
+#   button belongs.
 #
-#   Removing the entry would have moved five print goldens to make a document
-#   HARDER to find, against an owner who had just reported that he could not
-#   reach most of what had been built. So the entry stays and the rule is
-#   restated as a test rather than as a list of three kinds:
+# `Product Catalogue` stays in the table while `auth.HIDDEN_BLUEPRINTS` hides
+# the module (ABOUT.md §2g): `can_reach()` answers False for it, so it is
+# drawn nowhere, and un-hiding the module is still one line in `auth.py`.
+
+Group = namedtuple("Group", "key label title sub accent tint zone")
+Register = namedtuple(
+    "Register",
+    "group key name icon endpoint count unit action_endpoint action_label new_tab")
+
+
+def _reg(group, key, name, icon, endpoint, count, unit,
+         action_endpoint="", action_label="", new_tab=False):
+    return Register(group, key, name, icon, endpoint, count, unit,
+                    action_endpoint, action_label, new_tab)
+
+
+# ── The four groups, in the order the rail and the dashboard draw them ──────
 #
-#       An entry belongs here when somebody, MID-TASK and unable to finish,
-#       has to go and use it — not when it is merely important.
-#
-#   Projects, Employees and Settings all still pass it. Measurements passes it
-#   for a reason C1 makes concrete: `/ra/create` on the installation leg is
-#   REFUSED until an approved measurement exists, so the person who discovers
-#   they need one discovers it while raising a claim somewhere else entirely.
-#
-#   ⚠ The BOQ is the nearest miss and stays off, deliberately. C1 gates the
-#     measurement on a BOQ exactly as it gates the claim on the measurement, so
-#     "another document needs it first" does NOT separate them — the honest
-#     separation is that a BOQ is where the work starts and you are already
-#     there, while a measurement is the step you find missing on your way to
-#     something else. That is a finer distinction than the old rule carried, and
-#     it is written down so the next pass argues with it instead of rediscovering
-#     it. **A fifth entry still needs a reason of this shape, and still moves
-#     five goldens.**
-#
-# ABOUT.md §5 (`/` — Dashboard) records the amendment and its date.
-#
-# ⚠ ~~**Adding an entry moves every print golden in this repository.** `_nav()` is
-# embedded in every printed page and hidden by CSS at print, so the bytes move
-# while the paper does not. That is why `employee.py` shipped with no link on
-# 29 August 2026 and why the link arrived in a pass authorised to re-baseline —
-# ABOUT.md §7, "Global Nav vs Print Goldens". Do not add one casually.~~
-# ✅ **Closed 14 September 2026.** No print route calls `_nav()` any more; an
-#   entry added here moves the `/po/create` picker's golden — a form — and no
-#   printed document. ABOUT.md §7's first gap carries the measurement.
-# ⚠ **A FOURTH ENTRY ARRIVED 29 August 2026 (fifth pass) — the measurement
-#   register — and it is the FIRST DOCUMENT REGISTER in this nav.** Read the
-#   rule above before adding a fifth: Projects is the entity that groups the
-#   documents, Employees is the register the workforce pages hang off, Settings
-#   is configuration, and a measurement sheet is none of those three. It is here
-#   because the pass brief that authorised C2 required it, and that is recorded
-#   plainly rather than argued into the rule — this entry is the one that makes
-#   "the nav is not the launcher" harder to hold, not an example of it.
-#
-#   ⚠ **Kept verbatim, and superseded by the amendment above (30 August 2026).**
-#     It is left standing rather than rewritten because it is the honest record
-#     of an entry that broke the rule as it then stood, and because the case
-#     against, two paragraphs down, is still the strongest argument anybody has
-#     made here. The rule changed to fit the application; this note is why.
-#
-#   The case for it, such as it is: an installation claim is refused until an
-#   approved sheet exists, so the measurement register is the page somebody is
-#   sent to from wherever they already are. The case against it is that the
-#   same is true of the BOQ, which has a card and no nav entry.
-#
-#   It moved four print goldens, in the `_nav()` block and nowhere else, in a
-#   commit that did nothing but this.
-NAV_ITEMS = (
-    ("project.list_projects",     "project",  "Projects"),
-    ("measurement.list_ms",       "boq",      "Measurements"),
-    ("employee.list_employees",   "employee", "Employees"),
-    ("settings.edit_settings",    "settings", "Settings"),
+# The colours were checked for colour-blind separation and are used exactly:
+# a magenta variant for the buy side failed against the teal. Library is
+# achromatic on purpose — it is reference data, not a money chain, and it must
+# not shout beside the three chains that move money.
+GROUPS = (
+    Group("sell", "Sell side &mdash; money in", "Sell side",
+          "money in &middot; quotation &rarr; proforma &rarr; tax invoice",
+          "#5B4BC4", "#EDEBFA", "#FAFAFE"),
+    Group("proj", "Projects &amp; site billing", "Projects &amp; site billing",
+          "schedules, interim claims and despatch",
+          "#0A8F78", "#E1F3EF", "#F8FDFC"),
+    Group("buy", "Buy side &mdash; money out", "Buy side",
+          "money out &middot; never linked to a proforma or a tax invoice",
+          "#B8600C", "#FAEEE1", "#FFFCF8"),
+    Group("lib", "Library &amp; records", "Library &amp; records",
+          "what the documents above are written from",
+          "#5A5468", "#EEECF2", "#FBFAFC"),
 )
 
-# The indent each nav entry sits on. A constant so the joined output is
-# byte-for-byte what the hand-written markup produced before it was filtered —
-# five print goldens hash this nav, and an Owner (who may reach every entry)
-# must render exactly the bytes they did on 26 August.
-NAV_LINK_SEP = "\n        "
 
-def _nav_links() -> str:
+def _n(key):
+    """A count of one collection, read live."""
+    return lambda: len(STORE.get(key) or {})
+
+
+def _clients():
+    """Distinct billed-to parties over every BOQ — `client.py`'s own grouping key."""
+    return len({P.norm_name(b.get("account_name"))
+                for b in (STORE.get("boqs") or {}).values()
+                if str(b.get("account_name") or "").strip()})
+
+
+def _active(key):
+    """Records whose `active` flag is on — absent means active, as both masters read it."""
+    return lambda: sum(1 for r in (STORE.get(key) or {}).values()
+                       if r.get("active", True))
+
+
+REGISTERS = (
+    # ── Sell side — money in ─────────────────────────────────────────────
+    _reg("sell", "quotation", "Quotations", "quotation",
+         "quotation.list_quotations", _n("quotations"), "raised",
+         "quotation.create_quotation", "New quotation"),
+    _reg("sell", "proforma", "Proforma Invoices", "proforma",
+         "proforma.list_proformas", _n("proformas"), "issued"),
+    _reg("sell", "invoice", "Tax Invoices", "invoice",
+         "invoice.list_invoices", _n("invoices"), "issued"),
+    # ── Projects & site billing ──────────────────────────────────────────
+    _reg("proj", "project", "Projects", "project",
+         "project.list_projects", _n("projects"), "created",
+         "project.create_project", "New project"),
+    _reg("proj", "boq", "Bills of Quantities", "boq",
+         "boq.list_boqs", _n("boqs"), "priced",
+         "boq.create_boq", "New BOQ"),
+    _reg("proj", "ra", "Running Account Bills", "ra",
+         "ra.list_ras", _n("ra_bills"), "raised",
+         "ra.create_ra", "New RA bill"),
+    _reg("proj", "receipt", "Receipts", "receipt",
+         "receipt.list_receipts", _n("receipts"), "recorded",
+         "receipt.new_receipt", "Record a payment"),
+    _reg("proj", "challan", "Delivery Challans", "challan",
+         "challan.list_dcs", _n("delivery_challans"), "raised"),
+    _reg("proj", "measurement", "Measurement Sheets", "measurement",
+         "measurement.list_ms", _n("measurements"), "raised"),
+    # ── Buy side — money out ─────────────────────────────────────────────
+    _reg("buy", "purchase", "Purchase Orders", "purchase",
+         "purchase.list_purchases", _n("purchases"), "raised",
+         "purchase.create_purchase", "New purchase order"),
+    _reg("buy", "po_draft", "Draft Purchase Orders", "draft",
+         "po_draft.list_pos", _n("purchase_orders"), "raised"),
+    _reg("buy", "charge", "Expenses &amp; Charges", "charge",
+         "charge.list_charges", _n("charges"), "entries",
+         "charge.new_charge", "New expense"),
+    _reg("buy", "attendance", "Attendance", "attendance",
+         "attendance.list_attendance", _n("attendance"), "marked",
+         "attendance.mark_attendance", "Mark attendance"),
+    # ── Library & records ────────────────────────────────────────────────
+    _reg("lib", "product", "Product Catalogue", "product",
+         "product.list_products", _n("products"), "items",
+         "product.add_product", "New product"),
+    _reg("lib", "spec", "Spec Library", "spec",
+         "spec.list_specs", _n("specs"), "clauses",
+         "spec.add_spec", "New spec clause"),
+    _reg("lib", "client", "Client Register", "client",
+         "client.list_clients", _clients, "clients"),
+    _reg("lib", "employee", "Employees", "employee",
+         "employee.list_employees", _active("employees"), "active",
+         "employee.new_employee", "New employee"),
+    _reg("lib", "address", "Address Book", "address",
+         "address.list_addresses", _n("addresses"), "saved",
+         "address.add_address", "New address"),
+    _reg("lib", "news", "Market News", "news",
+         "extractor.index", None, "", new_tab=True),
+    _reg("lib", "users", "Users &amp; Access", "users",
+         "auth.list_users", _active("users"), "active users",
+         "auth.create_user", "New user"),
+)
+
+GROUP_OF = {g.key: g for g in GROUPS}
+
+# The endpoint prefix each register answers for when the rail decides which
+# entry is the current page. A blueprint that is a sub-register of another
+# highlights its parent: the project DETAIL page is `projectview`, the merged
+# tax invoice is a sub-register of the RA register (CC-2 C3), and the four
+# `auth` pages are the Users & Access register's own.
+_BLUEPRINT_ALIAS = {
+    "projectview": "project",
+    "merged_ra": "ra",
+}
+
+
+def registers_in(group_key: str):
+    """The registry's entries for one group, in the order they are drawn."""
+    return [r for r in REGISTERS if r.group == group_key]
+
+
+def reachable_registers():
     """
-    The nav entries this user may actually reach, in order.
+    The registry filtered by what the signed-in user may reach, in order.
 
-    Empty for somebody who may reach neither, which leaves the brand, the pill
-    and the user chip — a nav with no dead ends rather than a nav with none.
+    `auth.can_reach()` reads `ROUTE_PERMISSIONS` — the dict the gate answers
+    from — so a register that would refuse this user is not drawn. It is
+    imported inside the function body because `auth.py` imports this module
+    at module level for `_shell()`.
     """
     import auth
 
-    out = []
-    for endpoint, icon, label in NAV_ITEMS:
-        if not auth.can_reach(endpoint):
+    return [r for r in REGISTERS if auth.can_reach(r.endpoint)]
+
+
+def summary_count(reg):
+    """The register's live figure, or None where it carries none."""
+    return None if reg.count is None else int(reg.count())
+
+
+def current_register():
+    """The registry entry the request's endpoint belongs to, or None."""
+    if not has_request_context() or not request.endpoint:
+        return None
+    bp = request.endpoint.split(".", 1)[0]
+    bp = _BLUEPRINT_ALIAS.get(bp, bp)
+    for r in REGISTERS:
+        if r.endpoint.split(".", 1)[0] == bp:
+            return r
+    return None
+
+
+# ── Icons the registry and the chrome need that the launcher never had ─────
+#
+# Hand-written inline SVG, 24×24 stroke paths like every entry above. Each
+# register now has a glyph of its own where four used to share `purchase` and
+# two shared `proforma`; a rail of twenty entries collapsed to icons alone is
+# unreadable if six of them are the same carton.
+ICONS.update({
+    # A grid of four — the landing page.
+    "dashboard": """<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>""",
+    # Money received: a banknote with a rupee mark, not another sheet of paper.
+    "receipt": """<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>""",
+    # Goods leaving the yard: a truck.
+    "challan": """<svg viewBox="0 0 24 24"><path d="M1 3h13v13H1z"/><path d="M14 8h4l4 4v4h-8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>""",
+    # What was found on site: a ruler.
+    "measurement": """<svg viewBox="0 0 24 24"><path d="M2 17 17 2l5 5L7 22z"/><path d="m7.5 11.5 2 2M11 8l2 2M14.5 4.5l2 2"/></svg>""",
+    # A draft order: the carton outline with a dashed lid — asked for, not yet priced.
+    "draft": """<svg viewBox="0 0 24 24"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M1 3h22v5H1z" stroke-dasharray="3 2"/><line x1="10" y1="12" x2="14" y2="12"/></svg>""",
+    # An expense: a wallet.
+    "charge": """<svg viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 3H6a2 2 0 0 0-2 2v2"/><circle cx="17" cy="14" r="1.2"/></svg>""",
+    # A day marked: a calendar with a tick.
+    "attendance": """<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>""",
+    # A client: a building, not the pair of people that opens the accounts register.
+    "client": """<svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/><path d="M10 21v-3h4v3"/></svg>""",
+    # The rail's own controls.
+    "menu": """<svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>""",
+    "collapse": """<svg viewBox="0 0 24 24"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>""",
+    "chevron": """<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>""",
+    # Status chip icons — one per tone, always beside a word (ABOUT.md §6).
+    "ok": """<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>""",
+    "warn": """<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>""",
+    "crit": """<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>""",
+})
+
+
+# =============================================================================
+# THE SHELL'S OWN STYLESHEET — emitted by _nav(), in the body, on screen pages
+# =============================================================================
+#
+# ⚠ **Deliberately NOT folded into `BASE_STYLES`.** `docsheet.SHEET_STYLES`
+#   opens with `BASE_STYLES`, so every printed document carries that constant in
+#   the `head` block nine print goldens hash — a rule added there re-baselines
+#   documents that go to a client for a change that never reaches paper. So the
+#   sidebar's rules live here and ride out with `_nav()`, which no print route
+#   calls (14 September 2026). `USER_CHIP_STYLES` set the precedent: a `<style>`
+#   element in the body is valid HTML5, and it is the one shape that leaves the
+#   shared `<head>` stack untouched.
+#
+#   The cost is stated rather than hidden: `BASE_STYLES` still carries the
+#   retired top-bar rules (`nav {…}`, `.nav-link`, `.nav-pill`), dead on every
+#   page now. `nav.rail` below overrides every property the old `nav {}` rule
+#   sets, by class specificity. Removing them from `BASE_STYLES` moves nine
+#   printed documents' `head` digests for no visible change and is a print
+#   re-baseline of its own — ABOUT.md §7 gap 39.
+#
+# A plain string, not an f-string, so the CSS braces are written once.
+CHROME_STYLES = """
+<style>
+  :root {
+    --rail-w: 248px; --rail-c: 68px; --tb-h: 56px;
+    --ground: #F6F4F9; --ink: #1A1626; --ink-muted: #6B6478; --hair: #E4E0EC;
+    --g-sell: #5B4BC4; --g-sell-t: #EDEBFA; --g-sell-z: #FAFAFE;
+    --g-proj: #0A8F78; --g-proj-t: #E1F3EF; --g-proj-z: #F8FDFC;
+    --g-buy:  #B8600C; --g-buy-t:  #FAEEE1; --g-buy-z:  #FFFCF8;
+    --g-lib:  #5A5468; --g-lib-t:  #EEECF2; --g-lib-z:  #FBFAFC;
+    --st-good: #0F7A52; --st-good-bg: #E2F2EB;
+    --st-warn: #9A6B00; --st-warn-bg: #F7EFDC;
+    --st-crit: #D5121A; --st-crit-bg: #FCE9E9;
+  }
+  /* One class per group carries its three colours as custom properties, so the
+     rail, the top bar and the dashboard zones all read the same four values. */
+  .g-sell { --ga: var(--g-sell); --gt: var(--g-sell-t); --gz: var(--g-sell-z); }
+  .g-proj { --ga: var(--g-proj); --gt: var(--g-proj-t); --gz: var(--g-proj-z); }
+  .g-buy  { --ga: var(--g-buy);  --gt: var(--g-buy-t);  --gz: var(--g-buy-z);  }
+  .g-lib  { --ga: var(--g-lib);  --gt: var(--g-lib-t);  --gz: var(--g-lib-z);  }
+
+  /* The content column sits to the right of the rail. `main`'s own max-width
+     and auto margins centre it in what is left. */
+  body { padding-left: var(--rail-w); }
+  html.rail-collapsed body { padding-left: var(--rail-c); }
+
+  /* ── The rail ─────────────────────────────────────────────────────── */
+  /* Every property the retired `nav {}` rule in BASE_STYLES sets is restated
+     here, because that rule still lands on this element. */
+  nav.rail {
+    position: fixed; top: 0; left: 0; bottom: 0; height: 100vh;
+    width: var(--rail-w);
+    display: flex; flex-direction: column; align-items: stretch;
+    justify-content: flex-start;
+    padding: 0; border: 0; box-shadow: none; z-index: 200;
+    background: linear-gradient(168deg, #1C0449 0%, #2A086E 100%);
+    color: #CFC7EA; overflow: hidden;
+    transition: width .18s ease, transform .18s ease;
+  }
+  html.rail-collapsed nav.rail { width: var(--rail-c); }
+
+  .rail-hd {
+    display: flex; align-items: center; gap: .5rem; flex-shrink: 0;
+    height: var(--tb-h); padding: 0 .85rem;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .rail-toggle, .tb-toggle {
+    width: 34px; height: 34px; border: 0; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font: inherit;
+  }
+  .rail-toggle { background: rgba(255,255,255,.08); color: #CFC7EA; }
+  .rail-toggle:hover { background: rgba(255,255,255,.16); color: #fff; }
+  .rail-toggle svg, .tb-toggle svg {
+    width: 18px; height: 18px; stroke: currentColor; fill: none;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .rail-brand { display: inline-flex; align-items: center; margin-left: auto; }
+  .rail-brand img { width: 28px; height: 28px; border-radius: 7px; display: block; }
+
+  .rail-scroll {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+    padding: .65rem .6rem 1rem;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.22) transparent;
+  }
+  .rail-scroll::-webkit-scrollbar { width: 6px; }
+  .rail-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 3px; }
+
+  .rail-grp { margin-top: 1.05rem; }
+  .rail-lbl {
+    display: flex; align-items: center; gap: .5rem;
+    padding: 0 .6rem .4rem;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #8E82BE; white-space: nowrap;
+  }
+  .rail-dot { display: block; width: 6px; height: 6px; background: var(--ga); flex-shrink: 0; }
+
+  .rl {
+    display: flex; align-items: center; gap: .6rem; position: relative;
+    padding: .46rem .6rem; border-radius: 8px;
+    font-size: 13.5px; font-weight: 500; line-height: 1.3;
+    color: #CFC7EA; text-decoration: none; white-space: nowrap;
+  }
+  .rl svg {
+    width: 16px; height: 16px; flex-shrink: 0;
+    stroke: currentColor; fill: none; stroke-width: 1.9;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .rl:hover { background: rgba(255,255,255,.09); color: #fff; }
+  .rl.is-active { background: rgba(255,255,255,.14); color: #fff; font-weight: 600; }
+  .rl.is-active::before {
+    content: ''; position: absolute; left: 0; top: 6px; bottom: 6px;
+    width: 3px; border-radius: 0 2px 2px 0; background: var(--ga, #fff);
+  }
+  .rl-txt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .rl-n { margin-left: auto; font-size: 12px; color: #8E82BE; font-variant-numeric: tabular-nums; }
+  /* Amber dot on Settings while a company or bank field is blank — the same
+     signal the old bar carried, one severity below the persistence strip. */
+  .rl-warn { width: 7px; height: 7px; border-radius: 50%; background: var(--saffron); flex-shrink: 0; }
+
+  .rail-ft { flex-shrink: 0; padding: .5rem .6rem .8rem; border-top: 1px solid rgba(255,255,255,.08); }
+
+  /* Collapsed: icons only, and the group dot becomes an 18×3 rule so the
+     grouping survives without its label. */
+  html.rail-collapsed .rl-txt, html.rail-collapsed .rl-n,
+  html.rail-collapsed .rail-lbl span, html.rail-collapsed .rail-brand { display: none; }
+  html.rail-collapsed .rail-lbl { padding: 0 0 .45rem; justify-content: center; }
+  html.rail-collapsed .rail-dot { width: 18px; height: 3px; border-radius: 2px; }
+  html.rail-collapsed .rl { justify-content: center; padding: .55rem 0; gap: 0; }
+  html.rail-collapsed .rl .rl-warn { position: absolute; top: 6px; right: 10px; }
+  html.rail-collapsed .rail-hd { justify-content: center; padding: 0; }
+  html.rail-collapsed .rail-scroll, html.rail-collapsed .rail-ft { padding-left: .5rem; padding-right: .5rem; }
+
+  /* ── The top stack: the persistence strip, then the bar, sticky together ── */
+  .topstack { position: sticky; top: 0; z-index: 150; }
+  .topstack .db-down { position: static; top: auto; }
+  .topbar {
+    min-height: var(--tb-h);
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .4rem 1.5rem;
+    background: rgba(255,255,255,.88);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border-bottom: 1px solid #E4E0EC;
+  }
+  .tb-left { display: flex; align-items: center; gap: .8rem; min-width: 0; }
+  .tb-toggle { display: none; background: transparent; color: var(--ink-muted); }
+  .tb-toggle:hover { background: var(--ground); color: var(--ink); }
+  .topbar .nav-brand { font-size: .95rem; flex-shrink: 0; }
+  .topbar .nav-brand img { width: 26px; height: 26px; }
+  .tb-div { width: 1px; height: 26px; background: #E4E0EC; flex-shrink: 0; }
+  .tb-title { min-width: 0; }
+  .tb-name {
+    font-size: 16px; font-weight: 700; color: #1A1626; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tb-sub {
+    font-size: 12.5px; color: #8A8398; line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tb-right { display: flex; align-items: center; gap: .8rem; flex-shrink: 0; }
+  .tb-act { font-size: .82rem; padding: .5rem 1rem; }
+  .tb-act svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; }
+
+  /* The scrim behind an off-canvas rail on a phone. */
+  .rail-scrim { display: none; position: fixed; inset: 0; background: rgba(26,22,38,.45); z-index: 190; }
+
+  /* ── One breakpoint. Below 1000px the rail is its icon form whatever is
+        stored; below 620px it is off-canvas behind the toggle. ─────────── */
+  @media (max-width: 1000px) {
+    body, html.rail-collapsed body { padding-left: var(--rail-c); }
+    nav.rail, html.rail-collapsed nav.rail { width: var(--rail-c); }
+    nav.rail .rl-txt, nav.rail .rl-n, nav.rail .rail-lbl span, nav.rail .rail-brand { display: none; }
+    nav.rail .rail-lbl { padding: 0 0 .45rem; justify-content: center; }
+    nav.rail .rail-dot { width: 18px; height: 3px; border-radius: 2px; }
+    nav.rail .rl { justify-content: center; padding: .55rem 0; gap: 0; }
+    nav.rail .rl .rl-warn { position: absolute; top: 6px; right: 10px; }
+    nav.rail .rail-hd { justify-content: center; padding: 0; }
+    nav.rail .rail-scroll, nav.rail .rail-ft { padding-left: .5rem; padding-right: .5rem; }
+  }
+  @media (max-width: 620px) {
+    body, html.rail-collapsed body { padding-left: 0; }
+    nav.rail, html.rail-collapsed nav.rail { width: var(--rail-w); transform: translateX(-100%); }
+    html.rail-open nav.rail { transform: none; }
+    html.rail-open .rail-scrim { display: block; }
+    /* Open on a phone, the rail is its full expanded self. */
+    nav.rail .rl-txt, nav.rail .rl-n, nav.rail .rail-lbl span { display: initial; }
+    nav.rail .rail-lbl { padding: 0 .6rem .4rem; justify-content: flex-start; }
+    nav.rail .rail-dot { width: 6px; height: 6px; border-radius: 0; }
+    nav.rail .rl { justify-content: flex-start; padding: .46rem .6rem; gap: .6rem; }
+    nav.rail .rl .rl-warn { position: static; }
+    nav.rail .rail-hd { justify-content: flex-start; padding: 0 .85rem; }
+    nav.rail .rail-brand { display: inline-flex; }
+    nav.rail .rail-scroll, nav.rail .rail-ft { padding-left: .6rem; padding-right: .6rem; }
+    .tb-toggle { display: inline-flex; }
+    .rail-toggle { display: none; }
+    .topbar { padding: .4rem 1rem; }
+    .topbar .nav-brand .nb-word { display: none; }
+    .tb-div { display: none; }
+  }
+
+  /* App chrome, never part of a printed page. `/quotation/view` still draws
+     the rail (quotation.py is frozen) and its sheet hides `nav` at print; the
+     top stack and the padding are this sheet's to hide. */
+  @media print {
+    nav.rail, .topstack, .rail-scrim { display: none !important; }
+    body { padding-left: 0 !important; }
+  }
+</style>
+"""
+
+# The collapse toggle's state, remembered per browser. **No server round-trip,
+# no cookie, no route**: `localStorage`, read and written inside `try/catch`
+# because a private window or a blocked store throws on access, and a rail
+# that fails to draw because a preference could not be read is worse than a
+# rail that forgets. It runs BEFORE the rail's markup so a stored "collapsed"
+# never flashes the wide rail first. A plain string: the braces are JS's.
+CHROME_SCRIPT = """
+<script>
+(function () {
+  var KEY = 'sf.rail', H = document.documentElement;
+  try { if (localStorage.getItem(KEY) === 'collapsed') H.classList.add('rail-collapsed'); } catch (e) {}
+  window.railToggle = function () {
+    if (window.matchMedia && window.matchMedia('(max-width: 620px)').matches) {
+      H.classList.toggle('rail-open');
+      return;
+    }
+    var collapsed = H.classList.toggle('rail-collapsed');
+    try { localStorage.setItem(KEY, collapsed ? 'collapsed' : 'expanded'); } catch (e) {}
+  };
+  window.railClose = function () { H.classList.remove('rail-open'); };
+})();
+</script>
+"""
+
+
+# =============================================================================
+# THE RAIL, THE TOP BAR, AND _nav()
+# =============================================================================
+
+def _settings_dot() -> str:
+    """The amber dot the Settings entry carries while a company or bank field is blank."""
+    if B.has(*B.current_settings().values()):
+        return ""
+    return '<span class="rl-warn" title="Company details incomplete"></span>'
+
+
+def _rail_link(href: str, icon: str, label: str, active: bool,
+               count=None, extra: str = "", new_tab: bool = False) -> str:
+    n = "" if count is None else f'<span class="rl-n">{count}</span>'
+    tab = ' target="_blank" rel="noopener"' if new_tab else ""
+    cls = "rl is-active" if active else "rl"
+    return (f'<a class="{cls}" href="{href}"{tab} title="{label}">'
+            f'{ICONS[icon]}{extra}<span class="rl-txt">{label}</span>{n}</a>')
+
+
+def _rail() -> str:
+    """
+    The left rail: the collapse toggle and the brand glyph, then Dashboard,
+    then the four groups of registers this user may reach, then Settings.
+
+    **The wordmark, the user chip and Sign out are deliberately NOT here** —
+    they stay in the top bar. The rail is where you go; the bar is who you are
+    and what you can do on this page.
+
+    Every entry is drawn only when `auth.can_reach()` says the gate would let
+    this user through, and a group whose every entry is hidden goes with its
+    last entry. That is presentation and never the access check: the route
+    still refuses on the request itself.
+    """
+    import auth
+
+    here = current_register()
+    at_dashboard = has_request_context() and request.endpoint == "dashboard.index"
+
+    body = _rail_link(url_for("dashboard.index"), "dashboard", "Dashboard",
+                      at_dashboard)
+    for g in GROUPS:
+        links = ""
+        for r in registers_in(g.key):
+            if not auth.can_reach(r.endpoint):
+                continue
+            links += "\n      " + _rail_link(
+                url_for(r.endpoint), r.icon, r.name,
+                here is not None and here.key == r.key,
+                summary_count(r), new_tab=r.new_tab)
+        if not links:
             continue
-        dot = ""
-        if endpoint == "settings.edit_settings" and not B.has(*B.current_settings().values()):
-            dot = '<span class="nl-dot" title="Company details incomplete"></span>'
-        out.append(f'<a href="{url_for(endpoint)}" class="nav-link">'
-                   f'{dot}{ICONS[icon]}{label}</a>')
-    return "".join(NAV_LINK_SEP + link for link in out)
+        body += (f'\n    <div class="rail-grp g-{g.key}">'
+                 f'\n      <div class="rail-lbl"><i class="rail-dot"></i><span>{g.label}</span></div>'
+                 f'{links}\n    </div>')
+
+    foot = ""
+    if auth.can_reach("settings.edit_settings"):
+        foot = _rail_link(
+            url_for("settings.edit_settings"), "settings", "Settings",
+            has_request_context() and (request.endpoint or "").startswith("settings."),
+            extra=_settings_dot())
+        foot = f'\n  <div class="rail-ft">{foot}</div>'
+
+    return f"""<nav class="rail" id="rail" aria-label="Registers">
+  <div class="rail-hd">
+    <button class="rail-toggle" type="button" onclick="railToggle()"
+            aria-label="Collapse or expand the navigation" title="Collapse / expand">{ICONS['collapse']}</button>
+    <a class="rail-brand" href="{url_for('dashboard.index')}" title="Dashboard">{B.logo_img(28)}</a>
+  </div>
+  <div class="rail-scroll">
+    {body}
+  </div>{foot}
+</nav>
+<div class="rail-scrim" onclick="railClose()"></div>"""
+
+
+# The top bar's title and subtitle, by the blueprint the request belongs to.
+# A register's pages take the register's name over its group; the pages that
+# are not registers are named here, and anything else gets the app's subtitle.
+_TITLES = {
+    "dashboard":   ("Dashboard", "pipeline, projects and what needs chasing"),
+    "settings":    ("Settings", "company identity, bank details and number series"),
+    "merged_ra":   ("Merged Tax Invoices", "Projects &amp; site billing"),
+    "projectview": ("Projects", "Projects &amp; site billing"),
+    "approval":    ("Approvals", "the ladder, and what it refused"),
+}
+_AUTH_TITLES = {
+    "auth.account":    ("My account", "your details, roles and password"),
+    "auth.logout":     ("Sign out", "confirm to end the session"),
+    "auth.access_log": ("Access log", "the last 500 refusals"),
+    "auth.list_roles": ("Roles", "who may do what"),
+    "auth.create_role": ("Roles", "who may do what"),
+    "auth.edit_role":  ("Roles", "who may do what"),
+}
+
+
+def page_title() -> tuple:
+    """`(title, subtitle)` for the top bar, both already HTML-safe."""
+    if not has_request_context() or not request.endpoint:
+        return (B.APP_SUBTITLE, "")
+    ep = request.endpoint
+    if ep in _AUTH_TITLES:
+        return _AUTH_TITLES[ep]
+    bp = ep.split(".", 1)[0]
+    if bp in _TITLES:
+        return _TITLES[bp]
+    reg = current_register()
+    if reg is not None:
+        return (reg.name, GROUP_OF[reg.group].label)
+    return (B.APP_SUBTITLE, "")
+
+
+def _primary_action() -> str:
+    """
+    The current register's own action — `+ New BOQ` on the BOQ pages — drawn
+    only when the gate would allow it, and not on the action's own page.
+    """
+    import auth
+
+    reg = current_register()
+    if reg is None or not reg.action_endpoint:
+        return ""
+    if request.endpoint == reg.action_endpoint or not auth.can_reach(reg.action_endpoint):
+        return ""
+    return (f'<a class="btn tb-act" href="{url_for(reg.action_endpoint)}">'
+            f'{ICONS["plus"]} {reg.action_label}</a>')
+
+
+def _topbar() -> str:
+    """
+    Sticky, above the page. Left: the phone toggle, the wordmark, a hairline,
+    the page title and its subtitle. Right: the page's primary action, then the
+    signed-in user chip and Sign out — the one sign-out control in the app.
+    """
+    title, sub = page_title()
+    sub_html = f'<div class="tb-sub">{sub}</div>' if sub else ""
+    return f"""<header class="topbar">
+  <div class="tb-left">
+    <button class="tb-toggle" type="button" onclick="railToggle()"
+            aria-label="Open the navigation" title="Menu">{ICONS['menu']}</button>
+    <a href="{url_for('dashboard.index')}" class="nav-brand">
+      {B.logo_img(26)}
+      <span class="nb-word">{B.name_html("nb-fire")}</span>
+    </a>
+    <span class="tb-div"></span>
+    <div class="tb-title"><div class="tb-name">{title}</div>{sub_html}</div>
+  </div>
+  <div class="tb-right">{_primary_action()}{_user_chip()}
+  </div>
+</header>"""
 
 
 def _nav():
     """
-    The shared nav. Rendered on every SCREEN page. ⚠ **Not on a print route**
-    (14 September 2026): `/invoice/view`, `/proforma/view`, `/purchase/view`,
-    `/ra/print` and `/merged/print` stopped calling it, joining `/dc/print`,
-    `/boq/print`, `/po/print` and `/measurement/print`, so that a nav change
-    can never again move a printed document's golden. `/quotation/view` is the
-    one document page that still calls it, because `quotation.py` is frozen.
+    The app shell, rendered on every SCREEN page: the stylesheet and the
+    script the shell needs, the left rail, then — in one sticky stack — the
+    red persistence strip and the top bar.
 
-    Its entries are filtered by what the signed-in user may reach — see
-    `_nav_links()` and `auth.can_reach()`. **That is presentation only.** Every
-    route is still gated by `_gate()` on the request itself; a link that is not
-    drawn is not a route that is closed.
+    ⚠ **Not on a print route** (14 September 2026): `/invoice/view`,
+    `/proforma/view`, `/purchase/view`, `/ra/print` and `/merged/print`
+    stopped calling it, joining `/dc/print`, `/boq/print`, `/po/print` and
+    `/measurement/print`, so that a chrome change can never again move a
+    printed document's golden. `/quotation/view` is the one document page
+    that still calls it, because `quotation.py` is frozen.
 
-    The signed-in user chip rides at the right-hand end, and it is the only
-    sign-out control in the application. It lives in `_user_chip()` with its own
-    style constant rather than in `BASE_STYLES`, so the block the print goldens
-    hash is untouched; it renders empty on the six endpoints a golden pins. See
-    `PINNED_PAGES`.
+    Its entries render from `REGISTERS` filtered by what the signed-in user
+    may reach — see `_rail()` and `auth.can_reach()`. **That is presentation
+    only.** Every route is still gated by `_gate()` on the request itself; a
+    link that is not drawn is not a route that is closed.
 
-    The settings link carries an amber dot while any company or bank field is
-    still blank — those pages are printing visible "add …" chips until it
-    clears, so the way to fix them should be one click away from wherever the
-    user noticed.
+    The two app-wide warnings ride here for the same reason they always did —
+    this is the only surface genuinely on every page. The settings entry
+    carries an amber dot while a company or bank field is blank; the
+    persistence strip sits above the top bar, one severity up, and keeps
+    working exactly as it did under the old bar: see `_persistence_strip()`.
 
-    The persistence strip rides along underneath for the same reason, one
-    severity up: see `_persistence_strip()`.
+    The styles and the script are emitted here, in the body, and not in any
+    page's `<head>` — `CHROME_STYLES` says why.
     """
-    dashboard_url = url_for("dashboard.index")
-
-    return f"""
-    <nav>
-      <a href="{dashboard_url}" class="nav-brand">
-        {B.logo_img(30)}
-        <span class="nb-word">{B.name_html("nb-fire")}</span>
-      </a>
-      <div class="nav-right">{_nav_links()}
-        <span class="nav-pill">{B.APP_SUBTITLE}</span>{_user_chip()}
-      </div>
-    </nav>
-    {_persistence_strip()}
-    """
-
+    return f"""{CHROME_STYLES}{CHROME_SCRIPT}
+{_rail()}
+<div class="topstack">{_persistence_strip()}
+{_topbar()}
+</div>
+"""

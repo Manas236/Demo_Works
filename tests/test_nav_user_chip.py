@@ -25,6 +25,14 @@ claims to track.
 **This file does not assert the goldens are unmoved** — `tests/test_print_golden.py`
 does that, unchanged, and it is the real evidence. This file asserts the chip is
 where it should be, absent where it must be, and escaped.
+
+✅ **14 September 2026 — the coupling above is closed and the suppression is
+gone.** No print route renders `_nav()` any more, so the chip cannot reach a
+printed document; the one pinned FORM, `/po/create`, carries the chip like every
+other screen page and its golden moved for it in the sidebar commit. The chip
+rides in the top bar of `chrome._nav()`'s shell now. `PINNED_PAGES` is kept as
+the one statement of which endpoints a golden hashes, and the first test below
+still holds it to the golden file; nothing in the application reads it.
 """
 
 import ast
@@ -126,7 +134,7 @@ def test_the_chip_is_on_every_ordinary_page_not_just_the_dashboard(client, url):
     `/product/` and `/quotation/` by construction — neither file was touched.
     """
     html = client.get(url).get_data(as_text=True)
-    assert "<nav>" in html, f"{url} does not render the shared nav at all"
+    assert '<nav class="rail"' in html, f"{url} does not render the shared nav at all"
     assert 'class="nav-user"' in html, f"{url} has a nav but no sign-out control"
 
 
@@ -269,25 +277,37 @@ def test_the_initials_come_from_the_display_name(client):
         user["display_name"] = original
 
 
-# ── Where it must NOT appear ───────────────────────────────────────────────
+# ── Where it must NOT appear — and the one pinned page where it now must ──
+#
+# ⚠ **REWRITTEN 14 September 2026.** Until the sidebar, `_user_chip()` returned
+#   "" on every endpoint in `PINNED_PAGES`, so that a golden-hashed page never
+#   gained nav markup. The old test, verbatim:
+#
+#       def test_no_chip_on_a_page_a_golden_hashes(url):
+#           with app_module.app.test_request_context(url):
+#               assert chrome._user_chip() == "", (
+#                   f"{url} is hashed by a golden and would have gained nav markup")
+#
+#   Two things ended it. No print route renders `_nav()` at all any more, so
+#   the chip cannot reach a printed document whether or not it is suppressed —
+#   `tests/test_print_golden.py::test_no_print_route_renders_the_nav` holds
+#   that on the rendered page. And the one pinned page that is a FORM,
+#   `/po/create`, now carries the chip like every other screen page: its golden
+#   was re-baselined for the sidebar in the same commit, in the `head` block
+#   alone, and a form without a sign-out control was the cost ABOUT.md §7 said
+#   the coupling was charging.
 
-@pytest.mark.parametrize("url", ["/invoice/view/any-id", "/proforma/view/any-id",
-                                 "/purchase/view/any-id", "/ra/print/any-id",
-                                 "/dc/print/any-id", "/po/create",
-                                 "/boq/print/any-id", "/po/print/any-id",
-                                 "/merged/print/any-id"])
-def test_no_chip_on_a_page_a_golden_hashes(url):
+def test_the_one_pinned_form_carries_the_chip(client):
     """
-    Asserted against `_user_chip()` in a request context for that URL rather
-    than by rendering the page, because rendering needs the golden records and
-    those live in `tests/test_print_golden.py` — which already proves the real
-    thing, that the bytes did not move.
+    `/po/create` is hashed by `tests/test_print_golden.py` and is a form, not a
+    document. It renders the shell and the chip like every screen page.
     """
-    import app as app_module
-
-    with app_module.app.test_request_context(url):
-        assert chrome._user_chip() == "", (
-            f"{url} is hashed by a golden and would have gained nav markup")
+    client.get("/boq/")
+    from store import STORE
+    bid = next(b for b, rec in STORE["boqs"].items() if not rec.get("supersedes"))
+    html = client.get(f"/po/create?boq={bid}").get_data(as_text=True)
+    assert '<nav class="rail"' in html
+    assert 'class="nav-user"' in html, "the pinned form has no sign-out control"
 
 
 def test_the_chip_is_empty_with_no_session():

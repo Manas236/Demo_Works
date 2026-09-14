@@ -583,8 +583,6 @@ FORBIDDEN = [
                                      "decision page; importing back is a cycle"),
     ("chrome", "boqpick",     "any", "the shell knows nothing about a form"),
     ("chrome", "specpick",    "any", "same"),
-    ("chrome", "store",       "any", "the shell reads no record — until it does, "
-                                     "keep it off the store"),
     # The other direction: the printed sheet may not depend on the shell.
     # `docsheet.py` reads `BASE_STYLES` through `dashboard.py`'s re-export,
     # deliberately, and says so at the import.
@@ -621,6 +619,11 @@ REQUIRED = [
                      "the only thing in this app that is on every screen page. "
                      "It moved here from dashboard.py with the strip on "
                      "14 September 2026"),
+    ("chrome", "store", "the registry's live counts — `REGISTERS[i].count()` "
+                        "reads each collection directly so the rail can draw a "
+                        "figure on every page without importing the module that "
+                        "owns the register (14 September 2026, the sidebar). "
+                        "It was refused until the registry existed"),
     ("dashboard", "chrome", "BASE_STYLES, ICONS and _nav — drawn on the landing "
                             "page, and BASE_STYLES and _nav re-exported for the "
                             "two frozen files and the printed sheet"),
