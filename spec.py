@@ -58,7 +58,7 @@ from flask import Blueprint, redirect, request, url_for
 import branding as B
 import demo_data as DD
 import pipeline as P
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from store import STORE
 
 spec_bp = Blueprint("spec", __name__, url_prefix="/spec")

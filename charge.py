@@ -36,7 +36,8 @@ import attachment
 import branding as B
 import pipeline as P
 from store import STORE
-from dashboard import BASE_STYLES, _nav, ICONS, rupees
+from chrome import BASE_STYLES, ICONS, _nav
+from dashboard import rupees
 from quotation import QUOTATION_STYLES
 
 charge_bp = Blueprint("charge", __name__, url_prefix="/charge")

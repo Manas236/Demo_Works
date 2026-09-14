@@ -80,7 +80,7 @@ import docsheet as DS
 import pipeline as P
 import settings as SET
 from address import picker_options, format_address_lines
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from store import STORE
 

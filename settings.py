@@ -39,7 +39,7 @@ from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES
 from store import STORE
 

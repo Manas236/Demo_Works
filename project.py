@@ -92,7 +92,7 @@ import branding as B
 import pipeline as P
 from store import STORE
 
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 
 project_bp = Blueprint("project", __name__, url_prefix="/projects")
 

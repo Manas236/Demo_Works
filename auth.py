@@ -48,6 +48,16 @@ import branding as B
 import pipeline as P
 from store import STORE
 
+# The app chrome, from the leaf that owns it (14 September 2026). Until then
+# `_shell()` reached `BASE_STYLES` and `_nav` INSIDE the function body, because
+# they lived in `dashboard.py` and that module imports this one — a
+# module-level import back was a cycle. `chrome.py` imports nothing of ours
+# that imports us at module level (it reaches `auth` inside `_nav_links()` and
+# `_user_chip()` only), so the hatch is no longer needed here. The whitelist
+# in `tests/test_import_directions.py::test_auth_imports_nothing_that_prints`
+# names `chrome` as the fourth module this file may reach for.
+from chrome import BASE_STYLES, _nav
+
 auth_bp = Blueprint("auth", __name__)
 
 # How long a session survives. CLIENT_CHANGES-2.md names no figure; 12 hours
@@ -1657,12 +1667,14 @@ def _shell(title: str, body: str) -> str:
     """
     An administration page, with the app's ordinary chrome.
 
-    `dashboard` is imported **inside the function body**: it imports this module
-    to decide whether to draw the Access card, so a module-level import here
-    would be a cycle. Same escape hatch `dashboard.index()` uses for the
-    `product` and `address` seeders (ABOUT.md §2).
+    `BASE_STYLES` and `_nav` come from `chrome.py` at module level since
+    14 September 2026; they were a function-body import of `dashboard` before
+    that, because `dashboard.py` imports this module and a top-level import
+    back was a cycle. `quotation` is still imported **inside the function
+    body**: `quotation.py` imports `dashboard.py`, which reaches this module,
+    so that one stays on the escape hatch `dashboard.index()` uses for the
+    seeders (ABOUT.md §2).
     """
-    from dashboard import BASE_STYLES, _nav
     from quotation import QUOTATION_STYLES
     return f"""<!DOCTYPE html><html lang="en">
 <head>

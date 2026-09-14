@@ -63,7 +63,7 @@ import approval
 import branding as B
 import pipeline as P
 import docsheet as DS
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from store import STORE
 
 # The document's own formatters — see the module docstring. The A4 sheet

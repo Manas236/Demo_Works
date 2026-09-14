@@ -3,7 +3,7 @@ The signed-in user chip — and the golden coupling it had to be built around.
 
 Until 27 August 2026 this application had **no way to sign out from the
 interface**. `/logout` existed and worked; nothing linked to it. The chip in
-`dashboard._user_chip()` is that link, plus who you are and a way to `/account`.
+`chrome._user_chip()` is that link, plus who you are and a way to `/account`.
 
 ### Why it is not simply four lines in `_nav()`
 
@@ -33,7 +33,7 @@ import pathlib
 import pytest
 
 import auth
-import dashboard
+import chrome
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -96,10 +96,10 @@ def test_the_suppression_set_is_exactly_what_the_goldens_pin():
         hashed.add(endpoint)
 
     assert hashed, "no golden URLs were found — the AST walk has stopped working"
-    assert dashboard.PINNED_PAGES == hashed, (
-        f"dashboard.PINNED_PAGES and the print goldens disagree.\n"
-        f"  pinned but not hashed: {sorted(dashboard.PINNED_PAGES - hashed)}\n"
-        f"  hashed but not pinned: {sorted(hashed - dashboard.PINNED_PAGES)}\n"
+    assert chrome.PINNED_PAGES == hashed, (
+        f"chrome.PINNED_PAGES and the print goldens disagree.\n"
+        f"  pinned but not hashed: {sorted(chrome.PINNED_PAGES - hashed)}\n"
+        f"  hashed but not pinned: {sorted(hashed - chrome.PINNED_PAGES)}\n"
         f"An endpoint that is hashed and not pinned will have its golden moved "
         f"by the next nav change; one that is pinned and not hashed is a page "
         f"needlessly missing its sign-out control.")
@@ -286,7 +286,7 @@ def test_no_chip_on_a_page_a_golden_hashes(url):
     import app as app_module
 
     with app_module.app.test_request_context(url):
-        assert dashboard._user_chip() == "", (
+        assert chrome._user_chip() == "", (
             f"{url} is hashed by a golden and would have gained nav markup")
 
 
@@ -298,7 +298,7 @@ def test_the_chip_is_empty_with_no_session():
     import app as app_module
 
     with app_module.app.test_request_context("/"):
-        assert dashboard._user_chip() == ""
+        assert chrome._user_chip() == ""
 
 
 def test_the_chip_styles_are_not_in_the_block_the_goldens_hash():
@@ -307,11 +307,11 @@ def test_the_chip_styles_are_not_in_the_block_the_goldens_hash():
     trusted. Fold these rules into `BASE_STYLES` and five goldens move for a
     control `@media print` hides anyway.
     """
-    assert ".nav-user" not in dashboard.BASE_STYLES, (
+    assert ".nav-user" not in chrome.BASE_STYLES, (
         "the chip's styles have been folded into BASE_STYLES — the block five "
         "print goldens hash")
-    assert ".nav-user" in dashboard.USER_CHIP_STYLES
-    assert dashboard.USER_CHIP_STYLES.lstrip().startswith("<style>")
+    assert ".nav-user" in chrome.USER_CHIP_STYLES
+    assert chrome.USER_CHIP_STYLES.lstrip().startswith("<style>")
 
 
 # ── The route behind the link ──────────────────────────────────────────────

@@ -103,7 +103,7 @@ import branding as B
 import docsheet as DS
 import pipeline as P
 import ra as RA
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr, _meta
 from store import STORE
 

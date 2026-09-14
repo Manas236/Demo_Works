@@ -116,7 +116,7 @@ import boqpick as BP
 import branding as B
 import docsheet as DS
 import pipeline as P
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from store import STORE
 
 # ⚠ **`QUOTATION_STYLES` is read through `docsheet`, not imported from

@@ -37,7 +37,7 @@ import pathlib
 import pytest
 
 import auth
-import dashboard
+import chrome
 from store import STORE
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -70,7 +70,7 @@ ROLES = ["owner", "director", "operation-head", "hr", "sales-manager",
 #   it holds no `employee.*`, by our derivation and not by CC-2 (PROGRESS.md
 #   §4b), and `can_reach()` is what keeps it off the nav.
 # ⚠ **A FOURTH ENTRY, 29 August 2026 (fifth pass): Measurements (CC-2 C2), and
-#   it is the FIRST DOCUMENT REGISTER in this nav.** `dashboard.NAV_ITEMS`
+#   it is the FIRST DOCUMENT REGISTER in this nav.** `chrome.NAV_ITEMS`
 #   carries the note about what that does to the "the nav is not the launcher"
 #   rule; this is where the consequence is visible. **Purchase Manager and HR do
 #   not see it**: neither holds `measurement.view`, HR because the whole BOQ
@@ -608,7 +608,7 @@ def test_every_endpoint_the_launcher_names_is_classified():
     (absence is a refusal), which is a silent way to delete a module from the
     application.
     """
-    named = set(CARD_ENDPOINT.values()) | {e for e, _, _ in dashboard.NAV_ITEMS}
+    named = set(CARD_ENDPOINT.values()) | {e for e, _, _ in chrome.NAV_ITEMS}
 
     # ⚠ A comprehension over an empty `named` yields an empty `unclassified`,
     #   so this passes when the launcher names nothing — which is the one state

@@ -65,7 +65,7 @@ import branding as B
 # level in `tests/test_import_directions.py`.
 import measurement as MS
 import pipeline as P
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from store import STORE
 
 # The form's widgets and page furniture, exactly as boq.py takes them, so the

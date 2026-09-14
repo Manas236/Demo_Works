@@ -69,7 +69,7 @@ import branding as B
 import demo_data as DD
 import pipeline as P
 from address import INDIAN_STATES, picker_options, picker_payload
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
 from store import STORE
 

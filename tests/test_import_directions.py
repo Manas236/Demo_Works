@@ -535,6 +535,62 @@ FORBIDDEN = [
                                         "only — the arrangement create_quotation() "
                                         "always had for its seeder, so the graph in "
                                         "ABOUT.md §2 gains no edge for one call"),
+
+    # ── chrome.py — the app shell is a LEAF (14 September 2026) ─────────────
+    #
+    # `BASE_STYLES`, `ICONS`, the user chip, the persistence strip and `_nav()`
+    # moved out of `dashboard.py` verbatim, so that a page reaches its
+    # navigation without importing the module that computes the landing page's
+    # metrics. It is held to `docsheet.py`'s standard: it may import the three
+    # bottom modules and `db`, and nothing that prints, nothing that renders a
+    # page, and nothing that imports it back.
+    #
+    # `auth` is "module" rather than "any" for the reason `dashboard -> product`
+    # is: `_nav_links()` and `_user_chip()` reach `auth` inside the function
+    # body, because `auth.py` now imports THIS module at module level for
+    # `_shell()` — the arrow that used to be a function-body import there.
+    ("chrome", "auth",        "module", "auth.py imports chrome.py at module level "
+                                        "for _shell(); the nav asks can_reach() "
+                                        "inside the function body, as it always did"),
+    ("chrome", "dashboard",   "any", "dashboard.py imports chrome.py and re-exports "
+                                     "BASE_STYLES and _nav for the two frozen files"),
+    ("chrome", "docsheet",    "any", "the shell may not depend on the printed sheet"),
+    ("chrome", "quotation",   "any", "the leaf knows nothing about a document"),
+    ("chrome", "proforma",    "any", "same"),
+    ("chrome", "invoice",     "any", "same"),
+    ("chrome", "purchase",    "any", "same"),
+    ("chrome", "ra",          "any", "same"),
+    ("chrome", "boq",         "any", "same"),
+    ("chrome", "po_draft",    "any", "same"),
+    ("chrome", "challan",     "any", "same"),
+    ("chrome", "measurement", "any", "same"),
+    ("chrome", "merged_ra",   "any", "same"),
+    ("chrome", "receipt",     "any", "nor about a payment"),
+    ("chrome", "client",      "any", "nor a client ledger"),
+    ("chrome", "product",     "any", "nor the catalogue — product.py imports it BACK, "
+                                     "through dashboard.py, and is frozen"),
+    ("chrome", "spec",        "any", "nor the specification library"),
+    ("chrome", "settings",    "any", "settings.py imports quotation; nothing "
+                                     "downstream may import back"),
+    ("chrome", "address",     "any", "address.py imports the chrome; importing back "
+                                     "is a cycle"),
+    ("chrome", "project",     "any", "same"),
+    ("chrome", "projectview", "any", "same"),
+    ("chrome", "employee",    "any", "same"),
+    ("chrome", "attendance",  "any", "same"),
+    ("chrome", "charge",      "any", "same"),
+    ("chrome", "approval",    "any", "approval.py imports the chrome for its "
+                                     "decision page; importing back is a cycle"),
+    ("chrome", "boqpick",     "any", "the shell knows nothing about a form"),
+    ("chrome", "specpick",    "any", "same"),
+    ("chrome", "store",       "any", "the shell reads no record — until it does, "
+                                     "keep it off the store"),
+    # The other direction: the printed sheet may not depend on the shell.
+    # `docsheet.py` reads `BASE_STYLES` through `dashboard.py`'s re-export,
+    # deliberately, and says so at the import.
+    ("docsheet", "chrome",    "any", "a printed document must not depend on the "
+                                     "app shell; the sheet reads BASE_STYLES "
+                                     "through dashboard.py's re-export on purpose"),
 ]
 
 
@@ -553,7 +609,7 @@ def test_module_does_not_import(module, forbidden, scope, why):
 REQUIRED = [
     ("boq", "quotation", "the document toolkit — _inr, _fmt_qty, _amount_in_words, "
                          "_meta, VIEW_DOC_STYLES, QUOTATION_STYLES"),
-    ("boq", "dashboard", "BASE_STYLES and _nav"),
+    ("boq", "chrome", "BASE_STYLES and _nav"),
     ("boq", "pipeline",  "esc / parse_money / fy_of / fy_ref"),
     ("boq", "address",   "the customer picker"),
     ("boq", "spec",      "the specification library — what the line picker is built from"),
@@ -561,8 +617,18 @@ REQUIRED = [
     ("boq", "store",     "the shared STORE dict"),
     ("boq", "branding",  "every company string, colour and image"),
 
-    ("dashboard", "db", "_nav() renders the persistence-failure strip, and _nav() is "
-                        "the only thing in this app that is on every page"),
+    ("chrome", "db", "_nav() renders the persistence-failure strip, and _nav() is "
+                     "the only thing in this app that is on every screen page. "
+                     "It moved here from dashboard.py with the strip on "
+                     "14 September 2026"),
+    ("dashboard", "chrome", "BASE_STYLES, ICONS and _nav — drawn on the landing "
+                            "page, and BASE_STYLES and _nav re-exported for the "
+                            "two frozen files and the printed sheet"),
+    ("auth", "chrome", "BASE_STYLES and _nav for _shell(), at module level — the "
+                       "function-body hatch went with the extraction "
+                       "(14 September 2026)"),
+    ("approval", "chrome", "BASE_STYLES and _nav for _decision_page(), at module "
+                           "level, for the same reason"),
 
     ("ra", "boq",      "the schedule a claim is measured against, plus "
                        "_line_id / _item_no / _num — and _line_id is the key a "
@@ -570,9 +636,9 @@ REQUIRED = [
     ("ra", "pipeline", "esc / parse_money / fy_of / fy_ref"),
     ("ra", "store",    "the shared STORE dict"),
     ("ra", "branding", "COMPANY_SHORT for the document series"),
-    ("ra", "dashboard", "BASE_STYLES and _nav — the entry form is a page in the "
-                        "app, so it carries the same chrome and the same "
-                        "persistence-failure strip as every other page"),
+    ("ra", "chrome", "BASE_STYLES and _nav — the entry form is a page in the "
+                     "app, so it carries the same chrome and the same "
+                     "persistence-failure strip as every other page"),
     ("ra", "quotation", "QUOTATION_STYLES and _inr — the form widgets, so the "
                         "RA form IS the BOQ form. Emphatically NOT _tax_lines: "
                         "an RA bill is a claim document, and "
@@ -584,12 +650,12 @@ REQUIRED = [
                              "create_ra() can snapshot without importing downstream"),
     ("receipt", "boq",       "BOQ_STYLES, so the receipt form is the same form"),
     ("receipt", "quotation", "QUOTATION_STYLES and _inr — the form widgets"),
-    ("receipt", "dashboard", "BASE_STYLES and _nav"),
+    ("receipt", "chrome", "BASE_STYLES and _nav"),
     ("receipt", "pipeline",  "esc / parse_money / fy_of / fy_ref"),
     ("receipt", "store",     "the shared STORE dict"),
     ("receipt", "branding",  "COMPANY_SHORT for the document series"),
 
-    ("spec", "dashboard", "BASE_STYLES and _nav"),
+    ("spec", "chrome", "BASE_STYLES and _nav"),
     ("spec", "pipeline",  "esc"),
     ("spec", "store",     "the shared STORE dict"),
     ("spec", "branding",  "every company string, colour and image"),
@@ -599,18 +665,20 @@ REQUIRED = [
     ("client", "ra",        "bills_of, is_issued, is_cancelled"),
     ("client", "receipt",   "receipts_of_boq"),
     ("client", "quotation", "QUOTATION_STYLES and _inr"),
-    ("client", "dashboard", "BASE_STYLES and _nav"),
+    ("client", "chrome", "BASE_STYLES and _nav"),
     ("client", "pipeline",  "esc / norm_name"),
     ("client", "store",     "the shared STORE dict"),
     ("client", "branding",  "every company string, colour and image"),
 
-    ("charge", "dashboard", "BASE_STYLES and _nav"),
+    ("charge", "chrome", "BASE_STYLES and _nav"),
     ("charge", "pipeline",  "esc"),
     ("charge", "store",     "the shared STORE dict"),
     ("charge", "branding",  "every company string, colour and image"),
     ("charge", "quotation", "QUOTATION_STYLES"),
 
-    ("employee", "dashboard", "BASE_STYLES, _nav and rupees"),
+    ("employee", "chrome",    "BASE_STYLES and _nav"),
+    ("employee", "dashboard", "rupees — the screen money format lives beside "
+                              "the dashboard's own helpers, not in the chrome"),
     ("employee", "pipeline",  "esc and parse_money"),
     ("employee", "store",     "the shared STORE dict"),
     ("employee", "branding",  "every company string, colour and image"),
@@ -631,7 +699,10 @@ REQUIRED = [
                               "formatters. quotation.py is frozen against EDITS "
                               "(INTRODUCTION.md §7), not against being depended "
                               "on — boq, ra and purchase all import it already"),
-    ("docsheet", "dashboard", "BASE_STYLES, the first sheet in the stack"),
+    ("docsheet", "dashboard", "BASE_STYLES, the first sheet in the stack — read "
+                              "through dashboard.py's re-export and NOT from "
+                              "chrome.py, because the printed sheet may not "
+                              "depend on the shell (FORBIDDEN above)"),
     ("docsheet", "pipeline",  "esc, and PIPELINE_STYLES for the stack"),
     ("docsheet", "branding",  "the company identity the letterhead is built from"),
 
@@ -652,7 +723,7 @@ REQUIRED = [
     ("po_draft", "settings", "the ONE running number series, editable at /settings. "
                              "settings.py owns it and imports nothing back"),
     ("po_draft", "address",  "the vendor picker over the shared address book"),
-    ("po_draft", "dashboard", "BASE_STYLES and _nav"),
+    ("po_draft", "chrome", "BASE_STYLES and _nav"),
     ("po_draft", "pipeline",  "esc"),
     ("po_draft", "store",     "the shared STORE dict"),
     ("po_draft", "branding",  "every company string, colour and image"),
@@ -688,7 +759,7 @@ REQUIRED = [
     ("challan", "settings", "the ONE running number series, editable at /settings. "
                             "settings.py owns it and imports nothing back"),
     ("challan", "address",  "the consignee prefill over the shared address book"),
-    ("challan", "dashboard", "BASE_STYLES and _nav"),
+    ("challan", "chrome", "BASE_STYLES and _nav"),
     ("challan", "pipeline",  "esc and gstin_state_label — the seller's State is "
                              "DERIVED from the GSTIN, never stored beside it"),
     ("challan", "store",     "the shared STORE dict"),
@@ -718,7 +789,7 @@ REQUIRED = [
                                 "entry in approval.DOCUMENTS and calls "
                                 "can_print / can_modify / panel like the other "
                                 "four"),
-    ("measurement", "dashboard", "BASE_STYLES and _nav"),
+    ("measurement", "chrome", "BASE_STYLES and _nav"),
     ("measurement", "pipeline",  "esc, fy_of, fy_ref and gstin_state_label — the "
                                  "seller's State is DERIVED from the GSTIN, "
                                  "never stored beside it"),
@@ -726,7 +797,7 @@ REQUIRED = [
     ("measurement", "branding",  "every company string, colour and image"),
 
     # ── project.py is a LEAF (Pass A) ────────────────────────────────────
-    ("project", "dashboard", "BASE_STYLES and _nav"),
+    ("project", "chrome", "BASE_STYLES and _nav"),
     ("project", "pipeline",  "esc / norm_name"),
     ("project", "store",     "the shared STORE dict"),
     ("project", "branding",  "every company string, colour and image"),
@@ -793,12 +864,12 @@ REQUIRED = [
 
 def test_db_imports_nothing_from_the_app():
     """
-    What makes `dashboard.py -> db.py` safe.
+    What makes `chrome.py -> db.py` safe (and `dashboard.py -> db.py` before it).
 
-    dashboard.py sits at the bottom of the graph and is imported BY every other
+    chrome.py sits at the bottom of the graph and is imported BY every other
     module, so anything it imports must import nothing of ours. db.py qualifies
     — pymysql, dotenv and the standard library — and it has to keep qualifying,
-    because the persistence strip in `_nav()` is now on every page in the app.
+    because the persistence strip in `_nav()` is on every screen page in the app.
     """
     ours = {m.stem for m in REPO.glob("*.py")} - {"db"}
     assert imports_of("db") & ours == set()
@@ -876,14 +947,18 @@ def test_auth_imports_nothing_that_prints():
     Stated as a whitelist rather than a blacklist on purpose. A new prohibition
     has to be remembered; a whitelist catches the import nobody thought of.
     """
-    allowed = {"branding", "pipeline", "store"}
+    # `chrome` joined the three on 14 September 2026: the app shell is a leaf
+    # that reaches `auth` only inside a function body, so importing it here is
+    # safe from the bottom of the graph — and it replaced the function-body
+    # import of `dashboard` that `_shell()` carried for the same chrome.
+    allowed = {"branding", "pipeline", "store", "chrome"}
     ours = {m.stem for m in REPO.glob("*.py")} - {"auth"}
     reached = imports_of("auth", top_level_only=True) & ours
     assert reached <= allowed, (
         f"auth.py imports {sorted(reached - allowed)} at module level. Every "
         f"module in this app may import auth.py, so anything it reaches for is "
         f"reached by all of them — and anything that prints would be a cycle "
-        f"through dashboard.py. Use a function-body import, as _shell() does.")
+        f"through dashboard.py. Use a function-body import, as _nav_links() does.")
 
 
 def test_dashboard_asks_auth_before_drawing_the_access_card():

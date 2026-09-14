@@ -52,7 +52,7 @@ import pathlib
 import re
 
 import auth
-import dashboard
+import chrome
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -173,6 +173,12 @@ def _link_edges():
     computed = 0
 
     modules = {ep.split(".", 1)[0] for ep in auth.ROUTE_PERMISSIONS}
+    # `chrome.py` owns no blueprint and so no endpoint prefix, but `_nav()` and
+    # `_user_chip()` live there since 14 September 2026 and draw the links to
+    # `/account` and `/logout` onto every screen page. It is walked as a helper
+    # module — every link it draws is module-wide — and `_helper_audience()`
+    # gives it the whole application.
+    modules.add("chrome")
     for mod in sorted(modules):
         path = _module_path(mod)
         if path is None:                       # e.g. Flask's own `static`
@@ -240,13 +246,17 @@ def _helper_audience():
         for callee in modules:
             if callee != caller and re.search(rf"\b{callee}\.[a-zA-Z_]+\s*\(", src):
                 audience[callee].add(caller)
+    # `_nav()` is on every screen page and is called unqualified (`from chrome
+    # import _nav`), so the `chrome.<name>(` pattern above would find nobody.
+    # Its audience is every module — the whole point of the shell.
+    audience["chrome"] = set(modules) | {"chrome"}
     return audience
 
 
 def _roots() -> set:
     """Where a user actually starts: the nav, the launcher, the named exceptions."""
     src = (REPO / "dashboard.py").read_text(encoding="utf8")
-    roots = {ep for ep, _icon, _label in dashboard.NAV_ITEMS}
+    roots = {ep for ep, _icon, _label in chrome.NAV_ITEMS}
     roots |= set(re.findall(r'_card\(\s*"([a-z_]+\.[a-z_]+)"', src))
     roots.add("auth.list_users")          # `_access_card()`, built by hand
     roots |= set(NO_INBOUND_LINK_BY_DESIGN)

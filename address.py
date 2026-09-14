@@ -57,7 +57,7 @@ from flask import Blueprint, request, redirect, url_for
 from markupsafe import escape
 
 import branding as B
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from product import PRODUCT_STYLES          # reuse form / table / alert styling
 from store import STORE
 

@@ -43,7 +43,7 @@ from flask import Blueprint, request, redirect, url_for
 import branding as B
 import pipeline as P
 import docsheet as DS
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from store import STORE
 
 # The document's own formatters and stylesheet — see the module docstring.

@@ -76,7 +76,7 @@ import boq as BQ
 import branding as B
 import pipeline as P
 import ra as RA
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from store import STORE
 
 # The form widgets, so a receipt form looks like every other form in the app

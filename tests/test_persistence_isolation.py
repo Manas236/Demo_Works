@@ -744,6 +744,6 @@ def test_the_strip_never_prints(client, fake_db):
     VIEW_DOC_STYLES, so this strip ships its own — a page that does not load
     that sheet must still not print it.
     """
-    from dashboard import BASE_STYLES
+    from chrome import BASE_STYLES
 
     assert "@media print { .db-down { display: none !important; } }" in BASE_STYLES

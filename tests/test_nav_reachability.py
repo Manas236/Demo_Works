@@ -42,7 +42,7 @@ import re
 import pytest
 
 import auth
-import dashboard
+import chrome
 from test_print_golden import (  # noqa: F401  (fixtures are used by pytest)
     SHEET_BLOCKS, PICKER_BLOCKS, _blocks,
     GOLD_TI, GOLD_PI, GOLD_PO, GOLD_DC, GOLD_PICK_BOQ,
@@ -101,21 +101,21 @@ def both_navs(request, client):
     still asserted to be confined to `<nav>` rather than only the most recent
     one.
     """
-    after = dashboard.NAV_ITEMS
+    after = chrome.NAV_ITEMS
     before_items = NAV_BEFORE_STATES[request.param]
 
     def render(url):
         out = {}
         for key, items in (("after", after), ("before", before_items)):
-            dashboard.NAV_ITEMS = items
+            chrome.NAV_ITEMS = items
             r = client.get(url)
             assert r.status_code == 200, f"{url} -> {r.status_code}"
             out[key] = r.get_data(as_text=True)
-        dashboard.NAV_ITEMS = after
+        chrome.NAV_ITEMS = after
         return out["before"], out["after"]
 
     yield render
-    dashboard.NAV_ITEMS = after
+    chrome.NAV_ITEMS = after
 
 
 def _nav_span(html):
@@ -356,7 +356,7 @@ def test_every_classified_page_is_reachable_from_the_nav_or_the_launcher():
     import app as app_module
 
     src = (REPO / "dashboard.py").read_text(encoding="utf8")
-    drawn = {ep for ep, _icon, _label in dashboard.NAV_ITEMS}
+    drawn = {ep for ep, _icon, _label in chrome.NAV_ITEMS}
     drawn |= set(re.findall(r'_card\(\s*"([a-z_]+\.[a-z_]+)"', src))
     drawn.add("auth.list_users")            # `_access_card()`, built by hand
 

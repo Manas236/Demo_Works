@@ -39,6 +39,7 @@ import re
 
 import pytest
 
+import chrome
 import dashboard as D
 from store import STORE
 
@@ -359,10 +360,10 @@ def test_the_register_styles_are_not_in_BASE_STYLES():
     is the precedent for a constant that lives in `dashboard.py` and is emitted
     only where it is wanted.
     """
-    assert ".reg-table" not in D.BASE_STYLES, (
+    assert ".reg-table" not in chrome.BASE_STYLES, (
         "the register pattern is in BASE_STYLES, so it is on every printed "
         "document and every golden has moved")
-    assert ".reg-card" not in D.BASE_STYLES
+    assert ".reg-card" not in chrome.BASE_STYLES
     assert ".reg-table" in D.REGISTER_STYLES
 
 
@@ -378,7 +379,7 @@ def test_no_page_a_golden_pins_loads_the_register_styles():
             loaders.add(path.stem)
 
     assert loaders, "nothing loads the register styles — the pattern is dead"
-    pinned_modules = {ep.split(".")[0] for ep in D.PINNED_PAGES}
+    pinned_modules = {ep.split(".")[0] for ep in chrome.PINNED_PAGES}
     # `challan` appears in both: it loads REGISTER_STYLES on `/dc/` and it owns
     # the pinned `challan.print_dc`. So the check is at ROUTE level, below.
     assert loaders <= {"attendance", "challan"}, (

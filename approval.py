@@ -145,6 +145,11 @@ from flask import Blueprint, redirect, request, url_for
 import auth
 import pipeline as P
 from store import STORE
+# The app chrome, from the leaf that owns it (14 September 2026). `_decision_page()`
+# reached it inside the function body while it lived in `dashboard.py`, which
+# every document module imports and which imports `auth`; the leaf imports
+# nothing that reaches back here, so the hatch is no longer needed.
+from chrome import BASE_STYLES, _nav
 
 approval_bp = Blueprint("approval", __name__, url_prefix="/approval")
 
@@ -1263,12 +1268,12 @@ def _decision_page(title: str, body: str) -> str:
     """
     A small page for a decision or a refusal.
 
-    `dashboard` is imported in the function body, not at module level: every
-    document module imports this one, and `dashboard.py` is imported by all of
-    them — the documented escape hatch `_shell()` uses elsewhere for exactly
-    this reason (ABOUT.md §2).
+    `BASE_STYLES` and `_nav` are module-level imports of `chrome.py` since
+    14 September 2026. They were a function-body import of `dashboard` before
+    that — every document module imports this one, and `dashboard.py` was
+    imported by all of them — the escape hatch `auth._shell()` used for the
+    same reason (ABOUT.md §2). The leaf needs no hatch.
     """
-    from dashboard import BASE_STYLES, _nav
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
             f"<title>{_esc(title)}</title>{BASE_STYLES}</head><body>"
             f"{_nav()}<div class='wrap' style='max-width:760px'>{body}</div>"

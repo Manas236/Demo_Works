@@ -98,7 +98,8 @@ import docsheet as DS
 import pipeline as P
 import settings as SET
 from address import picker_options, format_address_lines
-from dashboard import BASE_STYLES, REGISTER_STYLES, _nav
+from chrome import BASE_STYLES, _nav
+from dashboard import REGISTER_STYLES
 from store import STORE
 
 # ⚠ **`QUOTATION_STYLES` is read through `docsheet`, not imported from

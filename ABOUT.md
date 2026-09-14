@@ -369,7 +369,8 @@ Consequences you must respect when editing:
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
 | [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
-| [dashboard.py](dashboard.py) | 1572 | Operations dashboard **+ `BASE_STYLES` and `_nav()` that every other module imports** + the 413 page. |
+| [chrome.py](chrome.py) | 705 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
+| [dashboard.py](dashboard.py) | 2441 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
 | [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
@@ -411,8 +412,20 @@ Consequences you must respect when editing:
 
 ```
 app.py
- ├─ dashboard.py ──────────────┐  (BASE_STYLES, _nav) imports branding, store, pipeline, db, auth
- ├─ product.py ────────────────┤  imports dashboard, branding, store, pipeline
+ ├─ chrome.py ─────────────────┐  (BASE_STYLES, ICONS, _nav) imports branding, pipeline, db
+ │                             │  — and auth INSIDE _nav_links() / _user_chip() only.
+ │                             │  A LEAF (§2k): imports nothing that prints, nothing
+ │                             │  that renders a page, nothing that imports it back.
+ │                             │  Every module below reaches its chrome HERE from
+ │                             │  14 Sep 2026; "imports dashboard" on the rows below
+ │                             │  is kept where the row still reads something ELSE
+ │                             │  from dashboard.py (REGISTER_STYLES, rupees) and
+ │                             │  struck where it does not.
+ ├─ dashboard.py ──────────────┤  imports chrome, branding, store, pipeline — and auth
+ │                             │  inside its functions. Re-exports BASE_STYLES and
+ │                             │  _nav for product.py, quotation.py and docsheet.py
+ ├─ product.py ────────────────┤  imports dashboard (for the re-exported chrome —
+ │                             │  frozen, so not repointed), branding, store, pipeline
  │                             │  (pipeline is new — P.esc, §7.7)
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
  │                             │  and auth INSIDE `_editor_id()` only (purchase._repricer()'s
@@ -491,15 +504,23 @@ app.py
 
 pipeline.py  imports nothing from the app  ← keep it that way
 branding.py  imports nothing from the app  ← keep it that way
-approval.py  imports auth, pipeline, store — and dashboard INSIDE _decision_page()
-             only. boq.py and dashboard.py read `approval.accepted()` /
-             `approval.gated()` / `approval.ladder_on()` through FUNCTION-BODY
-             imports (12 Sep 2026), the hatch dashboard.index() and _shell()
-             use, so neither arrow joins the module-level graph.
+chrome.py    imports branding, pipeline, db — and auth INSIDE two functions only.
+             NOTHING that prints, NOTHING that renders a page, NOTHING that
+             imports it back ← §2k (14 Sep 2026)
+approval.py  imports auth, pipeline, store, chrome — the chrome at MODULE level
+             from 14 Sep 2026; it was a dashboard import INSIDE _decision_page()
+             until the leaf existed. boq.py and dashboard.py read
+             `approval.accepted()` / `approval.gated()` / `approval.ladder_on()`
+             through FUNCTION-BODY imports (12 Sep 2026), the hatch
+             dashboard.index() uses, so neither arrow joins the module-level graph.
 demo_data.py imports nothing AT ALL        ← keep it that way
 po_parts.py  imports nothing AT ALL        ← keep it that way, and see below
-auth.py      imports store, pipeline, branding — and NOTHING that prints ← §2g
+auth.py      imports store, pipeline, branding, chrome — and NOTHING that prints ← §2g
+             (chrome at module level from 14 Sep 2026; _shell() reached the same
+             two names through a function-body import of dashboard before that)
 docsheet.py  imports quotation + the three above, and NOTHING that prints  ← §2d
+             ⚠ reads BASE_STYLES through DASHBOARD's re-export, never from
+             chrome.py: the printed sheet may not depend on the shell (§2k)
 boqpick.py   imports boq + pipeline, and NOTHING that renders a document ← §2e
 ```
 
@@ -1008,15 +1029,74 @@ series needed the same financial-year numbering as the tax invoice. It imports
 nothing from the app, so it is the only place a shared helper can live without
 coupling buy side to sell side.
 
-**dashboard.py may import `branding`, `store`, `pipeline` and `db`** — none of
-those import anything from the app, so there is no cycle. `db` is on that list
-because `_nav()` renders the persistence-failure strip (§4) and `_nav()` is the
-only thing in this app that is on every page; db.py imports pymysql, dotenv and
+**dashboard.py may import `branding`, `store`, `pipeline` and `chrome`** — none
+of those import anything of ours at module level that imports it back, so
+there is no cycle. ~~`db` is on that list because `_nav()` renders the
+persistence-failure strip (§4) and `_nav()` is the only thing in this app that
+is on every page~~ — from 14 September 2026 that arrow is **`chrome.py → db`**,
+because the strip moved with `_nav()` (§2k); db.py imports pymysql, dotenv and
 the standard library and nothing of ours, so it sits at the bottom of the graph
 beside branding.py and pipeline.py. dashboard.py must **never** import
 `product`, `quotation` or `address` at module level, because those import *it*.
 `index()` pulls `ensure_demo_products` / `ensure_demo_addresses` in **inside the
 function body** for exactly that reason; that is deliberate, not an oversight.
+
+### 2k. `chrome.py` — the app shell, and why it is the fourth leaf (14 September 2026)
+
+`BASE_STYLES`, `ICONS`, `USER_CHIP_STYLES`, `PINNED_PAGES`, `_user_chip()`,
+`_persistence_strip()`, `NAV_ITEMS`, `NAV_LINK_SEP`, `_nav_links()` and
+`_nav()` — the shell every screen page renders — lifted out of `dashboard.py`
+**verbatim**: the bodies moved, nothing in them was edited, and
+[tests/test_page_golden.py](tests/test_page_golden.py) — twenty-two screen
+pages hashed byte-for-byte, **committed before this module existed** — is what
+makes that a measurement rather than a description. `docsheet.py` and
+`boqpick.py` were extracted the same way for the same reason.
+
+**Why.** Every page reached its navigation by importing the module that drew
+it, and that module was the one that also computes the landing page's metrics
+and imports most of the application inside its view functions. A chrome that
+grows — a sidebar, a top bar, a register registry — would have grown that
+coupling with it. So the shell was moved out *before* it was redrawn, as its
+own pass with a byte-identity gate, and never folded into the feature pass.
+
+**The import direction is the point:**
+
+```
+chrome.py ──► branding, pipeline, db          at module level, and nothing else of ours
+chrome.py ──► auth                            INSIDE _nav_links() and _user_chip() only
+
+every screen module ──► chrome.py             from chrome import BASE_STYLES, _nav
+auth.py, approval.py ──► chrome.py            at MODULE level — the two function-body
+                                              hatches that dodged the dashboard cycle
+                                              became ordinary imports
+dashboard.py ──► chrome.py                    and RE-EXPORTS BASE_STYLES and _nav
+product.py, quotation.py ──► dashboard.py     frozen; they read the re-export
+docsheet.py ──► dashboard.py                  reads BASE_STYLES through the re-export
+                                              ON PURPOSE — never chrome.py
+```
+
+**Two rules, both asserted at AST level in
+[tests/test_import_directions.py](tests/test_import_directions.py) beside the
+`docsheet.py` bans:**
+
+- **`chrome.py` may not import any module that prints, any module that
+  renders a page, or any module that imports it back** — every document
+  module, `docsheet`, `boqpick`, `specpick`, `dashboard`, `settings`,
+  `address`, `project`, `approval` and the rest are refused outright, and
+  `auth` at module level. `store` is refused too: the shell reads no record.
+- **The printed sheet may not depend on the shell.** `docsheet → chrome` is
+  refused. `docsheet.SHEET_STYLES` still opens with `BASE_STYLES` because nine
+  print goldens hash it there, so the sheet reads that constant through
+  `dashboard.py`'s re-export and says so at the import. Dropping it from the
+  stack is a print re-baseline of its own and is not this pass's.
+
+**What did not move, and why:** `REGISTER_STYLES` (a page pattern for two
+register screens, not the chrome — §5 *"The two register SCREENS"*),
+`ACTION_SEP`, `_access_card()`, `_footer_contact()`, the money helpers
+(`inr`, `compact`, `rupees`) and `too_large_page()` all stay in
+`dashboard.py`. `attendance.py`, `challan.py`, `charge.py` and `employee.py`
+therefore still import `dashboard` for one of those beside their `chrome`
+import, and `tests/test_import_directions.py` names which.
 
 ### 2g. `auth.py` — a fourth bottom-of-graph module, and the one that renders
 
@@ -1033,18 +1113,23 @@ in. Every other module in the app imports `dashboard.py` for `BASE_STYLES` and
 the entire application, and anything that imports `dashboard` back would be a
 cycle at boot.
 
-So its module-level imports are exactly three — `store`, `pipeline`, `branding` —
-and [tests/test_import_directions.py](tests/test_import_directions.py) asserts
+So its module-level imports are exactly ~~three~~ **four** — `store`, `pipeline`,
+`branding` and, from 14 September 2026, **`chrome`** — and
+[tests/test_import_directions.py](tests/test_import_directions.py) asserts
 that as a **whitelist**, not a blacklist:
 `test_auth_imports_nothing_that_prints`. A blacklist has to be remembered when
 somebody adds a module; a whitelist catches the import nobody thought of.
+`chrome` qualifies for the same reason the other three do: it is a leaf that
+reaches `auth` only inside a function body (§2k), so `_shell()`'s
+function-body import of `dashboard` became an ordinary top-level import of
+the leaf.
 
 **How it renders anyway.** Two shells, and the split is the whole trick:
 
 | Shell | Used by | Chrome |
 |---|---|---|
 | `_standalone()` | `/login`, `/setup` | Its own `AUTH_STANDALONE_STYLES`. **No nav** — every nav link would refuse somebody with no session, and the persistence strip would leak database health to a stranger. |
-| `_shell()` | `/account`, `/logout`, `/users`, `/roles`, `/access-log` | `BASE_STYLES` + `QUOTATION_STYLES` + `AUTH_ADMIN_STYLES`, imported **inside the function body** — the same escape hatch `dashboard.index()` uses for the seeders. |
+| `_shell()` | `/account`, `/logout`, `/users`, `/roles`, `/access-log` | `BASE_STYLES` + `QUOTATION_STYLES` + `AUTH_ADMIN_STYLES`. The chrome comes from `chrome.py` at **module level** (14 September 2026); `QUOTATION_STYLES` is still imported **inside the function body** — the same escape hatch `dashboard.index()` uses for the seeders — because `quotation.py` imports `dashboard.py`. |
 
 Those two logged-out pages are the **only** screen routes in this app that do
 not layer `BASE_STYLES`, and both are named with that reason in
@@ -4463,14 +4548,18 @@ Colours are **validated, not chosen by eye** (`branding.CHART_*`, §6):
   raising. A hand-edited record must not be able to 500 the landing page.
 - Account names go through `P.esc()` here, unlike most of `quotation.py` (§7.7).
 
-#### This file is also the app's stylesheet
+#### ~~This file is also the app's stylesheet~~ — the stylesheet lives in `chrome.py` (14 September 2026)
 
 `BASE_STYLES` (reset, nav, `.card`, `.btn`, `.alert`, footer, 580px breakpoint)
-and `_nav()` are imported by `product.py`, `quotation.py` and `address.py`. **A
-change to `BASE_STYLES` changes every page.** Dashboard-only rules belong in
-**`DASH_STYLES`**, which is layered after it and loaded on this page only.
-Module-specific CSS is layered *after* `BASE_STYLES` in each module
-(`PRODUCT_STYLES`, `QUOTATION_STYLES`, `VIEW_STYLES`, `P.PIPELINE_STYLES`).
+and `_nav()` ~~are imported by `product.py`, `quotation.py` and `address.py`~~
+live in **`chrome.py`** (§2k) and every screen module imports them from there;
+`dashboard.py` imports them back and re-exports them for the two frozen files
+and the printed sheet. **A change to `BASE_STYLES` changes every page — and
+every printed document, because `docsheet.SHEET_STYLES` opens with it.**
+Dashboard-only rules belong in **`DASH_STYLES`**, which is layered after it and
+loaded on this page only. Module-specific CSS is layered *after* `BASE_STYLES`
+in each module (`PRODUCT_STYLES`, `QUOTATION_STYLES`, `VIEW_STYLES`,
+`P.PIPELINE_STYLES`).
 
 `DASH_STYLES` is a **plain string, not an f-string**, so its CSS braces are
 written once — only the HTML f-strings below it need doubling.
@@ -9637,8 +9726,10 @@ little less CSS.
   and introduce no new font, type size or border weight. Writing a fresh
   f-string for a printed page is how four documents stopped looking like each
   other, and `tests/test_print_golden.py` is what now catches it.
-- Import `BASE_STYLES` and `_nav` from `dashboard`, layer your own `<style>`
-  block after them.
+- Import `BASE_STYLES` and `_nav` from **`chrome`** (14 September 2026 — it was
+  `dashboard` until the shell became its own leaf, §2k), layer your own
+  `<style>` block after them. Never import `chrome` from a module that prints
+  the sheet, and never import a document module from `chrome`.
 - Pull every company string, colour, and image from `branding.py`.
 - Cross-blueprint links use `url_for("blueprint.view_function")`.
 - Flash messages are query params: `redirect(url_for(..., msg="...",

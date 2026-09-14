@@ -301,7 +301,8 @@ import employee as EMP
 import pipeline as P
 import settings as S
 from store import STORE
-from dashboard import BASE_STYLES, REGISTER_STYLES, _nav, rupees
+from chrome import BASE_STYLES, _nav
+from dashboard import REGISTER_STYLES, rupees
 from employee import active_employees, employees
 from quotation import QUOTATION_STYLES
 

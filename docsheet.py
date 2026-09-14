@@ -73,6 +73,13 @@ from quotation import (          # noqa: F401  (_meta is re-exported)
     _inr,
     _meta,
 )
+# ⚠ Read through `dashboard.py`'s re-export ON PURPOSE, not from `chrome.py`
+#   where it lives (14 September 2026). This module IS the printed sheet, and a
+#   printed document must not depend on the app shell — `docsheet -> chrome`
+#   is refused at AST level in `tests/test_import_directions.py`, beside the
+#   bans that keep the sheet a leaf. The sheet still carries `BASE_STYLES`
+#   at the head of its stack because nine print goldens hash it there;
+#   dropping it is a print re-baseline of its own and is not this pass's.
 from dashboard import BASE_STYLES
 import pipeline as P
 

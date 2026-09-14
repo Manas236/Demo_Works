@@ -49,7 +49,7 @@ import branding as B
 import pipeline as P
 from store import STORE
 
-from dashboard import BASE_STYLES, _nav
+from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from boq import BOQ_STYLES, boq_identity, _to_block
 from ra import (bills_of, is_issued, is_cancelled, is_adjustment,
