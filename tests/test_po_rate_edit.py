@@ -327,7 +327,11 @@ def test_a_specification_header_gets_no_rate_box_and_keeps_its_zeroes(client):
     assert len(PU._priced_rows(po)) == 1, "the header was offered a rate box"
 
     html = client.get(f"/purchase/edit/{po['id']}").get_data(as_text=True)
-    assert html.count('name="line_rate"') == 1
+    # The INPUT, counted by its tag: since 14 September 2026 the page's
+    # `recalc()` also names `input[name="line_rate"]` in a querySelector, and
+    # a selector string is not a rate box. (It read `html.count('name="line_rate"')
+    # == 1` before, when the reprice form had no live amount preview.)
+    assert html.count('<input type="number" name="line_rate"') == 1
     assert "Wet riser" not in html, "a header must not appear as a priced row"
 
     assert client.post(f"/purchase/edit/{po['id']}",

@@ -267,10 +267,18 @@ SPEC_STYLES = """
   td { padding:.9rem 1.1rem; border-bottom:1px solid var(--border); vertical-align:middle; }
   tbody tr:last-child td { border-bottom:none; }
   tbody tr:hover { background:#f8fafc; }
+  /* A code, a tax pair or a button that breaks across two lines reads as
+     broken and makes every row of a 56-row register two lines tall. The
+     title is the column that may wrap. */
   .td-code  { font-family:'SFMono-Regular',Consolas,monospace; font-weight:700;
-              color:var(--brand); font-size:.8rem; }
+              color:var(--brand); font-size:.8rem; white-space:nowrap; }
   .td-title { font-weight:600; }
   .td-muted { font-size:.82rem; color:var(--muted); }
+  .td-tax   { white-space:nowrap; }
+  /* A flex `<td>` stops being a table cell: the row border ended before this
+     column and the buttons hugged the top. Inline buttons in a normal cell. */
+  .td-acts  { white-space:nowrap; }
+  .td-acts .btn-view + .btn-view { margin-left:.4rem; }
 
   .cat-badge {
     display:inline-block; font-size:.68rem; font-weight:700; letter-spacing:.05em;
@@ -286,7 +294,7 @@ SPEC_STYLES = """
   .btn-view {
     font-size:.75rem; font-weight:600; color:var(--brand); background:var(--brand-lt);
     border:1px solid #c7d2fe; border-radius:6px; padding:.28rem .7rem;
-    text-decoration:none; display:inline-block;
+    text-decoration:none; display:inline-block; white-space:nowrap;
   }
   .btn-view:hover { background:#c7d2fe; }
   .btn-danger {
@@ -888,8 +896,8 @@ def list_specs():
               <td><span class="cat-badge">{P.esc(s.get('category'))}</span></td>
               <td>{vcount}</td>
               <td class="td-muted">{rate_txt}</td>
-              <td class="td-muted">{P.esc(s.get('supply_hsn') or '') or '&mdash;'} / {P.esc(s.get('install_sac') or '') or '&mdash;'}</td>
-              <td style="display:flex;gap:.4rem;">
+              <td class="td-muted td-tax">{P.esc(s.get('supply_hsn') or '') or '&mdash;'} / {P.esc(s.get('install_sac') or '') or '&mdash;'}</td>
+              <td class="td-acts">
                 <a href="{url_for('spec.view_spec', id=sid)}" class="btn-view">&#128269; View</a>
                 <a href="{url_for('spec.edit_spec', id=sid)}" class="btn-view">&#9998; Edit</a>
               </td>

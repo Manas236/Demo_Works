@@ -313,23 +313,59 @@ def test_a_negative_rate_is_refused(client):
 
 
 # ══ 6. The assumed-rate marker ════════════════════════════════════════════
+#
+# ⚠ **THE RULE WAS NARROWED ON 14 SEPTEMBER 2026, by the owner, in his words:
+#   "if I have entered price it is not a placeholder."** An order raised that
+#   morning carried `150mm flange` at ₹1,350 and `16 sq mm wire` at ₹175 —
+#   both entered, both the seeded figures, both chipped "placeholder · not
+#   quoted" under the old rule, which marked any rate EQUAL to the seed however
+#   it got into the box. The owner rejected that as a false statement about a
+#   price he had chosen.
+#
+#   The rule now: `rate_is_assumed` is true when — and only when — the rate
+#   box was posted BLANK and the server filled it. A figure in the box on
+#   submit is the operator's price, the seeded figure included. Still derived
+#   on the server, still from no hidden field: the mark IS the fill.
+#
+#   Two halves follow from that and both are pinned below. The form must never
+#   write the seed into the box's VALUE — it is offered as ghost text and
+#   `data-seed` — because a written value would post as an entered price and
+#   the mark could never be set. And a stored placeholder line must come back
+#   to the edit form with a BLANK box, or resaving the order would silently
+#   turn every placeholder on it into a price.
+
+def _edit(client, po, extras, line_rate="1000"):
+    """
+    Resave through `/purchase/edit/<id>` with the item row unchanged and the
+    extra repeater as given — the same five parallel lists `_create()` posts.
+    """
+    return client.post(f"/purchase/edit/{po['id']}", data={
+        "line_rate": line_rate, "line_discount": "",
+        "extra_desc":     [str(e[0]) for e in extras],
+        "extra_unit":     [str(e[1]) for e in extras],
+        "extra_qty":      [str(e[2]) for e in extras],
+        "extra_rate":     [str(e[3]) for e in extras],
+        "extra_discount": [str(e[4]) for e in extras],
+    })
+
 
 def test_the_prefill_sets_rate_is_assumed(client):
     """
-    A seeded part at its seeded rate is marked. The mark says "this figure came
-    out of `po_parts.py` and nobody has replaced it", which is the whole of what
-    it claims.
+    A seeded part with the rate box left BLANK is filled and marked. The mark
+    says "the server put this figure here and nobody has typed one", which is
+    the whole of what it claims.
     """
     _canon, unit, seeded = PP.lookup("Butane gas")
-    po = _po(client, extras=[("Butane gas", unit, "4", str(seeded), "")])
+    po = _po(client, extras=[("Butane gas", unit, "4", "", "")])
+    assert po["extra_lines"][0]["rate"] == seeded
     assert po["extra_lines"][0]["rate_is_assumed"] is True
 
 
 def test_an_edited_rate_clears_the_assumed_mark(client):
     """
-    **Clears the moment the rate is edited to anything else.** Derived on the
-    server from the rate itself rather than remembered in a hidden field, so a
-    stale or tampered form cannot clear the mark while keeping the figure.
+    A figure in the box is a price. Derived on the server from the posted box
+    rather than remembered in a hidden field, so a stale or tampered form
+    cannot set or clear the mark independently of the figure.
     """
     po = _po(client, extras=[("Butane gas", "Nos", "4", "155", "")])
     assert po["extra_lines"][0]["rate_is_assumed"] is False
@@ -354,7 +390,7 @@ def test_the_assumed_chip_never_appears_in_the_printed_output(client):
     wrong reason), and the stylesheet takes it out at print.
     """
     _c, unit, seeded = PP.lookup("Butane gas")
-    po = _po(client, extras=[("Butane gas", unit, "4", str(seeded), "")])
+    po = _po(client, extras=[("Butane gas", unit, "4", "", "")])
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
 
     assert "xl-assumed" in html, "the chip must render on screen"
@@ -377,6 +413,112 @@ def test_an_order_with_no_assumed_rate_draws_no_chip(client):
     po = _po(client, extras=[("Entirely bespoke bracket", "Nos", "2", "999", "")])
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
     assert '<span class="xl-assumed">' not in html
+
+
+def test_the_owners_own_case_draws_no_chip(client):
+    """
+    **The order that produced the ruling.** `150mm flange` at 1,350 and
+    `16 sq mm wire` at 175, both entered in the box, both exactly the seeded
+    figures — and neither is a placeholder, because somebody entered them.
+    """
+    for desc in ("150mm flange", "16 sq mm wire"):
+        assert PP.lookup(desc), f"{desc!r} must still be a seeded part for this to test anything"
+    f_seed, w_seed = PP.lookup("150mm flange")[2], PP.lookup("16 sq mm wire")[2]
+    po = _po(client, extras=[("150mm flange", "Nos", "3", str(f_seed), ""),
+                             ("16 sq mm wire", "Mtr", "2", str(w_seed), "")])
+    assert [r["rate_is_assumed"] for r in po["extra_lines"]] == [False, False]
+    assert [r["rate"] for r in po["extra_lines"]] == [f_seed, w_seed]
+    html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+    assert '<span class="xl-assumed">' not in html
+
+
+def test_a_stored_placeholder_line_reopens_with_a_blank_box_and_the_seed_greyed(client):
+    """
+    The edit form draws a placeholder line with the rate box EMPTY and the
+    seeded figure as the input's `placeholder` and `data-seed` — an offered
+    figure, visibly not an entered one. A line somebody priced comes back with
+    its figure in the box.
+    """
+    _c, _u, seeded = PP.lookup("Butane gas")
+    po = _po(client, extras=[("Butane gas", "Nos", "4", "", ""),
+                             ("Entirely bespoke bracket", "Nos", "2", "999", "")])
+    assert po["extra_lines"][0]["rate_is_assumed"] is True
+    html = client.get(f"/purchase/edit/{po['id']}").get_data(as_text=True)
+
+    assert (f'name="extra_rate" value=""\n'
+            f'                 min="0" step="0.01" placeholder="{seeded:.2f}"\n'
+            f'                 data-seed="{seeded:.2f}"') in html, \
+        "a placeholder line must reopen with a blank box and the seed greyed in it"
+    assert f'name="extra_rate" value="{seeded:.2f}"' not in html, \
+        "the seeded figure must never be written into the box's value"
+    assert ('name="extra_rate" value="999.00"\n'
+            '                 min="0" step="0.01" placeholder="Rate"\n'
+            '                 data-seed=""') in html, \
+        "an entered rate reopens as entered, with no seed offered"
+
+
+def test_resaving_the_edit_form_keeps_a_placeholder_a_placeholder(client):
+    """
+    Open the reprice form and save it without touching the extra line: the box
+    posts blank, the server fills it again, and the mark stays. Nothing
+    somebody did not type becomes a price by being saved twice.
+    """
+    _c, _u, seeded = PP.lookup("Butane gas")
+    po = _po(client, extras=[("Butane gas", "Nos", "4", "", "")])
+    r = _edit(client, po, [("Butane gas", "Nos", "4", "", "")])
+    assert r.status_code == 302, r.get_data(as_text=True)[:600]
+    row = po["extra_lines"][0]
+    assert row["rate"] == seeded
+    assert row["rate_is_assumed"] is True
+
+
+def test_typing_the_seeded_figure_on_the_edit_form_makes_it_a_price(client):
+    """
+    The owner's case on the reprice form: the placeholder is kept as the price
+    by typing it. Same figure, different fact — somebody entered it.
+    """
+    _c, _u, seeded = PP.lookup("Butane gas")
+    po = _po(client, extras=[("Butane gas", "Nos", "4", "", "")])
+    assert po["extra_lines"][0]["rate_is_assumed"] is True
+    r = _edit(client, po, [("Butane gas", "Nos", "4", str(seeded), "")])
+    assert r.status_code == 302
+    row = po["extra_lines"][0]
+    assert row["rate"] == seeded
+    assert row["rate_is_assumed"] is False
+    html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
+    assert '<span class="xl-assumed">' not in html
+
+
+def test_no_form_writes_the_seed_into_the_rate_box(client):
+    """
+    Both halves of the form's side of the rule, asserted as strings because
+    the repo runs no JavaScript (§8 below):
+
+    - the live preview offers the seed as ghost text and `data-seed`, and the
+      line that used to write `rate.value = hit.r...` is gone;
+    - a row the server renders for a seeded part with a blank rate — here a
+      rejected POST coming back with what was typed — carries the seed the
+      same way, so the offer is there with JavaScript off too.
+    """
+    _c, _u, seeded = PP.lookup("Butane gas")
+    for url in ("/purchase/create",):
+        html = client.get(url).get_data(as_text=True)
+        assert "rate.placeholder = hit ? hit.r.toFixed(2) : 'Rate'" in html
+        assert "rate.dataset.seed = hit ? hit.r.toFixed(2) : ''" in html
+        assert "rate.value = hit.r" not in html, \
+            "the seeded rate must never be written into the box's value"
+        assert "parseFloat(rEl.dataset.seed)" in html, \
+            "the amount preview must read the offered figure for a blank box"
+
+    # A rejected POST (a figure with no description on row 2) re-renders row 1
+    # as typed: seeded part, blank box, seed greyed.
+    r = _create(client, extras=[("Butane gas", "", "4", "", ""),
+                                ("", "Nos", "1", "50", "")])
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert (f'name="extra_rate" value=""\n'
+            f'                 min="0" step="0.01" placeholder="{seeded:.2f}"\n'
+            f'                 data-seed="{seeded:.2f}"') in html
 
 
 # ══ 7. The seed table itself ══════════════════════════════════════════════
@@ -411,7 +553,8 @@ def test_an_alias_prefills_through_the_form_too(client):
     quietly depend on how somebody spelled it.
     """
     _c, _u, seeded = PP.lookup("Bullet fastener 8mm")
-    po = _po(client, extras=[("Bullet Fastner 8mm", "Nos", "10", str(seeded), "")])
+    po = _po(client, extras=[("Bullet Fastner 8mm", "Nos", "10", "", "")])
+    assert po["extra_lines"][0]["rate"] == seeded
     assert po["extra_lines"][0]["rate_is_assumed"] is True
     assert po["extra_lines"][0]["description"] == "Bullet Fastner 8mm", \
         "what was typed is what is stored — the alias resolves the RATE, not the text"
@@ -535,7 +678,7 @@ def test_editing_only_the_extra_lines_is_not_reported_as_nothing_changed(client)
         "an extra-line edit is not a rate movement on an item line"
 
 
-# ══ 9. Where the repeater is, and where it deliberately is not ════════════
+# ══ 9. Where the repeater is — every form that raises or reprices an order ═
 
 def test_the_repeater_is_on_create_and_edit(client):
     po = _po(client)
@@ -545,22 +688,34 @@ def test_the_repeater_is_on_create_and_edit(client):
         assert 'id="xl-parts"' in html, f"{url} must offer the typeahead"
 
 
-def test_the_repeater_is_NOT_on_the_two_picker_flows(client):
+def test_the_repeater_is_on_the_two_picker_flows_too(client):
     """
-    ⚠ **A deliberate deviation, matching the call A3 made for its own repeater.**
+    ⚠ **REVERSED 14 September 2026, by the owner's decision.** This test was
+    `test_the_repeater_is_NOT_on_the_two_picker_flows` and pinned a recorded
+    deviation: *"`/purchase/from-boq` and `/purchase/from-draft` are picker
+    flows over a schedule; their job is to carry ticked lines across without
+    re-entry. Bolting a free-text surface onto a picker is a second design —
+    two ways of adding a line on one form, one traceable to the schedule and
+    one not. A part on no schedule is added afterwards on
+    `/purchase/edit/<id>`."* Its assertion was, verbatim:
 
-    `/purchase/from-boq` and `/purchase/from-draft` are picker flows over a
-    schedule; their job is to carry ticked lines across without re-entry.
-    Bolting a free-text surface onto a picker is a second design — two ways of
-    adding a line on one form, one traceable to the schedule and one not. A part
-    on no schedule is added afterwards on `/purchase/edit/<id>`.
+        assert 'name="extra_desc"' not in html, \\
+            "the picker flow must not grow a free-text line surface"
+
+    The owner raised an order from a draft, found the section missing from the
+    form that goes to the vendor while the reprice form beside it carried it,
+    and rejected the deviation: an order is written once, and sending it out
+    and then reopening it to add the parts is the re-entry the route exists to
+    avoid. `tests/test_po_upstream_repeaters.py` holds the behaviour; this
+    test holds only that the surface is there.
     """
     import boq
     boq.ensure_demo_boq()
     boq_id = sorted(STORE["boqs"])[0]
     html = client.get(f"/purchase/from-boq/{boq_id}").get_data(as_text=True)
-    assert 'name="extra_desc"' not in html, \
-        "the picker flow must not grow a free-text line surface"
+    assert 'name="extra_desc"' in html, \
+        "the picker flow must offer the extra-parts repeater"
+    assert 'id="xl-parts"' in html, "and its typeahead"
 
 
 def test_every_order_this_module_creates_carries_the_key(client):
@@ -821,18 +976,20 @@ def test_a_rate_different_from_the_seed_is_stored_verbatim_and_not_flagged(clien
     assert row["rate_is_assumed"] is False
 
 
-def test_a_rate_equal_to_the_seed_IS_flagged_however_it_was_typed(client):
+def test_a_rate_equal_to_the_seed_typed_by_hand_is_NOT_flagged(client):
     """
-    ⚠ **The marker is a claim about the FIGURE, not about who put it there.**
+    ⚠ **The marker is a claim about the FILL, not about the figure** — the
+    14 September 2026 ruling, inverted from what this test asserted before.
 
     Type `Butane gas` and its seeded rate by hand, with the server filling
-    nothing, and the line is still flagged. A human who types the placeholder
-    from memory has invented a price just as surely as the server has, and the
-    chip says so in those terms rather than implying the operator was assisted.
+    nothing, and the line is a priced line: "if I have entered price it is not
+    a placeholder." The old test held the opposite on purpose, as the safe
+    direction; the owner ruled it a false statement about a price he chose.
     """
     _c, _u, seeded = PP.lookup("Butane gas")
     po = _po(client, extras=[("Butane gas", "Nos", "4", str(seeded), "")])
-    assert po["extra_lines"][0]["rate_is_assumed"] is True
+    assert po["extra_lines"][0]["rate"] == seeded
+    assert po["extra_lines"][0]["rate_is_assumed"] is False
 
 
 def test_an_explicit_zero_rate_is_a_typed_rate_and_is_not_filled(client):

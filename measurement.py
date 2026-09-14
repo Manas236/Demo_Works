@@ -744,6 +744,10 @@ def _flash() -> str:
 
 
 MS_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
+  /* The hint under a field. `settings.py` defines the same class in its own
+     sheet; this page used it without one, so the hint rendered as body
+     text. Same figures as there. */
+  .fld-hint { font-size:.72rem; color:var(--muted); margin-top:.15rem; }
   /* Over-measurement. RED, not the challan's amber: this one refuses, and a
      colour that says "note this" on a page that has just declined to save is a
      lie about what happened. */
@@ -765,10 +769,17 @@ MS_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
   table.jg-table th.jg-loc { text-align:left; min-width:110px; }
   table.jg-table th.jg-rem { text-align:left; min-width:180px; }
   .jg-unit { display:block; font-weight:400; font-size:.85em; color:#555; }
-  .jg-in, .jg-loc-in, .jg-rem-in { width:100%; border:0; background:transparent;
-        padding:3px 2px; font:inherit; color:inherit; }
-  .jg-in { text-align:right; min-width:52px; }
-  .jg-in:focus, .jg-loc-in:focus, .jg-rem-in:focus { outline:2px solid var(--brand);
+  /* Qualified with the table and the element: QUOTATION_STYLES styles
+     `input[type="text"]` (0,1,1), which outranks a bare class (0,1,0) and
+     turned every cell into a boxed, padded input — clipping "Branch Pipe"
+     and doubling the grid's height. These are cells, not fields. */
+  table.jg-table input.jg-in, table.jg-table input.jg-loc-in,
+  table.jg-table input.jg-rem-in { width:100%; border:0; border-radius:0;
+        background:transparent; padding:3px 2px; font:inherit; color:inherit;
+        box-shadow:none; }
+  table.jg-table input.jg-in { text-align:right; min-width:52px; }
+  table.jg-table input.jg-in:focus, table.jg-table input.jg-loc-in:focus,
+  table.jg-table input.jg-rem-in:focus { outline:2px solid var(--brand);
         outline-offset:-2px; background:#fff; }
   .jg-del { padding:0 .45rem; line-height:1.6; }
 </style>

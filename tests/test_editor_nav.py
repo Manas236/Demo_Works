@@ -466,11 +466,13 @@ def test_no_ui_state_reaches_the_record(seeded, client):
     posted = _session("""
         clickExpandAll();
         fillFromSpec(0, Object.keys(SPECS)[0]);
+        MODEL.lines[1]._more = true;       /* the fold, opened */
         saveJSON();
         console.log(STUB['boq_json'].value);
     """, boot=_demo_boot(client))
     assert any(k.startswith("_") for k in posted["lines"][0]), \
         "the fixture should be posting UI state, or this proves nothing"
+    assert posted["lines"][1]["_more"] is True
 
     before = set(STORE["boqs"])
     client.post("/boq/create", data={
@@ -590,3 +592,362 @@ def test_adding_a_line_scrolls_no_further_than_the_new_row(seeded, client):
     assert res["scrolls"] == [], "the document end is not where the row is"
     assert res["scrolledInto"] == [["0", "nearest"]]
     assert res["flashed"] == ["0:just-added"]
+
+
+# ═══ The open panel — four bands, then a fold ═════════════════════════════
+#
+# Twenty-two controls in one flat stack was the complaint. The panel now reads
+# top-down in the order a line is made — where it sits and what it is, how
+# much, the rates — and folds the tax codes and the internal remark away
+# behind a summary line that still says what they are. These tests hold the
+# order and the fold; the picker tests already drive the controls inside it.
+
+_PANEL = """
+function panelOf(i) {
+  var cards = editorHtml().split('<div class="line-card');
+  for (var k = 1; k < cards.length; k++) {
+    var d = /data-line="([0-9]+)"/.exec(cards[k]);
+    if (d && parseInt(d[1], 10) === i) return cards[k];
+  }
+  return '';
+}
+/* The index of a priced line, opened — together with the header it sits
+   under, because a closed header folds its children away. */
+function openLine(item) {
+  var i = -1;
+  for (var k = 0; k < MODEL.lines.length; k++) {
+    if (MODEL.lines[k].item_no === item && !MODEL.lines[k].is_header) i = k;
+  }
+  var L = MODEL.lines[i];
+  L._open = true;
+  for (var h = 0; h < MODEL.lines.length; h++) {
+    var H = MODEL.lines[h];
+    if (H.is_header && H.section === L.section && H.item_no === L.parent_item_no) H._open = true;
+  }
+  renderLines();
+  return i;
+}
+/* Where each band starts in the panel's HTML; -1 when it is not there. */
+function bands(html) {
+  return {
+    ident: html.indexOf('class="lc-ident"'),
+    desc:  html.indexOf('class="form-group lc-desc"'),
+    qty:   html.indexOf('class="lc-areas"'),
+    rates: html.indexOf('class="lc-rates"'),
+    fold:  html.indexOf('<details class="lc-more"')
+  };
+}
+"""
+
+
+def test_an_open_line_reads_identity_description_quantity_rates_then_the_fold(seeded, client):
+    res = _session(_PANEL + """
+        clickSection(0);
+        var i = openLine('4.1');
+        var p = panelOf(i);
+        var qtyBand = p.slice(p.indexOf('class="lc-areas"'), p.indexOf('class="lc-rates"'));
+        var fold = p.slice(p.indexOf('<details class="lc-more"'));
+        console.log(JSON.stringify({
+          i: i, bands: bands(p),
+          foldClosed: p.indexOf('<details class="lc-more" ontoggle') !== -1
+                   && p.indexOf('<details class="lc-more" open') === -1,
+          summary: (/class="lc-more-sum"[^>]*>([^<]*)</.exec(p) || [])[1],
+          unitInQtyBand: qtyBand.indexOf('>Unit<') !== -1,
+          rateRows: (p.match(/class="lc-rl"/g) || []).length,
+          rateCells: (p.match(/class="lc-rc"/g) || []).length,
+          hintBoxes: [p.indexOf('id="sd' + i + '"') !== -1, p.indexOf('id="id' + i + '"') !== -1],
+          taxOnlyBehindTheFold: (p.match(/supply_hsn/g) || []).length === 1
+                             && fold.indexOf('supply_hsn') !== -1
+                             && fold.indexOf('install_sac') !== -1
+                             && fold.indexOf('&quot;remark&quot;') !== -1,
+          headHasToggleAndRemove: /class="lc-head"[^]*?id="hdr[^]*?delLine[(]/.test(
+                                    p.slice(0, p.indexOf('class="lc-ident"')))
+        }));
+    """, boot=_demo_boot(client))
+    b = res["bands"]
+    assert -1 not in b.values(), b
+    assert b["ident"] < b["desc"] < b["qty"] < b["rates"] < b["fold"], b
+    assert res["foldClosed"], "the fold opens only when asked"
+    # Closed, it still says what it holds — nothing is hidden, only tucked away.
+    assert res["summary"] == "HSN 73063090 @ 18% &nbsp;&middot;&nbsp; SAC 995462 @ 18%"
+    assert res["unitInQtyBand"], '"4 Mtrs." is one fact, so Unit sits with the quantity'
+    assert res["rateRows"] == 2 and res["rateCells"] == 6, "two legs down, three figures across"
+    assert res["hintBoxes"] == [True, True], "hint() still has somewhere to write"
+    assert res["taxOnlyBehindTheFold"]
+    assert res["headHasToggleAndRemove"]
+
+
+def test_the_fold_remembers_it_was_opened_across_a_re_render(seeded, client):
+    """
+    `_more` lives on the line like `_open`, so changing the spec — which
+    re-renders — does not slam the fold shut under the user.
+    """
+    res = _session(_PANEL + """
+        clickSection(0);
+        var i = openLine('4.1');
+        MODEL.lines[i]._more = true;            /* what ontoggle does */
+        fillFromSpec(i, Object.keys(SPECS)[0]); /* a re-render */
+        console.log(JSON.stringify({
+          open: panelOf(i).indexOf('<details class="lc-more" open') !== -1,
+          posted: (saveJSON(), JSON.parse(STUB['boq_json'].value).lines[i]._more)
+        }));
+    """, boot=_demo_boot(client))
+    assert res["open"]
+    assert res["posted"] is True, "posted, so a rejected form can restore it"
+
+
+def test_typing_behind_the_fold_keeps_its_summary_line_current(seeded, client):
+    """
+    Typing does not re-render (it would take the caret), so the summary the
+    fold shows when closed is patched in place — a remark typed and folded
+    away is still on the face of the row.
+    """
+    res = _session(_PANEL + """
+        clickSection(0);
+        var i = openLine('4.1');
+        STUB['ms' + i] = {innerHTML: 'stale'};
+        setLine(i, 'remark', 'tamper switch extra');
+        var a = STUB['ms' + i].innerHTML;
+        setLine(i, 'supply_hsn', '');
+        var b = STUB['ms' + i].innerHTML;
+        setLine(i, 'supply_gst_rate', ''); setLine(i, 'install_sac', '');
+        setLine(i, 'install_gst_rate', ''); setLine(i, 'remark', '');
+        console.log(JSON.stringify({a: a, b: b, c: STUB['ms' + i].innerHTML}));
+    """, boot=_demo_boot(client))
+    assert res["a"].endswith("&#8220;tamper switch extra&#8221;")
+    assert res["a"].startswith("HSN 73063090 @ 18%")
+    assert res["b"].startswith("supply @ 18%"), "a rate with no code still reads"
+    assert res["c"] == "none set"
+
+
+def test_a_header_row_shows_identity_description_and_remark_and_nothing_else(seeded, client):
+    """
+    A header carries the clause and no quantity or rate, and the server zeroes
+    its tax codes — so its panel has no quantity band, no rate table and no
+    fold. Its row type shows ticked on the panel's head.
+    """
+    res = _session(_PANEL + """
+        clickSection(0);
+        var i = -1;
+        for (var k = 0; k < MODEL.lines.length; k++) {
+          if (MODEL.lines[k].item_no === '4' && MODEL.lines[k].is_header) i = k;
+        }
+        MODEL.lines[i]._open = true;
+        renderLines();
+        var p = panelOf(i);
+        console.log(JSON.stringify({
+          bands: bands(p),
+          ticked: p.indexOf('id="hdr' + i + '" checked') !== -1,
+          remark: p.indexOf('&quot;remark&quot;') !== -1
+        }));
+    """, boot=_demo_boot(client))
+    b = res["bands"]
+    assert b["ident"] != -1 and b["desc"] != -1
+    assert b["qty"] == -1 and b["rates"] == -1 and b["fold"] == -1, b
+    assert res["ticked"] and res["remark"]
+
+
+# ═══ A new line is quantified at 1 ════════════════════════════════════════
+#
+# A line inserted into a section that takes a typed total arrives at 1 rather
+# than blank: a schedule line is one of something until site measurement says
+# otherwise, and a row born at 0 trips the zero-quantity band on every insert.
+# It is a TYPED total, so a section with an area breakdown — where the total
+# is derived from the area boxes and which floor a "1" belongs on is not the
+# editor's to guess — starts blank as before. These tests hold both halves,
+# the bulk insert, the section move, and the server's precedence for a
+# figure carried into an area section.
+
+_QTY = """
+STUB['zeroqty-hint'] = {innerHTML: ''};
+function panelOf(i) {
+  var cards = editorHtml().split('<div class="line-card');
+  for (var k = 1; k < cards.length; k++) {
+    var d = /data-line="([0-9]+)"/.exec(cards[k]);
+    if (d && parseInt(d[1], 10) === i) return cards[k];
+  }
+  return '';
+}
+/* The Total Qty control as rendered: a typed box's value, a derived total's
+   read-only text, or null when the row shows no quantity band at all. */
+function renderedTotal(i) {
+  var p = panelOf(i);
+  var typed = /<label>Total Qty<\\/label>\\s*<input type="text" value="([^"]*)"/.exec(p);
+  if (typed) return {typed: typed[1]};
+  var derived = /<label>Total Qty<\\/label>\\s*<div class="readonly-field"[^>]*>([^<]*)</.exec(p);
+  if (derived) return {derived: derived[1]};
+  return null;
+}
+function barRates(code) {
+  var bars = editorHtml().split('class="sec-bar"');
+  for (var i = 1; i < bars.length; i++) {
+    var c = /<span class="sb-code">([^<]*)</.exec(bars[i]);
+    if (!c || c[1] !== code) continue;
+    var rates = [], re = /<span class="ls-rate">([^<]*)</g, m;
+    while ((m = re.exec(bars[i].split('</div>')[0])) !== null) rates.push(m[1]);
+    return rates;
+  }
+  return null;
+}
+function zeroBand() { return STUB['zeroqty-hint'].innerHTML; }
+/* The summary's quantity, without the unit it is printed beside. */
+function summaryQty(i) {
+  var s = summaryOf(i);
+  return s ? s['ls-qty'][0].trim() : null;
+}
+"""
+
+_NO_AREAS = {"sections": [{"code": "C", "title": "Fire fighting", "areas": []}],
+             "lines": []}
+_MIXED = {"sections": [{"code": "C", "title": "Fire fighting", "areas": []},
+                       {"code": "A", "title": "Sprinklers", "areas": ["L0"]}],
+          "lines": []}
+
+
+def test_a_new_line_in_a_section_without_areas_starts_at_one(seeded, client):
+    res = _session(_QTY + """
+        addLine();
+        console.log(JSON.stringify({
+          model: MODEL.lines[0].total_qty,
+          rendered: renderedTotal(0),
+          summaryQty: summaryQty(0),
+          zeroBand: zeroBand()
+        }));
+    """, boot=_NO_AREAS)
+    assert res["model"] == "1"
+    assert res["rendered"] == {"typed": "1"}, "the Total Qty box must show the 1"
+    assert res["summaryQty"] == "1"
+    assert res["zeroBand"] == "", "a line born at 1 is not a line at 0"
+
+
+def test_a_new_line_in_a_section_with_areas_starts_blank(seeded, client):
+    """
+    With an area breakdown the total IS the breakdown. A "1" would have to be
+    put on some floor, and which one is not the editor's to decide.
+    """
+    res = _session(_QTY + """
+        addLine();
+        console.log(JSON.stringify({
+          model: MODEL.lines[0].total_qty,
+          areas: MODEL.lines[0].area_qty,
+          rendered: renderedTotal(0),
+          summaryQty: summaryQty(0)
+        }));
+    """)
+    assert res["model"] == ""
+    assert res["areas"] == {}
+    assert res["rendered"] == {"derived": ""}
+    assert res["summaryQty"] == ""
+
+
+def test_a_family_inserted_into_a_no_area_section_lands_at_one_per_child(seeded, client):
+    import boq
+    cat = json.loads(boq._spec_catalog_json())
+    sized = [k for k, v in cat.items() if v["code"] == "PIPE-MS-C-1239-AG"][0]
+    unsized = [k for k, v in cat.items() if v["code"] == "HYD-FIREMANS-AXE"][0]
+    res = _session(_QTY + f"""
+        STUB['bulk-spec'].value = '{sized}';
+        STUB['bulk-section'].value = 'C';
+        insertFamily();
+        STUB['bulk-spec'].value = '{unsized}';
+        STUB['bulk-section'].value = 'C';
+        insertFamily();
+        console.log(JSON.stringify(MODEL.lines.map(function (L) {{
+          return {{item: L.item_no, header: L.is_header, qty: L.total_qty}};
+        }})));
+    """, boot=_NO_AREAS)
+    children = [r for r in res if not r["header"]]
+    assert len(children) == 10, [r["item"] for r in res]
+    assert all(r["qty"] == "1" for r in children), children
+    assert [r["item"] for r in res][-1] == "2", "the unsized spec is one plain line"
+
+
+def test_the_default_is_a_typed_total_and_posts_as_one(seeded, client):
+    """The 1 is real: it rides in boq_json and the server prices the line at it."""
+    import boq
+    from store import STORE
+
+    sid = [k for k, v in json.loads(boq._spec_catalog_json()).items()
+           if v["code"] == "HYD-FIREMANS-AXE"][0]
+    posted = _session(_QTY + f"""
+        addLine();
+        setLine(0, 'item_no', '1');
+        fillFromSpec(0, '{sid}');
+        setLine(0, 'supply_rate', '640');
+        saveJSON();
+        console.log(STUB['boq_json'].value);
+    """, boot=_NO_AREAS)
+    assert posted["lines"][0]["total_qty"] == "1"
+
+    before = set(STORE["boqs"])
+    r = client.post("/boq/create", data={
+        "date": "2026-06-15", "project_name": "P", "account_name": "A",
+        "boq_json": json.dumps(posted)})
+    assert r.status_code == 302, r.get_data(as_text=True)[:400]
+    new = [b for k, b in STORE["boqs"].items() if k not in before][0]
+    line = new["line_items"][0]
+    assert line["total_qty"] == 1.0
+    assert line["supply_amount"] == 640.0
+
+
+def test_moving_a_line_into_a_no_area_section_takes_the_default_when_blank(seeded, client):
+    """
+    Arriving in a section that takes a typed total with nothing typed is the
+    same state as a fresh insert. A typed figure is never touched by a move.
+    """
+    res = _session(_QTY + """
+        addLine();                      /* lands in A, which has areas: blank */
+        var born = MODEL.lines[0].total_qty;
+        setSection(0, 'C');
+        var moved = MODEL.lines[0].total_qty;
+        setLine(0, 'total_qty', '7');
+        setSection(0, 'A');
+        setSection(0, 'C');
+        expandAll();
+        console.log(JSON.stringify({
+          born: born, moved: moved, typedSurvives: MODEL.lines[0].total_qty,
+          rendered: renderedTotal(0)
+        }));
+    """, boot={"sections": [{"code": "A", "title": "", "areas": ["L0"]},
+                            {"code": "C", "title": "", "areas": []}],
+               "lines": []})
+    assert res["born"] == ""
+    assert res["moved"] == "1"
+    assert res["typedSurvives"] == "7"
+    assert res["rendered"] == {"typed": "7"}
+
+
+def test_a_typed_total_does_not_count_once_the_line_is_in_an_area_section(seeded, client):
+    """
+    The server derives the total from the area boxes whenever the section
+    declares any, whatever `total_qty` holds. The editor's section bar, the
+    summary and the zero-quantity band must say the same — a default of 1
+    carried into an area section would otherwise be priced on the bar and
+    stored as 0.
+    """
+    res = _session(_QTY + """
+        addLine();                      /* lands in C, no areas: 1 */
+        setLine(0, 'item_no', '1');
+        setLine(0, 'supply_rate', '500');
+        renderLines();                  /* a value edit does not re-render */
+        var beforeMove = {bar: barRates('C'), summary: summaryQty(0)};
+        setSection(0, 'A');
+        expandAll();
+        var afterMove = {bar: barRates('A'), summary: summaryQty(0),
+                         carried: MODEL.lines[0].total_qty,
+                         zeroBand: zeroBand().indexOf('quantity of 0') !== -1};
+        setArea(0, 'L0', '3');
+        renderLines();
+        console.log(JSON.stringify({
+          beforeMove: beforeMove, afterMove: afterMove,
+          afterArea: {bar: barRates('A'), summary: summaryQty(0)}
+        }));
+    """, boot=_MIXED)
+    assert res["beforeMove"] == {"bar": ["500.00", ""], "summary": "1"}
+    # Carried, but not counted: the breakdown is the total in section A, and
+    # the bar prints nothing for a zero.
+    assert res["afterMove"]["carried"] == "1"
+    assert res["afterMove"]["bar"] == ["", ""]
+    assert res["afterMove"]["summary"] == ""
+    assert res["afterMove"]["zeroBand"], "a line with no floor filled in is at 0"
+    assert res["afterArea"] == {"bar": ["1,500.00", ""], "summary": "3"}

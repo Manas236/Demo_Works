@@ -218,8 +218,20 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,650 passed / 2 skipped** on 12 September 2026, verified by
+The baseline is **2,692 passed / 2 skipped** on 14 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(The third change of **14 September 2026** — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state** — added **5 passed and 0 skipped**. 2,687 + 5 = 2,692; the `.venv` configuration reads **2,693 / 4**, from a re-measured **2,688 / 4**.)*
+
+*(The second change of **14 September 2026** — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state** — added **27 passed and 0 skipped**. 2,660 + 27 = 2,687; the `.venv` configuration reads **2,688 / 4**, from a re-measured **2,661 / 4**.)*
+
+*(The pass of **14 September 2026** — the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state** — added **6 passed and 0 skipped**. 2,654 + 6 = 2,660; the `.venv` configuration reads **2,661 / 4**, from a re-measured **2,655 / 4**.)*
+
+*(The pass of **13 September 2026** — the BOQ line panel rearranged into four
+bands and a fold (ABOUT.md §5 `/boq`) — added **4 passed and 0 skipped**, all
+in `tests/test_editor_nav.py` (23 → 27), and is **UX only: no bar moved and no
+CC-2 item changed state**. 2,650 + 4 = 2,654; the `.venv` configuration reads
+**2,655 / 4**, from a re-measured **2,651 / 4**.)*
 
 *(The pass of **12 September 2026** — the quotation source following the
 catalogue switch, Supply only, gap 38 closed and the approval ladder switched

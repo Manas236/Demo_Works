@@ -3399,6 +3399,87 @@ one automatic.
 > client-facing owner takes and records; it is never one an agent may take,
 > infer, or extend.
 
+> ### ⚠ OVERRIDE — 14 September 2026, by Manas Gawde — the two PO repeaters go on the upstream forms, and a recorded deviation is withdrawn
+>
+> **A new block, not an amendment.** The twenty-eighth block, dated
+> 12 September 2026, and every block before it stand exactly as recorded and
+> are **not edited** by this one. This is the twenty-ninth occasion. It covers
+> two decisions and two defects, and nothing else — the second decision was
+> taken later the same day, against the first order raised through the form
+> this block put the repeater on, and is recorded in the block it belongs to
+> rather than as a thirtieth.
+>
+> #### The first decision is mine, and it withdraws a deviation taken twice
+>
+> The 28 August block authorised A3 and the 29 August block authorised the
+> extra free-text PO lines; the passes that built them kept **both** repeaters
+> off `/purchase/from-boq/<boq_id>` and `/purchase/from-draft/<draft_id>`,
+> recorded as a deliberate deviation in ABOUT.md §5 `/purchase` and
+> PROGRESS.md §4a: *picker flows over a schedule; a free-text surface on a
+> picker is a second design; a part on no schedule, or a charge, is added
+> afterwards on `/purchase/edit/<id>`.*
+>
+> **I reject that reasoning.** Raising a real order from a draft on
+> 14 September 2026, the form that goes to the vendor offered neither the
+> extra parts nor the additional charges, while the reprice form beside it
+> offered both. An order is written once; sending it to a vendor and then
+> reopening it to add the loading charge is exactly the re-entry the route
+> exists to avoid. **Both repeaters go on both upstream forms**, through the
+> same section helpers and the same parsers `/purchase/create` uses, the lists
+> entering the arithmetic through `_totals_of()` and nowhere else. The
+> schedule-line rule does not move: `/from-boq` still refuses nothing ticked,
+> `/from-draft` still refuses a draft with no lines, and an order of extra
+> parts alone belongs on `/purchase/create` (gap 38).
+>
+> **Two defects.** `/purchase/edit/<id>`'s Amount column never filled — its
+> `recalc()` was an empty stub, a second copy of the create form's script
+> with the arithmetic left out. The JavaScript the repeater needs becomes one
+> helper drawn by every form, and the reprice form's item rows go live with
+> it. And the printed order flagged every extra part **`[add HSN]`, printed
+> to the vendor**, while no form offered an HSN box for an extra part — the
+> chip was asking for a figure nobody could supply. The repeater gains an
+> optional HSN box; `po_parts.py` seeds none, because an HSN is statutory
+> data and an invented one is worse than a chip. Both are defect fixes
+> against delivered work, under §0's own exemption. **The PO print golden
+> moves for the box — +66 bytes, `head` only, all stylesheet, measured** —
+> which this block authorises; no figure on the sheet moves.
+>
+> #### The second decision is mine, and it narrows a rule taken as the safe direction
+>
+> The 29 August block's third pass recorded that `rate_is_assumed` — the
+> amber *"placeholder · not quoted"* chip on an extra part — marks any rate
+> **equal** to the seeded placeholder, however it got into the box, on the
+> reasoning that a figure typed from memory is invented just as surely as one
+> the server filled, and that over-warning on screen is the safe direction.
+> The first order I raised on 14 September 2026 carried `150mm flange` at
+> ₹1,350 and `16 sq mm wire` at ₹175 — figures I entered — and both were
+> chipped as placeholders nobody had quoted.
+>
+> **I reject that rule. If I have entered a price, it is not a placeholder.**
+> The mark is narrowed to the one thing that is a fact rather than a
+> coincidence: the rate box was left blank and the server filled it. A figure
+> in the box on submit is the operator's price, the seeded figure included.
+> It is still derived on the server from the posted box and still trusts no
+> hidden field. Two consequences follow, and both are built with it rather
+> than left for later: the form **offers** the seed as ghost text and never
+> writes it into the box, or the mark could never be set with JavaScript
+> running; and a stored placeholder line reopens on the reprice form with a
+> blank box, or saving the order again would quietly turn every placeholder
+> on it into a price. **Records already carrying the flag are not rewritten**;
+> reopening one and typing the figure clears it.
+>
+> #### What this is not
+>
+> Not a CC-2 item, not chargeable under either quotation, no bar moves, no
+> permission or route is added, no stored record is rewritten, and no print
+> golden moves other than the one named above — the second decision moves
+> none: the chip is screen-only and its markup did not change. It does not put the repeaters on the **draft** PO
+> (`/po/create`), which is a rate-less request for quotation with its own
+> record shape — that is a separate question, not taken here. **The gate is
+> not lifted and this is not a precedent.** An override is a decision the
+> client-facing owner takes and records; it is never one an agent may take,
+> infer, or extend.
+
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 

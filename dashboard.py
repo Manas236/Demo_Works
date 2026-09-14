@@ -357,6 +357,59 @@ DASH_STYLES = """
   .dash-actions .btn svg { width: 15px; height: 15px; stroke: currentColor;
     fill: none; stroke-width: 2; stroke-linecap: round; }
 
+  /* ── The BOQ call-to-action ──────────────────────────────────────── */
+  /* The schedule is what this software exists to produce — measurement, RA
+     bills and challans are all raised against one — so it is the first block
+     under the page head and the largest control on the page. Navy, not brand
+     red: the button is the red thing, and it must be the only red thing here. */
+  .boq-cta {
+    display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap;
+    margin-bottom: 2.25rem; padding: 1.75rem 2rem;
+    border-radius: var(--radius); color: #fff;
+    background: linear-gradient(135deg, var(--navy-dk) 0%, var(--navy) 100%);
+    box-shadow: var(--shadow-md);
+  }
+  .boq-cta .bc-icon {
+    flex: 0 0 auto; width: 72px; height: 72px; border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.12);
+  }
+  .boq-cta .bc-icon svg {
+    width: 38px; height: 38px; stroke: #fff; fill: none;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .boq-cta .bc-text { flex: 1 1 320px; min-width: 0; }
+  .boq-cta .bc-eyebrow {
+    font-size: .72rem; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: .3rem;
+  }
+  .boq-cta h2 {
+    font-size: 1.75rem; font-weight: 700; letter-spacing: -.5px;
+    line-height: 1.15; color: #fff;
+  }
+  .boq-cta p {
+    margin-top: .5rem; font-size: .92rem; line-height: 1.5;
+    color: rgba(255,255,255,.82); max-width: 58ch;
+  }
+  .boq-cta .bc-stats { margin-top: .6rem; font-size: .8rem; color: rgba(255,255,255,.65); }
+  .boq-cta .bc-act {
+    flex: 0 0 auto; display: flex; flex-direction: column;
+    align-items: stretch; gap: .6rem;
+  }
+  .boq-cta .bc-btn {
+    font-size: 1.08rem; padding: 1rem 2.2rem; border-radius: 12px;
+    justify-content: center; box-shadow: 0 8px 22px rgba(0,0,0,.28);
+  }
+  .boq-cta .bc-btn svg {
+    width: 20px; height: 20px; stroke: currentColor; fill: none;
+    stroke-width: 2.4; stroke-linecap: round;
+  }
+  .boq-cta .bc-link {
+    font-size: .82rem; color: rgba(255,255,255,.8);
+    text-decoration: none; text-align: center;
+  }
+  .boq-cta .bc-link:hover { color: #fff; text-decoration: underline; }
+
   /* ── Panel (the one container every block sits in) ───────────────── */
   .panel {
     background: var(--surface); border: 1px solid var(--border);
@@ -707,6 +760,10 @@ DASH_STYLES = """
     .dash-head { align-items: flex-start; }
     .dash-actions { width: 100%; }
     .dash-actions .btn { flex: 1; justify-content: center; }
+    .boq-cta { padding: 1.4rem 1.25rem; gap: 1.1rem; }
+    .boq-cta .bc-icon { display: none; }
+    .boq-cta h2 { font-size: 1.4rem; }
+    .boq-cta .bc-act { width: 100%; }
   }
 </style>
 """
@@ -2376,6 +2433,49 @@ def _progress_html(m) -> str:
     return out
 
 
+def _boq_cta_html(m) -> str:
+    """
+    The BOQ call-to-action, or "" for a user who could not open `/boq/create`.
+
+    Gated on the create endpoint, not the register: a role holding `boq.view`
+    alone would otherwise be handed the biggest button on the page and refused
+    the moment they pressed it. The count line and the register link each ask
+    for the register separately, the way `_chain_tiles_html()` does.
+    """
+    import auth
+
+    if not auth.can_reach("boq.create_boq"):
+        return ""
+
+    stats = link = ""
+    if auth.can_reach("boq.list_boqs"):
+        total = m["boq_total"]
+        if total:
+            value = (f" &middot; {rupees(m['boq_value'])} basic value"
+                     if m["boq_value"] else "")
+            stats = (f'<div class="bc-stats">{m["boq_open_count"]} open &middot; '
+                     f'{total} priced{value}</div>')
+        link = (f'<a href="{url_for("boq.list_boqs")}" class="bc-link">'
+                f'Open the BOQ register &rarr;</a>')
+
+    return f"""
+        <section class="boq-cta">
+          <div class="bc-icon">{ICONS['boq']}</div>
+          <div class="bc-text">
+            <div class="bc-eyebrow">Start here</div>
+            <h2>Create a Bill of Quantities</h2>
+            <p>Price a project schedule from the spec library. Measurement
+               sheets, RA bills and delivery challans are all raised against it.</p>
+            {stats}
+          </div>
+          <div class="bc-act">
+            <a href="{url_for('boq.create_boq')}" class="btn bc-btn">
+              {ICONS['plus']} New BOQ</a>
+            {link}
+          </div>
+        </section>"""
+
+
 def _chain_html(m) -> str:
     """
     The whole project-billing band, or "" when this user reaches none of it.
@@ -2895,6 +2995,11 @@ def index():
                     + ACTION_SEP.join(actions)
                     + '\n          </div>') if actions else ""
 
+    # The BOQ is the head of the chain this software exists to run, so its
+    # call-to-action is the first block under the page head — above the
+    # quotation band, and gated on its own endpoint.
+    boq_cta = _boq_cta_html(m)
+
     insight = (_insight_html(m) if auth.can_reach("quotation.list_quotations")
                else "")
 
@@ -2909,7 +3014,7 @@ def index():
     # Somebody whose roles reach no register at all would otherwise get a title
     # and an empty page, which looks broken rather than restricted. Say which
     # it is, and say who fixes it.
-    nothing_here = "" if (any(groups) or chain) else """
+    nothing_here = "" if (any(groups) or chain or boq_cta) else """
         <div class="zone">
           <div class="card" style="padding:1.5rem;">
             <div class="card-title">Nothing to show here yet</div>
@@ -2942,7 +3047,7 @@ def index():
           </div>
           {dash_actions}
         </header>
-
+{boq_cta}
         {insight}
 {chain}
 {modules_zone}{nothing_here}

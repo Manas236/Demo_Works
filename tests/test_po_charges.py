@@ -406,12 +406,15 @@ def test_a_bad_charge_on_the_edit_form_writes_nothing_at_all(client):
 
 # ══ 6. What A3 deliberately did not touch ═════════════════════════════════
 
-def test_the_upstream_forms_carry_no_repeater(client):
+def test_an_order_raised_with_no_charges_stores_an_empty_list(client):
     """
-    `/purchase/from-boq` and `/purchase/from-draft` are derived documents whose
-    job is to carry a schedule across without re-entry. A charge is added
-    afterwards on the edit form, like any other money that was not on the
-    schedule. Recorded as a decision, not discovered as a gap.
+    Was `test_the_upstream_forms_carry_no_repeater`, whose docstring recorded
+    the decision that *"`/purchase/from-boq` and `/purchase/from-draft` are
+    derived documents whose job is to carry a schedule across without
+    re-entry. A charge is added afterwards on the edit form"* — a decision the
+    owner reversed on 14 September 2026, when both upstream forms gained the
+    repeater (`tests/test_po_upstream_repeaters.py`). The body never exercised
+    either route; what it actually pins is below, and is still true.
     """
     po = _po(client, rate="1000", qty="10")
     assert po["charges"] == [], "an order raised with no charges must store []"

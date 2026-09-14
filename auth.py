@@ -1545,7 +1545,14 @@ AUTH_STANDALONE_STYLES = """
   }
   .auth-err  { background: #fdecec; border: 1px solid #f5c2c2; color: #8c1c1c; }
   .auth-note { background: #eef4fd; border: 1px solid #c9dcf6; color: #1c4e8c; }
+  .auth-brand .auth-tagline {
+    margin-top: .5rem; padding-top: .5rem; border-top: 1px solid #eef0f3;
+    font-size: .72rem; color: #9aa1ac;
+  }
   .auth-foot { margin-top: 1.25rem; font-size: .75rem; color: #8b93a1; text-align: center; }
+  .auth-foot a { color: #c62828; text-decoration: none; font-weight: 600; }
+  .auth-foot a:hover { text-decoration: underline; }
+  .auth-foot .auth-contact { display: inline-block; margin-top: .35rem; }
 </style>
 """
 
@@ -1581,7 +1588,11 @@ AUTH_ADMIN_STYLES = """
     display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: .35rem .9rem; padding: .75rem;
   }
-  .perm-grid label { font-size: .85rem; display: flex; gap: .45rem; align-items: baseline; }
+  /* A permission's name is a sentence, not a field caption: QUOTATION_STYLES'
+     bare `label` rule (uppercase, .72rem, muted, spaced) is undone here. */
+  .perm-grid label { font-size: .85rem; display: flex; gap: .45rem; align-items: baseline;
+                     text-transform: none; letter-spacing: 0; font-weight: 500;
+                     color: var(--text); }
   .perm-grid code { font-size: .74rem; color: #8b93a1; }
   .perm-grid label.perm-hidden { opacity: .55; cursor: not-allowed; }
   .perm-grid label.perm-hidden em { color: #8b93a1; font-size: .78rem; }
@@ -1604,8 +1615,23 @@ AUTH_ADMIN_STYLES = """
 # PAGE SHELLS
 # =============================================================================
 
-def _standalone(title: str, body: str) -> str:
-    """A logged-out page: brand, card, no nav."""
+def _standalone(title: str, body: str, foot: str | None = None) -> str:
+    """
+    A logged-out page: brand, card, no nav.
+
+    `foot` overrides the default footer caption (which otherwise just echoes
+    `title` back — harmless on "First-run setup" but a visible duplicate on
+    "Sign in", printed right under a button that already says that). Pass
+    pre-composed, pre-escaped HTML; pass `""` to omit the footer entirely.
+    """
+    tagline = (f'<p class="auth-tagline">{_esc(B.COMPANY_TAGLINE)}</p>'
+               if B.COMPANY_TAGLINE else "")
+    if foot is None:
+        foot_html = f'<div class="auth-foot">{_esc(title)}</div>'
+    elif foot:
+        foot_html = f'<div class="auth-foot">{foot}</div>'
+    else:
+        foot_html = ""
     return f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -1619,9 +1645,10 @@ def _standalone(title: str, body: str) -> str:
       {B.logo_img(42)}
       <h1>{_esc(B.COMPANY_NAME)}</h1>
       <p>{_esc(B.APP_SUBTITLE)}</p>
+      {tagline}
     </div>
     {body}
-    <p class="auth-foot">{_esc(title)}</p>
+    {foot_html}
   </div>
 </body></html>"""
 
@@ -1762,7 +1789,16 @@ def login():
              autocomplete="current-password" required/>
       <button class="auth-btn" type="submit">Sign in</button>
     </form>"""
-    return _standalone("Sign in", body)
+
+    contact = ""
+    if B.has(B.COMPANY_PHONE, B.COMPANY_EMAIL):
+        contact = (f'<br/><span class="auth-contact">'
+                   f'<a href="tel:{_esc(B.COMPANY_PHONE)}">{_esc(B.COMPANY_PHONE)}</a>'
+                   f' &middot; '
+                   f'<a href="mailto:{_esc(B.COMPANY_EMAIL)}">{_esc(B.COMPANY_EMAIL)}</a>'
+                   f'</span>')
+    foot = f"Forgot your password? Ask an administrator.{contact}"
+    return _standalone("Sign in", body, foot=foot)
 
 
 @auth_bp.route("/logout", methods=["GET", "POST"])

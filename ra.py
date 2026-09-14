@@ -3379,7 +3379,7 @@ def create_ra():
             f'<td class="cl-num">{_esc(b.get("rev_no") or 0)}</td>'
             f'<td class="cl-num">{len(bills_of(bid))}</td>'
             f'<td class="cl-amt">{_inr(b.get("subtotal") or 0.0)}</td>'
-            f'<td><a class="btn btn-ghost" href="{url_for("ra.create_ra", boq=bid, leg="supply")}">Supply</a>'
+            f'<td style="white-space:nowrap;"><a class="btn btn-ghost" href="{url_for("ra.create_ra", boq=bid, leg="supply")}">Supply</a>'
             f' <a class="btn btn-ghost" href="{url_for("ra.create_ra", boq=bid, leg="installation")}">Installation</a></td></tr>'
             for bid, b in sorted(boqs.items(), key=lambda kv: kv[1].get("ref", ""))
             if bid in latest_ids)
@@ -3397,8 +3397,15 @@ def create_ra():
       installation, never both. The RA number is assigned when you save.
     </p>
     <div class="cl-wrap"><table class="claims">
-      <thead><tr><th>BOQ</th><th>Project</th><th>Rev</th><th>RA bills</th>
-      <th style="text-align:right;">Value</th><th>Raise a claim</th></tr></thead>
+      <!-- table.claims is table-layout:fixed, so the widths come from THIS
+           row: without them six equal columns, the numbers right-aligned
+           under left-aligned heads and the two leg buttons wrapped in a cell
+           too narrow for them. -->
+      <thead><tr><th style="width:150px;">BOQ</th><th>Project</th>
+      <th style="width:88px;text-align:right;">Rev</th>
+      <th style="width:88px;text-align:right;">RA bills</th>
+      <th style="width:110px;text-align:right;">Value</th>
+      <th style="width:230px;">Raise a claim</th></tr></thead>
       <tbody>{rows or empty}</tbody>
     </table></div>
   </div>""")

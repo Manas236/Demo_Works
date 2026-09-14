@@ -426,6 +426,10 @@ def _flash() -> str:
 #   draft PO — and everything below is this module's own.
 
 CHALLAN_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
+  /* The hint under a field. `settings.py` defines the same class in its own
+     sheet; this page used it without one, so the hint rendered as body
+     text. Same figures as there. */
+  .fld-hint { font-size:.72rem; color:var(--muted); margin-top:.15rem; }
   /* The consignee pair. The free-text fields are the specified path and the
      picker is a prefill beside them, so the box says which is which rather
      than leaving the operator to guess. */

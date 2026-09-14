@@ -724,49 +724,42 @@ def _line_total(rate: float, qty: float, disc_pct: float) -> float:
 #   else is accepted exactly as typed, with a blank rate.
 
 
-def _extra_assumed(description: str, rate: float) -> bool:
-    """
-    Whether this line's rate is the seeded PLACEHOLDER figure.
-
-    ── THE RULE, STATED EXACTLY ─────────────────────────────────────
-
-        `rate_is_assumed` is true when the server supplied the rate, **or**
-        when the submitted rate is exactly the seeded rate for that
-        description. It means *this is the placeholder figure*, not *this was
-        prefilled*. A human who types the placeholder from memory has invented
-        a price just as surely as the server has.
-
-    ───────────────────────────────────────────────────────────────
-
-    **One arithmetic test covers both limbs**, which is why there is no flag
-    threaded through from the fill site: `_parse_extra_lines()` fills a blank
-    box with the seeded figure itself, so a server-supplied rate *is* a rate
-    equal to the seeded one and this function is true for it. The two limbs are
-    one condition, not two branches that could disagree.
-
-    Derived on the **server**, from the description and the rate themselves,
-    rather than trusted from a hidden field the form posts. A hidden flag would
-    be client-controlled, and the direction that matters is the dangerous one:
-    a tampered or stale form could clear the mark and quietly present an
-    invented figure as a real price.
-
-    Edit the rate to anything else and it is false on the very next save.
-
-    ⚠ **It deliberately over-reports, and the wording on screen was changed to
-    match rather than the rule being narrowed.** Type `Butane gas` and `130` by
-    hand and the line is marked, because the figure on it *is* the placeholder
-    figure whatever route it took to get there. The chip therefore says the
-    figure is a **placeholder nobody has quoted** — a fact about the number —
-    and does not say the operator was assisted, which would be a claim about
-    where it came from and would be wrong in exactly this case. Over-warning on
-    screen is the safe direction; the mark never prints, and the opposite error
-    would let an invented rate travel unmarked.
-    """
-    hit = PP.lookup(description)
-    if not hit:
-        return False
-    _canonical, _unit, seeded = hit
-    return round(float(rate or 0.0), 2) == round(seeded, 2)
+# ── THE ASSUMED-RATE RULE, STATED EXACTLY (narrowed 14 September 2026) ──────
+#
+#     `rate_is_assumed` is true when — and only when — the rate box was posted
+#     BLANK and the server filled it from `po_parts.py`. A figure that was in
+#     the box when the form was submitted is a price the operator entered,
+#     whatever the figure is, **including one equal to the seeded placeholder.**
+#
+# The owner's ruling, 14 September 2026, in his words: *"if I have entered
+# price it is not a placeholder."* Until that day the mark was a claim about
+# the FIGURE — true whenever the rate equalled the seeded one, however it got
+# there — and it over-reported on purpose: an order raised that morning carried
+# `150mm flange` at ₹1,350 and `16 sq mm wire` at ₹175, both entered, both
+# chipped "placeholder · not quoted". The owner rejected that as a false
+# statement about a price he had chosen, and the rule is narrowed to the one
+# limb that is a fact rather than a coincidence: **the server put the figure
+# there.** `_extra_assumed()`, the arithmetic test that carried the old rule,
+# is deleted rather than kept beside the new one.
+#
+# Still derived on the SERVER, and still from nothing the browser is trusted
+# to assert: the test is whether `rate_raw` — the string as posted — is empty,
+# which is the same test the fill itself turns on. There is no hidden flag and
+# there must not be one; the mark IS the fill, so the two cannot disagree.
+#
+# ⚠ What this costs, recorded rather than hidden: a person who types the
+#   placeholder figure from memory is no longer marked. That is the owner's
+#   call — a typed figure is a chosen one — and the chip's wording,
+#   "placeholder · not quoted", stays true of every line it still marks.
+#
+# ⚠ It is why NO FORM MAY WRITE THE SEEDED FIGURE INTO THE BOX'S VALUE.
+#   `xlFill()` offers it as the input's `placeholder` (ghost text) plus a
+#   `data-seed` the amount preview reads, and `_extra_row_html()` draws a
+#   stored placeholder line back into the edit form with a **blank** box and
+#   the same ghost text. A form that wrote the seed into the value would post
+#   an "entered" figure on every submit — the mark would never be set while
+#   JavaScript ran, and resaving an order would silently turn its placeholders
+#   into prices. `tests/test_po_extra_lines.py` §6 holds both halves.
 
 
 def _parse_extra_lines(form) -> tuple:
@@ -796,7 +789,8 @@ def _parse_extra_lines(form) -> tuple:
     qtys   = form.getlist("extra_qty")
     rates  = form.getlist("extra_rate")
     discs  = form.getlist("extra_discount")
-    rows = max(len(descs), len(units), len(qtys), len(rates), len(discs))
+    hsns   = form.getlist("extra_hsn")
+    rows = max(len(descs), len(units), len(qtys), len(rates), len(discs), len(hsns))
 
     def _at(seq, n):
         return str(seq[n] if n < len(seq) else "").strip()
@@ -805,9 +799,12 @@ def _parse_extra_lines(form) -> tuple:
     for n in range(rows):
         desc = _at(descs, n)[:200]
         unit = _at(units, n)[:30]
+        # Free text, as an item row's `hsn` is — the catalogue never validated
+        # one against a tariff either. Blank is allowed and prints the chip.
+        hsn  = _at(hsns, n)[:8]
         qty_raw, rate_raw, disc_raw = _at(qtys, n), _at(rates, n), _at(discs, n)
 
-        if not (desc or unit or qty_raw or rate_raw or disc_raw):
+        if not (desc or unit or qty_raw or rate_raw or disc_raw or hsn):
             continue
 
         if not desc:
@@ -848,10 +845,16 @@ def _parse_extra_lines(form) -> tuple:
         # `0` is a rate somebody chose and is left exactly as typed — the same
         # "suggest, never impose" contract `fillRate()` holds one repeater
         # along. The unit follows the same rule and for the same reason.
+        #
+        # **And the fill IS the mark.** `rate_is_assumed` is set here, on the
+        # one condition that fills — a seeded description and an empty box —
+        # and nowhere else: the rule above `_parse_extra_lines()`.
         seeded = PP.lookup(desc)
+        assumed = False
         if seeded and not rate_raw:
             _canonical, seed_unit, seed_rate = seeded
             rate = seed_rate
+            assumed = True
             if not unit:
                 unit = seed_unit
 
@@ -862,6 +865,7 @@ def _parse_extra_lines(form) -> tuple:
         out.append({
             "type": "extra",
             "description": desc,
+            "hsn": hsn,
             "unit": unit,
             "qty": qty,
             "rate": rate,
@@ -872,7 +876,7 @@ def _parse_extra_lines(form) -> tuple:
             # because `total` is already net and `subtotal` is what
             # `_tax_lines()` sees.
             "total": _line_total(rate, qty, disc),
-            "rate_is_assumed": _extra_assumed(desc, rate),
+            "rate_is_assumed": assumed,
             # ⚠ NO `line_id`. Deliberate, load-bearing, and asserted by a test.
             #   An extra line has no BOQ ancestor and must never claim one.
         })
@@ -996,26 +1000,55 @@ def _charge_section_html(charges: list, posted_labels=None, posted_amounts=None,
 DEFAULT_EXTRA_ROWS = 3
 
 
-def _extra_row_html(desc="", unit="", qty="", rate="", disc="") -> str:
+def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="") -> str:
     """
     One row of the extra-line repeater. Also the `<template>` a new row clones.
 
-    Six cells to `.line-row`'s six, but a different set of them — a free-text
-    description and unit where the item editor has a catalogue `<select>` — so
-    it gets its own `.xl-row` grid rather than borrowing one that does not fit.
-    That is the same call A3's `.chg-row` made for the same reason.
+    Eight cells to `.line-row`'s six, and a different set of them — a free-text
+    description, an HSN and a unit where the item editor has a catalogue
+    `<select>` — so it gets its own `.xl-row` grid rather than borrowing one
+    that does not fit. That is the same call A3's `.chg-row` made for the same
+    reason.
+
+    ⚠ **The HSN box arrived on 14 September 2026, and it was a defect that it
+      had not.** The printed order flags a blank HSN on every goods row with
+      the `add HSN` chip — an item row's HSN comes from the catalogue, so the
+      chip is a note about the catalogue — but an extra part has no catalogue,
+      and the chip was demanding a figure no form offered a box for. It is
+      optional, free text, never validated against a tariff, and `po_parts.py`
+      seeds none: an HSN is statutory data, and inventing one is worse than
+      leaving the box blank and letting the chip ask.
+
+    ⚠ **The seeded rate is OFFERED, never written into the box** (14 September
+      2026). A blank rate box on a seeded part carries the figure as the
+      input's `placeholder` — ghost text the operator can read — and as
+      `data-seed`, which the amount preview multiplies by; the box itself
+      posts blank, which is the one condition that fills it on the server and
+      the one condition that marks the line. Rendered here, on the server, so
+      a stored placeholder line and a rejected POST show the figure with no
+      keystroke and no JavaScript; `xlFill()` does the same live as the
+      description changes. The rule is above `_parse_extra_lines()`.
     """
+    # Looked up on the description alone, whether or not the box carries a
+    # value: ghost text is invisible behind a value, and the moment the box is
+    # cleared the preview has to agree with what the server will then fill.
+    # `xlFill()` keeps the same rule live.
+    hit = PP.lookup(desc) if desc else None
+    seed = f"{hit[2]:.2f}" if hit else ""
     return f"""
         <div class="xl-row">
           <input type="text" name="extra_desc" value="{P.esc(desc)}"
                  list="xl-parts" maxlength="200" placeholder="part, as you would say it to the vendor"
                  oninput="xlFill(this)"/>
+          <input type="text" name="extra_hsn" value="{P.esc(hsn)}"
+                 maxlength="8" placeholder="HSN" inputmode="numeric"/>
           <input type="text" name="extra_unit" value="{P.esc(unit)}"
                  maxlength="30" placeholder="Unit"/>
           <input type="number" name="extra_qty" value="{P.esc(qty)}"
                  min="0" step="any" placeholder="Qty" oninput="recalc()"/>
           <input type="number" name="extra_rate" value="{P.esc(rate)}"
-                 min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
+                 min="0" step="0.01" placeholder="{seed or 'Rate'}"
+                 data-seed="{seed}" oninput="recalc()"/>
           <input type="number" name="extra_discount" value="{P.esc(disc)}"
                  min="0" max="100" step="any" placeholder="0" oninput="recalc()"/>
           <span class="ln-amt">&#8212;</span>
@@ -1028,9 +1061,12 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
     """
     The whole `form-section` the extra-line repeater lives in.
 
-    Shared by `/purchase/create` and `/purchase/edit/<id>` so the two cannot
-    describe the same field two different ways — `_charge_section_html()`'s
-    contract, one repeater further down the form.
+    Shared by every form that raises or reprices an order — `/purchase/create`,
+    `/purchase/edit/<id>`, `/purchase/from-boq/<boq_id>` and
+    `/purchase/from-draft/<draft_id>` — so no two of them can describe the same
+    field two different ways: `_charge_section_html()`'s contract, one repeater
+    further down the form. Every page that draws it also draws
+    `_po_form_script_html()`, which is the JavaScript it needs.
 
     Filled from three sources in falling priority, which is that same contract:
 
@@ -1039,9 +1075,9 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
     2. **What is stored on the order**, when there is an order.
     3. **Blank rows**, padded to `DEFAULT_EXTRA_ROWS`.
 
-    ⚠ **This section is drawn on `/purchase/create` and `/purchase/edit/<id>`
-      ONLY.** It is deliberately absent from `/purchase/from-boq/<boq_id>` and
-      `/purchase/from-draft/<draft_id>` — see the note on those routes.
+    ⚠ **It was drawn on `/purchase/create` and `/purchase/edit/<id>` ONLY until
+      14 September 2026**, kept off the two upstream forms as a recorded
+      deviation — see `_write_upstream_po()` for what changed and why.
     """
     rows_data = []
     if posted is not None:
@@ -1050,7 +1086,9 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
         qtys  = posted.getlist("extra_qty")
         rates = posted.getlist("extra_rate")
         discs = posted.getlist("extra_discount")
-        n_rows = max(len(descs), len(units), len(qtys), len(rates), len(discs))
+        hsns  = posted.getlist("extra_hsn")
+        n_rows = max(len(descs), len(units), len(qtys), len(rates), len(discs),
+                     len(hsns))
         for n in range(n_rows):
             rows_data.append((
                 descs[n] if n < len(descs) else "",
@@ -1058,6 +1096,7 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
                 qtys[n]  if n < len(qtys)  else "",
                 rates[n] if n < len(rates) else "",
                 discs[n] if n < len(discs) else "",
+                hsns[n]  if n < len(hsns)  else "",
             ))
     else:
         for r in extra_lines or []:
@@ -1065,11 +1104,19 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
                 str(r.get("description") or ""),
                 str(r.get("unit") or ""),
                 _fmt_qty(float(r.get("qty") or 0.0)) if r.get("qty") else "",
-                f"{float(r.get('rate') or 0.0):.2f}" if r.get("rate") else "",
+                # A placeholder line comes back with a BLANK box and the seed
+                # as ghost text — `_extra_row_html()` looks it up — so that
+                # saving the form again does not turn a figure nobody entered
+                # into one somebody did. Type it to keep it.
+                "" if r.get("rate_is_assumed") else (
+                    f"{float(r.get('rate') or 0.0):.2f}" if r.get("rate") else ""),
                 f"{float(r.get('discount_pct') or 0.0):g}" if r.get("discount_pct") else "",
+                # Absent on every extra line written before 14 Sep 2026; reads
+                # as blank, and the chip on the printed order asks for it.
+                str(r.get("hsn") or ""),
             ))
     while len(rows_data) < DEFAULT_EXTRA_ROWS:
-        rows_data.append(("", "", "", "", ""))
+        rows_data.append(("", "", "", "", "", ""))
 
     rows = "".join(_extra_row_html(*r) for r in rows_data)
     options = "".join(f'<option value="{P.esc(n)}"></option>'
@@ -1078,7 +1125,7 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
         <div class="form-section">
           <div class="section-title">Extra parts &mdash; not on the schedule</div>
           <div class="xl-head">
-            <span>Part</span><span>Unit</span><span>Qty</span>
+            <span>Part</span><span>HSN</span><span>Unit</span><span>Qty</span>
             <span>Rate (&#8377;)</span><span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
@@ -1093,13 +1140,148 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
             order's sub&nbsp;total beside the items above, not in the additional
             charges below.
             <br/><b>Rates are suggested, never quoted.</b> A part we have seen
-            before fills in a unit and a placeholder rate so an order can go out
-            today; that figure is <b>an assumption nobody has verified</b>, it
-            is flagged on screen until you replace it, and it is never printed
-            on the order the vendor receives. Leave the rate blank if you want
-            the vendor to price it. Leave a whole row blank and it is not
-            used.</small>
+            before fills in its unit and shows a placeholder rate greyed in the
+            box. Leave the box empty and the order goes out at that figure,
+            flagged on screen as <b>a placeholder nobody has quoted</b> &mdash;
+            never on the order the vendor receives. Type a rate, the same figure
+            or any other, and it is your price and is not flagged. On a part we
+            have not seen, a blank rate asks the vendor to price it.
+            <b>HSN</b> is optional here and is not
+            checked against any tariff &mdash; leave it blank and the printed
+            order marks it as still to add. Leave a whole row blank and it is
+            not used.</small>
         </div>"""
+
+
+def _po_form_script_html() -> str:
+    """
+    The `<template>` a new extra row clones, and the JavaScript every
+    purchase-order form shares — drawn wherever `_extra_section_html()` is.
+
+    ⚠ **One copy, and the page supplies `recalc()`.** Until 14 September 2026
+      this lived twice — on `/purchase/create` and again on
+      `/purchase/edit/<id>` — and the second copy had `recalc()` stubbed to
+      nothing, so the **Amount** column on the reprice form never filled and
+      read "—" against a row carrying a quantity and a rate. The two upstream
+      forms were about to become a third copy. Now every form draws this block
+      and defines its own `recalc()` — the create form keeps its live total
+      strip; the reprice form and the upstream forms fill the row amounts and
+      nothing else — and the arithmetic lives here once.
+
+    What is in it, all of it a **preview and none of it the mechanism**:
+
+    - `XSEED` — `PP.prefill_map()` rendered through `P.json_for_script()`
+      (ABOUT.md §7.9e): a finished lookup table, aliases already resolved and
+      keys already normalised in Python. The browser holds no alias table and
+      no rule about what "matches" — see `_parse_extra_lines()` for why
+      `xlNorm()` was removed and must not come back.
+    - `lineAmt(q, r, d)` — `_line_total()`'s shape in JavaScript: discount the
+      product, round once. The server is the authority and recomputes every
+      figure on POST; this only has to agree with what will be stored.
+    - `showAmt(cell, amt)` — the Indian grouping `_inr()` prints, or "—" for
+      nothing, so a cell reads the same before and after a keystroke.
+    - `xlAmounts()` — fill every extra row's Amount cell and return the sum,
+      for a page that keeps a total strip.
+    - `xlFill(input)` — the typeahead prefill: one dictionary lookup, an empty
+      unit box filled, and the rate **offered as ghost text and `data-seed`,
+      never written into the box** — the box posts blank, which is what the
+      server fills and marks (the rule above `_parse_extra_lines()`).
+    - `addExtra()` — clone a blank row.
+
+    `recalc()` is called from here and defined by the page. A function defined
+    in a later `<script>` is fine to call, because nothing in this block runs
+    before the whole page has loaded.
+    """
+    seed_json = P.json_for_script(PP.prefill_map())
+    return f"""
+      <template id="xline-tpl">{_extra_row_html()}</template>
+
+      <script>
+        /* The seeded prefill list, normalised name -> {{u: unit, r: rate}}.
+           ⚠ Every `r` here is an ASSUMED PLACEHOLDER, not a quoted price — see
+           po_parts.py. It is shown greyed in an empty box, filled by the
+           server if the box is still empty on POST, and flagged on screen
+           until somebody types a rate. Through json_for_script(), never
+           json.dumps: this is JSON going into a <script> block (ABOUT.md
+           §7.9e). */
+        var XSEED = {seed_json};
+
+        /* The same shape as _line_total(): discount the product, then round
+           once. The server is the authority and recomputes it on POST -- a
+           preview only has to agree with what will be stored. */
+        function lineAmt(q, r, d) {{
+          if (d < 0) d = 0;
+          if (d > 100) d = 100;
+          return Math.round(q * r * (1 - d / 100) * 100) / 100;
+        }}
+
+        function showAmt(cell, amt) {{
+          if (!cell) return;
+          cell.textContent = amt ? amt.toLocaleString('en-IN',
+            {{minimumFractionDigits: 2, maximumFractionDigits: 2}}) : '\\u2014';
+        }}
+
+        /* Extra free-text lines are LINES: what this returns joins the same
+           sub total the item rows join, and NOT the charge split. */
+        function xlAmounts() {{
+          var sub = 0;
+          document.querySelectorAll('#xlines .xl-row').forEach(function (row) {{
+            var q = parseFloat(row.querySelector('input[name="extra_qty"]').value) || 0;
+            var rEl = row.querySelector('input[name="extra_rate"]');
+            /* A blank box previews the seeded figure the server will fill on
+               POST; a typed one -- a typed 0 included -- is what it says. */
+            var r = rEl.value !== '' ? (parseFloat(rEl.value) || 0)
+                                     : (parseFloat(rEl.dataset.seed) || 0);
+            var dEl = row.querySelector('input[name="extra_discount"]');
+            var amt = lineAmt(q, r, dEl ? (parseFloat(dEl.value) || 0) : 0);
+            sub += amt;
+            showAmt(row.querySelector('.ln-amt'), amt);
+          }});
+          return sub;
+        }}
+
+        function addExtra() {{
+          var tpl = document.getElementById('xline-tpl');
+          document.getElementById('xlines').appendChild(tpl.content.cloneNode(true));
+          recalc();
+        }}
+
+        /* A LIVE PREVIEW, NOT THE MECHANISM. The server fills a blank rate
+           from po_parts.py on POST, so an extra line prefills correctly with
+           this script disabled, broken or never executed. All this does is put
+           the figure in front of the operator before they submit.
+
+           ⚠ It resolves NOTHING. XSEED above is a finished lookup table that
+           Python built from po_parts.INDEX — aliases already resolved, keys
+           already normalised — so this is one dictionary lookup. There is no
+           second implementation of "matches" on this page and there must not
+           be one added: a normalisation rule written here in JavaScript could
+           not be checked against the Python one that decides whether a rate is
+           the placeholder figure. Anything this lookup misses, the server
+           still fills on POST.
+
+           Suggest, never impose. The unit is filled into an empty box and a
+           typed one is left alone -- fillRate()'s contract. The RATE is never
+           written into the box at all (14 September 2026): it goes into the
+           ghost text and data-seed, and the box stays blank until somebody
+           types. A blank box is the one thing the server fills AND the one
+           thing it marks as a placeholder, so a value written here would post
+           as an entered price and the mark could never be set. Reset on a
+           miss, so a stale ghost cannot preview a figure the server will not
+           fill. */
+        function xlFill(input) {{
+          var hit = XSEED[input.value.toLowerCase().replace(/\\s+/g, ' ').trim()];
+          var row = input.closest('.xl-row');
+          var unit = row.querySelector('input[name="extra_unit"]');
+          var rate = row.querySelector('input[name="extra_rate"]');
+          if (rate) {{
+            rate.placeholder = hit ? hit.r.toFixed(2) : 'Rate';
+            rate.dataset.seed = hit ? hit.r.toFixed(2) : '';
+          }}
+          if (hit && unit && !unit.value) {{ unit.value = hit.u; }}
+          recalc();
+        }}
+      </script>"""
 
 
 def _alert(msg: str, msg_type: str) -> str:
@@ -1509,12 +1691,13 @@ PURCHASE_STYLES = """
     .chg-head { display:none; }
     .chg-row { grid-template-columns:1fr; }
   }
-  /* The extra free-text line repeater (29 Aug 2026). Seven cells against
-     `.line-row`'s six and a different set of them — a typed description and a
-     typed unit where the item editor has a catalogue <select> — so it gets its
-     own grid rather than stretching one that does not fit. Screen only. */
+  /* The extra free-text line repeater (29 Aug 2026). Eight cells against
+     `.line-row`'s six and a different set of them — a typed description, an
+     HSN (14 Sep 2026) and a typed unit where the item editor has a catalogue
+     <select> — so it gets its own grid rather than stretching one that does
+     not fit. Screen only. */
   .xl-head, .xl-row {
-    display:grid; grid-template-columns:1fr 80px 80px 110px 70px 110px 34px;
+    display:grid; grid-template-columns:1fr 100px 80px 80px 110px 70px 110px 34px;
     gap:.55rem; align-items:center;
   }
   .xl-head {
@@ -1527,7 +1710,7 @@ PURCHASE_STYLES = """
     .xl-head { display:none; }
     .xl-row { grid-template-columns:1fr 70px 90px; }
     .xl-row input[name="extra_unit"], .xl-row input[name="extra_discount"],
-    .xl-row .ln-amt { display:none; }
+    .xl-row input[name="extra_hsn"], .xl-row .ln-amt { display:none; }
   }
 
   /* ⚠ THE ASSUMED-RATE MARKER IS SCREEN ONLY, AND THE PRINT RULE BELOW IS THE
@@ -2077,19 +2260,6 @@ def create_purchase():
                   'picked here. Write the order as <strong>extra parts</strong> below '
                   '&mdash; an order of extra parts alone is a complete order.</p>')
 
-    # The seeded prefill table for the extra-line typeahead — **`prefill_map()`
-    # whole**, canonical names and every client spelling, aliases already
-    # resolved and every key already normalised by `po_parts._norm()`.
-    #
-    # ⚠ **The page gets a finished lookup table, never the rules for building
-    #   one.** It is `INDEX` flattened, so the browser's key set and the key set
-    #   `PP.lookup()` matches on are the same object's — there is no second
-    #   implementation of "matches" to drift. This replaced a map built from
-    #   `PARTS` alone, which held canonical names only and therefore never
-    #   prefilled one of the client's own spellings.
-    # ⚠ Through `P.json_for_script()`, not `json.dumps` (ABOUT.md §7.9e).
-    seed_json = P.json_for_script(PP.prefill_map())
-
     q_opts = '<option value="">&#8212; none / stock purchase &#8212;</option>'
     for qid_, q_ in sorted(STORE["quotations"].items(),
                            key=lambda kv: kv[1].get("ref", ""), reverse=True):
@@ -2274,57 +2444,15 @@ def create_purchase():
         </div>
       </template>
 
-      <template id="xline-tpl">{_extra_row_html()}</template>
+      {_po_form_script_html()}
 
       <script>
         var RATES = {catalog_rates};
-
-        /* The seeded prefill list, normalised name -> {{u: unit, r: rate}}.
-           ⚠ Every `r` here is an ASSUMED PLACEHOLDER, not a quoted price — see
-           po_parts.py. It is offered into an empty box and flagged on screen
-           until somebody replaces it. Through json_for_script(), never
-           json.dumps: this is JSON going into a <script> block (ABOUT.md
-           §7.9e). */
-        var XSEED = {seed_json};
 
         function addLine() {{
           var tpl = document.getElementById('line-tpl');
           document.getElementById('lines').appendChild(tpl.content.cloneNode(true));
           bind();
-        }}
-
-        function addExtra() {{
-          var tpl = document.getElementById('xline-tpl');
-          document.getElementById('xlines').appendChild(tpl.content.cloneNode(true));
-          recalc();
-        }}
-
-        /* A LIVE PREVIEW, NOT THE MECHANISM. The server fills a blank rate
-           from po_parts.py on POST, so an extra line prefills correctly with
-           this script disabled, broken or never executed. All this does is put
-           the figure in front of the operator before they submit.
-
-           ⚠ It resolves NOTHING. XSEED above is a finished lookup table that
-           Python built from po_parts.INDEX — aliases already resolved, keys
-           already normalised — so this is one dictionary lookup. There is no
-           second implementation of "matches" on this page and there must not
-           be one added: a normalisation rule written here in JavaScript could
-           not be checked against the Python one that decides whether a rate is
-           the placeholder figure. Anything this lookup misses, the server
-           still fills on POST.
-
-           Suggest, never impose: an empty box is filled and a typed one is
-           left alone, which is fillRate()'s contract above and the server's
-           own rule on POST. */
-        function xlFill(input) {{
-          var hit = XSEED[input.value.toLowerCase().replace(/\\s+/g, ' ').trim()];
-          if (!hit) {{ recalc(); return; }}
-          var row = input.closest('.xl-row');
-          var unit = row.querySelector('input[name="extra_unit"]');
-          var rate = row.querySelector('input[name="extra_rate"]');
-          if (unit && !unit.value) {{ unit.value = hit.u; }}
-          if (rate && !rate.value) {{ rate.value = hit.r.toFixed(2); }}
-          recalc();
         }}
 
         /* Suggest the catalogue price, never impose it: base_price is what we
@@ -2345,35 +2473,16 @@ def create_purchase():
             var q = parseFloat(row.querySelector('input[name="line_qty"]').value) || 0;
             var r = parseFloat(row.querySelector('input[name="line_rate"]').value) || 0;
             var dEl = row.querySelector('input[name="line_discount"]');
-            var d = dEl ? (parseFloat(dEl.value) || 0) : 0;
-            if (d < 0) d = 0;
-            if (d > 100) d = 100;
-            /* The same shape as _line_total(): discount the product, then round
-               once. The server is the authority and recomputes it on POST --
-               this strip only has to agree with what will be stored. */
-            var amt = Math.round(q * r * (1 - d / 100) * 100) / 100;
+            /* lineAmt() is _line_total()'s shape, shared with every other
+               purchase-order form — see _po_form_script_html(). */
+            var amt = lineAmt(q, r, dEl ? (parseFloat(dEl.value) || 0) : 0);
             sub += amt;
-            var cell = row.querySelector('.ln-amt');
-            if (cell) cell.textContent = amt ? amt.toLocaleString('en-IN',
-              {{minimumFractionDigits: 2, maximumFractionDigits: 2}}) : '\\u2014';
+            showAmt(row.querySelector('.ln-amt'), amt);
           }});
 
           /* Extra free-text lines are LINES: they join `sub`, the same figure
-             the item rows above join, and NOT the charge split below. Same
-             _line_total() shape again — discount the product, then round once. */
-          document.querySelectorAll('#xlines .xl-row').forEach(function (row) {{
-            var q = parseFloat(row.querySelector('input[name="extra_qty"]').value) || 0;
-            var r = parseFloat(row.querySelector('input[name="extra_rate"]').value) || 0;
-            var dEl = row.querySelector('input[name="extra_discount"]');
-            var d = dEl ? (parseFloat(dEl.value) || 0) : 0;
-            if (d < 0) d = 0;
-            if (d > 100) d = 100;
-            var amt = Math.round(q * r * (1 - d / 100) * 100) / 100;
-            sub += amt;
-            var cell = row.querySelector('.ln-amt');
-            if (cell) cell.textContent = amt ? amt.toLocaleString('en-IN',
-              {{minimumFractionDigits: 2, maximumFractionDigits: 2}}) : '\\u2014';
-          }});
+             the item rows above join, and NOT the charge split below. */
+          sub += xlAmounts();
 
           /* A3: the same split the server does in _totals_of(). A taxable
              charge joins the base BEFORE tax; an untaxed one is added after it.
@@ -2476,8 +2585,9 @@ def _form_values(f, is_post: bool, **defaults) -> dict:
 
 
 def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
-                   banner_html: str, lines_section: str, data: dict,
-                   error: str, onsubmit: str = "true") -> str:
+                   banner_html: str, lines_section: str, extra_section: str,
+                   charge_section: str, data: dict, error: str,
+                   onsubmit: str = "true") -> str:
     """
     One form, two routes.
 
@@ -2490,7 +2600,12 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
     Every widget is the shared one: `_vendor_field()` for the supplier, and
     `_sel_opts` over `_PAY_TERMS` / `_DEL_TERMS` / `_DISPATCH` / `_INCOTERMS` for
     the terms — "By Road Transport" must mean the same thing whichever way the
-    goods move, and whichever form asked.
+    goods move, and whichever form asked. **The two repeaters are the shared
+    ones too** (14 September 2026): `extra_section` is `_extra_section_html()`
+    and `charge_section` is `_charge_section_html()`, drawn between the lines
+    and the tax exactly where `/purchase/create` draws them, with
+    `_po_form_script_html()` behind them. This form keeps no total strip, so
+    its `recalc()` fills the row amounts and nothing else.
     """
     status_opts = "".join(
         f'<option{" selected" if s == data["status"] else ""}>{s}</option>'
@@ -2550,6 +2665,10 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
         </div>
 
         {lines_section}
+
+        {extra_section}
+
+        {charge_section}
 
         <div class="form-section">
           <div class="section-title">Tax the vendor will charge us</div>
@@ -2613,6 +2732,17 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
         </div>
       </form>
 
+      {_po_form_script_html()}
+
+      <script>
+        /* No live total strip on this form: the lines come from a schedule
+           whose money the server computes on POST, and the only figures
+           previewed are the extra parts' own row amounts. `recalc()` is what
+           the shared widgets call, so it exists here and does exactly that. */
+        function recalc() {{ xlAmounts(); }}
+        recalc();
+      </script>
+
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order</p></footer>
     </main></body></html>""")
 
@@ -2620,7 +2750,8 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
 def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
                        boq: dict = None, project_id: str = "",
                        project_name: str = "", draft: dict = None,
-                       origin: str = "") -> dict:
+                       origin: str = "", extra_lines: list = None,
+                       charges: list = None) -> dict:
     """
     Write the purchase order. **One record shape, whichever route got here.**
 
@@ -2629,28 +2760,37 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
     difference is that three optional fields are filled in. There is no draft
     flag, no approval gate and no status this app would have to teach anybody to
     clear; a purchase order raised from a schedule is a purchase order.
+
+    `extra_lines` and `charges` are what `_parse_extra_lines()` and
+    `_parse_charges()` returned for the route's form — the same two lists
+    `create_purchase()` stores, entering the arithmetic through the same
+    `_totals_of()` and nowhere else.
+
+    ⚠ **Both were hard-wired to `[]` here until 14 September 2026, as a
+      recorded deviation.** The reasoning was that the two upstream forms are
+      picker flows whose job is to carry a schedule across without re-entry,
+      and that a free-text surface on a picker is a second design; a part on
+      no schedule, or a transport charge, was to be added afterwards on
+      `/purchase/edit/<id>`. The owner rejected that on 14 September 2026,
+      having raised an order from a draft and found the two sections missing
+      from the very form that goes to the vendor while the reprice form
+      beside it carried both: an order is written once, and sending it out
+      and then reopening it to add the loading charge is the re-entry the
+      route exists to avoid. So the repeaters are on all four forms now, and
+      the schedule line rule is unchanged — `/from-boq` still refuses nothing
+      ticked and `/from-draft` still refuses a draft with no lines; the extra
+      parts ride on an order that has a schedule behind it, and an order of
+      extra parts alone belongs on `/purchase/create`.
     """
     boq = boq or {}
     tax_type = data["tax_type"]
     cgst = P.parse_money(data["cgst_rate"])
     igst = P.parse_money(data["igst_rate"])
-    # No charge repeater on the two upstream forms: they are derived documents
-    # whose job is to carry a schedule's lines across without re-entry, and a
-    # charge is added afterwards on `/purchase/edit/<id>` like any other money
-    # that was not on the schedule. `charges` is still written, as `[]`, so the
-    # key exists on every order this module creates.
-    charges = []
-    # ⚠ **No extra-line repeater here either, and it is the same call, made
-    #   again deliberately.** `/purchase/from-boq` and `/purchase/from-draft`
-    #   are picker flows over a schedule: their whole job is to carry ticked
-    #   lines across without re-entry. Bolting a free-text surface onto a picker
-    #   is a second design — two ways of adding a line on one form, one of which
-    #   traces to the schedule and one of which cannot — and it is not what
-    #   either page is for. A part that is on no schedule is added afterwards on
-    #   `/purchase/edit/<id>`, exactly as a charge is. `extra_lines` is still
-    #   written, as `[]`, so the key exists on every order this module creates.
-    #   **A recorded deviation, matching the call A3 made, not an omission.**
-    extra_lines = []
+    # Always lists, so every order this module creates carries both keys —
+    # `charges_of()` and `extra_lines_of()` tolerate their absence only for
+    # records written before the keys existed.
+    charges = list(charges or [])
+    extra_lines = list(extra_lines or [])
     (subtotal, taxable_value, tax_info,
      grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
                                     charges, extra_lines)
@@ -2767,11 +2907,20 @@ def from_boq(boq_id: str):
         items, shape_err = ([], "") if error else _po_lines_from_picked(picked, boq)
         error = error or shape_err
 
+        # The two repeaters, in the order `create_purchase()` reads them and
+        # after the schedule lines, so the message names the first thing wrong
+        # from the top of the form down.
+        extra_lines, extra_err = ([], "") if error else _parse_extra_lines(f)
+        error = error or extra_err
+        charges, charge_err = ([], "") if error else _parse_charges(f)
+        error = error or charge_err
+
         if not error:
             po = _write_upstream_po(
                 data=data, vendor_fields=vendor_fields, items=items, boq=boq,
                 project_id=project_id, project_name=project_name,
-                origin=f", against {boq.get('ref') or 'a schedule'}")
+                origin=f", against {boq.get('ref') or 'a schedule'}",
+                extra_lines=extra_lines, charges=charges)
             return redirect(url_for("purchase.view_purchase", id=po["id"],
                                     msg=f"Purchase order {po['ref']} created "
                                         f"against {boq.get('ref') or 'the schedule'}.",
@@ -2779,6 +2928,8 @@ def from_boq(boq_id: str):
 
         # Hand the operator back exactly what they ticked and typed.
         chosen, qty_of, rate_of = _replay_picked(f.get("po_json") or "")
+
+    extra_section, charge_section = _upstream_repeaters(f, is_post)
 
     boq_ref = P.esc(boq.get("ref") or "")
     proj_bit = (f' &middot; project <b>{P.esc(project_name)}</b>'
@@ -2821,9 +2972,28 @@ def from_boq(boq_id: str):
                     f'{P.esc(boq.get("project_name") or "")}{proj_bit}.'),
         banner_html="",
         lines_section=lines_section,
+        extra_section=extra_section,
+        charge_section=charge_section,
         data=data,
         error=error,
         onsubmit="saveJSON()")
+
+
+def _upstream_repeaters(f, is_post: bool) -> tuple:
+    """
+    `(extra_section, charge_section)` for the two upstream forms.
+
+    On a rejected POST both come back carrying what was typed; on a GET the
+    extra rows are blank and the charge rows carry `DEFAULT_PO_CHARGE_LABELS`
+    with no amounts — a prefill nobody has to use. Neither route has a stored
+    order to fill from, which is the one way this differs from
+    `edit_purchase_rates()`'s call to the same two widgets.
+    """
+    if is_post:
+        return (_extra_section_html([], posted=f),
+                _charge_section_html([], f.getlist("charge_label"),
+                                     f.getlist("charge_amount"), f))
+    return _extra_section_html([]), _charge_section_html([])
 
 
 def _replay_picked(raw: str) -> tuple:
@@ -2947,11 +3117,19 @@ def from_draft(draft_id: str):
             if not error and not any(not r["is_header"] for r in items):
                 error = "This draft PO has no lines to order."
 
+        # The two repeaters, after the draft's own lines — `from_boq()`'s
+        # order, which is `create_purchase()`'s.
+        extra_lines, extra_err = ([], "") if error else _parse_extra_lines(f)
+        error = error or extra_err
+        charges, charge_err = ([], "") if error else _parse_charges(f)
+        error = error or charge_err
+
         if not error:
             po = _write_upstream_po(
                 data=data, vendor_fields=vendor_fields, items=items, boq=boq,
                 project_id=project_id, project_name=project_name, draft=draft,
-                origin=f", converted from draft {draft.get('ref') or ''}".rstrip())
+                origin=f", converted from draft {draft.get('ref') or ''}".rstrip(),
+                extra_lines=extra_lines, charges=charges)
             # The link back, on the draft. A LIST, not a scalar: converting twice
             # is permitted, and a single field would let the second conversion
             # quietly erase the first one's trail.
@@ -3039,6 +3217,8 @@ def from_draft(draft_id: str):
                       f'vendor from it, so add them first or pick whoever is '
                       f'actually supplying.')
 
+    extra_section, charge_section = _upstream_repeaters(f, is_post)
+
     back_html = (f'<a href="{url_for("po_draft.view_po", id=draft_id)}" '
                  f'class="btn btn-ghost">&#8592; {P.esc(draft.get("ref"))}</a>')
     return _upstream_form(
@@ -3051,6 +3231,8 @@ def from_draft(draft_id: str):
                     f'{typed_note}'),
         banner_html=banner_html,
         lines_section=lines_section,
+        extra_section=extra_section,
+        charge_section=charge_section,
         data=data,
         error=error)
 
@@ -3471,15 +3653,20 @@ def edit_purchase_rates(id: str):
         rate = posted_rates[n] if n < len(posted_rates) else f"{float(row.get('price') or 0.0):.2f}"
         disc = posted_discs[n] if n < len(posted_discs) else (
             f"{float(row.get('discount_pct') or 0.0):g}" if row.get("discount_pct") else "")
+        # `data-qty` is what `recalc()` multiplies by: the quantity is not
+        # editable here, so it is not in an input, and the visible "10 Nos" is
+        # a label rather than a number. The Amount cell opens on the stored
+        # total and follows the rate and discount boxes from the first
+        # keystroke — the server recomputes it on POST regardless.
         rows_html += f"""
-        <div class="line-row">
+        <div class="line-row" data-qty="{float(row.get('qty') or 0.0):g}">
           <span>{P.esc(row.get('name'))}
             <span class="bn-sub">{P.esc(row.get('part_no'))}</span></span>
           <span>{_fmt_qty(float(row.get('qty') or 0.0))} {P.esc(row.get('unit'))}</span>
           <input type="number" name="line_rate" value="{P.esc(rate)}"
-                 min="0" step="0.01" placeholder="Rate"/>
+                 min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
           <input type="number" name="line_discount" value="{P.esc(disc)}"
-                 min="0" max="100" step="any" placeholder="0"/>
+                 min="0" max="100" step="any" placeholder="0" oninput="recalc()"/>
           <span class="ln-amt">{_inr(row.get('total') or 0)}</span>
           <span></span>
         </div>"""
@@ -3498,11 +3685,6 @@ def edit_purchase_rates(id: str):
                      f"is allowed and is how a rate that went out wrong gets "
                      f"corrected &mdash; but the vendor is holding the figures "
                      f"you are about to change, so tell them.")
-
-    # The same finished lookup table the create form hands its typeahead — one
-    # call to `PP.prefill_map()`, not a second comprehension that could be
-    # written differently from the first one.
-    seed_json = P.json_for_script(PP.prefill_map())
 
     tax_info = po.get("tax_info") or {}
     tax_note = "no tax on this order"
@@ -3540,44 +3722,6 @@ def edit_purchase_rates(id: str):
           lists movements on item lines.</div>
       </div>
 
-      <template id="xline-tpl">{_extra_row_html()}</template>
-
-      <script>
-        /* The charge widget is shared with `/purchase/create`, whose live total
-           strip calls recalc() on every keystroke. This page has no such strip
-           — the Order Value it shows is the stored one, "as it stands" — so the
-           hook is defined and does nothing rather than throwing a ReferenceError
-           into the console on every character typed. The extra-line widget is
-           shared the same way and calls it from the same places. */
-        function recalc() {{}}
-
-        /* The extra-line repeater is shared with `/purchase/create` too, so the
-           two behaviours it needs come with it: add a row, and prefill from the
-           seeded list. Both are the create form's own, and the seed table below
-           is the same one, through json_for_script() (ABOUT.md §7.9e).
-           ⚠ Every rate in it is an ASSUMED PLACEHOLDER — see po_parts.py. */
-        var XSEED = {seed_json};
-
-        function addExtra() {{
-          var tpl = document.getElementById('xline-tpl');
-          document.getElementById('xlines').appendChild(tpl.content.cloneNode(true));
-        }}
-
-        /* One dictionary lookup on the table Python built, exactly as on
-           `/purchase/create`. No alias resolution and no rules about what
-           matches — and the server fills a blank rate on POST whether or not
-           this ever ran. */
-        function xlFill(input) {{
-          var hit = XSEED[input.value.toLowerCase().replace(/\\s+/g, ' ').trim()];
-          if (!hit) {{ return; }}
-          var row = input.closest('.xl-row');
-          var unit = row.querySelector('input[name="extra_unit"]');
-          var rate = row.querySelector('input[name="extra_rate"]');
-          if (unit && !unit.value) {{ unit.value = hit.u; }}
-          if (rate && !rate.value) {{ rate.value = hit.r.toFixed(2); }}
-        }}
-      </script>
-
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
         <div class="form-section">
           <div class="section-title">What we pay</div>
@@ -3613,6 +3757,35 @@ def edit_purchase_rates(id: str):
           <a href="{url_for("purchase.view_purchase", id=id)}" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
+
+      {_po_form_script_html()}
+
+      <script>
+        /* The Amount column follows the boxes on every row — the item rows
+           through `data-qty`, the extra parts through xlAmounts() — in
+           _line_total()'s shape. The Order Value strip above is the STORED
+           figure, "as it stands", and is deliberately not previewed: what this
+           form saves is decided by the server, and the strip says what the
+           order is worth now rather than what it might be worth after.
+
+           ⚠ Until 14 September 2026 the hook below was an EMPTY STUB, there
+             only so the shared widgets could call it without a ReferenceError
+             — which left every Amount cell on this form reading "—" against a
+             row carrying a quantity and a rate. Both blocks sit AFTER the form
+             for the same reason the create form's do: the hook runs once at
+             load, and the rows have to exist by then. */
+        function recalc() {{
+          document.querySelectorAll('.line-row[data-qty]').forEach(function (row) {{
+            var q = parseFloat(row.dataset.qty) || 0;
+            var r = parseFloat(row.querySelector('input[name="line_rate"]').value) || 0;
+            var dEl = row.querySelector('input[name="line_discount"]');
+            showAmt(row.querySelector('.ln-amt'),
+                    lineAmt(q, r, dEl ? (parseFloat(dEl.value) || 0) : 0));
+          }});
+          xlAmounts();
+        }}
+        recalc();
+      </script>
 
       <footer><p>{B.COMPANY_NAME} &middot; {B.APP_SUBTITLE} &middot; purchase order</p></footer>
     </main></body></html>"""
@@ -3685,11 +3858,13 @@ def view_purchase(id: str):
     # An order with no extra lines draws nothing here and prints byte-for-byte
     # what it always printed, which is what keeps the pinned golden still.
     #
-    # ⚠ Two cells differ from an item row and both are honest blanks rather than
-    #   invented content: there is **no part number** (nothing upstream minted
-    #   one) and **no HSN** (these come from no catalogue). The HSN cell goes
-    #   through `B.field()` exactly as an item row's does, so a missing HSN is
-    #   flagged in the house style rather than left looking deliberate.
+    # ⚠ One cell differs from an item row and it is an honest blank rather than
+    #   invented content: there is **no part number**, because nothing upstream
+    #   minted one. The HSN is whatever was typed in the repeater's HSN box
+    #   (14 Sep 2026 — absent on every extra line written before it) and goes
+    #   through `B.field()` exactly as an item row's does, so a missing one is
+    #   flagged in the house style rather than left looking deliberate. Until
+    #   that box existed the chip was asking for a figure no form offered.
     for row in extra_lines_of(po):
         sno += 1
         qty = float(row.get("qty") or 0.0)
@@ -3701,12 +3876,11 @@ def view_purchase(id: str):
             # ⚠ **SCREEN ONLY.** `.xl-assumed` is `display:none` at print — see
             #   PURCHASE_STYLES. The vendor receives the order; the vendor does
             #   not receive our note that we invented the price.
-            # ⚠ **The wording is a claim about the FIGURE, not about the
-            #   operator.** `rate_is_assumed` is true whenever the rate equals
-            #   the seeded one — including when somebody typed it from memory
-            #   rather than being prefilled — so anything reading as "we filled
-            #   this in for you" would be a false statement in exactly that
-            #   case. "placeholder · not quoted" is true in both.
+            # ⚠ **Only a figure the SERVER filled is marked** (14 September
+            #   2026 — the rule above `_parse_extra_lines()`). A rate that was
+            #   in the box on submit is the operator's price, the seeded figure
+            #   included, and draws no chip. "placeholder · not quoted" is a
+            #   claim about the figure and stays true of every line it marks.
             chip = ('<span class="xl-assumed">placeholder &middot; not quoted</span>'
                     if row.get("rate_is_assumed") else "")
             rate_cell = f"{_inr(rate)}{chip}"
@@ -3727,7 +3901,7 @@ def view_purchase(id: str):
           <td class="c-sno">{sno}</td>
           <td class="c-partno"></td>
           <td class="c-desc">{P.esc(row.get('description'))}</td>
-          <td class="c-hsn">{B.field("", "HSN")}</td>
+          <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
           <td class="c-qty">{_fmt_qty(qty)}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
           <td class="c-price">{rate_cell}</td>

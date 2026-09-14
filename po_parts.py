@@ -590,7 +590,11 @@ def lookup(description):
 
     ⚠ **A hit returns an ASSUMED rate.** The caller must mark the line so the
     figure is never mistaken for one a vendor gave us — `purchase.py` sets
-    `rate_is_assumed` and clears it the moment the rate is edited.
+    `rate_is_assumed` when, and only when, it fills a BLANK rate box from this
+    table. A figure that was in the box on submit is the operator's price,
+    this table's own figure included (the owner's ruling, 14 September 2026:
+    *"if I have entered price it is not a placeholder"*). So the form offers
+    the rate as ghost text and never writes it into the box.
     """
     canonical = INDEX.get(_norm(description))
     if not canonical:

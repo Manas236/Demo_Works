@@ -1047,15 +1047,39 @@ BOQ_STYLES = """
     padding:.9rem 1rem; margin-bottom:.8rem; background:var(--bg);
   }
   .line-card.is-spec { border-left:3px solid var(--navy); background:#f8fafc; }
+  /* ── The open line panel ─────────────────────────────────────────────
+     Four bands in the order a line is made — where/what, how much, rates —
+     then a fold for the tax codes and the internal remark. The rate table
+     and the fold are what keep 22 controls from landing at once. */
   .lc-head {
     display:flex; align-items:center; justify-content:space-between;
-    gap:.6rem; margin-bottom:.7rem;
+    gap:.6rem; margin-bottom:.8rem;
   }
   .lc-no { font-size:.72rem; font-weight:700; text-transform:uppercase;
            letter-spacing:.07em; color:var(--muted); }
+  .lc-no b { text-transform:none; color:var(--brand);
+             font-family:'SFMono-Regular',Consolas,monospace; }
+  .lc-head-r { display:flex; align-items:center; gap:.9rem; }
+  .lc-hdr {
+    display:inline-flex; align-items:center; gap:.4rem; cursor:pointer;
+    font-size:.8rem; font-weight:500; text-transform:none; letter-spacing:0;
+    color:var(--text);
+  }
+  .lbl-sub { font-weight:500; text-transform:none; letter-spacing:0;
+             color:var(--muted); }
+
+  /* Numbering on the left, the picker on the right of a hairline. */
+  .lc-ident {
+    display:grid; gap:.9rem; align-items:end;
+    grid-template-columns:84px 92px 92px minmax(0,1.7fr) minmax(0,1.1fr);
+  }
+  .lc-ident .lc-src { border-left:1px solid var(--border); padding-left:.9rem; }
+  .lc-desc { margin-top:.8rem; }
+  .lc-band { margin-top:.8rem; }
+
   .lc-track {
     font-size:.68rem; font-weight:700; text-transform:uppercase;
-    letter-spacing:.06em; color:var(--muted); margin:.6rem 0 .35rem;
+    letter-spacing:.06em; color:var(--muted); margin:.9rem 0 .35rem;
   }
   .lc-areas {
     display:flex; flex-wrap:wrap; gap:.6rem; align-items:end;
@@ -1063,7 +1087,52 @@ BOQ_STYLES = """
     background:var(--surface);
   }
   .lc-area { width:96px; }
-  .lc-none { font-size:.78rem; color:var(--muted); font-style:italic; }
+  .lc-none { font-size:.78rem; color:var(--muted); font-style:italic;
+             padding-bottom:.55rem; }
+
+  /* Two legs down, three figures across. */
+  .lc-rates {
+    display:grid; grid-template-columns:104px 140px 110px minmax(240px,1fr);
+    max-width:760px; column-gap:.9rem; row-gap:.5rem; align-items:start;
+    margin-top:.9rem;
+  }
+  .lc-rh { font-size:.68rem; font-weight:700; text-transform:uppercase;
+           letter-spacing:.06em; color:var(--muted); }
+  .lc-rl { font-size:.8rem; font-weight:600; color:var(--navy); padding-top:.6rem; }
+  .lc-rc::before {
+    content:attr(data-lbl); display:none; font-size:.68rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+    margin-bottom:.3rem;
+  }
+
+  /* The fold. Closed by default; its summary line carries the values. */
+  .lc-more { margin-top:.9rem; border-top:1px dashed var(--border); padding-top:.5rem; }
+  .lc-more summary {
+    display:flex; align-items:baseline; gap:.6rem; cursor:pointer;
+    list-style:none; font-size:.74rem; user-select:none;
+  }
+  .lc-more summary::-webkit-details-marker { display:none; }
+  .lc-more summary::before { content:'▸'; color:var(--muted); font-size:.7rem; }
+  .lc-more[open] summary::before { content:'▾'; }
+  .lc-more-lbl { font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+                 color:var(--muted); white-space:nowrap; }
+  .lc-more-sum { color:var(--muted); min-width:0; overflow:hidden;
+                 text-overflow:ellipsis; white-space:nowrap; }
+  .lc-more-body { padding-top:.7rem; }
+
+  @media screen and (max-width:800px) {
+    .lc-ident { grid-template-columns:1fr 1fr 1fr; }
+    .lc-ident .lc-src,
+    .lc-ident .lc-src + .form-group { grid-column:1/-1; border-left:0; padding-left:0; }
+  }
+  @media screen and (max-width:520px) {
+    .lc-ident { grid-template-columns:1fr 1fr; }
+    .lc-head { flex-wrap:wrap; }
+    .lc-rates { grid-template-columns:repeat(3,1fr); column-gap:.5rem; }
+    .lc-rh { display:none; }
+    .lc-rl { grid-column:1/-1; padding-top:.3rem; }
+    .lc-rc::before { display:block; }
+  }
   .btn-row {
     font-size:.75rem; font-weight:600; color:var(--brand);
     background:var(--brand-lt); border:1px solid #c7d2fe; border-radius:6px;
@@ -1808,7 +1877,7 @@ def list_boqs():
             rows_html += f"""
             <tr>
               <td class="td-ref">{P.esc(b.get('ref'))}</td>
-              <td class="td-muted">{P.esc(b.get('date'))}</td>
+              <td class="td-muted td-date">{P.esc(b.get('date'))}</td>
               <td class="td-cust">{P.esc(b.get('project_name'))}</td>
               <td>{P.esc(b.get('account_name'))}</td>
               <td class="td-muted col-h">{n_secs} section{"s" if n_secs != 1 else ""} · {n_lines} line{"s" if n_lines != 1 else ""}</td>
@@ -1849,7 +1918,14 @@ def list_boqs():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Bills of Quantities")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+    <style>
+      /* Nine columns squeeze the register, and a reference, a date or a
+         button that breaks mid-value reads as broken. Text columns may wrap;
+         these may not. Page-local: BOQ_STYLES is also loaded by the print
+         sheet, whose bytes are golden-hashed. */
+      .td-ref, .td-date, .btn-view {{ white-space:nowrap; }}
+    </style></head>
     <body>{_nav()}
     <main>
       {alert_html}
@@ -2636,6 +2712,13 @@ function setSec(i, key, val) {
       if (MODEL.lines[j].section === old) MODEL.lines[j].section = val.trim();
     }
     renderLines();
+    renderPickers();
+  } else if (key === 'title') {
+    /* The group bar below shows the title; patch that one span rather than
+       re-rendering, so the caret stays in the box being typed into. */
+    var grp = el('secgrp-' + i);
+    var bar = grp && grp.querySelector('.sb-title');
+    if (bar) bar.textContent = trunc(val.trim(), 74) || '(untitled section)';
   }
 }
 
@@ -2652,6 +2735,7 @@ function setAreas(i, val) {
 function addSec() {
   MODEL.sections.push({code: '', title: '', areas: []});
   renderSections();
+  renderLines();
 }
 
 function delSec(i) {
@@ -2661,8 +2745,38 @@ function delSec(i) {
 }
 
 /* ── Lines ────────────────────────────────────────────────────────── */
-function blankLine() {
+
+/* What a freshly inserted line is quantified at before anyone types. One,
+   because a schedule line is one of something until site measurement says
+   otherwise, and a row that arrives at 0 contributes nothing and trips the
+   zero-quantity band on every insert. It is a TYPED total, so it can only be
+   offered where a typed total exists: a section with an area breakdown
+   derives its total from the area boxes, and which floor a "1" belongs on
+   is not the editor's to guess — those lines start blank. */
+var DEFAULT_QTY = '1';
+
+/* The starting total for a line in section `code` — see DEFAULT_QTY. */
+function defaultQty(code) {
+  var sec = secByCode(code);
+  return (sec && sec.areas && sec.areas.length) ? '' : DEFAULT_QTY;
+}
+
+/* The quantity a line stands at, resolved the way the server resolves it:
+   with an area breakdown the total IS the breakdown, whatever `total_qty`
+   holds, and only a section declaring no areas takes the typed figure.
+   Reading the typed figure first — "typed if present, else derived" — counted
+   a total carried in from another section that the server was about to
+   ignore, so the section bar and the summary quoted a quantity the record
+   would never hold. */
+function qtyOf(L) {
+  var areas = (secByCode(L.section) || {}).areas || [];
+  if (areas.length) return totalOf(L, areas);
+  return (L.total_qty === '' || L.total_qty == null) ? '' : String(L.total_qty);
+}
+
+function blankLine(code) {
   var first = MODEL.sections[0];
+  if (code == null) code = first ? first.code : '';
   return {
     /* A line the user just added is the one they are about to fill in. */
     _open: true,
@@ -2674,9 +2788,9 @@ function blankLine() {
        untouched inside MODEL on submit — that round trip is what keeps RA
        claims attached across an edit. */
     line_id: '',
-    item_no: '', parent_item_no: '', section: (first ? first.code : ''),
+    item_no: '', parent_item_no: '', section: code,
     is_header: false, description: '', remark: '', unit: '',
-    area_qty: {}, total_qty: '',
+    area_qty: {}, total_qty: defaultQty(code),
     supply_base_rate: '', supply_escalation_pct: '', supply_rate: '',
     supply_hsn: '', supply_gst_rate: '',
     install_base_rate: '', install_escalation_pct: '', install_rate: '',
@@ -2814,6 +2928,55 @@ function fld(i, key, label, val, ph, cls) {
     + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"/></div>';
 }
 
+/* A rate-table cell: a bare input whose visible label is the column head above
+   it, so it carries the label as aria-label instead. */
+function cell(i, key, val, ph, aria) {
+  return '<input type="text" value="' + esc(val) + '" placeholder="' + esc(ph || '') + '"'
+    + ' aria-label="' + esc(aria) + '"'
+    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"/>';
+}
+
+/* One leg of the rate table: the row label, then base rate, escalation and
+   unit rate. The unit-rate cell also holds the escalation hint that hint()
+   writes into `sd<i>` / `id<i>`. Each cell carries its column head as
+   data-lbl for the narrow layout, where the head row is hidden and the cells
+   label themselves. */
+function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId) {
+  var base = leg + '_base_rate', pct = leg + '_escalation_pct', rate = leg + '_rate';
+  return '<div class="lc-rl">' + label + '</div>'
+    + '<div class="lc-rc" data-lbl="Base rate">'
+    +   cell(i, base, L[base], phBase, label + ' base rate') + '</div>'
+    + '<div class="lc-rc" data-lbl="Escalation %">'
+    +   cell(i, pct, L[pct], phPct, label + ' escalation %') + '</div>'
+    + '<div class="lc-rc" data-lbl="Unit rate">'
+    +   cell(i, rate, L[rate], phRate, label + ' unit rate')
+    +   '<div class="derived" id="' + hintId + i + '"></div></div>';
+}
+
+/* The fields behind the panel's fold, and the one-line summary its <summary>
+   shows while closed. The summary is rendered from MODEL and re-patched by
+   setLine() as these fields are typed into, so a value typed behind the fold
+   and then folded away is still on the face of the row. */
+var MORE_KEYS = {supply_hsn: 1, supply_gst_rate: 1, install_sac: 1,
+                 install_gst_rate: 1, remark: 1};
+
+function legSummary(codeName, code, gst, leg) {
+  var hasGst = gst !== '' && gst != null;
+  if (!code && !hasGst) return '';
+  var t = code ? codeName + ' ' + esc(code) : leg;
+  return hasGst ? t + ' @ ' + esc(gst) + '%' : t;
+}
+
+function moreSummary(L) {
+  var bits = [];
+  var s = legSummary('HSN', L.supply_hsn, L.supply_gst_rate, 'supply');
+  var n = legSummary('SAC', L.install_sac, L.install_gst_rate, 'installation');
+  if (s) bits.push(s);
+  if (n) bits.push(n);
+  if (L.remark) bits.push('&#8220;' + esc(trunc(L.remark, 48)) + '&#8221;');
+  return bits.length ? bits.join(' &nbsp;&middot;&nbsp; ') : 'none set';
+}
+
 /* ── Navigating 97 lines ───────────────────────────────────────────────
 
    A BOQ is long. Rendered as stacked full-height blocks it is less usable
@@ -2873,9 +3036,7 @@ function trunc(s, n) {
 /* The one-line summary — enough to scan a schedule and spot a wrong line. */
 function lineSummary(i, L) {
   var kids = L.is_header ? childrenOf(i) : [];
-  var qty = L.is_header ? '' : (L.total_qty === '' || L.total_qty == null
-        ? totalOf(L, (secByCode(L.section) || {}).areas || [])
-        : String(L.total_qty));
+  var qty = L.is_header ? '' : qtyOf(L);
   var chev = isOpen(L) ? '▾' : '▸';
 
   return '<div class="ls-row" onclick="toggleLine(' + i + ')">'
@@ -2890,39 +3051,42 @@ function lineSummary(i, L) {
     + '</div>';
 }
 
+/* The open panel. Four bands, in the order a line is actually made: WHERE it
+   sits and WHAT it is, HOW MUCH, the RATES — then, folded, the tax codes and
+   the internal remark. Every field the flat stack used to show is still here;
+   the rate table and the fold are what keep 22 controls from landing at once.
+   The tax codes fold because the spec pick fills them and they are rarely
+   touched by hand; the remark folds because it never prints. */
 function lineBody(i, L) {
   var sec = secByCode(L.section);
   var areas = (sec && sec.areas) || [];
   var h = '<div class="lc-body">';
 
+  /* The row type sits on the panel's top edge rather than in a field row: it
+     is a property of the whole row, and flipping it changes the panel's shape. */
   h += '<div class="lc-head">'
     +   '<span class="lc-no">Line ' + (i + 1)
-    +     (L.item_no ? ' &middot; ' + esc(L.item_no) : '') + '</span>'
-    +   '<button type="button" class="btn-del" onclick="delLine(' + i + ')">Remove</button>'
-    + '</div>'
-    + '<div class="fg4">'
+    +     (L.item_no ? ' &middot; item <b>' + esc(L.item_no) + '</b>' : '') + '</span>'
+    +   '<span class="lc-head-r">'
+    +     '<label class="lc-hdr" title="A row that carries the specification paragraph'
+    +      ' and no quantity or rate">'
+    +       '<input type="checkbox" id="hdr' + i + '"' + (L.is_header ? ' checked' : '')
+    +        ' onchange="setHeader(' + i + ',this.checked)"/>Specification header</label>'
+    +     '<button type="button" class="btn-del" onclick="delLine(' + i + ')">Remove</button>'
+    +   '</span>'
+    + '</div>';
+
+  /* Where it sits, then what it is. The picker leads the description because
+     the picker is what writes it. */
+  var picked = L._spec || '';
+  var sp = SPECS[picked];
+  h += '<div class="lc-ident">'
     +   '<div class="form-group"><label>Section</label>'
     +     '<select onchange="setSection(' + i + ',this.value)">'
     +       secOptions(L.section) + '</select></div>'
     +   fld(i, 'item_no', 'Item No.', L.item_no, '4.1')
-    +   fld(i, 'parent_item_no', 'Under Item', L.parent_item_no, '4')
-    +   '<div class="form-group"><label>Row Type</label><div class="check-row">'
-    +     '<input type="checkbox" id="hdr' + i + '"' + (L.is_header ? ' checked' : '')
-    +      ' onchange="setHeader(' + i + ',this.checked)"/>'
-    +     '<label for="hdr' + i + '">Specification header</label></div></div>'
-    + '</div>';
-
-  h += '<div class="fg2" style="margin-top:.7rem;">'
-    +   '<div class="form-group span-all"><label>Description / Specification</label>'
-    +     '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
-    +      ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)">'
-    +      esc(L.description) + '</textarea></div>'
-    + '</div>';
-
-  var picked = L._spec || '';
-  var sp = SPECS[picked];
-  h += '<div class="fg4" style="margin-top:.7rem;">'
-    +   '<div class="form-group"><label>Fill from spec library</label>'
+    +   fld(i, 'parent_item_no', 'Under item', L.parent_item_no, '4')
+    +   '<div class="form-group lc-src"><label>Spec library</label>'
     +     '<select onchange="fillFromSpec(' + i + ',this.value)">'
     +       specOptions(picked) + '</select></div>'
     +   '<div class="form-group"><label>Variant</label>'
@@ -2931,59 +3095,85 @@ function lineBody(i, L) {
           + variantOptions(picked, L._variant) + '</select>'
         : '<select disabled><option>' + (sp ? '(unsized)' : '&#8212;') + '</option></select>')
     +   '</div>'
-    +   fld(i, 'remark', 'Remark (internal &#8212; does not print)', L.remark,
-            '2000/nos extra for tamper switch')
-    +   fld(i, 'unit', 'Unit', L.unit, 'Mtrs')
     + '</div>';
 
-  if (!L.is_header) {
-    /* Quantities. With an area breakdown the total IS the breakdown, so it
-       is shown derived rather than typed — two independently typed figures
-       that must agree are two figures that can disagree. */
-    h += '<div class="lc-track">Quantity</div><div class="lc-areas">';
-    if (areas.length) {
-      for (var a = 0; a < areas.length; a++) {
-        var an = areas[a];
-        h += '<div class="form-group lc-area"><label>' + esc(an) + '</label>'
-          +  '<input type="text" value="'
-          +   esc(L.area_qty[an] == null ? '' : L.area_qty[an]) + '"'
-          +  ' oninput="setArea(' + i + ',' + JSON.stringify(an).replace(/"/g, '&quot;')
-          +  ',this.value)"/></div>';
-      }
-      h += '<div class="form-group lc-area"><label>Total Qty</label>'
-        +  '<div class="readonly-field" id="tq' + i + '">'
-        +   esc(totalOf(L, areas)) + '</div></div>';
-    } else {
-      h += '<div class="form-group lc-area"><label>Total Qty</label>'
-        +  '<input type="text" value="' + esc(L.total_qty) + '"'
-        +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"/></div>'
-        +  '<span class="lc-none">This section declares no areas '
-        +  '&#8212; the total stands alone.</span>';
-    }
-    h += '</div>';
+  h += '<div class="form-group lc-desc"><label>Description / Specification</label>'
+    +   '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
+    +    ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)">'
+    +    esc(L.description) + '</textarea></div>';
 
-    h += '<div class="lc-track">Supply</div><div class="fg5">'
-      +   fld(i, 'supply_base_rate', 'Base Rate', L.supply_base_rate, '1760  or  -')
-      +   fld(i, 'supply_escalation_pct', 'Escalation %', L.supply_escalation_pct, '15')
-      +   '<div class="form-group"><label>Unit Rate</label>'
-      +     '<input type="text" value="' + esc(L.supply_rate) + '" placeholder="2024"'
-      +      ' oninput="setLine(' + i + ',&quot;supply_rate&quot;,this.value)"/>'
-      +     '<div class="derived" id="sd' + i + '"></div></div>'
-      +   fld(i, 'supply_hsn', 'HSN', L.supply_hsn, '73090090')
-      +   fld(i, 'supply_gst_rate', 'GST %', L.supply_gst_rate, '18')
-      + '</div>';
-
-    h += '<div class="lc-track">Installation</div><div class="fg5">'
-      +   fld(i, 'install_base_rate', 'Base Rate', L.install_base_rate, '1200  or  -')
-      +   fld(i, 'install_escalation_pct', 'Escalation %', L.install_escalation_pct, '0')
-      +   '<div class="form-group"><label>Unit Rate</label>'
-      +     '<input type="text" value="' + esc(L.install_rate) + '" placeholder="1200"'
-      +      ' oninput="setLine(' + i + ',&quot;install_rate&quot;,this.value)"/>'
-      +     '<div class="derived" id="id' + i + '"></div></div>'
-      +   fld(i, 'install_sac', 'SAC', L.install_sac, '995461')
-      +   fld(i, 'install_gst_rate', 'GST %', L.install_gst_rate, '18')
-      + '</div>';
+  if (L.is_header) {
+    /* A header carries the clause and nothing else — no quantity, no rate, and
+       the server zeroes its tax codes — so only the remark is left to show. */
+    h += '<div class="fg2 lc-band">'
+      +  fld(i, 'remark', 'Remark <span class="lbl-sub">internal &#8212; does not print</span>',
+             L.remark, '2000/nos extra for tamper switch')
+      +  '</div>';
+    return h + '</div>';
   }
+
+  /* Quantities. With an area breakdown the total IS the breakdown, so it is
+     shown derived rather than typed — two independently typed figures that
+     must agree are two figures that can disagree. The unit sits beside the
+     total because "12 Nos." is one fact, not two. */
+  h += '<div class="lc-track">Quantity</div><div class="lc-areas">';
+  if (areas.length) {
+    for (var a = 0; a < areas.length; a++) {
+      var an = areas[a];
+      h += '<div class="form-group lc-area"><label>' + esc(an) + '</label>'
+        +  '<input type="text" value="'
+        +   esc(L.area_qty[an] == null ? '' : L.area_qty[an]) + '"'
+        +  ' oninput="setArea(' + i + ',' + JSON.stringify(an).replace(/"/g, '&quot;')
+        +  ',this.value)"/></div>';
+    }
+    h += '<div class="form-group lc-area"><label>Total Qty</label>'
+      +  '<div class="readonly-field" id="tq' + i + '">'
+      +   esc(totalOf(L, areas)) + '</div></div>';
+  } else {
+    h += '<div class="form-group lc-area"><label>Total Qty</label>'
+      +  '<input type="text" value="' + esc(L.total_qty) + '"'
+      +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"/></div>';
+  }
+  h += fld(i, 'unit', 'Unit', L.unit, 'Mtrs', 'lc-area');
+  if (!areas.length) {
+    h += '<span class="lc-none">This section declares no areas '
+      +  '&#8212; the total stands alone.</span>';
+  }
+  h += '</div>';
+
+  /* Rates as one small table — two legs down, three figures across — so the
+     eye reads a grid rather than ten labelled boxes. */
+  h += '<div class="lc-rates">'
+    +   '<div class="lc-rh">Rates</div><div class="lc-rh">Base rate</div>'
+    +   '<div class="lc-rh">Escalation %</div><div class="lc-rh">Unit rate</div>'
+    +   rateRow(i, 'Supply', 'supply', L, '1760  or  -', '15', '2024', 'sd')
+    +   rateRow(i, 'Installation', 'install', L, '1200  or  -', '0', '1200', 'id')
+    + '</div>';
+
+  /* The fold. Open/closed lives on the line as `_more`, like `_open`, so a
+     re-render does not slam it shut under the user; its summary line says what
+     is behind it, so nothing is hidden — only tucked away. */
+  h += '<details class="lc-more"' + (L._more ? ' open' : '')
+    +   ' ontoggle="MODEL.lines[' + i + ']._more=this.open">'
+    +   '<summary><span class="lc-more-lbl">Tax codes &amp; internal remark</span>'
+    +     '<span class="lc-more-sum" id="ms' + i + '">' + moreSummary(L) + '</span></summary>'
+    +   '<div class="lc-more-body">'
+    +     '<div class="fg4">'
+    +       fld(i, 'supply_hsn', 'HSN <span class="lbl-sub">supply</span>',
+               L.supply_hsn, '73090090')
+    +       fld(i, 'supply_gst_rate', 'GST % <span class="lbl-sub">supply</span>',
+               L.supply_gst_rate, '18')
+    +       fld(i, 'install_sac', 'SAC <span class="lbl-sub">installation</span>',
+               L.install_sac, '995461')
+    +       fld(i, 'install_gst_rate', 'GST % <span class="lbl-sub">installation</span>',
+               L.install_gst_rate, '18')
+    +     '</div>'
+    +     '<div class="fg2 lc-band">'
+    +       fld(i, 'remark', 'Remark <span class="lbl-sub">internal &#8212; does not print</span>',
+               L.remark, '2000/nos extra for tamper switch', 'span-all')
+    +     '</div>'
+    +   '</div>'
+    + '</details>';
 
   return h + '</div>';
 }
@@ -3002,8 +3192,7 @@ function sectionTotals(code) {
   for (var k = 0; k < idx.length; k++) {
     var L = MODEL.lines[idx[k]];
     if (L.is_header) continue;
-    var q = num(L.total_qty === '' || L.total_qty == null
-      ? totalOf(L, (secByCode(code) || {}).areas || []) : L.total_qty);
+    var q = num(qtyOf(L));
     s += num(L.supply_rate) * q;
     ins += num(L.install_rate) * q;
   }
@@ -3220,10 +3409,7 @@ function renderZeroQty() {
     priced++;
     /* The same resolution `lineSummary()` and `sectionTotals()` use: with an
        area breakdown the total IS the breakdown, so read it from the boxes. */
-    var qty = (L.total_qty === '' || L.total_qty == null)
-      ? totalOf(L, (secByCode(L.section) || {}).areas || [])
-      : L.total_qty;
-    if (num(qty) === 0) n++;
+    if (num(qtyOf(L)) === 0) n++;
   }
 
   if (!n || !priced) { box.innerHTML = ''; return; }
@@ -3312,6 +3498,12 @@ function setLine(i, key, val) {
    || key === 'install_escalation_pct' || key === 'install_rate') {
     hint(i);
   }
+  /* Typed behind the fold: keep the fold's own summary line telling the truth
+     without a re-render, which would take the caret with it. */
+  if (MORE_KEYS[key]) {
+    var ms = el('ms' + i);
+    if (ms) ms.innerHTML = moreSummary(L);
+  }
 }
 
 function setArea(i, area, val) {
@@ -3333,6 +3525,14 @@ function setSection(i, code) {
     if (MODEL.lines[i].area_qty[n] != null) keep[n] = MODEL.lines[i].area_qty[n];
   }
   MODEL.lines[i].area_qty = keep;
+  /* Arriving in a section that takes a typed total with nothing typed is the
+     same state as a fresh insert, and gets the same default. A typed figure
+     is left alone, and a line bound for an area section keeps whatever it
+     carried: `qtyOf()` never reads it there, and it is still in place if the
+     line is moved back. */
+  if (!areas.length && (MODEL.lines[i].total_qty === '' || MODEL.lines[i].total_qty == null)) {
+    MODEL.lines[i].total_qty = DEFAULT_QTY;
+  }
   renderLines();
 }
 
@@ -3422,17 +3622,15 @@ function insertFamily() {
   if (S) S._open = true;
 
   if (isUnsized(sp)) {
-    var one = blankLine();
+    var one = blankLine(code);
     one._open = false;
-    one.section = code;
     one.item_no = String(next);
     setAuto(one, 'description', sp.spec_text);
     applySpecFields(one, sp, sid);
     applyVariantFields(one, sp.variants[0], 0);
     MODEL.lines.push(one);
   } else {
-    var head = blankLine();
-    head.section = code;
+    var head = blankLine(code);
     head.item_no = String(next);
     head.is_header = true;
     head._open = true;
@@ -3442,9 +3640,8 @@ function insertFamily() {
 
     var letters = 'abcdefghijklmnopqrstuvwxyz';
     for (var v = 0; v < sp.variants.length; v++) {
-      var kid = blankLine();
+      var kid = blankLine(code);
       kid._open = false;
-      kid.section = code;
       kid.item_no = String(next) + '.' + letters.charAt(v);
       kid.parent_item_no = String(next);
       setAuto(kid, 'description', sp.variants[v].label);
@@ -3958,11 +4155,7 @@ def create_boq():
           {supersedes_html}
         </div>
         <div class="form-group span2">
-          <label for="project_id">Project <span style="font-weight:500;text-transform:none;">(optional)</span></label>
-          {project_html}
-        </div>
-        <div class="form-group span2">
-          <label for="project_name">Project Name</label>
+          <label for="project_name">Project Name <span style="font-weight:500;text-transform:none;">(printed on the sheet)</span></label>
           <input type="text" id="project_name" name="project_name"
                  value="{_v('project_name')}" placeholder="Sify Bangalore" required/>
         </div>
@@ -3970,6 +4163,10 @@ def create_boq():
           <label for="site_location">Site Location</label>
           <input type="text" id="site_location" name="site_location"
                  value="{_v('site_location')}" placeholder="Bangalore, Karnataka"/>
+        </div>
+        <div class="form-group span2">
+          <label for="project_id">File under project <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+          {project_html}
         </div>
         <div class="form-group span2">
           <label for="rate_basis_label">Rate Basis Label</label>
@@ -3990,12 +4187,14 @@ def create_boq():
         or every line&#39;s claimed quantity silently restarts at zero.
       </p>
       <p style="margin-top:.5rem;font-size:.78rem;color:var(--muted);">
-        <b>Project</b> is what files this schedule&#39;s claims under a job on the
-        dashboard and on the project page. It is <b>optional</b> &mdash; a schedule
-        is often priced before the job is opened, and an unattached BOQ is a valid
-        record whose claims simply roll up under <i>Unassigned</i>. There is no BOQ
-        edit screen, so a BOQ filed against the wrong project is corrected from
-        <b>the project page</b>, which can detach it and attach it elsewhere.
+        <b>Project Name</b> is the title printed on the sheet and shown in the
+        register. <b>File under project</b> is different: it files this
+        schedule&#39;s claims under a job on the dashboard and on the project page.
+        It is <b>optional</b> &mdash; a schedule is often priced before the job is
+        opened, and an unattached BOQ is a valid record whose claims simply roll up
+        under <i>Unassigned</i>. There is no BOQ edit screen, so a BOQ filed against
+        the wrong project is corrected from <b>the project page</b>, which can
+        detach it and attach it elsewhere.
         <b>A revision inherits its predecessor&#39;s project</b> and this control is
         ignored on one &mdash; changing it on one revision and not another would
         split a chain across two projects.

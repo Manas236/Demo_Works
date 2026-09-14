@@ -962,7 +962,7 @@ def _form(data: dict, error: str, action: str, submit_label: str,
           on the register &mdash; what they were paid does not stop being true
           &mdash; but they no longer appear where a person is picked.</small>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-top:.9rem;">
         <label for="notes">Notes</label>
         <input type="text" id="notes" name="notes" maxlength="500"
                value="{_esc(data.get('notes'))}"/>

@@ -560,10 +560,29 @@ TI_BLOCKS = {"head":       "13840b8797d6e721",   # was f76089afb5505200,
 # ⚠ **The assumed-rate chip cannot reach this document even when an order does
 #   carry one.** `.xl-assumed` is `display:none` at print. That is asserted
 #   directly in `tests/test_po_extra_lines.py` rather than inferred from here.
+# Moved a FOURTH time on 14 September 2026, by the HSN box on the extra-parts
+# repeater. **+66 bytes, in the SAME one block, and it is one thing:**
+#
+#   head  +66 = the `.xl-head, .xl-row` grid gaining one `100px` column, the
+#               mobile rule hiding `extra_hsn` with the other narrow cells, and
+#               the comment above them saying so — all in `PURCHASE_STYLES`.
+#
+# That figure was **measured, not derived**: `PURCHASE_STYLES` grew by 66
+# characters against `HEAD` and the page grew by 66, so the delta is the
+# stylesheet and nothing else.
+#
+# ⚠ **`items` did NOT move, for the reason it never has.** The golden order
+#   carries no `extra_lines`, so no extra row is drawn and no HSN cell — full
+#   or chipped — reaches this sheet. On an order that DOES carry one, the HSN
+#   cell now prints what was typed, and the `add HSN` chip only where nothing
+#   was; until this pass that chip was asking for a figure no form had a box
+#   for, which is the defect the box closes.
 # was 0b7ed84b19fa2646 / 106559 before the 29 Aug 2026 nav re-baseline
 # was a7b30226a545aa62 / 106807 before the 29 Aug 2026 MEASUREMENT nav entry
-PO_WHOLE, PO_LEN = "ac40e815028168a7", 107149
-PO_BLOCKS = {"head":       "e6bade8d45a63f6a",   # was 09c8c69b2580ee92,
+# was ac40e815028168a7 / 107149 before the 14 Sep 2026 extra-parts HSN box
+PO_WHOLE, PO_LEN = "787bf73b6440206f", 107215
+PO_BLOCKS = {"head":       "b0183c538998f277",   # was e6bade8d45a63f6a,
+                                                 # was 09c8c69b2580ee92,
                                                  # was 823a24d818d5f0c3,
                                                  # was aa05dcac55729c51,
                                                  # was c4b27c10e58c1b4f,

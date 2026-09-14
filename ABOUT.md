@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,651 passed, 4 skipped** | **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,650 passed, 2 skipped** | **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,693 passed, 4 skipped** | **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,692 passed, 2 skipped** | **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -1879,9 +1879,13 @@ record to freeze a copy of, because the decision to buy is ours.
     form rather than in the parser.
   - **`extra_lines`** (29 Aug 2026 — **absent on every order written before
     it**, and `extra_lines_of()` reads a missing key as `[]`): a list of
-    `{type: "extra", description, unit, qty, rate, discount_pct, total,
-    rate_is_assumed}`. `description` and `unit` are **free text somebody typed
-    and must be escaped at the interpolation site**. `total` is already NET of
+    `{type: "extra", description, hsn, unit, qty, rate, discount_pct, total,
+    rate_is_assumed}`. `description`, `hsn` and `unit` are **free text somebody
+    typed and must be escaped at the interpolation site**. `hsn` arrived on
+    14 Sep 2026 and is **absent on every extra line written before it** — it
+    reads as blank, is never validated against a tariff, and `po_parts.py`
+    seeds none; the printed order runs it through `B.field()` like an item
+    row's, so a blank one prints the `add HSN` chip. `total` is already NET of
     the discount — the same `_line_total()` the item rows use, not a second
     copy — which is what puts an extra line's discount inside the tax base
     exactly as A2 put an item line's there.
@@ -1891,11 +1895,19 @@ record to freeze a copy of, because the decision to buy is ours.
       `line_id` in `purchase.py` is `.get()`-guarded and a test asserts the key
       is absent.
     - `rate_is_assumed` is **derived on the server**, not remembered in a
-      hidden field: true iff the description matches a `po_parts.py` entry
-      **and** the rate is still that entry's seeded figure. Editing the rate to
-      anything else clears it on the next save. It can over-report — type a
-      seeded figure by hand and it marks — and that is the safe direction; the
-      opposite would let an invented rate travel unmarked.
+      hidden field: true iff the rate box was posted **blank** and the server
+      filled it from `po_parts.py` — the mark IS the fill. A figure in the box
+      on submit is the operator's price, **the seeded figure included**
+      (narrowed 14 Sep 2026 on the owner's ruling, *"if I have entered price
+      it is not a placeholder"*; until then any rate equal to the seed was
+      marked however it got there). Two things follow and both are tested:
+      no form writes the seed into the box's value — `xlFill()` and
+      `_extra_row_html()` offer it as the input's `placeholder` plus a
+      `data-seed` the amount preview reads — and a stored placeholder line
+      reopens on `/purchase/edit/<id>` with a **blank** box, so resaving the
+      order keeps it a placeholder rather than turning it into a price. Type
+      the figure to keep it. Records written before 14 Sep keep the flag they
+      carry; none is rewritten.
     - **⚠ The `assumed` chip is `display:none` at print** (`.xl-assumed` in
       `PURCHASE_STYLES`). The vendor receives the order, not our note that we
       invented the price.
@@ -4227,6 +4239,16 @@ gap.
 
 1. **Page head** — title, today's date, `+ New quotation` / `Register`, closed
    by a hairline.
+1b. **BOQ call-to-action** (13 September 2026) — a full-width navy band,
+   `_boq_cta_html()`, carrying the largest control on the page: **`+ New
+   BOQ`** → `/boq/create`. The schedule is what this software exists to
+   produce — measurement, RA bills and challans are all raised against one —
+   so it sits above the quotation band. Gated on **`boq.create_boq`**, not the
+   register: a role holding `boq.view` alone is not handed a button it would
+   be refused on. The count line (`open · priced · basic value`, tax-exclusive
+   like everything on 4b) and the `Open the BOQ register →` link each ask
+   `can_reach("boq.list_boqs")` separately. Presentation only — no metric is
+   computed here that `_metrics()` did not already hold.
 2. **Hero band** — one hero figure (**Open pipeline**, the only ≥48px number on
    the page) plus three stat tiles: PO Expected, Won (with recorded PO value),
    Win rate (with a meter). Unlabelled: it *is* the headline.
@@ -5447,11 +5469,21 @@ to `/purchase/view` are the `.chg-*` screen stylesheet.
 somebody typed, so `view_purchase()` passes `P.esc(...)` at the interpolation
 site — §9.
 
-⚠ **No repeater on `/purchase/from-boq` or `/purchase/from-draft`.** They are
+~~⚠ **No repeater on `/purchase/from-boq` or `/purchase/from-draft`.** They are
 derived documents whose job is to carry a schedule across without re-entry; a
 charge is added afterwards on the edit form, like any other money that was not
-on the schedule. They still write `charges: []`, so every order this module
-creates carries the key.
+on the schedule.~~ ✅ **REVERSED 14 September 2026, by the owner's decision** —
+the repeater is on both upstream forms now, drawn by the same
+`_charge_section_html()` between the lines and the tax, exactly where
+`/purchase/create` draws it. The owner raised an order from a draft, found the
+section missing from the form that goes to the vendor while the reprice form
+beside it carried it, and rejected the deviation: an order is written once,
+and sending it out and then reopening it to add the loading charge is the
+re-entry the route exists to avoid. `_write_upstream_po()` takes the parsed
+list and hands it to `_totals_of()`; an order raised with no charges still
+writes `charges: []`, so every order this module creates carries the key.
+See the extra-lines note below for the same reversal on the same day, and
+`tests/test_po_upstream_repeaters.py`.
 
 ⚠ **NOT built, and recorded rather than silent:** CC-2's A3 note also asks for
 the heads to be seeded in `/settings` and editable there. They are not. Reading
@@ -5528,17 +5560,31 @@ the blank-identity `todo-chip` — and that chip is **`display:none` at print**,
 for the same reason `.po-panel` is: the vendor receives the order, not our
 record of having guessed.
 
-⚠ **`rate_is_assumed` means *this is the placeholder figure*, not *this was
-prefilled*, and the wording is chosen to be true in both cases.** It is set
-when the server supplied the rate **or** when the submitted rate is exactly the
-seeded rate for that description — one arithmetic test covering both limbs,
-derived on the server rather than trusted from a hidden field. So typing
-`Butane gas` and `130` by hand is flagged although nobody prefilled it: a human
-who types the placeholder from memory has invented a price just as surely as
-the server has. The chip therefore makes a claim about the **figure** and never
-about the operator; anything reading as "we filled this in for you" would be
-false in exactly that case. Over-warning on screen is the safe direction and
-the mark never prints.
+⚠ **`rate_is_assumed` means *the server put this figure here*, and nothing
+else — narrowed on 14 September 2026 by the owner's ruling, in his words: *"if
+I have entered price it is not a placeholder."*** It is set when, and only
+when, the rate box was posted **blank** and `_parse_extra_lines()` filled it
+from `po_parts.py`; the mark is set at the fill site and there is no second
+test. A figure that was in the box on submit is the operator's price, **the
+seeded figure included**. Still derived on the server from the posted box, and
+still from no hidden field. Until that day the rule was the wider one — any
+rate *equal* to the seed was marked, however it got into the box, as the safe
+direction — and an order raised that morning carried `150mm flange` at ₹1,350
+and `16 sq mm wire` at ₹175, both entered, both chipped "placeholder · not
+quoted"; the owner rejected that as a false statement about a price he had
+chosen, and `_extra_assumed()` was deleted with the rule. **The form's side of
+it is what keeps the mark reachable:** the seeded rate is **offered, never
+written into the box** — `xlFill()` puts it in the input's `placeholder`
+(ghost text) and `data-seed`, `_extra_row_html()` renders the same for any
+blank box on a seeded description, and `xlAmounts()` previews from `data-seed`
+when the box is blank — because a value written into the box would post as an
+entered price on every submit and the mark could never be set with JavaScript
+running. And a stored placeholder line **reopens on `/purchase/edit/<id>` with
+a blank box** and the seed greyed in it, so saving the form again does not
+silently turn every placeholder on the order into a price; type the figure to
+keep it. The chip's wording, "placeholder · not quoted", stays true of every
+line it still marks. `tests/test_po_extra_lines.py` §6 pins the owner's own
+two lines, the reopen, the resave, the typed seed and the JavaScript strings.
 
 The arithmetic is §3's, and all of it enters through **`_totals_of()`**:
 
@@ -5552,14 +5598,62 @@ copy on 28 August for exactly this reason, and this item would have reintroduced
 it. `_line_total()` and `_parse_discount()` are reused rather than duplicated,
 so an extra line's discount is inside the tax base exactly as A2's is.
 
-**On `/purchase/create` and `/purchase/edit/<id>` only.** ⚠ Deliberately **not**
+~~**On `/purchase/create` and `/purchase/edit/<id>` only.** ⚠ Deliberately **not**
 on `/purchase/from-boq/<boq_id>` or `/purchase/from-draft/<draft_id>`: those are
 picker flows whose job is to carry a schedule's ticked lines across without
 re-entry, and adding a free-text surface to a picker is a second design — two
 ways of adding a line on one form, one traceable to the schedule and one not. A
 part on no schedule is added afterwards on the edit form, exactly as a charge
-is. Both still write `extra_lines: []`, so every order this module creates
-carries the key. **The same call A3 made, made again and recorded again.**
+is. **The same call A3 made, made again and recorded again.**~~ ✅ **REVERSED
+14 September 2026, by the owner's decision — on all four forms now.** The
+call was made twice and unmade once: the owner raised an order from a draft
+and found both sections missing from the form that goes to the vendor while
+`/purchase/edit/<id>` beside it carried both, and rejected the reasoning. Both
+upstream routes parse the repeater with the same `_parse_extra_lines()` on
+POST — the server prefill, the assumed-rate mark and the no-`line_id` rule
+all hold there unchanged — draw it with the same `_extra_section_html()`, and
+hand the list to `_write_upstream_po()`, which passes it through `_totals_of()`
+and nowhere else. A rejected POST comes back with every row still typed in.
+**The schedule-line rule did not move**: `/from-boq` still refuses nothing
+ticked and `/from-draft` still refuses a draft with no lines — the extra parts
+ride on an order that has a schedule behind it, and an order of extra parts
+alone belongs on `/purchase/create` (gap 38). An order raised with none still
+writes `extra_lines: []`. `tests/test_po_upstream_repeaters.py` (20).
+
+⚠ **The JavaScript the repeater needs is ONE helper, `_po_form_script_html()`,
+drawn by every form that draws the repeater** (14 September 2026). It was two
+copies — `/purchase/create`'s and `/purchase/edit/<id>`'s — and the second had
+`recalc()` **stubbed to nothing**, so the **Amount** column on the reprice form
+never filled and read "—" against a row carrying a quantity and a rate; the two
+upstream forms were about to become a third copy. The helper holds `XSEED`,
+`xlFill()`, `addExtra()`, `lineAmt()` (`_line_total()`'s shape — discount the
+product, round once — the one JavaScript copy of it, which the item rows use
+too) and `xlAmounts()`; each page defines its own `recalc()` — the create form
+keeps its live total strip, the reprice form and the upstream forms fill the
+row amounts and nothing else. The reprice form's item rows carry `data-qty`
+for it, since their quantity is a label and not an input, and its **"Order
+Value as it stands"** strip is deliberately still the stored figure. Both
+blocks sit **after** the form on every page, because `recalc()` runs once at
+load and the rows have to exist by then. The JavaScript was executed under
+jsdom on all four rendered pages during that pass — no script errors, the
+figures agree with `_line_total()` — but **the suite still cannot run a line
+of it**, and `tests/test_po_upstream_repeaters.py` asserts only the bytes.
+
+⚠ **The extra-parts repeater has an HSN box (14 September 2026), and it was a
+defect that it had not.** `/purchase/view` runs every goods row's HSN through
+`B.field()`, which draws — and **prints, to the vendor, as `[add HSN]`** — the
+chip on a blank one. An item row's HSN comes from the catalogue, so there the
+chip is a note about the catalogue; an extra part had no HSN field anywhere,
+so every extra part printed the chip and nothing anybody typed could satisfy
+it. The owner asked where the box was. It is on the same repeater on all four
+forms — `extra_hsn`, optional, free text, eight characters, never checked
+against a tariff — stored as `hsn` on the line, round-tripped through the
+reprice form, and printed in the HSN cell where a blank one still draws the
+chip. **`po_parts.py` seeds no HSN**, deliberately: an HSN is statutory data
+and an invented one is worse than a chip asking. **The PO golden moved for
+it — +66 bytes, `head` only, all stylesheet** (`.xl-row` gained a `100px`
+column and the mobile rule hides it): measured against `HEAD`, recorded in
+`tests/test_print_golden.py`, `items` and every figure untouched.
 
 **Unlike the item rows, this repeater is not positional and is fully editable on
 `/purchase/edit/<id>`** — descriptions and quantities included. It can gain and
@@ -5703,6 +5797,29 @@ Two rate behaviours worth keeping:
   derived and shown read-only. Two independently typed figures that must agree
   are two figures that can disagree. A section with no areas takes a typed
   total.
+- **A new line is quantified at 1** (14 September 2026). A line inserted into
+  a section that takes a typed total — through `addLine()`, or any priced row
+  `insertFamily()` lands there — arrives with `total_qty` set to
+  `DEFAULT_QTY` (`'1'`), and `setSection()` gives the same to a line moved
+  into such a section with nothing typed. A typed figure is never touched.
+  A schedule line is one of something until site measurement says otherwise,
+  and a row born at 0 tripped the zero-quantity band on every insert. **A
+  section with an area breakdown gets no default**: the total is the
+  breakdown, and which floor a `1` belongs on is not the editor's to guess,
+  so those lines start blank as before. The record is unchanged — the 1 is a
+  typed total like any other and `_clean_lines()` prices the line at it.
+
+  ⚠ **The three editor readers now resolve the quantity the way the server
+  does.** `lineSummary()`, `sectionTotals()` and `renderZeroQty()` go
+  through `qtyOf()`: areas declared → derived from the boxes, whatever
+  `total_qty` holds; none → the typed figure. They used to read *"typed if
+  present, else derived"*, which only held while `total_qty` was always
+  blank in an area section — `_form_payload_from()` blanks it on load and a
+  fresh line used to start blank. With a default in play, a line born at 1
+  in section C and moved to section B would have been priced on B's bar and
+  in its summary while `_clean_lines()` stored it at 0. `tests/test_editor_nav.py`
+  (*A new line is quantified at 1*) holds the default, its absence under an
+  area breakdown, the bulk insert, the section move and that precedence.
 - **The escalated rate is a suggestion, never imposed.** The form offers
   `base × (1 + pct)` beside an empty rate box with a *use* link, and when the
   entered rate differs it says so and keeps what was entered —
@@ -5841,10 +5958,49 @@ picker's `PICK` map fell into, where deleting a line made every row below it
 show the previous row's state. Absent means closed, so a loaded BOQ opens fully
 collapsed and `_demo_form_payload()` says nothing about it.
 
+##### The open panel — four bands, then a fold (13 September 2026)
+
+An opened line used to show its twenty-two controls as one flat stack of
+equal weight — seven rows, twenty-five labels — and the owner said so: *"too
+much info thrown at me at once."* `lineBody()` now lays the same fields out in
+the order a line is actually made, and demotes the ones that are rarely
+touched:
+
+| band | holds | why here |
+|---|---|---|
+| **head** | `Line N · item X` · **Specification header** toggle · Remove | the row type is a property of the whole row and flipping it changes the panel's shape, so it sits on the panel's edge, not in a field row |
+| **identity** (`.lc-ident`) | Section · Item No. · Under item ‖ Spec library · Variant | where it sits, then what it is; the picker leads the description because the picker is what writes it |
+| **description** | the textarea | |
+| **quantity** (`.lc-areas`) | one box per area · Total Qty · **Unit** | `Unit` moved in from the picker row — "12 Nos." is one fact, not two |
+| **rates** (`.lc-rates`) | a **2 × 3 table**: Supply / Installation down, Base rate · Escalation % · Unit rate across | ten labelled boxes under two track headings became five column heads and two row labels; `hint()` still writes into `sd<i>` / `id<i>` under the unit-rate cell |
+| **fold** (`.lc-more`, a `<details>`) | HSN · GST % · SAC · GST % · Remark | the tax codes because the spec pick fills them and they are rarely edited by hand; the remark because it never prints |
+
+**Nothing was removed, hidden or made optional.** Every field is still on the
+panel and still posted; the fold is **closed by default** but its `<summary>`
+line carries the values — `HSN 73063090 @ 18% · SAC 995462 @ 18% · "2000/nos
+extra…"` — so a closed fold is a compact rendering, not a hiding place.
+`moreSummary()` builds that line at render time and `setLine()` re-patches it
+as those five fields are typed into (a re-render would take the caret), so a
+remark typed behind the fold and then folded away is still on the face of the
+row. A **header row** gets the head, the identity row, the description and a
+plain Remark field, and no quantity, rate or fold — the server zeroes a
+header's tax codes, so offering them would be furniture.
+
+The fold's open/closed state is **`_more` on the line**, set by the element's
+own `ontoggle` and rendered back as the `open` attribute — the `_open`
+pattern, for the same reason: `renderLines()` replaces the editor's HTML
+wholesale, so DOM state alone would snap shut on every spec pick. It rides in
+`boq_json` with the rest of the UI state (next heading) and is kept out of the
+record the same way. The rate cells carry their column head as `data-lbl`, and
+below 520px the head row hides and each cell labels itself through `::before`.
+`tests/test_editor_nav.py` (*The open panel*) holds the band order, the closed
+fold and its summary, the re-render survival, the in-place summary patch and
+the header's reduced panel.
+
 ##### UI state is posted, and the server is what keeps it out of the record
 
-`_open`, `_spec`, `_variant` and `_auto` are all posted inside `boq_json`. That
-is deliberate. Stripping them in `saveJSON()` would also throw them away on a
+`_open`, `_more`, `_spec`, `_variant` and `_auto` are all posted inside
+`boq_json`. That is deliberate. Stripping them in `saveJSON()` would also throw them away on a
 **rejected** POST, and the user would get their input back with every line
 slammed shut and the picker's typed/auto memory wiped — the opposite of the
 always-return-the-user's-input contract this form is held to.
