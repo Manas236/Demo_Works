@@ -1027,6 +1027,12 @@ PINNED_PAGES = frozenset({
     # file actually requests and fails if the two disagree, which is how this
     # entry came to be needed rather than remembered.
     "measurement.print_ms",
+    # 14 September 2026 — the three print routes that had no golden are pinned
+    # before the nav is stripped out of every print route, so the strip can be
+    # measured rather than trusted. Same reason as the entry above.
+    "boq.print_boq",
+    "po_draft.print_po",
+    "merged_ra.print_merged",
 })
 
 

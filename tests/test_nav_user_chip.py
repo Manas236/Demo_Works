@@ -273,7 +273,9 @@ def test_the_initials_come_from_the_display_name(client):
 
 @pytest.mark.parametrize("url", ["/invoice/view/any-id", "/proforma/view/any-id",
                                  "/purchase/view/any-id", "/ra/print/any-id",
-                                 "/dc/print/any-id", "/po/create"])
+                                 "/dc/print/any-id", "/po/create",
+                                 "/boq/print/any-id", "/po/print/any-id",
+                                 "/merged/print/any-id"])
 def test_no_chip_on_a_page_a_golden_hashes(url):
     """
     Asserted against `_user_chip()` in a request context for that URL rather

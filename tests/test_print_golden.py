@@ -1286,3 +1286,272 @@ def test_no_blank_filler_row_reaches_the_printed_sheet(client, golden_ms):
         f"plus TOTAL — a filler row has appeared")
     for label in ("H1", "SH 1", "B1", "TOTAL"):
         assert f">{label}<" in body
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE THREE PRINT ROUTES THAT HAD NO GOLDEN — pinned BEFORE the nav is stripped
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 14 September 2026. The sidebar pass strips `_nav()` out of every print route
+# so that a navigation change can never again re-baseline a printed document
+# (ABOUT.md §7, "Global Nav vs Print Goldens"). That change is measured by
+# this file — and three print routes were not in it:
+#
+#   * `/boq/print/<id>`     — the issued BOQ. Renders no nav today.
+#   * `/po/print/<id>`      — the draft purchase order. Renders no nav today.
+#   * `/merged/print/<id>`  — the merged tax invoice. **Renders a nav today**,
+#                             and is the one of the three the strip will move.
+#
+# Each is pinned here, on the same markers as the documents above, in a commit
+# that touches no source file beyond `dashboard.PINNED_PAGES` — the order
+# `docsheet.py` and `boqpick.py` set: the baseline goes in before the change it
+# measures, so the digest is an observation and not a description of the
+# result.
+#
+# Two print routes are deliberately still NOT pinned, each with its reason:
+#
+#   * `/measurement/print/<id>` on a LEGACY sheet — `measurement.py`'s own
+#     decision, recorded in ABOUT.md §5: CC-2 is silent on whether a
+#     measurement prints, and pinning a design nobody specified would make the
+#     client's first sight of it a re-baselining exercise. The JOINT sheet is
+#     pinned above on the blocks it shares.
+#   * `/quotation/view/<id>` — `quotation.py` is frozen (INTRODUCTION.md §7),
+#     so its `_nav()` call cannot be removed and its page will follow every
+#     nav change. Pinning it here would make a print golden move on every
+#     chrome change by construction, which is the opposite of what a golden in
+#     this file is for.
+
+GOLD_DPO = "gold-draft-po"
+GOLD_MERGED = "gold-merged"
+GOLD_RA_INSTALL = "gold-ra-install"
+
+
+@pytest.fixture()
+def golden_dpo(client, pinned_identity):
+    """
+    One draft purchase order, fixed end to end — built directly, for the
+    reason every other fixture here is: `/po/create` mints a uuid and spends a
+    number from the `/settings` series, and neither is a thing a golden can
+    hold still.
+    """
+    STORE.setdefault("purchase_orders", {}).clear()
+    STORE["purchase_orders"][GOLD_DPO] = {
+        "id": GOLD_DPO, "ref": "SF/DPO/0007", "date": "2026-07-14",
+        "boq_id": "gold-boq", "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "project_name": "Sify Bangalore — Fire Protection",
+        "site_location": "Whitefield, Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd",
+        "vendor_id": "", "vendor_source": "typed",
+        "vendor_name": "Vishwakarma Pumps & Motors Pvt. Ltd.",
+        "vendor_gstin": "33AACCV5678D1Z2",
+        "to": ("Vishwakarma Pumps & Motors Pvt. Ltd.\nKind Attn: Mr S Ramanathan\n"
+               "Plot 44, SIDCO Industrial Estate\nCoimbatore, Tamil Nadu - 641021"),
+        "delivery_to": "Samruddhi Fire Services — Whitefield site store",
+        "notes": "Please quote delivered rates.",
+        "items": [
+            {"line_id": "cccccccccccc", "is_header": True, "item_no": "24",
+             "description": ("Providing and fixing MS heavy duty 'C' class pipe "
+                             "conforming to IS 1239 / IS 3589, including all "
+                             "fittings, supports and testing."),
+             "unit": "", "qty": 0.0, "pcs": ""},
+            {"line_id": "dddddddddddd", "is_header": False, "item_no": "24.a",
+             "description": "80 mm dia", "unit": "Mtrs", "qty": 120.0, "pcs": "20"},
+            {"line_id": "eeeeeeeeeeee", "is_header": False, "item_no": "24.b",
+             "description": "150 mm dia", "unit": "Mtrs", "qty": 700.0, "pcs": ""},
+        ],
+        "converted_po_ids": [],
+        "company_branch": "", "auth_signatory": "",
+    }
+
+    yield
+
+    STORE["purchase_orders"].clear()
+
+
+@pytest.fixture()
+def golden_merged(client, golden_ra):
+    """
+    One merged tax invoice over the golden supply bill and a second,
+    installation-leg bill on the same schedule.
+
+    Built directly rather than through `/merged/create` because the route
+    mints the `MI` serial and the record id, and `merged_ra.create()` reads
+    today's date. The record shape is ABOUT.md §3's, field for field; the
+    totals are the two bills' stored totals added, which is what
+    `merged_ra._sum_totals()` does and what the document prints.
+    """
+    import ra
+
+    child = STORE["boqs"]["gold-boq"]["line_items"][1]
+    c = ra.build_claim(child, 50.0, 1200.0, 0.0, 1200.0, leg="installation",
+                       hsn_sac="995462", gst_rate=18.0)
+    subtotal, drows, dtotal, net = ra.bill_totals([c], [])
+    tax = ra.compute_tax_totals([c], [], "cgst_sgst", 9.0, 9.0, 18.0)
+    inst = {
+        "id": GOLD_RA_INSTALL, "ref": "SF/RA/26-27/0003", "fy": "26-27",
+        "date": "2026-06-12",
+        "tax_invoice_ref": "SF/RI/26-27/0002", "tax_invoice_date": "2026-06-12",
+        "po_ref": "PT/WO/2026/44", "po_date": "2026-03-28",
+        "boq_id": "gold-boq", "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
+        "ra_no": 3, "leg": "installation",
+        "project_name": "Sify Bangalore — Fire Protection",
+        "site_location": "Whitefield, Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd", "contact_person": "Mr R Nair",
+        "to": STORE["boqs"]["gold-boq"]["to"],
+        "bill_gstin": "29AABCP1234C1ZX",
+        "claims": [c], "claim_subtotal": subtotal,
+        "deductions": drows, "deduction_total": dtotal, "net_payable": net,
+        "prev_balance": 0.0, "prev_balance_refs": [],
+        "status": "issued", "issued_on": "2026-06-12",
+        "cancelled_on": "", "cancel_reason": "",
+        "notes": "", "company_branch": "", "auth_signatory": "",
+        "approval_status": "approved",
+    }
+    inst.update(tax)
+    STORE["ra_bills"][GOLD_RA_INSTALL] = inst
+
+    sup = STORE["ra_bills"]["gold-ra"]
+    summed = {k: round(float(sup.get(k) or 0.0) + float(inst.get(k) or 0.0), 2)
+              for k in ("claim_subtotal", "deduction_total", "net_payable",
+                        "tax_amount", "rounding_off", "grand_total")}
+    STORE.setdefault("merged_ras", {}).clear()
+    STORE["merged_ras"][GOLD_MERGED] = {
+        "id": GOLD_MERGED,
+        "tax_invoice_ref": "SF/MI/26-27/0001", "fy": "26-27", "date": "2026-06-20",
+        "supply_ra_id": "gold-ra", "installation_ra_id": GOLD_RA_INSTALL,
+        "supply_ref": sup["ref"], "installation_ref": inst["ref"],
+        "supply_ra_no": 2, "installation_ra_no": 3,
+        "boq_id": "gold-boq", "boq_ref": "SF/BOQ/26-27/0001",
+        "project_name": "Sify Bangalore — Fire Protection",
+        "site_location": "Whitefield, Bangalore",
+        "account_name": "Prudent Teqtis Pvt Ltd", "contact_person": "Mr R Nair",
+        "to": STORE["boqs"]["gold-boq"]["to"], "bill_gstin": "29AABCP1234C1ZX",
+        **summed,
+        "status": "live", "cancelled_on": "", "cancel_reason": "", "notes": "",
+        # APPROVED — B7. An approved document emits no print-blanking block,
+        # exactly as the RA golden above records.
+        "approval_status": "approved",
+    }
+
+    yield
+
+    STORE["merged_ras"].clear()
+
+
+# The BOQ writes its own letterhead inside `boq._document_html()` and carries
+# no `.items-wrap` — its body is one `.boq-table` per section and a separate
+# `.boq-grand` for the totals — so it is split on the blocks it does carry.
+BOQ_SHEET_BLOCKS = [
+    ("head",       "<head>"),
+    ("letterhead", "<thead><tr><td>"),
+    ("foot-strip", "<tfoot><tr><td>"),
+    ("doc-box",    '<div class="doc-box">'),
+    ("party",      '<div class="doc-header'),
+    ("sections",   '<table class="boq-table">'),
+    ("grand",      '<div class="boq-grand">'),
+    ("signature",  '<div class="sig-block">'),
+]
+
+# Captured 14 September 2026, against the code as it stood BEFORE the nav was
+# stripped out of the print routes. The BOQ and the draft PO render no nav, so
+# neither is expected to move; the merged tax invoice renders one and is
+# expected to move in the `head` block ALONE.
+BOQ_WHOLE, BOQ_LEN = "6083201b22f6d952", 100879
+BOQ_BLOCKS = {"head":       "738417a9ea306621",
+              "letterhead": "1c197f96af8ad872",
+              "foot-strip": "0f66996df1483847",
+              "doc-box":    "64fcaef781b20ed2",
+              "party":      "9b34f96c4ac7cd01",
+              "sections":   "1d50afce5c49c30c",
+              "grand":      "2599e3fd773e385a",
+              "signature":  "7812a7b5e2ddb967"}
+
+DPO_WHOLE, DPO_LEN = "05e26ae227bb678e", 83807
+DPO_BLOCKS = {"head":       "9c5d3f7bb956b98a",
+              "letterhead": "2800166c693cc2f1",
+              "foot-strip": "1efaaf73d3a0a076",
+              "doc-box":    "9370df26fb1e5084",
+              "party":      "9d89e73813bb61f7",
+              "items":      "bb3a316d1cd1b2cc",
+              "signature":  "66c13b84cc80040d"}
+
+# The merged sheet writes its party block straight into the page frame with no
+# `.doc-box` around it — `merged_ra.print_merged()` opens the sheet and goes
+# directly to `DS.party_block()` — so it is split on the six markers it does
+# carry. Its letterhead and foot strip are the tax invoice's own bytes, which
+# the SAME-letterhead assertion below states directly.
+MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
+
+# ⚠ Captured with the page's endpoint already in `dashboard.PINNED_PAGES`, so
+#   the user chip is suppressed on it as on every other pinned page. Rendered
+#   with the chip drawn it measured 952ab4f8fdd3952f / 97,994 bytes — the
+#   1,370-byte difference is `USER_CHIP_STYLES` plus the chip's markup, and it
+#   sat inside `<nav>…</nav>`; every other block was identical either way.
+MERGED_WHOLE, MERGED_LEN = "97a995ac5d639c13", 96624
+MERGED_BLOCKS = {"head":       "3c52f8d6354e1cf8",
+                 "letterhead": "3c080a57f60c89e9",
+                 "foot-strip": "11c5bd67c2fabaa9",
+                 "party":      "aa58dd01cfddecc3",
+                 "items":      "30ecad09926182e7",
+                 "signature":  "d5b89b346e0b46ff"}
+
+
+def test_the_boq_document_matches_its_recorded_baseline(client, golden_ra):
+    """`/boq/print/<id>` — the issued schedule, no rate breakup. Must not move."""
+    r = client.get("/boq/print/gold-boq")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), BOQ_WHOLE, BOQ_LEN, BOQ_BLOCKS,
+           markers=BOQ_SHEET_BLOCKS, what="BOQ")
+
+
+def test_the_draft_po_document_matches_its_recorded_baseline(client, golden_dpo):
+    """`/po/print/<id>` — the rate-less draft order, on the shared sheet."""
+    r = client.get(f"/po/print/{GOLD_DPO}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), DPO_WHOLE, DPO_LEN, DPO_BLOCKS,
+           what="draft purchase order")
+
+
+def test_the_merged_tax_invoice_matches_its_recorded_baseline(client, golden_merged):
+    """`/merged/print/<id>` — both legs stacked under one `MI` serial."""
+    r = client.get(f"/merged/print/{GOLD_MERGED}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), MERGED_WHOLE, MERGED_LEN, MERGED_BLOCKS,
+           markers=MERGED_SHEET_BLOCKS, what="merged tax invoice")
+
+
+def test_the_three_newly_pinned_goldens_are_hashing_real_documents(
+        client, golden_ra, golden_dpo, golden_merged):
+    """The control, as every golden here carries one."""
+    boq = client.get("/boq/print/gold-boq").get_data(as_text=True)
+    assert "BILL OF QUANTITIES" in boq and "SF/BOQ/26-27/0001" in boq
+    assert "150 mm dia" in boq, "the BOQ section table rendered nothing"
+    assert "Mohali Rates" not in boq, "the print must not carry the rate basis"
+
+    dpo = client.get(f"/po/print/{GOLD_DPO}").get_data(as_text=True)
+    assert "DRAFT PURCHASE ORDER" in dpo and "SF/DPO/0007" in dpo
+    assert "Vishwakarma" in dpo, "the supplier block rendered nothing"
+    assert "80 mm dia" in dpo, "the picked lines rendered nothing"
+
+    merged = client.get(f"/merged/print/{GOLD_MERGED}").get_data(as_text=True)
+    assert "MERGED TAX INVOICE" in merged and "SF/MI/26-27/0001" in merged
+    assert "SUPPLY" in merged and "INSTALLATION" in merged, "a leg is missing"
+    assert "995462" in merged, "the installation SAC rendered nothing"
+
+
+def test_the_merged_tax_invoice_and_the_tax_invoice_carry_the_SAME_letterhead(
+        client, golden, golden_merged):
+    """
+    The assertion every document that prints through `docsheet.py` carries. A
+    merged tax invoice IS a tax invoice — Rule 46 wants the same GSTIN on its
+    face — so its letterhead must hash to the tax invoice's own bytes.
+    """
+    ti = _blocks(client.get(f"/invoice/view/{GOLD_TI}").get_data(as_text=True),
+                 SHEET_BLOCKS)
+    mi = _blocks(client.get(f"/merged/print/{GOLD_MERGED}").get_data(as_text=True),
+                 MERGED_SHEET_BLOCKS)
+    assert mi["letterhead"] == ti["letterhead"], (
+        "the merged tax invoice and the tax invoice print different letterheads")
+    # The foot strip is NOT compared: on this sheet the block after
+    # `<tfoot><tr><td>` runs to the party block rather than to a `.doc-box`,
+    # so the two spans are not the same bytes even when the strip itself is.
