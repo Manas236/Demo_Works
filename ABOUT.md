@@ -4509,14 +4509,18 @@ honest separation is that a BOQ is where the work starts and you are already
 there. The full argument, including the case against, is in
 `dashboard.NAV_ITEMS`' comment, where the superseded note is kept verbatim.
 
-⚠ **Adding an entry moves every print golden in this repository**, because
+~~⚠ **Adding an entry moves every print golden in this repository**, because
 `_nav()` is embedded in every printed page and hidden by CSS at print. Measured
 on 29 August 2026 when `Employees` was added: **+248 bytes on the tax invoice,
 the proforma, the purchase order, the RA bill and the `/po/create` picker; 0 on
 the delivery challan**, which renders no nav at all. In every case **the `head`
 block alone moved** and the printed sheet was byte-identical once the nav was
 removed. §7's first gap is the coupling; `tests/test_nav_reachability.py` is
-what now measures it rather than fearing it.
+what now measures it rather than fearing it.~~ ✅ **No longer true from
+14 September 2026.** No print route calls `_nav()` any more — the five that
+did were given the challan's shape, and §7's first gap is closed with the
+measurement. A nav entry now moves the `/po/create` picker's golden (it is a
+form and keeps its chrome) and no printed document.
 
 ##### `_nav()` carries the two app-wide warnings
 
@@ -8011,7 +8015,59 @@ than the `.ico`, because the `.ico` carries every size to 256 and would add
 ##### How these are numbered
 9d, 9c, B1 etc are literal legacy identifiers. Do not renumber them. An un-numbered gap is one added after the initial audit.
 
-* **Global Nav vs Print Goldens**: The print goldens verify the HTML block from `<head>` through the document start. Because printed documents load the global `_nav()` from `dashboard.py`, ANY future change to the global navigation bar breaks the print goldens, even though the nav is hidden via CSS during print. This is a known coupling gap that forces retargeting the goldens whenever the nav changes.
+* ~~**Global Nav vs Print Goldens**: The print goldens verify the HTML block from `<head>` through the document start. Because printed documents load the global `_nav()` from `dashboard.py`, ANY future change to the global navigation bar breaks the print goldens, even though the nav is hidden via CSS during print. This is a known coupling gap that forces retargeting the goldens whenever the nav changes.~~
+
+  ✅ **CLOSED 14 September 2026 — by the fix this entry prescribed from the
+  start: the document routes got the challan's shape.** `/invoice/view`,
+  `/proforma/view`, `/purchase/view`, `/ra/print` and `/merged/print` no longer
+  call `_nav()`; `/dc/print`, `/boq/print`, `/po/print` and
+  `/measurement/print` never did. A navigation change can no longer reach a
+  printed document. The entry is struck rather than deleted, and its two
+  measured re-baselines below are kept, because they are the record of what
+  the coupling cost and why closing it was the first commit of the sidebar
+  pass rather than the last.
+
+  What it measured — the third re-baseline, and the one that ends them, in
+  the direction the two before it went the other way:
+
+  | document | before | after | delta | blocks moved |
+  |---|---|---|---|---|
+  | tax invoice | 110,806 | 101,509 | **−9,297** | `head` |
+  | proforma | 104,371 | 95,074 | **−9,297** | `head` |
+  | purchase order | 107,215 | 97,918 | **−9,297** | `head` |
+  | RA bill | 98,254 | 88,957 | **−9,297** | `head` |
+  | merged tax invoice | 96,624 | 87,327 | **−9,297** | `head` |
+  | delivery challan | 83,657 | 83,657 | **0** | **none** |
+  | BOQ | 100,879 | 100,879 | **0** | **none** |
+  | draft PO | 83,807 | 83,807 | **0** | **none** |
+  | `/po/create` picker | 55,088 | 55,088 | **0** | **none** |
+
+  Every one of the 9,297 bytes is `<nav>…</nav>` and the line it sat on;
+  `letterhead`, `foot-strip`, `doc-box`, `party`, `items` and `signature` are
+  byte-identical on all five. Three print routes had no golden at all —
+  `/boq/print`, `/po/print` and `/merged/print` — and were **pinned in the
+  commit before this one** so the strip could be measured on them rather than
+  assumed; the merged sheet was the one of the three that carried a nav, and
+  it moved by the same figure in the same block.
+  `tests/test_print_golden.py::test_no_print_route_renders_the_nav` sweeps all
+  nine print routes for the nav's markup and is what stops it coming back.
+
+  ⚠ **Two things it does not close, each recorded rather than smoothed over.**
+  `/quotation/view/<id>` still calls `_nav()` — `quotation.py` is frozen
+  (INTRODUCTION.md §7) — so that one page follows every chrome change; it is
+  pinned by no golden, so no recorded digest is coupled to the nav through it.
+  And the printed pages still load `BASE_STYLES` at the head of
+  `DS.SHEET_STYLES`, `nav {}` rules included, which are dead on them now and
+  left where they are: that constant is on every page in the application and
+  is not a print commit's to edit. The price of the shape, stated plainly: the
+  five document pages carry no persistence strip and no settings dot, exactly
+  as the challan never has — a document is not where somebody notices that
+  nothing is saving, and the register they came from is one click away.
+
+  📌 **`dashboard.PINNED_PAGES` is now a set of pages that render no chip
+  because they render no nav at all** — except `/po/create`, which is a form
+  and keeps both. The set is still derived from the golden file by
+  `tests/test_nav_user_chip.py` and still has to be kept in step with it.
 
   🟠 **Measured on 27 August 2026, and still open.** Replacing `_nav()` with a
   sentinel and re-running [tests/test_print_golden.py](tests/test_print_golden.py)

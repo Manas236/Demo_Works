@@ -953,7 +953,6 @@ def print_merged(id: str):
 {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA.RA_DOC_STYLES}
 {approval.print_block("merged_ra", doc)}</head>
 <body>
-{_nav()}
 <main>
 <div class="screen-acts">
   <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">

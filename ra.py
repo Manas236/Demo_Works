@@ -4350,7 +4350,6 @@ def print_ra(id: str):
   {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA_DOC_STYLES}
 </head>
 <body>
-{_nav()}
 <main>
 
 <div class="screen-acts">

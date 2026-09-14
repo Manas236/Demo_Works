@@ -1231,7 +1231,6 @@ def view_proforma(id: str):
   {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}
 </head>
 <body>
-{_nav()}
 <main>
 
 <div class="screen-acts">

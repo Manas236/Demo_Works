@@ -23,6 +23,17 @@ on a printed sheet, the print rule would be wrong and re-baselining the golden
 would be the wrong response — it would pin the defect. So the printed
 appearance is asserted directly, in two independent ways, rather than inferred
 from "the CSS should hide it".
+
+✅ **14 September 2026 — jobs 2 and 3 now measure a coupling that is closed.**
+No print route calls `_nav()` any more: the four printed sheets in `PINNED`
+render no nav at all, exactly as the challan always did, so the "nav
+entry moves only the nav" tests below pass through their no-nav branch —
+`before == after`, the stronger claim — and the `/po/create` picker is the
+one pinned page on which a nav entry still moves anything. That is the state
+ABOUT.md §7's first gap prescribed, and `tests/test_print_golden.py::
+test_no_print_route_renders_the_nav` is what keeps it. The tests are kept as
+written rather than deleted, because they are what would report a nav
+creeping back onto a printed page in the goldens' own vocabulary.
 """
 
 import pathlib

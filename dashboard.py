@@ -1013,6 +1013,14 @@ REGISTER_STYLES = """
 # 📌 The cost is stated plainly rather than hidden: **six pages carry no sign-out
 # control**, and the way to fix that is to break the nav/golden coupling
 # (ABOUT.md §7, "Global Nav vs Print Goldens"), not to re-baseline anything.
+#
+# ✅ **14 September 2026 — the coupling is broken, and the set means something
+#   simpler now.** Every print route renders NO nav at all (the challan's shape,
+#   given to the other five), so for every member but `po_draft.create_po` the
+#   suppression below is moot: there is no nav for a chip to be on. The set is
+#   kept because the chip test still derives it from the golden file, and
+#   `/po/create` — a form, not a printed document — still renders the nav with
+#   the chip suppressed on it.
 PINNED_PAGES = frozenset({
     "invoice.view_invoice",
     "proforma.view_proforma",
@@ -1173,11 +1181,14 @@ def _persistence_strip() -> str:
 #
 # ABOUT.md §5 (`/` — Dashboard) records the amendment and its date.
 #
-# ⚠ **Adding an entry moves every print golden in this repository.** `_nav()` is
+# ⚠ ~~**Adding an entry moves every print golden in this repository.** `_nav()` is
 # embedded in every printed page and hidden by CSS at print, so the bytes move
 # while the paper does not. That is why `employee.py` shipped with no link on
 # 29 August 2026 and why the link arrived in a pass authorised to re-baseline —
-# ABOUT.md §7, "Global Nav vs Print Goldens". Do not add one casually.
+# ABOUT.md §7, "Global Nav vs Print Goldens". Do not add one casually.~~
+# ✅ **Closed 14 September 2026.** No print route calls `_nav()` any more; an
+#   entry added here moves the `/po/create` picker's golden — a form — and no
+#   printed document. ABOUT.md §7's first gap carries the measurement.
 # ⚠ **A FOURTH ENTRY ARRIVED 29 August 2026 (fifth pass) — the measurement
 #   register — and it is the FIRST DOCUMENT REGISTER in this nav.** Read the
 #   rule above before adding a fifth: Projects is the entity that groups the
@@ -1240,7 +1251,12 @@ def _nav_links() -> str:
 
 def _nav():
     """
-    The shared nav. Rendered on every page, hidden by the print stylesheet.
+    The shared nav. Rendered on every SCREEN page. ⚠ **Not on a print route**
+    (14 September 2026): `/invoice/view`, `/proforma/view`, `/purchase/view`,
+    `/ra/print` and `/merged/print` stopped calling it, joining `/dc/print`,
+    `/boq/print`, `/po/print` and `/measurement/print`, so that a nav change
+    can never again move a printed document's golden. `/quotation/view` is the
+    one document page that still calls it, because `quotation.py` is frozen.
 
     Its entries are filtered by what the signed-in user may reach — see
     `_nav_links()` and `auth.can_reach()`. **That is presentation only.** Every

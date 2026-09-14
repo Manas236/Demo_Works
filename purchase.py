@@ -4188,7 +4188,6 @@ def view_purchase(id: str):
   {DS.SHEET_STYLES}{PURCHASE_STYLES}
 </head>
 <body>{approval.print_block("purchase", po)}
-{_nav()}
 <main>
 
 <div class="screen-acts">

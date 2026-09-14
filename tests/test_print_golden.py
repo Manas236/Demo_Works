@@ -462,13 +462,49 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks=None,
 #
 #     ⚠ **The delivery challan did NOT move again**, for the same reason: it
 #     renders no nav at all. Its digest below is untouched a second time.
+# ⚠ **RE-BASELINED 14 September 2026 — THE NAV IS GONE FROM EVERY PRINT ROUTE,
+#   and this is the LAST time a navigation change can move a printed document.**
+#   ABOUT.md §7's first gap ("Global Nav vs Print Goldens") is closed by this
+#   commit: `/invoice/view`, `/proforma/view`, `/purchase/view`, `/ra/print` and
+#   `/merged/print` no longer call `_nav()`, which gives them the shape
+#   `/dc/print`, `/boq/print` and `/po/print` always had. The re-baseline goes
+#   the other way from the two before it — to a SMALLER output — and it is the
+#   re-baseline that ends re-baselines: from here on, `_nav()` is not on any
+#   page this file hashes except the `/po/create` picker, which is a form.
+#
+#   Measured, per document: **−9,297 bytes, and the `head` block ALONE.**
+#
+#     | document           | before  | after   | delta  | blocks moved |
+#     | tax invoice        | 110,806 | 101,509 | −9,297 | head         |
+#     | proforma           | 104,371 |  95,074 | −9,297 | head         |
+#     | purchase order     | 107,215 |  97,918 | −9,297 | head         |
+#     | RA bill            |  98,254 |  88,957 | −9,297 | head         |
+#     | merged tax invoice |  96,624 |  87,327 | −9,297 | head         |
+#     | delivery challan   |  83,657 |  83,657 |      0 | none         |
+#     | BOQ                | 100,879 | 100,879 |      0 | none         |
+#     | draft PO           |  83,807 |  83,807 |      0 | none         |
+#     | /po/create picker  |  55,088 |  55,088 |      0 | none         |
+#
+#   The 9,297 bytes are `<nav>…</nav>` — the brand mark with its base64 logo,
+#   the four filtered entries, the subtitle pill — plus the empty persistence
+#   strip and the line the call sat on. `letterhead`, `foot-strip`, `doc-box`,
+#   `party`, `items` and `signature` are byte-identical on every one of the
+#   five, so not one figure, label or visible character on any printed sheet
+#   changed; `test_no_print_route_renders_the_nav` below is what keeps it out.
+#
+#   ⚠ The stylesheet the sheets load (`DS.SHEET_STYLES`) still begins with
+#     `BASE_STYLES`, which carries the `nav {}` rules. They are dead on these
+#     pages now and are left where they are: `BASE_STYLES` is shared by every
+#     page in the application and is not this commit's to edit.
 GOLD_TI = "gold-ti"
 # was ab555e45cd245fa5 / 110208 before the 27 Aug 2026 escaping pass
 # was f91031b44e1e7dc7 / 110216 before the 29 Aug 2026 nav re-baseline
 # was 92903e2e6134597b / 110464 before the 29 Aug 2026 MEASUREMENT nav entry
-TI_WHOLE = "9141446abd5ec906"
-TI_LEN = 110806
-TI_BLOCKS = {"head":       "13840b8797d6e721",   # was f76089afb5505200,
+# was 9141446abd5ec906 / 110806 before the 14 Sep 2026 nav removal
+TI_WHOLE = "ad1aa6915247c18c"
+TI_LEN = 101509
+TI_BLOCKS = {"head":       "59522cc02d192043",   # was 13840b8797d6e721,
+                                                  # was f76089afb5505200,
                                                   # was 49524db46e29dcc5
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
@@ -580,8 +616,10 @@ TI_BLOCKS = {"head":       "13840b8797d6e721",   # was f76089afb5505200,
 # was 0b7ed84b19fa2646 / 106559 before the 29 Aug 2026 nav re-baseline
 # was a7b30226a545aa62 / 106807 before the 29 Aug 2026 MEASUREMENT nav entry
 # was ac40e815028168a7 / 107149 before the 14 Sep 2026 extra-parts HSN box
-PO_WHOLE, PO_LEN = "787bf73b6440206f", 107215
-PO_BLOCKS = {"head":       "b0183c538998f277",   # was e6bade8d45a63f6a,
+# was 787bf73b6440206f / 107215 before the 14 Sep 2026 nav removal
+PO_WHOLE, PO_LEN = "32a83f94e0620545", 97918
+PO_BLOCKS = {"head":       "bf2fc2b883a29ca6",   # was b0183c538998f277,
+                                                 # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,
                                                  # was 823a24d818d5f0c3,
                                                  # was aa05dcac55729c51,
@@ -599,9 +637,11 @@ GOLD_PI = "gold-pi"
 # was 4969d5e4f6a6508b / 103773 before the 27 Aug 2026 escaping pass
 # was d4fe110738e8d20f / 103781 before the 29 Aug 2026 nav re-baseline
 # was 9a509c8c1f87ce5c / 104029 before the 29 Aug 2026 MEASUREMENT nav entry
-PI_WHOLE = "8cf87b4361ccc740"
-PI_LEN = 104371
-PI_BLOCKS = {"head":       "fb2abee257b52d86",   # was 0250890a6d6e2f6b,
+# was 8cf87b4361ccc740 / 104371 before the 14 Sep 2026 nav removal
+PI_WHOLE = "cdf95f1856eff934"
+PI_LEN = 95074
+PI_BLOCKS = {"head":       "8d0355644f96b13c",   # was fb2abee257b52d86,
+                                                  # was 0250890a6d6e2f6b,
                                                   # was a3b342e73adf07fc
              "letterhead": "1c368b0c8259abe0",
              "foot-strip": "1efaaf73d3a0a076",
@@ -618,9 +658,11 @@ GOLD_RA = "gold-ra"
 # was 2e12fa898f1b39fe / 97656 before the 27 Aug 2026 escaping pass
 # was 1c5f5c7e6720628f / 97664 before the 29 Aug 2026 nav re-baseline
 # was 7f964e7dceb2699f / 97912 before the 29 Aug 2026 MEASUREMENT nav entry
-RA_WHOLE = "74982d79ad492c09"
-RA_LEN = 98254
-RA_BLOCKS = {"head":       "837ea9b648848976",   # was 924f39af975d8d7b,
+# was 74982d79ad492c09 / 98254 before the 14 Sep 2026 nav removal
+RA_WHOLE = "1a6acf617d3c07f8"
+RA_LEN = 88957
+RA_BLOCKS = {"head":       "184a84d3609eaf57",   # was 837ea9b648848976,
+                                                  # was 924f39af975d8d7b,
                                                   # was ea1ccbaa59c99616
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
@@ -1487,8 +1529,11 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 #   with the chip drawn it measured 952ab4f8fdd3952f / 97,994 bytes — the
 #   1,370-byte difference is `USER_CHIP_STYLES` plus the chip's markup, and it
 #   sat inside `<nav>…</nav>`; every other block was identical either way.
-MERGED_WHOLE, MERGED_LEN = "97a995ac5d639c13", 96624
-MERGED_BLOCKS = {"head":       "3c52f8d6354e1cf8",
+# was 97a995ac5d639c13 / 96624 before the 14 Sep 2026 nav removal — the one of
+# the three newly pinned documents that rendered a nav, and it moved by the
+# same −9,297 bytes in the `head` block alone as the four above.
+MERGED_WHOLE, MERGED_LEN = "2f7780400388d366", 87327
+MERGED_BLOCKS = {"head":       "e38255e4e2ed0d90",   # was 3c52f8d6354e1cf8
                  "letterhead": "3c080a57f60c89e9",
                  "foot-strip": "11c5bd67c2fabaa9",
                  "party":      "aa58dd01cfddecc3",
@@ -1555,3 +1600,58 @@ def test_the_merged_tax_invoice_and_the_tax_invoice_carry_the_SAME_letterhead(
     # The foot strip is NOT compared: on this sheet the block after
     # `<tfoot><tr><td>` runs to the party block rather than to a `.doc-box`,
     # so the two spans are not the same bytes even when the strip itself is.
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NO PRINT ROUTE RENDERS THE NAV — 14 September 2026
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The pieces of app chrome that `_nav()` emits. Asserted on the MARKUP and not
+# on the CSS: `DS.SHEET_STYLES` still opens with `BASE_STYLES`, which carries
+# the `.nav-brand` rule, so a stylesheet match would fail every sheet for a
+# rule that draws nothing. What must be absent is the element.
+NAV_MARKUP = ("<nav>", "<nav ", 'class="nav-brand"', 'class="nav-link"',
+              'class="nav-user"', 'class="db-down"')
+
+
+@pytest.mark.parametrize("name,url", [
+    ("tax invoice",        f"/invoice/view/{GOLD_TI}"),
+    ("proforma",           f"/proforma/view/{GOLD_PI}"),
+    ("purchase order",     f"/purchase/view/{GOLD_PO}"),
+    ("RA bill",            "/ra/print/gold-ra"),
+    ("merged tax invoice", f"/merged/print/{GOLD_MERGED}"),
+    ("delivery challan",   f"/dc/print/{GOLD_DC}"),
+    ("BOQ",                "/boq/print/gold-boq"),
+    ("draft PO",           f"/po/print/{GOLD_DPO}"),
+    ("measurement sheet",  f"/measurement/print/{GOLD_MS}"),
+])
+def test_no_print_route_renders_the_nav(
+        name, url, client, golden, golden_ra, golden_dc, golden_dpo,
+        golden_merged, golden_ms):
+    """
+    ⚠ **The assertion that ends the nav/golden coupling, stated directly.**
+
+    Until 14 September 2026 five of these documents embedded `_nav()` and hid
+    it with CSS at print, so **every** navigation change moved their recorded
+    digests — for a cosmetic reason, on documents that go to a client. Two
+    re-baselines in one week (`Employees`, then `Measurements`) cost ten digest
+    updates between them. The fix ABOUT.md §7 prescribed all along was the
+    challan's shape: the document alone behind a `.no-print` action bar, with
+    no nav at all. Every print route has that shape now, and this is what
+    stops the nav coming back — a `{_nav()}` re-added to any of these pages
+    fails here by name rather than by a golden moving for no visible reason.
+
+    ⚠ `/quotation/view/<id>` is NOT in the list, and that is a known gap
+    rather than an oversight: `quotation.py` is frozen (INTRODUCTION.md §7),
+    so its `_nav()` call stays until that file is next unfrozen. It is not
+    pinned by a golden either, so no printed document's digest is coupled to
+    the nav through it.
+    """
+    html = client.get(url).get_data(as_text=True)
+    assert "<html" in html, f"{name}: {url} did not render a page"
+    for token in NAV_MARKUP:
+        assert token not in html, (
+            f"{name}: {url} renders app chrome ({token!r}). A print route is the "
+            f"document alone behind a `.no-print` action bar — /dc/print's shape "
+            f"— and never calls _nav(). Re-adding it re-couples every printed "
+            f"document's golden to the navigation, which is the gap this closed.")
