@@ -892,6 +892,25 @@ def print_merged(id: str):
         for head, amt in slab.get("heads", []):
             tax_rows += DS.sum_row(f"{_esc(head)}", DS._inr(float(amt or 0.0)))
 
+    # ⚠ **Folded into `rows` before it reaches `items_table()`, not appended to
+    #   `sheet` after it.** `sum_row()`/`total_row()` return bare `<tr>`
+    #   fragments meant to sit inside the SAME `<table class="q-table"><tbody>`
+    #   as the item rows — `invoice.py` and `ra.py` both build their totals into
+    #   `table_rows`/`table_rows_html` for exactly this reason. A `<tr>` sitting
+    #   directly in `page-frame`'s outer `<td>` (outside any table) is invalid
+    #   HTML, and the browser's foster-parenting recovery hoists everything
+    #   after it — `amount_words`, `bank_block`, `sig_block` — to BEFORE the
+    #   whole `<table class="page-frame">`, which is why the sheet printed with
+    #   the bank/signature block above the letterhead.
+    totals_rows = (
+        DS.sum_row("Claim subtotal", DS._inr(float(doc.get("claim_subtotal") or 0.0)))
+        + DS.sum_row("Less deductions", DS._inr(float(doc.get("deduction_total") or 0.0)))
+        + DS.sum_row("Net payable", DS._inr(float(doc.get("net_payable") or 0.0)))
+        + tax_rows
+        + DS.sum_row("Rounding off", DS._inr(float(doc.get("rounding_off") or 0.0)))
+        + DS.total_row("Grand Total", "", DS._inr(float(doc.get("grand_total") or 0.0)))
+    )
+
     # ⚠ `_meta()` takes PRE-ESCAPED values by contract (ABOUT.md §9), so every
     #   argument here is escaped at the call site and none of them is escaped
     #   twice. The seller half is read from `branding` at render, exactly as
@@ -934,13 +953,7 @@ def print_merged(id: str):
 
     sheet = (DS.sheet_open(title_band="MERGED TAX INVOICE")
              + party + meta + void_band
-             + DS.items_table(columns, rows)
-             + DS.sum_row("Claim subtotal", DS._inr(float(doc.get("claim_subtotal") or 0.0)))
-             + DS.sum_row("Less deductions", DS._inr(float(doc.get("deduction_total") or 0.0)))
-             + DS.sum_row("Net payable", DS._inr(float(doc.get("net_payable") or 0.0)))
-             + tax_rows
-             + DS.sum_row("Rounding off", DS._inr(float(doc.get("rounding_off") or 0.0)))
-             + DS.total_row("Grand Total", "", DS._inr(float(doc.get("grand_total") or 0.0)))
+             + DS.items_table(columns, rows + totals_rows)
              + DS.amount_words("Amount in words", float(doc.get("grand_total") or 0.0))
              + DS.bank_block()
              + DS.sig_block(computer_generated=True)
@@ -951,6 +964,8 @@ def print_merged(id: str):
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>{B.page_title(str(doc.get('tax_invoice_ref') or 'Merged'))}</title>{B.HEAD_ICON}
 {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA.RA_DOC_STYLES}
+<style>
+{DS.BAND_CSS}</style>
 {approval.print_block("merged_ra", doc)}</head>
 <body>
 <main>
@@ -963,7 +978,9 @@ def print_merged(id: str):
     <button class="btn" onclick="window.print()">&#128438; Print</button>
   </div>
 </div>
+<div class="quotation-doc">
 {sheet}
+</div>
 </main>
 </body></html>""")
 

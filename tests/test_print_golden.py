@@ -1593,13 +1593,30 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # was 97a995ac5d639c13 / 96624 before the 14 Sep 2026 nav removal — the one of
 # the three newly pinned documents that rendered a nav, and it moved by the
 # same −9,297 bytes in the `head` block alone as the four above.
-MERGED_WHOLE, MERGED_LEN = "2f7780400388d366", 87327
-MERGED_BLOCKS = {"head":       "e38255e4e2ed0d90",   # was 3c52f8d6354e1cf8
+#
+# Re-baselined 15 September 2026 — `merged_ra.print_merged()` was appending
+# `sum_row()`/`total_row()` (bare `<tr>` fragments) to `sheet` AFTER
+# `DS.items_table()` had already closed its `<table>`, instead of folding them
+# into the `rows_html` `items_table()` is built from, as `invoice.py` and
+# `ra.py` both do. A `<tr>` outside any `<table>` is invalid HTML, and the
+# browser's foster-parenting recovery hoisted `amount_words`/`bank_block`/
+# `sig_block` — the content that followed the stray `<tr>`s — to BEFORE the
+# whole `<table class="page-frame">`, which is what a user saw as the bank and
+# signature panel printing above the letterhead. Fixed by moving the totals
+# rows into `items_table()`'s argument; the missing `DS.BAND_CSS` (for the
+# title band's caption styling) and the missing `.quotation-doc` wrapper (for
+# every `.quotation-doc`-scoped rule, `.bank-box` included) were fixed
+# alongside it since they were dead for the same reason no other document hits
+# — this was the only print route where the totals rows left the table. Was
+# 2f7780400388d366 / 87327 before the fix; `letterhead`, `foot-strip` and
+# `party` are untouched by it.
+MERGED_WHOLE, MERGED_LEN = "50e27290a88a97ef", 87957
+MERGED_BLOCKS = {"head":       "1e9bbe98af7f4e8d",   # was e38255e4e2ed0d90
                  "letterhead": "3c080a57f60c89e9",
                  "foot-strip": "11c5bd67c2fabaa9",
                  "party":      "aa58dd01cfddecc3",
-                 "items":      "30ecad09926182e7",
-                 "signature":  "d5b89b346e0b46ff"}
+                 "items":      "e0f2b72ef4632192",   # was 30ecad09926182e7
+                 "signature":  "0598f5bb4f174a53"}   # was d5b89b346e0b46ff
 
 
 def test_the_boq_document_matches_its_recorded_baseline(client, golden_ra):

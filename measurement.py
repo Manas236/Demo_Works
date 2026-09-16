@@ -1083,11 +1083,16 @@ MS_JOINT_STYLES = """
         font-size:var(--fs-xs, .68rem); table-layout:fixed; }
   .quotation-doc table.jm-grid th,
   .quotation-doc table.jm-grid td { border:var(--rule); padding:1.4mm 1mm;
-        vertical-align:middle; }
+        vertical-align:middle; overflow:hidden; }
   .quotation-doc table.jm-grid th { text-align:center; font-weight:700;
         background:#f3f4f6; }
   .quotation-doc .jm-loc { width:34mm; text-align:left; }
   .quotation-doc .jm-num { width:13mm; text-align:right; }
+  /* A grouped column (SUPPORTS, SPRINKLER's PENDANT/UPRIGHT) carries a word
+     in its head, not a three-digit number — 13mm crowds "SPRINKLER" and
+     clips it against `overflow:hidden`. Wider, and after `.jm-num` so it
+     wins the width on a cell wearing both classes. */
+  .quotation-doc .jm-grp { width:20mm; }
   /* Widest column on the sheet, about four times a dia column. */
   .quotation-doc .jm-rem { width:52mm; text-align:left; }
   .quotation-doc .jm-unit { display:block; font-weight:400;
@@ -1507,22 +1512,34 @@ def _joint_grid_html(ms: dict) -> str:
         span = i
         while span < len(cols) and str(cols[span].get("group") or "") == group:
             span += 1
-        top.append(f'<th colspan="{span - i}">{P.esc(group)}</th>')
+        # `table-layout:fixed` sizes columns off row 1 alone, and a colspan
+        # cell with no width of its own leaves that arithmetic to the
+        # renderer's guess — most get it right, but a lone, narrow-looking
+        # group (no siblings sharing it) can be squeezed toward zero and,
+        # with nothing clipping it, bleed its text into REMARKS next door.
+        # `.jm-grp`'s 20mm per spanned column (wider than a dia column's
+        # 13mm — a group carries a word, not a three-digit number) removes
+        # the guess and gives the label room.
+        top.append(f'<th colspan="{span - i}" style="width:{20 * (span - i)}mm">'
+                   f'{P.esc(group)}</th>')
         for c2 in cols[i:span]:
-            bottom.append(f'<th class="jm-num">{P.esc(c2["label"])}'
+            bottom.append(f'<th class="jm-num jm-grp">{P.esc(c2["label"])}'
                           f'{_unit_html(c2)}</th>')
         i = span
 
+    def _cls(c: dict) -> str:
+        return "jm-num jm-grp" if c.get("group") else "jm-num"
+
     body = ""
     for r in rows:
-        cells = "".join(f'<td class="jm-num">{_fmt_cell(_cell(r, c["key"]))}</td>'
+        cells = "".join(f'<td class="{_cls(c)}">{_fmt_cell(_cell(r, c["key"]))}</td>'
                         for c in cols)
         body += (f'\n        <tr><td class="jm-loc">{P.esc(r.get("label") or "")}</td>'
                  f'{cells}'
                  f'<td class="jm-rem">{P.esc(r.get("remarks") or "")}</td></tr>')
 
     total_cells = "".join(
-        f'<td class="jm-num">{_fmt_cell(totals.get(c["key"], 0.0))}</td>'
+        f'<td class="{_cls(c)}">{_fmt_cell(totals.get(c["key"], 0.0))}</td>'
         for c in cols)
 
     return f"""
