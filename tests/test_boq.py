@@ -318,6 +318,124 @@ def test_responsive_breakpoint_is_scoped_to_screen(client, created):
     assert "@media (max-width:760px)" not in html
 
 
+# ── The sheet on a portrait page — a phone's print service picks the paper ──
+#
+# 20 September 2026. The owner printed the BOQ from a phone: Chrome for Android
+# laid the sheet out at the CSS `A4 landscape` page box and scaled the whole
+# box onto the portrait paper the print service chose — every page 55% full,
+# everything at 73%. `boq.BOQ_DOC_STYLES` carries a column set that fits a
+# portrait page and `boq.BOQ_DOC_SCRIPT` withdraws the size request on a touch
+# device. ABOUT.md §5 `/boq`, "The document".
+
+def _col_widths_mm(css_block: str) -> dict:
+    """`{cw-sno: 12.0, …}` parsed out of one block of `.boq-table col.cw-*` rules."""
+    import re
+    return {m.group(1): float(m.group(2))
+            for m in re.finditer(r"col\.(cw-[a-z]+)\s*\{\s*width:([\d.]+)mm", css_block)}
+
+
+def test_both_document_routes_carry_the_portrait_sheet_and_the_script(client, created):
+    """
+    The two routes render one `_document_html()`; both must load the sheet
+    that fits a portrait page and the script that lets a phone print on one.
+    The register and the editor draw no section table and must NOT load
+    either — `BOQ_STYLES` is golden-pinned through four register pages and
+    the sheet-only rules are kept out of it for that reason.
+    """
+    import boq
+
+    bid, _b = created
+    for url in (f"/boq/view/{bid}", f"/boq/print/{bid}"):
+        html = client.get(url).get_data(as_text=True)
+        assert boq.BOQ_DOC_STYLES in html, f"{url} does not load BOQ_DOC_STYLES"
+        assert boq.BOQ_DOC_SCRIPT in html, f"{url} does not load BOQ_DOC_SCRIPT"
+        # The landscape request is still made — a desktop browser honours it.
+        assert "size:A4 landscape" in html
+        # …and withdrawn only where the print service picks the paper itself.
+        assert "(pointer: coarse)" in html
+        assert "@page { size:auto; }" in html
+
+    for url in ("/boq/", "/boq/create", "/ra/", "/receipt/", "/merged/"):
+        html = client.get(url).get_data(as_text=True)
+        assert "cw-sno" not in html, f"{url} loads the sheet-only stylesheet"
+        assert "(pointer: coarse)" not in html, f"{url} loads BOQ_DOC_SCRIPT"
+
+
+def test_the_portrait_column_set_is_scoped_to_a_portrait_page_or_a_phone_screen():
+    """
+    The narrower widths may fire on a portrait PAGE or on a phone SCREEN and
+    nowhere else. `screen and (max-width:760px)` is the app's own breakpoint
+    (`test_responsive_breakpoint_is_scoped_to_screen`); an unscoped max-width
+    half would narrow the landscape sheet on paper, which is the fault that
+    test exists to stop.
+    """
+    import boq
+
+    css = boq.BOQ_DOC_STYLES
+    assert "@media print and (orientation:portrait), screen and (max-width:760px)" in css
+    assert "@media (max-width:760px)" not in css
+    assert "@media (orientation:portrait)" not in css
+    # The phone-screen block is scoped to `screen` outright.
+    assert "@media screen and (max-width:760px)" in css
+
+
+def test_the_portrait_column_set_leaves_room_for_the_description():
+    """
+    A4 portrait gives 194mm inside the sheet's 8mm side margins. The client's
+    real sections declare up to two areas, and a 1,500-character clause needs
+    about 60mm of description to fit on one page at 6.5pt. The widths are
+    parsed out of the stylesheet rather than copied here, so widening one
+    past the page fails by name.
+    """
+    import boq
+
+    css = boq.BOQ_DOC_STYLES
+    landscape_block, portrait_block = css.split("@media print and (orientation:portrait)")
+    wide, narrow = _col_widths_mm(landscape_block), _col_widths_mm(portrait_block)
+
+    expected = {"cw-sno", "cw-area", "cw-qty", "cw-unit",
+                "cw-base", "cw-esc", "cw-rate", "cw-amt"}
+    assert set(wide) == expected and set(narrow) == expected
+
+    # The landscape figures are the ones the sheet has always printed at.
+    assert wide == {"cw-sno": 12, "cw-area": 14, "cw-qty": 15, "cw-unit": 13,
+                    "cw-base": 16, "cw-esc": 11, "cw-rate": 18, "cw-amt": 24}
+    # Every portrait width is narrower, and none is too narrow for its widest
+    # value: a bold eight-figure subtotal in `cw-amt`, "Installation" in
+    # `cw-rate` (13.2mm of bold Arial at 6.5pt, plus padding).
+    for k in expected:
+        assert narrow[k] < wide[k], f"{k} is not narrower on a portrait page"
+    assert narrow["cw-amt"] >= 19 and narrow["cw-rate"] >= 15
+
+    # The issued print on a two-area section: Sr, 2 areas, qty, unit, then
+    # rate + amount per track. 194mm less that must leave ≥ 60mm.
+    fixed = (narrow["cw-sno"] + 2 * narrow["cw-area"] + narrow["cw-qty"]
+             + narrow["cw-unit"] + 2 * (narrow["cw-rate"] + narrow["cw-amt"]))
+    assert 194 - fixed >= 60, f"only {194 - fixed}mm left for the description"
+
+
+def test_every_col_is_widthed_by_class_not_inline(client, created):
+    """
+    An inline `style="width:…"` on a `<col>` cannot be overridden by a media
+    query, so the portrait set could never reach it. Every column carries its
+    class and no inline style, and the classes follow the header's order.
+    """
+    import re
+
+    bid, _b = created
+    for url, expect in ((f"/boq/print/{bid}", ["cw-sno", "cw-desc", "cw-area", "cw-area",
+                                                "cw-qty", "cw-unit", "cw-rate", "cw-amt",
+                                                "cw-rate", "cw-amt"]),
+                        (f"/boq/view/{bid}", ["cw-sno", "cw-desc", "cw-area", "cw-area",
+                                               "cw-qty", "cw-unit", "cw-base", "cw-esc",
+                                               "cw-rate", "cw-amt", "cw-base", "cw-rate",
+                                               "cw-amt"])):
+        html = client.get(url).get_data(as_text=True)
+        cg = re.search(r"<colgroup>(.*?)</colgroup>", html, re.S).group(1)
+        assert 'style="' not in cg, f"{url}: a <col> still carries an inline width"
+        assert re.findall(r'<col class="(cw-[a-z]+)"/>', cg) == expect
+
+
 def test_area_columns_are_the_sections_own(client, created):
     bid, _b = created
     html = client.get(f"/boq/view/{bid}").get_data(as_text=True)

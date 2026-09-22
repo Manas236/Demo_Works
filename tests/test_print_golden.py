@@ -1559,13 +1559,31 @@ BOQ_SHEET_BLOCKS = [
 # stripped out of the print routes. The BOQ and the draft PO render no nav, so
 # neither is expected to move; the merged tax invoice renders one and is
 # expected to move in the `head` block ALONE.
-BOQ_WHOLE, BOQ_LEN = "6083201b22f6d952", 100879
-BOQ_BLOCKS = {"head":       "738417a9ea306621",
+#
+# Re-baselined 20 September 2026 — the sheet learns to fit a portrait page
+# (`boq.BOQ_DOC_STYLES` / `BOQ_DOC_SCRIPT`, ABOUT.md §5 `/boq`). The owner's
+# phone printed the landscape page box scaled onto portrait paper: every page
+# 55% full, everything at 73%. Two blocks moved, +3,006 bytes in all:
+#   * `head` — `BOQ_DOC_STYLES` and `BOQ_DOC_SCRIPT` are loaded after
+#     `BOQ_STYLES`, and the action bar's button reads `Print` rather than
+#     `Print (landscape)` — the paper is no longer always landscape.
+#   * `sections` — every `<col style="width:12mm"/>` became
+#     `<col class="cw-sno"/>`: the same widths, restated as classes so a
+#     media query can reach them. On a desktop browser the landscape sheet is
+#     drawn at exactly the widths it always was.
+# `letterhead`, `foot-strip`, `doc-box`, `party`, `grand` and `signature` are
+# untouched, and so is every other document in this file — `BOQ_STYLES`
+# itself is byte-identical, which is why the four register pages that load
+# it (`tests/test_page_golden.py`) did not move either.
+# Was 6083201b22f6d952 / 100879 with head 738417a9ea306621 and sections
+# 1d50afce5c49c30c.
+BOQ_WHOLE, BOQ_LEN = "8c59fc3c47f82c7d", 103885
+BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
               "letterhead": "1c197f96af8ad872",
               "foot-strip": "0f66996df1483847",
               "doc-box":    "64fcaef781b20ed2",
               "party":      "9b34f96c4ac7cd01",
-              "sections":   "1d50afce5c49c30c",
+              "sections":   "2e4d91620fb69579",
               "grand":      "2599e3fd773e385a",
               "signature":  "7812a7b5e2ddb967"}
 

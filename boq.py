@@ -41,7 +41,9 @@ frame, the repeating letterhead band and every print rule, and `_inr` /
 `BOQ_STYLES` layers after it and introduces no new font, type size or border
 weight, exactly as `PROFORMA_STYLES` and `PURCHASE_STYLES` do. It changes
 exactly one thing about the page: **it prints landscape.** See the note above
-`BOQ_STYLES` for why that is forced rather than chosen.
+`BOQ_STYLES` for why that is forced rather than chosen — and the note above
+`BOQ_DOC_STYLES` for the one place it is not forced: a touch device, whose
+print service chooses the paper itself, gets a column set that fits portrait.
 
 Import direction (§3.4 of the handover — one way, never reversed):
 
@@ -898,6 +900,10 @@ def revision_blocker_message(v: dict) -> str:
 #
 # Everything here is an override layered after VIEW_DOC_STYLES, never an edit
 # to it: the quotation, PI, TI and PO sheets are untouched and still portrait.
+#
+# ⚠ Forced on a desktop browser only. A phone's print service picks the paper
+# itself and Chrome for Android scales the landscape page box onto it — see
+# BOQ_DOC_STYLES below, which is where the sheet learns to fit a portrait page.
 # =============================================================================
 
 BOQ_STYLES = """
@@ -1270,6 +1276,108 @@ BOQ_STYLES = """
 
 
 # =============================================================================
+# THE SHEET ON A NARROWER PAGE — `BOQ_DOC_STYLES` and `BOQ_DOC_SCRIPT`
+# =============================================================================
+#
+# Loaded by `/boq/view` and `/boq/print` ONLY. Eight screen pages load
+# `BOQ_STYLES` for its panel furniture and four of them are golden-pinned on
+# it (`tests/test_page_golden.py`), so a rule that only the two document
+# routes need lives here rather than moving four digests for a table those
+# pages never draw — `purchase.FROM_BOQ_STYLES`'s arrangement, one module over.
+#
+# ── WHAT WENT WRONG ON A PHONE (20 September 2026) ───────────────────────────
+# `BOQ_STYLES` asks for `@page { size:A4 landscape }`. A desktop browser
+# obliges. A phone's print service chooses the paper itself — portrait — and
+# Chrome for Android then lays the sheet out at the CSS page size and SCALES
+# the whole 297×210 page box into the portrait sheet: every page 55% full and
+# every figure at 73%. The owner's PDF measured exactly that — 210 × (215.9 ÷
+# 297) = 153mm of a 279mm Letter page.
+#
+# So on a touch device the script below withdraws the size request and the
+# sheet is printed on the paper the phone actually has, and the stylesheet
+# carries a second column set that FITS a portrait page. The landscape sheet
+# is unchanged for every desktop browser: same `<col>` widths, restated as
+# classes so that a media query can reach them, which an inline width cannot.
+#
+# The same portrait figures draw the document on a phone SCREEN, where it is
+# shown as the page it prints as — scaled to the screen, pinch to read —
+# rather than the quotation's reflow (stacked letterhead, one-column header,
+# a 900px table scrolling sideways inside a 390px page). A schedule is read
+# as a page or not at all.
+# =============================================================================
+
+BOQ_DOC_STYLES = """
+<style>
+  /* The landscape widths BOQ_STYLES has always printed at, on the <col>. */
+  .boq-table col.cw-sno  { width:12mm; }
+  .boq-table col.cw-area { width:14mm; }
+  .boq-table col.cw-qty  { width:15mm; }
+  .boq-table col.cw-unit { width:13mm; }
+  .boq-table col.cw-base { width:16mm; }
+  .boq-table col.cw-esc  { width:11mm; }
+  .boq-table col.cw-rate { width:18mm; }
+  .boq-table col.cw-amt  { width:24mm; }
+
+  /* A PORTRAIT page — and a phone screen, which draws the same page. The fixed
+     columns fall from 152mm to 119mm on a two-area section, so the description
+     keeps 75mm of A4's 194mm and a 1,500-character clause still fits on one
+     page. 19mm holds a bold eight-figure subtotal; 15mm holds "Installation".
+     The max-width half MUST stay scoped to `screen` — see BOQ_STYLES. */
+  @media print and (orientation:portrait), screen and (max-width:760px) {
+    .boq-table col.cw-sno  { width:8mm; }
+    .boq-table col.cw-area { width:11mm; }
+    .boq-table col.cw-qty  { width:11mm; }
+    .boq-table col.cw-unit { width:10mm; }
+    .boq-table col.cw-base { width:13mm; }
+    .boq-table col.cw-esc  { width:9mm; }
+    .boq-table col.cw-rate { width:15mm; }
+    .boq-table col.cw-amt  { width:19mm; }
+    .boq-table th, .boq-table td { padding:2px; }
+  }
+
+  /* A PHONE SCREEN: an A4 portrait sheet scaled to the column it sits in.
+     `--sheet-zoom` is set by BOQ_DOC_SCRIPT; the fallback fits a 365px column.
+     Every rule below undoes one VIEW_DOC_STYLES / BOQ_STYLES phone reflow that
+     is right for a quotation and wrong for a page drawn at full width. */
+  @media screen and (max-width:760px) {
+    .boq-doc { zoom:var(--sheet-zoom, .46); padding:9mm 8mm 7mm; }
+    .boq-doc .lh { flex-direction:row; align-items:flex-end; }
+    .boq-doc .doc-header { grid-template-columns:42% 29% 29%; }
+    .boq-doc .dh-cell + .dh-cell { border-left:var(--rule); border-top:none; }
+    .boq-doc .boq-table { table-layout:fixed; min-width:0; }
+  }
+</style>
+"""
+
+# Plain string, interpolated as a value — nothing in it needs doubling.
+BOQ_DOC_SCRIPT = """
+<script>
+  (function () {
+    /* A touch device prints on whatever paper its print service chooses, and
+       asking for landscape gets the landscape page box scaled onto portrait
+       paper. Withdraw the request; BOQ_DOC_STYLES fits whichever paper comes.
+       The margins in BOQ_STYLES' @page rule are kept — only `size` moves. */
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      var s = document.createElement('style');
+      s.textContent = '@media print { @page { size:auto; } }';
+      document.head.appendChild(s);
+    }
+    /* The sheet on a phone screen: an A4 portrait page (210mm = 794px at
+       96dpi) scaled to the column it sits in. Read only below 760px. */
+    function fit() {
+      var outer = document.querySelector('.boq-outer');
+      if (!outer) return;
+      document.documentElement.style.setProperty(
+        '--sheet-zoom', Math.min(1, outer.clientWidth / 794).toFixed(4));
+    }
+    window.addEventListener('load', fit);
+    window.addEventListener('resize', fit);
+  })();
+</script>
+"""
+
+
+# =============================================================================
 # THE PRINTED BOQ — rendering
 # =============================================================================
 
@@ -1351,19 +1459,23 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     # two-area section prints its quantity columns at 7mm each. It renders,
     # it just renders wrong, which is the kind of fault that is only ever
     # noticed on paper.
-    cols = ['<col style="width:12mm"/>', "<col/>"]                  # Sr., Description
-    cols += ['<col style="width:14mm"/>'] * len(areas)              # one per area
-    cols += ['<col style="width:15mm"/>', '<col style="width:13mm"/>']   # Total Qty, Unit
+    #
+    # The widths are CLASSES, not inline styles, so that `BOQ_DOC_STYLES` can
+    # restate them for a portrait page — an inline width cannot be overridden
+    # by a media query.
+    cols = ['<col class="cw-sno"/>', '<col class="cw-desc"/>']
+    cols += ['<col class="cw-area"/>'] * len(areas)                 # one per area
+    cols += ['<col class="cw-qty"/>', '<col class="cw-unit"/>']
     if show_base:
-        cols += ['<col style="width:16mm"/>']                       # supply base
+        cols += ['<col class="cw-base"/>']                          # supply base
     if show_s_esc:
-        cols += ['<col style="width:11mm"/>']
-    cols += ['<col style="width:18mm"/>', '<col style="width:24mm"/>']   # supply rate, amount
+        cols += ['<col class="cw-esc"/>']
+    cols += ['<col class="cw-rate"/>', '<col class="cw-amt"/>']     # supply rate, amount
     if show_base:
-        cols += ['<col style="width:16mm"/>']                       # install base
+        cols += ['<col class="cw-base"/>']                          # install base
     if show_i_esc:
-        cols += ['<col style="width:11mm"/>']
-    cols += ['<col style="width:18mm"/>', '<col style="width:24mm"/>']   # install rate, amount
+        cols += ['<col class="cw-esc"/>']
+    cols += ['<col class="cw-rate"/>', '<col class="cw-amt"/>']     # install rate, amount
     colgroup = "<colgroup>" + "".join(cols) + "</colgroup>"
 
     # ── Column heads ───────────────────────────────────────────────────
@@ -2381,7 +2493,8 @@ def view_boq(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}
+  {BOQ_DOC_SCRIPT}
 </head>
 <body>
 {_nav()}
@@ -2396,7 +2509,7 @@ def view_boq(id: str):
     <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
     {revise_btn}
     {ra_btns}
-    <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print (landscape)</a>
+    <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
 
@@ -2442,10 +2555,11 @@ def print_boq(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}
   <style>
     @media print {{ .no-print {{ display:none !important; }} }}
   </style>
+  {BOQ_DOC_SCRIPT}
 </head>
 <body>
 <main>
@@ -2457,7 +2571,7 @@ def print_boq(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">&#8592; Back to BOQ</a>
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">All BOQs</a>
-    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print (landscape)</button>
+    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
 

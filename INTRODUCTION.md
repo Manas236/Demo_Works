@@ -218,8 +218,10 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,692 passed / 2 skipped** on 14 September 2026, verified by
+The baseline is **2,790 passed / 2 skipped** on 20 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(**20 September 2026** — the BOQ sheet fits a portrait page: a phone's print service picks the paper, and Chrome for Android scaled the landscape page box onto it, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state** — added **4 passed and 0 skipped**. It read **2,786 / 2** at the start of the pass, re-measured — ⚠ **94 above the 2,692 recorded here**, because the seven commits `0c493e1` … `5f4ddc0` of 14–15 September added 94 across 17 test files and moved no figure in any document. 2,786 + 4 = 2,790; the `.venv` configuration reads **2,791 / 4**, from a re-measured **2,787 / 4**.)*
 
 *(The third change of **14 September 2026** — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state** — added **5 passed and 0 skipped**. 2,687 + 5 = 2,692; the `.venv` configuration reads **2,693 / 4**, from a re-measured **2,688 / 4**.)*
 
