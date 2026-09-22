@@ -332,8 +332,14 @@ PAGES = {
         {"head": "0a1c0d68158bc7e5", "shell": "75cda0afbae27209", "chrome": "35480409a092776b", "main": "7e67e775827dc7af"}),
     ("settings",        "/settings/"):                 ("f12eaac1c07efbaa", 74589,
         {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"}),
-    ("users",           "/users"):                     ("fe1cec1628dc3b6b", 65496,
-        {"head": "33b7bd724b226f57", "shell": "75cda0afbae27209", "chrome": "907015465e3197ed", "main": "645012baa0685fdd"}),
+    # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
+    # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
+    # bytes). `main` is byte-identical and that is the measurement that matters
+    # here: this page is hashed as an OWNER, who may administer every account
+    # and reach `/roles`, so every link the pass made conditional is still
+    # drawn. A moved `main` would have meant the Owner lost something.
+    ("users",           "/users"):                     ("6f28cf4801fb6f4c", 65758,
+        {"head": "d27789290b5de232", "shell": "75cda0afbae27209", "chrome": "907015465e3197ed", "main": "645012baa0685fdd"}),
 }
 
 

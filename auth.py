@@ -1616,6 +1616,10 @@ AUTH_ADMIN_STYLES = """
   }
   .role-pick { display: flex; flex-wrap: wrap; gap: .4rem .9rem; }
   .role-pick label { font-size: .88rem; display: flex; gap: .4rem; align-items: baseline; }
+  .role-pick label.role-held { opacity: .55; cursor: not-allowed; }
+  .role-pick label.role-held em { color: #8b93a1; font-size: .78rem; font-style: normal; }
+  .role-none { font-size: .85rem; color: #8b93a1; margin: .2rem 0 0; }
+  .au-noact { color: #9ca3af; }
   .log-tbl td { font-size: .82rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 </style>
 """
@@ -2140,13 +2144,23 @@ def _role_edit_refusal(role: dict, perms: list) -> str:
 
 @auth_bp.route("/users")
 def list_users():
+    # Every one of the three links below is refused by `_may_administer()` on
+    # an account holding more than the person reading this page — a Director
+    # looking at an Owner. Offering the link and then serving the 403 taught
+    # nobody anything, so the cell is drawn empty instead; §2g's rule, applied
+    # to a row rather than to a nav entry. The guard on the routes is what
+    # enforces it, and `tests/test_privilege_escalation.py` still posts to all
+    # three by URL.
+    actor = current_user()
     rows = []
     for u in sorted(users().values(), key=lambda r: (not r.get("active"),
                                                      (r.get("username") or "").lower())):
         state = ('<span class="au-tag on">active</span>' if u.get("active")
                  else '<span class="au-tag off">deactivated</span>')
         owner = '<span class="au-tag owner">Owner</span>' if is_owner(u) else ""
-        if u.get("active"):
+        if _may_administer(actor, u):
+            act = '<span class="au-noact">&mdash;</span>'
+        elif u.get("active"):
             act = (f'<a href="{url_for("auth.edit_user", id=u["id"])}">Edit</a> &middot; '
                    f'<a href="{url_for("auth.deactivate_user", id=u["id"])}">Deactivate</a>')
         else:
@@ -2172,7 +2186,7 @@ def list_users():
         <h2 style="margin:0;">Users</h2>
         <div style="display:flex;gap:.5rem;">
           <a class="btn" href="{url_for('auth.create_user')}">+ New user</a>
-          <a class="btn" href="{url_for('auth.list_roles')}">Roles</a>
+          {_roles_link()}
           {_access_log_link()}
         </div>
       </div>
@@ -2188,14 +2202,55 @@ def list_users():
     return _shell("Users", body)
 
 
-def _role_checkboxes(selected) -> str:
+def _role_checkboxes(selected, actor, held=()) -> str:
+    """
+    The roles `actor` may actually confer — and nothing else.
+
+    ⚠ **Presentation, not the guard.** `_may_grant()` is still what decides on
+    POST, and `tests/test_privilege_escalation.py` posts role ids this function
+    never drew. Drawing and deciding are the same predicate here — this asks
+    `_may_grant()` one role at a time rather than restating the rule — so the
+    box that disappears and the POST that is refused can never disagree.
+
+    Until 22 September 2026 every role was drawn to everybody, so a Director
+    was **offered** the Owner box on `/users/create` and refused for ticking
+    it. An option nobody can take is worse than no option: it reads as a fault
+    in the software rather than as the boundary B3 draws, and it invites the
+    click that produces the refusal. Same rule as the nav — `can_reach()`
+    draws no link the gate would refuse (§2g).
+
+    `held` is the roles the account being edited already carries. One the
+    actor cannot grant is drawn **disabled, with a hidden input carrying it
+    through the save**: the shape `/roles` uses for a frozen permission, and
+    the reason is the same — omitting it would make the next save silently
+    strip a role rather than keep it. `_may_administer()` already refuses
+    `/users/edit` on an account holding anything its editor does not, so this
+    is a floor under that guard and not a path anybody walks today. On
+    `/users/create` there is no such account and `held` is empty.
+    """
     picked = set(selected or [])
+    kept = set(held or [])
     out = []
     for r in sorted(roles().values(), key=lambda x: x["name"]):
-        mark = " checked" if r["id"] in picked else ""
+        refusal = _may_grant(actor, [r["id"]])
+        if refusal and r["id"] not in kept:
+            continue
         owner = " (Owner)" if OWNER_PERM in (r.get("permissions") or []) else ""
+        if refusal:
+            out.append(f'<input type="hidden" name="role_ids" '
+                       f'value="{_esc(r["id"])}"/>'
+                       f'<label class="role-held" title="{_esc(refusal)}">'
+                       f'<input type="checkbox" checked disabled/>'
+                       f'{_esc(r["name"] + owner)} <em>&mdash; held, and not '
+                       f'yours to change</em></label>')
+            continue
+        mark = " checked" if r["id"] in picked else ""
         out.append(f'<label><input type="checkbox" name="role_ids" '
                    f'value="{_esc(r["id"])}"{mark}/>{_esc(r["name"] + owner)}</label>')
+    if not out:
+        return ('<p class="role-none">There is no role you can assign. A role can '
+                'only be handed on by somebody who already holds everything it '
+                'carries &mdash; ask an Owner.</p>')
     return f'<div class="role-pick">{"".join(out)}</div>'
 
 
@@ -2244,7 +2299,7 @@ def create_user_route():
         <input id="p" name="password" type="password" required
                autocomplete="new-password"/>
         <label class="fld">Roles &mdash; permissions are the union of all of them</label>
-        {_role_checkboxes(form['role_ids'])}
+        {_role_checkboxes(form['role_ids'], current_user())}
         <p style="margin-top:1.2rem;">
           <button class="btn" type="submit">Create user</button>
           <a href="{url_for('auth.list_users')}" style="margin-left:.6rem;">Cancel</a>
@@ -2298,7 +2353,8 @@ def edit_user(id):
         <label class="fld" for="p">Set a new password &mdash; leave blank to keep the current one</label>
         <input id="p" name="password" type="password" autocomplete="new-password"/>
         <label class="fld">Roles</label>
-        {_role_checkboxes(user.get('role_ids'))}
+        {_role_checkboxes(user.get('role_ids'), current_user(),
+                          held=user.get('role_ids'))}
         <p style="margin-top:1.2rem;">
           <button class="btn" type="submit">Save</button>
           <a href="{url_for('auth.list_users')}" style="margin-left:.6rem;">Cancel</a>
@@ -2588,6 +2644,22 @@ def edit_role(id):
       </form>
     </div>"""
     return _shell("Edit role", body)
+
+
+def _roles_link() -> str:
+    """
+    `/roles` is Owner-only, and this button used to be drawn for everybody.
+
+    A Director holds `admin.users` and reads this page every time they add
+    somebody; `admin.roles` is the one permission they do not hold, so the
+    button beside "+ New user" was a 403 with a label on it. Drawn through
+    `can_reach()` for the reason `_access_log_link()` gives below — the
+    permission is named once, in `ROUTE_PERMISSIONS`, and the button follows
+    whatever an Owner does to the role definitions afterwards.
+    """
+    if not can_reach("auth.list_roles"):
+        return ""
+    return f'<a class="btn" href="{url_for("auth.list_roles")}">Roles</a>'
 
 
 def _access_log_link() -> str:
