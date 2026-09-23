@@ -2543,6 +2543,36 @@ def view_quotation(id: str):
     # because the link is a convenience — a PO is not *derived* from a
     # quotation the way a PI is, and it can be raised with no job at all.
     po_url  = url_for("purchase.create_purchase", quotation_id=id)
+
+    # ── Delete ───────────────────────────────────────────────────────────
+    # The 23 September 2026 §0 block, which unfreezes this file for
+    # `delete_quotation()` and for this one line. Both imports are in the
+    # function body for the reason the rest of this module's are: the freeze
+    # permits no edit at module scope.
+    #
+    # Two conditions, both of which the route itself applies, so the bar never
+    # offers a refusal:
+    #
+    #   1. `auth.can_reach()` — the gate would admit this user.
+    #   2. No tax invoice sits anywhere below this quotation. A PI under it is
+    #      NOT a reason to hide the control: `delete_quotation()` cascades into
+    #      proformas quite happily and the confirmation page names them. What
+    #      it refuses outright is a TI two hops down, because a GST number has
+    #      to stay consecutive — and that refusal is what this hides.
+    #
+    # ⚠ Presentation, not the gate: the route refuses a typed URL itself, and
+    #   `cascade.impact_of()` is re-read there rather than trusted from here.
+    # The newline and indent live INSIDE the string, so a quotation nobody may
+    # delete renders the action bar byte-for-byte as it always did.
+    import auth as _AUTH
+    import cascade as _CAS
+    del_q = ""
+    if (_AUTH.can_reach("quotation.delete_quotation")
+            and _CAS.impact_of("quotations", id)["blocked"] is None):
+        del_q = (f'\n    <a href="{url_for("quotation.delete_quotation", id=id)}" '
+                 f'class="btn btn-ghost" '
+                 f'style="color:#b91c1c;border-color:#fecaca;">'
+                 f'&#128465;&nbsp;Delete</a>')
     pi_rows = sorted(
         ((p_id, p) for p_id, p in STORE["proformas"].items()
          if p.get("quotation_id") == id),
@@ -2922,7 +2952,7 @@ def view_quotation(id: str):
     <a href="{list_url}"   class="btn btn-ghost">&#8592; All Quotations</a>
     <a href="{create_url}" class="btn btn-ghost">+ New</a>
     <a href="{pi_url}"     class="btn btn-ghost">&#129534;&nbsp;Raise Proforma</a>
-    <a href="{po_url}"     class="btn btn-ghost">&#128230;&nbsp;Raise PO</a>
+    <a href="{po_url}"     class="btn btn-ghost">&#128230;&nbsp;Raise PO</a>{del_q}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -3022,3 +3052,105 @@ def view_quotation(id: str):
 </main>
 </body></html>"""
     return _page(template)          # NOT render_template_string — see _page()
+
+@quotation_bp.route("/delete/<id>", methods=["GET", "POST"])
+def delete_quotation(id: str):
+    """
+    Delete a quotation and the proforma invoices raised from it.
+
+    ⚠ **THIS FUNCTION IS THE WHOLE OF THE 23 SEPTEMBER 2026 UNFREEZE.**
+    `CLIENT_CHANGES.md` §0's thirtieth block unfreezes this file for exactly
+    one new function — this one — plus the single line inside
+    `view_quotation()` that draws its button. INTRODUCTION.md §7's freeze is
+    otherwise unchanged and `product.py` is not unfrozen at all. A sixth name
+    in `UNFROZEN_QUOTATION_FUNCTIONS` needs a sixth §0 block naming it; that
+    test is what makes a quiet widening fail.
+
+    **Every import here is in the function body**, the same way
+    `view_quotation()`'s `purchase.job_cost()` import is: the freeze permits no
+    edit at module scope, so nothing above line 51 of this file moves.
+
+    ⚠ **A tax invoice anywhere below refuses the whole operation.** A quotation
+    cascades into its proformas, and a proforma into its tax invoices — so a
+    quotation with an invoiced PI under it is refused outright rather than
+    cascaded partially. A GST number has to stay consecutive; withdraw the
+    invoice with `/invoice/cancel/<id>`, which keeps the number spent.
+
+    **The number is not released.** The quotation series only ever advances:
+    `SF/QTN/26-27/0004` has been sent to a customer, and reissuing it would put
+    two different offers into one customer's file under one reference.
+
+    GET renders the confirmation and destroys nothing; POST destroys. Per
+    ABOUT.md §7.9f this route ships its own GET-does-not-mutate test — the
+    `url_map` sweep proves only that the rule accepts POST.
+    """
+    import cascade
+
+    q = STORE["quotations"].get(id)
+    if not q:
+        return redirect(url_for("quotation.list_quotations",
+                                msg="That quotation no longer exists.",
+                                type="error"))
+
+    report = cascade.impact_of("quotations", id)
+
+    if request.method == "POST":
+        if report["blocked"] is not None:
+            return redirect(url_for(
+                "quotation.view_quotation", id=id, type="error",
+                msg=("A tax invoice has been raised under this quotation — "
+                     "cancel it instead. A GST number cannot leave a gap.")))
+        ref = str(q.get("ref") or "")
+        destroyed = cascade.delete_cascade("quotations", id)
+        extra = (f" {len(destroyed)} proforma invoice"
+                 f"{'' if len(destroyed) == 1 else 's'} went with it."
+                 if destroyed else "")
+        return redirect(url_for(
+            "quotation.list_quotations", type="success",
+            msg=f"Quotation {ref} deleted.{extra} Its number is not reissued."))
+
+    blocked = report["blocked"] is not None
+    n_lines = len(q.get("line_items") or [])
+    acts = f"""
+  <form method="POST" action="{url_for('quotation.delete_quotation', id=id)}"
+        style="display:flex;gap:.7rem;">
+    <button type="submit" class="btn">Delete {P.esc(q.get('ref'))}</button>
+    <a href="{url_for('quotation.view_quotation', id=id)}" class="btn btn-ghost">Keep it</a>
+  </form>""" if not blocked else f"""
+  <div style="display:flex;gap:.7rem;">
+    <a href="{url_for('quotation.view_quotation', id=id)}" class="btn btn-ghost">&#8592; Back to the quotation</a>
+  </div>"""
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Delete " + str(q.get('ref') or ''))}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{cascade.CASCADE_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Delete <span style="color:var(--brand);">{P.esc(q.get('ref'))}</span></h1>
+  </div>
+
+  <div class="cas-box">
+    <h2>&#9888; This cannot be undone</h2>
+    <div class="cas-line">
+      You are about to delete quotation <b>{P.esc(q.get('ref'))}</b>,
+      raised {P.esc(q.get('date'))} for
+      <b>{P.esc(q.get('customer_name')) or 'an unnamed customer'}</b>,
+      carrying <b>{n_lines} line{"" if n_lines == 1 else "s"}</b>.<br/>
+      <b>The number is not released</b> &mdash; the next quotation takes the
+      next one in the series, because {P.esc(q.get('ref'))} may already have
+      gone to the customer as an offer.
+    </div>
+  </div>
+{cascade.impact_html(report)}
+{acts}
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · quotation</p></footer>
+</main>
+</body></html>""")

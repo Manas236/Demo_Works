@@ -283,6 +283,7 @@ PERMISSIONS = {
 
     "boq.view":              ("View bills of quantities",                 "BOQ chain"),
     "boq.create":            ("Create and revise a BOQ",                  "BOQ chain"),
+    "boq.delete":            ("Delete a BOQ and everything under it",     "BOQ chain"),
     "boq.print":             ("Print a BOQ",                              "BOQ chain"),
 
     "ra.view":               ("View RA bills",                            "RA billing"),
@@ -304,15 +305,23 @@ PERMISSIONS = {
     "quotation.view":        ("View quotations",                          "Quotation chain"),
     "quotation.create":      ("Create a quotation",                       "Quotation chain"),
     "quotation.edit":        ("Update a quotation's deal fields",         "Quotation chain"),
+    "quotation.delete":      ("Delete a quotation",                       "Quotation chain"),
     "proforma.view":         ("View proforma invoices",                   "Quotation chain"),
     "proforma.create":       ("Raise a proforma invoice",                 "Quotation chain"),
+    "proforma.delete":       ("Delete a proforma invoice",                "Quotation chain"),
     "invoice.view":          ("View tax invoices",                        "Quotation chain"),
     "invoice.create":        ("Raise a tax invoice",                      "Quotation chain"),
+    # ⚠ There is deliberately NO `invoice.delete`. A GST invoice number has to
+    #   stay consecutive, so a tax invoice is withdrawn by CANCELLING it — the
+    #   number stays spent and the document prints marked CANCELLED. See
+    #   `cascade.py`'s hard stop, which refuses to cascade past one.
+    "invoice.cancel":        ("Cancel a tax invoice",                     "Quotation chain"),
     "invoice.approve":       ("Approve or reject a tax invoice",          "Quotation chain"),
 
     "purchase.view":         ("View purchase orders",                     "Buy side"),
     "purchase.create":       ("Raise a purchase order",                   "Buy side"),
     "purchase.edit":         ("Update a purchase order's status",         "Buy side"),
+    "purchase.delete":       ("Delete a purchase order",                  "Buy side"),
     "purchase.approve":      ("Approve or reject a purchase order",       "Buy side"),
     "po.view":               ("View draft purchase orders",               "Buy side"),
     "po.create":             ("Raise a draft purchase order",             "Buy side"),
@@ -648,6 +657,11 @@ ROUTE_PERMISSIONS = {
     "boq.list_boqs":              "boq.view",
     "boq.view_boq":               "boq.view",
     "boq.create_boq":             "boq.create",
+    # The largest blast radius in the app — a BOQ is the root of the whole
+    # execution chain. Classified once, as `boq.delete`: the GET renders a
+    # confirmation naming every dependent record and destroys nothing, the
+    # POST destroys the lot through `cascade.delete_cascade()`.
+    "boq.delete_boq":             "boq.delete",
     "boq.print_boq":              "boq.print",
 
     # ── RA billing ───────────────────────────────────────────────────────────
@@ -693,12 +707,18 @@ ROUTE_PERMISSIONS = {
     "quotation.view_quotation":   "quotation.view",
     "quotation.create_quotation": "quotation.create",
     "quotation.update_quotation": "quotation.edit",
+    "quotation.delete_quotation": "quotation.delete",
     "proforma.list_proformas":    "proforma.view",
     "proforma.view_proforma":     "proforma.view",
     "proforma.create_proforma":   "proforma.create",
+    "proforma.delete_proforma":   "proforma.delete",
     "invoice.list_invoices":      "invoice.view",
     "invoice.view_invoice":       "invoice.view",
     "invoice.create_invoice":     "invoice.create",
+    # ⚠ CANCEL, not delete. There is no delete route for a tax invoice
+    #   anywhere in this app, by design — see the catalogue note on
+    #   `invoice.cancel` and `cascade.py`'s hard stop.
+    "invoice.cancel_invoice":     "invoice.cancel",
 
     # ── Buy side ─────────────────────────────────────────────────────────────
     "purchase.list_purchases":    "purchase.view",
@@ -707,6 +727,7 @@ ROUTE_PERMISSIONS = {
     "purchase.from_boq":          "purchase.create",
     "purchase.from_draft":        "purchase.create",
     "purchase.update_purchase":   "purchase.edit",
+    "purchase.delete_purchase":   "purchase.delete",
     # ⚠ **`purchase.create`, deliberately, and not `purchase.edit`.**
     # `purchase.edit` is labelled "Update a purchase order's status" and
     # that is what it means — moving an order along its lifecycle.
@@ -891,6 +912,15 @@ ROUTE_PERMISSIONS = {
 # whose path contains "delete" and fails on one that is missing from this set
 # (or present without a real destroy behind it).
 OWNER_ONLY: set = {
+    "boq.delete_boq",
+    "quotation.delete_quotation",
+    "proforma.delete_proforma",
+    "purchase.delete_purchase",
+    # Cancelling a tax invoice is not deleting one — the number stays spent and
+    # the record stays readable. It sits here anyway because it is the ONLY way
+    # to withdraw an invoice, and withdrawing one is the same order of act as
+    # destroying any other document.
+    "invoice.cancel_invoice",
     "ra.delete_ra",
     "receipt.delete_receipt",
     "po_draft.delete_po",
@@ -981,6 +1011,16 @@ BUILTIN_ROLES = {
             "attendance.delete",
             "project.delete", "spec.delete", "product.create", "product.delete",
             "address.delete", "settings.edit",
+            # The five destructive verbs minted 23 September 2026. They sit on
+            # the admin tier for the same reason `project.delete` does — the
+            # records they destroy are roots, not leaves. ⚠ Holding the
+            # permission is not the same as being able to use it: every one of
+            # these endpoints is also in OWNER_ONLY, so a Director is refused
+            # at the gate. Granting here keeps the catalogue honest about which
+            # tier the verb belongs to; the Owner check above it is the harder
+            # rule. See OWNER_ONLY's docstring.
+            "boq.delete", "quotation.delete", "proforma.delete",
+            "purchase.delete", "invoice.cancel",
             "admin.users", "admin.access_log",
         ])),
     ),

@@ -176,8 +176,15 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
             f"unfreeze covers the deal panel's committed figure and its "
             f"breakout row. Nothing else in that file is unfrozen.")
 
+    ⚠ **EXTENDED on 23 September 2026** under the THIRTIETH override block in
+    `CLIENT_CHANGES.md` §0, which unfreezes `quotation.py` narrowly a third
+    time for exactly ONE more function — `delete_quotation()`, the delete
+    route — plus the single line inside `view_quotation()` that draws its
+    button. `view_quotation()` was already unfrozen on 29 August and its span
+    is **not widened** by this; the new name is the whole of the change.
+
     The claim is now that every edited line since `eff0034` falls inside ONE
-    of those four functions — `UNFROZEN_QUOTATION_FUNCTIONS` below is the
+    of those five functions — `UNFROZEN_QUOTATION_FUNCTIONS` below is the
     whole list, and a fifth name added to it without a §0 block naming it is
     exactly what "an unfreeze that grows to fit the work" looks like.
     `product.py` is STILL frozen with no exception at all, and the pass that
@@ -215,18 +222,50 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
     # `quotation.py` — two narrow unfreezes, held to four named functions.
     UNFROZEN_QUOTATION_FUNCTIONS = {
         "view_quotation",          # 29 Aug 2026 — the deal panel's committed figure
+                                   # 23 Sep 2026 — and the Delete button, one line
         "_product_catalog_json",   # 11 Sep 2026 — the spec-library embed
         "_process_selections",     # 11 Sep 2026 — a pick becomes a line
         "create_quotation",        # 11 Sep 2026 — the picker and its POST
+        "delete_quotation",        # 23 Sep 2026 — the delete route (THIRD unfreeze)
     }
     src = (REPO / "quotation.py").read_text(encoding="utf8")
-    spans = {n.name: (n.lineno, n.end_lineno) for n in ast.walk(ast.parse(src))
+    # ⚠ The span starts at the first DECORATOR, not at `def`. `ast` reports
+    #   `lineno` on the `def` line, which would leave a route's own
+    #   `@quotation_bp.route(...)` sitting outside the span of the function it
+    #   decorates — and a decorator is part of the function, not of the file
+    #   around it. Found on 23 September 2026 by `delete_quotation()`, the
+    #   first unfrozen function in this file to carry one.
+    spans = {n.name: (min([n.lineno] + [d.lineno for d in n.decorator_list]),
+                      n.end_lineno)
+             for n in ast.walk(ast.parse(src))
              if isinstance(n, ast.FunctionDef) and n.name in UNFROZEN_QUOTATION_FUNCTIONS}
     assert set(spans) == UNFROZEN_QUOTATION_FUNCTIONS, (
         f"an unfrozen function is missing from quotation.py: "
         f"{UNFROZEN_QUOTATION_FUNCTIONS - set(spans)} — renaming one is an edit "
         f"outside every named span")
 
+    # ⚠ **PER-LINE since 23 September 2026, and that is STRICTER, not looser.**
+    # The check this replaces was, in full and verbatim:
+    #
+    #     end = start + count - 1
+    #     inside = any(lo <= start and end <= hi for lo, hi in spans.values())
+    #     assert inside, (
+    #         f"quotation.py lines {start}-{end} were edited, outside every "
+    #         f"unfrozen function {sorted(spans.items())}. ...")
+    #
+    # It required a whole hunk to sit inside ONE span. That is unsatisfiable
+    # for an edit that legitimately touches two adjacent unfrozen functions:
+    # appending `delete_quotation()` after `view_quotation()` produces a single
+    # hunk running from the last line of the one to the last line of the other,
+    # and the two BLANK separator lines between them belong to neither span.
+    #
+    # So the claim is now made per line instead, and a **blank line is
+    # neutral** — it carries no code, so it cannot carry a feature. Every
+    # non-blank edited line must still fall inside a named span. A hunk that
+    # straddles two spans with real code between them still fails, which the
+    # old form also caught; a hunk that straddles two spans with only
+    # whitespace between them now passes, which the old form wrongly did not.
+    new_lines = (REPO / "quotation.py").read_text(encoding="utf8").splitlines()
     for hunk in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@",
                             _diff("-U0", "eff0034", "--", "quotation.py"),
                             re.MULTILINE):
@@ -234,14 +273,18 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
         count = int(hunk.group(2) or 1)
         if count == 0:            # a pure deletion touches no new-file line
             continue
-        end = start + count - 1
-        inside = any(lo <= start and end <= hi for lo, hi in spans.values())
-        assert inside, (
-            f"quotation.py lines {start}-{end} were edited, outside every "
-            f"unfrozen function {sorted(spans.items())}. The 29 August 2026 "
-            f"unfreeze covers view_quotation(); the 11 September 2026 one covers "
-            f"_product_catalog_json(), _process_selections() and "
-            f"create_quotation(). Nothing else in that file is unfrozen.")
+        for ln in range(start, start + count):
+            if not new_lines[ln - 1].strip():
+                continue          # a blank line carries no code
+            inside = any(lo <= ln <= hi for lo, hi in spans.values())
+            assert inside, (
+                f"quotation.py line {ln} was edited, outside every unfrozen "
+                f"function {sorted(spans.items())}: {new_lines[ln - 1]!r}. "
+                f"The 29 August 2026 unfreeze covers view_quotation(); the "
+                f"11 September 2026 one covers _product_catalog_json(), "
+                f"_process_selections() and create_quotation(); the "
+                f"23 September 2026 one covers delete_quotation(). Nothing "
+                f"else in that file is unfrozen.")
 
 
 def test_the_display_name_is_escaped(client):

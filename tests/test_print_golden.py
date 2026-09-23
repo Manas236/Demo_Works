@@ -501,9 +501,18 @@ GOLD_TI = "gold-ti"
 # was f91031b44e1e7dc7 / 110216 before the 29 Aug 2026 nav re-baseline
 # was 92903e2e6134597b / 110464 before the 29 Aug 2026 MEASUREMENT nav entry
 # was 9141446abd5ec906 / 110806 before the 14 Sep 2026 nav removal
-TI_WHOLE = "ad1aa6915247c18c"
-TI_LEN = 101509
-TI_BLOCKS = {"head":       "59522cc02d192043",   # was 13840b8797d6e721,
+# was ad1aa6915247c18c / 101509 before the 23 Sep 2026 cancellation overprint.
+#     ⚠ **`head` ALONE moved, and every other block is byte-identical** — the
+#     +1,698 bytes are the `.lc-mark` / `.lc-band` rules added to
+#     INVOICE_STYLES so a cancelled tax invoice prints marked (ABOUT.md §5
+#     `/invoice`). `doc-box` is unchanged because `{void_html}` carries its own
+#     leading newline and renders as the empty string on an invoice that has
+#     not been cancelled, which is what GOLD_TI is. The sheet a customer
+#     receives did not move; only what the page is capable of drawing did.
+TI_WHOLE = "5ddd3ce9c8f7b634"
+TI_LEN = 103207
+TI_BLOCKS = {"head":       "b5312294e91a796f",   # was 59522cc02d192043,
+                                                  # was 13840b8797d6e721,
                                                   # was f76089afb5505200,
                                                   # was 49524db46e29dcc5
              "letterhead": "3c080a57f60c89e9",
@@ -994,9 +1003,16 @@ GOLD_PICK_BOQ = "gold-pick"
 # **Not one of the nine printed documents in this file moved**, because none of
 # them renders the shell (commit 1); `test_no_print_route_renders_the_nav`
 # below is what holds that.
-PICK_WHOLE = "060391842bc9e4fc"
-PICK_LEN = 81370
-PICK_BLOCKS = {"head":    "af77ecc07bfca6ff",   # was 8bf28275fa127606,
+# was 060391842bc9e4fc / 81370 before the 23 Sep 2026 delete rollout.
+#     ⚠ **`head` ALONE moved, and every other block is byte-identical** — the
+#     +462 bytes are `cascade.CASCADE_STYLES`, loaded by `/po/delete/<id>`'s
+#     confirmation page so it can draw the "this also destroys N records"
+#     block. It is loaded in po_draft.py's shared head, which this form
+#     shares; the picker itself did not change.
+PICK_WHOLE = "ad38de27596e55cc"
+PICK_LEN = 81832
+PICK_BLOCKS = {"head":    "b07f3fb758299248",   # was af77ecc07bfca6ff,
+                                                # was 8bf28275fa127606,
                                                 # was 2bf1b714db890d61,
                                                 # was 04f4809335b2c9e8
                "intro":   "5558f09cc783266e",

@@ -61,6 +61,7 @@ from flask import Blueprint, request, redirect, url_for
 
 import approval
 import branding as B
+import cascade
 import pipeline as P
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
@@ -495,6 +496,36 @@ INVOICE_STYLES = """
      the proforma's view page render them, and every page here already loads
      that sheet. Same reasoning that puts .pi-chip in QUOTATION_STYLES one step
      upstream: the chip belongs to the sheet of the document it hangs off. */
+
+  /* ── The cancellation overprint ───────────────────────────────────────
+     Deliberately a COPY of the `.lc-*` rules in RA_STYLES rather than an
+     import of them: `invoice.py` does not load `ra.py`'s stylesheet and must
+     not start — that sheet is tuned for the claim grid and carries a great
+     deal this document has no use for. The two are the same six declarations
+     and are meant to look identical, which is why the reason they are separate
+     is written here rather than left to be guessed at.
+
+     Neither rule sits behind a `@media screen`: a cancelled tax invoice must
+     be unmistakable on paper, which is the only copy that reaches a customer.
+     The band forces its background through with print-color-adjust, and the
+     watermark is a bordered, coloured word rather than a filled block so it
+     still reads when a browser prints with backgrounds off. */
+  .quotation-doc .lc-mark {
+    position:absolute; top:45%; left:50%;
+    transform:translate(-50%,-50%) rotate(-24deg);
+    font-size:5.5rem; font-weight:800; letter-spacing:.35rem;
+    border:6px solid currentColor; border-radius:12px;
+    padding:.35rem 2rem; opacity:.18; pointer-events:none;
+    white-space:nowrap; z-index:2;
+  }
+  .quotation-doc .lc-band {
+    margin:0 0 3mm; padding:2mm 3mm;
+    font-size:var(--fs-sm); font-weight:700; text-align:center;
+    border:1px solid currentColor;
+    print-color-adjust:exact; -webkit-print-color-adjust:exact;
+  }
+  .quotation-doc .lc-cancelled { color:#b91c1c; }
+  .quotation-doc .lc-band.lc-cancelled { background:#fef2f2; }
 </style>
 """
 
@@ -1208,6 +1239,28 @@ def view_invoice(id: str):
     signatory = P.esc(ti.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
     # ── One complete sheet per copy ───────────────────────────────────────
+    # ── The cancellation overprint ───────────────────────────────────────
+    #
+    # A cancelled tax invoice **still prints**, and that is the point: the
+    # number stays spent, so the document is the only thing that explains why
+    # the series appears to skip it. It prints marked, in the same shape
+    # `ra.print_ra()` marks a withdrawn claim — a diagonal watermark plus a
+    # band under the title, neither behind a `@media screen`, because the whole
+    # risk is a withdrawn invoice reaching a customer's desk looking live.
+    # ⚠ The leading newline lives INSIDE the string, so an invoice that is NOT
+    # cancelled renders the sheet byte-for-byte as it always did — the print
+    # golden holds that.
+    void_html = ""
+    if str(ti.get("status") or "") == "cancelled":
+        void_html = f"""\n
+    <div class="lc-mark lc-cancelled">CANCELLED</div>
+    <div class="lc-band lc-cancelled">This tax invoice was cancelled{
+        ' on ' + P.esc(ti.get('cancelled_on')) if ti.get('cancelled_on') else ''}{
+        ' &mdash; ' + P.esc(ti.get('cancel_reason')) if ti.get('cancel_reason') else ''}.
+      It is not a demand for payment and no input tax credit arises on it.
+      The number {P.esc(ti.get('ref'))} is <b>not reissued</b> &mdash; it stays
+      spent so the statutory series remains consecutive.</div>"""
+
     def _sheet(copy_key: str) -> str:
         """The whole A4 document, captioned for one of the three copies."""
         return f"""
@@ -1217,7 +1270,7 @@ def view_invoice(id: str):
 
   <div class="doc-box">
     <div class="copy-mark">{COPY_LABELS[copy_key]}</div>
-    <div class="doc-title">TAX INVOICE</div>
+    <div class="doc-title">TAX INVOICE</div>{void_html}
 
 {DS.party_block("To", to_display, ship_html, meta_col_1, meta_col_2)}
 
@@ -1270,6 +1323,22 @@ def view_invoice(id: str):
     back_pi = (f'<a href="{pi_view}" class="btn btn-ghost">&#8592; Proforma '
                f'{P.esc(ti.get("proforma_ref"))}</a>' if pi_view else "")
 
+    # ── Cancel ───────────────────────────────────────────────────────────
+    # ⚠ **There is no Delete control here and there must never be one.** A GST
+    # invoice number has to stay consecutive; withdrawing one is cancelling it.
+    # Gone once already cancelled — there is no un-cancel — and drawn only for
+    # somebody `auth.can_reach()` says the gate would admit. Presentation, not
+    # the gate: `/invoice/cancel/<id>` refuses a typed URL on its own. The
+    # newline and indent live INSIDE the string, so an invoice already
+    # cancelled renders the action bar byte-for-byte as it always did.
+    import auth as _AUTH
+    cancel_btn = ""
+    if str(ti.get("status") or "") != "cancelled" and _AUTH.can_reach("invoice.cancel_invoice"):
+        cancel_btn = (f'\n    <a href="{url_for("invoice.cancel_invoice", id=id)}" '
+                      f'class="btn btn-ghost" '
+                      f'style="color:#b91c1c;border-color:#fecaca;">'
+                      f'Cancel Invoice</a>')
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -1288,7 +1357,7 @@ def view_invoice(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {copy_switch}
     {back_pi}
-    <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>
+    <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>{cancel_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -1305,3 +1374,115 @@ def view_invoice(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+@invoice_bp.route("/cancel/<id>", methods=["GET", "POST"])
+def cancel_invoice(id: str):
+    """
+    Withdraw a tax invoice. **There is no delete route here, and there must
+    never be one.**
+
+    A GST invoice number has to run consecutively. Deleting one leaves an
+    unaccounted gap in a statutory series, and the gap is not explainable after
+    the fact — which is why `cascade.py` treats reaching `invoices` as a hard
+    stop and refuses to cascade past one, and why this route exists at all.
+
+    Cancelling keeps everything: the record stays, its figures stay exactly as
+    raised, `ref` stays spent, and the document still prints — over a CANCELLED
+    overprint, because a withdrawn invoice is the only thing that explains why
+    the series appears to skip that number. **There is no un-cancel**, the same
+    contract `ra.cancel_ra()` has.
+
+    ⚠ **A reason is required**, for the reason `ra.cancel_ra()` states: six
+    months later the only remaining question is why the number is missing from
+    the run, and the reason is the only thing that will answer it.
+
+    GET renders the confirmation and changes nothing; POST cancels.
+    """
+    ti = STORE["invoices"].get(id)
+    if not ti:
+        return redirect(url_for("invoice.list_invoices",
+                                msg="That tax invoice no longer exists.",
+                                type="error"))
+
+    if str(ti.get("status") or "") == "cancelled":
+        return redirect(url_for("invoice.view_invoice", id=id, type="error",
+                                msg="That tax invoice is already cancelled. "
+                                    "There is no un-cancel."))
+
+    error = ""
+    if request.method == "POST":
+        reason = (request.form.get("cancel_reason") or "").strip()
+        if not reason:
+            error = ("Say why this invoice is being cancelled. The number "
+                     "stays spent forever, so the reason is the only thing "
+                     "that will explain the gap in the series later.")
+        else:
+            ti["status"] = "cancelled"
+            ti["cancelled_on"] = ((request.form.get("cancelled_on") or "").strip()
+                                  or _date.today().isoformat())
+            ti["cancel_reason"] = reason
+            return redirect(url_for(
+                "invoice.view_invoice", id=id, type="success",
+                msg=f"Tax invoice {ti.get('ref')} cancelled. Its number is not reissued."))
+
+    today = _date.today().isoformat()
+    n_lines = sum(1 for li in ti.get("line_items", []) if not li.get("is_header"))
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Cancel " + str(ti.get('ref') or ''))}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{cascade.CASCADE_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Cancel <span style="color:var(--brand);">{P.esc(ti.get('ref'))}</span></h1>
+  </div>
+  {_alert(error, "error") if error else ""}
+
+  <div class="cas-box">
+    <h2>&#9888; This cannot be undone</h2>
+    <div class="cas-line">
+      You are about to cancel tax invoice <b>{P.esc(ti.get('ref'))}</b>,
+      raised {P.esc(ti.get('date'))} on
+      <b>{P.esc(_customer_of(ti)) or 'an unnamed customer'}</b>, covering
+      <b>{n_lines} line{"" if n_lines == 1 else "s"}</b> and totalling
+      <b>{_inr(ti.get('grand_total') or 0.0)}</b>.<br/><br/>
+      The invoice is <b>not deleted</b>, and it cannot be. It keeps its
+      figures, it still prints as a record with a CANCELLED overprint, and it
+      <b>keeps the number {P.esc(ti.get('ref'))}</b> &mdash; a GST series has
+      to stay consecutive, so the next invoice takes the next number exactly
+      as if this one still stood.<br/><br/>
+      <b>There is no un-cancel.</b>
+    </div>
+  </div>
+
+  <form method="POST" action="{url_for('invoice.cancel_invoice', id=id)}">
+    <div class="form-section">
+      <div class="fg2">
+        <div class="form-group">
+          <label for="cancel_reason">Why is it being cancelled?</label>
+          <input type="text" id="cancel_reason" name="cancel_reason"
+                 value="{P.esc(request.form.get('cancel_reason') or '')}"
+                 placeholder="e.g. raised against the wrong customer, superseded"/>
+        </div>
+        <div class="form-group">
+          <label for="cancelled_on">Cancelled on</label>
+          <input type="date" id="cancelled_on" name="cancelled_on"
+                 value="{P.esc(request.form.get('cancelled_on') or today)}"/>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:.7rem;">
+      <button type="submit" class="btn">Cancel {P.esc(ti.get('ref'))}</button>
+      <a href="{url_for('invoice.view_invoice', id=id)}" class="btn btn-ghost">Keep it</a>
+    </div>
+  </form>
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · tax invoice</p></footer>
+</main>
+</body></html>""")

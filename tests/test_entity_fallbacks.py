@@ -393,6 +393,17 @@ def populated(client):
             "/roles/edit/<id>":       "role-hr",
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
+            # The four destructive confirmations minted 23 September 2026.
+            # Exercised rather than SKIPped, and deliberately: every one of
+            # them prints record text straight onto the page — the BOQ's
+            # project name and site, the proforma's and the invoice's customer
+            # name, the order's vendor — which is exactly the sink this sweep
+            # exists to check. A confirmation page is still a page.
+            #
+            # ⚠ `bid` is the TIP of its chain, which `delete_boq()` requires:
+            #   pointed at a superseded revision the route redirects, and the
+            #   sweep would be checking a redirect rather than a page.
+            "/boq/delete/<id>":     bid,
             # ch-2, not ch-1: see the fixture note above. B7 refuses to edit
             # or delete a record that is part-way up its ladder.
             "/charge/delete/<id>":  "ch-2",
@@ -424,16 +435,23 @@ def populated(client):
             "/approval/reject/invoice/<id>":   iid,
             "/invoice/from/<pid>":  pid,
             "/invoice/view/<id>":   iid,
+            # There is no `/invoice/delete` and there never will be — a GST
+            # series stays consecutive. The cancel confirmation is the
+            # equivalent page and it prints the customer name.
+            "/invoice/cancel/<id>": iid,
             "/product/delete/<id>": deletable_pid,
             "/product/view/<id>":   next(iter(STORE["products"])),
             "/projects/delete/<id>": "proj-1",
             "/projects/edit/<id>":   "proj-1",
             "/projects/view/<id>":   "proj-1",
+            "/quotation/delete/<id>": qid,
             "/proforma/from/<qid>": qid,
             "/proforma/view/<id>":  pid,
+            "/proforma/delete/<id>": pid,
             "/approval/approve/purchase/<id>": next(iter(STORE["purchases"])),
             "/approval/reject/purchase/<id>":  next(iter(STORE["purchases"])),
             "/purchase/view/<id>":  next(iter(STORE["purchases"])),
+            "/purchase/delete/<id>": next(iter(STORE["purchases"])),
             # A1's repricing form. The seeded order above is raised as a
             # **Draft** on purpose, which is the only status `can_edit_rates()`
             # lets through — pointed at an Issued order this route redirects,

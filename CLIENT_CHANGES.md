@@ -3480,6 +3480,89 @@ one automatic.
 > client-facing owner takes and records; it is never one an agent may take,
 > infer, or extend.
 
+> ### ⚠ OVERRIDE — 23 September 2026, by Manas Gawde — universal delete, Owner-only, with a THIRD narrow unfreeze of `quotation.py`
+>
+> **A new block, not an amendment.** The twenty-ninth block, dated
+> 14 September 2026, and every block before it stand exactly as recorded and
+> are **not edited** by this one. This is the thirtieth occasion. It covers
+> the decisions below and nothing else; anything a pass builds beyond them is
+> outside this authorisation.
+>
+> #### This is my own decision
+>
+> **It is not a client request, not a CC-2 item, and not chargeable under
+> either quotation.** It moves no Phase 3 bar: the board and its denominator
+> are unchanged, and no CC-2 item changes state. It is a capability the
+> application was missing — twelve of nineteen document types could be
+> deleted and seven could not, with no consistent account of what a deletion
+> destroyed downstream.
+>
+> **1. Every document type becomes deletable, and deletion becomes
+> Owner-only.** `auth.OWNER_ONLY` is a second gate checked **on top of** the
+> per-route permission, not instead of it, so an Owner cannot loosen it by
+> granting a `*.delete` permission to another role at `/roles/edit/<id>`. That
+> is deliberate and it is the point: destroying a document is not a checkbox.
+>
+> **2. A deletion states what it destroys before it does it.** `cascade.py`
+> holds one registry of which collection references which, and every
+> confirmation page prints the transitive closure — counted, by type — before
+> the button. A route that destroys something the page did not name is a
+> defect.
+>
+> **3. A Tax Invoice is NEVER deleted, and that is a hard stop, not a
+> default.** A GST invoice number has to run consecutively; deleting one
+> leaves an unaccounted gap in a statutory series and no later document can
+> explain it. So there is no `/invoice/delete` and there is to be no
+> `invoice.delete` permission. An invoice is withdrawn by **cancelling** it —
+> the number stays spent, the record stays readable, and the sheet prints over
+> a CANCELLED overprint. `cascade.py` enforces the same rule from the other
+> side: reaching an invoice anywhere in a closure refuses the **whole**
+> operation rather than cascading partially past it.
+>
+> #### ⚠ A THIRD NARROW UNFREEZE OF `quotation.py`, and what it does not license
+>
+> **`quotation.py` is unfrozen for exactly ONE new function —
+> `delete_quotation()` — and no other.** INTRODUCTION.md §7 freezes that file
+> against refactor and feature work and **that freeze still stands**; this is a
+> fourth named carve-out on the terms the first three were taken on
+> (`9d060ee`, 29 August 2026, and 11–12 September 2026), not the freeze being
+> lifted.
+>
+> **What it permits:** adding `delete_quotation()`, and adding the one line
+> inside `view_quotation()` that draws its button — `view_quotation()` is
+> already unfrozen under the 29 August block, and this block does not widen
+> that span.
+>
+> **What it does not permit:** touching any other function in that file,
+> tidying anything, renaming anything, or porting a pattern across from
+> elsewhere. `tests/test_nav_user_chip.py` holds the diff since `eff0034` to
+> the named functions, and `UNFROZEN_QUOTATION_FUNCTIONS` gains **one** name.
+> A sixth name needs a sixth block naming it.
+>
+> **`product.py` is NOT unfrozen and has never been.** The product catalogue
+> is hidden from everybody (`auth.HIDDEN_BLUEPRINTS`), and `/product/delete`
+> already existed before this pass; it gains the Owner-only gate through
+> `auth.py` and `product.py` is **not edited**, the same way the hide was
+> built.
+>
+> #### What this does not change
+>
+> **Master/reference data is out of scope for the cascade.** Address,
+> Employee, Project, Spec and Product are pointed *at* by documents rather
+> than produced from them. Their existing block-if-referenced guards stay
+> exactly where they are; deleting a Project must never cascade into deleting
+> every BOQ raised under it.
+>
+> **The measurement cap and the approval ladder are untouched.** The ladder is
+> still off in code (12 September block); `approval.can_modify()` is still
+> what gates deleting an approvable document, and is still read through
+> `approval.ladder_on()` and nothing else.
+>
+> **The rule above is not weakened by this block.** An override is a decision
+> the client-facing owner takes and records; it is never one an agent may
+> take, infer, or extend. This block records a decision I took on
+> 23 September 2026 and authorises nothing beyond what it names.
+
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
@@ -4103,14 +4186,17 @@ is what it still records. **This file as a whole is later than that**: §0 has
 since taken dated blocks on **14, 15 and 16 August 2026** (three overrides and
 one authorisation) and a **SUPERSEDED IN PART** block on **23 August 2026** — so
 a reader who takes the 10 August date as the file's currency will miss every
-commercial decision taken since, which is most of them. **Last updated 6 September
+commercial decision taken since, which is most of them. **Last updated 23 September
 2026** — the most recent §0 block is the **end-to-end chain driver and the
 JOINT MEASUREMENT SHEET** of that date, which also records that the brief for
 that pass carried **four wrong premises**, the first of which would have deleted
 two shipped guards and contradicted CC-2's C2. The block before it is the
 **dashboard's BOQ/RA visual cues** of 5 September 2026, which records that a
 *"Visual Dashboard is free, not chargeable"* ruling **was cited to that pass and
-does not exist in this record**.** Phase 3 is a different meeting and a different file:
+does not exist in this record**. The most recent block is the **universal
+delete, Owner-only** of 23 September 2026, which carries a **third narrow
+unfreeze of `quotation.py`** — one function — and rules that a Tax Invoice
+is never deleted, only cancelled.** Phase 3 is a different meeting and a different file:
 [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md), 19 August 2026.*
 
 *When an item's status changes, change it here and in [STATE.md](STATE.md) —

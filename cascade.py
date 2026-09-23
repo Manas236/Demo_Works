@@ -47,6 +47,7 @@ partially cascaded, the instant one is found anywhere in the closure.
 from typing import NamedTuple
 
 from store import STORE
+import pipeline as P
 import attachment
 
 
@@ -194,3 +195,80 @@ def delete_cascade(doc_type: str, doc_id: str) -> list:
 
     _destroy_one(doc_type, doc_id)
     return report["items"]
+
+
+# =============================================================================
+# THE CONFIRMATION FRAGMENT  (Phase 2/3)
+# =============================================================================
+# One renderer, so sixteen delete routes cannot drift into sixteen different
+# ways of saying "this also destroys seven other records". It returns a bare
+# fragment, not a page: every module already owns its own shell, its own nav
+# and its own styles, and this module still registers no routes.
+#
+# ⚠ **Escaping.** Labels and counts below are module-authored constants from
+# `CASCADE_GRAPH`, never user text — but ids are record ids and the blocked
+# Tax Invoice's number reaches HTML, so both go through `P.esc` at the
+# interpolation site, per ABOUT.md §9.
+
+
+def impact_html(report: dict) -> str:
+    """
+    The red "and this goes too" block for a delete confirmation page.
+
+    Takes `impact_of()`'s return value whole. Renders:
+      - the hard-stop notice when a Tax Invoice sits in the closure, or
+      - nothing at all when the closure is empty (the caller's own "this
+        cannot be undone" line already carries the warning), or
+      - a counted list of what else is destroyed, deepest last.
+    """
+    if report.get("blocked"):
+        blocker = report["blocked"]
+        return f"""
+  <div class="cas-box cas-blocked">
+    <h2>&#9940; This cannot be deleted</h2>
+    <div class="cas-line">
+      A <b>Tax Invoice</b> ({P.esc(blocker.get('id'))}) has been raised
+      downstream of this record. A GST invoice number has to stay consecutive,
+      so deleting anything above one would leave an unaccounted gap in the
+      series.<br/><br/>
+      Cancel the tax invoice instead &mdash; the number stays spent and the
+      document prints marked <b>CANCELLED</b>.
+    </div>
+  </div>"""
+
+    items = report.get("items") or []
+    if not items:
+        return ""
+
+    counts = summarize(items)
+    rows = "".join(
+        f"<li><b>{P.esc(label)}</b> &times; {n}</li>"
+        for label, n in counts.items()
+    )
+    total = len(items)
+    return f"""
+  <div class="cas-box">
+    <h2>&#9888; This also destroys {total} other record{"" if total == 1 else "s"}</h2>
+    <div class="cas-line">
+      Deleting this record deletes everything raised from it. The following go
+      with it, and none of it can be recovered:
+      <ul class="cas-list">{rows}</ul>
+    </div>
+  </div>"""
+
+
+# The styles the fragment above needs. A Python string constant, appended into
+# whichever module's <style> block already renders the page — there is no
+# /static in this app (ABOUT.md §1).
+CASCADE_STYLES = """
+<style>
+  .cas-box { border:1px solid #fecaca; background:#fef2f2; border-radius:10px;
+             padding:1rem 1.1rem; margin-bottom:1.2rem; }
+  .cas-box h2 { margin:0 0 .5rem; font-size:1rem; color:#b91c1c; }
+  .cas-line { font-size:.82rem; line-height:1.6; }
+  .cas-list { margin:.6rem 0 0; padding-left:1.2rem; }
+  .cas-list li { margin:.15rem 0; }
+  .cas-blocked { border-color:#fca5a5; background:#fef2f2; }
+  .cas-blocked h2 { color:#7f1d1d; }
+</style>
+"""

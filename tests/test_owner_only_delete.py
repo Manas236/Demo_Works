@@ -40,6 +40,20 @@ def test_owner_only_covers_exactly_the_true_destroy_routes():
     the docstring beside `auth.OWNER_ONLY`.
     """
     assert auth.OWNER_ONLY == {
+        # The five minted 23 September 2026 (CLIENT_CHANGES.md §0, thirtieth
+        # block). ⚠ `invoice.cancel_invoice` is the odd one and is here on
+        # purpose: it does NOT destroy a record — the invoice keeps its number,
+        # its figures and its printability — but it is the ONLY way to withdraw
+        # a tax invoice, because a GST series has to stay consecutive and there
+        # is no `/invoice/delete` to put here instead. Withdrawing a document
+        # is the same order of act as destroying one, so it takes the same
+        # tier. `test_the_tax_invoice_has_no_edit_route_to_gate` holds the
+        # no-delete half from the other side.
+        "boq.delete_boq",
+        "quotation.delete_quotation",
+        "proforma.delete_proforma",
+        "purchase.delete_purchase",
+        "invoice.cancel_invoice",
         "ra.delete_ra",
         "receipt.delete_receipt",
         "po_draft.delete_po",

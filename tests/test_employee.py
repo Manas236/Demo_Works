@@ -580,18 +580,64 @@ def test_c4_built_no_attendance_no_overtime_and_no_wage_calculation():
 
     Read against the module source: a field, a route or a constant for any of
     these would be C5 started under C4's authorisation.
+
+    ⚠ **NARROWED on 23 September 2026, and only for `references_of()`.** C5
+      shipped on 30 August 2026, so "gated" now means "belongs to
+      `attendance.py`" rather than "not built yet" — but the claim this test
+      makes is unchanged and still worth making: **C4's module does not
+      implement attendance.** What it may now do is COUNT markings against an
+      employee, so that deleting one can be refused rather than leaving every
+      marking pointing at an id that no longer resolves. That is a guard on a
+      delete, not a wages feature.
+
+      The narrowing is one named function and is checked, not trusted:
+      `references_of()` is excluded from the string scan and then asserted
+      separately to be read-only. Everything else in the file is held to the
+      original rule, whose assertion was, in full and verbatim:
+
+          assert f'"{gated}"' not in body and f"'{gated}'" not in body, (
+              f"{gated!r} is C5, which is gated. C4 is employee details and "
+              f"salary, and nothing else.")
     """
+    import ast
     import pathlib
     src = (pathlib.Path(__file__).resolve().parent.parent
            / "employee.py").read_text(encoding="utf8")
 
-    body = "\n".join(line for line in src.splitlines()
-                     if not line.lstrip().startswith("#"))
+    lines = src.splitlines()
+    guard = next((n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "references_of"), None)
+    assert guard is not None, (
+        "employee.references_of() is gone — it is the delete guard that stops "
+        "an employee being removed out from under their attendance history")
+    exempt = range(guard.lineno, guard.end_lineno + 1)
+
+    body = "\n".join(line for i, line in enumerate(lines, 1)
+                     if not line.lstrip().startswith("#") and i not in exempt)
     for gated in ("attendance", "presentee", "absentee", "overtime",
                   "ot_multiplier", "ot_hours"):
         assert f'"{gated}"' not in body and f"'{gated}'" not in body, (
-            f"{gated!r} is C5, which is gated. C4 is employee details and "
-            f"salary, and nothing else.")
+            f"{gated!r} is C5, which belongs to attendance.py. C4 is employee "
+            f"details and salary, and nothing else.")
+
+    # The exemption, earned: the guard counts and returns. It does not write.
+    #
+    # ⚠ Anchored on STORE, not on the punctuation. The first version of this
+    #   check looked for "] =" anywhere in the function and failed on
+    #   `out["Attendance record"] = n_att` — a write to the LOCAL result dict,
+    #   which is the whole point of the function. What must not happen is a
+    #   write to the shared collection.
+    import re as _re
+    guard_src = "\n".join(lines[guard.lineno - 1:guard.end_lineno])
+    store_write = _re.compile(
+        r'STORE\s*(\.\s*(get|setdefault)\s*\(\s*)?\[?\s*["\'][a-z_]+["\']\s*\)?\]?'
+        r'\s*(\[[^\]]*\]\s*=|\.\s*(pop|clear|update|setdefault)\s*\()')
+    assert not store_write.search(guard_src), (
+        "employee.references_of() writes to a STORE collection — it is "
+        "exempted from the C5 rule as a READER and must stay one. Attendance "
+        "has exactly one writer, and it is attendance.py.")
+    assert "del STORE" not in guard_src, (
+        "employee.references_of() deletes from STORE; it counts and returns.")
 
 
 def test_the_employee_record_is_not_linked_to_charges_or_projects(client):

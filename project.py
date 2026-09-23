@@ -133,6 +133,48 @@ def attached_boq_count(project_id: str) -> int:
                if str(b.get("project_id", "")) == project_id)
 
 
+def references_of(project_id: str) -> dict:
+    """
+    Everything that points at this project, by kind: {"BOQ": 3, "Charge": 7}.
+
+    ⚠ **A project is MASTER data and is never cascade-deleted.** Deleting one
+    must not be able to destroy every BOQ, charge and attendance marking raised
+    under it as a side effect of tidying up a register row, which is exactly
+    why `cascade.py` refuses to carry master records in `CASCADE_GRAPH` at all.
+    This is the block-if-referenced guard instead, in the shape
+    `address.references_of()` established.
+
+    ⚠ **Charges and attendance were NOT checked before 23 September 2026** —
+    `attached_boq_count()` was the whole guard, so a project with a wages
+    ledger and no BOQ deleted cleanly and left every one of those rows
+    pointing at a `project_id` that no longer resolved. The offline cleanup
+    tool under `tools/` already counted all three; the route did not. (That
+    tool is deliberately not named here, and neither is the test that holds
+    the rule: a sweep asserts no module in the application mentions that
+    script at all, because a destructive script a request can reach is a
+    destructive request.)
+
+    Read off `STORE` directly rather than by importing `charge.py` and
+    `attendance.py` — `project.py` is a LEAF (app.py's registration order
+    depends on it) and may import neither. The same one-way trick every other
+    cross-collection read in this app uses.
+    """
+    pid = str(project_id or "")
+    out = {}
+    n_boq = attached_boq_count(pid)
+    if n_boq:
+        out["BOQ"] = n_boq
+    n_charge = sum(1 for c in STORE.get("charges", {}).values()
+                   if str(c.get("project_id") or "") == pid)
+    if n_charge:
+        out["Charge"] = n_charge
+    n_att = sum(1 for a in STORE.get("attendance", {}).values()
+                if str(a.get("project_id") or "") == pid)
+    if n_att:
+        out["Attendance record"] = n_att
+    return out
+
+
 # =============================================================================
 # THE SITE — the link, the snapshot, and what to do when they disagree
 # =============================================================================
@@ -623,24 +665,27 @@ def delete_project(id: str):
         return redirect(url_for("project.list_projects",
                                 msg="Project not found.", type="error"))
 
-    n_boqs = attached_boq_count(id)
+    refs = references_of(id)
+    n_boqs = sum(refs.values())
+    what = ", ".join(f"{n} {kind}{'' if n == 1 else 's'}"
+                     for kind, n in refs.items())
 
     if request.method == "POST":
         if n_boqs > 0:
             return redirect(url_for("project.list_projects",
-                                    msg=f"Cannot delete '{P.esc(proj.get('name'))}' — "
-                                        f"{n_boqs} BOQ(s) are attached to it.",
+                                    msg=f"Cannot delete '{proj.get('name')}' — "
+                                        f"{what} still reference it.",
                                     type="error"))
         name = proj.get("name", "")
         del STORE["projects"][id]
         return redirect(url_for("project.list_projects",
-                                msg=f"Project '{P.esc(name)}' deleted.",
+                                msg=f"Project '{name}' deleted.",
                                 type="success"))
 
     # GET — confirmation page. Reads only, writes nothing.
     if n_boqs > 0:
-        refusal = (f'<div class="alert alert-error">Cannot delete — '
-                   f'{n_boqs} BOQ(s) are attached to this project. '
+        refusal = (f'<div class="alert alert-error">Cannot delete &mdash; '
+                   f'{P.esc(what)} still reference this project. '
                    f'Reassign or remove them first.</div>')
         btn = ""
     else:

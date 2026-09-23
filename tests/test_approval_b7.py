@@ -645,9 +645,32 @@ def test_the_tax_invoice_has_no_edit_route_to_gate():
     """
     Stated so its absence reads as checked rather than forgotten.
 
-    A tax invoice is raised from a proforma and has no edit or delete route at
-    all, so there is nothing for `can_modify()` to gate on it. If one is ever
-    added, this test is where somebody finds out it needs a guard.
+    A tax invoice still has **no edit route and no delete route**, and never
+    will have a delete route: a GST series has to stay consecutive, so an
+    invoice is withdrawn by cancelling it. `cascade.py` enforces the same thing
+    from the other side, refusing to cascade past one.
+
+    ⚠ **REWRITTEN on 23 September 2026**, when `/invoice/cancel/<id>` was
+    built. The assertion this replaces was, in full and verbatim:
+
+        assert invoice_writes == ["invoice.create_invoice"], (
+            f"invoice.py has grown a write route beyond creation: "
+            f"{invoice_writes}. It is an approvable document, so the new route "
+            f"needs approval.can_modify() and a line in the test above.")
+
+    It is not weakened. The claim is now that invoice.py has exactly TWO write
+    routes and that the second is the cancel route — a third still fails here.
+
+    ⚠ **`cancel_invoice()` deliberately does NOT call `approval.can_modify()`,
+      and that is not the omission this file usually hunts for.** `can_modify()`
+      refuses a document that has been APPROVED, and an approved invoice is
+      precisely the one a cancellation exists for: it is the only withdrawal
+      path there is, so gating it on `can_modify()` would make an approved
+      invoice impossible to withdraw by any route at all. `ra.cancel_ra()` is
+      built the same way and for the same reason — it is gated by
+      `can_cancel()`, never by `can_modify()`, while `ra.delete_ra()` beside it
+      IS gated by `can_modify()`. Cancelling and deleting are different acts
+      and the guard follows the act, not the module.
     """
     import app as app_module
 
@@ -656,7 +679,17 @@ def test_the_tax_invoice_has_no_edit_route_to_gate():
         if r.endpoint.startswith("invoice.")
         and {"POST"} & r.methods
         and "approval" not in r.endpoint)
-    assert invoice_writes == ["invoice.create_invoice"], (
-        f"invoice.py has grown a write route beyond creation: "
+    assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice"], (
+        f"invoice.py has grown a write route beyond creation and cancellation: "
         f"{invoice_writes}. It is an approvable document, so the new route "
-        f"needs approval.can_modify() and a line in the test above.")
+        f"needs approval.can_modify() and a line in the test above — unless it "
+        f"is a withdrawal path, which is gated on its own terms (read the "
+        f"docstring before relaxing this).")
+
+    # The prohibition itself, stated as an assertion rather than left to the
+    # shape of the list above: no route in this module may destroy an invoice.
+    assert not any("delete" in e for e in invoice_writes), (
+        "a delete route has appeared on the tax invoice. There must never be "
+        "one: a GST invoice number has to stay consecutive, and deleting one "
+        "leaves an unaccounted gap in a statutory series. Withdraw it with "
+        "/invoice/cancel/<id>, which keeps the number spent.")

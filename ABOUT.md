@@ -91,7 +91,7 @@ pip install pytest==9.1.1               # only to run the suite
 pip install openpyxl                    # only for the 4 workbook tests — see below
 
 cp .env.example .env                    # then edit DB_USER / DB_PASSWORD
-python -m pytest -q                     # 2,806 passed, 4 skipped — this is what THESE
+python -m pytest -q                     # 2,848 passed, 4 skipped — this is what THESE
                                         #   steps produce: openpyxl was installed three
                                         #   lines up, client workbooks ABSENT. Row 2 below.
                                         #   ⚠ THIS FIGURE IS NOT COVERED BY
@@ -144,8 +144,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,806 passed, 4 skipped** | **22 Sep 2026** *(the identity pages stop offering what they then refuse — a Director was shown the Owner role on `/users/create`, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new). A UX defect fix on built Phase 3B work, and **no guard changed**: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,791 / 4** — and matched. 2,791 + 15 = 2,806)* — previously **2,791 passed, 4 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page — a phone's print service picks the paper, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,787 / 4** — ⚠ **94 above the 2,693 recorded here**: the seven commits `0c493e1` … `5f4ddc0` of 14–15 September (the print-route pins, the page goldens, the chrome extraction, the sidebar, the measurement-grid fix and the deployment runbook) added 94 across 17 test files — `tests/test_page_golden.py` (**25**, new) and `tests/test_sidebar.py` (**26**, new) among them — and moved no figure in any document. 2,787 + 4 = 2,791)* — previously **2,693 passed, 4 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,805 passed, 2 skipped** | **22 Sep 2026** *(the identity pages stop offering what they then refuse, **+15**, measured not derived — from a start-of-pass **2,790 / 2**, re-measured and matching. 2,790 + 15 = 2,805 reconciles. The row-2/row-3 relationship still holds exactly: 2,805 + 1 passed and + 2 skipped = 2,806 / 4)* — previously **2,790 passed, 2 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page, **+4**, measured not derived — from a start-of-pass **2,786 / 2**, re-measured, and 94 above the recorded 2,692 for the reason row 2 gives. 2,786 + 4 = 2,790 reconciles. The row-2/row-3 relationship still holds exactly: 2,790 + 1 passed and + 2 skipped = 2,791 / 4)* — previously **2,692 passed, 2 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` + `pytest==9.1.1` + `openpyxl 3.1.5`), both client workbooks **absent** | **2,848 passed, 4 skipped** | **22 Sep 2026** *(the identity pages stop offering what they then refuse — a Director was shown the Owner role on `/users/create`, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new). A UX defect fix on built Phase 3B work, and **no guard changed**: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,791 / 4** — and matched. 2,791 + 15 = 2,806)* — previously **2,791 passed, 4 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page — a phone's print service picks the paper, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,787 / 4** — ⚠ **94 above the 2,693 recorded here**: the seven commits `0c493e1` … `5f4ddc0` of 14–15 September (the print-route pins, the page goldens, the chrome extraction, the sidebar, the measurement-grid fix and the deployment runbook) added 94 across 17 test files — `tests/test_page_golden.py` (**25**, new) and `tests/test_sidebar.py` (**26**, new) among them — and moved no figure in any document. 2,787 + 4 = 2,791)* — previously **2,693 passed, 4 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **2,847 passed, 2 skipped** | **22 Sep 2026** *(the identity pages stop offering what they then refuse, **+15**, measured not derived — from a start-of-pass **2,790 / 2**, re-measured and matching. 2,790 + 15 = 2,805 reconciles. The row-2/row-3 relationship still holds exactly: 2,805 + 1 passed and + 2 skipped = 2,806 / 4)* — previously **2,790 passed, 2 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page, **+4**, measured not derived — from a start-of-pass **2,786 / 2**, re-measured, and 94 above the recorded 2,692 for the reason row 2 gives. 2,786 + 4 = 2,790 reconciles. The row-2/row-3 relationship still holds exactly: 2,790 + 1 passed and + 2 skipped = 2,791 / 4)* — previously **2,692 passed, 2 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -391,7 +391,7 @@ Consequences you must respect when editing:
 | [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [attachment.py](attachment.py) | 817 | **File attachments on a charge and on a receipt** (CC-2 **B8**, 2 Sep 2026). The **only** module that returns file bytes, and the first record in this app whose payload is not in the database — the file is on disk under `attachment.root()`, the record holds a **relative path**. A **bottom-of-graph** module like `approval.py`: `charge.py` and `receipt.py` import it, so it imports neither. Type is decided by **magic bytes**, never by extension or the browser's `Content-Type`; 5 MB cap refused before the store is touched; the cascade deletes the file **and** the row. ⚠ **Compulsory on a charge, optional on a receipt** — CC-2's asymmetry, carried as data in `PARENTS`. ⚠ **Mints no permission**: each of its six endpoints carries the PARENT's own. ⚠ **B7 gates the download and that is OURS** — through `approval.can_print()`, not a second copy of the rule. See §3. |
 | [merged_ra.py](merged_ra.py) | 1022 | **The merged RA bill** (CC-2 **C3**, 2 Sep 2026) — one issued RA-Supply bill and one issued RA-Installation bill from the same revision chain, stacked onto one sheet under **one minted tax invoice number**. Its own `merged_ras` collection; a separate document type, the same relationship as Draft PO → PO. ⚠ **It holds NO claims of its own** — copying them in would make the over-claim guard count the same quantity twice. ⚠ Totals are the **sum of the two bills' stored totals**, never recomputed from the live BOQ. ⚠ **Imports `ra.py`; `ra.py` may NOT import it back** — it reads `STORE['merged_ras']` directly and links with `url_for`, the one-way trick. ⚠ **Mints `SF/MI/...`, never `TI`** — `invoice.py` owns that series and a second counter under it would put one statutory serial on two documents. ⚠ **Mints no permission**: every route carries `ra.*`. See §3. |
-| [cascade.py](cascade.py) | 196 | **The shared dependent-record graph for delete** (22 September 2026) — no routes, a data-only registry (`CASCADE_GRAPH`) of which of the 8 transactional-chain collections reference which, plus `impact_of()` (preview the transitive closure) and `delete_cascade()` (destroy it, children before parent). Sits where `pipeline.py` sits: reads `STORE[...]` directly, imports `attachment.py` only, never imports back. ⚠ **Master/reference data (Address, Employee, Project, Spec, Product) is deliberately OUT OF SCOPE** — their existing hand-written guards (`address.references_of()`, `project.attached_boq_count()`, `product.can_delete_product()`) are untouched; this module only walks records that exist *because* a parent does. ⚠ **A Tax Invoice anywhere in the closure is a hard stop** (`CascadeBlocked`) — there is no delete route for one, and the walk refuses the whole operation rather than cascade partially past it. ⚠ **Not yet called by any route** — see §7 gap 40. **9 tests** in [tests/test_cascade.py](tests/test_cascade.py). |
+| [cascade.py](cascade.py) | 196 | **The shared dependent-record graph for delete** (22 September 2026) — no routes, a data-only registry (`CASCADE_GRAPH`) of which of the 8 transactional-chain collections reference which, plus `impact_of()` (preview the transitive closure) and `delete_cascade()` (destroy it, children before parent). Sits where `pipeline.py` sits: reads `STORE[...]` directly, imports `attachment.py` only, never imports back. ⚠ **Master/reference data (Address, Employee, Project, Spec, Product) is deliberately OUT OF SCOPE** — their existing hand-written guards (`address.references_of()`, `project.attached_boq_count()`, `product.can_delete_product()`) are untouched; this module only walks records that exist *because* a parent does. ⚠ **A Tax Invoice anywhere in the closure is a hard stop** (`CascadeBlocked`) — there is no delete route for one, and the walk refuses the whole operation rather than cascade partially past it. **Called by seven routes** (23 September 2026): `/boq/delete`, `/quotation/delete`, `/proforma/delete`, `/purchase/delete`, `/po/delete`, `/receipt/delete` and, for its styles alone, `/invoice/cancel`. `impact_html()` renders the counted closure onto every confirmation page, and `CASCADE_STYLES` is the sheet that draws it — a route that destroys something the page did not name is a defect. **9 tests** in [tests/test_cascade.py](tests/test_cascade.py) for the walk, **28** in [tests/test_delete_rollout.py](tests/test_delete_rollout.py) for the routes. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -1335,16 +1335,30 @@ cannot be loosened that way; it is the same kind of harder-than-the-registry
 rule as `_may_administer()` guarding `/users/deactivate` beyond what
 `admin.users` alone would allow (§2g, above).
 
-`OWNER_ONLY` names exactly the twelve endpoints that destroy a document
-(`STORE[...].pop`/`del`), pinned rather than derived:
+`OWNER_ONLY` names exactly the **seventeen** endpoints that destroy a document
+(`STORE[...].pop`/`del`), plus the one that withdraws the document nothing may
+destroy, pinned rather than derived:
 
 ```
+boq.delete_boq             quotation.delete_quotation
+proforma.delete_proforma   purchase.delete_purchase
+invoice.cancel_invoice     <- withdraws; does NOT destroy. See below.
 ra.delete_ra           receipt.delete_receipt    po_draft.delete_po
 challan.delete_dc      measurement.delete_ms     charge.delete_charge
 employee.delete_employee   attendance.delete_attendance
 project.delete_project     spec.delete_spec      product.delete_product
 address.delete_address
 ```
+
+⚠ **`invoice.cancel_invoice` destroys nothing and is in the set anyway.**
+That is not an inconsistency with the rule above it — it is the rule applied
+to the one document this application may never delete. A GST invoice number
+has to run consecutively, so there is no `/invoice/delete` and there is to be
+no `invoice.delete` permission; cancelling is the *only* way to withdraw one,
+and it keeps the number spent, the figures intact and the sheet printable over
+a CANCELLED overprint. Withdrawing a document is the same order of act as
+destroying one, so it takes the same tier. `cascade.py` enforces the other
+half: reaching an invoice anywhere in a closure refuses the whole operation.
 
 ⚠ **Archiving an address and removing one attachment are deliberately
 excluded**, though both share a `*.delete` permission with a route above:
@@ -1357,12 +1371,24 @@ refused on GET and POST though the permission is held, an Owner let through —
 and pins the exclusions directly rather than leaving them to be inferred from
 the set's absence.
 
-⚠ **Not wired to [cascade.py](cascade.py).** The gate controls *who* may
-reach a delete route; none of the twelve routes above calls
-`cascade.impact_of()` or `cascade.delete_cascade()` yet, so today's delete is
-still whatever single-collection removal each route always did, with
-whatever dependency guard that route already had (`ra.can_delete()` and
-similar). See §7 gap 40.
+✅ **Wired to [cascade.py](cascade.py) on 23 September 2026.** The gate
+controls *who* may reach a delete route; `cascade.py` controls *what a
+delete takes with it*. The set above grew by five — `boq.delete_boq`,
+`quotation.delete_quotation`, `proforma.delete_proforma`,
+`purchase.delete_purchase` and `invoice.cancel_invoice` — and the routes
+that had a transitive closure worth showing now print it before the button.
+
+⚠ **`invoice.cancel_invoice` is in the set and destroys nothing**, which is
+not an inconsistency: it is the ONLY way to withdraw a tax invoice, because
+a GST series has to stay consecutive and there is deliberately no
+`/invoice/delete` to put there instead. Withdrawing a document is the same
+order of act as destroying one, so it takes the same tier.
+
+⚠ **An existing refusal was not loosened anywhere.** `ra.can_delete()` still
+refuses a bill with a receipt against it rather than cascading into the
+money; `approval.can_modify()` still gates every approvable document. What
+the wiring added is the preview and the previously-missing guards, not a
+new licence to destroy. §7 gap 40 is closed.
 
 ### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
 
@@ -4849,6 +4875,25 @@ which `can_delete_product` may block. This is the most-requested obvious gap.
 
 ### `/quotation` — Quotations · [quotation.py](quotation.py)
 
+#### `/quotation/delete/<id>` — 23 September 2026 · ⚠ THIRD NARROW UNFREEZE
+
+**The only new function in this frozen file**, under CLIENT_CHANGES.md §0's
+thirtieth block, which names `delete_quotation()` and nothing else. The button
+on the view page is the one other authorised line and sits inside
+`view_quotation()`, already unfrozen on 29 August. `product.py` is **not**
+unfrozen and never has been.
+`tests/test_nav_user_chip.py::test_the_frozen_modules_get_the_chip_without_being_edited`
+holds the diff since `eff0034` to the five named functions — **per line** since
+this pass, and with a span that now starts at the first decorator rather than
+at `def`, because a route's own `@quotation_bp.route(...)` is part of the
+function it decorates.
+
+Deleting a quotation **cascades into its proforma invoices**, and is refused
+outright if a tax invoice sits under any of them — the block is found by the
+walk two hops up, not by a hand-written check here, so the next document added
+to the chain is covered by it. The number is never released. Owner-only.
+
+
 | Route | View |
 |---|---|
 | `GET /quotation/` | `list_quotations` — register + pipeline |
@@ -5105,6 +5150,16 @@ needed no new CSS. ⚠ **Never build a coverage ratio out of that pair.**
 
 ### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
 
+#### `/proforma/delete/<id>` — 23 September 2026
+
+Deleting a PI is refused the moment a tax invoice has been raised from it: a
+GST number has to stay consecutive, so removing the document an invoice was
+raised from would leave a gap nothing can explain. Withdraw the invoice with
+`/invoice/cancel/<id>` instead. The Delete control is **not drawn at all** once
+any TI exists — the route refuses it either way, and offering a refusal teaches
+nothing. The PI number is not released. Owner-only.
+
+
 | Route | View |
 |---|---|
 | `GET /proforma/` | `list_proformas` — register |
@@ -5256,6 +5311,39 @@ for the same reason `.pi-chip` lives in `QUOTATION_STYLES`.
 
 ### `/invoice` — Tax Invoices · [invoice.py](invoice.py)
 
+#### `/invoice/cancel/<id>` — 23 September 2026 · ⚠ THERE IS NO DELETE ROUTE
+
+**And there must never be one.** A GST invoice number has to run
+consecutively; deleting one leaves an unaccounted gap in a statutory series
+that no later document can explain. There is no `/invoice/delete`, no
+`invoice.delete` permission, and `cascade.py` refuses to cascade past an
+invoice from anywhere upstream. Two tests hold it from opposite sides:
+`test_the_tax_invoice_has_no_edit_route_to_gate` (this module has exactly two
+write routes and neither destroys) and
+`test_there_is_no_delete_route_for_a_tax_invoice` (the live `url_map`).
+
+Cancelling keeps everything — the record, the figures, the number, and the
+ability to print — and the sheet prints over a **CANCELLED overprint**: a
+diagonal watermark plus a band under the title, neither behind a
+`@media screen`, because the whole risk is a withdrawn invoice reaching a
+customer's desk looking live. ⚠ **A reason is required**, for the reason
+`ra.cancel_ra()` requires one: six months later the only remaining question is
+why the number is missing from the run. **There is no un-cancel.**
+
+⚠ `cancel_invoice()` deliberately does **not** call `approval.can_modify()`.
+That predicate refuses an APPROVED document, and an approved invoice is
+precisely the one a cancellation exists for — gating it there would make an
+approved invoice impossible to withdraw by any route at all. `ra.cancel_ra()`
+is built the same way and for the same reason, while `ra.delete_ra()` beside
+it **is** gated. The guard follows the act, not the module.
+
+⚠ **The `.lc-*` overprint rules in `INVOICE_STYLES` are a deliberate COPY of
+the ones in `RA_STYLES`**, not an import: this module does not load `ra.py`'s
+stylesheet and must not start, since that sheet is tuned for the claim grid.
+The two are meant to look identical, which is why the reason they are separate
+is written in the CSS rather than left to be guessed at.
+
+
 | Route | View |
 |---|---|
 | `GET /invoice/` | `list_invoices` — register |
@@ -5397,6 +5485,23 @@ as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 ---
 
 ### `/purchase` — Purchase Orders · [purchase.py](purchase.py) · **BUY SIDE**
+
+#### `/purchase/delete/<id>` — 23 September 2026
+
+Owner-only, and refused on an APPROVED order while the ladder is on —
+`approval.can_modify()`, the same predicate the edit routes use, because
+deleting is a stronger act than editing and cannot be the looser of the two.
+The number is not released: the order has been sent to a vendor.
+
+⚠ **The draft's back-link is cleaned here and NOT by `cascade.py`.**
+`from_draft()` appends the new order's id to `draft["converted_po_ids"]` — a
+**list on the upstream record**, which is the documented exception to this
+app's "a reference is always an id field on the downstream record" rule
+(CLIENT_CHANGES.md §1.3). The graph walks downstream id fields only and cannot
+see it. Every draft is swept rather than only the one named by
+`po["draft_id"]`: the back-link is what is being repaired, and trusting the
+forward link to find it would assume the very consistency this is restoring.
+
 
 | Route | View |
 |---|---|
@@ -6380,8 +6485,25 @@ revision is superseding, and that record is the tip because an already-supersede
 one is refused. `tests/test_boq_revisions.py` asserts the two functions return
 the same map on a real chain, so the duplication cannot drift silently.
 
-**Still not built: a BOQ delete route.** Deleting a record mid-chain would
-strand every claim behind it, and nothing needs it yet.
+✅ **Built 23 September 2026: `/boq/delete/<id>`.** This paragraph used to
+read *"Still not built: a BOQ delete route. Deleting a record mid-chain would
+strand every claim behind it, and nothing needs it yet."* — the reasoning was
+right and the conclusion is now handled rather than avoided.
+
+**Deleting a record mid-chain does not strand the claims behind it, because
+it takes them with it.** `cascade.impact_of("boqs", id)` walks the whole
+closure — RA bills, the receipts under those, delivery challans, measurement
+sheets, draft POs and real POs — and the confirmation page prints the count
+and the per-type breakdown **before** the button. Owner-only
+(`auth.OWNER_ONLY`), and the largest blast radius in the application.
+
+⚠ **A revision chain is NOT cascaded into, and a superseded record is
+refused.** `supersedes` links two BOQs that are the same job at two points in
+time, not a parent and a child that exists because of it — so deleting
+revision 2 leaves revision 1 standing. What the route refuses is deleting a
+record that HAS been superseded: the newer revision's `supersedes` would
+dangle, and `ra.revision_chain()` walks that link to total what has been
+claimed across the chain. Delete the newest revision first.
 
 #### RA billing starts here — `+ RA · Supply` / `+ RA · Installation`
 
@@ -6993,6 +7115,15 @@ escaped it — there is a test.
 
 ### `/receipt` — Receipts · [receipt.py](receipt.py)
 
+#### The delete confirmation names the files it takes (23 September 2026)
+
+`delete_receipt()` already destroyed the receipt's attachments —
+`attachment.delete_for_parent("receipt", id)`, CC-2 B8's *"no orphans"* — but
+the confirmation page did not say so. It now renders
+`cascade.impact_html(cascade.impact_of("receipts", id))` above the button.
+**No behaviour changed**; what changed is that the page names what the POST
+will destroy.
+
 | Route | View |
 |---|---|
 | `GET /receipt/` | `list_receipts` — the ledger; `?boq=<id>` narrows it to one project's chain |
@@ -7223,6 +7354,21 @@ chips, the save button is absent, and the **POST** is what refuses.
 ---
 
 ### `/po` — Draft Purchase Orders · [po_draft.py](po_draft.py)
+
+#### `/po/delete/<id>` — cascades into the order it was converted into
+
+⚠ **Changed 23 September 2026.** This route used to pop the draft alone and
+leave `purchases.draft_id` pointing at a record that no longer existed — the
+dangling-reference gap §7 recorded against this module. It now deletes the
+pair, because a real order raised from a draft nobody can produce any more is
+not a record anybody can answer questions about.
+
+**It is not a silent cascade.** `cascade.impact_of()` counts the closure and
+`impact_html()` prints it on the GET, so an Owner deleting a converted draft is
+told a Purchase Order goes with it and confirms that specifically. The mirror
+half — the draft's own `converted_po_ids` list when the real order is deleted
+first — is cleaned in `purchase.delete_purchase()`; see §5 `/purchase` for why
+it cannot live in `cascade.py`.
 
 | Route | View |
 |---|---|
@@ -9924,21 +10070,39 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     `tests/test_page_golden.py` with the other screen pages, and this one
     could move there with them.
 
-40. 🟠 **`cascade.py` is Phase 1 infrastructure only — OPEN, recorded
-    22 September 2026.** `CASCADE_GRAPH`, `impact_of()` and
-    `delete_cascade()` exist and are proved by their own 9 tests
-    ([tests/test_cascade.py](tests/test_cascade.py)), but **no route calls
-    any of the three** — a delete route today still performs whatever
-    single-collection removal it always did, with whatever guard it already
-    had. What *is* live today is `auth.OWNER_ONLY` (§2g), which now refuses
-    all twelve existing delete routes to anyone below Owner, independently of
-    whether the route behind the gate does a cascade. Left for a later pass:
-    wiring the twelve confirmation pages to `impact_of()` for a preview and
-    `delete_cascade()` for the execution; four chain types named in
-    `cascade.py`'s own scope note have no delete route at all yet (BOQ —
-    largest blast radius, Quotation, Proforma, a real Purchase Order); and a
-    Tax Invoice has no cancel/void flow to pair with the hard stop
-    `CascadeBlocked` describes.
+40. ~~🟠 **`cascade.py` is Phase 1 infrastructure only.**~~ ✅ **CLOSED
+    23 September 2026**, under CLIENT_CHANGES.md §0's thirtieth block. The
+    number is kept rather than reused. Recorded 22 September 2026, when
+    `CASCADE_GRAPH`, `impact_of()` and `delete_cascade()` existed and **no
+    route called any of the three**.
+
+    What closed it: the four missing delete routes were built
+    (`/boq/delete/<id>` — the largest blast radius in the app,
+    `/quotation/delete/<id>`, `/proforma/delete/<id>`,
+    `/purchase/delete/<id>`), `/invoice/cancel/<id>` was built as the
+    withdrawal path a Tax Invoice gets **instead of** a delete, and the
+    confirmation pages that had a closure worth showing were wired to
+    `impact_of()` through the shared `impact_html()`.
+
+    ⚠ **Two dangling-reference gaps closed with it**, both of which had
+    shipped: deleting a draft PO left `purchases.draft_id` pointing at a
+    record that no longer existed (now the pair goes together, and the
+    confirmation names the real order first), and deleting a real PO left
+    `purchase_orders.converted_po_ids` listing it (cleaned in
+    `purchase.delete_purchase()`, **not** in `cascade.py` — that field is a
+    list on the UPSTREAM record, the documented exception to this app's
+    "a reference is always an id field on the downstream record" rule, and
+    the graph walks downstream fields only).
+
+    ⚠ **Two master-data guards that were missing entirely closed with it
+    too**, and neither is a cascade: `project.references_of()` now counts
+    charges and attendance as well as BOQs (`attached_boq_count()` was the
+    whole guard, so a project with a wages ledger and no BOQ deleted
+    cleanly), and `employee.references_of()` is new outright — there was no
+    guard on deleting an employee at all, so every attendance marking was
+    left pointing at an id that no longer resolved. Both **refuse**; master
+    data is never cascaded into, and `tests/test_delete_rollout.py`
+    asserts no master collection has cascade edges in either direction.
 
 ---
 

@@ -118,7 +118,7 @@ heading and read the rest.
 | 9 | **[SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md)** | What the client's own 18 source documents actually contain — structure, conventions and defects — and what that evidence does to DOMAIN.md's claims. Read it before asserting how the client's paperwork behaves; the documents themselves are gitignored | The domain model, the code facts, the work queue; every finding is OPEN and none is actioned |
 | 10 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
 | 11 | **[PROGRESS.md](PROGRESS.md)** | **Phase 3 build status**, one row per CLIENT_CHANGES-2.md item — BUILT / PARTIAL / NOT STARTED / BLOCKED, each with the `file:line`, route or test name it was established from, plus the blockers and the code-vs-docs drift found while establishing them. Regenerated from code; a pass that changes a Phase 3 item's build state updates it in the same commit | What the items *are* — that is CLIENT_CHANGES-2.md; permission to build any of them; anything about Phase 2 or Phase 4 |
-| 12 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 79 permissions grid (the document's own header line is the figure to trust; this one has been stale before), a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
+| 12 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 84 permissions grid (the document's own header line is the figure to trust; this one has been stale before), a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
 
 ### The boundary that is easiest to get wrong
 
@@ -218,7 +218,7 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,805 passed / 2 skipped** on 22 September 2026, verified by
+The baseline is **2,847 passed / 2 skipped** on 22 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
 *(**22 September 2026** — the identity pages stop offering what they then refuse: signed in as a Director, `/users/create` drew the **Owner** role and then refused the save, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new — the role picker on both forms, the register's per-row links, the Roles button, each hiding paired with its control). A UX defect fix on built Phase 3B work, and **no guard was changed or weakened**: **no bar moved and no CC-2 item changed state** — added **15 passed and 0 skipped**. It read **2,790 / 2** at the start of the pass, re-measured and matching. 2,790 + 15 = 2,805; the `.venv` configuration reads **2,806 / 4**, from a re-measured **2,791 / 4**.)*
@@ -515,6 +515,17 @@ holds the diff since `eff0034` to exactly those functions:
   specification library. The product catalogue is **hidden from everybody**
   the same day (`auth.HIDDEN_BLUEPRINTS`, [ABOUT.md §2g](ABOUT.md)) — and
   `product.py` was **not** edited for it: the hide lives in `auth.py`.
+- **23 September 2026** — a **THIRD narrow unfreeze**, for exactly ONE new
+  function: `delete_quotation()`, the delete route, under the **thirtieth**
+  §0 block. The one other authorised line is the button that reaches it, and
+  it sits inside `view_quotation()`, already unfrozen on 29 August — that
+  span is **not widened**. `UNFROZEN_QUOTATION_FUNCTIONS` gains one name and
+  now holds five. ⚠ The test that enforces this got **stricter** in the same
+  pass, not looser: it checks **per line** instead of per hunk (a hunk that
+  legitimately spans two adjacent unfrozen functions was unsatisfiable, and
+  blank separator lines carry no code), and a function's span now starts at
+  its first **decorator** rather than at `def`, because a route's own
+  `@quotation_bp.route(...)` is part of the function it decorates.
 - **12 September 2026** — the **same three functions, and no fourth**: the
   product path was restored from `1d7725a` and each function now **branches
   on the switch** (`auth.blueprint_hidden("product")`, by function-body
@@ -523,9 +534,11 @@ holds the diff since `eff0034` to exactly those functions:
   (`tests/test_quotation_switch.py` holds a golden captured from that commit).
   The library picker is **Supply only**.
 
-**`product.py` has never been unfrozen and still is not.** A fifth
-`quotation.py` function needs a fifth §0 block naming it; the test is what
-makes a quiet widening fail.
+**`product.py` has never been unfrozen and still is not.** A **sixth**
+`quotation.py` function needs a sixth §0 block naming it; the test is what
+makes a quiet widening fail. ⚠ `product.py` was not edited by the delete
+rollout either: `/product/delete/<id>` already existed and gained its
+Owner-only gate through `auth.py`, the same way the catalogue hide was built.
 
 ⚠ **This section used to say these files "carry known unescaped output".** They
 no longer do — [ABOUT.md §7.7 and §7.9d](ABOUT.md) are closed. **The

@@ -68,6 +68,7 @@ from datetime import date as _date
 from flask import Blueprint, redirect, request, url_for
 
 import branding as B
+import cascade
 import demo_data as DD
 import pipeline as P
 from address import INDIAN_STATES, picker_options, picker_payload
@@ -2454,6 +2455,24 @@ def view_boq(id: str):
                 f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '
                 f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Installation</a>')
 
+    # ── Delete ───────────────────────────────────────────────────────────
+    # Drawn only for somebody the gate would actually let through — the same
+    # rule as the nav and the register rows (`auth.can_reach()`, ABOUT.md §2g).
+    # ⚠ **This is presentation, not the gate.** `/boq/delete/<id>` is in
+    # `ROUTE_PERMISSIONS` and in `OWNER_ONLY`, and refuses a typed URL on its
+    # own; hiding the button only spares a click into a refusal.
+    #
+    # Offered on the tip only, and for the route's own reason rather than for
+    # symmetry with its neighbours: `delete_boq()` refuses a superseded record
+    # outright, because the newer revision's `supersedes` would dangle.
+    import auth as _AUTH
+    del_btn = ""
+    if is_tip and _AUTH.can_reach("boq.delete_boq"):
+        del_btn = (f'\n    <a href="{url_for("boq.delete_boq", id=id)}" '
+                   f'class="btn btn-ghost" '
+                   f'style="color:#b91c1c;border-color:#fecaca;">'
+                   f'&#128465;&nbsp;Delete</a>')
+
     n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
     panel_html = f"""
     <div class="boq-panel">
@@ -2508,7 +2527,7 @@ def view_boq(id: str):
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
     <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
     {revise_btn}
-    {ra_btns}
+    {ra_btns}{del_btn}
     <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
@@ -4483,3 +4502,114 @@ def create_boq():
 {js}
 </body></html>"""
     return _page(template)
+
+
+@boq_bp.route("/delete/<id>", methods=["GET", "POST"])
+def delete_boq(id: str):
+    """
+    Delete a BOQ and everything raised from it.
+
+    **This is the largest blast radius in the app.** A BOQ is the root of the
+    whole execution chain: RA bills hang off it, receipts hang off those,
+    delivery challans, measurement sheets, draft POs and real POs all carry its
+    id. `cascade.impact_of("boqs", id)` walks the lot and the confirmation page
+    below prints the count before anything is destroyed — this route never
+    deletes something the page did not name.
+
+    ⚠ **A revision chain is NOT cascaded into.** `supersedes` links two BOQs
+    that are the same job at two points in time, not a parent and a child that
+    exists because of it, so deleting revision 2 leaves revision 1 standing
+    (and vice versa). What it does do is refuse to strand a chain: deleting a
+    record that has been superseded is refused, because the newer revision's
+    `supersedes` would dangle and `ra.revision_chain()` walks that link.
+
+    ⚠ **A Tax Invoice anywhere downstream refuses the whole operation**, not
+    part of it — `cascade.py`'s hard stop. A BOQ cannot normally reach one
+    (the invoice chain hangs off quotations, not BOQs), but the check is made
+    the same way for every route rather than reasoned about per type.
+
+    GET renders the confirmation and destroys nothing; POST destroys. Per
+    ABOUT.md §7.9f this route ships its own GET-does-not-mutate test — the
+    `url_map` sweep proves only that the rule accepts POST.
+    """
+    ensure_demo_boq()
+    boq = STORE["boqs"].get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs",
+                                msg="That BOQ no longer exists.", type="error"))
+
+    # A superseded record is refused: the newer revision's `supersedes` points
+    # here, and `ra.revision_chain()` walks that link to total what has been
+    # claimed across the chain. Deleting the ancestor would silently shorten
+    # every claim history built on it.
+    newer = next((b for b in STORE["boqs"].values()
+                  if str(b.get("supersedes") or "") == id), None)
+    if newer is not None:
+        return redirect(url_for(
+            "boq.view_boq", id=id, type="error",
+            msg=(f"Revised by {newer.get('ref')} — delete that revision first. "
+                 f"Deleting this one would strand its claim history.")))
+
+    report = cascade.impact_of("boqs", id)
+
+    if request.method == "POST":
+        if report["blocked"] is not None:
+            return redirect(url_for(
+                "boq.view_boq", id=id, type="error",
+                msg=("A tax invoice has been raised downstream — cancel it "
+                     "instead. A GST number cannot leave a gap.")))
+        ref = str(boq.get("ref") or "")
+        destroyed = cascade.delete_cascade("boqs", id)
+        extra = (f" {len(destroyed)} dependent record"
+                 f"{'' if len(destroyed) == 1 else 's'} went with it."
+                 if destroyed else "")
+        return redirect(url_for("boq.list_boqs",
+                                msg=f"BOQ {ref} deleted.{extra}", type="success"))
+
+    sup, ins, total = boq_totals(boq)
+    n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
+    blocked = report["blocked"] is not None
+
+    confirm_form = "" if blocked else f"""
+  <form method="POST" action="{url_for('boq.delete_boq', id=id)}"
+        style="display:flex;gap:.7rem;">
+    <button type="submit" class="btn">Delete {P.esc(boq.get('ref'))}</button>
+    <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">Keep it</a>
+  </form>"""
+
+    back_only = f"""
+  <div style="display:flex;gap:.7rem;">
+    <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">&#8592; Back to the BOQ</a>
+  </div>""" if blocked else ""
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Delete " + str(boq.get('ref') or '') + " BOQ")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{cascade.CASCADE_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Delete <span style="color:var(--brand);">{P.esc(boq.get('ref'))}</span></h1>
+  </div>
+
+  <div class="cas-box">
+    <h2>&#9888; This cannot be undone</h2>
+    <div class="cas-line">
+      You are about to delete <b>{P.esc(boq.get('ref'))}</b> &mdash;
+      {P.esc(boq.get('project_name'))} at {P.esc(boq.get('site_location'))}.<br/>
+      It carries <b>{n_lines} priced line{"" if n_lines == 1 else "s"}</b>
+      totalling <b>&#8377;&nbsp;{total:,.0f}</b>
+      (supply &#8377;&nbsp;{sup:,.0f}, installation &#8377;&nbsp;{ins:,.0f}).
+    </div>
+  </div>
+{cascade.impact_html(report)}
+{confirm_form}{back_only}
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
+</main>
+</body></html>""")

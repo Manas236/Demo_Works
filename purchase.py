@@ -81,6 +81,7 @@ from flask import Blueprint, request, redirect, url_for
 
 import approval
 import branding as B
+import cascade
 import pipeline as P
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
@@ -4152,6 +4153,21 @@ def view_purchase(id: str):
         reprice_btn = (f'\n    <a href="{url_for("purchase.edit_purchase_rates", id=id)}" '
                        f'class="btn btn-ghost">Reprice</a>')
 
+    # ── Delete ───────────────────────────────────────────────────────────
+    # The same two conditions the route itself applies, read here so the bar
+    # never offers a refusal: `approval.can_modify()` (an approved order is not
+    # deletable while the ladder is on) and `auth.can_reach()`. ⚠ Presentation,
+    # not the gate — `/purchase/delete/<id>` refuses a typed URL on its own.
+    # The newline and indent live INSIDE the string, so an order nobody may
+    # delete renders the action bar byte-for-byte as it always did.
+    import auth as _AUTH
+    del_po = ""
+    if approval.can_modify("purchase", po)[0] and _AUTH.can_reach("purchase.delete_purchase"):
+        del_po = (f'\n    <a href="{url_for("purchase.delete_purchase", id=id)}" '
+                  f'class="btn btn-ghost" '
+                  f'style="color:#b91c1c;border-color:#fecaca;">'
+                  f'&#128465;&nbsp;Delete</a>')
+
     # Empty string on an order that has never been repriced, so the panel of an
     # order raised before 28 August 2026 renders byte-for-byte as it did.
     rp = _reprice_html(po)
@@ -4196,7 +4212,7 @@ def view_purchase(id: str):
     {_status_badge(po.get('status'))}
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}
+    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}{del_po}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -4238,3 +4254,110 @@ def view_purchase(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+@purchase_bp.route("/delete/<id>", methods=["GET", "POST"])
+def delete_purchase(id: str):
+    """
+    Delete a purchase order.
+
+    ⚠ **The draft's back-link is cleaned here and not by `cascade.py`.** When a
+    draft PO is converted, `from_draft()` appends the new order's id to
+    `draft["converted_po_ids"]` — a **list on the upstream record**, which is
+    the documented exception to this app's "a reference is always an id field
+    on the downstream record" rule (CLIENT_CHANGES.md §1.3). `cascade.py` walks
+    downstream id fields only and cannot see it, so leaving the cleanup to the
+    graph would strand the draft pointing at an order that no longer exists —
+    the mirror image of the dangling-`draft_id` gap the graph *does* close.
+
+    **The number is not released.** The PO series only ever advances: the order
+    has been sent to a vendor, and reissuing its number would put two different
+    orders into one supplier's records under one reference.
+
+    ⚠ **An APPROVED order is refused while the ladder is on.** `approval.
+    can_modify()` is the same predicate the edit routes use, and deleting is a
+    stronger act than editing — so it cannot be the looser of the two. With the
+    ladder off (`approval.ladder_on()` is False, ABOUT.md §2j) `can_modify()`
+    allows it and this route follows, exactly like every other modify path.
+
+    GET renders the confirmation and destroys nothing; POST destroys. Per
+    ABOUT.md §7.9f this route ships its own GET-does-not-mutate test.
+    """
+    po = STORE["purchases"].get(id)
+    if not po:
+        return redirect(url_for("purchase.list_purchases",
+                                msg="That purchase order no longer exists.",
+                                type="error"))
+
+    allowed, why = approval.can_modify("purchase", po)
+    if not allowed:
+        return redirect(url_for("purchase.view_purchase", id=id,
+                                msg=why, type="error"))
+
+    report = cascade.impact_of("purchases", id)
+
+    if request.method == "POST":
+        if report["blocked"] is not None:
+            return redirect(url_for(
+                "purchase.view_purchase", id=id, type="error",
+                msg="A tax invoice sits downstream — cancel it instead."))
+        ref = str(po.get("ref") or "")
+        cascade.delete_cascade("purchases", id)
+
+        # The upstream list this module owns — see the docstring. Every draft is
+        # swept rather than only the one named by `po["draft_id"]`, because the
+        # back-link is what is being repaired and trusting the forward link to
+        # find it would assume the very consistency this is restoring.
+        for draft in (STORE.get("purchase_orders") or {}).values():
+            ids = draft.get("converted_po_ids")
+            if isinstance(ids, list) and id in ids:
+                draft["converted_po_ids"] = [x for x in ids if x != id]
+
+        return redirect(url_for(
+            "purchase.list_purchases", type="success",
+            msg=f"Purchase order {ref} deleted. Its number is not reissued."))
+
+    blocked = report["blocked"] is not None
+    n_lines = sum(1 for li in po.get("line_items", []) if not li.get("is_header"))
+    acts = f"""
+  <form method="POST" action="{url_for('purchase.delete_purchase', id=id)}"
+        style="display:flex;gap:.7rem;">
+    <button type="submit" class="btn">Delete {P.esc(po.get('ref'))}</button>
+    <a href="{url_for('purchase.view_purchase', id=id)}" class="btn btn-ghost">Keep it</a>
+  </form>""" if not blocked else f"""
+  <div style="display:flex;gap:.7rem;">
+    <a href="{url_for('purchase.view_purchase', id=id)}" class="btn btn-ghost">&#8592; Back to the order</a>
+  </div>"""
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Delete " + str(po.get('ref') or ''))}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{cascade.CASCADE_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Delete <span style="color:var(--brand);">{P.esc(po.get('ref'))}</span></h1>
+  </div>
+
+  <div class="cas-box">
+    <h2>&#9888; This cannot be undone</h2>
+    <div class="cas-line">
+      You are about to delete purchase order <b>{P.esc(po.get('ref'))}</b>,
+      raised {P.esc(po.get('date'))} on
+      <b>{P.esc(po.get('vendor_name')) or 'an unnamed vendor'}</b>
+      for <b>{n_lines} line{"" if n_lines == 1 else "s"}</b>.<br/>
+      <b>The number is not released</b> &mdash; the order has been sent to a
+      vendor, and the next one takes the next reference in the series.
+    </div>
+  </div>
+{cascade.impact_html(report)}
+{acts}
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order</p></footer>
+</main>
+</body></html>""")

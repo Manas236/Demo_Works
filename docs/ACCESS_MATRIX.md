@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 79 permissions · 127 classified endpoints.**
+**7 roles · 84 permissions · 132 classified endpoints.**
 
 ---
 
@@ -14,7 +14,7 @@
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **553 cells**. **52** of them can be traced to a line of the specification. The rest — **501** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **588 cells**. **52** of them can be traced to a line of the specification. The rest — **536** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -47,6 +47,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | View bills of quantities<br/>`boq.view` | · | · | · |  | · | · | · |
 | Create and revise a BOQ<br/>`boq.create` | · | · | · |  | · |  |  |
+| Delete a BOQ and everything under it<br/>`boq.delete` | · | · |  |  |  |  |  |
 | Print a BOQ<br/>`boq.print` | · | · | · |  | · |  |  |
 | View measurement sheets<br/>`measurement.view` | · | · | · |  | · |  | · |
 | Raise a measurement sheet<br/>`measurement.create` | · | · | · |  |  |  |  |
@@ -86,10 +87,13 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | View quotations<br/>`quotation.view` | · | · |  |  | · |  |  |
 | Create a quotation<br/>`quotation.create` | · | · |  |  | · |  |  |
 | Update a quotation's deal fields<br/>`quotation.edit` | · | · |  |  | · |  |  |
+| Delete a quotation<br/>`quotation.delete` | · | · |  |  |  |  |  |
 | View proforma invoices<br/>`proforma.view` | · | · |  |  | · |  | · |
 | Raise a proforma invoice<br/>`proforma.create` | · | · |  |  | · |  |  |
+| Delete a proforma invoice<br/>`proforma.delete` | · | · |  |  |  |  |  |
 | View tax invoices<br/>`invoice.view` | · | · |  |  | · |  | · |
 | Raise a tax invoice<br/>`invoice.create` | · | · |  |  | · |  |  |
+| Cancel a tax invoice<br/>`invoice.cancel` | · | · |  |  |  |  |  |
 | Approve or reject a tax invoice ⊗ *switched off*<br/>`invoice.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
 
 ### Buy side
@@ -99,6 +103,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | View purchase orders<br/>`purchase.view` | · | · | · |  |  | · | · |
 | Raise a purchase order<br/>`purchase.create` | · | · | · |  |  | · |  |
 | Update a purchase order's status<br/>`purchase.edit` | · | · | · |  |  | · |  |
+| Delete a purchase order<br/>`purchase.delete` | · | · |  |  |  |  |  |
 | Approve or reject a purchase order ⊗ *switched off*<br/>`purchase.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
 | View draft purchase orders<br/>`po.view` | · | · | · |  |  | · |  |
 | Raise a draft purchase order<br/>`po.create` | · | · | · |  |  | · |  |
@@ -172,7 +177,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **79** | **78** | **49** | **15** | **23** | **20** | **15** |
+| **Total permissions held** | **84** | **83** | **49** | **15** | **23** | **20** | **15** |
 
 ---
 
@@ -260,7 +265,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*79 of 79 permissions.*
+*84 of 84 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -268,7 +273,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*78 of 79 permissions.*
+*83 of 84 permissions.*
 
 **What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings.
 
@@ -276,7 +281,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Operation Head
 
-*49 of 79 permissions.*
+*49 of 84 permissions.*
 
 **What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
 
@@ -284,7 +289,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### HR
 
-*15 of 79 permissions.*
+*15 of 84 permissions.*
 
 **What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. **And attendance** (C5): mark who was on which site each day, record overtime, and read the site-wise labour cost that comes out of it. Also the wages and site-expense ledger, and the address book.
 
@@ -292,7 +297,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Sales Manager
 
-*23 of 79 permissions.*
+*23 of 84 permissions.*
 
 **What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills and measurement sheets.
 
@@ -300,7 +305,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Purchase Manager
 
-*20 of 79 permissions.*
+*20 of 84 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
 
@@ -308,7 +313,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Accountant
 
-*15 of 79 permissions.*
+*15 of 84 permissions.*
 
 **What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills and the measurement sheets those bills were built from, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
@@ -338,6 +343,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `extractor.view` | `extractor.index` |
 | `boq.view` | `boq.list_boqs`, `boq.view_boq` |
 | `boq.create` | `boq.create_boq` |
+| `boq.delete` | `boq.delete_boq` |
 | `boq.print` | `boq.print_boq` |
 | `measurement.view` | `measurement.list_ms`, `measurement.view_ms` |
 | `measurement.create` | `measurement.create_ms` |
@@ -362,14 +368,18 @@ Read off the live route registry, so it cannot drift from what the application a
 | `quotation.view` | `quotation.list_quotations`, `quotation.view_quotation` |
 | `quotation.create` | `quotation.create_quotation` |
 | `quotation.edit` | `quotation.update_quotation` |
+| `quotation.delete` | `quotation.delete_quotation` |
 | `proforma.view` | `proforma.list_proformas`, `proforma.view_proforma` |
 | `proforma.create` | `proforma.create_proforma` |
+| `proforma.delete` | `proforma.delete_proforma` |
 | `invoice.view` | `invoice.list_invoices`, `invoice.view_invoice` |
 | `invoice.create` | `invoice.create_invoice` |
+| `invoice.cancel` | `invoice.cancel_invoice` |
 | `invoice.approve` | `approval.approve_invoice`, `approval.reject_invoice` |
 | `purchase.view` | `purchase.list_purchases`, `purchase.view_purchase` |
 | `purchase.create` | `purchase.create_purchase`, `purchase.edit_purchase_rates`, `purchase.from_boq`, `purchase.from_draft` |
 | `purchase.edit` | `purchase.update_purchase` |
+| `purchase.delete` | `purchase.delete_purchase` |
 | `purchase.approve` | `approval.approve_purchase`, `approval.reject_purchase` |
 | `po.view` | `po_draft.list_pos`, `po_draft.view_po` |
 | `po.create` | `po_draft.create_po` |

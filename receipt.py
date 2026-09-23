@@ -72,6 +72,7 @@ from datetime import date as _date
 from flask import Blueprint, redirect, request, url_for
 
 import attachment
+import cascade
 import boq as BQ
 import branding as B
 import pipeline as P
@@ -329,7 +330,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{attachment.ATTACHMENT_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{attachment.ATTACHMENT_STYLES}{cascade.CASCADE_STYLES}
 </head>
 <body>
 {_nav()}
@@ -852,6 +853,7 @@ def delete_receipt(id: str):
       {later_html}
     </div>
   </div>
+{cascade.impact_html(cascade.impact_of("receipts", id))}
   <form method="POST" action="{url_for('receipt.delete_receipt', id=id)}"
         style="display:flex;gap:.7rem;">
     <button type="submit" class="btn">Delete receipt</button>

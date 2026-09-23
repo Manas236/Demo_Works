@@ -296,8 +296,13 @@ PAGES = {
         {"head": "6a1ba8490f2cdcd0", "shell": "75cda0afbae27209", "chrome": "b5fd1962d836d50d", "main": "7ec3c661ae9cc372"}),
     ("proformas",       "/proforma/"):                 ("7d76c8fa785a4097", 76141,
         {"head": "d4b0cd305b9e7989", "shell": "75cda0afbae27209", "chrome": "739e7979087b4d6a", "main": "99ac6790fecd3140"}),
-    ("tax invoices",    "/invoice/"):                  ("838b42d5894c49c6", 83043,
-        {"head": "28aee5e42e857421", "shell": "75cda0afbae27209", "chrome": "e3e943b1df420c01", "main": "9acd0372dd4402aa"}),
+    # was 838b42d5894c49c6 / 83043 / head 28aee5e42e857421 before the
+    # 23 Sep 2026 cancellation overprint. ⚠ `head` ALONE moved (+1,575 bytes of
+    # `.lc-*` rules in INVOICE_STYLES, which every page in this module loads);
+    # `shell`, `chrome` and `main` are byte-identical, so the register itself
+    # did not change at all.
+    ("tax invoices",    "/invoice/"):                  ("36c5d2c1be5c3e01", 84618,
+        {"head": "38e9d0952e08347f", "shell": "75cda0afbae27209", "chrome": "e3e943b1df420c01", "main": "9acd0372dd4402aa"}),
     ("purchase orders", "/purchase/"):                 ("ddd6e71e5ba97679", 80408,
         {"head": "cc38af98aba1744b", "shell": "75cda0afbae27209", "chrome": "20aa8d813a8d7958", "main": "80dfa73ee439cc3e"}),
     ("spec library",    "/spec/"):                     ("f4df328387214170", 98711,
@@ -308,8 +313,13 @@ PAGES = {
         {"head": "32281e51b669ef68", "shell": "75cda0afbae27209", "chrome": "55368f6b238833b4", "main": "148536cc5ea624cc"}),
     ("merged RAs",      "/merged/"):                   ("c8c76cbaad9ecafa", 87366,
         {"head": "7ceab0cd4d0e91dd", "shell": "75cda0afbae27209", "chrome": "602a5f1ea1698609", "main": "16cffd227809676f"}),
-    ("receipts",        "/receipt/"):                  ("0507f0420f7839fd", 86611,
-        {"head": "2cc6952bbfa08148", "shell": "75cda0afbae27209", "chrome": "3033c4bdc0669eaa", "main": "3fe4fb4699344259"}),
+    # was 0507f0420f7839fd / 86611 / head 2cc6952bbfa08148 before the
+    # 23 Sep 2026 delete rollout. ⚠ `head` ALONE moved (+462 bytes of
+    # `cascade.CASCADE_STYLES`, loaded by receipt.py's shared `_shell()` so the
+    # delete confirmation can draw its impact block); `shell`, `chrome` and
+    # `main` are byte-identical, so the register itself did not change.
+    ("receipts",        "/receipt/"):                  ("c08e0ecf87251688", 87073,
+        {"head": "037647b5208da4ad", "shell": "75cda0afbae27209", "chrome": "3033c4bdc0669eaa", "main": "3fe4fb4699344259"}),
     ("clients",         "/client/"):                   ("b539d6762348461b", 72469,
         {"head": "a63bc41e9602defd", "shell": "75cda0afbae27209", "chrome": "34843c9b79426c0a", "main": "9e3d19393d21eae4"}),
     ("draft POs",       "/po/"):                       ("fbbdae870b7c8492", 71208,

@@ -76,6 +76,7 @@ from flask import Blueprint, redirect, request, url_for
 import boq as BQ
 import boqpick as BP
 import branding as B
+import cascade
 import docsheet as DS
 import pipeline as P
 import settings as SET
@@ -433,7 +434,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Draft PO" if not editing else "Edit Draft PO")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}{cascade.CASCADE_STYLES}
 </head>
 <body>
 {_nav()}
@@ -904,11 +905,28 @@ def delete_po(id: str):
     `/settings` and only ever advances, so the next draft PO takes the next
     number and this one's is spent. It has been quoted to a supplier; a second
     document bearing it is indistinguishable from the first.
+
+    ⚠ **A draft that has been CONVERTED cascades into the real order it
+      produced** (23 September 2026), and the confirmation page names it before
+      the button. Until then this route popped the draft alone and left
+      `purchases.draft_id` pointing at a record that no longer existed — the
+      dangling-reference gap ABOUT.md §7 recorded against this module. It is
+      closed by destroying the pair rather than by clearing the field, because
+      a real order raised from a draft nobody can now produce is not a record
+      anybody can answer questions about.
+
+      **It is not a silent cascade.** `cascade.impact_of()` counts the closure
+      and `cascade.impact_html()` prints it on the GET, so an Owner deleting a
+      converted draft is told a Purchase Order goes with it and confirms that
+      specifically. A route that destroys something the page did not name is a
+      defect (ABOUT.md §5 `/po`).
     """
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
                                 msg="That draft PO no longer exists.", type="error"))
+
+    report = cascade.impact_of("purchase_orders", id)
 
     if request.method == "GET":
         return _page(f"""<!DOCTYPE html><html lang="en">
@@ -932,7 +950,10 @@ def delete_po(id: str):
       PO takes the next one in the series, because {P.esc(po.get('ref'))} may
       already have been quoted to a supplier.
     </p>
-    <form method="POST" style="display:flex;gap:.75rem;margin-top:1rem;">
+  </div>
+{cascade.impact_html(report)}
+  <div class="card" style="border:1px solid var(--border);border-radius:10px;padding:1.2rem;">
+    <form method="POST" style="display:flex;gap:.75rem;">
       <button type="submit" class="btn">Delete it</button>
       <a href="{url_for('po_draft.view_po', id=id)}" class="btn btn-ghost">Cancel</a>
     </form>
@@ -943,7 +964,11 @@ def delete_po(id: str):
 
     boq_id = po.get("boq_id", "")
     ref = po.get("ref", "")
-    STORE["purchase_orders"].pop(id, None)
+    destroyed = cascade.delete_cascade("purchase_orders", id)
+    extra = (f" {len(destroyed)} converted order"
+             f"{'' if len(destroyed) == 1 else 's'} went with it."
+             if destroyed else "")
     return redirect(url_for("boq.view_boq", id=boq_id,
-                            msg=f"Draft PO {ref} deleted. Its number is not reissued.",
+                            msg=(f"Draft PO {ref} deleted.{extra} "
+                                 f"Its number is not reissued."),
                             type="success"))

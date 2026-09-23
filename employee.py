@@ -1143,6 +1143,41 @@ def edit_employee(id: str):
                  stale=stale, stale_site=stale_site)
 
 
+def references_of(employee_id: str) -> dict:
+    """
+    Everything that points at this employee, by kind: {"Attendance record": 12}.
+
+    ⚠ **An employee is MASTER data and is never cascade-deleted.** Attendance
+    markings and charges are pointed *at* this record, not produced from it, so
+    deleting somebody must not destroy the history of what they were paid.
+    `cascade.py` deliberately carries no master collections for exactly this
+    reason; this is the block-if-referenced guard instead, in the shape
+    `address.references_of()` established.
+
+    ⚠ **There was NO guard here at all before 23 September 2026.** Deleting an
+    employee left every attendance record pointing at an `employee_id` that no
+    longer resolved — flagged in the 22 September landscape audit and closed
+    here. `attendance.cost_of()` already refuses to answer for a record it
+    cannot price, so the damage showed up as a blank rather than a wrong
+    figure; a blank is still a hole in a wages ledger.
+
+    Read off `STORE` directly: `employee.py` is a LEAF and may not import
+    `attendance.py` — which imports `employee.py` — so the reference walk is
+    the same one-way trick every other cross-collection read in this app uses.
+    """
+    eid = str(employee_id or "")
+    out = {}
+    n_att = sum(1 for a in STORE.get("attendance", {}).values()
+                if str(a.get("employee_id") or "") == eid)
+    if n_att:
+        out["Attendance record"] = n_att
+    n_charge = sum(1 for c in STORE.get("charges", {}).values()
+                   if str(c.get("employee_id") or "") == eid)
+    if n_charge:
+        out["Charge"] = n_charge
+    return out
+
+
 @employee_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_employee(id: str):
     """
@@ -1162,11 +1197,26 @@ def delete_employee(id: str):
         return redirect(url_for("employee.list_employees",
                                 msg="Employee not found.", type="error"))
 
+    refs = references_of(id)
+    what = ", ".join(f"{n} {kind}{'' if n == 1 else 's'}"
+                     for kind, n in refs.items())
+
     if request.method == "POST":
+        if refs:
+            # Refused, not cascaded: see `references_of()`. Deactivating is the
+            # escape hatch the confirmation page already offers.
+            return redirect(url_for(
+                "employee.view_employee", id=id, type="error",
+                msg=(f"Cannot delete {e.get('name')} — {what} still reference "
+                     f"them. Deactivate instead; the history stays priced.")))
         employees().pop(id, None)
         return redirect(url_for("employee.list_employees",
                                 msg=f"{e.get('name')} removed from the register.",
                                 type="success"))
+
+    refusal = (f'<div class="alert alert-error">Cannot delete &mdash; '
+               f'{_esc(what)} still reference this employee. Deactivate them '
+               f'instead, which keeps the history priced.</div>') if refs else ""
 
     return _shell("Delete Employee", f"""
   <div class="page-top"><h1>Delete <span>Employee</span></h1></div>
@@ -1184,9 +1234,10 @@ def delete_employee(id: str):
       appearing where a person is picked. Deleting is for a row entered by
       mistake &mdash; it removes the record of what somebody was paid.</div>
   </div>
+  {refusal}
   <form method="POST" action="{url_for('employee.delete_employee', id=id)}"
         style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <button type="submit" class="btn">Delete this record</button>
+    {"" if refs else '<button type="submit" class="btn">Delete this record</button>'}
     <a href="{url_for('employee.edit_employee', id=id)}" class="btn btn-ghost">Deactivate instead</a>
     <a href="{url_for('employee.view_employee', id=id)}" class="btn btn-ghost">Keep it</a>
   </form>

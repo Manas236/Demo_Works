@@ -464,6 +464,7 @@ def test_no_new_permission_was_minted_for_this(client):
     MINTED_SINCE = {
         # item that minted it -> permission
         "B6, the approval ladder (29 Aug 2026)": "purchase.approve",
+        "the universal delete rollout (23 Sep 2026)": "purchase.delete",
     }
 
     buy_side = {p for p in auth.PERMISSIONS if p.startswith("purchase.")}

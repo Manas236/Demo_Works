@@ -41,6 +41,7 @@ from datetime import date as _date
 from flask import Blueprint, request, redirect, url_for
 
 import branding as B
+import cascade
 import pipeline as P
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
@@ -1222,6 +1223,22 @@ def view_proforma(id: str):
     raise_ti = (f'<a href="{url_for("invoice.create_invoice", pid=id)}" class="btn">'
                 f'&#129534;&nbsp;{"Raise Another Tax Invoice" if raised else "Raise Tax Invoice"}</a>')
 
+    # ── Delete ───────────────────────────────────────────────────────────
+    # Drawn only for somebody the gate would let through (`auth.can_reach()`),
+    # and NOT drawn at all once a tax invoice has been raised from this PI —
+    # `delete_proforma()` refuses that case outright, so offering the control
+    # would be offering a refusal. ⚠ Presentation, not the gate: the route is
+    # in ROUTE_PERMISSIONS and in OWNER_ONLY and refuses a typed URL itself.
+    # The newline and indent live INSIDE the string, so a proforma nobody may
+    # delete renders the action bar byte-for-byte as it always did.
+    import auth as _AUTH
+    del_pi = ""
+    if not raised and _AUTH.can_reach("proforma.delete_proforma"):
+        del_pi = (f'\n    <a href="{url_for("proforma.delete_proforma", id=id)}" '
+                  f'class="btn btn-ghost" '
+                  f'style="color:#b91c1c;border-color:#fecaca;">'
+                  f'&#128465;&nbsp;Delete</a>')
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -1240,7 +1257,7 @@ def view_proforma(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {back_q}
     <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
-    {raise_ti}
+    {raise_ti}{del_pi}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -1319,3 +1336,88 @@ def view_proforma(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+@proforma_bp.route("/delete/<id>", methods=["GET", "POST"])
+def delete_proforma(id: str):
+    """
+    Delete a proforma invoice.
+
+    ⚠ **A PI that has been converted to a tax invoice cannot be deleted**, and
+    that is the whole reason this route exists rather than a plain STORE pop.
+    `cascade.impact_of("proformas", id)` reaches `invoices` through the
+    `proforma_id` edge and returns a hard stop — a GST number has to stay
+    consecutive, so removing the document the invoice was raised from is
+    refused outright. Withdraw the tax invoice with `/invoice/cancel/<id>`
+    instead; the number stays spent and the sheet prints marked CANCELLED.
+
+    **The number is not released.** The PI series only ever advances, the same
+    rule the delivery challan follows: the document may already have been sent
+    to a customer to pay against.
+
+    GET renders the confirmation and destroys nothing; POST destroys. Per
+    ABOUT.md §7.9f this route ships its own GET-does-not-mutate test.
+    """
+    pi = STORE["proformas"].get(id)
+    if not pi:
+        return redirect(url_for("proforma.list_proformas",
+                                msg="That proforma invoice no longer exists.",
+                                type="error"))
+
+    report = cascade.impact_of("proformas", id)
+
+    if request.method == "POST":
+        if report["blocked"] is not None:
+            return redirect(url_for(
+                "proforma.view_proforma", id=id, type="error",
+                msg=("A tax invoice has been raised from this proforma — "
+                     "cancel that instead. A GST number cannot leave a gap.")))
+        ref = str(pi.get("ref") or "")
+        cascade.delete_cascade("proformas", id)
+        return redirect(url_for(
+            "proforma.list_proformas", type="success",
+            msg=f"Proforma {ref} deleted. Its number is not reissued."))
+
+    blocked = report["blocked"] is not None
+    acts = f"""
+  <form method="POST" action="{url_for('proforma.delete_proforma', id=id)}"
+        style="display:flex;gap:.7rem;">
+    <button type="submit" class="btn">Delete {P.esc(pi.get('ref'))}</button>
+    <a href="{url_for('proforma.view_proforma', id=id)}" class="btn btn-ghost">Keep it</a>
+  </form>""" if not blocked else f"""
+  <div style="display:flex;gap:.7rem;">
+    <a href="{url_for('proforma.view_proforma', id=id)}" class="btn btn-ghost">&#8592; Back to the proforma</a>
+  </div>"""
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("Delete " + str(pi.get('ref') or ''))}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{cascade.CASCADE_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Delete <span style="color:var(--brand);">{P.esc(pi.get('ref'))}</span></h1>
+  </div>
+
+  <div class="cas-box">
+    <h2>&#9888; This cannot be undone</h2>
+    <div class="cas-line">
+      You are about to delete proforma invoice <b>{P.esc(pi.get('ref'))}</b>,
+      raised {P.esc(pi.get('date'))} for
+      <b>{P.esc(pi.get('customer_name')) or 'an unnamed customer'}</b>.<br/>
+      <b>The number is not released</b> &mdash; the next proforma takes the
+      next one in the series, because {P.esc(pi.get('ref'))} may already have
+      gone to the customer to pay against.
+    </div>
+  </div>
+{cascade.impact_html(report)}
+{acts}
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
+</main>
+</body></html>""")

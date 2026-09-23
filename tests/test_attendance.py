@@ -1351,15 +1351,49 @@ def test_only_this_module_and_the_launcher_touch_the_collection():
     held to the narrower rule by
     `test_the_dashboard_card_carries_counts_and_no_money`: it may count
     markings and it may not price them.
+
+    ⚠ **Two more readers joined it on 23 September 2026, and the rule below
+      got stricter rather than looser to let them in.** `employee.py` and
+      `project.py` each grew a `references_of()` that COUNTS markings against
+      the record being deleted, so that deleting an employee or a project can
+      be refused instead of leaving every marking pointing at an id that no
+      longer resolves. Neither may import `attendance.py` — `attendance.py`
+      imports `employee.py`, so the arrow only goes one way — which is why the
+      count is read off `STORE` directly, the same one-way trick every other
+      cross-collection read in this app uses.
+
+      **The exemption is now earned rather than granted:** an exempted file is
+      checked for WRITES as well, and a write puts it back among the offenders.
+      The claim the original assertion made — one writer — is unchanged; what
+      changed is that "touches" is no longer treated as the same thing as
+      "writes". The assertion this replaces was, in full and verbatim:
+
+          assert not offenders, f"{offenders} reach into STORE['attendance']"
     """
     reach = re.compile(r'STORE\s*(\.\s*(get|setdefault)\s*\(\s*)?\[?\s*["\']attendance["\']')
-    offenders = []
+    # A write is an assignment into the collection, or a call that removes from
+    # it. Reading `.values()` off it is not.
+    writes = re.compile(
+        r'STORE\s*(\.\s*(get|setdefault)\s*\(\s*)?\[?\s*["\']attendance["\']\s*\)?\]?'
+        r'\s*(\[[^\]]*\]\s*=|\.\s*(pop|clear|update|setdefault)\s*\()')
+    READERS = ("dashboard.py", "employee.py", "project.py")
+    offenders, writers = [], []
     for path in REPO.glob("*.py"):
-        if path.name in ("attendance.py", "store.py", "db.py", "dashboard.py"):
+        if path.name in ("attendance.py", "store.py", "db.py"):
             continue
-        if reach.search(path.read_text(encoding="utf8")):
-            offenders.append(path.name)
+        src = path.read_text(encoding="utf8")
+        if not reach.search(src):
+            continue
+        if path.name in READERS:
+            if writes.search(src):
+                writers.append(path.name)
+            continue
+        offenders.append(path.name)
     assert not offenders, f"{offenders} reach into STORE['attendance']"
+    assert not writers, (
+        f"{writers} are exempted as READERS of STORE['attendance'] and now "
+        f"write to it. One writer, so a labour figure cannot appear from "
+        f"somewhere that never thought about the uniqueness constraint.")
 
     # And the exemption is a count, not an arithmetic: no wage, no multiplier
     # and no divisor anywhere near it.
