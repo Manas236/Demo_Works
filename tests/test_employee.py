@@ -466,11 +466,19 @@ def test_hr_is_admitted_everywhere(client):
     """
     The other side of the same sentence. HR is the role the employee master
     exists for; a wall that also refused HR would be a wall around nothing.
+
+    ⚠ **`/employee/delete/<id>` is excluded, deliberately.** Deleting a
+    document is now Owner-only (`auth.OWNER_ONLY`), a harder rule than the
+    `employee.delete` permission HR still holds — see
+    `tests/test_owner_only_delete.py` for that refusal proved directly. This
+    test is about the wall B4 describes, not about who may destroy a record.
     """
     e = _add(client)
     _as(client, _user_with("hr"))
 
     for route in EMPLOYEE_ROUTES:
+        if route == "/employee/delete/{id}":
+            continue
         url = route.format(id=e["id"])
         r = client.get(url)
         assert r.status_code == 200, f"HR was refused {url}"

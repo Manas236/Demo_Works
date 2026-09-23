@@ -691,13 +691,23 @@ def test_sales_purchase_and_accounts_are_refused_on_every_route(client, slug):
 
 
 def test_hr_is_admitted_everywhere(client):
-    """The other side of the wall: HR keeps the muster, as it keeps the master."""
+    """
+    The other side of the wall: HR keeps the muster, as it keeps the master.
+
+    ⚠ **`/attendance/delete/<id>` is excluded, deliberately.** Deleting a
+    document is now Owner-only (`auth.OWNER_ONLY`), a harder rule than the
+    `attendance.delete` permission HR still holds — see
+    `tests/test_owner_only_delete.py` for that refusal proved directly. This
+    test is about the wall B4 describes, not about who may destroy a record.
+    """
     person = _person(client)
     _mark(client, person)
     rid = list(STORE["attendance"])[0]
 
     _as(client, _user_with("hr"))
     for route in ATTENDANCE_ROUTES:
+        if route == "/attendance/delete/{id}":
+            continue
         url = route.format(id=rid)
         assert client.get(url).status_code == 200, f"HR was refused {url}"
 

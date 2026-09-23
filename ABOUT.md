@@ -391,6 +391,7 @@ Consequences you must respect when editing:
 | [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [attachment.py](attachment.py) | 817 | **File attachments on a charge and on a receipt** (CC-2 **B8**, 2 Sep 2026). The **only** module that returns file bytes, and the first record in this app whose payload is not in the database — the file is on disk under `attachment.root()`, the record holds a **relative path**. A **bottom-of-graph** module like `approval.py`: `charge.py` and `receipt.py` import it, so it imports neither. Type is decided by **magic bytes**, never by extension or the browser's `Content-Type`; 5 MB cap refused before the store is touched; the cascade deletes the file **and** the row. ⚠ **Compulsory on a charge, optional on a receipt** — CC-2's asymmetry, carried as data in `PARENTS`. ⚠ **Mints no permission**: each of its six endpoints carries the PARENT's own. ⚠ **B7 gates the download and that is OURS** — through `approval.can_print()`, not a second copy of the rule. See §3. |
 | [merged_ra.py](merged_ra.py) | 1022 | **The merged RA bill** (CC-2 **C3**, 2 Sep 2026) — one issued RA-Supply bill and one issued RA-Installation bill from the same revision chain, stacked onto one sheet under **one minted tax invoice number**. Its own `merged_ras` collection; a separate document type, the same relationship as Draft PO → PO. ⚠ **It holds NO claims of its own** — copying them in would make the over-claim guard count the same quantity twice. ⚠ Totals are the **sum of the two bills' stored totals**, never recomputed from the live BOQ. ⚠ **Imports `ra.py`; `ra.py` may NOT import it back** — it reads `STORE['merged_ras']` directly and links with `url_for`, the one-way trick. ⚠ **Mints `SF/MI/...`, never `TI`** — `invoice.py` owns that series and a second counter under it would put one statutory serial on two documents. ⚠ **Mints no permission**: every route carries `ra.*`. See §3. |
+| [cascade.py](cascade.py) | 196 | **The shared dependent-record graph for delete** (22 September 2026) — no routes, a data-only registry (`CASCADE_GRAPH`) of which of the 8 transactional-chain collections reference which, plus `impact_of()` (preview the transitive closure) and `delete_cascade()` (destroy it, children before parent). Sits where `pipeline.py` sits: reads `STORE[...]` directly, imports `attachment.py` only, never imports back. ⚠ **Master/reference data (Address, Employee, Project, Spec, Product) is deliberately OUT OF SCOPE** — their existing hand-written guards (`address.references_of()`, `project.attached_boq_count()`, `product.can_delete_product()`) are untouched; this module only walks records that exist *because* a parent does. ⚠ **A Tax Invoice anywhere in the closure is a hard stop** (`CascadeBlocked`) — there is no delete route for one, and the walk refuses the whole operation rather than cascade partially past it. ⚠ **Not yet called by any route** — see §7 gap 40. **9 tests** in [tests/test_cascade.py](tests/test_cascade.py). |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -1315,6 +1316,53 @@ ways back. ⚠ `auth.py` reads the switch through a **function-body import** of
 hatch; its module-level whitelist is unchanged. `tests/test_approvals_off.py`
 proves all of it for all seven roles, both verbs, every document.
 
+#### `OWNER_ONLY` — a harder rule than the permission registry (22 September 2026)
+
+Deleting a document now takes the **Owner** tier, full stop — a rule layered
+**on top of** `ROUTE_PERMISSIONS`, not a replacement for it. `auth.OWNER_ONLY`
+is a hardcoded set of twelve endpoints, checked in `_gate()` *after* the
+ordinary permission check passes: a Director who holds `ra.delete` via
+`/roles` is still refused `ra.delete_ra`, with a 403 naming the Owner tier
+rather than the missing-permission page. `can_reach()` carries the same
+second check, so a delete link a Director cannot use does not render for them
+either — the same "hiding is presentation; the gate is the gate" pairing
+§2g's nav section already describes for `HIDDEN_BLUEPRINTS`.
+
+This is deliberately **not** the same shape as "the permission happens to be
+granted to Owner only" — that would be an ordinary `/roles` checkbox, and an
+Owner could loosen it for somebody else with no code change. `OWNER_ONLY`
+cannot be loosened that way; it is the same kind of harder-than-the-registry
+rule as `_may_administer()` guarding `/users/deactivate` beyond what
+`admin.users` alone would allow (§2g, above).
+
+`OWNER_ONLY` names exactly the twelve endpoints that destroy a document
+(`STORE[...].pop`/`del`), pinned rather than derived:
+
+```
+ra.delete_ra           receipt.delete_receipt    po_draft.delete_po
+challan.delete_dc      measurement.delete_ms     charge.delete_charge
+employee.delete_employee   attendance.delete_attendance
+project.delete_project     spec.delete_spec      product.delete_product
+address.delete_address
+```
+
+⚠ **Archiving an address and removing one attachment are deliberately
+excluded**, though both share a `*.delete` permission with a route above:
+archiving is reversible (the delete-refusal's own escape hatch — §3
+Address) and an attachment's delete route removes one uploaded file, not the
+charge or receipt it evidences. `OWNER_ONLY` is a rule about destroying a
+document, not every route that happens to carry a `*.delete` permission id.
+`tests/test_owner_only_delete.py` proves both directions — a Director
+refused on GET and POST though the permission is held, an Owner let through —
+and pins the exclusions directly rather than leaving them to be inferred from
+the set's absence.
+
+⚠ **Not wired to [cascade.py](cascade.py).** The gate controls *who* may
+reach a delete route; none of the twelve routes above calls
+`cascade.impact_of()` or `cascade.delete_cascade()` yet, so today's delete is
+still whatever single-collection removal each route always did, with
+whatever dependency guard that route already had (`ra.can_delete()` and
+similar). See §7 gap 40.
 
 ### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
 
@@ -9875,6 +9923,22 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     if a later pass adds more form goldens, they belong in
     `tests/test_page_golden.py` with the other screen pages, and this one
     could move there with them.
+
+40. 🟠 **`cascade.py` is Phase 1 infrastructure only — OPEN, recorded
+    22 September 2026.** `CASCADE_GRAPH`, `impact_of()` and
+    `delete_cascade()` exist and are proved by their own 9 tests
+    ([tests/test_cascade.py](tests/test_cascade.py)), but **no route calls
+    any of the three** — a delete route today still performs whatever
+    single-collection removal it always did, with whatever guard it already
+    had. What *is* live today is `auth.OWNER_ONLY` (§2g), which now refuses
+    all twelve existing delete routes to anyone below Owner, independently of
+    whether the route behind the gate does a cascade. Left for a later pass:
+    wiring the twelve confirmation pages to `impact_of()` for a preview and
+    `delete_cascade()` for the execution; four chain types named in
+    `cascade.py`'s own scope note have no delete route at all yet (BOQ —
+    largest blast radius, Quotation, Proforma, a real Purchase Order); and a
+    Tax Invoice has no cancel/void flow to pair with the hard stop
+    `CascadeBlocked` describes.
 
 ---
 

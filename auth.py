@@ -865,6 +865,48 @@ ROUTE_PERMISSIONS = {
 
 
 # =============================================================================
+# OWNER-ONLY ROUTES — a harder rule than the permission registry above
+# =============================================================================
+# Every route that destroys a document, plus the Tax Invoice cancel/void
+# route, requires the Owner tier — deliberately **on top of**, not instead of,
+# the permission each one is classified with above. This is not the same
+# thing as "the underlying `*.delete` permission happens to be granted to
+# Owner only" — that would be a `/roles` checkbox setting, reversible with no
+# code change, the same as every other permission in this app. This is
+# harder: an Owner cannot loosen it by editing a role and granting `ra.delete`
+# to somebody else, the same shape as `_may_administer()` guarding
+# `/users/deactivate` beyond what `admin.users` alone would allow.
+#
+# ⚠ **Archiving an address and removing one attachment are deliberately NOT
+# here.** Both are real actions on a document but neither destroys one: an
+# archived address is still a record (the delete-refusal's own escape hatch),
+# and `attachment.delete_charge` / `attachment.delete_receipt` remove one
+# uploaded file, not the charge or receipt it evidences. Owner-only is a rule
+# about destroying documents, not every state-changing route that happens to
+# share a `*.delete` permission with one.
+#
+# One set, read from one place, the same shape as `HIDDEN_BLUEPRINTS` — a new
+# delete route is covered the day its endpoint is added here, and
+# `tests/test_owner_only_delete.py` walks `app.url_map` for every endpoint
+# whose path contains "delete" and fails on one that is missing from this set
+# (or present without a real destroy behind it).
+OWNER_ONLY: set = {
+    "ra.delete_ra",
+    "receipt.delete_receipt",
+    "po_draft.delete_po",
+    "challan.delete_dc",
+    "measurement.delete_ms",
+    "charge.delete_charge",
+    "employee.delete_employee",
+    "attendance.delete_attendance",
+    "project.delete_project",
+    "spec.delete_spec",
+    "product.delete_product",
+    "address.delete_address",
+}
+
+
+# =============================================================================
 # BUILTIN ROLES  (B3 Owner + B4's six)
 # =============================================================================
 # ⚠ **CLIENT_CHANGES-2.md carries no per-role permission grid.** B4 names the
@@ -1417,6 +1459,17 @@ def _gate():
             f"(<code>{_esc(required)}</code>), which none of your roles carries. "
             f"Ask an administrator to add it to one of them."), 403
 
+    if endpoint in OWNER_ONLY and not is_owner(user):
+        # Refused even though the permission check above just passed — this is
+        # the harder rule OWNER_ONLY's docstring describes, checked in
+        # addition to the registry rather than instead of it.
+        _log_refusal(user, endpoint, required, "Owner tier required")
+        return _refusal_page(
+            "Only an Owner can do this",
+            "Deleting a document is restricted to the Owner tier, regardless "
+            "of who a role's checkboxes grant the underlying permission to. "
+            "Ask an Owner to do this instead."), 403
+
     return None
 
 
@@ -1458,7 +1511,11 @@ def can_reach(endpoint: str, user=None) -> bool:
         return False
     if required == AUTHENTICATED:
         return True
-    return required in permissions_of(user)
+    if required not in permissions_of(user):
+        return False
+    if endpoint in OWNER_ONLY and not is_owner(user):
+        return False
+    return True
 
 
 def install(app) -> None:
