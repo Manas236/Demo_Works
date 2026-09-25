@@ -5,11 +5,54 @@ Shared test fixtures.
 its config into `_CFG` at import time and `load_dotenv()` does not override a
 variable that is already in the environment. Without this the suite would try
 to reach the developer's real MySQL and write test records into it.
+
+⚠ **THE SUITE DOES NOT READ THE CHECKOUT'S `.env` AT ALL** — 25 September 2026,
+  CLIENT_CHANGES.md §0, the thirty-first block. See `_never_read_dotenv()`
+  below for what that means and why it had to be total rather than a list of
+  names.
 """
 
 import os
 import pathlib
 import sys
+
+
+# ── The checkout's `.env` must not reach the suite ─────────────────────────
+#
+# ⚠ **MEASURED, not anticipated.** With a production-shaped `.env` in the
+#   checkout — `SESSION_COOKIE_SECURE=true`, `DB_STRICT=true`, a real password
+#   — the suite went **2 failed, 2845 passed** on 25 September 2026. That
+#   matters because running the tests is the one check an operator performs
+#   after a deploy, and it was useless on the only box where it is most wanted.
+#
+# **Why this, and not "set the handful of names conftest cares about".**
+# `db.py` calls `load_dotenv(override=False)` at import, so **every** variable
+# in `.env` that the suite has not already set reaches the application. A list
+# of names here would be a list somebody has to remember to extend, and the
+# variable nobody remembered is the one that breaks the deploy check. Replacing
+# the loader is total: no value in `.env` can reach the suite, whatever it is
+# called and whenever it is added.
+#
+# ⚠ **It has to run BEFORE `db` is imported.** `db.py` does
+#   `from dotenv import load_dotenv`, which binds the function object at ITS
+#   import — patching the attribute afterwards would rebind nothing.
+#
+# ⚠ **This changes nothing about the running application.** `.env` still
+#   reaches `python app.py` and `gunicorn` exactly as it always has; this is
+#   the test process and only the test process. `tests/test_env_isolation.py`
+#   asserts that `db.py` still calls the loader unconditionally.
+def _never_read_dotenv() -> None:
+    import dotenv
+
+    def _refuse(*_a, **_kw):
+        """Stand in for `dotenv.load_dotenv`, and load nothing."""
+        return False
+
+    dotenv.load_dotenv = _refuse
+    dotenv.main.load_dotenv = _refuse
+
+
+_never_read_dotenv()
 
 os.environ["DB_ENABLED"] = "false"
 os.environ.setdefault("SECRET_KEY", "test-secret")
@@ -27,6 +70,15 @@ os.environ.setdefault("SECRET_KEY", "test-secret")
 # `tests/test_demo_data_flag.py` is what covers the OFF state, and it sets the
 # variable per test with `monkeypatch`.
 os.environ["SAMRUDDHI_DEMO_DATA"] = "true"
+
+# The local-dev session-cookie values, set explicitly rather than left to the
+# defaults. `.env` can no longer reach the suite, but a developer or a CI job
+# with these exported in the REAL environment still can — and
+# `SESSION_COOKIE_SECURE=true` there would turn `tests/test_deployment_config.py`
+# red for a reason that has nothing to do with the code under test.
+os.environ["SESSION_COOKIE_SECURE"] = "false"
+os.environ["SESSION_COOKIE_HTTPONLY"] = "true"
+os.environ["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 

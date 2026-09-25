@@ -32,13 +32,44 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+# ⚠ **THE CHILD PROCESSES READ `.env` FOR THEMSELVES, and `conftest.py` cannot
+#   stop them** — 25 September 2026, CLIENT_CHANGES.md §0, the thirty-first
+#   block. `conftest._never_read_dotenv()` replaces the loader in the **test**
+#   process; a `python -c "import wsgi"` child imports `db.py` fresh, calls
+#   `load_dotenv()` for real, and picks up whatever `.env` sits in the checkout.
+#
+#   Measured: with a production-shaped `.env` present,
+#   `test_the_first_process_gets_through_and_reports_what_it_found` failed on
+#   `SESSION_COOKIE_SECURE is FALSE` missing from the banner — because with
+#   `Secure=true` in `.env` the install is, correctly, no longer a default one.
+#
+#   So the child is given the local-dev values as **real environment
+#   variables**, which `load_dotenv(override=False)` cannot overwrite. That is
+#   the same mechanism `DB_ENABLED` and `SECRET_KEY` have always used two lines
+#   below, extended to the flags this file asserts on. It makes the child a
+#   **default install**, which is exactly the condition these tests are about.
+_LOCAL_DEV_ENV = {
+    # No MySQL: the guard is about processes, not about the database, and a test
+    # that needed a live server would be skipped on the machine that matters.
+    "DB_ENABLED": "false",
+    "SECRET_KEY": "test-secret",
+    # The session-cookie defaults, so the banner reports a default install
+    # whatever the checkout's `.env` says.
+    "SESSION_COOKIE_SECURE": "false",
+    "SESSION_COOKIE_HTTPONLY": "true",
+    "SESSION_COOKIE_SAMESITE": "Lax",
+    # `DB_STRICT` is left alone deliberately: `DB_ENABLED=false` already makes
+    # the banner report it, and pinning it here would hide a change to that.
+    # Demo seeding off — the child renders no page, and a boot that seeds 84
+    # records is slower for nothing.
+    "SAMRUDDHI_DEMO_DATA": "false",
+}
+
+
 def _run(code: str, env_extra=None, timeout=120):
     """Run `code` in a subprocess with DB persistence OFF. Returns CompletedProcess."""
     env = dict(os.environ)
-    # No MySQL: the guard is about processes, not about the database, and a test
-    # that needed a live server would be skipped on the machine that matters.
-    env["DB_ENABLED"] = "false"
-    env["SECRET_KEY"] = "test-secret"
+    env.update(_LOCAL_DEV_ENV)
     env.pop("SAMRUDDHI_ALLOW_MULTIPROCESS", None)
     env.update(env_extra or {})
     return subprocess.run(
@@ -60,8 +91,7 @@ def _hold_the_lock(lock: str, env_extra=None):
     `stdout.readline()` returns *that* — which made four tests fail on the
     holder's startup noise rather than on the thing under test.
     """
-    env = {**os.environ, "DB_ENABLED": "false", "SECRET_KEY": "test-secret",
-           "SAMRUDDHI_LOCK_FILE": lock}
+    env = {**os.environ, **_LOCAL_DEV_ENV, "SAMRUDDHI_LOCK_FILE": lock}
     env.pop("SAMRUDDHI_ALLOW_MULTIPROCESS", None)
     env.update(env_extra or {})
     proc = subprocess.Popen(

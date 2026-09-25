@@ -1159,5 +1159,6 @@ anything in §8 ships (`tools/seed_users.py:22-23`).
 - [ ] Demo BOQ ("Sify Bangalore" / "Prudent Teqtis Pvt Ltd"), demo products and demo addresses deleted **if this database ever booted with the demo on** — the flag stops seeding, it deletes nothing. ✅ With it off the deletion now **outlives a restart** (§6.2)
 - [ ] **Starting numbers agreed with the client and set — §9.7.** Ask which series their paper book is actually running before typing anything; leaving every box blank is the correct answer unless they say otherwise
 - [ ] Client informed: **approvals are switched off** (`approval.py:307`) and the **product catalogue is hidden** (`auth.py:486`)
+- [ ] **`python -m pytest -q` run on the server and green** — the suite no longer reads the checkout's `.env` (25 September 2026), so it is a usable post-deploy check there. It was not before: a production `.env` turned it red for configuration reasons, not code ones
 - [ ] Backup pair taken and copied **off the box** — §10
 - [ ] §8.3 (error logging) scheduled, ideally done before the first real document

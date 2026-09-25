@@ -27,6 +27,22 @@ consequences, and both have bitten:
 - **A real environment variable wins over `.env`.** That is what lets
   `tests/conftest.py` force `DB_ENABLED=false` before importing `app`, and what
   lets a deployment set values without editing a file.
+
+  ⚠ **The TEST SUITE does not read `.env` at all** (25 September 2026).
+  `tests/conftest.py::_never_read_dotenv()` replaces `dotenv.load_dotenv`
+  before `db` is imported, and pins the local-dev session-cookie values as real
+  environment variables. Running the suite on the production box used to pick
+  up that box's `.env` and fail — **2 failures, measured** — which made the one
+  check an operator performs after a deploy useless exactly where it is most
+  wanted. The subprocess tests in `tests/test_wsgi_single_worker.py` carry
+  their own copy of the same values, because a child imports `db.py` fresh and
+  calls the loader for itself where nothing in the parent can reach it.
+
+  ⚠ **Nothing about the running application changed.** `.env` reaches
+  `python app.py` and `gunicorn` exactly as it always has.
+  `tests/test_env_isolation.py::test_db_still_reads_dotenv_for_the_real_application`
+  reads `db.py`'s AST and fails if that call stops being an unconditional
+  module-level `load_dotenv(override=False)`.
 - **`db.CONFIG` is built at import time.** Changing `DB_*` after `import db` has
   no effect. `attachment.root()` and `auth.session_cookie_config()` deliberately
   do the opposite and re-read on every call — see the note on `ATTACHMENT_DIR`.
