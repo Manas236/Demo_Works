@@ -70,6 +70,30 @@ Fast facts so you don't get it wrong before reading:
   grandfather rule was not touched. Built code stays; B6, B7 and C2 stay
   BUILT. The ladder-proving tests run ON through `conftest.ladder_on`;
   `tests/test_approvals_off.py` is the OFF state. ABOUT.md §2i and §2j.
+- **DEMO DATA IS OFF BY DEFAULT — `SAMRUDDHI_DEMO_DATA`, and your checkout
+  will look EMPTY without it** (25 Sep 2026). It is the one environment
+  variable here whose default is the **production** value, because the failure
+  that matters is a client box nobody configured. No demo products, no demo
+  addresses, no demo BOQ — that is not a broken checkout. `.env.example` ships
+  `true`, so `cp .env.example .env` gives you the demo, and
+  `tests/conftest.py` forces it on. The **spec library, charge heads and
+  measurement grid columns are GENUINE DEFAULTS** and seed whatever it says.
+  `product.py` is frozen, so its seeder is disarmed from
+  `app.disarm_frozen_demo_seeder()` rather than edited. ABOUT.md §2g and §7
+  gap 35.
+- **The suite does NOT read your `.env`** (25 Sep 2026) — `conftest`
+  neutralises `load_dotenv` before `db` is imported, so `python -m pytest` is
+  a usable check on the production box. A test that needs a setting sets it
+  itself, with `monkeypatch`. The application still reads `.env` normally.
+- **Every statutory number series has a settable starting FLOOR**, and the
+  rule and the scan live in the leaf **`series.py`** — not in `settings.py`,
+  because **`boq.py` may not import `settings.py`**. `next = max(existing max
+  in the scope + 1, floor)`; a blank floor is byte-identical to the old
+  behaviour; an FY-reset series' floor is stored **with its financial year**,
+  so Rule 46(b)'s April reset to `0001` still happens. `quotation.py` is
+  frozen and its series deliberately has **no** floor. ⚠ **No lock was
+  added** — the minters are still unguarded scan-max-then-plus-one, which is
+  why `--workers 1 --threads 1`. ABOUT.md §7 gap 36.
 - **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
   `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
   refused, not opened** — so a route you add is unreachable until you classify
