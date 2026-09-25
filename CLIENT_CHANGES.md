@@ -3564,6 +3564,122 @@ one automatic.
 > 23 September 2026 and authorises nothing beyond what it names.
 
 
+> ### ⚠ OVERRIDE — 25 September 2026, by Manas Gawde — GO-LIVE HARDENING: demo data off by default, settable starting numbers, and the suite cut loose from `.env`
+>
+> **A new block, not an amendment.** The thirtieth block, dated
+> 23 September 2026, and every block before it stand exactly as recorded and
+> are **not edited** by this one. This is the thirty-first occasion. It covers
+> the three items below and nothing else; anything a pass builds beyond them is
+> outside this authorisation.
+>
+> #### This is my own decision, and it is the pre-handover pass
+>
+> **It is not a client request, not a CC-2 item, and not chargeable under
+> either quotation.** It moves no Phase 3 bar: the board and its denominator
+> are unchanged, and no CC-2 item changes state. The client's production box
+> will be deployed from whatever this pass pushes, and these are the three
+> things that are wrong on a client's server and right on a demo one.
+>
+> **A. Demo data is OFF by default** — ABOUT.md §7 gap 35. A brand new install
+> fills itself with 84 records nobody typed, including another company's
+> ₹91.9 lakh BOQ and an address book of real company names carrying invented
+> GSTINs, and deleting them does not outlive a restart. A new environment
+> variable `SAMRUDDHI_DEMO_DATA` gates the four **demo** seeders.
+> **The default is OFF**, because the failure that matters is a client box
+> nobody remembered to configure, so the safe side is the side that grows no
+> data. The **genuine defaults** — the spec library the quotation picker reads,
+> the charge heads, the measurement grid columns — are not gated and are seeded
+> exactly as today. `tests/conftest.py` forces the flag ON, so the goldens and
+> the existing suite do not move.
+>
+> **B. Every statutory series gets a settable starting FLOOR** — ABOUT.md §7
+> gap 36. Eight of the ten series restart at `0001` on a go-live, beside
+> whatever the client's paper book is already running. The floors live in
+> **their own settings record**, following the draft-PO and delivery-challan
+> pattern, so the nav's amber dot never counts a blank floor as a missing
+> statutory detail. The rule is
+> **next = max(existing max in the current scope + 1, floor)** — a floor only
+> ever moves a series forward, and the POST refuses one at or below the current
+> max and names that max. **An FY-reset series stores its floor WITH the
+> financial year it applies to**: a floor set for 26-27 is ignored in 27-28, the
+> April reset to `0001` under Rule 46(b) still happens, and a floor can
+> therefore never repeat a number across years. **A blank floor is today's
+> behaviour, byte-identical.**
+>
+> #### ⚠ `quotation.py` IS NOT UNFROZEN, AND THE QUOTATION SERIES GETS NO CONTROL
+>
+> **There is no fifth carve-out here.** INTRODUCTION.md §7's freeze stands
+> whole, and the four named carve-outs (`9d060ee`, 11–12 September, and
+> `delete_quotation()` on 23 September) are not widened by a character.
+> `quotation._next_ref()` keeps its `len()+1` and gets no floor. A quotation
+> number is **not a statutory serial** — Rule 46(b) governs a tax invoice, and
+> a quotation is an offer — so nothing about the client's paper book depends on
+> it. `product.py` is **NOT unfrozen** either and is **not edited**: the demo
+> product seeder is disarmed from outside, the same way the catalogue was
+> hidden on 11 September.
+>
+> #### ⚠ THE GAP 32 COLLISION FIX IS **NOT** NEEDED, AND IT WAS MEASURED RATHER THAN ASSUMED
+>
+> **I authorised a defect fix in advance if item B's measurement showed one was
+> needed. It did not, so none was made, and recording that is the point.**
+> Three counters mint a tax-invoice number in this application and they were
+> measured against each other on an empty store: `invoice.py` mints
+> `SF/TI/26-27/0001`, `ra.py` mints `SF/RI/…` and `merged_ra.py` mints
+> `SF/MI/…`. The series segment is present in **every** minted string —
+> `pipeline.fy_ref()` drops the company prefix when Rule 46(b)'s 16 characters
+> would be exceeded and **never** the series — so no two of the three can ever
+> produce the same number. Measured across 205 ordinals, both branches of the
+> cap, and every cross-year pair: **zero collisions.**
+>
+> **So the three series are NOT unified, `ra.py` still may not import
+> `invoice.py`, and no import-direction row is added.** Unifying them would
+> have been a large change to statutory numbering justified by an assumption
+> that turned out to be false.
+>
+> ⚠ **Gap 32 stays OPEN and is not closed by this block.** What it actually
+> reports is a **typed** `SF/TI/26-27/0007` on one live RA bill, which is
+> outside every minter by design — the field stays typeable so an operator can
+> transcribe a serial from the client's own book. The record is **not touched**;
+> correcting live commercial data is my decision and I have not taken it. The
+> floor built under item B is the clean tool for it the day I do: a `TI` floor
+> of `8` makes `invoice.py` incapable of ever minting `0007`, without
+> validating anybody's typing or guessing at their numbering. Gap 15's rule
+> still stands — do not encode a guess about somebody's statutory numbering.
+>
+> **C. The test suite is cut loose from the checkout's `.env`.** Running the
+> suite on the production box picks up the repo-root `.env` through `db.py`'s
+> `load_dotenv()` and fails, which makes the one check an operator would run
+> after a deploy useless exactly where it is most wanted. Measured before the
+> fix, against a production-shaped `.env`: **two failures**, and they have two
+> different causes — one in-process, one in a subprocess that reads `.env` for
+> itself. Both are fixed in the test harness. **No application behaviour
+> changes**, and `.env` must still reach the running app exactly as it does
+> today.
+>
+> #### What this does not change
+>
+> **Nothing already in a live database is deleted, converted or rewritten.**
+> The flag stops the seeders **seeding**; it removes nothing. A box that has
+> already booted once with demo data on still holds those records, and getting
+> rid of them is the go-live step in DEPLOY.md §6 — which now, for the first
+> time, stays done across a restart. The specimen identity already saved into
+> `STORE["settings"]["company"]` on this machine is **not** cleared by turning
+> the flag off.
+>
+> **The minters stay unguarded scan-max-then-plus-one.** `--threads 1` and
+> `--workers 1` remain load-bearing (DEPLOY.md §8.2), the floor does not add a
+> lock, and it does not pretend to. It is said next to the new code.
+>
+> **The approval ladder and the measurement cap are untouched.** The ladder is
+> still off in code (12 September block); the measurement cap still binds on a
+> saved sheet; `ra.py`'s grandfather rule is not touched.
+>
+> **The rule above is not weakened by this block.** An override is a decision
+> the client-facing owner takes and records; it is never one an agent may take,
+> infer, or extend. This block records a decision I took on 25 September 2026
+> and authorises nothing beyond what it names.
+
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
