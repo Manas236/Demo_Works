@@ -118,7 +118,9 @@ heading and read the rest.
 | 9 | **[SOURCE_DOCUMENTS.md](SOURCE_DOCUMENTS.md)** | What the client's own 18 source documents actually contain — structure, conventions and defects — and what that evidence does to DOMAIN.md's claims. Read it before asserting how the client's paperwork behaves; the documents themselves are gitignored | The domain model, the code facts, the work queue; every finding is OPEN and none is actioned |
 | 10 | **[fixtures/README.md](fixtures/README.md)** | The two client workbooks: what they are, where to put them, what happens without them | — |
 | 11 | **[PROGRESS.md](PROGRESS.md)** | **Phase 3 build status**, one row per CLIENT_CHANGES-2.md item — BUILT / PARTIAL / NOT STARTED / BLOCKED, each with the `file:line`, route or test name it was established from, plus the blockers and the code-vs-docs drift found while establishing them. Regenerated from code; a pass that changes a Phase 3 item's build state updates it in the same commit | What the items *are* — that is CLIENT_CHANGES-2.md; permission to build any of them; anything about Phase 2 or Phase 4 |
-| 12 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 84 permissions grid (the document's own header line is the figure to trust; this one has been stale before), a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
+| 12 | **[DEPLOY.md](DEPLOY.md)** | **How this application is put on a server** — the runtime, the MySQL grants, the process model, the runbook, the backups and the **go-live checklist**. ⚠ §6 is the specimen-data problem and §8 is the list of code changes it found and deliberately did not make; read both before a handover. Derived by reading the code, with `file:line` on every non-obvious claim | What each variable does — that is docs/ENVIRONMENT.md; anything about the domain or the architecture |
+| 13 | **[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)** | **Every environment variable the application reads**, what it defaults to, and which are mandatory in production. `tests/test_deployment_config.py` reads the AST of every root module and fails if a name is in the code and not in `.env.example`, so the list cannot silently drift | The deployment sequence — that is DEPLOY.md |
+| 14 | **[docs/ACCESS_MATRIX.md](docs/ACCESS_MATRIX.md)** | **Who can do what** — the 7 roles × 84 permissions grid (the document's own header line is the figure to trust; this one has been stale before), a plain-English paragraph per role, and a mark on **every cell** saying whether it comes from CLIENT_CHANGES-2.md or is our derivation. **Generated** by [tools/dump_access_matrix.py](tools/dump_access_matrix.py) from the live catalogue and never hand-edited; `tests/test_access_matrix_doc.py` fails if it drifts. Written to be walked through with the client | The reason any permission is where it is — that is a conversation still to be had; anything about how the gate works (→ ABOUT.md §2g) |
 
 ### The boundary that is easiest to get wrong
 
@@ -218,8 +220,12 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **2,847 passed / 2 skipped** on 22 September 2026, verified by
+The baseline is **2,989 passed / 4 skipped** on 25 September 2026, verified by
 running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+
+*(**25 September 2026** — the PRE-HANDOVER pass: demo data OFF by default (§7 gap 35), a settable starting-number FLOOR per statutory series (§7 gap 36), and the suite cut loose from the checkout's `.env`. The owner's own decision, CLIENT_CHANGES.md §0 **thirty-first** block: **no bar moved and no CC-2 item changed state** — added **142 passed and 2 skipped**. **+28** `tests/test_demo_data_flag.py` (new), **+19** `tests/test_print_golden.py` (the blank-identity sweep over all nine print routes; the 2 new skips are by design — a challan and a measurement sheet carry no statutory identity block), **+59** `tests/test_series_floors.py` (new), **+31** rows `tests/test_import_directions.py` for the leaf `series.py`, **+7** `tests/test_env_isolation.py` (new). It read **2,847 / 2** at the start of the pass, re-measured and matching. 2,847 + 142 = 2,989; the `.venv` configuration reads **2,990 / 6**, from a re-measured **2,848 / 4**. ⚠ **One golden moved and no PRINT golden did** — `tests/test_page_golden.py`'s `settings` row, `main` alone, +5,560 bytes, **27 lines added and 0 removed**, re-baselined in item B's own commit because a gap that can only be closed by putting a control on a page cannot be closed without moving that page's digest.)*
+
+*(**23 September 2026** — the universal delete rollout, Owner-only, with the third narrow unfreeze of `quotation.py`; **+42**, taking 2,805 → 2,847 and the `.venv` 2,806 → 2,848. This note was not written in that pass and is reconstructed here from PROGRESS.md's header, which did carry it.)*
 
 *(**22 September 2026** — the identity pages stop offering what they then refuse: signed in as a Director, `/users/create` drew the **Owner** role and then refused the save, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new — the role picker on both forms, the register's per-row links, the Roles button, each hiding paired with its control). A UX defect fix on built Phase 3B work, and **no guard was changed or weakened**: **no bar moved and no CC-2 item changed state** — added **15 passed and 0 skipped**. It read **2,790 / 2** at the start of the pass, re-measured and matching. 2,790 + 15 = 2,805; the `.venv` configuration reads **2,806 / 4**, from a re-measured **2,791 / 4**.)*
 
@@ -454,6 +460,25 @@ would downgrade. **Supported: CPython 3.10 to 3.14**, last verified on 3.14.3
 a `pip freeze`; [ABOUT.md §1](ABOUT.md) has the cold-start sequence and
 [ABOUT.md §7.1](ABOUT.md) owns the dependency list.
 
+⚠ **`SAMRUDDHI_DEMO_DATA` defaults to `false` and your `.env` should say
+`true`** (25 September 2026, [ABOUT.md §7 gap 35](ABOUT.md)). It is the one
+environment variable in this repository whose default is the **production**
+value rather than the local-dev one, because the failure that matters is a
+client box nobody configured. Without it you get **no demo products, no demo
+addresses and no demo BOQ** — which looks exactly like a broken checkout and is
+not one. `.env.example` ships `true`; `cp .env.example .env` gives you the
+demo. `tests/conftest.py` forces it on, so the suite is unaffected either way.
+
+⚠ **The suite does not read your `.env` at all.** `conftest._never_read_dotenv()`
+replaces the loader before `db` is imported, so a value there cannot turn the
+suite red or green. That is deliberate — it is what makes `python -m pytest` a
+usable check on the production box — and it means a test that needs a setting
+must set it itself, with `monkeypatch`.
+
+⚠ **[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) is the complete list** and
+[DEPLOY.md](DEPLOY.md) is the server sequence. Neither is optional reading
+before a deployment.
+
 ---
 
 ## 6. Three things about this codebase that will bite you first
@@ -539,6 +564,25 @@ holds the diff since `eff0034` to exactly those functions:
 makes a quiet widening fail. ⚠ `product.py` was not edited by the delete
 rollout either: `/product/delete/<id>` already existed and gained its
 Owner-only gate through `auth.py`, the same way the catalogue hide was built.
+
+⚠ **25 September 2026 — the pre-handover pass declined to open a fifth
+carve-out, and both files are untouched.** It is recorded here because the
+temptation was real and specific, and an unopened carve-out leaves no trace in
+a diff:
+
+- **`quotation._next_ref()` gets NO starting-number floor**, although every
+  other `max+1` minter in the application got one (ABOUT.md §7 gap 36). That
+  entry itself named the freeze as the first of three blockers, and the answer
+  taken was to **accept it** rather than work around it: a quotation is an
+  offer, not a tax document — Rule 46(b) governs a tax invoice — so nothing
+  about the client's paper book depends on its number. It keeps its `len()+1`.
+  `series.py` may not import `quotation.py` and a test asserts the series is
+  absent from the registry.
+- **`product.ensure_demo_products()` is switched off WITHOUT being edited**
+  (ABOUT.md §7 gap 35). `app.disarm_frozen_demo_seeder()` pre-sets the
+  `STORE["_seeded"]` guard that function already opens with, which disarms all
+  six of its call sites including the two inside the two frozen files. Exactly
+  the "toggle from outside" the catalogue hide used on 11 September.
 
 ⚠ **This section used to say these files "carry known unescaped output".** They
 no longer do — [ABOUT.md §7.7 and §7.9d](ABOUT.md) are closed. **The

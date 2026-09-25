@@ -10,13 +10,48 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 12 September 2026 (**the four-change
-pass** — the quotation source follows the catalogue switch, Supply only, gap
-38 closed, and **the approval ladder switched OFF in code** — the owner's own
-decisions, CLIENT_CHANGES.md §0 twenty-eighth block; changes 1–3 are not CC-2
-items and carry no charge; change 4 records 3B.05–3B.07 deferred under
-MG/SF/2026-06 as sequencing with the ladder returning after a trial period;
-**built code stays and the board does not move: 19 of 20 BUILT · 1 BLOCKED**).
+**As of:** branch `antigravity-dev`, 25 September 2026 (**the PRE-HANDOVER
+pass** — demo data off by default, a settable starting number per series, and
+the suite cut loose from the checkout's `.env` — the owner's own decision,
+CLIENT_CHANGES.md §0 **thirty-first** block; not a CC-2 item, no charge, and
+**the board does not move: 19 of 20 BUILT · 1 BLOCKED**).
+
+- **25 September 2026 — the pre-handover pass, five commits, pushed.** The
+  client's production box is deployed from this. `f7c48a5` the §0 block alone
+  and first; `f3419c9` **item A**: `SAMRUDDHI_DEMO_DATA` gates the four DEMO
+  seeders and **defaults to OFF**, so a client box grows no products, no
+  addresses and no 97-line ₹91.9 lakh BOQ headed with another company's name —
+  and a delete now **outlives a restart**. The spec library, the charge heads
+  and the measurement grid columns are **genuine defaults** and are seeded
+  whatever the flag says. `4d46e4b` **item B**: a starting-number **FLOOR** per
+  series in the new leaf `series.py` — `next = max(existing max in the scope +
+  1, floor)`, with an FY-reset series' floor stored **with its financial year**
+  so Rule 46(b)'s April reset to `0001` survives. `9d826f8` **item C**: the
+  suite no longer reads the checkout's `.env`, so `python -m pytest` on the
+  server is a usable post-deploy check — it was **2 failed** there before.
+  ABOUT.md §2g, §5 `/settings` and §7 gaps **35** and **36**, both now CLOSED.
+
+  **The exact lines to flip:** `SAMRUDDHI_DEMO_DATA=true` in `.env` for a demo
+  box (the code defaults to `false`); every starting number is blank by
+  default and blank is byte-identical to the old behaviour.
+
+  ⚠ **`quotation.py` and `product.py` are NOT unfrozen and were not edited.**
+  No fifth carve-out: the quotation series deliberately takes no floor, and
+  the demo product seeder is disarmed from `app.disarm_frozen_demo_seeder()`
+  rather than from inside the frozen file — the trick the 11 September
+  catalogue hide used.
+
+  ⚠ **Gap 32 stays OPEN.** Its collision fix was authorised in advance if
+  needed; it was **measured and is not needed**. TI / RI / MI produce zero
+  collisions across 205 ordinals, both branches of `pipeline.fy_ref()`'s cap
+  and every cross-year pair, so the three series were **not** unified and
+  `ra.py` still does not import `invoice.py`. The live record gap 32 reports —
+  a hand-typed `SF/TI/26-27/0007` on one RA bill — was **not touched**. A `TI`
+  floor of 8 is the clean tool for it the day the owner decides to act.
+
+*(The line this replaces read: 12 September 2026, the four-change pass — the
+quotation source follows the catalogue switch, Supply only, gap 38 closed, and
+the approval ladder switched OFF in code.)*
 
 - **12 September 2026 — four changes, six commits, pushed.** `62ea74c` the §0
   block alone and first; `c999afe` **change 1**: `/quotation/create` follows
@@ -230,7 +265,7 @@ The entries below are therefore **not contiguous**:
 board 15 → 17, 3C 2/6 → 4/6, B7's print gate narrowed by two named exceptions,
 and a second grandfathered set pinned at one live RA bill. It is summarised here
 rather than deleted because it stood through two passes that made it stale.)*
-**Tests:** **2,847 passed / 2 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
+**Tests:** **2,989 passed / 4 skipped** in the openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**
 configuration — measured on 22 September 2026 by running the suite in it. *(The 22 September change — the identity pages stop offering what they then refuse: a Director was shown the **Owner** role on `/users/create` and then refused the save, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new — the role picker on both forms, the register's per-row links, the Roles button, every hiding paired with its control). A UX defect fix on built Phase 3B work and **no guard was changed or weakened**: **no bar moved and no CC-2 item changed state**; it read **2,790 / 2** at the start of the pass, re-measured and matching.)* *(The 20 September change — the BOQ sheet fits a portrait page: a phone's print service picks the paper, and Chrome for Android scaled the landscape page box onto it, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**; it read **2,786 / 2** at the start of the pass, re-measured — ⚠ **94 above the 2,692 recorded here**, because the seven commits `0c493e1` … `5f4ddc0` of 14–15 September added 94 across 17 test files and moved no figure in any document.)* *(The third 14 September change — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**; it read **2,687 / 2** before, re-measured and matching.)* *(The second 14 September change — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**; it read **2,660 / 2** before, re-measured and matching.)* *(The first 14 September change — the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**; it read **2,654 / 2** before, re-measured and matching.)* *(The 13 September change — the BOQ line panel rearranged into four bands and a fold, ABOUT.md §5 `/boq` — is **+4**, all in `tests/test_editor_nav.py` (23 → 27), UX only, no bar moved; it read **2,650 / 2** before.)* ⚠ *(The 12 September pass's own **+218** reconciles per change and per file: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**), `tests/test_import_directions.py` (**+12**); change 2 `tests/test_quotation_spec_picker.py` (**+7**); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new), `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. It read **2,432 / 2** at the start of that pass, re-measured rather than quoted, matching the 11 September figure exactly.)* ⚠ *(The 11 September pass's own **+88** reconciles per file: `tests/test_product_hidden.py` (**40**, new) and `tests/test_quotation_spec_picker.py` (**48**, new). 40+48 = **88**. ⚠ It read **2,344 / 2** at the start of that pass, measured — **61 above the 2,283 recorded here**, because the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no document. 2,344 + 88 = 2,432.)* ⚠ *(The **SEVENTEENTH** pass's own **+48** reconciles per file: `tests/test_boq_project_link.py` (**17**, new) and `tests/test_qty_float_precision.py` (**31**, new). 17+31 = **48**. It read **2,235 / 2** at the start of that pass, re-measured rather than quoted, matching the sixteenth exactly.)* ⚠ *(This pass's own **+123** reconciles per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. It read **2,081 / 2** at the start of this pass, re-measured rather than quoted, matching the fourteenth exactly. The fourteenth pass's own **+47** is one new file, `tests/test_dashboard_boq_ra.py` (47) — the dashboard's BOQ/RA visual cues — and **no existing test file changed its count**. It read **2,034 / 2** at the start of this pass, re-measured rather than quoted, matching the thirteenth pass exactly. The thirteenth pass's own **+34** was: `tests/test_backup_attachments.py` (13) and `tests/test_ra_tax_invoice_ref.py` (18), plus **+3** in `tests/test_merged_ra.py` (33→36). 13+18+3 = 34. It read **2,000 / 2** at the start of this pass, re-measured rather than quoted, matching the twelfth pass exactly. It read **1,897 / 2** until the eleventh
 edition — the tenth pass's figure, measured the same day and re-measured at the
 start of the eleventh rather than quoted, matching exactly. This pass's own +30 is: `tests/test_backfill_marking_projects.py` (15), plus +14 in `tests/test_attendance.py` (44→58) and +1 parametrised case in `tests/test_import_directions.py` (`attendance → project`). The tenth pass's +50 was: `tests/test_clean_site_data.py` (20), `tests/test_seed_demo_scenario.py` (16), plus +10 in `tests/test_attendance.py`, +2 in `tests/test_site_picker.py` and +2 parametrised cases in `tests/test_import_directions.py`. Before that, the ninth pass added
@@ -270,7 +305,7 @@ verification of Phase 3B — see §1.12: `tests/test_escaping.py` (31),
 
 **A second configuration is now measured rather than derived:** the repo's
 `.venv` (CPython 3.10.11, **openpyxl 3.1.5 present**, both workbooks absent)
-reports **2,848 passed / 4 skipped** against the same commit, and read
+reports **2,990 passed / 6 skipped** against the same commit, and read
 **2,791 / 4** at the start of the 22 September change (measured, matching) and
 **2,787 / 4** at the start of the 20 September change (measured — 94 above the recorded 2,693, for the reason given above) and
 **2,688 / 4** at the start of the third 14 September change (measured, matching) and
