@@ -71,6 +71,7 @@ import branding as B
 import cascade
 import demo_data as DD
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 from address import INDIAN_STATES, picker_options, picker_payload
 from chrome import BASE_STYLES, _nav
 from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
@@ -221,16 +222,18 @@ def _next_ref(datestr: str) -> str:
     records is what lets the series restart each April without colliding, and
     max+1 (never `len()+1`) is what stops a deleted record re-issuing a number
     that has already reached a customer.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36). `SER.next_seq()` is
+      `max(existing max in this FY + 1, floor)`; with no floor set it is
+      byte-identical to the loop that used to stand here. The leaf is imported
+      rather than `settings.py`, because **this module may not import
+      `settings.py`** — `tests/test_import_directions.py` refuses that arrow,
+      and it is the constraint that decided where the floors live.
     """
     fy = P.fy_of(datestr)
-    highest = 0
-    for b in STORE["boqs"].values():
-        if b.get("fy") != fy:
-            continue
-        tail = str(b.get("ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("BOQ", fy), cap=_REF_CAP)
 
 
 def _item_no(raw) -> str:

@@ -769,6 +769,15 @@ ones (`invoice.py:182-191`, `ra.py:1050+`) are the statutory ones. Needs a mutex
 around mint-and-insert, or a per-series counter record. Until then, `--threads 1`
 is load-bearing, not a preference.
 
+> ⚠ **STILL OPEN, and `series.py` did NOT close it — 25 September 2026.** The
+> scan-max-then-plus-one loops moved out of the nine minters into one leaf and
+> gained a settable **floor** (§9.7, ABOUT.md §7 gap 36), which is a change to
+> **where a series starts** and not to **how a number is taken**. There is no
+> mutex, the leaf does not add one, and a floor makes a collision neither more
+> nor less likely. `--workers 1 --threads 1` remains a correctness requirement.
+> The warning is repeated next to the new code so a reader of `series.py`
+> cannot mistake it for the fix.
+
 **8.3 — Errors are invisible in production.** `app.py:224-227` catches 500 and
 redirects to the dashboard, logging nothing. The app configures no logging at
 all. On a server, an exception is indistinguishable from a user clicking Home.
@@ -1055,6 +1064,22 @@ sudo journalctl -u samruddhi -f     # read the boot banner
 
 **Do §6.3 now.** Not after the first invoice.
 
+**Starting numbers — set them in the same visit** (25 September 2026,
+ABOUT.md §7 gap 36). The same `/settings` form now carries a **Starting
+Numbers** section: one box per series, so a go-live continues the numbers the
+office already keeps instead of restarting at `0001` beside them.
+
+* **Leave every box blank and nothing changes.** That is the normal setting.
+* **Ask the client which series are actually running on paper before typing
+  anything.** SOURCE_DOCUMENTS.md §7.5 records that their 18 documents contain
+  no RA bill, no tax invoice, no proforma and no purchase order at all, and
+  that the only running series observable in them is **the challan number** —
+  which is the *counter* box above, not a floor.
+* **A starting number only moves a series forward.** One at or below what has
+  already been issued is refused, and the message names the highest.
+* **A box marked with a financial year applies to that year only.** The April
+  reset to `0001` under Rule 46(b) still happens.
+
 ---
 
 ## 10. BACKUPS
@@ -1129,7 +1154,10 @@ anything in §8 ships (`tools/seed_users.py:22-23`).
 - [ ] First Owner created; `/setup` no longer reachable
 - [ ] **`/settings` fully populated with the client's real GSTIN, PAN and bank details — §6.3**
 - [ ] **One document of each type printed and the letterhead read by a human** — no `27AAAAA0000A1Z5`, no `SPECIMEN BANK LTD.`
-- [ ] Demo BOQ ("Sify Bangalore" / "Prudent Teqtis Pvt Ltd"), demo products, demo specs and demo addresses deleted — *and the team told they return on restart until §8.1 ships*
+- [ ] **`.env` contains `SAMRUDDHI_DEMO_DATA=false`** — §6, §9.3. (It is the code's default too; set it explicitly so nothing about this box is implicit.)
+- [ ] With demo data off on a **fresh** database, `/`, `/spec/`, `/boq/` and `/address/` show **0 products, 0 addresses, 0 BOQs, 56 specs** — the 56 are the spec library, a genuine default, and must **not** be deleted: the BOQ and quotation pickers are written from it
+- [ ] Demo BOQ ("Sify Bangalore" / "Prudent Teqtis Pvt Ltd"), demo products and demo addresses deleted **if this database ever booted with the demo on** — the flag stops seeding, it deletes nothing. ✅ With it off the deletion now **outlives a restart** (§6.2)
+- [ ] **Starting numbers agreed with the client and set — §9.7.** Ask which series their paper book is actually running before typing anything; leaving every box blank is the correct answer unless they say otherwise
 - [ ] Client informed: **approvals are switched off** (`approval.py:307`) and the **product catalogue is hidden** (`auth.py:486`)
 - [ ] Backup pair taken and copied **off the box** — §10
 - [ ] §8.3 (error logging) scheduled, ideally done before the first real document

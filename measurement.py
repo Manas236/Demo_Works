@@ -116,6 +116,7 @@ import boqpick as BP
 import branding as B
 import docsheet as DS
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -320,16 +321,14 @@ def next_ref(datestr: str = "") -> str:
     max+1 within the financial year rather than `len+1`, which is
     `proforma._next_ref()`'s rule and `ra.next_ref()`'s: a gap must never
     re-issue a number that has already been on a sheet somebody signed.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max in this FY + 1,
+      floor)`, byte-identical with no floor set.
     """
     fy = P.fy_of(datestr or _date.today().isoformat())
-    highest = 0
-    for m in records().values():
-        if m.get("fy") != fy:
-            continue
-        tail = str(m.get("ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("MS", fy), cap=_REF_CAP)
 
 
 # =============================================================================

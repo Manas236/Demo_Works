@@ -63,6 +63,7 @@ import approval
 import branding as B
 import cascade
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -179,17 +180,23 @@ def _next_ref(datestr: str) -> str:
     exactly 16 with a two-letter COMPANY_SHORT; if the short name is longer the
     prefix is dropped rather than issuing an over-length number, because an
     invoice number the portal will reject is worse than an unbranded one.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36). `SER.next_seq()` is
+      `max(existing max in this FY + 1, floor)`, so with no floor set this is
+      byte-identical to the `for … max(…)` loop that used to stand here — and
+      the print goldens did not move. The loop lives there rather than here
+      because `/settings` has to be able to say *"that floor is at or below the
+      current max, which is N"*, and two implementations of one scan is how a
+      validator starts disagreeing with the document it validates.
+
+    ⚠ **Still unguarded scan-max-then-plus-one.** No lock was added and none is
+      implied: `--workers 1 --threads 1` is a correctness requirement, not a
+      tuning choice (DEPLOY.md §8.2).
     """
     fy = _fy_of(datestr)
-    highest = 0
-    for ti in STORE["invoices"].values():
-        if ti.get("fy") != fy:
-            continue
-        tail = str(ti.get("ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=16)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("TI", fy), cap=16)
 
 
 def _money(raw: str, default: float = 0.0) -> float:

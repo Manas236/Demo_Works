@@ -583,6 +583,66 @@ FORBIDDEN = [
                                      "decision page; importing back is a cycle"),
     ("chrome", "boqpick",     "any", "the shell knows nothing about a form"),
     ("chrome", "specpick",    "any", "same"),
+    # ── series.py — the document-number FLOOR is a LEAF (25 September 2026) ─
+    #
+    # ABOUT.md §7 gap 36. It holds one floor per numbered series and the one
+    # scan that finds each series' highest issued number. It is a leaf for
+    # `docsheet.py`'s reason and one sharper one:
+    #
+    # ⚠ **`boq.py` MAY NOT IMPORT `settings.py`** — the row is eleven screens
+    #   up, with the reason *"settings imports quotation; nothing downstream of
+    #   it may import back"* — and nor may `charge.py`, `docsheet.py`,
+    #   `boqpick.py`, `employee.py`, `project.py` or `chrome.py`. So the floors
+    #   could not live behind `settings.py`'s accessors the way the draft-PO
+    #   and challan series do: a floor reachable from some minters and not
+    #   others is not a floor. The leaf imports `store` and reads
+    #   `STORE["settings"]` directly — the one-way trick used between
+    #   quotation/proforma, boq/ra, ra/receipt and boq/challan.
+    #
+    # ⚠ **`series -> invoice` is the LOAD-BEARING one.** `ra.py` may never
+    #   import `invoice.py` (its own header says so at length), and the RA tax
+    #   invoice counter now reads its max through this leaf. If the leaf could
+    #   import either module, that prohibition would be satisfied on paper and
+    #   defeated in practice, because the coupling would run through the
+    #   basement — `docsheet.py`'s argument exactly. The three tax-invoice
+    #   series were measured on 25 September 2026 and **cannot collide**, so
+    #   they were deliberately NOT unified and each keeps its own counter,
+    #   its own floor and its own module.
+    ("series", "invoice",     "any", "ra.py may never import invoice.py; a leaf "
+                                     "that imported either would defeat that "
+                                     "prohibition through the basement"),
+    ("series", "ra",          "any", "same, from the other side"),
+    ("series", "merged_ra",   "any", "and the third tax-invoice counter"),
+    ("series", "boq",         "any", "the leaf reads STORE['boqs'] directly"),
+    ("series", "proforma",    "any", "same"),
+    ("series", "purchase",    "any", "same"),
+    ("series", "receipt",     "any", "same"),
+    ("series", "measurement", "any", "same"),
+    ("series", "quotation",   "any", "quotation.py is FROZEN and its series "
+                                     "deliberately has no floor — the leaf must "
+                                     "not acquire a reason to reach it"),
+    ("series", "product",     "any", "the other frozen file"),
+    ("series", "challan",     "any", "the challan keeps a stored high-water "
+                                     "counter, not a max+1 scan; it is not in "
+                                     "this registry"),
+    ("series", "po_draft",    "any", "same"),
+    ("series", "settings",    "any", "settings.py imports THIS module for the "
+                                     "form; importing back is a cycle, and it is "
+                                     "the arrow that forced the leaf to exist"),
+    ("series", "branding",    "any", "the leaf answers an ORDINAL; the company "
+                                     "prefix and the Rule 46(b) cap are "
+                                     "pipeline.fy_ref()'s and stay with the "
+                                     "minter"),
+    ("series", "pipeline",    "any", "same — the leaf does no formatting at all"),
+    ("series", "dashboard",   "any", "it renders nothing"),
+    ("series", "chrome",      "any", "same"),
+    ("series", "docsheet",    "any", "same"),
+    ("series", "auth",        "any", "a starting number is not an access "
+                                     "question"),
+    ("series", "db",          "any", "it mutates STORE like every other module; "
+                                     "db.py mirrors it"),
+    ("series", "flask",       "any", "it owns no route and builds no HTML"),
+
     # The other direction: the printed sheet may not depend on the shell.
     # `docsheet.py` reads `BASE_STYLES` through `dashboard.py`'s re-export,
     # deliberately, and says so at the import.
@@ -605,6 +665,29 @@ def test_module_does_not_import(module, forbidden, scope, why):
 
 # ── The directions that must EXIST ──────────────────────────────────────────
 REQUIRED = [
+    # ── series.py, the document-number floor (25 September 2026) ───────────
+    # Every minter that scans max+1 reads its ordinal through the leaf, which
+    # is what makes `/settings`' refusal ("that is at or below the current
+    # max, which is N") and the minted number two readings of ONE scan rather
+    # than two implementations that can drift apart.
+    ("invoice",     "series", "the tax invoice ordinal and its floor"),
+    ("ra",          "series", "the RA document number AND the RA tax invoice "
+                              "serial — two series, two floors, one leaf"),
+    ("merged_ra",   "series", "the merged tax invoice serial"),
+    ("proforma",    "series", "the proforma ordinal — the one series with no "
+                              "financial year"),
+    ("boq",         "series", "the BOQ ordinal. boq.py may not import "
+                              "settings.py, which is why this leaf exists"),
+    ("measurement", "series", "the measurement sheet ordinal"),
+    ("receipt",     "series", "the receipt ordinal"),
+    ("purchase",    "series", "the buy-side PO ordinal"),
+    ("settings",    "series", "the FORM — the boxes, the current max beside "
+                              "each one, and the validator. settings.py owns "
+                              "the page; the leaf owns the rule"),
+    ("series",      "store",  "STORE['settings'] for the floors, and each "
+                              "collection for its own max — read DIRECTLY, "
+                              "which is the whole reason it can be a leaf"),
+
     ("boq", "quotation", "the document toolkit — _inr, _fmt_qty, _amount_in_words, "
                          "_meta, VIEW_DOC_STYLES, QUOTATION_STYLES"),
     ("boq", "chrome", "BASE_STYLES and _nav"),

@@ -373,6 +373,7 @@ Consequences you must respect when editing:
 | [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
 | [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
+| [series.py](series.py) | 339 | **The document-number FLOOR, and the one scan per series** (25 September 2026, §7 gap 36). Holds `SERIES` — nine numbered series, what each scans and how each reads its highest issued number — plus the floors record and the rule `next = max(existing max in the scope + 1, floor)`. A **fifth leaf**, and the strictest one in the repository: it imports `store` and **nothing else**, not even `pipeline` or `branding`, because it answers an ORDINAL and the prefix, the series segment and Rule 46(b)'s cap stay with the minter. ⚠ It exists because **`boq.py` may not import `settings.py`** — a floor reachable from some minters and not others is not a floor. ⚠ `series -> invoice` and `series -> ra` are both refused: `ra.py` may never import `invoice.py`, and a leaf that imported either would defeat that through the basement. ⚠ **No lock.** The minters stay unguarded scan-max-then-plus-one and `--threads 1` is still load-bearing. |
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
@@ -401,7 +402,7 @@ Consequences you must respect when editing:
 | `tools/backfill_marking_projects.py` | 245 | One-time migration (30 Aug 2026, sixth pass): links an attendance marking to its project **where the site carries exactly one**. Dry-run by default, idempotent. ⚠ **It never guesses** &mdash; zero or several projects on the site and the marking is left alone and **printed with every candidate named**, for a human to resolve on `/attendance/edit/<id>`. Never takes the oldest or the newest. ⚠ **Writes one field on one collection** and never re-snapshots a marking that already carries a project. |
 | `tools/seed_demo_scenario.py` | 404 | A coherent demo set (30 Aug 2026, fifth pass): two sites, one project each, three employees on confirmed day rates, eight markings including one absentee. `--write` / `--purge`, idempotent. ⚠ **Not a seeder** &mdash; nothing in the app imports it, a fresh install is still empty of `employees` and `attendance`, and a test fails if a module so much as names it. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
-| [settings.py](settings.py) | 696 | Company identity + bank details form, and the two document number series (draft PO, delivery challan) that are **not** branding overrides. Writes runtime overrides onto `branding`. ⚠ **Those two are the ONLY settable series of the ten in this app** — the other eight are `max+1` over existing records with no control anywhere, so a go-live restarts them at `0001`. §7 gap 36, with the measured table. |
+| [settings.py](settings.py) | 1171 | Company identity + bank details form, the two document number **counters** (draft PO, delivery challan) and, from 25 September 2026, the **starting-number floor for every other series**. None of them is a branding override — each is its own record, so `apply_settings()` never pushes one onto the letterhead and the nav's amber dot never counts a blank one. ⚠ **The floors' RULE lives in `series.py`, not here**, because `boq.py` may not import this module (§7 gap 36); this file owns the form, the validator and the refusal that names the current max. ⚠ **A counter and a floor are different things**: the draft PO and challan counters advance on every save and spend a number even on a delete; a floor is a lower bound that only ever moves a series forward. The quotation series has **no** control, by decision — `quotation.py` is frozen and a quotation is not a statutory document. |
 | [auth.py](auth.py) | 2609 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). ⚠ **The `approval` blueprint is treated the same way while the ladder is switched off** (12 September 2026) — `blueprint_off_reason()` answers with its own reason, read from `approval.ladder_on()` through a function-body import, the five `*.approve` grants are frozen on `/roles` and marked `⊗` in the matrix (§2g, §2i). |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. |
@@ -8199,10 +8200,47 @@ no way out.
 
 One form. **Company Identity** (legal name, tagline, address, phone, e-mail,
 web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank, account name,
-account number, IFSC, branch), then four blocks that are **not** branding
-overrides and live in records of their own: the draft-PO series, the delivery-
-challan series, the charge heads, and **Labour Cost**. Reached from the
-**Settings link in `_nav()`**, so it is one click from anywhere.
+account number, IFSC, branch), then ~~four~~ **five** blocks that are **not**
+branding overrides and live in records of their own: the draft-PO series, the
+delivery-challan series, **Starting Numbers**, the charge heads, and **Labour
+Cost**. Reached from the **Settings link in `_nav()`**, so it is one click from
+anywhere.
+
+⚠ **Starting Numbers is new on 25 September 2026** (§7 gap 36) and it is the
+one block on this page whose **rule lives somewhere else**. The nine boxes, the
+highest-issued figure beside each one and the refusal that names it are here;
+`series.py` owns `next = max(existing max in the scope + 1, floor)` and the
+scan behind it, because **`boq.py` may not import this module** and a floor
+reachable from some minters and not others is not a floor.
+
+⚠ **A FLOOR IS NOT A COUNTER, and the two kinds sit on this page side by
+side.** The draft-PO and challan boxes above it store a *next number* that
+advances on every save — deleting a challan **spends** its number rather than
+handing it back, which is `challan.next_ref()`'s explicit rule and the client's
+own paper book. The Starting Numbers boxes store a *lower bound*: set one below
+where a series has already reached and **nothing happens**, because `max()`
+cannot pull a series backwards onto a serial already in somebody's ledger. The
+POST refuses such a floor and names the current max, because a control that is
+silently inert is worse than one that says why. The two are deliberately not
+merged into one control.
+
+⚠ **The boxes marked with a financial year apply to that year and to no
+other.** Six of the nine restart at `0001` each April — for the tax invoice
+that is Rule 46(b) rather than a preference — so a floor set for 26-27 is inert
+in 27-28 and the reset still happens. That is the question gap 36 said had to
+come from the client's numbering policy first, answered in the thirty-first §0
+block.
+
+⚠ **The quotation series is NOT on this page and has no floor.**
+`quotation.py` is frozen (INTRODUCTION.md §7) and no fifth carve-out was
+opened for it; a quotation is an offer rather than a tax document, so nothing
+statutory depends on its number.
+
+⚠ **A blank box is the NORMAL configuration and must never light the nav's
+amber dot.** That dot means *"a statutory detail is missing and a document will
+print a chip"*. The floors are their own settings record for exactly the reason
+the draft-PO series is, a fifth time — `apply_settings()` never sees them and
+`_completeness()` counts only `ALL_FIELDS`.
 
 ⚠ **Labour Cost is CC-2 C5's, and the OT multiplier is there because a constant
 would be a statutory underpayment.** `ot_multiplier` defaults to the client's
@@ -10050,10 +10088,126 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     to outlive a restart** — which, as above, it currently does not. That is the
     part to put in front of the client-facing owner.
 
-36. 🟠 **Eight of the ten document number series cannot be set to a starting
+36. ✅ ~~🟠 **Eight of the ten document number series cannot be set to a starting
     number, so a go-live restarts them at 0001 beside the client's running paper
-    book.** Found 9 September 2026 (eighteenth pass), measured against an empty
-    database.
+    book.**~~ — **CLOSED 25 September 2026.** Found 9 September 2026 (eighteenth
+    pass), measured against an empty database. CLIENT_CHANGES.md §0, the
+    thirty-first block, is the authorisation; the entry is struck rather than
+    deleted because the three conditions it set are the reason the shape is
+    what it is, and two of them are answered rather than removed.
+
+    **`series.py` — a FIFTH leaf, and one FLOOR per series.** The rule, and
+    every minter now calls it:
+
+        next = max(existing max in the current numbering scope + 1, floor)
+
+    ⚠ **A floor is not a counter and not a next-number. It is a lower bound.**
+      That distinction is what makes it safe to set on a live box: a floor
+      below where a series has already reached does **nothing**, because
+      `max()` cannot pull a series backwards onto a serial that is already in
+      somebody's ledger. `/settings` refuses such a floor at the POST and names
+      the current max, because a control that is silently inert is worse than
+      one that says why — but the arithmetic is safe either way.
+
+    ⚠ **A blank floor is today's behaviour, byte-identical**, and that is what
+      protects everything already shipped. Asserted against the real minters
+      and against this entry's own table, not against the leaf.
+
+    **The numbering scope, and the question this entry refused to guess at.**
+    It asked: *"Does a start of 0150 apply only to 26-27, or does it persist
+    across the year boundary? That is the client's numbering policy, not an
+    engineering choice, and getting it wrong produces a duplicate statutory
+    invoice number."* **Answered: only to the year it was set for.** An
+    FY-reset series stores its floor under the financial year; asked for the
+    next year the lookup returns nothing, so **the April reset to 0001 under
+    Rule 46(b) still happens** and a floor can never carry a series off 0001
+    in a year nobody configured. A non-FY series files one floor under
+    `series.GLOBAL_SCOPE`, which never expires because that series has no
+    reset to survive.
+
+    | Series | Key | Scope | FY-reset? | Floor control |
+    |---|---|---|---|---|
+    | Tax invoice | `TI` | financial year | yes | ✅ new |
+    | RA bill — tax invoice no. | `RI` | financial year | yes | ✅ new |
+    | Merged RA — tax invoice no. | `MI` | financial year | yes | ✅ new |
+    | Proforma invoice | `PI` | the whole series | **no** | ✅ new |
+    | RA bill — document no. | `RA` | financial year | yes | ✅ new |
+    | BOQ | `BOQ` | financial year | yes | ✅ new |
+    | Measurement sheet | `MS` | financial year | yes | ✅ new |
+    | Receipt | `RCPT` | financial year | yes | ✅ new |
+    | Purchase order (incoming) | `PO` | financial year | yes | ✅ new |
+    | Draft PO | — | the whole series | no | ✅ `po_next_no`, **unchanged** |
+    | Delivery challan | — | the whole series | no | ✅ `dc_next_no`, **unchanged** |
+    | Quotation | — | — | no | ❌ **none, by decision** |
+
+    ⚠ **THE LEAF EXISTS BECAUSE `boq.py` MAY NOT IMPORT `settings.py`.** That
+      is the constraint that decided the whole shape, and it is not
+      incidental: `tests/test_import_directions.py` refuses that arrow
+      (*"settings imports quotation; nothing downstream of it may import
+      back"*) and refuses it for `charge.py`, `docsheet.py`, `boqpick.py`,
+      `employee.py`, `project.py` and `chrome.py` too. A floor reachable from
+      some minters and not from others is not a floor. So the **record** is a
+      settings record — its own key, `document_series_floors`, exactly as
+      `po_draft_series` and `delivery_challan_series` are, so
+      `apply_settings()` never pushes it onto the letterhead and **the nav's
+      amber dot never counts a blank floor as a missing statutory detail** —
+      while the **rule** lives in a leaf that imports `store` and nothing else
+      and reads `STORE["settings"]` directly. The one-way trick, used again:
+      `settings.py` owns the page, `series.py` owns the rule, neither imports
+      the other.
+
+    ⚠ **THE SCAN MOVED INTO THE LEAF TOO, and that is not tidying.** The floor
+      needs two readers of one question — the minter, and `/settings` saying
+      *"that is at or below the current max, which is N"* — and two
+      implementations of one scan is how a validator starts disagreeing with
+      the document it validates. Each minter's loop was ported **verbatim**.
+
+      ⚠ **The three scan modes are NOT interchangeable.** `RI` matches on the
+        **series segment in the string** rather than on the record's `fy` key,
+        because a bill's `fy` is right for the bill while the
+        `tax_invoice_ref` typed onto it may belong to another series entirely
+        — which is gap 32's live record. `PI` has no financial year and splits
+        on `-`. Flattening them would re-open a defect each one was written to
+        close.
+
+    ⚠ **`quotation.py` IS NOT UNFROZEN AND ITS SERIES GETS NO FLOOR.** This
+      entry named the freeze as the first of three blockers, and the answer is
+      to accept it rather than work around it: there is no fifth carve-out.
+      A quotation is an offer, not a tax document — Rule 46(b) governs a tax
+      invoice — so nothing about the client's paper book depends on its number.
+      It keeps its `len()+1` (§7.5's own older finding, still open).
+
+    ⚠ **The draft PO and the delivery challan are NOT in the registry and
+      their behaviour is unchanged.** They are **stored high-water counters**,
+      not `max+1` scans: `challan.next_ref()`'s comment is explicit that
+      deleting a challan must *spend* its number rather than hand it back. A
+      floor beside that would be a second, weaker mechanism competing with a
+      stronger one — and this entry's own evidence is that the challan series
+      is the one the client is actually running. They appear in the new
+      `/settings` section so there is **one place to see every series**, and
+      they post the fields they always did.
+
+    ⚠ **`ra.next_ra_no()` is not a document series** and takes no floor. It is
+      the per-project RA sequence, reset per BOQ by design and the deliberate
+      opposite of a global counter.
+
+    ⚠ **CONCURRENCY IS UNCHANGED AND NOTHING HERE ADDS A LOCK.** The minters
+      stay unguarded scan-max-then-plus-one. Two threads can read the same max
+      and mint the same number; that is why `gunicorn` runs `--workers 1
+      --threads 1` and why DEPLOY.md §8.2 calls `--threads 1` load-bearing
+      rather than a tuning preference. The floor changes **where a series
+      starts**, never **how a number is taken** — do not read this entry as
+      the race being closed. It is not. The same warning is next to the code.
+
+    📌 **One page golden moved and no print golden did.**
+    `tests/test_page_golden.py`'s `settings` row was re-baselined in the same
+    commit: `main` only, +5,560 bytes, **27 lines added and 0 removed**,
+    measured by rendering the page twice with and without the new section. A
+    gap that can only be closed by putting a control on a page cannot be
+    closed without moving that page's digest. The nine printed documents are
+    byte-identical, which is what the scan move had to prove and did.
+
+    **What it measured, and what shipped on every build before 25 September:**
 
     Every series minted from an empty database, and whether `/settings` can move
     it:

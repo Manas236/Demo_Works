@@ -43,6 +43,7 @@ from flask import Blueprint, request, redirect, url_for
 import branding as B
 import cascade
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -130,9 +131,17 @@ def _next_ref() -> str:
 
     Still not year-scoped. That needs the client's actual numbering policy
     (`SF/PI/26-27/0001` is the usual shape) before it is worth writing.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max + 1, floor)`,
+      byte-identical with no floor set. This is the one series in the registry
+      whose scope is **the whole series** rather than a financial year, exactly
+      because it does not reset: its floor is filed under
+      `series.GLOBAL_SCOPE` and never expires. `_ref_num()` is kept and is
+      still what orders the register; the leaf's `WHOLE` mode is the same
+      split on `-`.
     """
-    highest = max((_ref_num(pi) for pi in STORE["proformas"].values()), default=0)
-    return f"{_REF_PREFIX}-{highest + 1:04d}"
+    return f"{_REF_PREFIX}-{SER.next_seq('PI', ''):04d}"
 
 
 def _pct(raw: str, default: float) -> float:

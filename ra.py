@@ -65,6 +65,7 @@ import branding as B
 # level in `tests/test_import_directions.py`.
 import measurement as MS
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -1034,16 +1035,16 @@ def next_ref(datestr: str) -> str:
     FY-scoped and max+1 within the year, sharing `pipeline.fy_of` / `fy_ref`
     with the BOQ, the PO and the tax invoice. **No 16-character cap and no
     statutory meaning**: this is a claim document, not a tax invoice.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max in this FY + 1,
+      floor)`, byte-identical with no floor set. `RA` and `RI` take **separate
+      floors** for the same reason they take separate counters: they are
+      different fields on the same record and only one of them is statutory.
     """
     fy = P.fy_of(datestr)
-    highest = 0
-    for b in (STORE.get("ra_bills") or {}).values():
-        if b.get("fy") != fy:
-            continue
-        tail = str(b.get("ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("RA", fy), cap=_REF_CAP)
 
 
 def next_tax_invoice_ref(datestr: str) -> str:
@@ -1074,19 +1075,29 @@ def next_tax_invoice_ref(datestr: str) -> str:
     parsed.** Only a tail that is all digits advances the counter, so a legacy
     `SF/TI/26-27/0007` typed into this field by an operator contributes nothing
     to the `RI` sequence — it is not an `RI` number and must not move one.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max in this FY + 1,
+      floor)`, byte-identical with no floor set.
+
+      ⚠ **It is the ONLY series in that registry that matches on the SERIES
+        SEGMENT rather than on the record's `fy` key** (`series.SERIES_PREFIX`),
+        and the paragraph above is why: a bill's `fy` is right for that bill,
+        while the `tax_invoice_ref` typed onto it may belong to another series
+        entirely. Flattening the three scan modes into one would re-open
+        exactly the defect this docstring exists to describe.
+
+      ⚠ **`ra.py` STILL MAY NOT IMPORT `invoice.py`, and does not.** The leaf
+        is a leaf: it imports `store` and nothing else, and reads the
+        collections directly — the house one-way trick. The three tax-invoice
+        counters (`TI` / `RI` / `MI`) were measured against each other on
+        25 September 2026 and **cannot collide** — `pipeline.fy_ref()` drops
+        the company prefix but never the series — so they were deliberately
+        NOT unified, and each keeps its own floor.
     """
     fy = P.fy_of(datestr)
-    highest = 0
-    prefix = f"/{_TAXREF_SERIES}/{fy}/"
-    for b in (STORE.get("ra_bills") or {}).values():
-        ref = str(b.get("tax_invoice_ref") or "")
-        if prefix not in ref and not ref.startswith(f"{_TAXREF_SERIES}/{fy}/"):
-            continue
-        tail = ref.rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-    return P.fy_ref(B.COMPANY_SHORT, _TAXREF_SERIES, fy, highest + 1,
-                    cap=_TAXREF_CAP)
+    return P.fy_ref(B.COMPANY_SHORT, _TAXREF_SERIES, fy,
+                    SER.next_seq("RI", fy), cap=_TAXREF_CAP)
 
 
 # =============================================================================

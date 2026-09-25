@@ -340,8 +340,32 @@ PAGES = {
         {"head": "575d38b1b9bde174", "shell": "75cda0afbae27209", "chrome": "19250b6392869c12", "main": "daf605a8f367bb3e"}),
     ("address book",    "/address/"):                  ("def4ca415fbc0f49", 75650,
         {"head": "0a1c0d68158bc7e5", "shell": "75cda0afbae27209", "chrome": "35480409a092776b", "main": "7e67e775827dc7af"}),
-    ("settings",        "/settings/"):                 ("f12eaac1c07efbaa", 74589,
-        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"}),
+    # ⚠ **RE-BASELINED 25 September 2026 — `main` ONLY, and it is the ONE
+    #   golden this application's go-live hardening was always going to move.**
+    #   ABOUT.md §7 gap 36 is closed by adding a **Starting Numbers** section to
+    #   this form, so the page that owns every series control gains nine boxes.
+    #   A gap that can only be closed by putting a control on a page cannot be
+    #   closed without moving that page's digest.
+    #
+    #   Measured before the baseline was touched, by rendering the page twice
+    #   from the same process — once as it stands, once with the new section's
+    #   HTML removed:
+    #
+    #       +5,560 bytes · 27 lines ADDED · **0 lines REMOVED**
+    #
+    #   **Purely additive.** Every line of the identity, bank, draft-PO,
+    #   challan, labour, charge-head and measurement-column sections is
+    #   byte-identical, `head` / `shell` / `chrome` did not move, and **no
+    #   print golden moved at all** — the nine printed documents are untouched,
+    #   which is what the minters' scan-move to `series.py` had to prove and
+    #   did.
+    #
+    #   The old values, kept rather than overwritten in silence:
+    #       ("f12eaac1c07efbaa", 74589,
+    #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
+    #         "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"})
+    ("settings",        "/settings/"):                 ("a499293306ea5d30", 80230,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "8cbae4b20e7083ef"}),
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

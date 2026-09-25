@@ -102,6 +102,7 @@ import boq as BQ
 import branding as B
 import docsheet as DS
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import ra as RA
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr, _meta
@@ -145,16 +146,17 @@ def next_tax_invoice_ref(datestr: str) -> str:
 
     ⚠ **A cancelled merged document keeps its number**, exactly as a cancelled
     RA bill keeps its `ra_no`. The count therefore includes cancelled rows.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max in this FY + 1,
+      floor)`, byte-identical with no floor set. `MI` keeps its OWN floor, as
+      it keeps its own counter: putting two counters under one series is the
+      precise failure Rule 46(b) exists to prevent, and one shared floor would
+      be the first step back towards it.
     """
     fy = P.fy_of(datestr)
-    highest = 0
-    for m in (STORE.get("merged_ras") or {}).values():
-        if m.get("fy") != fy:
-            continue
-        tail = str(m.get("tax_invoice_ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("MI", fy), cap=_REF_CAP)
 
 
 # =============================================================================

@@ -83,6 +83,7 @@ import approval
 import branding as B
 import cascade
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -224,17 +225,17 @@ def _next_ref(datestr: str) -> str:
 
     Scanning only same-FY records is what lets the series restart each April
     without ever colliding.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max in this FY + 1,
+      floor)`, byte-identical with no floor set. The vendor quotes this number
+      back on their invoice, so a go-live that restarts it at 0001 beside a
+      running book is the same problem the sell side has.
     """
     fy = P.fy_of(datestr)
-    highest = 0
-    for po in STORE["purchases"].values():
-        if po.get("fy") != fy:
-            continue
-        tail = str(po.get("ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
     # No 16-char cap: that is Rule 46's limit on a tax invoice, not ours.
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=64)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("PO", fy), cap=64)
 
 
 def is_open(po: dict) -> bool:

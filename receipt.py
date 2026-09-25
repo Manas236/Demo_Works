@@ -76,6 +76,7 @@ import cascade
 import boq as BQ
 import branding as B
 import pipeline as P
+import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import ra as RA
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -180,16 +181,14 @@ def next_ref(datestr: str) -> str:
     receipt must never re-issue a number that has already been quoted on a
     remittance advice. `proforma._next_ref()`'s rule, shared by every series in
     this app.
+
+    ⚠ **The scan moved to `series.py` on 25 September 2026 and the rule gained
+      a FLOOR** (ABOUT.md §7 gap 36) — `max(existing max in this FY + 1,
+      floor)`, byte-identical with no floor set.
     """
     fy = P.fy_of(datestr)
-    highest = 0
-    for r in (STORE.get("receipts") or {}).values():
-        if r.get("fy") != fy:
-            continue
-        tail = str(r.get("ref") or "").rpartition("/")[2]
-        if tail.isdigit():
-            highest = max(highest, int(tail))
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, highest + 1, cap=_REF_CAP)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
+                    SER.next_seq("RCPT", fy), cap=_REF_CAP)
 
 
 def receipts_of_boq(boq_id: str) -> list:

@@ -35,10 +35,13 @@ Clearing a field restores the default rather than saving a blank — see
 """
 
 import re
+from datetime import date as _date
+
 from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import pipeline as P
+import series as SER   # the document-number FLOORS (25 Sep 2026)
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES
 from store import STORE
@@ -375,6 +378,107 @@ def _validate_po_series(form) -> tuple:
         if int(raw) < 1:
             return data, "Draft PO next number: must be 1 or more."
     return data, ""
+
+
+# =============================================================================
+# THE DOCUMENT-NUMBER FLOORS — CC-free go-live hardening, 25 September 2026
+# =============================================================================
+#
+# ABOUT.md §7 gap 36. A **fifth record** in this collection, here for the
+# draft-PO series' reasons and one sharper one of its own: it does not print in
+# a letterhead, `apply_settings()` must not push it onto `branding`, and the
+# nav's amber completeness dot must not count it. That dot means "a statutory
+# detail is missing and a document will print a chip"; **a blank floor is the
+# NORMAL configuration** and counting it would light the dot on every install
+# that never touched this section.
+#
+# ⚠ **THE RECORD AND ITS RULE LIVE IN `series.py`, NOT HERE**, and that is the
+#   one structural difference from the draft-PO and challan series above.
+#   `boq.py` MAY NOT IMPORT `settings.py` — `tests/test_import_directions.py`
+#   refuses the arrow — and neither may `charge.py`, `docsheet.py`,
+#   `boqpick.py`, `employee.py`, `project.py` or `chrome.py`. A floor reachable
+#   from some minters and not from others is not a floor. So the leaf owns the
+#   rule and this page owns the form, exactly as `challan.py` owns the document
+#   and this page owns its series — the same split, the other way round.
+#
+# ⚠ **A FLOOR IS NOT A NEXT-NUMBER.** The draft PO and the challan above store
+#   a *counter* that advances on every save and spends a number even when the
+#   document is deleted. These store a *lower bound*: `next = max(existing max
+#   in the scope + 1, floor)`. The difference is what makes one safe to set on
+#   a live box — a floor below where a series has already reached does nothing
+#   at all — and it is why the two kinds are not merged into one control.
+#
+# ⚠ **An FY-reset series' floor is stored WITH the financial year**, so a floor
+#   set for 26-27 is inert in 27-28 and the April reset to 0001 under Rule
+#   46(b) still happens. That is the question gap 36 said had to be answered by
+#   the client's numbering policy before this was worth building, and the
+#   thirty-first §0 block is the answer.
+
+def _today_fy() -> str:
+    """The financial year a floor set today applies to."""
+    return P.fy_of(_date.today().isoformat())
+
+
+def series_floor_rows() -> list:
+    """
+    `[(series, scope, floor, current_max, next_ref_preview)]` — what the form
+    draws, and what its validator checks against. One place, so the preview
+    and the refusal cannot disagree.
+    """
+    fy = _today_fy()
+    rows = []
+    for s in SER.SERIES:
+        scope = s.scope_for(fy)
+        rows.append((s, scope, SER.floor_of(s.key, scope),
+                     SER.current_max(s.key, fy), SER.next_seq(s.key, fy)))
+    return rows
+
+
+def _validate_series_floors(form) -> tuple:
+    """
+    `(data, error)` — and **always returns data**, `address._validate()`'s
+    contract, which every form in this app holds to.
+
+    ⚠ **A FLOOR AT OR BELOW THE CURRENT MAX IS REFUSED, AND THE MAX IS NAMED.**
+      `series.next_seq()` would simply ignore such a floor — `max()` cannot
+      pull a series backwards — so accepting it would store a number that does
+      nothing, on a page whose entire purpose is to make a series start where
+      the operator says. A control that silently has no effect is worse than
+      one that says why. **A floor only ever moves a series forward.**
+
+    ⚠ Digits only, and 1 or more, exactly as `_validate_po_series()` and
+      `_validate_dc_series()` require. Blank is always legal and means
+      "no floor" — which is today's behaviour, byte-identical.
+    """
+    fy = _today_fy()
+    data = {}
+    error = ""
+    for s in SER.SERIES:
+        raw = (form.get(f"floor_{s.key}") or "").strip()
+        data[s.key] = raw
+        if not raw or error:
+            continue
+        if not raw.isdigit():
+            error = f"{s.label} starting number: digits only."
+            continue
+        n = int(raw)
+        if n < 1:
+            error = f"{s.label} starting number: must be 1 or more."
+            continue
+        highest = SER.current_max(s.key, fy)
+        if n <= highest:
+            error = (f"{s.label} starting number: {n} is at or below the "
+                     f"highest number already issued, which is {highest}. "
+                     f"A starting number can only move a series forward — "
+                     f"use {highest + 1} or more, or leave it blank.")
+    return data, error
+
+
+def save_series_floors(data: dict) -> None:
+    """Write every floor back, under the scope each series is currently in."""
+    fy = _today_fy()
+    for s in SER.SERIES:
+        SER.save_floor(s.key, s.scope_for(fy), data.get(s.key, ""))
 
 
 # =============================================================================
@@ -747,10 +851,13 @@ def edit_settings():
         mc_data, mc_error = _validate_measurement_columns(
             request.form.get("measurement_columns", ""))
         lb_data, lb_error = _validate_labour(request.form)
-        error = error or po_error or dc_error or ch_error or lb_error or mc_error
+        sf_data, sf_error = _validate_series_floors(request.form)
+        error = (error or po_error or dc_error or ch_error or lb_error
+                 or mc_error or sf_error)
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
+            save_series_floors(sf_data)
             save_charge_heads(ch_data)
             save_measurement_columns(mc_data)
             save_labour_settings(lb_data["ot_multiplier"])
@@ -773,6 +880,11 @@ def edit_settings():
         mc_values = (measurement_columns_text(mc_data) if mc_data
                      else request.form.get("measurement_columns", ""))
         lb_values = lb_data
+        # What the operator typed, kept in the boxes — address._validate()'s
+        # contract. `series_floor_rows()` is re-read either way, because the
+        # max and the preview beside each box are facts about the store, not
+        # about the form.
+        sf_values = sf_data
     else:
         values = B.current_settings()
         po_values = po_series()
@@ -780,6 +892,8 @@ def edit_settings():
         ch_values = "\n".join(charge_heads())
         mc_values = measurement_columns_text()
         lb_values = labour_settings()
+        sf_values = {s.key: (str(f) if f else "")
+                     for s, _sc, f, _mx, _nx in series_floor_rows()}
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -809,6 +923,30 @@ def edit_settings():
                 cls = "form-group"
             out += (f'<div class="{cls}"><label for="{key}">{label}</label>'
                     f'{ctl}{blank}</div>')
+        return out
+
+    def _floor_rows_html() -> str:
+        """
+        One box per series, with the two facts an operator needs beside it:
+        the highest number already issued, and what the next document will
+        actually be called if they save this.
+        """
+        out = ""
+        for s, scope, _floor, highest, nxt in series_floor_rows():
+            typed = sf_values.get(s.key, "")
+            issued = (f"highest issued: <b>{highest:04d}</b>" if highest
+                      else "nothing issued yet")
+            span = ("financial year <b>" + P.esc(scope) + "</b>"
+                    if s.fy_scoped else "<b>one running series</b>")
+            out += (
+                f'<div class="form-group">'
+                f'<label for="floor_{s.key}">{P.esc(s.label)}</label>'
+                f'<input type="text" id="floor_{s.key}" name="floor_{s.key}" '
+                f'inputmode="numeric" value="{P.esc(typed)}" '
+                f'placeholder="leave blank to carry on from {nxt:04d}"/>'
+                f'<div class="fld-hint">{P.esc(s.sample)} &middot; {span} '
+                f'&middot; {issued}<br/>{P.esc(s.note)}</div>'
+                f'</div>')
         return out
 
     filled, total = _completeness(values)
@@ -958,6 +1096,33 @@ def edit_settings():
                 statutory rate. Applied to the hourly rate, never to the day.</div>
             </div>
           </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Starting Numbers &mdash; every other series</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            <b>Set these once, at go-live, so a series continues the book the
+            office already keeps</b> instead of restarting at 0001 beside it.
+            Leave a box blank and nothing changes &mdash; that is the normal
+            setting, and every box below starts blank.
+            <br/><br/>
+            &#9888; <b>A starting number is a floor, not a counter.</b> The next
+            document takes whichever is higher: one more than the highest number
+            already issued, or the number set here. So it can only ever move a
+            series <b>forward</b> &mdash; a number at or below what has already
+            gone out is refused, and the box says what the highest is.
+            <br/><br/>
+            &#9888; <b>The ones marked with a financial year apply to that year
+            only.</b> Each of them restarts at 0001 every April, which for a tax
+            invoice is Rule 46(b) rather than a preference, so a number set for
+            one year is deliberately ignored in the next. That is what makes it
+            impossible for a starting number to repeat a serial across years.
+            <br/><br/>
+            &#9888; <b>The quotation series is not here</b> and has no starting
+            number. A quotation is an offer rather than a tax document, so
+            nothing statutory depends on its number.
+          </p>
+          <div class="fg2">{_floor_rows_html()}</div>
         </div>
 
         <div class="form-section">
