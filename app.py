@@ -86,6 +86,34 @@ app = Flask(__name__)
 # Connect, create the schema if absent, and hydrate STORE from MySQL. When the
 # reloader is active this runs in both the watcher and the worker process;
 # everything involved is idempotent, so that is harmless.
+def disarm_frozen_demo_seeder() -> None:
+    """
+    Switch `product.ensure_demo_products()` off when demo data is off.
+
+    ⚠ **`product.py` IS FROZEN (INTRODUCTION.md §7) and this pass did not edit
+      it.** Every other demo seeder asks `auth.demo_data_on()` for itself;
+      this one cannot, so the flag it already guards itself with is set
+      before anything can call it. `ensure_demo_products()` opens with
+      `if STORE["_seeded"]: return`, so all six of its call sites — including
+      the two inside the two frozen files — become no-ops.
+
+      This is the trick the catalogue hide used on 11 September 2026: a toggle
+      applied from **outside** a file that is not ours to edit, rather than a
+      line added inside it. ABOUT.md §7 gap 35 names it.
+
+    ⚠ **A pre-set flag, not a deletion.** Nothing already in the products
+      table is touched, and flipping the environment variable back on and
+      restarting seeds normally.
+
+    ⚠ **It is a FUNCTION rather than two lines inside `_boot_persistence()`
+      so the tests can run the real thing.** A test that re-implemented this
+      would be asserting its own copy, which is the one shape of test that
+      cannot catch this going wrong.
+    """
+    if not auth.demo_data_on():
+        STORE["_seeded"] = True
+
+
 def _boot_persistence() -> None:
     live = db.init()
     if live:
@@ -95,10 +123,16 @@ def _boot_persistence() -> None:
         print(f"  * WARNING: {db.status()}")
         print("  *          data will be lost on restart. Check .env / MySQL.")
 
-    # The specimen company identity. Seeded here rather than from a route
-    # because the letterhead is rendered by the FIRST request and there is no
-    # route guaranteed to run before it. Only ever fills a gap — an identity
-    # just loaded out of MySQL is left alone.
+    # The one demo seeder that cannot check the flag for itself, because its
+    # file is frozen. Above `ensure_demo_settings()` and above the first
+    # request, which is all the ordering this needs.
+    disarm_frozen_demo_seeder()
+
+    # The charge heads, and the specimen company identity when demo data is on.
+    # Seeded here rather than from a route because the letterhead is rendered
+    # by the FIRST request and there is no route guaranteed to run before it.
+    # Only ever fills a gap — an identity just loaded out of MySQL is left
+    # alone, and turning the flag off never removes one.
     ensure_demo_settings()
 
     # Company identity and bank details saved on /settings override the defaults

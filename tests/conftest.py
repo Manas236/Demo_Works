@@ -14,6 +14,20 @@ import sys
 os.environ["DB_ENABLED"] = "false"
 os.environ.setdefault("SECRET_KEY", "test-secret")
 
+# ⚠ **DEMO SEEDING IS FORCED ON FOR THE SUITE, and it is `=` rather than
+#   `setdefault` on purpose** (25 September 2026, ABOUT.md §7 gap 35).
+#
+# `SAMRUDDHI_DEMO_DATA` defaults to **off**, because the failure that matters
+# is a client box nobody configured. Several hundred tests and five print
+# goldens are written against the seeded products, addresses and the 97-line
+# demo BOQ, so the suite has to ask for the demo explicitly — and it has to
+# ask **unconditionally**, because a developer or a production box with
+# `SAMRUDDHI_DEMO_DATA=false` in the environment or in `.env` would otherwise
+# turn the whole suite red for a reason that has nothing to do with the code.
+# `tests/test_demo_data_flag.py` is what covers the OFF state, and it sets the
+# variable per test with `monkeypatch`.
+os.environ["SAMRUDDHI_DEMO_DATA"] = "true"
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402

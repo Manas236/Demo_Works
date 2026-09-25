@@ -168,7 +168,24 @@ def ensure_demo_addresses() -> None:
 
     ⚠  Demo data — company names, GSTINs and phone numbers are illustrative
        only. The vendor names are invented; they are not Samruddhi's suppliers.
+
+    ⚠ **GATED BY `SAMRUDDHI_DEMO_DATA`, WHICH DEFAULTS TO OFF** (25 September
+      2026, ABOUT.md §7 gap 35). Three of these six carry **real company
+      names** — Sunteck Realty, Torrent Power, Kohinoor Techpark — against
+      **invented GSTINs that pass the /settings validator**. On a client's
+      server that is not demo data; it is an address book somebody will bill
+      from. `auth.demo_data_on()` is the one reader, imported in the function
+      body exactly as `purchase._catalogue_hidden()` reaches the catalogue
+      switch, so the arrow does not join the module graph for one boolean.
+
+      The flag is checked **before** the `_addr_seeded` guard and the guard is
+      NOT set when it is off: nothing is seeded, so there is nothing to record
+      as seeded, and flipping the flag on without a restart still works.
     """
+    import auth
+
+    if not auth.demo_data_on():
+        return
     if STORE.get("_addr_seeded"):
         return
 

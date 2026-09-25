@@ -144,7 +144,8 @@ DEMO_COMPANY = {
 
 def ensure_demo_settings() -> None:
     """
-    Seed the specimen company identity on first call; a no-op afterwards.
+    Seed the charge heads always, and the specimen company identity only when
+    `SAMRUDDHI_DEMO_DATA` is on. A no-op after the first call either way.
 
     This exists because the identity used to be **hand-entered** into
     `STORE["settings"]["company"]` and never seeded. It therefore lived only in
@@ -159,22 +160,51 @@ def ensure_demo_settings() -> None:
     Guarded by `STORE["_settings_seeded"]`, which is deliberately not persisted
     — the same contract as every other seeder in this app.
 
-    ⚠ One consequence worth knowing: `edit_settings()` **deletes** the record
-      when every field is left at its default, so "clear everything and
-      restart" brings the specimen row back. That is the same behaviour
-      `ensure_demo_products()` has on an emptied table and it is the price of
-      an unpersisted flag. If a genuinely blank identity is ever wanted, it
-      needs a persisted "deliberately cleared" marker rather than the absence
-      of a record — the absence cannot tell "never set" from "set to nothing".
+    ⚠ **THIS FUNCTION SEEDS TWO DIFFERENT KINDS OF THING AND THEY ARE SPLIT
+      HERE** (25 September 2026, ABOUT.md §7 gap 35). It always did both and
+      one flag covered both, which is precisely why gap 35 called the fix "a
+      decision rather than a line":
+
+      * The **charge heads** are a **genuine default**. `/charge/new` renders a
+        dropdown from them and an empty list is an unusable page, so they are
+        seeded whatever `SAMRUDDHI_DEMO_DATA` says.
+      * The **specimen company identity** is **demo data**. Its GSTIN is the
+        all-A/all-zero template, its bank is `SPECIMEN BANK LTD.` and its
+        address is invented — and every one of those prints on a customer's
+        tax invoice. It is seeded only while the flag is on.
+
+    ⚠ **With the flag off and no identity seeded, every print route renders
+      with BLANK company fields, not a crash and not a leftover SPECIMEN
+      string.** `branding.DEFAULTS` is snapshotted from the module's own
+      import-time values, and those are `""` for every statutory field — so
+      `apply_settings({})` leaves them blank and `branding.field()` draws the
+      existing amber `add …` chip. DEPLOY.md §6.3 used to say a blank field
+      "falls back to the DEFAULTS snapshot — which is the specimen value";
+      that was wrong, the specimen values only ever lived in `DEMO_COMPANY`
+      below and in the stored record, and the correction is in that file.
+
+    ⚠ One consequence worth knowing, and it is the other half of gap 35:
+      `edit_settings()` **deletes** the record when every field is left at its
+      default, so "clear everything and restart" used to bring the specimen row
+      back. With the flag off it no longer does — which is the "a delete stays
+      deleted" half. The seed flags are still deliberately unpersisted
+      (`db.py`), and that is now harmless rather than load-bearing: a seeder
+      that is switched off has nothing to remember.
     """
+    import auth
+
     if STORE.get("_settings_seeded"):
         return
-    # Only ever fills a gap. An identity somebody has actually entered — or
-    # one loaded back out of MySQL a moment ago — is never overwritten.
-    if RECORD_ID not in STORE["settings"]:
-        STORE["settings"][RECORD_ID] = dict(DEMO_COMPANY)
+    # GENUINE DEFAULT — seeded whatever the demo flag says. A page needs it to
+    # render, and there is nothing of anybody else's in a list of expense
+    # categories.
     if CHARGE_HEADS_RECORD not in STORE["settings"]:
         STORE["settings"][CHARGE_HEADS_RECORD] = {"heads": list(DEFAULT_CHARGE_HEADS)}
+    # DEMO DATA. Only ever fills a gap even then: an identity somebody has
+    # actually entered — or one loaded back out of MySQL a moment ago — is
+    # never overwritten, and turning the flag off never removes one.
+    if auth.demo_data_on() and RECORD_ID not in STORE["settings"]:
+        STORE["settings"][RECORD_ID] = dict(DEMO_COMPANY)
     STORE["_settings_seeded"] = True
 
 

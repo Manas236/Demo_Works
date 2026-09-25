@@ -503,6 +503,22 @@ the question does not arise.
 **This is the finding most likely to reach a real customer on a real document,
 and it is not in `ABOUT.md`'s deployment notes because there are none.**
 
+> ### ✅ FIXED — 25 September 2026, and this section is kept rather than deleted
+>
+> **`SAMRUDDHI_DEMO_DATA` now gates all four demo seeders and DEFAULTS TO
+> OFF**, so a production box built from §9 grows none of what this section
+> describes and a deletion stays deleted across a restart. ABOUT.md §7 gap 35
+> and CLIENT_CHANGES.md §0, the thirty-first block.
+>
+> The section below is left standing because it is still the accurate account
+> of **what a box that sets `SAMRUDDHI_DEMO_DATA=true` will do**, and of what
+> is already in a database that booted with the demo on before this date —
+> turning the flag off stops the seeding, it deletes nothing. Three
+> corrections are marked inline: §6.1's trigger column, §6.2, and §6.3's last
+> paragraph, which was **wrong**.
+>
+> ⚠ **§8.1 is therefore closed.** The rest of §8 is untouched.
+
 ### 6.1 What gets created without anybody asking
 
 | Seeded | Trigger | Code |
@@ -518,6 +534,13 @@ The product catalogue being hidden (`auth.py:486`) does **not** prevent this —
 `quotation.py:1228` and `purchase.py:2054`. The rows are created; they are just
 not browsable.
 
+> ✅ **`SAMRUDDHI_DEMO_DATA=false` does prevent it** (25 September 2026), and
+> at every one of those call sites including the two in frozen files.
+> `product.py` may not be edited, so `app.disarm_frozen_demo_seeder()` pre-sets
+> the `STORE["_seeded"]` guard the function already opens with — the same
+> "toggle from outside" the catalogue hide used. The **Trigger** column above
+> therefore reads "every boot" / "first visit to /" only while the flag is on.
+
 ### 6.2 Why deleting it does not work
 
 **The seed flags are deliberately not persisted** (`db.py:82-85`). So `_seeded`,
@@ -530,6 +553,13 @@ restart' brings the specimen row back… the absence cannot tell 'never set' fro
 
 **So the client deletes the specimen data, restarts a week later, and it is
 back.**
+
+> ✅ **Not any more, with `SAMRUDDHI_DEMO_DATA=false`** (25 September 2026).
+> The seed flags are still deliberately unpersisted and `db.py:82-85` still
+> says why — that is now harmless rather than load-bearing, because a seeder
+> that is switched off has nothing to remember. `settings.py`'s note about
+> "clear everything and restart" bringing the specimen row back is true only
+> while the flag is on.
 
 ### 6.3 What this means operationally
 
@@ -552,12 +582,33 @@ or file a template GSTIN.
    and the bank block.
 5. Only then let anyone raise a real document.
 
-⚠ **Do not leave a field blank hoping it disappears.** A blank field falls back
-to the `DEFAULTS` snapshot (`branding.py:104-111`) — which is the specimen
-value, not nothing.
+⚠ **THIS PARAGRAPH WAS WRONG AND IS CORRECTED — 25 September 2026.** It read:
 
-Delete the demo BOQ, products, specs and addresses **after** step 3, and know
-they will return on the next restart until §8.1 is done.
+> *"Do not leave a field blank hoping it disappears. A blank field falls back
+> to the `DEFAULTS` snapshot (`branding.py:104-111`) — which is the specimen
+> value, not nothing."*
+
+**It is not the specimen value.** `branding.DEFAULTS` is snapshotted from that
+module's own import-time values, and those are `""` for every statutory field
+(`branding.py:31-38`, `:62-66`). The specimen values only ever lived in
+`settings.DEMO_COMPANY` and in the stored `STORE["settings"]["company"]` row.
+So a blank field falls back to **blank**, and `branding.field()` draws the
+amber `add …` chip — which is the behaviour the whole identity block was
+written for.
+
+**Measured, not argued**: with no identity seeded, all nine print routes
+render `200` and none of the seven specimen strings appears on any of them —
+`tests/test_print_golden.py::test_every_print_route_renders_with_a_blank_company_identity`,
+with `test_the_blank_identity_sweep_is_not_vacuous` proving the check can fail.
+
+**What stays true**: a blank statutory field prints a visible amber marker on a
+document that goes to a customer, so step 3 is still mandatory before anybody
+raises a real one. Blank is *safe*, not *finished*.
+
+✅ **Delete the demo BOQ, products and addresses after step 3, and with
+`SAMRUDDHI_DEMO_DATA=false` they stay deleted across a restart.** (The spec
+library is a genuine default and is seeded whatever the flag says — do not
+delete it, the BOQ and quotation pickers are written from it.)
 
 ---
 
@@ -702,12 +753,16 @@ Comfortable, but account for it:
 **Recorded, not made.** This pass modified nothing. Ordered by how much damage
 each one does if it ships as-is.
 
-**8.1 — Specimen data cannot be removed.** §6. The seed flags are unpersisted by
-design (`db.py:82-85`) and the seeders run from live routes. Needs either a
-persisted "deliberately cleared" marker — `settings.py:166-168` already proposes
-exactly this — or an env flag that disables demo seeding in production. **The
-client cannot permanently delete the Sify BOQ or the specimen GSTIN until this is
-done.**
+**8.1 — Specimen data cannot be removed.** ✅ **DONE — 25 September 2026.**
+Built as the second of the two options this entry named: *"an env flag that
+disables demo seeding in production"*. `SAMRUDDHI_DEMO_DATA` gates all four
+demo seeders and **defaults to off**; the spec library, charge heads and
+measurement columns are genuine defaults and are not gated. `product.py` is
+frozen, so its seeder is disarmed from `app.disarm_frozen_demo_seeder()`
+rather than edited — the trick the catalogue hide used. ABOUT.md §7 gap 35,
+CLIENT_CHANGES.md §0 thirty-first block, `tests/test_demo_data_flag.py`.
+The persisted "deliberately cleared" marker was **not** built and is not
+needed: a seeder that never runs leaves nothing to mark.
 
 **8.2 — Reference minting has no lock.** §7.3(a). Ten call sites; the GST-serial
 ones (`invoice.py:182-191`, `ra.py:1050+`) are the statutory ones. Needs a mutex
@@ -853,6 +908,12 @@ ATTACHMENT_DIR=/var/lib/samruddhi/attachments
 SESSION_COOKIE_SECURE=true
 SESSION_COOKIE_HTTPONLY=true
 SESSION_COOKIE_SAMESITE=Lax
+
+# ⚠ Demo data OFF. The code already defaults to false (25 September 2026);
+#   set it anyway, so nothing about this box is implicit. `true` here seeds
+#   12 demo products, 6 addresses with invented GSTINs, a 97-line BOQ headed
+#   with another company's name, and a SPECIMEN company identity. See §6.
+SAMRUDDHI_DEMO_DATA=false
 ```
 
 ```bash

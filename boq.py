@@ -579,10 +579,31 @@ def ensure_demo_boq() -> None:
 
     It depends on the library, so `ensure_demo_specs()` runs first — the lines
     are built from specs by code, the same path the picker takes.
+
+    ⚠ **GATED BY `SAMRUDDHI_DEMO_DATA`, WHICH DEFAULTS TO OFF** (25 September
+      2026, ABOUT.md §7 gap 35). This is the single worst record to find on a
+      client's server: a **97-line, ₹91.9 lakh priced schedule headed with
+      another company's name** — project "Sify Bangalore", account "Prudent
+      Teqtis Pvt Ltd". `auth.demo_data_on()` is the one reader, imported in
+      the function body exactly as `purchase._catalogue_hidden()` reaches the
+      catalogue switch.
+
+      ⚠ **`ensure_demo_specs()` is NOT gated with it, must not be, and runs
+      ABOVE the return.** The spec library is a **genuine default** — it is
+      what the BOQ picker and, since 12 September, the quotation picker are
+      written from, so an empty library is an empty picker on a fresh install.
+      Five `boq.py` routes reach the library **only** through this function,
+      so seeding it after the flag check would leave the picker empty on
+      exactly the install this flag is for. The one line of ordering is the
+      whole of that.
     """
+    import auth
+
+    ensure_demo_specs()
+    if not auth.demo_data_on():
+        return
     if STORE.get("_boq_seeded"):
         return
-    ensure_demo_specs()
 
     bid = DD.BOQ_META["id"]
     if bid in STORE["boqs"]:

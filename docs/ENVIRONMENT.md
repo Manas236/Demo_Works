@@ -142,7 +142,54 @@ all, and `tests/test_deployment_config.py` exists mostly for it.
 
 ---
 
-## 6. Single-worker guard — `wsgi.py`
+## 6. Demo data — `auth.py`
+
+| Variable | Default | Production | What it does |
+|---|---|---|---|
+| `SAMRUDDHI_DEMO_DATA` | **`false`** | ⚠ **`false`** | `true` seeds 12 demo products, 6 demo addresses, a 97-line demo BOQ and a **specimen company identity** on a fresh database. None of it is the client's. |
+
+⚠ **This is the one flag on this page whose default is the PRODUCTION value,
+not the local-dev one**, and the asymmetry is deliberate. Everywhere else a
+default that breaks `python app.py` is a default that gets deleted; here the
+failure that matters is a client box nobody remembered to configure, and the
+safe side of that failure is the side that grows no data. `.env.example` ships
+`true` because that is the dev file; a production `.env` sets `false` or simply
+omits the line.
+
+**What it gates, and what it does not.** Four seeders are DEMO and are gated:
+
+| Seeded | Where | Gated |
+|---|---|---|
+| 12 demo products | `product.ensure_demo_products()` | ✅ — disarmed from `app.disarm_frozen_demo_seeder()`, because `product.py` is frozen |
+| 6 demo addresses — **real company names, invented GSTINs** | `address.ensure_demo_addresses()` | ✅ |
+| 1 demo BOQ — 97 lines, ₹91.9 lakh, **another company's name** | `boq.ensure_demo_boq()` | ✅ |
+| specimen company identity — template GSTIN/PAN, `SPECIMEN BANK LTD.` | `settings.ensure_demo_settings()` | ✅ |
+
+Three are **genuine defaults** and are seeded whatever this says, because a page
+needs them to render:
+
+| Seeded | Where | Why it is not gated |
+|---|---|---|
+| the 56-clause spec library | `spec.ensure_demo_specs()` | the BOQ picker is written from it, and since 12 September 2026 so is the quotation picker |
+| the 9 charge heads | `settings.ensure_demo_settings()` | `/charge/new` renders a dropdown from them |
+| the 12 measurement grid columns | `settings.DEFAULT_MEASUREMENT_COLUMNS` | a module constant with a settings override, not a seeded row |
+
+⚠ **It stops seeding. It deletes nothing.** A database that has already booted
+once with the demo on still holds those records. Turning the flag off stops
+them coming back after the operator removes them — which is the half of
+ABOUT.md §7 gap 35 that made deleting them pointless.
+
+⚠ **Read on every call, never cached in a module constant**, for
+`ATTACHMENT_DIR`'s reason. `auth.demo_data_on()` is the one reader every seeder
+uses; `auth.demo_data_config()` is the side-effect-free `(on, problems)` form.
+A value that does not parse is reported to stderr **once** and the default is
+used — `SAMRUDDHI_DEMO_DATA=ture` never resolves to `True` by truthiness, which
+matters more here than anywhere else on this page: it would put another
+company's priced schedule on a client's server and say nothing.
+
+---
+
+## 7. Single-worker guard — `wsgi.py`
 
 | Variable | Default | Production | What it does |
 |---|---|---|---|
@@ -157,7 +204,7 @@ which share one STORE.
 
 ---
 
-## 7. Tooling — not read by the application
+## 8. Tooling — not read by the application
 
 | Variable | Read by | What it does |
 |---|---|---|
@@ -184,6 +231,7 @@ ATTACHMENT_DIR=/var/lib/samruddhi/attachments    # outside the checkout
 SESSION_COOKIE_SECURE=true
 SESSION_COOKIE_HTTPONLY=true
 SESSION_COOKIE_SAMESITE=Lax
+SAMRUDDHI_DEMO_DATA=false    # the code already defaults to this — set it anyway
 ```
 
 Then:

@@ -1767,3 +1767,149 @@ def test_no_print_route_renders_the_nav(
             f"document alone behind a `.no-print` action bar — /dc/print's shape "
             f"— and never calls _nav(). Re-adding it re-couples every printed "
             f"document's golden to the navigation, which is the gap this closed.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A BLANK COMPANY IDENTITY — every print route, 25 September 2026
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ABOUT.md §7 gap 35 / CLIENT_CHANGES.md §0, the thirty-first block. With
+# `SAMRUDDHI_DEMO_DATA` off, `settings.ensure_demo_settings()` seeds no
+# specimen identity — so on a client's first boot every statutory field is
+# genuinely empty, which had never been rendered before this pass.
+#
+# ⚠ **This is the exact inverse of `pinned_identity` above**, and it belongs in
+#   this file for that reason: the nine documents, the fixtures and the route
+#   table are already here, and a second copy of them somewhere else would be a
+#   second thing to keep in step.
+#
+# ⚠ **DEPLOY.md §6.3 asserted the opposite of what this measures**, and said so
+#   in terms: *"Do not leave a field blank hoping it disappears. A blank field
+#   falls back to the DEFAULTS snapshot (branding.py:104-111) — which is the
+#   specimen value, not nothing."* It is not. `branding.DEFAULTS` is
+#   snapshotted from that module's own import-time values and those are `""`
+#   for every statutory field; the specimen values only ever lived in
+#   `settings.DEMO_COMPANY` and in the stored record. The correction is in
+#   DEPLOY.md; this is the measurement behind it.
+
+# Every string that exists only in `settings.DEMO_COMPANY`. If one of these
+# reaches a rendered document while nothing is seeded, something is falling
+# back to specimen data — which on a client's server means a customer paying
+# into an account that does not exist.
+SPECIMEN_STRINGS = (
+    "27AAAAA0000A1Z5",          # the all-A/all-zero template GSTIN
+    "AAAAA0000A",               # the template PAN
+    "SPECIMEN BANK LTD",
+    "50200000000000",           # the trailing-zeros account number
+    "SPEC0000000",              # the template IFSC
+    "Ganesh Industrial Estate",  # the invented address
+    "Koparkhairne",             # the invented bank branch
+)
+
+
+@pytest.fixture()
+def blank_identity():
+    """
+    NO company identity at all, and put back afterwards.
+
+    `pinned_identity`'s inverse, built the same way: the record is removed and
+    `branding` is re-applied from the empty result, because every one of these
+    fields is read off the module at render time.
+
+    ⚠ **It must be the LAST fixture in a test's signature.** Every `golden*`
+      fixture depends on `pinned_identity`, which writes the specimen row — so
+      a test listing this one first has it undone before the request is ever
+      made, and passes for exactly the wrong reason. That is not hypothetical:
+      it is what all nine of these did on their first run.
+    """
+    saved = STORE["settings"].get(settings_mod.RECORD_ID)
+    STORE["settings"].pop(settings_mod.RECORD_ID, None)
+    B.apply_settings(settings_mod.load_saved())
+    yield
+    if saved is None:
+        STORE["settings"].pop(settings_mod.RECORD_ID, None)
+    else:
+        STORE["settings"][settings_mod.RECORD_ID] = saved
+    B.apply_settings(settings_mod.load_saved())
+
+
+PRINT_ROUTES = [
+    ("tax invoice",        f"/invoice/view/{GOLD_TI}"),
+    ("proforma",           f"/proforma/view/{GOLD_PI}"),
+    ("purchase order",     f"/purchase/view/{GOLD_PO}"),
+    ("RA bill",            "/ra/print/gold-ra"),
+    ("merged tax invoice", f"/merged/print/{GOLD_MERGED}"),
+    ("delivery challan",   f"/dc/print/{GOLD_DC}"),
+    ("BOQ",                "/boq/print/gold-boq"),
+    ("draft PO",           f"/po/print/{GOLD_DPO}"),
+    ("measurement sheet",  f"/measurement/print/{GOLD_MS}"),
+]
+
+
+@pytest.mark.parametrize("name,url", PRINT_ROUTES)
+def test_every_print_route_renders_with_a_blank_company_identity(
+        name, url, client, golden, golden_ra, golden_dc, golden_dpo,
+        golden_merged, golden_ms, blank_identity):
+    """
+    ⚠ **The headline of gap 35's second half.** A client's first boot has no
+    identity at all now, and a print route that 500s on that is a system the
+    operator cannot use before they have finished configuring it — which is
+    precisely when they will try to print one to check.
+
+    Three things, and the third is the one that matters commercially:
+    the page renders at all, it renders as a page, and **no specimen string
+    survives anywhere on it**.
+    """
+    r = client.get(url)
+    assert r.status_code == 200, (
+        f"{name}: {url} returned {r.status_code} with a blank company "
+        f"identity. A fresh client install has exactly this configuration.")
+    html = r.get_data(as_text=True)
+    assert "<html" in html, f"{name}: {url} did not render a page"
+
+    leaked = [s for s in SPECIMEN_STRINGS if s in html]
+    assert not leaked, (
+        f"{name}: {url} printed specimen data {leaked} while NOTHING is "
+        f"seeded. Something falls back to settings.DEMO_COMPANY rather than "
+        f"to branding.DEFAULTS, and a customer would pay into an account that "
+        f"does not exist.")
+
+
+@pytest.mark.parametrize("name,url", PRINT_ROUTES)
+def test_a_blank_identity_prints_the_amber_todo_chip_rather_than_nothing(
+        name, url, client, golden, golden_ra, golden_dc, golden_dpo,
+        golden_merged, golden_ms, blank_identity):
+    """
+    Blank must be **visible**. `branding.field()` draws an amber `add …` chip
+    for an empty statutory field precisely so an incomplete document cannot go
+    out looking finished — gap 35 requires the existing marker, not silence.
+
+    ⚠ The delivery challan and the joint measurement sheet are excluded: a
+    challan carries no GSTIN or bank block by design (Rule 55 is not Rule 46),
+    and the measurement sheet is a site record rather than a money document.
+    Both are still swept by the test above for a specimen leak.
+    """
+    if name in ("delivery challan", "measurement sheet"):
+        pytest.skip(f"{name} carries no statutory identity block by design")
+    html = client.get(url).get_data(as_text=True)
+    assert "todo-chip" in html, (
+        f"{name}: {url} rendered a blank identity with no amber marker at all. "
+        f"An incomplete document must not look finished.")
+
+
+def test_the_blank_identity_sweep_is_not_vacuous(
+        client, pinned_identity, golden):
+    """
+    ⚠ **The mutation guard for the two sweeps above.** They would both pass
+    against a page that rendered nothing at all, and the leak check would pass
+    trivially if `SPECIMEN_STRINGS` no longer matched anything anywhere.
+
+    So: with the identity PINNED to the specimen values, the same page must
+    carry those strings. If this goes red the sweeps above prove nothing.
+    """
+    html = client.get(f"/invoice/view/{GOLD_TI}").get_data(as_text=True)
+    found = [s for s in SPECIMEN_STRINGS if s in html]
+    assert found, (
+        "the specimen identity is pinned and NONE of SPECIMEN_STRINGS appears "
+        "on the tax invoice — the blank-identity sweeps are hashing nothing")
+    assert "27AAAAA0000A1Z5" in html, "the specimen GSTIN must print here"

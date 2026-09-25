@@ -155,6 +155,87 @@ def session_cookie_config() -> tuple:
 
     return config, problems
 
+
+# =============================================================================
+# DEMO DATA — `SAMRUDDHI_DEMO_DATA`, and the default is OFF (25 September 2026)
+# =============================================================================
+#
+# ABOUT.md §7 gap 35: a brand new install fills itself with 84 records nobody
+# typed — twelve demo products, six demo addresses carrying **real company
+# names with invented GSTINs**, a 97-line ₹91.9 lakh BOQ headed with a third
+# party's name, and a specimen company identity whose GSTIN and bank account
+# are template patterns. On a demo box that is the point. On the client's
+# server it is a catalogue, an address book and somebody else's priced schedule
+# that an operator will reasonably believe is theirs.
+#
+# ⚠ **THE DEFAULT IS OFF, AND THAT IS THE WHOLE DESIGN DECISION.** Every other
+#   flag in this file defaults to the local-dev value, because a default that
+#   breaks `python app.py` is a default that gets deleted. This one is the
+#   other way round and deliberately so: the failure that matters is a client
+#   box where nobody remembered to set it, and the safe side of that failure is
+#   the side that grows no data. A developer who wants the demo sets
+#   `SAMRUDDHI_DEMO_DATA=true`, which `.env.example` ships and
+#   `tests/conftest.py` forces.
+#
+# ⚠ **It gates the four DEMO seeders and nothing else.** The spec library, the
+#   charge heads and the measurement grid columns are **genuine defaults** — a
+#   page needs them to render, and the quotation picker is written from the
+#   library — so they are seeded whatever this says. ABOUT.md §7 gap 35 has the
+#   classification.
+#
+# ⚠ **It stops seeding. It deletes nothing.** A database that has already
+#   booted once with the demo on still holds those records; turning the flag
+#   off simply stops them coming back after the operator removes them, which is
+#   the half of gap 35 that made the deletion pointless.
+DEMO_DATA_DEFAULT = False
+
+
+def demo_data_config() -> tuple:
+    """
+    `(on, problems)` — the demo-data switch as read from the environment.
+
+    `session_cookie_config()`'s contract, one flag along, and it is read on
+    every call rather than bound at import for `attachment.root()`'s reason:
+    the tests set it with `monkeypatch` and a value cached in a module constant
+    would make the first read the only one.
+
+    **Always returns a usable answer**, and an unparseable value is REPORTED
+    and falls back to the default — never resolved by truthiness. That matters
+    more here than anywhere else in this file: `SAMRUDDHI_DEMO_DATA=ture`
+    treated as truthy would seed another company's BOQ onto a client's server
+    and say nothing about it.
+    """
+    got = _env_bool("SAMRUDDHI_DEMO_DATA", DEMO_DATA_DEFAULT)
+    if got is None:
+        return DEMO_DATA_DEFAULT, [
+            f"SAMRUDDHI_DEMO_DATA={os.getenv('SAMRUDDHI_DEMO_DATA')!r} is not a "
+            f"boolean — using {DEMO_DATA_DEFAULT!r}. Use true or false."]
+    return got, []
+
+
+# Set once the warning has been printed, so a seeder called on every page visit
+# cannot turn one typo into a line of stderr per request. `demo_data_config()`
+# is the side-effect-free form and is what the tests read.
+_demo_warned = False
+
+
+def demo_data_on() -> bool:
+    """
+    Is demo seeding switched on? The one reader every seeder uses.
+
+    `blueprint_hidden()`'s shape, and consumers reach it with a function-body
+    `import auth` exactly as `purchase._catalogue_hidden()` does, so the arrow
+    does not join the module graph for one boolean.
+    """
+    global _demo_warned
+    on, problems = demo_data_config()
+    if problems and not _demo_warned:
+        _demo_warned = True
+        for line in problems:
+            print(f"  * WARNING: {line}", file=sys.stderr)
+    return on
+
+
 # The session holds the user id and nothing else. Permissions are resolved from
 # the store on every request, so an Owner editing a role takes effect on that
 # user's next click rather than on their next login — which is the entire point

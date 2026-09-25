@@ -248,6 +248,14 @@ def test_env_example_carries_no_value_that_looks_like_a_real_secret():
         "DB_ENABLED", "DB_STRICT", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER",
         "SAMRUDDHI_HOST", "SAMRUDDHI_PORT",
         "SESSION_COOKIE_SECURE", "SESSION_COOKIE_HTTPONLY", "SESSION_COOKIE_SAMESITE",
+        # `true` — a boolean, and the one value in this file that is a
+        # local-dev default in the strongest sense: the CODE defaults it to
+        # **false** (`auth.DEMO_DATA_DEFAULT`, 25 September 2026) and this file
+        # turns it on, which is the opposite way round from every other flag
+        # here. There is nothing secret in a boolean, and the reason the
+        # asymmetry exists is that a client box that never sets it must not
+        # grow data nobody typed. ABOUT.md §7 gap 35.
+        "SAMRUDDHI_DEMO_DATA",
     }
     for line in ENV_EXAMPLE.read_text(encoding="utf8").splitlines():
         stripped = line.strip()

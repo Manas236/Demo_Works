@@ -1295,6 +1295,42 @@ which empties the set for one test and restores it, so they keep proving
 the hidden state — every route, every role, both verbs, nothing destroyed — and
 the un-hidden control.
 
+#### Demo seeding — a THIRD switch in this file, and the only one that defaults off (25 September 2026)
+
+`auth.DEMO_DATA_DEFAULT = False`, read through **`auth.demo_data_on()` and
+nothing else**. `blueprint_hidden()`'s shape and `approval.ladder_on()`'s
+contract, a third time: one constant, one accessor, and every consumer reaches
+it with a function-body `import auth` exactly as `purchase._catalogue_hidden()`
+does — so the arrow never joins the module graph for one boolean.
+
+⚠ **It is the only switch in this application driven by the ENVIRONMENT rather
+than by a constant**, because it is a property of the *deployment* and not of
+the product: the same build has to seed a demo on a laptop and seed nothing on
+the client's server. `auth.demo_data_config()` is the side-effect-free
+`(on, problems)` form, `session_cookie_config()`'s contract; `demo_data_on()`
+warns **once per process** to stderr on an unparseable value and uses the
+default. It never resolves one by truthiness — `SAMRUDDHI_DEMO_DATA=ture`
+treated as truthy would put another company's ₹91.9 lakh BOQ on a client's box
+and say nothing at all.
+
+⚠ **The default is OFF, which inverts this file's own rule about defaults.**
+Every other flag here defaults to the local-dev value because a default that
+breaks `python app.py` gets deleted. This one defaults to the production value
+because the failure that matters is a client box nobody configured.
+`.env.example` ships `true` and `tests/conftest.py` forces `true`.
+
+What it gates, and what it deliberately does not, is the table in §7 gap 35.
+Two things about the mechanism belong here:
+
+| | |
+|---|---|
+| `product.py` | **not edited, and it is frozen.** `app.disarm_frozen_demo_seeder()` pre-sets the `STORE["_seeded"]` guard `ensure_demo_products()` already opens with, which disarms all six of its call sites — the two in the frozen files included. The "toggle from outside" the catalogue hide used, one switch along |
+| live data | **untouched.** The flag stops seeding; it deletes nothing, and it never removes a specimen identity already in `STORE["settings"]["company"]` |
+
+`tests/test_demo_data_flag.py` is the OFF state; every other file in the suite
+runs ON through `conftest.py`, so the goldens and the ~2,850 tests written
+against the seeded records do not move.
+
 #### The approval blueprint, off the same way while the ladder is switched off (12 September 2026)
 
 `auth.blueprint_off_reason(name)` is what the gate, `can_reach()`, the roles
@@ -9884,10 +9920,88 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
       sentence, a printed row) rather than gating anything. No stored figure was
       touched and no print golden moved.
 
-35. 🔴 **A brand new install fills itself with 84 demo records — including
+35. ✅ ~~🔴 **A brand new install fills itself with 84 demo records — including
     another company's ₹91.9 lakh BOQ — and deleting them does not make them stay
-    deleted.** Found 9 September 2026 (eighteenth pass), on the first occasion
-    this application was ever started against an empty database.
+    deleted.**~~ — **CLOSED 25 September 2026**, by the env flag this entry
+    named as "the obvious shape", and by answering the product question it said
+    had to be answered first. Found 9 September 2026 (eighteenth pass), on the
+    first occasion this application was ever started against an empty database.
+    CLIENT_CHANGES.md §0, the thirty-first block, is the authorisation; the
+    entry is struck rather than deleted because its measurement is the record of
+    what shipped on every build before this date.
+
+    **`SAMRUDDHI_DEMO_DATA`, and the default is OFF.** `auth.DEMO_DATA_DEFAULT
+    = False`, read through `auth.demo_data_on()` and nothing else — the shape
+    `blueprint_hidden()` and `ladder_on()` both have, and consumers reach it
+    with a function-body `import auth` exactly as `purchase._catalogue_hidden()`
+    does, so the arrow does not join the module graph for one boolean.
+    `auth.demo_data_config()` is the side-effect-free `(on, problems)` form.
+
+    ⚠ **The default is the PRODUCTION value, not the local-dev one, and that
+      inverts this file's own rule.** Every other flag defaults to what makes
+      `python app.py` work, because a default that breaks the dev server is a
+      default that gets deleted. This one is the other way round: the failure
+      that matters is a client box nobody configured, and the safe side of it
+      is the side that grows no data. `.env.example` ships `true`;
+      `tests/conftest.py` forces `true`.
+
+    **The classification — which of the seeders are demo, and which are not.**
+    This entry said the split *"is a product question"* and refused to guess.
+    It is answered:
+
+    | Seeder | Verdict | Gated? | Why |
+    |---|---|---|---|
+    | `product.ensure_demo_products()` | **DEMO** | ✅ | placeholder prices, HSN codes nobody's CA signed off |
+    | `address.ensure_demo_addresses()` | **DEMO** | ✅ | real company names, **invented GSTINs that pass the validator** |
+    | `boq.ensure_demo_boq()` | **DEMO** | ✅ | 97 lines, ₹91.9 lakh, headed with a third party's name |
+    | `settings.ensure_demo_settings()` — the identity | **DEMO** | ✅ | template GSTIN/PAN, `SPECIMEN BANK LTD.`, invented address |
+    | `settings.ensure_demo_settings()` — the charge heads | **GENUINE DEFAULT** | ❌ | `/charge/new` renders a dropdown from them |
+    | `spec.ensure_demo_specs()` | **GENUINE DEFAULT** | ❌ | the BOQ picker — and since 12 September the quotation picker — is written from it |
+    | `settings.DEFAULT_MEASUREMENT_COLUMNS` | **GENUINE DEFAULT** | ❌ | a module constant with a settings override, not a seeded row |
+    | `auth.ensure_builtin_roles()` | **not a seeder of data** | ❌ | it creates the seven role definitions the access model IS; without them nobody can be given any access at all |
+
+    ⚠ **`ensure_demo_settings()` seeded two different KINDS of thing under one
+      flag, and that is exactly why this entry called the fix "a decision
+      rather than a line".** It is split: the charge heads are seeded
+      unconditionally, the identity only while the flag is on.
+
+    ⚠ **`ensure_demo_specs()` runs ABOVE the flag check inside
+      `ensure_demo_boq()`, and the one line of ordering is load-bearing.** Five
+      `boq.py` routes reach the library only through that function, so seeding
+      it after the check would leave the picker empty on exactly the install
+      this flag is for. `test_the_boq_seeder_still_seeds_the_library_even_though_it_seeds_no_boq`
+      is what holds it.
+
+    ⚠ **`product.py` IS FROZEN AND WAS NOT EDITED.**
+      `app.disarm_frozen_demo_seeder()` pre-sets the `STORE["_seeded"]` guard
+      that `ensure_demo_products()` already opens with, which disarms all six
+      of its call sites including the two inside the two frozen files. That is
+      the trick the catalogue hide used on 11 September 2026 — a toggle applied
+      from outside a file that is not ours to edit. It is a **function** rather
+      than two lines inside `_boot_persistence()` so the tests can run the real
+      thing; `test_the_boot_sequence_actually_calls_the_disarm` proves
+      `_boot_persistence()` still calls it, and was written **because a
+      mutation that deleted the call was missed** by the first version of that
+      guard.
+
+    ⚠ **IT STOPS SEEDING. IT DELETES NOTHING.** A database that has already
+      booted with the demo on still holds those records; turning the flag off
+      never removes one, and the specimen identity already in
+      `STORE["settings"]["company"]` on this machine is untouched. What changes
+      is that an operator's deletion now **outlives a restart**, which is the
+      half of this entry that made deleting pointless. The seed flags are still
+      deliberately unpersisted (§4) and that is now harmless rather than
+      load-bearing: a seeder that is switched off has nothing to remember.
+
+    ⚠ **A BLANK IDENTITY RENDERS, and DEPLOY.md §6.3 said the opposite.** That
+      file asserted a blank field *"falls back to the DEFAULTS snapshot — which
+      is the specimen value, not nothing"*. It is not: `branding.DEFAULTS` is
+      snapshotted from that module's import-time values and those are `""` for
+      every statutory field. Measured — all nine print routes return `200` with
+      nothing seeded and none of the seven specimen strings reaches any of
+      them. The correction is in DEPLOY.md §6.3.
+
+    **What it measured, and what shipped on every build before 25 September:**
 
     **The reproduction is four page visits.** Point `DB_NAME` at a schema that
     does not exist, start the app, sign in, and visit four pages in the order a
