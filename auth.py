@@ -2090,7 +2090,7 @@ def account():
         <label class="fld" for="cnf">Confirm new password</label>
         <input id="cnf" name="confirm_password" type="password"
                autocomplete="new-password" required/>
-        <p><button class="btn" type="submit">Change password</button></p>
+        <p style="margin-top:1.2rem;"><button class="btn" type="submit">Change password</button></p>
       </form>
     </div>"""
     return _shell("My account", body)
@@ -2863,7 +2863,7 @@ def create_role():
         <input id="n" name="name" type="text" required value="{_esc(name)}"/>
         <p style="margin:1.2rem 0 .6rem;font-weight:600;">Permissions</p>
         {_permission_checkboxes(perms)}
-        <p><button class="btn" type="submit">Create role</button>
+        <p style="margin-top:1.2rem;"><button class="btn" type="submit">Create role</button>
            <a href="{url_for('auth.list_roles')}" style="margin-left:.6rem;">Cancel</a></p>
       </form>
     </div>"""
@@ -2904,7 +2904,7 @@ def edit_role(id):
         {name_field}
         <p style="margin:1.2rem 0 .6rem;font-weight:600;">Permissions</p>
         {_permission_checkboxes(perms)}
-        <p><button class="btn" type="submit">Save</button>
+        <p style="margin-top:1.2rem;"><button class="btn" type="submit">Save</button>
            <a href="{url_for('auth.list_roles')}" style="margin-left:.6rem;">Cancel</a></p>
       </form>
     </div>"""
