@@ -2,13 +2,14 @@
 #     pip install -r requirements.txt
 #
 # The dependency SET is derived from the app's actual imports, not from a
-# `pip freeze` of a system Python — INTRODUCTION.md §5.7. Only these four are
+# `pip freeze` of a system Python — INTRODUCTION.md §5.7. Only these five are
 # imported by application code:
 #
 #     flask          every module
 #     markupsafe     address.py escapes with markupsafe.escape
 #     pymysql        db.py — MySQL persistence
 #     dotenv         db.py — reads .env
+#     PIL            photo.py — re-encodes profile photos (26 Sep 2026)
 #
 # The VERSIONS are pinned so a clone reproduces a known-good environment rather
 # than whatever PyPI resolves to that morning. They are the versions the suite
@@ -27,6 +28,10 @@ Flask==3.1.3
 MarkupSafe==3.0.3      # address.py escapes with markupsafe.escape
 PyMySQL==1.2.0         # db.py — MySQL persistence
 python-dotenv==1.2.2   # db.py — reads .env
+Pillow==12.3.0         # photo.py — profile photos are re-encoded, never stored
+                       # as uploaded (strips GPS/EXIF, 192 px, ~10 KB). Imported
+                       # inside photo.encode(), so a box without it still boots
+                       # and the upload form says it is unavailable.
 
 # Flask pulls these in itself. Pinned as well so an install is reproducible;
 # nothing in this app imports them directly.

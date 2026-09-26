@@ -3679,6 +3679,30 @@ one automatic.
 > infer, or extend. This block records a decision I took on 25 September 2026
 > and authorises nothing beyond what it names.
 
+> ### ⚠ OVERRIDE — 26 September 2026, by Manas Gawde — PROFILE PHOTOS
+>
+> **A new block, not an amendment.** The thirty-first block and every block
+> before it stand exactly as recorded. This is the thirty-second occasion. It
+> covers the one item below and nothing else.
+>
+> **A client request made after go-live, and chargeable.** On 26 September
+> 2026 Samruddhi asked for users to be able to set their own profile picture.
+> It is not in MG/SF/2026-06 or CC-2; it is new scope, built on my decision
+> the same day and to be priced separately. It moves no Phase 3 bar.
+>
+> **What was built:** a user uploads or removes their own photo at `/account`;
+> an **Owner** (and only an Owner) sets or clears anybody's from
+> `/users/edit/<id>`. The photo is re-encoded by Pillow to a 192 px JPEG with
+> no metadata and stored on the user record as a data URI — ABOUT.md §3,
+> *User*. No endpoint, permission or role changed, so `docs/ACCESS_MATRIX.md`
+> is unchanged. **Pillow becomes a runtime dependency** (`requirements.txt`).
+>
+> **Also in this push, not app code:** `deploy/landing/index.html`, the public
+> page nginx serves at `/` to signed-out visitors (DEPLOY.md). It replaces a
+> page that described internal document procedures; it carries public company
+> information only, and no client-supplied figures until the client confirms
+> them. The landing page is also new, chargeable scope.
+
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 

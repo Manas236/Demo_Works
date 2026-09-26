@@ -3428,6 +3428,21 @@ empties the collection, runs every seeder at it, and looks again.
   and the reader cannot drift apart. **Nothing anywhere prints or logs it**, and
   `tests/test_access_control_adversarial.py` asserts the refusal log carries no
   credentials.
+- `photo`, `photo_updated_at`, `photo_updated_by` — **optional**, added 26
+  September 2026 (client request after go-live). `photo` is a base64 JPEG data
+  URI, always a fresh 192 x 192 re-encode written by `photo.encode()` through
+  Pillow — never the uploaded bytes — so EXIF/GPS is stripped and the value is
+  ~10 KB. Absent means no photo; the chip then draws the initials exactly as
+  before (byte-identical, so no page golden moved). `photo.src_of()` is the
+  **only** reader and returns the value only when it is exactly that shape, so
+  a row edited in MySQL cannot put anything else into an `<img src>`. Written
+  at two places: `/account` (a user's own, action `photo_upload` /
+  `photo_remove`) and `/users/edit/<id>` (**Owner only** — a Director reaches
+  that page through `admin.users` but the photo form is neither drawn nor
+  honoured). No endpoint, permission or registry row was added; both post back
+  to the page they sit on. Pillow is imported inside `encode()`, so a box
+  without it boots and the form says upload is unavailable.
+  `tests/test_profile_photo.py`.
 - **Two active Owners is an operational requirement, not a preference.**
   `auth._would_strand_install()` guarantees an active Owner *exists*; it cannot
   guarantee anybody can *sign in* as one, and a single-Owner install turns one
@@ -8323,10 +8338,10 @@ Thirteen routes. The architecture is §2g; this is what each page does.
 | `/login` | GET, POST | **PUBLIC** | Standalone, no nav. One message for a bad password *and* an unknown user — telling a stranger which half was wrong tells them which half to keep guessing. A **deactivated** account is told so plainly, which is the opposite call: they have already proved they hold the password, and "wrong password" would send an honest user off resetting one that was never the problem. `next=` is filtered by `_safe_next()` so the form cannot become an open redirect. |
 | `/logout` | GET, POST | any user | **GET confirms, POST destroys** — the delete-route convention from `9d060ee`. A GET that ends a session is issued by link prefetchers, crawlers and mail scanners unfurling a pasted URL, every one of which would log somebody out mid-form. |
 | `/setup` | GET, POST | **PUBLIC, conditionally** | The first Owner, in a browser. Renders **only while `users` is empty** and redirects the moment one exists, so the public window closes by itself rather than depending on somebody remembering to close it. With no users at all, `_gate()` sends *every* request here — a fresh install must not be a locked door. |
-| `/account` | GET, POST | any user | Own details, own roles, own permission list, and the only place a user changes their own password. |
+| `/account` | GET, POST | any user | Own details, own roles, own permission list, and the only place a user changes their own password. Also uploads or removes the user's own profile photo (`action=photo_upload` / `photo_remove`, 26 Sep 2026). |
 | `/users` | GET | `admin.users` | The register. Deactivated accounts stay listed, greyed. **A row whose account holds more than the reader draws no Edit / Deactivate / Reactivate link at all** (22 September 2026) — the row stays, the invitation goes. The **Roles** button beside *+ New user* is drawn through `can_reach()`, so a Director does not see it. |
 | `/users/create` | GET, POST | `admin.users` | Endpoint pinned to `auth.create_user`; the view is `create_user_route` because `create_user` is the record helper. **The role picker offers only the roles the creator may actually grant** (22 September 2026) — a Director sees no Owner box. |
-| `/users/edit/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | Display name, roles, and **the manual password reset** — one Owner setting another's password, which is why two Owners is now the operational requirement (§7 gap 21, closed). The break-glass equivalent for when nobody can sign in at all is [tools/set_password.py](tools/set_password.py). ⚠ **`admin.users` is not enough on its own here.** The account being edited must hold nothing the editor does not — otherwise the password field is a way to *become* it. §7 gap 26. |
+| `/users/edit/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | Display name, roles, and **the manual password reset** — one Owner setting another's password, which is why two Owners is now the operational requirement (§7 gap 21, closed). The break-glass equivalent for when nobody can sign in at all is [tools/set_password.py](tools/set_password.py). ⚠ **`admin.users` is not enough on its own here.** The account being edited must hold nothing the editor does not — otherwise the password field is a way to *become* it. §7 gap 26. **Profile photo (26 Sep 2026): Owner only**, `action=photo_upload` / `photo_remove`; refused on POST for everyone else, not merely hidden. |
 | `/users/deactivate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | GET confirms, POST acts. **There is no delete route** — §3, User. The extra guard is what stops an Admin switching spare Owners off one at a time until only the one they can reset is left. |
 | `/users/activate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | The reverse, and it needs the guard for the mirror reason: a dormant Owner account is a live one after one POST, and whoever held it may still know its password. |
 | `/roles` | GET | `admin.roles` | **Owner only.** Shows each role's permission count and how many active users hold it. |

@@ -45,6 +45,7 @@ from flask import Blueprint, redirect, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import branding as B
+import photo
 import pipeline as P
 from store import STORE
 
@@ -2038,7 +2039,10 @@ def account():
         return redirect(url_for("auth.login", next=url_for("auth.account")))
     msg = kind = ""
 
-    if request.method == "POST":
+    action = (request.form.get("action") or "") if request.method == "POST" else ""
+    if action in ("photo_upload", "photo_remove"):
+        msg, kind = _apply_photo_action(user, action, user.get("id"))
+    elif request.method == "POST":
         current = request.form.get("current_password") or ""
         new = request.form.get("new_password") or ""
         confirm = request.form.get("confirm_password") or ""
@@ -2065,6 +2069,7 @@ def account():
       <p><b>{_esc(user.get('display_name'))}</b> &middot;
          {_esc(user.get('username'))} {owner_tag}</p>
       <p>Roles: {_esc(_role_names(user))}</p>
+      {_photo_section(user, url_for("auth.account"), "Your photo")}
       <details style="margin:.75rem 0;">
         <summary>What I can do &mdash; {len(perms)} permissions</summary>
         <div style="margin-top:.6rem;">{perm_rows}</div>
@@ -2089,6 +2094,71 @@ def account():
       </form>
     </div>"""
     return _shell("My account", body)
+
+
+# =============================================================================
+# PROFILE PHOTO — 26 September 2026
+# =============================================================================
+#
+# Two doors and only two: a user's own photo on /account, and an Owner setting
+# or clearing ANYONE's from /users/edit/<id>. A Director holds admin.users and
+# can open /users/edit, but the photo form is neither drawn nor honoured for
+# them. Both doors post back to the page they sit on with an `action` field, so
+# no endpoint was added and the route registry and ACCESS_MATRIX are unchanged.
+# The encoding rules live in photo.py.
+
+def _apply_photo_action(target, action: str, by: str) -> tuple:
+    """(message, alert class) after uploading or removing `target`'s photo."""
+    if action == "photo_remove":
+        if not photo.src_of(target):
+            return "There is no photo to remove.", "alert-error"
+        photo.clear_photo(target, by)
+        return "The photo has been removed.", "alert-success"
+    data_uri, error = photo.encode(request.files.get("photo"))
+    if error:
+        return error, "alert-error"
+    photo.set_photo(target, data_uri, by)
+    return "The photo has been updated.", "alert-success"
+
+
+def _photo_section(target, action_url: str, heading: str) -> str:
+    """The photo preview with upload and remove controls. Pre-escaped output."""
+    src = photo.src_of(target)
+    name = (target.get("display_name") or target.get("username") or "").strip()
+    initials = "".join(w[0] for w in name.split()[:2]).upper() or "?"
+    if src:
+        face = (f'<img src="{_esc(src)}" alt="" style="width:72px;height:72px;'
+                f'border-radius:50%;object-fit:cover;flex-shrink:0;"/>')
+        remove = f"""
+        <form method="post" action="{_esc(action_url)}" style="margin:0;">
+          <input type="hidden" name="action" value="photo_remove"/>
+          <button class="btn btn-ghost" type="submit">Remove photo</button>
+        </form>"""
+    else:
+        face = (f'<span style="width:72px;height:72px;border-radius:50%;'
+                f'background:var(--navy-lt);color:var(--navy);display:inline-flex;'
+                f'align-items:center;justify-content:center;font-weight:700;'
+                f'font-size:1.4rem;flex-shrink:0;">{_esc(initials)}</span>')
+        remove = ""
+    return f"""
+      <div class="photo-box" style="display:flex;gap:1rem;align-items:center;
+           flex-wrap:wrap;margin:.9rem 0;">
+        {face}
+        <div style="flex:1;min-width:220px;">
+          <div style="font-weight:600;margin-bottom:.35rem;">{_esc(heading)}</div>
+          <form method="post" action="{_esc(action_url)}" enctype="multipart/form-data"
+                style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:0 0 .4rem;">
+            <input type="hidden" name="action" value="photo_upload"/>
+            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required/>
+            <button class="btn" type="submit">Upload</button>
+          </form>
+          {remove}
+          <div style="font-size:.78rem;color:#6b7280;margin-top:.3rem;">
+            {_esc(photo.ALLOWED_LABEL)}, up to {photo.MAX_BYTES // 1048576} MB.
+            It is cropped to a square and location data is removed.
+          </div>
+        </div>
+      </div>"""
 
 
 # =============================================================================
@@ -2500,7 +2570,21 @@ def edit_user(id):
         return refused
 
     error = ""
-    if request.method == "POST":
+    note = ""
+    actor = current_user()
+    action = (request.form.get("action") or "") if request.method == "POST" else ""
+    if action in ("photo_upload", "photo_remove"):
+        # Owner only, checked here and not merely by hiding the form: a
+        # Director reaches this route through admin.users and could post it.
+        if not is_owner(actor):
+            error = "Only an Owner can change another person's photo."
+        else:
+            msg, kind = _apply_photo_action(user, action, actor.get("id"))
+            if kind == "alert-error":
+                error = msg
+            else:
+                note = f'<div class="alert alert-success">{_esc(msg)}</div>'
+    elif request.method == "POST":
         display = (request.form.get("display_name") or "").strip()
         role_ids = [r for r in request.form.getlist("role_ids") if r in roles()]
         pw = request.form.get("password") or ""
@@ -2520,10 +2604,13 @@ def edit_user(id):
                                     type="success"))
 
     err = f'<div class="alert alert-error">{_esc(error)}</div>' if error else ""
+    photo_block = (_photo_section(user, url_for("auth.edit_user", id=id), "Photo")
+                   if is_owner(actor) else "")
     body = f"""
-    {err}
+    {err}{note}
     <div class="card" style="max-width:720px;">
       <h2 style="margin-top:0;">Edit {_esc(user.get('username'))}</h2>
+      {photo_block}
       <form method="post" class="auth-form">
         <label class="fld" for="d">Full name</label>
         <input id="d" name="display_name" type="text"

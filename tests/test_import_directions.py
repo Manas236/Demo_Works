@@ -990,6 +990,18 @@ def test_po_parts_imports_nothing_at_all():
     assert imports_of("po_parts") == set()
 
 
+def test_photo_imports_nothing_from_the_app():
+    """
+    `photo.py` (26 September 2026) encodes and validates profile photos. Both
+    `auth.py` and `chrome.py` import it at module level, so it must sit at the
+    bottom of the graph: standard library and Pillow only. Pillow is imported
+    inside `encode()`, so a server without it still boots and says so.
+    """
+    stdlib = {"base64", "datetime", "io", "os", "re", "warnings", "PIL"}
+    assert imports_of("photo") <= stdlib, imports_of("photo") - stdlib
+    assert "PIL" not in imports_of("photo", top_level_only=True)
+
+
 def test_the_seeded_part_list_is_a_prefill_and_not_a_collection():
     """
     The shape of `po_parts.py`, asserted rather than trusted to a comment.
@@ -1037,7 +1049,11 @@ def test_auth_imports_nothing_that_prints():
     # that reaches `auth` only inside a function body, so importing it here is
     # safe from the bottom of the graph — and it replaced the function-body
     # import of `dashboard` that `_shell()` carried for the same chrome.
-    allowed = {"branding", "pipeline", "store", "chrome"}
+    #
+    # `photo` joined on 26 September 2026: it imports nothing from the app at
+    # all (test_photo_imports_nothing_from_the_app), so it is as safe from the
+    # bottom of the graph as the standard library.
+    allowed = {"branding", "pipeline", "store", "chrome", "photo"}
     ours = {m.stem for m in REPO.glob("*.py")} - {"auth"}
     reached = imports_of("auth", top_level_only=True) & ours
     assert reached <= allowed, (

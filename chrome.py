@@ -57,6 +57,7 @@ from flask import has_request_context, request, url_for
 
 import branding as B
 import db
+import photo
 import pipeline as P
 from store import STORE
 
@@ -505,11 +506,22 @@ def _user_chip() -> str:
     name = (user.get("display_name") or user.get("username") or "").strip()
     initials = "".join(word[0] for word in name.split()[:2]).upper() or "?"
 
+    # 26 September 2026 — a profile photo replaces the initials when there is
+    # one. The styling is INLINE on purpose: adding a rule to USER_CHIP_STYLES
+    # would move the /po/create page golden for every user, photo or not. With
+    # no photo the chip is byte-identical to what it was.
+    src = photo.src_of(user)
+    if src:
+        avatar = (f'<img class="nu-avatar" src="{P.esc(src)}" alt="" '
+                  f'style="object-fit:cover;padding:0;"/>')
+    else:
+        avatar = f'<span class="nu-avatar">{P.esc(initials)}</span>'
+
     return f"""{USER_CHIP_STYLES}
         <div class="nav-user">
           <a class="nu-who" href="{url_for('auth.account')}"
              title="My account &mdash; {P.esc(name)}">
-            <span class="nu-avatar">{P.esc(initials)}</span>
+            {avatar}
             <span class="nu-name">{P.esc(name)}</span>
           </a>
           <a class="nu-out" href="{url_for('auth.logout')}">Sign out</a>

@@ -1162,3 +1162,19 @@ anything in §8 ships (`tools/seed_users.py:22-23`).
 - [ ] **`python -m pytest -q` run on the server and green** — the suite no longer reads the checkout's `.env` (25 September 2026), so it is a usable post-deploy check there. It was not before: a production `.env` turned it red for configuration reasons, not code ones
 - [ ] Backup pair taken and copied **off the box** — §10
 - [ ] §8.3 (error logging) scheduled, ideally done before the first real document
+
+
+## Public landing page (26 September 2026)
+
+nginx serves a static page at `/` to visitors who are not signed in, from
+`/var/www/samruddhi-landing/index.html`. The page is now **in git** at
+`deploy/landing/index.html` — one file with inline CSS and no third-party
+requests. Its only asset is the logo, referenced as `/_landing/logo.png`, which
+is `assets/logo-mark-256.png` copied into the directory nginx serves for
+`/_landing/`. To publish a change: pull, back up the live file, then copy the
+page (and the logo, if it changed). No nginx reload is needed for a content
+change.
+
+⚠ It is a **public** page. It must never describe the application's internal
+documents, workflow, roles or staff. It carries only what the client already
+publishes on samruddhifire.com.
