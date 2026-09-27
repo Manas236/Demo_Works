@@ -36,6 +36,7 @@ the chrome import here is inside the function body, the precedent
 import datetime
 import os
 import pathlib
+import re
 import secrets
 import sys
 import uuid
@@ -1349,6 +1350,21 @@ def create_user(username: str, display_name: str, password: str,
         raise ValueError("A password is required.")
     if find_user(username) is not None:
         raise ValueError(f"The username {username!r} is already taken.")
+    # The history reservation binds a NEW account as hard as it binds a rename
+    # (see "RENAMING A LOGIN" below). Leaving it off here would make the whole
+    # rule bypassable in one click: refuse to rename Priya to `sales@`, then
+    # create `sales@` from scratch and re-attribute the same records.
+    #
+    # The company-address FORMAT rule deliberately does NOT bind here. It binds
+    # what a name may be renamed *to*; `/setup`, `tools/seed_users.py` and the
+    # grandfathered logins all mint names that are not addresses, and none of
+    # them re-attributes anything.
+    holder = username_history_holder(username)
+    if holder is not None:
+        raise ValueError(
+            f"The username {username!r} was previously used by "
+            f"{holder.get('display_name') or holder.get('username')} and "
+            f"cannot be given to a new account.")
 
     uid = uuid.uuid4().hex[:12]
     rec = {
@@ -1363,6 +1379,207 @@ def create_user(username: str, display_name: str, password: str,
     }
     users()[uid] = rec
     return rec
+
+
+# =============================================================================
+# RENAMING A LOGIN  (27 September 2026, client request after go-live)
+# =============================================================================
+#
+# On 26 September 2026 every production login was renamed from a personal name
+# to a role address - `accounts@`, `hr@`, `sales@`, `purchase@` - with a one-off
+# script on the server, because the application could not do it. This is that
+# job put in the UI, **Owner only**, on `/users/edit/<id>`. It is not a new
+# endpoint and not a new permission: it is a field on a form that already
+# exists, gated exactly the way the profile photo one beside it is.
+#
+# WHY A RENAME IS SAFE HERE AT ALL
+# --------------------------------
+# **The session holds a user id and never a username** (`SESSION_KEY`), and
+# every persisted reference to who did something is a uid as well: `created_by`,
+# `approval.stamp_creator()`, `approval.rejected_by`, `attachment.uploaded_by`,
+# `photo_updated_by`, and `address.py`'s edit log. So a rename cannot sign the
+# wrong person in, cannot strand a live session - an Owner renaming **themselves**
+# stays signed in, and somebody else signed in under the old name carries on
+# normally - and cannot orphan a record.
+#
+# The only places a username STRING is stored are historical snapshots, which
+# are supposed to name who acted at the time and are deliberately **not**
+# rewritten: `purchase.reprice_log[].by`, `approval.approvals[].user_name` and
+# `rejected_by_name`, and the in-memory `REFUSAL_LOG`. Every *lookup* -
+# `find_user()` from `/login`, from `create_user()`'s duplicate check, and from
+# `tools/seed_users.py` and `tools/set_password.py` - scans the live collection
+# at the moment it is called, so all four resolve under the new name and stop
+# resolving under the old one, which is the whole point.
+#
+# ⚠ **A NAME IN ANYBODY ELSE'S HISTORY CANNOT BE TAKEN.** Those snapshots
+#   are strings. Hand a freed name to a different person and every one of them
+#   silently re-attributes: `sales@` on a purchase order repriced last March
+#   starts reading as the new holder of `sales@`. A user may take back their
+#   OWN old name, because that re-attributes nothing.
+#
+# ⚠ **There is no general activity log in this application to write this
+#   into, and one was NOT invented for it.** `REFUSAL_LOG` is refusals only, in
+#   memory, and says so on its own page; ABOUT.md section 7 gap 23 records that
+#   a real audit trail with retention is a different feature. So the trail lives
+#   **on the record**, which is where `address.py` keeps its edit log and
+#   `purchase.py` keeps its reprice log, and it is read back on the page that
+#   writes it.
+
+COMPANY_DOMAIN = "@samruddhifirepvtltd.in"
+
+# The local part, checked AFTER the value has been lowercased. Deliberately
+# narrower than RFC 5321: these are addresses office staff type into a phone,
+# and every character this leaves out is one that produces a login somebody
+# cannot reliably retype.
+_LOCAL_PART_RE = re.compile(r"^[a-z0-9._-]+$")
+
+# The append-only trail on the user record. One entry per rename that actually
+# moved the name:
+#
+#     {"from": "manas", "to": "accounts@samruddhifirepvtltd.in",
+#      "at": "2026-09-27 13:40",     # `_now()`, the server clock - IST in
+#                                    # production, and the same stamp
+#                                    # `created_at` on this record carries
+#      "by": "<actor uid>",          # resolved to a name at RENDER time
+#      "by_username": "owner@..."}   # and the floor under it when it will not
+USERNAME_HISTORY = "username_history"
+
+
+def normalise_username(raw) -> str:
+    """The stored form of a NEW username: whitespace-stripped and lowercased."""
+    return str(raw or "").strip().lower()
+
+
+def username_format_error(name: str) -> str:
+    """
+    "" when `name` is a valid **new** username, else the refusal in words.
+
+    ⚠ **Existing non-email usernames are grandfathered and this is never
+      asked about them.** `manas` and `recovery` go on working and go on
+      signing in exactly as they are. The rule binds what a name may be renamed
+      *to*, which is the only moment this is called.
+    """
+    if not name:
+        return "A username is required."
+    if not name.endswith(COMPANY_DOMAIN):
+        return (f"A username must be a company address ending in "
+                f"{COMPANY_DOMAIN} - for example accounts{COMPANY_DOMAIN}.")
+    local = name[:-len(COMPANY_DOMAIN)]
+    if not local:
+        return f"There is nothing in front of the {COMPANY_DOMAIN}."
+    if not _LOCAL_PART_RE.match(local):
+        return ("The part in front of the @ may use letters, digits, a dot, a "
+                "hyphen or an underscore, and nothing else.")
+    return ""
+
+
+def username_taken_by(name: str, user_id: str = ""):
+    """
+    The **other** user holding `name`, compared case-insensitively, or None.
+
+    ⚠ **Deactivated accounts count.** Users are never deleted (section 3,
+    *User*), every record they created still names them, and they can be
+    reactivated - so their login is still theirs, and handing it on would give
+    somebody else their history the moment they came back.
+    """
+    wanted = normalise_username(name)
+    if not wanted:
+        return None
+    for u in users().values():
+        if u.get("id") == user_id:
+            continue
+        if normalise_username(u.get("username")) == wanted:
+            return u
+    return None
+
+
+def username_history_holder(name: str, user_id: str = ""):
+    """
+    The **other** user who has held `name` before now, or None.
+
+    Both ends of every entry are checked. A `to` that is not somebody's current
+    username is always some later entry's `from`, so checking `from` alone
+    would be enough today - but that is an accident of how the trail happens to
+    be written, and a reservation resting on one is a reservation a later edit
+    can lose without anything going red.
+    """
+    wanted = normalise_username(name)
+    if not wanted:
+        return None
+    for u in users().values():
+        if u.get("id") == user_id:
+            continue
+        for entry in u.get(USERNAME_HISTORY) or []:
+            if wanted in (normalise_username(entry.get("from")),
+                          normalise_username(entry.get("to"))):
+                return u
+    return None
+
+
+def rename_refusal(user, new_username: str) -> str:
+    """
+    "" when `user` may be renamed to `new_username`, else the refusal in words.
+
+    Submitting the value the account already carries is **not** a rename and is
+    never refused - see `rename_user()`, which is what makes it a silent no-op.
+
+    Each refusal names the account it is refusing for. An Owner told only
+    "already taken" goes hunting through a register in which the account in
+    question is deactivated and therefore sorted to the bottom of it.
+    """
+    wanted = normalise_username(new_username)
+    if wanted == normalise_username((user or {}).get("username")):
+        return ""
+    err = username_format_error(wanted)
+    if err:
+        return err
+    uid = (user or {}).get("id") or ""
+    other = username_taken_by(wanted, uid)
+    if other is not None:
+        state = "" if other.get("active") else ", a deactivated account"
+        return (f"{wanted} is already the login of "
+                f"{other.get('display_name') or other.get('username')}{state}.")
+    holder = username_history_holder(wanted, uid)
+    if holder is not None:
+        return (f"{wanted} was previously used by "
+                f"{holder.get('display_name') or holder.get('username')} and "
+                f"cannot be given to anybody else. Purchase orders, approvals "
+                f"and logs still carry that name as text, and handing it on "
+                f"would quietly re-attribute them.")
+    return ""
+
+
+def rename_user(user, new_username: str, actor) -> str:
+    """
+    Apply the rename and append one history entry. Returns the refusal, or "".
+
+    **Nothing but the username moves.** The id, the password hash, the roles,
+    the photo, `active`, `created_at` and `created_by` are not touched, and
+    `find_user()` stays case-insensitive, so the person signs in with the new
+    name and the same password.
+
+    **Submitting the unchanged value is a silent no-op and writes no history
+    entry** - `address._log_edit()`'s rule one module over: a submit that moved
+    nothing is not an edit, and a trail full of "renamed to the same thing" is
+    a trail nobody reads.
+    """
+    err = rename_refusal(user, new_username)
+    if err:
+        return err
+    wanted = normalise_username(new_username)
+    if wanted == normalise_username(user.get("username")):
+        return ""
+    # ⚠ Appended BEFORE the write, so an Owner renaming themselves is
+    #   recorded under the name they were still using when they did it.
+    user.setdefault(USERNAME_HISTORY, []).append({
+        "from":        user.get("username") or "",
+        "to":          wanted,
+        "at":          _now(),
+        "by":          (actor or {}).get("id") or "",
+        "by_username": (actor or {}).get("username") or "",
+    })
+    user["username"] = wanted
+    return ""
 
 
 def permissions_of(user) -> set:
@@ -2588,13 +2805,29 @@ def edit_user(id):
         display = (request.form.get("display_name") or "").strip()
         role_ids = [r for r in request.form.getlist("role_ids") if r in roles()]
         pw = request.form.get("password") or ""
+        # `None` when the field was not on the form at all, which is what a
+        # non-Owner is served. A Director's ordinary save carries no `username`
+        # key and must go through untouched; a Director's save that CARRIES one
+        # is a forged post and is refused, the same way the photo action above
+        # is refused rather than merely not drawn.
+        posted_username = request.form.get("username")
 
-        error = _may_grant(current_user(), set(role_ids) - set(user.get("role_ids") or []))
+        if posted_username is not None and not is_owner(actor):
+            error = "Only an Owner can change a username."
+        if not error:
+            error = _may_grant(current_user(), set(role_ids) - set(user.get("role_ids") or []))
         if not error:
             error = _would_strand_install(id, new_role_ids=role_ids)
         if not error and pw and len(pw) < 8:
             error = "The password must be at least 8 characters."
+        # Validated WITH the other guards and applied WITH the other writes. A
+        # rename that landed while the role save was refused would be half a
+        # save, and the half that changed what somebody signs in with.
+        if not error and posted_username is not None:
+            error = rename_refusal(user, posted_username)
         if not error:
+            if posted_username is not None:
+                rename_user(user, posted_username, actor)
             user["display_name"] = display or user["username"]
             user["role_ids"] = role_ids
             if pw:
@@ -2604,14 +2837,20 @@ def edit_user(id):
                                     type="success"))
 
     err = f'<div class="alert alert-error">{_esc(error)}</div>' if error else ""
+    # Both of these are Owner-only and both are drawn from the SAME predicate
+    # the POST branch enforces. A control that can only produce a refusal is
+    # not drawn (section 2g), and the guard never moves into the markup.
     photo_block = (_photo_section(user, url_for("auth.edit_user", id=id), "Photo")
                    if is_owner(actor) else "")
+    username_field = _username_field(user) if is_owner(actor) else ""
+    history_block = _username_history(user) if is_owner(actor) else ""
     body = f"""
     {err}{note}
     <div class="card" style="max-width:720px;">
       <h2 style="margin-top:0;">Edit {_esc(user.get('username'))}</h2>
       {photo_block}
       <form method="post" class="auth-form">
+        {username_field}
         <label class="fld" for="d">Full name</label>
         <input id="d" name="display_name" type="text"
                value="{_esc(user.get('display_name'))}"/>
@@ -2625,8 +2864,57 @@ def edit_user(id):
           <a href="{url_for('auth.list_users')}" style="margin-left:.6rem;">Cancel</a>
         </p>
       </form>
+      {history_block}
     </div>"""
     return _shell("Edit user", body)
+
+
+def _username_field(user) -> str:
+    """The login box, Owner-only. Pre-escaped output."""
+    return f"""
+        <label class="fld" for="un">Username &mdash; what this person signs in with</label>
+        <input id="un" name="username" type="text" required
+               value="{_esc(user.get('username'))}"
+               autocapitalize="off" autocorrect="off" spellcheck="false"
+               autocomplete="off"/>
+        <p style="font-size:.78rem;color:#6b7280;margin:.3rem 0 0;">
+          A company address ending in {_esc(COMPANY_DOMAIN)}, stored in lower
+          case. It takes effect immediately and changes nothing else &mdash;
+          the password, the roles and every record naming this person are
+          untouched. A login somebody else has used before cannot be taken.
+        </p>"""
+
+
+def _username_history(user) -> str:
+    """
+    The rename trail, read-only and newest first. Pre-escaped output.
+
+    ⚠ **Who did it is resolved from the stored id at RENDER time**, which is
+      the rule `address.editor_label()` states one module over: a name resolved
+      at write time restates itself the next time *that* person is renamed. The
+      username frozen into the entry is the floor under it, for an actor whose
+      account no longer resolves at all.
+    """
+    entries = user.get(USERNAME_HISTORY) or []
+    if not entries:
+        return ""
+    rows = []
+    for e in reversed(entries):
+        by = users().get(str(e.get("by") or "")) or {}
+        who = (by.get("display_name") or by.get("username")
+               or e.get("by_username") or "somebody no longer on file")
+        rows.append(f"""
+          <tr><td>{_esc(e.get('from'))}</td><td>{_esc(e.get('to'))}</td>
+              <td>{_esc(e.get('at'))}</td><td>{_esc(who)}</td></tr>""")
+    return f"""
+      <details style="margin:1.2rem 0 0;">
+        <summary style="cursor:pointer;font-size:.85rem;">Previous logins
+          &mdash; {len(entries)}</summary>
+        <table class="auth-table">
+          <thead><tr><th>Was</th><th>Became</th><th>When</th><th>Changed by</th></tr></thead>
+          <tbody>{''.join(rows)}</tbody>
+        </table>
+      </details>"""
 
 
 def _state_change_page(user, verb: str, detail: str, action_url: str) -> str:
