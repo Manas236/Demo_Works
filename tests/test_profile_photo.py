@@ -309,7 +309,15 @@ def test_the_chip_without_a_photo_is_the_old_initials_chip(client, staff):
     'data:image/svg+xml;base64,PHN2Zz4=',
     'data:image/jpeg;base64,AAAA" onerror="alert(1)',
     'data:text/html;base64,PGgxPg==',
-    photo.PREFIX + "A" * (photo.MAX_STORED + 10),
+    # ⚠ **The id is given explicitly, and it is not cosmetic** (27 September
+    #   2026). pytest builds a case's id out of the parameter itself, which
+    #   here is 65,560 characters, and then exports it as `PYTEST_CURRENT_TEST`
+    #   — an environment variable Windows caps at 32,767. Setup and teardown
+    #   both raised `ValueError` and this case was 2 of the 2 errors the suite
+    #   reported on every Windows box from the day it was written. The VALUE is
+    #   unchanged; only the label pytest prints is.
+    pytest.param(photo.PREFIX + "A" * (photo.MAX_STORED + 10),
+                 id="longer-than-MAX_STORED"),
     12345,
 ])
 def test_a_tampered_record_never_reaches_an_img_src(client, staff, tampered):
@@ -319,3 +327,4 @@ def test_a_tampered_record_never_reaches_an_img_src(client, staff, tampered):
     assert photo.src_of(staff) == ""
     assert '<img class="nu-avatar"' not in page
     assert "onerror" not in page and "javascript:alert" not in page
+

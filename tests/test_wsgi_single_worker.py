@@ -221,13 +221,22 @@ def test_two_different_databases_do_not_fight_over_one_lock(tmp_path):
     a rogue worker and neither starts.
     """
     # No SAMRUDDHI_LOCK_FILE: the point is the DEFAULT path, which is keyed by
-    # host/port/schema. TMPDIR/TEMP move tempfile.gettempdir() into tmp_path.
-    holder = _hold_the_lock("", {"DB_NAME": "schema_one", "TMPDIR": str(tmp_path),
-                                 "TEMP": str(tmp_path)})
+    # host/port/schema — this is also the one test that proves the boot path
+    # really goes through `lock_path()`. TMPDIR/TEMP/TMP move
+    # tempfile.gettempdir() into tmp_path so the locks it DOES take are there.
+    #
+    # ⚠ **`TMP` was added 27 September 2026 and it matters on Windows only.**
+    #   `tempfile.gettempdir()` reads TMPDIR first on POSIX but **TMP** first on
+    #   Windows, so without it this pair of locks was taken in the real system
+    #   temp directory. It could never collide with a live server's — that one
+    #   is keyed by the real schema and these two are `schema_one` /
+    #   `schema_two` — but "cannot collide" is a fact about today's DB_NAME, and
+    #   the rest of this file now keeps every acquire inside tmp_path.
+    _tmp = {"TMPDIR": str(tmp_path), "TEMP": str(tmp_path), "TMP": str(tmp_path)}
+    holder = _hold_the_lock("", {"DB_NAME": "schema_one", **_tmp})
     try:
         other = _run("import wsgi; print('OTHER SCHEMA OK')",
-                     {"DB_NAME": "schema_two", "TMPDIR": str(tmp_path),
-                      "TEMP": str(tmp_path)})
+                     {"DB_NAME": "schema_two", **_tmp})
         assert other.returncode == 0, other.stderr
         assert "OTHER SCHEMA OK" in other.stdout
     finally:
@@ -239,6 +248,33 @@ def test_the_lock_path_is_outside_the_checkout_by_default(tmp_path):
     """
     A read-only deployment directory is normal, and a lock file that cannot be
     created must not be a boot failure on a correct single-worker install.
+
+    ⚠ **THIS TEST MUST NEVER ACQUIRE THE DEFAULT LOCK, AND UNTIL 27 SEPTEMBER
+      2026 IT DID.** It ran `import wsgi` with no `SAMRUDDHI_LOCK_FILE`, so the
+      child took the real default lock at import — and on the production box a
+      live gunicorn is already holding it. The child was refused, exited
+      non-zero, and the test failed on the refusal working correctly rather
+      than on the path it is about. That made `python -m pytest` unusable on
+      the one machine where running it after a deploy matters most, which is
+      the same failure `conftest._never_read_dotenv()` was written for two days
+      earlier. Worse when nothing held it: the import **truncates the lock file
+      and writes its own pid**, so a passing run left the server's lock file
+      naming a process that had already exited.
+
+      So guard 1 is switched off for this child with
+      `SAMRUDDHI_ALLOW_MULTIPROCESS`, which makes the import take **no lock at
+      all** (`wsgi.py`'s guard-1 block does not even call `lock_path()` when it
+      is set), and the **default** path is then asked for directly.
+      `SAMRUDDHI_LOCK_FILE` is passed as `""` rather than left unset so an
+      ambient value in the developer's environment cannot silently turn this
+      into a test of the override.
+
+      **The computed path is still the thing under test**, so moving the
+      default inside the checkout still fails this. The separate question — that
+      the boot path really uses `lock_path()` and not something else — is held
+      by `test_two_different_databases_do_not_fight_over_one_lock`, which boots
+      with no override; and that a path of this shape can really be locked is
+      the companion test below.
     """
     # `__file__` does not exist under `python -c`; cwd IS the repo (see _run).
     r = _run("""
@@ -246,10 +282,44 @@ def test_the_lock_path_is_outside_the_checkout_by_default(tmp_path):
         p = wsgi.lock_path()
         print("LOCK", p)
         print("INSIDE_REPO", str(p).startswith(str(pathlib.Path.cwd().resolve())))
-    """)
+    """, {"SAMRUDDHI_LOCK_FILE": "", "SAMRUDDHI_ALLOW_MULTIPROCESS": "1"})
     assert r.returncode == 0, r.stderr
     assert "INSIDE_REPO False" in r.stdout
     assert "samruddhi-qms-" in r.stdout
+    assert "guard is OFF" in r.stderr, (
+        "guard 1 ran, so this child took a lock — on the production box that "
+        "is the live server's lock")
+
+
+def test_a_lock_of_that_shape_can_actually_be_taken(tmp_path):
+    """
+    The control for the test above, and the reason it is not half a test.
+
+    Checking a path without ever locking one would pass just as well if
+    `_take_exclusive_lock()` were broken. The acquire is done here instead —
+    against a file in `tmp_path` carrying the same name the default computes,
+    so that nothing in this file ever touches the lock a live server holds.
+    """
+    r = _run("""
+        import pathlib, os, wsgi
+        default = wsgi.lock_path()
+        mine = pathlib.Path(os.environ["SAFE_DIR"]) / default.name
+        handle, why = wsgi._take_exclusive_lock(mine)
+        print("SAME_NAME", mine.name == default.name)
+        print("TOOK", handle is not None, why)
+        print("NOT_THE_DEFAULT", mine.resolve() != default.resolve())
+        # Read back through the OWNING handle. `msvcrt.locking` is mandatory on
+        # Windows, so a second open of a locked byte is PermissionError even
+        # from the process holding it.
+        handle.seek(0)
+        print("PID_WRITTEN", handle.read(64).strip() == str(os.getpid()))
+    """, {"SAMRUDDHI_LOCK_FILE": "", "SAMRUDDHI_ALLOW_MULTIPROCESS": "1",
+          "SAFE_DIR": str(tmp_path)})
+    assert r.returncode == 0, r.stderr
+    assert "SAME_NAME True" in r.stdout
+    assert "TOOK True" in r.stdout, r.stdout
+    assert "PID_WRITTEN True" in r.stdout
+    assert "NOT_THE_DEFAULT True" in r.stdout
 
 
 # ── 3. Guard 2: the fork case, which guard 1 cannot see ───────────────────
