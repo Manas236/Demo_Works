@@ -328,3 +328,78 @@ def test_a_tampered_record_never_reaches_an_img_src(client, staff, tampered):
     assert '<img class="nu-avatar"' not in page
     assert "onerror" not in page and "javascript:alert" not in page
 
+
+# ══ 5. The upload row ══════════════════════════════════════════════════════
+#
+# 27 September 2026, a client request after go-live: the file box and the
+# Upload button are on one row and next to each other, and they stay that way
+# on a phone. LAYOUT ONLY — no route, no validation and no stored value moved,
+# and every assertion in this file above still passes unchanged.
+#
+# Measured in Chrome before the change, on /account at a 1262 px viewport: the
+# file input's box ran 389..642 (253 px) while its own caption drew only 176 px
+# of it, so the button began at 650 — 85 px past anything the eye could see.
+# After: the box is 389..597 (208 px), the button 605..698, and the gap is the
+# form's own .5rem. At a true 390 px viewport (an iframe — headless Chrome
+# clamps --window-size to ~504) the box is 199 px, the button is beside it, and
+# the page does not scroll sideways.
+
+def _upload_form(page: str) -> str:
+    """The upload <form>, opening tag included — the row's styling is on it."""
+    at = page.index('name="action" value="photo_upload"')
+    return page[page.rindex("<form", 0, at):page.index("</form>", at)]
+
+
+@pytest.mark.parametrize("where", ["account", "edit"])
+def test_the_file_box_and_the_upload_button_are_on_one_row(client, owner, staff, where):
+    url = "/account" if where == "account" else f"/users/edit/{staff['id']}"
+    if where == "account":
+        _as(client, staff)
+    form = _upload_form(client.get(url).data.decode())
+    assert 'type="file"' in form and "Upload</button>" in form
+    # Nothing but whitespace between them: the button is the next element.
+    between = form[form.index("/>", form.index('type="file"')) + 2:
+                   form.index("<button")]
+    assert between.strip() == "", f"something got between the two: {between!r}"
+    assert "display:flex" in form and "flex-wrap:wrap" in form
+
+
+@pytest.mark.parametrize("where", ["account", "edit"])
+def test_the_file_box_is_capped_so_the_button_stays_beside_it(
+        client, owner, staff, where):
+    url = "/account" if where == "account" else f"/users/edit/{staff['id']}"
+    if where == "account":
+        _as(client, staff)
+    form = _upload_form(client.get(url).data.decode())
+    assert auth.FILE_INPUT_STYLE in form, "both pages draw the same row"
+    assert "max-width:13rem" in auth.FILE_INPUT_STYLE, (
+        "without a cap the box grows to the end of the row and takes the "
+        "button with it, which is the defect this closed")
+    assert "min-width:0" in auth.FILE_INPUT_STYLE
+
+
+def test_the_box_grows_into_its_cap_rather_than_starting_at_it():
+    """
+    The half that keeps them together on a phone. A flex line wraps on the
+    BASIS and only shrinks afterwards, so a basis of 13rem would break the line
+    at 390 px however small the box could have become. The basis is smaller
+    than the cap and the item is allowed to grow.
+    """
+    assert "flex:1 1 9rem" in auth.FILE_INPUT_STYLE
+    basis = float(auth.FILE_INPUT_STYLE.split("flex:1 1 ")[1].split("rem")[0])
+    cap = float(auth.FILE_INPUT_STYLE.split("max-width:")[1].split("rem")[0])
+    assert basis < cap, "a basis at the cap is a line that wraps on a phone"
+
+
+def test_the_row_did_not_leak_into_the_nav_chip(client, staff):
+    """
+    The chip with no photo has to stay byte-identical — a page golden depends
+    on it — so the row's styling is on the row and nowhere near `chrome.py`.
+    """
+    import chrome
+
+    assert auth.FILE_INPUT_STYLE not in chrome.USER_CHIP_STYLES
+    assert "input[type=file]" not in chrome.BASE_STYLES
+    _as(client, staff)
+    page = client.get("/account").data.decode()
+    assert '<span class="nu-avatar">PS</span>' in page

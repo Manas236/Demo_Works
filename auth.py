@@ -2324,6 +2324,36 @@ def account():
 # no endpoint was added and the route registry and ACCESS_MATRIX are unchanged.
 # The encoding rules live in photo.py.
 
+# The file box, sized so that the Upload button sits BESIDE it (27 September
+# 2026). Measured in Chrome before this existed: the input's box is 253 px wide
+# while "Choose File / No file chosen" draws only 176 px of it, so the button
+# began 85 px past anything visible and read as belonging to something else.
+# The reserved 77 px is Chrome's room for a filename and cannot be removed, so
+# the box is capped instead and given the same border, radius and padding the
+# password fields on these two pages already have - the slack then reads as an
+# empty field rather than as a gap, and a long filename clips inside it the way
+# a long value clips inside a text input.
+#
+# `flex: 1 1 9rem` with `max-width: 13rem` is what makes it behave at BOTH
+# widths, and the two halves do different jobs. The **cap** is what keeps the
+# button beside it on a wide card: the box grows into the free space and then
+# stops at 208 px, instead of running to the end of the row and taking the
+# button with it. The **grow** is what keeps them on one row on a phone: the
+# 144 px basis plus the .5rem gap plus the 93 px button is 245 px, inside the
+# ~300 px of card a 390 px phone leaves, so the line is never broken and the
+# box simply ends up 199 px instead of 208. A flex line wraps on the basis and
+# only shrinks afterwards, so a box that started at 13rem would have wrapped
+# there - measured, and the reason this is not `flex: 0 1 13rem`.
+#
+# 13 rem rather than 12: at 12 rem Chrome middle-ellipsised its own empty-state
+# caption to "No fil...hosen", which looks like a bug in the page. The caption
+# draws 176 px and the border and padding take 15, so 191 px is the floor and
+# both 199 and 208 clear it.
+FILE_INPUT_STYLE = ("flex:1 1 9rem;min-width:0;max-width:13rem;"
+                    "border:1px solid var(--border);border-radius:6px;"
+                    "padding:.42rem .5rem;background:#fff;")
+
+
 def _apply_photo_action(target, action: str, by: str) -> tuple:
     """(message, alert class) after uploading or removing `target`'s photo."""
     if action == "photo_remove":
@@ -2366,8 +2396,9 @@ def _photo_section(target, action_url: str, heading: str) -> str:
           <form method="post" action="{_esc(action_url)}" enctype="multipart/form-data"
                 style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:0 0 .4rem;">
             <input type="hidden" name="action" value="photo_upload"/>
-            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required/>
-            <button class="btn" type="submit">Upload</button>
+            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required
+                   style="{FILE_INPUT_STYLE}"/>
+            <button class="btn" type="submit" style="flex:0 0 auto;">Upload</button>
           </form>
           {remove}
           <div style="font-size:.78rem;color:#6b7280;margin-top:.3rem;">
