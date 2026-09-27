@@ -3704,6 +3704,77 @@ one automatic.
 > them. The landing page is also new, chargeable scope.
 
 
+> ### ⚠ OVERRIDE — 27 September 2026, by Manas Gawde — THE USERNAME RENAME, AND THE PHOTO UPLOAD ROW
+>
+> **A new block, not an amendment.** The thirty-second block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-third** occasion. It covers the two items
+> below and nothing else.
+>
+> **Two client requests made after go-live.** Both came out of the first week of
+> the client actually using the system, and both are built on my decision, the
+> same day.
+>
+> **⚠ Commercial status: TO BE DECIDED BY MANAS.** Neither item is called
+> chargeable and neither is called free here, and that is deliberate rather than
+> an omission. §0's no-charge exemption covers defect and reachability fixes
+> against scope already sold under MG/SF/2026-01; item 1 is plainly not one, and
+> item 3 arguably is. The decision is the client-facing owner's, it has not been
+> taken yet, and an agent may not take it, infer it or extend a previous block's
+> answer onto it. Until it is taken, this line is the record that it is open.
+>
+> #### Item 1 — an Owner renames a login, from the UI
+>
+> **What prompted it.** On **26 September 2026** every production login was
+> renamed from a personal name to a role address at the company domain —
+> `accounts@`, `hr@`, `sales@`, `purchase@` — with a **one-off script run on
+> the server**, because the application could not do it. A job that needs a
+> developer with shell access every time somebody changes desk is a job that
+> will be done wrong or not at all.
+>
+> **What was built.** A **Username** field on `/users/edit/<id>`, **Owner only**:
+> not drawn for a Director, and refused for a Director who posts one anyway. An
+> Owner may rename anybody, **including themselves**, and stays signed in. A new
+> username must be a company address ending `@samruddhifirepvtltd.in`, is stored
+> in lower case, and is unique case-insensitively across **all** users —
+> deactivated ones included, because users here are never deleted. Existing
+> non-email logins are **grandfathered** and keep working as they are. Every
+> rename appends to `username_history` on the record, and an Owner reads it back
+> as *Previous logins* on the same page.
+>
+> **⚠ A login somebody else has used before cannot be given to anybody else,
+> ever.** Old usernames sit as plain text on purchase orders, approval rungs and
+> logs. Hand a freed name to a different person and every one of those quietly
+> starts naming the wrong person. A user may take back their own.
+>
+> **What did NOT change**, and it is the reason this is a small item rather than
+> a large one: **no endpoint, no permission, no role and no route
+> classification.** `docs/ACCESS_MATRIX.md` was regenerated and is
+> byte-identical. The session has always held a user **id** and never a
+> username, and every stored reference to who did something is an id as well, so
+> nothing had to be migrated, repointed or rewritten. ABOUT.md §3 (*User*) and
+> §5 (`/users`).
+>
+> #### Item 3 — the photo file box and its Upload button, on one row
+>
+> Reported after the 26 September profile-photo release: the two controls looked
+> unrelated. Measured in Chrome, the file box is 253 px wide while its own
+> caption draws 176 px of it, so the button began 85 px past anything visible.
+> **Layout only** — no route, no validation, no stored value and no behaviour
+> moved, and no golden of any kind moved.
+>
+> **Item 2 of that day's work is not a client item and is not listed here.** Two
+> tests could only pass on the machine they were written on — one took the real
+> single-worker lock that live gunicorn holds on the production box — which made
+> `python -m pytest` useless as a post-deploy check on the server. That is
+> engineering hygiene against our own tooling, it is on nobody's change list,
+> and it is recorded in PROGRESS.md and in its own commit rather than here.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
