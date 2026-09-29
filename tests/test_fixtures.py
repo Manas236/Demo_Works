@@ -17,15 +17,25 @@ openpyxl = pytest.importorskip("openpyxl", reason="openpyxl not installed")
 
 def test_the_suite_runs_without_the_workbooks():
     """
-    The contract: the app never reads a workbook at runtime, so a checkout
+    The contract: the app never reads THESE workbooks at runtime, so a checkout
     without them is fully functional and fully tested apart from these.
+
+    ⚠ It used to say "the app never reads a workbook at runtime", and from
+      29 September 2026 that is no longer true: `/boq/import` reads the
+      OPERATOR'S uploaded workbook through `sheetimport.py`. What stays true is
+      what this test asserts — neither `boq.py` nor `spec.py` reads one, and
+      the seeded schedule is `demo_data.py`, never the client's file.
+      `tests/test_import_directions.py::test_only_sheetimport_reads_a_workbook`
+      holds the new whole-app rule.
     """
     from conftest import find_fixture
 
     # demo_data is committed and self-contained — this holds either way.
     assert len(DD.SPECS) == 56
     assert len(DD.BOQ_LINES) == 97
-    # And nothing in the app imports openpyxl.
+    # And neither schedule module imports openpyxl. (It read "nothing in the
+    # app imports openpyxl" until sheetimport.py; the loop below never covered
+    # more than these two.)
     import boq
     import spec
     for mod in (boq, spec):

@@ -111,10 +111,17 @@ def test_every_reference_collection_has_a_seeder(client):
     # writes bytes, and a fresh install ships a fabricated supplier bill against
     # a fabricated charge. It is also the evidence CC-2 makes compulsory on a
     # charge, so inventing one would invent the proof that a payment was owed.
+    # `boq_imports` and `import_layouts` (Import BOQ from Excel, 29 Sep 2026)
+    # are transactional for the plainest reason in this list: each is a trace
+    # of somebody uploading THEIR OWN workbook. A seeded staging row would be
+    # an import nobody made, owned by a user id that may not exist; a seeded
+    # layout would skip the preview for a template nobody has confirmed — the
+    # one screen where the operator sees which column became the rate.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "measurements",
                      "projects", "charges", "attachments", "merged_ras",
-                     "employees", "attendance", "users"}
+                     "employees", "attendance", "users",
+                     "boq_imports", "import_layouts"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

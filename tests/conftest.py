@@ -259,6 +259,12 @@ def _fresh_store():
     # carrying the previous test's supplier bill. The FILES are isolated
     # separately and more strongly — see `_attachment_store` below.
     STORE.setdefault("attachments", {}).clear()
+    # Import BOQ from Excel (29 Sep 2026). A staged upload and a remembered
+    # layout are per-test for the reason above: a layout confirmed by one test
+    # would send the next test's upload straight past the preview, and a staged
+    # row left behind reads to `test_hardening.py` exactly like a seeder.
+    STORE.setdefault("boq_imports", {}).clear()
+    STORE.setdefault("import_layouts", {}).clear()
     # Seed flags are per-test too: a test that clears `specs` must be able to
     # let the seeder refill it, which is exactly the "drop the database and
     # restart" path the demo data exists to support.

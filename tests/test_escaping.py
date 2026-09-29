@@ -162,6 +162,13 @@ DO_NOT_POISON = {
     # ⚠ **`site_source` drives a branch too** — it selects which of four amber
     #   band messages renders, and it is never itself printed.
     "grid_model", "site_source",
+    # ── Import BOQ from Excel, 29 September 2026 ─────────────────────────────
+    #
+    # `token` is the staged import's id, written twice (as the dict key and as
+    # this field) the way `id` is. The routes look the row up by KEY and never
+    # read this field, so poisoning it would test nothing — it is an
+    # identifier, excluded for `id`'s reason.
+    "token",
 }
 
 # ⚠ Nested under `grid_columns[]`, so it cannot be expressed by key name alone
@@ -169,6 +176,17 @@ DO_NOT_POISON = {
 # `_poison()`, which consults this by path.
 DO_NOT_POISON_PATHS = {
     "grid_columns[]/key",
+    # A staged Excel import (`boq_imports`, 29 September 2026). All three are
+    # closed vocabularies the routes branch on, never printed as prose:
+    # `mapping` maps a column to a TARGET name (a poisoned "description" is an
+    # unknown target and every line would lose its text — a broken fixture,
+    # not an escaping test); `sheets[]/visibility` is visible / hidden;
+    # `grid[]/kinds` is the reader's cell type ("date", "pct", …). What IS
+    # prose — the file name, every sheet name and each sheet's refusal — is
+    # poisoned and pinned below. ⚠ The grid's CELLS are strings inside lists,
+    # which `_poison()` never reaches; `tests/test_boq_import.py` uploads a
+    # workbook with the payload in every cell and sweeps both pages instead.
+    "mapping", "sheets[]/visibility", "grid[]/kinds",
 }
 
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")
@@ -231,6 +249,9 @@ POISONED_COLLECTIONS = (
     "proformas", "invoices", "purchases", "purchase_orders",
     "delivery_challans", "measurements", "projects", "charges", "addresses",
     "settings",
+    # Import BOQ from Excel (29 Sep 2026). `import_layouts` is NOT here: it
+    # holds a hash and a column->target map, and no page prints either.
+    "boq_imports",
 )
 
 # ⚠ Collections that are still poisoned, but whose **count** may legitimately be
@@ -373,6 +394,12 @@ POISONED_FIELDS = {
     "addresses": (
         "city", "company", "contact_name", "country", "email", "gstin",
         "label", "landmark", "line1", "line2", "phone", "pincode", "state",
+    ),
+    # Import BOQ from Excel (29 Sep 2026). `filename` and `sheets[]/name` reach
+    # the preview and the prefilled form's banner; `created_at` and `format`
+    # are stored and printed nowhere. See DO_NOT_POISON_PATHS for the cells.
+    "boq_imports": (
+        "created_at", "filename", "format", "sheets[]/name",
     ),}
 
 # `settings` is exempt from the field pin for the SAME measured reason it is

@@ -376,6 +376,34 @@ def populated(client):
         if _rec is not None:
             _rec["created_by"] = spare_uid
 
+    # Import BOQ from Excel (29 September 2026). Both token routes render text
+    # that came out of somebody's workbook — the file name, every sheet name,
+    # the flag sentences and the whole prefilled editor — so they are swept,
+    # not SKIPped. Built through the REAL staging path (`SI.from_rows()` is
+    # `read()` minus the reader, so it needs no openpyxl) and owned by the
+    # user the sweep signs in as, because `boqimport._own()` answers 404 to
+    # anybody else. The layout is confirmed first, so `/form` renders the
+    # prefilled form on the known-layout path and KEEPS the row — a confirmed
+    # import would be deleted by its first render, and the sweep walks each
+    # route more than once.
+    import boqimport
+    import conftest
+    import sheetimport as SI
+    _wb = SI.from_rows([
+        ("Fixture sheet", "visible", [
+            ["Sr. No.", "Description", "Qty", "Unit", "Supply Rate", "Supply Amount"],
+            ["1", "Imported fixture line", 2, "Nos", 100, 200],
+            ["2", "Imported rate-only line", "R.O.", "Nos", 50, None],
+            [None, "Grand Total", None, None, None, 200],
+        ]),
+        ("Hidden fixture sheet", "hidden", [["Sr. No.", "Description"], ["1", "x"]]),
+    ])
+    _g = _wb["grid"][_wb["selected"]]
+    boqimport._upsert_layout(_g, SI.guess_mapping(_g))
+    imp_token, _imp_known = boqimport.stage(
+        _wb, "fixture-import.xlsx", conftest.ensure_test_user()["id"])
+    assert _imp_known, "the fixture import did not take the known-layout path"
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
@@ -393,6 +421,8 @@ def populated(client):
             "/roles/edit/<id>":       "role-hr",
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
+            "/boq/import/<token>":      imp_token,
+            "/boq/import/<token>/form": imp_token,
             # The four destructive confirmations minted 23 September 2026.
             # Exercised rather than SKIPped, and deliberately: every one of
             # them prints record text straight onto the page — the BOQ's
@@ -524,6 +554,8 @@ def populated(client):
     # seeds an employee, and a leaked fixture row reads exactly like a seeder.
     STORE.setdefault("employees", {}).clear()
     STORE.setdefault("attendance", {}).clear()
+    STORE.setdefault("boq_imports", {}).clear()
+    STORE.setdefault("import_layouts", {}).clear()
 
 
 def _a_measurement(boq_id: str) -> str:

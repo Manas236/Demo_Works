@@ -58,6 +58,12 @@ Import direction (§3.4 of the handover — one way, never reversed):
 and reads `STORE["ra_bills"]` directly, which is the same one-way trick
 `quotation.py` uses for proformas. It must not import `proforma.py` or
 `purchase.py` either: a BOQ has no proforma, and a project bills through RA.
+
+⚠ **Nor `boqimport.py`** (Import BOQ from Excel, 29 September 2026). That
+module imports THIS one and renders `/boq/create` prefilled through
+`create_boq(imported=…)`; the form's *Import from Excel* button reaches it with
+`url_for("boqimport.upload")`, a string. Asserted in
+`tests/test_import_directions.py`.
 """
 
 import json
@@ -2786,6 +2792,30 @@ def _form_payload_from(src: dict) -> tuple:
     return boot, prefill
 
 
+# The import flags on the editor (Import BOQ from Excel, 29 September 2026).
+#
+# ⚠ **A separate constant, emitted by `/boq/create` alone, and NOT a rule in
+#   `BOQ_STYLES`.** Eight screen pages load `BOQ_STYLES` and four of them are
+#   golden-pinned in `tests/test_page_golden.py`; a rule only the editor draws
+#   would move four digests for markup those pages never render — the
+#   `BOQ_DOC_STYLES` precedent. It is on every `/boq/create`, imported or not,
+#   because the flags ride inside `boq_json` and survive a rejected POST.
+BOQ_IMPORT_STYLES = """
+<style>
+  .ls-flag { display:inline-block; margin-right:.45rem; padding:0 .4rem;
+             border-radius:999px; font-size:.7rem; font-weight:700;
+             background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+  .ls-flag.is-red { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
+  .lc-flags { margin:0 0 .8rem; padding:.5rem .7rem .5rem 1.6rem; font-size:.8rem;
+              background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; }
+  .lc-flags.is-red { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
+  .form-hint.fh-red { background:#fef2f2; border-color:#fca5a5; border-left-color:#dc2626; }
+  .form-hint.fh-red .fh-icon { color:#dc2626; }
+  .form-hint.fh-red ul { margin:.35rem 0 0 1.1rem; padding:0; }
+</style>
+"""
+
+
 _BOQ_JS = """
 <script>
 /* ═══ THE BOQ EDITOR ════════════════════════════════════════════════════
@@ -3190,6 +3220,33 @@ function trunc(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
+/* ── Import flags (Import BOQ from Excel, 29 September 2026) ──────────────
+   A line opened from an uploaded workbook may carry `_flags` (sentences about
+   cells the reader could not take as a number) and `_block` (its QUANTITY was
+   one of them, so it arrived blank). Both are UI state: they ride inside
+   `boq_json` like `_open`, survive a rejected POST, and never reach the record
+   because `_clean_lines()` builds each line from named keys.
+
+   A blocked line is RED and the form will not submit while its quantity is
+   blank. The server would save a blank quantity as 0 (ABOUT.md §7 gap 42),
+   and an RA bill cannot claim against a line approved at 0 — so "R.O." on the
+   client's sheet must become a figure somebody typed, never a 0 nobody did. */
+function isBlocked(L) {
+  return !!(L && L._block && !L.is_header && String(qtyOf(L)).trim() === '');
+}
+
+function flagChip(L) {
+  var f = L._flags || [];
+  if (!f.length && !L._block) return '';
+  if (isBlocked(L)) {
+    return '<span class="ls-flag is-red" title="' + esc(f.join('\\n')) + '">'
+      + '&#9888; quantity needed</span>';
+  }
+  if (!f.length) return '';
+  return '<span class="ls-flag" title="' + esc(f.join('\\n')) + '">&#9873; '
+    + f.length + ' flag' + (f.length === 1 ? '' : 's') + '</span>';
+}
+
 /* The one-line summary — enough to scan a schedule and spot a wrong line. */
 function lineSummary(i, L) {
   var kids = L.is_header ? childrenOf(i) : [];
@@ -3199,7 +3256,7 @@ function lineSummary(i, L) {
   return '<div class="ls-row" onclick="toggleLine(' + i + ')">'
     +   '<span class="ls-chev">' + chev + '</span>'
     +   '<span class="ls-no">' + esc(L.item_no || '—') + '</span>'
-    +   '<span class="ls-desc">' + esc(trunc(L.description, 96)) + '</span>'
+    +   '<span class="ls-desc">' + flagChip(L) + esc(trunc(L.description, 96)) + '</span>'
     +   (L.is_header
         ? '<span class="ls-tag">spec' + (kids.length ? ' · ' + kids.length + ' items' : '') + '</span>'
         : '<span class="ls-qty">' + esc(qty) + (qty ? ' ' + esc(L.unit || '') : '') + '</span>'
@@ -3232,6 +3289,13 @@ function lineBody(i, L) {
     +     '<button type="button" class="btn-del" onclick="delLine(' + i + ')">Remove</button>'
     +   '</span>'
     + '</div>';
+
+  /* What the import reader said about this row, in full, above its fields. */
+  if (L._flags && L._flags.length) {
+    var fl = '';
+    for (var q = 0; q < L._flags.length; q++) fl += '<li>' + esc(L._flags[q]) + '</li>';
+    h += '<ul class="lc-flags' + (isBlocked(L) ? ' is-red' : '') + '">' + fl + '</ul>';
+  }
 
   /* Where it sits, then what it is. The picker leads the description because
      the picker is what writes it. */
@@ -3420,6 +3484,7 @@ function renderLines() {
 
   el('line-editor').innerHTML = h;
   renderJump();
+  renderImportBlock();
   renderDupWarn();
   renderZeroQty();
   for (var k4 = 0; k4 < MODEL.lines.length; k4++) {
@@ -3586,6 +3651,39 @@ function renderZeroQty() {
   + '</div>';
 }
 
+/* ── Imported lines still waiting for a quantity — RED, and it BLOCKS ─────
+   The one band on this form that stops a save, because the thing it guards
+   is the one this form cannot guard on the server: a blank quantity is saved
+   as 0 (ABOUT.md §7 gap 42), and the sheet did not say 0 — it said "R.O.",
+   "NA" or "9.3+1.5+6". `saveJSON()` refuses while this band has rows. */
+function renderImportBlock() {
+  var box = el('import-block');
+  if (!box) return;
+  var list = [];
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    if (isBlocked(MODEL.lines[i])) list.push(i);
+  }
+  if (!list.length) { box.innerHTML = ''; return; }
+  var items = '';
+  for (var k = 0; k < list.length && k < 40; k++) {
+    var L = MODEL.lines[list[k]];
+    items += '<li>Line ' + (list[k] + 1)
+      + (L.item_no ? ' &middot; item <b>' + esc(L.item_no) + '</b>' : '')
+      + ' &mdash; ' + esc((L._flags || [])[0] || 'the sheet gave no quantity as a number')
+      + '</li>';
+  }
+  if (list.length > 40) items += '<li>&hellip; and ' + (list.length - 40) + ' more.</li>';
+  box.innerHTML =
+    '<div class="form-hint fh-red">'
+  +   '<span class="fh-icon">&#9888;</span>'
+  +   '<span><b>' + list.length + ' imported line' + (list.length === 1 ? ' needs' : 's need')
+  +   ' a quantity before this BOQ can be saved.</b> The sheet did not give it as a '
+  +   'number, so it was left blank rather than guessed. A blank quantity would be '
+  +   'saved as 0, and an RA bill cannot claim against a line at 0. '
+  +   'Type the quantity, or remove the line.<ul>' + items + '</ul></span>'
+  + '</div>';
+}
+
 function renderJump() {
   var box = el('jump-bar');
   if (!box) return;
@@ -3661,6 +3759,9 @@ function setLine(i, key, val) {
     var ms = el('ms' + i);
     if (ms) ms.innerHTML = moreSummary(L);
   }
+  /* An imported line waiting for its quantity: the red band follows the
+     typing, without a re-render. */
+  if (key === 'total_qty' && L._block) renderImportBlock();
 }
 
 function setArea(i, area, val) {
@@ -3668,6 +3769,7 @@ function setArea(i, area, val) {
   var sec = secByCode(MODEL.lines[i].section);
   var box = el('tq' + i);
   if (box && sec) box.textContent = totalOf(MODEL.lines[i], sec.areas || []);
+  if (MODEL.lines[i]._block) renderImportBlock();
 }
 
 function setSection(i, code) {
@@ -3686,8 +3788,12 @@ function setSection(i, code) {
      same state as a fresh insert, and gets the same default. A typed figure
      is left alone, and a line bound for an area section keeps whatever it
      carried: `qtyOf()` never reads it there, and it is still in place if the
-     line is moved back. */
-  if (!areas.length && (MODEL.lines[i].total_qty === '' || MODEL.lines[i].total_qty == null)) {
+     line is moved back.
+     ⚠ NOT an imported line whose quantity was left blank on purpose (`_block`:
+     the sheet said "R.O." or "NA"). A moved row landing at 1 would turn that
+     into a figure nobody typed, which is the thing the block exists to stop. */
+  if (!areas.length && !MODEL.lines[i]._block
+      && (MODEL.lines[i].total_qty === '' || MODEL.lines[i].total_qty == null)) {
     MODEL.lines[i].total_qty = DEFAULT_QTY;
   }
   renderLines();
@@ -3875,8 +3981,24 @@ function delLine(i) {
    Stripping here as well would throw the state away on a rejected POST — the
    user would get their input back with every line slammed shut and the
    picker's typed/auto memory wiped, which is the opposite of the
-   always-return-the-user's-input contract this form is held to. */
+   always-return-the-user's-input contract this form is held to.
+
+   ⚠ It REFUSES while an imported line is still waiting for its quantity
+   (`isBlocked`, 29 September 2026): it opens that line and its section and
+   brings the red band into view instead of submitting. A form with no
+   imported lines never reaches the branch. */
 function saveJSON() {
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    if (!isBlocked(MODEL.lines[i])) continue;
+    var L = MODEL.lines[i];
+    L._open = true;
+    var S = secByCode(L.section);
+    if (S) S._open = true;
+    renderLines();
+    var band = el('import-block');
+    if (band && band.scrollIntoView) band.scrollIntoView({block: 'start'});
+    return false;
+  }
   el('boq_json').value = JSON.stringify(MODEL);
   return true;
 }
@@ -3927,7 +4049,19 @@ renderLines();
 
 
 @boq_bp.route("/create", methods=["GET", "POST"])
-def create_boq():
+def create_boq(imported: dict = None):
+    """
+    ⚠ `imported` is the ONE seam Import BOQ from Excel uses (29 September
+      2026). Flask never passes it — `/boq/create` has no URL variables — so a
+      request to this route is exactly what it always was. `boqimport.py`
+      calls this function from its own GET route with `{"boot", "prefill",
+      "banner_html"}`, and it then renders like `?demo=1`: the editor filled,
+      a banner saying what arrived and that nothing is saved, and the ordinary
+      Save. Only two things differ on that page: the banner, and an explicit
+      `action` on the form — rendered at `/boq/import/<token>/form`, a form
+      with no action would post back there instead of here. The POST path
+      below never sees `imported` and is unchanged.
+    """
     ensure_demo_specs()
 
     error = ""
@@ -4166,6 +4300,16 @@ def create_boq():
     if request.method == "GET" and request.args.get("project_id"):
         prefill["project_id"] = request.args.get("project_id")
 
+    # Import from Excel (29 September 2026). Last, so it wins over anything a
+    # query string asked for; the banner is already escaped by boqimport.py.
+    import_banner = ""
+    form_action = ""
+    if imported is not None and request.method == "GET":
+        boot = imported["boot"]
+        prefill = dict(imported.get("prefill") or {})
+        import_banner = imported.get("banner_html", "")
+        form_action = f' action="{url_for("boq.create_boq")}"'
+
     # ── The supersedes selector ────────────────────────────────────────────
     #
     # Candidates are narrowed to the same project and party whenever the form
@@ -4275,7 +4419,7 @@ def create_boq():
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Create BOQ")}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_IMPORT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -4285,6 +4429,9 @@ def create_boq():
     <h1>Create <span>BOQ</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
+      <a href="{url_for('boqimport.upload')}" class="btn btn-ghost">
+        &#128229;&nbsp;Import from Excel
+      </a>
       <a href="{url_for('boq.create_boq', demo=1)}" class="btn btn-ghost">
         &#128203;&nbsp;Use demo data
       </a>
@@ -4292,8 +4439,9 @@ def create_boq():
   </div>
   {blockers_html}
   {demo_banner}
+  {import_banner}
 
-  <form method="POST" onsubmit="return saveJSON()">
+  <form method="POST"{form_action} onsubmit="return saveJSON()">
     <input type="hidden" id="boq_json" name="boq_json"/>
 
     <div class="form-section">
@@ -4479,6 +4627,7 @@ def create_boq():
       </p>
 
       <div class="jump-bar" id="jump-bar"></div>
+      <div id="import-block"></div>
       <div id="dup-warn"></div>
       <div id="zeroqty-hint"></div>
       <div id="line-editor"></div>

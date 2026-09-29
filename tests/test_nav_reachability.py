@@ -327,6 +327,16 @@ UNLINKED_ON_PURPOSE = {
     #   argument against it.
     "merged_ra.list_merged": "a sub-register of the RA register, which CC-2 names "
                           "as the merge action's home; linked from there",
+    # ── Import BOQ from Excel, 29 September 2026 ────────────────────────────
+    #
+    # A way of FILLING IN /boq/create, not a register: it ends on that form and
+    # writes nothing a register lists. So it hangs off the form's own
+    # "Import from Excel" button — the /users -> /roles precedent above — and
+    # `tests/test_boq_import.py::test_the_create_form_links_to_the_import`
+    # asserts the button is there. ⚠ The build brief also forbade touching
+    # `_nav()` in that pass, so a nav entry was not an option it could take.
+    "boqimport.upload": "a way of filling in /boq/create, linked from that form's "
+                        "Import from Excel button",
 }
 
 

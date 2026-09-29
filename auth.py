@@ -746,6 +746,15 @@ ROUTE_PERMISSIONS = {
     # POST destroys the lot through `cascade.delete_cascade()`.
     "boq.delete_boq":             "boq.delete",
     "boq.print_boq":              "boq.print",
+    # Import BOQ from Excel (29 Sep 2026) — the SAME permission as
+    # `boq.create_boq`, on all three, and no new permission minted: every one
+    # of them ends at the Create BOQ form, and whoever may fill that form in by
+    # hand may fill it from their own workbook. The POSTs write only the
+    # staging row, never a BOQ; the BOQ is still written by `boq.create_boq`.
+    # `tests/test_boq_import.py` asserts the three stay equal to it.
+    "boqimport.upload":           "boq.create",
+    "boqimport.preview":          "boq.create",
+    "boqimport.form":             "boq.create",
 
     # ── RA billing ───────────────────────────────────────────────────────────
     "ra.list_ras":                "ra.view",

@@ -25,6 +25,9 @@ from spec import spec_bp         # Specification library: the vocabulary a BOQ i
 from boq import boq_bp           # BOQ: the priced schedule for a project. Head of a
                                  # SECOND sell-side chain — BOQ -> RA bills — parallel
                                  # to quotation -> proforma -> tax invoice, not part of it.
+from boqimport import boqimport_bp  # Import BOQ from Excel (29 Sep 2026): upload,
+                                 # preview, then /boq/create PREFILLED. Imports
+                                 # boq.py; boq.py links here with url_for only.
 from ra import ra_bp             # RA bills: progressive claims against a BOQ
                                   # revision. Headed TAX INVOICE per DOMAIN.md §4.
 from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
@@ -170,6 +173,10 @@ app.register_blueprint(invoice_bp)            # Mounted at /invoice
 app.register_blueprint(purchase_bp)           # Mounted at /purchase  (buy side)
 app.register_blueprint(spec_bp)               # Mounted at /spec
 app.register_blueprint(boq_bp)                # Mounted at /boq
+app.register_blueprint(boqimport_bp)          # Mounted at /boq/import — REQUIRED
+                                              # by /boq/create, which builds
+                                              # url_for("boqimport.upload") for
+                                              # its Import from Excel button.
 app.register_blueprint(ra_bp)                 # Mounted at /ra   — REQUIRED by
                                               # /boq/view, which builds
                                               # url_for("ra.view_ra") for every

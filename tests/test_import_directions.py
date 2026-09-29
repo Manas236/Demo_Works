@@ -649,6 +649,15 @@ FORBIDDEN = [
     ("docsheet", "chrome",    "any", "a printed document must not depend on the "
                                      "app shell; the sheet reads BASE_STYLES "
                                      "through dashboard.py's re-export on purpose"),
+
+    # ── Import BOQ from Excel, 29 September 2026 ────────────────────────────
+    # boqimport.py imports boq.py to render /boq/create prefilled; the Import
+    # button on that form reaches back with url_for("boqimport.upload"), a
+    # string. The reverse import would be a cycle at boot.
+    ("boq", "boqimport",       "any", "boqimport.py imports boq.py; the form's Import "
+                                      "button is a url_for string"),
+    ("boq", "sheetimport",     "any", "the BOQ never reads a workbook; boqimport.py "
+                                      "hands it an editor model"),
 ]
 
 
@@ -945,6 +954,10 @@ REQUIRED = [
     ("specpick", "store",    "STORE['specs'] — the library a pick is re-read from at POST"),
     ("specpick", "pipeline", "esc and json_for_script — the embed goes through the "
                              "shared helper, never a bare json.dumps (ABOUT.md §7.9e)"),
+
+    ("boqimport", "sheetimport", "the reader — bytes in, plain dicts out"),
+    ("boqimport", "boq",         "create_boq(imported=…), MAX_LINES and MAX_JSON_BYTES: "
+                                 "the prefilled form IS the ordinary one"),
 ]
 
 
@@ -1000,6 +1013,35 @@ def test_photo_imports_nothing_from_the_app():
     stdlib = {"base64", "datetime", "io", "os", "re", "warnings", "PIL"}
     assert imports_of("photo") <= stdlib, imports_of("photo") - stdlib
     assert "PIL" not in imports_of("photo", top_level_only=True)
+
+
+def test_sheetimport_imports_nothing_from_the_app():
+    """
+    `sheetimport.py` (Import BOQ from Excel, 29 September 2026) is a LEAF: it
+    is handed bytes and returns plain dicts, and it must not reach for a
+    record, a route or a page. The standard library at module level, and the
+    two readers inside functions only — `photo.py`'s arrangement for Pillow,
+    so a server without them still boots.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"sheetimport"}
+    assert imports_of("sheetimport") & ours == set(), imports_of("sheetimport") & ours
+    stdlib = {"datetime", "hashlib", "io", "json", "math", "re", "zipfile"}
+    assert imports_of("sheetimport", top_level_only=True) <= stdlib, (
+        imports_of("sheetimport", top_level_only=True) - stdlib)
+    assert {"openpyxl", "xlrd"} <= imports_of("sheetimport")
+
+
+def test_only_sheetimport_reads_a_workbook():
+    """
+    The runtime half of `tests/test_fixtures.py`'s old contract. Until
+    29 September 2026 NO module of the app imported openpyxl; from then on
+    exactly one does, and it is the leaf above. A second module reaching for a
+    workbook reader would be a second parser to keep in step.
+    """
+    readers = {"openpyxl", "xlrd", "defusedxml"}
+    offenders = sorted(m.stem for m in REPO.glob("*.py")
+                       if m.stem != "sheetimport" and imports_of(m.stem) & readers)
+    assert offenders == [], offenders
 
 
 def test_the_seeded_part_list_is_a_prefill_and_not_a_collection():
