@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 84 permissions · 135 classified endpoints.**
+**7 roles · 84 permissions · 139 classified endpoints.**
 
 ---
 
@@ -416,8 +416,8 @@ Read off the live route registry, so it cannot drift from what the application a
 | `product.create` | `product.add_product` |
 | `product.delete` | `product.delete_product` |
 | `address.view` | `address.list_addresses`, `address.view_address` |
-| `address.create` | `address.add_address` |
-| `address.edit` | `address.edit_address` |
+| `address.create` | `address.add_address`, `address.gst_captcha_add`, `address.gst_lookup_add` |
+| `address.edit` | `address.edit_address`, `address.gst_captcha_edit`, `address.gst_lookup_edit` |
 | `address.delete` | `address.archive_address`, `address.delete_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |
 | `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_user`, `auth.list_users` |

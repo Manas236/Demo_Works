@@ -974,6 +974,20 @@ ROUTE_PERMISSIONS = {
     #   Operation Head hold `address.edit` and deliberately do not get this.
     "address.archive_address":    "address.delete",
     "address.unarchive_address":  "address.delete",
+    # GSTIN auto-fill (29 September 2026). ⚠ **FOUR endpoints, a pair PER
+    #   FORM, and no permission minted.** The CAPTCHA and the lookup serve both
+    #   the add form and the edit form, and the brief gates them on "the same
+    #   permission as address create/edit" — which is two permissions, while
+    #   this registry maps one endpoint to one. A single pair would have to
+    #   carry one of them (and refuse a custom role holding only the other) or
+    #   be classified `AUTHENTICATED` with the real check hidden in the view,
+    #   which is the weakening B5 exists to prevent. `attachment.py`'s
+    #   per-parent endpoints are the precedent. The lookup is POST-only and it
+    #   writes the GSTIN cache, so it carries the WRITE permission of its form.
+    "address.gst_captcha_add":    "address.create",
+    "address.gst_lookup_add":     "address.create",
+    "address.gst_captcha_edit":   "address.edit",
+    "address.gst_lookup_edit":    "address.edit",
 }
 
 

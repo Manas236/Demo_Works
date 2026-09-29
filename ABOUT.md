@@ -399,6 +399,7 @@ Consequences you must respect when editing:
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from — **and, from 11 September 2026, what a quotation line is written from too** (`quotation.create_quotation()` reads `STORE["specs"]` and seeds through `ensure_demo_specs()`). **Not a replacement for `product.py`** in the sense of its record shape — a clause is priced per leg, a product at one `base_price` with a BOM — but with the catalogue hidden it is the one library the sell side now draws on. |
 | [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. ⚠ **`create_boq(imported=None)` from 29 September 2026** — the one seam Import BOQ from Excel renders the form through; Flask never passes it, and the POST path never reads it. The form's *Import from Excel* button is a `url_for` string: **`boq.py` never imports `boqimport.py`**. |
 | [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. |
+| [gst_lookup.py](gst_lookup.py) | 723 | **GSTIN auto-fill — the check and the portal, and a LEAF** (29 September 2026). No routes, no HTML. `offline()` is the 15-character shape, the official base-36 check character, the State and the PAN — no network; `lookup()` is the ONE public function behind which the GST portal search, the gstinapi.in fallback, the normalisation and the 30-day `gst_cache` sit; `captcha()` starts a portal session and returns its image **untouched — a human types every CAPTCHA and nothing here reads one**. ⚠ **Every outbound call goes through `_open()`**, `timeout=5`, one attempt, no retry — `tests/conftest.py` replaces it with a refusal around every test, so no sweep can phone the portal. ⚠ **The portal's cookie jars live in `_SESSIONS`, in RAM, and never reach STORE or MySQL.** Imports `store`, `pipeline` and the standard library only (`urllib`, so **no new dependency**). §5 `/address`, `docs/GST_PORTAL.md`. |
 | [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. |
 | [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
@@ -425,7 +426,7 @@ Consequences you must respect when editing:
 | [settings.py](settings.py) | 1171 | Company identity + bank details form, the two document number **counters** (draft PO, delivery challan) and, from 25 September 2026, the **starting-number floor for every other series**. None of them is a branding override — each is its own record, so `apply_settings()` never pushes one onto the letterhead and the nav's amber dot never counts a blank one. ⚠ **The floors' RULE lives in `series.py`, not here**, because `boq.py` may not import this module (§7 gap 36); this file owns the form, the validator and the refusal that names the current max. ⚠ **A counter and a floor are different things**: the draft PO and challan counters advance on every save and spend a number even on a delete; a floor is a lower bound that only ever moves a series forward. The quotation series has **no** control, by decision — `quotation.py` is frozen and a quotation is not a statutory document. |
 | [auth.py](auth.py) | 2609 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). ⚠ **The `approval` blueprint is treated the same way while the ladder is switched off** (12 September 2026) — `blueprint_off_reason()` answers with its own reason, read from `approval.ladder_on()` through a function-body import, the five `*.approve` grants are frozen on `/roles` and marked `⊗` in the matrix (§2g, §2i). |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
-| [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. |
+| [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. ⚠ **GSTIN auto-fill from 29 September 2026** — the GSTIN box moved to the TOP of the add and edit forms, four routes (a CAPTCHA/lookup pair per form), the check character on a new or changed GSTIN, the not-Active acknowledgement and two new keys on the record. All of it reaches the portal through `gst_lookup.py`; §5 `/address`. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 130 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 494 | **Dead file.** Stale docs only — see §8. |
@@ -450,10 +451,13 @@ app.py
  │                             │  frozen, so not repointed), branding, store, pipeline
  │                             │  (pipeline is new — P.esc, §7.7)
  ├─ address.py ────────────────┤  imports dashboard, branding, store, product (PRODUCT_STYLES)
- │                             │  and auth INSIDE `_editor_id()` only (purchase._repricer()'s
- │                             │  arrangement). It reads six OTHER collections out of STORE
- │                             │  directly and imports none of them — the one-way trick, and
- │                             │  it has to be, because five of the six import THIS module.
+ │                             │  and auth INSIDE `_editor_id()` and `_gst_urls()` only
+ │                             │  (purchase._repricer()'s arrangement). It reads six OTHER
+ │                             │  collections out of STORE directly and imports none of them —
+ │                             │  the one-way trick, and it has to be, because five of the six
+ │                             │  import THIS module. ⚠ From 29 Sep 2026 also gst_lookup (the
+ │                             │  GSTIN leaf) and pipeline (json_for_script for GST_CFG) —
+ │                             │  both leaves, so neither can close a cycle.
  ├─ quotation.py ──────────────┤  imports dashboard, branding, store, address, pipeline
  │                             │  — and, INSIDE its three unfrozen functions
  │                             │  only (12 Sep 2026): `auth`, for the one
@@ -553,6 +557,10 @@ boqpick.py   imports boq + pipeline, and NOTHING that renders a document ← §2
 sheetimport.py imports NOTHING from the app — the standard library at module
              level, openpyxl / xlrd inside its two readers only (29 Sep 2026).
              The ONLY module that may name a workbook reader — asserted
+gst_lookup.py imports store and pipeline, and otherwise the standard library
+             (29 Sep 2026). NEVER address (which imports it), auth, db or
+             flask. The ONLY module that may open a network connection —
+             asserted in tests/test_gst_lookup.py
 ```
 
 `proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py` and
@@ -3041,8 +3049,58 @@ bills exist and one is on the installation leg.
      "by_user_id": "<user id>",   # ⚠ an ID, never a display name
      "changes": [{"field": "city", "from": "Bengaluru", "to": "Bangalore"}]},
   ],
+
+  # ── GSTIN auto-fill, 29 September 2026 ─────────────────────────────────
+  "gst_status":      "Active",            # ⚠ ABSENT unless the GSTIN was looked up
+  "gst_verified_at": "2026-09-29 16:48",  #   when the portal said so
 }
 ```
+
+⚠ **The two `gst_*` keys are written at SAVE, only from `gst_lookup.cached()`**
+— what our server was told — never from anything the form posts. A fresh
+cache entry for the saved GSTIN stamps both; a GSTIN that is blank or has
+CHANGED with no cache entry drops both (they described a different GSTIN); an
+unchanged GSTIN with no fresh entry keeps what the record says. Absent on every
+record written before this pass, and every reader uses `.get()`. Neither is in
+`LOGGED_FIELDS`, so the edit log is exactly what it was.
+
+⚠ **The check character is enforced on a NEW or CHANGED GSTIN only.** Every
+GSTIN the demo seeder writes is invented and fails it, and so do **five of the
+nine** addresses on the live database (measured, 29 September 2026). Checking
+every save would make each of them un-editable even to fix a phone number;
+INTRODUCTION.md §9 says the client's imperfect data survives. The edit form
+flags such a GSTIN in amber instead. A blank GSTIN is still allowed.
+
+### GST cache  (`gst_cache`, GSTIN auto-fill, 29 September 2026)
+
+```python
+STORE["gst_cache"][gstin] = {
+  "id": gstin, "gstin": gstin,
+  "result": {                        # gst_lookup._result() — ONE shape, whoever answered
+    "gstin", "legal_name", "trade_name", "status", "active": bool, "cancelled": bool,
+    "constitution", "taxpayer_type", "registration_date": "YYYY-MM-DD",
+    "cancellation_date", "state",                  # state from the GSTIN's own code
+    "address_text": "<the portal's ONE-LINE address, verbatim>",
+    "address": {"line1", "line2", "city", "state", "pincode", "split": bool},
+    "source": "GST portal" | "gstinapi.in", "fetched_at": "YYYY-MM-DD HH:MM"},
+  "fetched_at": "YYYY-MM-DD HH:MM", "fetched_ts": 1790690880.2, "source": "…",
+}
+```
+
+1. **Public registration details and when they were fetched — nothing else.**
+   Never a cookie, a token, a CAPTCHA answer or the raw body; the portal's
+   cookie jars live in `gst_lookup._SESSIONS`, in RAM, and die with the
+   process or after five minutes. `tests/test_gst_lookup.py` serialises the
+   row the way `db._blob()` does and asserts none of those is in it.
+2. **Fresh means `0 ≤ age ≤ 30 days`, written as an inside-the-window test.** A
+   NaN timestamp made `age < 0 or age > limit` call a row fresh — found by the
+   suite, fixed before commit. A timestamp in the future is stale too.
+3. **Never seeded** — `tests/test_hardening.py` lists it transactional: a
+   seeded row would be an invented statement of what the portal said about
+   somebody's registration.
+4. **`address` is a split the page flags for review, not a fact.** The portal
+   returns one comma-joined string; §5 `/address` says what the split reads
+   with confidence (the PIN and the State) and what it guesses.
 
 `type` ∈ `office | site | billing | shipping | vendor`.
 Validated: PIN `^[1-9][0-9]{5}$`, GSTIN full 15-char pattern.
@@ -8434,6 +8492,75 @@ updated, so the next pass takes them deliberately.
 | `GET,POST /address/delete/<id>` | `delete_address` — GET confirms, POST deletes; **refused while referenced, on both** |
 | `POST /address/archive/<id>` | `archive_address` — out of every picker, reversibly |
 | `POST /address/unarchive/<id>` | `unarchive_address` |
+| `GET /address/gst/captcha` | `gst_captcha_add` — the add form's CAPTCHA image (`address.create`) |
+| `POST /address/gst/lookup` | `gst_lookup_add` — the add form's lookup, JSON (`address.create`) |
+| `GET /address/edit/<id>/gst/captcha` | `gst_captcha_edit` — the edit form's (`address.edit`) |
+| `POST /address/edit/<id>/gst/lookup` | `gst_lookup_edit` — the edit form's (`address.edit`) |
+
+#### GSTIN auto-fill — 29 September 2026
+
+The user types a GSTIN at the top of the add or edit form and the details fill
+themselves, **without leaving this site**: the GST portal's CAPTCHA is shown
+inside our form and typed by the human. The live flow — endpoint, payload,
+cookies, every response shape and what was measured — is
+[docs/GST_PORTAL.md](docs/GST_PORTAL.md).
+
+**On the 15th character**, in the browser: the offline check (`GST.offline`,
+the same arithmetic as `gst_lookup.offline()` — a Node test compares them on
+1,000+ cases, messages included). Invalid → an inline error and nothing is
+sent. Valid → the State and PAN chips, the State box set from the GSTIN's own
+code, then a POST with **no CAPTCHA**: a cache hit under 30 days fills at once
+and says *fetched … (saved copy) · refresh*; a miss loads the CAPTCHA inline,
+with *Fetch details* and *New CAPTCHA*.
+
+| Answer | What the page does |
+|---|---|
+| found | fills, marks each changed field, lists them with an **undo**, shows the portal's details |
+| wrong CAPTCHA | says so and loads a fresh one by itself |
+| unknown GSTIN | says the portal has no such taxpayer |
+| portal timeout / error / unexpected shape | the gstinapi.in fallback **if `GST_API_KEY` is set**, else *"Auto-fill unavailable, enter manually."* |
+| 10 lookups in a minute | a rate-limit message (429); per user, and CAPTCHA reloads have their own 10 |
+
+⚠ **The routes NEVER save.** They return JSON the page copies into the
+boxes; the address is written by the ordinary Save, with every ordinary check,
+and a referenced address still goes through the edit log exactly as before.
+
+⚠ **Four endpoints, a pair per form, and no permission minted.** The brief
+said "the same permission as address create/edit" — two permissions — and the
+registry maps one endpoint to one. The alternative was one pair classified
+`AUTHENTICATED` with the check in the view, which is the weakening B5 exists to
+prevent; `attachment.py`'s per-parent endpoints are the precedent. The form
+draws the CAPTCHA controls only where `auth.can_reach()` says both of its pair
+are reachable, so a role that cannot use them sees the offline check and
+manual entry and nothing that could only produce a refusal.
+
+⚠ **A project site keeps its own address lines.** For `type == "site"` a
+lookup fills the company and the State only, and the form says why: a GSTIN's
+registered address is the client's principal place of business, not where the
+work is. `"site"` alone — not `SITE_TYPES`, which includes the office, and an
+office is usually exactly where the principal place IS. `SITE_TYPES` is
+unchanged.
+
+⚠ **A status that is not "Active" needs an acknowledgement.** A red banner and
+a required *"I understand this GSTIN is <status>"* box, drawn by the SERVER
+(so they hold with JavaScript off), and `_gst_status_error()` refuses the save
+without the tick. The status is read from the cache, never from the form. A
+GSTIN nobody looked up has no known status and is not gated.
+
+⚠ **The address split is declared, not trusted.** The portal's `pradr`
+carried ONE key, `adr`, a single comma-joined string (measured). Only the two
+ends are read with confidence — the last part is the PIN, the one before it
+the State — and if either is missing nothing is split. Past those, the last
+remaining part is taken as the district and dropped, the one before it as the
+city, and the rest halved into line 1 and line 2 at a comma. The page shows
+the portal's address verbatim beside the filled boxes.
+
+⚠ **Company = the trade name, falling back to the legal name**; both are shown.
+For a proprietorship the legal name is a person's name. The label is filled
+only while it is blank, and never for a site.
+
+⚠ **`GST_STYLES` and `GST_SCRIPT` are emitted on the two forms only.** `/address/`
+is pinned by `tests/test_page_golden.py` and its bytes did not move.
 
 ⚠ **The last three arrived on 30 August 2026 (fourth pass) and NO PERMISSION WAS
 MINTED.** `view_address` is `address.view`; **archive and un-archive are

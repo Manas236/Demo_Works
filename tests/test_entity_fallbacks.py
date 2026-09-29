@@ -88,6 +88,17 @@ SKIP = {
     "/attachment/charge/download/<id>":  "returns file bytes, not HTML",
     "/attachment/receipt/view/<id>":     "returns file bytes, not HTML",
     "/attachment/receipt/download/<id>": "returns file bytes, not HTML",
+    # ── GSTIN auto-fill, 29 September 2026 ──────────────────────────────────
+    #
+    # ⚠ **Same reason as B8's, and only that reason.** These answer the GST
+    #   portal's CAPTCHA image as bytes, or a JSON refusal — never HTML (and in
+    #   this suite the portal is unreachable by `conftest._no_gst_network`, so
+    #   the JSON). What the portal SAYS reaches HTML only through
+    #   `address._gst_widget()`, which renders inside the add and edit forms
+    #   and IS swept there; `tests/test_gst_lookup.py` plants a hostile
+    #   portal answer and asserts it arrives escaped.
+    "/address/gst/captcha":           "returns a CAPTCHA image or JSON, not HTML",
+    "/address/edit/<id>/gst/captcha": "returns a CAPTCHA image or JSON, not HTML",
 }
 
 

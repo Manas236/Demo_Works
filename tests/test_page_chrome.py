@@ -66,6 +66,11 @@ NO_CHROME = {
     "/extractor/": "a standalone dark demo page that opens in a new tab; draws "
                    "its own header, imports branding only, has never rendered "
                    "_nav()",
+    # GSTIN auto-fill (29 September 2026). Not a page: the GST portal's CAPTCHA
+    # image, or a JSON refusal, fetched by the address form's own script. The
+    # edit form's twin takes an id and is outside this sweep already.
+    "/address/gst/captcha": "not a page: a CAPTCHA image or JSON for the "
+                            "address form's script",
 }
 
 # The screen routes the last three passes added. Listed explicitly as well as

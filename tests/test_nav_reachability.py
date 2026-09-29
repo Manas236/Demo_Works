@@ -337,6 +337,14 @@ UNLINKED_ON_PURPOSE = {
     # `_nav()` in that pass, so a nav entry was not an option it could take.
     "boqimport.upload": "a way of filling in /boq/create, linked from that form's "
                         "Import from Excel button",
+    # ── GSTIN auto-fill, 29 September 2026 ──────────────────────────────────
+    #
+    # Not a page at all: the GST portal's CAPTCHA image, fetched by the address
+    # form's own script when a GSTIN is typed. A menu entry pointing at it would
+    # open a bare picture, or a JSON refusal. It is reached from /address/add,
+    # and `tests/test_gst_lookup.py` asserts the form carries its URL.
+    "address.gst_captcha_add": "not a page: the CAPTCHA image the address form's "
+                               "script fetches",
 }
 
 

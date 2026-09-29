@@ -658,6 +658,18 @@ FORBIDDEN = [
                                       "button is a url_for string"),
     ("boq", "sheetimport",     "any", "the BOQ never reads a workbook; boqimport.py "
                                       "hands it an editor model"),
+
+    # ── GSTIN auto-fill, 29 September 2026 ──────────────────────────────────
+    # gst_lookup.py is a leaf: address.py imports it for the check, the
+    # lookup and the pattern the form shares. The reverse would be a cycle at
+    # boot, and a leaf that drew a page or asked the gate would stop being one.
+    ("gst_lookup", "address", "any", "address.py imports gst_lookup; the lookup "
+                                     "knows no form"),
+    ("gst_lookup", "flask",   "any", "it owns no route and builds no HTML"),
+    ("gst_lookup", "auth",    "any", "the routes in address.py are gated; the "
+                                     "lookup is handed a user id"),
+    ("gst_lookup", "db",      "any", "the cache is a STORE collection; db.py "
+                                     "mirrors it like any other"),
 ]
 
 
@@ -958,6 +970,9 @@ REQUIRED = [
     ("boqimport", "sheetimport", "the reader — bytes in, plain dicts out"),
     ("boqimport", "boq",         "create_boq(imported=…), MAX_LINES and MAX_JSON_BYTES: "
                                  "the prefilled form IS the ordinary one"),
+
+    ("address", "gst_lookup", "the GSTIN check, the portal lookup and the one "
+                              "pattern the form, the save and the lookup share"),
 ]
 
 
@@ -1029,6 +1044,22 @@ def test_sheetimport_imports_nothing_from_the_app():
     assert imports_of("sheetimport", top_level_only=True) <= stdlib, (
         imports_of("sheetimport", top_level_only=True) - stdlib)
     assert {"openpyxl", "xlrd"} <= imports_of("sheetimport")
+
+
+def test_gst_lookup_reaches_only_the_store_and_pipeline():
+    """
+    `gst_lookup.py` (GSTIN auto-fill, 29 September 2026) is a LEAF: `store`
+    for the cache, `pipeline` for the State table — and otherwise the standard
+    library. Its network access is `urllib`, so it adds no dependency, and
+    `tests/test_gst_lookup.py` holds that no other module opens a connection.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"gst_lookup"}
+    assert imports_of("gst_lookup") & ours == {"store", "pipeline"}
+    # `imports_of()` reports the top-level package: `http` is http.cookiejar,
+    # `urllib` is urllib.request / .error / .parse.
+    stdlib = {"http", "json", "os", "random", "re", "secrets", "threading",
+              "time", "urllib", "datetime", "pipeline", "store"}
+    assert imports_of("gst_lookup") <= stdlib, imports_of("gst_lookup") - stdlib
 
 
 def test_only_sheetimport_reads_a_workbook():

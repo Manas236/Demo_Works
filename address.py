@@ -53,10 +53,12 @@ import re
 import uuid
 from datetime import datetime
 
-from flask import Blueprint, request, redirect, url_for
+from flask import Blueprint, Response, jsonify, request, redirect, session, url_for
 from markupsafe import escape
 
 import branding as B
+import gst_lookup                           # GSTIN check + portal lookup — a leaf
+import pipeline as P                        # json_for_script, for the GST config
 from chrome import BASE_STYLES, _nav
 from product import PRODUCT_STYLES          # reuse form / table / alert styling
 from store import STORE
@@ -136,7 +138,35 @@ INDIAN_STATES = [
 # India Post PINs never start with 0.
 _PIN_RE   = re.compile(r"^[1-9][0-9]{5}$")
 # 2-digit state code + 10-char PAN + entity digit + 'Z' + checksum.
-_GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
+# ⚠ The SAME OBJECT as `gst_lookup.GSTIN_RE` (29 September 2026), not a copy:
+#   the form, the save and the lookup must agree about what a GSTIN looks like.
+#   The pattern itself is unchanged.
+_GSTIN_RE = gst_lookup.GSTIN_RE
+
+# ── GSTIN auto-fill (29 September 2026) ─────────────────────────────────────
+#
+# Two keys on the record, both ABSENT on every address written before this
+# pass and on every address whose GSTIN was never looked up. Absent means
+# "nobody asked the portal", and every reader uses `.get()`.
+#
+#   gst_status       the portal's status string at the last lookup ("Active",
+#                    "Cancelled", …), copied from the cache at SAVE
+#   gst_verified_at  when those details were fetched ("YYYY-MM-DD HH:MM")
+#
+# ⚠ Written only at save, only from `gst_lookup.cached()` — never from a
+#   hidden form field, which the browser controls.
+GST_STATUS_FIELD = "gst_status"
+GST_VERIFIED_FIELD = "gst_verified_at"
+
+# The Flask-session key holding this browser's portal-session token. The jar
+# itself is in `gst_lookup._SESSIONS`; the signed cookie carries only the key.
+GST_SESSION_KEY = "gst_portal_token"
+
+# The one address type whose lines a lookup never touches. ⚠ `"site"` only,
+# NOT `SITE_TYPES`: that tuple is "where people work" and includes the office,
+# and an office is exactly where a GSTIN's principal place of business usually
+# IS. A project site is where the work happens — somewhere else.
+GST_NO_ADDRESS_FILL_TYPE = "site"
 
 
 # =============================================================================
@@ -709,11 +739,19 @@ def has_options(only_types: tuple | list | None = None) -> bool:
     return False
 
 
-def _validate(form) -> tuple[dict, str | None]:
+def _validate(form, previous_gstin: str = "") -> tuple[dict, str | None]:
     """
     Pull an address dict out of a submitted form.
     Returns (data, error). `data` is always returned so the form can be
     re-rendered with whatever the user typed.
+
+    ⚠ **The GSTIN check character is enforced on a NEW or CHANGED GSTIN only**
+      (29 September 2026). `previous_gstin` is what the record already holds.
+      Every GSTIN the demo seeder writes is invented and fails the check, and
+      so do five of the nine addresses on the live database — a check on every
+      save would make each of them un-editable, even to fix a phone number.
+      INTRODUCTION.md §9: the client's imperfect data survives; the edit form
+      flags such a GSTIN in amber instead. A blank GSTIN is still allowed.
     """
     data = {
         "label":        form.get("label", "").strip(),
@@ -753,8 +791,50 @@ def _validate(form) -> tuple[dict, str | None]:
         return data, "E-mail address is not valid."
     if data["gstin"] and not _GSTIN_RE.match(data["gstin"]):
         return data, "GSTIN must be 15 characters, e.g. 27AAACS1234F1Z5."
+    if (data["gstin"] and data["gstin"] != str(previous_gstin or "").strip().upper()
+            and not gst_lookup.check_digit_ok(data["gstin"])):
+        return data, gst_lookup.offline(data["gstin"])["error"]
 
     return data, None
+
+
+def _gst_status_error(data: dict, form) -> str | None:
+    """
+    Why this save must wait for an acknowledgement, or None.
+
+    ⚠ **A GSTIN the portal lists as anything but "Active" needs "I understand
+      this GSTIN is <status>" ticked before it saves.** The status is read from
+      `gst_lookup.cached()` — what OUR server was told by the portal — never
+      from anything the form posts. A GSTIN nobody has looked up has no known
+      status and is not gated; manual entry must always work.
+    """
+    g = data.get("gstin") or ""
+    hit = gst_lookup.cached(g) if g else None
+    if not hit or hit.get("active") or form.get("gst_ack"):
+        return None
+    return (f"The GST portal lists {g} as “{hit.get('status') or 'not active'}"
+            f"” (fetched {hit.get('fetched_at')}). Tick “I understand "
+            f"this GSTIN is {hit.get('status') or 'not active'}” to save it "
+            f"anyway.")
+
+
+def _apply_gst_fields(record: dict, previous_gstin: str = "") -> None:
+    """
+    Stamp `gst_status` / `gst_verified_at` onto a record being saved.
+
+    A fresh cache entry for the saved GSTIN → both copied from it. No entry,
+    and the GSTIN is blank or has CHANGED → both removed, because they
+    described a different GSTIN. No entry and the GSTIN unchanged → the record
+    keeps what it already says.
+    """
+    g = record.get("gstin") or ""
+    hit = gst_lookup.cached(g) if g else None
+    if hit:
+        record[GST_STATUS_FIELD] = hit.get("status") or ""
+        record[GST_VERIFIED_FIELD] = hit.get("fetched_at") or ""
+    elif not g or g != str(previous_gstin or "").strip().upper():
+        record.pop(GST_STATUS_FIELD, None)
+        record.pop(GST_VERIFIED_FIELD, None)
 
 
 # =============================================================================
@@ -1012,6 +1092,391 @@ ADDRESS_SCRIPT = """
 """
 
 
+# ── GSTIN auto-fill: the form's own sheet and script (29 September 2026) ─────
+#
+# ⚠ **Separate constants, emitted on the ADD and EDIT forms only.** The list
+#   page `/address/` is pinned by `tests/test_page_golden.py` and carries
+#   `ADDRESS_STYLES` and `ADDRESS_SCRIPT`; putting a byte of this in either
+#   would move that golden for a feature the list page does not have.
+GST_STYLES = """
+<style>
+  .gst-box input[name="gstin"] { font-family: 'SFMono-Regular', Consolas, monospace;
+                                 text-transform: uppercase; letter-spacing: .04em; }
+  .gst-derived { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; }
+  .gst-derived:empty { display: none; }
+  .gst-chip { display: inline-flex; gap: .3rem; align-items: center; background: var(--bg);
+              border: 1px solid var(--border); border-radius: 20px; padding: .15rem .65rem;
+              font-size: .74rem; color: var(--muted); }
+  .gst-chip b { color: var(--text); font-weight: 600; }
+  .gst-msg { font-size: .8rem; line-height: 1.5; margin-top: .45rem; color: var(--muted); }
+  .gst-msg:empty { display: none; }
+  .gst-msg.gst-err { color: #b91c1c; font-weight: 600; }
+  .gst-msg.gst-warn { color: #92400e; }
+  .gst-captcha { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+                 margin-top: .6rem; padding: .7rem .85rem; background: var(--bg);
+                 border: 1px dashed var(--border); border-radius: 10px; }
+  .gst-captcha[hidden], .gst-result[hidden], .gst-dead[hidden],
+  .gst-site-note[hidden] { display: none; }
+  .gst-captcha img { height: 48px; min-width: 130px; background: #fff;
+                     border: 1px solid var(--border); border-radius: 6px; }
+  .gst-captcha input { width: 8.5rem; letter-spacing: .12em; }
+  .gst-captcha .gst-cap-hint { flex-basis: 100%; font-size: .72rem; color: var(--muted); margin: 0; }
+  .gst-link { background: none; border: none; padding: 0; font: inherit; font-size: .78rem;
+              color: var(--navy); text-decoration: underline; cursor: pointer; }
+  .gst-result { margin-top: .7rem; padding: .8rem 1rem; background: var(--surface);
+                border: 1px solid var(--border); border-radius: 10px;
+                font-size: .82rem; line-height: 1.55; }
+  .gst-result .gst-name { font-weight: 700; color: var(--navy); font-size: .9rem; }
+  .gst-result .gst-row { color: var(--muted); }
+  .gst-result .gst-adr { margin: .35rem 0; color: var(--text); }
+  .gst-result .gst-meta { font-size: .74rem; color: var(--muted); margin-top: .35rem; }
+  .gst-status { display: inline-block; border-radius: 20px; padding: .05rem .55rem;
+                font-size: .72rem; font-weight: 700; margin-left: .3rem; }
+  .gst-status-ok  { background: #dcfce7; color: #166534; }
+  .gst-status-bad { background: #fee2e2; color: #991b1b; }
+  .gst-dead { margin-top: .7rem; padding: .8rem 1rem; border: 1px solid #fca5a5;
+              background: #fef2f2; color: #991b1b; border-radius: 10px;
+              font-size: .82rem; line-height: 1.55; }
+  .gst-dead label { display: flex; gap: .5rem; align-items: center; margin-top: .45rem;
+                    font-weight: 600; text-transform: none; letter-spacing: 0; color: #991b1b; }
+  .gst-site-note { margin-top: .55rem; font-size: .76rem; line-height: 1.55; color: var(--muted);
+                   border-left: 3px solid #FFE08A; padding-left: .6rem; }
+  .gst-filled { box-shadow: inset 0 0 0 2px #bbf7d0; }
+</style>
+"""
+
+# ⚠ **A plain string, not an f-string** — `ADDRESS_SCRIPT`'s arrangement, so
+#   the braces are single. The page hands it its URLs through `GST_CFG`, a
+#   separate `<script>` built with `pipeline.json_for_script()`.
+#
+# ⚠ **Every string that came from the portal is written with `textContent`,
+#   never `innerHTML`.** A legal name reading `<img onerror=…>` is text here.
+#
+# The pure half — `GST.checkChar`, `GST.offline`, `GST.plan` — touches no DOM
+# and is run under Node by `tests/test_gst_lookup.py` against the Python it
+# mirrors; the wiring below it only runs where there is a `document`.
+GST_SCRIPT = r"""
+<script>
+var GST = (function () {
+  var ALPHA = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
+  var NO_ADDRESS_FILL = 'site';
+
+  function checkChar(first14) {
+    var total = 0;
+    for (var i = 0; i < first14.length; i++) {
+      var p = ALPHA.indexOf(first14.charAt(i)) * (i % 2 === 0 ? 1 : 2);
+      total += Math.floor(p / 36) + p % 36;
+    }
+    return ALPHA.charAt((36 - total % 36) % 36);
+  }
+
+  // gst_lookup.offline(), line for line — the messages are compared in a test.
+  function offline(raw, states) {
+    var g = String(raw || '').trim().toUpperCase();
+    var out = {gstin: g, valid: false, error: '', state_code: '', state: '',
+               pan: '', note: ''};
+    if (!g) return out;
+    if (g.length !== 15) {
+      out.error = 'A GSTIN is 15 characters; this one has ' + g.length + '.';
+      return out;
+    }
+    if (!RE.test(g)) {
+      out.error = 'That is not the shape of a GSTIN: a 2-digit State code, ' +
+                  'the 10-character PAN, an entity number, the letter Z and a ' +
+                  'check character.';
+      return out;
+    }
+    if (checkChar(g.slice(0, 14)) !== g.charAt(14)) {
+      out.error = 'The check character does not match, so one of the 15 ' +
+                  'characters is mistyped. Check it against the GST certificate.';
+      return out;
+    }
+    out.valid = true;
+    out.state_code = g.slice(0, 2);
+    out.pan = g.slice(2, 12);
+    out.state = (states || {})[out.state_code] || '';
+    if (!out.state) {
+      out.note = 'State code ' + out.state_code + ' is not a current State or ' +
+                 'Union Territory code, so no State was filled.';
+    }
+    return out;
+  }
+
+  // Which form fields a result would change, and to what. Only CHANGES are
+  // returned, and nothing is ever set to a blank the user did not choose.
+  // ⚠ A SITE keeps its address lines: name and State only.
+  function plan(r, type, current) {
+    var want = {};
+    var name = r.trade_name || r.legal_name || '';
+    var a = r.address || {};
+    var site = type === NO_ADDRESS_FILL;
+    if (name) want.company = name;
+    if (name && !site && !String(current.label || '').trim()) want.label = name;
+    var st = (a.split && a.state) ? a.state : (r.state || '');
+    if (st) want.state = st;
+    if (!site && a.split) {
+      if (a.line1) { want.line1 = a.line1; want.line2 = a.line2 || ''; }
+      if (a.city) want.city = a.city;
+      if (a.pincode) want.pincode = a.pincode;
+    }
+    var out = {};
+    Object.keys(want).forEach(function (k) {
+      if (String(current[k] || '') !== want[k]) out[k] = want[k];
+    });
+    return out;
+  }
+
+  return {checkChar: checkChar, offline: offline, plan: plan,
+          NO_ADDRESS_FILL: NO_ADDRESS_FILL};
+})();
+
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', function () {
+  var cfg = window.GST_CFG || {};
+  var form = document.getElementById('addr-form');
+  var input = document.getElementById('gst-input');
+  if (!form || !input) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var derived = $('gst-derived'), msg = $('gst-msg'), capBox = $('gst-captcha'),
+      capImg = $('gst-captcha-img'), capIn = $('gst-captcha-input'),
+      result = $('gst-result'), dead = $('gst-dead'), ack = $('gst-ack'),
+      deadStatus = $('gst-dead-status'), ackStatus = $('gst-ack-status'),
+      siteNote = $('gst-site-note'), typeSel = form.querySelector('[name="type"]');
+  var FIELDS = ['label', 'company', 'line1', 'line2', 'city', 'state', 'pincode'];
+  var acted = input.value.trim().toUpperCase();   // the GSTIN the widget last acted on
+  var undo = null, capUrl = null;
+
+  function field(k) { return form.querySelector('[name="' + k + '"]'); }
+  function typeNow() { return typeSel ? typeSel.value : ''; }
+  function say(text, kind) {
+    msg.textContent = text || '';
+    msg.className = 'gst-msg' + (kind ? ' gst-' + kind : '');
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function link(text, onClick) {
+    var b = el('button', 'gst-link', text);
+    b.type = 'button';
+    b.addEventListener('click', function (ev) { ev.preventDefault(); onClick(); });
+    return b;
+  }
+  function post(url, data) {
+    return fetch(url, {method: 'POST', credentials: 'same-origin',
+                       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                       body: new URLSearchParams(data)})
+      .then(function (r) { return r.json(); });
+  }
+  function setDead(r) {
+    var bad = !!(r && !r.active);
+    dead.hidden = !bad;
+    ack.required = bad;
+    if (!bad) { ack.checked = false; return; }
+    deadStatus.textContent = r.status || 'not active';
+    ackStatus.textContent = r.status || 'not active';
+  }
+  function clearWidget() {
+    derived.textContent = '';
+    say('');
+    capBox.hidden = true;
+    result.hidden = true;
+    result.textContent = '';
+    setDead(null);
+    if (capUrl) { URL.revokeObjectURL(capUrl); capUrl = null; }
+  }
+  function chip(k, v) {
+    var c = el('span', 'gst-chip', k + ' ');
+    c.appendChild(el('b', '', v));
+    return c;
+  }
+  function chips(off) {
+    derived.textContent = '';
+    if (off.state) derived.appendChild(chip('State', off.state + ' (' + off.state_code + ')'));
+    else derived.appendChild(chip('State code', off.state_code));
+    derived.appendChild(chip('PAN', off.pan));
+  }
+  function siteNoteShow() { siteNote.hidden = typeNow() !== GST.NO_ADDRESS_FILL; }
+
+  function fill(r) {
+    var current = {};
+    FIELDS.forEach(function (k) { var f = field(k); current[k] = f ? f.value : ''; });
+    var changes = GST.plan(r, typeNow(), current);
+    var keys = Object.keys(changes);
+    undo = keys.length ? current : null;
+    keys.forEach(function (k) {
+      var f = field(k);
+      if (!f) return;
+      f.value = changes[k];
+      f.classList.add('gst-filled');
+    });
+    form.dispatchEvent(new Event('input'));
+    return keys;
+  }
+  function undoFill() {
+    if (!undo) return;
+    FIELDS.forEach(function (k) {
+      var f = field(k);
+      if (f) { f.value = undo[k]; f.classList.remove('gst-filled'); }
+    });
+    undo = null;
+    form.dispatchEvent(new Event('input'));
+    say('The fill was undone.');
+  }
+
+  function show(r, wasCached, filledKeys) {
+    result.textContent = '';
+    var head = el('div', 'gst-name', r.legal_name || '');
+    head.appendChild(el('span', 'gst-status ' + (r.active ? 'gst-status-ok' : 'gst-status-bad'),
+                        r.status || ''));
+    result.appendChild(head);
+    if (r.trade_name) result.appendChild(el('div', 'gst-row', 'Trade name: ' + r.trade_name));
+    var bits = [r.constitution, r.taxpayer_type,
+                r.registration_date ? 'registered ' + r.registration_date : ''];
+    result.appendChild(el('div', 'gst-row', bits.filter(Boolean).join(' · ')));
+    if (r.address_text) result.appendChild(el('div', 'gst-adr', r.address_text));
+    var meta = el('div', 'gst-meta',
+                  'Fetched from ' + (r.source || 'the GST portal') + ' on ' +
+                  (r.fetched_at || '') + (wasCached ? ' (saved copy)' : '') + ' ');
+    if (cfg.captcha) meta.appendChild(link('refresh', function () { loadCaptcha(true); }));
+    result.appendChild(meta);
+    var note = filledKeys.length
+      ? 'Filled: ' + filledKeys.join(', ') + '. Check them, then Save — nothing is saved until you do. '
+      : 'Nothing on the form needed changing. ';
+    if (typeNow() === GST.NO_ADDRESS_FILL) {
+      note += 'This is a project site, so its address lines were left as they are. ';
+    } else if (!(r.address || {}).split) {
+      note += 'The portal address could not be split into lines — type them from the address above. ';
+    }
+    var n = el('div', 'gst-meta', note);
+    if (filledKeys.length) n.appendChild(link('undo', undoFill));
+    result.appendChild(n);
+    result.hidden = false;
+    setDead(r);
+  }
+
+  function handle(res, refreshing) {
+    if (res && res.ok) {
+      capBox.hidden = true;
+      say('');
+      show(res.result, res.cached, fill(res.result));
+      return;
+    }
+    var code = (res && res.error) || 'unavailable';
+    var text = (res && res.message) || 'Auto-fill unavailable, enter manually.';
+    if (code === 'captcha_required') { loadCaptcha(refreshing); return; }
+    if (code === 'captcha' || code === 'expired') { say(text, 'err'); loadCaptcha(refreshing, true); return; }
+    if (code === 'captcha_format') { say(text, 'err'); capIn.focus(); return; }
+    capBox.hidden = true;
+    say(text, code === 'rate_limited' ? 'warn' : 'err');
+  }
+
+  function loadCaptcha(refreshing, keepMsg) {
+    if (!cfg.captcha) return;
+    if (!keepMsg) say('Loading the CAPTCHA from the GST portal…');
+    capBox.hidden = false;
+    capIn.value = '';
+    capBox.setAttribute('data-refresh', refreshing ? '1' : '');
+    fetch(cfg.captcha + '?t=' + Date.now(), {credentials: 'same-origin', cache: 'no-store'})
+      .then(function (r) {
+        var ct = r.headers.get('Content-Type') || '';
+        if (r.ok && ct.indexOf('image/') === 0) {
+          return r.blob().then(function (b) {
+            if (capUrl) URL.revokeObjectURL(capUrl);
+            capUrl = URL.createObjectURL(b);
+            capImg.src = capUrl;
+            if (!keepMsg) say('Type the digits in the picture, then Fetch details.');
+            capIn.focus();
+          });
+        }
+        return r.json().then(function (res) {
+          capBox.hidden = true;
+          if (res && res.fallback) {
+            say('The GST portal did not answer — asking the backup service…');
+            return post(cfg.lookup, {gstin: acted, refresh: refreshing ? '1' : ''})
+              .then(function (x) { handle(x, refreshing); });
+          }
+          say((res && res.message) || 'Auto-fill unavailable, enter manually.',
+              res && res.error === 'rate_limited' ? 'warn' : 'err');
+        });
+      })
+      .catch(function () {
+        capBox.hidden = true;
+        say('Auto-fill unavailable, enter manually.', 'err');
+      });
+  }
+
+  function fetchDetails() {
+    var answer = capIn.value.trim();
+    say('Asking the GST portal…');
+    post(cfg.lookup, {gstin: acted, captcha: answer})
+      .then(function (res) { handle(res, capBox.getAttribute('data-refresh') === '1'); })
+      .catch(function () { capBox.hidden = true; say('Auto-fill unavailable, enter manually.', 'err'); });
+  }
+
+  function check(onBlur) {
+    var v = input.value.trim().toUpperCase();
+    if (v === acted && !onBlur) return;
+    acted = v;
+    clearWidget();
+    if (!v) return;
+    if (v.length < 15) { if (onBlur) say(GST.offline(v, cfg.states).error, 'err'); return; }
+    var off = GST.offline(v, cfg.states);
+    if (!off.valid) { say(off.error, 'err'); return; }
+    chips(off);
+    if (off.note) say(off.note, 'warn');
+    var st = field('state');
+    if (off.state && st && st.value !== off.state) {
+      st.value = off.state;
+      st.classList.add('gst-filled');
+      form.dispatchEvent(new Event('input'));
+    }
+    if (!cfg.lookup) return;
+    post(cfg.lookup, {gstin: v}).then(function (res) { handle(res, false); })
+      .catch(function () { say('Auto-fill unavailable, enter manually.', 'err'); });
+  }
+
+  input.addEventListener('input', function () {
+    var up = input.value.toUpperCase();
+    if (up !== input.value) {
+      var pos = input.selectionStart;
+      input.value = up;
+      try { input.setSelectionRange(pos, pos); } catch (e) {}
+    }
+    check(false);
+  });
+  input.addEventListener('blur', function () {
+    var v = input.value.trim();
+    if (v && v.length < 15) check(true);
+  });
+  if ($('gst-fetch')) $('gst-fetch').addEventListener('click', function (ev) {
+    ev.preventDefault(); fetchDetails();
+  });
+  if ($('gst-reload')) $('gst-reload').addEventListener('click', function (ev) {
+    ev.preventDefault(); loadCaptcha(capBox.getAttribute('data-refresh') === '1');
+  });
+  if (capIn) capIn.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); fetchDetails(); }
+  });
+  var fetchLink = $('gst-fetch-link');
+  if (fetchLink) fetchLink.addEventListener('click', function (ev) {
+    ev.preventDefault(); acted = input.value.trim().toUpperCase(); loadCaptcha(true);
+  });
+  if (typeSel) typeSel.addEventListener('change', siteNoteShow);
+
+  // On load: the offline chips for a GSTIN already on the form, and nothing
+  // else — opening an edit form must not overwrite fields somebody reviewed.
+  if (acted) {
+    var off0 = GST.offline(acted, cfg.states);
+    if (off0.valid) chips(off0);
+  }
+});
+</script>
+"""
+
+
 # =============================================================================
 # RENDERING — why these views do not call render_template_string()
 # =============================================================================
@@ -1048,11 +1513,147 @@ def _page(html: str) -> str:
 # FORM RENDERER (shared by add + edit)
 # =============================================================================
 
+def _gst_urls(form_kind: str, address_id: str = "") -> dict:
+    """
+    The CAPTCHA and lookup URLs this form may use, or None for each.
+
+    ⚠ **Drawn from `auth.can_reach()` — the predicate the gate enforces**
+      (ABOUT.md §2g, "hiding is presentation; the gate is the gate"). A role
+      that cannot reach the pair gets the offline check and manual entry, and
+      no control that could only produce a refusal. `auth` is imported in the
+      function body, `_editor_id()`'s arrangement.
+    """
+    import auth
+    # ⚠ LITERAL endpoints at every `url_for` here, not a computed pair:
+    #   `tests/test_page_reachability.py` builds the link graph from literal
+    #   call sites and bounds the computed ones.
+    if form_kind == "edit":
+        if (auth.can_reach("address.gst_captcha_edit")
+                and auth.can_reach("address.gst_lookup_edit")):
+            return {"captcha": url_for("address.gst_captcha_edit", id=address_id),
+                    "lookup":  url_for("address.gst_lookup_edit", id=address_id)}
+    elif (auth.can_reach("address.gst_captcha_add")
+            and auth.can_reach("address.gst_lookup_add")):
+        return {"captcha": url_for("address.gst_captcha_add"),
+                "lookup":  url_for("address.gst_lookup_add")}
+    return {"captcha": None, "lookup": None}
+
+
+def _gst_widget(data: dict, urls: dict, previous_gstin: str,
+                ack_checked: bool) -> str:
+    """
+    The GSTIN box and everything under it, as the SERVER draws it.
+
+    Drawn server-side, not left to the script, so that three things hold with
+    JavaScript off or before it runs: the cached details of the GSTIN on the
+    form, the red not-Active banner with its acknowledgement box (the save is
+    gated on it — `_gst_status_error()`), and the amber flag on a stored GSTIN
+    that predates the check-character rule. Every portal-sourced string passes
+    through `_e()`.
+    """
+    g = str(data.get("gstin") or "").strip().upper()
+    off = gst_lookup.offline(g) if g else None
+    hit = gst_lookup.cached(g) if (off and off["valid"]) else None
+    lookups = bool(urls.get("lookup"))
+
+    msg = ""
+    if (g and g == str(previous_gstin or "").strip().upper()
+            and _GSTIN_RE.match(g) and not gst_lookup.check_digit_ok(g)):
+        msg = ('<span>This GSTIN fails the check-character test, so one of its '
+               'characters is probably mistyped. It was saved before that check '
+               'existed and is kept exactly as it is &mdash; but a new or changed '
+               'GSTIN must pass it.</span>')
+    msg_cls = "gst-msg gst-warn" if msg else "gst-msg"
+
+    result_html, result_hidden = "", " hidden"
+    if hit:
+        status_cls = "gst-status-ok" if hit.get("active") else "gst-status-bad"
+        bits = " &middot; ".join(_e(b) for b in (
+            hit.get("constitution"), hit.get("taxpayer_type"),
+            f"registered {hit['registration_date']}" if hit.get("registration_date") else "")
+            if b)
+        trade = (f'<div class="gst-row">Trade name: {_e(hit.get("trade_name"))}</div>'
+                 if hit.get("trade_name") else "")
+        refresh = ('<button type="button" class="gst-link" id="gst-fetch-link">'
+                   'refresh</button>' if lookups else "")
+        result_html = f"""
+          <div class="gst-name">{_e(hit.get("legal_name"))}<span class="gst-status {status_cls}">{_e(hit.get("status"))}</span></div>
+          {trade}
+          <div class="gst-row">{bits}</div>
+          <div class="gst-adr">{_e(hit.get("address_text"))}</div>
+          <div class="gst-meta">Fetched from {_e(hit.get("source"))} on {_e(hit.get("fetched_at"))} (saved copy) {refresh}</div>"""
+        result_hidden = ""
+    elif off and off["valid"] and lookups:
+        result_html = ('<div class="gst-meta"><button type="button" class="gst-link" '
+                       'id="gst-fetch-link">Fetch details from the GST portal</button></div>')
+        result_hidden = ""
+
+    dead = bool(hit and not hit.get("active"))
+    status = _e((hit or {}).get("status") or "not active")
+    dead_html = f"""
+        <div class="gst-dead" id="gst-dead"{"" if dead else " hidden"}>
+          <b>The GST portal lists this GSTIN as &ldquo;<span id="gst-dead-status">{status}</span>&rdquo;.</b>
+          A tax invoice to a registration that is not active gives the buyer no
+          input tax credit. It can still be saved &mdash; say that you know.
+          <label><input type="checkbox" name="gst_ack" value="1" id="gst-ack"{" required" if dead else ""}{" checked" if (dead and ack_checked) else ""}/>
+            I understand this GSTIN is &ldquo;<span id="gst-ack-status">{status}</span>&rdquo;</label>
+        </div>"""
+
+    captcha_html = site_note = ""
+    if lookups:
+        captcha_html = """
+        <div class="gst-captcha" id="gst-captcha" hidden>
+          <img id="gst-captcha-img" alt="CAPTCHA picture from the GST portal"/>
+          <input type="text" id="gst-captcha-input" inputmode="numeric" maxlength="6"
+                 autocomplete="off" placeholder="6 digits" aria-label="The CAPTCHA digits"/>
+          <button type="button" class="btn" id="gst-fetch">Fetch details</button>
+          <button type="button" class="gst-link" id="gst-reload">New CAPTCHA</button>
+          <p class="gst-cap-hint">The picture comes from the GST portal and you type
+          it &mdash; this application never reads it. Nothing is saved until you
+          press Save.</p>
+        </div>"""
+        is_site = data.get("type") == GST_NO_ADDRESS_FILL_TYPE
+        site_note = f"""
+        <p class="gst-site-note" id="gst-site-note"{"" if is_site else " hidden"}>
+          <b>A project site keeps its own address.</b> A GSTIN&rsquo;s registered
+          address is the client&rsquo;s principal place of business, which is
+          usually not where the work happens &mdash; so for a site, a lookup fills
+          the company name and the State only, and never the address lines.
+        </p>"""
+
+    hint = ("optional &mdash; type all 15 characters and the details fill themselves"
+            if lookups else "optional &mdash; 15 characters, checked as you type")
+    cfg = P.json_for_script({
+        "captcha": urls.get("captcha"), "lookup": urls.get("lookup"),
+        "states": {code: name for name, code in P.GST_STATE_CODES.items()},
+    })
+    return f"""
+              <div class="form-section-title">GSTIN</div>
+              <div class="form-group full gst-box" id="gst-box">
+                <label for="gst-input">GSTIN <span class="field-hint">&mdash; {hint}</span></label>
+                <input type="text" name="gstin" id="gst-input" value="{_e(data.get('gstin'))}"
+                       placeholder="27AAACS1234F1Z5" maxlength="15" autocomplete="off"
+                       spellcheck="false"/>
+                <div class="gst-derived" id="gst-derived"></div>
+                <div class="{msg_cls}" id="gst-msg" role="status" aria-live="polite">{msg}</div>
+                {captcha_html}
+                <div class="gst-result" id="gst-result"{result_hidden}>{result_html}</div>
+                {dead_html}
+                {site_note}
+                <script>var GST_CFG = {cfg};</script>
+              </div>
+"""
+
+
 def _render_form(data: dict, *, heading: str, action_url: str,
                  submit_label: str, error: str | None,
-                 refs: list | None = None, type_locked: bool = False) -> str:
+                 refs: list | None = None, type_locked: bool = False,
+                 form_kind: str = "add", address_id: str = "",
+                 previous_gstin: str = "", ack_checked: bool = False) -> str:
     """Render the add/edit page. `data` holds the current field values."""
     list_url   = url_for("address.list_addresses")
+    gst_html   = _gst_widget(data, _gst_urls(form_kind, address_id),
+                             previous_gstin, ack_checked)
     error_html = f'<div class="alert alert-error">&#10007; {_e(error)}</div>' if error else ""
 
     refs = refs or []
@@ -1108,6 +1709,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
       {BASE_STYLES}
       {PRODUCT_STYLES}
       {ADDRESS_STYLES}
+      {GST_STYLES}
     </head>
     <body>
       {_nav()}
@@ -1122,7 +1724,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
         <div class="form-card addr-form">
           <form method="POST" action="{action_url}" id="addr-form">
             <div class="form-grid">
-
+{gst_html}
               <div class="form-section-title">Identification</div>
 
               <div class="form-group">
@@ -1186,7 +1788,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
                        style="background:#f1f0f5;color:var(--muted);cursor:not-allowed;"/>
               </div>
 
-              <div class="form-section-title">Contact &amp; Tax</div>
+              <div class="form-section-title">Contact</div>
 
               <div class="form-group">
                 <label>Phone</label>
@@ -1197,12 +1799,6 @@ def _render_form(data: dict, *, heading: str, action_url: str,
                 <label>E-mail</label>
                 <input type="text" name="email" value="{_e(data.get('email'))}"
                        placeholder="name@example.co.in"/>
-              </div>
-              <div class="form-group full">
-                <label>GSTIN <span class="field-hint">— optional, 15 characters</span></label>
-                <input type="text" name="gstin" value="{_e(data.get('gstin'))}"
-                       placeholder="27AAACS1234F1Z5" maxlength="15"
-                       style="text-transform:uppercase;font-family:'SFMono-Regular',Consolas,monospace;"/>
               </div>
 
               <div class="form-section-title">Envelope Preview</div>
@@ -1222,6 +1818,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
         </footer>
       </main>
       {ADDRESS_SCRIPT}
+      {GST_SCRIPT}
     </body>
     </html>
     """
@@ -1384,8 +1981,12 @@ def add_address():
     if request.method == "POST":
         data, error = _validate(request.form)
         if not error:
+            error = _gst_status_error(data, request.form)
+        if not error:
             new_id = str(uuid.uuid4())
-            STORE["addresses"][new_id] = {"id": new_id, **data}
+            record = {"id": new_id, **data}
+            _apply_gst_fields(record)
+            STORE["addresses"][new_id] = record
             return redirect(url_for(
                 "address.list_addresses",
                 msg=f"'{data['label']}' added to the address book.",
@@ -1398,6 +1999,8 @@ def add_address():
         action_url=url_for("address.add_address"),
         submit_label="Save Address",
         error=error,
+        form_kind="add",
+        ack_checked=bool(request.form.get("gst_ack")),
     )
 
 
@@ -1431,14 +2034,18 @@ def edit_address(id: str):
     refs  = references_of(id)
     data  = dict(existing)
     error = None
+    previous_gstin = str(existing.get("gstin") or "")
 
     if request.method == "POST":
-        data, error = _validate(request.form)
+        data, error = _validate(request.form, previous_gstin=previous_gstin)
         if not error:
             error = _type_lock_error(existing, data.get("type"), refs) or None
         if not error:
+            error = _gst_status_error(data, request.form)
+        if not error:
             before = dict(existing)
             existing.update(data)
+            _apply_gst_fields(existing, previous_gstin)
             if refs:
                 _log_edit(existing, before, data, _editor_id())
             return redirect(url_for(
@@ -1455,7 +2062,103 @@ def edit_address(id: str):
         error=error,
         refs=refs,
         type_locked=bool(refs),
+        form_kind="edit",
+        address_id=id,
+        previous_gstin=previous_gstin,
+        ack_checked=bool(request.form.get("gst_ack")),
     )
+
+
+# =============================================================================
+# GSTIN AUTO-FILL — the CAPTCHA and the lookup, once per form (29 Sep 2026)
+# =============================================================================
+#
+# ⚠ **Two pairs over two bodies.** The add form's pair carries
+#   `address.create`, the edit form's `address.edit` — see the note on these
+#   rows in `auth.ROUTE_PERMISSIONS` for why that is four endpoints and not
+#   two. The bodies are written once, `approval.py`'s and `attachment.py`'s
+#   arrangement.
+#
+# ⚠ **These routes never save an address.** The lookup returns JSON the page
+#   copies into the form; the address is written by the ordinary Save, with
+#   every ordinary check, and nowhere else.
+
+_GST_IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif")
+
+
+def _gst_json(payload: dict, status: int = 200):
+    resp = jsonify(payload)
+    resp.status_code = status
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+def _gst_captcha():
+    """
+    Start a portal session for this browser and return its CAPTCHA image.
+
+    The image is the portal's bytes, served untouched as an image; the token
+    naming the session goes into the signed Flask session and nowhere else.
+    A failure answers JSON — `fallback: true` when a key is set — and the
+    page decides what to do next.
+    """
+    res = gst_lookup.captcha(_editor_id(), session.get(GST_SESSION_KEY, ""))
+    if res.get("token"):
+        session[GST_SESSION_KEY] = res["token"]
+    else:
+        session.pop(GST_SESSION_KEY, None)
+    if res["ok"]:
+        ctype = res["content_type"] if res["content_type"] in _GST_IMAGE_TYPES else "image/png"
+        resp = Response(res["image"], mimetype=ctype)
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+    return _gst_json({"ok": False, "error": res["error"], "message": res["message"],
+                      "fallback": bool(res.get("fallback"))},
+                     429 if res["error"] == "rate_limited" else 503)
+
+
+def _gst_lookup():
+    """POST {gstin, captcha?, refresh?} → the lookup's JSON. Never saves."""
+    res = gst_lookup.lookup(
+        request.form.get("gstin", ""), request.form.get("captcha", ""),
+        session.get(GST_SESSION_KEY, ""), _editor_id(),
+        refresh=request.form.get("refresh") == "1")
+    return _gst_json(res, 429 if res.get("error") == "rate_limited" else 200)
+
+
+def _gst_gone():
+    return _gst_json({"ok": False, "error": "gone",
+                      "message": "That address no longer exists."}, 410)
+
+
+@address_bp.route("/gst/captcha")
+def gst_captcha_add():
+    """GET /address/gst/captcha — the add form's CAPTCHA (`address.create`)."""
+    return _gst_captcha()
+
+
+@address_bp.route("/gst/lookup", methods=["POST"])
+def gst_lookup_add():
+    """POST /address/gst/lookup — the add form's lookup (`address.create`)."""
+    return _gst_lookup()
+
+
+@address_bp.route("/edit/<id>/gst/captcha")
+def gst_captcha_edit(id: str):
+    """GET /address/edit/<id>/gst/captcha — the edit form's (`address.edit`)."""
+    if id not in STORE["addresses"]:
+        return _gst_gone()
+    return _gst_captcha()
+
+
+@address_bp.route("/edit/<id>/gst/lookup", methods=["POST"])
+def gst_lookup_edit(id: str):
+    """POST /address/edit/<id>/gst/lookup — the edit form's (`address.edit`)."""
+    if id not in STORE["addresses"]:
+        return _gst_gone()
+    return _gst_lookup()
 
 
 @address_bp.route("/view/<id>")
@@ -1491,6 +2194,20 @@ def view_address(id: str):
         alert_html = f'<div class="alert alert-{_e(msg_type)}">{icon} {_e(msg)}</div>'
 
     block = "".join(f'<div>{_e(line)}</div>' for line in format_address_lines(addr))
+
+    # The GSTIN and what the portal last said about it. `gst_status` is ABSENT
+    # on every address nobody looked up — `.get()`, and nothing is drawn.
+    gst_html = ""
+    if addr.get("gstin"):
+        chips = f'<span class="addr-chip addr-chip-gst">GSTIN <b>{_e(addr.get("gstin"))}</b></span>'
+        if addr.get(GST_STATUS_FIELD):
+            live = addr.get(GST_STATUS_FIELD) == "Active"
+            colour = "" if live else ' style="border-color:#fca5a5;background:#fef2f2;"'
+            chips += (f'<span class="addr-chip"{colour}>GST portal <b>'
+                      f'{_e(addr.get(GST_STATUS_FIELD))}</b></span>'
+                      f'<span class="addr-chip">checked <b>'
+                      f'{_e(addr.get(GST_VERIFIED_FIELD))}</b></span>')
+        gst_html = f'<div class="addr-meta" style="margin-top:.9rem;">{chips}</div>'
 
     if refs:
         n = len(refs)
@@ -1589,6 +2306,7 @@ def view_address(id: str):
     {refs_html}
     <div class="form-card addr-form">
       <div class="addr-block">{block}</div>
+      {gst_html}
     </div>
     {log_html}
     <footer>
