@@ -1100,6 +1100,26 @@ office already keeps instead of restarting at `0001` beside them.
 * **A box marked with a financial year applies to that year only.** The April
   reset to `0001` under Rule 46(b) still happens.
 
+### 9.8 ⚠ GSTIN auto-fill — can THIS box reach the GST portal?
+
+**Unproven** (29 September 2026, ABOUT.md §7 gap 43). The address book's GSTIN
+lookup was proved from an Indian residential connection only. Run this on the
+server, as the service user, three times:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 10 'https://services.gst.gov.in/services/captcha?rnd=0.1'
+```
+
+**Reachable** = `200`. **Blocked** = `403`, or `000` with curl exit 28 (a
+timeout). One `000` among three can be the portal dropping a connection —
+docs/GST_PORTAL.md §5 measured 5 of 17. If it is blocked, the app still works:
+the GSTIN is checked offline and every lookup says *"Auto-fill unavailable,
+enter manually."* — but each attempt holds the single worker thread for up to
+five seconds first, so say so to the owner before go-live.
+
+**No `pip install` is needed for this feature** — it uses `urllib`.
+`GST_API_KEY` is optional (docs/ENVIRONMENT.md §7b).
+
 ---
 
 ## 10. BACKUPS

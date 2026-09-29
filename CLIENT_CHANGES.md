@@ -3825,6 +3825,57 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ OVERRIDE — 29 September 2026, by Manas Gawde — GSTIN AUTO-FILL ON THE ADDRESS BOOK
+>
+> **A new block, not an amendment.** The thirty-fourth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-fifth** occasion. It covers the one item
+> below and nothing else.
+>
+> **Manas Gawde authorised this build on 29 September 2026**, in a written
+> brief. ⚠ **Its commercial status was NOT stated** — whether it is chargeable,
+> and whether it sits inside or outside MG/SF/2026-06 — **and it is not decided
+> here**; that is his to record. It moves no Phase 3 bar and changes no CC-2
+> item's state.
+>
+> **What was asked for.** Address book → Add (and Edit) → the user types a
+> GSTIN → the details fill themselves, and the user never leaves this site: the
+> GST portal's CAPTCHA is shown inside our form and typed by the human.
+>
+> **Decisions taken — his, in the brief, not the agent's:**
+>
+> 1. **A human types every CAPTCHA.** Nothing in the application or the build
+>    reads, OCRs or solves one; no solving service, no "human-like" patterns.
+> 2. **Fill, never save.** The user reviews and presses Save; a referenced
+>    address still goes through the edit log as before.
+> 3. **A project site gets its name and State only** — never its address lines.
+> 4. **A GSTIN that is not Active** shows a red banner, and Save needs "I
+>    understand this GSTIN is <status>" ticked.
+> 5. **One attempt, five seconds, no retries** on every outbound call; ten
+>    lookups a minute per user; a 30-day cache that fills with no CAPTCHA.
+> 6. **A fallback to gstinapi.in only if `GST_API_KEY` is set**; otherwise
+>    "Auto-fill unavailable, enter manually." Manual entry always works.
+> 7. **A blank GSTIN stays allowed**; the check character is enforced on save.
+>
+> **What was built:** four routes on `/address` (a CAPTCHA and a lookup for
+> each form), the leaf `gst_lookup.py`, a `gst_cache` collection and two keys on
+> the address record. The live flow was proved from Manas's laptop the same day
+> with two CAPTCHAs he typed (`docs/GST_PORTAL.md`). The judgement calls the
+> build made beyond these seven decisions are listed in ABOUT.md §5 `/address`
+> and in `GST_AUTOFILL_REPORT.md`, and are the agent's, not his — the largest
+> being that the check character binds a NEW or CHANGED GSTIN only, because
+> five of the nine live addresses carry one that fails it.
+>
+> **Recorded here because it is a limit the client may meet:** whether the
+> production server can reach the GST portal at all is UNPROVEN (ABOUT.md §7
+> **gap 43**, OPEN). Until the one-line check in `docs/GST_PORTAL.md` §6 has run
+> on that server, the feature may do nothing there but say "enter manually".
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4403,6 +4454,7 @@ authorised by its own §0 block, which is where its commercial status lives.
 | # | Item | Status |
 |---|---|---|
 | G1 | BOQ import from Excel v1 | ✅ **Delivered (v1)** — built 29 Sep 2026 under the §0 **thirty-fourth** block; **new chargeable scope outside MG/SF/2026-06** |
+| G2 | GSTIN auto-fill on the address book | ✅ **Built, not deployed** — 29 Sep 2026 under the §0 **thirty-fifth** block; **commercial status not yet recorded** |
 
 ### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
 
@@ -4435,6 +4487,30 @@ front of it for an imported line.
 
 → Technical detail: [ABOUT.md §5 `/boq/import`](ABOUT.md), §3 *BOQ import
 staging* and *Import layout*.
+
+### G2 · GSTIN auto-fill on the address book — ✅ Built, not deployed
+
+**Built.** Type a GSTIN at the top of *Add address* or *Edit address*. The
+page checks it at once and shows the State and PAN. If the details were
+fetched in the last 30 days they fill straight away; otherwise the GST
+portal's CAPTCHA appears inside the form, the user types it and presses
+*Fetch details*, and the form fills.
+
+- **Nothing is saved until Save is pressed**, and the filled fields are marked
+  and can be undone.
+- **A project site keeps its own address** — only the company name and the
+  State are filled, because a GSTIN's registered address is not the site.
+- **A cancelled or suspended GSTIN** shows in red and needs a tick to save.
+- **When the portal does not answer**, the page says *"Auto-fill unavailable,
+  enter manually."* Typing the details always works.
+
+⚠ **Before it is relied on — ABOUT.md §7 gap 43 (OPEN).** It was proved from
+an Indian office connection only. Whether the production server can reach the
+GST portal has not been checked; the one-line test is in
+[docs/GST_PORTAL.md](docs/GST_PORTAL.md) §6.
+
+→ Technical detail: [ABOUT.md §5 `/address`](ABOUT.md), §3 *Address* and
+*GST cache*.
 
 ---
 
