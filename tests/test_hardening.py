@@ -117,11 +117,16 @@ def test_every_reference_collection_has_a_seeder(client):
     # an import nobody made, owned by a user id that may not exist; a seeded
     # layout would skip the preview for a template nobody has confirmed — the
     # one screen where the operator sees which column became the rate.
+    # `gst_cache` (GSTIN auto-fill, 29 Sep 2026) is transactional because every
+    # row is a statement of what the GST PORTAL SAID about a real registration,
+    # and when. A seeded row would be an invented legal name and status for
+    # somebody's GSTIN — filling a form with no CAPTCHA and gating a save on a
+    # "Cancelled" nobody was told.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "measurements",
                      "projects", "charges", "attachments", "merged_ras",
                      "employees", "attendance", "users",
-                     "boq_imports", "import_layouts"}
+                     "boq_imports", "import_layouts", "gst_cache"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

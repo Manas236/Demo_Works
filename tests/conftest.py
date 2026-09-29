@@ -265,6 +265,15 @@ def _fresh_store():
     # row left behind reads to `test_hardening.py` exactly like a seeder.
     STORE.setdefault("boq_imports", {}).clear()
     STORE.setdefault("import_layouts", {}).clear()
+    # GSTIN auto-fill (29 Sep 2026). A cached lookup planted by one test would
+    # fill the next test's form with no CAPTCHA and gate its save on a status
+    # it never asked about. The RAM-only portal sessions and the per-user rate
+    # buckets are reset too — the whole suite signs in as ONE Owner, so ten
+    # lookups anywhere would rate-limit every later test.
+    STORE.setdefault("gst_cache", {}).clear()
+    import gst_lookup
+    gst_lookup._SESSIONS.clear()
+    gst_lookup._CALLS.clear()
     # Seed flags are per-test too: a test that clears `specs` must be able to
     # let the seeder refill it, which is exactly the "drop the database and
     # restart" path the demo data exists to support.
@@ -290,6 +299,31 @@ def _attachment_store(tmp_path, monkeypatch):
     d.mkdir()
     monkeypatch.setenv("ATTACHMENT_DIR", str(d))
     yield d
+
+
+# ── GSTIN auto-fill: NO test may reach the real GST portal ─────────────────
+#
+# ⚠ **AUTOUSE, for the reason `_attachment_store` is.** Several sweeps GET
+# every route in the application — reachability, escaping, chrome — and
+# `/address/gst/captcha` is a route whose whole job is an outbound call to
+# services.gst.gov.in. Opting in per test would mean the one sweep that forgot
+# was the one that phoned a government portal from CI.
+#
+# `gst_lookup._open()` is the single function in that module that touches the
+# network (an AST test in `tests/test_gst_lookup.py` holds that), so replacing
+# it is total. Here it RAISES — exactly what a dropped connection does — so a
+# sweep sees the ordinary "Auto-fill unavailable" answer. The GST tests
+# replace it again with recorded answers, inside this fixture's patch.
+@pytest.fixture(autouse=True)
+def _no_gst_network(monkeypatch):
+    import gst_lookup
+
+    def _refuse(*_a, **_kw):
+        raise OSError("tests/conftest.py: the GST portal is not reachable from the suite")
+
+    monkeypatch.setattr(gst_lookup, "_open", _refuse)
+    monkeypatch.delenv("GST_API_KEY", raising=False)
+    yield
 
 
 # ── The smallest real files of each type B8 accepts ────────────────────────

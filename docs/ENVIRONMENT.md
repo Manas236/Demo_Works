@@ -220,6 +220,31 @@ which share one STORE.
 
 ---
 
+## 7b. GSTIN auto-fill — `gst_lookup.py` (29 September 2026)
+
+| Variable | Default | Production | What it does |
+|---|---|---|---|
+| `GST_API_KEY` | unset | **optional** | The gstinapi.in key for the FALLBACK — asked only when the GST portal itself times out, errors or answers in an unexpected shape. Unset, a portal failure says *"Auto-fill unavailable, enter manually."* and nothing else is called. |
+
+⚠ **Unset is a complete configuration.** The primary path is the GST portal
+with a CAPTCHA the user types, and it needs no key. Manual entry always works.
+
+⚠ **Every lookup through it is a paid call** (gstinapi.in: one credit per
+success). A browser cannot ask for it directly: the server calls it only after
+it saw the portal fail itself (ABOUT.md §5 `/address`).
+
+⚠ **The adapter is unproven against a live key** — none was available when it
+was built. See `docs/GST_PORTAL.md` before relying on it.
+
+⚠ **Re-read on every call**, `ATTACHMENT_DIR`'s arrangement, so a test can set
+it with `monkeypatch`; `tests/conftest.py` removes it for every test.
+
+⚠ **Whether the production box can reach `services.gst.gov.in` at all is
+UNPROVEN** — the flow was proven from an Indian residential IP only. The check
+is one line, run on the server: `docs/GST_PORTAL.md` §6.
+
+---
+
 ## 8. Tooling — not read by the application
 
 | Variable | Read by | What it does |

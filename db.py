@@ -78,7 +78,7 @@ COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "
                "projects",
                "charges", "employees", "attendance", "attachments",
                "boq_imports", "import_layouts",
-               "addresses", "settings", "users", "roles")
+               "addresses", "gst_cache", "settings", "users", "roles")
 
 # Seed flags (_seeded / _addr_seeded) are deliberately NOT persisted. Both
 # seeders use fixed IDs and skip existing rows, so re-running them after a
@@ -268,6 +268,7 @@ LABELS = {
     "boq_imports": "Excel imports in progress",
     "import_layouts": "remembered Excel layouts",
     "addresses":  "addresses",
+    "gst_cache":  "fetched GSTIN details",
     "settings":   "company settings",
     "users":      "user accounts",
     "roles":      "roles and permissions",

@@ -48,6 +48,7 @@ STORE: dict = {
     "boq_imports":  {},   # keyed by an unguessable token → ONE uploaded Excel BOQ, parsed into a grid and STAGED between the preview and the prefilled /boq/create form (boqimport.py, 29 Sep 2026). ⚠ The FILE is not here — only cell values. Owned by one user, purged after 24 h, deleted once the confirmed form renders. Its OWN collection, never on a BOQ: nothing is a BOQ until Create BOQ is pressed
     "import_layouts": {}, # keyed by a sha256 LAYOUT SIGNATURE of a sheet's header → the column mapping last confirmed for that layout, so the same template skips the preview next time (boqimport.py). Its OWN collection for §1.3's reason — one layout is reused by many imports
     "addresses":    {},   # keyed by UUID string → address dict (address book)
+    "gst_cache":    {},   # keyed by GSTIN → the NORMALISED registration details the GST portal (or the gstinapi.in fallback) returned, and when (gst_lookup.py, 29 Sep 2026). A hit under 30 days fills the address form with no CAPTCHA. ⚠ Never a cookie, a token, a CAPTCHA or a raw response — the portal's cookie jars live in gst_lookup._SESSIONS, in RAM, and must never reach this dict or MySQL
     "users":        {},   # keyed by UUID string → user account (auth.py). Its OWN collection — never a list on a role, per CLIENT_CHANGES.md §1.3
     "roles":        {},   # keyed by UUID string → role: a named bundle of permission strings. Separate from users for the same §1.3 reason: one role is held by many users
     "settings":     {},   # single record under the key "company" → branding overrides
