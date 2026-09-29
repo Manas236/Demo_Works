@@ -3775,6 +3775,56 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ OVERRIDE — 29 September 2026, by Manas Gawde — IMPORT BOQ FROM EXCEL v1
+>
+> **A new block, not an amendment.** The thirty-third block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-fourth** occasion. It covers the one item
+> below and nothing else.
+>
+> **Manas Gawde authorised this build on 29 September 2026 as NEW CHARGEABLE
+> SCOPE, outside MG/SF/2026-06.** It is not in MG/SF/2026-06, not in CC-2 and
+> not in any signed quotation; it is to be priced separately. It moves no
+> Phase 3 bar and changes no CC-2 item's state.
+>
+> **What was asked for.** The operator uploads their own Excel BOQ, in whatever
+> layout it is in, confirms which column is which on a preview screen, and the
+> Create BOQ form opens with every line filled in.
+>
+> **Decisions taken — mine, in the brief, not the agent's:**
+>
+> 1. **The client's own files.** Any layout, .xlsx or .xls; no template of ours
+>    is imposed on them.
+> 2. **A single rate is the SELLING rate, with the base rate left blank.** Where
+>    a sheet gives one rate per track it is the unit rate the client is billed
+>    at, and the base rate — their cost — is left for them to fill in later.
+>    Copying the selling rate into it would make planned margin read as zero.
+>    Where a sheet carries base rate + escalation % columns, both import as they
+>    stand.
+> 3. **Prefill, not auto-save.** Nothing is saved until the operator presses
+>    Create BOQ on the ordinary form, with the ordinary checks.
+> 4. **Total quantity only.** Floor / area split columns and take-off tabs are
+>    not read in v1.
+>
+> **What was built:** `/boq/import` — upload, preview, prefilled form. What the
+> reader could not take as a number ("R.O.", "NA", `9.3+1.5+6`, an Excel
+> error, a formula with no saved value) is **flagged and left blank, never
+> guessed and never turned into 0**; a rate column that does not say whether it
+> is Supply or Installation is left for the operator to choose. The judgement
+> calls the build made beyond these four decisions are listed in ABOUT.md §5
+> `/boq/import` and in the report of the pass, and are the agent's, not mine.
+>
+> **Also recorded here because it is a limit the client will meet:** a blank
+> quantity is still saved as 0 by the unchanged save path (ABOUT.md §7 **gap
+> 42**, OPEN). The form refuses to submit while an imported quantity is blank;
+> the server does not. Closing it is a decision about what a blank means on
+> every BOQ, not only an imported one.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4342,6 +4392,49 @@ would be a gross material margin with a name that overstates it, which is a
 worse outcome than not having the page.
 
 → [ABOUT.md §7](ABOUT.md) gap B5.
+
+---
+
+## 2b. Added after go-live
+
+Not items from the 10 August meeting, and not numbered with them. Each is
+authorised by its own §0 block, which is where its commercial status lives.
+
+| # | Item | Status |
+|---|---|---|
+| G1 | BOQ import from Excel v1 | ✅ **Delivered (v1)** — built 29 Sep 2026 under the §0 **thirty-fourth** block; **new chargeable scope outside MG/SF/2026-06** |
+
+### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
+
+**Delivered.** The operator uploads their own BOQ workbook — .xlsx or .xls, any
+layout — at `/boq/import` (the **Import from Excel** button on Create BOQ),
+checks a preview that shows a guessed column for every heading and every cell
+the reader could not take as a number, confirms, and the ordinary Create BOQ
+form opens with every line filled in.
+
+- **Nothing is saved until Create BOQ is pressed**, and that save runs every
+  check it always runs.
+- **One rate per track is the selling rate; the base rate stays blank** for the
+  client to fill in. A sheet with base + escalation columns imports both.
+- **Only the total quantity is read.** Floor and area columns are left out.
+- **"R.O." and the like stay blank and flagged — never 0** — and the form will
+  not save until each has a quantity typed or its line is removed.
+- **A layout confirmed once is remembered**: the same template next time goes
+  straight to the filled form, with a link back to the mapping.
+- **Nothing is cut off**: a schedule too large for one BOQ is refused whole,
+  with the number of lines and the limit named.
+
+**Not in v1** (measured on the client's own files): one sheet per import; the
+heading row cannot be chosen by hand; a quantity written with its unit
+("10 Nos.") or as "L.S." is flagged rather than read; the remark, HSN/SAC and
+area columns are not imported.
+
+⚠ **Limit the client will meet — ABOUT.md §7 gap 42 (OPEN).** A blank quantity
+is saved as 0 by the unchanged save path; only the form's own refusal stands in
+front of it for an imported line.
+
+→ Technical detail: [ABOUT.md §5 `/boq/import`](ABOUT.md), §3 *BOQ import
+staging* and *Import layout*.
 
 ---
 

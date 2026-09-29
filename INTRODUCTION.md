@@ -220,10 +220,12 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **3,082 passed / 4 skipped** on 27 September 2026, verified by
-running the suite in this configuration: openpyxl **absent**, both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
+The baseline is **3,088 passed / 5 skipped** on 29 September 2026, verified by
+running the suite in this configuration: openpyxl **absent** (and xlrd and defusedxml), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
 ⚠ **On the laptop this was last measured on a `.venv` DOES exist**, and the row still means what it says: the figure is the one the **global interpreter** produces, with the `.venv` nowhere on `sys.path`. The second row below is the same checkout run through `.venv\Scripts\python`.
+
+*(**29 September 2026** — **Import BOQ from Excel v1**: upload the client's own workbook, confirm a column mapping, and `/boq/create` opens prefilled — nothing saved until Create BOQ. New chargeable scope outside MG/SF/2026-06, CLIENT_CHANGES.md §0 **thirty-fourth** block: **no bar moved and no CC-2 item changed state** — added **6 passed and 1 skipped** here, and **84 passed and 1 skipped** in the `.venv` (**3,167 / 7**, from a re-measured **3,083 / 6**). Here the +6 are `tests/test_import_directions.py`'s AST checks for the new leaf `sheetimport.py` and the `boq ↛ boqimport` arrow, and the +1 is `tests/test_boq_import.py`'s module-level `importorskip("openpyxl")` — **one** skip standing for 78 uncollected tests, the mechanism the paragraph near the foot of this section describes. It read **3,082 / 4** at the start of the pass, re-measured and matching. ⚠ **No golden moved**; `docs/ACCESS_MATRIX.md` moved by three endpoints under the existing `boq.create` (132 → 135). ⚠ **`quotation.py` and `product.py` were not edited.** ⚠ **openpyxl, xlrd and defusedxml are RUNTIME pins in `requirements.txt` from this pass**, imported lazily, so this configuration still boots and passes with none of them.)*
 
 *(**27 September 2026** — an Owner renames a login from `/users/edit` with an append-only trail, two tests that could only pass on the box they were written on, and the photo upload row. The owner's own decision, CLIENT_CHANGES.md §0 **thirty-third** block: **no bar moved and no CC-2 item changed state** — added **63 passed and 0 skipped**. **+55** `tests/test_username_rename.py` (new), **+7** `tests/test_profile_photo.py` (30 → 36 — 6 for the upload row, and **+1 that had never been able to RUN on Windows**), **+1** `tests/test_wsgi_single_worker.py` (the lock-acquire control). ⚠ **It read 3,019 / 4 and 3,020 / 6 at the start of the pass, MEASURED, and 30 above the 2,989 / 2,990 recorded here** — the 26 September profile-photo commits `911ff9c` and `4819bf9` added `tests/test_profile_photo.py` (**30**) and **+1** row in `tests/test_import_directions.py` for the new leaf `photo.py`, and moved no figure in any of the four documents. Of those 31, **29 passed and one could not run**: its parameter is 65,560 characters, pytest builds the case id from it, and `PYTEST_CURRENT_TEST` is capped at 32,767 on Windows — which is the 2 errors every Windows run of this suite has reported since, and why the figures below are the first with **0 errors** in them. 2,989 + 30 = 3,019; 3,019 + 63 = 3,082, and the `.venv` configuration reads **3,083 / 6** from a re-measured 3,020 / 6. ⚠ **No golden moved, of any kind** — `/account` and `/users/edit` are pinned by none, and `docs/ACCESS_MATRIX.md` was regenerated and is byte-identical: no endpoint and no permission were added.)*
 
@@ -418,6 +420,13 @@ difference: `tests/test_fixtures.py` holds its 4 tests behind a **module-level**
 **collection** and pytest prints **1 skipped** for all four; with it the module
 collects and the individual skips appear. One skip standing for four uncollected
 tests is the thing most often got wrong about this suite.
+
+⚠ **From 29 September 2026 the difference is +79 passed and +2 skipped**, and it
+is the same mechanism a second time: `tests/test_boq_import.py` needs openpyxl
+to build its in-memory workbooks and skips at module level without it — one
+skip for 78 tests. With openpyxl its 78 pass and one more (the Sify
+reproduction) skips on the absent workbook. 1 + 78 = 79. ABOUT.md §1 holds the
+relationship.
 
 ⚠ **The third configuration — *openpyxl present, workbooks present* — has never
 been measured**, and [ABOUT.md §1](ABOUT.md) row 1 marks it **unknown** rather

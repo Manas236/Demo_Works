@@ -26,7 +26,7 @@ Reported before anything else, as required. Nothing here was fixed.
 | HEAD | `2515257dcb99afa9d67cddd126ca366bb7e5105b` |
 | Upstream | `origin/antigravity-dev` |
 | Ahead / behind | **0 ahead, 0 behind — in sync** |
-| `openpyxl` installed in `.venv` | **No** — `ModuleNotFoundError` |
+| `openpyxl` installed in `.venv` | **No** — `ModuleNotFoundError` *(at the time; from 29 Sep 2026 it is a runtime pin — §1.3)* |
 | Client workbooks present | **No** — `fixtures/` contains only `README.md`; `sify_boq.xlsx` and `annexure.xlsx` are absent (both gitignored, `.gitignore:3-5`) |
 | Local interpreter | CPython 3.14.6 (Windows) |
 
@@ -80,6 +80,12 @@ Consequences for the target box:
 
 ### 1.2 Dependencies and OS-level build packages
 
+> ⚠ **29 September 2026:** `requirements.txt` now also pins `Pillow` (26 Sep,
+> `photo.py`) and the four packages Import BOQ from Excel reads workbooks with —
+> `openpyxl`, `et-xmlfile`, `xlrd`, `defusedxml`. All are imported inside
+> functions, never at module level. See §1.3. The table below is the original
+> scan and is not re-derived here.
+
 `requirements.txt` pins nine packages. The application's runtime third-party
 imports were enumerated by AST scan of all 29 root modules, and they are exactly
 five:
@@ -128,8 +134,22 @@ file names (`requirements.txt:83`): `pip install gunicorn==23.0.0`.
 
 ### 1.3 `openpyxl` and the client workbooks
 
-**Nothing degrades. `openpyxl` is not needed on the server and should not be
-installed there.**
+> ⚠ **SUPERSEDED 29 September 2026 — Import BOQ from Excel (ABOUT.md §5
+> `/boq/import`).** The application now reads the OPERATOR'S uploaded workbook
+> at runtime, through `sheetimport.py`. **`openpyxl==3.1.5`, `et-xmlfile==2.0.0`,
+> `xlrd==2.0.2` and `defusedxml==0.7.1` are runtime pins in `requirements.txt`
+> and MUST be installed on the server** — the ordinary `pip install -r
+> requirements.txt` in §9 does it. All four are pure Python; no `apt` package
+> is needed. They are imported inside functions only, so a server without them
+> still boots — `/boq/import` then says the reader is not installed, and an
+> `.xlsx` is **refused** (not read unsafely) if `defusedxml` is missing.
+> The two new collections, `boq_imports` and `import_layouts`, are created by
+> `db.init()` on the next start; there is no migration. The paragraph below is
+> kept as the record of what was true until then; the client workbooks in
+> `fixtures/` are still never read at runtime.
+
+~~**Nothing degrades. `openpyxl` is not needed on the server and should not be
+installed there.**~~
 
 Verified two ways — a grep across the whole repo and the AST import scan above.
 `openpyxl` appears in exactly two places, neither of which is application code:
