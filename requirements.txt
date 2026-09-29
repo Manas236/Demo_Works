@@ -2,7 +2,7 @@
 #     pip install -r requirements.txt
 #
 # The dependency SET is derived from the app's actual imports, not from a
-# `pip freeze` of a system Python — INTRODUCTION.md §5.7. Only these five are
+# `pip freeze` of a system Python — INTRODUCTION.md §5.7. Only these seven are
 # imported by application code:
 #
 #     flask          every module
@@ -10,6 +10,12 @@
 #     pymysql        db.py — MySQL persistence
 #     dotenv         db.py — reads .env
 #     PIL            photo.py — re-encodes profile photos (26 Sep 2026)
+#     openpyxl       sheetimport.py — reads an uploaded .xlsx BOQ (29 Sep 2026)
+#     xlrd           sheetimport.py — reads an uploaded .xls BOQ (29 Sep 2026)
+#
+# defusedxml is imported by NOTHING of ours and is still a runtime dependency:
+# openpyxl parses every .xlsx part through it when it is installed, and
+# sheetimport.py REFUSES an .xlsx when it is not (`openpyxl.xml.DEFUSEDXML`).
 #
 # The VERSIONS are pinned so a clone reproduces a known-good environment rather
 # than whatever PyPI resolves to that morning. They are the versions the suite
@@ -33,6 +39,15 @@ Pillow==12.3.0         # photo.py — profile photos are re-encoded, never store
                        # inside photo.encode(), so a box without it still boots
                        # and the upload form says it is unavailable.
 
+# Import BOQ from Excel (29 Sep 2026). All three are imported inside
+# sheetimport.py's functions, never at module level — photo.py's arrangement —
+# so a box without them still boots and /boq/import says it is unavailable.
+openpyxl==3.1.5        # sheetimport.py — .xlsx, loaded read-only, never written
+et-xmlfile==2.0.0      # openpyxl's own dependency, pinned so the pair reproduces
+xlrd==2.0.2            # sheetimport.py — legacy .xls (BIFF) only; 2.x reads no .xlsx
+defusedxml==0.7.1      # openpyxl picks it up by itself; sheetimport.py refuses an
+                       # .xlsx while openpyxl.xml.DEFUSEDXML is False
+
 # Flask pulls these in itself. Pinned as well so an install is reproducible;
 # nothing in this app imports them directly.
 blinker==1.9.0
@@ -51,13 +66,16 @@ Werkzeug==3.1.7
 #
 # To regenerate demo_data.py from the client workbook
 # (`python tools/gen_demo_data.py`, needs sify_boq.xlsx — see fixtures/README.md):
-#     pip install openpyxl
-# openpyxl
+# openpyxl, which is a RUNTIME pin above from 29 September 2026.
 #
-# ⚠ openpyxl being commented out here is one of TWO independent things that move
+# ⚠ openpyxl being ABSENT is one of TWO independent things that move
 #   the suite's total, and they are routinely confused for each other. The other
 #   is whether the two client workbooks are installed (they are gitignored — see
 #   fixtures/README.md). ABOUT.md §1 owns the full table; do not restate it here.
+#   ⚠ The paragraphs below were written while openpyxl was commented out of this
+#   file. They are kept as history; from 29 September 2026 `pip install -r
+#   requirements.txt` installs it, so a clone built from this file is ABOUT.md
+#   §1's row 2 without the extra step.
 #
 #   Measured on 15 August 2026, in a .venv with openpyxl AND both workbooks
 #   present: **611 passed, 0 skipped**.
@@ -70,8 +88,10 @@ Werkzeug==3.1.7
 #   prints **1 skipped**, not 4. It is the kind of number that is only ever
 #   wrong in a document, because nobody re-reads it against a real run.
 #
-#   openpyxl stays commented out because the app never reads a workbook at
-#   runtime; install it in the venv if you want the module collected.
+#   ~~openpyxl stays commented out because the app never reads a workbook at
+#   runtime; install it in the venv if you want the module collected.~~
+#   Superseded 29 September 2026: /boq/import reads an uploaded workbook at
+#   runtime, so openpyxl is pinned above with the other runtime dependencies.
 #
 # assets/build_assets.py only. Its output PNGs are committed under assets/, so
 # this is a one-off artwork build, not a dependency of anything at runtime:
