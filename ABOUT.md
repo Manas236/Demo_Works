@@ -840,7 +840,8 @@ at the **second** consumer rather than the fourth.
 
 ```
 boqpick.py ──► boq.py       _line_id / _item_no / _num / _fmt_qty /
-                            _json_for_script / MAX_LINES
+                            _json_for_script / MAX_LINES / header_of
+                            (THE parent rule, §3 — 30 Sep 2026)
 boqpick.py ──► pipeline.py  esc
 
 po_draft.py ──┐
@@ -1058,6 +1059,7 @@ the over-claim block, with no routes yet. The arrow runs one way:
 ```
 ra.py ──► boq.py        the schedule a claim is measured against, plus
                         _line_id / _item_no / _num / _fmt_qty / BOQ_STYLES
+                        and parent_index / header_of — THE parent rule (§3)
 ra.py ──► quotation.py  QUOTATION_STYLES + _inr — the form widgets, so the RA
                         form IS the BOQ form. NOT _tax_lines (see below).
 ra.py ──► dashboard.py  BASE_STYLES / _nav — the persistence strip comes free
@@ -2481,6 +2483,54 @@ Eight properties this shape exists to guarantee:
    BOQ-level trio is stored, for the register and the dashboard card, and the
    document recomputes even those so a printed sheet can never contradict its
    own lines.
+
+#### The parent rule — which line a child belongs to (30 September 2026)
+
+**The parent of a line is the line in the SAME SECTION whose `item_no` equals
+the line's `parent_item_no`.** Where the section carries that number more than
+once, the **nearest one ABOVE** the child wins — a schedule is read top-down and
+a child is written under its parent — and with none above, the nearest below.
+None at all is a *missing* parent: the form says so in a soft amber strip
+(*"Under item 3: no such item in section C"*) and never blocks. The parent may
+be a header or a priced line; the readers that only care about specification
+families (the fold, a printed header row) check `is_header` on the answer.
+
+It is written **once per language**: `boq.parent_index(lines)` (→ `None` / `-1`
+/ the parent's index, and `boq.header_of()` for the header families) on the
+server, and `_BOQ_JS`'s `parentIndexAll()` in the editor.
+`tests/test_boq_child_context.py` holds the two in step and holds every reader
+below to them. The rule came out of the Jamnagar sheet: its sections A, B and C
+each have an item 3, so *"2Kg · under item 3"* on a card meant nothing until the
+card said which 3.
+
+**The resolver audit** — every reader of `parent_item_no` in the repository,
+30 September 2026:
+
+| reader | section-scoped before? | on a repeated number before | now |
+|---|---|---|---|
+| `boqpick.families()` — the fold on `/dc/create`, `/po/create`, `/purchase/from-boq`, `/measurement/create` | **yes** — keyed `(section, item_no)` | the LAST header of the number took every child of both | **`boq.header_of()`** |
+| `boqpick.picked_lines()` — which header a ticked child carries onto a DC, a draft PO, a real PO, a measurement sheet | **yes** | BOTH headers of the number were carried | **`boq.header_of()`** |
+| `ra._families()` — the RA claim grid's fold | **yes** | the LAST header took both families | **`boq.header_of()`** |
+| `/ra/print` — the specification paragraph above a claimed line (the one print-side reader) | **yes** | the LAST header's paragraph headed both families' claims | **`boq.parent_index()`** |
+| `_BOQ_JS` `childrenOf()` / `openNeedPath()` — the editor's fold and the guided fix's path | **yes** | EACH header claimed every child of the number | **`parentIndexAll()`** |
+| `boqimport.editor_model()` — folds spec text into its parent | **yes** — `last[(section, item_no)]` | the nearest above, by construction | **unchanged — already the rule** |
+| `sheetimport.Structure` — WRITES `parent_item_no` from the sheet's shape | **yes** — resets per section | n/a: it is the producer, the open header above | **unchanged** |
+| `boq._document_html()` — `/boq/view` and `/boq/print` | not a resolver: indents any line that names a parent (`b-child`) and never looks it up | — | **unchanged** |
+| `merged_ra.py`, `challan.py`, `po_draft.py`, `purchase.py`, `measurement.py` | not resolvers: they read the rows `boqpick.picked_lines()` snapshotted, which carry `is_header` and no parent | — | **unchanged** |
+| `tools/e2e_chain.py` | test data only; never resolves | — | **unchanged** |
+
+**No reader matched on the item number alone** — the brief's worry — so the
+two-section case (A and C both carrying item 3) was already right everywhere,
+and `test_every_server_resolver_attaches_each_child_to_its_own_sections_parent`
+proves it. What was not right was a number **repeated inside one section**,
+which the client's own sheets do (the Sify schedule carries item 17 twice):
+four readers kept the last header, one carried both, one folded everything
+under both. They now all read the one rule; against the old code the two
+resolver tests fail on exactly that case. ⚠ **`/ra/print` reads this relation
+LIVE** (the one live read on the bill — §5 `/ra/print`), so an issued bill on a
+schedule with a repeated header number in one section may now reprint with the
+correct paragraph where it used to print the later one. **No print or page
+golden moved**: no golden fixture repeats a header number within a section.
 
 ### RA Bill  (Running Account claim)
 
@@ -7127,6 +7177,40 @@ only — nothing is filled in. **The guided fix** (rings, the sticky bar, the
 server-side marks on a refused save for every BOQ) is described under
 `/boq/import` below, because the import is what it was built for.
 
+**Every child card says what it is part of (30 September 2026, later).** A
+child row reads *"2Kg"* and *"Under item 3"*, and item numbers restart in every
+section, so on the Jamnagar sheet nobody could tell what they were pricing. By
+THE parent rule (§3), worked out live in `_BOQ_JS` (`parentIndexAll()`,
+`ctxOf()`, `refreshCtx()`), and on every form that loads it — imported or typed:
+
+| where | reads |
+|---|---|
+| a strip above Description (`.lc-ctx`, `id="ctx<i>"`) | *Part of C·3: \<the parent's description\> · Make KANEX* — the Make from the parent's remark when it holds `Make: …` (several joined with `/`); the description clamped to two lines, a click opens it (`_ctx` on the line keeps it open across a re-render) |
+| the same strip, parent not found | soft amber: *⚠ Under item 9: no such item in section C* — never a block |
+| the collapsed card header (`.ls-ctx`, a span BESIDE `.ls-desc`) | *3.a  \<parent, first 40 characters\> › 2Kg*; the description span is the line's own, unchanged |
+| the sticky bar, on Prev / Next | *4 of 11 · C 3.a Clean Agent (HFC-236)… › 2Kg · rate* |
+| a child card's flag banner | opens with the same *C 3.a … › 2Kg* |
+
+Typing in the parent's description or remark, this line's *Under item* or any
+*Item No.* re-draws every strip, collapsed header, banner and family count in
+place — **no re-render**, which would take the caret; moving a line to another
+section re-renders, and the strip then names that section's parent. The strip
+is drawn on every open line (empty and hidden when the line is nobody's child)
+so typing an *Under item* can fill it in place.
+
+**"Unit for all N sizes".** Every line with children — a header or a priced
+parent — carries one unit box (the line's own text widget, placeholder `unit`
+on an import, `Mtrs` otherwise) and **Apply**, which writes the unit into ONLY
+the children whose unit is blank and never overwrites a filled one; a unit so
+written counts as typed, so a later spec pick keeps it. The box's value is
+`_kidunit`, a UI key. ⚠ **The band appears on the next render** when a line
+first gains a child by typing — its count updates in place, its existence does
+not.
+
+**Prev / Next count from the field the user is ON** (`CUR`, `{i, f}` or the
+form element), not from a position in a list that shrinks as fields are
+answered: answering the field and pressing Next used to skip the one after it.
+
 ### `/boq/import` — Import BOQ from Excel · [boqimport.py](boqimport.py) · [sheetimport.py](sheetimport.py)
 
 **Built 29 September 2026, v1** — CLIENT_CHANGES.md §0 **thirty-fourth** block:
@@ -7390,11 +7474,64 @@ you* with **Prev / Next**: Next opens whatever hides the next field (its line,
 section and header), scrolls it to the **centre** and focuses it, and wraps.
 A form opened from an import goes to the first field on load (or the one a
 preview link named). A field given a valid value — **a number greater than 0**
-for a quantity or a rate ("rate" is either unit rate; its mark sits on the
-supply one), any text for an item number or a description — loses its ring
-and the count drops, with no re-render; clearing it brings the ring back; at 0
-the bar reads *All filled — review and save*. **Save is stopped in the browser**
-while a marked field is unmet, and jumps to the first.
+for a quantity; **any typed number, 0 included, for a rate** (from 30
+September 2026, later — see *Not priced* below; "rate" is either unit rate,
+its mark sits on the supply one); any text for an item number or a
+description — loses its ring and the count drops, with no re-render; clearing
+it brings the ring back; at 0 the bar reads *All filled — review and save*.
+**Save is stopped in the browser** while a marked field is unmet, and jumps to
+the first.
+
+**"Not priced" is an answer (30 September 2026, later).** The client's
+Jamnagar sheet leaves eleven lines unpriced on purpose and its totals add up
+exactly without them, so under the old *greater than 0* rule that BOQ could
+not be saved as quoted. Now **any typed number, 0 included, answers a rate
+flag; only a blank still asks** — `boq._rate_answered()` and `_BOQ_JS`'s
+`rateAnswered()`, which read a figure as `_opt_num()` does (blank, `-` and
+text are no figure; a negative one does not answer — the save refuses it).
+**The quantity rule did not move.** Every rate an import asked for gets a
+**Not priced (₹0)** button under its ringed box (`npBtn()`, hidden while the
+box is answered, so clearing it brings the button back): it types `0` into the
+flagged track — a *"rate"* need, either track, marks the supply one — and the
+line then carries a grey **not priced** chip on its collapsed header
+(`isNotPriced()`: every rate need answered, and answered with 0). At a count of
+0 with any such line the bar reads *All answered · N not priced (₹0) · review
+and save*. **What the save accepts did not change** — it always took a 0 rate:
+`_clean_lines()` refuses only a negative one. ⚠ **What a 0-rate line prints as,
+unchanged**: its quantity and unit, a **blank** U/ Rate on each track
+(`_rate_cell()` prints nothing for 0 — "not 0.00, which says the material is
+free") and **0.00** in each Amount, summing nothing into the subtotal; on
+`/boq/view` the base-rate cell prints `-` when the base is `None`.
+`/boq/view` (never `/boq/print`) carries a soft amber note —
+*"N lines have a quantity but no rate — A 3.b · C 3.a, 3.b"*, item numbers
+listed under their sections (`boq.unpriced_lines()`: a quantity above 0 and a
+0 rate on both tracks) — which `BOQ_VIEW_STYLES` hides in print; `BOQ_STYLES`
+and `BOQ_DOC_STYLES` did not move, and no golden pins `/boq/view`.
+
+**Units the sheet did not give.** An imported line (`_row` set — every line an
+import wrote, and no other) whose unit is blank gets a **soft amber outline**
+on its Unit box (`input.unit-soft`). It never blocks, is **not** one of the
+fields that need you, and the bar carries it as a separate *· N units blank*,
+shown even when nothing else needs the user; the outline and the note follow
+the typing. Headers carry no unit by design and are not counted. Nothing is
+normalised and no unit is inferred from a description. The preview's summary
+gets one line when no column is mapped to Unit: *This sheet has no Unit
+column: N lines have no unit (fill on the form)* (`summary_html(…,
+unit_mapped=False)`; the default draws nothing new).
+
+**Placeholders on an imported line say what goes in a box in words** —
+`rate`, `esc %`, `unit` — and a ringed rate box says `type rate`: the grey
+example figures (`1760 or -`, `2024`, `1200`, `Mtrs`) on a blank or flagged box
+read as values already filled in. A typed line keeps its examples.
+
+On the client's Jamnagar sheet (read-only from Downloads, 30 September 2026,
+later): the 11 flags on rows 13, 70–72, 92, 114, 116, 117, 119, 120 and 122;
+C 3.a's strip *Part of C·3: SITC of ISI mark SS Clean Agent (HFC-236) fire
+Extinguisher on Floor with mounting Stand . · Make KANEX*, A 3.a's *Part of A·3:
+M.S. PIPE CLASS-C HEAVY DUTY … · Make Jindal* and B 3.a's *Part of B·3: M.S.
+STRUCTURAL SUPPORTS* — each within its own section; **59 units blank** (every
+one of its 59 priced lines — the form's other 33 lines are headers); all 11
+answered *Not priced* reads *All answered · 11 not priced (₹0)*.
 
 ⚠ **Guidance only. What the save accepts did not change**, and **gap 42 is
 still open, deliberately** — the owner's decision on 30 September 2026: block
@@ -7621,7 +7758,11 @@ pre-fix renderer.
 (`parent_item_no` → the header line), because no claim row carries it. The
 header's own paragraph is therefore the single value on the page that still
 tracks the schedule, and it is the single thing that disappears if the BOQ
-record does. Closing that would mean snapshotting the header text onto the bill
+record does. ⚠ **From 30 September 2026 the relation is `boq.parent_index()`,
+THE parent rule (§3)** — same section, the nearest header above on a repeated
+number. It used to be a `(section, item_no)` dict that kept the LAST header of
+a number, so on a schedule repeating a header number inside one section both
+families' claims printed under the later paragraph. Closing that would mean snapshotting the header text onto the bill
 at save — a record-shape change, not made here. Nothing else on the document
 depends on the BOQ existing at all.
 

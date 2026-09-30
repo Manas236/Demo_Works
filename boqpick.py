@@ -141,21 +141,27 @@ PICKER_CSS = """\
 # =============================================================================
 
 def families(boq: dict) -> dict:
-    """`{header line_id: [child line_id, …]}` — boq.py's fold, keyed on ids."""
-    by_item = {}
-    for li in boq.get("line_items") or []:
+    """
+    `{header line_id: [child line_id, …]}` — boq.py's fold, keyed on ids.
+
+    The child → header match is `boq.header_of()`, THE parent rule (same
+    section, nearest above on a repeated number — ABOUT.md §3). It used to be
+    a `(section, item_no)` dict here, which was section-scoped but kept the
+    LAST header of a repeated number, so every child of the first folded
+    under the second (30 September 2026).
+    """
+    lines = boq.get("line_items") or []
+    fams = {}
+    for li in lines:
         if li.get("is_header"):
-            key = (str(li.get("section") or ""), BQ._item_no(li.get("item_no")))
-            by_item[key] = BQ._line_id(li.get("line_id"))
-    fams = {hlid: [] for hlid in by_item.values() if hlid}
-    for li in boq.get("line_items") or []:
-        if li.get("is_header"):
+            hlid = BQ._line_id(li.get("line_id"))
+            if hlid:
+                fams[hlid] = []
+    for i, h in BQ.header_of(lines).items():
+        if lines[i].get("is_header"):
             continue
-        parent = BQ._item_no(li.get("parent_item_no"))
-        if not parent:
-            continue
-        hlid = by_item.get((str(li.get("section") or ""), parent))
-        lid = BQ._line_id(li.get("line_id"))
+        hlid = BQ._line_id(lines[h].get("line_id"))
+        lid = BQ._line_id(lines[i].get("line_id"))
         if hlid and lid:
             fams[hlid].append(lid)
     return fams
@@ -519,14 +525,17 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
     # Walk the BOQ in ORDER rather than the posted list, so the document reads
     # in schedule order however the browser happened to serialise it. A header
     # is carried whenever one of its children was ticked.
+    #
+    # Which header a ticked child carries is `boq.header_of()` — THE parent
+    # rule, so a repeated header number carries only the child's own header.
+    lines = boq.get("line_items") or []
+    heads = BQ.header_of(lines)
     wanted_headers = set()
-    for li in boq.get("line_items") or []:
+    for i, li in enumerate(lines):
         if li.get("is_header"):
             continue
-        if BQ._line_id(li.get("line_id")) in chosen:
-            parent = BQ._item_no(li.get("parent_item_no"))
-            if parent:
-                wanted_headers.add((str(li.get("section") or ""), parent))
+        if BQ._line_id(li.get("line_id")) in chosen and i in heads:
+            wanted_headers.add(heads[i])
 
     extra = {"pcs": ""} if with_pcs else {}
     if with_rate:
@@ -535,11 +544,10 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
         # every row this function returns has one shape.
         extra = {**extra, "rate": 0.0}
     items = []
-    for li in boq.get("line_items") or []:
+    for idx, li in enumerate(lines):
         lid = BQ._line_id(li.get("line_id"))
         if li.get("is_header"):
-            key = (str(li.get("section") or ""), BQ._item_no(li.get("item_no")))
-            if key in wanted_headers:
+            if idx in wanted_headers:
                 items.append({
                     "line_id": lid,
                     "is_header": True,

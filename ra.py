@@ -2638,30 +2638,30 @@ def _families(boq: dict) -> dict:
     can add to it, remove from it or reorder it, so there is no state for the
     browser to keep and nothing for it to recompute.
 
-    The match is boq.py's, unchanged — **same section, and `parent_item_no`
-    equal to the header's `item_no`.** Section is part of the key because item
+    The match is boq.py's — **`boq.header_of()`, THE parent rule: same
+    section, and `parent_item_no` equal to the header's `item_no`, the nearest
+    one above on a repeated number.** Section is part of the key because item
     numbers restart per section (ABOUT.md §3), so item 4 in A and item 4 in B
-    are different headers and 4.1 in B must not fold under A's.
+    are different headers and 4.1 in B must not fold under A's. (Until 30
+    September 2026 this was its own `(section, item_no)` dict, which kept the
+    LAST of two headers sharing a number and folded both families under it.)
     """
-    heads = {}
-    for li in boq.get("line_items") or []:
+    lines = boq.get("line_items") or []
+    out = {}
+    for li in lines:
         if not li.get("is_header"):
             continue
         item = BQ._item_no(li.get("item_no"))
         lid = BQ._line_id(li.get("line_id"))
         if item and lid:
-            heads[(str(li.get("section") or ""), item)] = lid
+            out[lid] = []
 
-    out = {lid: [] for lid in heads.values()}
-    for li in boq.get("line_items") or []:
-        if li.get("is_header"):
+    for i, h in BQ.header_of(lines).items():
+        if lines[i].get("is_header"):
             continue
-        parent = BQ._item_no(li.get("parent_item_no"))
-        lid = BQ._line_id(li.get("line_id"))
-        if not parent or not lid:
-            continue
-        hlid = heads.get((str(li.get("section") or ""), parent))
-        if hlid:
+        lid = BQ._line_id(lines[i].get("line_id"))
+        hlid = BQ._line_id(lines[h].get("line_id"))
+        if lid and hlid in out:
             out[hlid].append(lid)
     return out
 
@@ -4159,26 +4159,28 @@ def print_ra(id: str):
     # The BOQ is consulted for exactly ONE thing: **which specification header a
     # claimed line sits under.** That is a relation (`parent_item_no`), not a
     # value, and no claim row carries it. Nothing else is read from there.
+    # It is `boq.parent_index()`, THE parent rule (30 September 2026) — same
+    # section, nearest above on a repeated number — and not a lookup of its own.
     live_lines = boq.get("line_items") or []
-    live_by_lid, headers_by_key = {}, {}
-    for li in live_lines:
+    live_parents = BQ.parent_index(live_lines)
+    live_at = {}
+    for k, li in enumerate(live_lines):
         if li.get("is_header"):
-            headers_by_key[(str(li.get("section") or ""),
-                            BQ._item_no(li.get("item_no")))] = li
             continue
         lid = BQ._line_id(li.get("line_id"))
         if lid:
-            live_by_lid[lid] = li
+            live_at[lid] = k
 
     table_rows_html = ""
     last_header_key = None
     for idx, c in enumerate(claims, 1):
         # The header lookup. Only the relation crosses over — the claim's own
-        # id resolves to its BOQ line, whose `parent_item_no` names the header.
-        src = live_by_lid.get(BQ._line_id(c.get("line_id"))) or {}
-        parent = BQ._item_no(src.get("parent_item_no"))
-        header_key = (str(src.get("section") or ""), parent) if parent else None
-        hdr = headers_by_key.get(header_key) if header_key else None
+        # id resolves to its BOQ line, whose parent (by the rule) is the header.
+        at = live_at.get(BQ._line_id(c.get("line_id")))
+        header_key = live_parents[at] if at is not None else None
+        hdr = (live_lines[header_key]
+               if header_key is not None and header_key >= 0
+               and live_lines[header_key].get("is_header") else None)
 
         if hdr is not None and header_key != last_header_key:
             # Printed in full, never truncated — `boq.view_boq()` prints the

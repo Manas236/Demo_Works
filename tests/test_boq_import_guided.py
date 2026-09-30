@@ -657,21 +657,28 @@ def test_on_load_an_import_goes_to_the_first_field_and_next_wraps():
 
 @needs_node
 def test_a_valid_value_clears_the_mark_and_clearing_it_brings_it_back():
+    """
+    ⚠ **A typed 0 now ANSWERS a rate flag (30 September 2026)** — the owner's
+    brief: the client's sheets leave lines unpriced on purpose. Until then this
+    test held `zero == 1`, the old "a number greater than 0" rule. Only a blank
+    still asks; tests/test_boq_child_context.py holds the rest of the rule.
+    """
     _res, model = _boot(TOP + HEAD2 + ROWS_5_17)
     i = next(k for k, l in enumerate(model["lines"]) if l.get("_need"))
     got = _node(model, f"""
       var before = needList().length;
       setLine({i}, 'install_rate', '0');   var zero = needList().length;
+      setLine({i}, 'install_rate', '');    var blank = needList().length;
       setLine({i}, 'install_rate', '75');  var filled = needList().length;
       var bar = STUB['needs-bar'].innerHTML;
       var lf = LF['{i}:supply_rate'];
       var cleared = lf && !lf.attrs['data-needs'];
       setLine({i}, 'install_rate', '');    var again = needList().length;
       var back = lf && lf.attrs['data-needs'];
-      console.log(JSON.stringify({{before: before, zero: zero, filled: filled, bar: bar,
-                                  cleared: cleared, again: again, back: back}}));
+      console.log(JSON.stringify({{before: before, zero: zero, blank: blank, filled: filled,
+                                  bar: bar, cleared: cleared, again: again, back: back}}));
     """)
-    assert (got["before"], got["zero"], got["filled"], got["again"]) == (1, 1, 0, 1)
+    assert (got["before"], got["zero"], got["blank"], got["filled"], got["again"]) == (1, 0, 1, 0, 1)
     assert "All filled" in got["bar"] and "review and save" in got["bar"]
     assert got["cleared"] is True and got["back"] == "rate"
 

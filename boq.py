@@ -448,6 +448,95 @@ def _lines_of(boq: dict, code: str) -> list:
     return [li for li in boq.get("line_items", []) if li.get("section") == code]
 
 
+# =============================================================================
+# THE PARENT RULE — which line a child belongs to (30 September 2026)
+# =============================================================================
+#
+# The parent of a line is the line in the SAME SECTION whose `item_no` equals
+# the line's `parent_item_no`. Item numbers restart in every section (ABOUT.md
+# §3), so a match on the number alone puts C 3.a under A's item 3. Where more
+# than one line in the section carries the number — the client's own sheets
+# repeat numbers — the NEAREST ONE ABOVE the child wins, because a schedule is
+# read top-down and a child is written under its parent; with none above, the
+# nearest below.
+#
+# ⚠ This is the ONE resolver. `boqpick.families()` and `picked_lines()`,
+#   `ra._families()` and `/ra/print`'s header lookup all read it, and `_BOQ_JS`'s
+#   `parentIndexAll()` is the same rule in the browser, kept in step by
+#   tests/test_boq_child_context.py. A reader that matches on its own is how
+#   two screens come to disagree about what a child line is part of.
+
+def parent_index(lines: list) -> list:
+    """
+    The parent of every line, by position — aligned with `lines`:
+
+      None  the line names no parent (`parent_item_no` blank)
+      -1    it names one and no line in its section carries that number
+      j     the index of its parent in `lines`
+
+    The parent may be any line, header or priced. Readers that only care about
+    specification families (the fold, the header row on a print) check
+    `is_header` on the answer themselves.
+    """
+    by_key = {}
+    for j, li in enumerate(lines):
+        if not isinstance(li, dict):
+            continue
+        ino = _item_no(li.get("item_no"))
+        if ino:
+            by_key.setdefault((str(li.get("section") or ""), ino), []).append(j)
+    out = []
+    for i, li in enumerate(lines):
+        if not isinstance(li, dict):
+            out.append(None)
+            continue
+        p = _item_no(li.get("parent_item_no"))
+        if not p:
+            out.append(None)
+            continue
+        above = below = -1
+        for j in by_key.get((str(li.get("section") or ""), p), ()):
+            if j < i:
+                above = j
+            elif j > i and below < 0:
+                below = j
+        out.append(above if above >= 0 else below)
+    return out
+
+
+def header_of(lines: list) -> dict:
+    """
+    `{child index: header index}` — every line whose parent, by the rule above,
+    is a SPECIFICATION HEADER. The fold and the printed header row are built
+    from this; a child whose parent is a priced line has no family to fold into.
+    """
+    parents = parent_index(lines)
+    return {i: p for i, p in enumerate(parents)
+            if p is not None and p >= 0 and lines[p].get("is_header")}
+
+
+def unpriced_lines(boq: dict) -> list:
+    """
+    The lines that carry a quantity and no rate on either track, in schedule
+    order, as `(section, item_no)`. `/boq/view`'s amber note lists them.
+
+    A valid state and not an error: the client's own sheets leave lines
+    unpriced on purpose and their totals add up without them, and the Sify
+    schedule's four nil-priced lines are exactly this. They print with a blank
+    rate and 0.00 in the amount — the note says so on the internal copy, and
+    the issued print is not touched.
+    """
+    out = []
+    for li in boq.get("line_items") or []:
+        if li.get("is_header"):
+            continue
+        if float(li.get("total_qty") or 0.0) > 0 \
+                and not float(li.get("supply_rate") or 0.0) \
+                and not float(li.get("install_rate") or 0.0):
+            out.append((str(li.get("section") or ""), _item_no(li.get("item_no"))))
+    return out
+
+
 def section_totals(boq: dict, code: str) -> tuple:
     """
     (supply, installation) for one section — COMPUTED, never stored.
@@ -1407,6 +1496,17 @@ BOQ_DOC_SCRIPT = """
 </script>
 """
 
+# `/boq/view` ONLY (30 September 2026): its "N lines have a quantity but no
+# rate" note is screen furniture and never prints, even when the internal copy
+# is printed from the browser. A constant of its own, never a rule in
+# `BOQ_STYLES` (four page goldens hash that) or `BOQ_DOC_STYLES` (the print
+# golden hashes that); `/boq/print` does not load it and draws no note.
+BOQ_VIEW_STYLES = """
+<style>
+  @media print { .unpriced-note { display:none !important; } }
+</style>
+"""
+
 
 # =============================================================================
 # THE PRINTED BOQ — rendering
@@ -1925,10 +2025,20 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
 # `_needs` is written here on each render: the fields of either that are
 # still unmet.
 
+def _rate_answered(v) -> bool:
+    """A rate box answers a flag when it holds a number, 0 included — "not
+    priced" is a valid answer (30 September 2026). Blank, "-" and text do not;
+    nor does a negative figure, which the save refuses anyway."""
+    n = _opt_num(v)
+    return n is not None and n >= 0
+
+
 def _need_met(li: dict, field: str, areas: list) -> bool:
     """Has `field` on line `li` been given what an import asked of it?
-    A number greater than 0 for a quantity or a rate; any text for an item
-    number or a description. A header needs no figure."""
+    A number greater than 0 for a quantity; ANY typed number for a rate,
+    0 included (the client's sheets leave lines unpriced on purpose — a 0 is
+    an answer and only a blank still asks); any text for an item number or a
+    description. A header needs no figure."""
     if field in ("total_qty", "supply_rate", "install_rate", "rate") and li.get("is_header"):
         return True
     if field == "total_qty":
@@ -1937,10 +2047,10 @@ def _need_met(li: dict, field: str, areas: list) -> bool:
             return sum(_opt_num(aq.get(a)) or 0.0 for a in areas) > 0
         return (_opt_num(li.get("total_qty")) or 0.0) > 0
     if field in ("supply_rate", "install_rate"):
-        return (_opt_num(li.get(field)) or 0.0) > 0
+        return _rate_answered(li.get(field))
     if field == "rate":
-        return ((_opt_num(li.get("supply_rate")) or 0.0) > 0
-                or (_opt_num(li.get("install_rate")) or 0.0) > 0)
+        return (_rate_answered(li.get("supply_rate"))
+                or _rate_answered(li.get("install_rate")))
     return bool(str(li.get(field) or "").strip())
 
 
@@ -2643,13 +2753,40 @@ def view_boq(id: str):
       {ra_html}
     </div>"""
 
+    # ── Lines with a quantity and no rate (30 September 2026) ────────────
+    # A soft amber note, never a block: "not priced" is a valid answer — the
+    # client's sheets leave lines unpriced on purpose and foot without them.
+    # Screen only. `.form-hint` is BOQ_STYLES' own hint, already on this
+    # page, and the issued `/boq/print` never draws it (`_document_html()` is
+    # untouched), so no stylesheet and no golden moves. Item numbers restart
+    # per section, so each is listed under its section.
+    unpriced = unpriced_lines(boq)
+    unpriced_html = ""
+    if unpriced:
+        by_sec: dict = {}
+        for sec, ino in unpriced:
+            by_sec.setdefault(sec, []).append(ino)
+        listing = " &middot; ".join(
+            f'<span class="fh-sec">{P.esc(sec) or "?"}</span> '
+            + ", ".join(P.esc(ino) or "&mdash;" for ino in inos)
+            for sec, inos in by_sec.items())
+        n_up = len(unpriced)
+        unpriced_html = (
+            '<div class="form-hint unpriced-note" id="unpriced-note">'
+            '<span class="fh-icon">&#9888;</span>'
+            f'<span><b>{n_up} line{"s have" if n_up != 1 else " has"} a quantity but no '
+            f'rate</b> &mdash; {listing}. '
+            f'{"They print" if n_up != 1 else "It prints"} with a blank rate and 0.00 in '
+            'the amount, and add nothing to the total. Nothing is blocked: a line left '
+            'unpriced on purpose is a valid answer.</span></div>')
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{BOQ_VIEW_STYLES}
   {BOQ_DOC_SCRIPT}
 </head>
 <body>
@@ -2671,6 +2808,7 @@ def view_boq(id: str):
 
 {alert_html}
 {panel_html}
+{unpriced_html}
 
 {_document_html(boq, show_rate_breakup=True)}
 
@@ -2960,6 +3098,53 @@ BOQ_IMPORT_STYLES = """
   .needs-bar.is-done .nb-txt b { color:#15803d; }
   form.needs-on .jump-bar { top:120px; }
   .imp-need-link { color:var(--brand); font-weight:600; }
+  .needs-bar .nb-where { margin-left:.5rem; color:var(--muted); font-weight:500; }
+  .needs-bar .nb-units { margin-left:.5rem; color:#92400e; font-weight:600; }
+
+  /* What a child line belongs to (30 September 2026): the collapsed header's
+     "<parent> ›", and the strip above Description — its text clamped to two
+     lines, a click opens it. A parent that cannot be found is soft amber. */
+  .ls-ctx { flex:0 1 auto; max-width:38%; min-width:0; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap; color:var(--muted);
+            font-size:.78rem; font-weight:400; }
+  .ls-ctx:empty { display:none; }
+  .ls-ctx.is-miss { color:#b45309; }
+  .lc-ctx { display:flex; flex-wrap:wrap; align-items:baseline; gap:.2rem .45rem;
+            margin-top:.8rem; padding:.45rem .65rem; font-size:.78rem; line-height:1.45;
+            background:var(--surface, #fff); border:1px solid var(--border);
+            border-left:3px solid var(--navy); border-radius:8px; color:var(--navy); }
+  .lc-ctx.is-none { display:none; }
+  .lc-ctx.is-miss { background:#fffbeb; border-color:#fcd34d;
+                    border-left-color:var(--saffron); color:#92400e; }
+  .lc-ctx-lbl { font-weight:700; white-space:nowrap; }
+  .lc-ctx-txt { flex:1 1 16rem; min-width:0; overflow:hidden; cursor:pointer;
+                display:-webkit-box; -webkit-box-orient:vertical;
+                -webkit-line-clamp:2; line-clamp:2; }
+  .lc-ctx.is-open .lc-ctx-txt { display:block; -webkit-line-clamp:unset;
+                                line-clamp:none; overflow:visible; }
+  .lc-ctx.is-miss .lc-ctx-txt { cursor:default; }
+  .lc-ctx-make { font-weight:600; white-space:nowrap; }
+  .lc-flags .lc-flags-ctx { list-style:none; margin-left:-.9rem; font-weight:700;
+                            color:var(--navy); }
+
+  /* "Not priced" — an answer, so grey and never amber or red. */
+  .chip-np { display:inline-block; margin-right:.45rem; padding:0 .4rem;
+             border-radius:999px; font-size:.7rem; font-weight:700;
+             background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+  .np-btn { display:inline-block; margin-top:.35rem; font-size:.72rem; font-weight:600;
+            color:#475569; background:#f8fafc; border:1px solid #cbd5e1;
+            border-radius:6px; padding:.2rem .55rem; cursor:pointer; }
+  .np-btn:hover { background:#e2e8f0; }
+
+  /* A unit the sheet did not give: a SOFT outline — never a block, never a
+     ring, not counted among the fields that need you. */
+  input.unit-soft { border-color:#fbbf24; box-shadow:0 0 0 2px rgba(251,191,36,.28);
+                    background:#fffbeb; }
+  .lc-kidunit { display:flex; flex-wrap:wrap; align-items:end; gap:.6rem;
+                margin-top:.8rem; padding:.5rem .6rem; border:1px dashed var(--border);
+                border-radius:8px; background:var(--surface); }
+  .lc-kidunit .form-group { width:170px; margin:0; }
+  .lc-kidunit-note { font-size:.74rem; color:var(--muted); padding-bottom:.45rem; }
 </style>
 """
 
@@ -3260,10 +3445,18 @@ function isUnsized(sp) {
   return sp && sp.variants.length === 1 && !sp.variants[0].label;
 }
 
-function fld(i, key, label, val, ph, cls) {
+/* `icls` is a class for the INPUT itself (the soft unit outline); `cls` is the
+   wrapper's. A box the guided fix rings keeps its `needs` class beside it. */
+function fld(i, key, label, val, ph, cls, icls) {
+  var na = needAttr(i, key);
+  if (icls) {
+    na = na.indexOf(' class="needs"') >= 0
+      ? na.replace(' class="needs"', ' class="needs ' + icls + '"')
+      : na + ' class="' + icls + '"';
+  }
   return '<div class="form-group ' + (cls || '') + needWrap(i, key) + '"><label>' + label + '</label>'
     + '<input type="text" value="' + esc(val) + '" placeholder="' + esc(ph || '') + '"'
-    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"' + needAttr(i, key) + '/></div>';
+    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"' + na + '/></div>';
 }
 
 /* A rate-table cell: a bare input whose visible label is the column head above
@@ -3288,8 +3481,12 @@ function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId) {
     +   cell(i, pct, L[pct], phPct, label + ' escalation %') + '</div>'
     + '<div class="lc-rc' + needWrap(i, rate) + '" data-lbl="Unit rate">'
     +   cell(i, rate, L[rate], phRate, label + ' unit rate')
-    +   '<div class="derived" id="' + hintId + i + '"></div></div>';
+    +   '<div class="derived" id="' + hintId + i + '"></div>' + npBtn(i, L, rate) + '</div>';
 }
+
+/* An imported line's unit-rate box: "type rate" while the import is asking
+   for it, "rate" otherwise. */
+function ratePh(i, key) { return needFor(i, key) ? 'type rate' : 'rate'; }
 
 /* The fields behind the panel's fold, and the one-line summary its <summary>
    shows while closed. The summary is rendered from MODEL and re-patched by
@@ -3345,17 +3542,61 @@ function linesOf(code) {
   return out;
 }
 
-/* Children of a header, by index: same section, parent_item_no matches. */
-function childrenOf(i) {
-  var P = MODEL.lines[i], out = [];
-  if (!P.is_header || !P.item_no) return out;
-  for (var j = 0; j < MODEL.lines.length; j++) {
-    var C = MODEL.lines[j];
-    if (j !== i && C.section === P.section && C.parent_item_no === P.item_no) {
-      out.push(j);
+/* ── THE PARENT RULE (30 September 2026) ─────────────────────────────────
+   The parent of a line is the line in the SAME SECTION whose item_no equals
+   its parent_item_no — item numbers restart per section, so the number alone
+   would put C 3.a under A's item 3. Where the section repeats the number, the
+   NEAREST ONE ABOVE the child wins (a child is written under its parent);
+   with none above, the nearest below. One answer per line:
+
+     null   the line names no parent
+     -1     it names one, and no line in its section carries that number
+     j      the parent's index in MODEL.lines
+
+   boq.py's `parent_index()` is the same rule on the server, where the fold on
+   every document raised from a schedule and /ra/print's header row read it;
+   tests/test_boq_child_context.py holds the two in step. */
+function itemKey(sec, ino) { return String(sec == null ? '' : sec) + '\\u0000' + ino; }
+function trimmed(v) { return String(v == null ? '' : v).trim(); }
+
+function parentIndexAll() {
+  var by = {}, out = [], i, k;
+  for (i = 0; i < MODEL.lines.length; i++) {
+    var ino = trimmed(MODEL.lines[i].item_no);
+    if (!ino) continue;
+    k = itemKey(MODEL.lines[i].section, ino);
+    (by[k] || (by[k] = [])).push(i);
+  }
+  for (i = 0; i < MODEL.lines.length; i++) {
+    var p = trimmed(MODEL.lines[i].parent_item_no);
+    if (!p) { out.push(null); continue; }
+    var c = by[itemKey(MODEL.lines[i].section, p)] || [], above = -1, below = -1;
+    for (var q = 0; q < c.length; q++) {
+      if (c[q] < i) above = c[q];
+      else if (c[q] > i && below < 0) below = c[q];
     }
+    out.push(above >= 0 ? above : below);
   }
   return out;
+}
+
+/* Computed once per render (renderLines sets it) and afresh everywhere else —
+   a keystroke in Item No. or Under item can move any line's parent. */
+var PAR = null;
+function parentAt(i) { return (PAR || parentIndexAll())[i]; }
+
+/* Every line whose parent is line i, by index. */
+function kidsOf(i) {
+  var all = PAR || parentIndexAll(), out = [];
+  for (var j = 0; j < all.length; j++) if (all[j] === i) out.push(j);
+  return out;
+}
+
+/* Children of a HEADER — the fold. A priced parent folds nothing. */
+function childrenOf(i) {
+  var P = MODEL.lines[i];
+  if (!P || !P.is_header || !trimmed(P.item_no)) return [];
+  return kidsOf(i);
 }
 
 function money(v) {
@@ -3369,6 +3610,125 @@ function trunc(s, n) {
      here would be an invalid Python escape and would not survive. */
   s = String(s || '').replace(/\\s+/g, ' ').trim();
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+/* ── What a child line belongs to (30 September 2026) ───────────────────
+   A child row reads "2Kg" and "Under item 3", and item numbers restart in
+   every section — so on its own nobody can tell what it is pricing. Every
+   child card therefore carries its parent: a read-only strip above its
+   Description ("Part of C·3: <the parent's description> · Make KANEX"), its
+   collapsed header ("3.a  <parent, ~40 chars> › 2Kg"), the sticky bar
+   ("4 of 11 · C 3.a Clean Agent… › 2Kg · rate") and its flag banner. All of
+   it is worked out HERE, live, from the parent rule above: typing in the
+   parent's description, this line's Under item or Item No., or moving it
+   to another section, updates it without a re-render (`refreshCtx()`).
+   A parent that cannot be found is a soft amber strip, never a block. */
+
+/* The brand(s) off the parent's remark, where the importer writes them —
+   "Make: KANEX", or "…; Make: Jindal". Several are joined, never dropped. */
+function makeOf(remark) {
+  var re = /(?:^|;)\\s*Make:\\s*([^;\\n]+)/gi, m, out = [];
+  var s = String(remark == null ? '' : remark);
+  while ((m = re.exec(s)) !== null) {
+    var v = m[1].trim();
+    if (v && out.indexOf(v) < 0) out.push(v);
+  }
+  return out.join(' / ');
+}
+
+function oneLine(s) { return String(s == null ? '' : s).replace(/\\s+/g, ' ').trim(); }
+
+/* null (not a child), {missing, pno, sec} or {p, pno, sec, desc, make}. */
+function ctxOf(i, par) {
+  var L = MODEL.lines[i];
+  if (!L) return null;
+  var p = par ? par[i] : parentAt(i);
+  if (p === null || p === undefined) return null;
+  var c = {pno: trimmed(L.parent_item_no), sec: trimmed(L.section), missing: p < 0};
+  if (p >= 0) {
+    c.p = p;
+    c.desc = oneLine(MODEL.lines[p].description);
+    c.make = makeOf(MODEL.lines[p].remark);
+  }
+  return c;
+}
+
+function ctxCls(i, c) {
+  if (!c) return 'lc-ctx is-none';
+  return 'lc-ctx' + (c.missing ? ' is-miss' : '') + (MODEL.lines[i]._ctx ? ' is-open' : '');
+}
+
+function ctxInner(i, c) {
+  if (!c) return '';
+  if (c.missing) {
+    return '<span class="lc-ctx-lbl">&#9888; Under item ' + esc(c.pno) + ':</span> '
+      + '<span class="lc-ctx-txt">no such item in section ' + esc(c.sec || '?') + '</span>';
+  }
+  return '<span class="lc-ctx-lbl">Part of ' + esc(c.sec || '?') + '&middot;' + esc(c.pno) + ':</span> '
+    + '<span class="lc-ctx-txt" onclick="toggleCtx(' + i + ')" title="Click to show or fold'
+    + ' the whole description">' + (esc(c.desc) || '<i>(no description yet)</i>') + '</span>'
+    + (c.make ? ' <span class="lc-ctx-make">&middot; Make ' + esc(c.make) + '</span>' : '');
+}
+
+/* The strip above Description. Drawn on EVERY open line, empty and hidden
+   when the line is not a child, so typing an Under item can fill it in
+   place. */
+function ctxStrip(i) {
+  var c = ctxOf(i);
+  return '<div class="' + ctxCls(i, c) + '" id="ctx' + i + '">' + ctxInner(i, c) + '</div>';
+}
+
+/* Its two-line clamp opens and folds on a click; the state is `_ctx` on the
+   line, like `_open`, so a re-render keeps it. */
+function toggleCtx(i) {
+  var L = MODEL.lines[i];
+  L._ctx = !L._ctx;
+  var e = el('ctx' + i);
+  if (e) e.className = ctxCls(i, ctxOf(i));
+}
+
+/* The collapsed header's context: "<parent, ~40 chars> ›". */
+function ctxSummary(c) {
+  if (!c) return '';
+  if (c.missing) return 'under ' + esc(c.pno) + ' &#8212; not in ' + esc(c.sec || '?') + ' &rsaquo;';
+  return esc(trunc(c.desc, 40) || '(no description)') + ' &rsaquo;';
+}
+
+/* "C 3.a Clean Agent (HFC-236)… › 2Kg" — the sticky bar and a child's flag
+   banner say where a line is in these words. */
+function whereOf(i) {
+  var L = MODEL.lines[i];
+  if (!L) return '';
+  var c = ctxOf(i);
+  var h = esc(trimmed(L.section) || '?') + ' ' + esc(trimmed(L.item_no) || ('line ' + (i + 1)));
+  if (c && c.missing) h += ' (under ' + esc(c.pno) + ', not found) &rsaquo;';
+  else if (c) h += ' ' + esc(trunc(c.desc, 28) || '(no description)') + ' &rsaquo;';
+  var own = trunc(L.description, 28);
+  return own ? h + ' ' + esc(own) : h;
+}
+
+/* Re-draw every context in place — strips, collapsed headers, flag banners
+   and the "Unit for all N sizes" counts — from one pass of the rule. Nodes
+   that are not on the page are skipped; nothing re-renders. */
+function refreshCtx() {
+  var par = parentIndexAll(), kids = {};
+  for (var j = 0; j < par.length; j++) {
+    if (par[j] !== null && par[j] >= 0) kids[par[j]] = (kids[par[j]] || 0) + 1;
+  }
+  for (var k = 0; k < MODEL.lines.length; k++) {
+    var c = ctxOf(k, par);
+    var s = el('lsc' + k);
+    if (s) {
+      s.innerHTML = ctxSummary(c);
+      s.className = 'ls-ctx' + (c && c.missing ? ' is-miss' : '');
+    }
+    var box = el('ctx' + k);
+    if (box) { box.innerHTML = ctxInner(k, c); box.className = ctxCls(k, c); }
+    var f = el('fctx' + k);
+    if (f) f.innerHTML = c ? whereOf(k) : '';
+    var n = el('kun' + k);
+    if (n) n.innerHTML = String(kids[k] || 0);
+  }
 }
 
 /* ── Import flags (Import BOQ from Excel, 29 September 2026) ──────────────
@@ -3398,16 +3758,21 @@ function flagChip(L) {
     + f.length + ' flag' + (f.length === 1 ? '' : 's') + '</span>';
 }
 
-/* The one-line summary — enough to scan a schedule and spot a wrong line. */
+/* The one-line summary — enough to scan a schedule and spot a wrong line.
+   A child's reads "3.a  <parent, ~40 chars> › 2Kg": the context is a span of
+   its own BESIDE the description, so the description stays what it was. */
 function lineSummary(i, L) {
   var kids = L.is_header ? childrenOf(i) : [];
   var qty = L.is_header ? '' : qtyOf(L);
   var chev = isOpen(L) ? '▾' : '▸';
+  var c = ctxOf(i);
 
   return '<div class="ls-row" onclick="toggleLine(' + i + ')">'
     +   '<span class="ls-chev">' + chev + '</span>'
     +   '<span class="ls-no">' + esc(L.item_no || '—') + srcChip(L) + '</span>'
-    +   '<span class="ls-desc">' + flagChip(L) + esc(trunc(L.description, 96)) + '</span>'
+    +   '<span class="ls-ctx' + (c && c.missing ? ' is-miss' : '') + '" id="lsc' + i + '">'
+    +     ctxSummary(c) + '</span>'
+    +   '<span class="ls-desc">' + flagChip(L) + npSlot(i, L) + esc(trunc(L.description, 96)) + '</span>'
     +   (L.is_header
         ? '<span class="ls-tag">spec' + (kids.length ? ' · ' + kids.length + ' items' : '') + '</span>'
         : '<span class="ls-qty">' + esc(qty) + (qty ? ' ' + esc(L.unit || '') : '') + '</span>'
@@ -3425,6 +3790,7 @@ function lineSummary(i, L) {
 function lineBody(i, L) {
   var sec = secByCode(L.section);
   var areas = (sec && sec.areas) || [];
+  var imp = isImported(L);
   var h = '<div class="lc-body">';
 
   /* The row type sits on the panel's top edge rather than in a field row: it
@@ -3441,9 +3807,15 @@ function lineBody(i, L) {
     +   '</span>'
     + '</div>';
 
-  /* What the import reader said about this row, in full, above its fields. */
+  /* What the import reader said about this row, in full, above its fields.
+     A child's banner opens with where the line is — the sticky bar's words —
+     because "Row 70: a quantity but no rate" on a card reading "2Kg" does not
+     say what is unpriced. */
   if (L._flags && L._flags.length) {
     var fl = '';
+    if (parentAt(i) !== null) {
+      fl += '<li class="lc-flags-ctx" id="fctx' + i + '">' + whereOf(i) + '</li>';
+    }
     for (var q = 0; q < L._flags.length; q++) fl += '<li>' + esc(L._flags[q]) + '</li>';
     h += '<ul class="lc-flags' + (isBlocked(L) ? ' is-red' : '') + '">' + fl + '</ul>';
   }
@@ -3469,10 +3841,16 @@ function lineBody(i, L) {
     +   '</div>'
     + '</div>';
 
+  /* Above Description: what this line is part of — see ctxStrip(). */
+  h += ctxStrip(i);
+
   h += '<div class="form-group lc-desc' + needWrap(i, 'description') + '"><label>Description / Specification</label>'
     +   '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
     +    ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)"' + needAttr(i, 'description') + '>'
     +    esc(L.description) + '</textarea></div>';
+
+  /* A parent with children: one unit for all of its sizes — see kidUnitBand(). */
+  h += kidUnitBand(i, L);
 
   if (L.is_header) {
     /* A header carries the clause and nothing else — no quantity, no rate, and
@@ -3508,7 +3886,10 @@ function lineBody(i, L) {
       +  '<input type="text" value="' + esc(L.total_qty) + '"'
       +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"' + needAttr(i, 'total_qty') + '/></div>';
   }
-  h += fld(i, 'unit', 'Unit', L.unit, 'Mtrs', 'lc-area');
+  /* An imported line whose sheet gave no unit gets a SOFT amber outline — it
+     never blocks, and it is not one of the fields that need you. */
+  h += fld(i, 'unit', 'Unit', L.unit, imp ? 'unit' : 'Mtrs', 'lc-area',
+           unitSoft(L) ? 'unit-soft' : '');
   if (!areas.length) {
     h += '<span class="lc-none">This section declares no areas '
       +  '&#8212; the total stands alone.</span>';
@@ -3517,11 +3898,17 @@ function lineBody(i, L) {
 
   /* Rates as one small table — two legs down, three figures across — so the
      eye reads a grid rather than ten labelled boxes. */
+  /* An imported line's blank boxes say what goes in them in words, and a
+     ringed one says "type rate": grey example figures on a blank or flagged
+     box read as values already filled in. The typed form keeps its examples. */
   h += '<div class="lc-rates">'
     +   '<div class="lc-rh">Rates</div><div class="lc-rh">Base rate</div>'
     +   '<div class="lc-rh">Escalation %</div><div class="lc-rh">Unit rate</div>'
-    +   rateRow(i, 'Supply', 'supply', L, '1760  or  -', '15', '2024', 'sd')
-    +   rateRow(i, 'Installation', 'install', L, '1200  or  -', '0', '1200', 'id')
+    +   (imp
+        ? rateRow(i, 'Supply', 'supply', L, 'rate', 'esc %', ratePh(i, 'supply_rate'), 'sd')
+          + rateRow(i, 'Installation', 'install', L, 'rate', 'esc %', ratePh(i, 'install_rate'), 'id')
+        : rateRow(i, 'Supply', 'supply', L, '1760  or  -', '15', '2024', 'sd')
+          + rateRow(i, 'Installation', 'install', L, '1200  or  -', '0', '1200', 'id'))
     + '</div>';
 
   /* The fold. Open/closed lives on the line as `_more`, like `_open`, so a
@@ -3576,6 +3963,9 @@ function sectionTotals(code) {
 function renderLines() {
   var h = '';
   var placed = {};
+  /* One pass of the parent rule for the whole render; dropped at the end,
+     because the next keystroke may change any line's parent. */
+  PAR = parentIndexAll();
 
   for (var si = 0; si < MODEL.sections.length; si++) {
     var S = MODEL.sections[si];
@@ -3635,6 +4025,7 @@ function renderLines() {
     h += '</div></div>';
   }
 
+  PAR = null;
   el('line-editor').innerHTML = h;
   renderJump();
   renderNeedsBar();
@@ -3833,6 +4224,23 @@ function figure(v) {
   return isFinite(n) ? n : 0;
 }
 
+/* The same, keeping BLANK apart from 0: null for blank, a dash or text —
+   exactly what _opt_num() returns None for. */
+function typedNum(v) {
+  var s = String(v == null ? '' : v).replace(/,/g, '').trim();
+  if (s === '' || s === '-' || s === '--' || s === '\\u2014' || s === '\\u2013') return null;
+  if (/^[+-]?0[xob]/i.test(s)) return null;
+  var n = Number(s);
+  return isFinite(n) ? n : null;
+}
+
+/* A rate box answers a flag when it holds a number, 0 INCLUDED (30 September
+   2026): the client's sheets leave lines unpriced on purpose and their totals
+   add up without them, so "not priced" is an answer. Only a blank still asks.
+   A negative figure does not answer — the save refuses it. `_rate_answered()`
+   in boq.py is the same rule. */
+function rateAnswered(v) { var n = typedNum(v); return n !== null && n >= 0; }
+
 function needMet(L, f) {
   if (L.is_header && (f === 'total_qty' || f === 'rate'
                       || f === 'supply_rate' || f === 'install_rate')) return true;
@@ -3845,9 +4253,146 @@ function needMet(L, f) {
     }
     return figure(L.total_qty) > 0;
   }
-  if (f === 'supply_rate' || f === 'install_rate') return figure(L[f]) > 0;
-  if (f === 'rate') return figure(L.supply_rate) > 0 || figure(L.install_rate) > 0;
+  if (f === 'supply_rate' || f === 'install_rate') return rateAnswered(L[f]);
+  if (f === 'rate') return rateAnswered(L.supply_rate) || rateAnswered(L.install_rate);
   return String(L[f] == null ? '' : L[f]).trim() !== '';
+}
+
+/* ── "Not priced" — a valid answer to a rate flag (30 September 2026) ──────
+   Every rate the import asked for gets a "Not priced (₹0)" button beside its
+   ringed box. It types 0 into THAT box — the flagged track; a "rate" need
+   (either track) marks the supply one — which answers the flag like any typed
+   number, and the line then carries a grey "not priced" chip. The server
+   saves a 0 rate exactly as it always has: the line prints its quantity, a
+   blank rate and 0.00 in the amount. */
+var RATE_NEEDS = {rate: 1, supply_rate: 1, install_rate: 1};
+
+/* The boxes an import's rate needs on this line mark: supply_rate and/or
+   install_rate. */
+function rateNeedKeys(L) {
+  var out = [], need = (L && L._need) || [];
+  for (var k = 0; k < need.length; k++) {
+    var f = need[k] && need[k].f;
+    if (!RATE_NEEDS[f]) continue;
+    var key = needKeyOf(f);
+    if (out.indexOf(key) < 0) out.push(key);
+  }
+  return out;
+}
+
+/* Answered as not priced: every rate the import asked for is answered, and
+   answered with 0 — on the flagged track, or on both for "either track". */
+function isNotPriced(L) {
+  if (!L || L.is_header) return false;
+  var need = L._need || [], any = false;
+  for (var k = 0; k < need.length; k++) {
+    var f = need[k] && need[k].f;
+    if (!RATE_NEEDS[f]) continue;
+    any = true;
+    if (!needMet(L, f)) return false;
+    if (f === 'rate') {
+      if (typedNum(L.supply_rate) || typedNum(L.install_rate)) return false;
+    } else if (typedNum(L[f])) {
+      return false;
+    }
+  }
+  return any;
+}
+
+function notPricedCount() {
+  var n = 0;
+  for (var i = 0; i < MODEL.lines.length; i++) if (isNotPriced(MODEL.lines[i])) n++;
+  return n;
+}
+
+function npChip(L) {
+  return isNotPriced(L)
+    ? '<span class="chip-np" title="Answered: not priced &#8212; saved at &#8377;0">not priced</span>'
+    : '';
+}
+
+/* The chip's place on the collapsed row — only on a line an import asked a
+   rate of, so every other row is exactly what it was. */
+function npSlot(i, L) {
+  if (!rateNeedKeys(L).length) return '';
+  return '<span class="np-slot" id="nps' + i + '">' + npChip(L) + '</span>';
+}
+
+/* The button, drawn under the unit-rate box of every track an import asked a
+   rate of, and hidden while that box is answered — so clearing the box brings
+   it back without a re-render. */
+function npBtn(i, L, key) {
+  if (rateNeedKeys(L).indexOf(key) < 0) return '';
+  return '<button type="button" class="np-btn" id="np' + i + '-' + key + '"'
+    + (needFor(i, key) ? '' : ' style="display:none;"')
+    + ' onclick="setNotPriced(' + i + ',&quot;' + key + '&quot;)"'
+    + ' title="Left unpriced on purpose: save this rate as 0">Not priced (&#8377;0)</button>';
+}
+
+function setNotPriced(i, key) {
+  var L = MODEL.lines[i];
+  if (!L) return;
+  L[key] = '0';
+  delete autoMap(L)[key];
+  renderLines();
+}
+
+/* ── Units the sheet did not give (30 September 2026) ─────────────────────
+   An imported line whose unit is blank gets a SOFT amber outline on its Unit
+   box. It never blocks the save and is NOT one of the fields that need you;
+   the bar carries a separate "· N units blank". Nothing is normalised and no
+   unit is inferred from a description. `_row` (the sheet row) is on every
+   line an import wrote and on no other. */
+function isImported(L) { return !!L && L._row !== undefined && L._row !== null && L._row !== ''; }
+function unitSoft(L) { return isImported(L) && !L.is_header && trimmed(L.unit) === ''; }
+function unitsBlank() {
+  var n = 0;
+  for (var i = 0; i < MODEL.lines.length; i++) if (unitSoft(MODEL.lines[i])) n++;
+  return n;
+}
+
+/* "Unit for all N sizes" — on every line with children: one unit box (the
+   line's own widget) and Apply, which fills ONLY the children whose unit is
+   blank. A unit already typed on a child is never overwritten. */
+function kidUnitBand(i, L) {
+  var kids = kidsOf(i);
+  if (!kids.length) return '';
+  var blank = 0, imp = isImported(L);
+  for (var k = 0; k < kids.length; k++) {
+    var K = MODEL.lines[kids[k]];
+    if (trimmed(K.unit) === '') blank++;
+    if (isImported(K)) imp = true;
+  }
+  return '<div class="lc-kidunit">'
+    +   '<div class="form-group"><label>Unit for all <span id="kun' + i + '">' + kids.length
+    +     '</span> sizes</label>'
+    +     '<input type="text" value="' + esc(L._kidunit || '') + '" placeholder="' + (imp ? 'unit' : 'Mtrs') + '"'
+    +      ' aria-label="Unit for all sizes under this item"'
+    +      ' oninput="setKidUnit(' + i + ',this.value)"'
+    +      ' onkeydown="if(event.key===&quot;Enter&quot;){applyKidUnit(' + i + ');return false;}"/></div>'
+    +   '<button type="button" class="jb-btn" onclick="applyKidUnit(' + i + ')">Apply</button>'
+    +   '<span class="lc-kidunit-note">' + (blank
+          ? 'fills the ' + blank + ' with no unit &#8212; a unit already typed is kept'
+          : 'every size has a unit') + '</span>'
+    + '</div>';
+}
+
+function setKidUnit(i, v) { MODEL.lines[i]._kidunit = v; }
+
+function applyKidUnit(i) {
+  var L = MODEL.lines[i];
+  var v = trimmed(L && L._kidunit);
+  if (!v) return 0;
+  var kids = kidsOf(i), n = 0;
+  for (var k = 0; k < kids.length; k++) {
+    var K = MODEL.lines[kids[k]];
+    if (trimmed(K.unit) !== '') continue;
+    K.unit = v;
+    delete autoMap(K).unit;   /* the user's own choice: a later pick keeps it */
+    n++;
+  }
+  renderLines();
+  return n;
 }
 
 function errMet(L, f) {
@@ -3930,10 +4475,23 @@ function toggleMark(e, f) {
 }
 
 /* A value was typed: re-mark this line's boxes WITHOUT a re-render, which
-   would take the caret with it, and recount. */
+   would take the caret with it, and recount. The "Not priced" buttons, the
+   chip and the soft unit outline follow the same way. */
 function refreshNeeds(i) {
   for (var k = 0; k < MARK_KEYS.length; k++) {
     toggleMark(markedEl(i, MARK_KEYS[k]), needFor(i, MARK_KEYS[k]));
+  }
+  var L = MODEL.lines[i];
+  var rk = ['supply_rate', 'install_rate'];
+  for (var r = 0; r < rk.length; r++) {
+    var b = el('np' + i + '-' + rk[r]);
+    if (b && b.style) b.style.display = needFor(i, rk[r]) ? '' : 'none';
+  }
+  var slot = el('nps' + i);
+  if (slot) slot.innerHTML = npChip(L);
+  var u = markedEl(i, 'unit');
+  if (u && u.classList) {
+    if (unitSoft(L)) u.classList.add('unit-soft'); else u.classList.remove('unit-soft');
   }
   renderNeedsBar();
 }
@@ -3958,13 +4516,44 @@ function needList() {
   return out;
 }
 
+/* The words the bar names a field by. */
+var NEED_LABEL = {section: 'section', item_no: 'item no.', description: 'description',
+                  total_qty: 'qty', rate: 'rate', supply_rate: 'supply rate',
+                  install_rate: 'installation rate', supply_hsn: 'HSN', install_sac: 'SAC'};
+var FORM_LABEL = {date: 'Date', project_name: 'Project name', account_name: 'Account name'};
+
+/* Where Prev / Next last took the user, as the field itself — {i, f} or
+   {el} — rather than a position in a list that shrinks as fields are
+   answered. */
+var CUR = null;
+
+function sameNeed(a, b) {
+  if (!a || !b) return false;
+  return a.el ? a.el === b.el : (!b.el && a.i === b.i && a.f === b.f);
+}
+
+function curIndex(list) {
+  for (var k = 0; k < list.length; k++) if (sameNeed(list[k], CUR)) return k;
+  return -1;
+}
+
+/* "4 of 11 · C 3.a Clean Agent (HFC-236)… › 2Kg · rate" — where the user is. */
+function whereNeed(t) {
+  if (t.el) {
+    var key = t.el.getAttribute ? t.el.getAttribute('data-needs-form') : '';
+    return esc(FORM_LABEL[key] || key || 'a form field');
+  }
+  return whereOf(t.i) + ' &middot; ' + esc(NEED_LABEL[t.f] || t.f);
+}
+
 function renderNeedsBar() {
   var box = el('needs-bar');
   if (!box) return;
-  var n = needList().length;
+  var list = needList(), n = list.length;
+  var ub = unitsBlank();
   if (n > 0) NEEDS_SEEN = true;
   var form = box.parentNode;
-  if (!NEEDS_SEEN) {
+  if (!NEEDS_SEEN && !ub) {
     box.style.display = 'none';
     if (form && form.classList) form.classList.remove('needs-on');
     return;
@@ -3973,13 +4562,27 @@ function renderNeedsBar() {
   if (form && form.classList) form.classList.add('needs-on');
   box.className = 'needs-bar' + (n ? '' : ' is-done');
   box.setAttribute('data-count', String(n));
-  box.innerHTML = n
-    ? '<span class="nb-bang" aria-hidden="true">!</span>'
-      + '<span class="nb-txt" role="status"><b>' + n + '</b> field' + (n === 1 ? ' needs' : 's need') + ' you</span>'
+  /* Blank units are a note beside the count, never part of it. */
+  var units = ub ? ' <span class="nb-units">&middot; ' + ub + ' unit' + (ub === 1 ? '' : 's')
+                   + ' blank</span>' : '';
+  if (n) {
+    var k = curIndex(list);
+    var at = k >= 0
+      ? ' <span class="nb-where">' + (k + 1) + ' of ' + n + ' &middot; ' + whereNeed(list[k]) + '</span>'
+      : '';
+    box.innerHTML = '<span class="nb-bang" aria-hidden="true">!</span>'
+      + '<span class="nb-txt" role="status"><b>' + n + '</b> field' + (n === 1 ? ' needs' : 's need') + ' you'
+      + at + units + '</span>'
       + '<button type="button" class="jb-btn" onclick="goNeed(-1)">&#8592; Prev</button>'
-      + '<button type="button" class="jb-btn" onclick="goNeed(1)">Next &#8594;</button>'
-    : '<span class="nb-ok" aria-hidden="true">&#10003;</span>'
-      + '<span class="nb-txt" role="status"><b>All filled</b> &#8212; review and save</span>';
+      + '<button type="button" class="jb-btn" onclick="goNeed(1)">Next &#8594;</button>';
+    return;
+  }
+  var np = notPricedCount();
+  box.innerHTML = '<span class="nb-ok" aria-hidden="true">&#10003;</span>'
+    + '<span class="nb-txt" role="status">'
+    + (np ? '<b>All answered</b> &middot; ' + np + ' not priced (&#8377;0) &middot; review and save'
+          : '<b>All filled</b> &#8212; review and save')
+    + units + '</span>';
 }
 
 /* Open whatever hides line i: the line, its section, its header. Returns
@@ -3989,14 +4592,11 @@ function openNeedPath(i) {
   if (!isOpen(L)) { L._open = true; changed = true; }
   var S = secByCode(L.section);
   if (S && !isOpen(S)) { S._open = true; changed = true; }
-  if (L.parent_item_no) {
-    for (var j = 0; j < MODEL.lines.length; j++) {
-      var P = MODEL.lines[j];
-      if (P.is_header && P.section === L.section && P.item_no === L.parent_item_no && !isOpen(P)) {
-        P._open = true;
-        changed = true;
-      }
-    }
+  /* Its header, by THE parent rule — the one fold that can hide it. */
+  var p = parentAt(i);
+  if (p !== null && p >= 0) {
+    var P = MODEL.lines[p];
+    if (P.is_header && !isOpen(P)) { P._open = true; changed = true; }
   }
   return changed;
 }
@@ -4006,19 +4606,31 @@ function reducedMotion() {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-/* Prev (-1) / Next (+1): the next unmet field to the CENTRE of the screen,
-   focused. Wraps at either end. */
-function goNeed(dir) {
-  var list = needList();
-  if (!list.length) { renderNeedsBar(); return; }
-  if (NEED_AT < 0 || NEED_AT >= list.length) NEED_AT = dir > 0 ? -1 : list.length;
-  NEED_AT = (NEED_AT + dir + list.length) % list.length;
-  var t = list[NEED_AT];
+/* Where a field that has just been ANSWERED sat in the list, so Next goes on
+   to the one after it rather than skipping one: the list shrank under it.
+   Form fields come first, then lines in order, then NEED_ORDER within one. */
+function afterCur(list) {
+  if (!CUR || CUR.el) return 0;
+  for (var k = 0; k < list.length; k++) {
+    var t = list[k];
+    if (t.el) continue;
+    if (t.i > CUR.i || (t.i === CUR.i && NEED_ORDER.indexOf(t.f) > NEED_ORDER.indexOf(CUR.f))) return k;
+  }
+  return list.length;
+}
+
+/* Take the user to field k of the list: open what hides it, centre it, focus
+   it, and name it on the bar. */
+function showNeed(list, k) {
+  var t = list[k];
+  NEED_AT = k;
+  CUR = t;
   var target = t.el;
   if (!target) {
     if (openNeedPath(t.i)) renderLines();
     target = markedEl(t.i, needKeyOf(t.f));
   }
+  renderNeedsBar();
   if (!target) return;
   if (target.scrollIntoView) {
     target.scrollIntoView({block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth'});
@@ -4026,13 +4638,29 @@ function goNeed(dir) {
   if (target.focus) target.focus({preventScroll: true});
 }
 
+/* Prev (-1) / Next (+1): the next unmet field to the CENTRE of the screen,
+   focused. Wraps at either end. Counted from the field the user is on, so
+   answering one and pressing Next lands on the one after it. */
+function goNeed(dir) {
+  var list = needList(), n = list.length;
+  if (!n) { renderNeedsBar(); return; }
+  var k = CUR ? curIndex(list) : -1, next;
+  if (k >= 0) next = (k + dir + n) % n;
+  else if (!CUR) next = dir > 0 ? 0 : n - 1;
+  else {
+    var a = afterCur(list);                   /* the answered field's place */
+    next = dir > 0 ? a % n : (a - 1 + n) % n;
+  }
+  showNeed(list, next);
+}
+
 /* A link in the import summary: "#need-<line>-<field>". */
 function needLink(i, f) {
   var list = needList();
-  NEED_AT = -1;
   for (var k = 0; k < list.length; k++) {
-    if (list[k].i === i && list[k].f === f) { NEED_AT = k - 1; break; }
+    if (list[k].i === i && list[k].f === f) { showNeed(list, k); return false; }
   }
+  CUR = null;
   goNeed(1);
   return false;
 }
@@ -4064,6 +4692,7 @@ function startNeeds() {
   var m = /^#need-(\\d+)-([a-z_]+)$/.exec(h);
   if (m) { needLink(parseInt(m[1], 10), m[2]); return; }
   NEED_AT = -1;
+  CUR = null;
   goNeed(1);
 }
 
@@ -4232,6 +4861,13 @@ function setLine(i, key, val) {
   if (key === 'parent_item_no') {
     var ino = markedEl(i, 'item_no');
     if (ino) ino.setAttribute('placeholder', itemPlaceholder(i));
+  }
+  /* What a child line is part of follows the typing, without a re-render:
+     the parent's description or Make, this line's Under item, or any Item
+     No. that a child might now resolve to (the parent rule). */
+  if (key === 'description' || key === 'remark' || key === 'item_no'
+      || key === 'parent_item_no') {
+    refreshCtx();
   }
   refreshNeeds(i);
 }
@@ -4477,6 +5113,7 @@ function saveJSON() {
      validates whatever arrives, exactly as before. */
   if (needList().length) {
     NEED_AT = -1;
+    CUR = null;
     goNeed(1);
     return false;
   }

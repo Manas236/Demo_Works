@@ -771,14 +771,25 @@ def test_neither_advisory_band_reaches_the_printed_sheet(client, seeded):
 
     The shared stylesheet rule rides along on the view page because
     `BOQ_STYLES` is one sheet; what must not appear is any MARKUP.
+
+    ⚠ **One amber note IS on `/boq/view` from 30 September 2026, by the
+    owner's brief** — *"N lines have a quantity but no rate"* (the seeded Sify
+    schedule's four nil-priced lines in B). It is not either of the editor's
+    bands, and it is SCREEN-ONLY: `BOQ_VIEW_STYLES` hides it in print, and the
+    issued `/boq/print` carries no note of any kind.
     """
     v = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
 
-    assert 'class="form-hint"' not in v
+    assert v.count('class="form-hint') == 1, "the unpriced note, and nothing else"
+    assert '<div class="form-hint unpriced-note" id="unpriced-note">' in v
+    assert "@media print { .unpriced-note { display:none !important; } }" in v
     assert 'id="dup-warn"' not in v
     assert 'id="zeroqty-hint"' not in v
     assert "renderZeroQty" not in v
     assert "renderDupWarn" not in v
+
+    p = client.get(f"/boq/print/{seeded}").get_data(as_text=True)
+    assert 'class="form-hint' not in p and "unpriced-note" not in p
 
 
 def test_a_priced_line_with_zero_quantity_still_saves():

@@ -610,7 +610,8 @@ SUMMARY_ROWS = 60
 _GOTO = re.compile(r"^\d{1,4}\.[a-z_]{1,20}$")
 
 
-def summary_html(result: dict, model: dict, on_form: bool) -> str:
+def summary_html(result: dict, model: dict, on_form: bool,
+                 unit_mapped: bool = True) -> str:
     """
     The import, GROUPED (30 September 2026) — what used to be one line per
     flagged cell. Four groups, each counted:
@@ -623,6 +624,12 @@ def summary_html(result: dict, model: dict, on_form: bool) -> str:
 
     and, folded, any other note the reader left (a rate cell it could not
     read, a cut cell, a renamed section) so nothing it said is hidden.
+
+    `unit_mapped` False — no column is mapped to Unit — adds one line (30
+    September 2026): *This sheet has no Unit column: N lines have no unit
+    (fill on the form)*. A note, not a flag: a blank unit never blocks the
+    save, and nothing is inferred from a description. The default leaves the
+    summary exactly as it was.
 
     On the preview a link is a submit button that confirms and lands on the
     field; on the form it is an anchor handled by `needLink()`.
@@ -675,6 +682,15 @@ def summary_html(result: dict, model: dict, on_form: bool) -> str:
         f'<div class="imp-group"><h3><b>{len(ls)}</b> lump sum{"s" if len(ls) != 1 else ""} '
         f'<span class="imp-tag">review</span></h3>'
         + (f'<ul class="imp-flags">{ls_items}</ul>' if ls else "") + "</div>")
+
+    if not unit_mapped:
+        nu = sum(1 for ln in lines
+                 if not ln.get("is_header") and not str(ln.get("unit") or "").strip())
+        if nu:
+            parts.append(
+                f'<div class="imp-group" id="imp-units"><h3>This sheet has no Unit column: '
+                f'<b>{nu}</b> line{"s have" if nu != 1 else " has"} no unit '
+                f'(fill on the form)</h3></div>')
 
     checks = result.get("checks") or []
     bad = [c for c in checks if c.get("status") != "match"]
@@ -830,7 +846,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       <h2>What will be imported</h2>
       {stats}
       <p style="margin:.6rem 0 0;font-size:.85rem;">{_totals_html(result["totals"])}</p>
-      {summary_html(result, model, on_form=False)}
+      {summary_html(result, model, on_form=False, unit_mapped="unit" in mapping.values())}
       <p class="imp-note">A field that needs you is left <b>blank</b> on the form &mdash;
       nothing is worked out or turned into 0 &mdash; and ringed there; the form will not
       save until each is filled. A link above confirms these columns and opens the form
@@ -843,7 +859,8 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     return _page("Import BOQ", body)
 
 
-def _banner(token: str, rec: dict, result: dict, model: dict) -> str:
+def _banner(token: str, rec: dict, result: dict, model: dict,
+            unit_mapped: bool = True) -> str:
     """The summary that sits on top of the prefilled form. Escaped here; the
     form's own `demo_banner` sits beside it."""
     c = result["counts"]
@@ -864,7 +881,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict) -> str:
                f'(“R.O.”, “NA”, a sum written as text&hellip;). Those rows are marked '
                f'red. Type the quantity, or remove the line &mdash; a blank quantity '
                f'would be saved as 0, and an RA bill cannot claim against a line at 0.</p>')
-    flags = summary_html(result, model, on_form=True)
+    flags = summary_html(result, model, on_form=True, unit_mapped=unit_mapped)
     cls = "imp-banner has-red" if blocked else "imp-banner"
     return (f'<div class="{cls}">&#128229; Imported from <b>{P.esc(rec.get("filename"))}</b>, '
             f'sheet “{P.esc(sheet.get("name"))}” &mdash; {c["lines"]} lines, '
@@ -983,7 +1000,9 @@ def form(token: str):
     # IMPORT_STYLES rides with the banner: /boq/create does not load it, so the
     # banner's own classes were unstyled there until 30 September 2026.
     html = BQ.create_boq(imported={"boot": model, "prefill": {},
-                                   "banner_html": IMPORT_STYLES + _banner(token, rec, result, model)})
+                                   "banner_html": IMPORT_STYLES + _banner(
+                                       token, rec, result, model,
+                                       unit_mapped="unit" in mapping.values())})
     # Consumed. A known layout keeps its row for the Change-mapping link; the
     # 24-hour purge takes it.
     if rec.get("confirmed"):
