@@ -145,8 +145,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | ⚠ **unknown** *(was "842 passed" — see below)* | never |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` — which from 29 Sep 2026 pins `openpyxl 3.1.5`, `xlrd 2.0.2` and `defusedxml 0.7.1` as RUNTIME dependencies — + `pytest==9.1.1`), both client workbooks **absent** | **3,276 passed, 7 skipped** | **29 Sep 2026, later** *(GSTIN auto-fill on the address book — CLIENT_CHANGES.md §0 **thirty-fifth** block; **no bar moved and no CC-2 item changed state**. **+109 passed, +0 skipped**, reconciling per file: `tests/test_gst_lookup.py` (**103**, new — no workbook reader, so it counts in row 3 too) and `tests/test_import_directions.py` (**+6** — four `FORBIDDEN` rows, the `address → gst_lookup` arrow and the `gst_lookup.py` leaf test). 103 + 6 = **109**. The start-of-pass baseline was re-measured — **3,167 / 7** — and matched. ⚠ **No print golden and no page golden moved** — the GST sheet and script are emitted on the two address forms only, and `/address/` is byte-identical. ⚠ **`docs/ACCESS_MATRIX.md` moved by four endpoints**, 135 → 139, under the existing `address.create` / `address.edit`; no permission minted)* — previously **3,167 passed, 7 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1 — new chargeable scope outside MG/SF/2026-06, CLIENT_CHANGES.md §0 **thirty-fourth** block; **no bar moved and no CC-2 item changed state**. **+84 passed and +1 skipped**, reconciling per file: `tests/test_boq_import.py` (**78** passed + **1** skipped — the Sify reproduction test, whose workbook is absent), `tests/test_import_directions.py` (**+6** — two `FORBIDDEN` rows, two `REQUIRED` rows, the `sheetimport.py` leaf test and the one-reader test). 78 + 6 = **84**. The start-of-pass baseline was re-measured — **3,083 / 6** — and matched. ⚠ **No print golden and no page golden moved**; `/boq/create` is pinned by neither. ⚠ **`docs/ACCESS_MATRIX.md` moved by three endpoints under the existing `boq.create`**, 132 → 135, and no permission was minted)* — previously **3,083 passed, 6 skipped**, **27 Sep 2026** *(the Owner-only username rename with its own append-only trail, two tests that could only pass on the box they were written on, and the photo upload row — the owner's own decision, CLIENT_CHANGES.md §0 **thirty-third** block; **no bar moved and no CC-2 item changed state**. **+63**, reconciling per file: `tests/test_username_rename.py` (**55**, new), `tests/test_profile_photo.py` (**+7**, 30 → 36) and `tests/test_wsgi_single_worker.py` (**+1**, the lock-acquire control). 55+7+1 = **63**. ⚠ **The start-of-pass baseline was re-measured — 3,020 / 6 — and is 30 ABOVE the 2,990 recorded here**: the 26 September profile-photo commits added `tests/test_profile_photo.py` (30) and one `tests/test_import_directions.py` row for the leaf `photo.py`, and moved no figure in any document. ⚠ **These are the first figures in this table with 0 ERRORS in them.** Every Windows run since 26 September reported **2 errors** as well — one parametrised case whose 65,560-character id overflows `PYTEST_CURRENT_TEST`, which Windows caps at 32,767. 3,020 + 63 = 3,083. ⚠ **No golden moved and `docs/ACCESS_MATRIX.md` did not move** — no endpoint and no permission were added, and `/account` and `/users/edit` are pinned by no golden)* — previously **2,990 passed, 6 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse — a Director was shown the Owner role on `/users/create`, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new). A UX defect fix on built Phase 3B work, and **no guard changed**: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,791 / 4** — and matched. 2,791 + 15 = 2,806)* — previously **2,791 passed, 4 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page — a phone's print service picks the paper, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,787 / 4** — ⚠ **94 above the 2,693 recorded here**: the seven commits `0c493e1` … `5f4ddc0` of 14–15 September (the print-route pins, the page goldens, the chrome extraction, the sidebar, the measurement-grid fix and the deployment runbook) added 94 across 17 test files — `tests/test_page_golden.py` (**25**, new) and `tests/test_sidebar.py` (**26**, new) among them — and moved no figure in any document. 2,787 + 4 = 2,791)* — previously **2,693 passed, 4 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent** (and xlrd and defusedxml, the two readers' other half, from 29 Sep 2026), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **3,197 passed, 5 skipped** | **29 Sep 2026, later** *(GSTIN auto-fill, **+109 passed and +0 skipped**, measured not derived — from a start-of-pass **3,088 / 5**, re-measured in a clean worktree of `66f4f6b` as 3,086 / 7, whose two extra skips are `tests/test_env_isolation.py`'s in a checkout with no `.env`. 3,088 + 109 = 3,197 reconciles. The row-2/row-3 relationship still holds exactly: 3,197 + 79 passed and + 2 skipped = 3,276 / 7)* — previously **3,088 passed, 5 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1, **+6 passed and +1 skipped**, measured not derived — from a start-of-pass **3,082 / 4**, re-measured and matching. The +6 are `tests/test_import_directions.py`'s AST checks, which need no reader; the +1 is `tests/test_boq_import.py`'s module-level `importorskip("openpyxl")`, **one** skip for 78 uncollected tests. ⚠ **This row is the proof the readers are imported lazily**: the app boots, `/boq/import` renders its "not installed" notice, and both escaping sweeps walk the import pages with no workbook reader in the interpreter at all. ⚠ **The row-2/row-3 relationship CHANGED in this pass** — see the paragraph under this table)* — previously **3,082 passed, 4 skipped**, **27 Sep 2026** *(the username rename, the two box-specific tests and the photo upload row, **+63**, measured not derived — from a start-of-pass **3,019 / 4**, re-measured, and 30 above the recorded 2,989 for the reason row 2 gives. 3,019 + 63 = 3,082 reconciles. The row-2/row-3 relationship still holds exactly: 3,082 + 1 passed and + 2 skipped = 3,083 / 6. ⚠ **Both rows carried 2 ERRORS as well until this pass and neither row recorded them**; both read 0 now. ⚠ **This row says `no .venv` and the laptop it was measured on HAS one** — the figure is still the global interpreter's, run with the `.venv` nowhere on `sys.path`, which is what the row has always meant)* — previously **2,989 passed, 4 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse, **+15**, measured not derived — from a start-of-pass **2,790 / 2**, re-measured and matching. 2,790 + 15 = 2,805 reconciles. The row-2/row-3 relationship still holds exactly: 2,805 + 1 passed and + 2 skipped = 2,806 / 4)* — previously **2,790 passed, 2 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page, **+4**, measured not derived — from a start-of-pass **2,786 / 2**, re-measured, and 94 above the recorded 2,692 for the reason row 2 gives. 2,786 + 4 = 2,790 reconciles. The row-2/row-3 relationship still holds exactly: 2,790 + 1 passed and + 2 skipped = 2,791 / 4)* — previously **2,692 passed, 2 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` — which from 29 Sep 2026 pins `openpyxl 3.1.5`, `xlrd 2.0.2` and `defusedxml 0.7.1` as RUNTIME dependencies — + `pytest==9.1.1`), both client workbooks **absent** | **3,386 passed, 7 skipped** | **30 Sep 2026** *(copy labels on the DC, TI, RA and merged RA, the joint measurement sheet's print layout, and its typed sign-off — CLIENT_CHANGES.md §0 **thirty-sixth** block; **no bar moved and no CC-2 item changed state**. **+110 passed, +0 skipped**, reconciling per file: `tests/test_copies.py` (**73**, new), `tests/test_measurement_layout.py` (**19**, new), `tests/test_measurement_signoff.py` (**16**, new), `tests/test_print_golden.py` (**+1**, the joint-sheet golden pinned for the first time) and `tests/test_import_directions.py` (**+1**, `docsheet ↛ merged_ra`). 73+19+16+1+1 = **110**. The start-of-pass baseline was re-measured — **3,276 / 7** — and matched. ⚠ **Four print goldens re-baselined, DECLARED** (TI, RA, merged RA, DC — every copy of the set, by default) **and one pinned for the first time** (the joint measurement sheet); every other print and page golden is byte-identical. `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,276 passed, 7 skipped**, **29 Sep 2026, later** *(GSTIN auto-fill on the address book — CLIENT_CHANGES.md §0 **thirty-fifth** block; **no bar moved and no CC-2 item changed state**. **+109 passed, +0 skipped**, reconciling per file: `tests/test_gst_lookup.py` (**103**, new — no workbook reader, so it counts in row 3 too) and `tests/test_import_directions.py` (**+6** — four `FORBIDDEN` rows, the `address → gst_lookup` arrow and the `gst_lookup.py` leaf test). 103 + 6 = **109**. The start-of-pass baseline was re-measured — **3,167 / 7** — and matched. ⚠ **No print golden and no page golden moved** — the GST sheet and script are emitted on the two address forms only, and `/address/` is byte-identical. ⚠ **`docs/ACCESS_MATRIX.md` moved by four endpoints**, 135 → 139, under the existing `address.create` / `address.edit`; no permission minted)* — previously **3,167 passed, 7 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1 — new chargeable scope outside MG/SF/2026-06, CLIENT_CHANGES.md §0 **thirty-fourth** block; **no bar moved and no CC-2 item changed state**. **+84 passed and +1 skipped**, reconciling per file: `tests/test_boq_import.py` (**78** passed + **1** skipped — the Sify reproduction test, whose workbook is absent), `tests/test_import_directions.py` (**+6** — two `FORBIDDEN` rows, two `REQUIRED` rows, the `sheetimport.py` leaf test and the one-reader test). 78 + 6 = **84**. The start-of-pass baseline was re-measured — **3,083 / 6** — and matched. ⚠ **No print golden and no page golden moved**; `/boq/create` is pinned by neither. ⚠ **`docs/ACCESS_MATRIX.md` moved by three endpoints under the existing `boq.create`**, 132 → 135, and no permission was minted)* — previously **3,083 passed, 6 skipped**, **27 Sep 2026** *(the Owner-only username rename with its own append-only trail, two tests that could only pass on the box they were written on, and the photo upload row — the owner's own decision, CLIENT_CHANGES.md §0 **thirty-third** block; **no bar moved and no CC-2 item changed state**. **+63**, reconciling per file: `tests/test_username_rename.py` (**55**, new), `tests/test_profile_photo.py` (**+7**, 30 → 36) and `tests/test_wsgi_single_worker.py` (**+1**, the lock-acquire control). 55+7+1 = **63**. ⚠ **The start-of-pass baseline was re-measured — 3,020 / 6 — and is 30 ABOVE the 2,990 recorded here**: the 26 September profile-photo commits added `tests/test_profile_photo.py` (30) and one `tests/test_import_directions.py` row for the leaf `photo.py`, and moved no figure in any document. ⚠ **These are the first figures in this table with 0 ERRORS in them.** Every Windows run since 26 September reported **2 errors** as well — one parametrised case whose 65,560-character id overflows `PYTEST_CURRENT_TEST`, which Windows caps at 32,767. 3,020 + 63 = 3,083. ⚠ **No golden moved and `docs/ACCESS_MATRIX.md` did not move** — no endpoint and no permission were added, and `/account` and `/users/edit` are pinned by no golden)* — previously **2,990 passed, 6 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse — a Director was shown the Owner role on `/users/create`, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new). A UX defect fix on built Phase 3B work, and **no guard changed**: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,791 / 4** — and matched. 2,791 + 15 = 2,806)* — previously **2,791 passed, 4 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page — a phone's print service picks the paper, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,787 / 4** — ⚠ **94 above the 2,693 recorded here**: the seven commits `0c493e1` … `5f4ddc0` of 14–15 September (the print-route pins, the page goldens, the chrome extraction, the sidebar, the measurement-grid fix and the deployment runbook) added 94 across 17 test files — `tests/test_page_golden.py` (**25**, new) and `tests/test_sidebar.py` (**26**, new) among them — and moved no figure in any document. 2,787 + 4 = 2,791)* — previously **2,693 passed, 4 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent** (and xlrd and defusedxml, the two readers' other half, from 29 Sep 2026), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **3,307 passed, 5 skipped** | **30 Sep 2026** *(copy labels, the joint sheet's layout and its sign-off, **+110 passed and +0 skipped**, measured not derived — from a start-of-pass **3,197 / 5**, re-measured and matching; none of the new tests needs a workbook reader, so the +110 is the `.venv`'s too. The row-2/row-3 relationship still holds exactly: 3,307 + 79 passed and + 2 skipped = 3,386 / 7)* — previously **3,197 passed, 5 skipped**, **29 Sep 2026, later** *(GSTIN auto-fill, **+109 passed and +0 skipped**, measured not derived — from a start-of-pass **3,088 / 5**, re-measured in a clean worktree of `66f4f6b` as 3,086 / 7, whose two extra skips are `tests/test_env_isolation.py`'s in a checkout with no `.env`. 3,088 + 109 = 3,197 reconciles. The row-2/row-3 relationship still holds exactly: 3,197 + 79 passed and + 2 skipped = 3,276 / 7)* — previously **3,088 passed, 5 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1, **+6 passed and +1 skipped**, measured not derived — from a start-of-pass **3,082 / 4**, re-measured and matching. The +6 are `tests/test_import_directions.py`'s AST checks, which need no reader; the +1 is `tests/test_boq_import.py`'s module-level `importorskip("openpyxl")`, **one** skip for 78 uncollected tests. ⚠ **This row is the proof the readers are imported lazily**: the app boots, `/boq/import` renders its "not installed" notice, and both escaping sweeps walk the import pages with no workbook reader in the interpreter at all. ⚠ **The row-2/row-3 relationship CHANGED in this pass** — see the paragraph under this table)* — previously **3,082 passed, 4 skipped**, **27 Sep 2026** *(the username rename, the two box-specific tests and the photo upload row, **+63**, measured not derived — from a start-of-pass **3,019 / 4**, re-measured, and 30 above the recorded 2,989 for the reason row 2 gives. 3,019 + 63 = 3,082 reconciles. The row-2/row-3 relationship still holds exactly: 3,082 + 1 passed and + 2 skipped = 3,083 / 6. ⚠ **Both rows carried 2 ERRORS as well until this pass and neither row recorded them**; both read 0 now. ⚠ **This row says `no .venv` and the laptop it was measured on HAS one** — the figure is still the global interpreter's, run with the `.venv` nowhere on `sys.path`, which is what the row has always meant)* — previously **2,989 passed, 4 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse, **+15**, measured not derived — from a start-of-pass **2,790 / 2**, re-measured and matching. 2,790 + 15 = 2,805 reconciles. The row-2/row-3 relationship still holds exactly: 2,805 + 1 passed and + 2 skipped = 2,806 / 4)* — previously **2,790 passed, 2 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page, **+4**, measured not derived — from a start-of-pass **2,786 / 2**, re-measured, and 94 above the recorded 2,692 for the reason row 2 gives. 2,786 + 4 = 2,790 reconciles. The row-2/row-3 relationship still holds exactly: 2,790 + 1 passed and + 2 skipped = 2,791 / 4)* — previously **2,692 passed, 2 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -385,7 +385,7 @@ Consequences you must respect when editing:
 | [store.py](store.py) | 49 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 532 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). A **leaf** — see §2d. |
+| [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). From 30 September 2026 also the **statutory copies** (`COPIES_DC`, `COPIES_TAX_INVOICE`, `copies()`) and the **landscape variant** of the frame (`LANDSCAPE_*`). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
 | [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
 | [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
@@ -765,6 +765,64 @@ painted once; only `display:table-header-group` repeats. That is a real
 difference, and it is left as one: a challan is a one-page note, and making the
 band repeat would mean moving it into the `<thead>`, which is exactly what must
 not happen.
+
+#### Statutory copies — one print run carries the set (30 September 2026)
+
+CLIENT_CHANGES.md §0, thirty-sixth block, item A. The leaf owns the copies, so
+`ra.py` and `invoice.py` share them **without either importing the other**:
+
+| Name | What it is |
+|---|---|
+| `COPIES_DC` | `ORIGINAL FOR CONSIGNEE / DUPLICATE FOR TRANSPORTER / TRIPLICATE FOR CONSIGNER` — CGST Rule 55 |
+| `COPIES_TAX_INVOICE` | `ORIGINAL FOR RECIPIENT / DUPLICATE FOR TRANSPORTER / TRIPLICATE FOR SUPPLIER` — Rule 48 |
+| `copy_keys(set)` | `original`, `duplicate`, `triplicate`, then `copy-4`… — a set a CA lengthens keeps its extra copies |
+| `copy_choice(arg, set)` | what `?copy=` asked for: one key of the set, or `COPY_ALL`. Absent, `all` and **anything else** mean the set |
+| `copies(render_one, set, choice)` | calls `render_one(label)` once per copy against the same record and wraps each in `.copy-sheet` |
+| `doc_title(title, copy_label=None)` / `sheet_open(…, copy_label=None)` | the label right-aligned **inside** the title band; `None` emits the old bytes exactly |
+| `copy_toolbar(href_of, set, choice)` | the screen-only switch (Original / Duplicate / Triplicate / All 3); the caller passes its own `url_for`, because this module imports no Flask |
+| `COPY_CSS` / `COPY_STYLES` | page break before every copy after the first; `.copy-sheet { position:relative }` so an absolutely-positioned overprint (`.lc-mark`) lands on its own copy |
+
+**One tuple per kind of document, so a CA changes a set by editing one line.**
+Applied on four print routes, each checked against the heading it emits:
+
+| Route | Heading | Band | Set |
+|---|---|---|---|
+| `/dc/print/<id>` | DELIVERY CHALLAN | the `<caption>` | `COPIES_DC` |
+| `/invoice/view/<id>` | TAX INVOICE | `.doc-title` | `COPIES_TAX_INVOICE` |
+| `/ra/print/<id>` | TAX INVOICE | `.doc-title` | `COPIES_TAX_INVOICE` |
+| `/merged/print/<id>` | MERGED TAX INVOICE | the `<caption>` | `COPIES_TAX_INVOICE` |
+
+⚠ **Only print routes carry copies.** `/dc/view`, `/ra/view` and
+`/merged/view` draw the document once and pass no label — byte-identical before
+and after. `/invoice/view` is the exception because it **is** the tax invoice's
+print route; there is no other (§2i found the same). The proforma, the PO, the
+draft PO, the BOQ and the measurement sheet have no copy set and are unchanged.
+
+⚠ **Presentation only, never stored.** Every copy is the same render of the
+same record with a different label; the label is not a field on any record and
+printing writes nothing. Any overprint (DRAFT, CANCELLED) is inside the render,
+so it is on every copy by construction. `tests/test_copies.py` holds all of it.
+
+⚠ **Before this, the tax invoice already had these three labels** (since
+`8c4bc8a`, 3 August 2026) — one copy by default and `?copy=all` for three, the
+label as a row of its own above the title. It now prints the set by default and
+the label sits inside the TAX INVOICE band. The DC, RA and merged RA never had
+labels in any commit. And under `?copy=all` the TI's CANCELLED watermark was
+positioned against nothing, so all three landed on copy 1 — measured in a
+headless print of the old code; `.copy-sheet` is now each watermark's frame.
+
+#### The landscape page — a variant of the frame (30 September 2026)
+
+`VIEW_DOC_STYLES` fixes the frame at portrait (`.doc-outer` 210mm, `@page` A4
+portrait). `LANDSCAPE_CSS` / `LANDSCAPE_STYLES` / `LANDSCAPE_SCRIPT` are the
+landscape variant, **opt-in** with `<div class="doc-outer sheet-landscape">`
+and never part of `SHEET_STYLES`: a landscape `@page` on a desktop, a 297mm
+outer on screen, the size request withdrawn on a touch device (a phone scales a
+landscape page box onto portrait paper — the BOQ's 20 September lesson), and
+the page scaled onto a phone screen. It is **BOQ's mechanism lifted**, and the
+joint measurement sheet is its only user. ⚠ **The BOQ still carries its own
+copy** in `BOQ_STYLES` / `BOQ_DOC_STYLES` / `BOQ_DOC_SCRIPT`, because four pinned
+register pages load `BOQ_STYLES` — §7 gap 46.
 
 ### 2e. `boqpick.py` — one grid, two documents, and why it is also a leaf
 
@@ -1598,9 +1656,10 @@ one. `PROGRESS.md` says the same wherever C2 is marked BUILT.
 
 **The printed sheet reuses `docsheet.py` exactly and invents nothing.** CC-2 is
 silent on whether a measurement prints, so the route exists — a sheet signed in
-the field has to reach paper — and **no golden is pinned on it**. Pinning one
-would freeze a design nobody specified and make the client's first sight of it a
-re-baselining exercise. The only additions to the shared sheet are two column
+the field has to reach paper. ~~**no golden is pinned on it**~~ — the LEGACY
+sheet still has none; the JOINT sheet has had one since 30 September 2026,
+pinned after its print layout was repaired and proved in a headless print
+(§5 `/measurement`). The only additions to the shared sheet are two column
 widths and one signature label, which is what `challan.py` added.
 
 ---
@@ -5708,14 +5767,18 @@ font, type size or border weight**. Same restraint, same reason.
 
 What a tax invoice must say that neither of the others does:
 
-- **`.copy-mark`** — goods move in triplicate (Rule 48): *Original for
+- **The copy label** — goods move in triplicate (Rule 48): *Original for
   Recipient / Duplicate for Transporter / Triplicate for Supplier*. There is no
   PDF library here, so the caption is a render parameter:
-  **`?copy=original|duplicate|triplicate|all`**, defaulting to `original`. The
-  screen carries a `.copy-switch` segmented control; `?copy=all` emits all three
-  sheets with `page-break-before:always` between them, so the full set comes
-  out of one Ctrl+P. `page-break-before`, not `break-before` — Chrome's print
-  path still honours the legacy property most reliably.
+  **`?copy=original|duplicate|triplicate|all`**. ⚠ **From 30 September 2026 it
+  defaults to `all` — the whole set, one Ctrl+P** — and anything unrecognised
+  means the set too; until then it defaulted to `original`. The set, the
+  parameter, the switch and the label all come from `docsheet.py` (§2d,
+  *Statutory copies*), shared with the RA bill and the merged RA document, and
+  the label sits right-aligned **inside** the TAX INVOICE band rather than as
+  the old `.copy-mark` row above it. That old rule, the old `.copy-switch`
+  rules and a `.quotation-doc + .quotation-doc` page break still sit in
+  `INVOICE_STYLES`, dead or duplicated — §7 gap 47.
 - **`.gst-strip`** — place of supply, its State code, and the reverse-charge
   declaration, in a band under the header grid. Rule 46(m) and 46(n) want these
   on the *face* of the invoice, and they are the first thing the customer's
@@ -7270,6 +7333,13 @@ forces its background through with `print-color-adjust:exact`, and the watermark
 is a bordered coloured word rather than a filled block so it still reads when a
 browser prints with backgrounds off.
 
+⚠ **From 30 September 2026 the bill prints Rule 48's three copies by default**
+— it is headed TAX INVOICE — each labelled inside its title band, and the
+overprint is on **every** copy because every copy is the same render
+(§2d, *Statutory copies*; `?copy=` reprints one). `ra.py` reads the set from
+`docsheet.py` and still does not import `invoice.py`. The same applies to
+`/merged/print/<id>`.
+
 #### Tax is per RATE SLAB, off the `gst_rate` each claim row stores
 
 `compute_tax_totals()` groups the bill's claim rows by their own `gst_rate` and
@@ -7959,6 +8029,12 @@ block hashes byte-identically to the tax invoice's**, and
 `tests/test_print_golden.py` asserts exactly that — the same assertion the RA
 bill carries, now on a fifth document.
 
+⚠ **`/dc/print/<id>` prints Rule 55's three copies by default** (30 September
+2026) — *ORIGINAL FOR CONSIGNEE / DUPLICATE FOR TRANSPORTER / TRIPLICATE FOR
+CONSIGNER*, right-aligned in the DELIVERY CHALLAN band, each on its own page;
+`?copy=` reprints one. `/dc/view/<id>` draws it once, unlabelled. §2d,
+*Statutory copies*.
+
 What differs is what DC54 differs by, and nothing else:
 
 | | |
@@ -8118,11 +8194,44 @@ The seller identity is read from `branding` at render time, and
 `tests/test_measurement.py` greps this module and fails if a State name or a
 GSTIN-shaped string appears in it.
 
-⚠ **No print golden is pinned on this page.** CC-2 is silent on whether a
+⚠ **No print golden is pinned on the LEGACY sheet.** CC-2 is silent on whether a
 measurement prints at all, so pinning a layout nobody specified would make the
 client's first sight of it a re-baselining exercise. What *is* asserted is that
 the page carries the shared sheet's structural markers rather than a letterhead
 somebody drew.
+
+**The JOINT sheet is pinned from 30 September 2026** (`tests/test_print_golden.py`,
+`MS_WHOLE` / `MS_BLOCKS`, with `grid` and `signoff` blocks of its own). The
+client had seen it by then — on production, running off its own page — and an
+unpinned layout is how that shipped. What the repair did (CLIENT_CHANGES.md §0
+thirty-sixth block, item B; `tests/test_measurement_layout.py`):
+
+- **The cause, measured.** Each grid column had a fixed millimetre width
+  (~263mm in all), and `.page-frame` is a `<table>`, so it grew to hold the grid
+  and carried the letterhead, the header block and the sign-off past a card
+  that stayed 210mm wide — the 297mm outer rule sat on the INNER element. An
+  in-page probe of the old code counted 85 elements past the card at 1400px
+  and 160 at phone width. The heads also wore `BASE_STYLES`' bare `th`
+  (letter-spaced, a screen size), which wrapped "100 NB (M)" onto three lines.
+- **The frame** is `docsheet`'s landscape variant (§2d): `sheet-landscape` on
+  `.doc-outer`, landscape `@page` on a desktop, portrait paper on a phone.
+- **The grid** is a `<colgroup>` of percentages summing to 100 —
+  `GRID_WIDTHS`: LOCATION 11% / REMARKS 17% with the numerics sharing the rest
+  equally, and a portrait set (10 / 11) measured so "SUPPORTS" and "PENDANT"
+  never break mid-word — written as custom properties on the `<colgroup>`
+  because the numeric share depends on the sheet's own column count. No cell
+  carries a width. Every grid property is declared, never inherited. A head is
+  its label (`.jm-hl`, no-wrap) over its unit: two lines.
+- **Pages.** Heads repeat; a row and the sign-off are never split. On a dense
+  sheet (nine two-to-three-line locations) the sign-off moves **whole** to
+  page 2 in landscape — §7 gap 49. On the phone path the same sheet is one page.
+- **The amber "free-text site" band is for staff** and is drawn on
+  `/measurement/view` only (`for_print`); it never prints.
+- **Grid cells print to ten significant figures** (`_fmt_cell`), because the
+  house `_fmt_qty()` rounds to six — §7 gap 45.
+- **The parties** are two `minmax(0,1fr)` halves sharing their height.
+- The *add registered address* chip is deliberately untouched — it goes when
+  `/settings` is filled.
 
 #### Numbering
 
@@ -9640,7 +9749,10 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     sheets in one print run with nothing but the `.copy-mark` caption to tell a
     reader which copy a loose page belongs to. A server-side renderer would fix
     the copy captions and the page numbers together, and is the single change
-    that would most improve all three documents.
+    that would most improve all three documents. ⚠ **From 30 September 2026
+    the whole set is the DEFAULT on four documents** (§2d, *Statutory copies*),
+    and a copy longer than a page carries its label on its first page only —
+    gap 50.
 13. **`app.run(debug=True)`** with `reloader_type="stat"` — the stat reloader is
     intentional (the watchdog reloader storms on Windows when AV/indexers touch
     `site-packages`). Never ship `debug=True`.
@@ -10937,6 +11049,88 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     database fails the check. **Out of the GSTIN pass's scope** (the address
     book); closing it means `settings.py` calling `gst_lookup.check_digit_ok()`
     and deciding what a stored specimen does, which is gap 35's question again.
+
+45. 🟠 **Every printed quantity is rounded to SIX significant figures — OPEN,
+    fixed on the joint measurement grid only** (30 September 2026).
+    `quotation._fmt_qty()` is `f"{q:g}"`. A measured 1023.125 printed as
+    `1023.12`, its column TOTAL 7083.875 as `7083.88`, and anything from
+    100,000 up with a decimal loses the decimal (123456.7 → `123457`). It
+    prints every quantity on the quotation, PI, TI, PO, BOQ, RA bill, challan
+    and legacy measurement sheet. `quotation.py` is frozen, so only the joint
+    grid — where a site engineer types millimetres onto four-digit runs, on a
+    sheet both parties sign — was moved off it (`measurement._fmt_cell`, ten
+    figures). **Closing it everywhere is a frozen-file decision** and moves
+    every print golden that carries a long quantity.
+
+46. 🟡 **The landscape page exists twice — OPEN, duplication recorded rather
+    than resolved** (30 September 2026). `docsheet.LANDSCAPE_*` is the BOQ's
+    mechanism lifted for the joint measurement sheet (§2d). The BOQ does not
+    render through it: its copy lives in `BOQ_STYLES` (the `@page`, the 297mm
+    outer) and `BOQ_DOC_STYLES` / `BOQ_DOC_SCRIPT` (portrait paper and the phone
+    screen), and `BOQ_STYLES` is loaded by four register pages pinned in
+    `tests/test_page_golden.py`. Moving the BOQ onto the leaf re-baselines those
+    four and the BOQ print golden — a pass allowed to move them should do it
+    and delete the copy.
+
+47. 🟡 **`invoice.INVOICE_STYLES` carries three copy rules that no longer do
+    anything — OPEN** (30 September 2026). `.quotation-doc .copy-mark` (the old
+    label row — the label is now `.copy-lbl` inside the title band), the
+    `.copy-switch` rules (duplicated in `docsheet.COPY_CSS`, which the page
+    also loads) and `.quotation-doc + .quotation-doc { page-break-before }`
+    (copies are wrapped in `.copy-sheet` now, so the selector no longer
+    matches). They stay because the pinned `/invoice/` register loads
+    `INVOICE_STYLES`, and deleting them moves that page golden. Delete them in
+    a pass that may.
+
+48. 🟠 **The joint sheet prints neither `measured_by`, `witnessed_by` nor
+    `location` — OPEN, undeclared, found by the 30 September 2026 archaeology.**
+    The form has asked for all three since 6 September; the legacy sheet
+    printed them (Measured by / Witnessed by / Location) and the joint sheet,
+    which every new sheet uses, never has. Nothing in the twenty-third §0
+    block, PROGRESS.md or this file said so. The typed sign-off (§3) now
+    carries names for both parties, which covers *who*; `location` — one
+    free-text field on the sheet — still reaches no paper. **Restore or
+    retire: Manas's call.** (That the joint sheet does not print the `items`
+    rows — the per-BOQ-line quantities the RA ceiling reads — IS declared, in
+    the twenty-third block: "the joint grid, which is what prints".)
+
+49. 🟡 **On a dense joint sheet the sign-off prints on its own page — OPEN,
+    left** (30 September 2026). Rows and the sign-off never split, so with
+    nine two-to-three-line locations on A4 landscape the grid and TOTAL fill
+    page 1 and both parties move whole to page 2 (letterhead repeated). A
+    signature page separable from the figures it signs is weaker than one
+    that is not. The same sheet on portrait paper (a phone) is one page.
+    Tightening it means smaller sign-off rows, which is less room for ink.
+
+50. 🟡 **A tax invoice copy runs to two pages on a long invoice, and page 2
+    carries no copy label — OPEN** (30 September 2026). The golden TI's terms
+    and certification push the signature onto a second page, so the default
+    print is six sheets, and the label is in the title band of each copy's
+    first page only. Gap 12's server-side renderer is still the fix for
+    per-page captions.
+
+51. 📋 **What the print routes lost — the regression archaeology of
+    30 September 2026. A RECORD, not a defect list.** Every print and view
+    route was compared from its first commit to HEAD, per function, for
+    columns, blocks, buttons, labels, overprints and printable states:
+    - **Copy labels** were only ever on the tax invoice (`8c4bc8a`, 3 August),
+      never removed; the DC, RA and merged RA never had them in any commit,
+      stash, reflog entry or unreachable object. Item A added them.
+    - **The RA bill's DRAFT overprint and the printing of CANCELLED bills** —
+      pass D (`e9f9274`, 29 August 20:38) gated both out of printing; the
+      overprint code itself was never deleted; `f208996` (22:47 the same
+      evening) re-admitted both. They print today, overprint on every copy.
+    - **RA certification** (Certified Qty / Rate / Amount, Variance,
+      `/ra/certify/<id>`) — removed in `ec998fa` (15 August) inside the RA
+      print rebuild, whose message does not say so; **declared** in §0's
+      15 August EXTENDED block as item 3, chargeable.
+    - **`measured_by` / `witnessed_by` / `location` on the joint sheet** —
+      gap 48, undeclared.
+    - Everything else that "disappeared" moved into `docsheet.py` (`3954eaf`)
+      or was relabelled (`Print (landscape)` → `Print`, `d4a2ac0`;
+      `Challan No.` → `Challan` on the register, `af94df0`). Blank filler rows
+      never printed on the DC or the joint sheet — a decision at build.
+    - Receipts have no print route and never had one.
 
 
 ## 8. Stale docs — do not trust these two files

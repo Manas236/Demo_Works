@@ -4521,6 +4521,7 @@ authorised by its own §0 block, which is where its commercial status lives.
 |---|---|---|
 | G1 | BOQ import from Excel v1 | ✅ **Delivered (v1)** — built 29 Sep 2026 under the §0 **thirty-fourth** block; **new chargeable scope outside MG/SF/2026-06** |
 | G2 | GSTIN auto-fill on the address book | ✅ **Built, not deployed** — 29 Sep 2026 under the §0 **thirty-fifth** block; **commercial status not yet recorded** |
+| G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
 
 ### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
 
