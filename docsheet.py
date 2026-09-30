@@ -172,6 +172,91 @@ DOCSHEET_STYLES = f"""
 
 
 # =============================================================================
+# THE LANDSCAPE PAGE — a variant of the frame (30 September 2026)
+# =============================================================================
+#
+# `VIEW_DOC_STYLES` fixes the frame at portrait: `.doc-outer` is 210mm wide on
+# screen and `@page` asks for A4 portrait. A document too wide for that — the
+# joint measurement sheet's twelve-column grid — needs the frame itself to be
+# landscape, not a landscape `@page` under a portrait card. Asking for the
+# paper and leaving the card at 210mm is exactly what the joint sheet did until
+# this: the grid's own widths forced `.page-frame` (a `<table>`, so it grows
+# to fit what it holds) past the card, and the letterhead, the header block
+# and the sign-off went with it.
+#
+# ⚠ **This is BOQ's mechanism, lifted rather than re-invented** — `boq.
+#   BOQ_STYLES` (the landscape `@page`, the 297mm outer), `BOQ_DOC_STYLES` and
+#   `BOQ_DOC_SCRIPT` (a touch device's print service picks portrait paper
+#   itself, so the size request is withdrawn there and the sheet is drawn to
+#   fit whatever paper comes; a phone SCREEN shows the page as a page, scaled).
+#   **The BOQ does NOT render through this yet**, and that is recorded rather
+#   than fixed: its copy lives in `BOQ_STYLES`, which four pinned register
+#   pages load, so moving it here re-baselines four page goldens and the BOQ
+#   print golden. ABOUT.md §7 carries the duplication as a gap.
+#
+# Opt in with `<div class="doc-outer sheet-landscape">` and load
+# `LANDSCAPE_STYLES` + `LANDSCAPE_SCRIPT` after `SHEET_STYLES`. A sheet that
+# does neither is untouched — nothing here is in `SHEET_STYLES`.
+LANDSCAPE_CSS = """\
+  /* ── The landscape page ───────────────────────────────────────────────
+     A later @page rule of equal specificity wins, so this replaces the
+     `size:A4 portrait` in VIEW_DOC_STYLES for the page that loads it. */
+  @media print {
+    @page { size:A4 landscape; margin:9mm 8mm 8mm; }
+    .doc-outer.sheet-landscape { max-width:none; }
+  }
+  .doc-outer.sheet-landscape { max-width:297mm; }
+
+  /* A PHONE SCREEN: the page drawn as a page and scaled to the column it
+     sits in (`--sheet-zoom`, set by LANDSCAPE_SCRIPT), instead of
+     VIEW_DOC_STYLES' reflow — a stacked letterhead and a one-column header
+     are right for a quotation and wrong for a sheet read as a page. MUST stay
+     scoped to `screen`: an unscoped max-width breakpoint fires on paper. */
+  @media screen and (max-width:760px) {
+    .doc-outer.sheet-landscape { max-width:100%; }
+    .sheet-landscape .quotation-doc { zoom:var(--sheet-zoom, .46);
+                                      padding:9mm 8mm 7mm; }
+    .sheet-landscape .lh { flex-direction:row; align-items:flex-end; }
+    .sheet-landscape .dh-cell + .dh-cell { border-left:var(--rule);
+                                           border-top:none; }
+  }
+"""
+
+LANDSCAPE_STYLES = f"""
+<style>
+{LANDSCAPE_CSS}</style>
+"""
+
+# Plain string, interpolated as a value — nothing in it needs doubling.
+LANDSCAPE_SCRIPT = """
+<script>
+  (function () {
+    /* A touch device prints on the paper its print service chooses, and
+       asking for landscape there gets the landscape page box SCALED onto
+       portrait paper (the BOQ came back 55% full, 20 September 2026).
+       Withdraw the request; the sheet is laid out to fit the paper that
+       comes. The margins of the @page rule are kept — only `size` moves. */
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      var s = document.createElement('style');
+      s.textContent = '@media print { @page { size:auto; } }';
+      document.head.appendChild(s);
+    }
+    /* A phone screen: an A4 portrait page (210mm = 794px at 96dpi) — the
+       paper a phone prints on — scaled to the column. Read below 760px. */
+    function fit() {
+      var outer = document.querySelector('.sheet-landscape');
+      if (!outer) return;
+      document.documentElement.style.setProperty(
+        '--sheet-zoom', Math.min(1, outer.clientWidth / 794).toFixed(4));
+    }
+    window.addEventListener('load', fit);
+    window.addEventListener('resize', fit);
+  })();
+</script>
+"""
+
+
+# =============================================================================
 # THE PAGE FRAME AND THE LETTERHEAD
 # =============================================================================
 

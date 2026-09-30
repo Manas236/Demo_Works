@@ -1053,13 +1053,12 @@ MS_DOC_STYLES = "\n<style>\n" + DS.BAND_CSS + """
 # weight the house sheet does not already use.
 MS_JOINT_STYLES = """
 <style>
-  /* ── Landscape. The grid is 13 columns wide before REMARKS. ───────────
-     A later @page rule of equal specificity wins, so this replaces
-     `size:A4 portrait` for this page only — boq.py's precedent. */
-  @media print {
-    @page { size:A4 landscape; margin:9mm 8mm 8mm; }
-  }
-  .ms-joint-outer { max-width:297mm; }
+  /* ── Landscape is `docsheet.LANDSCAPE_STYLES` (30 September 2026) ─────
+     The @page rule and a 297mm `.ms-joint-outer` stood here, and the outer
+     was on the INNER element, so the card on screen stayed 210mm and the
+     grid's own millimetre widths pushed the whole page frame past it. The
+     route now puts `sheet-landscape` on `.doc-outer` and loads the shared
+     variant — BOQ's mechanism, see docsheet.py. */
 
   /* The five-row header field block, down the left under the title. */
   .quotation-doc .jm-fields { display:grid;
@@ -1077,34 +1076,87 @@ MS_JOINT_STYLES = """
         padding:.45rem .7rem; margin:0 0 3mm; font-size:var(--fs-xs, .68rem);
         line-height:1.5; }
 
-  /* ── The grid ─────────────────────────────────────────────────────── */
+  /* ── The grid ─────────────────────────────────────────────────────────
+     ⚠ **Its width is the frame's, never its own.** Every column is a
+     percentage on a `<col>` (`_joint_grid_html()` writes them, summing to
+     100%), so the grid cannot be wider than the page it is on. Until
+     30 September 2026 each column carried a fixed millimetre width — 34 + 12
+     x 13-20 + 52, about 263mm — and because `.page-frame` is a `<table>` it
+     grew to hold them, taking the letterhead and the sign-off past the page.
+
+     Every property the sheet cares about is declared here, never inherited:
+     BASE_STYLES ships a bare `th` (uppercase, letter-spaced, a screen font
+     size) and the grid heads were wearing it — which is what wrapped
+     "100 NB (M)" onto three lines. `.q-table th` makes the same point. */
   .quotation-doc table.jm-grid { width:100%; border-collapse:collapse;
-        font-size:var(--fs-xs, .68rem); table-layout:fixed; }
+        table-layout:fixed; font-size:var(--fs-sm); }
+  .quotation-doc table.jm-grid col.jm-c-loc { width:var(--jm-loc); }
+  .quotation-doc table.jm-grid col.jm-c-num { width:var(--jm-num); }
+  .quotation-doc table.jm-grid col.jm-c-rem { width:var(--jm-rem); }
   .quotation-doc table.jm-grid th,
-  .quotation-doc table.jm-grid td { border:var(--rule); padding:1.4mm 1mm;
-        vertical-align:middle; overflow:hidden; }
+  .quotation-doc table.jm-grid td { border:var(--rule); padding:1.2mm 1mm;
+        vertical-align:middle; overflow:hidden; font-family:inherit;
+        font-size:var(--fs-sm); color:var(--doc-ink); letter-spacing:normal; }
   .quotation-doc table.jm-grid th { text-align:center; font-weight:700;
-        background:#f3f4f6; }
-  .quotation-doc .jm-loc { width:34mm; text-align:left; }
-  .quotation-doc .jm-num { width:13mm; text-align:right; }
-  /* A grouped column (SUPPORTS, SPRINKLER's PENDANT/UPRIGHT) carries a word
-     in its head, not a three-digit number — 13mm crowds "SPRINKLER" and
-     clips it against `overflow:hidden`. Wider, and after `.jm-num` so it
-     wins the width on a cell wearing both classes. */
-  .quotation-doc .jm-grp { width:20mm; }
-  /* Widest column on the sheet, about four times a dia column. */
-  .quotation-doc .jm-rem { width:52mm; text-align:left; }
+        background:#f3f4f6; text-transform:uppercase; white-space:normal;
+        line-height:1.25; }
+  .quotation-doc table.jm-grid td { text-transform:none; }
+  /* A head is its label on one line and its unit on the next: two lines,
+     never three. */
+  .quotation-doc .jm-hl { white-space:nowrap; }
   .quotation-doc .jm-unit { display:block; font-weight:400;
         font-size:.85em; color:#444; }
+  .quotation-doc td.jm-loc,
+  .quotation-doc td.jm-rem { text-align:left; overflow-wrap:break-word; }
+  .quotation-doc td.jm-num { text-align:right; white-space:nowrap;
+        font-variant-numeric:tabular-nums; }
   .quotation-doc tr.jm-total td { font-weight:700; background:#f3f4f6; }
 
+  /* PORTRAIT paper — a phone's print service picks it (LANDSCAPE_SCRIPT
+     withdraws the landscape request there) — and a phone screen, which
+     draws the same page. The portrait width set (GRID_WIDTHS) gives the
+     numeric columns more of the page, the type steps down one size, the
+     heads a little further, and the padding tightens — so "SUPPORTS" and
+     "1023.125" still sit whole in a numeric column. Nothing breaks
+     mid-word. */
+  @media print and (orientation:portrait), screen and (max-width:760px) {
+    .quotation-doc table.jm-grid col.jm-c-loc { width:var(--jm-loc-p); }
+    .quotation-doc table.jm-grid col.jm-c-num { width:var(--jm-num-p); }
+    .quotation-doc table.jm-grid col.jm-c-rem { width:var(--jm-rem-p); }
+    .quotation-doc table.jm-grid th,
+    .quotation-doc table.jm-grid td { padding:1mm .4mm;
+          font-size:var(--fs-xs); }
+    .quotation-doc table.jm-grid th { font-size:calc(var(--fs-xs) * .92); }
+  }
+
+  @media print {
+    /* The heads repeat on every page; a location row and the sign-off are
+       never cut in half by a page break. */
+    .quotation-doc table.jm-grid > thead { display:table-header-group; }
+    .quotation-doc table.jm-grid th,
+    .quotation-doc tr.jm-total td,
+    .quotation-doc .jm-band { -webkit-print-color-adjust:exact;
+          print-color-adjust:exact; }
+    .quotation-doc table.jm-grid tr,
+    .quotation-doc .jm-sign,
+    .quotation-doc .jm-party { break-inside:avoid; page-break-inside:avoid; }
+  }
+
   /* ── The two-party sign-off ───────────────────────────────────────── */
-  .quotation-doc .jm-sign { display:grid; grid-template-columns:1fr 1fr;
+  /* `minmax(0,1fr)` twice, not `1fr`: a bare `1fr` grows to a long unbroken
+     word, and a long counterparty name would push the right-hand party off
+     the page. Two equal halves, whatever they hold. */
+  .quotation-doc .jm-sign { display:grid;
+        grid-template-columns:minmax(0,1fr) minmax(0,1fr);
         gap:0 12mm; margin-top:8mm; }
-  .quotation-doc .jm-party { border:var(--rule); }
+  /* Both boxes are as tall as the taller one (a long counterparty wraps its
+     band onto two lines), and the four rows share that height — so neither
+     box ends in an empty strip under DATE. */
+  .quotation-doc .jm-party { border:var(--rule); min-width:0; display:grid;
+        grid-template-rows:auto repeat(4, 1fr); }
   .quotation-doc .jm-band { border-bottom:var(--rule); padding:1.6mm 2mm;
         font-weight:700; text-align:center; background:#f3f4f6;
-        min-height:1.4em; }
+        min-height:1.4em; overflow-wrap:anywhere; }
   .quotation-doc .jm-srow { display:grid; grid-template-columns:26mm 1fr;
         border-bottom:var(--rule); }
   .quotation-doc .jm-srow:last-child { border-bottom:0; }
@@ -1485,8 +1537,56 @@ MS_COLUMNS = (("c-sno", "Sr.No."), ("c-desc", "Description"),
 
 
 def _fmt_cell(v: float) -> str:
-    """A grid cell. Zero prints blank — a nil measurement is not a nought."""
-    return BQ._fmt_qty(v) if abs(v) > _QTY_EPSILON else ""
+    """
+    A grid cell. Zero prints blank — a nil measurement is not a nought.
+
+    ⚠ **Up to ten significant figures, not the house `_fmt_qty()`'s six**
+      (30 September 2026). `quotation._fmt_qty()` is `f"{q:g}"`, which rounds
+      to six significant figures, so a measured 1023.125 printed as 1023.12
+      and its column TOTAL 7083.875 as 7083.88 — on a sheet both parties
+      sign. `quotation.py` is frozen and that formatter prints every quantity
+      in the application, so it is recorded (ABOUT.md §7) rather than changed;
+      the grid, which is where a site engineer types millimetres onto a
+      four-digit run, prints what was typed.
+    """
+    return f"{v:.10g}" if abs(v) > _QTY_EPSILON else ""
+
+
+# The grid's column widths, as shares of the page: `(LOCATION %, REMARKS %)`,
+# and every numeric column equal — they share what is left. Percentages, so
+# the grid is exactly as wide as the frame whatever the paper.
+#
+# TWO sets, measured against a production-shaped sheet in a headless print:
+#   * landscape — A4 landscape on a desktop. Twelve numeric columns at 6%
+#     each hold "1023.125" and "PENDANT" at the sheet's own type size.
+#   * portrait  — the paper a phone prints on (`docsheet.LANDSCAPE_SCRIPT`
+#     withdraws the landscape request there). At the landscape shares a
+#     numeric column is ~1.3mm too narrow for "SUPPORTS" or "PENDANT" and the
+#     head breaks mid-word, so LOCATION and REMARKS give some back.
+GRID_WIDTHS = {"landscape": (11, 17), "portrait": (10, 11)}
+
+
+def grid_col_widths(n_numeric: int, page: str = "landscape") -> tuple:
+    """`(location %, each numeric %, remarks %)` — summing to 100."""
+    loc, rem = GRID_WIDTHS[page]
+    if n_numeric <= 0:
+        return (loc, 0.0, 100 - loc)
+    return (loc, (100 - loc - rem) / n_numeric, rem)
+
+
+def _grid_width_vars(n_numeric: int) -> str:
+    """
+    Both width sets, as custom properties on the `<colgroup>` — the stylesheet
+    picks the set for the paper (MS_JOINT_STYLES). Written into the markup
+    because the numeric share depends on THIS sheet's column count, which is
+    data, not code.
+    """
+    out = []
+    for page, suffix in (("landscape", ""), ("portrait", "-p")):
+        loc, num, rem = grid_col_widths(n_numeric, page)
+        out.append(f"--jm-loc{suffix}:{loc:g}%;--jm-num{suffix}:{num:.6g}%;"
+                   f"--jm-rem{suffix}:{rem:g}%")
+    return ";".join(out)
 
 
 def _joint_grid_html(ms: dict) -> str:
@@ -1494,6 +1594,13 @@ def _joint_grid_html(ms: dict) -> str:
     cols = grid_columns_of(ms)
     rows = grid_rows_of(ms)
     totals = grid_totals(ms)
+
+    # `table-layout:fixed` takes its widths from these `<col>`s and from
+    # nothing else, so no cell below carries a width of its own.
+    colgroup = (f'<colgroup style="{_grid_width_vars(len(cols))}">'
+                '<col class="jm-c-loc"/>'
+                + '<col class="jm-c-num"/>' * len(cols)
+                + '<col class="jm-c-rem"/></colgroup>')
 
     # ── The two-row head. A column with no group spans both rows; a group
     #    draws a spanning cell above its members. Walked in column order so
@@ -1504,25 +1611,23 @@ def _joint_grid_html(ms: dict) -> str:
         c = cols[i]
         group = str(c.get("group") or "")
         if not group:
-            top.append(f'<th class="jm-num" rowspan="2">{P.esc(c["label"])}'
+            top.append(f'<th class="jm-num" rowspan="2">'
+                       f'<span class="jm-hl">{P.esc(c["label"])}</span>'
                        f'{_unit_html(c)}</th>')
             i += 1
             continue
         span = i
         while span < len(cols) and str(cols[span].get("group") or "") == group:
             span += 1
-        # `table-layout:fixed` sizes columns off row 1 alone, and a colspan
-        # cell with no width of its own leaves that arithmetic to the
-        # renderer's guess — most get it right, but a lone, narrow-looking
-        # group (no siblings sharing it) can be squeezed toward zero and,
-        # with nothing clipping it, bleed its text into REMARKS next door.
-        # `.jm-grp`'s 20mm per spanned column (wider than a dia column's
-        # 13mm — a group carries a word, not a three-digit number) removes
-        # the guess and gives the label room.
-        top.append(f'<th colspan="{span - i}" style="width:{20 * (span - i)}mm">'
+        # No width here. It used to carry 20mm per spanned column because a
+        # colspan cell left `table-layout:fixed` guessing; the `<col>`s above
+        # take the guess away for every column at once, so a lone group like
+        # SUPPORTS gets exactly one numeric column's share and no more.
+        top.append(f'<th class="jm-grp-h" colspan="{span - i}">'
                    f'{P.esc(group)}</th>')
         for c2 in cols[i:span]:
-            bottom.append(f'<th class="jm-num jm-grp">{P.esc(c2["label"])}'
+            bottom.append(f'<th class="jm-num jm-grp">'
+                          f'<span class="jm-hl">{P.esc(c2["label"])}</span>'
                           f'{_unit_html(c2)}</th>')
         i = span
 
@@ -1543,6 +1648,7 @@ def _joint_grid_html(ms: dict) -> str:
 
     return f"""
     <table class="jm-grid">
+      {colgroup}
       <thead>
         <tr>
           <th class="jm-loc" rowspan="2">Location</th>
@@ -1563,9 +1669,15 @@ def _unit_html(col: dict) -> str:
     return f'<span class="jm-unit">({P.esc(unit)})</span>' if unit else ""
 
 
-def _joint_document_html(ms: dict) -> str:
+def _joint_document_html(ms: dict, for_print: bool = False) -> str:
     """
     The JOINT MEASUREMENT SHEET — the client's own workbook layout.
+
+    `for_print` drops the amber site band. It is a note to OUR staff — "this
+    site is the schedule's free text, nothing joins to it" — and it is shown
+    on `/measurement/view` where they can act on it; on paper it was a
+    sentence about our database printed onto a document the customer signs
+    (30 September 2026). Nothing else differs between the two.
 
     ⚠ **THE LETTERHEAD IS THE SHARED ONE AND NOTHING IS HAND-WRITTEN.**
       `DS.sheet_open()` is what the tax invoice, the PO, the proforma, the RA
@@ -1595,17 +1707,20 @@ def _joint_document_html(ms: dict) -> str:
       strings are absent.
     """
     site_label, site_source = site_of(ms)
+    # The band is screen-only (see `for_print` above), so on paper there is no
+    # source for it to describe.
+    band_source = "" if for_print else site_source
 
     # The amber band, when the site is not the address book's own answer.
     # `project.site_drift()`'s shape — deliberately not a second design.
     drift = ""
-    if site_source == "boq":
+    if band_source == "boq":
         drift = ('<div class="jm-drift"><span>&#9888;</span><span>'
                  '<b>This site is the free-text string on the schedule.</b> '
                  'The project it belongs to has no address-book site, so '
                  'nothing has been guessed at and it does not join to '
                  'anything.</span></div>')
-    elif site_source == "none":
+    elif band_source == "none":
         drift = ('<div class="jm-drift"><span>&#9888;</span><span>'
                  '<b>No site is recorded against this sheet.</b> Its project '
                  'has no address-book site and the schedule carries no site '
@@ -1654,7 +1769,7 @@ def _joint_document_html(ms: dict) -> str:
                      f'{P.esc(ms["notes"])}</div>')
 
     return f"""
-<div class="quotation-doc ms-joint-outer">
+<div class="quotation-doc">
 
 {DS.sheet_open(title_band="JOINT MEASUREMENT SHEET")}
 
@@ -1676,9 +1791,13 @@ def _joint_document_html(ms: dict) -> str:
 </div>"""
 
 
-def _document_html(ms: dict) -> str:
+def _document_html(ms: dict, for_print: bool = False) -> str:
     """
     The printed measurement sheet — joint grid, or the legacy linear sheet.
+
+    `for_print` reaches the joint sheet only (it drops the staff-only site
+    band); the legacy sheet has no such band and renders identically either
+    way.
 
     ⚠ **THE LEGACY BRANCH IS NOT DEAD CODE AND MUST NOT BE DELETED.** Two live
       sheets predate the joint model — `SF/MS/26-27/0001` (BOQ 0007, project
@@ -1690,7 +1809,7 @@ def _document_html(ms: dict) -> str:
       treatment the day-rate migration gave the one old employee record.
       Nothing is deleted, nothing is reshaped, and both stay in the register.
     """
-    return (_joint_document_html(ms) if is_joint(ms)
+    return (_joint_document_html(ms, for_print=for_print) if is_joint(ms)
             else _legacy_document_html(ms))
 
 
@@ -2008,6 +2127,22 @@ def _with_boq_qty(items: list, boq_id: str) -> list:
     return out
 
 
+def _joint_head(ms: dict) -> str:
+    """
+    What a JOINT sheet adds to the page head: its own rules, the shared
+    landscape page and the touch-device script. A legacy sheet gets none of
+    it and stays the portrait page it always was.
+    """
+    if not is_joint(ms):
+        return ""
+    return MS_JOINT_STYLES + DS.LANDSCAPE_STYLES + DS.LANDSCAPE_SCRIPT
+
+
+def _outer_class(ms: dict) -> str:
+    """`.doc-outer`, widened to the landscape page for a joint sheet."""
+    return "doc-outer sheet-landscape" if is_joint(ms) else "doc-outer"
+
+
 @measurement_bp.route("/view/<id>")
 def view_ms(id: str):
     ms = records().get(id)
@@ -2022,7 +2157,7 @@ def view_ms(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Measurement " + str(ms.get('ref')))}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{MS_DOC_STYLES}{MS_JOINT_STYLES if is_joint(ms) else ''}
+  {DS.SHEET_STYLES}{MS_DOC_STYLES}{_joint_head(ms)}
 </head>
 <body>
 {_nav()}
@@ -2044,7 +2179,7 @@ def view_ms(id: str):
 {_flash()}
 {approval.panel("measurement", ms)}
 
-<div class="doc-outer">
+<div class="{_outer_class(ms)}">
 {_document_html(ms)}
 </div>
 
@@ -2082,15 +2217,15 @@ def print_ms(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(ms.get('ref')))}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{MS_DOC_STYLES}{MS_JOINT_STYLES if is_joint(ms) else ''}
+  {DS.SHEET_STYLES}{MS_DOC_STYLES}{_joint_head(ms)}
 </head>
 <body>
 <div class="screen-acts no-print">
   <a href="{url_for('measurement.view_ms', id=id)}" class="btn btn-ghost">&#8592;&nbsp;Back</a>
   <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
 </div>
-<div class="doc-outer">
-{_document_html(ms)}
+<div class="{_outer_class(ms)}">
+{_document_html(ms, for_print=True)}
 </div>
 </body></html>""")
 

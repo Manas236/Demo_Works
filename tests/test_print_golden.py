@@ -1330,7 +1330,48 @@ MS_SHEET_BLOCKS = [
     ("foot-strip", "<tfoot><tr><td>"),
     ("doc-box",    '<div class="doc-box">'),
     ("party",      '<div class="doc-header'),
+    # 30 September 2026: the sheet's own two blocks, so a change to the grid or
+    # to the sign-off names itself. The first five are unchanged, and the
+    # SAME-letterhead assertion below reads only `letterhead` / `foot-strip`.
+    ("grid",       '<table class="jm-grid">'),
+    ("signoff",    '<div class="jm-sign">'),
 ]
+
+# ── PINNED 30 September 2026 — after the layout repair, and after the proof ──
+#
+# CLIENT_CHANGES.md §0, thirty-sixth block, item B. This document had no digest
+# pin: the decision recorded above was that pinning an unspecified design would
+# make the client's first sight of it a re-baselining exercise. The client has
+# now seen it — on production, running off its own page — and a layout nobody
+# pinned is how that shipped. So it is pinned now, AFTER the repair was printed
+# to PDF in landscape and portrait and measured in a browser (no element past
+# the frame at 1400px, 1024px or phone width). ABOUT.md §7 records the proof.
+#
+# What the repair moved, per block, against the same fixture before it:
+#   head      the landscape frame (`docsheet.LANDSCAPE_STYLES` + script,
+#             `sheet-landscape` on the outer) and the grid's new rules
+#   grid      the `<colgroup>` of percentage widths, the head labels in
+#             `.jm-hl`, no per-cell width, cells printed to 10 figures
+#   letterhead, foot-strip, doc-box, party, signoff — byte-identical.
+# Before the repair: whole d5c6b083b3784353 / 88802, head 66e13ccf7dbdaaa3,
+# grid 5c2e52f3cc69a105 (the other five as below).
+MS_WHOLE, MS_LEN = "e230983bc8ec05ef", 94995
+MS_BLOCKS = {"head":       "db302526da349396",   # was 66e13ccf7dbdaaa3
+             "letterhead": "3c080a57f60c89e9",
+             "foot-strip": "1efaaf73d3a0a076",
+             "doc-box":    "57c1a660915be1d9",
+             "party":      "1550ac634c9f7ca0",
+             "grid":       "3e4e50c608dd40e9",   # was 5c2e52f3cc69a105
+             "signoff":    "24d612d898ea2e1f"}
+
+
+def test_the_joint_measurement_sheet_matches_its_recorded_baseline(
+        client, golden_ms):
+    """`/measurement/print/<id>` — the joint sheet, pinned after its repair."""
+    r = client.get(f"/measurement/print/{GOLD_MS}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), MS_WHOLE, MS_LEN, MS_BLOCKS,
+           markers=MS_SHEET_BLOCKS, what="joint measurement sheet")
 
 
 def test_the_joint_measurement_sheet_carries_the_SAME_letterhead(

@@ -384,13 +384,28 @@ def test_a_typed_site_is_IGNORED_rather_than_stored(client, seeded):
 
 
 def test_the_amber_band_shows_when_the_site_is_the_schedules_free_text(client, seeded):
+    # ⚠ REWRITTEN 30 September 2026. The band is a note to OUR staff and moved
+    #   off the printed sheet (CLIENT_CHANGES.md §0 thirty-sixth block, item
+    #   B); it stays on /measurement/view. The old assertion could not have
+    #   caught its absence anyway — "jm-drift" is also a CLASS NAME in the
+    #   stylesheet the page loads, so it matched with no band drawn at all.
+    #   It now looks for the element, on both pages, and forces the branch
+    #   rather than skipping when the seeded project happens to join. The
+    #   assertion this replaces, verbatim:
+    #
+    #   h = client.get(f"/measurement/print/{ms['id']}").get_data(as_text=True)
+    #   if ms.get("site_source") in ("boq", "none"):
+    #       assert "jm-drift" in h, "no amber band on an unjoined site"
     li = priced(seeded, 1)[0]
     raise_joint(client, seeded, [(li["line_id"], 1)], [("H1", {"d25": 4}, "")])
     ms = only_sheet()
     _approve(ms)
-    h = client.get(f"/measurement/print/{ms['id']}").get_data(as_text=True)
-    if ms.get("site_source") in ("boq", "none"):
-        assert "jm-drift" in h, "no amber band on an unjoined site"
+    ms["site_source"] = "boq"
+    view = client.get(f"/measurement/view/{ms['id']}").get_data(as_text=True)
+    printed = client.get(f"/measurement/print/{ms['id']}").get_data(as_text=True)
+    assert '<div class="jm-drift">' in view, "no amber band on an unjoined site"
+    assert '<div class="jm-drift">' not in printed, (
+        "the staff-only site band reached the printed sheet")
 
 
 def test_the_dia_hint_is_derived_but_never_auto_filled(client, seeded):
