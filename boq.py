@@ -1904,6 +1904,113 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
     return out, "", -1
 
 
+# =============================================================================
+# FIELDS THAT NEED SOMEBODY — the guided fix on /boq/create (30 Sep 2026)
+# =============================================================================
+#
+# ⚠ **GUIDANCE ONLY. Nothing here changes what the save accepts** — that is
+#   `_clean_lines()` above, untouched, and it still saves a blank quantity as
+#   0 (ABOUT.md §7 gap 42, deliberately left open). These functions only say
+#   which boxes the page should light up, and they run on the SERVER so a
+#   refused POST re-renders with the same marks the browser was showing.
+#   `_BOQ_JS`'s `needMet()` is the same rule, kept in step by
+#   `tests/test_boq_import_guided.py`.
+#
+# Two sources of marks, both UI keys that ride in `boq_json` and never reach
+# a record (`_clean_lines()` builds each line from named keys):
+#   `_need`  what the import asked for — [{"f": field, "m": sentence}]; set
+#            once by boqimport.editor_model() and never rewritten
+#   `_err`   what THIS refused POST's own per-line rules found — rewritten on
+#            every refused POST, for every line, imported or typed
+# `_needs` is written here on each render: the fields of either that are
+# still unmet.
+
+def _need_met(li: dict, field: str, areas: list) -> bool:
+    """Has `field` on line `li` been given what an import asked of it?
+    A number greater than 0 for a quantity or a rate; any text for an item
+    number or a description. A header needs no figure."""
+    if field in ("total_qty", "supply_rate", "install_rate", "rate") and li.get("is_header"):
+        return True
+    if field == "total_qty":
+        if areas:
+            aq = li.get("area_qty") or {}
+            return sum(_opt_num(aq.get(a)) or 0.0 for a in areas) > 0
+        return (_opt_num(li.get("total_qty")) or 0.0) > 0
+    if field in ("supply_rate", "install_rate"):
+        return (_opt_num(li.get(field)) or 0.0) > 0
+    if field == "rate":
+        return ((_opt_num(li.get("supply_rate")) or 0.0) > 0
+                or (_opt_num(li.get("install_rate")) or 0.0) > 0)
+    return bool(str(li.get(field) or "").strip())
+
+
+def line_problems(li: dict, sections_by_code: dict) -> list:
+    """
+    The fields `_clean_lines()` would refuse on this one line, as field names —
+    the SAME rules in the same order, but every one of them rather than the
+    first. Used only to mark boxes on a refused POST; the refusal itself is
+    still `_clean_lines()`'s.
+    """
+    out = []
+    code = str(li.get("section") or "").strip()
+    if code not in sections_by_code:
+        out.append("section")
+    if not _item_no(li.get("item_no")):
+        out.append("item_no")
+    if not str(li.get("description") or "").strip():
+        out.append("description")
+    if li.get("is_header"):
+        return out
+    if not (sections_by_code.get(code) or {}).get("areas") and _num(li.get("total_qty")) < 0:
+        out.append("total_qty")
+    for f in ("supply_rate", "install_rate"):
+        v = _opt_num(li.get(f))
+        if v is not None and v < 0:
+            out.append(f)
+    for f in ("supply_hsn", "install_sac"):
+        v = str(li.get(f) or "").strip()
+        if v and not _valid_tax_code(v):
+            out.append(f)
+    return out
+
+
+def _err_met(li: dict, field: str, sections_by_code: dict) -> bool:
+    return field not in line_problems(li, sections_by_code)
+
+
+def annotate_needs(lines: list, sections: list, with_errors: bool) -> int:
+    """
+    Write `_needs` (the fields still unmet) onto every line dict, and — on a
+    refused POST (`with_errors`) — rewrite `_err` from the posted values.
+    Returns how many fields need somebody. Lines that are not dicts are left
+    alone; `_clean_lines()` skips them too.
+    """
+    by_code = {}
+    for s in sections:
+        if isinstance(s, dict):
+            by_code[str(s.get("code") or "").strip()] = s
+    total = 0
+    for li in lines:
+        if not isinstance(li, dict):
+            continue
+        areas = (by_code.get(str(li.get("section") or "").strip()) or {}).get("areas") or []
+        if with_errors:
+            li["_err"] = line_problems(li, by_code)
+        fields = []
+        for n in li.get("_need") or []:
+            f = n.get("f") if isinstance(n, dict) else None
+            if f in ("item_no", "description", "total_qty", "supply_rate",
+                     "install_rate", "rate") and f not in fields \
+                    and not _need_met(li, f, areas):
+                fields.append(f)
+        for f in li.get("_err") or []:
+            if isinstance(f, str) and f not in fields and not _err_met(li, f, by_code):
+                fields.append(f)
+        li["_needs"] = fields
+        total += len(fields)
+    return total
+
+
 def _to_block(form) -> str:
     """The printable customer address block, same construction as a quotation."""
     parts = []
@@ -2812,6 +2919,47 @@ BOQ_IMPORT_STYLES = """
   .form-hint.fh-red { background:#fef2f2; border-color:#fca5a5; border-left-color:#dc2626; }
   .form-hint.fh-red .fh-icon { color:#dc2626; }
   .form-hint.fh-red ul { margin:.35rem 0 0 1.1rem; padding:0; }
+
+  /* The guided fix (30 September 2026). A box that needs somebody: a ring
+     and an outer glow in the app's own accent, a "!" badge so the mark does
+     not rest on colour alone, and a soft pulse — off under reduced motion. */
+  /* The glow is branding.RED (#D5121A) at partial strength: --brand-lt is
+     the pale tint used for surfaces and does not read as a glow on white. */
+  .needs { border-color:var(--brand) !important;
+           box-shadow:0 0 0 2px var(--brand), 0 0 12px 3px rgba(213,18,26,.32);
+           animation:needs-pulse 1.8s ease-in-out infinite; }
+  @keyframes needs-pulse {
+    0%, 100% { box-shadow:0 0 0 2px var(--brand), 0 0 6px 1px rgba(213,18,26,.22); }
+    50%      { box-shadow:0 0 0 2px var(--brand), 0 0 18px 5px rgba(213,18,26,.40); }
+  }
+  @media (prefers-reduced-motion: reduce) { .needs { animation:none; } }
+  .has-needs { position:relative; }
+  .has-needs::after { content:"!"; position:absolute; top:-.4rem; right:-.4rem;
+                      width:1.15rem; height:1.15rem; border-radius:50%;
+                      background:var(--brand); color:#fff; font-size:.72rem;
+                      font-weight:800; line-height:1.15rem; text-align:center;
+                      pointer-events:none; box-shadow:0 0 0 2px #fff; }
+  .chip-auto, .chip-ls { display:inline-block; margin-left:.3rem; padding:0 .38rem;
+                         border-radius:999px; font-size:.66rem; font-weight:700;
+                         letter-spacing:.02em; vertical-align:middle; text-transform:none; }
+  .chip-auto { background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; }
+  .chip-ls   { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+  /* The bar: sticky under the top bar, where the jump bar would sit — which
+     moves down beneath it while it shows. */
+  .needs-bar { position:sticky; top:60px; z-index:25; display:flex; align-items:center;
+               gap:.6rem; flex-wrap:wrap; margin-bottom:1rem; padding:.55rem .8rem;
+               background:var(--surface, #fff); border:2px solid var(--brand);
+               border-radius:10px; box-shadow:var(--shadow-sm); font-size:.88rem; }
+  .needs-bar .nb-txt { flex:1 1 auto; }
+  .needs-bar .nb-txt b { color:var(--brand); font-size:1rem; }
+  .needs-bar .nb-bang, .needs-bar .nb-ok { width:1.4rem; height:1.4rem; border-radius:50%;
+               display:inline-flex; align-items:center; justify-content:center;
+               font-weight:800; color:#fff; background:var(--brand); flex:none; }
+  .needs-bar.is-done { border-color:#16a34a; }
+  .needs-bar.is-done .nb-ok { background:#16a34a; }
+  .needs-bar.is-done .nb-txt b { color:#15803d; }
+  form.needs-on .jump-bar { top:120px; }
+  .imp-need-link { color:var(--brand); font-weight:600; }
 </style>
 """
 
@@ -2831,6 +2979,9 @@ _BOQ_JS = """
 var MODEL = BOQ_BOOT;
 var SPECS = BOQ_SPECS;
 var ADDR_BOOK = BOQ_ADDR;
+/* The guided fix (30 September 2026) — {imported, refused}, set by the page in
+   a script block of its own. Absent (a test harness, an old page) is {}. */
+var GUIDE = (typeof BOQ_GUIDE !== 'undefined' && BOQ_GUIDE) || {};
 
 function el(id) { return document.getElementById(id); }
 
@@ -3110,9 +3261,9 @@ function isUnsized(sp) {
 }
 
 function fld(i, key, label, val, ph, cls) {
-  return '<div class="form-group ' + (cls || '') + '"><label>' + label + '</label>'
+  return '<div class="form-group ' + (cls || '') + needWrap(i, key) + '"><label>' + label + '</label>'
     + '<input type="text" value="' + esc(val) + '" placeholder="' + esc(ph || '') + '"'
-    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"/></div>';
+    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"' + needAttr(i, key) + '/></div>';
 }
 
 /* A rate-table cell: a bare input whose visible label is the column head above
@@ -3120,7 +3271,7 @@ function fld(i, key, label, val, ph, cls) {
 function cell(i, key, val, ph, aria) {
   return '<input type="text" value="' + esc(val) + '" placeholder="' + esc(ph || '') + '"'
     + ' aria-label="' + esc(aria) + '"'
-    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"/>';
+    + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"' + needAttr(i, key) + '/>';
 }
 
 /* One leg of the rate table: the row label, then base rate, escalation and
@@ -3135,7 +3286,7 @@ function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId) {
     +   cell(i, base, L[base], phBase, label + ' base rate') + '</div>'
     + '<div class="lc-rc" data-lbl="Escalation %">'
     +   cell(i, pct, L[pct], phPct, label + ' escalation %') + '</div>'
-    + '<div class="lc-rc" data-lbl="Unit rate">'
+    + '<div class="lc-rc' + needWrap(i, rate) + '" data-lbl="Unit rate">'
     +   cell(i, rate, L[rate], phRate, label + ' unit rate')
     +   '<div class="derived" id="' + hintId + i + '"></div></div>';
 }
@@ -3255,7 +3406,7 @@ function lineSummary(i, L) {
 
   return '<div class="ls-row" onclick="toggleLine(' + i + ')">'
     +   '<span class="ls-chev">' + chev + '</span>'
-    +   '<span class="ls-no">' + esc(L.item_no || '—') + '</span>'
+    +   '<span class="ls-no">' + esc(L.item_no || '—') + srcChip(L) + '</span>'
     +   '<span class="ls-desc">' + flagChip(L) + esc(trunc(L.description, 96)) + '</span>'
     +   (L.is_header
         ? '<span class="ls-tag">spec' + (kids.length ? ' · ' + kids.length + ' items' : '') + '</span>'
@@ -3302,10 +3453,10 @@ function lineBody(i, L) {
   var picked = L._spec || '';
   var sp = SPECS[picked];
   h += '<div class="lc-ident">'
-    +   '<div class="form-group"><label>Section</label>'
-    +     '<select onchange="setSection(' + i + ',this.value)">'
+    +   '<div class="form-group' + needWrap(i, 'section') + '"><label>Section</label>'
+    +     '<select onchange="setSection(' + i + ',this.value)"' + needAttr(i, 'section') + '>'
     +       secOptions(L.section) + '</select></div>'
-    +   fld(i, 'item_no', 'Item No.', L.item_no, '4.1')
+    +   fld(i, 'item_no', 'Item No.' + srcChip(L), L.item_no, itemPlaceholder(i))
     +   fld(i, 'parent_item_no', 'Under item', L.parent_item_no, '4')
     +   '<div class="form-group lc-src"><label>Spec library</label>'
     +     '<select onchange="fillFromSpec(' + i + ',this.value)">'
@@ -3318,9 +3469,9 @@ function lineBody(i, L) {
     +   '</div>'
     + '</div>';
 
-  h += '<div class="form-group lc-desc"><label>Description / Specification</label>'
+  h += '<div class="form-group lc-desc' + needWrap(i, 'description') + '"><label>Description / Specification</label>'
     +   '<textarea placeholder="Supply, Fabrication, Installation, Testing of ..."'
-    +    ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)">'
+    +    ' oninput="setLine(' + i + ',&quot;description&quot;,this.value)"' + needAttr(i, 'description') + '>'
     +    esc(L.description) + '</textarea></div>';
 
   if (L.is_header) {
@@ -3341,19 +3492,21 @@ function lineBody(i, L) {
   if (areas.length) {
     for (var a = 0; a < areas.length; a++) {
       var an = areas[a];
-      h += '<div class="form-group lc-area"><label>' + esc(an) + '</label>'
+      /* A quantity the import asked for is marked on the FIRST area box when
+         the section breaks its total down — the total itself is not typed. */
+      h += '<div class="form-group lc-area' + (a ? '' : needWrap(i, 'total_qty')) + '"><label>' + esc(an) + '</label>'
         +  '<input type="text" value="'
         +   esc(L.area_qty[an] == null ? '' : L.area_qty[an]) + '"'
         +  ' oninput="setArea(' + i + ',' + JSON.stringify(an).replace(/"/g, '&quot;')
-        +  ',this.value)"/></div>';
+        +  ',this.value)"' + (a ? '' : needAttr(i, 'total_qty')) + '/></div>';
     }
     h += '<div class="form-group lc-area"><label>Total Qty</label>'
       +  '<div class="readonly-field" id="tq' + i + '">'
       +   esc(totalOf(L, areas)) + '</div></div>';
   } else {
-    h += '<div class="form-group lc-area"><label>Total Qty</label>'
+    h += '<div class="form-group lc-area' + needWrap(i, 'total_qty') + '"><label>Total Qty</label>'
       +  '<input type="text" value="' + esc(L.total_qty) + '"'
-      +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"/></div>';
+      +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"' + needAttr(i, 'total_qty') + '/></div>';
   }
   h += fld(i, 'unit', 'Unit', L.unit, 'Mtrs', 'lc-area');
   if (!areas.length) {
@@ -3484,6 +3637,7 @@ function renderLines() {
 
   el('line-editor').innerHTML = h;
   renderJump();
+  renderNeedsBar();
   renderImportBlock();
   renderDupWarn();
   renderZeroQty();
@@ -3651,6 +3805,319 @@ function renderZeroQty() {
   + '</div>';
 }
 
+/* ── Fields that need somebody — the guided fix (30 September 2026) ─────
+   A line may carry `_need` (what an import asked for, set once by
+   boqimport.editor_model()) and `_err` (what the last refused save found on
+   it, rewritten by the server on every refused POST). `needsOf()` is the
+   fields of either that are still unmet; each such box is RINGED, glows,
+   carries a "!" badge and pulses (not under reduced motion), and the sticky
+   bar at the top of the form counts them with Prev / Next.
+
+   GUIDANCE ONLY. The server validates whatever arrives exactly as it always
+   has (ABOUT.md §7 gap 42 is deliberately still open). `needMet()` and
+   `errMet()` are boq.py's `_need_met()` and `line_problems()`, rule for
+   rule, and tests/test_boq_import_guided.py holds the two in step. */
+var NEED_ORDER = ['section', 'item_no', 'description', 'total_qty', 'rate',
+                  'supply_rate', 'install_rate', 'supply_hsn', 'install_sac'];
+var MARK_KEYS = ['section', 'item_no', 'description', 'total_qty',
+                 'supply_rate', 'install_rate', 'supply_hsn', 'install_sac'];
+var NEED_AT = -1;          /* where Prev / Next last took the user */
+var NEEDS_SEEN = false;    /* once shown, the bar stays to say "All filled" */
+var TAX_CODE = /^(?:\\d{4}|\\d{6}|\\d{8})$/;
+
+/* A typed figure as the server's _opt_num() reads it: blank, "-" or text is 0. */
+function figure(v) {
+  var s = String(v == null ? '' : v).replace(/,/g, '').trim();
+  if (s === '') return 0;
+  var n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
+function needMet(L, f) {
+  if (L.is_header && (f === 'total_qty' || f === 'rate'
+                      || f === 'supply_rate' || f === 'install_rate')) return true;
+  if (f === 'total_qty') {
+    var areas = (secByCode(L.section) || {}).areas || [];
+    if (areas.length) {
+      var t = 0;
+      for (var a = 0; a < areas.length; a++) t += figure((L.area_qty || {})[areas[a]]);
+      return t > 0;
+    }
+    return figure(L.total_qty) > 0;
+  }
+  if (f === 'supply_rate' || f === 'install_rate') return figure(L[f]) > 0;
+  if (f === 'rate') return figure(L.supply_rate) > 0 || figure(L.install_rate) > 0;
+  return String(L[f] == null ? '' : L[f]).trim() !== '';
+}
+
+function errMet(L, f) {
+  if (f === 'section') return !!secByCode(String(L.section || '').trim());
+  if (f === 'item_no' || f === 'description') return String(L[f] == null ? '' : L[f]).trim() !== '';
+  if (L.is_header) return true;
+  if (f === 'total_qty') {
+    var sec = secByCode(String(L.section || '').trim());
+    if (sec && sec.areas && sec.areas.length) return true;
+    return figure(L.total_qty) >= 0;
+  }
+  if (f === 'supply_rate' || f === 'install_rate') return figure(L[f]) >= 0;
+  if (f === 'supply_hsn' || f === 'install_sac') {
+    var v = String(L[f] || '').trim();
+    return !v || TAX_CODE.test(v);
+  }
+  return true;
+}
+
+function needsOf(L) {
+  var out = [], k, f;
+  if (!L) return out;
+  var need = L._need || [];
+  for (k = 0; k < need.length; k++) {
+    f = need[k] && need[k].f;
+    if (NEED_ORDER.indexOf(f) < 0 || out.indexOf(f) >= 0) continue;
+    if (!needMet(L, f)) out.push(f);
+  }
+  var err = L._err || [];
+  for (k = 0; k < err.length; k++) {
+    f = err[k];
+    if (NEED_ORDER.indexOf(f) < 0 || out.indexOf(f) >= 0) continue;
+    if (!errMet(L, f)) out.push(f);
+  }
+  out.sort(function (a, b) { return NEED_ORDER.indexOf(a) - NEED_ORDER.indexOf(b); });
+  return out;
+}
+
+/* Which rendered box carries a need: "rate" (either unit rate) marks the
+   supply one. */
+function needKeyOf(f) { return f === 'rate' ? 'supply_rate' : f; }
+
+function needFor(i, key) {
+  var n = needsOf(MODEL.lines[i]);
+  if (n.indexOf(key) >= 0) return key;
+  if (key === 'supply_rate' && n.indexOf('rate') >= 0) return 'rate';
+  return '';
+}
+
+/* The locator a box carries. The tax codes go by a short alias: their field
+   names appear once in the panel and tests/test_editor_nav.py counts them. */
+var LF_ALIAS = {supply_hsn: 'hsn', install_sac: 'sac'};
+function lfOf(key) { return LF_ALIAS[key] || key; }
+
+function needAttr(i, key) {
+  var f = needFor(i, key);
+  return ' data-lf="' + i + ':' + lfOf(key) + '"'
+    + (f ? ' data-needs="' + f + '" class="needs"' : '');
+}
+
+function needWrap(i, key) { return needFor(i, key) ? ' has-needs' : ''; }
+
+function markedEl(i, key) {
+  if (!document.querySelector) return null;
+  return document.querySelector('[data-lf="' + i + ':' + lfOf(key) + '"]');
+}
+
+function toggleMark(e, f) {
+  if (!e || !e.classList) return;
+  var wrap = e.parentNode;
+  if (f) {
+    e.setAttribute('data-needs', f);
+    e.classList.add('needs');
+    if (wrap && wrap.classList) wrap.classList.add('has-needs');
+  } else {
+    e.removeAttribute('data-needs');
+    e.classList.remove('needs');
+    if (wrap && wrap.classList) wrap.classList.remove('has-needs');
+  }
+}
+
+/* A value was typed: re-mark this line's boxes WITHOUT a re-render, which
+   would take the caret with it, and recount. */
+function refreshNeeds(i) {
+  for (var k = 0; k < MARK_KEYS.length; k++) {
+    toggleMark(markedEl(i, MARK_KEYS[k]), needFor(i, MARK_KEYS[k]));
+  }
+  renderNeedsBar();
+}
+
+/* Form fields the server marked on a refused save (project, customer, date). */
+function formNeeds() {
+  var out = [];
+  if (!document.querySelectorAll) return out;
+  var els = document.querySelectorAll('[data-needs-form]');
+  for (var k = 0; k < els.length; k++) {
+    if (String(els[k].value || '').trim() === '') out.push({el: els[k]});
+  }
+  return out;
+}
+
+function needList() {
+  var out = formNeeds();
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    var n = needsOf(MODEL.lines[i]);
+    for (var k = 0; k < n.length; k++) out.push({i: i, f: n[k]});
+  }
+  return out;
+}
+
+function renderNeedsBar() {
+  var box = el('needs-bar');
+  if (!box) return;
+  var n = needList().length;
+  if (n > 0) NEEDS_SEEN = true;
+  var form = box.parentNode;
+  if (!NEEDS_SEEN) {
+    box.style.display = 'none';
+    if (form && form.classList) form.classList.remove('needs-on');
+    return;
+  }
+  box.style.display = '';
+  if (form && form.classList) form.classList.add('needs-on');
+  box.className = 'needs-bar' + (n ? '' : ' is-done');
+  box.setAttribute('data-count', String(n));
+  box.innerHTML = n
+    ? '<span class="nb-bang" aria-hidden="true">!</span>'
+      + '<span class="nb-txt" role="status"><b>' + n + '</b> field' + (n === 1 ? ' needs' : 's need') + ' you</span>'
+      + '<button type="button" class="jb-btn" onclick="goNeed(-1)">&#8592; Prev</button>'
+      + '<button type="button" class="jb-btn" onclick="goNeed(1)">Next &#8594;</button>'
+    : '<span class="nb-ok" aria-hidden="true">&#10003;</span>'
+      + '<span class="nb-txt" role="status"><b>All filled</b> &#8212; review and save</span>';
+}
+
+/* Open whatever hides line i: the line, its section, its header. Returns
+   whether anything changed, so the caller knows to re-render. */
+function openNeedPath(i) {
+  var L = MODEL.lines[i], changed = false;
+  if (!isOpen(L)) { L._open = true; changed = true; }
+  var S = secByCode(L.section);
+  if (S && !isOpen(S)) { S._open = true; changed = true; }
+  if (L.parent_item_no) {
+    for (var j = 0; j < MODEL.lines.length; j++) {
+      var P = MODEL.lines[j];
+      if (P.is_header && P.section === L.section && P.item_no === L.parent_item_no && !isOpen(P)) {
+        P._open = true;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+function reducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/* Prev (-1) / Next (+1): the next unmet field to the CENTRE of the screen,
+   focused. Wraps at either end. */
+function goNeed(dir) {
+  var list = needList();
+  if (!list.length) { renderNeedsBar(); return; }
+  if (NEED_AT < 0 || NEED_AT >= list.length) NEED_AT = dir > 0 ? -1 : list.length;
+  NEED_AT = (NEED_AT + dir + list.length) % list.length;
+  var t = list[NEED_AT];
+  var target = t.el;
+  if (!target) {
+    if (openNeedPath(t.i)) renderLines();
+    target = markedEl(t.i, needKeyOf(t.f));
+  }
+  if (!target) return;
+  if (target.scrollIntoView) {
+    target.scrollIntoView({block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth'});
+  }
+  if (target.focus) target.focus({preventScroll: true});
+}
+
+/* A link in the import summary: "#need-<line>-<field>". */
+function needLink(i, f) {
+  var list = needList();
+  NEED_AT = -1;
+  for (var k = 0; k < list.length; k++) {
+    if (list[k].i === i && list[k].f === f) { NEED_AT = k - 1; break; }
+  }
+  goNeed(1);
+  return false;
+}
+
+/* Before the first render: every line with an unmet field is opened, so its
+   marked boxes exist on the page and the count is what the eye can find. */
+function bootNeeds() {
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    if (needsOf(MODEL.lines[i]).length) openNeedPath(i);
+  }
+}
+
+/* After it: wire the server-marked form fields, draw the bar, and — on a
+   form opened from an import — take the user to the first field (or the one
+   the preview's link named). */
+function startNeeds() {
+  if (document.querySelectorAll) {
+    var els = document.querySelectorAll('[data-needs-form]');
+    for (var k = 0; k < els.length; k++) {
+      els[k].addEventListener('input', function () {
+        toggleMark(this, String(this.value || '').trim() ? '' : this.getAttribute('data-needs-form'));
+        renderNeedsBar();
+      });
+    }
+  }
+  renderNeedsBar();
+  if (!GUIDE.imported) return;
+  var h = (typeof location !== 'undefined' && location.hash) || '';
+  var m = /^#need-(\\d+)-([a-z_]+)$/.exec(h);
+  if (m) { needLink(parseInt(m[1], 10), m[2]); return; }
+  NEED_AT = -1;
+  goNeed(1);
+}
+
+/* The source of an item number and a lump sum, on the row and in its panel:
+   "auto" = worked out from the sheet's structure; "LS · review" = an amount
+   with no quantity or rate, taken as 1 LS. Chips, not marks: no glow. */
+function srcChip(L) {
+  var h = '';
+  if (L._item_src === 'auto') {
+    h += ' <span class="chip-auto" title="Worked out from the sheet&#39;s structure &#8212; check it">auto</span>';
+  }
+  if (L._ls) {
+    h += ' <span class="chip-ls" title="An amount with no quantity or rate on the sheet, taken as 1 LS">LS &middot; review</span>';
+  }
+  return h;
+}
+
+/* The suggested item number (30 September 2026): under a parent, the next
+   free child in the SAME convention the spec-library insert and the importer
+   use — 24.a, 24.b … 24.z, 24.aa. It used to read "4.1" whatever the row. */
+function subLabel(n) {
+  var s = '';
+  n = n + 1;
+  while (n) {
+    var r = (n - 1) % 26;
+    s = String.fromCharCode(97 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function nextChildNo(p, code, self) {
+  var top = 0;
+  for (var j = 0; j < MODEL.lines.length; j++) {
+    if (j === self) continue;
+    var C = MODEL.lines[j];
+    if (C.section !== code) continue;
+    var ino = String(C.item_no || '');
+    if (ino.indexOf(p + '.') !== 0) continue;
+    var t = ino.slice(p.length + 1).toLowerCase();
+    if (!/^[a-z]+$/.test(t)) continue;
+    var n = 0;
+    for (var c = 0; c < t.length; c++) n = n * 26 + (t.charCodeAt(c) - 96);
+    top = Math.max(top, n);
+  }
+  return p + '.' + subLabel(top);
+}
+
+function itemPlaceholder(i) {
+  var L = MODEL.lines[i];
+  var p = String((L && L.parent_item_no) || '').trim();
+  return p ? nextChildNo(p, L.section, i) : '4.a';
+}
+
 /* ── Imported lines still waiting for a quantity — RED, and it BLOCKS ─────
    The one band on this form that stops a save, because the thing it guards
    is the one this form cannot guard on the server: a blank quantity is saved
@@ -3762,6 +4229,11 @@ function setLine(i, key, val) {
   /* An imported line waiting for its quantity: the red band follows the
      typing, without a re-render. */
   if (key === 'total_qty' && L._block) renderImportBlock();
+  if (key === 'parent_item_no') {
+    var ino = markedEl(i, 'item_no');
+    if (ino) ino.setAttribute('placeholder', itemPlaceholder(i));
+  }
+  refreshNeeds(i);
 }
 
 function setArea(i, area, val) {
@@ -3770,6 +4242,7 @@ function setArea(i, area, val) {
   var box = el('tq' + i);
   if (box && sec) box.textContent = totalOf(MODEL.lines[i], sec.areas || []);
   if (MODEL.lines[i]._block) renderImportBlock();
+  refreshNeeds(i);
 }
 
 function setSection(i, code) {
@@ -3999,6 +4472,14 @@ function saveJSON() {
     if (band && band.scrollIntoView) band.scrollIntoView({block: 'start'});
     return false;
   }
+  /* A field the import (or the last refused save) marked is still empty:
+     stop HERE and take the user to the first one. Guidance only — the server
+     validates whatever arrives, exactly as before. */
+  if (needList().length) {
+    NEED_AT = -1;
+    goNeed(1);
+    return false;
+  }
   el('boq_json').value = JSON.stringify(MODEL);
   return true;
 }
@@ -4043,7 +4524,9 @@ function applyAddr(kind, sel) {
 }
 
 renderSections();
+bootNeeds();
 renderLines();
+startNeeds();
 </script>
 """
 
@@ -4068,6 +4551,8 @@ def create_boq(imported: dict = None):
     sections: list = []
     lines: list = []
     blockers: list = []
+    need_count = 0
+    form_needs: list = []
 
     if request.method == "POST":
         form = request.form
@@ -4238,6 +4723,15 @@ def create_boq(imported: dict = None):
                 if isinstance(sec, dict) and sec.get("code") == bad_section:
                     sec["_open"] = True
 
+        # …and MARK every box this save refused, on every line, plus whatever
+        # an import still asks for — computed HERE from the posted values, so
+        # the page comes back with the same rings the browser was showing
+        # (the guided fix, 30 September 2026). Guidance only: the refusal
+        # above is the authority and nothing here changes what is accepted.
+        need_count = annotate_needs(lines, sections, with_errors=True)
+        form_needs = [k for k in ("date", "project_name", "account_name")
+                      if not (form.get(k) or "").strip()]
+
     # Filled by ?demo=1 below. Bound here so `_v` closes over something real
     # whichever branch runs.
     prefill: dict = {}
@@ -4309,6 +4803,38 @@ def create_boq(imported: dict = None):
         prefill = dict(imported.get("prefill") or {})
         import_banner = imported.get("banner_html", "")
         form_action = f' action="{url_for("boq.create_boq")}"'
+        need_count = annotate_needs(boot.get("lines") or [], boot.get("sections") or [],
+                                    with_errors=False)
+
+    # The guided fix's sticky bar. Drawn here with the server's own count, so
+    # the page says it before any script runs; `renderNeedsBar()` takes over.
+    def _fmark(key: str) -> str:
+        """The mark on a header field this refused save found empty."""
+        if key not in form_needs:
+            return ""
+        return f' data-needs-form="{key}" data-needs="{key}" class="needs"'
+
+    def _fwrap(key: str) -> str:
+        return " has-needs" if key in form_needs else ""
+
+    all_needs = need_count + len(form_needs)
+    if all_needs:
+        needs_bar = (f'<div id="needs-bar" class="needs-bar" data-count="{all_needs}">'
+                     f'<span class="nb-bang" aria-hidden="true">!</span>'
+                     f'<span class="nb-txt" role="status"><b>{all_needs}</b> field'
+                     f'{"s need" if all_needs != 1 else " needs"} you</span>'
+                     f'<button type="button" class="jb-btn" onclick="goNeed(-1)">&#8592; Prev</button>'
+                     f'<button type="button" class="jb-btn" onclick="goNeed(1)">Next &#8594;</button>'
+                     f'</div>')
+    else:
+        needs_bar = '<div id="needs-bar" class="needs-bar" data-count="0" style="display:none;"></div>'
+    # Where the page came from, for `startNeeds()`. Written INSIDE the page's
+    # one script block (tests/test_hardening.py counts them), ahead of
+    # `_BOQ_JS`, which reads it only if it is there — a harness that loads
+    # `_BOQ_JS` alone gets {}.
+    guide_js = ("var BOQ_GUIDE = " + _json_for_script(
+        {"imported": imported is not None and request.method == "GET",
+         "refused": bool(error)}) + ";")
 
     # ── The supersedes selector ────────────────────────────────────────────
     #
@@ -4408,6 +4934,7 @@ def create_boq(imported: dict = None):
             '</div>')
 
     js = (_BOQ_JS
+          .replace("<script>", "<script>\n" + guide_js, 1)
           .replace("BOQ_BOOT", _json_for_script(boot))
           .replace("BOQ_SPECS", _spec_catalog_json())
           .replace("BOQ_ADDR", _json_for_script(picker_payload())))
@@ -4443,13 +4970,14 @@ def create_boq(imported: dict = None):
 
   <form method="POST"{form_action} onsubmit="return saveJSON()">
     <input type="hidden" id="boq_json" name="boq_json"/>
+    {needs_bar}
 
     <div class="form-section">
       <div class="section-title">&#128203; BOQ Details</div>
       <div class="fg4">
-        <div class="form-group">
+        <div class="form-group{_fwrap('date')}">
           <label for="date">Date</label>
-          <input type="date" id="date" name="date" value="{_v('date', today)}" required/>
+          <input type="date" id="date" name="date" value="{_v('date', today)}"{_fmark('date')} required/>
         </div>
         <div class="form-group">
           <label for="rev_no">Revision No.</label>
@@ -4459,10 +4987,10 @@ def create_boq(imported: dict = None):
           <label for="supersedes">Supersedes</label>
           {supersedes_html}
         </div>
-        <div class="form-group span2">
+        <div class="form-group span2{_fwrap('project_name')}">
           <label for="project_name">Project Name <span style="font-weight:500;text-transform:none;">(printed on the sheet)</span></label>
           <input type="text" id="project_name" name="project_name"
-                 value="{_v('project_name')}" placeholder="Sify Bangalore" required/>
+                 value="{_v('project_name')}" placeholder="Sify Bangalore"{_fmark('project_name')} required/>
         </div>
         <div class="form-group span2">
           <label for="site_location">Site Location</label>
@@ -4515,10 +5043,10 @@ def create_boq(imported: dict = None):
         </a>
       </div>
       <div class="fg2">
-        <div class="form-group">
+        <div class="form-group{_fwrap('account_name')}">
           <label for="account_name">Account Name</label>
           <input type="text" id="account_name" name="account_name"
-                 value="{_v('account_name')}" placeholder="Prudent Teqtis Pvt Ltd" required/>
+                 value="{_v('account_name')}" placeholder="Prudent Teqtis Pvt Ltd"{_fmark('account_name')} required/>
         </div>
         <div class="form-group">
           <label for="contact_person">Contact Person</label>

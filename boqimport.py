@@ -68,6 +68,7 @@ buffer is bounded before a byte is read.
 import datetime
 import io
 import json
+import re
 import secrets
 import time
 
@@ -288,22 +289,63 @@ def num_text(v) -> str:
     return repr(f)
 
 
+def _with_make(remark: str, make: str) -> str:
+    """The sheet's Make column, kept in the line's remark — "Make: Jindal"."""
+    make = (make or "").strip()
+    if not make:
+        return remark
+    bit = f"Make: {make}"
+    return f"{remark}; {bit}" if remark else bit
+
+
 def editor_model(result: dict) -> dict:
     """
     `sheetimport.build()`'s result as the editor's boot model — the shape
-    `boq._form_payload_from()` produces, plus three UI keys the editor draws
-    and `boq._clean_lines()` never reads:
+    `boq._form_payload_from()` produces, plus UI keys the editor draws and
+    `boq._clean_lines()` never reads:
 
-        _flags  the row's flag sentences — a chip on the row
-        _block  the quantity was left blank by a flag — red, and the form
-                refuses to submit until it is typed (ABOUT.md §7 gap 42)
-        _row    the source row number, for the chip and the band
+        _flags     the row's flag sentences — a chip on the row
+        _block     the quantity was left blank by a flag — red, and the form
+                   refuses to submit until it is typed (ABOUT.md §7 gap 42)
+        _row       the source row number, for the chip and the band
+        _need      the fields the import needs somebody to fill —
+                   [{"f": field, "m": sentence}]; the guided fix rings them
+        _item_src  "auto" (worked out from the sheet's structure — an "auto"
+                   chip) or "sheet"; the item-number source lives HERE only
+        _ls        a lump sum — an "LS · review" chip
+
+    ⚠ **Spec text and sub-headings are FOLDED, not sent as lines** (30 Sep
+      2026). `build()` derives them as the brief states — a header with no
+      item number — but the save refuses every line without one
+      (`_clean_lines()`: "Line N needs an item number"), and what the save
+      accepts is not this pass's to change. So a spec-text row's words are
+      appended to its parent's description, where a BOQ header carries its
+      clause anyway, and a sub-heading's to its section's title. A Make on
+      either goes into the parent's remark. Nothing on the sheet is dropped.
 
     Every line goes in with a blank `line_id`, so each is minted on save.
     """
-    lines = []
+    sections = [{"code": s["code"], "title": s["title"], "areas": []}
+                for s in result["sections"]]
+    sec_at = {s["code"]: k for k, s in enumerate(sections)}
+    lines, last = [], {}
     for l in result["lines"]:
         header = bool(l["is_header"])
+        if header and not l["item_no"] and l.get("kind") in ("spec_text", "subheading"):
+            text = (l["description"] or "").strip()
+            tgt = last.get((l["section"], l["parent_item_no"])) if l["parent_item_no"] else None
+            if tgt is not None:
+                row = lines[tgt]
+                if text:
+                    base = row["description"].rstrip()
+                    row["description"] = f"{base}\n{text}" if base else text
+                row["remark"] = _with_make(row["remark"], l.get("make"))
+            elif l["section"] in sec_at:
+                sec = sections[sec_at[l["section"]]]
+                bits = [b for b in (text, f"Make: {l['make']}" if l.get("make") else "") if b]
+                if bits:
+                    sec["title"] = " — ".join(([sec["title"]] if sec["title"] else []) + bits)
+            continue
         row = {
             "line_id": "",
             "item_no": l["item_no"],
@@ -311,7 +353,7 @@ def editor_model(result: dict) -> dict:
             "section": l["section"],
             "is_header": header,
             "description": l["description"],
-            "remark": "",
+            "remark": _with_make("", l.get("make")),
             "unit": "" if header else l["unit"],
             "area_qty": {},
             "total_qty": "" if header else num_text(l["qty"]),
@@ -329,10 +371,17 @@ def editor_model(result: dict) -> dict:
             row["_flags"] = [f"Row {l['row']}: {m}" for m in l["flags"]]
         if l["block"] and not header:
             row["_block"] = True
+        if l.get("needs") and not header:
+            row["_need"] = [{"f": n["field"], "m": f"Row {l['row']}: {n['message']}"}
+                            for n in l["needs"]]
+        if l.get("item_src"):
+            row["_item_src"] = l["item_src"]
+        if l.get("lump_sum"):
+            row["_ls"] = True
         lines.append(row)
-    return {"sections": [{"code": s["code"], "title": s["title"], "areas": []}
-                         for s in result["sections"]],
-            "lines": lines}
+        if l["item_no"]:
+            last[(l["section"], l["item_no"])] = len(lines) - 1
+    return {"sections": sections, "lines": lines}
 
 
 def too_large(model: dict) -> str:
@@ -388,6 +437,16 @@ IMPORT_STYLES = """
 .imp-banner details{margin-top:.5rem;}
 .imp-banner summary{cursor:pointer;font-weight:600;}
 .imp-actions{display:flex;gap:.7rem;flex-wrap:wrap;justify-content:flex-end;margin-top:1rem;}
+.imp-summary{display:grid;gap:.6rem;margin-top:.7rem;}
+.imp-group{border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:.6rem .8rem;background:#fff;}
+.imp-group.is-red{border-color:#fca5a5;background:#fff7f7;}
+.imp-group h3{font-size:.9rem;margin:0;font-weight:600;}
+.imp-group h3 b{font-size:1rem;}
+.imp-group.is-red h3 b{color:#b91c1c;}
+.imp-group summary{cursor:pointer;font-size:.88rem;}
+.imp-tag{display:inline-block;margin-left:.3rem;padding:0 .4rem;border-radius:999px;font-size:.68rem;font-weight:700;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;vertical-align:middle;}
+.imp-need-link{color:#b91c1c;font-weight:600;}
+.imp-linkish{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-decoration:underline;}
 </style>
 """
 
@@ -539,6 +598,113 @@ def _flag_list(flags: list, limit: int = BANNER_FLAG_ROWS) -> str:
     return f'<ul class="imp-flags">{"".join(items)}</ul>' if items else ""
 
 
+FIELD_NAME = {"total_qty": "Quantity", "supply_rate": "Supply rate",
+              "install_rate": "Installation rate", "rate": "Rate",
+              "item_no": "Item No.", "description": "Description"}
+COL_NAME = {"supply_amount": "supply", "install_amount": "installation", "amount": "amount"}
+
+# The grouped summary lists at most this many entries per group, then counts.
+SUMMARY_ROWS = 60
+
+# What the preview posts to confirm AND land on one field: "confirm@<line>.<field>".
+_GOTO = re.compile(r"^\d{1,4}\.[a-z_]{1,20}$")
+
+
+def summary_html(result: dict, model: dict, on_form: bool) -> str:
+    """
+    The import, GROUPED (30 September 2026) — what used to be one line per
+    flagged cell. Four groups, each counted:
+
+      N fields need you            every blocking flag, each a link to its
+                                   box on the prefilled form
+      N item numbers filled in     from the sheet's structure — "auto" chips
+      N lump sums                  an amount alone, taken as 1 LS — review
+      N subtotals checked          every total row, footed; which do not add up
+
+    and, folded, any other note the reader left (a rate cell it could not
+    read, a cut cell, a renamed section) so nothing it said is hidden.
+
+    On the preview a link is a submit button that confirms and lands on the
+    field; on the form it is an anchor handled by `needLink()`.
+    """
+    lines = model["lines"]
+    needs = [(i, n) for i, ln in enumerate(lines) for n in (ln.get("_need") or [])]
+
+    def link(i, n):
+        ln = lines[i]
+        f = n["f"]
+        what = (f"line {i + 1}" + (f" &middot; item {P.esc(ln['item_no'])}" if ln["item_no"] else "")
+                + f" &middot; {FIELD_NAME.get(f, P.esc(f))}")
+        if on_form:
+            return (f'<a class="imp-need-link" href="#need-{i}-{P.esc(f)}" '
+                    f'onclick="return needLink({i},&#39;{P.esc(f)}&#39;)">{what}</a>')
+        return (f'<button class="imp-need-link imp-linkish" type="submit" name="action" '
+                f'value="confirm@{i}.{P.esc(f)}">{what}</button>')
+
+    parts = []
+    n = len(needs)
+    items = "".join(f"<li>{link(i, nd)} &mdash; {P.esc(nd['m'])}</li>"
+                    for i, nd in needs[:SUMMARY_ROWS])
+    if n > SUMMARY_ROWS:
+        items += f"<li>&hellip; and {n - SUMMARY_ROWS} more.</li>"
+    parts.append(
+        f'<div class="imp-group{" is-red" if n else ""}"><h3><b>{n}</b> field'
+        f'{"s need" if n != 1 else " needs"} you</h3>'
+        + (f'<ul class="imp-flags">{items}</ul>' if n else
+           '<p class="imp-note">Nothing blocks the save.</p>') + "</div>")
+
+    auto = [(i, ln) for i, ln in enumerate(lines) if ln.get("_item_src") == "auto"]
+    sheet_n = (result.get("counts") or {}).get("sheet_items", 0)
+    eg = ", ".join(P.esc(ln["item_no"]) for _i, ln in auto[:12]) + ("&hellip;" if len(auto) > 12 else "")
+    parts.append(
+        f'<div class="imp-group"><h3><b>{len(auto)}</b> item number'
+        f'{"s" if len(auto) != 1 else ""} filled in from the sheet&rsquo;s structure '
+        f'<span class="imp-tag">review</span></h3>'
+        + (f'<p class="imp-note">A priced row with no number of its own under a numbered '
+           f'line becomes its sub-item &mdash; {eg}. Each is marked <b>auto</b> on the form.'
+           + (f' {sheet_n} more took the sub-label the sheet wrote.' if sheet_n else "")
+           + "</p>" if auto else
+           (f'<p class="imp-note">{sheet_n} sub-item number{"s" if sheet_n != 1 else ""} '
+            f'came from the sheet as written.</p>' if sheet_n else "")) + "</div>")
+
+    ls = [(i, ln) for i, ln in enumerate(lines) if ln.get("_ls")]
+    ls_items = "".join(
+        f"<li>Row {int(ln.get('_row') or 0)} &middot; item {P.esc(ln['item_no']) or '&mdash;'}: "
+        f"{P.esc((ln.get('_flags') or [''])[-1])}</li>" for _i, ln in ls[:SUMMARY_ROWS])
+    parts.append(
+        f'<div class="imp-group"><h3><b>{len(ls)}</b> lump sum{"s" if len(ls) != 1 else ""} '
+        f'<span class="imp-tag">review</span></h3>'
+        + (f'<ul class="imp-flags">{ls_items}</ul>' if ls else "") + "</div>")
+
+    checks = result.get("checks") or []
+    bad = [c for c in checks if c.get("status") != "match"]
+    if not checks:
+        chk = '<p class="imp-note">No subtotal or total rows with a figure were found.</p>'
+    elif not bad:
+        chk = '<p class="imp-note"><span class="imp-ok">All of them add up.</span> ' + ", ".join(
+            f"row {int(c['row'])} ({P.esc(c['kind'])})" for c in checks[:SUMMARY_ROWS]) + "</p>"
+    else:
+        rows = []
+        for c in bad[:SUMMARY_ROWS]:
+            figs = "; ".join(f"{COL_NAME.get(f['col'], P.esc(f['col']))}: sheet {_money(f['sheet'])}, "
+                             f"the lines above {_money(f['lines'])}" for f in c["figures"])
+            rows.append(f'<li class="is-red">Row {int(c["row"])} &ldquo;{P.esc(c.get("label"))}&rdquo; '
+                        f'does not add up &mdash; {figs}</li>')
+        chk = (f'<p class="imp-note"><span class="imp-bad">{len(bad)} do not add up</span>; '
+               f'{len(checks) - len(bad)} do.</p><ul class="imp-flags">{"".join(rows)}</ul>')
+    parts.append(f'<div class="imp-group"><h3><b>{len(checks)}</b> subtotal'
+                 f'{"s" if len(checks) != 1 else ""} checked</h3>{chk}</div>')
+
+    covered = {"no_qty", "no_rate_amt", "no_rate", "mismatch", "no_item", "no_desc",
+               "lump_sum", "total_bad"}
+    notes = [f for f in result.get("flags") or [] if f.get("kind") not in covered]
+    if notes:
+        parts.append(f'<details class="imp-group"><summary><b>{len(notes)}</b> other note'
+                     f'{"s" if len(notes) != 1 else ""} from the reader</summary>'
+                     f'{_flag_list(notes)}</details>')
+    return f'<div class="imp-summary">{"".join(parts)}</div>'
+
+
 def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     grid = _grid(rec)
     sheet = _sheet(rec)
@@ -602,13 +768,14 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
                  'top. Choose what each column holds.</p>')
 
     c = result["counts"]
-    red = sum(1 for f in result["flags"] if f.get("severity") == "red")
+    model = editor_model(result)
+    heads = sum(1 for l in model["lines"] if l["is_header"])
     stats = (f'<div class="imp-stats"><span><b>{c["lines"]}</b> lines</span>'
-             f'<span><b>{c["headers"]}</b> spec headers</span>'
-             f'<span><b>{c["sections"]}</b> sections</span>'
-             f'<span><b>{c["totals_dropped"]}</b> total rows left out</span>'
-             f'<span><b>{len(result["flags"])}</b> flagged cells'
-             f'{f" ({red} blocking)" if red else ""}</span></div>')
+             f'<span><b>{heads}</b> spec headers</span>'
+             f'<span><b>{len(result["sections"])}</b> sections</span>'
+             f'<span><b>{c["totals_dropped"]}</b> total rows checked, not imported</span>'
+             + (f'<span><b>{c["repeats"]}</b> repeated heading rows skipped</span>'
+                if c.get("repeats") else "") + '</div>')
 
     known = ""
     if rec.get("layout") and rec["layout"] in _layouts():
@@ -663,10 +830,11 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       <h2>What will be imported</h2>
       {stats}
       <p style="margin:.6rem 0 0;font-size:.85rem;">{_totals_html(result["totals"])}</p>
-      {_flag_list(result["flags"])}
-      <p class="imp-note">Every flagged cell is left <b>blank</b> on the form &mdash;
-      nothing is worked out or turned into 0. A red one is a quantity: the form will
-      not save until you type it or remove the line.</p>
+      {summary_html(result, model, on_form=False)}
+      <p class="imp-note">A field that needs you is left <b>blank</b> on the form &mdash;
+      nothing is worked out or turned into 0 &mdash; and ringed there; the form will not
+      save until each is filled. A link above confirms these columns and opens the form
+      on that field.</p>
       <div class="imp-actions">
         <button class="btn" type="submit" name="action" value="confirm">Confirm &amp; open the BOQ form</button>
       </div>
@@ -675,7 +843,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     return _page("Import BOQ", body)
 
 
-def _banner(token: str, rec: dict, result: dict) -> str:
+def _banner(token: str, rec: dict, result: dict, model: dict) -> str:
     """The summary that sits on top of the prefilled form. Escaped here; the
     form's own `demo_banner` sits beside it."""
     c = result["counts"]
@@ -696,17 +864,14 @@ def _banner(token: str, rec: dict, result: dict) -> str:
                f'(“R.O.”, “NA”, a sum written as text&hellip;). Those rows are marked '
                f'red. Type the quantity, or remove the line &mdash; a blank quantity '
                f'would be saved as 0, and an RA bill cannot claim against a line at 0.</p>')
-    flags = ""
-    if result["flags"]:
-        flags = (f'<details{" open" if blocked else ""}><summary>{len(result["flags"])} '
-                 f'flagged cell{"s" if len(result["flags"]) != 1 else ""}, by row</summary>'
-                 f'{_flag_list(result["flags"])}</details>')
+    flags = summary_html(result, model, on_form=True)
     cls = "imp-banner has-red" if blocked else "imp-banner"
     return (f'<div class="{cls}">&#128229; Imported from <b>{P.esc(rec.get("filename"))}</b>, '
             f'sheet “{P.esc(sheet.get("name"))}” &mdash; {c["lines"]} lines, '
-            f'{c["headers"]} spec headers, {len(result["sections"])} section'
+            f'{sum(1 for l in model["lines"] if l["is_header"])} spec headers, '
+            f'{len(result["sections"])} section'
             f'{"s" if len(result["sections"]) != 1 else ""}; {c["totals_dropped"]} total '
-            f'row{"s" if c["totals_dropped"] != 1 else ""} left out. '
+            f'row{"s" if c["totals_dropped"] != 1 else ""} checked and left out. '
             f'<b>Nothing has been saved.</b> Check the lines, fill in the project and '
             f'customer, then press Create BOQ &mdash; or just leave the page.'
             f'<p style="margin:.4rem 0 0;">{_totals_html(result["totals"])}</p>'
@@ -765,7 +930,16 @@ def preview(token: str):
     posted = {k[4:]: v for k, v in request.form.items() if k.startswith("map_")}
     rec["mapping"] = SI.clean_mapping(grid, posted)
 
-    if request.form.get("action") != "confirm":
+    # "confirm@<line>.<field>" is a link in the grouped summary: confirm, and
+    # land on that field. Anything that is not exactly that shape is ignored.
+    action = request.form.get("action") or ""
+    goto = ""
+    if action.startswith("confirm@"):
+        goto = action[len("confirm@"):]
+        action = "confirm"
+        if not _GOTO.match(goto):
+            goto = ""
+    if action != "confirm":
         return redirect(url_for("boqimport.preview", token=token), code=303)
 
     problems = SI.mapping_problems(grid, rec["mapping"])
@@ -777,7 +951,11 @@ def preview(token: str):
     _upsert_layout(grid, rec["mapping"])
     rec["layout"] = SI.signature(grid)
     rec["confirmed"], rec["known"] = True, False
-    return redirect(url_for("boqimport.form", token=token), code=303)
+    dest = url_for("boqimport.form", token=token)
+    if goto:
+        line_i, field = goto.split(".", 1)
+        dest += f"#need-{int(line_i)}-{field}"
+    return redirect(dest, code=303)
 
 
 @boqimport_bp.route("/<token>/form")
@@ -802,8 +980,10 @@ def form(token: str):
         rec["known"], rec["confirmed"] = False, False
         return _preview_page(token, rec, error=refusal)
 
+    # IMPORT_STYLES rides with the banner: /boq/create does not load it, so the
+    # banner's own classes were unstyled there until 30 September 2026.
     html = BQ.create_boq(imported={"boot": model, "prefill": {},
-                                   "banner_html": _banner(token, rec, result)})
+                                   "banner_html": IMPORT_STYLES + _banner(token, rec, result, model)})
     # Consumed. A known layout keeps its row for the Change-mapping link; the
     # 24-hour purge takes it.
     if rec.get("confirmed"):

@@ -7114,6 +7114,16 @@ non-repeating, because it is the key every RA bill quotes back.
 
 ---
 
+**The suggested item number follows the letter convention (30 September
+2026).** The editor's Item No. placeholder read `4.1` on every row. Under a
+parent it is now that parent's next free child in the convention the
+spec-library insert and the importer use — `24.c` after `24.a` and `24.b`,
+`24.aa` after `24.z` (`nextChildNo()`, updated as *Under item* is typed); with
+no parent it reads `4.a`, the example beside *Under item*'s `4`. A placeholder
+only — nothing is filled in. **The guided fix** (rings, the sticky bar, the
+server-side marks on a refused save for every BOQ) is described under
+`/boq/import` below, because the import is what it was built for.
+
 ### `/boq/import` — Import BOQ from Excel · [boqimport.py](boqimport.py) · [sheetimport.py](sheetimport.py)
 
 **Built 29 September 2026, v1** — CLIENT_CHANGES.md §0 **thirty-fourth** block:
@@ -7162,15 +7172,33 @@ Every sheet is listed with its visibility; a **hidden sheet is never
 pre-selected**. The pre-selected sheet is the visible one with the most rows
 carrying a number in both a quantity-like and a rate-like column, ties broken by
 rows with a quantity at all — a workbook whose rate cells are empty otherwise
-chose its one-page summary. The header is the row, or the two-row pair
-("Supply" over "Rate | Amount"), in the first 40 rows with the most keyword
-hits; a pair's lower row must be heading words only, which is what stops a data
-row with "Rate Only" in it being swallowed. Every column then gets a guessed
-target the operator can change:
+chose its one-page summary. The header is the **FIRST** row, or two-row pair
+("Supply" over "Rate | Amount"), in the first 40 rows that reads as a heading —
+keyword hits in at least **two** cells, so a one-cell title never qualifies; a
+pair's lower row must be heading words only, which is what stops a data row
+with "Rate Only" in it being swallowed. ⚠ **First, not best-scoring, from 30
+September 2026**: the Sify sheet prints its heading again above section B, the
+repeat out-scored the original, and every line above it — all 18 of section A —
+was dropped with nothing said. A later row that repeats the heading (two or
+more cells sharing a keyword with the heading's own label in that column, no
+non-zero figure) is **skipped**, never a line and never flagged, and so is a
+heading remnant: no figure, no item or description, only heading words ("U/
+Rate", "AMT") in the figure columns. Every column then gets a guessed target the
+operator can change:
 
 `item_no · description · qty · unit · supply_base_rate · escalation_pct ·
 supply_rate · supply_amount · install_base_rate · install_escalation_pct ·
-install_rate · install_amount · amount` — the three amounts are **check only**.
+install_rate · install_amount · amount · make` — the three amounts are **check
+only**, and `make` ("Make", "Brand") goes into the line's **remark** as
+`Make: Jindal` (30 September 2026): a BOQ line has no make field, the remark is
+captured and never printed, and the brand is no longer lost.
+
+⚠ **An Amount column whose heading names no track takes the track of the rate
+column directly to its left** (30 September 2026) — "Supply | Amount |
+Installation | Amount" is the Jamnagar sheet's shape, where the first Amount
+read as a combined figure and the second was ignored. Only when the heading is
+silent and only from a rate column already given a track; the dropdown shows
+the result and can undo it.
 
 ⚠ **A rate column is given a track only when its own header or the band above it
 names one.** Otherwise it arrives as **"?"** and confirm refuses until the
@@ -7186,26 +7214,144 @@ Description or Quantity column.
 
 | row | becomes |
 |---|---|
-| description + a quantity or rate (or a flagged one) | a **line** |
-| description, no quantity, no rate | a **specification header**, with `parent_item_no` wired to the lines under it (`24` → `24.a`; `2.1.4` → `2.1.4.1`; `a)` under the last header) |
-| a section code (`A`, `SECTION B`, `II`) or an ALL-CAPS title with nothing else | a **section**; lines above the first take the first free code; a repeated code is renamed `A-2` and flagged |
-| `Total`, `Sub Total`, `Total of 4.0`, `Grand Total`, `Carried forward` | **dropped**; the grand total is kept for the check |
+| a **section** code (`A`, `SECTION B`, `II`, `(A) BOQ FOR …`) or an ALL-CAPS title with nothing else | a **section**; lines above the first take the first free code; a repeated code is renamed `A-2` and flagged. ⚠ A code-less capitals title **straight under** a section heading is that section's **sub-heading**, not a section (the Jamnagar sheet's `SPRINKLER SYSTEM` under `(B) BOQ FOR SPRINKLER SYSTEM`) |
+| a label that says total — `Total`, `Sub Total`, `Grand Total`, `TOTAL AMOUNT A+B+C`, `Carried forward`, and (on a row with a figure and no rate) `BASIC VALUE SUBTOTAL (B)` | **a footing check, never a line** — see *The totals* |
+| an amount and nothing else | a total **by arithmetic**, or a **lump sum** — see *The totals* |
+| anything else | placed by **the structure**, below |
 
 **`item_no` is text, verbatim, and duplicates stay duplicates** — `4.0999…`
 reads as "4.1" and a `0.00`-formatted `1.1` as "1.10", as Excel shows them.
 **Only the total quantity is read**; floor and area columns are left out.
 
-**Flagged, left BLANK, never computed:** `R.O.` / `I.R.` / `Rate Only` in a
-quantity (**never 0** — a 0 hard-blocks the first real RA claim on the line),
-`NA`, an Excel error, a date where a number belongs, text arithmetic like
-`9.3+1.5+6`, any other text, and a formula with no saved value ("open and save
-in Excel"). A flag on a **quantity** is **red** and blocks the save (below); on
-a rate it is amber. A plain number typed as text (`1,200.50`) is read.
+⚠ **A zero is not a figure (the owner's ruling, 30 September 2026).** An amount
+of 0 is no amount, and a rate of 0 on a row with no quantity is no rate — the
+Jamnagar sheet carries `0 | 0` in the amount cells of every spec row, the Sify
+sheet a `0` in its installation-rate column on subtotal and section rows. Such a
+row is read as if the cell were empty and falls through to the structure: a
+header, spec text or a sub-heading. **A ₹0 lump sum is never imported.**
 
-**The totals check**: `sum(qty × rate)` per track against the sheet's own grand
-total — the last *Grand Total* / `TOTAL (A+B+C)` row, or the one plain *Total*
-when there is exactly one. More than ₹1 apart is reported with both figures;
-several plain totals and no grand one is reported as *no grand total found*.
+#### The structure — item numbers from the sheet's own shape (30 September 2026)
+
+`sheetimport.Structure`, a pure class: rows go in, placements come out. Before
+this, every row the sheet did not number was flagged *"no item number — the
+form will ask for one"* — **72 of the 79 flags** on the client's Jamnagar
+hydrant sheet. Definitions: a row is **NUMBERED** when the Item No. column holds
+something; **PRICED** when it has a quantity, a rate or a (non-zero) amount.
+Walked down each section in order:
+
+1. **Before the first numbered row**, an unpriced row is a **sub-heading**
+   ("Hydrant System Line"). No number, never flagged. (A PRICED row there has
+   no number to take and is the one line still asked for one.)
+2. **A numbered row starts a new item** and resets the sub-item counter —
+   unpriced it is a **header** (the spec line), priced a **standalone item**.
+   A number that is a child of an open header (`24.a` under `24`, `2.1.4.1`
+   under `2.1.4`) or a bare sub-label (`a)`) is that header's sub-item instead,
+   exactly as v1 read it.
+3. **Unnumbered and unpriced after a numbered row** — **spec text** under it:
+   a header with no number, `parent_item_no` = the parent. Never flagged; its
+   Make is kept.
+4. **Unnumbered and priced after a numbered row** — a **sub-item**:
+   `<parent>.a`, `.b` … `.z`, `.aa`, `.ab` (`sheetimport.sub_label()`, the
+   spreadsheet-column sequence in lower case), marked **`auto`**.
+5. **A sub-label the sheet wrote** at the start of the description — `a)`,
+   `(a)`, `a.` — is used as it stands and cut from the description, marked
+   **`sheet`**; the counter continues after it.
+6. The counter **resets** at every numbered row and every section.
+
+**The item-number source (`auto` / `sheet`) lives on the import payload only**
+— `build()`'s `item_src` and the editor's `_item_src` UI key. No record carries
+it; `_clean_lines()` builds each line from named keys.
+
+A sub-item's description is a size label and is stripped; a clause (a header,
+a standalone item, spec text) is carried verbatim, trailing spaces and all —
+the picker's own rule (`boq._seed_line()`), which is what lets
+`test_importing_the_sify_workbook_reproduces_the_seeded_boq` pass on a box that
+has the workbook. The save strips both.
+
+⚠ **Spec text and sub-headings are FOLDED on the way to the form, not sent as
+lines.** `build()` derives them as a header with no item number, but the save
+refuses every line without one (*"Line N needs an item number"*) and what the
+save accepts was not this pass's to change. `boqimport.editor_model()` appends a
+spec-text row's words to its parent's description — where a BOQ header carries
+its clause anyway — and its Make to the parent's remark; a sub-heading goes on
+the end of its section's title (`BOQ FOR HYDRANT SYSTEM — Hydrant System Line`).
+Nothing on the sheet is dropped.
+
+#### The totals — by arithmetic first, by label second (30 September 2026)
+
+`sheetimport.Footing` keeps running sums per mapped amount column — the sheet's
+own amount on each line where it gave one, quantity × rate where it did not.
+A figure is checked, in order, against:
+
+| kind | the figure equals |
+|---|---|
+| **subtotal** | the lines since the last subtotal (or the start of the section) |
+| **section total** | the subtotals found in this section, or all of its lines |
+| **grand total** | every line so far — tried FIRST when the label says grand total |
+| **combined total** | supply + installation together, for a single figure in whichever column it sits (the Jamnagar sheet's row 125: ₹95,00,000 in the installation column) |
+
+Within ±1.00 (`FOOT_TOLERANCE`). **A recognised total is a footing check and
+never a line.** A row whose **label** says total but whose figures do not add up
+is flagged (amber — it asks for a look, not a figure) with **both figures**. An
+**amount alone** that is no total is a **LUMP SUM**: qty 1, unit `LS`, the
+amount as the rate in the track its amount column belongs to (supply for a
+combined `amount` column on a two-track sheet — a judgement call), a number per
+the structure, and an amber *review* flag. The grand-total label pattern now
+also takes `TOTAL AMOUNT A+B+C` with no brackets (row 124), and the one-line
+*totals check* against it is unchanged.
+
+**Never dropped without a word**: every amount is imported, footed, or flagged.
+
+#### The flags — what blocks, and what asks for a look
+
+**Blocking** (`build()`'s `needs`, the editor's `_need`) — the fields the form
+leads the user to:
+
+* a priced line with **no quantity** (a quantity the reader could not read —
+  "R.O.", "NA", `9.3+1.5+6` — is this, as before, and keeps its red `_block`);
+* a track with an **amount but no rate**;
+* a **quantity but no rate on either track** (row 13 of the Jamnagar sheet:
+  350, nothing else). An **explicit 0 amount** is the sheet pricing the line at
+  nil — the Sify schedule's four nil-priced lines — and is not asked about;
+* **quantity × rate more than ±1.00 off the sheet's amount** — the rate is left
+  **BLANK** (which of the two is wrong is not ours to say) and the flag gives
+  quantity, rate, product and amount;
+* a priced line with **no item number** or **no description** — the save would
+  refuse it anyway.
+
+Where the cause is a cell already flagged ("#REF!" in the only rate), the need
+rides on that flag rather than adding a second.
+
+**Review only** (amber): a lump sum, a labelled total that does not add up, a
+combined-amount mismatch, a rate cell that could not be read, a cut cell, a
+renamed section, a date in the item column.
+
+**Unit handling is unchanged**: the Unit cell's text, trimmed, exactly as it
+stands — no mapping of `Mtrs.` to `Mtr`, no default. A header's unit is blank on
+the form, and a lump sum's is `LS`.
+
+On the client's Jamnagar hydrant sheet (125 rows, read-only from the owner's
+Downloads for this pass and never copied in): **79 flags before, 11 after** —
+all eleven "a quantity but no rate on either track" (rows 13, 70–72, 92, 114,
+116, 117, 119, 120, 122), each a blocking field.
+
+#### The preview's summary — grouped, not per row
+
+The per-row dump under *What will be imported* is replaced by
+`boqimport.summary_html()`:
+
+* **N fields need you** — every blocking flag, each a link. On the preview the
+  link is a submit button (`action=confirm@<line>.<field>`, shape-checked) that
+  confirms and lands on the form at `#need-<line>-<field>`; on the form it is
+  an anchor handled by `needLink()`.
+* **N item numbers filled in from the sheet's structure** *(review)*.
+* **N lump sums** *(review)*.
+* **N subtotals checked** — all add up, or which do not, with both figures.
+* folded, **N other notes from the reader**, so nothing it said is hidden.
+
+The same summary sits in the banner on the prefilled form, with the import's
+own styles, which `/boq/create` does not load and the banner had been drawn
+without since v1.
 
 #### Known layouts, and never truncating
 
@@ -7229,18 +7375,57 @@ Typing any quantity (including a deliberate 0) or removing the line clears it.
 is moved. ⚠ **The block is in the browser only, and that is gap 42**: the
 server path was not changed in this pass, and it saves a blank quantity as 0.
 
+#### The guided fix on `/boq/create` (30 September 2026)
+
+Every field an import asked for (`_need`) — and every field a refused save
+found wrong (`_err`, below) — is **ringed** in the app's accent (`var(--brand)`),
+glows, carries a **"!" badge** so the mark does not rest on colour alone, and
+**pulses softly**, which stops under `prefers-reduced-motion: reduce`. An `auto`
+item number carries a small **auto** chip and a lump sum an **LS · review**
+chip; neither glows. A **sticky bar** at the top of the form says *N fields need
+you* with **Prev / Next**: Next opens whatever hides the next field (its line,
+section and header), scrolls it to the **centre** and focuses it, and wraps.
+A form opened from an import goes to the first field on load (or the one a
+preview link named). A field given a valid value — **a number greater than 0**
+for a quantity or a rate ("rate" is either unit rate; its mark sits on the
+supply one), any text for an item number or a description — loses its ring
+and the count drops, with no re-render; clearing it brings the ring back; at 0
+the bar reads *All filled — review and save*. **Save is stopped in the browser**
+while a marked field is unmet, and jumps to the first.
+
+⚠ **Guidance only. What the save accepts did not change**, and **gap 42 is
+still open, deliberately** — the owner's decision on 30 September 2026: block
+in the browser, keep the server's rules. The marks are computed **on the
+server** from the posted values too — `boq.annotate_needs()` writes `_needs`
+on every line and the bar's count before any script runs — so a refused POST
+re-renders with the same rings. On a refused POST, **for every BOQ and not only
+an imported one**, `boq.line_problems()` rings every box `_clean_lines()` would
+refuse, on every line (the save itself still stops at the first), and the Date,
+Project Name and Account Name boxes when blank. `_BOQ_JS`'s `needMet()` /
+`errMet()` are those two Python functions rule for rule;
+`tests/test_boq_import_guided.py::test_python_and_js_agree_on_what_meets_a_need`
+holds them in step. The page tells the script whether it was opened from an
+import in its own `<script>var BOQ_GUIDE = …</script>`, so a harness that loads
+`_BOQ_JS` alone is unaffected. The styles are in `BOQ_IMPORT_STYLES`, which only
+`/boq/create` emits — `BOQ_STYLES` is golden-pinned on four pages and did not
+move.
+
 #### What v1 does not do — measured on the client's own files
 
 * **One sheet per import.** Several of their workbooks keep one system per
   sheet; each is its own import (and its own BOQ, or a section pasted in).
 * **The heading row cannot be chosen.** A sheet whose headings are below row 40
   or use none of the keywords gets every column as *ignore* and its lines from
-  the top; the operator maps the columns but cannot move the start.
+  the top; the operator maps the columns but cannot move the start. (From 30
+  September 2026 the FIRST heading wins and a repeat is skipped — see *The
+  preview*.)
 * **A quantity written with its unit — `10 Nos.` — or as `L.S.` is flagged red**,
   not read as 10 or 1. Reading the number out of the text is a guess this
   version does not make.
 * The remark, HSN/SAC, GST and area columns are not imported; amounts never are
-  (the form computes them).
+  (the form computes them) — an amount is read only to foot the sheet, to take
+  a lump sum, and to check quantity × rate. A **Make** column is imported, into
+  the remark (30 September 2026).
 
 ---
 
@@ -11007,6 +11192,11 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     refused, or stored as `None` and rendered as blank) — and both change what
     every existing form, test and stored record means by a blank, which is a
     decision rather than a patch.
+
+    📌 **Left open deliberately on 30 September 2026** by the guided-fix pass
+    (§5 `/boq/import`): the owner ruled "block in the browser only, leave what
+    the server accepts unchanged", so the rings and the refused submit are
+    guidance and this gap gets its own decision.
 
 43. 🟠 **A GSTIN lookup stalls the whole application while it waits, and
     nobody has proved the production box can reach the portal — OPEN**

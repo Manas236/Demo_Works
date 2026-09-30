@@ -133,6 +133,10 @@ TARGETS = (
     ("install_rate",           "Installation · unit rate"),
     ("install_amount",         "Installation · amount (check only)"),
     ("amount",                 "Amount (check only)"),
+    # 30 September 2026. The brand a line is priced on ("Jindal", "Newage")
+    # has nowhere of its own on a BOQ line, so it goes into the line's
+    # `remark` as "Make: Jindal" — captured, never printed, never lost.
+    ("make",                   "Make (kept in the remark)"),
 )
 TARGET_KEYS = tuple(k for k, _l in TARGETS)
 TARGET_LABEL = dict(TARGETS)
@@ -752,31 +756,51 @@ def _combine(upper: list, lower: list):
     return out
 
 
+def _heading_like(vals: list) -> bool:
+    """
+    Does this row, on its own, read as a column heading?
+
+    At least MIN_HEADER_SCORE keyword hits spread over at least TWO cells. A
+    single cell is a title ("SUPPLY & INSTALLATION RATES" scores three hits in
+    one cell and is not a heading), which is why the spread is required.
+    """
+    labels = _labels(vals)
+    hit_cells = sum(1 for l in labels if _hits(l))
+    return hit_cells >= 2 and _score(labels) >= MIN_HEADER_SCORE
+
+
 def detect_header(grid: dict) -> list:
     """
     `[top, bottom]` grid-row indexes of the header (equal for a one-row
-    header), or `[]` when none scores at least MIN_HEADER_SCORE.
+    header), or `[]` when no row in the first 40 reads as one.
 
-    The row — or adjacent two-row pair — in the first 40 sheet rows with the
-    most keyword hits. A pair wins only when it beats both of its rows alone,
-    so a header with a section row under it stays a one-row header.
+    ⚠ **The FIRST heading row wins (30 September 2026), not the best-scoring
+      one.** The client's Sify sheet prints its column heading at row 2 and
+      again at row 28, above section B; the repeat scores 11 against the
+      original's 9, so "most hits wins" took row 28 and every line above it —
+      the whole of section A, 18 lines — was dropped with nothing said. A
+      later repeat is now skipped as a repeated heading by `build()`.
+
+    A pair ("Supply" over "Rate | Amount") is taken when the two rows combined
+    beat each alone, so a header with a section row under it stays one row.
     """
     rows = grid["rows"]
-    best_score, best = 0, []
     for ri, (rnum, vals) in enumerate(rows):
         if rnum > HEADER_SCAN_ROWS:
             break
-        s1 = _score(_labels(vals))
-        cand_score, cand = s1, [ri, ri]
+        pair = None
         if ri + 1 < len(rows) and rows[ri + 1][0] == rnum + 1:
             combined = _combine(vals, rows[ri + 1][1])
             if combined is not None:
                 s2 = _score(combined)
-                if s2 > max(s1, _score(_labels(rows[ri + 1][1]))):
-                    cand_score, cand = s2, [ri, ri + 1]
-        if cand_score > best_score:
-            best_score, best = cand_score, cand
-    return best if best_score >= MIN_HEADER_SCORE else []
+                if s2 > max(_score(_labels(vals)), _score(_labels(rows[ri + 1][1]))) \
+                        and s2 >= MIN_HEADER_SCORE:
+                    pair = [ri, ri + 1]
+        if _heading_like(vals):
+            return pair or [ri, ri]
+        if pair and _heading_like(combined):
+            return pair
+    return []
 
 
 def header_labels(grid: dict) -> dict:
@@ -905,6 +929,14 @@ def guess_mapping(grid: dict) -> dict:
             put(rs[0], unit_t)
 
     # Amounts — check only. One per track, and one without a track.
+    #
+    # ⚠ An Amount column whose heading names no track takes the track of the
+    #   RATE column directly to its left (30 September 2026) — "Supply | Amount |
+    #   Installation | Amount" is the Jamnagar sheet's shape, where the second
+    #   Amount used to be ignored and the first read as a combined figure. Only
+    #   when the heading itself is silent, and only from a rate column already
+    #   given a track; the preview's dropdown shows the result and can undo it.
+    rate_track = {"supply_rate": "supply", "install_rate": "install"}
     for ci in order:
         h, track, label = info[ci]
         if out[str(cols[ci])] != "":
@@ -912,11 +944,21 @@ def guess_mapping(grid: dict) -> dict:
         is_amount = "amount" in h or (_TOTAL_WORD.search(label) and "qty" not in h)
         if not is_amount:
             continue
+        if not track and ci > 0:
+            track = rate_track.get(out[str(cols[ci - 1])], "")
         t = ("supply_amount" if track == "supply"
              else "install_amount" if track == "install" else "amount")
         if t not in taken:
             put(ci, t)
+
+    # Make / brand — kept in the line's remark.
+    for ci in order:
+        if out[str(cols[ci])] == "" and "make" not in taken and _MAKE.search(info[ci][2]):
+            put(ci, "make")
     return out
+
+
+_MAKE = re.compile(r"^(?:make|brand|makes|manufacturer|mfr\.?|make\s*/\s*brand)$")
 
 
 def _schedule_score(grid: dict) -> tuple:
@@ -1002,7 +1044,13 @@ _ARITH = re.compile(r"^\s*\(?\s*\d+(?:\.\d+)?\s*\)?(?:\s*[-+*/xX×]\s*\(?\s*\d+(
 _TOTAL_LABEL = re.compile(
     r"^\s*(?:grand\s*total|g\.?\s*total\b|sub\s*-?\s*total|total\b|"
     r"carried\s+(?:forward|over)|brought\s+forward|c\s*/\s*f\b|b\s*/\s*f\b)", re.I)
-_GRAND = re.compile(r"grand\s*total|\bg\.?\s*total\b|total\s*\([^)]*\+[^)]*\)|net\s+total", re.I)
+# ⚠ Widened 30 September 2026: "TOTAL AMOUNT   A+B+C" (the Jamnagar sheet's
+#   row 124) is a grand total with no brackets round its sum.
+_GRAND = re.compile(r"grand\s*total|\bg\.?\s*total\b|total\s*\([^)]*\+[^)]*\)|net\s+total|"
+                    r"\btotal\b.*\b[a-z0-9]{1,3}\s*\+\s*[a-z0-9]{1,3}\b", re.I)
+# A label that says total ANYWHERE — "BASIC VALUE SUBTOTAL (B) >>>>" on the
+# Sify sheet. Read as a total only on a row with a figure and no rate.
+_TOTAL_ANYWHERE = re.compile(r"\bsub\s*-?\s*total\b|\btotal\b", re.I)
 _PARTIAL = re.compile(r"sub\s*-?\s*total|carried|brought|c\s*/\s*f|b\s*/\s*f|total\s+of\s+\S", re.I)
 # A label that is NOTHING BUT a total word. Such a row is a total even with no
 # figure on it (its formula may have no saved value); any longer label —
@@ -1017,6 +1065,12 @@ TOTAL_LABEL_MAX = 60
 _SECTION_ITEM = re.compile(r"^(?:(?i:section|part|schedule|system)\s*[-:.]?\s*)?([A-Z]{1,2}|[IVX]{1,4})\s*[.):]?$")
 _SECTION_WORD = re.compile(r"^(?:section|part|schedule)\s*[-:.]?\s*([A-Za-z0-9]{1,3})\b[\s.:\-–—]*(.*)$", re.I | re.S)
 _SUB_LABEL = re.compile(r"^\(?(?:[a-z]{1,2}|[ivx]{1,4})\)?\.?$")
+# "(A) BOQ FOR HYDRANT SYSTEM" — a section heading carrying its own code.
+_SECTION_PAREN = re.compile(r"^\(\s*([A-Z]{1,2})\s*\)\s*(.+)$", re.S)
+# A sub-label the SHEET wrote at the start of a description: "a) 150 mm",
+# "(b) 100 mm", "c. 80 mm". Lower-case letters only, so "A." or a size such
+# as "80 mm" is never read as one.
+_DESC_LABEL = re.compile(r"^\s*(?:\(([a-z]{1,2})\)|([a-z]{1,2})\)|([a-z])\.)\s+(\S.*)$", re.S)
 
 # Flag kinds. RED ones on the QUANTITY leave it blank and BLOCK the save on the
 # form until somebody types a figure or removes the line; see boqimport.py and
@@ -1030,12 +1084,233 @@ _FLAG_TEXT = {
     "arith":     "sum written as text ({raw}) — not worked out; left blank",
     "text":      "text “{raw}” where a number belongs — left blank",
     "long":      "text longer than {n:,} characters — cut; paste the rest by hand",
-    "no_item":   "no item number on the source sheet — the form will ask for one",
-    "no_desc":   "figures but no description — the form will ask for one",
-    "amount_only": "an amount with no quantity or rate — imported as a header; the amount is not carried",
+    "no_item":   "a priced line with no item number and no numbered line above it — type one",
+    "no_desc":   "figures but no description — type one",
     "item_date": "the item number is a date on the source sheet ({raw}) — left blank",
     "dup_section": "section {raw} appears again — this one is named {new}; rename it if you like",
+    # 30 September 2026 — the blocking checks (they need somebody to type).
+    "no_qty":    "a priced line with no quantity — type it",
+    "no_rate_amt": "{track} amount {amount} but no {track} rate — type the rate",
+    "no_rate":   "a quantity but no rate on either track — type a rate",
+    "mismatch":  ("{track}: quantity {qty} × rate {rate} = {calc}, but the sheet's amount "
+                  "is {amount} — the rate is left blank; type the right one"),
+    # …and the ones that only ask for a look.
+    "mismatch_both": ("quantity {qty} × (supply + installation rate) = {calc}, but the "
+                      "sheet's amount is {amount} — review"),
+    "lump_sum":  "an amount with no quantity or rate — imported as 1 LS at {amount}; review",
+    "total_bad": "“{label}” does not add up — sheet {sheet}, the lines above add up to {calc}",
 }
+
+# How far a figure may be off and still agree: a rupee, the totals check's own
+# tolerance. Used by the footing checks and the qty × rate check alike.
+FOOT_TOLERANCE = TOTALS_TOLERANCE
+
+# The fields a blocking flag can point the form at. "rate" means "either unit
+# rate" and marks the supply one.
+NEED_FIELDS = ("item_no", "description", "total_qty", "supply_rate", "install_rate", "rate")
+
+
+def _fmt(v) -> str:
+    """A figure for a flag sentence: Indian-agnostic, two decimals only when
+    they are not zero. Never used for anything but the sentence."""
+    f = float(v)
+    return f"{f:,.0f}" if f.is_integer() else f"{f:,.2f}"
+
+
+def sub_label(n: int) -> str:
+    """0 -> "a", 25 -> "z", 26 -> "aa", 27 -> "ab" — the sub-item letters,
+    continuing past z the way a spreadsheet's columns do."""
+    return col_letter(n).lower()
+
+
+def _label_index(label: str) -> int:
+    """"a" -> 0, "z" -> 25, "aa" -> 26: the inverse of `sub_label`, or -1."""
+    s = str(label or "").strip().lower().strip("().")
+    if not s or not s.isalpha() or not s.isascii():
+        return -1
+    n = 0
+    for ch in s:
+        n = n * 26 + (ord(ch) - 96)
+    return n - 1
+
+
+def split_sheet_label(desc: str):
+    """`(label, rest)` when a description opens with the sheet's own sub-label
+    ("a) 150 mm" -> ("a", "150 mm")), else `("", desc)`."""
+    m = _DESC_LABEL.match(desc or "")
+    if not m:
+        return "", desc
+    return (m.group(1) or m.group(2) or m.group(3)), m.group(4).strip()
+
+
+class Structure:
+    """
+    The item numbering the sheet implies — ABOUT.md §5 `/boq/import`, *The
+    structure* (30 September 2026). Pure: rows go in, placements come out.
+
+    Feed it one section at a time with `place(item, desc, priced)`; call
+    `new_section()` at every section break. Each placement is a dict:
+
+        {"kind": "subheading" | "header" | "item" | "spec_text" | "sub_item",
+         "item_no", "parent_item_no", "is_header", "item_src", "description"}
+
+    `item_src` is "sheet" (the sheet wrote the number or the sub-label),
+    "auto" (the number was worked out from the rows above) or "". It lives
+    on the import payload only and never reaches a record.
+
+    The rules, walked in order down a section:
+      1. Before the first NUMBERED row, an unpriced row is a sub-heading: no
+         number, never flagged.
+      2. A numbered row starts a new item and resets the sub-item counter —
+         unpriced it is a header (the spec line), priced a standalone item.
+         A number that is a child of an open header ("24.a" under "24",
+         "2.1.4.1" under "2.1.4") or a bare sub-label ("a)") is that header's
+         sub-item instead, exactly as v1 read it.
+      3. An unnumbered, unpriced row after a numbered one is spec text under it.
+      4. An unnumbered, priced row after a numbered one is its sub-item:
+         <parent>.a, .b … .z, .aa, .ab — `auto`.
+      5. A sub-label the sheet wrote at the start of the description ("a)",
+         "(a)", "a.") is used as it stands — `sheet`.
+      6. The counter resets at every numbered row and every section.
+
+    A sub-item's description is a size label and is stripped; a clause (a
+    header, a standalone item, spec text) is carried exactly as the sheet
+    wrote it. That is the picker's own rule — `boq._seed_line()` strips a
+    variant label and copies `spec_text` verbatim — and the save strips both.
+    """
+
+    def __init__(self):
+        self.new_section()
+
+    def new_section(self):
+        self.parent = ""            # the current numbered row's item number
+        self.parent_header = False  # …and whether it is an unpriced header
+        self.heads = []             # every header number in this section
+        self.sub_n = 0
+        self.numbered = False       # a numbered row has been seen in this section
+        self.placed = 0             # rows placed in this section
+
+    def fresh(self) -> bool:
+        """Nothing placed yet in this section."""
+        return self.placed == 0
+
+    def _bump(self, label: str):
+        idx = _label_index(label)
+        if idx >= 0:
+            self.sub_n = max(self.sub_n, idx + 1)
+
+    def place(self, item: str, desc: str, priced: bool) -> dict:
+        self.placed += 1
+        out = {"item_no": item, "parent_item_no": "", "is_header": not priced,
+               "item_src": "sheet" if item else "", "description": desc}
+        if item:
+            parent = ""
+            for h in self.heads:
+                if _is_child(item, h) and len(h) > len(parent):
+                    parent = h
+            if not parent and self.parent and self.parent_header and _SUB_LABEL.match(item):
+                parent = self.parent
+            self.numbered = True
+            if parent:
+                out.update(kind="sub_item" if priced else "header", parent_item_no=parent)
+                if priced:
+                    out["description"] = (desc or "").strip()
+                tail = item[len(parent):] if item.startswith(parent) else item
+                self._bump(tail)
+                if not priced:
+                    self.heads.append(item)
+                    self.parent, self.parent_header, self.sub_n = item, True, 0
+                return out
+            self.parent, self.parent_header, self.sub_n = item, not priced, 0
+            if not priced:
+                self.heads.append(item)
+            out["kind"] = "header" if not priced else "item"
+            return out
+
+        if not self.numbered or not self.parent:
+            out["kind"] = "subheading" if not priced else "item"
+            return out
+        if not priced:
+            out.update(kind="spec_text", parent_item_no=self.parent)
+            return out
+        label, rest = split_sheet_label(desc)
+        if label:
+            self._bump(label)
+            out.update(item_no=f"{self.parent}.{label}", description=rest, item_src="sheet")
+        else:
+            out.update(item_no=f"{self.parent}.{sub_label(self.sub_n)}", item_src="auto",
+                       description=(desc or "").strip())
+            self.sub_n += 1
+        out.update(kind="sub_item", parent_item_no=self.parent)
+        return out
+
+
+class Footing:
+    """
+    Running sums per amount column, and the arithmetic that recognises a
+    total row — 30 September 2026. A figure is checked, in order, against:
+    the lines since the last subtotal (a SUBTOTAL); the subtotals of this
+    section, or all of its lines (a SECTION TOTAL); every line so far (a
+    GRAND TOTAL); and, for a single figure, supply + installation together
+    (a COMBINED TOTAL, whichever column it sits in). Within ±1.00.
+    """
+
+    def __init__(self, cols: list):
+        self.cols = list(cols)
+        z = lambda: {c: 0.0 for c in self.cols}           # noqa: E731
+        self.grand = z()
+        self._z = z
+        self.new_section()
+
+    def new_section(self):
+        self.run, self.subs, self.sec = self._z(), self._z(), self._z()
+        self.run_n = self.subs_n = 0
+
+    def add(self, amounts: dict):
+        for c in self.cols:
+            v = float(amounts.get(c) or 0.0)
+            self.run[c] += v
+            self.sec[c] += v
+            self.grand[c] += v
+        self.run_n += 1
+
+    @staticmethod
+    def _near(a, b) -> bool:
+        return abs(float(a) - float(b)) <= FOOT_TOLERANCE
+
+    def check(self, figures: dict, grand_label: bool = False) -> dict:
+        """`{"kind", "status", "figures": [{"col", "sheet", "lines"}]}`.
+        A row whose LABEL says grand total is tried as one first — on a
+        one-section sheet the same figure is also that section's total."""
+        figs = {c: float(v) for c, v in figures.items() if c in self.run}
+        cands = [("grand total", self.grand)] if grand_label else []
+        cands += [("subtotal", self.run)]
+        if self.subs_n:
+            cands.append(("section total", self.subs))
+        cands += [("section total", self.sec), ("grand total", self.grand)]
+        kind = ""
+        shown = {c: (self.run if self.run_n else self.sec)[c] for c in figs}
+        if figs:
+            for k, base in cands:
+                if all(self._near(v, base[c]) for c, v in figs.items()):
+                    kind, shown = k, {c: base[c] for c in figs}
+                    break
+            if not kind and len(figs) == 1 and len(self.cols) >= 2:
+                (c1, v), = figs.items()
+                for base in (self.run, self.sec, self.grand):
+                    if self._near(v, sum(base.values())):
+                        kind, shown = "combined total", {c1: sum(base.values())}
+                        break
+        out = {"kind": kind or "total", "status": "match" if kind else "mismatch",
+               "figures": [{"col": c, "sheet": round(v, 2), "lines": round(shown[c], 2)}
+                           for c, v in figs.items()]}
+        if kind == "subtotal":
+            for c, v in figs.items():
+                self.subs[c] += v
+            self.subs_n += 1
+        if kind:
+            self.run, self.run_n = self._z(), 0
+        return out
 
 
 def _numeric(value, kind: str, field: str):
@@ -1118,6 +1393,9 @@ def _section_of(item: str, desc: str):
         m = _SECTION_WORD.match(desc)
         if m:
             return m.group(1).upper(), (m.group(2).strip() or desc)
+        m = _SECTION_PAREN.match(desc)
+        if m and _is_caps_title(desc):
+            return m.group(1), m.group(2).strip()
         if desc and _is_caps_title(desc):
             return "", desc
     return None
@@ -1130,6 +1408,47 @@ def _is_child(item: str, head: str) -> bool:
     return nxt in ".-/ (" or (head[-1].isdigit() and nxt.isalpha())
 
 
+def _repeats_header(vals: list, hdr_labels: dict) -> bool:
+    """A later row that repeats the column heading — the Sify sheet prints it
+    again above section B. Two or more cells must share a keyword with the
+    heading's own label in the same column."""
+    same = 0
+    for ci, v in enumerate(vals):
+        if isinstance(v, str) and v.strip() and ci in hdr_labels:
+            if _hits(v) & _hits(hdr_labels[ci]):
+                same += 1
+    return same >= 2
+
+
+def _heading_remnant(vals: list, item_ci, desc_ci, fig_cis: set) -> bool:
+    """The rest of a heading the header detector did not take: no figure
+    anywhere, no item number or description, and what text sits in the
+    quantity, rate and amount columns is heading words ("U/ Rate", "AMT")."""
+    if any(_is_number(v) for v in vals):
+        return False
+    for ci in (item_ci, desc_ci):
+        if ci is not None and ci < len(vals) and isinstance(vals[ci], str) and vals[ci].strip():
+            return False
+    words = [vals[ci] for ci in fig_cis if ci < len(vals)
+             and isinstance(vals[ci], str) and vals[ci].strip()]
+    return bool(words) and all(_hits(w) for w in words)
+
+
+def _heading_words_only(vals: list) -> bool:
+    """No figure, and every label a keyword, "total" or a short code — the
+    lower half of a two-row heading ("Rate | Amount")."""
+    seen = False
+    for v in vals:
+        if _is_number(v):
+            return False
+        if isinstance(v, str) and v.strip():
+            t = _norm(v)
+            if not (_hits(t) or _TOTAL_WORD.search(t) or len(t) <= 3):
+                return False
+            seen = True
+    return seen
+
+
 def build(grid: dict, mapping: dict) -> dict:
     """
     The confirmed mapping applied to every row under the header.
@@ -1137,16 +1456,41 @@ def build(grid: dict, mapping: dict) -> dict:
     Returns::
 
         {"sections": [{"code", "title"}],
-         "lines":    [{"row", "item_no", "parent_item_no", "section",
-                       "is_header", "description", "unit", "qty",
-                       <rate fields>, "flags": [...], "block": bool}],
+         "lines":    [{"row", "kind", "item_no", "parent_item_no", "item_src",
+                       "section", "is_header", "description", "unit", "make",
+                       "qty", <rate fields>, "lump_sum", "flags": [...],
+                       "needs": [{"field", "message"}], "block": bool}],
          "flags":    [{"row", "col", "field", "raw", "kind", "message",
                        "severity"}],
-         "counts":   {"lines", "headers", "sections", "totals_dropped", "flagged"},
+         "needs":    [{"row", "field", "message"}],     # every blocking flag
+         "checks":   [{"row", "label", "kind", "status", "figures"}],
+         "counts":   {"lines", "headers", "sections", "totals_dropped",
+                      "flagged", "auto_items", "sheet_items", "lump_sums",
+                      "needs", "repeats"},
          "totals":   {...}}
 
     Numbers are floats or None — shaping them for the form is `boqimport.py`'s
     job. `block` is True on a line whose QUANTITY was left blank by a flag.
+
+    30 September 2026 — the structure, the totals and the real flags:
+
+    * **Item numbers come from the sheet's own shape** — `Structure`. A row
+      the sheet did not number is spec text, a sub-heading, or a sub-item
+      <parent>.a, and is no longer flagged "no item number".
+    * **An amount with no quantity and no rate** is checked by arithmetic
+      (`Footing`): a subtotal, a section total, a grand total or a combined
+      total is a FOOTING CHECK and never a line; anything else is a LUMP SUM
+      — 1 LS at the amount, flagged for review. **A zero amount is no
+      amount**: such a row is read as if the amount cell were empty.
+    * **A row labelled as a total** is checked the same way, and flagged with
+      both figures when it does not add up. It is never a line.
+    * **A later row repeating the column heading** is skipped, never a line
+      and never flagged.
+    * **Blocking flags** (`needs`) — a priced line with no quantity; an amount
+      or a quantity with no rate; quantity × rate more than ±1.00 from the
+      sheet's amount (the rate is then left BLANK, both figures in the flag);
+      and a priced line with no item number or no description, which the
+      save would refuse anyway. They are the fields the form leads to.
     """
     cols = grid["cols"]
     pos = {str(c): i for i, c in enumerate(cols)}
@@ -1156,16 +1500,29 @@ def build(grid: dict, mapping: dict) -> dict:
         if t and t != UNDECIDED and t not in col_of:
             col_of[t] = pos[str(c)]
     mapped_cis = set(col_of.values())
+    num_cis = {col_of[f] for f in ("qty",) + RATE_FIELDS if f in col_of}
+    fig_cis = num_cis | {col_of[f] for f in AMOUNT_FIELDS if f in col_of}
 
-    flags, lines, sections, totals_rows = [], [], [], []
-    counts = {"lines": 0, "headers": 0, "sections": 0, "totals_dropped": 0, "flagged": 0}
+    tracks = [t for t in ("supply", "install") if f"{t}_rate" in col_of]
+    amount_cols = [f for f in AMOUNT_FIELDS if f in col_of]
+
+    def track_of(col: str) -> str:
+        if col == "supply_amount":
+            return "supply"
+        if col == "install_amount":
+            return "install"
+        return tracks[0] if len(tracks) == 1 else "both"
+
+    flags, lines, sections, totals_rows, checks, needs = [], [], [], [], [], []
+    counts = {"lines": 0, "headers": 0, "sections": 0, "totals_dropped": 0, "flagged": 0,
+              "auto_items": 0, "sheet_items": 0, "lump_sums": 0, "needs": 0, "repeats": 0}
 
     def flag(rnum, field, kind, raw="", severity="amber", **extra):
         msg = _FLAG_TEXT[kind].format(raw=raw, n=MAX_CELL_CHARS, **extra)
-        ci = col_of.get(field)
+        ci = col_of.get("supply_rate" if field == "rate" else field)
         f = {"row": rnum, "col": col_letter(cols[ci]) if ci is not None else "",
-             "field": TARGET_LABEL.get(field, field), "raw": raw, "kind": kind,
-             "message": msg, "severity": severity}
+             "field": TARGET_LABEL.get(field, "Rate" if field == "rate" else field),
+             "raw": raw, "kind": kind, "message": msg, "severity": severity}
         flags.append(f)
         return f
 
@@ -1173,11 +1530,30 @@ def build(grid: dict, mapping: dict) -> dict:
     # names one; it is replaced by a real code once every code is known.
     DEFAULT = "\x00"
     cur_section = DEFAULT
-    headers_by_section = {}       # section -> [(item_no, line index)]
-    family = None                 # the most recent header, while its family runs
+    struct = Structure()
+    foot = Footing(amount_cols)
+    hdr = grid.get("header") or []
+    hdr_labels = header_labels(grid) if hdr else {}
+    prev_repeat = False
 
     for ri in range(data_start(grid), len(grid["rows"])):
-        rnum = grid["rows"][ri][0]
+        rnum, vals = grid["rows"][ri]
+
+        # ── A repeated column heading: skipped, never a line, never flagged ──
+        # A 0 in a quantity or rate column does not make a row data: the Sify
+        # sheet leaves one on its repeated heading.
+        if hdr and not any(_is_number(_value(grid, ri, ci)) and _value(grid, ri, ci) != 0
+                           for ci in num_cis):
+            if _repeats_header(vals, hdr_labels) or _heading_remnant(
+                    vals, col_of.get("item_no"), col_of.get("description"), fig_cis):
+                counts["repeats"] += 1
+                prev_repeat = True
+                continue
+            if prev_repeat and _heading_words_only(vals):
+                counts["repeats"] += 1
+                prev_repeat = False
+                continue
+        prev_repeat = False
 
         def cell(field):
             ci = col_of.get(field)
@@ -1187,8 +1563,13 @@ def build(grid: dict, mapping: dict) -> dict:
         item = _item_text(iv, ik)
         dv, dk = cell("description")
         desc = _plain(dv, dk)
+        # Classified on the stripped text, carried VERBATIM — the seeded Sify
+        # schedule keeps the workbook's trailing spaces, and the save strips.
+        desc_raw = dv if (isinstance(dv, str) and desc and dk != "formula") else desc
         uv, uk = cell("unit")
         unit = _plain(uv, uk)
+        mv, mk = cell("make")
+        make = _plain(mv, mk)
 
         nums, nflags, raws = {}, {}, {}
         for field in ("qty",) + RATE_FIELDS + AMOUNT_FIELDS:
@@ -1196,46 +1577,98 @@ def build(grid: dict, mapping: dict) -> dict:
             n, fk = _numeric(v, k, field)
             nums[field], nflags[field] = n, fk
             raws[field] = "" if v is None else str(v)
+        amounts = {f: nums[f] for f in amount_cols if nums[f] is not None}
+        # ⚠ A ZERO amount is NO amount (the owner's ruling, 30 Sep 2026): the
+        #   Jamnagar sheet carries a 0 in both amount cells of every spec row.
+        amounts_nz = {f: v for f, v in amounts.items() if abs(v) >= 0.005}
 
-        # ── Total rows: dropped, remembered for the check ──────────────────
+        has_qty = nums["qty"] is not None
+        # ⚠ A ZERO rate on a row with no quantity is no rate, for the same
+        #   reason as a zero amount: the Sify sheet leaves a 0 in its
+        #   installation-rate column on subtotal and section rows.
+        has_rate = any(nums[f] is not None and (has_qty or abs(nums[f]) >= 0.005)
+                       for f in RATE_FIELDS)
+        if not has_qty and not has_rate:
+            for f in RATE_FIELDS:
+                nums[f] = None if nums[f] == 0 else nums[f]
+
+        # ── Total rows: a footing check, never a line ────────────────────────
         labels = [x for x in (item, desc, unit) if x]
-        for ci, v in enumerate(grid["rows"][ri][1]):
+        for ci, v in enumerate(vals):
             if ci not in mapped_cis and isinstance(v, str) and v.strip():
                 labels.append(v.strip())
-        total_label = next((l for l in labels if len(l) <= TOTAL_LABEL_MAX
-                            and _TOTAL_LABEL.match(l)), "")
         qty_ci, item_ci = col_of.get("qty"), col_of.get("item_no")
         has_figure = any(
             (_is_number(v) and ci not in (qty_ci, item_ci)) or _kind(grid, ri, ci) == "formula"
-            for ci, v in enumerate(grid["rows"][ri][1]))
-        if (total_label and nums["qty"] is None and not nflags["qty"]
+            for ci, v in enumerate(vals))
+        total_label = next((l for l in labels if len(l) <= TOTAL_LABEL_MAX
+                            and _TOTAL_LABEL.match(l)), "")
+        if not total_label and has_figure and not has_rate:
+            total_label = next((l for l in labels if len(l) <= TOTAL_LABEL_MAX
+                                and _TOTAL_ANYWHERE.search(l)), "")
+        if (total_label and not has_qty and not nflags["qty"]
                 and (has_figure or _BARE_TOTAL.match(total_label))):
             totals_rows.append({"row": rnum, "label": total_label,
                                 "amounts": {f: nums[f] for f in AMOUNT_FIELDS}})
             counts["totals_dropped"] += 1
+            if amounts:
+                chk = foot.check(amounts, grand_label=bool(_GRAND.search(total_label)))
+                chk.update(row=rnum, label=total_label)
+                checks.append(chk)
+                if chk["status"] != "match":
+                    worst = chk["figures"][0]
+                    for fg in chk["figures"]:
+                        if not Footing._near(fg["sheet"], fg["lines"]):
+                            worst = fg
+                            break
+                    flag(rnum, worst["col"], "total_bad", label=total_label,
+                         sheet=_fmt(worst["sheet"]), calc=_fmt(worst["lines"]))
             continue
 
-        has_numbers = nums["qty"] is not None or any(nums[f] is not None for f in RATE_FIELDS)
         has_num_flags = bool(nflags["qty"]) or any(nflags[f] for f in RATE_FIELDS)
+        amount_only = bool(amounts_nz) and not has_qty and not has_rate and not has_num_flags
 
-        if not (item or desc or has_numbers or has_num_flags):
+        if not (item or desc or has_qty or has_rate or has_num_flags or amount_only):
             continue
+
+        # ── An amount and nothing else: a total by arithmetic, or a lump sum ─
+        if amount_only:
+            chk = foot.check(amounts_nz)
+            if chk["status"] == "match":
+                chk.update(row=rnum, label=desc or item)
+                checks.append(chk)
+                totals_rows.append({"row": rnum, "label": desc or item,
+                                    "amounts": {f: nums[f] for f in AMOUNT_FIELDS}})
+                counts["totals_dropped"] += 1
+                continue
+
+        priced = has_qty or has_rate or has_num_flags or amount_only
 
         # ── Section rows ────────────────────────────────────────────────────
-        if not has_numbers and not has_num_flags:
+        if not priced:
             sec = _section_of(item, desc)
-            if sec is not None:
+            # A code-less capitals title straight under a section heading is
+            # that section's sub-heading ("SPRINKLER SYSTEM" under "(B) BOQ
+            # FOR SPRINKLER SYSTEM"), not a section of its own.
+            if sec is not None and not (sec[0] == "" and cur_section != DEFAULT
+                                        and struct.fresh()):
                 code, title = sec
                 sections.append({"code": code, "title": title, "row": rnum})
                 cur_section = len(sections) - 1      # resolved to a code below
-                family = None
+                struct.new_section()
+                foot.new_section()
                 counts["sections"] += 1
                 continue
 
-        line = {"row": rnum, "item_no": item, "parent_item_no": "",
-                "section": cur_section, "is_header": False,
-                "description": desc, "unit": unit, "qty": None,
-                "flags": [], "block": False}
+        if item and not (desc or priced):
+            continue                                  # an item number and nothing else
+
+        placed = struct.place(item, desc_raw, priced)
+        line = {"row": rnum, "kind": placed["kind"], "item_no": placed["item_no"],
+                "parent_item_no": placed["parent_item_no"], "item_src": placed["item_src"],
+                "section": cur_section, "is_header": placed["is_header"],
+                "description": placed["description"], "unit": unit, "make": make,
+                "qty": None, "lump_sum": False, "flags": [], "needs": [], "block": False}
         for f in RATE_FIELDS:
             line[f] = None
 
@@ -1244,16 +1677,28 @@ def build(grid: dict, mapping: dict) -> dict:
         if dk == "long":
             line["flags"].append(flag(rnum, "description", "long")["message"])
 
-        if not has_numbers and not has_num_flags:
-            if not desc:
-                continue                              # an item number and nothing else
-            line["is_header"] = True
-            if any(nums[f] is not None for f in AMOUNT_FIELDS):
-                line["flags"].append(flag(rnum, "description", "amount_only")["message"])
+        def need(field, message):
+            line["needs"].append({"field": field, "message": message})
+            needs.append({"row": rnum, "field": field, "message": message})
+
+        if line["is_header"]:
+            counts["headers"] += 1
         else:
             line["qty"] = nums["qty"]
             for f in RATE_FIELDS:
                 line[f] = nums[f]
+            if amount_only:
+                # A LUMP SUM: 1 LS at the amount, in the track(s) its amount
+                # column belongs to. Soft — it asks for a look, not a figure.
+                line.update(qty=1.0, unit="LS", lump_sum=True)
+                for col, v in amounts_nz.items():
+                    t = track_of(col)
+                    rate_f = "install_rate" if t == "install" else "supply_rate"
+                    line[rate_f] = (line[rate_f] or 0.0) + v
+                line["flags"].append(flag(rnum, "description", "lump_sum",
+                                          amount=_fmt(sum(amounts_nz.values())))["message"])
+                counts["lump_sums"] += 1
+
             for field in ("qty",) + RATE_FIELDS:
                 fk = nflags[field]
                 if not fk:
@@ -1264,31 +1709,97 @@ def build(grid: dict, mapping: dict) -> dict:
                 line["flags"].append(f"{TARGET_LABEL[field]}: {f['message']}")
                 if red:
                     line["block"] = True
-            if not desc:
-                line["flags"].append(flag(rnum, "description", "no_desc")["message"])
 
-        if not item and (line["is_header"] or desc):
-            line["flags"].append(flag(rnum, "item_no", "no_item")["message"])
+            # ── The blocking checks ────────────────────────────────────────
+            q = line["qty"]
+            if q is None:
+                if line["block"]:
+                    need("total_qty", line["flags"][-1] if line["flags"] else _FLAG_TEXT["no_qty"])
+                else:
+                    msg = flag(rnum, "qty", "no_qty", severity="red")["message"]
+                    line["flags"].append(msg)
+                    need("total_qty", msg)
+            rate_needed = False
+            if not amount_only:
+                for t in ("supply", "install"):
+                    rate_f = f"{t}_rate"
+                    col = (f"{t}_amount" if f"{t}_amount" in amounts else
+                           "amount" if "amount" in amounts and track_of("amount") == t else "")
+                    amt = amounts.get(col) if col else None
+                    rate = line[rate_f]
+                    name = "Supply" if t == "supply" else "Installation"
+                    if rate is None and amt is not None and abs(amt) >= 0.005:
+                        msg = flag(rnum, rate_f, "no_rate_amt", severity="red",
+                                   track=name, amount=_fmt(amt))["message"]
+                        line["flags"].append(msg)
+                        need(rate_f, msg)
+                        rate_needed = True
+                    elif rate is not None and amt is not None and q is not None \
+                            and not Footing._near(q * rate, amt):
+                        msg = flag(rnum, rate_f, "mismatch", severity="red", track=name,
+                                   qty=_fmt(q), rate=_fmt(rate), calc=_fmt(q * rate),
+                                   amount=_fmt(amt))["message"]
+                        line["flags"].append(msg)
+                        line[rate_f] = None          # never guessed: left blank
+                        need(rate_f, msg)
+                        rate_needed = True
+                if "amount" in amounts and track_of("amount") == "both":
+                    amt = amounts["amount"]
+                    s, i = line["supply_rate"], line["install_rate"]
+                    if s is None and i is None and abs(amt) >= 0.005:
+                        msg = flag(rnum, "rate", "no_rate_amt", severity="red",
+                                   track="Combined", amount=_fmt(amt))["message"]
+                        line["flags"].append(msg)
+                        need("rate", msg)
+                        rate_needed = True
+                    elif q is not None and (s is not None or i is not None) \
+                            and not Footing._near(q * ((s or 0) + (i or 0)), amt):
+                        line["flags"].append(flag(
+                            rnum, "amount", "mismatch_both", qty=_fmt(q),
+                            calc=_fmt(q * ((s or 0) + (i or 0))), amount=_fmt(amt))["message"])
+                # A quantity and no rate anywhere. An EXPLICIT zero amount is
+                # the sheet pricing the line at nil — the Sify schedule's four
+                # nil-priced lines — and is not asked about.
+                if (not rate_needed and q is not None and line["supply_rate"] is None
+                        and line["install_rate"] is None and not amounts):
+                    cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
+                    if cause:
+                        # The rate cell was already flagged ("#REF!", "NA"): the
+                        # need rides on that flag rather than adding a second.
+                        need("rate", f"{cause[0]} — type a rate")
+                    else:
+                        msg = flag(rnum, "rate", "no_rate", severity="red")["message"]
+                        line["flags"].append(msg)
+                        need("rate", msg)
 
-        # ── Parent: the specification hierarchy, never a BOM ────────────────
-        heads = headers_by_section.setdefault(cur_section, [])
-        parent = ""
-        for h_item, _idx in heads:
-            if _is_child(item, h_item) and len(h_item) > len(parent):
-                parent = h_item
-        if not parent and family is not None and (not item or _SUB_LABEL.match(item)):
-            parent = family
-        if not line["is_header"] and item and not parent and family is not None:
-            family = None                             # a new top-level line ends it
-        line["parent_item_no"] = parent
-
-        if line["is_header"]:
-            counts["headers"] += 1
-            if item:
-                heads.append((item, len(lines)))
-                family = item
-        else:
+            if not line["description"]:
+                msg = flag(rnum, "description", "no_desc", severity="red")["message"]
+                line["flags"].append(msg)
+                need("description", msg)
+            if not line["item_no"]:
+                msg = flag(rnum, "item_no", "no_item", severity="red")["message"]
+                line["flags"].append(msg)
+                need("item_no", msg)
             counts["lines"] += 1
+
+            # What this line puts on the running sums — the sheet's own amount
+            # where it gave one, quantity × rate where it did not.
+            contrib = {}
+            for col in amount_cols:
+                if col in amounts:
+                    contrib[col] = amounts[col]
+                    continue
+                t = track_of(col)
+                qq = line["qty"] or 0.0
+                s, i = line["supply_rate"] or 0.0, line["install_rate"] or 0.0
+                contrib[col] = qq * (s if t == "supply" else i if t == "install" else s + i)
+            foot.add(contrib)
+
+        if line["item_src"] == "auto":
+            counts["auto_items"] += 1
+        elif line["item_src"] == "sheet" and line["kind"] == "sub_item":
+            counts["sheet_items"] += 1
+        counts["needs"] += len(line["needs"])
         if line["flags"]:
             counts["flagged"] += 1
         lines.append(line)
@@ -1338,7 +1849,7 @@ def build(grid: dict, mapping: dict) -> dict:
         out_sections.append({"code": "A", "title": ""})
 
     return {"sections": out_sections, "lines": lines, "flags": flags,
-            "counts": counts,
+            "needs": needs, "checks": checks, "counts": counts,
             "totals": _totals_check(lines, totals_rows, col_of)}
 
 
