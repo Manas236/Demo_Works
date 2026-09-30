@@ -4623,7 +4623,7 @@ authorised by its own §0 block, which is where its commercial status lives.
 |---|---|---|
 | G1 | BOQ import from Excel v1 | ✅ **Delivered (v1)** — built 29 Sep 2026 under the §0 **thirty-fourth** block; **new chargeable scope outside MG/SF/2026-06** |
 | G2 | GSTIN auto-fill on the address book | ✅ **Built, not deployed** — 29 Sep 2026 under the §0 **thirty-fifth** block; **commercial status not yet recorded** |
-| G4 | BOQ import from Excel — the sheet's own structure, its totals, and a guided fix on Create BOQ | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-seventh** block; extends G1; **commercial status not recorded — Manas's call** |
+| G4 | BOQ import from Excel — the sheet's own structure, its totals, and a guided fix on Create BOQ | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-seventh** block; extends G1; **extended the same day under the §0 thirty-eighth block** (what a child line belongs to, "not priced", units, placeholders); **commercial status of both not recorded — Manas's call** |
 | G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
 
 ### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
@@ -4688,6 +4688,35 @@ the browser; a blank quantity sent another way is still saved as 0.
 
 → Technical detail: [ABOUT.md §5 `/boq/import`](ABOUT.md) — *The structure*,
 *The totals*, *The flags*, *The guided fix*.
+
+**Extended — 30 September 2026, later** (the §0 **thirty-eighth** block), after
+the import was tried on the client's own Jamnagar sheet:
+
+- **Every size line says what it is part of.** Above its description a line
+  such as *2Kg* now reads *Part of C·3: Clean Agent (HFC-236) fire
+  Extinguisher … · Make KANEX*; its folded row, the bar at the top and its
+  flag note say the same. Item numbers restart in every section, so a line is
+  always matched to the item above it **in its own section**. A line pointing
+  at an item that is not there gets a soft amber note, never a block. Every
+  other screen and printed document that groups sizes under their item was
+  checked against the same rule.
+- **"Not priced" is an answer.** Typing 0 in a rate that the import asked for
+  now counts as answered, and each such rate has a **Not priced (₹0)** button.
+  When everything is answered the bar says *All answered · N not priced*, and
+  the BOQ saves as the client quoted it. The BOQ's own page lists those lines
+  in an amber note; the printed BOQ is unchanged (a blank rate, 0.00).
+- **Blank units** are outlined softly and counted in the bar, but never block
+  the save. A *Unit for all N sizes* box under each item fills in only the
+  sizes that have none. The import preview says when the sheet has no Unit
+  column.
+- **Empty boxes on an imported line say "rate", "esc %" or "unit"** rather
+  than showing example figures that looked already filled in.
+
+On the Jamnagar sheet: the same 11 lines need a rate, all 11 can be answered
+*Not priced*, and 59 lines have no unit.
+
+→ Technical detail: [ABOUT.md §3 *The parent rule*](ABOUT.md) (with the
+resolver audit) and §5 `/boq` / `/boq/import`.
 
 ### G2 · GSTIN auto-fill on the address book — ✅ Built, not deployed
 
