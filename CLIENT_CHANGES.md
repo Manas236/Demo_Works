@@ -3876,6 +3876,72 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ REPAIR PASS — 30 September 2026, by Manas Gawde — COPY LABELS, THE JOINT SHEET'S PRINT LAYOUT, AND A TYPABLE SIGN-OFF
+>
+> **A new block, not an amendment.** The thirty-fifth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-sixth** occasion. It covers the three items
+> below and nothing else. They are classified separately because they are not
+> the same kind of work, and the classification of one says nothing about the
+> other two.
+>
+> #### Item A — copy labels on the Delivery Challan, the Tax Invoice and every RA tax invoice
+>
+> **What was asked for.** Each printed copy of these documents carries its
+> statutory copy label — *ORIGINAL FOR CONSIGNEE / DUPLICATE FOR TRANSPORTER /
+> TRIPLICATE FOR CONSIGNER* on a delivery challan (GST Rule 55), *ORIGINAL FOR
+> RECIPIENT / DUPLICATE FOR TRANSPORTER / TRIPLICATE FOR SUPPLIER* on a tax
+> invoice (Rule 48), and the tax-invoice set on every sheet headed TAX INVOICE
+> that `ra.py` and the merged-RA module print. One Ctrl+P prints the full set.
+>
+> **Classified as a REGRESSION REPAIR, on Manas's report** that copy labels
+> existed on these documents before and were lost in an earlier pass. That is
+> the classification this block records, and it is his. **The history search
+> this pass runs is what confirms or corrects the report**; its finding goes in
+> the pass report and ABOUT.md, and it does not re-open this block — if the
+> labels turn out never to have existed, that is recorded there, not by editing
+> this.
+>
+> **Presentation only.** A copy label is never stored on any record, and every
+> copy renders from the same stored rows; the snapshot rule is untouched.
+>
+> #### Item B — the joint measurement sheet's printed layout overflows its page
+>
+> **What was reported.** On production (sheet `SF/MS/26-27/0001`, RIL
+> Jamnagar) the letterhead, the header block, the grid and the right-hand
+> sign-off party all run past the right edge of the page frame, the logo is
+> clipped, and a column head such as *100 NB (M)* wraps to three lines.
+>
+> **Classified as a DEFECT REPAIR.** The joint sheet was built and shipped on
+> 6 September 2026 (the twenty-third block); a sheet that does not fit its own
+> page is that work not yet finished, not new scope. No layout decision in the
+> twenty-third block is revisited: the columns, the header rows, the TOTAL row
+> and the two-party sign-off stay what they are, and only the page geometry
+> moves.
+>
+> #### Item C — the joint sheet's sign-off block becomes typable, and is saved
+>
+> **Decided by Manas Gawde on 30 September 2026.** The two parties' Name,
+> Designation and Date, and the counterparty's company name, are typed on the
+> form, stored on the sheet and printed on every reprint. The signature stays a
+> blank ruled cell for wet ink. A sheet saved before this change prints exactly
+> as it does today.
+>
+> **Small new scope.** ⚠ **Its commercial status is NOT recorded here** — it is
+> neither called chargeable nor called free, and that is deliberate. It is
+> Manas's call, it has not been taken in this block, and an agent may not take
+> it, infer it, or extend another item's classification onto it.
+>
+> **None of the three moves a Phase 3 bar or changes a CC-2 item's state.** C2
+> was BUILT before this pass and is BUILT after it. The installation ceiling
+> (`ra.overclaims()` reading the measured quantity by `items[].line_id`) is not
+> touched by any of the three.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
