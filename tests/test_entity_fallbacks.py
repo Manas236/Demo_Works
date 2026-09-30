@@ -23,6 +23,8 @@ and every rule must be either exercised or named in SKIP with a reason. A new
 route cannot quietly escape the check by being forgotten here.
 """
 
+import copy
+
 import pytest
 
 import address
@@ -548,7 +550,11 @@ def populated(client):
         # The second spec's pages, which the id map above has no room for: one
         # rule, two records, and the sized one is the other half of the `if`.
         "extra": [f"/spec/view/{blank['REG-BLANK-SIZED']}",
-                  f"/spec/edit/{blank['REG-BLANK-SIZED']}"],
+                  f"/spec/edit/{blank['REG-BLANK-SIZED']}",
+                  # The pending JOINT sheet with a typed sign-off — see
+                  # `_a_measurement()`: its edit form is where the seven
+                  # sign-off inputs render with text in them.
+                  "/measurement/edit/ms-3", "/measurement/view/ms-3"],
         "blank": blank,
     }
 
@@ -641,8 +647,44 @@ def _a_measurement(boq_id: str) -> str:
         ],
         system="Hydrant & Sprinkler Line", material="MS Pipe",
         dia_meter="25 mm To 150 mm", area="All Area",
-        site_label="Bangalore, Karnataka", site_source="project")
+        site_label="Bangalore, Karnataka", site_source="project",
+        **_a_signoff())
+    # ⚠ **`ms-3`: a JOINT sheet that is still PENDING, for the typed sign-off's
+    #   FORM sinks** (30 September 2026). The seven sign-off fields print on
+    #   `ms-2`'s sheet, but `ms-2` is approved and `approval.can_modify()` locks
+    #   an approved sheet, so `/measurement/edit/ms-2` redirects and the seven
+    #   `<input value="…">` sinks would go unswept. `ms-1` is the pending one,
+    #   but it is LEGACY and blank on purpose (the em-dash branch above). A
+    #   third record is the only way to reach the edit form with text in it;
+    #   its two URLs ride in `extra`, because the id map has one slot per rule.
+    # DEEP-copied: `test_escaping._poison()` edits strings in place, and a
+    # nested list or dict shared with `ms-2` would be poisoned twice through
+    # one record and leak into the other.
+    STORE["measurements"]["ms-3"] = dict(
+        copy.deepcopy(STORE["measurements"]["ms-2"]), id="ms-3",
+        ref="SF/MS/26-27/0003", approval_status="pending", **_a_signoff())
     return "ms-1"
+
+
+def _a_signoff() -> dict:
+    """
+    The typed sign-off (30 September 2026), FRESH on every call — all seven
+    fields carry text so the escaping sweep poisons every one, and a module
+    constant here would be poisoned in place and leak into later tests.
+
+    ⚠ The dates are NOT ISO on purpose: `test_escaping._poison()` skips
+      anything shaped like an id, and `[0-9a-fA-F-]{8,}` matches `2026-09-24`,
+      so an ISO date here would leave both date sinks swept with inert data.
+      The server stores the date as posted, so this spelling reaches exactly
+      the sinks an ISO one does.
+    """
+    return {
+        "signoff_ours": {"name": "R. Kadam", "designation": "Site engineer",
+                         "date": "30/09/2026"},
+        "signoff_theirs": {"name": "A. Shah", "designation": "Project manager",
+                           "date": "01/10/2026"},
+        "counterparty_name": "Reliance Industries Ltd (Jamnagar)",
+    }
 
 
 def _a_challan(boq_id: str) -> str:

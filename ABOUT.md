@@ -2911,8 +2911,50 @@ fifth 29 August 2026 override block in `CLIENT_CHANGES.md` §0 names each.
  "dia_meter": "25 mm To 150 mm",         # a STATED SCOPE, never auto-filled
  "area": "All Area",
  "site_label": "Bangalore, Karnataka",   # INHERITED, snapshotted, never typed
- "site_source": "project"}               # project | boq | none | snapshot
+ "site_source": "project",               # project | boq | none | snapshot
+
+ # ── THE TYPED SIGN-OFF, 30 September 2026 (thirty-sixth §0 block, item C) ──
+ #
+ # ⚠ ADDITIVE, AND ABSENT MEANS LEGACY. A sheet saved before this carries none
+ #   of the three keys and prints exactly as it did: blank cells, and the
+ #   right-hand band derived from `account_name`. Nothing fills them in on read.
+ "signoff_ours":   {"name": "R. Kadam", "designation": "Site Engineer",
+                    "date": "2026-09-24"},     # <input type="date">, printed as stored
+ "signoff_theirs": {"name": "", "designation": "", "date": ""},
+ "counterparty_name": "Prudent Teqtis Pvt Ltd"}  # the right-hand band
 ```
+
+The typed sign-off — seven fields, `measurement.SIGNOFF_PARTIES` ×
+`SIGNOFF_FIELDS` plus `counterparty_name`:
+
+1. **Where they print.** Each party's NAME, DESIGNATION (DESIGN.) and DATE row
+   of the two boxes at the foot of the joint sheet. The **SIGNATURE row has no
+   field** and stays a blank ruled cell for wet ink whatever is posted. A blank
+   field prints as a blank ruled cell — never a dash, never `None`.
+2. **The counterparty.** `measurement.counterparty_of(ms)`: the stored
+   `counterparty_name` when the key is present — **blank included**, because a
+   blank one was cleared on purpose — and otherwise `account_name`, which is
+   where the band always came from (the BOQ's bill-to party, snapshotted at
+   create). The create form prefills it from `boq["account_name"]`.
+3. **The date is the sheet's own date's twin** — `type="date"` on the form,
+   stored as posted, printed as stored, exactly as `date` is.
+4. **Absent from a POST is not blank.** `_signoff_form_data()` keeps only the
+   fields the form actually posted, and `_signoff_record(data, ms)` starts from
+   what the sheet holds — so a form drawn before this existed and submitted
+   after it cannot wipe a typed sign-off, and cannot pin an empty counterparty
+   onto a new sheet.
+5. **Typed on the existing edit route**, `/measurement/edit/<id>` — a sheet is
+   countersigned after the visit. A save that changes only the seven changes
+   nothing else on the record (`tests/test_measurement_signoff.py` compares it
+   field by field), and `items[].line_id` / `approved_qty_by_line()` — the
+   installation ceiling — are asserted untouched. ⚠ **An approved sheet is
+   locked by `approval.can_modify()` rule 1, so its sign-off cannot be typed**;
+   nothing can be approved while the ladder is off, so that is only a sheet
+   approved before 12 September 2026. No route and no permission was added.
+6. **Every one of the seven is an escaping sink**, swept by
+   `tests/test_escaping.py` on the JOINT fixtures `ms-2` (printed) and `ms-3`
+   (pending, so its edit form renders), and each was proved by unescaping it
+   alone and watching the sweep fail.
 
 A `grid_columns` entry, snapshotted from `/settings` at create:
 
@@ -8028,7 +8070,7 @@ and gate respectively — hiding the chip is not the guard, and
 | `GET,POST /measurement/create?boq=` | `create_ms` — the picker, and guard 1 |
 | `GET /measurement/view/<id>` | `view_ms` — the sheet with the approval panel |
 | `GET /measurement/print/<id>` | `print_ms` — the sheet alone, B7-gated |
-| `GET,POST /measurement/edit/<id>` | `edit_ms` — header **and** lines, before approval |
+| `GET,POST /measurement/edit/<id>` | `edit_ms` — header **and** lines, before approval, **and the typed sign-off** (30 Sep 2026, §3) |
 | `GET,POST /measurement/delete/<id>` | `delete_ms` — GET confirms, POST deletes; refuses a sheet a claim rests on |
 
 **What it is.** The middle term CC-2 **C1** puts between the schedule and an

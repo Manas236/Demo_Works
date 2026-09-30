@@ -382,6 +382,16 @@ POISONED_FIELDS = {
         "items[]/description", "items[]/item_no", "items[]/unit",
         "location", "material", "measured_by", "notes", "project_name", "ref",
         "site_label", "system", "witnessed_by",
+        # ⚠ The TYPED SIGN-OFF, 30 September 2026 — seven sinks, each checked
+        #   by mutation before being pinned: unescaping any one of them at its
+        #   print site or its form site turns this sweep red. They are carried
+        #   by the JOINT sheets `ms-2` (printed) and `ms-3` (pending, so its
+        #   edit form renders), never by the legacy `ms-1` — a legacy fixture
+        #   is what once made this sweep vacuous for the joint sheet.
+        "counterparty_name",
+        "signoff_ours/date", "signoff_ours/designation", "signoff_ours/name",
+        "signoff_theirs/date", "signoff_theirs/designation",
+        "signoff_theirs/name",
     ),
     "projects": (
         "created_at", "name",

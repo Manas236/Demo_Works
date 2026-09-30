@@ -52,7 +52,8 @@ Routes
   GET,POST  /measurement/create?boq=    — pick the lines, enter measured qty
   GET       /measurement/view/<id>      — the sheet, with the approval panel
   GET       /measurement/print/<id>     — the sheet alone, ready for Ctrl+P
-  GET,POST  /measurement/edit/<id>      — the measured quantities, before approval
+  GET,POST  /measurement/edit/<id>      — the measured quantities, before approval,
+                                          and the typed sign-off (30 Sep 2026)
   GET,POST  /measurement/delete/<id>    — GET confirms, POST deletes
 
 The two guards
@@ -1189,6 +1190,9 @@ def _validate(form) -> tuple:
         "area":        (form.get("area") or "").strip()[:120],
         "grid_json":   form.get("grid_json") or "",
     }
+    # The sign-off (30 September 2026). Seven fields, all optional — a sheet
+    # is normally countersigned after the visit, so they are blank at create.
+    data.update(_signoff_form_data(form))
     if not data["date"]:
         return data, "A measurement date is required."
     return data, ""
@@ -1314,6 +1318,8 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 
     {_joint_grid_form(boq, data, sheet)}
 
+    {_signoff_form_html(data)}
+
     {picker}
 
     <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.4rem;">
@@ -1377,6 +1383,48 @@ def _joint_fields_html(boq: dict, data: dict, sheet: dict = None) -> str:
         {_fld("dia_meter", "Dia meter", "25 mm To 150 mm")}
         {_fld("area", "Area", "All Area")}
         <div class="form-group span2">{hint_html}</div>
+      </div>
+    </div>"""
+
+
+def _signoff_form_html(data: dict) -> str:
+    """
+    The seven sign-off fields, in the order the printed boxes read.
+
+    The two dates are `type="date"`, exactly as the sheet's own date is. There
+    is no SIGNATURE field: that row stays a blank ruled cell for wet ink.
+    """
+    def _box(key, label, kind="text", placeholder=""):
+        ph = f' placeholder="{placeholder}"' if placeholder else ""
+        return f"""
+        <div class="form-group">
+          <label for="{key}">{label}</label>
+          <input type="{kind}" id="{key}" name="{key}"
+                 value="{P.esc(data.get(key, ''))}"{ph}/>
+        </div>"""
+
+    return f"""
+    <div class="form-section">
+      <div class="section-title">Sign-off &mdash; printed in the two boxes at the foot</div>
+      <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+        Typed here, printed on every reprint. The signature itself stays a
+        blank ruled cell for ink. A sheet is usually countersigned after the
+        visit &mdash; come back to it from <b>Edit</b>.
+      </p>
+      <div class="fg2">
+        <div class="form-group span2">
+          <label for="counterparty_name">Their company &mdash; the right-hand box</label>
+          <input type="text" id="counterparty_name" name="counterparty_name"
+                 value="{P.esc(data.get('counterparty_name', ''))}"/>
+          <p class="fld-hint" style="margin:.3rem 0 0;">Starts as the schedule's
+            bill-to party. Change it if someone else is countersigning.</p>
+        </div>
+        {_box("signoff_ours_name", "Our side &mdash; name")}
+        {_box("signoff_theirs_name", "Their side &mdash; name")}
+        {_box("signoff_ours_designation", "Our side &mdash; designation")}
+        {_box("signoff_theirs_designation", "Their side &mdash; designation")}
+        {_box("signoff_ours_date", "Our side &mdash; date", "date")}
+        {_box("signoff_theirs_date", "Their side &mdash; date", "date")}
       </div>
     </div>"""
 
@@ -1534,6 +1582,105 @@ def _breach_band(breaches: list) -> str:
 MS_COLUMNS = (("c-sno", "Sr.No."), ("c-desc", "Description"),
               ("c-qty", "Measured"), ("c-unit", "Unit"),
               ("c-avail", "In BOQ"))
+
+
+# =============================================================================
+# THE SIGN-OFF — typed on the form, stored on the sheet (30 September 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0, thirty-sixth block, item C — Manas's rulings: each
+# party's Name, Designation and Date, and the counterparty's company name, are
+# typed on the form, stored on the record and printed on every reprint. The
+# SIGNATURE row stays a blank ruled cell for wet ink; there is no field for it
+# and nothing posted can fill it.
+#
+#   "signoff_ours":      {"name": "", "designation": "", "date": ""}
+#   "signoff_theirs":    {"name": "", "designation": "", "date": ""}
+#   "counterparty_name": "Prudent Teqtis Pvt Ltd"
+#
+# ⚠ **ADDITIVE, and ABSENT MEANS LEGACY.** A sheet saved before this has none
+#   of the three keys and prints exactly as it did: blank cells, and the
+#   right-hand band derived from `account_name` — the BOQ's bill-to party,
+#   snapshotted at create — as it always was. Absence is never filled in on
+#   read, so an old sheet does not restate itself; the keys arrive only when
+#   somebody saves the sheet through the form.
+#
+# ⚠ **The date is the sheet's own date's twin**: `<input type="date">`, stored
+#   as posted, printed as stored — the same treatment `date` gets above.
+SIGNOFF_PARTIES = ("signoff_ours", "signoff_theirs")
+SIGNOFF_FIELDS = ("name", "designation", "date")
+_SIGNOFF_CAP = 120
+_COUNTERPARTY_CAP = 200
+
+
+def counterparty_of(ms) -> str:
+    """
+    The right-hand party's band.
+
+    A sheet carrying `counterparty_name` prints it — blank included, because
+    a blank one was cleared by somebody on purpose. A sheet WITHOUT the key
+    is a legacy sheet and prints what it always printed: `account_name`.
+    """
+    ms = ms or {}
+    if "counterparty_name" in ms:
+        return str(ms.get("counterparty_name") or "")
+    return str(ms.get("account_name") or "")
+
+
+def signoff_of(ms, party: str) -> dict:
+    """One party's typed `{name, designation, date}`; blanks for a legacy sheet."""
+    got = (ms or {}).get(party)
+    got = got if isinstance(got, dict) else {}
+    return {f: str(got.get(f) or "") for f in SIGNOFF_FIELDS}
+
+
+def _signoff_form_data(form) -> dict:
+    """
+    The sign-off fields the form ACTUALLY posted, flat — the way it names them.
+
+    ⚠ **Absent is not blank.** A field missing from the POST — a form rendered
+      before this existed and submitted after it, or any client that never
+      drew it — was not provided, and is left out here, so it cannot overwrite
+      what the record holds or pin an empty counterparty onto a new sheet. A
+      field posted blank IS blank: somebody cleared it.
+    """
+    data = {f"{p}_{f}": (form.get(f"{p}_{f}") or "").strip()[:_SIGNOFF_CAP]
+            for p in SIGNOFF_PARTIES for f in SIGNOFF_FIELDS
+            if f"{p}_{f}" in form}
+    if "counterparty_name" in form:
+        data["counterparty_name"] = (
+            (form.get("counterparty_name") or "").strip()[:_COUNTERPARTY_CAP])
+    return data
+
+
+def _signoff_record(data: dict, ms: dict = None) -> dict:
+    """
+    The sign-off, shaped for the record — the seven fields and nothing else.
+
+    Starts from what `ms` already holds (an edit) and takes whatever the form
+    posted over it. A key the sheet did not carry and the form did not post
+    is not written, so a legacy sheet stays legacy until somebody types.
+    """
+    ms = ms or {}
+    out = {}
+    for p in SIGNOFF_PARTIES:
+        posted = {f: data[f"{p}_{f}"] for f in SIGNOFF_FIELDS
+                  if f"{p}_{f}" in data}
+        if posted or p in ms:
+            out[p] = {**signoff_of(ms, p), **posted}
+    if "counterparty_name" in data:
+        out["counterparty_name"] = data["counterparty_name"]
+    elif "counterparty_name" in ms:
+        out["counterparty_name"] = ms["counterparty_name"]
+    return out
+
+
+def _signoff_prefill(ms: dict) -> dict:
+    """An existing sheet's sign-off, flat, for the edit form."""
+    data = {f"{p}_{f}": v for p in SIGNOFF_PARTIES
+            for f, v in signoff_of(ms, p).items()}
+    data["counterparty_name"] = counterparty_of(ms)
+    return data
 
 
 def _fmt_cell(v: float) -> str:
@@ -1748,20 +1895,30 @@ def _joint_document_html(ms: dict, for_print: bool = False) -> str:
     #    a joint measurement. The four label rows on each side stay blank for a
     #    wet signature.
     #
-    # ⚠ The right-hand band takes the party from the BOQ's bill-to snapshot,
-    #   and where the BOQ carries none it prints EMPTY rather than inventing a
-    #   placeholder. A placeholder on a countersignature block is a name
+    # ⚠ The right-hand band takes the party from `counterparty_name` when the
+    #   sheet carries one, and otherwise — every sheet saved before
+    #   30 September 2026 — from the BOQ's bill-to snapshot, as it always did.
+    #   Where neither says anything it prints EMPTY rather than inventing a
+    #   placeholder: a placeholder on a countersignature block is a name
     #   somebody might sign under.
-    def _party(band_html, labels):
+    #
+    # ⚠ The typed Name / Designation / Date print in their rows (§ THE
+    #   SIGN-OFF above); a blank one is a blank ruled cell — never a dash, never
+    #   "None" — and the SIGNATURE row is blank whatever is on the record.
+    def _party(band_html, labels, typed):
+        values = (typed["name"], typed["designation"], "", typed["date"])
         rows = "".join(f'<div class="jm-srow"><div class="jm-slbl">{l}</div>'
-                       f'<div class="jm-sval"></div></div>' for l in labels)
+                       f'<div class="jm-sval">{P.esc(v)}</div></div>'
+                       for l, v in zip(labels, values))
         return (f'<div class="jm-party"><div class="jm-band">{band_html}</div>'
                 f'{rows}</div>')
 
     ours = _party(f'{B.name_html("lh-name-fire")}',
-                  ("NAME", "DESIGNATION", "SIGNATURE", "DATE"))
-    theirs = _party(P.esc(ms.get("account_name") or ""),
-                    ("NAME", "DESIGN.", "SIGN.", "DATE"))
+                  ("NAME", "DESIGNATION", "SIGNATURE", "DATE"),
+                  signoff_of(ms, "signoff_ours"))
+    theirs = _party(P.esc(counterparty_of(ms)),
+                    ("NAME", "DESIGN.", "SIGN.", "DATE"),
+                    signoff_of(ms, "signoff_theirs"))
 
     note_html = ""
     if ms.get("notes"):
@@ -2022,7 +2179,11 @@ def create_ms():
                                 type="error"))
 
     if request.method == "GET":
-        return _entry_form(boq, {"date": _date.today().isoformat()})
+        # The counterparty starts as the BOQ's bill-to party — the value the
+        # printed band has always been derived from (`account_name`,
+        # snapshotted below) — and the operator may change it.
+        return _entry_form(boq, {"date": _date.today().isoformat(),
+                                 "counterparty_name": boq.get("account_name", "")})
 
     data, error = _validate(request.form)
     items, line_error = ([], "") if error else picked_lines(data["ms_json"], boq)
@@ -2097,6 +2258,8 @@ def create_ms():
         "items": _with_boq_qty(items, boq_id),
         "company_branch": "", "auth_signatory": "",
         "created_at": approval._now(),
+        # The sign-off — seven typed fields, printed in the two boxes.
+        **_signoff_record(data),
     }
     # B6 — the creator, captured at the write site. See approval.py.
     approval.stamp_creator(record)
@@ -2233,7 +2396,19 @@ def print_ms(id: str):
 @measurement_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_ms(id: str):
     """
-    Correct a sheet — header fields **and** the measured quantities.
+    Correct a sheet — header fields **and** the measured quantities — and type
+    its sign-off, which is normally countersigned after the visit (30 September
+    2026). The sign-off is seven fields on this same form rather than a route
+    of its own, because this route already exists; a save that changes only
+    those seven changes nothing else on the record (`tests/
+    test_measurement_signoff.py` compares the record field by field).
+
+    ⚠ **An APPROVED sheet cannot be edited, so its sign-off cannot be typed
+      either.** That is `can_modify()` rule 1 and it binds while the ladder is
+      switched off too — a decision taken is never overturned. Nothing can be
+      approved while the ladder is off, so the sheets locked out are those
+      approved before 12 September 2026; the day the ladder returns, type the
+      sign-off before approving.
 
     ⚠ Gated by `approval.can_modify()`, which is B7-adjacent and **ours**: an
     approved sheet is locked, a part-climbed one is locked, a rejected one goes
@@ -2263,6 +2438,9 @@ def edit_ms(id: str):
         data = {k: ms.get(k, "") for k in
                 ("date", "location", "measured_by", "witnessed_by", "notes",
                  "system", "material", "dia_meter", "area")}
+        # A sheet saved before the sign-off existed shows what it prints: the
+        # derived counterparty and blank names. Saving writes the keys.
+        data.update(_signoff_prefill(ms))
         data["_chosen"] = {BQ._line_id(r.get("line_id"))
                            for r in ms.get("items") or []
                            if not r.get("is_header")}
@@ -2319,6 +2497,9 @@ def edit_ms(id: str):
         "material": data["material"],
         "dia_meter": data["dia_meter"],
         "area": data["area"],
+        # The sign-off. Countersigning happens after the visit, so this is
+        # the path it is normally typed on.
+        **_signoff_record(data, ms),
     })
     # SITE is re-inherited on save, exactly as it is on create — the label is a
     # snapshot of the address book at the moment somebody saved, and re-saving
