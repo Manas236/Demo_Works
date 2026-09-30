@@ -422,6 +422,12 @@ FORBIDDEN = [
     ("docsheet", "spec",      "any", "nor with the specification library"),
     ("docsheet", "settings",  "any", "settings.py imports quotation; nothing downstream may import back"),
     ("docsheet", "flask",     "any", "it builds HTML strings and owns no route"),
+    # 30 September 2026: the statutory COPIES live in the leaf and three of the
+    # four documents that print them are already refused above. The fourth,
+    # the merged RA, is added so the copy set cannot reach back into a module
+    # that renders through it — `copies()` takes a render function, it never
+    # imports one.
+    ("docsheet", "merged_ra", "any", "same — merged_ra.py prints its copies THROUGH it"),
 
     # ── demo_data is data only and sits at the bottom of the graph ──────────
     ("demo_data", "store",     "any", "demo_data.py imports NOTHING from the app — that is what "

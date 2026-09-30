@@ -509,18 +509,47 @@ GOLD_TI = "gold-ti"
 #     leading newline and renders as the empty string on an invoice that has
 #     not been cancelled, which is what GOLD_TI is. The sheet a customer
 #     receives did not move; only what the page is capable of drawing did.
-TI_WHOLE = "5ddd3ce9c8f7b634"
-TI_LEN = 103207
-TI_BLOCKS = {"head":       "b5312294e91a796f",   # was 59522cc02d192043,
+# was 5ddd3ce9c8f7b634 / 103207 before the 30 Sep 2026 COPY LABELS pass.
+#
+# ── RE-BASELINED 30 September 2026 — every statutory copy, by default ──────
+#
+# CLIENT_CHANGES.md §0, thirty-sixth block, item A. DECLARED for exactly four
+# documents: the tax invoice, the RA bill, the merged RA and the delivery
+# challan. Every other golden in this file is byte-identical, and so is every
+# `/view` page of those four that is not itself the print route.
+#
+# The page now prints the WHOLE set (`docsheet.COPIES_TAX_INVOICE` here) — one
+# sheet per copy, each a new printed page — where it used to print ORIGINAL
+# alone unless `?copy=all` was asked for. Measured, per block, on the four:
+#
+#   * with `?copy=original`, i.e. ONE copy against the old one-copy page:
+#       head       the new `DS.COPY_STYLES` sheet, the toolbar (the TI's own
+#                  switch, now `docsheet.copy_toolbar()`), and the opening
+#                  `<div class="copy-sheet">` wrapper — plus, on the challan
+#                  and the merged RA, whose title band is a `<caption>` that
+#                  sits BEFORE the letterhead marker, the band with its label;
+#       doc-box    (TI and RA only) the title band: `TAX INVOICE` with its
+#                  label right-aligned inside it. On the TI this REPLACES the
+#                  old separate `.copy-mark` row above the title;
+#       signature  the wrapper's closing `</div>`, one line — this block runs
+#                  to the end of the page;
+#     and `letterhead`, `foot-strip`, `party` and `items` byte-identical.
+#   * on the default page, `signature` also carries copies 2 and 3, which are
+#     copy 1 byte-for-byte apart from the label (asserted in
+#     `tests/test_copies.py`, not left to this comment).
+TI_WHOLE = "a571453b8b187735"
+TI_LEN = 195699
+TI_BLOCKS = {"head":       "cc95826af94b9984",   # was b5312294e91a796f,
+                                                  # was 59522cc02d192043,
                                                   # was 13840b8797d6e721,
                                                   # was f76089afb5505200,
                                                   # was 49524db46e29dcc5
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
-             "doc-box":    "5e4d6a24b0a5b726",
+             "doc-box":    "1628f0996b607772",   # was 5e4d6a24b0a5b726
              "party":      "a7c0e4ecf0b1491f",
              "items":      "ace24562781a2e31",
-             "signature":  "f5511fad8e1212cc"}
+             "signature":  "26d63afbc5714259"}   # was f5511fad8e1212cc
 
 # was 4f7794a81d90071c / 101851 before the 27 Aug 2026 escaping pass
 # Was e21237eb007ee61b / 101,859 before the 27 Aug 2026 Phase 3A pass added the
@@ -668,17 +697,22 @@ GOLD_RA = "gold-ra"
 # was 1c5f5c7e6720628f / 97664 before the 29 Aug 2026 nav re-baseline
 # was 7f964e7dceb2699f / 97912 before the 29 Aug 2026 MEASUREMENT nav entry
 # was 74982d79ad492c09 / 98254 before the 14 Sep 2026 nav removal
-RA_WHOLE = "1a6acf617d3c07f8"
-RA_LEN = 88957
-RA_BLOCKS = {"head":       "184a84d3609eaf57",   # was 837ea9b648848976,
+# was 1a6acf617d3c07f8 / 88957 before the 30 Sep 2026 COPY LABELS pass — the
+#     RA bill is headed TAX INVOICE and prints Rule 48's set now; see the note
+#     above TI_WHOLE for what moved in which block. The RA bill had no copy
+#     labels before, in any commit on any branch.
+RA_WHOLE = "6620a2d2d80ac71f"
+RA_LEN = 176926
+RA_BLOCKS = {"head":       "04352cf9a114cef6",   # was 184a84d3609eaf57,
+                                                  # was 837ea9b648848976,
                                                   # was 924f39af975d8d7b,
                                                   # was ea1ccbaa59c99616
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
-             "doc-box":    "44c7368b5a1b2380",
+             "doc-box":    "6825f4877677a096",   # was 44c7368b5a1b2380
              "party":      "0a1ad2e74686542a",
              "items":      "92f5cc2dd233b05b",
-             "signature":  "4ebebebbdf2383c8"}
+             "signature":  "2b6837686196c8a3"}   # was 4ebebebbdf2383c8
 
 
 def test_the_tax_invoice_document_is_unchanged(client, golden):
@@ -1113,14 +1147,19 @@ def golden_dc(client, pinned_identity):
 # point of the sheet, and the assertion below states it directly rather than
 # leaving it to two literals happening to match.
 # was d22fee5aa301c740 / 83649 before the 27 Aug 2026 escaping pass
-DC_WHOLE, DC_LEN = "9face4745b37d291", 83657
-DC_BLOCKS = {"head":       "f3f5e6b5c49c9e9f",
+# was 9face4745b37d291 / 83657 before the 30 Sep 2026 COPY LABELS pass —
+#     Rule 55's three copies (`docsheet.COPIES_DC`), see the note above
+#     TI_WHOLE. `doc-box` did NOT move here: the challan's title band is the
+#     `<caption>` above the letterhead, so the band and its label are in
+#     `head`. The challan had no copy labels before, in any commit.
+DC_WHOLE, DC_LEN = "58555aff975adc5e", 165092
+DC_BLOCKS = {"head":       "70716c3255fe6d74",   # was f3f5e6b5c49c9e9f
              "letterhead": "3c080a57f60c89e9",
              "foot-strip": "1efaaf73d3a0a076",
              "doc-box":    "57c1a660915be1d9",
              "party":      "429e9f10652d220b",
              "items":      "6ad4a95ae07c0108",
-             "signature":  "53c1b52f4aa0c8ba"}
+             "signature":  "1c33e871a464441d"}   # was 53c1b52f4aa0c8ba
 
 
 def test_the_delivery_challan_document_matches_its_recorded_baseline(
@@ -1644,13 +1683,20 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # — this was the only print route where the totals rows left the table. Was
 # 2f7780400388d366 / 87327 before the fix; `letterhead`, `foot-strip` and
 # `party` are untouched by it.
-MERGED_WHOLE, MERGED_LEN = "50e27290a88a97ef", 87957
-MERGED_BLOCKS = {"head":       "1e9bbe98af7f4e8d",   # was e38255e4e2ed0d90
+#
+# Re-baselined 30 September 2026 — COPY LABELS (§0 thirty-sixth block). Headed
+# MERGED TAX INVOICE, so Rule 48's set; the label sits in the `<caption>` band,
+# which is in `head`. See the note above TI_WHOLE. Was 50e27290a88a97ef /
+# 87957; `letterhead`, `foot-strip`, `party` and `items` untouched.
+MERGED_WHOLE, MERGED_LEN = "a84dce3a8c55d8c2", 173631
+MERGED_BLOCKS = {"head":       "482cb74cab6f5f0e",   # was 1e9bbe98af7f4e8d,
+                                                     # was e38255e4e2ed0d90
                  "letterhead": "3c080a57f60c89e9",
                  "foot-strip": "11c5bd67c2fabaa9",
                  "party":      "aa58dd01cfddecc3",
                  "items":      "e0f2b72ef4632192",   # was 30ecad09926182e7
-                 "signature":  "0598f5bb4f174a53"}   # was d5b89b346e0b46ff
+                 "signature":  "a6452d6103bae384"}   # was 0598f5bb4f174a53,
+                                                     # was d5b89b346e0b46ff
 
 
 def test_the_boq_document_matches_its_recorded_baseline(client, golden_ra):

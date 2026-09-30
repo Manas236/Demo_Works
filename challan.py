@@ -646,9 +646,14 @@ DC_COLUMNS = (("c-sno", "Sr.No."), ("c-desc", "Description"),
               ("c-qty", "Qty"), ("c-unit", "Unit"))
 
 
-def _document_html(dc: dict) -> str:
+def _document_html(dc: dict, copy_label: str = None) -> str:
     """
     The printed delivery challan, on the shared A4 sheet.
+
+    `copy_label` is one of `docsheet.COPIES_DC`, set by `/dc/print` once per
+    copy and printed right-aligned in the title band (CGST Rule 55). `/dc/view`
+    passes none and draws the sheet once, unlabelled. Presentation only: the
+    label is never written to the challan.
 
     **Driven by the challan's own stored rows**, never re-read from the live
     BOQ — CLIENT_CHANGES.md §1.2. Every description, unit, quantity and
@@ -746,7 +751,7 @@ def _document_html(dc: dict) -> str:
     return f"""
 <div class="quotation-doc">
 
-{DS.sheet_open(title_band="DELIVERY CHALLAN")}
+{DS.sheet_open(title_band="DELIVERY CHALLAN", copy_label=copy_label)}
 
   <div class="doc-box">
     <div class="doc-header dc-2col">
@@ -1011,11 +1016,24 @@ def view_dc(id: str):
 
 @challan_bp.route("/print/<id>")
 def print_dc(id: str):
-    """The document alone behind a `.no-print` action bar — `/boq/print`'s shape."""
+    """
+    The document alone behind a `.no-print` action bar — `/boq/print`'s shape.
+
+    **Every copy by default** — `docsheet.COPIES_DC`, each on its own page, so
+    one Ctrl+P prints the set Rule 55 asks for. `?copy=original|duplicate|
+    triplicate` reprints one lost copy; anything else prints the set. Every
+    copy is rendered from the same stored challan.
+    """
     dc = (STORE.get("delivery_challans") or {}).get(id)
     if not dc:
         return redirect(url_for("challan.list_dcs",
                                 msg="That challan no longer exists.", type="error"))
+
+    choice = DS.copy_choice(request.args.get("copy"), DS.COPIES_DC)
+    switch = DS.copy_toolbar(
+        lambda k: url_for("challan.print_dc", id=id, copy=k), DS.COPIES_DC, choice)
+    sheets = DS.copies(lambda label: _document_html(dc, copy_label=label),
+                       DS.COPIES_DC, choice)
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1023,15 +1041,16 @@ def print_dc(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(dc.get('ref')))}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{DC_DOC_STYLES}
+  {DS.SHEET_STYLES}{DC_DOC_STYLES}{DS.COPY_STYLES}
 </head>
 <body>
 <div class="screen-acts no-print">
   <a href="{url_for('challan.view_dc', id=id)}" class="btn btn-ghost">&#8592;&nbsp;Back</a>
+  {switch}
   <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
 </div>
 <div class="doc-outer">
-{_document_html(dc)}
+{sheets}
 </div>
 </body></html>""")
 

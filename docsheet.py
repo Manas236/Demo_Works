@@ -20,7 +20,10 @@ What lives here
 The **page frame** (`sheet_open` / `sheet_close`), the **letterhead**, the
 **party block**, the **items-table shell**, the **totals rows**, the
 **amount-in-words** line, the **bank block** and the **signature block**, plus
-the stylesheet stack every sheet loads (`SHEET_STYLES`).
+the stylesheet stack every sheet loads (`SHEET_STYLES`) — and, from
+30 September 2026, the **statutory copies** (`COPIES_DC`,
+`COPIES_TAX_INVOICE`, `copies()`), which are presentation only and are never
+stored on a record.
 
 What deliberately does NOT live here
 ------------------------------------
@@ -262,7 +265,7 @@ def foot_strip(text: str = "") -> str:
 
 def sheet_open(show_web: bool = True, show_gstin: bool = True,
                show_branches: bool = False, foot: str = "",
-               title_band: str = None) -> str:
+               title_band: str = None, copy_label: str = None) -> str:
     """
     Everything from `<table class="page-frame">` down to the open of the body
     cell the document is written into. Pair it with `sheet_close()`.
@@ -288,9 +291,18 @@ def sheet_open(show_web: bool = True, show_gstin: bool = True,
     prove it. The rule for `.page-frame > caption` is `BAND_CSS`, spliced into
     the sheet that asks for a band. A sheet that never passes one carries no
     rule for it.
+
+    `copy_label` puts a statutory copy label right-aligned inside that band
+    (`copies()` below). **`None` emits the band exactly as before** — the view
+    pages, and every document that has no copies, pass nothing.
     """
-    band = ("" if title_band is None
-            else f'  <caption class="sheet-band">{title_band}</caption>\n')
+    if title_band is None:
+        band = ""
+    elif copy_label is None:
+        band = f'  <caption class="sheet-band">{title_band}</caption>\n'
+    else:
+        band = (f'  <caption class="sheet-band has-copy">'
+                f'{_copy_row(title_band, copy_label)}</caption>\n')
     return (f'  <table class="page-frame">\n'
             f'{band}'
             f'{letterhead(show_web, show_gstin, show_branches)}\n'
@@ -303,6 +315,180 @@ def sheet_open(show_web: bool = True, show_gstin: bool = True,
 def sheet_close() -> str:
     """The close of the body cell and of the page frame."""
     return "  </td></tr></tbody>\n  </table>"
+
+
+# =============================================================================
+# COPIES — one print run carries every statutory copy (30 September 2026)
+# =============================================================================
+#
+# Goods move under more than one copy of the same document, and each copy says
+# on its face whose it is. **One tuple per kind of document, so the set is one
+# line for a CA to change** — add a fourth copy, drop one, reword one — and
+# nothing else in the application has to follow it.
+#
+# ⚠ **Presentation only, and never stored.** Every copy is the SAME render of
+#   the SAME stored record with a different label in its title band; the label
+#   is not a field on any record, and printing the set writes nothing. A copy
+#   that could differ from its original in anything but the label would not be
+#   a copy. `tests/test_copies.py` holds both halves.
+#
+# ⚠ **Only print routes carry copies.** A `/view` page shows the document once
+#   and passes no label, which is why every helper here defaults to `None` and
+#   then emits exactly the bytes it emitted before copies existed. The one
+#   exception is the tax invoice, whose `/invoice/view` IS its print route —
+#   there is no other (`approval.py` §B7 records the same finding).
+
+# Delivery challan — CGST Rule 55(2).
+COPIES_DC = ("ORIGINAL FOR CONSIGNEE", "DUPLICATE FOR TRANSPORTER",
+             "TRIPLICATE FOR CONSIGNER")
+
+# Tax invoice — CGST Rule 48(4). Also every RA bill and every merged RA
+# document, because each of those prints headed TAX INVOICE.
+COPIES_TAX_INVOICE = ("ORIGINAL FOR RECIPIENT", "DUPLICATE FOR TRANSPORTER",
+                      "TRIPLICATE FOR SUPPLIER")
+
+# `?copy=` values, in the order the sets above list their copies.
+COPY_KEYS = ("original", "duplicate", "triplicate")
+COPY_ALL = "all"
+
+
+def copy_keys(copy_set) -> tuple:
+    """
+    The `?copy=` key for each entry of a set, in order. A set a CA lengthens
+    past three gets `copy-4`, `copy-5` … rather than losing its extra copies.
+    """
+    return tuple(COPY_KEYS[i] if i < len(COPY_KEYS) else f"copy-{i + 1}"
+                 for i in range(len(copy_set)))
+
+
+def copy_choice(arg, copy_set) -> str:
+    """
+    What `?copy=` asked for: one key of this set, or `COPY_ALL`.
+
+    Absent, `all`, and **anything this set does not carry** all mean the
+    whole set — a mistyped reprint request prints too much rather than
+    nothing, and the operator throws the extras away.
+    """
+    key = str(arg or "").strip().lower()
+    return key if key in copy_keys(copy_set) else COPY_ALL
+
+
+def copies(render_one, copy_set, choice: str = COPY_ALL) -> str:
+    """
+    Every copy the choice asks for, one after another, each a complete sheet.
+
+    `render_one(label)` renders ONE whole document with `label` in its title
+    band; it is called once per copy against the same record, so any overprint
+    the document carries (DRAFT, CANCELLED) is on every copy by construction.
+    Each copy is wrapped in `.copy-sheet`, and `COPY_CSS` starts every copy
+    after the first on a new printed page — one Ctrl+P prints the set.
+    """
+    out = []
+    for key, label in zip(copy_keys(copy_set), copy_set):
+        if choice not in (COPY_ALL, key):
+            continue
+        out.append(f'<div class="copy-sheet" data-copy="{key}">\n'
+                   f'{render_one(label)}\n</div>')
+    return "\n".join(out)
+
+
+def _copy_row(title_html: str, copy_label: str) -> str:
+    """The title centred, the copy label right-aligned, on one row."""
+    return (f'<span class="cb-row"><span class="cb-title">{title_html}</span>'
+            f'<span class="copy-lbl">{P.esc(copy_label)}</span></span>')
+
+
+def doc_title(title_html: str, copy_label: str = None) -> str:
+    """
+    The `.doc-title` band — *TAX INVOICE* on the tax invoice and the RA bill.
+
+    With no label this is exactly the `<div>` both documents always wrote by
+    hand. `title_html` is the caller's literal and is not escaped here.
+    """
+    if copy_label is None:
+        return f'<div class="doc-title">{title_html}</div>'
+    return (f'<div class="doc-title has-copy">'
+            f'{_copy_row(title_html, copy_label)}</div>')
+
+
+def copy_toolbar(href_of, copy_set, choice: str) -> str:
+    """
+    The screen-only switch: each copy on its own, or the whole set.
+
+    `href_of(key)` builds the URL — this module owns no route and imports no
+    Flask, so the caller passes its own `url_for`. The switch is `.no-print`
+    and `COPY_CSS` hides it at print as well.
+    """
+    names = {"original": "Original", "duplicate": "Duplicate",
+             "triplicate": "Triplicate"}
+
+    def _link(key: str, text: str) -> str:
+        on = ' class="on"' if key == choice else ""
+        return f'<a{on} href="{P.esc(href_of(key))}">{text}</a>'
+
+    keys = copy_keys(copy_set)
+    links = "".join(_link(k, names.get(k, f"Copy {i + 1}"))
+                    for i, k in enumerate(keys))
+    return ('<div class="copy-switch no-print"><span class="cs-lbl">Copy</span>'
+            f'{links}{_link(COPY_ALL, f"All {len(keys)}")}</div>')
+
+
+# The rules for the above, raw — `BANK_CSS`'s arrangement — and wrapped once in
+# `COPY_STYLES` for the print routes that carry copies. Loaded by those routes
+# ONLY: every register page is pinned by `tests/test_page_golden.py`, and none
+# of them draws a copy.
+#
+# The switch reuses the tax invoice's `.copy-switch` look exactly, so the one
+# control the owner has already used is the one every document now carries.
+# The label is `.copy-lbl` and NOT the tax invoice's old `.copy-mark`: that
+# rule still sits in `invoice.INVOICE_STYLES` (the pinned `/invoice/` register
+# loads that sheet) and would draw a rule under a label that is now inside a
+# band.
+COPY_CSS = """\
+  /* ── Copies ───────────────────────────────────────────────────────────
+     Each copy is a whole sheet; every one after the first starts a page.
+     `position:relative` because an overprint watermark (`.lc-mark`) is
+     absolutely positioned: with no positioned ancestor, the tax invoice's
+     three watermarks all landed on the first copy and copies 2 and 3 printed
+     CANCELLED in the band only. Each copy is now the watermark's frame. */
+  .copy-sheet { position:relative; }
+  .copy-sheet + .copy-sheet { break-before:page; page-break-before:always; }
+  @media screen { .copy-sheet + .copy-sheet { margin-top:8mm; } }
+
+  /* The label sits right-aligned INSIDE the title band, the title stays
+     centred. Three grid columns, the first empty, so the title is centred on
+     the band and not on what is left of it. */
+  .quotation-doc .cb-row { display:grid; grid-template-columns:1fr auto 1fr;
+        align-items:center; column-gap:3mm; }
+  .quotation-doc .cb-title { grid-column:2; }
+  .quotation-doc .copy-lbl { grid-column:3; justify-self:end; text-align:right;
+        font-size:var(--fs-xs); font-weight:700; letter-spacing:.06em;
+        text-decoration:none; padding-right:6px; }
+  /* The caption band underlines its text (BAND_CSS); keep that on the title
+     and off the label. */
+  .quotation-doc .page-frame > caption.has-copy { text-decoration:none; }
+  .quotation-doc .page-frame > caption.has-copy .cb-title {
+        text-decoration:underline; }
+
+  /* The switch, screen only. */
+  .copy-switch { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
+  .copy-switch .cs-lbl {
+    font-size:.76rem; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.05em; font-weight:600;
+  }
+  .copy-switch a {
+    font-size:.76rem; font-weight:600; text-decoration:none;
+    padding:.28rem .6rem; border-radius:7px;
+    border:1px solid var(--border); color:var(--muted); background:var(--bg);
+  }
+  .copy-switch a.on { border-color:var(--brand); color:var(--brand); }
+  @media print { .copy-switch { display:none !important; } }
+"""
+
+COPY_STYLES = f"""
+<style>
+{COPY_CSS}</style>
+"""
 
 
 # =============================================================================

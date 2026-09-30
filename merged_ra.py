@@ -953,13 +953,27 @@ def print_merged(id: str):
         void_band = ('<div class="draft-mark">CANCELLED &mdash; '
                      'this document has been withdrawn and is not a demand for payment</div>')
 
-    sheet = (DS.sheet_open(title_band="MERGED TAX INVOICE")
-             + party + meta + void_band
-             + DS.items_table(columns, rows + totals_rows)
-             + DS.amount_words("Amount in words", float(doc.get("grand_total") or 0.0))
-             + DS.bank_block()
-             + DS.sig_block(computer_generated=True)
-             + DS.sheet_close())
+    # ── The copies (30 September 2026) ─────────────────────────────────────
+    # Headed TAX INVOICE, so Rule 48's set: `docsheet.COPIES_TAX_INVOICE`,
+    # the label right-aligned in the caption band, and the CANCELLED band on
+    # every copy because every copy is this same render.
+    def _sheet(copy_label: str) -> str:
+        return ('<div class="quotation-doc">\n'
+                + DS.sheet_open(title_band="MERGED TAX INVOICE",
+                                copy_label=copy_label)
+                + party + meta + void_band
+                + DS.items_table(columns, rows + totals_rows)
+                + DS.amount_words("Amount in words",
+                                  float(doc.get("grand_total") or 0.0))
+                + DS.bank_block()
+                + DS.sig_block(computer_generated=True)
+                + DS.sheet_close()
+                + "\n</div>")
+
+    choice = DS.copy_choice(request.args.get("copy"), DS.COPIES_TAX_INVOICE)
+    switch = DS.copy_toolbar(
+        lambda k: url_for("merged_ra.print_merged", id=id, copy=k),
+        DS.COPIES_TAX_INVOICE, choice)
 
     return BQ._page(f"""<!DOCTYPE html><html lang="en">
 <head><meta charset="UTF-8"/>
@@ -967,7 +981,7 @@ def print_merged(id: str):
 <title>{B.page_title(str(doc.get('tax_invoice_ref') or 'Merged'))}</title>{B.HEAD_ICON}
 {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA.RA_DOC_STYLES}
 <style>
-{DS.BAND_CSS}</style>
+{DS.BAND_CSS}</style>{DS.COPY_STYLES}
 {approval.print_block("merged_ra", doc)}</head>
 <body>
 <main>
@@ -975,14 +989,13 @@ def print_merged(id: str):
   <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
     Merged Tax Invoice <span style="color:var(--brand);">{_esc(doc.get('tax_invoice_ref'))}</span>
   </h1>
-  <div style="display:flex;gap:.6rem;">
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;">
+    {switch}
     <a href="{url_for('merged_ra.view_merged', id=id)}" class="btn btn-ghost">&#8592; Back</a>
     <button class="btn" onclick="window.print()">&#128438; Print</button>
   </div>
 </div>
-<div class="quotation-doc">
-{sheet}
-</div>
+{DS.copies(_sheet, DS.COPIES_TAX_INVOICE, choice)}
 </main>
 </body></html>""")
 

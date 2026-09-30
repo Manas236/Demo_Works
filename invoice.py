@@ -38,7 +38,11 @@ Three things, and they are the reason this module is not thin:
 Goods invoices also go out in triplicate (Original for Recipient / Duplicate
 for Transporter / Triplicate for Supplier). There is no PDF library here (the
 "export" is the browser's own Print → Save as PDF), so the copy caption is a
-render parameter: `?copy=original|duplicate|triplicate|all`.
+render parameter: `?copy=original|duplicate|triplicate|all`. **From
+30 September 2026 the page renders the whole set by default** and the set,
+the parameter and the label all come from `docsheet.py` (`COPIES_TAX_INVOICE`,
+`copies()`), shared with the RA bill and the merged RA document, which print
+headed TAX INVOICE too.
 
 What is reused, and from where
 ------------------------------
@@ -112,11 +116,11 @@ DEFAULT_REVERSE_CHARGE = False
 
 # Goods move under three copies (Rule 48). Services need only two, but this
 # company supplies equipment, so three is the default.
-COPY_LABELS = {
-    "original":   "ORIGINAL FOR RECIPIENT",
-    "duplicate":  "DUPLICATE FOR TRANSPORTER",
-    "triplicate": "TRIPLICATE FOR SUPPLIER",
-}
+#
+# ⚠ **The set is `docsheet.COPIES_TAX_INVOICE` from 30 September 2026** — one
+#   tuple shared with the RA bill and the merged RA document, which print
+#   headed TAX INVOICE too. `COPY_LABELS`, the dict that stood here, was read
+#   by this module alone and is gone rather than left as a second copy of it.
 
 # GST State codes — the first two digits of every GSTIN, and half of what
 # "place of supply" means on the face of the invoice (Rule 46(n) wants the name
@@ -1074,19 +1078,20 @@ def view_invoice(id: str):
     per-line HSN, the despatch details and the certification above the
     signature.
 
-    ``?copy=`` selects which of the three copies to render — ``original``
-    (default), ``duplicate``, ``triplicate``, or ``all`` for one print run that
-    produces the full set on three pages.
+    ``?copy=`` selects which copies to render — ``original``, ``duplicate`` or
+    ``triplicate`` for one copy on its own (reprinting a lost one), and
+    ``all`` — **the default from 30 September 2026, and what any other value
+    means** — for one print run that produces the full set on three pages.
+    Until then the default was ``original`` alone. This page is the tax
+    invoice's print route (there is no other), which is why a `/view` URL
+    carries copies here and on no other document.
     """
     ti = STORE["invoices"].get(id)
     if not ti:
         return redirect(url_for("invoice.list_invoices",
                                 msg="Tax invoice not found.", type="error"))
 
-    copy_arg = (request.args.get("copy") or "original").lower()
-    if copy_arg not in COPY_LABELS and copy_arg != "all":
-        copy_arg = "original"
-    copies = list(COPY_LABELS) if copy_arg == "all" else [copy_arg]
+    copy_arg = DS.copy_choice(request.args.get("copy"), DS.COPIES_TAX_INVOICE)
 
     # ── Line-item rows — same treatment as the other two documents, plus the
     #    HSN cell, which is the one column a tax invoice cannot leave blank.
@@ -1268,16 +1273,18 @@ def view_invoice(id: str):
       The number {P.esc(ti.get('ref'))} is <b>not reissued</b> &mdash; it stays
       spent so the statutory series remains consecutive.</div>"""
 
-    def _sheet(copy_key: str) -> str:
-        """The whole A4 document, captioned for one of the three copies."""
+    def _sheet(copy_label: str) -> str:
+        """
+        The whole A4 document, labelled for one copy. The cancellation
+        overprint is inside it, so every copy carries one.
+        """
         return f"""
 <div class="quotation-doc">
 
 {DS.sheet_open()}
 
   <div class="doc-box">
-    <div class="copy-mark">{COPY_LABELS[copy_key]}</div>
-    <div class="doc-title">TAX INVOICE</div>{void_html}
+    {DS.doc_title("TAX INVOICE", copy_label)}{void_html}
 
 {DS.party_block("To", to_display, ship_html, meta_col_1, meta_col_2)}
 
@@ -1308,22 +1315,12 @@ def view_invoice(id: str):
 
 </div>"""
 
-    sheets_html = "".join(_sheet(c) for c in copies)
+    sheets_html = DS.copies(_sheet, DS.COPIES_TAX_INVOICE, copy_arg)
 
     # ── Screen chrome ─────────────────────────────────────────────────────
-    def _copy_link(key: str, label: str) -> str:
-        on = "on" if copy_arg == key else ""
-        return (f'<a class="{on}" '
-                f'href="{url_for("invoice.view_invoice", id=id, copy=key)}">{label}</a>')
-
-    copy_switch = (
-        '<div class="copy-switch"><span class="cs-lbl">Copy</span>'
-        + _copy_link("original", "Original")
-        + _copy_link("duplicate", "Duplicate")
-        + _copy_link("triplicate", "Triplicate")
-        + _copy_link("all", "All 3")
-        + "</div>"
-    )
+    copy_switch = DS.copy_toolbar(
+        lambda k: url_for("invoice.view_invoice", id=id, copy=k),
+        DS.COPIES_TAX_INVOICE, copy_arg)
 
     pi_view = (url_for("proforma.view_proforma", id=ti["proforma_id"])
                if ti.get("proforma_id") in STORE["proformas"] else "")
@@ -1352,7 +1349,7 @@ def view_invoice(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(ti.get('ref')) + " Tax Invoice")}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}
+  {DS.SHEET_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{DS.COPY_STYLES}
 </head>
 <body>{approval.print_block("invoice", ti)}
 <main>

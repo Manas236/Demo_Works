@@ -32,6 +32,7 @@ import re
 import pytest
 
 import boq as BQ
+import docsheet as DS
 from quotation import _inr
 from store import STORE
 from test_ra_record import boq_line, make_boq, make_bill, claim
@@ -179,7 +180,17 @@ def test_a_claimed_line_deleted_from_the_boq_still_prints_and_the_bill_ties(clie
     header_row = re.search(
         r'<tr class="row-assembly">.*?</tr>',
         squash(before), re.S).group(0)
-    assert squash(before).replace(header_row, "", 1).replace("  ", " ") == \
+    # ⚠ REWRITTEN 30 September 2026 — the page prints every statutory copy by
+    #   default (`docsheet.COPIES_TAX_INVOICE`), so the header row is on it once
+    #   PER COPY, not once. The property is unchanged and is asserted on every
+    #   copy: exactly one header row per copy, and removing all of them is the
+    #   whole of the difference. The assertion this replaces, verbatim:
+    #
+    #   assert squash(before).replace(header_row, "", 1).replace("  ", " ") == \
+    #          squash(after)
+    n_copies = len(DS.COPIES_TAX_INVOICE)
+    assert squash(before).count(header_row) == n_copies
+    assert squash(before).replace(header_row, "").replace("  ", " ") == \
            squash(after)
 
 
@@ -283,8 +294,16 @@ def test_print_reads_no_live_value_even_when_every_boq_field_is_replaced(client,
         li["description"] = "POISON DESCRIPTION"
 
     after = _print(client, rid)
+    # ⚠ REWRITTEN 30 September 2026 — one header paragraph PER COPY now that
+    #   the page prints the whole statutory set by default, so exactly one
+    #   poisoned header per copy is permitted and nothing else. The assertion
+    #   this replaces, verbatim:
+    #
+    #   for marker in ("POISON", "424,242", "424242"):
+    #       assert marker not in after.replace("POISON DESCRIPTION", "", 1), marker
+    assert after.count("POISON DESCRIPTION") == len(DS.COPIES_TAX_INVOICE)
     for marker in ("POISON", "424,242", "424242"):
-        assert marker not in after.replace("POISON DESCRIPTION", "", 1), marker
+        assert marker not in after.replace("POISON DESCRIPTION", ""), marker
     # Everything except the header paragraph is untouched.
     assert after.replace("POISON DESCRIPTION", "Supply, fabrication and "
                          "installation of C class pipe") == before

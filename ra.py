@@ -4352,37 +4352,26 @@ def print_ra(id: str):
                      _inr(grand_total))
     )
 
-    html = f"""<!DOCTYPE html><html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title(f"TAX INVOICE — RA{bill.get('ra_no')}")}</title>
-  {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA_DOC_STYLES}
-</head>
-<body>
-<main>
+    # ── The copies (30 September 2026) ─────────────────────────────────────
+    #
+    # This sheet is headed TAX INVOICE, so it goes out as Rule 48's set —
+    # `docsheet.COPIES_TAX_INVOICE`, the tuple the tax invoice itself uses,
+    # through the leaf; `ra.py` still does not import `invoice.py`. Every copy
+    # is the same render of the same stored bill, the lifecycle overprint
+    # included, so a DRAFT or CANCELLED bill is marked on every copy.
+    copy_choice = DS.copy_choice(request.args.get("copy"), DS.COPIES_TAX_INVOICE)
+    copy_switch = DS.copy_toolbar(
+        lambda k: url_for("ra.print_ra", id=id, copy=k),
+        DS.COPIES_TAX_INVOICE, copy_choice)
 
-<div class="screen-acts">
-  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
-    Tax Invoice <span style="color:var(--brand);">{_esc(tax_inv_ref)}</span>
-    {status_badge(bill)}
-  </h1>
-  <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592;&nbsp;Back to RA{_esc(bill.get('ra_no'))}</a>
-    <a href="{url_for('ra.list_ras')}" class="btn btn-ghost">RA Register</a>
-    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
-  </div>
-</div>
-
-<div class="doc-outer">
-<div class="quotation-doc ra-doc">
+    def _sheet(copy_label: str) -> str:
+        return f"""<div class="quotation-doc ra-doc">
 
 {DS.sheet_open()}
 
   <div class="doc-box">
     {overprint_html}
-    <div class="doc-title">TAX INVOICE</div>
+    {DS.doc_title("TAX INVOICE", copy_label)}
     <div class="doc-sub-ra">Running Account bill &middot; claim for work executed</div>
 
 {DS.party_block("To", DS.name_block(bill.get("to")) or buyer_name_disp,
@@ -4400,7 +4389,34 @@ def print_ra(id: str):
 
 {DS.sheet_close()}
 
+</div>"""
+
+    html = f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(f"TAX INVOICE — RA{bill.get('ra_no')}")}</title>
+  {B.HEAD_ICON}
+  {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA_DOC_STYLES}{DS.COPY_STYLES}
+</head>
+<body>
+<main>
+
+<div class="screen-acts">
+  <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
+    Tax Invoice <span style="color:var(--brand);">{_esc(tax_inv_ref)}</span>
+    {status_badge(bill)}
+  </h1>
+  <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
+    {copy_switch}
+    <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592;&nbsp;Back to RA{_esc(bill.get('ra_no'))}</a>
+    <a href="{url_for('ra.list_ras')}" class="btn btn-ghost">RA Register</a>
+    <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
+  </div>
 </div>
+
+<div class="doc-outer">
+{DS.copies(_sheet, DS.COPIES_TAX_INVOICE, copy_choice)}
 </div>
 
 <footer style="margin-top:1.75rem;">
