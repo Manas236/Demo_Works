@@ -3995,6 +3995,55 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 30 September 2026, later, by Manas Gawde — BOQ IMPORT: WHAT A CHILD LINE BELONGS TO, "NOT PRICED", UNITS, PLACEHOLDERS
+>
+> **A new block, not an amendment.** The thirty-seventh block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-eighth** occasion. It covers the four items
+> below and nothing else. It extends G4 (the thirty-seventh block) and does not
+> re-open that block, which covers its own item and nothing else.
+>
+> **What was asked for, in a written brief** — four problems found by testing
+> the G4 import on a real client sheet (the Jamnagar BOQ):
+>
+> 1. **A child line shows only its own text** ("2Kg", "Under item 3") and item
+>    numbers restart per section, so the user cannot tell what is being priced.
+>    Decided: the parent of a line is the line in the **same section** whose
+>    item number is its *Under item*, the **nearest above** on a repeated
+>    number, and a missing one is a **soft** amber strip; every child card
+>    carries its parent (a strip above Description with the Make, the
+>    collapsed header, the sticky bar, the flag banner), live. **Every reader
+>    of the relation is audited and made to follow the same rule**; the print
+>    goldens must not move.
+> 2. **The sheet leaves lines unpriced on purpose** and its totals add up
+>    without them. Decided: **any typed number, 0 included, answers a rate
+>    flag**; a **Not priced (₹0)** button; a grey *not priced* chip; *All
+>    answered · N not priced*; a soft amber note on `/boq/view`. What a 0-rate
+>    line prints as is **not** changed.
+> 3. **The sheet has no Unit column.** Decided: a soft amber outline on a blank
+>    imported unit, **outside** the *needs you* count, a separate note in the
+>    bar, a *Unit for all N sizes* box that fills blanks only, and one line on
+>    the preview. No normalising and no inferring.
+> 4. **Grey example placeholders read as filled values.** Decided: neutral
+>    words on an imported line; *type rate* on a flagged box; the typed form
+>    unchanged.
+>
+> **Server-side validation stays the authority and was not loosened** — the
+> save always accepted a 0 rate; the importer's flag detection is unchanged;
+> ABOUT.md §7 **gap 42 stays open** for its own decision.
+>
+> ⚠ **Its commercial status is NOT recorded here.** Part of it repairs G4 as
+> built (a flagged BOQ that could not be saved as the client quoted it; a
+> resolver audit) and part of it is new; how any of it is charged is Manas's
+> call, and an agent may not take it, infer it, or extend G1's or G4's
+> classification onto it. It moves no Phase 3 bar and changes no CC-2 item's
+> state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
