@@ -3942,6 +3942,59 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 30 September 2026, by Manas Gawde — BOQ IMPORT: THE SHEET'S OWN STRUCTURE, ITS TOTALS, AND A GUIDED FIX
+>
+> **A new block, not an amendment.** The thirty-sixth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-seventh** occasion. It covers the one item
+> below and nothing else. It extends G1 (the thirty-fourth block) and does not
+> re-open that block.
+>
+> **What was asked for, in a written brief.** The importer flagged 79 cells on
+> a real client sheet (the Jamnagar hydrant BOQ), most of which the sheet's own
+> structure answers; it also missed real problems and let amounts go without a
+> word. Fix the parsing, then make the prefilled Create BOQ form lead the user
+> to each field that genuinely needs input.
+>
+> **Decisions taken — his, in the brief and in his answers the same day, not
+> the agent's:**
+>
+> 1. **Item numbers from the structure**: a row the sheet did not number under
+>    a numbered one is spec text (unpriced) or a sub-item `<parent>.a` (priced);
+>    a sub-heading needs no number; the sheet's own `a)` labels are kept.
+> 2. **An amount alone** is a subtotal, section total, grand total or combined
+>    total by arithmetic (a check, never a line), else a **lump sum** — 1 LS,
+>    flagged for review. **A zero amount is no amount**; a ₹0 lump sum is never
+>    imported.
+> 3. **Blocking flags**: no quantity; an amount or a quantity with no rate;
+>    quantity × rate more than ₹1 off the sheet's amount.
+> 4. **The heading**: the first heading row wins; a repeated heading is skipped.
+> 5. **An Amount column** with no track of its own takes the track of the rate
+>    column to its left, shown in the preview and changeable there.
+> 6. **Block in the browser only.** What the server accepts is unchanged, and
+>    ABOUT.md §7 **gap 42 stays open** for its own decision.
+> 7. **The suggested child item number** on Create BOQ follows `.a / .b`.
+>
+> **What was built:** the structure, the totals and the flags in
+> `sheetimport.py`; a grouped preview summary; on `/boq/create`, ringed fields,
+> an "auto" and an "LS · review" chip, a sticky *N fields need you* bar with
+> Prev / Next, and marks computed on the server so a refused save keeps them —
+> for every BOQ, not only an imported one. On the client's sheet: **79 flags
+> before, 11 after**, each a line with a quantity and no rate. The judgement
+> calls beyond these seven decisions are listed in ABOUT.md §5 `/boq/import`
+> and in the report of the pass, and are the agent's, not his.
+>
+> ⚠ **Its commercial status is NOT recorded here.** Part of it repairs v1
+> behaviour (a repeated heading dropped section A of the Sify sheet; amounts
+> went unreported) and part of it is new; how any of it is charged is Manas's
+> call, and an agent may not take it, infer it, or extend G1's classification
+> onto it. It moves no Phase 3 bar and changes no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4521,6 +4574,7 @@ authorised by its own §0 block, which is where its commercial status lives.
 |---|---|---|
 | G1 | BOQ import from Excel v1 | ✅ **Delivered (v1)** — built 29 Sep 2026 under the §0 **thirty-fourth** block; **new chargeable scope outside MG/SF/2026-06** |
 | G2 | GSTIN auto-fill on the address book | ✅ **Built, not deployed** — 29 Sep 2026 under the §0 **thirty-fifth** block; **commercial status not yet recorded** |
+| G4 | BOQ import from Excel — the sheet's own structure, its totals, and a guided fix on Create BOQ | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-seventh** block; extends G1; **commercial status not recorded — Manas's call** |
 | G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
 
 ### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
@@ -4554,6 +4608,37 @@ front of it for an imported line.
 
 → Technical detail: [ABOUT.md §5 `/boq/import`](ABOUT.md), §3 *BOQ import
 staging* and *Import layout*.
+
+→ Extended on 30 September 2026 by **G4** (the §0 thirty-seventh block).
+
+### G4 · BOQ import — the sheet's structure, its totals, a guided fix — ✅ Built, not deployed
+
+**Built.** The importer now reads a BOQ the way it is written:
+
+- **Item numbers are worked out from the sheet.** A size row under item 1 is
+  **1.a**, **1.b** … and is marked *auto* for a look; a spec paragraph under an
+  item joins that item's description; a sub-heading joins the section title.
+  None of these is flagged any more.
+- **Totals are checked, not imported.** Subtotals, section totals, the grand
+  total and a supply + installation total are recognised by their arithmetic
+  and reported as *adds up* or *does not add up*. An amount on its own that is
+  none of these comes in as a **lump sum** (1 LS) for review. A 0 is treated as
+  blank.
+- **What really needs somebody is flagged, and blocks the save:** a line with
+  no quantity, an amount or a quantity with no rate, or a rate that does not
+  give the sheet's own amount (the rate is then left blank to be typed).
+- **Create BOQ leads the way.** Each such box is ringed, a bar at the top says
+  how many are left with Prev / Next, and the form goes to the first one. When
+  none are left the bar says *All filled — review and save*.
+
+On the client's Jamnagar hydrant sheet: **79 flags before, 11 after** — eleven
+lines with a quantity and no rate.
+
+⚠ **Still the case — ABOUT.md §7 gap 42 (OPEN, by decision).** The block is in
+the browser; a blank quantity sent another way is still saved as 0.
+
+→ Technical detail: [ABOUT.md §5 `/boq/import`](ABOUT.md) — *The structure*,
+*The totals*, *The flags*, *The guided fix*.
 
 ### G2 · GSTIN auto-fill on the address book — ✅ Built, not deployed
 
