@@ -4685,6 +4685,7 @@ authorised by its own §0 block, which is where its commercial status lives.
 | G1 | BOQ import from Excel v1 | ✅ **Delivered (v1)** — built 29 Sep 2026 under the §0 **thirty-fourth** block; **new chargeable scope outside MG/SF/2026-06** |
 | G2 | GSTIN auto-fill on the address book | ✅ **Built, not deployed** — 29 Sep 2026 under the §0 **thirty-fifth** block; **commercial status not yet recorded** |
 | G4 | BOQ import from Excel — the sheet's own structure, its totals, and a guided fix on Create BOQ | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-seventh** block; extends G1; **extended the same day under the §0 thirty-eighth block** (what a child line belongs to, "not priced", units, placeholders); **commercial status of both not recorded — Manas's call** |
+| G5 | BOQ import from Excel — cost sheets, rate-only lines, group labels, nothing below the grand total | ✅ **Built, not deployed** — 1 Oct 2026 under the §0 **thirty-ninth** block (the Iron Mountain sheet); extends G4; **commercial status not recorded — Manas's call** |
 | G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
 
 ### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
@@ -4720,6 +4721,11 @@ front of it for an imported line.
 staging* and *Import layout*.
 
 → Extended on 30 September 2026 by **G4** (the §0 thirty-seventh block).
+
+→ And on 1 October 2026 by **G5** (the §0 thirty-ninth block), which changes
+one rule above: **"RO" in a quantity is now a rate-only line at 0** with its
+rates kept, not blank. Any other word in a quantity ("NA", "I.R.") still stays
+blank and flagged.
 
 ### G4 · BOQ import — the sheet's structure, its totals, a guided fix — ✅ Built, not deployed
 
@@ -4778,6 +4784,47 @@ On the Jamnagar sheet: the same 11 lines need a rate, all 11 can be answered
 
 → Technical detail: [ABOUT.md §3 *The parent rule*](ABOUT.md) (with the
 resolver audit) and §5 `/boq` / `/boq/import`.
+
+→ Extended on 1 October 2026 by **G5** (the §0 thirty-ninth block).
+
+### G5 · BOQ import — cost sheets, rate-only lines, group labels, the grand total — ✅ Built, not deployed
+
+**Built**, after the import was tried on the client's Iron Mountain sheet
+(for Sterling & Wilson):
+
+- **A sheet priced at our own cost.** The import asks *Rates on this sheet
+  are: Selling rates / Our cost*. It picks *Our cost* by itself when the sheet's
+  heading says "cost", "own cost", "buy" or "purchase", and says which words it
+  saw; either choice can be changed. *Our cost* asks for a **Markup %**: each
+  rate on the sheet becomes the line's **base rate**, the markup becomes its
+  **escalation**, and the form works out the selling rate — editable per line.
+  The sheet's own totals are still checked against its own figures, before the
+  markup. **The printed BOQ never shows the base rate or the escalation.**
+- **"RO" (rate only) in the quantity** comes in at quantity 0 with its rates
+  kept, a grey *rate only* mark and a note in the remark. Only a rate-only line
+  with no rate at all needs somebody — and *Not priced* answers it.
+- **"PN-25" / "PN-16" inside an item** go in front of each size under them —
+  *PN-25 · DN 250* — instead of being added to the item's description.
+- **Nothing below the grand total** becomes a line: the 20% add-on, the
+  running total and the declarations block are listed as notes, not imported.
+- **Item numbers** read as written (*5.2*, not *5.20*), and a **number in the
+  Make column** is ignored and noted.
+
+On the Iron Mountain sheet: the right sheet is chosen, 163 lines, 34 rate-only
+lines (13 with no rate, which need a rate or *Not priced*), every section and
+the grand total add up to the paisa — and at a 0% markup the BOQ's base totals
+equal the sheet's. The Jamnagar sheet is unchanged: the same 11 lines need a
+rate.
+
+⚠ **Not done, by the brief:** a heading stacked over three rows is not read —
+on this sheet the four cost columns are picked by hand once; and eleven "Lot"
+lines the sheet prices at ₹0 are not asked about, by the nil-priced rule.
+
+⚠ **Still the case — ABOUT.md §7 gap 42 (OPEN, by decision).**
+
+→ Technical detail: [ABOUT.md §5 `/boq/import`](ABOUT.md) — *Rate-only lines*,
+*Cost sheets*, *The structure* (group labels), *The totals* (below the grand
+total), and *The Iron Mountain sheet's heading and hidden cells*.
 
 ### G2 · GSTIN auto-fill on the address book — ✅ Built, not deployed
 
