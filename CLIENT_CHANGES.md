@@ -4044,6 +4044,67 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 1 October 2026, by Manas Gawde — BOQ IMPORT: COST SHEETS, RATE-ONLY LINES, GROUP LABELS, BELOW THE GRAND TOTAL
+>
+> **A new block, not an amendment.** The thirty-eighth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **thirty-ninth** occasion. It covers the items below
+> and nothing else. It extends G4 (the thirty-seventh and thirty-eighth
+> blocks) and does not re-open either.
+>
+> **What was asked for, in a written brief** — a client sheet (Iron Mountain,
+> for Sterling & Wilson) that breaks the importer in ways the Jamnagar sheet
+> did not. Each fix is a general rule, not a special case for one file:
+>
+> 1. **Item numbers are float artefacts** (`5.199999999999999`). Decided: round
+>    to the decimals of a fixed number format, otherwise to at most 2, then
+>    strip trailing zeros; a text item stays as it is.
+> 2. **"RO" (rate only) in the quantity.** Decided: "RO", "R.O.", "R/O" or
+>    "RATE ONLY" is quantity 0 with the rates kept, a grey *rate only* chip and
+>    a remark; not a blocking flag by itself. With no rate on either track it
+>    gets the existing blocking rate flag, worded *rate-only line with no rate*,
+>    so *Not priced* answers it. The preview counts them.
+> 3. **Pressure-class labels inside an item** ("PN-25", "PN-16"). Decided: two
+>    or more unnumbered, unpriced rows under one parent, each immediately
+>    followed by a child, are group labels, put in front of the children's
+>    descriptions ("PN-25 · DN 250") and never appended to the parent's text;
+>    one such row, or rows not each followed by a child, stay spec text.
+> 4. **Rows below the grand total** (a 20% add-on, a running total, a
+>    declarations block). Decided: once the grand total is recognised by its
+>    label and its sums, no later row becomes a line; each is listed with its
+>    row number under *other notes from the reader*. Rows above are unchanged.
+> 5. **A number in the Make column** is ignored and listed under other notes.
+> 6. **The sheet's rates are Samruddhi's OWN COST, not selling rates.**
+>    Decided: the preview asks *Rates on this sheet are: Selling rates / Our
+>    cost* — selling by default, *our cost* pre-selected when the heading says
+>    "cost", "own cost", "buy" or "purchase", with the words shown, changeable
+>    either way. *Our cost* needs a Markup % (≥ 0; a warning at 0): each sheet
+>    rate goes into the BASE rate on its own track, the markup becomes the
+>    ESCALATION %, and the unit rate comes from the form's existing base +
+>    escalation computation. Every arithmetic check runs on the sheet's own
+>    figures, before the markup. The create form says *Imported from a cost
+>    sheet …*. Selling mode is unchanged. **The printed BOQ never shows the
+>    base rate or the escalation** — the 10 August 2026 decision (§2 item 1),
+>    which a cost import inherits.
+> 7. **Report, don't build**: the column mapping the preview proposes for the
+>    sheet's three-row stacked heading, and how hidden rows and columns are
+>    read. Stacked-heading reading is NOT built.
+>
+> **Server-side validation was not loosened** — what `/boq/create` accepts is
+> unchanged; ABOUT.md §7 **gap 42 stays open**. `product.py` and
+> `quotation.py` were not edited.
+>
+> ⚠ **Its commercial status is NOT recorded here.** Part of it repairs the
+> importer on a real client sheet and part of it (cost sheets) is new; how any
+> of it is charged is Manas's call, and an agent may not take it, infer it, or
+> extend G1's or G4's classification onto it. It moves no Phase 3 bar and
+> changes no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
