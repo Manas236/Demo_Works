@@ -8,7 +8,9 @@ on the box (`fixtures/sify_boq.xlsx`, `client_docs/*.xls` — both gitignored).
 The load-bearing rules, each with its own test below:
 
 * a single rate column is left for the user to call Supply or Installation;
-* "R.O." / "I.R." in a quantity stay BLANK and flagged — never 0;
+* "I.R." / "NA" in a quantity stay BLANK and flagged — never 0 ("RO", "R.O.",
+  "R/O" and "Rate only" are a RATE-ONLY line at 0 from 1 October 2026 —
+  `tests/test_boq_import_cost.py`);
 * text arithmetic, NA, Excel errors, dates and unsaved formulas are flagged and
   never computed;
 * nothing is truncated: an oversize schedule is refused whole;
@@ -230,8 +232,16 @@ def test_a_dash_base_rate_is_blank_and_not_a_flag():
 
 # ═══ 2. Quantities that are not numbers ══════════════════════════════════════
 
-@pytest.mark.parametrize("raw", ["R.O.", "I.R.", "RO", "Rate Only", "R. O."])
+@pytest.mark.parametrize("raw", ["I.R.", "R. O."])
 def test_rate_only_stays_blank_and_flagged_and_never_zero(raw):
+    """
+    ⚠ **Amended 1 October 2026 (CLIENT_CHANGES.md §0, thirty-ninth block).**
+    The parameters read `["R.O.", "I.R.", "RO", "Rate Only", "R. O."]`. The
+    brief's four spellings — "RO", "R.O.", "R/O", "RATE ONLY" — are now a
+    RATE-ONLY line at quantity 0 (`tests/test_boq_import_cost.py`); what the
+    old pattern matched beyond those two words keeps v1's rule, asserted here
+    unchanged.
+    """
     res, _g, _m = built([HEAD, ["1", "Pipe", raw, "Mtrs", 100, None]])
     ln = line(res, "1")
     assert ln["qty"] is None
@@ -384,6 +394,10 @@ def test_duplicate_item_numbers_are_both_kept():
 
 
 def test_four_level_numbering_and_float_item_numbers_are_kept_as_shown():
+    """⚠ Amended 1 October 2026: a `0.00`-formatted 1.1 read "1.10" and reads
+    "1.1" — rounded to the format's decimals, trailing zeros stripped (the
+    brief's rule; `tests/test_boq_import_cost.py`). It asserted
+    `line(res, "1.10")`."""
     res, _g, _m = built([
         HEAD,
         ["2.1.4", "Clause", None, None, None, None],
@@ -393,7 +407,7 @@ def test_four_level_numbering_and_float_item_numbers_are_kept_as_shown():
     ], formats={"A5": "0.00"})
     assert line(res, "2.1.4.1")["parent_item_no"] == "2.1.4"
     assert line(res, "4.1")["description"] == "Float item"
-    assert line(res, "1.10")["description"] == "Two-decimal item"
+    assert line(res, "1.1")["description"] == "Two-decimal item"
     assert all(isinstance(l["item_no"], str) for l in res["lines"])
 
 
@@ -673,9 +687,10 @@ def test_the_staged_row_holds_cell_values_and_never_the_file(client):
     rec = STORE["boq_imports"][tok]
     blob = json.dumps(rec)
     assert "PK\\u0003\\u0004" not in blob and "[Content_Types]" not in blob
+    # `rate_mode` and `markup` from 1 October 2026 — selling rates or our cost.
     assert set(rec) == {"id", "token", "user_id", "created_at", "created_ts", "filename",
                         "format", "sheets", "grid", "sheet_index", "mapping", "layout",
-                        "known", "confirmed"}
+                        "known", "confirmed", "rate_mode", "markup"}
     assert rec["grid"][0]["rows"][1][1][:2] == ["1", "Pipe"]
 
 
@@ -795,9 +810,11 @@ def _save(client, model, **over):
 
 
 def test_saving_the_imported_form_is_the_ordinary_save(client):
+    # ⚠ The blocked quantity is "NA" from 1 October 2026; it was "R.O.", which
+    #   is now a rate-only line at 0 and no longer blocks.
     data = xlsx([HEAD, ["1", "Pipe", 10, "Mtrs", 100, None],
                  ["1", "Pipe again", 2, "Mtrs", 90, None],
-                 ["2", "Valve", "R.O.", "Nos", 500, None]])
+                 ["2", "Valve", "NA", "Nos", 500, None]])
     _tok, body = confirm_to_form(client, data)
     model = model_of(body)
     assert all(l["line_id"] == "" for l in model["lines"])
@@ -825,8 +842,11 @@ def test_gap_42_a_blank_quantity_posted_anyway_is_saved_as_zero(client):
     blank (the JS test below); a POST that bypasses the browser is saved at 0.
     When gap 42 is closed this test SHOULD fail — rewrite it to the new rule
     then, keeping this docstring's old assertion quoted.
+
+    ⚠ The blocked quantity is "NA" from 1 October 2026; it was "R.O.", which
+    is now a rate-only line at quantity 0 and is no longer blank.
     """
-    data = xlsx([HEAD, ["1", "Valve", "R.O.", "Nos", 500, None]])
+    data = xlsx([HEAD, ["1", "Valve", "NA", "Nos", 500, None]])
     _tok, body = confirm_to_form(client, data)
     model = model_of(body)
     assert model["lines"][0]["total_qty"] == "" and model["lines"][0]["_block"]
@@ -928,8 +948,9 @@ def _node(boot: dict, script: str):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_the_form_will_not_submit_while_an_imported_quantity_is_blank():
+    # "NA" from 1 October 2026 — "R.O." is a rate-only line now, at 0.
     res, _g, _m = built([HEAD, ["1", "Pipe", 10, "Mtrs", 100, None],
-                         ["2", "Valve", "R.O.", "Nos", 500, None]])
+                         ["2", "Valve", "NA", "Nos", 500, None]])
     boot = boqimport.editor_model(res)
     got = _node(boot, """
       var first = saveJSON();
@@ -948,8 +969,9 @@ def test_the_form_will_not_submit_while_an_imported_quantity_is_blank():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_moving_a_blocked_line_does_not_give_it_a_default_quantity():
+    # "NA" from 1 October 2026 — "R.O." is a rate-only line now, at 0.
     res, _g, _m = built([HEAD, ["A", "FIRST", None, None, None, None],
-                         ["1", "Valve", "R.O.", "Nos", 500, None],
+                         ["1", "Valve", "NA", "Nos", 500, None],
                          ["B", "SECOND", None, None, None, None],
                          ["1", "Pipe", 3, "Mtrs", 10, None]])
     boot = boqimport.editor_model(res)

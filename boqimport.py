@@ -32,7 +32,8 @@ unguessable token (`secrets.token_urlsafe`), because the preview and the
 confirm are separate requests and the file itself is never kept:
 
     {id, token, user_id, created_at, created_ts, filename, sheets, grid,
-     sheet_index, mapping, layout, known, confirmed}
+     sheet_index, mapping, layout, known, confirmed,
+     rate_mode, markup}            # 1 October 2026 — "" until posted
 
 * **Owned.** Only the user who uploaded it may open it. Anybody else — and a
   token that has expired or was already used — gets the same 404 page, so the
@@ -48,11 +49,24 @@ confirm are separate requests and the file itself is never kept:
 
 The layout memory — `STORE["import_layouts"]`
 ---------------------------------------------
-    {id = signature, signature, mapping, created_by, created_at, use_count}
+    {id = signature, signature, mapping, rate_mode, created_by, created_at,
+     use_count}
 
 `sheetimport.signature()` hashes the header texts and their columns. Confirming
 a mapping upserts it; an upload whose sheet matches a stored signature skips the
-preview and opens the prefilled form directly.
+preview and opens the prefilled form directly — ⚠ **unless the sheet reads as
+our cost** (1 October 2026): its markup is typed on the preview every time and
+never remembered, so a cost layout always stops there.
+
+Selling rates or our cost (1 October 2026)
+------------------------------------------
+The preview asks what the sheet's rates ARE. **Selling** is v1, unchanged.
+**Our cost** needs a Markup % (≥ 0): each sheet rate becomes the BASE rate on
+its own track, the markup the ESCALATION %, and the form works out the unit
+rate (`editor_model()`). Every footing check still runs on the sheet's own
+figures, before the markup. Pre-selected — never decided — by the operator's
+own choice, then the layout's last confirmed mode, then the heading's words
+(`sheetimport.cost_words()`).
 
 The upload never touches disk
 -----------------------------
@@ -68,6 +82,7 @@ buffer is bounded before a byte is read.
 import datetime
 import io
 import json
+import math
 import re
 import secrets
 import time
@@ -104,6 +119,19 @@ PREVIEW_CELL_CHARS = 140
 
 # The banner lists flags row by row up to this many, then says how many more.
 BANNER_FLAG_ROWS = 200
+
+# What the rates on a sheet ARE (1 October 2026, CLIENT_CHANGES.md §0,
+# thirty-ninth block). "selling" is v1's reading and the default: one rate per
+# track is the selling rate and the base rate stays blank. "cost" is a sheet
+# priced at OUR cost (the Iron Mountain sheet, "OWN COST (INR)"): each rate
+# goes into the BASE rate on its own track, the markup becomes the escalation
+# %, and the BOQ form works the unit rate out from the two.
+RATE_MODES = ("selling", "cost")
+
+# The targets a cost sheet may not map: its one rate per track IS the base,
+# and its markup IS the escalation.
+COST_REFUSED_TARGETS = ("supply_base_rate", "escalation_pct",
+                        "install_base_rate", "install_escalation_pct")
 
 
 def _now() -> str:
@@ -195,13 +223,18 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
     `known` is True when the pre-selected sheet's layout has been confirmed
     before and its mapping still applies: the caller then goes straight to the
     prefilled form. The per-user cap runs here, after the new row is in.
+
+    ⚠ **Never for a cost sheet** (1 October 2026). A sheet whose rates are our
+      cost needs a markup, which is the operator's to type every time — it is
+      a decision about one job, never remembered — so a known layout that
+      reads as cost stops at the preview with its mapping applied.
     """
     token = secrets.token_urlsafe(24)
     sel = wb["selected"]
     grid = wb["grid"][sel]
     mapping, layout = _known_mapping(grid)
-    known = mapping is not None
-    if not known:
+    known = mapping is not None and _auto_mode(grid)[0] == "selling"
+    if mapping is None:
         mapping = SI.guess_mapping(grid)
     _imports()[token] = {
         "id": token, "token": token, "user_id": uid,
@@ -210,6 +243,8 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
         "sheets": wb["sheets"], "grid": wb["grid"],
         "sheet_index": sel, "mapping": mapping,
         "layout": SI.signature(grid), "known": known, "confirmed": False,
+        # "" until the operator posts a choice; `rate_mode()` reads it.
+        "rate_mode": "", "markup": "",
     }
     _cap_per_user(uid)
     if known:
@@ -217,17 +252,86 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
     return token, known
 
 
-def _upsert_layout(grid: dict, mapping: dict) -> None:
+def _upsert_layout(grid: dict, mapping: dict, mode: str = "selling") -> None:
+    """Remember a confirmed mapping — and, from 1 October 2026, whether the
+    sheet was confirmed as selling rates or our cost. Never the markup."""
     sig = SI.signature(grid)
     if not sig:
         return
     lay = _layouts().get(sig)
     if isinstance(lay, dict):
         lay["mapping"] = dict(mapping)
+        lay["rate_mode"] = mode
         lay["use_count"] = int(lay.get("use_count") or 0) + 1
     else:
         _layouts()[sig] = {"id": sig, "signature": sig, "mapping": dict(mapping),
+                           "rate_mode": mode,
                            "created_by": _uid(), "created_at": _now(), "use_count": 1}
+
+
+# =============================================================================
+# SELLING RATES OR OUR COST (1 October 2026)
+# =============================================================================
+
+def _auto_mode(grid: dict) -> tuple:
+    """
+    `(mode, why)` with no choice posted yet: what this sheet's layout was last
+    confirmed as, else "cost" when the heading says so
+    (`sheetimport.cost_words()`), else "selling". `why` is the plain sentence
+    the preview shows beside a pre-selection — "" for the default.
+    """
+    lay = _layouts().get(SI.signature(grid) or "")
+    if isinstance(lay, dict) and lay.get("rate_mode") in RATE_MODES:
+        name = "our cost" if lay["rate_mode"] == "cost" else "selling rates"
+        return lay["rate_mode"], f"this layout was last confirmed as {name}"
+    words = SI.cost_words(grid)
+    if words:
+        return "cost", "the heading says " + ", ".join(
+            f"“{w}” (in “{cell}”)" for w, cell in words)
+    return "selling", ""
+
+
+def rate_mode(rec: dict, grid: dict) -> tuple:
+    """`(mode, why)` for a staged import: the operator's own choice once they
+    have posted one (`why` is then ""), otherwise `_auto_mode()`."""
+    chosen = rec.get("rate_mode")
+    if chosen in RATE_MODES:
+        return chosen, ""
+    return _auto_mode(grid)
+
+
+def parse_markup(raw):
+    """The markup % as a float — a number, 0 or more; a trailing "%" and
+    thousands commas are allowed — or None when it is not one."""
+    s = str(raw if raw is not None else "").strip()
+    s = s[:-1].strip() if s.endswith("%") else s
+    s = s.replace(",", "")
+    if not s:
+        return None
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    if not math.isfinite(v) or v < 0:
+        return None
+    return v
+
+
+def mode_problems(mode: str, markup_raw, mapping: dict) -> list:
+    """Why a COST import cannot be confirmed yet — [] when it can, and always
+    [] in selling mode, which confirms exactly as it did before."""
+    if mode != "cost":
+        return []
+    probs = []
+    if parse_markup(markup_raw) is None:
+        probs.append("Type the markup % for this cost sheet — a number, 0 or more — "
+                     "or choose Selling rates.")
+    taken = [SI.TARGET_LABEL[t] for t in COST_REFUSED_TARGETS if t in mapping.values()]
+    if taken:
+        probs.append(f"On a cost sheet each track's one rate becomes its base rate and "
+                     f"the markup becomes its escalation, so no column can be "
+                     f"{' or '.join(taken)}: set it to Ignore, or choose Selling rates.")
+    return probs
 
 
 # =============================================================================
@@ -298,7 +402,7 @@ def _with_make(remark: str, make: str) -> str:
     return f"{remark}; {bit}" if remark else bit
 
 
-def editor_model(result: dict) -> dict:
+def editor_model(result: dict, markup: float = None) -> dict:
     """
     `sheetimport.build()`'s result as the editor's boot model — the shape
     `boq._form_payload_from()` produces, plus UI keys the editor draws and
@@ -313,6 +417,24 @@ def editor_model(result: dict) -> dict:
         _item_src  "auto" (worked out from the sheet's structure — an "auto"
                    chip) or "sheet"; the item-number source lives HERE only
         _ls        a lump sum — an "LS · review" chip
+        _ro        a rate-only line ("RO" in the quantity) — a grey "rate
+                   only" chip; quantity 0, its remark says so (1 Oct 2026)
+        _cost      the tracks whose base rate came from a COST sheet — the
+                   form fills their blank unit rate from its own base +
+                   escalation suggestion on load, then drops the key
+
+    ⚠ **`markup` is the cost mode (1 October 2026).** None — selling rates —
+      is v1's model exactly. A number: on every track where the sheet gave a
+      rate (a ₹0 is none), the sheet rate is the BASE rate, the markup is the
+      ESCALATION %, and the unit rate is left BLANK with the track in `_cost`,
+      so it is worked out by the form's existing base + escalation
+      computation (`_BOQ_JS` `suggestRate()`) — this module writes no second
+      formula. A track with no rate stays exactly as it was, flags and all.
+
+    ⚠ **A group label is not sent and not folded** (1 October 2026): its words
+      are already in front of each of its children's descriptions
+      (`sheetimport._group_labels()`); a Make on it goes to the parent's remark,
+      as spec text's does.
 
     ⚠ **Spec text and sub-headings are FOLDED, not sent as lines** (30 Sep
       2026). `build()` derives them as the brief states — a header with no
@@ -331,6 +453,11 @@ def editor_model(result: dict) -> dict:
     lines, last = [], {}
     for l in result["lines"]:
         header = bool(l["is_header"])
+        if l.get("kind") == "group_label":
+            tgt = last.get((l["section"], l["parent_item_no"])) if l["parent_item_no"] else None
+            if tgt is not None:
+                lines[tgt]["remark"] = _with_make(lines[tgt]["remark"], l.get("make"))
+            continue
         if header and not l["item_no"] and l.get("kind") in ("spec_text", "subheading"):
             text = (l["description"] or "").strip()
             tgt = last.get((l["section"], l["parent_item_no"])) if l["parent_item_no"] else None
@@ -378,6 +505,21 @@ def editor_model(result: dict) -> dict:
             row["_item_src"] = l["item_src"]
         if l.get("lump_sum"):
             row["_ls"] = True
+        if l.get("rate_only") and not header:
+            row["remark"] = _with_make(SI.RATE_ONLY_REMARK, l.get("make"))
+            row["_ro"] = True
+        if markup is not None and not header:
+            cost = []
+            for t in ("supply", "install"):
+                r = l[f"{t}_rate"]
+                if r is None or abs(r) < 0.005:
+                    continue                          # no rate: as it was
+                row[f"{t}_base_rate"] = num_text(r)
+                row[f"{t}_escalation_pct"] = num_text(markup)
+                row[f"{t}_rate"] = ""
+                cost.append(t)
+            if cost:
+                row["_cost"] = cost
         lines.append(row)
         if l["item_no"]:
             last[(l["section"], l["item_no"])] = len(lines) - 1
@@ -447,7 +589,31 @@ IMPORT_STYLES = """
 .imp-tag{display:inline-block;margin-left:.3rem;padding:0 .4rem;border-radius:999px;font-size:.68rem;font-weight:700;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;vertical-align:middle;}
 .imp-need-link{color:#b91c1c;font-weight:600;}
 .imp-linkish{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-decoration:underline;}
+.imp-mode .form-group{max-width:14rem;margin-top:.7rem;}
+.imp-warn{color:#b45309;font-weight:600;}
 </style>
+"""
+
+# The preview's "Rates on this sheet are" card (1 October 2026): shows the
+# Markup % box while "Our cost" is chosen, makes it required then, and warns
+# live at 0. A plain string, not an f-string, so its braces are written once.
+# The server is the authority: `mode_problems()` refuses a missing markup.
+_MODE_JS = """
+<script>
+function impMode() {
+  var cost = document.getElementById('rm-cost');
+  var on = !!(cost && cost.checked);
+  var box = document.getElementById('imp-markup');
+  var inp = document.getElementById('markup');
+  var zero = document.getElementById('imp-zero');
+  var note = document.getElementById('imp-costcheck');
+  if (box) box.style.display = on ? '' : 'none';
+  if (inp) inp.required = on;
+  var v = inp ? String(inp.value).trim() : '';
+  if (zero) zero.style.display = (on && v !== '' && Number(v) === 0) ? '' : 'none';
+  if (note) note.style.display = on ? '' : 'none';
+}
+</script>
 """
 
 
@@ -523,7 +689,8 @@ def _upload_page(error: str = "") -> str:
     <p class="imp-note">Only the <b>total</b> quantity is read; floor or area
     columns are left out. Where the sheet gives one rate per line, that rate is
     taken as the <b>selling</b> rate and the base rate is left blank for you to
-    fill in later.</p>
+    fill in later &mdash; unless you mark the sheet&rsquo;s rates as <b>our
+    cost</b> on the next page, with a markup.</p>
   </div>"""
     return _page("Import BOQ", body)
 
@@ -623,7 +790,11 @@ def summary_html(result: dict, model: dict, on_form: bool,
       N subtotals checked          every total row, footed; which do not add up
 
     and, folded, any other note the reader left (a rate cell it could not
-    read, a cut cell, a renamed section) so nothing it said is hidden.
+    read, a cut cell, a renamed section, a row below the grand total, a number
+    in the Make column) so nothing it said is hidden.
+
+    From 1 October 2026, a fifth group — *N rate-only lines* — drawn only
+    when the sheet has one, so a sheet without "RO" reads as it did.
 
     `unit_mapped` False — no column is mapped to Unit — adds one line (30
     September 2026): *This sheet has no Unit column: N lines have no unit
@@ -683,6 +854,23 @@ def summary_html(result: dict, model: dict, on_form: bool,
         f'<span class="imp-tag">review</span></h3>'
         + (f'<ul class="imp-flags">{ls_items}</ul>' if ls else "") + "</div>")
 
+    # Rate-only lines (1 October 2026) — drawn only when there are some, so a
+    # sheet without "RO" in it reads exactly as it did.
+    ro = [ln for ln in lines if ln.get("_ro")]
+    if ro:
+        ro_none = sum(1 for ln in ro if any(n.get("f") in ("rate", "supply_rate", "install_rate")
+                                           for n in (ln.get("_need") or [])))
+        eg = ", ".join(P.esc(ln["item_no"]) for ln in ro[:12]) + ("&hellip;" if len(ro) > 12 else "")
+        parts.append(
+            f'<div class="imp-group" id="imp-ro"><h3><b>{len(ro)}</b> rate-only line'
+            f'{"s" if len(ro) != 1 else ""}</h3><p class="imp-note">&ldquo;RO&rdquo; in the '
+            f'quantity &mdash; {eg}. Each comes in at quantity 0 with its rates kept, marked '
+            f'<b>rate only</b>, and says so in its remark.'
+            + (f' {ro_none} of them ha{"ve" if ro_none != 1 else "s"} no rate on either track '
+               f'and {"are" if ro_none != 1 else "is"} among the fields that need you '
+               f'(<i>Not priced</i> answers it).' if ro_none else "")
+            + '</p></div>')
+
     if not unit_mapped:
         nu = sum(1 for ln in lines
                  if not ln.get("is_header") and not str(ln.get("unit") or "").strip())
@@ -712,7 +900,7 @@ def summary_html(result: dict, model: dict, on_form: bool,
                  f'{"s" if len(checks) != 1 else ""} checked</h3>{chk}</div>')
 
     covered = {"no_qty", "no_rate_amt", "no_rate", "mismatch", "no_item", "no_desc",
-               "lump_sum", "total_bad"}
+               "lump_sum", "total_bad", "ro_no_rate"}
     notes = [f for f in result.get("flags") or [] if f.get("kind") not in covered]
     if notes:
         parts.append(f'<details class="imp-group"><summary><b>{len(notes)}</b> other note'
@@ -721,12 +909,51 @@ def summary_html(result: dict, model: dict, on_form: bool,
     return f'<div class="imp-summary">{"".join(parts)}</div>'
 
 
+def _mode_card(mode: str, why: str, markup_raw: str) -> str:
+    """The "Rates on this sheet are" card (1 October 2026) — the
+    quotation form's own radio row (`.tax-options`) and `.form-group`."""
+    cost = mode == "cost"
+    mk = parse_markup(markup_raw)
+    reason = (f'<p class="imp-note">Pre-selected: {P.esc(why)}. Change it either way.</p>'
+              if why else "")
+    return f"""
+    <div class="imp-card imp-mode">
+      <h2>Rates on this sheet are</h2>
+      <div class="tax-options" style="margin-bottom:.2rem;">
+        <label class="tax-opt">
+          <input type="radio" name="rate_mode" value="selling" id="rm-selling"
+                 {"" if cost else "checked"} onchange="impMode()"/> Selling rates
+        </label>
+        <label class="tax-opt">
+          <input type="radio" name="rate_mode" value="cost" id="rm-cost"
+                 {"checked" if cost else ""} onchange="impMode()"/> Our cost
+        </label>
+      </div>
+      {reason}
+      <div id="imp-markup" class="form-group"{"" if cost else ' style="display:none;"'}>
+        <label for="markup">Markup %</label>
+        <input type="number" id="markup" name="markup" min="0" step="any"
+               value="{P.esc(markup_raw)}"{" required" if cost else ""} oninput="impMode()"/>
+      </div>
+      <p id="imp-zero" class="imp-note imp-warn"{"" if (cost and mk == 0) else ' style="display:none;"'}>
+        &#9888; At 0% the sale price will equal cost.</p>
+      <p class="imp-note"><b>Our cost</b>: each rate goes into the <b>base rate</b> on its
+      own track, the markup becomes the <b>escalation %</b> on every priced line, and the
+      BOQ form works the unit rate out from the two &mdash; editable per line. The printed
+      BOQ never shows the base rate or the escalation. <b>Selling rates</b>: each rate is
+      the unit rate and the base rate stays blank, as before.</p>
+    </div>{_MODE_JS}"""
+
+
 def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     grid = _grid(rec)
     sheet = _sheet(rec)
     mapping = SI.clean_mapping(grid, rec.get("mapping") or {})
     result = SI.build(grid, mapping)
-    problems = SI.mapping_problems(grid, mapping) if problems is None else problems
+    mode, why = rate_mode(rec, grid)
+    if problems is None:
+        problems = (SI.mapping_problems(grid, mapping)
+                    + mode_problems(mode, rec.get("markup"), mapping))
 
     alert = f'<div class="alert alert-error">&#10007; {P.esc(error)}</div>' if error else ""
     if problems:
@@ -791,7 +1018,11 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
              f'<span><b>{len(result["sections"])}</b> sections</span>'
              f'<span><b>{c["totals_dropped"]}</b> total rows checked, not imported</span>'
              + (f'<span><b>{c["repeats"]}</b> repeated heading rows skipped</span>'
-                if c.get("repeats") else "") + '</div>')
+                if c.get("repeats") else "")
+             + (f'<span><b>{c["group_labels"]}</b> group labels put in front of their '
+                f'sizes</span>' if c.get("group_labels") else "")
+             + (f'<span><b>{c["below_grand"]}</b> rows below the grand total left out'
+                f'</span>' if c.get("below_grand") else "") + '</div>')
 
     known = ""
     if rec.get("layout") and rec["layout"] in _layouts():
@@ -822,6 +1053,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       {unread_html}
       {known}
     </div>
+    {_mode_card(mode, why, str(rec.get("markup") or ""))}
 
     <div class="imp-card">
       <h2>What each column holds</h2>
@@ -835,8 +1067,8 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       {more_note}
       <p class="imp-note">A rate column that does not say whether it is Supply or
       Installation is left for you to choose. With one rate per line that rate is
-      the <b>selling</b> rate; the base rate stays blank for you to fill in later.
-      Amount columns are only used to check the totals.</p>
+      the <b>selling</b> rate and the base rate stays blank &mdash; unless the rates
+      are <b>Our cost</b>, above. Amount columns are only used to check the totals.</p>
       <div class="imp-actions">
         <button class="btn btn-ghost" type="submit" name="action" value="update">Update preview</button>
       </div>
@@ -845,6 +1077,10 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     <div class="imp-card">
       <h2>What will be imported</h2>
       {stats}
+      <p id="imp-costcheck" class="imp-note"{"" if mode == "cost" else ' style="display:none;"'}>
+      <b>Checked against the sheet&rsquo;s cost figures</b> &mdash; every quantity &times;
+      rate, subtotal, section total and the grand total below is the sheet&rsquo;s own
+      arithmetic on its base rates, before the markup.</p>
       <p style="margin:.6rem 0 0;font-size:.85rem;">{_totals_html(result["totals"])}</p>
       {summary_html(result, model, on_form=False, unit_mapped="unit" in mapping.values())}
       <p class="imp-note">A field that needs you is left <b>blank</b> on the form &mdash;
@@ -860,12 +1096,18 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
 
 
 def _banner(token: str, rec: dict, result: dict, model: dict,
-            unit_mapped: bool = True) -> str:
+            unit_mapped: bool = True, markup: float = None) -> str:
     """The summary that sits on top of the prefilled form. Escaped here; the
-    form's own `demo_banner` sits beside it."""
+    form's own `demo_banner` sits beside it. `markup` set: a cost sheet, and
+    the banner says so in the brief's own words (1 October 2026)."""
     c = result["counts"]
     sheet = _sheet(rec)
     blocked = sum(1 for l in result["lines"] if l["block"] and not l["is_header"])
+    cost = ""
+    if markup is not None:
+        cost = (f'<p style="margin:.4rem 0 0;"><b>Imported from a cost sheet:</b> base rate = '
+                f'sheet rate, escalation = {P.esc(num_text(markup))}% on every line, editable '
+                f'per line.</p>')
     known = ""
     if rec.get("known"):
         lay = _layouts().get(rec.get("layout") or "") or {}
@@ -878,7 +1120,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
         red = (f'<p style="margin:.4rem 0 0;color:#b91c1c;"><b>{blocked} line'
                f'{"s" if blocked != 1 else ""} need a quantity before this BOQ can be '
                f'saved.</b> The sheet gave it as something other than a number '
-               f'(“R.O.”, “NA”, a sum written as text&hellip;). Those rows are marked '
+               f'(“NA”, a word, a sum written as text&hellip;). Those rows are marked '
                f'red. Type the quantity, or remove the line &mdash; a blank quantity '
                f'would be saved as 0, and an RA bill cannot claim against a line at 0.</p>')
     flags = summary_html(result, model, on_form=True, unit_mapped=unit_mapped)
@@ -892,7 +1134,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
             f'<b>Nothing has been saved.</b> Check the lines, fill in the project and '
             f'customer, then press Create BOQ &mdash; or just leave the page.'
             f'<p style="margin:.4rem 0 0;">{_totals_html(result["totals"])}</p>'
-            f'{known}{red}{flags}</div>')
+            f'{cost}{known}{red}{flags}</div>')
 
 
 # =============================================================================
@@ -941,11 +1183,20 @@ def preview(token: str):
         rec["mapping"] = known_map if known_map is not None else SI.guess_mapping(grid)
         rec["layout"] = SI.signature(grid)
         rec["known"] = False
+        # The selling / cost choice belonged to the old sheet: back to this
+        # sheet's own pre-selection.
+        rec["rate_mode"], rec["markup"] = "", ""
         return redirect(url_for("boqimport.preview", token=token), code=303)
 
     grid = _grid(rec)
     posted = {k[4:]: v for k, v in request.form.items() if k.startswith("map_")}
     rec["mapping"] = SI.clean_mapping(grid, posted)
+    # Selling rates or our cost (1 October 2026). Kept on every POST — an
+    # "Update preview" as much as a confirm — so the choice survives a re-read.
+    if request.form.get("rate_mode") in RATE_MODES:
+        rec["rate_mode"] = request.form["rate_mode"]
+    if "markup" in request.form:
+        rec["markup"] = str(request.form.get("markup") or "").strip()[:20]
 
     # "confirm@<line>.<field>" is a link in the grouped summary: confirm, and
     # land on that field. Anything that is not exactly that shape is ignored.
@@ -959,13 +1210,16 @@ def preview(token: str):
     if action != "confirm":
         return redirect(url_for("boqimport.preview", token=token), code=303)
 
-    problems = SI.mapping_problems(grid, rec["mapping"])
+    mode, _why = rate_mode(rec, grid)
+    problems = (SI.mapping_problems(grid, rec["mapping"])
+                + mode_problems(mode, rec.get("markup"), rec["mapping"]))
     if problems:
         return _preview_page(token, rec, problems=problems)
-    refusal = too_large(editor_model(SI.build(grid, rec["mapping"])))
+    markup = parse_markup(rec.get("markup")) if mode == "cost" else None
+    refusal = too_large(editor_model(SI.build(grid, rec["mapping"]), markup=markup))
     if refusal:
         return _preview_page(token, rec, error=refusal)
-    _upsert_layout(grid, rec["mapping"])
+    _upsert_layout(grid, rec["mapping"], mode)
     rec["layout"] = SI.signature(grid)
     rec["confirmed"], rec["known"] = True, False
     dest = url_for("boqimport.form", token=token)
@@ -986,12 +1240,15 @@ def form(token: str):
 
     grid = _grid(rec)
     mapping = SI.clean_mapping(grid, rec.get("mapping") or {})
-    problems = SI.mapping_problems(grid, mapping)
+    mode, _why = rate_mode(rec, grid)
+    problems = (SI.mapping_problems(grid, mapping)
+                + mode_problems(mode, rec.get("markup"), mapping))
     if problems:
         rec["known"] = False
         return _preview_page(token, rec, problems=problems)
+    markup = parse_markup(rec.get("markup")) if mode == "cost" else None
     result = SI.build(grid, mapping)
-    model = editor_model(result)
+    model = editor_model(result, markup=markup)
     refusal = too_large(model)
     if refusal:
         rec["known"], rec["confirmed"] = False, False
@@ -1002,7 +1259,8 @@ def form(token: str):
     html = BQ.create_boq(imported={"boot": model, "prefill": {},
                                    "banner_html": IMPORT_STYLES + _banner(
                                        token, rec, result, model,
-                                       unit_mapped="unit" in mapping.values())})
+                                       unit_mapped="unit" in mapping.values(),
+                                       markup=markup)})
     # Consumed. A known layout keeps its row for the Change-mapping link; the
     # 24-hour purge takes it.
     if rec.get("confirmed"):

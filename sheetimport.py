@@ -35,12 +35,18 @@ What it guarantees, in the order a file meets it
    formula with no saved value is FLAGGED — never evaluated, never guessed.
 6. **Nothing the user must decide is guessed.** A rate column that does not say
    which track it is on is left UNSET, so the user picks Supply or Installation.
-   "R.O." in a quantity is left BLANK and flagged, never 0 — a 0 would hard-block
-   the first real RA claim on that line. "9.3+1.5+6" is flagged, never added up.
+   "9.3+1.5+6" is flagged, never added up. A word in a quantity ("NA", "I.R.")
+   is left BLANK and flagged, never 0.
+   ⚠ **Except "RO" (1 October 2026).** "RO", "R.O.", "R/O" and "Rate only" mean
+   the sheet quotes a RATE and no quantity: such a line comes in at quantity 0
+   with its rates kept, marked *rate only* — not a flag. A 0 quantity is what
+   it means: nothing is approved to claim until a revision gives it one.
 
-⚠ **`item_no` is TEXT and only ever a display label.** A number is written the
-way Excel displays it (`4.0999999999999996` becomes "4.1", a `0.00` format
-keeps "1.10"), duplicates stay duplicates, and nothing here parses one into a
+⚠ **`item_no` is TEXT and only ever a display label.** A number is rounded to
+its format's fixed decimals (a `0.00` cell to 2), otherwise to at most 2, and
+its trailing zeros are stripped (1 October 2026): `5.199999999999999` reads
+"5.2", `4.0` reads "4", and a `0.00`-formatted 1.1 reads "1.1" where it used to
+read "1.10". Duplicates stay duplicates, and nothing here parses one into a
 key. `line_id` is minted by `boq._clean_lines()` on save, like any typed line.
 
 ⚠ **Only the TOTAL quantity is read (v1).** Floor / area split columns and
@@ -102,6 +108,12 @@ PREVIEW_ROWS = 20
 
 # The totals check: the sheet's grand total against sum(qty x rate), per track.
 TOTALS_TOLERANCE = 1.0
+
+# A numeric item number in a cell with no FIXED number format is rounded to at
+# most this many decimals before its trailing zeros are stripped (1 October
+# 2026): the Iron Mountain sheet stores item 17.2 as 17.200000000000003.
+# ⚠ An item written to three decimals in a General cell (1.125) is rounded too.
+ITEM_DECIMALS = 2
 
 UNAVAILABLE = ("The Excel reader is not installed on this server. Ask whoever "
                "looks after it to run: pip install -r requirements.txt")
@@ -991,6 +1003,39 @@ def data_start(grid: dict) -> int:
     return hdr[1] + 1 if hdr else 0
 
 
+# The words in a heading that say the sheet's rates are what WE pay, not what
+# we sell at (1 October 2026 — the Iron Mountain sheet is headed "OWN COST
+# (INR)"). The brief's four, plus their plural / -ing forms. "own cost" is
+# tried first so it is reported as itself and not as a bare "cost".
+_COST_WORDS = re.compile(r"\b(own\s+costs?|costs?|buy(?:ing)?|purchases?)\b", re.I)
+
+
+def cost_words(grid: dict) -> list:
+    """
+    `[(word, cell text), …]` — every cost word in the HEADING ROWS, first
+    occurrence of each, in the order the heading reads. `[]` when the sheet has
+    no recognised heading or the heading says nothing about cost.
+
+    It only PRE-SELECTS "Our cost" on the preview, with these words shown as
+    the reason; the operator can change it either way. A heading that says
+    "cost" and means a selling price is exactly why it is never decided here.
+    """
+    hdr = grid.get("header") or []
+    if not hdr:
+        return []
+    out, seen = [], set()
+    for ri in range(hdr[0], hdr[1] + 1):
+        for v in grid["rows"][ri][1]:
+            if not isinstance(v, str):
+                continue
+            for m in _COST_WORDS.finditer(v):
+                w = re.sub(r"\s+", " ", m.group(1)).lower()
+                if w not in seen:
+                    seen.add(w)
+                    out.append((w, re.sub(r"\s+", " ", v).strip()))
+    return out
+
+
 # =============================================================================
 # 5. THE MAPPING — what confirm refuses
 # =============================================================================
@@ -1035,6 +1080,13 @@ def mapping_problems(grid: dict, mapping: dict) -> list:
 # =============================================================================
 
 _RATE_ONLY = re.compile(r"^\s*(?:r\s*\.?\s*o\s*\.?|i\s*\.?\s*r\s*\.?|r\s*/\s*o|rate\s*only)\s*$", re.I)
+# A RATE-ONLY line (1 October 2026): exactly the four spellings the brief
+# named — "RO", "R.O.", "R/O", "RATE ONLY" — any case, surrounding spaces
+# ignored. Quantity 0, rates kept, never a flag on its own. Anything ELSE that
+# `_RATE_ONLY` matches ("I.R.", "R. O.") keeps v1's rule: blank, red, blocked.
+_RO_QTY = re.compile(r"^\s*(?:r\.?o\.?|r\s*/\s*o|rate\s+only)\s*$", re.I)
+# What a rate-only line's remark says. Captured on the record, never printed.
+RATE_ONLY_REMARK = "Rate only (RO) on the source sheet"
 _NA = re.compile(r"^\s*(?:n\s*\.?\s*a\s*\.?|n\s*/\s*a|nil|-+|—|–)\s*$", re.I)
 _DASH = re.compile(r"^\s*(?:-+|—|–)\s*$")
 _ERROR_TEXT = re.compile(r"^\s*#(?:VALUE!|REF!|DIV/0!|N/A|NAME\?|NUM!|NULL!|SPILL!|CALC!)\s*$", re.I)
@@ -1099,6 +1151,13 @@ _FLAG_TEXT = {
                       "sheet's amount is {amount} — review"),
     "lump_sum":  "an amount with no quantity or rate — imported as 1 LS at {amount}; review",
     "total_bad": "“{label}” does not add up — sheet {sheet}, the lines above add up to {calc}",
+    # 1 October 2026 — the Iron Mountain sheet.
+    # A rate-only line ("RO" in the quantity) with no rate on either track. It
+    # is the ordinary blocking "rate" need, so "Not priced" answers it.
+    "ro_no_rate": "rate-only line with no rate",
+    # Notes only — listed under "other notes from the reader", never a need.
+    "below_grand": "not imported — row {grand} is the grand total: {raw}",
+    "make_number": "a number ({raw}) in the Make column — not kept",
 }
 
 # How far a figure may be off and still agree: a rupee, the totals check's own
@@ -1339,6 +1398,10 @@ def _numeric(value, kind: str, field: str):
     s = str(value).strip()
     if not s:
         return None, ""
+    if field == "qty" and _RO_QTY.match(s):
+        # A rate-only line (1 October 2026): 0, and "ro" — a MARK, not a flag.
+        # `build()` clears it before any flag is raised.
+        return 0.0, "ro"
     if field == "qty" and _RATE_ONLY.match(s):
         return None, "rate_only"
     if field != "qty" and _DASH.match(s):
@@ -1357,15 +1420,37 @@ def _numeric(value, kind: str, field: str):
 
 
 def _item_text(value, kind: str) -> str:
-    """An item number as the text Excel shows. Never a float."""
+    """
+    An item number as text. Never a float.
+
+    ⚠ **A numeric item is ROUNDED, then its trailing zeros are stripped** (1
+      October 2026 — the Iron Mountain sheet, whose every item cell is
+      `0.00`-formatted and holds 5.199999999999999 for item 5.2). Rounded to
+      the decimals of its number format when that is a FIXED one ("0.00" → 2),
+      otherwise to at most `ITEM_DECIMALS`: 5.199999999999999 → "5.2",
+      17.200000000000003 → "17.2", 3.01 → "3.01", 4.0 → "4". A `0.00` cell
+      holding 1.1 read "1.10" before this and reads "1.1" now. A TEXT item
+      cell is exactly as the sheet wrote it, trimmed.
+    """
     if value is None or kind in ("formula", "error", "date"):
         return ""
     if _is_number(value):
-        if kind.startswith("dp:"):
-            return f"{float(value):.{int(kind[3:])}f}"
-        f = float(value)
-        return str(int(f)) if f.is_integer() else f"{f:.10g}"
+        places = int(kind[3:]) if kind.startswith("dp:") else ITEM_DECIMALS
+        s = f"{float(value):.{places}f}"
+        if "." in s:
+            s = s.rstrip("0").rstrip(".")
+        return "0" if s == "-0" else s
     return str(value).strip()
+
+
+def _num_display(value, kind: str) -> str:
+    """A number in a TEXT column (a description, a unit) as Excel shows it —
+    v1's rule, unchanged: a fixed format keeps its decimals, otherwise ten
+    significant digits. Item numbers have their own rule, `_item_text`."""
+    if kind.startswith("dp:"):
+        return f"{float(value):.{int(kind[3:])}f}"
+    f = float(value)
+    return str(int(f)) if f.is_integer() else f"{f:.10g}"
 
 
 def _plain(value, kind: str) -> str:
@@ -1373,7 +1458,7 @@ def _plain(value, kind: str) -> str:
     if value is None or kind == "formula":
         return ""
     if _is_number(value):
-        return _item_text(value, kind)
+        return _num_display(value, kind)
     return str(value).strip()
 
 
@@ -1449,6 +1534,88 @@ def _heading_words_only(vals: list) -> bool:
     return seen
 
 
+def _row_summary(vals: list, limit: int = 4) -> str:
+    """What a row holds, for a note: its first few non-empty cells — text in
+    quotes, cut at 60 characters, and non-zero figures. "" for a row with
+    nothing on it but blanks and zeros."""
+    bits = []
+    for v in vals:
+        if _is_number(v):
+            if abs(v) >= 0.005:
+                bits.append(_fmt(v))
+        elif isinstance(v, str) and v.strip():
+            t = re.sub(r"\s+", " ", v).strip()
+            bits.append(f"“{t[:57]}…”" if len(t) > 60 else f"“{t}”")
+        if len(bits) > limit:
+            bits[limit:] = ["…"]
+            break
+    return " · ".join(bits)
+
+
+def _group_labels(lines: list) -> int:
+    """
+    Group labels inside one item (1 October 2026 — the Iron Mountain sheet's
+    sluice valves: "PN-25" over DN 250 … DN 80, then "PN-16" over the same
+    sizes again). Returns how many rows became labels.
+
+    The rule, exactly: under ONE parent (the line the rows' `parent_item_no`
+    names, by THE parent rule — same section, nearest above), when TWO OR MORE
+    spec-text rows are each IMMEDIATELY followed by a child of that parent,
+    those rows are group labels. Each label goes in front of the description
+    of every child after it, up to the next label or the first line that is
+    not this parent's child: "PN-25 · DN 250". The label row becomes
+    `kind: "group_label"`, and `boqimport.editor_model()` does NOT append it to
+    the parent's text.
+
+    ⚠ ONE such row, or rows that are not each followed by a child, stay spec
+      text exactly as before — the deluge valve's "i) Mains deluge valve" /
+      "ii) Pressure gauges…" (only the second is followed by a child) and a
+      monitor's run of specification bullets. "Immediately followed" is the
+      next LINE: a blank row between a label and its first size is no line.
+    """
+    def parent_at(i):
+        l = lines[i]
+        for k in range(i - 1, -1, -1):
+            o = lines[k]
+            if o["section"] != l["section"]:
+                return None
+            if o["item_no"] and o["item_no"] == l["parent_item_no"]:
+                return k
+        return None
+
+    def child_of(o, l) -> bool:
+        return (o["section"] == l["section"] and o["kind"] in ("sub_item", "header")
+                and o["parent_item_no"] == l["parent_item_no"])
+
+    cands = {}
+    for i, l in enumerate(lines):
+        if l["kind"] != "spec_text" or not l["parent_item_no"]:
+            continue
+        if i + 1 < len(lines) and child_of(lines[i + 1], l):
+            p = parent_at(i)
+            if p is not None:
+                cands.setdefault(p, []).append(i)
+
+    n = 0
+    for idxs in cands.values():
+        if len(idxs) < 2:
+            continue
+        for i in idxs:
+            lines[i]["kind"] = "group_label"
+            n += 1
+        for i in idxs:
+            l = lines[i]
+            label = (l["description"] or "").strip()
+            for o in lines[i + 1:]:
+                if (o["kind"] == "group_label" or o["section"] != l["section"]
+                        or o["parent_item_no"] != l["parent_item_no"]):
+                    break
+                if child_of(o, l):
+                    o["description"] = f"{label} · {(o['description'] or '').strip()}"
+                    o["group_label"] = label
+    return n
+
+
 def build(grid: dict, mapping: dict) -> dict:
     """
     The confirmed mapping applied to every row under the header.
@@ -1458,15 +1625,19 @@ def build(grid: dict, mapping: dict) -> dict:
         {"sections": [{"code", "title"}],
          "lines":    [{"row", "kind", "item_no", "parent_item_no", "item_src",
                        "section", "is_header", "description", "unit", "make",
-                       "qty", <rate fields>, "lump_sum", "flags": [...],
-                       "needs": [{"field", "message"}], "block": bool}],
+                       "qty", <rate fields>, "lump_sum", "rate_only",
+                       "flags": [...], "needs": [{"field", "message"}],
+                       "block": bool, ["group_label": str]}],
+                     # kind: "subheading" | "header" | "item" | "spec_text" |
+                     #       "sub_item" | "group_label" (1 October 2026)
          "flags":    [{"row", "col", "field", "raw", "kind", "message",
                        "severity"}],
          "needs":    [{"row", "field", "message"}],     # every blocking flag
          "checks":   [{"row", "label", "kind", "status", "figures"}],
          "counts":   {"lines", "headers", "sections", "totals_dropped",
                       "flagged", "auto_items", "sheet_items", "lump_sums",
-                      "needs", "repeats"},
+                      "needs", "repeats", "rate_only", "rate_only_no_rate",
+                      "below_grand", "group_labels"},
          "totals":   {...}}
 
     Numbers are floats or None — shaping them for the form is `boqimport.py`'s
@@ -1491,6 +1662,22 @@ def build(grid: dict, mapping: dict) -> dict:
       sheet's amount (the rate is then left BLANK, both figures in the flag);
       and a priced line with no item number or no description, which the
       save would refuse anyway. They are the fields the form leads to.
+
+    1 October 2026 — the Iron Mountain sheet (CLIENT_CHANGES.md §0,
+    thirty-ninth block):
+
+    * **A rate-only line** — "RO", "R.O.", "R/O" or "Rate only" in the
+      quantity — is quantity 0 with its rates kept and `rate_only` set. That
+      alone is not a flag. With no rate on either track (a zero is none, the
+      quantity being no real one) it gets the ordinary blocking "rate" need,
+      worded "rate-only line with no rate", so *Not priced* answers it.
+    * **Below the grand total.** Once a row is recognised as the grand total
+      by BOTH its label and its sums, no later row becomes a line: each is
+      listed as a "below_grand" note. A later total row is still a footing
+      check, which is not a line (the Jamnagar sheet's row 125 sits under its
+      grand total). Rows above it are read exactly as before.
+    * **A number in the Make column** is not a make: dropped, and noted.
+    * **Group labels inside an item** — `_group_labels()`, after the walk.
     """
     cols = grid["cols"]
     pos = {str(c): i for i, c in enumerate(cols)}
@@ -1515,13 +1702,15 @@ def build(grid: dict, mapping: dict) -> dict:
 
     flags, lines, sections, totals_rows, checks, needs = [], [], [], [], [], []
     counts = {"lines": 0, "headers": 0, "sections": 0, "totals_dropped": 0, "flagged": 0,
-              "auto_items": 0, "sheet_items": 0, "lump_sums": 0, "needs": 0, "repeats": 0}
+              "auto_items": 0, "sheet_items": 0, "lump_sums": 0, "needs": 0, "repeats": 0,
+              "rate_only": 0, "rate_only_no_rate": 0, "below_grand": 0,
+              "group_labels": 0}
 
-    def flag(rnum, field, kind, raw="", severity="amber", **extra):
+    def flag(rnum, field, kind, raw="", severity="amber", field_label=None, **extra):
         msg = _FLAG_TEXT[kind].format(raw=raw, n=MAX_CELL_CHARS, **extra)
         ci = col_of.get("supply_rate" if field == "rate" else field)
         f = {"row": rnum, "col": col_letter(cols[ci]) if ci is not None else "",
-             "field": TARGET_LABEL.get(field, "Rate" if field == "rate" else field),
+             "field": field_label or TARGET_LABEL.get(field, "Rate" if field == "rate" else field),
              "raw": raw, "kind": kind, "message": msg, "severity": severity}
         flags.append(f)
         return f
@@ -1535,6 +1724,22 @@ def build(grid: dict, mapping: dict) -> dict:
     hdr = grid.get("header") or []
     hdr_labels = header_labels(grid) if hdr else {}
     prev_repeat = False
+    # The row the grand total was recognised on, by its label AND its sums.
+    # Nothing below it becomes a line (1 October 2026).
+    grand_row = None
+
+    def footed_alone(rnum, label, amounts_nz, nums) -> bool:
+        """An amount and nothing else that adds up as a total: a footing check,
+        recorded, never a line. False when it is no total by arithmetic."""
+        chk = foot.check(amounts_nz)
+        if chk["status"] != "match":
+            return False
+        chk.update(row=rnum, label=label)
+        checks.append(chk)
+        totals_rows.append({"row": rnum, "label": label,
+                            "amounts": {f: nums[f] for f in AMOUNT_FIELDS}})
+        counts["totals_dropped"] += 1
+        return True
 
     for ri in range(data_start(grid), len(grid["rows"])):
         rnum, vals = grid["rows"][ri]
@@ -1582,7 +1787,13 @@ def build(grid: dict, mapping: dict) -> dict:
         #   Jamnagar sheet carries a 0 in both amount cells of every spec row.
         amounts_nz = {f: v for f, v in amounts.items() if abs(v) >= 0.005}
 
-        has_qty = nums["qty"] is not None
+        # A RATE-ONLY line (1 October 2026): "RO" in the quantity. Its 0 is
+        # not a quantity anybody measured, so it does not make a zero rate
+        # count as a rate — and "ro" is a mark, cleared before any flag.
+        rate_only = nflags["qty"] == "ro"
+        if rate_only:
+            nflags["qty"] = ""
+        has_qty = nums["qty"] is not None and not rate_only
         # ⚠ A ZERO rate on a row with no quantity is no rate, for the same
         #   reason as a zero amount: the Sify sheet leaves a 0 in its
         #   installation-rate column on subtotal and section rows.
@@ -1606,13 +1817,14 @@ def build(grid: dict, mapping: dict) -> dict:
         if not total_label and has_figure and not has_rate:
             total_label = next((l for l in labels if len(l) <= TOTAL_LABEL_MAX
                                 and _TOTAL_ANYWHERE.search(l)), "")
-        if (total_label and not has_qty and not nflags["qty"]
+        if (total_label and not has_qty and not nflags["qty"] and not rate_only
                 and (has_figure or _BARE_TOTAL.match(total_label))):
             totals_rows.append({"row": rnum, "label": total_label,
                                 "amounts": {f: nums[f] for f in AMOUNT_FIELDS}})
             counts["totals_dropped"] += 1
             if amounts:
-                chk = foot.check(amounts, grand_label=bool(_GRAND.search(total_label)))
+                grand_label = bool(_GRAND.search(total_label))
+                chk = foot.check(amounts, grand_label=grand_label)
                 chk.update(row=rnum, label=total_label)
                 checks.append(chk)
                 if chk["status"] != "match":
@@ -1623,26 +1835,40 @@ def build(grid: dict, mapping: dict) -> dict:
                             break
                     flag(rnum, worst["col"], "total_bad", label=total_label,
                          sheet=_fmt(worst["sheet"]), calc=_fmt(worst["lines"]))
+                elif grand_row is None and grand_label and chk["kind"] == "grand total":
+                    # Recognised by BOTH its label and its sums: the sheet's
+                    # schedule ends here (1 October 2026).
+                    grand_row = rnum
             continue
 
         has_num_flags = bool(nflags["qty"]) or any(nflags[f] for f in RATE_FIELDS)
-        amount_only = bool(amounts_nz) and not has_qty and not has_rate and not has_num_flags
+        amount_only = (bool(amounts_nz) and not has_qty and not has_rate
+                       and not has_num_flags and not rate_only)
 
-        if not (item or desc or has_qty or has_rate or has_num_flags or amount_only):
+        # ── Below the grand total: never a line (1 October 2026) ─────────────
+        # A later total row was checked just above, like any other. Anything
+        # else — an add-on, a running total, a declarations block — is listed
+        # with its row number and goes no further. Above the grand total
+        # nothing here runs, so those rows are read exactly as before.
+        if grand_row is not None:
+            if amount_only and footed_alone(rnum, desc or item, amounts_nz, nums):
+                continue
+            text = _row_summary(vals)
+            if text:
+                flag(rnum, "", "below_grand", raw=text,
+                     field_label="Below the grand total", grand=grand_row)
+                counts["below_grand"] += 1
+            continue
+
+        if not (item or desc or has_qty or has_rate or has_num_flags or amount_only
+                or rate_only):
             continue
 
         # ── An amount and nothing else: a total by arithmetic, or a lump sum ─
-        if amount_only:
-            chk = foot.check(amounts_nz)
-            if chk["status"] == "match":
-                chk.update(row=rnum, label=desc or item)
-                checks.append(chk)
-                totals_rows.append({"row": rnum, "label": desc or item,
-                                    "amounts": {f: nums[f] for f in AMOUNT_FIELDS}})
-                counts["totals_dropped"] += 1
-                continue
+        if amount_only and footed_alone(rnum, desc or item, amounts_nz, nums):
+            continue
 
-        priced = has_qty or has_rate or has_num_flags or amount_only
+        priced = has_qty or has_rate or has_num_flags or amount_only or rate_only
 
         # ── Section rows ────────────────────────────────────────────────────
         if not priced:
@@ -1663,12 +1889,19 @@ def build(grid: dict, mapping: dict) -> dict:
         if item and not (desc or priced):
             continue                                  # an item number and nothing else
 
+        # A NUMBER in the Make column is not a make (1 October 2026 — the Iron
+        # Mountain sheet carries 80832, 49831.2 … there): dropped, and noted.
+        if make and (_is_number(mv) or _NUMERIC_TEXT.match(make)):
+            flag(rnum, "make", "make_number", raw=make, field_label="Make")
+            make = ""
+
         placed = struct.place(item, desc_raw, priced)
         line = {"row": rnum, "kind": placed["kind"], "item_no": placed["item_no"],
                 "parent_item_no": placed["parent_item_no"], "item_src": placed["item_src"],
                 "section": cur_section, "is_header": placed["is_header"],
                 "description": placed["description"], "unit": unit, "make": make,
-                "qty": None, "lump_sum": False, "flags": [], "needs": [], "block": False}
+                "qty": None, "lump_sum": False, "rate_only": False,
+                "flags": [], "needs": [], "block": False}
         for f in RATE_FIELDS:
             line[f] = None
 
@@ -1687,6 +1920,9 @@ def build(grid: dict, mapping: dict) -> dict:
             line["qty"] = nums["qty"]
             for f in RATE_FIELDS:
                 line[f] = nums[f]
+            if rate_only:
+                line["rate_only"] = True
+                counts["rate_only"] += 1
             if amount_only:
                 # A LUMP SUM: 1 LS at the amount, in the track(s) its amount
                 # column belongs to. Soft — it asks for a look, not a figure.
@@ -1757,11 +1993,26 @@ def build(grid: dict, mapping: dict) -> dict:
                         line["flags"].append(flag(
                             rnum, "amount", "mismatch_both", qty=_fmt(q),
                             calc=_fmt(q * ((s or 0) + (i or 0))), amount=_fmt(amt))["message"])
+                no_rate = line["supply_rate"] is None and line["install_rate"] is None
+                if rate_only and not rate_needed and no_rate:
+                    # A rate-only line with no rate on either track (1 October
+                    # 2026): the ordinary blocking "rate" need, worded for what
+                    # it is, so "Not priced" answers it. Asked whatever the
+                    # amount cells hold — its 0 is no quantity, so a 0 amount
+                    # does not price it at nil.
+                    counts["rate_only_no_rate"] += 1
+                    cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
+                    if cause:
+                        need("rate", f"{cause[0]} — type a rate")
+                    else:
+                        msg = flag(rnum, "rate", "ro_no_rate", severity="red")["message"]
+                        line["flags"].append(msg)
+                        need("rate", msg)
                 # A quantity and no rate anywhere. An EXPLICIT zero amount is
                 # the sheet pricing the line at nil — the Sify schedule's four
                 # nil-priced lines — and is not asked about.
-                if (not rate_needed and q is not None and line["supply_rate"] is None
-                        and line["install_rate"] is None and not amounts):
+                elif (not rate_only and not rate_needed and q is not None and no_rate
+                        and not amounts):
                     cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
                     if cause:
                         # The rate cell was already flagged ("#REF!", "NA"): the
@@ -1803,6 +2054,11 @@ def build(grid: dict, mapping: dict) -> dict:
         if line["flags"]:
             counts["flagged"] += 1
         lines.append(line)
+
+    # ── Group labels inside an item (1 October 2026) ───────────────────────
+    n_labels = _group_labels(lines)
+    counts["group_labels"] = n_labels
+    counts["headers"] -= n_labels                    # they were counted as spec text
 
     # ── Section codes ──────────────────────────────────────────────────────
     # The sheet's own codes are reserved first; lines above the first section

@@ -3082,6 +3082,11 @@ BOQ_IMPORT_STYLES = """
                          letter-spacing:.02em; vertical-align:middle; text-transform:none; }
   .chip-auto { background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; }
   .chip-ls   { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+  /* "RO" on the sheet (1 October 2026) — grey, the "not priced" chip's colours. */
+  .chip-ro   { display:inline-block; margin-left:.3rem; padding:0 .38rem;
+               border-radius:999px; font-size:.66rem; font-weight:700;
+               letter-spacing:.02em; vertical-align:middle;
+               background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
   /* The bar: sticky under the top bar, where the jump bar would sit — which
      moves down beneath it while it shows. */
   .needs-bar { position:sticky; top:60px; z-index:25; display:flex; align-items:center;
@@ -3740,8 +3745,10 @@ function refreshCtx() {
 
    A blocked line is RED and the form will not submit while its quantity is
    blank. The server would save a blank quantity as 0 (ABOUT.md §7 gap 42),
-   and an RA bill cannot claim against a line approved at 0 — so "R.O." on the
-   client's sheet must become a figure somebody typed, never a 0 nobody did. */
+   and an RA bill cannot claim against a line approved at 0 — so "NA" or a
+   word on the client's sheet must become a figure somebody typed, never a 0
+   nobody did. ("RO" is the exception from 1 October 2026: the sheet SAYS
+   rate only, so it arrives at 0 with a "rate only" chip and is not blocked.) */
 function isBlocked(L) {
   return !!(L && L._block && !L.is_header && String(qtyOf(L)).trim() === '');
 }
@@ -4707,6 +4714,11 @@ function srcChip(L) {
   if (L._ls) {
     h += ' <span class="chip-ls" title="An amount with no quantity or rate on the sheet, taken as 1 LS">LS &middot; review</span>';
   }
+  /* 1 October 2026: "RO" in the sheet's quantity — quantity 0, rates kept.
+     Grey, like "not priced": it is what the sheet says, not a problem. */
+  if (L._ro) {
+    h += ' <span class="chip-ro" title="Rate only (RO) on the source sheet: quantity 0, rates kept">rate only</span>';
+  }
   return h;
 }
 
@@ -4804,6 +4816,35 @@ function totalOf(L, areas) {
   return any ? String(Math.round(t * 1000) / 1000) : '';
 }
 
+/* base x (1 + escalation / 100), to the paisa — THE form's base + escalation
+   computation, written once. `hint()` suggests it beside a blank rate box and
+   `useRate()` types it; `bootCost()` types it into a cost import's blank unit
+   rates on load (1 October 2026), so an import writes no second formula. */
+function suggestRate(base, pct) {
+  return Math.round(num(base) * (1 + num(pct) / 100) * 100) / 100;
+}
+
+/* A line imported from a COST sheet (1 October 2026) arrives with its base
+   rate and its escalation filled and its unit rate blank, the track named in
+   `_cost`. Before the first render, each such blank unit rate is filled from
+   `suggestRate()` — exactly what pressing "use" beside it would type — and the
+   key is dropped, so a rate cleared by hand afterwards stays cleared. */
+function bootCost() {
+  for (var i = 0; i < MODEL.lines.length; i++) {
+    var L = MODEL.lines[i];
+    if (!L || !L._cost) continue;
+    for (var t = 0; t < L._cost.length; t++) {
+      var leg = L._cost[t];
+      var base = L[leg + '_base_rate'], rate = L[leg + '_rate'];
+      if ((rate === '' || rate == null) && base !== '' && base != null
+          && String(base).trim() !== '-') {
+        L[leg + '_rate'] = String(suggestRate(base, L[leg + '_escalation_pct']));
+      }
+    }
+    delete L._cost;
+  }
+}
+
 /* The escalated rate is a SUGGESTION, never imposed — purchase.py's fillRate()
    makes the same call about a catalogue price. The client's own sheets carry a
    dozen lines where the agreed rate deliberately differs from
@@ -4820,7 +4861,7 @@ function hint(i) {
     var base = L[pairs[p][1]], pct = L[pairs[p][2]], rate = L[pairs[p][3]];
     var txt = '';
     if (base !== '' && base != null && String(base).trim() !== '-') {
-      var d = Math.round(num(base) * (1 + num(pct) / 100) * 100) / 100;
+      var d = suggestRate(base, pct);
       if (rate === '' || rate == null) {
         txt = 'suggests <b>' + d + '</b> &#8212; <a href="#" onclick="useRate('
             + i + ',&quot;' + pairs[p][3] + '&quot;,' + d + ');return false;">use</a>';
@@ -5160,6 +5201,7 @@ function applyAddr(kind, sel) {
   }
 }
 
+bootCost();
 renderSections();
 bootNeeds();
 renderLines();

@@ -4509,8 +4509,16 @@ STORE["boq_imports"][token] = {
   "layout":   "<sha256 header signature>" | "",
   "known":    bool,                  # arrived by a known layout — see below
   "confirmed": bool,                 # confirmed in the preview
+  "rate_mode": "" | "selling" | "cost",  # 1 Oct 2026 — "" until the operator posts one
+  "markup":   "15",                  # 1 Oct 2026 — the Markup % AS TYPED; read only in cost mode
 }
 ```
+
+⚠ **`rate_mode` and `markup` from 1 October 2026** (§5 `/boq/import`, *Cost
+sheets*). `rate_mode` is `""` until the operator posts a choice — the
+pre-selection is worked out on every render (`boqimport.rate_mode()`), never
+stored as if somebody chose it. `markup` is kept as typed and parsed by
+`boqimport.parse_markup()`; a sheet change resets both.
 
 Six properties this shape exists to guarantee:
 
@@ -4547,10 +4555,16 @@ client's own clause text on import. INTRODUCTION.md §9 wins over the brief ther
 STORE["import_layouts"][signature] = {
   "id": signature, "signature": signature,  # sha256 of the header texts + columns
   "mapping":    {"<excel col>": target, …},  # the last CONFIRMED mapping
+  "rate_mode":  "selling" | "cost",          # 1 Oct 2026 — as last confirmed; absent before
   "created_by": "<uid>", "created_at": "…",
   "use_count":  3,                           # confirms + auto-applied uploads
 }
 ```
+
+⚠ **`rate_mode` from 1 October 2026, and never the markup.** A layout last
+confirmed as **cost** never takes the straight-to-the-form path: the markup is a
+decision about one job, typed on the preview every time. A record written before
+the field reads as the heading's words would (`sheetimport.cost_words()`).
 
 `sheetimport.signature()` hashes each header cell's normalised text with the
 Excel column it sits in, so two uploads of the same template match whatever
@@ -6586,6 +6600,12 @@ Two rate behaviours worth keeping:
   `base × (1 + pct)` beside an empty rate box with a *use* link, and when the
   entered rate differs it says so and keeps what was entered —
   `purchase.fillRate()` makes exactly the same call about a catalogue price.
+  ⚠ **That computation is one function from 1 October 2026**,
+  `suggestRate(base, pct)` — rounded to the paisa — which `hint()` and
+  `bootCost()` both call. `bootCost()` fills the blank unit rates of a line
+  imported from a COST sheet (`_cost`) on load, and does nothing on any other
+  form. The server's own fallback for a blank box, `_derived_rate()`, does not
+  round — §5 `/boq/import`, *Cost sheets*.
 
 Validation, in order: JSON parses → date → project name → account name →
 sections have unique codes → **line count within `MAX_LINES`** → **payload
@@ -7267,7 +7287,13 @@ Every sheet is listed with its visibility; a **hidden sheet is never
 pre-selected**. The pre-selected sheet is the visible one with the most rows
 carrying a number in both a quantity-like and a rate-like column, ties broken by
 rows with a quantity at all — a workbook whose rate cells are empty otherwise
-chose its one-page summary. The header is the **FIRST** row, or two-row pair
+chose its one-page summary. The preview's **Sheet** dropdown lists every sheet
+(the best-scoring one selected) and *Show this sheet* re-reads that sheet's grid
+with a fresh guess. ⚠ **On the Iron Mountain workbook (1 October 2026) every
+sheet scores 0** — its rate columns sit under a three-row stacked heading the
+detector does not read, so no rate-like column is guessed — and the tie-break
+lands it: `Fire Fighting PR ` (trailing space and all) has 126 rows with a
+quantity against `Summary`'s 0 and `Sheet1`'s 0. The header is the **FIRST** row, or two-row pair
 ("Supply" over "Rate | Amount"), in the first 40 rows that reads as a heading —
 keyword hits in at least **two** cells, so a one-cell title never qualifies; a
 pair's lower row must be heading words only, which is what stops a data row
@@ -7300,7 +7326,9 @@ names one.** Otherwise it arrives as **"?"** and confirm refuses until the
 operator picks Supply, Installation or Ignore. **One rate per track is the
 SELLING rate and the base rate stays BLANK** — the owner's decision: base is
 their cost, and copying the selling rate into it would make planned margin read
-as zero. A sheet with base + escalation columns imports both as they stand
+as zero. ⚠ **Unless the operator says the sheet's rates are OUR COST** (1
+October 2026) — then each rate IS the base, see *Cost sheets* below. A sheet
+with base + escalation columns imports both as they stand
 (a `%`-formatted escalation ×100, exactly as `tools/gen_demo_data.py` read the
 Sify sheet). Confirm also refuses a target chosen twice, and a missing
 Description or Quantity column.
@@ -7314,9 +7342,20 @@ Description or Quantity column.
 | an amount and nothing else | a total **by arithmetic**, or a **lump sum** — see *The totals* |
 | anything else | placed by **the structure**, below |
 
-**`item_no` is text, verbatim, and duplicates stay duplicates** — `4.0999…`
-reads as "4.1" and a `0.00`-formatted `1.1` as "1.10", as Excel shows them.
-**Only the total quantity is read**; floor and area columns are left out.
+**`item_no` is text, and duplicates stay duplicates.** A TEXT item cell is
+taken exactly as written (trimmed). A NUMERIC one is **rounded, then its
+trailing zeros are stripped** (1 October 2026, `sheetimport._item_text()`):
+to the decimals of its number format when that is a fixed one (`0.00` → 2),
+otherwise to at most `ITEM_DECIMALS` = 2 — `5.199999999999999` → "5.2",
+`17.200000000000003` → "17.2", `3.01` → "3.01", `4.0` → "4", `4.0999…` → "4.1".
+⚠ **This changed a v1 rule on purpose**: a `0.00`-formatted 1.1 read "1.10",
+as Excel shows it, and now reads "1.1" — the Iron Mountain sheet formats every
+item cell `0.00`, and "5.20" is not how anybody writes item 5.2. Two edges,
+both declared: a `0.00` sheet that numbers 3.01 … 3.10 prints the tenth as
+"3.1"; an item written to three decimals in a General cell (1.125) is rounded.
+A number in a DESCRIPTION or UNIT cell keeps v1's reading
+(`sheetimport._num_display()`). **Only the total quantity is read**; floor and
+area columns are left out.
 
 ⚠ **A zero is not a figure (the owner's ruling, 30 September 2026).** An amount
 of 0 is no amount, and a rate of 0 on a row with no quantity is no rate — the
@@ -7352,6 +7391,20 @@ Walked down each section in order:
    `(a)`, `a.` — is used as it stands and cut from the description, marked
    **`sheet`**; the counter continues after it.
 6. The counter **resets** at every numbered row and every section.
+7. **Group labels inside an item** (1 October 2026, `sheetimport._group_labels()`,
+   after the walk). Under ONE parent — the line the rows' *Under item* names,
+   by the parent rule (§3) — when **two or more** spec-text rows are each
+   **immediately followed by a child** of that parent (the next LINE: a blank
+   row is no line), those rows are **group labels**, `kind: "group_label"`.
+   Each label goes in front of the description of every child after it, up to
+   the next label or the first line that is not this parent's child — "PN-25 ·
+   DN 250", "PN-16 · DN 250" on the Iron Mountain sheet's sluice, non-return
+   and expansion-joint valves. A label is **not** appended to the parent's
+   text; a Make on it goes to the parent's remark. **One** such row, or rows
+   not each followed by a child, stay spec text exactly as before — the
+   deluge valve's "i) Mains deluge valve" / "ii) Pressure gauges…" (only the
+   second is followed by a child), a monitor's run of specification bullets,
+   and every Jamnagar item.
 
 **The item-number source (`auto` / `sheet`) lives on the import payload only**
 — `build()`'s `item_src` and the editor's `_item_src` UI key. No record carries
@@ -7395,6 +7448,21 @@ the structure, and an amber *review* flag. The grand-total label pattern now
 also takes `TOTAL AMOUNT A+B+C` with no brackets (row 124), and the one-line
 *totals check* against it is unchanged.
 
+**Below the grand total, nothing is a line (1 October 2026).** Once a row is
+recognised as the grand total by **both** its label (`_GRAND`) **and** its sums
+(the footing check says *grand total, match*), no later row becomes a line:
+each row with anything on it is a **`below_grand` note** — *"Row 380 · Below
+the grand total: not imported — row 379 is the grand total: “Fittings,
+Transportation,loading,unloading” · 0.20 · 6,122,702.31"* — listed under the
+summary's *other notes from the reader*, never a need. On the Iron Mountain
+sheet that is rows 380–394: the 20% add-on, the `Total =` running total, and
+the declarations block, which used to come in as a **lump sum** and a dozen
+header lines. ⚠ **A later TOTAL row is still a footing check**, because a check
+is not a line: the Jamnagar sheet's row 125 (supply + installation under its
+grand total) is still *combined total, adds up*. A label that says grand total
+but does not add up ends nothing. Rows above the grand total are read exactly
+as before.
+
 **Never dropped without a word**: every amount is imported, footed, or flagged.
 
 #### The flags — what blocks, and what asks for a look
@@ -7403,7 +7471,8 @@ also takes `TOTAL AMOUNT A+B+C` with no brackets (row 124), and the one-line
 leads the user to:
 
 * a priced line with **no quantity** (a quantity the reader could not read —
-  "R.O.", "NA", `9.3+1.5+6` — is this, as before, and keeps its red `_block`);
+  "NA", "I.R.", `9.3+1.5+6` — is this, as before, and keeps its red `_block`;
+  **"RO" is not, from 1 October 2026** — see *Rate-only lines* below);
 * a track with an **amount but no rate**;
 * a **quantity but no rate on either track** (row 13 of the Jamnagar sheet:
   350, nothing else). An **explicit 0 amount** is the sheet pricing the line at
@@ -7412,14 +7481,21 @@ leads the user to:
   **BLANK** (which of the two is wrong is not ours to say) and the flag gives
   quantity, rate, product and amount;
 * a priced line with **no item number** or **no description** — the save would
-  refuse it anyway.
+  refuse it anyway;
+* a **rate-only line with no rate on either track** (1 October 2026) — the
+  same `rate` need, worded *"rate-only line with no rate"* (*Rate-only lines*,
+  below).
 
 Where the cause is a cell already flagged ("#REF!" in the only rate), the need
 rides on that flag rather than adding a second.
 
 **Review only** (amber): a lump sum, a labelled total that does not add up, a
 combined-amount mismatch, a rate cell that could not be read, a cut cell, a
-renamed section, a date in the item column.
+renamed section, a date in the item column; and from 1 October 2026 two
+**notes** listed under *other notes from the reader* and never put on a row —
+a row **below the grand total**, and a **number in the Make column** (`80832`
+on the Iron Mountain sheet's PN-16 valves is no brand: dropped, and noted with
+its row and column).
 
 **Unit handling is unchanged**: the Unit cell's text, trimmed, exactly as it
 stands — no mapping of `Mtrs.` to `Mtr`, no default. A header's unit is blank on
@@ -7441,8 +7517,16 @@ The per-row dump under *What will be imported* is replaced by
   an anchor handled by `needLink()`.
 * **N item numbers filled in from the sheet's structure** *(review)*.
 * **N lump sums** *(review)*.
+* **N rate-only lines** — from 1 October 2026, and drawn only when the sheet
+  has one; it says how many have no rate and so need one.
 * **N subtotals checked** — all add up, or which do not, with both figures.
-* folded, **N other notes from the reader**, so nothing it said is hidden.
+* folded, **N other notes from the reader**, so nothing it said is hidden —
+  from 1 October 2026 including each row below the grand total and each number
+  found in the Make column, by row.
+
+The stats line above it adds *N group labels put in front of their sizes* and
+*N rows below the grand total left out* when there are any. In **cost** mode
+the card also says *"Checked against the sheet's cost figures"*.
 
 The same summary sits in the banner on the prefilled form, with the import's
 own styles, which `/boq/create` does not load and the banner had been drawn
@@ -7558,6 +7642,132 @@ import in its own `<script>var BOQ_GUIDE = …</script>`, so a harness that load
 `/boq/create` emits — `BOQ_STYLES` is golden-pinned on four pages and did not
 move.
 
+#### Rate-only lines (1 October 2026)
+
+A quantity cell reading **"RO", "R.O.", "R/O" or "RATE ONLY"** — any case,
+surrounding spaces ignored (`sheetimport._RO_QTY`) — means the sheet quotes a
+rate and no quantity. Such a line comes in at **quantity 0 with its rates
+kept**, a grey **rate only** chip on its row (`_ro`; `.chip-ro`, beside `auto`
+and `LS · review` in `srcChip()`), and the remark **"Rate only (RO) on the
+source sheet"** (`; Make: …` after it when the sheet gives one). **That alone is
+not a flag and does not block.** With **no rate on either track** it carries
+the ordinary blocking `rate` need — worded *"rate-only line with no rate"* — so
+*Not priced (₹0)* answers it. Two rules differ from a quantity line, both
+because its 0 is no quantity anybody measured: a **0 rate is no rate** on it,
+and an **explicit 0 amount does not price it at nil** (the Sify rule is about a
+quantity priced at nothing). The preview's summary gains **N rate-only lines**
+— drawn only when there are some. Whatever else v1's pattern matched
+(**"I.R."**, **"R. O."** with a space inside) keeps v1's rule: blank, red,
+blocked.
+
+⚠ **Quantity 0 is what it means.** `ra.approved_by_line()` reads `total_qty`,
+so nothing can be claimed on a rate-only line until a revision gives it a
+quantity — which is what "rate only" says. The editor's amber *priced lines
+with no quantity* band lists them and names that consequence. v1's refusal to
+write 0 for "R.O." (*"a 0 would hard-block the first real RA claim"*) was about
+a quantity the reader could not read; this one the sheet states.
+
+#### Cost sheets — "Selling rates / Our cost" (1 October 2026)
+
+The Iron Mountain sheet is priced at **Samruddhi's own cost** ("OWN COST
+(INR)"), not at selling rates. The preview carries a card, **Rates on this
+sheet are: Selling rates / Our cost** (the quotation form's own `.tax-options`
+radio row), and `boqimport.rate_mode()` pre-selects it — never decides it:
+
+1. the operator's own posted choice, once there is one (`rec["rate_mode"]`);
+2. else the mode this **layout** was last confirmed in (`import_layouts.rate_mode`);
+3. else **Our cost** when the HEADING rows say *cost*, *own cost*, *buy* or
+   *purchase* (`sheetimport.cost_words()`; plurals and *buying* too), the words
+   and the cell they sit in shown as the reason — *"Pre-selected: the heading
+   says “own cost” (in “OWN COST (INR)”). Change it either way."*;
+4. else **Selling rates**, with no reason drawn.
+
+**Selling** is v1 — the editor model is identical. **Our cost** shows a
+required **Markup %** (a number ≥ 0, `parse_markup()`; a trailing `%` and
+thousands commas are allowed), warns *"At 0% the sale price will equal cost"*
+(live, and in the server's render), and `mode_problems()` refuses to confirm
+without one. Then `boqimport.editor_model(result, markup=…)`, on **every track
+where the sheet gave a rate** (a ₹0 is none):
+
+| field | becomes |
+|---|---|
+| base rate | the sheet's rate |
+| escalation % | the markup |
+| unit rate | **blank**, the track listed in `_cost` — the FORM fills it on load |
+
+The form fills it with **its own existing computation**: `_BOQ_JS`'s
+`suggestRate(base, pct)` — the expression `hint()` always used, moved into one
+function that `hint()` and `bootCost()` both call — so the importer writes no
+second formula. `bootCost()` runs before the first render, types the figure into
+each blank unit rate of a `_cost` track (what pressing *use* beside it would
+type) and drops the key, so a rate cleared by hand afterwards stays cleared. A
+track or a line with no rate stays **exactly** as it was, flags and needs
+included. A cost sheet may not also map a base-rate or escalation column —
+confirm says why; selling mode is unaffected.
+
+⚠ **The rounding the existing computation applies — and it is two roundings.**
+The FORM rounds to the paisa: `Math.round(base × (1 + pct/100) × 100) / 100`.
+The SERVER, deriving a unit rate left blank on save (`boq._derived_rate()` in
+`_clean_lines()`), does **not round at all**. Worked example, base ₹100 at a 15%
+markup: the form types **115**; a blank box saved with the script off is stored
+as **114.99999999999999** (`100 × 1.15` in binary floating point), prints
+**115.00** through `_inr()`, and at quantity 3 is an amount of
+344.99999999999994, printed **345.00**. A cost import with the script running
+always takes the form's path; the server's is the no-script fallback, as it
+always was for a typed BOQ.
+
+**Every check runs on the sheet's own figures, before the markup** — quantity
+× rate against the amount, the subtotals, the section totals and the grand
+total are `sheetimport.build()`'s, which never sees the markup — and the preview
+says so: *"Checked against the sheet's cost figures"*. The prefilled form's
+banner reads **"Imported from a cost sheet: base rate = sheet rate, escalation
+= X% on every line, editable per line."** ⚠ **A layout last confirmed as cost
+never goes straight to the form** — the markup is typed on the preview every
+time and is never stored on the layout.
+
+**The printed BOQ never shows the base rate or the escalation — for a cost
+import as for any other.** `/boq/print` calls `_document_html(boq,
+show_rate_breakup=False)`, a constant at the ROUTE and never read from the
+record; `_section_table()` drops the base and *Esc. %* columns
+(`show_base = show_rate_breakup`, each escalation column ANDed with it) and
+`_document_html()` drops the *Rate Basis* line on the same flag. Nothing on a
+cost-imported record marks it as one, so nothing could switch that off.
+`tests/test_boq_import_cost.py::test_the_printed_boq_never_shows_a_cost_imports_base_rate`
+holds it; `/boq/view`, the internal copy, still shows both.
+
+On the Iron Mountain sheet in cost mode at markup 0 (read-only from the owner's
+Downloads, 1 October 2026), every section's base totals equal the sheet's own —
+A **81,11,652.40 / 29,14,620.00**, B 19,50,174.44 / 12,43,083.40, C 9,45,000.00
+/ 19,500.00, D 1,37,85,079.72 / 1,15,12,077.26, E 58,21,604.99 / 30,32,793.92,
+F 0.00 / 1,20,770.00 — grand total **3,06,13,511.55 / 1,88,42,844.58** — and
+the save path, run in memory, stores the same.
+
+#### The Iron Mountain sheet's heading and hidden cells — reported, not built (1 October 2026)
+
+* **The stacked heading.** Rows 9–11: `OWN COST (INR)` merged over P9:S9; then
+  **one** cell, P10 (merged P10:Q10), reading `MATERIAL MISC` — R10:S10 is an
+  empty merge, so "MISC" does not sit over R:S at all; then `UNIT RATE` /
+  `TOTAL AMOUNT` twice across P11:S11. The detector takes rows 9–10 as the
+  heading pair; row 11 is never part of the heading and is skipped as a
+  heading remnant. The mapping it proposes: **B → Item No., C → Description,
+  F → Unit, O → Quantity (total) ("Total QTY"), U → Make**, and **ignore** for
+  everything else — D and E (alternative descriptions), G–N (floors), **P, Q,
+  R, S** (the cost rates and amounts: no rate or amount keyword reaches them,
+  so they are not even offered as "?"), T (REMARKS) and V–X (stray working
+  figures). The operator maps **P → Supply · unit rate, Q → Supply · amount,
+  R → Installation · unit rate, S → Installation · amount** by hand. **Reading
+  a three-row heading is NOT built.**
+* **Hidden rows and columns are read like any other.** The .xlsx is opened
+  `read_only=True`, which exposes no row or column dimensions, and nothing in
+  `sheetimport.py` looks at hidden state — only a hidden **sheet** is treated
+  differently (never pre-selected). On this sheet columns **G–N** (the
+  per-floor quantities) and rows **1–8** (the indent form's header block) are
+  hidden; both are staged and shown on the preview. **Nothing can be counted
+  twice**: only the column mapped to *Quantity (total)* is read (O here — the
+  guess prefers the one whose heading says "total"), `mapping_problems()`
+  refuses a target chosen for two columns, area quantities are never imported,
+  and amounts are check-only, summed from the mapped amount columns alone.
+
 #### What v1 does not do — measured on the client's own files
 
 * **One sheet per import.** Several of their workbooks keep one system per
@@ -7574,6 +7784,13 @@ move.
   (the form computes them) — an amount is read only to foot the sheet, to take
   a lump sum, and to check quantity × rate. A **Make** column is imported, into
   the remark (30 September 2026).
+* **A heading stacked over three rows is not read** (1 October 2026 — the Iron
+  Mountain sheet's cost columns); the operator maps those columns by hand.
+* **Hidden rows and columns are read** as if they were visible.
+* **A "Lot" line priced at an explicit ₹0** is not asked about — the owner's
+  nil-priced rule. On the Iron Mountain sheet that is eleven lines (A 8, A 20,
+  D 14, D 15, E 2, E 3, G, H 1, I 1, J 1.01, J 1.02): each carries a 0 in its
+  amount or its rate, so none is a blocking flag.
 
 ---
 
