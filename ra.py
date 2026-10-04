@@ -42,6 +42,8 @@ Import direction
                             own guards, and the key a claim is matched on
     ra.py ──► dashboard.py  BASE_STYLES / _nav
     ra.py ──► pipeline.py   esc / parse_money / fy_of / fy_ref
+    ra.py ──► dcbill.py     billed_by / billing_index / SOURCE_KEY — the one
+                            "is this challan billed?" predicate (4 Oct 2026)
     ra.py ──► store, branding
 
 `boq.py` must **never** import this module — its view page links out with
@@ -66,6 +68,10 @@ import branding as B
 import measurement as MS
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+# "Is this challan billed, and by which bill?" — ONE predicate, in a leaf both
+# this module and `challan.py` import, because neither may import the other
+# (CLIENT_CHANGES.md §0, fortieth block, ruling C). See `dcbill.py`.
+import dcbill as DCB
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -1901,6 +1907,480 @@ def _c1_refusal(boq_id: str, leg: str):
     return None
 
 
+# =============================================================================
+# RAISED FROM CHALLANS, OR FROM THE MEASUREMENT — 4 October 2026
+# =============================================================================
+# CLIENT_CHANGES.md §0, fortieth block — Manas's rulings, final:
+#
+#   A  RA SUPPLY from ticked challans. The prefill per `line_id` is the sum
+#      across the ticked challans; a quantity may be lowered, never raised
+#      above that sum, and that is REFUSED ON THE POST (`dc_overclaims()`,
+#      called from `_validate()`). The BOQ cumulative block runs on top of it,
+#      untouched.
+#   B  RA INSTALLATION from the measurement. The prefill per `line_id` is the
+#      UNBILLED REMAINDER — `MS.approved_qty_by_line()` less what non-cancelled
+#      bills already claimed, clamped at nil (`unbilled_remainder()`). The
+#      measurement cap inside `overclaims()` keeps guarding the POST and is
+#      neither weakened nor copied here.
+#   C  A billed challan is marked and blocked — `dcbill.billed_by()`, the one
+#      predicate, read here and in `challan.py`.
+#
+# ⚠ **The supply asymmetry of C1 (the note above `challan_exists()`) still
+#   holds on the MANUAL path, unchanged.** `overclaims()` puts no dispatch
+#   ceiling on a supply claim and `tests/test_c1_order_of_working.py` holds
+#   that. The challan cap below is a SEPARATE check that runs only when the
+#   operator chose to raise the bill from challans, because ruling A says a
+#   bill raised from challans may not claim more than they carried.
+#
+# ⚠ **Matching is on `line_id` and nothing else.** A challan row or a sheet row
+#   whose id is not a priced line on the tip revision — a line deleted by a
+#   revision, a row with no id — is listed on the form as *Unmatched, not
+#   prefilled* and can never be billed through this path: the claim grid holds
+#   the tip's lines only and `clean_claims()` refuses any other id.
+#
+# ⚠ **`ra.py` still does not import `challan.py`.** The challan records are
+#   read out of `STORE` directly — `challan_exists()`'s one-way read, used
+#   again. Only the billed predicate needed a home both modules could reach.
+
+# The key an installation bill raised FROM the measurement carries: the ids of
+# the sheets that counted toward the ceiling when it was raised, oldest first.
+# Written once at create, like `dcbill.SOURCE_KEY`; absent means manual.
+SOURCE_MS_KEY = "source_ms_ids"
+
+
+def _qty_value(q: float) -> str:
+    """
+    A quantity as an input's value, without `_fmt_qty()`'s six-figure rounding.
+
+    ⚠ **Deliberately not `BQ._fmt_qty()`** (ABOUT.md §7 gap 45). A prefill that
+    rounded a dispatched 1234.5678 up to 1234.57 would be refused by the very
+    cap it was computed from. Fifteen significant figures keep the value and
+    still drop float noise (`3.3000000000000003` reads `3.3`).
+    """
+    return f"{float(q or 0.0):.15g}"
+
+
+def _tip_line_ids(boq: dict) -> set:
+    """The priced (non-header) line ids of this BOQ — the lines a claim may name."""
+    return {BQ._line_id(li.get("line_id")) for li in boq.get("line_items") or []
+            if not li.get("is_header") and BQ._line_id(li.get("line_id"))}
+
+
+def challans_on_chain(boq_id: str) -> list:
+    """
+    `[(id, challan)]` raised anywhere on this BOQ's revision chain, oldest first.
+
+    Chain-scoped for `challan_exists()`'s reason — a revision is a new record —
+    and read out of `STORE` directly for the same reason as it: `ra.py` does
+    not import `challan.py`.
+    """
+    chain = set(revision_chain(boq_id))
+    rows = [(cid, dc) for cid, dc in (STORE.get("delivery_challans") or {}).items()
+            if str(dc.get("boq_id") or "") in chain]
+    rows.sort(key=lambda kv: (str(kv[1].get("date") or ""),
+                              str(kv[1].get("ref") or ""), str(kv[0])))
+    return rows
+
+
+def resolve_challans(boq_id: str, wanted) -> tuple:
+    """
+    `(picked, problems)` — the ticked challan ids that may be billed here, as
+    `[(id, challan)]`, and one plain sentence per id that may not.
+
+    Three refusals, each naming the challan: it no longer exists; it was raised
+    against a schedule that is not on this one's revision chain; or it is
+    already billed — **`dcbill.billed_by()`, the one predicate**, and the
+    sentence names the bill. A repeated id is taken once.
+    """
+    chain = set(revision_chain(boq_id))
+    dcs = STORE.get("delivery_challans") or {}
+    picked, problems, seen = [], [], set()
+    for raw in wanted or []:
+        cid = str(raw or "").strip()
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        dc = dcs.get(cid)
+        if not dc:
+            problems.append("One of the ticked challans no longer exists. Tick "
+                            "again from the list.")
+            continue
+        ref = str(dc.get("ref") or "")
+        if str(dc.get("boq_id") or "") not in chain:
+            problems.append(
+                f"Challan {ref} was raised against "
+                f"{dc.get('boq_ref') or 'another schedule'}, which is not this "
+                f"schedule or a revision of it.")
+            continue
+        held = DCB.billed_by(cid)
+        if held:
+            _rid, bill = held
+            problems.append(
+                f"Challan {ref} is already billed in {bill.get('ref') or 'another bill'} "
+                f"(RA{bill.get('ra_no')}). A challan is billed once — cancel "
+                f"{bill.get('ref') or 'that bill'} to free it.")
+            continue
+        picked.append((cid, dc))
+    return picked, problems
+
+
+def dispatched_in(dcs: list) -> dict:
+    """
+    `{line_id: qty}` summed over the rows of THESE challans — ruling A's cap.
+
+    Not `challan.dispatched_by_line()`, which answers a different question
+    (everything that ever left the yard against the chain) in a module this
+    one may not import. Headers carry no quantity and rows with no id match
+    nothing, exactly as there.
+    """
+    out = {}
+    for dc in dcs or []:
+        for row in dc.get("items") or []:
+            if row.get("is_header"):
+                continue
+            lid = BQ._line_id(row.get("line_id"))
+            if not lid:
+                continue
+            out[lid] = out.get(lid, 0.0) + float(row.get("qty") or 0.0)
+    return out
+
+
+def dc_overclaims(claims: list, caps: dict) -> list:
+    """
+    Every claim row above what the ticked challans dispatched on its line.
+
+    Ruling A's guard, and the reason it runs on the POST: the form's prefill
+    and its live warning are presentation, and a typed URL or an edited
+    payload would walk straight past them. A line no ticked challan carried
+    has a cap of nil. Rounded at `_QTY_EPSILON`, `overclaims()`'s own rule.
+    """
+    out = []
+    for c in claims or []:
+        qty = float(c.get("qty") or 0.0)
+        if qty <= 0:
+            continue
+        lid = BQ._line_id(c.get("line_id"))
+        cap = float(caps.get(lid, 0.0))
+        if round(qty - cap, 6) > _QTY_EPSILON:
+            out.append({"item_no": BQ._item_no(c.get("item_no")),
+                        "line_id": lid, "this": qty, "cap": cap})
+    return out
+
+
+def dc_overclaim_message(v: dict) -> str:
+    """One breach of the challan cap, in words the operator can act on."""
+    q = BQ._fmt_qty
+    if v["cap"] <= _QTY_EPSILON:
+        return (f"Item {v['item_no']}: none of the ticked challans carried this "
+                f"line, so a bill raised from them cannot claim it. Leave it at "
+                f"0, or raise it on a manual RA bill.")
+    return (f"Item {v['item_no']}: {q(v['this'])} claimed here, but the ticked "
+            f"challans dispatched {q(v['cap'])} — a bill raised from challans "
+            f"may not claim more than they carried.")
+
+
+def dc_shortfalls(claims: list, caps: dict) -> list:
+    """
+    `[line_id]` billed BELOW what the ticked challans dispatched — a line left
+    at nothing included. Not a refusal: ruling A asks for a warning, because
+    the challans still count as billed and the shortfall can only go on a
+    manual bill.
+    """
+    claimed = {BQ._line_id(c.get("line_id")): float(c.get("qty") or 0.0)
+               for c in claims or []}
+    return [lid for lid, cap in caps.items()
+            if cap > _QTY_EPSILON and cap - claimed.get(lid, 0.0) > _QTY_EPSILON]
+
+
+def unbilled_remainder(boq_id: str, claimed: dict = None) -> dict:
+    """
+    `{line_id: qty}` still to be claimed on the installation leg — ruling B.
+
+    What the measurement counts for the line (`MS.approved_qty_by_line()`,
+    over the SAME chain `overclaims()` hands it) less the installation
+    quantity already on non-cancelled bills (`claimed_by_line()`, the single
+    place that sum is taken). **Clamped at nil**: a line that is fully
+    claimed, or claimed past the measurement by a bill the cap grandfathered,
+    is left out rather than going negative. So the prefill can never exceed
+    the ceiling the POST is checked against.
+    """
+    chain = set(revision_chain(boq_id))
+    measured = MS.approved_qty_by_line(boq_id, chain=chain)
+    if claimed is None:
+        claimed = claimed_by_line(boq_id)
+    out = {}
+    for lid, qty in measured.items():
+        left = float(qty) - float(claimed.get((lid, "installation"), 0.0))
+        if left > _QTY_EPSILON:
+            out[lid] = left
+    return out
+
+
+def counting_sheets(boq_id: str) -> list:
+    """
+    `[(id, sheet)]` on the chain that count toward the installation ceiling,
+    oldest first — `MS.feeds_ceiling()`'s reading, which is the one
+    `approved_qty_by_line()` sums. These are what a bill raised from the
+    measurement records in `source_ms_ids`.
+    """
+    chain = set(revision_chain(boq_id))
+    rows = [(mid, m) for mid, m in MS.sheets_on_chain(boq_id, chain)
+            if MS.feeds_ceiling(m)]
+    rows.reverse()
+    return rows
+
+
+def unmatched_rows(sources: list, tip: set) -> list:
+    """
+    Every row of these challans or sheets whose `line_id` is not a priced line
+    on the tip revision — what the form lists as *Unmatched, not prefilled*.
+
+    A row with no id, and a row whose line a later revision deleted, both land
+    here. Nothing is matched by description, item number or position.
+    """
+    out = []
+    for _sid, rec in sources or []:
+        for row in rec.get("items") or []:
+            if row.get("is_header"):
+                continue
+            lid = BQ._line_id(row.get("line_id"))
+            if lid and lid in tip:
+                continue
+            out.append({"source": str(rec.get("ref") or ""),
+                        "item_no": str(row.get("item_no") or ""),
+                        "description": str(row.get("description") or ""),
+                        "unit": str(row.get("unit") or ""),
+                        "qty": float(row.get("qty") or 0.0)})
+    return out
+
+
+def _unmatched_html(rows: list, noun: str) -> str:
+    """The *Unmatched, not prefilled* list, or nothing. Every field escaped."""
+    if not rows:
+        return ""
+    items = "".join(
+        f'<li><b>{_esc(r["source"]) or "&mdash;"}</b> &middot; item '
+        f'{_esc(r["item_no"]) or "&mdash;"} &middot; '
+        f'{_esc(" ".join(r["description"].split())[:140]) or "&mdash;"} '
+        f'&middot; {BQ._fmt_qty(r["qty"])} {_esc(r["unit"])}</li>'
+        for r in rows)
+    n = len(rows)
+    return (f'<div class="form-hint"><span class="fh-icon">&#9888;</span>'
+            f'<span><b>Unmatched, not prefilled</b> &mdash; {n} '
+            f'{noun} row{"" if n == 1 else "s"} name{"s" if n == 1 else ""} no '
+            f'priced line on this revision of the schedule, so '
+            f'{"it is" if n == 1 else "they are"} left out of this bill and '
+            f'cannot be billed through it.<ul style="margin:.4rem 0 0 1.1rem;">'
+            f'{items}</ul></span></div>')
+
+
+def _dc_picker_html(boq_id: str, available: list, picked_ids: set,
+                    billed: list) -> str:
+    """
+    The challan picker on the supply form — a GET form of its own, above the
+    claim form (forms do not nest). Ticking and pressing the button reloads
+    the page with the new prefill; nothing is saved by it.
+
+    `table.claims` and `.cl-wrap` are this page's own grid styles, so the
+    picker introduces no stylesheet; the column widths are on the header row
+    because `table.claims` is `table-layout:fixed` (the BOQ picker's note).
+    A billed challan is absent from the list and named underneath it.
+
+    ⚠ **No explicit `<tbody>`**, and on purpose: the browser implies one, and
+    the claim grid's `<tbody>` stays the FIRST on the page — which is what
+    `tests/test_ra_step4.py` and its neighbours read as "the claim grid".
+    """
+    rows = "".join(
+        f'<tr><td style="text-align:center;"><input type="checkbox" name="dc" '
+        f'value="{_esc(cid)}"{" checked" if cid in picked_ids else ""} '
+        f'aria-label="Bill challan {_esc(dc.get("ref"))}"/></td>'
+        f'<td class="cl-no">{_esc(dc.get("ref")) or "&mdash;"}</td>'
+        f'<td>{_esc(dc.get("date")) or "&mdash;"}</td>'
+        f'<td class="cl-desc">{_esc(dc.get("dispatch_to")) or "&mdash;"}</td>'
+        f'<td class="cl-num">{_esc(dc.get("boq_rev_no") or 0)}</td>'
+        f'<td class="cl-num">{sum(1 for r in dc.get("items") or [] if not r.get("is_header"))}</td></tr>'
+        for cid, dc in available)
+    if not rows:
+        rows = ('<tr><td colspan="6" style="color:var(--muted);">Every challan '
+                'on this project is already billed.</td></tr>')
+    billed_note = ""
+    if billed:
+        listed = "; ".join(
+            f'{_esc(dc.get("ref")) or "&mdash;"} in '
+            f'<a href="{url_for("ra.view_ra", id=rid)}">{_esc(bill.get("ref")) or "&mdash;"}</a>'
+            for _cid, dc, rid, bill in billed)
+        billed_note = (f'<p style="font-size:.75rem;color:var(--muted);margin:.5rem 0 0;">'
+                       f'Already billed, so not listed: {listed}.</p>')
+    return f"""
+  <div class="form-section">
+    <div class="section-title">&#128666; Raise from delivery challans</div>
+    <p style="font-size:.8rem;color:var(--muted);margin:.2rem 0 .8rem;">
+      Tick the challans this bill is for and press <b>Prefill</b>. Each line is
+      filled with what the ticked challans dispatched on it, and no line may be
+      claimed above that. Tick none to enter a manual bill, exactly as before.
+    </p>
+    <form method="GET" action="{url_for('ra.create_ra')}">
+      <input type="hidden" name="boq" value="{_esc(boq_id)}"/>
+      <input type="hidden" name="leg" value="supply"/>
+      <div class="cl-wrap"><table class="claims">
+        <thead><tr><th style="width:52px;"></th><th style="width:110px;">Challan</th>
+        <th style="width:110px;">Date</th><th>Dispatch to</th>
+        <th style="width:88px;text-align:right;">BOQ rev</th>
+        <th style="width:88px;text-align:right;">Lines</th></tr></thead>
+        {rows}
+      </table></div>
+      <div style="margin-top:.6rem;"><button type="submit" class="btn btn-ghost">Prefill from the ticked challans</button></div>
+    </form>
+    {billed_note}
+  </div>"""
+
+
+# The live warning on a bill raised from challans. A template with two
+# substitution points rather than an f-string, `boqpick._JS_TEMPLATE`'s
+# reasoning: it is browser JavaScript full of braces. It reads `LINE_IDS`,
+# `el()` and `num()` from `_RA_JS`, which the page emits first, and it never
+# blocks — the POST is the guard (`dc_overclaims()`).
+_DC_LIVE_JS = r"""
+<script>
+var DC_CAPS = __CAPS__;
+var DC_LABELS = __LABELS__;
+function dcCheck() {
+  var over = [], short = [];
+  for (var i = 0; i < LINE_IDS.length; i++) {
+    var lid = LINE_IDS[i], q = el('q_' + lid);
+    if (!q) continue;
+    var qty = num(q.value), cap = DC_CAPS[lid] || 0;
+    if (qty - cap > 1e-6) over.push(DC_LABELS[lid] || '?');
+    else if (cap > 1e-6 && cap - qty > 1e-6) short.push(DC_LABELS[lid] || '?');
+  }
+  var o = el('dc-over'), s = el('dc-short-list'), w = el('dc-short');
+  if (o) {
+    o.style.display = over.length ? '' : 'none';
+    o.textContent = over.length + (over.length === 1 ? ' line is' : ' lines are')
+      + ' above what the ticked challans dispatched and will be refused on save: '
+      + over.join(', ');
+  }
+  if (w && s) {
+    w.style.display = short.length ? '' : 'none';
+    s.textContent = short.join(', ');
+  }
+}
+document.addEventListener('input', dcCheck);
+dcCheck();
+</script>
+"""
+
+
+def _dc_live_js(boq: dict, caps: dict) -> str:
+    """The live over/short warning, wired to this BOQ's lines."""
+    tip = _tip_line_ids(boq)
+    labels = {BQ._line_id(li.get("line_id")): BQ._item_no(li.get("item_no"))
+              for li in boq.get("line_items") or []
+              if not li.get("is_header") and BQ._line_id(li.get("line_id"))}
+    return (_DC_LIVE_JS
+            .replace("__CAPS__", P.json_for_script(
+                {lid: q for lid, q in caps.items() if lid in tip}))
+            .replace("__LABELS__", P.json_for_script(labels)))
+
+
+def _dc_warning_html(refs: list) -> str:
+    """
+    Ruling A's warning, shown BEFORE save: plain words, and the two live
+    slots `_DC_LIVE_JS` fills.
+    """
+    named = ", ".join(_esc(r) or "&mdash;" for r in refs)
+    return f"""
+  <div class="frozen-note"><span>&#128666;</span><span><b>Raised from challans
+    {named}.</b> Each line is prefilled with what they dispatched. A line may be
+    lowered, never raised above that &mdash; a higher figure is refused on save.
+    The schedule's own over-claim check still applies on top.</span></div>
+  <div class="form-hint"><span class="fh-icon">&#9888;</span><span><b>Billing a
+    line below what was dispatched?</b> The ticked challans still count as
+    billed once this bill is saved, and the shortfall can then only go on a
+    manual RA bill.<span id="dc-short" style="display:none;"> Below dispatch
+    now: <b id="dc-short-list"></b>.</span></span></div>
+  <p id="dc-over" class="alert error" style="display:none;"></p>"""
+
+
+def _ms_note_html(sheets: list, gridonly: list) -> str:
+    """
+    Ruling B's note: where the prefill came from, and which counting sheets
+    contribute nothing to it (a joint grid with no BOQ lines behind it).
+    """
+    refs = ", ".join(_esc(m.get("ref")) or "&mdash;" for _mid, m in sheets)
+    html = f"""
+  <div class="frozen-note"><span>&#128207;</span><span><b>Prefilled from the
+    measurement</b> ({refs or "no sheet counts yet"}). Each line carries the
+    unbilled remainder &mdash; what was measured, less the installation already
+    claimed on bills that are not cancelled. Lines with nothing left are not
+    prefilled. Lower any figure freely; the measurement stays the ceiling on
+    save.</span></div>"""
+    if gridonly:
+        names = ", ".join(_esc(m.get("ref")) or "&mdash;" for m in gridonly)
+        html += (f'<div class="form-hint"><span class="fh-icon">&#9888;</span>'
+                 f'<span><b>{names}</b> {"carries" if len(gridonly) == 1 else "carry"} '
+                 f'a joint measurement grid but no BOQ lines, so '
+                 f'{"it prefills" if len(gridonly) == 1 else "they prefill"} nothing. '
+                 f'A grid column is a pipe size at a location, not a line of the '
+                 f'schedule, and nothing maps one onto the other.</span></div>')
+    return html
+
+
+def _source_band_html(bill: dict) -> str:
+    """
+    `/ra/view` and `/ra/edit`: where this bill was raised from, or nothing.
+
+    Read off the bill's own `source_dc_ids` / `source_ms_ids`. A bill without
+    either key is a manual or pre-feature bill and gets no band — that is the
+    written meaning of absent, and nothing is inferred. A challan or sheet
+    deleted since is named as gone rather than silently dropped. This is a
+    SCREEN band; `/ra/print` never reads it.
+    """
+    dc_ids = bill.get(DCB.SOURCE_KEY)
+    ms_ids = bill.get(SOURCE_MS_KEY)
+    if isinstance(dc_ids, list):
+        dcs = STORE.get("delivery_challans") or {}
+        links = ", ".join(
+            (f'<a href="{url_for("challan.view_dc", id=cid)}">'
+             f'{_esc(dcs[cid].get("ref")) or "&mdash;"}</a>')
+            if cid in dcs else "a challan since deleted"
+            for cid in (str(x or "") for x in dc_ids))
+        return (f'<div class="frozen-note"><span>&#128666;</span><span><b>Raised '
+                f'from delivery challans</b> {links or "&mdash;"}. No line on it '
+                f'may be claimed above what they dispatched; while this bill is '
+                f'not cancelled they count as billed.</span></div>')
+    if isinstance(ms_ids, list):
+        sheets = STORE.get("measurements") or {}
+        links = ", ".join(
+            (f'<a href="{url_for("measurement.view_ms", id=mid)}">'
+             f'{_esc(sheets[mid].get("ref")) or "&mdash;"}</a>')
+            if mid in sheets else "a sheet since deleted"
+            for mid in (str(x or "") for x in ms_ids))
+        return (f'<div class="frozen-note"><span>&#128207;</span><span><b>Raised '
+                f'from the measurement</b> {links or "&mdash;"} &mdash; prefilled '
+                f'with the unbilled remainder. The measurement is the ceiling, as '
+                f'on every installation bill.</span></div>')
+    return ""
+
+
+def _frees_challans_html(bill: dict) -> str:
+    """
+    The cancel confirmation's one extra sentence on a bill raised from
+    challans: cancelling frees them. Nothing is written to a challan — the
+    freeing is `dcbill.bill_is_live()` reading the new status. Nothing at all
+    on any other bill, so its confirmation page is unchanged.
+    """
+    ids = bill.get(DCB.SOURCE_KEY)
+    if not isinstance(ids, list) or not ids:
+        return ""
+    dcs = STORE.get("delivery_challans") or {}
+    refs = ", ".join(_esc(dcs[c].get("ref")) or "&mdash;" if c in dcs
+                     else "a challan since deleted"
+                     for c in (str(x or "") for x in ids))
+    return (f"<br/><br/>It was raised from challans <b>{refs}</b>. Cancelling it "
+            f"<b>frees them</b> &mdash; they can be billed again.")
+
+
 def _receipts_refusal(bill: dict, done: str, doing: str) -> str:
     """
     The one sentence that refuses an action because money is filed against the
@@ -2894,13 +3374,21 @@ def _boq_facts(boq: dict, leg: str, ra_no) -> str:
 
 def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
                 action: str, ra_no: int, back_url: str, date_val: str,
-                notes_val: str, submit_label: str, frozen_note: str = "") -> str:
+                notes_val: str, submit_label: str, frozen_note: str = "",
+                source_html: str = "", hidden_html: str = "",
+                tail_html: str = "") -> str:
     """
     The claim grid, shared by create and edit — one form, two entry points.
 
     `ra_no` is **the integer**. The page heading is derived from it here; it is
     not a second parameter that could disagree with it, and it is not what gets
     handed to `_boq_facts()`.
+
+    The last three are the 4 October 2026 seams — the challan picker and the
+    source notes above the form, the hidden `dc` / `ms` fields inside it, the
+    live warning after the page script. ⚠ **Each is spliced in with no
+    whitespace of its own**, so with all three empty this function emits the
+    bytes it always emitted: the manual form is unchanged, byte for byte.
     """
     heading = f"RA{int(ra_no or 0)}"
     return _shell(heading, f"""
@@ -2911,9 +3399,9 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
   {_alert(error)}
   {frozen_note}
   {_boq_facts(boq, leg, ra_no)}
-  {_dup_band(boq)}
+  {_dup_band(boq)}{source_html}
   <form method="POST" action="{action}" onsubmit="return saveJSON()">
-    <input type="hidden" name="ra_json" id="ra_json"/>
+    <input type="hidden" name="ra_json" id="ra_json"/>{hidden_html}
     <div class="form-section">
       <div class="fg2">
         <div class="form-group"><label for="date">Date</label>
@@ -2958,7 +3446,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
   </form>
   <script>var LINE_IDS = {_claim_ids(boq)};
 var FAMILIES = {json.dumps(_families(boq))};</script>
-  {_RA_JS}""")
+  {_RA_JS}{tail_html}""")
 
 
 def _posted(raw_lines: list) -> dict:
@@ -2974,13 +3462,18 @@ def _posted(raw_lines: list) -> dict:
 
 
 def _validate(raw: str, boq: dict, leg: str, prev: dict,
-              exclude_ra_id: str = None) -> tuple:
+              exclude_ra_id: str = None, dc_caps: dict = None) -> tuple:
     """
     (claims, error) — parse, clean and run the block. One path for create and edit.
 
     The order is deliberate: shape, then per-line rules, then the cumulative
     block last, because the block is the expensive one and the only one that
     needs the whole claim set at once.
+
+    `dc_caps` is ruling A's cap (4 October 2026) — `{line_id: dispatched}` on
+    the challans a bill is raised from, and `None` on every other bill, the
+    manual path included, which therefore runs exactly as it always did. It is
+    checked BEFORE the cumulative block and replaces none of it.
     """
     raw_lines, error = _parse_payload(raw)
     if error:
@@ -2990,6 +3483,17 @@ def _validate(raw: str, boq: dict, leg: str, prev: dict,
                                        payload_bytes=len(raw))
     if error:
         return [], raw_lines, error
+
+    # RULING A — a bill raised from challans may not claim more than they
+    # carried. A refusal, on the POST, because the form's prefill and its live
+    # warning are presentation and a typed payload walks past both.
+    if dc_caps is not None:
+        over = dc_overclaims(claims, dc_caps)
+        if over:
+            msg = " ".join(dc_overclaim_message(v) for v in over[:4])
+            if len(over) > 4:
+                msg += f" ({len(over) - 4} more not shown.)"
+            return [], raw_lines, msg
 
     # THE BLOCK. Cumulative across the whole revision chain, hard, and with no
     # override anywhere in this file. The message carries the full arithmetic
@@ -3330,7 +3834,7 @@ def cancel_ra(id: str):
       <br/><br/>
       What changes: the quantities it claimed go <b>back onto the balance</b> of
       every line, and it drops out of every total and out of outstanding.
-      <b>There is no un-cancel.</b>
+      <b>There is no un-cancel.</b>{_frees_challans_html(bill)}
     </div>
   </div>
   <form method="POST" action="{url_for('ra.cancel_ra', id=id)}">
@@ -3369,8 +3873,33 @@ def create_ra():
     BQ.ensure_demo_boq()
     boqs = STORE["boqs"]
 
+    # ── 4 Oct 2026: the SOURCE of the bill — challans (ruling A) or the
+    #    measurement (ruling B). On a GET it arrives in the query string (a
+    #    `dc=` per ticked challan, or `ms=<sheet>` from /measurement/view); on
+    #    the POST it arrives ONLY in the form's hidden fields, so the action
+    #    URL stays the one the manual path has always used.
+    if request.method == "POST":
+        dc_wanted = [x for x in request.form.getlist("dc") if str(x or "").strip()]
+        ms_id = (request.form.get("ms") or "").strip()
+    else:
+        dc_wanted = [x for x in request.args.getlist("dc") if str(x or "").strip()]
+        ms_id = (request.args.get("ms") or "").strip()
+
     boq_id = (request.values.get("boq") or "").strip()
-    leg = (request.values.get("leg") or "supply").strip()
+    # The two buttons name only their own record, so the schedule is the TIP of
+    # that record's chain — the revision a claim is raised against.
+    if not boq_id and (ms_id or dc_wanted):
+        origin = ((STORE.get("measurements") or {}).get(ms_id) if ms_id else
+                  (STORE.get("delivery_challans") or {}).get(str(dc_wanted[0])))
+        if not origin:
+            return redirect(url_for(
+                "ra.create_ra", type="error",
+                msg=("That measurement sheet no longer exists." if ms_id else
+                     "That challan no longer exists.")))
+        boq_id = latest_revision(str(origin.get("boq_id") or ""))
+
+    leg = (request.values.get("leg")
+           or ("installation" if ms_id else "supply")).strip()
     if leg not in LEGS:
         leg = "supply"
 
@@ -3433,12 +3962,84 @@ def create_ra():
     date_val = today
     notes_val = ""
 
+    # ── 4 Oct 2026: raised FROM challans (A) or FROM the measurement (B) ──
+    #
+    # `picked` / `sheets` empty is the MANUAL path, and on it every one of the
+    # values below stays empty: no cap reaches `_validate()`, no source key is
+    # written, and `_entry_form()` emits the page it always emitted.
+    picked, sheets = [], []
+    source_html = hidden_html = tail_html = ""
+    dc_caps = None
+    dc_problems = []
+    if leg == "supply":
+        # The picker is on every supply form. A billed challan is left out of
+        # it — `dcbill.billing_index()`, the same walk `billed_by()` reads.
+        index = DCB.billing_index()
+        on_chain = challans_on_chain(boq_id)
+        available = [(cid, dc) for cid, dc in on_chain if cid not in index]
+        billed = [(cid, dc) + index[cid] for cid, dc in on_chain if cid in index]
+        picked, dc_problems = resolve_challans(boq_id, dc_wanted)
+        source_html = _dc_picker_html(boq_id, available,
+                                      {cid for cid, _dc in picked}, billed)
+        if picked:
+            dc_caps = dispatched_in([dc for _cid, dc in picked])
+            source_html += _dc_warning_html([dc.get("ref") for _c, dc in picked])
+            source_html += _unmatched_html(
+                unmatched_rows(picked, _tip_line_ids(boq)), "challan")
+            hidden_html = "".join(f'<input type="hidden" name="dc" value="{_esc(cid)}"/>'
+                                  for cid, _dc in picked)
+            tail_html = _dc_live_js(boq, dc_caps)
+    elif ms_id:
+        sheet = (STORE.get("measurements") or {}).get(ms_id)
+        why = ""
+        if not sheet:
+            why = "That measurement sheet no longer exists."
+        elif str(sheet.get("boq_id") or "") not in set(revision_chain(boq_id)):
+            why = (f"Measurement {sheet.get('ref')} was raised against "
+                   f"{sheet.get('boq_ref') or 'another schedule'}, which is not "
+                   f"this schedule or a revision of it.")
+        elif not MS.feeds_ceiling(sheet):
+            why = (f"Measurement {sheet.get('ref')} "
+                   f"{'was rejected' if approval.is_rejected(sheet) else 'has not been approved'}"
+                   f", so it does not count toward installation claims and there "
+                   f"is nothing to raise from it.")
+        if why:
+            return redirect(url_for("boq.view_boq", id=boq_id, type="error", msg=why))
+        sheets = counting_sheets(boq_id)
+        tip = _tip_line_ids(boq)
+        gridonly = [m for _mid, m in sheets
+                    if MS.is_joint(m) and not any(
+                        BQ._line_id(r.get("line_id")) for r in m.get("items") or []
+                        if not r.get("is_header"))]
+        source_html = (_ms_note_html(sheets, gridonly)
+                       + _unmatched_html(unmatched_rows(sheets, tip), "measurement"))
+        hidden_html = f'<input type="hidden" name="ms" value="{_esc(ms_id)}"/>'
+
+    if request.method == "GET":
+        # The PREFILL. A line nothing feeds is not prefilled, and a line that is
+        # not a priced line on this revision never is (`unmatched_rows()`).
+        if picked:
+            tip = _tip_line_ids(boq)
+            entered = {lid: {"qty": _qty_value(q)} for lid, q in dc_caps.items()
+                       if lid in tip and q > _QTY_EPSILON}
+        elif sheets:
+            tip = _tip_line_ids(boq)
+            entered = {lid: {"qty": _qty_value(q)}
+                       for lid, q in unbilled_remainder(boq_id, prev).items()
+                       if lid in tip}
+        # A ticked challan that may not be billed is named, and left unticked.
+        error = " ".join(dc_problems)
+
     if request.method == "POST":
         date_val = (request.form.get("date") or today).strip()
         notes_val = (request.form.get("notes") or "").strip()
         claims, raw_lines, error = _validate(
-            request.form.get("ra_json", ""), boq, leg, prev)
+            request.form.get("ra_json", ""), boq, leg, prev, dc_caps=dc_caps)
         entered = _posted(raw_lines)
+        # RULING C — a POST naming a challan that may not be billed here is
+        # refused, and the message names the bill that holds it.
+        if dc_problems:
+            claims, error = [], " ".join(dc_problems)
 
         tax_invoice_ref = (request.form.get("tax_invoice_ref") or "").strip()
         def_po_ref, def_po_date = previous_bill_po_defaults(boq_id)
@@ -3554,10 +4155,30 @@ def create_ra():
                 "notes": notes_val,
                 "company_branch": "", "auth_signatory": "",
             }
+            # 4 Oct 2026 — WHERE THE BILL WAS RAISED FROM, written ONCE, here,
+            # and never by `edit_ra()`. Only on a bill raised from challans or
+            # from the measurement: a manual bill carries NEITHER key, and
+            # absent is the written meaning "manual / pre-feature" — nothing is
+            # inferred from it and nothing is backfilled. The bill's own claim
+            # rows stay the source of truth for print; no document re-reads a
+            # challan or a sheet to render.
+            msg = "RA bill saved."
+            if picked:
+                STORE["ra_bills"][rid][DCB.SOURCE_KEY] = [cid for cid, _dc in picked]
+                short = dc_shortfalls(claims, dc_caps)
+                if short:
+                    refs = ", ".join(str(dc.get("ref") or "") for _c, dc in picked)
+                    msg += (f" {len(short)} line{'' if len(short) == 1 else 's'} "
+                            f"{'was' if len(short) == 1 else 'were'} billed below "
+                            f"what the challans dispatched. Challans {refs} still "
+                            f"count as billed; the shortfall can only go on a "
+                            f"manual RA bill.")
+            elif sheets:
+                STORE["ra_bills"][rid][SOURCE_MS_KEY] = [mid for mid, _m in sheets]
             # B6 — the creator, captured at the write site. See approval.py.
             approval.stamp_creator(STORE["ra_bills"][rid])
             return redirect(url_for("ra.view_ra", id=rid,
-                                    msg="RA bill saved.", type="success"))
+                                    msg=msg, type="success"))
 
     ra_no = next_ra_no(boq_id)
     return _entry_form(
@@ -3566,7 +4187,8 @@ def create_ra():
         ra_no=ra_no,
         back_url=url_for("boq.view_boq", id=boq_id),
         date_val=date_val, notes_val=notes_val,
-        submit_label="Save RA bill")
+        submit_label="Save RA bill",
+        source_html=source_html, hidden_html=hidden_html, tail_html=tail_html)
 
 
 @ra_bp.route("/edit/<id>", methods=["GET", "POST"])
@@ -3615,6 +4237,26 @@ def edit_ra(id: str):
     # everyone else has claimed" and editing it does not block against itself.
     prev = claimed_by_line(boq_id, exclude_ra_id=id)
 
+    # 4 Oct 2026, ruling A — a draft raised FROM challans keeps its cap when it
+    # is edited, or creating it and then editing it would walk round the cap.
+    # The cap is re-read from the challans the bill names: a challan's lines
+    # are never edited (`/dc/edit` touches the consignee and dispatch fields
+    # only), so this is the figure the bill was raised against — unless a
+    # challan has since been deleted, in which case its quantity is gone from
+    # the cap and the band names it as gone. `source_dc_ids` is NOT rewritten
+    # here; it was written once, by `create_ra()`.
+    dc_caps = None
+    tail_html = ""
+    src_ids = bill.get(DCB.SOURCE_KEY)
+    if isinstance(src_ids, list):
+        dcs = STORE.get("delivery_challans") or {}
+        dc_caps = dispatched_in([dcs[c] for c in (str(x or "") for x in src_ids)
+                                 if c in dcs])
+        tail_html = _dc_live_js(boq, dc_caps)
+    source_html = _source_band_html(bill)
+    if isinstance(src_ids, list):
+        source_html += '\n  <p id="dc-over" class="alert error" style="display:none;"></p>'
+
     error = ""
     entered = {c["line_id"]: {"qty": BQ._fmt_qty(c.get("qty")),
                               "rate": f'{float(c.get("rate") or 0.0):g}'}
@@ -3626,7 +4268,8 @@ def edit_ra(id: str):
         date_val = (request.form.get("date") or date_val).strip()
         notes_val = (request.form.get("notes") or "").strip()
         claims, raw_lines, error = _validate(
-            request.form.get("ra_json", ""), boq, leg, prev, exclude_ra_id=id)
+            request.form.get("ra_json", ""), boq, leg, prev, exclude_ra_id=id,
+            dc_caps=dc_caps)
         entered = _posted(raw_lines)
 
         if not error:
@@ -3679,7 +4322,8 @@ def edit_ra(id: str):
         ra_no=bill.get("ra_no"),
         back_url=url_for("ra.view_ra", id=id),
         date_val=date_val, notes_val=notes_val,
-        submit_label="Save changes")
+        submit_label="Save changes",
+        source_html=source_html, tail_html=tail_html)
 
 
 @ra_bp.route("/view/<id>")
@@ -3876,7 +4520,7 @@ def view_ra(id: str):
   {lock_html}
   {rate_note}
   {drift_note}
-  {MS.pre_measurement_marker(bill)}
+  {MS.pre_measurement_marker(bill)}{_source_band_html(bill)}
   {approval.panel("ra", bill)}
   <div class="ra-meta">
     <div class="ra-fact"><b>Our reference</b><span>{_esc(bill.get('ref'))}</span></div>

@@ -421,19 +421,20 @@ Consequences you must respect when editing:
 | [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. |
 | [gst_lookup.py](gst_lookup.py) | 723 | **GSTIN auto-fill — the check and the portal, and a LEAF** (29 September 2026). No routes, no HTML. `offline()` is the 15-character shape, the official base-36 check character, the State and the PAN — no network; `lookup()` is the ONE public function behind which the GST portal search, the gstinapi.in fallback, the normalisation and the 30-day `gst_cache` sit; `captcha()` starts a portal session and returns its image **untouched — a human types every CAPTCHA and nothing here reads one**. ⚠ **Every outbound call goes through `_open()`**, `timeout=5`, one attempt, no retry — `tests/conftest.py` replaces it with a refusal around every test, so no sweep can phone the portal. ⚠ **The portal's cookie jars live in `_SESSIONS`, in RAM, and never reach STORE or MySQL.** Imports `store`, `pipeline` and the standard library only (`urllib`, so **no new dependency**). §5 `/address`, `docs/GST_PORTAL.md`. |
 | [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. |
-| [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. |
+| [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. From 4 Oct 2026 `/ra/create` also raises a bill FROM ticked challans (capped at their dispatch) or FROM the measurement (the unbilled remainder), writing `source_dc_ids` / `source_ms_ids` once — §5 `/ra`. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
 | [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
-| [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. |
+| [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. From 4 Oct 2026 it says *Billed in &lt;RA ref&gt;* and offers *Raise RA (Supply)*, reading the billed answer through the leaf `dcbill.py` — still never importing `ra.py`. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
 | [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
 | [attachment.py](attachment.py) | 817 | **File attachments on a charge and on a receipt** (CC-2 **B8**, 2 Sep 2026). The **only** module that returns file bytes, and the first record in this app whose payload is not in the database — the file is on disk under `attachment.root()`, the record holds a **relative path**. A **bottom-of-graph** module like `approval.py`: `charge.py` and `receipt.py` import it, so it imports neither. Type is decided by **magic bytes**, never by extension or the browser's `Content-Type`; 5 MB cap refused before the store is touched; the cascade deletes the file **and** the row. ⚠ **Compulsory on a charge, optional on a receipt** — CC-2's asymmetry, carried as data in `PARENTS`. ⚠ **Mints no permission**: each of its six endpoints carries the PARENT's own. ⚠ **B7 gates the download and that is OURS** — through `approval.can_print()`, not a second copy of the rule. See §3. |
 | [merged_ra.py](merged_ra.py) | 1022 | **The merged RA bill** (CC-2 **C3**, 2 Sep 2026) — one issued RA-Supply bill and one issued RA-Installation bill from the same revision chain, stacked onto one sheet under **one minted tax invoice number**. Its own `merged_ras` collection; a separate document type, the same relationship as Draft PO → PO. ⚠ **It holds NO claims of its own** — copying them in would make the over-claim guard count the same quantity twice. ⚠ Totals are the **sum of the two bills' stored totals**, never recomputed from the live BOQ. ⚠ **Imports `ra.py`; `ra.py` may NOT import it back** — it reads `STORE['merged_ras']` directly and links with `url_for`, the one-way trick. ⚠ **Mints `SF/MI/...`, never `TI`** — `invoice.py` owns that series and a second counter under it would put one statutory serial on two documents. ⚠ **Mints no permission**: every route carries `ra.*`. See §3. |
 | [cascade.py](cascade.py) | 196 | **The shared dependent-record graph for delete** (22 September 2026) — no routes, a data-only registry (`CASCADE_GRAPH`) of which of the 8 transactional-chain collections reference which, plus `impact_of()` (preview the transitive closure) and `delete_cascade()` (destroy it, children before parent). Sits where `pipeline.py` sits: reads `STORE[...]` directly, imports `attachment.py` only, never imports back. ⚠ **Master/reference data (Address, Employee, Project, Spec, Product) is deliberately OUT OF SCOPE** — their existing hand-written guards (`address.references_of()`, `project.attached_boq_count()`, `product.can_delete_product()`) are untouched; this module only walks records that exist *because* a parent does. ⚠ **A Tax Invoice anywhere in the closure is a hard stop** (`CascadeBlocked`) — there is no delete route for one, and the walk refuses the whole operation rather than cascade partially past it. **Called by seven routes** (23 September 2026): `/boq/delete`, `/quotation/delete`, `/proforma/delete`, `/purchase/delete`, `/po/delete`, `/receipt/delete` and, for its styles alone, `/invoice/cancel`. `impact_html()` renders the counted closure onto every confirmation page, and `CASCADE_STYLES` is the sheet that draws it — a route that destroys something the page did not name is a defect. **9 tests** in [tests/test_cascade.py](tests/test_cascade.py) for the walk, **28** in [tests/test_delete_rollout.py](tests/test_delete_rollout.py) for the routes. |
+| [dcbill.py](dcbill.py) | 106 | **"Is this delivery challan billed, and by which RA bill?" — ONE predicate, and a LEAF** (4 October 2026, CLIENT_CHANGES.md §0 fortieth block, ruling C). A challan is billed when a **non-cancelled** RA bill lists it in `source_dc_ids`; `billed_by()` answers for one, `billing_index()` is the same walk for a register. **Derived, never stored** — cancelling or deleting the bill frees the challan with no write to it. Imports `store` and **nothing else** (a whitelist test). ⚠ It exists because `ra.py` (the picker on `/ra/create` and the POST refusal) and `challan.py` (the *Billed in* mark) both need the answer and may not import each other; the one-way STORE read from each side would have been two copies of one predicate — §7 gap 16b's failure. `bill_is_live()` tests the raw status and is held equal to `ra.is_cancelled()` over every status value, `approval.can_print()`'s arrangement. See §5 `/ra` *Raised from challans or from the measurement*. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -505,6 +506,9 @@ app.py
  │                             │  chrome, branding, pipeline, quotation (the form
  │                             │  widgets), store. Import BOQ from Excel — §5
  ├─ ra.py ─────────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq
+ │                             │  — and dcbill (4 Oct 2026), the billed-challan
+ │                             │  leaf. Still NEVER challan: the challans are
+ │                             │  read out of STORE directly
  ├─ receipt.py ────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq, ra
  ├─ client.py ─────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq, ra, receipt
  ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
@@ -512,7 +516,10 @@ app.py
  │                             │  quotation, dashboard, pipeline, store, branding
  ├─ challan.py ────────────────┤  imports boq, boqpick, docsheet, address, settings,
  │                             │  dashboard, pipeline, store, branding — and NOT
- │                             │  quotation; it reads that sheet through docsheet
+ │                             │  quotation; it reads that sheet through docsheet.
+ │                             │  From 4 Oct 2026 also dcbill, the billed-challan
+ │                             │  leaf — and STILL NEVER ra; auth only inside
+ │                             │  _raise_ra_btn() (can_reach, boq.py's hatch)
  ├─ charge.py ─────────────────┤  imports dashboard, pipeline, store, branding, quotation
  ├─ employee.py ───────────────┤  imports dashboard, pipeline, store, branding,
  │                             │  quotation — and address, for the SITE picker
@@ -581,6 +588,10 @@ gst_lookup.py imports store and pipeline, and otherwise the standard library
              (29 Sep 2026). NEVER address (which imports it), auth, db or
              flask. The ONLY module that may open a network connection —
              asserted in tests/test_gst_lookup.py
+dcbill.py    imports store and NOTHING else (4 Oct 2026) — the ONE "is this
+             challan billed?" predicate. ra.py and challan.py both import it
+             and may not import each other; a leaf that reached either would
+             couple them through the basement. A whitelist test holds it
 ```
 
 `proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py` and
@@ -1623,7 +1634,7 @@ BoQ ──► Measurement      ──► RA-Installation    work, proven by a me
 | arrow | how | why |
 |---|---|---|
 | `ra.py` → `measurement.py` | a real **import** | CC-2 states it in its own words: *"approved measurements become the source of installation quantity."* A **quantity flows**, so the record's shape must live in one module and `ra.overclaims()` asks for it by name |
-| `ra.py` → `challan.py` | **no import** — `STORE["delivery_challans"]` read directly | C1's supply guard asks one question, *does a challan exist on this chain*. That needs a dict lookup, not a module. `challan → ra` is already refused because "they diverge and neither answers the other's questions", and that argument cuts both ways |
+| `ra.py` → `challan.py` | **no import** — `STORE["delivery_challans"]` read directly | C1's supply guard asks one question, *does a challan exist on this chain*. That needs a dict lookup, not a module. `challan → ra` is already refused because "they diverge and neither answers the other's questions", and that argument cuts both ways. ⚠ From 4 October 2026 `ra.py` reads more off the challans — the picker's list and the ticked challans' quantities (§5 `/ra`) — and **still by direct read**; the one question BOTH modules ask, *is this challan billed*, is the leaf `dcbill.py` |
 
 Both directions are pinned in `tests/test_import_directions.py`, so the
 asymmetry is a decision rather than an omission. `measurement.py` imports
@@ -1720,6 +1731,17 @@ and puts no quantity on that arrow — and deriving one would be the wrong rule
 anyway: `challan.BLOCK_OVER_DISPATCH` is False on purpose, so dispatch figures
 are a warning rather than a guard and are not tight enough to cap somebody's
 money.
+
+⚠ **From 4 October 2026 a supply bill raised FROM challans IS capped** —
+Manas's ruling A, CLIENT_CHANGES.md §0 fortieth block: no line may be claimed
+above what the ticked challans dispatched, refused on the POST by
+`ra.dc_overclaims()`. That is a cap the operator **opts into** by raising the
+bill from challans, and it is checked beside `overclaims()`, never inside it:
+the **manual** path keeps no dispatch ceiling, `overclaims()` is unchanged, and
+`tests/test_c1_order_of_working.py::test_the_supply_leg_gets_NO_quantity_ceiling_from_the_challan`
+still holds. The installation leg gained a **prefill** (ruling B — the unbilled
+remainder), not a new guard: the measurement cap above is the guard, as it was.
+§5 `/ra` *Raised from challans or from the measurement* is the whole of it.
 
 A challan also needs **no approval**, and that is deliberate: `approval.DOCUMENTS`
 does not name it, B6 puts it on no ladder, and requiring an approval nothing in
@@ -2621,6 +2643,30 @@ Written by `ra.py`. Progressive claim against a specific BOQ revision, carrying 
 - **Lifecycle:** `status` ∈ `draft | issued | cancelled`, `issued_on`,
   `cancelled_on`, `cancel_reason` — see *"The lifecycle"* below
 - **Other:** `notes`, `company_branch`, `auth_signatory`
+- **Where it was raised from (4 October 2026, CLIENT_CHANGES.md §0 fortieth
+  block)** — at most ONE of:
+  - `source_dc_ids` — `["<challan id>", …]` on a **supply** bill raised FROM
+    ticked delivery challans (ruling A). The key is spelled once, as
+    `dcbill.SOURCE_KEY`.
+  - `source_ms_ids` — `["<sheet id>", …]` on an **installation** bill raised
+    FROM the measurement (ruling B): every sheet on the chain that counted
+    toward the ceiling (`measurement.feeds_ceiling()`) when it was raised,
+    oldest first. `ra.SOURCE_MS_KEY`.
+
+  ⚠ **Written ONCE, by `create_ra()`, and never by `edit_ra()`.**
+  ⚠ **Absent means manual / pre-feature — a WRITTEN meaning, not an
+  inference**: every bill before 4 October 2026, and every bill raised through
+  the manual path since, carries neither key — not an empty list, no key.
+  Nothing is inferred from a bill's leg, chain or claim rows, and **nothing is
+  backfilled** (`pre_measurement`'s, `created_by`'s and `grid_model`'s rule, a
+  fourth time). ⚠ **The bill's own claim rows stay the source of truth for
+  print** — `/ra/print` never reads a challan or a sheet, and
+  `tests/test_ra_from_source.py` changes and deletes the challan under an
+  issued bill and asserts the printed page is byte-identical. The keys feed
+  three SCREEN things only: the *Raised from* band on `/ra/view` and
+  `/ra/edit`, the cancel confirmation's *this frees challans …* line, and —
+  for `source_dc_ids` — `dcbill.billed_by()`, which is what makes a challan
+  *billed*. A merged document carries neither; its leg bills keep theirs.
 
 A `claim` row:
 
@@ -2974,6 +3020,15 @@ Six properties this shape exists to guarantee:
    `challan.dispatched_by_line()`, summed across the whole revision chain —
    `ra.claimed_by_line()`'s rule and for its reason: a maintained counter that
    one code path forgets to update is worse than none, because it is trusted.
+7. **"Billed" is NOT a field either** (4 October 2026, ruling C). A challan is
+   billed when a **non-cancelled** RA bill lists it in `source_dc_ids` —
+   `dcbill.billed_by()`, the one predicate. Nothing is written to the challan
+   when it is billed, and nothing when the bill is cancelled or deleted, which
+   is exactly what frees it. ⚠ **There is no cancelled state on a challan**:
+   a challan can be deleted, never cancelled, so ruling A's "non-cancelled
+   challan" reduces to "a challan that exists" — measured on the laptop's
+   database on 4 October 2026, the three live challans carry no `status` key
+   at all.
 
 ### Measurement Sheet  (CC-2 **C2**, 29 August 2026)
 
@@ -7808,7 +7863,7 @@ the save path, run in memory, stores the same.
 | Route | View |
 |---|---|
 | `GET /ra/` | `list_ras` — RA register listing, grouped/sorted by BOQ |
-| `GET,POST /ra/create` | `create_ra` — BOQ picker, then the claim grid |
+| `GET,POST /ra/create` | `create_ra` — BOQ picker, then the claim grid. From 4 Oct 2026 also `?dc=<id>` (repeated) or `?ms=<sheet>`: the bill raised FROM challans or FROM the measurement — **no new route** (see *Raised from challans or from the measurement* below) |
 | `GET /ra/view/<id>` | `view_ra` — a working screen, not the printed sheet |
 | `GET,POST /ra/edit/<id>` | `edit_ra` — gated to a DRAFT that is also the latest bill |
 | `GET,POST /ra/issue/<id>` | `issue_ra` — GET confirms, POST issues |
@@ -8138,6 +8193,83 @@ no prose to dilute the percent-escaping, which is exactly why the constant is
 measured rather than scaled. At the line cap that is 46 KB decoded / 75 KB on
 the wire, and 150,000 × 1.61 = 241,500 leaves ~258 KB of Flask's 500,000
 `MAX_FORM_MEMORY_SIZE` for the other fields.
+
+#### Raised from challans or from the measurement (4 October 2026)
+
+CLIENT_CHANGES.md §0, **fortieth** block — Manas's rulings A, B and C, final;
+post-go-live, **no charge**. Until then a challan and a measurement sheet were
+prerequisites only (`_c1_refusal()`) and the sheet the installation cap
+(`overclaims()`); an RA bill could not be raised FROM either.
+
+**No new route and no new permission.** `/ra/create` reads its source from the
+query string on a GET and from hidden fields on the POST, and the action URL is
+the one the manual path has always used:
+
+| | GET | POST |
+|---|---|---|
+| challans (A) | `?boq=<id>&leg=supply&dc=<id>&dc=<id>` — or `?leg=supply&dc=<id>` from `/dc/view`, which resolves the TIP of that challan's chain | `<input type="hidden" name="dc">` per ticked challan |
+| measurement (B) | `?leg=installation&ms=<sheet>` from `/measurement/view` (`ms` alone implies the installation leg) | `<input type="hidden" name="ms">` |
+
+**A — RA Supply, "tick DCs".** Every supply form carries a **challan picker**
+above the claim form — its own GET form, because forms do not nest; ticking and
+pressing *Prefill* reloads the page. It lists every challan on the BOQ's
+revision chain that is **not billed**; a billed one is absent and named
+underneath (*Already billed, so not listed: 54 in SF/RA/…*). The prefill per
+`line_id` is the **sum across the ticked challans** (`dispatched_in()`); a line
+nothing dispatched is not prefilled. On the POST, `_validate(dc_caps=…)` runs
+`dc_overclaims()` **before** the BOQ cumulative block: no line above the ticked
+challans' sum, and a line none of them carried has a cap of nil. The BOQ block
+then runs on top, untouched. A line billed below its dispatched quantity is a
+**warning, not a refusal** — a band on the form before save and a live list
+(`_DC_LIVE_JS`), and the saved bill's message counts the short lines: the
+challans still count as billed, and the shortfall can only go on a manual RA.
+Ticking nothing is the manual path.
+
+**B — RA Installation, "unbilled remainder".** The prefill per `line_id` is
+`unbilled_remainder()`: `MS.approved_qty_by_line()` over the SAME chain
+`overclaims()` hands it, less `claimed_by_line()`'s installation figure
+(non-cancelled bills, drafts included), **clamped at nil** — so the prefill can
+never exceed the ceiling the POST is checked against. The measurement cap is
+not weakened and not copied: it is `overclaims()`'s, as on every installation
+bill. A sheet that does not count (`feeds_ceiling()` False — rejected, or
+unapproved while the ladder is on) is refused by name; a counting **joint**
+sheet with a grid and no BOQ lines is named on the form as prefilling nothing,
+because a grid column is a pipe size at a location and nothing maps one onto a
+schedule line (on the laptop's database, 4 October 2026, both live sheets are
+`legacy-linear` and no joint sheet exists to test against).
+
+**C — billed: marked and blocked.** `dcbill.billed_by()` — §2's leaf — is the
+one predicate: the picker leaves a billed challan out, a GET naming one says
+which bill holds it and leaves it unticked, and a **POST naming one is refused
+with a message naming the bill**. Cancelling or deleting the bill frees the
+challan with no write to it; the cancel confirmation says so.
+
+**Matching is on `line_id` ONLY** (§3 property 0). A challan or sheet row whose
+id is not a priced line on the tip revision — a line a revision deleted, a row
+with no id — is listed as **Unmatched, not prefilled** with its text, and can
+never be billed through this path: the grid holds the tip's lines and
+`clean_claims()` refuses any other id. A challan raised against a superseded
+revision still matches every line that survived, because a revision keeps its
+ids.
+
+**What the record gains** is §3's `source_dc_ids` / `source_ms_ids`, written
+once at create. `edit_ra()` keeps a challan-sourced draft under its cap — the
+cap is re-read from the challans the bill names, which is the same figure
+because a challan's lines are never edited — and never rewrites the key.
+`/ra/view` and `/ra/edit` carry a *Raised from* band linking each challan or
+sheet (a deleted one is named as gone). **`/ra/print` reads none of it.**
+
+**Every seam is spliced with no whitespace of its own**, so the manual pages
+are byte-identical: measured in this pass by rendering the manual installation
+form, its over-claim re-render, a saved manual bill's record and its view, edit
+and print pages before and after the change — identical — while the supply
+form gained the picker (+21 lines, 0 removed). `table.claims` and the page's
+own classes carry the picker; no stylesheet that a pinned page loads was
+touched, and **no print or page golden moved**.
+
+⚠ **The manual path was deliberately NOT given the challan lock** — the
+brief's instruction — so a manual supply bill can still claim a billed
+challan's quantity, limited only by the BOQ cumulative cap. §7 gap 52.
 
 #### The receipts panel, and what it deliberately does NOT do
 
@@ -8699,6 +8831,20 @@ draws **+ RA · Supply** only when a challan exists on the chain, and
 and gate respectively — hiding the chip is not the guard, and
 `tests/test_c1_order_of_working.py` hits the address directly.
 
+#### Billed, and *Raise RA (Supply)* (4 October 2026)
+
+CLIENT_CHANGES.md §0 fortieth block, rulings A and C. **`challan.py` still
+does not import `ra.py`**; the answer comes through `dcbill.py` (§2), the leaf
+both modules import.
+
+| where | what |
+|---|---|
+| `/dc/view/<id>`, unbilled | **+ Raise RA (Supply)** → `/ra/create?leg=supply&dc=<id>`, the challan arriving ticked. Drawn only when the user holds what `/ra/create` requires — `auth.can_reach("ra.create_ra")` through a function-body import, `boq.view_boq()`'s hatch — and the challan's schedule still exists. Purchase Manager holds `dc.view` and not `ra.create`, and is not shown it |
+| `/dc/view/<id>`, billed | a green **Billed in &lt;RA ref&gt;** band linking the bill, and **no** Raise button. Inline styles: `CHALLAN_STYLES` is in the head of the pinned `/dc/` register and `DC_DOC_STYLES` in the pinned `/dc/print` |
+| `/dc/` | *Billed in &lt;RA ref&gt;* under the row's Open link, **only on a billed row** — an unbilled register renders byte for byte what it did, which is why its page golden did not move |
+| `/dc/delete/<id>`, billed | a warning naming the bill — **not** a refusal: deleting a challan was never guarded and ruling C asks for no guard there. The bill keeps its figures (snapshots) and its band then names *a challan since deleted* |
+| `/dc/print/<id>` | **unchanged** — no mark, no band; the printed note says what left the yard, not what was billed |
+
 ---
 
 ### `/measurement` — Measurement Sheets · [measurement.py](measurement.py) · **CC-2 C2**
@@ -8819,6 +8965,17 @@ the route as well. **+ RA · Installation** is drawn only when a sheet that
 any saved sheet that is not rejected while it is switched off (§2i) — and
 `ra._c1_refusal()` refuses the typed URL when none does, with wording that
 never tells the operator to get an approval nobody can give.
+
+**+ Raise RA (Installation)** on `/measurement/view` (4 October 2026,
+CLIENT_CHANGES.md §0 fortieth block, ruling B) → `/ra/create?leg=installation&ms=<id>`,
+prefilled with the project's **unbilled remainder** (§5 `/ra`). Drawn only on
+a sheet that counts (`feeds_ceiling()`), whose schedule still exists, for a
+user `auth.can_reach("ra.create_ra")` admits — Sales Manager and Accountant
+hold `measurement.view` and not `ra.create`. ⚠ **That is the one place
+`measurement.py` reaches `auth`**, inside `_raise_ra_btn()`: the
+`measurement -> auth` row in `tests/test_import_directions.py` was narrowed
+from *any* to *module* in this pass, the old row kept verbatim beside it, and a
+second test pins the function-body import to that one function.
 
 ---
 
@@ -10468,6 +10625,16 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
    already imports `ra.py` and `receipt.py`. Nothing about the record shapes
    needs to change; both figures are already derivable.
 
+   ⚠ **Still OPEN after 4 October 2026, and narrowed only in one direction.**
+   An RA bill may now be raised FROM challans (§5 `/ra`, ruling A) and then
+   names them in `source_dc_ids`, so *this bill was raised from these
+   challans* is recorded and a challan says *Billed in …*. That is a **link,
+   not a reconciliation**: a manual bill names no challan (gap 52), a challan
+   billed short still counts as billed, and nothing compares dispatched with
+   claimed per line. `challan.py` still does not import `ra.py`; the one
+   question both now ask — is this challan billed — lives in the leaf
+   `dcbill.py`, which reads both collections and imports neither module.
+
 20. 🔴 **The delivery challan's particulars may not satisfy Rule 55 of the CGST
    Rules — OPEN, and NOT to be guessed at.**
 
@@ -11699,6 +11866,25 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
       `Challan No.` → `Challan` on the register, `af94df0`). Blank filler rows
       never printed on the DC or the joint sheet — a decision at build.
     - Receipts have no print route and never had one.
+
+52. 🟠 **The MANUAL RA path can still re-bill a billed challan's quantity —
+    OPEN, by instruction** (4 October 2026, CLIENT_CHANGES.md §0 fortieth
+    block). Ruling C blocks a billed challan from a second bill **raised from
+    challans**; the brief kept the manual `/ra/create` path exactly as it was
+    and told this pass not to add the lock to it. So a supply bill entered by
+    hand can claim the very quantity a challan was already billed for, limited
+    only by the BOQ cumulative cap (`overclaims()`), and nothing tells the
+    operator. `tests/test_ra_from_source.py::test_the_manual_path_can_still_rebill_a_billed_challans_quantity`
+    **pins it as current behaviour, not as a rule** — it is the test to rewrite,
+    deliberately, if the lock is ever extended. Related and also open, both
+    reported rather than built: a billed challan may still be **deleted** (its
+    confirmation warns, nothing refuses; the bill then names *a challan since
+    deleted* and an edit of it loses that challan's quantity from its cap); and
+    a counting joint sheet with a grid and **no BOQ lines** prefills nothing
+    and, if it is the only sheet on its chain, leaves `approved_qty_by_line()`
+    empty — which `overclaims()` reads as "predates measurement" (§3, the
+    joint-sheet note; the form makes such a sheet impossible to save, so only
+    a hand-written or migrated record can be one).
 
 
 ## 8. Stale docs — do not trust these two files

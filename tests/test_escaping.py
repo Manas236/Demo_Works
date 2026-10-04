@@ -367,6 +367,12 @@ POISONED_FIELDS = {
         "account_name", "boq_ref", "consignee_name", "consignee_source",
         "dispatch_mode", "items[]/description", "items[]/item_no",
         "items[]/unit", "project_name", "ref",
+        # 4 October 2026 — the second, UNBILLED challan `dc-2` carries a
+        # `dispatch_to` (`dc-1` keeps its blank for the em-dash), because the
+        # RA create form's challan picker prints it. Pinned after the whole
+        # sweep went green with it poisoned: the picker, `/dc/view`, `/dc/`,
+        # `/dc/print` and the edit form all escape it.
+        "dispatch_to",
     ),
     # ⚠ **The joint measurement sheet's own sinks were added 6 September 2026,
     #   and every one of them was checked by MUTATION before being pinned here**

@@ -2306,6 +2306,36 @@ def _outer_class(ms: dict) -> str:
     return "doc-outer sheet-landscape" if is_joint(ms) else "doc-outer"
 
 
+def _raise_ra_btn(mid: str, ms: dict) -> str:
+    """
+    *Raise RA (Installation)* — CLIENT_CHANGES.md §0, fortieth block, ruling B
+    (4 October 2026) — or nothing.
+
+    Drawn only where it can lead somewhere: the sheet COUNTS toward the
+    installation ceiling (`feeds_ceiling()` — the reading `/ra/create` checks
+    and `approved_qty_by_line()` sums), its schedule still exists, and the user
+    holds what `/ra/create` requires. The prefill is the project's unbilled
+    remainder, computed by `ra.py`; this button only names the sheet.
+
+    ⚠ **`auth` is imported INSIDE this function and nowhere else in the
+    module.** `measurement -> auth` was refused at every scope until this pass
+    ("no page module asks it directly"); a control that can only produce a
+    refusal must not be drawn, and `can_reach()` is the only honest way to know
+    — it reads the dict the gate answers from. The module-level ban stands, and
+    `tests/test_import_directions.py` pins the hatch to this one function.
+    Presentation, not the gate: `/ra/create` classifies itself.
+    """
+    if not feeds_ceiling(ms):
+        return ""
+    if str(ms.get("boq_id") or "") not in (STORE.get("boqs") or {}):
+        return ""
+    import auth as _AUTH
+    if not _AUTH.can_reach("ra.create_ra"):
+        return ""
+    return (f'\n    <a href="{url_for("ra.create_ra", leg="installation", ms=mid)}" '
+            f'class="btn btn-ghost">&#43;&nbsp;Raise RA (Installation)</a>')
+
+
 @measurement_bp.route("/view/<id>")
 def view_ms(id: str):
     ms = records().get(id)
@@ -2332,7 +2362,7 @@ def view_ms(id: str):
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('measurement.list_ms')}" class="btn btn-ghost">All Measurements</a>
-    <a href="{url_for('boq.view_boq', id=ms.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(ms.get('boq_ref'))}</a>
+    <a href="{url_for('boq.view_boq', id=ms.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(ms.get('boq_ref'))}</a>{_raise_ra_btn(id, ms)}
     <a href="{url_for('measurement.edit_ms', id=id)}" class="btn btn-ghost">Edit</a>
     <a href="{url_for('measurement.delete_ms', id=id)}" class="btn btn-ghost">Delete</a>
     <a href="{url_for('measurement.print_ms', id=id)}" class="btn">&#128438;&nbsp;Print</a>

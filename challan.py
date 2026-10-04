@@ -36,6 +36,13 @@ off the project chain beside the RA bill, and independently of it:
   answer the other's questions. That nothing compares them is a known gap
   (ABOUT.md §7 gap 19), not an oversight this module should close on its own.
 
+⚠ **From 4 October 2026 an RA bill may be raised FROM challans** (the §0
+  fortieth block), and such a bill names them in `source_dc_ids`. This module
+  says *Billed in <RA ref>* on `/dc/view` and the register, and offers *Raise RA
+  (Supply)* on an unbilled one — reading the answer through `dcbill.py`, the
+  leaf that holds the ONE billed predicate, and never through `ra.py`. Nothing
+  is written to a challan when it is billed or freed.
+
 The consignee is the SITE, not the billed-to party
 --------------------------------------------------
 On the client's own DC54 the consignee is **Samruddhi Fire themselves**, at
@@ -62,6 +69,8 @@ Import direction
     challan.py ──► quotation.py QUOTATION_STYLES + _inr — the form widgets
     challan.py ──► dashboard.py BASE_STYLES / _nav / REGISTER_STYLES
     challan.py ──► pipeline.py  esc / gstin_state_label
+    challan.py ──► dcbill.py    billed_by / billing_index — the one billed
+                                predicate (4 Oct 2026), a leaf
     challan.py ──► store, branding
 
 ⚠ **`REGISTER_STYLES` is loaded by `/dc/` ONLY, and that matters.** This module
@@ -94,6 +103,11 @@ from flask import Blueprint, redirect, request, url_for
 import boq as BQ
 import boqpick as BP
 import branding as B
+# "Is this challan billed, and by which RA bill?" (CLIENT_CHANGES.md §0,
+# fortieth block, ruling C). A LEAF that reads the bills out of STORE, so this
+# module learns the answer WITHOUT importing `ra.py` — the prohibition above is
+# untouched — and without a second copy of the predicate beside `ra.py`'s.
+import dcbill as DCB
 import docsheet as DS
 import pipeline as P
 import settings as SET
@@ -798,6 +812,74 @@ def _over_dispatch_band(dc: dict) -> str:
   </div>"""
 
 
+# ── Billed — CLIENT_CHANGES.md §0, fortieth block, ruling C (4 Oct 2026) ─────
+#
+# ⚠ **Every rule below is drawn inline or from styles this page already
+#   loads.** `CHALLAN_STYLES` is in the `<head>` of the pinned `/dc/` register
+#   and `DC_DOC_STYLES` in the pinned `/dc/print`; a rule added to either would
+#   move a page golden for a band neither pinned page draws.
+
+def _billed_html(held) -> str:
+    """
+    `/dc/view`'s *Billed in <RA ref>* band, or nothing. `held` is
+    `dcbill.billed_by()`'s answer — the one predicate — computed once by the
+    caller. Screen only: `/dc/print` never draws it, and the challan record
+    carries no mark of it.
+    """
+    if not held:
+        return ""
+    rid, bill = held
+    return (
+        '<div style="border:1px solid #bbf7d0;border-left:3px solid #15803d;'
+        'background:#f0fdf4;border-radius:var(--radius);padding:.7rem 1rem;'
+        'margin-bottom:1rem;font-size:.86rem;line-height:1.6;color:#14532d;">'
+        f'&#10003; <b>Billed in <a href="{url_for("ra.view_ra", id=rid)}">'
+        f'{P.esc(bill.get("ref")) or "&mdash;"}</a></b> '
+        f'(RA{P.esc(bill.get("ra_no"))}). A challan is billed once, so it is not '
+        f'offered for another RA bill while that one stands; cancelling the bill '
+        f'frees it.</div>')
+
+
+def _raise_ra_btn(dc_id: str, dc: dict, held) -> str:
+    """
+    *Raise RA (Supply)* — ruling A's way in, or nothing.
+
+    Drawn only where it can lead somewhere: the challan is not billed, its
+    schedule still exists, and the user holds what `/ra/create` requires —
+    asked of `auth.can_reach()`, the dict the gate answers from, through a
+    function-body import (`boq.view_boq()`'s hatch). ⚠ **Presentation, not the
+    gate**: `/ra/create` classifies itself, and refuses a billed challan on the
+    POST whatever this page drew.
+    """
+    if held or str(dc.get("boq_id") or "") not in (STORE.get("boqs") or {}):
+        return ""
+    import auth as _AUTH
+    if not _AUTH.can_reach("ra.create_ra"):
+        return ""
+    return (f'\n    <a href="{url_for("ra.create_ra", leg="supply", dc=dc_id)}" '
+            f'class="btn btn-ghost">&#43;&nbsp;Raise RA (Supply)</a>')
+
+
+def _billed_delete_note(dc_id: str) -> str:
+    """
+    The delete confirmation names the bill a billed challan is on. A WARNING,
+    not a refusal — deleting a challan was never guarded and ruling C asks for
+    no guard here — so the operator decides knowing that the bill will go on
+    naming a challan that no longer exists. Its own figures do not move: every
+    claim row is a snapshot.
+    """
+    held = DCB.billed_by(dc_id)
+    if not held:
+        return ""
+    rid, bill = held
+    return (f'\n    <p style="font-size:.85rem;color:#92400e;">&#9888; This challan '
+            f'is billed in <a href="{url_for("ra.view_ra", id=rid)}">'
+            f'{P.esc(bill.get("ref")) or "&mdash;"}</a> '
+            f'(RA{P.esc(bill.get("ra_no"))}). Deleting it leaves that bill naming '
+            f'a challan that no longer exists; the bill\'s own figures do not '
+            f'change.</p>')
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -808,8 +890,19 @@ def list_dcs():
     dcs = sorted((STORE.get("delivery_challans") or {}).items(),
                  key=lambda kv: (str(kv[1].get("date") or ""),
                                  str(kv[1].get("ref") or "")), reverse=True)
+    # Ruling C (4 Oct 2026) — the one walk `dcbill.billed_by()` also reads,
+    # taken once for the whole register. A challan nobody billed renders the
+    # row it always rendered, byte for byte: this register is page-golden
+    # pinned, and the mark is spliced in only where there is something to say.
+    billed = DCB.billing_index()
     rows = ""
     for cid, dc in dcs:
+        held = billed.get(cid)
+        mark = (f'<div style="margin-top:.3rem;font-size:.74rem;">'
+                f'<a class="reg-sub" href="{url_for("ra.view_ra", id=held[0])}" '
+                f'title="A billed challan is not offered for another RA bill">'
+                f'Billed in {P.esc(held[1].get("ref")) or "&mdash;"}</a></div>'
+                ) if held else ""
         n = sum(1 for r in dc.get("items", []) if not r.get("is_header"))
         # ⚠ **THE PRIMARY ACTION, and it is the actual defect the owner
         #   reported: he could not tell what to click.** Their series has no
@@ -824,7 +917,7 @@ def list_dcs():
             <a class="reg-open" href="{url_for('challan.view_dc', id=cid)}"
                title="Open delivery challan {P.esc(dc.get("ref"))}">Open
               <span class="reg-ref">{P.esc(dc.get("ref"))}</span>
-              <span class="ro-arrow">&rarr;</span></a>
+              <span class="ro-arrow">&rarr;</span></a>{mark}
           </td>
           <td>{P.esc(dc.get("date"))}</td>
           <td>{P.esc(dc.get("consignee_name")) or '&mdash;'}</td>
@@ -975,6 +1068,10 @@ def view_dc(id: str):
         return redirect(url_for("challan.list_dcs",
                                 msg="That challan no longer exists.", type="error"))
 
+    # Read ONCE, and both the band and the button branch on it — so this page
+    # cannot say "billed" and offer to bill it in the same breath.
+    held = DCB.billed_by(id)
+
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -993,14 +1090,14 @@ def view_dc(id: str):
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>
-    <a href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(dc.get('boq_ref'))}</a>
+    <a href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(dc.get('boq_ref'))}</a>{_raise_ra_btn(id, dc, held)}
     <a href="{url_for('challan.edit_dc', id=id)}" class="btn btn-ghost">Edit</a>
     <a href="{url_for('challan.delete_dc', id=id)}" class="btn btn-ghost">Delete</a>
     <a href="{url_for('challan.print_dc', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
 
-{_flash()}
+{_flash()}{_billed_html(held)}
 {_over_dispatch_band(dc)}
 
 <div class="doc-outer">
@@ -1142,7 +1239,7 @@ def delete_dc(id: str):
       This cannot be undone. <b>The number is not released</b> &mdash; the next
       challan takes the next one in the series, because {P.esc(dc.get('ref'))}
       may already have travelled with a load of material.
-    </p>
+    </p>{_billed_delete_note(id)}
     <form method="POST" style="display:flex;gap:.75rem;margin-top:1rem;">
       <button type="submit" class="btn">Delete it</button>
       <a href="{url_for('challan.view_dc', id=id)}" class="btn btn-ghost">Cancel</a>

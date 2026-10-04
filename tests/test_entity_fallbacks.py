@@ -273,6 +273,29 @@ def populated(client):
     dcid = _a_challan(bid)
     msid = _a_measurement(bid)
 
+    # ── RA raised FROM a challan / FROM the measurement (4 October 2026) ────
+    #
+    # ⚠ **Each new state is rendered by a record built to reach it**, because a
+    #   fixture that cannot reach a branch is how `ms-2` once made a sweep
+    #   vacuous. RA2 — the latest draft, whose edit, cancel and view pages the
+    #   sweep already walks — is made a bill raised FROM `dc-1`, so:
+    #     `/ra/view/<rid>`, `/ra/edit/<rid>`, `/ra/cancel/<rid>`  name the
+    #                                         challan (its `ref`, poisoned);
+    #     `/dc/view/dc-1` and `/dc/`          say *Billed in* and name RA2's
+    #                                         `ref`, poisoned.
+    #   `dc-2` is UNBILLED and carries a row no BOQ line matches, so the supply
+    #   form ticked with both (`extra` below) renders the picker, the refusal
+    #   naming RA2, the prefill and the *Unmatched, not prefilled* list — with
+    #   text in every field. `ms-2` is the approved joint sheet, so the
+    #   installation form raised from it renders the measurement note.
+    STORE["ra_bills"][rid]["source_dc_ids"] = [dcid]
+    dc2 = _a_challan(bid, cid="dc-2", ref="55")
+    STORE["delivery_challans"][dc2]["dispatch_to"] = "Whitefield site store"
+    STORE["delivery_challans"][dc2]["items"].append({
+        "line_id": "0123456789ab", "is_header": False, "item_no": "Z.1",
+        "description": "A row no line of the schedule carries", "unit": "Nos",
+        "qty": 1.0})
+
     # `/product/delete` renders its confirmation page only for a product that
     # may actually be deleted; one locked into an assembly redirects with the
     # refusal instead, which is the guard working. Pick a deletable one so the
@@ -554,7 +577,13 @@ def populated(client):
                   # The pending JOINT sheet with a typed sign-off — see
                   # `_a_measurement()`: its edit form is where the seven
                   # sign-off inputs render with text in them.
-                  "/measurement/edit/ms-3", "/measurement/view/ms-3"],
+                  "/measurement/edit/ms-3", "/measurement/view/ms-3",
+                  # 4 Oct 2026 — the states `/ra/create` grew, which no
+                  # `url_map` rule names because they are query strings. See
+                  # the note above `dc-2` for what each one renders.
+                  f"/ra/create?boq={bid}&leg=supply&dc={dc2}&dc={dcid}",
+                  f"/ra/create?boq={bid}&leg=installation&ms=ms-2",
+                  f"/dc/view/{dc2}"],
         "blank": blank,
     }
 
@@ -687,7 +716,7 @@ def _a_signoff() -> dict:
     }
 
 
-def _a_challan(boq_id: str) -> str:
+def _a_challan(boq_id: str, cid: str = "dc-1", ref: str = "54") -> str:
     """
     One delivery challan **with rows on it**, so the sweep has a document.
 
@@ -695,12 +724,14 @@ def _a_challan(boq_id: str) -> str:
     exactly where the register and the document fall back to the house em-dash,
     which is the branch this file exists to check. `_a_draft_po` leaves
     `vendor_name` blank for the same reason.
+
+    `cid` / `ref` are parameters from 4 October 2026, for the second, UNBILLED
+    challan the RA-from-challan states need; the defaults are the old values.
     """
-    cid = "dc-1"
     line = next(li for li in STORE["boqs"][boq_id]["line_items"]
                 if not li["is_header"] and li["total_qty"] > 0)
     STORE.setdefault("delivery_challans", {})[cid] = {
-        "id": cid, "ref": "54", "date": "2026-08-16",
+        "id": cid, "ref": ref, "date": "2026-08-16",
         "boq_id": boq_id, "boq_ref": "SF/BOQ/26-27/0001", "boq_rev_no": 0,
         "project_name": "Sify Bangalore", "site_location": "",
         "account_name": "Prudent Teqtis Pvt Ltd",

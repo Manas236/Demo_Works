@@ -278,9 +278,34 @@ FORBIDDEN = [
                                          "C6 is BLOCKED"),
     ("measurement", "project",   "any", "measurement.py reads STORE['boqs'] and "
                                         "links out with url_for"),
-    ("measurement", "auth",      "any", "the gate is central "
-                                        "(auth.ROUTE_PERMISSIONS) and no page "
-                                        "module asks it directly"),
+    # ⚠ **THIS ROW WAS NARROWED FROM "any" TO "module" ON 4 OCTOBER 2026** (the
+    #   CLIENT_CHANGES.md §0 fortieth block — RA raised from the measurement
+    #   sheet). The old row is kept verbatim, because a ban that is loosened
+    #   silently is a ban nobody can audit:
+    #
+    #     ("measurement", "auth",      "any", "the gate is central "
+    #                                         "(auth.ROUTE_PERMISSIONS) and no page "
+    #                                         "module asks it directly"),
+    #
+    #   **Why it had to move.** Ruling B puts *Raise RA (Installation)* on
+    #   `/measurement/view`, and the brief requires it be drawn only for a user
+    #   holding what `/ra/create` requires. Sales Manager and Accountant hold
+    #   `measurement.view` but not `ra.create` (docs/ACCESS_MATRIX.md), so an
+    #   undrawn-for-them button needs `auth.can_reach()` — the dict the gate
+    #   answers from — and "hide what a role cannot do" (22 September 2026) is
+    #   the owner's own rule. The premise "no page module asks it directly" had
+    #   already stopped being true elsewhere: `boq.py`, `invoice.py`,
+    #   `proforma.py` and `address.py` all ask `can_reach()` through a
+    #   function-body import for exactly this purpose.
+    #
+    #   **What still holds.** A MODULE-LEVEL import of `auth` is still refused,
+    #   and `test_measurement_reaches_auth_only_inside_its_raise_ra_button`
+    #   below pins the one function-body import to `_raise_ra_btn()` — so the
+    #   hatch cannot quietly widen to a second caller.
+    ("measurement", "auth",      "module", "the gate is central "
+                                           "(auth.ROUTE_PERMISSIONS); the one "
+                                           "function-body import is the Raise RA "
+                                           "button's can_reach() check"),
     ("boq",         "measurement", "any", "the BOQ view page links out with "
                                           "url_for and reads STORE['measurements'] "
                                           "directly — importing measurement.py "
@@ -676,6 +701,29 @@ FORBIDDEN = [
                                      "lookup is handed a user id"),
     ("gst_lookup", "db",      "any", "the cache is a STORE collection; db.py "
                                      "mirrors it like any other"),
+
+    # ── dcbill.py — the ONE "is this challan billed?" predicate (4 Oct 2026) ─
+    # CLIENT_CHANGES.md §0, fortieth block, ruling C. `ra.py` (the picker and
+    # the POST refusal) and `challan.py` (the *Billed in* mark) both need the
+    # answer and may not import each other — `challan -> ra` and `ra ->
+    # challan` are both refused above. Reading STORE directly from each side
+    # would have been two copies of one predicate, ABOUT.md §7 gap 16b's
+    # failure; so it is a leaf both import. If the leaf could import either
+    # document module, the prohibition would be kept on paper and defeated in
+    # the basement — `docsheet.py`'s argument, a fourth time.
+    ("dcbill", "ra",          "any", "ra.py imports this leaf; importing back is "
+                                     "a cycle, and it would couple challan.py to "
+                                     "ra.py through the basement"),
+    ("dcbill", "challan",     "any", "challan.py imports this leaf, for the same "
+                                     "reason from the other side"),
+    ("dcbill", "measurement", "any", "a measurement is not a challan; the leaf "
+                                     "answers one question"),
+    ("dcbill", "merged_ra",   "any", "a merged document holds no source of its "
+                                     "own — the leg bills carry it"),
+    ("dcbill", "boq",         "any", "the leaf reads STORE['ra_bills'] directly "
+                                     "and needs no schedule"),
+    ("dcbill", "flask",       "any", "it owns no route and builds no HTML"),
+    ("dcbill", "auth",        "any", "being billed is not an access question"),
 ]
 
 
@@ -979,6 +1027,13 @@ REQUIRED = [
 
     ("address", "gst_lookup", "the GSTIN check, the portal lookup and the one "
                               "pattern the form, the save and the lookup share"),
+
+    # 4 Oct 2026 — the two readers of the one billed predicate.
+    ("ra",      "dcbill", "billed_by() / billing_index(): a billed challan is "
+                          "left out of the /ra/create picker and refused on the "
+                          "POST, and SOURCE_KEY is the key create_ra() writes"),
+    ("challan", "dcbill", "billed_by() / billing_index(): the Billed in mark on "
+                          "/dc/view and the register, without importing ra.py"),
 ]
 
 
@@ -993,6 +1048,51 @@ def test_db_imports_nothing_from_the_app():
     """
     ours = {m.stem for m in REPO.glob("*.py")} - {"db"}
     assert imports_of("db") & ours == set()
+
+
+def test_dcbill_imports_only_the_store():
+    """
+    The billed predicate's leaf, held as a WHITELIST (4 October 2026).
+
+    `series.py`'s standard: `store` and nothing else of ours. A blacklist has
+    to be remembered when a module is added; this catches the import nobody
+    thought of — and the moment the leaf reaches `ra.py` or `challan.py`, the
+    two modules it exists to keep apart are coupled through it.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"dcbill"}
+    assert imports_of("dcbill") & ours == {"store"}
+    assert "flask" not in imports_of("dcbill")
+
+
+def test_measurement_reaches_auth_only_inside_its_raise_ra_button():
+    """
+    The narrowed `measurement -> auth` row's other half (4 October 2026).
+
+    The FORBIDDEN row now refuses a module-level import only, so this pins the
+    function-body hatch to the ONE function that needs it — `_raise_ra_btn()`,
+    which asks `auth.can_reach("ra.create_ra")` before drawing *Raise RA
+    (Installation)*. A second function importing `auth` here is a widening
+    nobody decided, and this goes red naming it.
+    """
+    tree = ast.parse((REPO / "measurement.py").read_text(encoding="utf8"))
+    hosts = set()
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                     else [node.module or ""])
+            assert not any(n.split(".")[0] == "auth" for n in names), (
+                "measurement.py imports auth at MODULE level")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Import) and any(
+                        a.name.split(".")[0] == "auth" for a in sub.names):
+                    hosts.add(node.name)
+                if (isinstance(sub, ast.ImportFrom) and sub.module
+                        and sub.module.split(".")[0] == "auth"):
+                    hosts.add(node.name)
+    assert hosts == {"_raise_ra_btn"}, (
+        f"measurement.py reaches auth from {sorted(hosts)}; the one permitted "
+        f"host is _raise_ra_btn()")
 
 
 def test_demo_data_imports_nothing_at_all():
