@@ -4105,6 +4105,68 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 4 October 2026, by Manas Gawde — RA FROM A DELIVERY CHALLAN / A MEASUREMENT SHEET · NO CHARGE · POST-GO-LIVE · RULINGS A / B / C
+>
+> **A new block, not an amendment.** The thirty-ninth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **fortieth** occasion. It covers the items below and
+> nothing else.
+>
+> **What was asked for, in a written brief.** Today an RA bill cannot be raised
+> FROM a delivery challan or a measurement sheet: both are prerequisites only
+> (`ra._c1_refusal()`), and the sheet is the installation cap
+> (`ra.overclaims()`). Build the direct path. Manas's rulings, final:
+>
+> - **A — RA Supply from challans, the "tick DCs" model.** `/dc/view` gets
+>   *Raise RA (Supply)*; the supply create form gets a picker of every
+>   UNBILLED challan on the BOQ's revision chain (the one it came from arrives
+>   ticked). Prefill per `line_id` = the sum across the ticked challans; a
+>   line nothing dispatched is not prefilled. A quantity may be edited DOWN,
+>   never above the ticked challans' sum for the line — **refused on the POST,
+>   server-side**; the BOQ cumulative over-claim guard still applies on top,
+>   untouched. A line billed below its dispatched quantity gets a plain
+>   warning before save: the challan still counts as billed, and the shortfall
+>   can only go on a manual RA.
+> - **B — RA Installation from the measurement sheet, the "unbilled remainder"
+>   model.** `/measurement/view` gets *Raise RA (Installation)*. Prefill per
+>   `line_id` = what `measurement.approved_qty_by_line()` returns for the BOQ
+>   (the approval ladder off, as it is) MINUS installation already claimed on
+>   non-cancelled RA bills, clamped at 0; a line at 0 is not prefilled. Edited
+>   down freely; the existing measurement cap keeps guarding the POST and is
+>   neither weakened nor duplicated.
+> - **C — a billed challan is MARKED and BLOCKED.** Billed = listed in
+>   `source_dc_ids` by any NON-CANCELLED RA bill, **derived, never stored on
+>   the challan**; cancelling the RA frees it with no write to the challan.
+>   `/dc/view` and the challan register say *Billed in &lt;RA ref&gt;* with a
+>   link; a billed challan is absent from the picker and a POST naming one is
+>   refused, naming the RA. **One predicate** answers it.
+>
+> **The record:** an RA bill gains `source_dc_ids` (supply) or
+> `source_ms_ids` (installation), written ONCE at create. **Absent means
+> manual / pre-feature — a written meaning, not an inference — and nothing is
+> backfilled.** The bill's own claim rows stay the source of truth for print;
+> no document re-reads a challan or a sheet to render.
+>
+> **Constraints given with the rulings:** no new route and no new permission
+> (`/ra/create` is extended with query parameters and hidden POST fields);
+> matching on `line_id` ONLY, and anything without a resolvable `line_id` on
+> the tip revision is listed as *Unmatched, not prefilled* and never billed
+> through this path; no printed document changes and no golden moves; the
+> manual `/ra/create` path keeps working exactly as today, **without** the
+> challan lock — its double-billing exposure is to be reported, not closed;
+> `product.py` and `quotation.py` are not opened.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his.**
+> It is post-go-live work on the BOQ → challan / measurement → RA chain CC-2
+> **C1** and **C2** already describe; it does not change either item's state,
+> it moves no Phase 3 bar, and the classification is his — an agent may not
+> extend it to anything this block does not name.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
