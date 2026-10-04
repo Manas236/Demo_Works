@@ -4749,6 +4749,26 @@ authorised by its own §0 block, which is where its commercial status lives.
 | G4 | BOQ import from Excel — the sheet's own structure, its totals, and a guided fix on Create BOQ | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-seventh** block; extends G1; **extended the same day under the §0 thirty-eighth block** (what a child line belongs to, "not priced", units, placeholders); **commercial status of both not recorded — Manas's call** |
 | G5 | BOQ import from Excel — cost sheets, rate-only lines, group labels, nothing below the grand total | ✅ **Built, not deployed** — 1 Oct 2026 under the §0 **thirty-ninth** block (the Iron Mountain sheet); extends G4; **commercial status not recorded — Manas's call** |
 | G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
+| G6 | RA bill raised FROM delivery challans or FROM the measurement sheet; a billed challan marked and blocked | ✅ **Built, not deployed** — 4 Oct 2026 under the §0 **fortieth** block (Manas's rulings A / B / C); **no charge, by Manas's ruling** |
+
+### G6 · RA from a challan / a measurement sheet — ✅ Built, not deployed, no charge
+
+**What the client gets.** On a delivery challan, **Raise RA (Supply)**: the
+supply bill opens with the challan ticked in a list of every challan on the
+project not yet billed, and each line already filled with what the ticked
+challans carried. A line can be lowered but never raised above that — the
+save refuses it. On a measurement sheet, **Raise RA (Installation)**: each line
+is filled with what was measured and not yet billed. A challan once billed
+says **Billed in &lt;RA ref&gt;** on its own page and in the register, is not
+offered again, and comes free if that bill is cancelled.
+
+**What it does not do.** A bill entered by hand, without ticking challans,
+works exactly as before and is **not** stopped from claiming a quantity a
+challan was already billed for — only the schedule's own limit applies there
+(ABOUT.md §7 gap 52). Nothing on any printed document changed.
+
+Authorised by the §0 **fortieth** block, which is where its commercial status
+— **no charge** — is recorded as Manas's ruling.
 
 ### G1 · BOQ import from Excel v1 — ✅ Delivered (v1), chargeable
 
