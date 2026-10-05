@@ -323,22 +323,59 @@ def wo_ref_of(series: dict) -> str:
     return f"{prefix}/{n:04d}"
 
 
-def save_wo_series(prefix: str, next_no) -> None:
-    """Write the series back. Only non-default values are stored."""
+def save_wo_series(prefix: str, next_no, default_terms=None) -> None:
+    """
+    Write the series back. Only non-default values are stored.
+
+    ⚠ **The record also holds `default_terms` from 5 October 2026** (R7,
+    CLIENT_CHANGES.md §0 forty-third block), so a write of the series alone —
+    `workorder._spend_ref()` advancing the counter on every save — keeps the
+    terms as they are. `default_terms=None` means "not this call's business";
+    `""` clears them.
+    """
+    rec = dict(STORE["settings"].get(WO_SERIES_RECORD) or {})
     values = {"prefix": str(prefix or "").strip(),
               "next_no": str(next_no or "").strip()}
-    keep = {k: v for k, v in values.items()
-            if v and v != WO_SERIES_DEFAULTS[k]}
-    if keep:
-        STORE["settings"][WO_SERIES_RECORD] = keep
+    for k, v in values.items():
+        if v and v != WO_SERIES_DEFAULTS[k]:
+            rec[k] = v
+        else:
+            rec.pop(k, None)
+    if default_terms is not None:
+        terms = _clean_terms(default_terms)
+        if terms:
+            rec["default_terms"] = terms
+        else:
+            rec.pop("default_terms", None)
+    if rec:
+        STORE["settings"][WO_SERIES_RECORD] = rec
     else:
         STORE["settings"].pop(WO_SERIES_RECORD, None)
+
+
+# The default Terms & Conditions a NEW work order opens with (R7) — one term
+# per line, EMPTY by default: the client's sample sheet carries the
+# CONTRACTOR's quote terms, which are not Samruddhi's to print on its own work
+# order, so nothing is scraped or invented here.
+WO_TERMS_MAX_CHARS = 4000
+
+
+def _clean_terms(text) -> str:
+    return "\n".join(t.strip() for t in str(text or "").replace("\r\n", "\n")
+                     .split("\n") if t.strip())[:WO_TERMS_MAX_CHARS]
+
+
+def wo_default_terms() -> str:
+    """The default terms, one per line — "" when none are set."""
+    return str((STORE["settings"].get(WO_SERIES_RECORD) or {})
+               .get("default_terms") or "")
 
 
 def _validate_wo_series(form) -> tuple:
     """Returns (data, error), and **always returns data**."""
     data = {"prefix":  (form.get("wo_prefix") or "").strip(),
-            "next_no": (form.get("wo_next_no") or "").strip()}
+            "next_no": (form.get("wo_next_no") or "").strip(),
+            "default_terms": _clean_terms(form.get("wo_default_terms"))}
     if data["prefix"] and len(data["prefix"]) > 32:
         return data, "Work order prefix: keep it under 32 characters."
     raw = data["next_no"]
@@ -936,7 +973,8 @@ def edit_settings():
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
-            save_wo_series(wo_data["prefix"], wo_data["next_no"])
+            save_wo_series(wo_data["prefix"], wo_data["next_no"],
+                           wo_data["default_terms"])
             save_series_floors(sf_data)
             save_charge_heads(ch_data)
             save_measurement_columns(mc_data)
@@ -970,7 +1008,7 @@ def edit_settings():
         values = B.current_settings()
         po_values = po_series()
         dc_values = dc_series()
-        wo_values = wo_series()
+        wo_values = dict(wo_series(), default_terms=wo_default_terms())
         ch_values = "\n".join(charge_heads())
         mc_values = measurement_columns_text()
         lb_values = labour_settings()
@@ -1170,6 +1208,12 @@ def edit_settings():
                      value="{P.esc(wo_values.get('next_no', ''))}"
                      placeholder="{P.esc(WO_SERIES_DEFAULTS['next_no'])}"/>
               <div class="fld-hint">Advances on every work order raised.</div>
+            </div>
+            <div class="form-group span2">
+              <label for="wo_default_terms">Default Terms &amp; Conditions <span style="font-weight:500;text-transform:none;">(optional &mdash; one per line)</span></label>
+              <textarea id="wo_default_terms" name="wo_default_terms" rows="4">{P.esc(wo_values.get('default_terms', ''))}</textarea>
+              <div class="fld-hint">A new work order opens with these; each can
+                be changed on the work order itself. Blank by default.</div>
             </div>
           </div>
         </div>

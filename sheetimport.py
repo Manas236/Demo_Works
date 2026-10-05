@@ -745,11 +745,22 @@ def _combine(upper: list, lower: list):
       row, carrying "Rate Only" in its quantity, scored a keyword and was
       swallowed into the header — the line vanished with nothing said.
     """
+    # ⚠ **5 October 2026 (CLIENT_CHANGES.md §0 forty-third block, R2a).** A
+    #   lower row that carries a RATE or AMOUNT label under a heading ("Unit
+    #   Rate" under "Installation") is a header row even when it also carries
+    #   floor or area labels longer than three characters ("Terrace", "Riser"
+    #   under "DC building") — the client's Nxtra sheet, whose rate column was
+    #   never mapped because "Terrace" failed the rule below. Such a row still
+    #   may hold NO figure, and each of its other labels is held to the header
+    #   label length, so a data row cannot pass for one.
+    relaxed = _rate_label_under_heading(upper, lower)
     for v in lower:
         if _is_number(v):
             return None
         if isinstance(v, str) and v.strip():
             t = _norm(v)
+            if relaxed and len(t) <= HEADER_LABEL_MAX:
+                continue
             if not (_hits(t) or _TOTAL_WORD.search(t) or len(t) <= 3):
                 return None
     up, lo = _labels(upper), _labels(lower)
@@ -766,6 +777,53 @@ def _combine(upper: list, lower: list):
             carry = ""
         out.append(f"{carry} {l}".strip() if u.strip() or l.strip() else "")
     return out
+
+
+# A cell that is nothing but a rate or an amount heading — "Unit Rate", "Rate",
+# "Amount", "Total cost", with or without "(INR)" (R2a, 5 October 2026).
+_RATE_AMOUNT_LABEL = re.compile(
+    r"^\s*(?:unit\s*rate|rate|amount|total\s*cost)"
+    r"(?:\s*\(?\s*(?:inr|rs\.?|₹)\s*\)?)?\s*$", re.I)
+
+
+def _rate_label_under_heading(upper: list, lower: list) -> bool:
+    """
+    Does the lower row carry a rate or amount label UNDER a heading — a
+    non-empty upper cell in its column, or one carried rightward to it the way
+    `_combine()` carries a merged cell? (R2a.)
+    """
+    up, lo = _labels(upper), _labels(lower)
+    width = max(len(up), len(lo))
+    up += [""] * (width - len(up))
+    lo += [""] * (width - len(lo))
+    carry = ""
+    for u, l in zip(up, lo):
+        if u.strip():
+            carry = u
+        elif not l.strip():
+            carry = ""
+        if carry.strip() and _RATE_AMOUNT_LABEL.match(l or ""):
+            return True
+    return False
+
+
+# The tokens a units row under a header carries and nothing else — "INR | INR"
+# under "Unit Rate | Total cost" (R2b, 5 October 2026). Compared lower-cased
+# and stripped.
+_UNIT_TOKENS = {"inr", "rs", "rs.", "₹", "(inr)", "nos", "%"}
+
+
+def _units_only(vals: list) -> bool:
+    """A row whose non-empty cells are ONLY currency or unit tokens, and at
+    least one of them. Such a row directly under the header belongs to it."""
+    seen = False
+    for v in vals:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+        if not isinstance(v, str) or v.strip().lower() not in _UNIT_TOKENS:
+            return False
+        seen = True
+    return seen
 
 
 def _heading_like(vals: list) -> bool:
@@ -795,8 +853,22 @@ def detect_header(grid: dict) -> list:
 
     A pair ("Supply" over "Rate | Amount") is taken when the two rows combined
     beat each alone, so a header with a section row under it stays one row.
+
+    ⚠ **A units row directly under the band joins it (5 October 2026, R2b)**
+      — a row whose cells are ONLY currency or unit tokens ("INR | INR" under
+      "Unit Rate | Total cost"). It was read as a priced line with no
+      description and no quantity. The band then ends on that row, so
+      `data_start()` skips it; `header_labels()` reads the label rows only.
     """
     rows = grid["rows"]
+
+    def with_units(band: list) -> list:
+        nxt = band[1] + 1
+        if (nxt < len(rows) and rows[nxt][0] == rows[band[1]][0] + 1
+                and _units_only(rows[nxt][1])):
+            return [band[0], nxt]
+        return band
+
     for ri, (rnum, vals) in enumerate(rows):
         if rnum > HEADER_SCAN_ROWS:
             break
@@ -809,15 +881,24 @@ def detect_header(grid: dict) -> list:
                         and s2 >= MIN_HEADER_SCORE:
                     pair = [ri, ri + 1]
         if _heading_like(vals):
-            return pair or [ri, ri]
+            return with_units(pair or [ri, ri])
         if pair and _heading_like(combined):
-            return pair
+            return with_units(pair)
     return []
+
+
+def _label_band(grid: dict) -> list:
+    """The header band without a trailing units row — the rows that carry
+    the column LABELS (R2b). `[]` when there is no header."""
+    hdr = list(grid.get("header") or [])
+    if hdr and hdr[1] > hdr[0] and _units_only(grid["rows"][hdr[1]][1]):
+        hdr[1] -= 1
+    return hdr
 
 
 def header_labels(grid: dict) -> dict:
     """{grid column index: the column's header text} — combined for a pair."""
-    hdr = grid.get("header") or []
+    hdr = _label_band(grid)
     if not hdr:
         return {}
     top = grid["rows"][hdr[0]][1]

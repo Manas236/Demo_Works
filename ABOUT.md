@@ -430,7 +430,7 @@ Consequences you must respect when editing:
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
 | [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
-| [workorder.py](workorder.py) | 2258 | **Work Orders for petty contractors** (5 October 2026, CLIENT_CHANGES.md §0 **forty-first** block, rulings A–J). Its own `work_orders` collection — **not** inside `purchases` or `purchase_orders`: a PO buys material, a WO assigns work. Each line carries a **material rate AND a labour rate**; every amount and total is **derived**, never stored (`line_amounts()` / `totals_of()`). DRAFT / ISSUED / CANCELLED with the RA bill's semantics, prints on `docsheet.py` as the buy-side PO does (title WORK ORDER, the contractor in the vendor's place, **no GST**), one global series at `/settings`, the contractor an address-book pick (type `contractor`) with a typed fallback, an optional project. Excel import through `sheetimport.py` with its **own** mapping, staged through `importstage.py` in the persisted `wo_imports` (fix 1); heading lines (`is_header`) since the same day's fix pass. ⚠ **Mints no permission** — every route carries the PO's own `purchase.*` id for the same action. ⚠ **Imports none of** `boq`, `ra`, `invoice`, `purchase`, `po_draft` (nor `boqimport` / `boqpick`, which reach `boq`). §3 *Work Order*, §5 `/wo`. |
+| [workorder.py](workorder.py) | 2922 | **Work Orders for petty contractors** (5 October 2026, CLIENT_CHANGES.md §0 **forty-first** block, rulings A–J). Its own `work_orders` collection — **not** inside `purchases` or `purchase_orders`: a PO buys material, a WO assigns work. Each line carries a **material rate AND a labour rate**; every amount and total is **derived**, never stored (`line_amounts()` / `totals_of()`). DRAFT / ISSUED / CANCELLED with the RA bill's semantics, prints on `docsheet.py` as the buy-side PO does (title WORK ORDER, the contractor in the vendor's place, **no GST**), one global series at `/settings`, the contractor an address-book pick (type `contractor`) with a typed fallback, an optional project. Excel import through `sheetimport.py` with its **own** mapping, staged through `importstage.py` in the persisted `wo_imports` (fix 1); heading lines (`is_header`) since the same day's fix pass. ⚠ **From the forty-third block (pass 3, the client's own sheet):** `tracks` (one rate track or both, declared per work order), `gst_rate` (derived GST, prefilled 18), `site`, `terms`, SECTION headings with subtotals and a summary, several tabs into one work order, and quantity-0 rows left out on an import. ⚠ **Mints no permission** — every route carries the PO's own `purchase.*` id for the same action. ⚠ **Imports none of** `boq`, `ra`, `invoice`, `purchase`, `po_draft` (nor `boqimport` / `boqpick`, which reach `boq`). §3 *Work Order*, §5 `/wo`. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. From 4 Oct 2026 it says *Billed in &lt;RA ref&gt;* and offers *Raise RA (Supply)*, reading the billed answer through the leaf `dcbill.py` — still never importing `ra.py`. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
@@ -2392,15 +2392,41 @@ subcontractor.
   # The project, optional and SNAPSHOTTED (ruling H; charge.py's shape)
   "project_id", "project_name",
   "notes",
+  # ── 5 Oct 2026, the forty-third block — every one ABSENT on a record
+  #    written before it, and each absence reads as the old behaviour ──────
+  "tracks": "both" | "labour" | "material",   # R1 — ABSENT means "both"
+  "gst_rate": 18.0,          # R5 — %, 0 to 100; ABSENT (or 0) means NO GST
+  "site": "Lucknow",         # R6 — free text, printed when set
+  "terms": "One term\nper line",   # R7 — printed numbered when set
   "lines": [ {"line_id": "a3f19c0b7e42",   # uuid4().hex[:12], SERVER-minted
               "is_header": False,          # 5 Oct 2026 fix pass — ABSENT means False
               "item_no": "1.a",            # a DISPLAY label only; prints in Sr
               "description", "unit",
               "qty": 10.0, "material_rate": 410.0, "labour_rate": 95.5} ],
+             # ⚠ a ONE-TRACK work order stores the other rate ABSENT on every
+             #   line — never 0, never None (R1)
              # a HEADING line: is_header True, its item_no and description,
-             #   unit "", qty / material_rate / labour_rate None
+             #   unit "", qty and the declared rate(s) None; `"section": True`
+             #   makes it a SECTION heading (R4) — absent means not
   "created_at", "created_by", "updated_at" }
 ```
+
+⚠ **The forty-third block's four fields (5 October 2026)** — each one changes
+nothing on a record that lacks it, which is why the legacy print golden is
+byte-identical:
+
+| field | what it does |
+|---|---|
+| `tracks` (R1) | which rates the work order carries. One track: the other is never drawn, never asked for, stored absent; a figure typed in it is REFUSED naming the lines (`stray_problems()`), never dropped. Narrows ruling D |
+| `gst_rate` (R5) | GST %, derived never stored: `round(pre-tax × rate / 100, 2)` (`totals_of()`'s `gst`, the PO's rounding); `total` = pre-tax + GST. A new work order prefills 18; a posted BLANK box is refused (0 means none). One rate — no CGST/SGST/IGST split (§7 gap 59). Reverses ruling B's no-GST block |
+| `site` (R6) | printed "Site:" in the header block when set. The project link is unchanged |
+| `terms` (R7) | printed as a numbered "Terms & Conditions" list after the totals, in the quotation's own Terms markup; a new work order opens with `settings.wo_default_terms()` |
+
+**Sections (R4).** A section heading starts a group running to the next one;
+`section_groups()` sums each group, and the print closes it with "Subtotal -
+<section>" and adds a SUMMARY (one row per section) above the totals. A work
+order with no section prints exactly as before. Priced lines above the first
+section, if any, are a group of their own on the print.
 
 ⚠ **Heading lines (5 October 2026, CLIENT_CHANGES.md §0 forty-second block,
 fix 2)** — the BOQ's `is_header`: an item number and a description and no
@@ -4683,7 +4709,10 @@ keeps `purge()` / `_own()` / `_cap_per_user()` as one-line calls into it with
 (re-exported from the leaf, same values); every BOQ import test passes
 untouched. **`wo_imports`** is the work order's own collection of the same
 shape, less `layout` / `known` / `confirmed` / `rate_mode` / `markup`, which a
-work order has none of — §5 `/wo`.
+work order has none of — §5 `/wo`. ⚠ From the forty-third block (R4) its row
+also holds `ticked` (the tabs to build) and `mapping` as ONE mapping PER TAB,
+`{"<tab index>": {"<excel col>": target}}`; a row staged before reads its flat
+mapping as its `sheet_index`'s.
 
 ```
 STORE["boq_imports"][token] = {
@@ -7570,6 +7599,29 @@ sheet a `0` in its installation-rate column on subtotal and section rows. Such a
 row is read as if the cell were empty and falls through to the structure: a
 header, spec text or a sub-heading. **A ₹0 lump sum is never imported.**
 
+#### The header band — a rate row under a heading, and a units row (5 October 2026)
+
+CLIENT_CHANGES.md §0 forty-third block, **R2**, in the SHARED reader, so this
+importer gains it as well as the work order's:
+
+- **(a)** `_combine()` refused a lower header row whose labels were not all
+  keywords or three characters — so "GF | 1F | … | Terrace | Riser" beside
+  "Unit Rate" under "Installation" (the client's Nxtra sheet) failed on
+  "Terrace", the band stayed one row and the rate column was never mapped.
+  A lower row that carries a **rate or amount label** ("Unit Rate", "Rate",
+  "Amount", "Total cost", with or without "(INR)") **under a heading**
+  (`_rate_label_under_heading()`) now joins the band, other labels up to the
+  header length kept as they are; it still may hold no figure. The heading
+  names the track: "Installation Unit Rate" maps to the installation rate.
+- **(b)** A row directly under the band whose cells are ONLY currency or unit
+  tokens — INR, Rs, Rs., ₹, (INR), Nos, % (`_units_only()`) — joins the band:
+  `data_start()` skips it, and `header_labels()` reads the label rows only
+  (`_label_band()`).
+
+Every existing import test passes untouched; the Sify workbook still
+reproduces its BOQ. `tests/test_wo_nxtra.py` asserts the BOQ importer now maps
+the Sprinkler tab's column N to `install_rate`.
+
 #### The structure — item numbers from the sheet's own shape (30 September 2026)
 
 `sheetimport.Structure`, a pure class: rows go in, placements come out. Before
@@ -8941,8 +8993,64 @@ key, owned, 24 hours, three per user, consumed when the form renders — exactly
 evicts a BOQ upload from the per-user cap and never opens on `/boq/import`. It
 survives a restart: the row is a STORE record and `db.load_into()` brings it
 back at boot (`tests/test_work_orders.py::test_a_staged_import_survives_a_new_process`).
-§7 gap 58 is closed. ⚠ **Not validated against the client's own WO sheet**,
-which has not arrived — §7 gap 56.
+§7 gap 58 is closed. ~~⚠ **Not validated against the client's own WO sheet**,
+which has not arrived — §7 gap 56.~~ The sheet arrived — see below.
+
+#### The client's own sheet — pass 3 (5 October 2026, the forty-third block)
+
+The Nxtra work order (`fixtures/work_order_nxtra.xlsx`, gitignored) is the
+acceptance test: ticked Sprinkler + Wet Spray System, the guessed mapping
+accepted untouched, it imports with **zero** fields to answer and saves as
+rendered (`tests/test_wo_nxtra.py`, skipped when the file is absent). What it
+took:
+
+- **The shared reader's header band (R2, `sheetimport.py`)** — see §5
+  `/boq/import`. Sprinkler's "Installation" over "Unit Rate (INR)" now maps
+  column N to the installation (labour) rate; Wet Spray's "INR | INR" row is
+  part of the band, not a line.
+- **Several tabs (R4).** The preview lists every staged tab with a tickbox —
+  the reader's own pick ticked by default — and shows each ticked tab's own
+  column mapping (`map_<tab>_<column>`), guessed per tab; `mapping_problems()`
+  runs per tab. Confirm builds the ticked tabs in workbook order into one
+  form (`build_import()`); `MAX_LINES` applies to the whole. Each sheet
+  section title becomes a SECTION heading, and a tab with no title of its
+  own opens with its tab name as one. The staged row holds `ticked` and one
+  mapping per tab under `mapping`; a row staged before keeps reading.
+- **Quantity 0 (R3, `_drop_qty0()`, the work-order import ONLY).** Quantity 0
+  and no non-zero rate on a declared track → left out; with a rate → kept as
+  a rate-only line with a note; a heading or section left empty → left out.
+  Both the preview (per tab) and the form say how many rows and which. On the
+  Nxtra file: Sprinkler keeps 27 lines with a quantity + 6 rate-only = 33,
+  Wet Spray 9 — **67 rows left out**.
+- **Tracks (R1).** An import that maps only one rate track declares that
+  track (`import_tracks()`); the form opens "Labour only" and draws no
+  material box at all. Changing the choice at the top of the form is
+  **Update the rate columns** — a server redraw (`act=retrack`), so a
+  one-track form never carries the other track's inputs, and a figure
+  already typed in a track being dropped stays on the page, ringed and named.
+
+#### The print — one track, sections, GST, site, terms
+
+- **One track:** Sr | Description | Unit | Qty | Rate | Amount, the sub-title
+  "Work assigned to contractor — Labour only".
+- **Sections:** "Subtotal - <section>" closing each group, then a
+  **Summary** heading row and one row per section with its amount, above the
+  totals — their cover sheet's shape.
+- **GST:** the pre-tax Total (on a both-track work order, "Grand Total
+  (Material + Labour)"), then "GST @ n%" and **"Total (incl. GST)"** as the
+  closing row; the amount in words is on the GST-inclusive figure. With GST
+  the pre-tax row is drawn as a plain sum row and the incl-GST row carries the
+  total's rule.
+- **Site** in the header block's second column; **Terms & Conditions** as
+  the quotation's own numbered `tnc-ol` list after the notes.
+- The register, the project panel and the confirmations show each work
+  order's **total incl. GST** ("Value (incl. GST)"); without GST that is the
+  same figure as before.
+
+None of it adds a stylesheet rule: every row and list uses a class the shared
+sheet already carries, so `WO_DOC_STYLES` and the legacy WO print golden are
+byte-identical. Two new goldens pin a labour-only work order with sections,
+GST, site and terms, and a both-track one with GST.
 
 #### Headings on the form and the print (fix 2)
 
@@ -9801,7 +9909,9 @@ web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank, account name,
 account number, IFSC, branch), then ~~four~~ **five** blocks that are **not**
 branding overrides and live in records of their own: the draft-PO series, the
 delivery-challan series, **the work-order series** (5 October 2026,
-`WO_SERIES_RECORD` — §5 `/wo`), **Starting Numbers**, the charge heads, and
+`WO_SERIES_RECORD` — §5 `/wo` — with, from the forty-third block, the work
+order's **default Terms & Conditions**, `default_terms`, empty by default and
+kept by every counter write), **Starting Numbers**, the charge heads, and
 **Labour Cost**. Reached from the **Settings link in `_nav()`**, so it is one click from
 anywhere.
 
@@ -12188,14 +12298,21 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     joint-sheet note; the form makes such a sheet impossible to save, so only
     a hand-written or migrated record can be one).
 
-53. 🟠 **A work order carries NO GST — pending the client's answer, OPEN**
+53. ~~🟠 **A work order carries NO GST — pending the client's answer, OPEN**
     (5 October 2026, CLIENT_CHANGES.md §0 forty-first block, ruling B). There
     is no tax block on the print and **no tax field on the record**, by
     ruling: whether a contractor's work order states GST, and on which leg
     (material, labour or both — a works contract is not taxed like a supply of
     goods), is a question to the client and their CA. Adding it later is a
     new field and a print change, and `tests/test_work_orders.py` asserts the
-    record carries no tax key today. Do not add one on a guess.
+    record carries no tax key today. Do not add one on a guess.~~
+
+    ✅ **ANSWERED the same day by the client's own sample** (the §0
+    forty-third block, R5): their Nxtra work order adds "Tax 18 %" on the
+    work order's total. `gst_rate` is a field of the work order now —
+    prefilled 18, derived never stored, ABSENT meaning none (so every earlier
+    work order and the earlier golden carry none). Ruling B's no-GST block is
+    reversed by that ruling. What remains open is gap 59.
 
 54. 🟠 **A work order is COMMITTED cost, not PAID cost — there is no money-out
     ledger behind it, OPEN** (5 October 2026). Issuing a WO records what was
@@ -12223,7 +12340,23 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     arrives as a line with BLANK figures, marked, rather than dropped; a sheet
     full of them will be tedious.~~ **From 5 October 2026 (fix 2) a heading
     row and a section title arrive as HEADING lines, nothing to answer** — the
-    BOQ importer's rule. Re-check against the sample when it comes.
+    BOQ importer's rule. ~~Re-check against the sample when it comes.~~
+
+    ✅ **The sample came the same day and is the acceptance test** (the §0
+    forty-third block): `fixtures/work_order_nxtra.xlsx`, gitignored, read by
+    `tests/test_wo_nxtra.py` and skipped where absent. It was labour-only, had
+    a two-row rate header with floor labels beside it, a units row, 70 rows of
+    quantity 0, and spanned two tabs — R1 to R4 are what made it import with
+    nothing to answer. ⚠ **One client sheet, not a validated format**: the next
+    contractor's sheet may still differ, and the importer has seen no other.
+
+59. 🟡 **A work order's GST is ONE rate — no CGST / SGST / IGST split, OPEN**
+    (5 October 2026, the §0 forty-third block, R5). The print says "GST @
+    18%" on the pre-tax total, exactly as the client's cover sheet does
+    ("Tax 18%"). Whether a contractor's GST is intra-state (CGST + SGST) or
+    inter-state (IGST) depends on the contractor's registration and the place
+    of supply, and the work order records neither as a decision. The split is
+    the CA's question and is not built.
 
 57. 🟡 **Work orders are on the dashboard and NOT on the rail — the rail entry
     is QUEUED** (5 October 2026). A `chrome.REGISTERS` entry draws the rail on
