@@ -78,6 +78,13 @@ ADDRESS_TYPES = {
     "billing":  "Billing",
     "shipping": "Delivery",
     "vendor":   "Vendor",
+    # A petty contractor work is assigned to (5 October 2026, `workorder.py`,
+    # CLIENT_CHANGES.md §0 forty-first block, ruling G). Its own type rather
+    # than a vendor: a vendor is somebody we buy MATERIAL from on a purchase
+    # order; a contractor is somebody we assign WORK to on a work order, and
+    # each picker offers only its own. The GSTIN auto-fill on the add and edit
+    # forms is type-agnostic and works for this type unchanged.
+    "contractor": "Contractor",
 }
 
 # ⚠ **Which address types may be a SITE, and the narrowing is OURS.** This lived
@@ -364,6 +371,13 @@ REFERENCE_SOURCES = (
      "Purchase order",   ("ref",),                      "purchase.view_purchase"),
     ("delivery_challans", "consignee_id",    "consignee_name",
      "Delivery challan", ("ref",),                      "challan.view_dc"),
+    # 5 October 2026 — a work order's contractor, picked from the book or typed
+    # (`""` on a typed one-off, exactly as the draft PO's vendor). The WO
+    # snapshots every party field at create, so its print never reads the book;
+    # this row exists so the delete guard still refuses to pull an address out
+    # from under a record that names it.
+    ("work_orders",       "contractor_id",   "contractor_name",
+     "Work order",       ("ref",),                      "workorder.view_wo"),
 )
 
 

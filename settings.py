@@ -273,6 +273,84 @@ def save_po_series(prefix: str, next_no) -> None:
 
 
 # =============================================================================
+# THE WORK ORDER SERIES — its own record, for the draft PO's reasons
+# =============================================================================
+#
+# A work order assigns work to a petty contractor (`workorder.py`,
+# CLIENT_CHANGES.md §0 forty-first block, ruling F). Its own record in this
+# collection for exactly the draft-PO series' reasons: it does not print in a
+# letterhead, `apply_settings()` must not push it onto `branding`, and the
+# nav's amber dot must not count it — a blank work-order prefix is not a
+# missing statutory detail.
+#
+# ⚠ **ONE GLOBAL counter**, not per project and not reset each financial year
+#   — the draft PO's shape, by ruling. It advances on every work order raised,
+#   so **a deleted draft never hands its number back**: `workorder._spend_ref()`
+#   is the only writer of `next_no` outside this page.
+# ⚠ **Not a series FLOOR.** `series.py`'s floors are lower bounds on a scan;
+#   this is a stored counter, exactly as the draft PO's and the challan's are,
+#   and the two kinds stay separate controls (ABOUT.md §5 `/settings`).
+WO_SERIES_RECORD = "work_order_series"
+
+WO_SERIES_DEFAULTS = {
+    # Both are strings: they are form fields, and `next_no` is parsed where it
+    # is used — `po_series()`'s convention.
+    "prefix":  "SF/WO",
+    "next_no": "1",
+}
+
+
+def wo_series() -> dict:
+    """The work-order prefix and next number, defaults filled in."""
+    saved = STORE["settings"].get(WO_SERIES_RECORD) or {}
+    return {k: (str(saved.get(k) or "").strip() or v)
+            for k, v in WO_SERIES_DEFAULTS.items()}
+
+
+def wo_ref_of(series: dict) -> str:
+    """
+    The work-order number a series is pointing at — `PREFIX/0001`.
+
+    The shape lives here, with the record, so `/settings` can preview what the
+    next number will look like and `workorder.py` mints the same string.
+    """
+    prefix = str(series.get("prefix") or "").strip() or WO_SERIES_DEFAULTS["prefix"]
+    # A rejected form re-renders what was typed, and "12a" is not a number:
+    # the preview falls back to 1 rather than raising on the page that is
+    # trying to say what was wrong.
+    raw = str(series.get("next_no") or "").strip()
+    n = int(raw) if raw.isdigit() and int(raw) >= 1 else 1
+    return f"{prefix}/{n:04d}"
+
+
+def save_wo_series(prefix: str, next_no) -> None:
+    """Write the series back. Only non-default values are stored."""
+    values = {"prefix": str(prefix or "").strip(),
+              "next_no": str(next_no or "").strip()}
+    keep = {k: v for k, v in values.items()
+            if v and v != WO_SERIES_DEFAULTS[k]}
+    if keep:
+        STORE["settings"][WO_SERIES_RECORD] = keep
+    else:
+        STORE["settings"].pop(WO_SERIES_RECORD, None)
+
+
+def _validate_wo_series(form) -> tuple:
+    """Returns (data, error), and **always returns data**."""
+    data = {"prefix":  (form.get("wo_prefix") or "").strip(),
+            "next_no": (form.get("wo_next_no") or "").strip()}
+    if data["prefix"] and len(data["prefix"]) > 32:
+        return data, "Work order prefix: keep it under 32 characters."
+    raw = data["next_no"]
+    if raw:
+        if not raw.isdigit():
+            return data, "Work order next number: digits only."
+        if int(raw) < 1:
+            return data, "Work order next number: must be 1 or more."
+    return data, ""
+
+
+# =============================================================================
 # THE DELIVERY CHALLAN SERIES — its own record, for the draft PO's reasons
 # =============================================================================
 #
@@ -847,16 +925,18 @@ def edit_settings():
         data, error = _validate(request.form)
         po_data, po_error = _validate_po_series(request.form)
         dc_data, dc_error = _validate_dc_series(request.form)
+        wo_data, wo_error = _validate_wo_series(request.form)
         ch_data, ch_error = _validate_charge_heads(request.form.get("charge_heads", ""))
         mc_data, mc_error = _validate_measurement_columns(
             request.form.get("measurement_columns", ""))
         lb_data, lb_error = _validate_labour(request.form)
         sf_data, sf_error = _validate_series_floors(request.form)
-        error = (error or po_error or dc_error or ch_error or lb_error
-                 or mc_error or sf_error)
+        error = (error or po_error or dc_error or wo_error or ch_error
+                 or lb_error or mc_error or sf_error)
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
+            save_wo_series(wo_data["prefix"], wo_data["next_no"])
             save_series_floors(sf_data)
             save_charge_heads(ch_data)
             save_measurement_columns(mc_data)
@@ -876,6 +956,7 @@ def edit_settings():
         values = data
         po_values = po_data
         dc_values = dc_data
+        wo_values = wo_data
         ch_values = "\n".join(ch_data)
         mc_values = (measurement_columns_text(mc_data) if mc_data
                      else request.form.get("measurement_columns", ""))
@@ -889,6 +970,7 @@ def edit_settings():
         values = B.current_settings()
         po_values = po_series()
         dc_values = dc_series()
+        wo_values = wo_series()
         ch_values = "\n".join(charge_heads())
         mc_values = measurement_columns_text()
         lb_values = labour_settings()
@@ -1058,6 +1140,36 @@ def edit_settings():
                      value="{P.esc(dc_values.get('next_no', ''))}"
                      placeholder="{P.esc(DC_SERIES_DEFAULTS['next_no'])}"/>
               <div class="fld-hint">Advances on every challan raised.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Work Order Series</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            Work orders assign work to a petty contractor. <b>One running
+            series across all contractors and all sites</b>, like the draft
+            PO: deliberately <b>not</b> reset each financial year and
+            <b>not</b> per project. Set the next number to whatever comes
+            after the last one already issued. A deleted draft work order does
+            not release its number.
+          </p>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="wo_prefix">Prefix</label>
+              <input type="text" id="wo_prefix" name="wo_prefix"
+                     value="{P.esc(wo_values.get('prefix', ''))}"
+                     placeholder="{P.esc(WO_SERIES_DEFAULTS['prefix'])}"/>
+              <div class="fld-hint">Prints as
+                {P.esc(wo_ref_of({"prefix": wo_values.get('prefix', ''), "next_no": wo_values.get('next_no') or 1}))}</div>
+            </div>
+            <div class="form-group">
+              <label for="wo_next_no">Next number</label>
+              <input type="text" id="wo_next_no" name="wo_next_no"
+                     inputmode="numeric"
+                     value="{P.esc(wo_values.get('next_no', ''))}"
+                     placeholder="{P.esc(WO_SERIES_DEFAULTS['next_no'])}"/>
+              <div class="fld-hint">Advances on every work order raised.</div>
             </div>
           </div>
         </div>

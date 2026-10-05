@@ -33,6 +33,7 @@ STORE: dict = {
     "invoices":     {},   # keyed by UUID string → GST tax invoice dict (derived from a proforma)
     "purchases":    {},   # keyed by UUID string → purchase order dict (BUY side — we are the buyer)
     "purchase_orders":{}, # keyed by UUID string → Draft PO from BOQ
+    "work_orders":  {},   # keyed by UUID string → WORK ORDER: work assigned to a petty contractor (workorder.py, 5 Oct 2026). Its OWN collection, never inside purchases or purchase_orders — a PO buys material from a supplier, a WO assigns work to a subcontractor. Each line carries a material rate AND a labour rate; every amount and total is DERIVED, never stored
     "specs":        {},   # keyed by UUID string → specification library entry (clause + sized variants)
     "boqs":         {},   # keyed by UUID string → bill of quantities (head of the BOQ → RA chain)
     "ra_bills":     {},   # keyed by UUID string → Running Account bill (progressive claim against a BOQ revision, carries tax block per DOMAIN.md §4)

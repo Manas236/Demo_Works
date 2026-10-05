@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 84 permissions · 139 classified endpoints.**
+**7 roles · 84 permissions · 149 classified endpoints.**
 
 ---
 
@@ -376,10 +376,10 @@ Read off the live route registry, so it cannot drift from what the application a
 | `invoice.create` | `invoice.create_invoice` |
 | `invoice.cancel` | `invoice.cancel_invoice` |
 | `invoice.approve` | `approval.approve_invoice`, `approval.reject_invoice` |
-| `purchase.view` | `purchase.list_purchases`, `purchase.view_purchase` |
-| `purchase.create` | `purchase.create_purchase`, `purchase.edit_purchase_rates`, `purchase.from_boq`, `purchase.from_draft` |
-| `purchase.edit` | `purchase.update_purchase` |
-| `purchase.delete` | `purchase.delete_purchase` |
+| `purchase.view` | `purchase.list_purchases`, `purchase.view_purchase`, `workorder.list_wos`, `workorder.print_wo`, `workorder.view_wo` |
+| `purchase.create` | `purchase.create_purchase`, `purchase.edit_purchase_rates`, `purchase.from_boq`, `purchase.from_draft`, `workorder.create_wo`, `workorder.edit_wo`, `workorder.import_preview`, `workorder.import_wo` |
+| `purchase.edit` | `purchase.update_purchase`, `workorder.cancel_wo`, `workorder.issue_wo` |
+| `purchase.delete` | `purchase.delete_purchase`, `workorder.delete_wo` |
 | `purchase.approve` | `approval.approve_purchase`, `approval.reject_purchase` |
 | `po.view` | `po_draft.list_pos`, `po_draft.view_po` |
 | `po.create` | `po_draft.create_po` |

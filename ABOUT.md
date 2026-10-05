@@ -407,7 +407,7 @@ Consequences you must respect when editing:
 | [store.py](store.py) | 49 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 532 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
-| [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). From 30 September 2026 also the **statutory copies** (`COPIES_DC`, `COPIES_TAX_INVOICE`, `copies()`) and the **landscape variant** of the frame (`LANDSCAPE_*`). A **leaf** — see §2d. |
+| [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). From 30 September 2026 also the **statutory copies** (`COPIES_DC`, `COPIES_TAX_INVOICE`, `copies()`) and the **landscape variant** of the frame (`LANDSCAPE_*`). From 5 October 2026 also **`LIFECYCLE_CSS`** — the DRAFT / CANCELLED overprint, moved out of `ra.RA_DOC_STYLES` byte-for-byte so the work order can share it (§2d). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
 | [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
 | [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
@@ -429,6 +429,7 @@ Consequences you must respect when editing:
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
 | [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
+| [workorder.py](workorder.py) | 2085 | **Work Orders for petty contractors** (5 October 2026, CLIENT_CHANGES.md §0 **forty-first** block, rulings A–J). Its own `work_orders` collection — **not** inside `purchases` or `purchase_orders`: a PO buys material, a WO assigns work. Each line carries a **material rate AND a labour rate**; every amount and total is **derived**, never stored (`line_amounts()` / `totals_of()`). DRAFT / ISSUED / CANCELLED with the RA bill's semantics, prints on `docsheet.py` as the buy-side PO does (title WORK ORDER, the contractor in the vendor's place, **no GST**), one global series at `/settings`, the contractor an address-book pick (type `contractor`) with a typed fallback, an optional project. Excel import through `sheetimport.py` with its **own** mapping. ⚠ **Mints no permission** — every route carries the PO's own `purchase.*` id for the same action. ⚠ **Imports none of** `boq`, `ra`, `invoice`, `purchase`, `po_draft` (nor `boqimport` / `boqpick`, which reach `boq`). §3 *Work Order*, §5 `/wo`. |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. From 4 Oct 2026 it says *Billed in &lt;RA ref&gt;* and offers *Raise RA (Supply)*, reading the billed answer through the leaf `dcbill.py` — still never importing `ra.py`. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
@@ -449,7 +450,7 @@ Consequences you must respect when editing:
 | [settings.py](settings.py) | 1171 | Company identity + bank details form, the two document number **counters** (draft PO, delivery challan) and, from 25 September 2026, the **starting-number floor for every other series**. None of them is a branding override — each is its own record, so `apply_settings()` never pushes one onto the letterhead and the nav's amber dot never counts a blank one. ⚠ **The floors' RULE lives in `series.py`, not here**, because `boq.py` may not import this module (§7 gap 36); this file owns the form, the validator and the refusal that names the current max. ⚠ **A counter and a floor are different things**: the draft PO and challan counters advance on every save and spend a number even on a delete; a floor is a lower bound that only ever moves a series forward. The quotation series has **no** control, by decision — `quotation.py` is frozen and a quotation is not a statutory document. |
 | [auth.py](auth.py) | 2609 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). ⚠ **The `approval` blueprint is treated the same way while the ladder is switched off** (12 September 2026) — `blueprint_off_reason()` answers with its own reason, read from `approval.ladder_on()` through a function-body import, the five `*.approve` grants are frozen on `/roles` and marked `⊗` in the matrix (§2g, §2i). |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
-| [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. ⚠ **GSTIN auto-fill from 29 September 2026** — the GSTIN box moved to the TOP of the add and edit forms, four routes (a CAPTCHA/lookup pair per form), the check character on a new or changed GSTIN, the not-Active acknowledgement and two new keys on the record. All of it reaches the portal through `gst_lookup.py`; §5 `/address`. |
+| [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. ⚠ **GSTIN auto-fill from 29 September 2026** — the GSTIN box moved to the TOP of the add and edit forms, four routes (a CAPTCHA/lookup pair per form), the check character on a new or changed GSTIN, the not-Active acknowledgement and two new keys on the record. All of it reaches the portal through `gst_lookup.py`; §5 `/address`. ⚠ **A sixth type, `contractor`, from 5 October 2026** — the work order's party; the GSTIN fill is type-agnostic and serves it unchanged, and `REFERENCE_SOURCES` gained `work_orders`. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
 | `integration.py` | 130 | **Dead file.** Stale docs only — see §8. |
 | `product_view_additions.py` | 494 | **Dead file.** Stale docs only — see §8. |
@@ -516,6 +517,11 @@ app.py
  ├─ settings.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation
  ├─ po_draft.py ───────────────┤  imports boq, boqpick, docsheet, address, settings,
  │                             │  quotation, dashboard, pipeline, store, branding
+ ├─ workorder.py ──────────────┤  imports docsheet, sheetimport, settings, address,
+ │                             │  chrome, quotation (the form widgets and the money
+ │                             │  formatters), pipeline, branding, store — and auth
+ │                             │  INSIDE its functions only. NEVER boq, ra, invoice,
+ │                             │  purchase, po_draft, boqimport or boqpick (5 Oct 2026)
  ├─ challan.py ────────────────┤  imports boq, boqpick, docsheet, address, settings,
  │                             │  dashboard, pipeline, store, branding — and NOT
  │                             │  quotation; it reads that sheet through docsheet.
@@ -560,7 +566,8 @@ app.py
  │                             │  ⚠ AND attendance.py + settings.py, from
  │                             │  30 Aug 2026 (fifth pass): the Site Labour
  │                             │  section. It is the ONLY importer attendance.py
- │                             │  has ever had
+ │                             │  has ever had. ⚠ AND workorder.py, from 5 Oct
+ │                             │  2026: project_panel_html(), rendered cells
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
@@ -596,8 +603,9 @@ dcbill.py    imports store and NOTHING else (4 Oct 2026) — the ONE "is this
              couple them through the basement. A whitelist test holds it
 ```
 
-`proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py` and
-`challan.py` each also import **`docsheet.py`** for the printed sheet. That
+`proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py`,
+`challan.py` and, from 5 October 2026, `workorder.py` each also import
+**`docsheet.py`** for the printed sheet. That
 arrow is one-way and is what §2d is about. `po_draft.py`, `challan.py` and now
 **`purchase.py`** additionally import **`boqpick.py`** for the line picker —
 §2e, and §2f for the third consumer.
@@ -856,6 +864,17 @@ the page scaled onto a phone screen. It is **BOQ's mechanism lifted**, and the
 joint measurement sheet is its only user. ⚠ **The BOQ still carries its own
 copy** in `BOQ_STYLES` / `BOQ_DOC_STYLES` / `BOQ_DOC_SCRIPT`, because four pinned
 register pages load `BOQ_STYLES` — §7 gap 46.
+
+#### The lifecycle overprint — `LIFECYCLE_CSS` (5 October 2026)
+
+The RA bill's DRAFT / CANCELLED watermark and band rules, **cut out of
+`ra.RA_DOC_STYLES` and spliced back at the same character position** —
+`BANK_CSS`'s arrangement — so the work order (`workorder.py`, which may not
+import `ra.py`) prints the same overprint from one copy. Measured before and
+after the move: `RA_DOC_STYLES` is **2,185 characters, sha256 `5388c565…`,
+identical**, and `tests/test_work_orders.py` pins that digest; the RA print
+golden did not move. `invoice.INVOICE_STYLES` keeps its own older `.lc-*` copy
+untouched — the pinned `/invoice/` register loads that sheet.
 
 ### 2e. `boqpick.py` — one grid, two documents, and why it is also a leaf
 
@@ -1504,7 +1523,9 @@ rule as `_may_administer()` guarding `/users/deactivate` beyond what
 
 `OWNER_ONLY` names exactly the **seventeen** endpoints that destroy a document
 (`STORE[...].pop`/`del`), plus the one that withdraws the document nothing may
-destroy, pinned rather than derived:
+destroy, pinned rather than derived — **and from 5 October 2026 one more,
+`workorder.delete_wo`**, because the purchase order it mirrors is Owner-only
+(CLIENT_CHANGES.md §0 forty-first block, ruling I):
 
 ```
 boq.delete_boq             quotation.delete_quotation
@@ -1995,6 +2016,9 @@ STORE = {
     "proformas":    {},     # uuid -> proforma invoice
     "invoices":     {},     # uuid -> GST tax invoice
     "purchases":    {},     # uuid -> purchase order   (BUY side)
+    "work_orders":  {},     # uuid -> work order: work assigned to a petty
+                            #         contractor (BUY side, 5 Oct 2026) — its OWN
+                            #         collection, never inside purchases
     "specs":        {},     # uuid -> specification library entry (clause + variants)
     "boqs":         {},     # uuid -> bill of quantities (head of the BOQ -> RA chain)
     "ra_bills":     {},     # uuid -> Running Account claim against a BOQ revision
@@ -2340,6 +2364,76 @@ Four things that differ from the sell side and are easy to get wrong:
    one order.
 4. **`quotation_id` may be empty and that is normal** — a stock purchase. Any
    code walking purchases must not assume a job.
+
+### Work Order  (buy side — work assigned to a petty contractor, 5 October 2026)
+
+Written by `workorder.create_wo()`; CLIENT_CHANGES.md §0 **forty-first** block,
+rulings A to J. **Its own collection** (`work_orders`), never a flag on a
+purchase order: a PO buys MATERIAL from a supplier, a WO assigns WORK to a
+subcontractor.
+
+```python
+{ "id", "ref": "SF/WO/0001", "date",
+  "status": "draft" | "issued" | "cancelled",
+  "issued_on", "cancelled_on", "cancel_reason",      # written by the lifecycle routes only
+  # The contractor, SNAPSHOTTED at create (ruling G) — the draft PO's vendor shape
+  "contractor_id",            # an address id (type `contractor`), or "" when typed
+  "contractor_name", "contractor_source": "book" | "typed",
+  "to",                       # the printable party block, frozen
+  "contractor_gstin",
+  # The project, optional and SNAPSHOTTED (ruling H; charge.py's shape)
+  "project_id", "project_name",
+  "notes",
+  "lines": [ {"line_id": "a3f19c0b7e42",   # uuid4().hex[:12], SERVER-minted
+              "item_no": "1.a",            # a DISPLAY label only; prints in Sr
+              "description", "unit",
+              "qty": 10.0, "material_rate": 410.0, "labour_rate": 95.5} ],
+  "created_at", "created_by", "updated_at" }
+```
+
+Five properties, each a test in `tests/test_work_orders.py`:
+
+1. **Every amount is DERIVED, never stored** (ruling C). There is no
+   `amount`, `total`, `material_total` or `grand_total` anywhere on the record.
+   `line_amounts()` rounds each `qty × rate` to the paisa once — the house rule,
+   `purchase._line_total()`'s `round(x, 2)` — and `totals_of()` sums the
+   rounded amounts, so the printed columns add up to what is printed under
+   them. ⚠ An exact half (`42.5 × 65.25 = 2,773.125`) prints `.12`: Python's
+   round-half-to-even, the same as every PO line; pinned by the golden.
+2. **A blank rate is refused, never read as 0.** Both rates and the quantity
+   must be typed figures (0 or more) or nothing is saved — "no labour on this
+   line" and "nobody typed the labour rate" are different facts and only a
+   typed 0 states the first.
+3. **`line_id` is the server's.** A create keeps no posted id; an edit keeps a
+   posted id only when it is well-formed, belongs to the record and is not
+   posted twice — the BOQ's four paths, narrowed to "belongs to this record".
+4. **No tax field** (ruling B, §7 gap 53). `contractor_gstin` is the party's
+   registration, printed as *Your GSTIN*; it computes nothing.
+5. **The print reads only this record** (ruling J). The contractor block,
+   the project name and every line are the snapshot; deleting the address or
+   the project changes nothing on the paper. `address.references_of()` counts
+   a WO as a reference, so the book's delete guard refuses to pull a picked
+   contractor out from under it.
+
+**Lifecycle — the RA bill's** (§3 *RA Bill*, *The lifecycle*):
+
+| State | Edit (lines too) | Delete | Print | 
+|---|---|---|---|
+| `draft` | ✅ | ✅ Owner only | **DRAFT overprint** |
+| `issued` | ❌ — cancel and reissue | ❌ | clean |
+| `cancelled` | ❌ | ❌ | **CANCELLED overprint**, date and reason |
+
+`status_of()` reads anything unrecognised as `issued` — `ra.status_of()`'s safe
+default. Cancelling needs a reason, cannot be undone or repeated, and keeps the
+number spent.
+
+**Numbering — `SF/WO/0001`, one GLOBAL counter in its own settings record**
+(`settings.WO_SERIES_RECORD`, ruling F) — the draft PO's arrangement: not per
+project, not reset each financial year, advanced on every save, so a deleted
+draft spends its number. ⚠ **Stricter than the draft PO's**: a next number typed
+at `/settings` below one already on a work order is skipped forward
+(`workorder._free_ref()`), never reissued. ⚠ No lock — single worker, as every
+minter here (§7 gap 36).
 
 ### Specification (the library a BOQ is written from)
 
@@ -3330,10 +3424,13 @@ STORE["gst_cache"][gstin] = {
    returns one comma-joined string; §5 `/address` says what the split reads
    with confidence (the PIN and the State) and what it guesses.
 
-`type` ∈ `office | site | billing | shipping | vendor`.
+`type` ∈ `office | site | billing | shipping | vendor | contractor` — the last
+from 5 October 2026, the work order's party. The GSTIN auto-fill is
+type-agnostic (only `site` keeps its own address lines) and fills a contractor
+exactly as it fills a vendor.
 Validated: PIN `^[1-9][0-9]{5}$`, GSTIN full 15-char pattern.
 
-#### ⚠ Six collections point INTO this book, and until 30 August 2026 nothing checked
+#### ⚠ Six collections point INTO this book, and until 30 August 2026 nothing checked — SEVEN from 5 October 2026
 
 `address.py`'s docstring said *"nothing else in the app reads
 STORE['addresses']"* and `delete_address()` said *"there is no integrity check to
@@ -3347,6 +3444,7 @@ run here"*. Both were true when written and neither had been for weeks.
 | `purchase_orders` (draft PO) | `vendor_id` | an id, with `vendor_name` snapshotted; **`""` on a typed one-off supplier** |
 | `purchases` (real PO) | `vendor_id` | an id, with `vendor_name` snapshotted |
 | `delivery_challans` | `consignee_id` | an id, with `consignee_name` snapshotted; **`""` on a typed consignee** |
+| `work_orders` (5 Oct 2026) | `contractor_id` | an id, with `contractor_name` snapshotted; **`""` on a typed contractor** |
 
 ⚠ **Some live references are still STRINGS, not ids.** Those fields were free
 text before the pickers arrived, and the backfills deliberately left an
@@ -5146,6 +5244,17 @@ gap.
 
 **Everything is computed in `_metrics()`**, one pass, pure. `P.summarize()` does
 the money; this module adds the funnel, the month buckets and the work queue.
+
+#### The Work Orders card — outside the zones (5 October 2026)
+
+`dashboard._work_orders_zone()` draws one card in its own zone **above**
+*Modules*, for a user `can_reach("workorder.list_wos")` admits, reading
+`STORE["work_orders"]` and linking with `url_for` — `workorder.py` imports this
+module's chrome, so the arrow back is refused. It is outside the zones
+deliberately: the zones and the rail name exactly `chrome.REGISTERS`
+(`tests/test_sidebar.py`), and work orders are not a registry entry yet,
+because one would move every page golden's chrome (§7 gap 57). The dashboard
+golden moved `main` only, +982 bytes, measured additive.
 
 #### The work queue — `_attention()`
 
@@ -8688,6 +8797,124 @@ another draft PO, which is cheap and leaves a trail.
 
 ---
 
+### `/wo` — Work Orders · [workorder.py](workorder.py) · **BUY SIDE** (5 October 2026)
+
+| Route | View |
+|---|---|
+| `GET /wo/` | `list_wos` — register, newest first, each WO's derived value |
+| `GET,POST /wo/create` | `create_wo` — the contractor, the details, the line editor |
+| `GET,POST /wo/import` | `import_wo` — upload a sheet (.xlsx / .xls) |
+| `GET,POST /wo/import/<token>` | `import_preview` — the column mapping; `act=confirm` renders the prefilled create form |
+| `GET /wo/view/<id>` | `view_wo` — the document with its action bar and lifecycle panel |
+| `GET /wo/print/<id>` | `print_wo` — the document alone, no rail (`/po/print`'s shape) |
+| `GET,POST /wo/edit/<id>` | `edit_wo` — header AND lines, **DRAFT only** |
+| `GET,POST /wo/issue/<id>` | `issue_wo` — GET confirms, POST issues |
+| `GET,POST /wo/cancel/<id>` | `cancel_wo` — GET confirms, POST cancels; a reason is required; no un-cancel |
+| `GET,POST /wo/delete/<id>` | `delete_wo` — **DRAFT only**, Owner only, GET confirms, POST destroys |
+
+CLIENT_CHANGES.md §0 **forty-first** block — the call with Samruddhi on
+5 October 2026 and Manas's rulings A to J. §3 *Work Order* is the record.
+
+#### Access — the purchase order's, per action (ruling I)
+
+**No permission is minted.** Each route carries the buy-side PO's own id for
+the same act, so the access matrix's grid did not move (84 permissions); only
+the endpoint lists under `purchase.*` grew:
+
+| WO action | carries | because the PO's same act carries it |
+|---|---|---|
+| register, view, print | `purchase.view` | `list_purchases`, `view_purchase` (the PO's print) |
+| create, import, **edit** | `purchase.create` | `create_purchase`, and `edit_purchase_rates` — editing changes what we agreed to PAY |
+| issue, cancel | `purchase.edit` | `update_purchase` — a PO is issued and cancelled by its status |
+| delete | `purchase.delete` + **`OWNER_ONLY`** | `delete_purchase`, Owner only |
+
+⚠ **Why reuse rather than mirror into `wo.*`:** a freshly minted permission
+reaches no STORED role on a live database (§2g, *a permission the registry
+knows and no role holds*), so every role would have lost the work order until
+the reconcile tool ran — and every later `/roles` edit would have had to be
+made twice to keep the parity the ruling asks for. `merged_ra.py`,
+`attachment.py` and `boqimport.py` set the precedent.
+`tests/test_work_orders.py` holds the parity for all seven roles.
+
+#### The document — the purchase order's sheet (ruling B)
+
+`docsheet.py` with the PO's own flags: no web address on the letterhead
+(`show_web=False`, §7 gap 18 — preserved, not fixed), the *computer generated*
+signature note, and **no bank block**, because the PO prints none. The
+letterhead and foot strip are the PO's bytes, asserted. What differs is only
+what a WO needs: the title **WORK ORDER**, *To (Contractor)* in the vendor's
+place, the WO number / Your GSTIN / Project and Date / Our GSTIN meta, and
+eight columns — **Sr · Description · Unit · Qty · Material Rate · Material
+Amount · Labour Rate · Labour Amount** — reusing the sheet's own `c-price` /
+`c-total` widths, so no width is invented. Under the lines a **Total** row puts
+the material total under Material Amount and the labour total under Labour
+Amount, then **Grand Total (Material + Labour)** closes the last column and the
+amount in words restates it. `Sr` prints the line's `item_no` where it has one
+and its position where not. **No GST, no tax row** (§7 gap 53). Money through
+`quotation._inr()` — Indian grouping, no symbol. ⚠ The PO's *Instructions to
+Supplier* block is NOT carried over: its seven terms are a supplier's (a Rule
+46 invoice, delivery, inspection), and terms for a contractor were not given —
+an open item, not an invention.
+
+The lifecycle overprint is **the RA bill's own CSS** — `docsheet.LIFECYCLE_CSS`
+(§2d), moved out of `ra.RA_DOC_STYLES` byte-for-byte for this. A draft prints
+DRAFT, a cancelled WO prints CANCELLED with its date and reason; only an issued
+one prints clean.
+
+#### The form — lines added and deleted in place
+
+One table, one row per line: item, description, unit, qty, material rate, its
+amount, labour rate, its amount, and a delete button. **+ Add a line** clones a
+server-rendered `<template>` row (the hardening rule: never a row built from
+strings in script). The amounts and the three totals are a live preview; the
+save recomputes everything from the stored rates. **Guided fix**: a field the
+save will refuse is ringed red with the reason in its title, a bar counts
+them, *Go to the next one* jumps, and the browser holds the submit while any
+remain — the BOQ import's guided fix, restated. ⚠ The server refuses the same
+POST on its own; the script is never the guard.
+
+#### Excel import — `sheetimport.py`, with this document's own mapping (ruling D)
+
+Upload → the mapping (one dropdown per column: Item No., Description,
+Quantity, Unit, **Material rate**, **Labour rate**, three check-only amounts)
+→ the ordinary create form, prefilled. **Nothing is saved until Raise work
+order.** The reader is the BOQ importer's leaf, **untouched and not moved**:
+its two tracks are translated (`supply_rate` ↔ `material_rate`,
+`install_rate` ↔ `labour_rate`), and its own header vocabulary already reads
+"Material" as one and "Labour" / "Installation" / "Erection" as the other.
+What carries over: group labels (dropped — their words are on each child),
+specification text (folded into its parent's description), rate-only lines
+(quantity 0, marked), nothing below the grand total, item numbers rounded, the
+totals check (said in material / labour words), the blocking flags (ringed on
+the form).
+
+⚠ **One rate column on the sheet fills that track and leaves the other BLANK
+and ringed on every line**, saying the sheet has no such column — never 0,
+never guessed. A rate column whose heading names no track must be chosen.
+A heading row (text, no figures) arrives as a line with blank, ringed figures
+rather than vanishing. More than 600 lines is refused whole.
+
+⚠ **The staged upload lives in RAM** (`workorder._STAGED`, owned, one hour,
+three per user, consumed when the form renders) — §7 gap 58. ⚠ **Not validated
+against the client's own WO sheet**, which has not arrived — §7 gap 56.
+
+#### Where it is reached
+
+The **dashboard card** (its own zone above *Modules*) and the project page's
+**Work Orders** panel. ⚠ **Not on the rail** — a registry entry moves every page
+golden's chrome; the entry is queued (§7 gap 57, STATE.md).
+
+#### The project page's panel (ruling H)
+
+`workorder.project_panel_html()`, called by `projectview.py`: one row per work
+order on the project — ref, date, contractor, status, its own value — and
+**no total**, nothing combined with another panel (§7 gap 55). The empty string
+when the project has none, so `/projects/view` is byte-for-byte what it was for
+every project without a work order; drawn only for a user who may open a work
+order.
+
+---
+
 ### `/dc` — Delivery Challans · [challan.py](challan.py)
 
 | Route | View |
@@ -9501,8 +9728,9 @@ One form. **Company Identity** (legal name, tagline, address, phone, e-mail,
 web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank, account name,
 account number, IFSC, branch), then ~~four~~ **five** blocks that are **not**
 branding overrides and live in records of their own: the draft-PO series, the
-delivery-challan series, **Starting Numbers**, the charge heads, and **Labour
-Cost**. Reached from the **Settings link in `_nav()`**, so it is one click from
+delivery-challan series, **the work-order series** (5 October 2026,
+`WO_SERIES_RECORD` — §5 `/wo`), **Starting Numbers**, the charge heads, and
+**Labour Cost**. Reached from the **Settings link in `_nav()`**, so it is one click from
 anywhere.
 
 ⚠ **Starting Numbers is new on 25 September 2026** (§7 gap 36) and it is the
@@ -11887,6 +12115,62 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     empty — which `overclaims()` reads as "predates measurement" (§3, the
     joint-sheet note; the form makes such a sheet impossible to save, so only
     a hand-written or migrated record can be one).
+
+53. 🟠 **A work order carries NO GST — pending the client's answer, OPEN**
+    (5 October 2026, CLIENT_CHANGES.md §0 forty-first block, ruling B). There
+    is no tax block on the print and **no tax field on the record**, by
+    ruling: whether a contractor's work order states GST, and on which leg
+    (material, labour or both — a works contract is not taxed like a supply of
+    goods), is a question to the client and their CA. Adding it later is a
+    new field and a print change, and `tests/test_work_orders.py` asserts the
+    record carries no tax key today. Do not add one on a guess.
+
+54. 🟠 **A work order is COMMITTED cost, not PAID cost — there is no money-out
+    ledger behind it, OPEN** (5 October 2026). Issuing a WO records what was
+    agreed with a contractor; nothing records what was then paid against it,
+    retained, or deducted. `totals_of()` is the document's own value and
+    nothing else. Anything that reads a WO as spend is reading a promise.
+
+55. 🔴 **In the future project P&L a work order must be its OWN cost row —
+    never merged with purchase orders or the charges ledger's Labour head:
+    double-count risk, OPEN** (5 October 2026, ruling H). A WO's material leg
+    may cover material a PO also bought, and its labour leg may be the same
+    gang a charge already booked as wages. Summing WO + PO + Labour head would
+    count the same rupee twice. `/projects/view` therefore **lists** work
+    orders and adds nothing up (`workorder.project_panel_html()`); the P&L that
+    reconciles the three is not built and is not this module's to build.
+
+56. 🟡 **The work-order importer has never seen the client's own sheet — the
+    sample has not arrived, OPEN** (5 October 2026, ruling D). It reuses
+    `sheetimport.py` exactly — the reader the BOQ importer has been validated
+    on against five client workbooks — with its own column mapping
+    (`workorder.guess_mapping()`, the reader's own guess translated: "Material"
+    is one track, "Labour" / "Installation" / "Erection" the other). Whether
+    the client's WO sheet has one rate column or two, what it calls them, and
+    whether its headings are specification rows is unknown. A heading row
+    arrives as a line with BLANK figures, marked, rather than dropped; a sheet
+    full of them will be tedious. Re-check against the sample when it comes.
+
+57. 🟡 **Work orders are on the dashboard and NOT on the rail — the rail entry
+    is QUEUED** (5 October 2026). A `chrome.REGISTERS` entry draws the rail on
+    every screen page and so moves the `chrome` digest of all twenty-one page
+    goldens; the brief allowed a nav entry only if it moved no golden. The
+    register is reached from its own dashboard card (one page golden moved,
+    measured additive) and from the project page's panel.
+    `tests/test_nav_reachability.py::UNLINKED_ON_PURPOSE` names
+    `workorder.list_wos` with that reason; delete the line when the entry
+    lands. ⚠ Related, cosmetic: the address book's **Contractor** badge has
+    no colour rule of its own, because `.badge-addr-*` lives in a sheet the
+    pinned `/address/` register loads.
+
+58. 🟡 **The work-order Excel staging is in RAM — a restart mid-import loses
+    the upload** (5 October 2026). `workorder._STAGED` holds the read grid
+    between the upload and the mapping (`gst_lookup._SESSIONS`' arrangement),
+    not a STORE collection: a staged grid is not a business record and
+    `db.sync()` would re-hash it on every request. One hour, three per user,
+    consumed when the prefilled form renders; the operator uploads again after
+    a restart. Single-process is load-bearing here as it is everywhere
+    (`wsgi.py`).
 
 
 ## 8. Stale docs — do not trust these two files

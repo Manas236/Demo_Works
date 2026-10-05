@@ -73,6 +73,7 @@ load_dotenv(override=False)
 # Collections in STORE that get persisted. Add a key here and it is durable —
 # the table is created automatically on next start.
 COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "purchase_orders",
+               "work_orders",
                "specs", "boqs", "ra_bills", "receipts", "delivery_challans", "measurements",
                "merged_ras",
                "projects",
@@ -256,6 +257,7 @@ LABELS = {
     "proformas":  "proforma invoices",
     "invoices":   "tax invoices",
     "purchases":  "purchase orders",
+    "work_orders": "work orders",
     "specs":      "specifications",
     "boqs":       "bills of quantities",
     "ra_bills":   "RA bills",

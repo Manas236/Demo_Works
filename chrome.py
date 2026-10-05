@@ -1129,6 +1129,11 @@ _TITLES = {
     "merged_ra":   ("Merged Tax Invoices", "Projects &amp; site billing"),
     "projectview": ("Projects", "Projects &amp; site billing"),
     "approval":    ("Approvals", "the ladder, and what it refused"),
+    # 5 October 2026. Work orders are not yet a register in `REGISTERS` — the
+    # rail entry would move every pinned page's chrome block, so it is queued
+    # (STATE.md) and the dashboard carries a card instead. Named here so the
+    # top bar says where the operator is rather than the app's subtitle.
+    "workorder":   ("Work Orders", "Buy side &mdash; work assigned to petty contractors"),
 }
 _AUTH_TITLES = {
     "auth.account":    ("My account", "your details, roles and password"),

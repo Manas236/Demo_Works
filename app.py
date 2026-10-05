@@ -41,6 +41,8 @@ from merged_ra import merged_bp  # CC-2 C3: one issued supply bill + one
                                  # back with url_for only.
 from client import client_bp     # Client-wise segregation and party edits
 from po_draft import po_draft_bp # Draft PO from BOQ
+from workorder import workorder_bp  # Work orders for petty contractors (5 Oct 2026):
+                                    # its OWN collection, never inside purchases
 from challan import challan_bp   # Delivery challans: goods leaving the yard
                                  # against a BOQ. Its own collection, beside
                                  # the RA bill on the project chain and
@@ -192,6 +194,9 @@ app.register_blueprint(merged_bp)             # Mounted at /merged — CC-2 C3.
                                               #   the status predicates and the
                                               #   outstanding arithmetic.
 app.register_blueprint(po_draft_bp)           # Mounted at /po (Draft PO from BOQ)
+app.register_blueprint(workorder_bp)          # Mounted at /wo — work orders for petty
+                                               # contractors; every route classified
+                                               # in auth.ROUTE_PERMISSIONS (purchase.*)
 app.register_blueprint(challan_bp)            # Mounted at /dc — REQUIRED by
                                               # /boq/view, which builds
                                               # url_for("challan.create_dc")

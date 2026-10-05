@@ -839,6 +839,33 @@ ROUTE_PERMISSIONS = {
     "po_draft.edit_po":           "po.edit",
     "po_draft.delete_po":         "po.delete",
     "po_draft.print_po":          "po.print",
+    # ── Work orders (5 October 2026, CLIENT_CHANGES.md §0 forty-first block,
+    #    ruling I). ⚠ **No permission minted — every route carries the
+    #    PURCHASE ORDER's own id for the same action**, so whoever may create,
+    #    edit, issue, cancel, print or delete a buy-side PO may do exactly the
+    #    same to a work order, and nobody else. Reusing the ids is what makes
+    #    that parity hold on a LIVE database whose stored roles an Owner has
+    #    edited: a freshly minted `wo.*` would reach no stored role at all
+    #    (ABOUT.md §2g, "a permission the registry knows and no role holds"),
+    #    and every later `/roles` edit would have to be made twice. The
+    #    `merged_ra.py` / `attachment.py` / `boqimport.py` precedent.
+    #    Per action, mirrored from the rows above:
+    #      view / print            -> purchase.view   (view_purchase IS the PO's print)
+    #      create / import / edit  -> purchase.create (edit changes what we agreed to
+    #                                  PAY — `edit_purchase_rates`' reasoning)
+    #      issue / cancel          -> purchase.edit   (a lifecycle move — a PO is
+    #                                  issued and cancelled by `update_purchase`)
+    #      delete                  -> purchase.delete, and OWNER_ONLY below
+    "workorder.list_wos":         "purchase.view",
+    "workorder.view_wo":          "purchase.view",
+    "workorder.print_wo":         "purchase.view",
+    "workorder.create_wo":        "purchase.create",
+    "workorder.import_wo":        "purchase.create",
+    "workorder.import_preview":   "purchase.create",
+    "workorder.edit_wo":          "purchase.create",
+    "workorder.issue_wo":         "purchase.edit",
+    "workorder.cancel_wo":        "purchase.edit",
+    "workorder.delete_wo":        "purchase.delete",
 
     # ── Dispatch ─────────────────────────────────────────────────────────────
     "challan.list_dcs":           "dc.view",
@@ -1039,6 +1066,12 @@ OWNER_ONLY: set = {
     "spec.delete_spec",
     "product.delete_product",
     "address.delete_address",
+    # 5 October 2026 — a DRAFT work order is destroyed (`STORE.pop`), and the
+    # PO it mirrors (`purchase.delete_purchase`, above) is Owner-only, so this
+    # is too: CLIENT_CHANGES.md §0 forty-first block, ruling I — the same
+    # access as the PO, per action. An issued or cancelled work order has no
+    # delete at all; it is cancelled and reissued.
+    "workorder.delete_wo",
 }
 
 

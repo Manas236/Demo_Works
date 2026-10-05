@@ -2279,6 +2279,51 @@ def _zone(group, m) -> str:
         </section>"""
 
 
+def _work_orders_zone() -> str:
+    """
+    The Work Orders card (5 October 2026, CLIENT_CHANGES.md §0 forty-first
+    block) — "" for anybody the gate would refuse.
+
+    ⚠ **Deliberately NOT a `chrome.REGISTERS` entry, and therefore not on the
+      rail.** The registry draws the rail on every screen page, so one more
+      entry moves the `chrome` digest of every page golden in
+      `tests/test_page_golden.py`; the brief allowed a nav entry only if it
+      moved no golden, so the rail entry is QUEUED (STATE.md) and this card is
+      the way in. It sits ABOVE the Modules zone and outside it, because the
+      zones and the rail name exactly the same registers
+      (`tests/test_sidebar.py`) and this one is not on the rail yet.
+
+    The count is read live from the store; the link is a `url_for` string, so
+    this module never imports `workorder.py` (which imports this one).
+    """
+    import auth
+
+    if not auth.can_reach("workorder.list_wos"):
+        return ""
+    n = len(STORE.get("work_orders") or {})
+    return f"""
+        <div class="zone">
+          <div class="zone-hd">
+            <h2>Work Orders</h2>
+            <span class="zn-sub">work assigned to petty contractors</span>
+          </div>
+          <section class="mod-group g-buy">
+            <div class="mods">
+          <a href="{url_for('workorder.list_wos')}" class="card">
+            <div class="card-icon">{ICONS['draft']}</div>
+            <div class="card-body">
+              <div class="card-title">Work Orders</div>
+              <div class="mc-fig"><b>{n}</b><span class="mc-unit">raised</span></div>
+              <div class="card-desc">material and labour rates &middot; not a purchase order</div>
+            </div>
+            <span class="mc-chev">{ICONS['chevron']}</span>
+          </a>
+            </div>
+          </section>
+        </div>
+"""
+
+
 def _zones(m) -> list:
     """Every zone this user gets, in `chrome.GROUPS` order; empty ones are ""."""
     return [_zone(g, m) for g in chrome.GROUPS]
@@ -2475,7 +2520,7 @@ def index():
 {boq_cta}
         {insight}
 {chain}
-{modules_zone}{nothing_here}
+{_work_orders_zone()}{modules_zone}{nothing_here}
 
         <footer>
           <p>{B.COMPANY_NAME} &nbsp;·&nbsp; {B.APP_SUBTITLE} &nbsp;·&nbsp; internal use</p>

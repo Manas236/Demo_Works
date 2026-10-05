@@ -2824,31 +2824,7 @@ RA_DOC_STYLES = """
     padding-bottom:2mm;
   }
 
-  /* The lifecycle overprint. A draft or a cancelled bill must never be
-     mistakable for a live tax invoice, on screen OR on paper, so neither rule
-     sits behind a `@media screen`, and the band forces its background through
-     with print-color-adjust. The watermark is a bordered, coloured word rather
-     than a filled block, so it still reads when a browser is printing with
-     backgrounds off. */
-  .quotation-doc .lc-mark {
-    position:absolute; top:45%; left:50%;
-    transform:translate(-50%,-50%) rotate(-24deg);
-    font-size:5.5rem; font-weight:800; letter-spacing:.35rem;
-    border:6px solid currentColor; border-radius:12px;
-    padding:.35rem 2rem; opacity:.18; pointer-events:none;
-    white-space:nowrap; z-index:2;
-  }
-  .quotation-doc .lc-band {
-    margin:0 0 3mm; padding:2mm 3mm;
-    font-size:var(--fs-sm); font-weight:700; text-align:center;
-    border:1px solid currentColor;
-    print-color-adjust:exact; -webkit-print-color-adjust:exact;
-  }
-  .quotation-doc .lc-draft { color:#b45309; }
-  .quotation-doc .lc-band.lc-draft { background:#fffbeb; }
-  .quotation-doc .lc-cancelled { color:#b91c1c; }
-  .quotation-doc .lc-band.lc-cancelled { background:#fef2f2; }
-
+""" + DS.LIFECYCLE_CSS + """
   /* The carried-balance memo. Framed OUTSIDE `.doc-box`, deliberately: it is a
      statement about earlier bills, not a charge on this one, and it must not
      read as part of the tax computation it sits under. */

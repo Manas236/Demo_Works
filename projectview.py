@@ -55,6 +55,9 @@ from store import STORE
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from ra import revision_chain
+# 5 Oct 2026 — the Work Orders panel. What crosses is RENDERED CELLS (one
+# work order per row, its own value, no total): `attendance.py`'s arrangement.
+import workorder as WO
 
 projectview_bp = Blueprint("projectview", __name__, url_prefix="/projects")
 
@@ -596,6 +599,12 @@ def view_project(id: str):
     else:
         po_html = '<tr><td colspan="4" style="color:var(--muted);">No purchase orders attached.</td></tr>'
 
+    # Work orders (5 Oct 2026) — listed only, and only where this user may
+    # open one. The empty string when the project has none, so the page is
+    # byte-for-byte what it was for every project without a work order.
+    wo_panel = (WO.project_panel_html(id)
+                if auth.can_reach("workorder.view_wo") else "")
+
     # Charges
     attached_charges = [c for c in STORE.get("charges", {}).values() if c.get("project_id") == id]
     attached_charges.sort(key=lambda c: str(c.get("created_at") or ""), reverse=True)
@@ -927,7 +936,7 @@ def view_project(id: str):
         </tbody>
       </table>
     </div>
-
+{wo_panel}
     <!-- Charges Panel -->
     <div class="panel">
       <div class="panel-head">

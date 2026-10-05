@@ -577,6 +577,56 @@ COPY_STYLES = f"""
 
 
 # =============================================================================
+# THE LIFECYCLE OVERPRINT — DRAFT / CANCELLED (moved here 5 October 2026)
+# =============================================================================
+#
+# Raw CSS, `BANK_CSS`'s arrangement exactly: ONE copy of the rules, spliced
+# back into `ra.RA_DOC_STYLES` at the character position it always occupied,
+# so the RA bill's stylesheet is byte-for-byte what it was (a test pins its
+# sha256 from before the move, and the RA print golden holds the page).
+#
+# ⚠ **It moved because a second document needs it and may not import the
+#   first.** The work order (`workorder.py`, CLIENT_CHANGES.md §0 forty-first
+#   block, ruling E) prints DRAFT and CANCELLED exactly as the RA bill does,
+#   and `workorder -> ra` is refused at AST level. A copy pasted into the work
+#   order would be a second overprint that drifts from the first — the reason
+#   this module exists.
+#
+# The text below — the comment included — is the RA sheet's, verbatim; it
+# speaks of a "live tax invoice" because the RA bill is one. The rules
+# themselves name no document. The positioned ancestor the `.lc-mark`
+# watermark needs is each document's own (`.ra-doc`, `.wo-doc`).
+# `invoice.INVOICE_STYLES` carries its own older `.lc-*` copy and is
+# deliberately untouched: the pinned `/invoice/` register loads that sheet.
+LIFECYCLE_CSS = """\
+  /* The lifecycle overprint. A draft or a cancelled bill must never be
+     mistakable for a live tax invoice, on screen OR on paper, so neither rule
+     sits behind a `@media screen`, and the band forces its background through
+     with print-color-adjust. The watermark is a bordered, coloured word rather
+     than a filled block, so it still reads when a browser is printing with
+     backgrounds off. */
+  .quotation-doc .lc-mark {
+    position:absolute; top:45%; left:50%;
+    transform:translate(-50%,-50%) rotate(-24deg);
+    font-size:5.5rem; font-weight:800; letter-spacing:.35rem;
+    border:6px solid currentColor; border-radius:12px;
+    padding:.35rem 2rem; opacity:.18; pointer-events:none;
+    white-space:nowrap; z-index:2;
+  }
+  .quotation-doc .lc-band {
+    margin:0 0 3mm; padding:2mm 3mm;
+    font-size:var(--fs-sm); font-weight:700; text-align:center;
+    border:1px solid currentColor;
+    print-color-adjust:exact; -webkit-print-color-adjust:exact;
+  }
+  .quotation-doc .lc-draft { color:#b45309; }
+  .quotation-doc .lc-band.lc-draft { background:#fffbeb; }
+  .quotation-doc .lc-cancelled { color:#b91c1c; }
+  .quotation-doc .lc-band.lc-cancelled { background:#fef2f2; }
+"""
+
+
+# =============================================================================
 # THE PARTY BLOCK
 # =============================================================================
 
