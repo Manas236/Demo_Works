@@ -96,11 +96,11 @@ def _create(client, *rows, **over) -> str:
 @pytest.fixture(autouse=True)
 def _clean_wo():
     STORE.setdefault("work_orders", {}).clear()
-    W._STAGED.clear()
+    W.staged().clear()
     saved = STORE["settings"].pop(SET.WO_SERIES_RECORD, None)
     yield
     STORE["work_orders"].clear()
-    W._STAGED.clear()
+    W.staged().clear()
     STORE["settings"].pop(SET.WO_SERIES_RECORD, None)
     if saved is not None:
         STORE["settings"][SET.WO_SERIES_RECORD] = saved
@@ -130,8 +130,10 @@ def test_a_work_order_record_carries_no_tax_field_and_no_stored_amount(client):
     for key in ("total", "grand_total", "subtotal", "material_total", "labour_total"):
         assert key not in wo
     for line in wo["lines"]:
-        assert set(line) == {"line_id", "item_no", "description", "unit", "qty",
-                             "material_rate", "labour_rate"}
+        # `is_header` from 5 October 2026 (fix 2) — False on a priced line.
+        assert set(line) == {"line_id", "is_header", "item_no", "description",
+                             "unit", "qty", "material_rate", "labour_rate"}
+        assert line["is_header"] is False
     assert "amount" not in flat
 
 
@@ -390,7 +392,11 @@ def test_contractor_is_an_address_type_and_only_contractors_are_offered(client):
     # A vendor posted as a contractor is refused.
     data = {"date": "2026-10-05", "contractor_id": vendor, **_lines(*TWO_LINES)}
     html = client.post("/wo/create", data=data).get_data(as_text=True)
-    assert "not filed as a contractor" in html and not STORE["work_orders"]
+    assert not STORE["work_orders"]
+    # Fix 3 (c): the refusal names BOTH ways forward.
+    assert "not as a Contractor" in html
+    assert "one-off boxes below instead" in html and "no address-book entry" in html
+    assert "add the address to the address book as type" in html
 
 
 def test_a_picked_contractor_is_snapshotted_at_create(client):
@@ -699,9 +705,15 @@ def _confirm(client, wb, mapping=None, uid=None):
     return tok, client.post(f"/wo/import/{tok}", data=data)
 
 
+def _body(html):
+    """The form's line rows only — never the two <template> rows after them."""
+    return html[html.index('<tbody id="wo-lines-body">'):html.index("</tbody>",
+                html.index('<tbody id="wo-lines-body">'))]
+
+
 def _values(html, name):
-    """The posted values of one column of rows — the trailing template row dropped."""
-    return re.findall(rf'name="{name}" value="([^"]*)"', html)[:-1]
+    """The posted values of one column of the form's rows, in order."""
+    return re.findall(rf'name="{name}" value="([^"]*)"', _body(html))
 
 
 ONE_RATE = [
@@ -719,7 +731,7 @@ def test_a_sheet_with_one_rate_column_fills_that_track_and_leaves_the_other_blan
     html = r.get_data(as_text=True)
     assert _values(html, "ln_mrate") == ["100", "200"]
     assert _values(html, "ln_lrate") == ["", ""]                # never guessed, never 0
-    lrates = re.findall(r'<input type="text" name="ln_lrate"[^>]*>', html)[:-1]
+    lrates = re.findall(r'<input type="text" name="ln_lrate"[^>]*>', _body(html))
     assert all('class="wo-need"' in i and "no labour rate column" in i for i in lrates)
     assert "The sheet has one rate column" in html
     assert not STORE["work_orders"]                              # nothing saved
@@ -748,7 +760,10 @@ def test_both_tracks_import_and_the_reader_rules_carry_over(client):
     assert _values(html, "ln_mrate") == ["", "400", "300", "", "20"]
     assert _values(html, "ln_lrate") == ["", "90", "80", "30", "10"]
     assert "rate only (RO) on the sheet" in html
-    assert "a heading or specification on the sheet" in html     # blank and marked
+    # Row 2 ("1  Pipe work") is a HEADING line (fix 2): no figure, nothing ringed.
+    assert _values(html, "ln_hdr") == ["1", "0", "0", "0", "0"]
+    head = _body(html).split('<tr class="wo-ln')[1]
+    assert "wo-hd" in head and 'class="wo-need"' not in head
     assert "no material rate on this row" in html                 # row 2's blank
 
 
@@ -759,7 +774,7 @@ def test_a_rate_column_that_names_no_track_must_be_chosen(client):
     html = r.get_data(as_text=True)
     assert "does not say which: choose Material rate or Labour rate" in html
     assert not re.search(r'id="wo-form"', html)
-    assert tok in W._STAGED                                      # not consumed
+    assert tok in W.staged()                                     # not consumed
 
 
 def test_the_mapping_needs_a_description_and_a_quantity(client):
@@ -782,7 +797,7 @@ def test_a_staged_import_belongs_to_its_uploader_and_is_consumed(client):
     r = client.get(f"/wo/import/{tok}")
     assert r.status_code == 302 and "expired+or+is+not+yours" in r.headers["Location"]
     tok2, r = _confirm(client, _sheet(ONE_RATE))
-    assert r.status_code == 200 and tok2 not in W._STAGED
+    assert r.status_code == 200 and tok2 not in W.staged()
 
 
 def test_an_imported_sheet_saves_through_the_ordinary_form(client):
@@ -818,7 +833,7 @@ def test_a_real_workbook_goes_through_upload_preview_and_form(client):
     tok = r.headers["Location"].rsplit("/", 1)[-1]
     html = client.get(f"/wo/import/{tok}").get_data(as_text=True)
     assert "wo.xlsx" in html and "Material rate" in html
-    grid = W._STAGED[tok]["wb"]["grid"][W._STAGED[tok]["sheet"]]
+    grid = W._grid(W.staged()[tok])
     data = {f"map_{k}": v for k, v in W.guess_mapping(grid).items()}
     data["act"] = "confirm"
     html = client.post(f"/wo/import/{tok}", data=data).get_data(as_text=True)
@@ -828,7 +843,7 @@ def test_a_real_workbook_goes_through_upload_preview_and_form(client):
 def test_a_file_that_is_not_a_workbook_is_refused_in_words(client):
     r = client.post("/wo/import", data={"workbook": (io.BytesIO(b"not,a,workbook"), "x.csv")},
                     content_type="multipart/form-data")
-    assert r.status_code == 200 and not W._STAGED
+    assert r.status_code == 200 and not W.staged()
     assert "alert-error" in r.get_data(as_text=True)
 
 
@@ -910,3 +925,306 @@ def test_a_stored_work_order_round_trips_through_the_json_blob(client):
     wo = STORE["work_orders"][_create(client)]
     back = json.loads(db._blob(wo))
     assert back == wo
+
+
+# ══ FIX 1 (5 Oct 2026) — the import is staged by the BOQ importer's mechanism ═
+
+def _xlsx(rows) -> bytes:
+    openpyxl = pytest.importorskip("openpyxl")
+    wb = openpyxl.Workbook()
+    for row in rows:
+        wb.active.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_staging_is_the_boq_mechanism_in_a_persisted_collection_of_its_own():
+    import boqimport
+    import importstage as IS
+    assert not hasattr(W, "_STAGED")                     # no module-level cache
+    assert "wo_imports" in db.COLLECTIONS and "wo_imports" in db.LABELS
+    assert "boq_imports" in db.COLLECTIONS               # each importer its own
+    assert W.STAGE_TTL_SECONDS == boqimport.STAGE_TTL_SECONDS == IS.STAGE_TTL_SECONDS == 24 * 3600
+    assert W.MAX_STAGED_PER_USER == boqimport.MAX_STAGED_PER_USER == IS.MAX_STAGED_PER_USER
+    from conftest import ensure_test_user
+    tok = W.stage(_sheet(ONE_RATE), "x.xlsx", ensure_test_user()["id"])
+    row = STORE["wo_imports"][tok]
+    assert row["id"] == row["token"] == tok
+    assert {"user_id", "created_at", "created_ts", "filename", "format", "sheets",
+            "grid", "sheet_index", "mapping"} <= set(row)
+    assert "wb" not in row                               # the grid, never the workbook
+
+
+def test_a_staged_import_survives_a_new_process(client, fake_db):
+    """
+    Stage in one request; persist through `db.sync()` exactly as a teardown
+    does; empty the store as a restarted process's RAM is; load it back as
+    `db.load_into()` does at boot; and complete the mapping from a FRESH test
+    client. The staged row is the only thing that crossed.
+    """
+    import app as app_module
+    from conftest import ensure_test_user
+    data = _xlsx([["S.No", "Description of Work", "Unit", "Qty", "Material Rate",
+                   "Labour Rate"], [1, "Core cutting", "nos", 12, 0, 350],
+                  [2, "Hanger supports", "nos", 40, 85, 30]])
+    r = client.post("/wo/import", data={"workbook": (io.BytesIO(data), "wo.xlsx")},
+                    content_type="multipart/form-data")
+    tok = r.headers["Location"].rsplit("/", 1)[-1]
+    assert tok in STORE["wo_imports"]
+
+    db.sync({c: dict(STORE.get(c) or {}) for c in db.COLLECTIONS})
+    assert tok in fake_db.rows["wo_imports"]             # it reached the database
+    STORE["wo_imports"].clear()                          # a new process: RAM empty
+    fresh = {c: {} for c in db.COLLECTIONS}
+    db.load_into(fresh)                                  # ...and the boot load
+    STORE["wo_imports"].update(fresh["wo_imports"])
+
+    with app_module.app.test_client() as c2:
+        with c2.session_transaction() as sess:
+            sess[auth.SESSION_KEY] = ensure_test_user()["id"]
+        grid = W._grid(STORE["wo_imports"][tok])
+        form = {f"map_{k}": v for k, v in W.guess_mapping(grid).items()}
+        form["act"] = "confirm"
+        html = c2.post(f"/wo/import/{tok}", data=form).get_data(as_text=True)
+    assert "Core cutting" in _body(html) and "Hanger supports" in _body(html)
+    assert _values(html, "ln_mrate") == ["0", "85"]
+    assert _values(html, "ln_lrate") == ["350", "30"]
+    assert tok not in STORE["wo_imports"]                # consumed
+
+
+def test_without_the_persisted_row_the_token_is_gone(client):
+    """The control for the test above: it is the stored row that carries it."""
+    from conftest import ensure_test_user
+    tok = W.stage(_sheet(ONE_RATE), "x.xlsx", ensure_test_user()["id"])
+    STORE["wo_imports"].clear()
+    r = client.get(f"/wo/import/{tok}")
+    assert r.status_code == 302 and "expired+or+is+not+yours" in r.headers["Location"]
+
+
+def test_a_staged_row_expires_after_the_boq_ttl_and_the_cap_is_per_collection(client):
+    from conftest import ensure_test_user
+    import boqimport
+    uid = ensure_test_user()["id"]
+    old = W.stage(_sheet(ONE_RATE), "old.xlsx", uid)
+    STORE["wo_imports"][old]["created_ts"] -= W.STAGE_TTL_SECONDS + 1
+    client.get("/wo/import")                              # every request purges
+    assert old not in STORE["wo_imports"]
+    boq_toks = [boqimport.stage(_sheet(ONE_RATE), f"b{i}.xlsx", uid)[0] for i in range(3)]
+    wo_toks = [W.stage(_sheet(ONE_RATE), f"w{i}.xlsx", uid) for i in range(4)]
+    assert len(STORE["wo_imports"]) == W.MAX_STAGED_PER_USER   # its own cap...
+    assert wo_toks[0] not in STORE["wo_imports"]
+    assert all(t in STORE["boq_imports"] for t in boq_toks)    # ...never the BOQ's
+    STORE["boq_imports"].clear()
+    STORE["import_layouts"].clear()
+
+
+# ══ FIX 2 (5 Oct 2026) — heading rows are HEADER lines ════════════════════════
+
+TWO_SECTIONS = [
+    ["Sr. No.", "Description", "Unit", "Qty", "Material Rate", "Labour Rate"],
+    ["A", "CIVIL WORKS", None, None, None, None],
+    ["1", "Excavation", "cum", 10, 100, 50],
+    ["2", "Pipe work", None, None, None, None],
+    ["2.1", "50 NB pipe", "m", 5, 400, 90],
+    ["B", "ELECTRICAL WORKS", None, None, None, None],
+    ["1", "Cabling", "m", 20, 30, 10],
+]
+
+
+def _form_back(html, **header):
+    """Post the prefilled form back exactly as rendered — no edit at all."""
+    body = _body(html)
+    data = {"date": "2026-10-05", "contractor_name": "Ravi", **header}
+    for name in ("ln_id", "ln_note", "ln_hdr", "ln_item", "ln_unit", "ln_qty",
+                 "ln_mrate", "ln_lrate"):
+        data[name] = re.findall(rf'name="{name}" value="([^"]*)"', body)
+    data["ln_desc"] = [__import__("html").unescape(t) for t in
+                       re.findall(r'<textarea name="ln_desc"[^>]*>(.*?)</textarea>', body, re.S)]
+    return data
+
+
+def test_a_sheet_with_two_section_headings_saves_without_any_edit(client):
+    _tok, r = _confirm(client, _sheet(TWO_SECTIONS))
+    html = r.get_data(as_text=True)
+    assert _values(html, "ln_hdr") == ["1", "0", "1", "0", "1", "0"]
+    assert _values(html, "ln_item") == ["A", "1", "2", "2.1", "B", "1"]
+    assert 'class="wo-need"' not in _body(html)          # nothing to answer
+    assert "3 lines and 3 headings" in html
+    r = client.post("/wo/create", data=_form_back(html))
+    assert r.status_code == 302, r.get_data(as_text=True)[:800]
+    (wo,) = STORE["work_orders"].values()
+    heads = [(l["item_no"], l["description"]) for l in wo["lines"] if l["is_header"]]
+    assert heads == [("A", "CIVIL WORKS"), ("2", "Pipe work"), ("B", "ELECTRICAL WORKS")]
+    for l in wo["lines"]:
+        if l["is_header"]:
+            assert (l["unit"], l["qty"], l["material_rate"], l["labour_rate"]) == ("", None, None, None)
+    # 10x100 + 5x400 + 20x30 material; 10x50 + 5x90 + 20x10 labour.
+    assert W.totals_of(wo) == {"material": 3600.0, "labour": 1150.0, "grand": 4750.0}
+
+
+def test_a_section_code_the_sheet_never_wrote_is_not_printed():
+    rows = [["Sr. No.", "Description", "Unit", "Qty", "Material Rate", "Labour Rate"],
+            [None, "CIVIL WORKS", None, None, None, None],
+            ["1", "Excavation", "cum", 10, 100, 50]]
+    wb = _sheet(rows)
+    grid = wb["grid"][0]
+    m = W.guess_mapping(grid)
+    result = SI.build(grid, {c: W._TO_SI.get(t, "") for c, t in m.items()})
+    out = W.rows_from_build(result, m, W.item_column_values(grid, m))
+    heads = [(r["item_no"], r["description"]) for r in out if r["is_header"]]
+    assert all(item == "" for item, _d in heads)
+
+
+def test_headers_are_excluded_from_every_total_even_carrying_stray_figures(client):
+    data = {"date": "2026-10-05", "contractor_name": "Ravi",
+            "ln_id": ["", ""], "ln_note": ["", ""], "ln_hdr": ["1", "0"],
+            "ln_item": ["A", "1"], "ln_desc": ["CIVIL WORKS", "Excavation"],
+            "ln_unit": ["m", "cum"], "ln_qty": ["99", "10"],
+            "ln_mrate": ["99", "100"], "ln_lrate": ["99", "50"]}
+    assert client.post("/wo/create", data=data).status_code == 302
+    (wo,) = STORE["work_orders"].values()
+    head = wo["lines"][0]
+    assert head["is_header"] and (head["unit"], head["qty"], head["material_rate"],
+                                  head["labour_rate"]) == ("", None, None, None)
+    assert W.totals_of(wo) == {"material": 1000.0, "labour": 500.0, "grand": 1500.0}
+    # A stray figure written onto a heading by hand is still never summed.
+    head.update(qty=5, material_rate=7, labour_rate=7)
+    assert W.totals_of(wo)["grand"] == 1500.0
+    html = client.get("/wo/").get_data(as_text=True)
+    assert ">1,500.00<" in html
+
+
+def test_the_print_and_the_view_show_a_heading_the_way_the_boq_print_does(client):
+    data = {"date": "2026-10-05", "contractor_name": "Ravi",
+            "ln_id": ["", "", ""], "ln_note": ["", "", ""], "ln_hdr": ["1", "0", "0"],
+            "ln_item": ["A", "", ""], "ln_desc": ["CIVIL WORKS", "Excavation", "Backfill"],
+            "ln_unit": ["", "cum", "cum"], "ln_qty": ["", "10", "2"],
+            "ln_mrate": ["", "100", "5"], "ln_lrate": ["", "50", "5"]}
+    client.post("/wo/create", data=data)
+    (wid,) = STORE["work_orders"]
+    for url in (f"/wo/print/{wid}", f"/wo/view/{wid}"):
+        html = client.get(url).get_data(as_text=True)
+        assert ('<tr class="row-assembly">\n          <td class="c-sno">A</td>\n'
+                '          <td colspan="7" class="c-desc">CIVIL WORKS</td>') in html.replace("\r\n", "\n"), url
+        # The priced lines are numbered 1 and 2: a heading takes no position.
+        assert re.findall(r'<td class="c-sno">([^<]*)</td>', html) == ["A", "1", "2"]
+    # 10x100 + 2x5 material, 10x50 + 2x5 labour — the heading adds nothing.
+    assert ">1,010.00<" in html and ">510.00<" in html and ">1,520.00<" in html
+    assert "Grand Total (Material + Labour)" in html
+
+
+def test_a_real_line_with_a_blank_rate_is_still_refused_beside_a_heading(client):
+    data = {"date": "2026-10-05", "contractor_name": "Ravi",
+            "ln_id": ["", ""], "ln_note": ["", ""], "ln_hdr": ["1", "0"],
+            "ln_item": ["A", "1"], "ln_desc": ["CIVIL WORKS", "Excavation"],
+            "ln_unit": ["", "cum"], "ln_qty": ["", "10"],
+            "ln_mrate": ["", "100"], "ln_lrate": ["", ""]}
+    html = client.post("/wo/create", data=data).get_data(as_text=True)
+    assert not STORE["work_orders"]
+    assert "Line 2: needs a labour rate" in html and "Line 1:" not in html
+
+
+def test_a_heading_alone_is_not_a_work_order_and_a_heading_needs_words(client):
+    base = {"date": "2026-10-05", "contractor_name": "Ravi", "ln_id": [""],
+            "ln_note": [""], "ln_hdr": ["1"], "ln_unit": [""], "ln_qty": [""],
+            "ln_mrate": [""], "ln_lrate": [""]}
+    html = client.post("/wo/create", data={**base, "ln_item": ["A"],
+                                            "ln_desc": ["CIVIL"]}).get_data(as_text=True)
+    assert "a heading alone orders nothing" in html and not STORE["work_orders"]
+    html = client.post("/wo/create", data={**base, "ln_hdr": ["1", "0"], "ln_id": ["", ""],
+                                            "ln_note": ["", ""], "ln_item": ["A", "1"],
+                                            "ln_desc": ["", "Dig"], "ln_unit": ["", "m"],
+                                            "ln_qty": ["", "1"], "ln_mrate": ["", "1"],
+                                            "ln_lrate": ["", "1"]}).get_data(as_text=True)
+    assert "Line 1: needs a description" in html and not STORE["work_orders"]
+
+
+def test_headings_are_added_and_deleted_by_hand_on_the_form(client):
+    html = client.get("/wo/create").get_data(as_text=True)
+    assert '<template id="wo-hd-tpl">' in html and "woAddHeading()" in html
+    tpl = html[html.index('<template id="wo-hd-tpl">'):]
+    assert 'name="ln_hdr" value="1"' in tpl[:tpl.index("</template>")]
+    data = {"date": "2026-10-05", "contractor_name": "Ravi",
+            "ln_id": ["", ""], "ln_note": ["", ""], "ln_hdr": ["1", "0"],
+            "ln_item": ["A", "1"], "ln_desc": ["CIVIL WORKS", "Excavation"],
+            "ln_unit": ["", "cum"], "ln_qty": ["", "10"],
+            "ln_mrate": ["", "100"], "ln_lrate": ["", "50"]}
+    client.post("/wo/create", data=data)
+    (wid,) = STORE["work_orders"]
+    keep = STORE["work_orders"][wid]["lines"][1]["line_id"]
+    edit = client.get(f"/wo/edit/{wid}").get_data(as_text=True)
+    assert _values(edit, "ln_hdr") == ["1", "0"]               # it comes back a heading
+    # Delete the heading on the form: post only the priced row.
+    r = client.post(f"/wo/edit/{wid}", data={
+        "date": "2026-10-05", "contractor_name": "Ravi", "ln_id": [keep],
+        "ln_note": [""], "ln_hdr": ["0"], "ln_item": ["1"], "ln_desc": ["Excavation"],
+        "ln_unit": ["cum"], "ln_qty": ["10"], "ln_mrate": ["100"], "ln_lrate": ["50"]})
+    assert r.status_code == 302
+    lines = STORE["work_orders"][wid]["lines"]
+    assert [l["is_header"] for l in lines] == [False] and lines[0]["line_id"] == keep
+
+
+# ══ FIX 3 (5 Oct 2026) — ruling G, verified ═══════════════════════════════════
+
+def test_a_contractor_can_be_typed_with_no_address_book_entry_at_all(client):
+    """(a) Name, address, GSTIN and phone — the book emptied first."""
+    saved = dict(STORE["addresses"])
+    STORE["addresses"].clear()
+    try:
+        assert "No contractor is filed" in client.get("/wo/create").get_data(as_text=True)
+        wid = _create(client, contractor_id="", contractor_name="Sai Painters",
+                      contractor_addr="Shop 3, Wakad\nPune 411057",
+                      contractor_gstin="27aaapz1234c1zv", contractor_phone="+91 98200 11111")
+        assert not STORE["addresses"]                    # nothing was filed
+        wo = STORE["work_orders"][wid]
+        assert (wo["contractor_id"], wo["contractor_source"], wo["contractor_name"]) == (
+            "", "typed", "Sai Painters")
+        assert wo["to"] == "Sai Painters\nShop 3, Wakad\nPune 411057"
+        assert wo["contractor_gstin"] == "27AAAPZ1234C1ZV"
+        assert wo["contractor_phone"] == "+91 98200 11111"
+        html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+        for text in ("Sai Painters", "Shop 3, Wakad", "27AAAPZ1234C1ZV", "+91 98200 11111"):
+            assert text in html, text
+        edit = client.get(f"/wo/edit/{wid}").get_data(as_text=True)
+        assert 'value="+91 98200 11111"' in edit           # handed back on edit
+    finally:
+        STORE["addresses"].clear()
+        STORE["addresses"].update(saved)
+
+
+def test_a_picked_contractor_snapshots_the_same_fields_phone_included(client):
+    con = _contractor()
+    STORE["addresses"][con]["phone"] = "020 2712 0000"
+    wid = _create(client, contractor_id=con, contractor_name="")
+    wo = STORE["work_orders"][wid]
+    assert wo["contractor_phone"] == "020 2712 0000"
+    typed = STORE["work_orders"][_create(client)]
+    assert set(wo) == set(typed)                         # the same snapshot shape
+    STORE["addresses"][con]["phone"] = "changed"
+    assert "020 2712 0000" in client.get(f"/wo/print/{wid}").get_data(as_text=True)
+
+
+def test_a_work_order_with_no_phone_prints_no_phone_row(client):
+    wid = _create(client)
+    assert "Your Phone" not in client.get(f"/wo/print/{wid}").get_data(as_text=True)
+
+
+def test_gstin_auto_fill_is_not_gated_by_type_anywhere(client):
+    """(b) The lookup route takes no type; the form's script special-cases only
+    `site`; a contractor's form carries the same GST widget a vendor's does."""
+    import address
+    import test_gst_lookup as TG
+    address.ensure_demo_addresses()
+    TG.plant()
+    res = client.post("/address/gst/lookup", data={"gstin": TG.GOOD}).get_json()
+    assert res["ok"] and res["result"]["gstin"] == TG.GOOD
+    add = client.get("/address/add").get_data(as_text=True)
+    assert "var NO_ADDRESS_FILL = 'site';" in add
+    assert add.count("NO_ADDRESS_FILL") >= 1 and "'contractor'" not in add
+    vendor = next(a for a, r in STORE["addresses"].items() if r.get("type") == "vendor")
+    con = _contractor()
+    v_html = client.get(f"/address/edit/{vendor}").get_data(as_text=True)
+    c_html = client.get(f"/address/edit/{con}").get_data(as_text=True)
+    for marker in ('id="gst-captcha"', '"lookup": ', "NO_ADDRESS_FILL"):
+        assert (marker in v_html) == (marker in c_html), marker

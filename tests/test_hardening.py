@@ -130,7 +130,10 @@ def test_every_reference_collection_has_a_seeder(client):
                      # `work_orders` (5 Oct 2026) is transactional: a seeded one
                      # would be an instruction to a contractor nobody issued,
                      # spending a number from the client's running series.
-                     "work_orders"}
+                     "work_orders",
+                     # `wo_imports` (5 Oct 2026, fix pass) for `boq_imports`'
+                     # reason: a trace of somebody uploading THEIR OWN sheet.
+                     "wo_imports"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

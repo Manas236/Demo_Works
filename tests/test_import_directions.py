@@ -752,6 +752,20 @@ FORBIDDEN = [
     ("purchase",  "workorder", "any", "the PO and the WO are two documents; neither "
                                       "imports the other"),
     ("po_draft",  "workorder", "any", "the draft PO and the WO are two documents"),
+
+    # ── importstage.py — the staged Excel upload, ONE mechanism (5 Oct 2026) ─
+    # CLIENT_CHANGES.md §0 forty-second block, fix 1: moved out of boqimport.py
+    # so the work-order importer stages the BOQ importer's way. Both importers
+    # import the leaf; the leaf knows neither, or the two would be coupled
+    # through the basement — `dcbill.py`'s argument again.
+    ("importstage", "boqimport",   "any", "boqimport.py imports this leaf"),
+    ("importstage", "workorder",   "any", "workorder.py imports this leaf"),
+    ("importstage", "boq",         "any", "staging holds a grid, not a schedule"),
+    ("importstage", "sheetimport", "any", "the reader reads; staging only holds what it read"),
+    ("importstage", "flask",       "any", "it owns no route and builds no HTML"),
+    ("importstage", "auth",        "any", "the caller passes the user id"),
+    ("importstage", "db",          "any", "the rows are a STORE collection; db.py "
+                                          "mirrors them like any other"),
 ]
 
 
@@ -1071,6 +1085,11 @@ REQUIRED = [
                                    "(ruling F)"),
     ("projectview", "workorder",   "project_panel_html(): the Work Orders panel, "
                                    "rendered cells and no arithmetic (ruling H)"),
+    # 5 Oct 2026, fix pass — the two users of the one staging mechanism.
+    ("boqimport", "importstage", "purge / own / cap_per_user: the BOQ importer's own "
+                                 "staging, moved into the leaf and called from here"),
+    ("workorder", "importstage", "the work-order import stages through the SAME "
+                                 "mechanism, in its own wo_imports collection"),
 ]
 
 
@@ -1099,6 +1118,17 @@ def test_dcbill_imports_only_the_store():
     ours = {m.stem for m in REPO.glob("*.py")} - {"dcbill"}
     assert imports_of("dcbill") & ours == {"store"}
     assert "flask" not in imports_of("dcbill")
+
+
+def test_importstage_imports_only_the_store():
+    """
+    The staging leaf (5 October 2026, fix 1) — a WHITELIST, `dcbill.py`'s
+    test: of this application's own modules it may import `store` and nothing
+    else, so neither importer can reach the other through it.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"importstage"}
+    assert imports_of("importstage") & ours == {"store"}
+    assert "flask" not in imports_of("importstage")
 
 
 def test_measurement_reaches_auth_only_inside_its_raise_ra_button():

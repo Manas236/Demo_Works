@@ -252,10 +252,15 @@ POISONED_COLLECTIONS = (
     # Import BOQ from Excel (29 Sep 2026). `import_layouts` is NOT here: it
     # holds a hash and a column->target map, and no page prints either.
     "boq_imports",
-    # Work orders (5 Oct 2026). The staged Excel upload is NOT a collection —
-    # it lives in `workorder._STAGED`, in RAM — so its cells and file name are
-    # swept by `tests/test_work_orders.py` directly, the boq_imports note above.
+    # Work orders (5 Oct 2026).
     "work_orders",
+    # ⚠ …and from the same day's fix pass (CLIENT_CHANGES.md §0 forty-second
+    #   block, fix 1) the staged work-order upload IS a collection — the BOQ
+    #   importer's mechanism through `importstage.py` — so its file name and
+    #   sheet names are poisoned here like `boq_imports`' (the cells are
+    #   strings inside lists, which `_poison()` never reaches; the import page
+    #   is swept with a payload in a cell by `tests/test_work_orders.py`).
+    "wo_imports",
 )
 
 # ⚠ Collections that are still poisoned, but whose **count** may legitimately be
@@ -426,8 +431,14 @@ POISONED_FIELDS = {
     # panel — checked by mutation before being pinned. `contractor_source` is
     # stored and printed nowhere, `vendor_source`'s case on the draft PO;
     # `date` reads as an id to `_poison()` (digits and dashes) and is skipped.
+    # The staged work-order upload (fix pass, 5 Oct 2026) — `boq_imports`' four,
+    # reaching the mapping page's banner and sheet picker.
+    "wo_imports": (
+        "created_at", "filename", "format", "sheets[]/name",
+    ),
     "work_orders": (
-        "contractor_name", "contractor_source", "created_at",
+        # `contractor_phone` from the 5 Oct fix pass (fix 3), checked by mutation.
+        "contractor_name", "contractor_phone", "contractor_source", "created_at",
         "lines[]/description", "lines[]/item_no", "lines[]/unit",
         "notes", "project_name", "ref", "to", "updated_at",
     ),}

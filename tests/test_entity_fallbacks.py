@@ -623,7 +623,7 @@ def populated(client):
     STORE.setdefault("boq_imports", {}).clear()
     STORE.setdefault("import_layouts", {}).clear()
     STORE.setdefault("work_orders", {}).clear()
-    workorder._STAGED.clear()
+    STORE.setdefault("wo_imports", {}).clear()
 
 
 def _a_work_order() -> str:
@@ -638,9 +638,16 @@ def _a_work_order() -> str:
         "contractor_id": "", "contractor_name": "Ravi Fabricators",
         "contractor_source": "typed", "to": "Ravi Fabricators\nPune",
         "contractor_gstin": "",
+        # 5 Oct 2026, fix pass — the typed phone, printed as "Your Phone".
+        "contractor_phone": "020 2712 0000",
         "project_id": "proj-1", "project_name": "Sify Bangalore",
         "notes": "Complete within 30 days",
         "lines": [
+            # 5 Oct 2026, fix pass — a HEADING line, so the sweep reaches the
+            # print's heading row as well as the priced ones.
+            {"line_id": "0a0a0a0a0a00", "is_header": True, "item_no": "A",
+             "description": "Civil works", "unit": "", "qty": None,
+             "material_rate": None, "labour_rate": None},
             {"line_id": "0a0a0a0a0a01", "item_no": "1", "unit": "m",
              "description": "Pipe laying", "qty": 10.0,
              "material_rate": 100.0, "labour_rate": 50.0},
