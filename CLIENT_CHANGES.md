@@ -4167,6 +4167,92 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 5 October 2026, by Manas Gawde — WORK ORDERS FOR PETTY CONTRACTORS · NO CHARGE · POST-GO-LIVE · RULINGS A TO J
+>
+> **A new block, not an amendment.** The fortieth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-first** occasion. It covers the items below
+> and nothing else.
+>
+> **What the client asked for — the call with Samruddhi, 5 October 2026.**
+> **Work Orders for petty contractors** (subcontractors): a document type
+> **distinct from a Purchase Order**. A PO buys material from a supplier; a
+> WO assigns work to a subcontractor. Issued under **Samruddhi's own name and
+> letterhead, exactly like their PO**. Lines can be **uploaded from Excel** and
+> **added / deleted on the form**, working exactly like the BOQ module does
+> today. Each line carries a **separate MATERIAL RATE and LABOUR RATE**. ⚠ The
+> client's sample WO sheet **has not arrived**; no sample was invented and
+> none was looked for.
+>
+> **Manas's rulings, final — built to, not re-decided:**
+>
+> - **A — its own module and collection.** `workorder.py`, collection
+>   `work_orders`; not inside `purchase.py`, not inside `po_draft.py`;
+>   separate collections, never embedded.
+> - **B — the print reuses `docsheet.py`**: the buy-side PO's letterhead, page
+>   frame, party block, table shell, amount in words, signature and bank
+>   conventions. Differences only where the WO needs them: the title **WORK
+>   ORDER**, the contractor in the vendor's place, and the line columns in C.
+>   **No GST block** — an open question to the client, recorded as a gap, and
+>   no tax field is added.
+> - **C — lines.** `line_id` = `uuid4().hex[:12]`, server-minted (the BOQ
+>   rule). Fields: `item_no` (a display label only), `description`, `unit`,
+>   `qty`, `material_rate`, `labour_rate`. Material amount, labour amount,
+>   line total and document totals are **DERIVED, never stored**. Printed
+>   table: Sr | Description | Unit | Qty | Material Rate | Material Amount |
+>   Labour Rate | Labour Amount, then a material total, a labour total and a
+>   grand total, with the amount in words on the grand total. Indian grouping
+>   through the existing money formatter, no symbol.
+> - **D — Excel import reuses `sheetimport.py`**, the detection the BOQ
+>   importer uses (group labels, rate-only lines, rows below the grand total,
+>   item-number rounding, prefill-then-review with blocking fields glowing and
+>   jump-to). The WO gets its **own** column mapping; the two rate tracks map to
+>   `material_rate` / `labour_rate`. **A sheet with only one rate column fills
+>   that track and leaves the other blank and flagged, never guessed.** Code
+>   moved out of `boq.py` only if needed, so `workorder.py` never imports it;
+>   every BOQ import test passes untouched.
+> - **E — lifecycle DRAFT / ISSUED / CANCELLED**, the RA bill's semantics.
+>   Edit and line add/delete only while DRAFT; an issued WO is cancelled and
+>   reissued, never edited; cancelling requires a reason; a cancelled WO prints
+>   with the RA bill's CANCELLED overprint; a DRAFT may be deleted (GET
+>   confirms, POST destroys), an issued or cancelled one may not.
+> - **F — numbering**: its own prefix and next number at `/settings`, in its
+>   **own settings record** (the draft-PO precedent, so the nav's amber dot does
+>   not count it). One **global** counter. A deleted draft never hands its
+>   number back.
+> - **G — the contractor**: an address-book picker with a new address type
+>   **Contractor**, plus the free-text fallback, exactly as the draft PO's
+>   vendor works. GSTIN auto-fill works for the Contractor type like every
+>   other type. Party fields are snapshotted at create; the print reads the
+>   WO's own snapshot.
+> - **H — an optional project link**: `project_id` with `project_name`
+>   snapshotted (the charges module's precedent). WOs are **listed** on
+>   `/projects/view/<id>` in their own panel, with **no P&L arithmetic**.
+>   Project P&L is **not** built in this pass.
+> - **I — access**: whoever can create, edit, issue, cancel and print
+>   `purchase.py` POs today gets exactly the same on WOs, mirrored per action.
+>   `docs/ACCESS_MATRIX.md` and its test updated. Nobody widened or narrowed.
+> - **J — snapshot immutability**: `/wo/print` and `/wo/view` are driven only
+>   by the WO's own stored rows — nothing re-read from a live BOQ, address or
+>   project.
+>
+> **Constraints given with the rulings:** no `/templates`, no `/static`;
+> `product.py` and `quotation.py` not edited; no foreign keys in `db.py`;
+> every existing print golden byte-identical, the copy labels on the DC, the
+> tax invoice and the RA tax invoice surviving; a new golden for the WO print;
+> a nav entry **only if it moves no golden**, otherwise a dashboard card and the
+> nav link recorded as queued.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his.** It
+> is new post-go-live scope on the buy side; it changes no CC-2 item's state,
+> it moves no Phase 3 bar, and the classification is his — an agent may not
+> extend it to anything this block does not name.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4750,6 +4836,51 @@ authorised by its own §0 block, which is where its commercial status lives.
 | G5 | BOQ import from Excel — cost sheets, rate-only lines, group labels, nothing below the grand total | ✅ **Built, not deployed** — 1 Oct 2026 under the §0 **thirty-ninth** block (the Iron Mountain sheet); extends G4; **commercial status not recorded — Manas's call** |
 | G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
 | G6 | RA bill raised FROM delivery challans or FROM the measurement sheet; a billed challan marked and blocked | ✅ **Built, not deployed** — 4 Oct 2026 under the §0 **fortieth** block (Manas's rulings A / B / C); **no charge, by Manas's ruling** |
+| G7 | Work Orders for petty contractors — material and labour rates per line, Excel upload, issued on Samruddhi's letterhead | ✅ **Built, not deployed** — 5 Oct 2026 under the §0 **forty-first** block (Manas's rulings A to J); **no charge, by Manas's ruling** |
+
+### G7 · Work Orders for petty contractors — ✅ Built, not deployed, no charge
+
+**What the client gets.** A new document, the **Work Order**, for work given
+to a petty contractor. It is not a purchase order: a purchase order buys
+material, a work order gives out work. It prints on Samruddhi's own
+letterhead, on the same sheet as their purchase order, headed **WORK ORDER**.
+
+- **Every line has two rates: material and labour.** The printed order shows,
+  per line, the material rate and amount and the labour rate and amount, then
+  the material total, the labour total and the grand total, with the grand
+  total in words. Every amount is worked out from the quantity and the rates,
+  so the paper can never disagree with itself.
+- **Lines can be typed, added and deleted on the form, or uploaded from an
+  Excel sheet.** The upload shows each column with a guess (Material rate,
+  Labour rate, Quantity…) for the operator to confirm, then opens the ordinary
+  form with every line filled in. **If the sheet has only one rate column, the
+  other rate is left blank and marked on every line** — it is never taken as
+  zero, and the form will not save until each one is typed (0 where there is
+  none).
+- **Draft, then issued.** A draft can be changed freely and deleted. Once
+  issued it cannot be changed; to change it, cancel it (a reason is required)
+  and raise a new one. A cancelled work order still prints, marked
+  CANCELLED, and its number is never given out again.
+- **Its own number series**, set at Settings — one running series, not reset
+  each year.
+- **The contractor** is picked from the address book (a new type,
+  **Contractor**, whose GSTIN fills itself like any other) or typed for a
+  one-off. A work order can be tagged to a project, and the project page lists
+  its work orders.
+
+**What it does not do.** No GST on a work order — that is a question back to
+you (below). It is not counted into any project profit figure; that is not
+built yet. It has not been tried against your own work-order sheet, because
+that sample has not arrived — the import is built to the BOQ importer's rules
+and will be checked against your sheet when it comes. The Work Orders page is
+reached from its own card on the dashboard; a link in the side menu is queued.
+
+**Open questions for you:** does a work order carry GST, and if so on which
+part — material, labour, or both? And will you send a sample of the work-order
+sheet your contractors use?
+
+Authorised by the §0 **forty-first** block, which is where its commercial
+status — **no charge** — is recorded as Manas's ruling.
 
 ### G6 · RA from a challan / a measurement sheet — ✅ Built, not deployed, no charge
 
