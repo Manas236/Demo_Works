@@ -84,7 +84,6 @@ import io
 import json
 import math
 import re
-import secrets
 import time
 
 from flask import Blueprint, redirect, request, url_for
@@ -92,6 +91,7 @@ from flask import Blueprint, redirect, request, url_for
 import auth
 import boq as BQ
 import branding as B
+import importstage as IS   # the staging mechanism, shared with workorder.py (5 Oct 2026)
 import pipeline as P
 import sheetimport as SI
 from chrome import BASE_STYLES, _nav
@@ -105,8 +105,11 @@ boqimport_bp = Blueprint("boqimport", __name__, url_prefix="/boq/import")
 # BUSINESS RULES — tune here, not in a branch
 # =============================================================================
 
-STAGE_TTL_SECONDS = 24 * 3600
-MAX_STAGED_PER_USER = 3
+# Moved into the leaf `importstage.py` with the mechanism (5 October 2026) and
+# re-exported here under the same names, which this module passes to it and
+# `tests/test_boq_import.py` reads.
+STAGE_TTL_SECONDS = IS.STAGE_TTL_SECONDS
+MAX_STAGED_PER_USER = IS.MAX_STAGED_PER_USER
 
 # Multipart overhead on top of the file itself: boundaries, part headers and
 # the filename. Anything past cap + this is refused from the Content-Length
@@ -143,7 +146,7 @@ def _uid() -> str:
 
 
 def _imports() -> dict:
-    return STORE.setdefault("boq_imports", {})
+    return IS.rows("boq_imports")
 
 
 def _layouts() -> dict:
@@ -153,6 +156,11 @@ def _layouts() -> dict:
 # =============================================================================
 # STAGING — purge, own, cap
 # =============================================================================
+#
+# ⚠ The bodies moved into the leaf `importstage.py` on 5 October 2026, verbatim
+#   and parameterised by collection, so the work-order importer stages through
+#   this SAME mechanism (CLIENT_CHANGES.md §0, forty-second block). These three
+#   stay, under their old names, as this module's own calls into it.
 
 def purge(now: float = None) -> int:
     """
@@ -160,33 +168,16 @@ def purge(now: float = None) -> int:
     this module. A row whose timestamp cannot be read is deleted too — an
     import nobody can date is an import nobody should be able to open.
     """
-    now = time.time() if now is None else now
-    gone = 0
-    for tok, rec in list(_imports().items()):
-        ts = rec.get("created_ts") if isinstance(rec, dict) else None
-        if not isinstance(ts, (int, float)) or isinstance(ts, bool) or now - ts > STAGE_TTL_SECONDS:
-            del _imports()[tok]
-            gone += 1
-    return gone
+    return IS.purge("boq_imports", STAGE_TTL_SECONDS, now)
 
 
 def _own(token: str):
     """The staged import under `token` if the signed-in user raised it."""
-    rec = _imports().get(str(token or ""))
-    if not isinstance(rec, dict):
-        return None
-    uid = _uid()
-    if not uid or rec.get("user_id") != uid:
-        return None
-    return rec
+    return IS.own("boq_imports", token, _uid())
 
 
 def _cap_per_user(uid: str) -> None:
-    mine = sorted(((rec.get("created_ts") or 0, tok) for tok, rec in _imports().items()
-                   if isinstance(rec, dict) and rec.get("user_id") == uid),
-                  reverse=True)
-    for _ts, tok in mine[MAX_STAGED_PER_USER:]:
-        del _imports()[tok]
+    IS.cap_per_user("boq_imports", uid, MAX_STAGED_PER_USER)
 
 
 def _grid(rec: dict):
@@ -229,7 +220,7 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
       a decision about one job, never remembered — so a known layout that
       reads as cost stops at the preview with its mapping applied.
     """
-    token = secrets.token_urlsafe(24)
+    token = IS.new_token()
     sel = wb["selected"]
     grid = wb["grid"][sel]
     mapping, layout = _known_mapping(grid)

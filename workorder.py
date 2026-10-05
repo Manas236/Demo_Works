@@ -50,7 +50,6 @@ import datetime
 import io
 import math
 import re
-import secrets
 import time
 import uuid
 from datetime import date as _date
@@ -59,6 +58,7 @@ from flask import Blueprint, redirect, request, url_for
 
 import branding as B
 import docsheet as DS
+import importstage as IS   # the staging mechanism the BOQ importer uses (5 Oct 2026)
 import pipeline as P
 import settings as SET
 import sheetimport as SI
@@ -100,9 +100,11 @@ DEFAULT_ROWS = 3
 # minted by the server, never typed and never printed.
 _LINE_ID = re.compile(r"\A[0-9a-f]{12}\Z")
 
-# The staged Excel upload — in RAM, owned, short-lived (see STAGING below).
-STAGE_TTL_SECONDS = 3600
-MAX_STAGED_PER_USER = 3
+# The staged Excel upload — persisted, owned, short-lived: the BOQ importer's
+# own mechanism and limits (`importstage.py`; see STAGING below).
+STAGE_COLLECTION = "wo_imports"
+STAGE_TTL_SECONDS = IS.STAGE_TTL_SECONDS
+MAX_STAGED_PER_USER = IS.MAX_STAGED_PER_USER
 FORM_OVERHEAD_BYTES = 64 * 1024
 PREVIEW_ROWS = 15
 PREVIEW_CELL_CHARS = 80
@@ -231,14 +233,26 @@ def _f(v) -> float:
     return x if math.isfinite(x) else 0.0
 
 
+def is_header(line) -> bool:
+    """
+    A HEADING line — the BOQ's `is_header` (5 October 2026, CLIENT_CHANGES.md
+    §0 forty-second block, fix 2): an item number and a description, and no
+    unit, quantity or rate. ⚠ `.get()`, always: a line written before the
+    field has no key and is a priced line.
+    """
+    return bool((line or {}).get("is_header"))
+
+
 def line_amounts(line: dict) -> tuple:
     """
     `(material_amount, labour_amount, line_total)` for one stored line.
 
     Each amount is `qty × rate` rounded to the paisa ONCE, and the line total is
     the sum of the two rounded amounts — so the printed columns add up to what
-    is printed beside them, to the paisa.
+    is printed beside them, to the paisa. A heading line has none: (0, 0, 0).
     """
+    if is_header(line):
+        return 0.0, 0.0, 0.0
     qty = _f(line.get("qty"))
     mat = round(qty * _f(line.get("material_rate")), 2)
     lab = round(qty * _f(line.get("labour_rate")), 2)
@@ -246,9 +260,14 @@ def line_amounts(line: dict) -> tuple:
 
 
 def totals_of(wo: dict) -> dict:
-    """`{"material", "labour", "grand"}` — the sums of the derived line amounts."""
+    """
+    `{"material", "labour", "grand"}` — the sums of the derived line amounts.
+    Heading lines are excluded — they carry no figure to sum.
+    """
     mat = lab = 0.0
     for line in (wo or {}).get("lines") or []:
+        if is_header(line):
+            continue
         m, l, _t = line_amounts(line)
         mat += m
         lab += l
@@ -309,6 +328,14 @@ def contractor_from(form) -> tuple:
     and cannot be spelled two ways on two documents. **The typed box is the
     fallback**, for a one-off contractor nobody has filed. Whichever was used
     is **snapshotted onto the record** — the print never reads the book.
+
+    ⚠ **Both paths snapshot the same five fields** — `contractor_name`,
+    `contractor_source`, `to`, `contractor_gstin` and, from 5 October 2026
+    (CLIENT_CHANGES.md §0 forty-second block, fix 3), `contractor_phone`: a
+    picked address gives its own phone, a typed contractor the one typed. The
+    phone is a field of its own rather than a line in `to`, because a picked
+    address's `to` (`address.format_address_lines()`) carries no phone either,
+    and the two paths must snapshot alike.
     """
     cid = (form.get("contractor_id") or "").strip()[:64]
     typed = (form.get("contractor_name") or "").strip()[:200]
@@ -318,8 +345,14 @@ def contractor_from(form) -> tuple:
         if not addr:
             return {}, "That contractor is no longer in the address book."
         if addr.get("type") not in CONTRACTOR_TYPES:
-            return {}, ("That address is not filed as a contractor. Choose a "
-                        "contractor, or type a one-off contractor's name.")
+            from address import ADDRESS_TYPES
+            kind = ADDRESS_TYPES.get(addr.get("type"), addr.get("type") or "another type")
+            return {}, (f"That address is filed as {kind}, not as a Contractor, so "
+                        f"it cannot be the contractor on a work order. Type the "
+                        f"contractor's name, address, GSTIN and phone in the "
+                        f"one-off boxes below instead — no address-book entry is "
+                        f"needed — or add the address to the address book as type "
+                        f"Contractor and pick it here.")
         return {
             "contractor_id": cid,
             "contractor_name": (addr.get("company") or addr.get("contact_name")
@@ -327,6 +360,7 @@ def contractor_from(form) -> tuple:
             "contractor_source": "book",
             "to": "\n".join(format_address_lines(addr)),
             "contractor_gstin": (addr.get("gstin") or "").strip(),
+            "contractor_phone": (addr.get("phone") or "").strip(),
         }, ""
 
     if typed:
@@ -338,6 +372,7 @@ def contractor_from(form) -> tuple:
                                         (form.get("contractor_addr") or "").strip()[:500]]
                             if x),
             "contractor_gstin": (form.get("contractor_gstin") or "").strip()[:15].upper(),
+            "contractor_phone": (form.get("contractor_phone") or "").strip()[:40],
         }, ""
 
     return {}, ("Choose a contractor from the address book, or type a one-off "
@@ -410,6 +445,7 @@ def posted_rows(form) -> list:
     cols = {f: form.getlist(name) for name, f in _FIELDS}
     ids = form.getlist("ln_id")
     notes = form.getlist("ln_note")
+    hdrs = form.getlist("ln_hdr")
     n = max([len(v) for v in cols.values()] + [len(ids)] or [0])
     rows = []
     for i in range(n):
@@ -418,6 +454,7 @@ def posted_rows(form) -> list:
             continue
         r["line_id"] = str((ids[i] if i < len(ids) else "") or "")[:64]
         r["note"] = str((notes[i] if i < len(notes) else "") or "")[:2000]
+        r["is_header"] = str((hdrs[i] if i < len(hdrs) else "") or "") == "1"
         rows.append(r)
     return rows
 
@@ -430,6 +467,9 @@ def lines_from_rows(rows: list, keep_ids=frozenset()) -> tuple:
     empty list means **nothing is saved**. Rules, each one a test:
 
     * a description is required;
+    * a HEADING line (`is_header`) carries an item number and a description
+      and nothing else: whatever was posted in its figure boxes is dropped,
+      and it is exempt from every figure rule below (fix 2, 5 October 2026);
     * the quantity and BOTH rates must be typed figures, 0 or more — a blank
       rate is refused, never read as 0, because "no labour on this line" and
       "nobody typed the labour rate yet" are different facts and only a typed
@@ -444,8 +484,9 @@ def lines_from_rows(rows: list, keep_ids=frozenset()) -> tuple:
         if not desc:
             problems.append({"row": i, "field": "description",
                              "message": "needs a description"})
-        figs = {}
-        for f in ("qty", "material_rate", "labour_rate"):
+        header = bool(r.get("is_header"))
+        figs = {"qty": None, "material_rate": None, "labour_rate": None}
+        for f in (() if header else ("qty", "material_rate", "labour_rate")):
             v, why = _figure(r.get(f))
             if why == "blank":
                 msg = (f"needs a {FIELD_WORDS[f]}" if f == "qty" else
@@ -469,16 +510,20 @@ def lines_from_rows(rows: list, keep_ids=frozenset()) -> tuple:
         used.add(lid)
         lines.append({
             "line_id": lid,
+            "is_header": header,
             "item_no": r.get("item_no", "").strip()[:MAX_SHORT_CHARS],
             "description": desc[:MAX_DESC_CHARS],
-            "unit": r.get("unit", "").strip()[:MAX_SHORT_CHARS],
+            "unit": "" if header else r.get("unit", "").strip()[:MAX_SHORT_CHARS],
             "qty": figs["qty"],
             "material_rate": figs["material_rate"],
             "labour_rate": figs["labour_rate"],
         })
-    if not rows:
+    if not any(not r.get("is_header") for r in rows):
         problems.append({"row": None, "field": "",
-                         "message": "Add at least one line to the work order."})
+                         "message": ("Add at least one priced line to the work "
+                                     "order — a heading alone orders nothing."
+                                     if rows else
+                                     "Add at least one line to the work order.")})
     if len(rows) > MAX_LINES:
         problems.append({"row": None, "field": "",
                          "message": (f"{len(rows)} lines is more than one work "
@@ -492,6 +537,7 @@ def rows_of(wo: dict) -> list:
     for line in wo.get("lines") or []:
         out.append({
             "line_id": line.get("line_id", ""),
+            "is_header": is_header(line),
             "item_no": line.get("item_no", ""),
             "description": line.get("description", ""),
             "unit": line.get("unit", ""),
@@ -591,6 +637,12 @@ WO_FORM_STYLES = "\n<style>\n" + """\
   .wo-flag { display:block; margin-top:.25rem; font-size:.74rem;
     color:#92400e; background:#fffbeb; border:1px solid #fde68a;
     border-radius:6px; padding:.15rem .45rem; }
+  /* A heading row on the form: the BOQ editor's spec line, restated. */
+  table.wo-lines tr.wo-hd td { background:var(--surface); }
+  table.wo-lines tr.wo-hd textarea { font-weight:700; }
+  .wo-hd-tag { display:block; font-size:.7rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+    margin-bottom:.2rem; }
   .wo-del { background:none; border:1px solid var(--border); border-radius:6px;
     color:#b91c1c; cursor:pointer; padding:.25rem .5rem; font-size:.8rem; }
   .wo-tools { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap;
@@ -627,6 +679,7 @@ WO_FORM_JS = """
 (function () {
   var body = document.getElementById('wo-lines-body');
   var tpl = document.getElementById('wo-row-tpl');
+  var htpl = document.getElementById('wo-hd-tpl');
   if (!body || !tpl) return;
   var NUM = /^\\s*[0-9][0-9,]*(\\.[0-9]+)?\\s*$|^\\s*\\.[0-9]+\\s*$/;
 
@@ -661,7 +714,8 @@ WO_FORM_JS = """
     }
   }
   function recalc() {
-    var rows = body.querySelectorAll('tr.wo-ln'), tm = 0, tl = 0;
+    /* Heading rows carry no figure and are left out of every total. */
+    var rows = body.querySelectorAll('tr.wo-ln:not(.wo-hd)'), tm = 0, tl = 0;
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       var q = num(r.querySelector('[name=ln_qty]').value) || 0;
@@ -691,13 +745,15 @@ WO_FORM_JS = """
     list[0].scrollIntoView({block: 'center'});
     list[0].focus();
   };
-  window.woAdd = function () {
-    var row = tpl.content.firstElementChild.cloneNode(true);
+  function addFrom(t) {
+    var row = t.content.firstElementChild.cloneNode(true);
     body.appendChild(row);
     renumber(); recalc();
     var d = row.querySelector('[name=ln_desc]');
     if (d) d.focus();
-  };
+  }
+  window.woAdd = function () { addFrom(tpl); };
+  window.woAddHeading = function () { if (htpl) addFrom(htpl); };
   body.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.wo-del') : null;
     if (!b) return;
@@ -816,6 +872,11 @@ def _contractor_block(data: dict) -> str:
                  style="text-transform:uppercase;"
                  value="{P.esc(data.get('contractor_gstin', ''))}"/>
         </div>
+        <div class="form-group">
+          <label for="contractor_phone">Their phone <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+          <input type="text" id="contractor_phone" name="contractor_phone" maxlength="40"
+                 inputmode="tel" value="{P.esc(data.get('contractor_phone', ''))}"/>
+        </div>
         <div class="form-group span2">
           <label for="contractor_addr">Their address <span style="font-weight:500;text-transform:none;">(optional)</span></label>
           <textarea id="contractor_addr" name="contractor_addr" rows="2">{P.esc(data.get('contractor_addr', ''))}</textarea>
@@ -841,11 +902,30 @@ def _row_html(r: dict) -> str:
     notes = [n for n in str(r.get("note") or "").split("\n") if n.strip()]
     chips = "".join(f'<span class="wo-flag">{P.esc(n)}</span>' for n in notes)
     num = ' inputmode="decimal" autocomplete="off"'
+    if r.get("is_header"):
+        # A HEADING row: an item number and a description and nothing else. The
+        # figure boxes are posted EMPTY as hidden inputs so the parallel lists
+        # stay aligned row for row; the server drops them anyway.
+        return f"""
+        <tr class="wo-ln wo-hd">
+          <td><span class="wo-pos"></span>
+            <input type="hidden" name="ln_id" value="{P.esc(r.get('line_id', ''))}"/>
+            <input type="hidden" name="ln_note" value="{P.esc(r.get('note', ''))}"/>
+            <input type="hidden" name="ln_hdr" value="1"/>
+            <input type="hidden" name="ln_unit" value=""/>
+            <input type="hidden" name="ln_qty" value=""/>
+            <input type="hidden" name="ln_mrate" value=""/>
+            <input type="hidden" name="ln_lrate" value=""/></td>
+          <td class="c-item">{_cell("ln_item", r.get("item_no", ""), need, "item_no", aria="Heading item number")}</td>
+          <td colspan="7"><span class="wo-hd-tag">Heading &mdash; no quantity or rate</span>{_cell("ln_desc", r.get("description", ""), need, "description", textarea=True, aria="Heading")}{chips}</td>
+          <td><button type="button" class="wo-del" title="Delete this heading" aria-label="Delete this heading">&#10005;</button></td>
+        </tr>"""
     return f"""
         <tr class="wo-ln">
           <td><span class="wo-pos"></span>
             <input type="hidden" name="ln_id" value="{P.esc(r.get('line_id', ''))}"/>
-            <input type="hidden" name="ln_note" value="{P.esc(r.get('note', ''))}"/></td>
+            <input type="hidden" name="ln_note" value="{P.esc(r.get('note', ''))}"/>
+            <input type="hidden" name="ln_hdr" value="0"/></td>
           <td class="c-item">{_cell("ln_item", r.get("item_no", ""), need, "item_no", aria="Item number")}</td>
           <td>{_cell("ln_desc", r.get("description", ""), need, "description", textarea=True, aria="Description")}{chips}</td>
           <td class="c-unit">{_cell("ln_unit", r.get("unit", ""), need, "unit", aria="Unit")}</td>
@@ -858,9 +938,10 @@ def _row_html(r: dict) -> str:
         </tr>"""
 
 
-def _blank_row() -> dict:
+def _blank_row(header: bool = False) -> dict:
     return {"line_id": "", "item_no": "", "description": "", "unit": "",
-            "qty": "", "material_rate": "", "labour_rate": "", "note": ""}
+            "qty": "", "material_rate": "", "labour_rate": "", "note": "",
+            "is_header": header}
 
 
 def _mark(rows: list, problems: list) -> list:
@@ -900,6 +981,7 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
     rows = list(rows) or [_blank_row() for _ in range(DEFAULT_ROWS)]
     body_rows = "".join(_row_html(r) for r in rows)
     template_row = _row_html(_blank_row())
+    template_head = _row_html(_blank_row(header=True))
     n_need = sum(len(r.get("need") or {}) for r in rows)
     imp = ""
     if not editing and _can("workorder.import_wo"):
@@ -983,8 +1065,10 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
         </table>
       </div>
       <template id="wo-row-tpl">{template_row}</template>
+      <template id="wo-hd-tpl">{template_head}</template>
       <div class="wo-tools">
         <button type="button" class="btn btn-ghost" onclick="woAdd()">+ Add a line</button>
+        <button type="button" class="btn btn-ghost" onclick="woAddHeading()">+ Add a heading</button>
         <span style="font-size:.78rem;color:var(--muted);">The amounts above are a
           preview; the saved work order works them out again from each line's
           quantity and rates. A blank rate is not 0 &mdash; type 0 where there is none.</span>
@@ -1010,6 +1094,7 @@ def _form_data(form) -> dict:
         "contractor_id": (form.get("contractor_id") or "").strip()[:64],
         "contractor_name": (form.get("contractor_name") or "").strip()[:200],
         "contractor_gstin": (form.get("contractor_gstin") or "").strip()[:15],
+        "contractor_phone": (form.get("contractor_phone") or "").strip()[:40],
         "contractor_addr": (form.get("contractor_addr") or "").strip()[:500],
     }
 
@@ -1082,10 +1167,27 @@ def document_html(wo: dict) -> str:
     snapshotted name, and every figure is worked out from the stored lines.
     Nothing here reads the address book, a project or a schedule.
     """
-    rows = ""
-    for i, line in enumerate(wo.get("lines") or [], 1):
+    rows, pos = "", 0
+    for line in wo.get("lines") or []:
+        if is_header(line):
+            # A HEADING line (fix 2, 5 October 2026), drawn the way the BOQ
+            # print draws a specification header: the item number in the Sr
+            # column, the description spanning every figure column, and no
+            # quantity, rate or amount — spanning them rather than "leaving a
+            # row of blanks that reads as missing data" (`boq._section_table`).
+            # `row-assembly` is the shared sheet's
+            # own class for exactly that row: the purchase order and the draft
+            # PO already draw a BOQ header line with it on this same sheet. It
+            # takes no position number and adds nothing to any total.
+            rows += f"""
+        <tr class="row-assembly">
+          <td class="c-sno">{P.esc(line.get("item_no"))}</td>
+          <td colspan="7" class="c-desc">{P.esc(line.get("description"))}</td>
+        </tr>"""
+            continue
+        pos += 1
         mat, lab, _tot = line_amounts(line)
-        sr = P.esc(line.get("item_no")) or str(i)
+        sr = P.esc(line.get("item_no")) or str(pos)
         rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sr}</td>
@@ -1120,6 +1222,11 @@ def document_html(wo: dict) -> str:
     meta_col_1 = (
         DS._meta("Work Order No.", P.esc(wo.get("ref"))) +
         DS._meta("Your GSTIN",     P.esc(wo.get("contractor_gstin"))) +
+        # 5 October 2026, fix 3 — drawn ONLY when the record carries a phone,
+        # so a work order with none (every one before the field) prints
+        # byte-for-byte as it did.
+        (DS._meta("Your Phone", P.esc(wo.get("contractor_phone")))
+         if str(wo.get("contractor_phone") or "").strip() else "") +
         DS._meta("Project",        P.esc(wo.get("project_name")))
     )
     meta_col_2 = (
@@ -1241,7 +1348,7 @@ def list_wos():
                                  str(kv[1].get("ref") or "")), reverse=True)
     rows = ""
     for wid, w in wos:
-        n = len(w.get("lines") or [])
+        n = sum(1 for l in w.get("lines") or [] if not is_header(l))
         project = P.esc(w.get("project_name")) or "&mdash;"
         rows += f"""
         <tr>
@@ -1344,6 +1451,7 @@ def edit_wo(id: str):
             "contractor_id": wo.get("contractor_id", "") if not typed else "",
             "contractor_name": wo.get("contractor_name", "") if typed else "",
             "contractor_gstin": wo.get("contractor_gstin", "") if typed else "",
+            "contractor_phone": wo.get("contractor_phone", "") if typed else "",
             "contractor_addr": "\n".join(to_lines[1:]) if typed else "",
         }, rows_of(wo), wo=wo)
 
@@ -1480,7 +1588,7 @@ def print_wo(id: str):
 # (ABOUT.md §7.9f: the url_map sweep reads only paths containing "delete").
 
 def _summary(wo: dict) -> str:
-    n = len(wo.get("lines") or [])
+    n = sum(1 for l in wo.get("lines") or [] if not is_header(l))
     return (f"<b>{P.esc(wo.get('ref'))}</b> to "
             f"<b>{P.esc(wo.get('contractor_name')) or 'an unnamed contractor'}</b>, "
             f"dated {P.esc(wo.get('date'))}, with <b>{n} line{'' if n == 1 else 's'}</b> "
@@ -1616,16 +1724,17 @@ def delete_wo(id: str):
 # EXCEL IMPORT — sheetimport.py, with this document's own mapping (ruling D)
 # =============================================================================
 #
-# STAGING. The read workbook (cell values, never the file) waits between the
-# upload and the mapping in `_STAGED`, in this process's RAM — `gst_lookup.
-# _SESSIONS`' arrangement — owned by the user who uploaded it, one hour, three
-# per user, and consumed when the prefilled form renders. ⚠ **Not a STORE
-# collection, deliberately**: `db.sync()` re-hashes every record on every
-# request, and a staged grid is not a business record; a restart in the
-# middle of an import loses the upload and the operator uploads again.
-# `wsgi.py` refuses more than one worker, so there is one RAM.
-
-_STAGED: dict = {}
+# STAGING (5 October 2026, CLIENT_CHANGES.md §0 forty-second block, fix 1).
+# The read workbook — cell values, never the file — waits between the upload
+# and the mapping in the persisted STORE collection `wo_imports`, through
+# `importstage.py`: the BOQ importer's own mechanism, moved into that leaf so
+# both use one copy. Keyed by an unguessable token, owned by the uploader, 24
+# hours, three per user, consumed when the prefilled form renders — and,
+# because it is a persisted collection, it survives a restart of the process.
+# ⚠ Its OWN collection, not `boq_imports`: a work-order upload must never evict
+#   a BOQ upload from the per-user cap, nor open on `/boq/import/<token>`.
+# (Until this fix it was a dict in this module's RAM — ABOUT.md §7 gap 58,
+# closed.)
 
 # This document's mapping targets — its OWN vocabulary (ruling D). The two rate
 # tracks are Material and Labour; amounts are read only to CHECK the sheet's
@@ -1654,30 +1763,43 @@ _TO_SI = {"item_no": "item_no", "description": "description", "qty": "qty",
 _FROM_SI = {v: k for k, v in _TO_SI.items()}
 
 
-def _purge(now: float = None) -> None:
-    now = time.time() if now is None else now
-    for tok, rec in list(_STAGED.items()):
-        if now - float(rec.get("ts") or 0) > STAGE_TTL_SECONDS:
-            _STAGED.pop(tok, None)
+def staged() -> dict:
+    """The `wo_imports` collection."""
+    return IS.rows(STAGE_COLLECTION)
+
+
+def _purge(now: float = None) -> int:
+    return IS.purge(STAGE_COLLECTION, STAGE_TTL_SECONDS, now)
 
 
 def _own(token: str):
-    rec = _STAGED.get(str(token or ""))
-    uid = _uid()
-    if not rec or not uid or rec.get("user_id") != uid:
+    return IS.own(STAGE_COLLECTION, token, _uid())
+
+
+def _grid(rec: dict):
+    """The staged grid of the selected sheet, or None."""
+    try:
+        return rec["grid"][int(rec.get("sheet_index") or 0)]
+    except (IndexError, KeyError, TypeError, ValueError):
         return None
-    return rec
 
 
 def stage(wb: dict, filename: str, uid: str) -> str:
-    """Hold a read workbook for `uid`; return the token. Three per user."""
-    token = secrets.token_urlsafe(24)
-    _STAGED[token] = {"user_id": uid, "ts": time.time(), "filename": filename,
-                      "wb": wb, "sheet": int(wb["selected"]), "mapping": None}
-    mine = sorted(((r["ts"], t) for t, r in _STAGED.items() if r["user_id"] == uid),
-                  reverse=True)
-    for _ts, tok in mine[MAX_STAGED_PER_USER:]:
-        _STAGED.pop(tok, None)
+    """
+    Stage a read workbook for `uid` and return its token — the row shape of
+    `boqimport.stage()`, less the BOQ's own layout memory and rate mode, which
+    a work order has neither of. The per-user cap runs after the row is in.
+    """
+    token = IS.new_token()
+    sel = int(wb["selected"])
+    staged()[token] = {
+        "id": token, "token": token, "user_id": uid,
+        "created_at": IS.now_text(), "created_ts": time.time(),
+        "filename": filename, "format": wb["format"],
+        "sheets": wb["sheets"], "grid": wb["grid"],
+        "sheet_index": sel, "mapping": guess_mapping(wb["grid"][sel]),
+    }
+    IS.cap_per_user(STAGE_COLLECTION, uid, MAX_STAGED_PER_USER)
     return token
 
 
@@ -1744,7 +1866,28 @@ def _wo_words(text: str) -> str:
     return text
 
 
-def rows_from_build(result: dict, mapping: dict) -> tuple:
+def item_column_values(grid: dict, mapping: dict) -> set:
+    """
+    Every text written in the column mapped to Item No. — so a section heading
+    takes its code as its item number only when the SHEET wrote that code, and
+    never a letter the reader assigned itself.
+    """
+    col = next((c for c, t in mapping.items() if t == "item_no"), None)
+    if col is None:
+        return set()
+    try:
+        ci = [str(c) for c in grid["cols"]].index(str(col))
+    except ValueError:
+        return set()
+    out = set()
+    for _rnum, vals in grid.get("rows") or []:
+        v = vals[ci] if ci < len(vals) else None
+        if v is not None and str(v).strip():
+            out.add(str(v).strip())
+    return out
+
+
+def rows_from_build(result: dict, mapping: dict, sheet_codes=frozenset()) -> list:
     """
     `sheetimport.build()`'s lines as this form's rows (a list), each
     carrying `need` (the fields the save will refuse until answered) and `note`
@@ -1754,82 +1897,104 @@ def rows_from_build(result: dict, mapping: dict) -> tuple:
       its children's descriptions (`sheetimport._group_labels()`).
     * **Specification text** with no item number is FOLDED into its parent's
       description — the BOQ importer's rule (`boqimport.editor_model()`).
-      With no parent above it, it becomes a line of its own, blank and marked.
-    * A **heading row** (text, no quantity, no rate) becomes a line with its
-      figures BLANK and marked — never dropped, never given a figure.
+    * ⚠ **A heading row is a HEADING LINE** (5 October 2026, CLIENT_CHANGES.md
+      §0 forty-second block, fix 2) — the BOQ importer's rule: a line the
+      reader marks `is_header` comes in `is_header`, with its item number and
+      its description and NO unit, quantity or rate, and nothing ringed. So
+      does specification text with no parent above it to fold into, and so
+      does each titled SECTION of the sheet ("A  CIVIL WORKS"), placed before
+      its first line — a work order has no sections of its own, and dropping
+      the sheet's section titles would lose the sheet's own structure. A
+      section's code becomes the heading's item number only when the sheet
+      itself wrote it (`sheet_codes`); a letter the reader assigned is not
+      printed. Until this fix a heading row came in as a PRICED line with its
+      figures blank and ringed, which made every heading a thing to delete.
     * **One rate column on the sheet** (ruling D): that track fills; the other
-      is left BLANK and marked on every line, saying the sheet has no such
-      column. A blank rate is never read as 0.
+      is left BLANK and marked on every PRICED line, saying the sheet has no
+      such column. A blank rate is never read as 0.
     * The reader's own blocking flags mark the same fields here.
     """
     has_mat = "material_rate" in mapping.values()
     has_lab = "labour_rate" in mapping.values()
-    rows, last = [], {}
+    titles = {s.get("code"): (s.get("title") or "").strip()
+              for s in result.get("sections") or []}
+    rows, last, seen_sections = [], {}, set()
+
+    def heading(item_no: str, text: str, notes=()) -> dict:
+        return {"line_id": "", "is_header": True, "item_no": item_no,
+                "description": text, "unit": "", "qty": "",
+                "material_rate": "", "labour_rate": "",
+                "note": "\n".join(notes)[:2000], "need": {}}
+
     for l in result["lines"]:
         kind = l.get("kind")
+        sec = l.get("section")
+        if sec not in seen_sections:
+            seen_sections.add(sec)
+            if titles.get(sec):
+                code = str(sec or "")
+                rows.append(heading(code if code in sheet_codes else "", titles[sec]))
         if kind == "group_label":
             continue
         header = bool(l.get("is_header"))
         src = f"Row {l.get('row')}"
+        flag_notes = [f"{src}: {_wo_words(m)}" for m in (l.get("flags") or [])]
         if header and not l.get("item_no") and kind in ("spec_text", "subheading"):
             text = (l.get("description") or "").strip()
-            tgt = (last.get((l.get("section"), l.get("parent_item_no")))
+            tgt = (last.get((sec, l.get("parent_item_no")))
                    if l.get("parent_item_no") else None)
             if tgt is not None:
                 if text:
                     base = rows[tgt]["description"].rstrip()
                     rows[tgt]["description"] = f"{base}\n{text}" if base else text
                 continue
-            if not text:
-                continue
-        need, notes = {}, []
+            if text:
+                rows.append(heading("", text, flag_notes))
+            continue
         if header:
-            row = {"line_id": "", "item_no": l.get("item_no") or "",
-                   "description": l.get("description") or "", "unit": "",
-                   "qty": "", "material_rate": "", "labour_rate": ""}
-            msg = (f"{src}: a heading or specification on the sheet, with no "
-                   f"quantity or rate — fill them in, or delete the line")
-            notes.append(msg)
-            for f in ("qty", "material_rate", "labour_rate"):
+            rows.append(heading(l.get("item_no") or "", l.get("description") or "",
+                                flag_notes))
+            if l.get("item_no"):
+                last[(sec, l.get("item_no"))] = len(rows) - 1
+            continue
+        # A PRICED line.
+        need, notes = {}, list(flag_notes)
+        row = {"line_id": "", "is_header": False, "item_no": l.get("item_no") or "",
+               "description": l.get("description") or "",
+               "unit": l.get("unit") or "",
+               "qty": num_text(l.get("qty")),
+               "material_rate": num_text(l.get("supply_rate")) if has_mat else "",
+               "labour_rate": num_text(l.get("install_rate")) if has_lab else ""}
+        for n in l.get("needs") or []:
+            f = {"total_qty": "qty", "description": "description",
+                 "supply_rate": "material_rate",
+                 "install_rate": "labour_rate"}.get(n.get("field"))
+            msg = f"{src}: {_wo_words(n.get('message') or '')}"
+            if n.get("field") == "rate":
+                for g in ("material_rate", "labour_rate"):
+                    if not row[g]:
+                        need[g] = msg
+            elif f:
                 need[f] = msg
-        else:
-            row = {"line_id": "", "item_no": l.get("item_no") or "",
-                   "description": l.get("description") or "",
-                   "unit": l.get("unit") or "",
-                   "qty": num_text(l.get("qty")),
-                   "material_rate": num_text(l.get("supply_rate")) if has_mat else "",
-                   "labour_rate": num_text(l.get("install_rate")) if has_lab else ""}
-            notes += [f"{src}: {_wo_words(m)}" for m in (l.get("flags") or [])]
-            for n in l.get("needs") or []:
-                f = {"total_qty": "qty", "description": "description",
-                     "supply_rate": "material_rate",
-                     "install_rate": "labour_rate"}.get(n.get("field"))
-                msg = f"{src}: {_wo_words(n.get('message') or '')}"
-                if n.get("field") == "rate":
-                    for g in ("material_rate", "labour_rate"):
-                        if not row[g]:
-                            need[g] = msg
-                elif f:
-                    need[f] = msg
-            if not row["qty"]:
-                need.setdefault("qty", f"{src}: no quantity on the sheet — type it")
-            for f, present, word in (("material_rate", has_mat, "material"),
-                                     ("labour_rate", has_lab, "labour")):
-                if row[f]:
-                    continue
-                if present:
-                    need.setdefault(f, f"{src}: no {word} rate on this row — type "
-                                       f"it, or 0 if there is none")
-                else:
-                    need.setdefault(f, f"The sheet has no {word} rate column — type "
-                                       f"the {word} rate, or 0 if there is none")
-            if l.get("rate_only"):
-                notes.append(f"{src}: rate only (RO) on the sheet — quantity 0")
+        if not row["qty"]:
+            need.setdefault("qty", f"{src}: no quantity on the sheet — type it")
+        for f, present, word in (("material_rate", has_mat, "material"),
+                                 ("labour_rate", has_lab, "labour")):
+            if row[f]:
+                continue
+            if present:
+                need.setdefault(f, f"{src}: no {word} rate on this row — type "
+                                   f"it, or 0 if there is none")
+            else:
+                need.setdefault(f, f"The sheet has no {word} rate column — type "
+                                   f"the {word} rate, or 0 if there is none")
+        if l.get("rate_only"):
+            notes.append(f"{src}: rate only (RO) on the sheet — quantity 0")
         row["note"] = "\n".join(notes)[:2000]
         row["need"] = need
         rows.append(row)
         if l.get("item_no"):
-            last[(l.get("section"), l.get("item_no"))] = len(rows) - 1
+            last[(sec, l.get("item_no"))] = len(rows) - 1
     return rows
 
 
@@ -1918,15 +2083,14 @@ def _upload_page(error: str = "") -> str:
 
 
 def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
-    wb = rec["wb"]
-    idx = rec["sheet"]
-    grid = wb["grid"][idx]
-    mapping = rec["mapping"] or guess_mapping(grid)
+    idx = int(rec.get("sheet_index") or 0)
+    grid = _grid(rec)
+    mapping = rec.get("mapping") or guess_mapping(grid)
     labels = SI.header_labels(grid)
     cols = grid["cols"]
 
     sheet_opts = ""
-    for i, s in enumerate(wb["sheets"]):
+    for i, s in enumerate(rec.get("sheets") or []):
         if not s.get("staged"):
             continue
         sel = " selected" if i == idx else ""
@@ -2025,7 +2189,7 @@ def import_preview(token: str):
     """
     _purge()
     rec = _own(token)
-    if rec is None:
+    if rec is None or _grid(rec) is None:
         return redirect(url_for("workorder.import_wo",
                                 msg="That import has expired or is not yours. "
                                     "Upload the file again.", type="error"))
@@ -2034,16 +2198,21 @@ def import_preview(token: str):
 
     act = request.form.get("act") or ""
     if act == "sheet":
+        cur = int(rec.get("sheet_index") or 0)
         try:
-            i = int(request.form.get("sheet") or rec["sheet"])
+            i = int(request.form.get("sheet") or cur)
         except ValueError:
-            i = rec["sheet"]
-        sheets = rec["wb"]["sheets"]
-        if 0 <= i < len(sheets) and sheets[i].get("staged"):
-            rec["sheet"], rec["mapping"] = i, None
+            i = cur
+        sheets = rec.get("sheets") or []
+        if (0 <= i < len(sheets) and sheets[i].get("staged")
+                and rec["grid"][i] is not None):
+            # A different sheet: a fresh guess for it. The mapping posted with
+            # it belonged to the old sheet.
+            rec["sheet_index"] = i
+            rec["mapping"] = guess_mapping(rec["grid"][i])
         return _preview_page(token, rec)
 
-    grid = rec["wb"]["grid"][rec["sheet"]]
+    grid = _grid(rec)
     mapping = clean_mapping(grid, request.form)
     rec["mapping"] = mapping
     problems = mapping_problems(grid, mapping)
@@ -2053,7 +2222,7 @@ def import_preview(token: str):
     si_map = {c: (_TO_SI.get(t, "") if t != SI.UNDECIDED else "")
               for c, t in mapping.items()}
     result = SI.build(grid, si_map)
-    rows = rows_from_build(result, mapping)
+    rows = rows_from_build(result, mapping, item_column_values(grid, mapping))
     if not rows:
         return _preview_page(token, rec, ["No line could be read under the "
                                           "heading with these columns."])
@@ -2062,7 +2231,8 @@ def import_preview(token: str):
             f"This sheet has {len(rows)} lines and one work order carries "
             f"{MAX_LINES}. Split the sheet and import each part."])
 
-    _STAGED.pop(token, None)
+    # Consumed — `boqimport.form()`'s rule: the row goes when the form renders.
+    staged().pop(token, None)
     has_mat = "material_rate" in mapping.values()
     has_lab = "labour_rate" in mapping.values()
     one = ""
@@ -2074,9 +2244,12 @@ def import_preview(token: str):
         one = ("<li><b>No rate column was chosen.</b> Both rates are blank and "
                "marked on every line.</li>")
     n_need = sum(len(r["need"]) for r in rows)
+    n_head = sum(1 for r in rows if r.get("is_header"))
+    n_line = len(rows) - n_head
+    heads = (f" and {n_head} heading{'' if n_head == 1 else 's'}" if n_head else "")
     banner = f"""
   <div class="wo-banner">
-    <b>Imported from {P.esc(rec.get("filename"))}</b> &mdash; {len(rows)} line{"" if len(rows) == 1 else "s"},
+    <b>Imported from {P.esc(rec.get("filename"))}</b> &mdash; {n_line} line{"" if n_line == 1 else "s"}{heads},
     nothing saved yet. Check every line, then press <b>Raise work order</b>.
     <ul>{one}{_totals_banner(result.get("totals") or {})}
       <li>{n_need} field{"" if n_need == 1 else "s"} marked in red must be answered before the save.</li>

@@ -78,7 +78,7 @@ COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "
                "merged_ras",
                "projects",
                "charges", "employees", "attendance", "attachments",
-               "boq_imports", "import_layouts",
+               "boq_imports", "wo_imports", "import_layouts",
                "addresses", "gst_cache", "settings", "users", "roles")
 
 # Seed flags (_seeded / _addr_seeded) are deliberately NOT persisted. Both
@@ -268,6 +268,7 @@ LABELS = {
     "attendance": "attendance and labour cost",
     "attachments": "attached documents",
     "boq_imports": "Excel imports in progress",
+    "wo_imports": "work-order Excel imports in progress",
     "import_layouts": "remembered Excel layouts",
     "addresses":  "addresses",
     "gst_cache":  "fetched GSTIN details",
