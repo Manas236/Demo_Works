@@ -2580,8 +2580,8 @@ def _drop_qty0(rows: list, tracks: str, tab_name: str = "", left_out=None) -> li
     #   all and it is left out (and listed). Found on the client's own sheet:
     #   their "TOTAL OF SPRINKLER" row has its amount in a column with no
     #   heading, so the reader cannot confirm it as the grand total by its
-    #   sums, and the contractor's OWN quote notes and terms under it ("All
-    #   material is in customer scope"…) came in as heading lines. R7 forbids
+    #   sums, and the contractor's OWN quote notes and terms under it came
+    #   in as heading lines. R7 forbids
     #   carrying the contractor's terms onto our work order; this keeps them
     #   off it without touching the shared reader's grand-total rule. A child
     #   comes AFTER its heading and before the next heading carrying the same

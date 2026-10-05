@@ -254,8 +254,8 @@ def test_a_heading_keeps_only_its_own_children_and_an_orphan_goes():
         _hd("2", "Valves", 8),
         _ln("a", "150 mm valve", 9, "0", "0", parent="2"),
         _ln("3", "Hangers", 10, "4", "450"),          # heading 2's SIBLING
-        _hd("1", "All tools by the contractor", 12),  # their terms, numbered again
-        _hd("2", "Material in customer scope", 13),
+        _hd("1", "Working hours 9 to 6", 12),         # terms below, numbered again
+        _hd("2", "Site kept clean daily", 13),
         _hd("B", "SPRAY SYSTEM", None, section=True),
         _ln("1", "Nozzle", 15, "0", "0"),            # every line gone: so is B
     ]
