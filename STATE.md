@@ -10,11 +10,45 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 4 October 2026 (**an RA bill can be
-raised FROM delivery challans or FROM the measurement, and a billed challan is
-marked and blocked** — CLIENT_CHANGES.md §0 **fortieth** block, Manas's
-rulings A / B / C, post-go-live, **no charge**; **the board does not move: 19
-of 20 BUILT · 1 BLOCKED**).
+**As of:** branch `antigravity-dev`, 5 October 2026 (**Work Orders for petty
+contractors** — a new buy-side document distinct from the purchase order,
+material and labour rates per line, CLIENT_CHANGES.md §0 **forty-first**
+block, Manas's rulings A to J, post-go-live, **no charge**; **the board does
+not move: 19 of 20 BUILT · 1 BLOCKED**). *Previously:* 4 October 2026 (**an RA
+bill can be raised FROM delivery challans or FROM the measurement, and a billed
+challan is marked and blocked** — the fortieth block).
+
+- **5 October 2026 — Work Orders for petty contractors, run on the OFFICE PC**
+  (Step 0: `.claude/` was untracked and the gate stopped; on Manas's ruling
+  `.claude/settings.json` and `.claude/settings.local.json` went into
+  `.gitignore` in a commit of their own, `26784a5`, after a fast-forward to
+  `383135b`; the gate was then re-run and passed, the one commit ahead of
+  origin being that authorised one. Backup pair
+  `samruddhi_qms-20261005-150811-pre-work-orders.sql` /
+  `…-attachments.zip`). Commits: `0ac8b8d` the §0 block, `54e15a3` the code
+  with ABOUT.md and the access matrix, `a71f6cb` the tests, then these docs.
+  **New `workorder.py`** with its own `work_orders` collection: lines carry a
+  material and a labour rate with a server-minted `line_id`, every amount
+  derived; DRAFT / ISSUED / CANCELLED with the RA bill's semantics and its
+  overprint (`docsheet.LIFECYCLE_CSS`, moved out of `ra.py` byte-for-byte);
+  the purchase order's printed sheet, title WORK ORDER, **no GST**; one global
+  series at `/settings` (`WO_SERIES_RECORD`); the contractor an address-book
+  pick (new type **Contractor**) or typed; an optional project, listed on
+  `/projects/view` with no arithmetic; Excel import through `sheetimport.py`
+  with its own mapping — one rate column fills its track and leaves the other
+  blank and ringed. **Access: no permission minted** — every route carries the
+  PO's own `purchase.*` id per action, `workorder.delete_wo` Owner-only;
+  `docs/ACCESS_MATRIX.md` 139 → 149 endpoints, grid unchanged. **Goldens:** no
+  print golden moved; a NEW golden pins `/wo/print`; `/` and `/settings/`
+  re-baselined, `main` only, measured purely additive. **Nav: the rail entry was
+  NOT added** (it moves every page golden's chrome) — a dashboard card instead,
+  and the rail entry is **queued** (§3.1). Tests on the office PC's `.venv`
+  (row 1 of ABOUT.md §1): **3,614 / 4 → 3,699 / 4**; rows 2 and 3 **not
+  measured** this pass. Mutations: 16 on totals and guards, 16 caught (one
+  after tightening a test); 13 on escaping sinks, 13 caught. ⚠ **Open**: GST on
+  a WO (a question to the client), the client's sample WO sheet (not arrived —
+  the importer is unvalidated against it), a WO is committed not paid cost, and
+  in the future P&L it must be its own row (ABOUT.md §7 gaps 53–58).
 
 - **4 October 2026 — RA from a challan / a measurement sheet, run on the
   LAPTOP** (the pass started at `b967796`, **0 ahead and 0 behind** — the
@@ -1556,6 +1590,20 @@ the wrong one, re-pick the site on `/projects/edit/<id>`, then delete the addres
 that is left unreferenced. `/address/view/<id>` shows the reference count and the
 delete is refused until it reaches zero. ⚠ **No merge-two-addresses operation
 exists and none is to be built without being asked for.**
+
+**Queued — the Work Orders RAIL entry (5 October 2026).** Work orders are
+reached from a dashboard card and from the project page, not from the rail:
+a `chrome.REGISTERS` entry moves the `chrome` digest of every page golden, and
+the brief allowed a nav entry only if it moved no golden. Adding it is one
+registry line plus a declared re-baseline of the page goldens' `chrome`
+block — **Manas's call**. When it lands: drop `workorder.list_wos` from
+`tests/test_nav_reachability.py::UNLINKED_ON_PURPOSE`, move the dashboard card
+into the Buy-side zone, and delete `dashboard._work_orders_zone()` (ABOUT.md §7
+gap 57).
+
+**Waiting on the client — work orders.** Does a work order carry GST, and on
+which leg? And the client's own WO sheet, to validate the importer against
+(ABOUT.md §7 gaps 53 and 56; CLIENT_CHANGES.md §2b G7).
 
 ### 3.2 Specified but not built
 
