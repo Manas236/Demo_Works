@@ -4253,6 +4253,50 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 5 October 2026, later, by Manas Gawde — WORK ORDERS: THREE FIXES · NO CHARGE · FOLLOW-UP TO THE FORTY-FIRST BLOCK
+>
+> **A new block, not an amendment.** The forty-first block and every block
+> before it stand exactly as recorded. This is the **forty-second** occasion.
+> It covers the three fixes below and nothing else.
+>
+> - **Fix 1 — the work-order import's staging must survive across
+>   processes.** Find exactly how the BOQ importer stages a sheet between
+>   upload and mapping, and make the WO importer use the SAME mechanism —
+>   shared through a leaf, BOQ behaviour proven byte-identical by the BOQ
+>   import tests passing untouched. If the BOQ's staging is persisted, the WO
+>   uses it and ABOUT.md §7 gap 58 closes; if it too is in memory, nothing is
+>   redesigned and the process model is reported instead.
+> - **Fix 2 — heading rows on an imported sheet are HEADER lines, not priced
+>   lines.** The BOQ importer's rule: a heading row becomes an `is_header`
+>   line with no quantity, unit or rates, exempt from the blank-rate refusal,
+>   excluded from every total, rendered on the view, the form and the print
+>   the way the BOQ print renders a parent specification line, and addable and
+>   deletable on the form by hand. Specification text still folds into its
+>   parent's description. The blank-rate refusal stays exactly as it is for
+>   real lines.
+> - **Fix 3 — ruling G, verified and completed.** (a) the contractor can be
+>   entered as free text with no address-book entry at all — name, address,
+>   GSTIN, phone — the draft PO's vendor fallback, snapshotted like a picked
+>   address; (b) GSTIN auto-fill works on the address form for the Contractor
+>   type as for every other; (c) a vendor posted as the contractor is still
+>   refused, and the refusal tells the user to use the free-text boxes or to
+>   add the address as a Contractor.
+>
+> **Constraints given with the fixes:** every check run with
+> `DB_ENABLED=false`; no print golden moves (the WO print golden only if a
+> fixture carries a header, declared); a test somebody else wrote is never
+> weakened; `product.py` and `quotation.py` not opened; the process worker
+> count not changed.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his** — a
+> follow-up to the forty-first block's work, which is itself no charge. It
+> changes no CC-2 item's state and moves no Phase 3 bar.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4881,6 +4925,17 @@ sheet your contractors use?
 
 Authorised by the §0 **forty-first** block, which is where its commercial
 status — **no charge** — is recorded as Manas's ruling.
+
+→ **Three fixes the same day** (the §0 **forty-second** block, no charge):
+an Excel upload now waits safely between the upload and the column check the
+same way a BOQ upload does, and is not lost if the server restarts; **headings
+on the sheet ("A — Civil works", "2 — Pipe work") come in as headings** — no
+quantity or rate, nothing to fill in, left out of every total, printed as a
+heading — and a heading can be added or removed on the form by hand; and a
+contractor can be typed in full — name, address, GSTIN and **phone** — with no
+address-book entry at all. Picking a vendor as the contractor is still refused,
+and the message now says to type the details or to file the address as a
+Contractor.
 
 ### G6 · RA from a challan / a measurement sheet — ✅ Built, not deployed, no charge
 
