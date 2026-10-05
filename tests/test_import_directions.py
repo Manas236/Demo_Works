@@ -724,6 +724,34 @@ FORBIDDEN = [
                                      "and needs no schedule"),
     ("dcbill", "flask",       "any", "it owns no route and builds no HTML"),
     ("dcbill", "auth",        "any", "being billed is not an access question"),
+
+    # ── workorder.py — work orders for petty contractors (5 Oct 2026) ───────
+    # CLIENT_CHANGES.md §0, forty-first block, rulings A and D. A work order is
+    # its own document with its own collection; it reaches the printed sheet
+    # through `docsheet.py`, the reader through `sheetimport.py`, and the RA
+    # bill's overprint through `docsheet.LIFECYCLE_CSS` (moved there for it).
+    # It may import none of the five document modules the brief named, nor the
+    # two that would reach `boq.py` on its behalf.
+    ("workorder", "boq",       "any", "a work order is not raised from a schedule; "
+                                      "the import reads sheetimport.py, the leaf"),
+    ("workorder", "ra",        "any", "the overprint came through the leaf "
+                                      "(docsheet.LIFECYCLE_CSS), not from ra.py"),
+    ("workorder", "invoice",   "any", "a work order carries no tax and records no sale"),
+    ("workorder", "purchase",  "any", "a WO is not a PO — separate collections, "
+                                      "separate module (ruling A)"),
+    ("workorder", "po_draft",  "any", "the draft PO's contractor-picker shape is "
+                                      "restated, not imported (ruling A)"),
+    ("workorder", "boqimport", "any", "boqimport imports boq; the WO reuses the "
+                                      "reader leaf directly"),
+    ("workorder", "boqpick",   "any", "boqpick imports boq, and a WO picks no BOQ line"),
+    ("docsheet",  "workorder", "any", "the printed sheet is a leaf; the WO imports it"),
+    ("sheetimport", "workorder", "any", "the reader imports nothing from the app"),
+    ("dashboard", "workorder", "any", "the dashboard card reads STORE['work_orders'] "
+                                      "and links with url_for; workorder.py imports "
+                                      "the chrome this module re-exports"),
+    ("purchase",  "workorder", "any", "the PO and the WO are two documents; neither "
+                                      "imports the other"),
+    ("po_draft",  "workorder", "any", "the draft PO and the WO are two documents"),
 ]
 
 
@@ -1034,6 +1062,15 @@ REQUIRED = [
                           "POST, and SOURCE_KEY is the key create_ra() writes"),
     ("challan", "dcbill", "billed_by() / billing_index(): the Billed in mark on "
                           "/dc/view and the register, without importing ra.py"),
+
+    # 5 Oct 2026 — work orders.
+    ("workorder",   "sheetimport", "the Excel reader the BOQ importer uses (ruling D)"),
+    ("workorder",   "docsheet",    "the purchase order's printed sheet (ruling B) and "
+                                   "the RA bill's LIFECYCLE_CSS overprint (ruling E)"),
+    ("workorder",   "settings",    "the work-order series — its own settings record "
+                                   "(ruling F)"),
+    ("projectview", "workorder",   "project_panel_html(): the Work Orders panel, "
+                                   "rendered cells and no arithmetic (ruling H)"),
 ]
 
 

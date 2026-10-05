@@ -440,6 +440,18 @@ def populated(client):
         _wb, "fixture-import.xlsx", conftest.ensure_test_user()["id"])
     assert _imp_known, "the fixture import did not take the known-layout path"
 
+    # ── Work orders (5 October 2026) ────────────────────────────────────────
+    # A DRAFT, so its edit, issue, cancel and delete confirmations all render
+    # a page rather than a refusal; on `proj-1`, so the project page draws its
+    # Work Orders panel and the sweep reaches that too. `contractor_gstin` is
+    # deliberately blank: that is the meta cell that falls back.
+    woid = _a_work_order()
+    import workorder
+    wo_token = workorder.stage(SI.from_rows([("WO sheet", "visible", [
+        ["Sr. No.", "Description", "Unit", "Qty", "Material Rate", "Labour Rate"],
+        ["1", "Imported work-order line", "m", 2, 100, 40]])]),
+        "fixture-wo.xlsx", conftest.ensure_test_user()["id"])
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
@@ -458,6 +470,14 @@ def populated(client):
             "/boq/print/<id>":      bid,
             "/boq/view/<id>":       bid,
             "/boq/import/<token>":      imp_token,
+            # Work orders (5 Oct 2026) — every route, on one draft.
+            "/wo/view/<id>":            woid,
+            "/wo/print/<id>":           woid,
+            "/wo/edit/<id>":            woid,
+            "/wo/issue/<id>":           woid,
+            "/wo/cancel/<id>":          woid,
+            "/wo/delete/<id>":          woid,
+            "/wo/import/<token>":       wo_token,
             "/boq/import/<token>/form": imp_token,
             # The four destructive confirmations minted 23 September 2026.
             # Exercised rather than SKIPped, and deliberately: every one of
@@ -602,6 +622,36 @@ def populated(client):
     STORE.setdefault("attendance", {}).clear()
     STORE.setdefault("boq_imports", {}).clear()
     STORE.setdefault("import_layouts", {}).clear()
+    STORE.setdefault("work_orders", {}).clear()
+    workorder._STAGED.clear()
+
+
+def _a_work_order() -> str:
+    """
+    One DRAFT work order with two lines, on `proj-1`, from a typed contractor.
+    Every free-text field carries text, so the escaping sweep poisons each one
+    (tests/test_escaping.py pins the paths).
+    """
+    wid = "wo-1"
+    STORE.setdefault("work_orders", {})[wid] = {
+        "id": wid, "ref": "SF/WO/0001", "date": "2026-10-05", "status": "draft",
+        "contractor_id": "", "contractor_name": "Ravi Fabricators",
+        "contractor_source": "typed", "to": "Ravi Fabricators\nPune",
+        "contractor_gstin": "",
+        "project_id": "proj-1", "project_name": "Sify Bangalore",
+        "notes": "Complete within 30 days",
+        "lines": [
+            {"line_id": "0a0a0a0a0a01", "item_no": "1", "unit": "m",
+             "description": "Pipe laying", "qty": 10.0,
+             "material_rate": 100.0, "labour_rate": 50.0},
+            {"line_id": "0a0a0a0a0a02", "item_no": "2", "unit": "sqm",
+             "description": "Painting", "qty": 2.5,
+             "material_rate": 0.0, "labour_rate": 40.0},
+        ],
+        "created_at": "2026-10-05 10:00", "created_by": "",
+        "updated_at": "2026-10-05 10:00",
+    }
+    return wid
 
 
 def _a_measurement(boq_id: str) -> str:

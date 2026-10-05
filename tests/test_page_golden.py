@@ -290,8 +290,21 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks: dict,
 # refused while the ladder is off. Everything else that draws `_nav()` is here.
 PAGES = {
     # (name, url): (whole sha, byte length, {block: sha})
-    ("dashboard",       "/"):                          ("5e225e0820d80885", 106453,
-        {"head": "6dc069f834093b21", "shell": "75cda0afbae27209", "chrome": "5c161e609be944c8", "main": "2b2035d29d7ba0bd"}),
+    # ⚠ **RE-BASELINED 5 October 2026 — `main` ONLY**, for the Work Orders
+    #   card (CLIENT_CHANGES.md §0 forty-first block). The brief allowed a nav
+    #   entry only if it moved no golden; a `chrome.REGISTERS` entry moves the
+    #   `chrome` block of every page here, so the brief's fallback — a
+    #   dashboard card — was taken, and this is the one page it moves.
+    #
+    #   Measured before the baseline was touched: with `_work_orders_zone()`
+    #   returning "", this page hashed to the OLD digest below exactly. So the
+    #   whole difference is the zone itself — **+982 bytes, 0 bytes removed** —
+    #   and `head` / `shell` / `chrome` did not move. The old values:
+    #       ("5e225e0820d80885", 106453,
+    #        {"head": "6dc069f834093b21", "shell": "75cda0afbae27209",
+    #         "chrome": "5c161e609be944c8", "main": "2b2035d29d7ba0bd"})
+    ("dashboard",       "/"):                          ("5aba0b01faac2349", 107435,
+        {"head": "6dc069f834093b21", "shell": "75cda0afbae27209", "chrome": "5c161e609be944c8", "main": "c7511bccc57b6167"}),
     ("quotations",      "/quotation/"):                ("36d5f6af2d97f948", 70833,
         {"head": "6a1ba8490f2cdcd0", "shell": "75cda0afbae27209", "chrome": "b5fd1962d836d50d", "main": "7ec3c661ae9cc372"}),
     ("proformas",       "/proforma/"):                 ("7d76c8fa785a4097", 76141,
@@ -364,8 +377,21 @@ PAGES = {
     #       ("f12eaac1c07efbaa", 74589,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"})
-    ("settings",        "/settings/"):                 ("a499293306ea5d30", 80230,
-        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "8cbae4b20e7083ef"}),
+    # ⚠ **RE-BASELINED AGAIN 5 October 2026 — `main` ONLY**, for the Work
+    #   Order Series section (CLIENT_CHANGES.md §0 forty-first block, ruling F:
+    #   "own prefix + next number in /settings"). A control that has to be ON
+    #   this page cannot be added without moving this page's digest.
+    #
+    #   Measured before the baseline was touched: with the new section cut out
+    #   of the rendered page, it hashed to the 25 September digest below
+    #   exactly — **+1,343 bytes · 30 lines ADDED · 0 REMOVED**. Every other
+    #   section is byte-identical, `head` / `shell` / `chrome` did not move, and
+    #   no print golden moved. The values it replaces:
+    #       ("a499293306ea5d30", 80230,
+    #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
+    #         "chrome": "d107029c10eb2dec", "main": "8cbae4b20e7083ef"})
+    ("settings",        "/settings/"):                 ("5b4a57215d0e88c9", 81573,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "87037b9058f6019f"}),
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

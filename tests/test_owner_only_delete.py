@@ -66,6 +66,10 @@ def test_owner_only_covers_exactly_the_true_destroy_routes():
         "spec.delete_spec",
         "product.delete_product",
         "address.delete_address",
+        # 5 October 2026 — a DRAFT work order is destroyed, and the purchase
+        # order it mirrors (CLIENT_CHANGES.md §0, forty-first block, ruling I)
+        # is Owner-only above, so this is too.
+        "workorder.delete_wo",
     }
     excluded = {
         "address.archive_address", "address.unarchive_address",

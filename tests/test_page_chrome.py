@@ -77,7 +77,9 @@ NO_CHROME = {
 # swept, so that deleting one from the app is a red test rather than a quietly
 # smaller sweep.
 NEW_PAGES = ["/client/", "/po/", "/dc/", "/projects/", "/charge/",
-             "/measurement/"]
+             "/measurement/",
+             # 5 Oct 2026 — reached from its own dashboard card (not yet the rail).
+             "/wo/"]
 
 
 @pytest.fixture()

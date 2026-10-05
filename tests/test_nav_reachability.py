@@ -345,6 +345,21 @@ UNLINKED_ON_PURPOSE = {
     # and `tests/test_gst_lookup.py` asserts the form carries its URL.
     "address.gst_captcha_add": "not a page: the CAPTCHA image the address form's "
                                "script fetches",
+    # ── Work orders, 5 October 2026 ─────────────────────────────────────────
+    #
+    # ⚠ **The register IS linked — from its own dashboard card — but not from
+    #   `chrome.REGISTERS`, which is all this sweep reads.** A registry entry
+    #   draws the rail on every screen page and so moves the `chrome` digest of
+    #   every page golden; the brief allowed a nav entry only if it moved no
+    #   golden. The rail entry is QUEUED (STATE.md) and
+    #   `tests/test_work_orders.py::test_the_dashboard_carries_a_work_orders_card_and_the_rail_does_not_yet`
+    #   asserts the card. Delete this line the day the rail entry lands.
+    "workorder.list_wos": "linked from its own dashboard card, outside "
+                          "chrome.REGISTERS; the rail entry is queued (STATE.md)",
+    # The BOQ import's precedent above: a way of FILLING IN /wo/create,
+    # linked from the register and from that form.
+    "workorder.import_wo": "a way of filling in /wo/create, linked from the "
+                           "work-order register and form",
 }
 
 

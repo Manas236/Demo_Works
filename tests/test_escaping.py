@@ -252,6 +252,10 @@ POISONED_COLLECTIONS = (
     # Import BOQ from Excel (29 Sep 2026). `import_layouts` is NOT here: it
     # holds a hash and a column->target map, and no page prints either.
     "boq_imports",
+    # Work orders (5 Oct 2026). The staged Excel upload is NOT a collection —
+    # it lives in `workorder._STAGED`, in RAM — so its cells and file name are
+    # swept by `tests/test_work_orders.py` directly, the boq_imports note above.
+    "work_orders",
 )
 
 # ⚠ Collections that are still poisoned, but whose **count** may legitimately be
@@ -416,6 +420,16 @@ POISONED_FIELDS = {
     # are stored and printed nowhere. See DO_NOT_POISON_PATHS for the cells.
     "boq_imports": (
         "created_at", "filename", "format", "sheets[]/name",
+    ),
+    # Work orders (5 Oct 2026). Each reaches `/wo/view`, `/wo/print`, the
+    # register, the edit form, the three confirmations and the project page's
+    # panel — checked by mutation before being pinned. `contractor_source` is
+    # stored and printed nowhere, `vendor_source`'s case on the draft PO;
+    # `date` reads as an id to `_poison()` (digits and dashes) and is skipped.
+    "work_orders": (
+        "contractor_name", "contractor_source", "created_at",
+        "lines[]/description", "lines[]/item_no", "lines[]/unit",
+        "notes", "project_name", "ref", "to", "updated_at",
     ),}
 
 # `settings` is exempt from the field pin for the SAME measured reason it is

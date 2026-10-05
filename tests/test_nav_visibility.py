@@ -150,6 +150,12 @@ EXPECTED_NAV = {
 }
 
 ALL_CARDS = [
+    # ⚠ Added 5 October 2026 — the Work Orders card, FIRST because it is drawn
+    #   in its own zone ABOVE the Modules zone (it is not a `chrome.REGISTERS`
+    #   entry yet; ABOUT.md §5 `/wo`). It carries `purchase.view`, so every role
+    #   that sees "Purchase Orders" sees it. The old first line, verbatim:
+    #       "Quotations", "Proforma Invoices", "Tax Invoices",
+    "Work Orders",
     "Quotations", "Proforma Invoices", "Tax Invoices",
     "Projects", "Bills of Quantities", "Running Account Bills",
     # ⚠ Added 29 August 2026. `/receipt/` was the ONE top-level register in
@@ -196,6 +202,7 @@ EXPECTED_CARDS = {
     #           "Expenses & Charges", "Product Catalogue", "Spec Library",
     #           "Client Register", "Address Book"],
     "operation-head": [
+        "Work Orders",           # 5 Oct 2026 — holds purchase.view
         "Projects", "Bills of Quantities", "Running Account Bills",
         "Receipts",
         "Delivery Challans", "Measurement Sheets",
@@ -253,6 +260,7 @@ EXPECTED_CARDS = {
         "Product Catalogue",
         "Spec Library", "Client Register", "Address Book"],
     "purchase-manager": [
+        "Work Orders",           # 5 Oct 2026 — holds purchase.view
         "Projects", "Bills of Quantities", "Delivery Challans",
         "Purchase Orders", "Draft Purchase Orders", "Product Catalogue",
         "Spec Library", "Address Book"],
@@ -271,6 +279,7 @@ EXPECTED_CARDS = {
     #           "Bills of Quantities", "Running Account Bills", "Receipts",
     #           "Purchase Orders", "Client Register"],
     "accountant": [
+        "Work Orders",           # 5 Oct 2026 — holds purchase.view
         "Proforma Invoices", "Tax Invoices", "Projects",
         "Bills of Quantities", "Running Account Bills", "Receipts",
         "Measurement Sheets",
@@ -291,6 +300,7 @@ EXPECTED_GROUPS = {
 
 # Card title -> the endpoint it opens. Used to hit hidden cards directly.
 CARD_ENDPOINT = {
+    "Work Orders":                "workorder.list_wos",
     "Quotations":                 "quotation.list_quotations",
     "Proforma Invoices":          "proforma.list_proformas",
     "Tax Invoices":               "invoice.list_invoices",

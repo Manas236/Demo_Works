@@ -205,8 +205,11 @@ def test_every_collection_that_points_at_the_book_is_in_REFERENCE_SOURCES():
     guard below.
     """
     covered = {c for c, *_ in AD.REFERENCE_SOURCES}
+    # `work_orders` (5 Oct 2026): a work order's contractor is an address-book
+    # pick with a typed fallback, exactly as the draft PO's vendor.
     assert covered == {"projects", "employees", "attendance",
-                       "purchase_orders", "purchases", "delivery_challans"}
+                       "purchase_orders", "purchases", "delivery_challans",
+                       "work_orders"}
     for coll, id_field, snap_field, kind, label_fields, endpoint in AD.REFERENCE_SOURCES:
         assert coll in STORE, f"{coll} is not a collection in the store"
         assert id_field and snap_field and kind and label_fields and endpoint
