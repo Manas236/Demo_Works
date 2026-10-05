@@ -10,13 +10,39 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 5 October 2026 (**Work Orders for petty
-contractors** — a new buy-side document distinct from the purchase order,
-material and labour rates per line, CLIENT_CHANGES.md §0 **forty-first**
-block, Manas's rulings A to J, post-go-live, **no charge**; **the board does
-not move: 19 of 20 BUILT · 1 BLOCKED**). *Previously:* 4 October 2026 (**an RA
-bill can be raised FROM delivery challans or FROM the measurement, and a billed
-challan is marked and blocked** — the fortieth block).
+**As of:** branch `antigravity-dev`, 5 October 2026, later (**Work Orders —
+three fixes**: the import staged by the BOQ importer's own mechanism, heading
+lines, the contractor's phone — CLIENT_CHANGES.md §0 **forty-second** block,
+no charge; **the board does not move: 19 of 20 BUILT · 1 BLOCKED**).
+*Previously:* 5 October 2026 (**Work Orders for petty contractors** — a new
+buy-side document distinct from the purchase order, material and labour rates
+per line, the §0 **forty-first** block, Manas's rulings A to J, no charge).
+*Before that:* 4 October 2026 (**an RA bill can be raised FROM delivery
+challans or FROM the measurement, and a billed challan is marked and blocked**
+— the fortieth block).
+
+- **5 October 2026, later — Work Orders, the fix pass, run on the OFFICE PC**
+  (Step 0 clean at `90320ec`, 0 ahead and 0 behind; backup pair
+  `samruddhi_qms-20261005-160801-pre-wo-fixes.sql` / `…-attachments.zip`;
+  every check with `DB_ENABLED=false`). Commits: `c3feb03` the §0 block,
+  `d052ff9` the code with ABOUT.md, `dc8fa53` the tests, then these docs.
+  **Fix 1** — the BOQ importer's staging was found **persisted**
+  (`boq_imports`, token-keyed, owned, 24 h, 3 per user, consumed at the form);
+  its three functions moved verbatim into the new leaf **`importstage.py`**,
+  the BOQ import tests passing untouched, and the work order now stages the
+  same way in its own persisted **`wo_imports`** — a staged import survives a
+  restart, proved through `db.sync()` / `db.load_into()`. ABOUT.md §7 gap 58
+  **closed**. **Fix 2** — heading rows, unparented spec text and the sheet's
+  titled sections come in as **`is_header` lines**: no unit, quantity or
+  rate, nothing to answer, out of every total, printed as the BOQ prints a spec
+  header; **+ Add a heading** on the form. **Fix 3** — ruling G verified:
+  a typed contractor needs no address-book entry (name, address, GSTIN and now
+  **phone**, snapshotted on both paths); the GSTIN fill is gated by type
+  nowhere; the vendor refusal names the typed boxes and filing as a
+  Contractor. Tests **3,699 / 4 → 3,724 / 4** (row 1's configuration only;
+  rows 2 and 3 not run). **No golden moved**, the access matrix did not move.
+  Mutations: 19, all caught (one only after it was rebuilt — the first build
+  was an equivalent mutant).
 
 - **5 October 2026 — Work Orders for petty contractors, run on the OFFICE PC**
   (Step 0: `.claude/` was untracked and the gate stopped; on Manas's ruling
