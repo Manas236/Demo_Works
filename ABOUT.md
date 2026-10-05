@@ -9019,9 +9019,18 @@ took:
 - **Quantity 0 (R3, `_drop_qty0()`, the work-order import ONLY).** Quantity 0
   and no non-zero rate on a declared track → left out; with a rate → kept as
   a rate-only line with a note; a heading or section left empty → left out.
-  Both the preview (per tab) and the form say how many rows and which. On the
-  Nxtra file: Sprinkler keeps 27 lines with a quantity + 6 rate-only = 33,
-  Wet Spray 9 — **67 rows left out**.
+  A heading's children are the rows the sheet puts under it (the reader's
+  parent item number, after the heading and before the next heading with the
+  same number), never merely the rows that follow it; a heading with nothing
+  under it at all is an orphan and goes too. Both the preview (per tab) and
+  the form say how many rows and which. On the Nxtra file: Sprinkler keeps 27
+  lines with a quantity + 6 rate-only = 33, Wet Spray 9 — **75 rows left
+  out** (Sprinkler 38, Wet Spray 37). Six of Sprinkler's are not quantity-0
+  lines: the contractor's own "Note:" and numbered terms under their "TOTAL
+  OF SPRINKLER" (rows 100, 103–107), which the reader cannot confirm as the
+  grand total because its amount sits in a column with no heading — R7 keeps
+  their terms off our work order — and the unnumbered scope line at row 4,
+  with nothing under it before section D.
 - **Tracks (R1).** An import that maps only one rate track declares that
   track (`import_tracks()`); the form opens "Labour only" and draws no
   material box at all. Changing the choice at the top of the form is

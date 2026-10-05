@@ -2258,7 +2258,10 @@ def _tab_grid(rec: dict, i: int):
 def _ticked(rec: dict) -> list:
     """The ticked tabs, in workbook order, each one staged."""
     out = []
-    for i in rec.get("ticked") or [rec.get("sheet_index") or 0]:
+    ticked = rec.get("ticked")
+    if ticked is None:                       # a row staged before R4
+        ticked = [rec.get("sheet_index") or 0]
+    for i in ticked:
         try:
             i = int(i)
         except (TypeError, ValueError):
@@ -2441,8 +2444,9 @@ def _rows_from_build(result: dict, mapping: dict, sheet_codes=frozenset(),
     rows, last, seen_sections = [], {}, set()
 
     def heading(item_no: str, text: str, notes=(), section: bool = False,
-                row=None) -> dict:
+                row=None, parent: str = "", sec_code=None) -> dict:
         h = {"line_id": "", "is_header": True, "item_no": item_no, "_row": row,
+             "_parent": parent, "_sec": sec_code,
              "description": text, "unit": "", "qty": "",
              "material_rate": "", "labour_rate": "",
              "note": "\n".join(notes)[:2000], "need": {}}
@@ -2478,11 +2482,13 @@ def _rows_from_build(result: dict, mapping: dict, sheet_codes=frozenset(),
                     rows[tgt]["description"] = f"{base}\n{text}" if base else text
                 continue
             if text:
-                rows.append(heading("", text, flag_notes, row=l.get("row")))
+                rows.append(heading("", text, flag_notes, row=l.get("row"),
+                                    parent=l.get("parent_item_no") or "", sec_code=sec))
             continue
         if header:
             rows.append(heading(l.get("item_no") or "", l.get("description") or "",
-                                flag_notes, row=l.get("row")))
+                                flag_notes, row=l.get("row"),
+                                parent=l.get("parent_item_no") or "", sec_code=sec))
             if l.get("item_no"):
                 last[(sec, l.get("item_no"))] = len(rows) - 1
             continue
@@ -2496,7 +2502,8 @@ def _rows_from_build(result: dict, mapping: dict, sheet_codes=frozenset(),
                                  if has_mat and "material_rate" in declared else ""),
                "labour_rate": (num_text(l.get("install_rate"))
                                if has_lab and "labour_rate" in declared else ""),
-               "_row": l.get("row")}
+               "_row": l.get("row"), "_parent": l.get("parent_item_no") or "",
+               "_sec": sec}
         for n in l.get("needs") or []:
             f = {"total_qty": "qty", "description": "description",
                  "supply_rate": "material_rate",
@@ -2562,18 +2569,50 @@ def _drop_qty0(rows: list, tracks: str, tab_name: str = "", left_out=None) -> li
             note = f"Row {r.get('_row')}: rate only — quantity 0 on the sheet"
             r["note"] = (f"{r['note']}\n{note}" if r.get("note") else note)[:2000]
     heads = [i for i, r in enumerate(rows) if r.get("is_header")]
-    for h in heads:
+    # A heading's CHILDREN are the rows the sheet itself puts under it — the
+    # reader's `parent_item_no` within the same section — never merely the
+    # rows that follow it: item 3 after heading 2 is heading 2's sibling.
+    # Deepest first, so a sub-heading left empty empties its parent in turn.
+    #
+    # ⚠ **A heading with NOTHING under it is an orphan too, and goes** — "no
+    #   orphan headings". With no child by the sheet's parent relation, its
+    #   children are the rows that follow it up to the next heading; none at
+    #   all and it is left out (and listed). Found on the client's own sheet:
+    #   their "TOTAL OF SPRINKLER" row has its amount in a column with no
+    #   heading, so the reader cannot confirm it as the grand total by its
+    #   sums, and the contractor's OWN quote notes and terms under it ("All
+    #   material is in customer scope"…) came in as heading lines. R7 forbids
+    #   carrying the contractor's terms onto our work order; this keeps them
+    #   off it without touching the shared reader's grand-total rule. A child
+    #   comes AFTER its heading and before the next heading carrying the same
+    #   number: those terms are numbered 1–5 again, and the real items 1, 2,
+    #   4 and 5 above them must not count as theirs.
+    for h in reversed(heads):
         if rows[h].get("section"):
             continue
-        nxt = next((j for j in heads if j > h), len(rows))
-        run = range(h + 1, nxt)
-        if len(run) and all(j in drop for j in run):
+        kids = []
+        no, sec = rows[h].get("item_no"), rows[h].get("_sec")
+        if no:
+            end = next((j for j in heads if j > h and rows[j].get("item_no") == no
+                        and rows[j].get("_sec") == sec), len(rows))
+            kids = [j for j in range(h + 1, end)
+                    if rows[j].get("_parent") == no and rows[j].get("_sec") == sec]
+        if not kids:
+            nxt = next((j for j in heads if j > h), len(rows))
+            kids = list(range(h + 1, nxt))
+            # An UNNUMBERED heading may introduce numbered ones: the heading
+            # after it is its child (already decided, deepest first), unless
+            # that is a section heading. A numbered one directly followed by
+            # another heading is followed by its sibling, not its child.
+            if not no and nxt < len(rows) and not rows[nxt].get("section"):
+                kids.append(nxt)
+        if not any(j not in drop for j in kids):
             drop.add(h)
     secs = [i for i in heads if rows[i].get("section")]
     for k, h in enumerate(secs):
         nxt = secs[k + 1] if k + 1 < len(secs) else len(rows)
         members = [j for j in range(h + 1, nxt) if not rows[j].get("is_header")]
-        if members and all(j in drop for j in members):
+        if not any(j not in drop for j in members):
             drop.update(range(h, nxt))
     if left_out is not None:
         for i in sorted(drop):
