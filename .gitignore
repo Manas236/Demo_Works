@@ -66,3 +66,5 @@ client_docs/
 #   about a file nobody meant to commit. Same reasoning as `*.bak` above.
 [0-9][A-Z][A-Z][A-Z].md
 [0-9][0-9][A-Z][A-Z][A-Z].md
+.claude/settings.json
+.claude/settings.local.json
