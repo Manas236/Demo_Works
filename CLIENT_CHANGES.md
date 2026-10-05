@@ -4297,6 +4297,86 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 5 October 2026, later still, by Manas Gawde — WORK ORDERS, PASS 3: THE CLIENT'S REAL SHEET · NO CHARGE · RULINGS R1 TO R7
+>
+> **A new block, not an amendment.** The forty-second block and every block
+> before it stand exactly as recorded. This is the **forty-third** occasion.
+> It covers the items below and nothing else.
+>
+> **The diagnosis.** The client's sample work order (`fixtures/
+> work_order_nxtra.xlsx`, gitignored, never committed) did not import: on the
+> code at `686d083` the Sprinkler tab came up with **126** red fields and the
+> Wet Spray System tab with **47**. Five causes, reproduced before anything was
+> changed: (1) it is a **labour-only** job, so asking for a material rate on
+> every line (44 on Wet Spray) was wrong; (2) Sprinkler's header is **two
+> rows** — "Installation" over "Unit Rate (INR)", floor labels beside it — and
+> the reader took one, so the rate column was never mapped (63 lines × 2
+> rates); (3) Wet Spray's "INR | INR" units row under its header was read as a
+> priced line; (4) about 70 of the 107 priced rows have **quantity 0** — BOQ
+> rows this contractor is not doing; (5) their work order spans **two tabs**,
+> sums them on a cover sheet and adds **Tax 18 %**: 3,07,080 + 45,720 =
+> 3,52,800, GST 63,504, total 4,16,304, Site: Lucknow. The arithmetic was
+> already right; those five were not.
+>
+> **Manas's rulings, final:**
+>
+> - **R1 — rate tracks are a property of the WORK ORDER**: `tracks` is
+>   "labour", "material" or "both". ⚠ **This NARROWS ruling D** (forty-first
+>   block): a work order that declares one track never asks for the other,
+>   on any line. Absent on a stored work order means "both". A new hand-made
+>   work order defaults to "both"; an import defaults to the one track mapped,
+>   else "both"; it is shown at the top of the form and changeable there. In a
+>   one-track work order the other track is not shown, not required and stored
+>   ABSENT, never 0; a figure typed in it is REFUSED, naming the lines. Print:
+>   Sr | Description | Unit | Qty | Rate | Amount, captioned "Labour only" /
+>   "Material only". A blank rate in a declared track is still refused.
+> - **R2 — the header band, fixed in the SHARED reader** (`sheetimport.py`, so
+>   the BOQ import gains it): a lower header row with a rate or amount label
+>   under a heading joins the band, the heading naming the track
+>   ("Installation" over "Unit Rate" is the installation rate), floor labels
+>   beside it kept as they are; a units-only row ("INR", "Rs", "₹", "Nos",
+>   "%") directly under the band is part of it. Every existing test passes
+>   untouched.
+> - **R3 — quantity-0 lines, on a WORK-ORDER import only**: a priced line
+>   with quantity 0 and no non-zero rate on a declared track is left out; with
+>   a rate it is kept as a rate-only line; a heading left with nothing under it
+>   goes too. The preview and the form say how many rows were left out and
+>   which.
+> - **R4 — several tabs into one work order**: every staged tab offered with a
+>   tickbox, a column mapping per tab, built in workbook order into one form.
+>   A heading line gains a `section` flag; each sheet section title (or the
+>   tab's name) becomes a section heading; the print closes each section with
+>   "Subtotal - <section>" and adds a SUMMARY above the totals, as their cover
+>   sheet does. A hand-made work order may tick "Section (subtotal)" too.
+> - **R5 — GST per work order**: `gst_rate` %, 0 to 100, prefilled 18 on a new
+>   work order; ABSENT means none. Tax derived, never stored —
+>   round(pre-tax × rate / 100, 2). Printed as the pre-tax Total, "GST @ n %"
+>   and "Total (incl. GST)", the amount in words on the last. ⚠ **This REVERSES
+>   ruling B's "no GST block"** (forty-first block): the client's own sample
+>   answers the question that ruling left open — 18 % on the work order. One
+>   rate, no CGST / SGST / IGST split (a recorded gap).
+> - **R6 — `site`**, free text, printed "Site:" in the header block when set.
+> - **R7 — `terms`**, free text, one per line, printed as a numbered "Terms &
+>   Conditions" list after the totals; a default list (empty by default) in
+>   the work order's own settings record, editable at `/settings`, prefills a
+>   new work order. Nothing is scraped from the sheet — its terms are the
+>   contractor's quote's.
+>
+> **Constraints given with the rulings:** every check with
+> `DB_ENABLED=false`; the existing WO print golden stays byte-identical, new
+> goldens for a labour-only work order with sections, GST, site and terms and
+> for a both-track one with GST, no other print golden moves; a test somebody
+> else wrote is never weakened; `product.py` and `quotation.py` untouched.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his** —
+> the work order made to read the client's own sheet. It changes no CC-2
+> item's state and moves no Phase 3 bar.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4936,6 +5016,17 @@ contractor can be typed in full — name, address, GSTIN and **phone** — with 
 address-book entry at all. Picking a vendor as the contractor is still refused,
 and the message now says to type the details or to file the address as a
 Contractor.
+
+→ **Your own sheet now imports** (the §0 **forty-third** block, no charge). The
+Nxtra work order — Sprinkler and Wet Spray System ticked together — comes in
+with nothing to fill in: it is recognised as **labour only** (no material rate
+is asked for), the two-row "Installation / Unit Rate" heading is read, the
+"INR" row under it is not taken for a line, and the rows with quantity 0 and no
+rate are left out (the form lists which). It prints with a subtotal per system,
+a summary, **GST at 18 %**, the site, and your terms: 3,07,080 + 45,720 =
+3,52,800, GST 63,504, total **4,16,304** — the figures on your cover sheet.
+**GST is now on the work order**, 18 % unless changed; that answers the
+question above. A split into CGST and SGST (or IGST) is not built yet.
 
 ### G6 · RA from a challan / a measurement sheet — ✅ Built, not deployed, no charge
 
