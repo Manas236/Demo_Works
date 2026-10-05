@@ -16,6 +16,11 @@ below is one ruling, or one property the brief named:
   J  snapshot immutability — delete the address and the project; print unchanged
 
 plus the escaping of every free-text field a work order carries.
+
+PASS 3 (5 Oct 2026, the forty-third block) closes the file: R1 the tracks,
+R4 sections, R5 GST (reversing B's "no GST"), R6 the site, R7 the terms, and
+two new print goldens. The import half and the client's own sheet are
+tests/test_wo_nxtra.py.
 """
 
 import hashlib
@@ -121,10 +126,16 @@ def test_work_orders_is_its_own_persisted_collection(client):
     assert (STORE.get("purchase_orders") or {}) == drafts_before
 
 
-def test_a_work_order_record_carries_no_tax_field_and_no_stored_amount(client):
+def test_a_work_order_record_stores_a_gst_rate_but_no_tax_and_no_stored_amount(client):
+    """
+    Renamed 5 October 2026 (pass 3): R5 reverses ruling B's "no GST", so the
+    record now carries a `gst_rate` (0 here — this POST sends none). The tax
+    itself, like every amount, is derived and never stored.
+    """
     wo = STORE["work_orders"][_create(client)]
     flat = repr(wo).lower()
-    for word in ("gst", "tax", "cgst", "igst"):
+    assert wo["gst_rate"] == 0.0 and wo["tracks"] == "both"
+    for word in ("gst", "tax", "cgst", "sgst", "igst", "gst_amount"):
         assert word not in {k.lower() for k in wo}, word
     assert "contractor_gstin" in wo                     # the party's, not a tax
     for key in ("total", "grand_total", "subtotal", "material_total", "labour_total"):
@@ -143,7 +154,11 @@ def test_amounts_are_derived_per_line_and_rounded_once():
     line = {"qty": 3, "material_rate": 33.333, "labour_rate": 0.005}
     assert W.line_amounts(line) == (100.0, 0.01, 100.01)
     wo = {"lines": [line, {"qty": 2.5, "material_rate": 0, "labour_rate": 40}]}
-    assert W.totals_of(wo) == {"material": 100.0, "labour": 100.01, "grand": 200.01}
+    # `totals_of()` gained gst_rate / gst / total on 5 Oct 2026 (R5); the three
+    # figures this test pins are unchanged.
+    t = W.totals_of(wo)
+    assert (t["material"], t["labour"], t["grand"]) == (100.0, 100.01, 200.01)
+    assert (t["gst_rate"], t["gst"], t["total"]) == (0.0, 0.0, 200.01)   # no GST: absent
 
 
 def test_both_rate_tracks_reach_the_print_in_their_own_columns(client):
@@ -698,11 +713,26 @@ def _sheet(rows):
 def _confirm(client, wb, mapping=None, uid=None):
     from conftest import ensure_test_user
     tok = W.stage(wb, "contractor.xlsx", uid or ensure_test_user()["id"])
-    grid = wb["grid"][wb["selected"]]
+    sel = wb["selected"]
+    grid = wb["grid"][sel]
     m = mapping if mapping is not None else W.guess_mapping(grid)
-    data = {f"map_{k}": v for k, v in m.items()}
+    # R4 (5 Oct 2026): the preview posts the ticked tabs and one mapping per
+    # tab, named map_<tab>_<column>.
+    data = {f"map_{sel}_{k}": v for k, v in m.items()}
+    data["tab"] = [str(sel)]
     data["act"] = "confirm"
     return tok, client.post(f"/wo/import/{tok}", data=data)
+
+
+def _priced(html, name):
+    """The posted values of one column, PRICED rows only — a heading row posts
+    hidden empty boxes too, so the lists stay aligned (R1/R4)."""
+    out = []
+    for tr in _body(html).split('<tr class="wo-ln')[1:]:
+        if tr.startswith(" wo-hd"):
+            continue
+        out += re.findall(rf'name="{name}" value="([^"]*)"', tr)
+    return out
 
 
 def _body(html):
@@ -724,16 +754,24 @@ ONE_RATE = [
 ]
 
 
-def test_a_sheet_with_one_rate_column_fills_that_track_and_leaves_the_other_blank_and_flagged(client):
+def test_a_sheet_with_one_rate_column_makes_a_one_track_work_order(client):
+    """
+    ⚠ AMENDED 5 October 2026 (the forty-third block, R1 — supersedes the
+    per-line half of ruling D). It read `..._fills_that_track_and_leaves_the_
+    other_blank_and_flagged` and asserted every line's labour rate blank and
+    RINGED. A sheet with only a material column now imports as a MATERIAL ONLY
+    work order — declared at the top of the form, changeable there — and the
+    labour rate is neither drawn nor asked for. Still never guessed, never 0.
+    """
     wb = _sheet(ONE_RATE)
     assert set(W.guess_mapping(wb["grid"][0]).values()) >= {"material_rate", "material_amount"}
     _tok, r = _confirm(client, wb)
     html = r.get_data(as_text=True)
-    assert _values(html, "ln_mrate") == ["100", "200"]
-    assert _values(html, "ln_lrate") == ["", ""]                # never guessed, never 0
-    lrates = re.findall(r'<input type="text" name="ln_lrate"[^>]*>', _body(html))
-    assert all('class="wo-need"' in i and "no labour rate column" in i for i in lrates)
-    assert "The sheet has one rate column" in html
+    assert _priced(html, "ln_mrate") == ["100", "200"]
+    assert 'name="ln_lrate"' not in html                         # not drawn at all
+    assert 'class="wo-need"' not in _body(html)                  # nothing to answer
+    assert '<option value="material" selected>' in html
+    assert "this work order is Material only" in html
     assert not STORE["work_orders"]                              # nothing saved
 
 
@@ -742,8 +780,8 @@ def test_the_labour_only_sheet_is_the_mirror_case(client):
             ["1", "Fixing", "nos", 4, 25]]
     _tok, r = _confirm(client, _sheet(rows))
     html = r.get_data(as_text=True)
-    assert _values(html, "ln_lrate") == ["25"] and _values(html, "ln_mrate") == [""]
-    assert "no material rate column" in html
+    assert _priced(html, "ln_lrate") == ["25"] and 'name="ln_mrate"' not in html
+    assert '<option value="labour" selected>' in html
 
 
 def test_both_tracks_import_and_the_reader_rules_carry_over(client):
@@ -755,14 +793,17 @@ def test_both_tracks_import_and_the_reader_rules_carry_over(client):
             ["3", "Painting", "sqm", 6, 20, 10]]
     _tok, r = _confirm(client, _sheet(rows))
     html = r.get_data(as_text=True)
-    assert _values(html, "ln_item") == ["1", "1.1", "1.2", "2", "3"]
-    assert _values(html, "ln_qty") == ["", "10", "0", "4", "6"]
-    assert _values(html, "ln_mrate") == ["", "400", "300", "", "20"]
-    assert _values(html, "ln_lrate") == ["", "90", "80", "30", "10"]
+    # ⚠ AMENDED 5 Oct 2026 (R4): a tab with no section title opens with its
+    #   TAB NAME ("WO") as a section heading, so every list gains a first row.
+    assert _values(html, "ln_item") == ["", "1", "1.1", "1.2", "2", "3"]
+    assert _priced(html, "ln_qty") == ["10", "0", "4", "6"]
+    assert _priced(html, "ln_mrate") == ["400", "300", "", "20"]
+    assert _priced(html, "ln_lrate") == ["90", "80", "30", "10"]
     assert "rate only (RO) on the sheet" in html
     # Row 2 ("1  Pipe work") is a HEADING line (fix 2): no figure, nothing ringed.
-    assert _values(html, "ln_hdr") == ["1", "0", "0", "0", "0"]
-    head = _body(html).split('<tr class="wo-ln')[1]
+    assert _values(html, "ln_hdr") == ["1", "1", "0", "0", "0", "0"]
+    assert _values(html, "ln_sec") == ["1", "0", "0", "0", "0", "0"]
+    head = _body(html).split('<tr class="wo-ln')[2]
     assert "wo-hd" in head and 'class="wo-need"' not in head
     assert "no material rate on this row" in html                 # row 2's blank
 
@@ -801,20 +842,30 @@ def test_a_staged_import_belongs_to_its_uploader_and_is_consumed(client):
 
 
 def test_an_imported_sheet_saves_through_the_ordinary_form(client):
+    """
+    ⚠ AMENDED 5 October 2026 (R1, R4, R5). The sheet's one rate column makes a
+    MATERIAL ONLY work order; posting a labour rate into it is now REFUSED
+    (never silently dropped), and without one it saves. It used to demand a
+    typed labour rate on every line. The tab-name section heading is posted
+    back with the rest, exactly as rendered.
+    """
     _tok, r = _confirm(client, _sheet(ONE_RATE))
     html = r.get_data(as_text=True)
-    data = {"date": "2026-10-05", "contractor_name": "Ravi",
-            "ln_id": re.findall(r'name="ln_id" value="([^"]*)"', html)[:-1],
-            "ln_note": ["", ""],
-            "ln_item": _values(html, "ln_item"), "ln_desc": ["Excavation", "Concrete"],
+    data = {"date": "2026-10-05", "contractor_name": "Ravi", "tracks": "material",
+            "ln_id": _values(html, "ln_id"), "ln_note": _values(html, "ln_note"),
+            "ln_hdr": _values(html, "ln_hdr"), "ln_sec": _values(html, "ln_sec"),
+            "ln_item": _values(html, "ln_item"),
+            "ln_desc": ["WO", "Excavation", "Concrete"],
             "ln_unit": _values(html, "ln_unit"), "ln_qty": _values(html, "ln_qty"),
-            "ln_mrate": _values(html, "ln_mrate"), "ln_lrate": ["", ""]}
+            "ln_mrate": _values(html, "ln_mrate"), "ln_lrate": ["", "0", "15"]}
     html = client.post("/wo/create", data=data).get_data(as_text=True)
-    assert not STORE["work_orders"] and "type 0 if there is none" in html
-    data["ln_lrate"] = ["0", "15"]
+    assert not STORE["work_orders"]
+    assert "Labour rates are typed on 2 lines (lines 2, 3) but this work order is Material only" in html
+    del data["ln_lrate"]
     assert client.post("/wo/create", data=data).status_code == 302
     (wo,) = STORE["work_orders"].values()
-    assert W.totals_of(wo) == {"material": 1600.0, "labour": 45.0, "grand": 1645.0}
+    assert W.totals_of(wo)["material"] == 1600.0 and W.totals_of(wo)["labour"] == 0.0
+    assert all("labour_rate" not in l for l in wo["lines"])     # absent, never 0
 
 
 def test_a_real_workbook_goes_through_upload_preview_and_form(client):
@@ -833,11 +884,12 @@ def test_a_real_workbook_goes_through_upload_preview_and_form(client):
     tok = r.headers["Location"].rsplit("/", 1)[-1]
     html = client.get(f"/wo/import/{tok}").get_data(as_text=True)
     assert "wo.xlsx" in html and "Material rate" in html
+    sel = W.staged()[tok]["sheet_index"]
     grid = W._grid(W.staged()[tok])
-    data = {f"map_{k}": v for k, v in W.guess_mapping(grid).items()}
-    data["act"] = "confirm"
+    data = {f"map_{sel}_{k}": v for k, v in W.guess_mapping(grid).items()}
+    data.update(tab=[str(sel)], act="confirm")
     html = client.post(f"/wo/import/{tok}", data=data).get_data(as_text=True)
-    assert _values(html, "ln_mrate") == ["0", "85"] and _values(html, "ln_lrate") == ["350", "30"]
+    assert _priced(html, "ln_mrate") == ["0", "85"] and _priced(html, "ln_lrate") == ["350", "30"]
 
 
 def test_a_file_that_is_not_a_workbook_is_refused_in_words(client):
@@ -983,13 +1035,14 @@ def test_a_staged_import_survives_a_new_process(client, fake_db):
     with app_module.app.test_client() as c2:
         with c2.session_transaction() as sess:
             sess[auth.SESSION_KEY] = ensure_test_user()["id"]
+        sel = STORE["wo_imports"][tok]["sheet_index"]
         grid = W._grid(STORE["wo_imports"][tok])
-        form = {f"map_{k}": v for k, v in W.guess_mapping(grid).items()}
-        form["act"] = "confirm"
+        form = {f"map_{sel}_{k}": v for k, v in W.guess_mapping(grid).items()}
+        form.update(tab=[str(sel)], act="confirm")
         html = c2.post(f"/wo/import/{tok}", data=form).get_data(as_text=True)
     assert "Core cutting" in _body(html) and "Hanger supports" in _body(html)
-    assert _values(html, "ln_mrate") == ["0", "85"]
-    assert _values(html, "ln_lrate") == ["350", "30"]
+    assert _priced(html, "ln_mrate") == ["0", "85"]
+    assert _priced(html, "ln_lrate") == ["350", "30"]
     assert tok not in STORE["wo_imports"]                # consumed
 
 
@@ -1036,8 +1089,8 @@ def _form_back(html, **header):
     """Post the prefilled form back exactly as rendered — no edit at all."""
     body = _body(html)
     data = {"date": "2026-10-05", "contractor_name": "Ravi", **header}
-    for name in ("ln_id", "ln_note", "ln_hdr", "ln_item", "ln_unit", "ln_qty",
-                 "ln_mrate", "ln_lrate"):
+    for name in ("ln_id", "ln_note", "ln_hdr", "ln_sec", "ln_item", "ln_unit",
+                 "ln_qty", "ln_mrate", "ln_lrate"):
         data[name] = re.findall(rf'name="{name}" value="([^"]*)"', body)
     data["ln_desc"] = [__import__("html").unescape(t) for t in
                        re.findall(r'<textarea name="ln_desc"[^>]*>(.*?)</textarea>', body, re.S)]
@@ -1059,8 +1112,12 @@ def test_a_sheet_with_two_section_headings_saves_without_any_edit(client):
     for l in wo["lines"]:
         if l["is_header"]:
             assert (l["unit"], l["qty"], l["material_rate"], l["labour_rate"]) == ("", None, None, None)
+    # R4 (5 Oct 2026): the sheet's two section titles are SECTION headings.
+    assert [l["description"] for l in wo["lines"] if W.is_section(l)] == [
+        "CIVIL WORKS", "ELECTRICAL WORKS"]
     # 10x100 + 5x400 + 20x30 material; 10x50 + 5x90 + 20x10 labour.
-    assert W.totals_of(wo) == {"material": 3600.0, "labour": 1150.0, "grand": 4750.0}
+    t = W.totals_of(wo)
+    assert (t["material"], t["labour"], t["grand"]) == (3600.0, 1150.0, 4750.0)
 
 
 def test_a_section_code_the_sheet_never_wrote_is_not_printed():
@@ -1087,7 +1144,8 @@ def test_headers_are_excluded_from_every_total_even_carrying_stray_figures(clien
     head = wo["lines"][0]
     assert head["is_header"] and (head["unit"], head["qty"], head["material_rate"],
                                   head["labour_rate"]) == ("", None, None, None)
-    assert W.totals_of(wo) == {"material": 1000.0, "labour": 500.0, "grand": 1500.0}
+    t = W.totals_of(wo)
+    assert (t["material"], t["labour"], t["grand"]) == (1000.0, 500.0, 1500.0)
     # A stray figure written onto a heading by hand is still never summed.
     head.update(qty=5, material_rate=7, labour_rate=7)
     assert W.totals_of(wo)["grand"] == 1500.0
@@ -1228,3 +1286,479 @@ def test_gstin_auto_fill_is_not_gated_by_type_anywhere(client):
     c_html = client.get(f"/address/edit/{con}").get_data(as_text=True)
     for marker in ('id="gst-captcha"', '"lookup": ', "NO_ADDRESS_FILL"):
         assert (marker in v_html) == (marker in c_html), marker
+
+
+# ══ PASS 3 (5 Oct 2026) — the client's real sheet: R1, R4, R5, R6, R7 ═════════
+#
+# CLIENT_CHANGES.md §0, forty-third block. The import half — the header band
+# (R2), quantity-0 rows (R3), several tabs (R4) — and the acceptance on the
+# client's own file are tests/test_wo_nxtra.py. These are the form, the record
+# and the print.
+
+def _rows3(*rows):
+    """Form fields for (kind, item, desc, unit, qty, mrate, lrate) — kind ""
+    a priced line, "h" a heading, "s" a SECTION heading — posted the way the
+    form posts them, every list aligned row for row."""
+    out = {k: [] for k in ("ln_id", "ln_hdr", "ln_sec", "ln_item", "ln_desc",
+                           "ln_unit", "ln_qty", "ln_mrate", "ln_lrate", "ln_note")}
+    for kind, item, desc, unit, qty, m, l in rows:
+        out["ln_id"].append("")
+        out["ln_hdr"].append("1" if kind else "0")
+        out["ln_sec"].append("1" if kind == "s" else "0")
+        out["ln_item"].append(item)
+        out["ln_desc"].append(desc)
+        out["ln_unit"].append(unit)
+        out["ln_qty"].append(qty)
+        out["ln_mrate"].append(m)
+        out["ln_lrate"].append(l)
+        out["ln_note"].append("")
+    return out
+
+
+def _post(client, rows, url="/wo/create", **over):
+    data = {"date": "2026-10-05", "contractor_id": "", "contractor_name": "Ravi",
+            "contractor_gstin": "", "contractor_addr": "Pune", "project_id": "",
+            "notes": "", "tracks": "both", "gst_rate": "18", "site": "", "terms": ""}
+    data.update(_rows3(*rows))
+    data.update(over)
+    return client.post(url, data=data)
+
+
+def _raised(client, rows, **over):
+    r = _post(client, rows, **over)
+    assert r.status_code == 302, r.get_data(as_text=True)[:800]
+    (wid,) = [k for k in STORE["work_orders"] if k != GOLD_WO][-1:]
+    return wid, STORE["work_orders"][wid]
+
+
+def _gst_box(html):
+    return re.search(r'id="gst_rate" name="gst_rate"[^>]*value="([^"]*)"', html, re.S).group(1)
+
+
+def _sums(html):
+    """Every summing row of a print — (label, the amount in its last cell)."""
+    flat = re.sub(r"\s+", " ", html)
+    return re.findall(r'<td colspan="4" class="sum-lbl">([^<]*)</td>'
+                      r'(?: <td class="c-(?:price|total)">[^<]*</td>)*?'
+                      r' <td class="c-total">([^<]+)</td> </tr>', flat)
+
+
+SECTIONED = (
+    ("s", "A", "CIVIL WORKS", "", "", "", ""),
+    ("",  "1", "Excavation", "cum", "10", "", "50"),
+    ("h", "2", "Pipe work", "", "", "", ""),
+    ("",  "2.1", "50 NB pipe", "m", "5", "", "90"),
+    ("s", "B", "ELECTRICAL WORKS", "", "", "", ""),
+    ("",  "1", "Cabling", "m", "20", "", "10"),
+)
+
+
+# ── R1 — the tracks are declared per work order ──────────────────────────────
+
+def test_r1_a_rate_typed_in_a_track_the_work_order_does_not_carry_is_refused_naming_the_lines(client):
+    rows = (("", "1", "Pipe laying", "m", "10", "100", "50"),
+            ("", "2", "Painting", "sqm", "2", "", "40"),
+            ("", "3", "Hangers", "Nos", "4", "0", "15"))
+    r = _post(client, rows, tracks="labour")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200 and not STORE["work_orders"]       # nothing saved
+    assert ("Material rates are typed on 2 lines (lines 1, 3) but this work "
+            "order is Labour only: clear them, or choose Material + Labour.") in html
+    # Never silently dropped: the refused figures are still on the page.
+    assert _values(html, "ln_mrate") == ["100", "", "0"]
+    # Cleared, it saves — and the other track is stored ABSENT, never 0.
+    wid, wo = _raised(client, tuple(r_[:5] + ("",) + r_[6:] for r_ in rows),
+                      tracks="labour")
+    assert wo["tracks"] == "labour"
+    assert [l["labour_rate"] for l in wo["lines"]] == [50.0, 40.0, 15.0]
+    assert not any("material_rate" in l for l in wo["lines"])
+
+
+def test_r1_the_mirror_a_material_only_work_order_refuses_a_labour_figure():
+    rows = [{"item_no": "1", "description": "Pipe", "unit": "m", "qty": "1",
+             "material_rate": "5", "labour_rate": "2"},
+            # A heading's figures are dropped, never a stray: not named.
+            {"item_no": "A", "description": "Civil", "is_header": True,
+             "labour_rate": "9"}]
+    _lines_, problems = W.lines_from_rows(rows, tracks="material")
+    assert [p["message"] for p in problems if p["row"] is None] == [
+        "Labour rates are typed on 1 line (line 1) but this work order is "
+        "Material only: clear them, or choose Material + Labour."]
+    assert [(p["row"], p["field"]) for p in problems if p["row"] is not None] == [
+        (0, "labour_rate")]
+
+
+def test_r1_a_one_track_work_order_still_refuses_a_blank_rate_on_its_own_track(client):
+    r = _post(client, (("", "1", "Pipe laying", "m", "10", "", ""),), tracks="labour")
+    assert r.status_code == 200 and not STORE["work_orders"]
+    assert "needs a labour rate — type 0 if there is none" in r.get_data(as_text=True)
+    assert "needs a material rate" not in r.get_data(as_text=True)
+
+
+def test_r1_update_the_rate_columns_redraws_the_form_and_saves_nothing(client):
+    rows = (("", "1", "Pipe laying", "m", "10", "", "50"),)
+    html = _post(client, rows, tracks="labour", act="retrack").get_data(as_text=True)
+    assert not STORE["work_orders"]
+    assert 'name="ln_mrate"' not in html and 'name="ln_lrate"' in html
+    assert "The lines now carry Labour only." in html
+    assert '<option value="labour" selected>' in html
+    # A material figure already typed stays ON THE PAGE, named — never dropped.
+    rows = (("", "1", "Pipe laying", "m", "10", "100", "50"),)
+    html = _post(client, rows, tracks="labour", act="retrack").get_data(as_text=True)
+    assert _values(html, "ln_mrate") == ["100"]
+    assert "Material rates are typed on 1 line (line 1)" in html
+    assert not STORE["work_orders"]
+
+
+def test_r1_r5_a_work_order_stored_before_pass_3_reads_as_both_tracks_and_no_gst(client, golden_wo):
+    wo = STORE["work_orders"][GOLD_WO]
+    assert not {"tracks", "gst_rate", "site", "terms"} & set(wo)
+    assert W.tracks_of(wo) == "both" and W.gst_rate_of(wo) == 0.0
+    t = W.totals_of(wo)
+    assert (t["gst_rate"], t["gst"], t["total"]) == (0.0, 0.0, t["grand"])
+    html = client.get(f"/wo/print/{GOLD_WO}").get_data(as_text=True)
+    for word in ("GST @", "Total (incl. GST)", "Subtotal - ", ">Summary<",
+                 '<span class="m-lbl">Site</span>', "Terms &amp; Conditions",
+                 "Labour only", "Material only"):
+        assert word not in html, word
+    # An unrecognised value hides nothing: it reads as both.
+    assert W.tracks_of({"tracks": " LABOUR "}) == "labour"
+    assert W.tracks_of({"tracks": "half"}) == "both"
+
+
+def test_r5_a_legacy_draft_opens_its_gst_box_at_0_and_a_resave_keeps_no_gst(client):
+    wid = _create(client)
+    wo = STORE["work_orders"][wid]
+    for k in ("tracks", "gst_rate", "site", "terms"):
+        wo.pop(k, None)
+    html = client.get(f"/wo/edit/{wid}").get_data(as_text=True)
+    assert _gst_box(html) == "0" and '<option value="both" selected>' in html
+    r = client.post(f"/wo/edit/{wid}", data={**_form_back(html), "tracks": "both",
+                                              "gst_rate": _gst_box(html)})
+    assert r.status_code == 302, r.get_data(as_text=True)[:600]
+    assert wo["gst_rate"] == 0.0 and wo["tracks"] == "both"
+    assert "GST @" not in client.get(f"/wo/print/{wid}").get_data(as_text=True)
+
+
+# ── R5 — GST, derived ────────────────────────────────────────────────────────
+
+def test_r5_a_new_work_order_opens_with_both_tracks_and_gst_at_18(client):
+    html = client.get("/wo/create").get_data(as_text=True)
+    assert _gst_box(html) == "18"
+    assert '<option value="both" selected>' in html
+    assert '<textarea id="terms" name="terms" rows="4"></textarea>' in html
+
+
+@pytest.mark.parametrize("lines,rate,want", [
+    # 3 x 333.33 = 999.99; x 18% = 179.9982 -> 180.00.
+    ([{"qty": 3.0, "labour_rate": 333.33}], 18, (999.99, 180.0, 1179.99)),
+    # Both tracks: the tax is on the PRE-TAX grand total, not per track.
+    ([{"qty": 1.0, "material_rate": 1000.0, "labour_rate": 234.57}], 12.5,
+     (1234.57, 154.32, 1388.89)),
+    # ⚠ 12.5 x 1% is EXACTLY 0.125 and rounds to 0.12 — `round(x, 2)`, the
+    #   purchase order's house rule, half-to-even on an exact binary half.
+    #   Pinned, not chosen.
+    ([{"qty": 1.0, "labour_rate": 12.5}], 1, (12.5, 0.12, 12.62)),
+    ([{"qty": 2.0, "labour_rate": 50.0}], 0, (100.0, 0.0, 100.0)),
+    # Stored out of range, it is clamped to 0..100 — never a negative tax,
+    # never more than the work itself.
+    ([{"qty": 2.0, "labour_rate": 50.0}], -5, (100.0, 0.0, 100.0)),
+    ([{"qty": 2.0, "labour_rate": 50.0}], 150, (100.0, 100.0, 200.0)),
+])
+def test_r5_gst_is_derived_from_the_pre_tax_total_and_rounded_once(lines, rate, want):
+    t = W.totals_of({"gst_rate": rate, "lines": lines})
+    assert (t["grand"], t["gst"], t["total"]) == want
+    assert t["gst_rate"] == max(0, min(100, rate))
+
+
+@pytest.mark.parametrize("raw,fragment", [
+    ("", "GST rate: type a figure from 0 to 100 — 0 when this work order carries no GST."),
+    ("101", "GST rate: a figure from 0 to 100, please."),
+    ("-1", "GST rate: a figure from 0 to 100, please."),
+    ("abc", "GST rate: a figure from 0 to 100, please."),
+    ("nan", "GST rate: a figure from 0 to 100, please."),
+])
+def test_r5_the_gst_rate_is_a_typed_figure_from_0_to_100_and_blank_is_refused(client, raw, fragment):
+    r = _post(client, (("", "1", "Pipe", "m", "1", "1", "1"),), gst_rate=raw)
+    assert r.status_code == 200 and not STORE["work_orders"]
+    assert fragment in r.get_data(as_text=True)
+
+
+def test_r5_the_rate_is_stored_the_tax_never_is_and_a_changed_rate_changes_the_print(client):
+    wid, wo = _raised(client, (("", "1", "Pipe", "m", "10", "100", "50"),), gst_rate="18%")
+    assert wo["gst_rate"] == 18.0
+    assert not {"gst", "gst_amount", "tax", "total", "grand_total"} & set(wo)
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    assert _sums(html) == [("Total", "500.00"), ("Grand Total (Material + Labour)", "1,500.00"),
+                           ("GST @ 18%", "270.00"), ("Total (incl. GST)", "1,770.00")]
+    # The amount in words is the figure the contractor is owed: incl. GST.
+    assert "One Thousand Seven Hundred Seventy" in html
+    wo["gst_rate"] = 12
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    assert ("GST @ 12%", "180.00") in _sums(html)
+    # The register and the project panel show the value incl. GST.
+    assert "1,680.00" in client.get("/wo/").get_data(as_text=True)
+
+
+# ── R4 — sections, subtotals and the summary ─────────────────────────────────
+
+def test_r4_sections_close_with_a_subtotal_and_a_summary_sits_above_the_totals(client):
+    wid, wo = _raised(client, SECTIONED, tracks="labour")
+    assert [l["description"] for l in wo["lines"] if W.is_section(l)] == [
+        "CIVIL WORKS", "ELECTRICAL WORKS"]
+    assert not W.is_section(wo["lines"][2])                  # a plain heading
+    assert [(g["title"], g["grand"]) for g in W.section_groups(wo)] == [
+        ("CIVIL WORKS", 950.0), ("ELECTRICAL WORKS", 200.0)]
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    assert _sums(html) == [
+        ("Subtotal - CIVIL WORKS", "950.00"), ("Subtotal - ELECTRICAL WORKS", "200.00"),
+        ("CIVIL WORKS", "950.00"), ("ELECTRICAL WORKS", "200.00"),
+        ("Total", "1,150.00"), ("GST @ 18%", "207.00"), ("Total (incl. GST)", "1,357.00")]
+    flat = re.sub(r"\s+", " ", html)
+    # Each subtotal closes its own group: after its last line, before the next.
+    assert flat.index("50 NB pipe") < flat.index("Subtotal - CIVIL WORKS") \
+        < flat.index('class="c-desc">ELECTRICAL WORKS<') < flat.index("Subtotal - ELECTRICAL")
+    assert flat.index("Subtotal - ELECTRICAL") < flat.index('class="c-desc">Summary<') \
+        < flat.index('class="sum-lbl">Total<')
+    assert '<tr class="row-total row-sum"> <td colspan="4" class="sum-lbl">Total (incl. GST)' in flat
+    assert '<tr class="row-sum"> <td colspan="4" class="sum-lbl">Total</td>' in flat
+    assert re.findall(r'<th class="c-[a-z]+">([^<]*)</th>', html) == [
+        "Sr", "Description", "Unit", "Qty", "Rate", "Amount"]
+    assert "Work assigned to contractor &mdash; Labour only" in html
+    assert "One Thousand Three Hundred Fifty Seven" in html
+
+
+def test_r4_a_both_track_work_order_subtotals_each_track_under_its_own_column(client):
+    rows = tuple(r_[:5] + ((str(int(r_[4]) * 10) if r_[4] else ""),) + r_[6:]
+                 for r_ in SECTIONED)
+    wid, _wo = _raised(client, rows, tracks="both", gst_rate="0")
+    flat = re.sub(r"\s+", " ", client.get(f"/wo/print/{wid}").get_data(as_text=True))
+    # Material: 10x100 + 5x50 = 1,250 | 20x200 = 4,000. Labour as above.
+    assert ('Subtotal - CIVIL WORKS</td> <td class="c-price"></td> <td class="c-total">'
+            '1,250.00</td> <td class="c-price"></td> <td class="c-total">950.00</td>') in flat
+    assert ('Subtotal - ELECTRICAL WORKS</td> <td class="c-price"></td> <td class="c-total">'
+            '4,000.00</td> <td class="c-price"></td> <td class="c-total">200.00</td>') in flat
+    assert ("CIVIL WORKS", "2,200.00") in _sums(flat) and ("ELECTRICAL WORKS", "4,200.00") in _sums(flat)
+    assert _sums(flat)[-1] == ("Grand Total (Material + Labour)", "6,400.00")
+    assert "GST @" not in flat                                     # typed 0: no GST
+
+
+def test_r4_lines_above_the_first_section_are_a_group_of_their_own(client):
+    rows = (("", "0", "Mobilisation", "LS", "1", "", "500"),) + SECTIONED
+    wid, _wo = _raised(client, rows, tracks="labour")
+    sums = _sums(client.get(f"/wo/print/{wid}").get_data(as_text=True))
+    assert sums[0] == ("Subtotal - Lines before the first section", "500.00")
+    assert ("Lines before the first section", "500.00") in sums
+    assert ("Total", "1,650.00") in sums
+
+
+def test_r4_a_work_order_with_no_section_prints_no_subtotal_and_no_summary(client):
+    # The tick posted on every PRICED line and on no heading: a tick means
+    # something on a heading only, so nothing is a section.
+    data = _rows3(*SECTIONED)
+    data["ln_sec"] = ["1" if h == "0" else "0" for h in data["ln_hdr"]]
+    r = _post(client, (), tracks="labour", **data)
+    assert r.status_code == 302, r.get_data(as_text=True)[:600]
+    (wid, wo), = STORE["work_orders"].items()
+    assert not any(W.is_section(l) for l in wo["lines"]) and W.section_groups(wo) == []
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    assert "Subtotal - " not in html and ">Summary<" not in html
+    assert [s[0] for s in _sums(html)] == ["Total", "GST @ 18%", "Total (incl. GST)"]
+
+
+def test_r4_the_form_carries_the_section_tick_on_headings_only(client):
+    wid, _wo = _raised(client, SECTIONED, tracks="labour")
+    html = client.get(f"/wo/edit/{wid}").get_data(as_text=True)
+    body = _body(html)
+    assert body.count('class="wo-sec-box" checked') == 2
+    assert body.count('class="wo-sec-box"') == 3                  # three headings
+    assert _values(html, "ln_sec") == ["1", "0", "0", "0", "1", "0"]
+    assert "Section (subtotal)" in body
+
+
+# ── R6 — site; R7 — terms ────────────────────────────────────────────────────
+
+def test_r6_the_site_prints_in_the_header_block_only_when_there_is_one(client):
+    wid, wo = _raised(client, (("", "1", "Pipe", "m", "1", "1", "1"),),
+                      site="  Nxtra Data Centre, Lucknow  ")
+    assert wo["site"] == "Nxtra Data Centre, Lucknow"
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    cell = ('<div class="mrow"><span class="m-lbl">Site</span>'
+            '<span class="m-val">Nxtra Data Centre, Lucknow</span></div>')
+    assert cell in html
+    assert html.index('<span class="m-lbl">Date</span>') < html.index(cell) \
+        < html.index('<span class="m-lbl">Our GSTIN</span>')
+    wid, wo = _raised(client, (("", "1", "Pipe", "m", "1", "1", "1"),), site="x" * 300)
+    assert wo["site"] == "x" * W.MAX_SITE_CHARS
+    wo["site"] = "   "
+    assert '<span class="m-lbl">Site</span>' not in client.get(f"/wo/print/{wid}").get_data(as_text=True)
+
+
+def test_r7_terms_are_one_per_line_and_print_numbered_after_the_totals(client):
+    terms = ("Payment 30 days after measurement\r\n\r\n   Debris cleared daily "
+             "by the contractor  \nTools and tackles by the contractor\n")
+    wid, wo = _raised(client, (("", "1", "Pipe", "m", "1", "1", "1"),), terms=terms)
+    assert wo["terms"] == ("Payment 30 days after measurement\nDebris cleared daily "
+                           "by the contractor\nTools and tackles by the contractor")
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    assert re.findall(r'<span class="tnc-num">(\d+)\.</span><span>([^<]*)</span>', html) == [
+        ("1", "Payment 30 days after measurement"),
+        ("2", "Debris cleared daily by the contractor"),
+        ("3", "Tools and tackles by the contractor")]
+    assert html.index("Work Order Value (in words)") < html.index("Terms &amp; Conditions")
+    wid, _wo = _raised(client, (("", "1", "Pipe", "m", "1", "1", "1"),))
+    assert "Terms &amp; Conditions" not in client.get(f"/wo/print/{wid}").get_data(as_text=True)
+
+
+def test_r7_new_work_orders_prefill_the_default_terms_from_their_own_settings_record(client):
+    assert SET.wo_default_terms() == ""                         # empty by default
+    r = client.post("/settings/", data={"wo_prefix": "", "wo_next_no": "",
+                                        "wo_default_terms": "Payment in 30 days\r\n\r\n"
+                                                            "  Tools by the contractor "})
+    assert r.status_code == 302, r.get_data(as_text=True)[:600]
+    want = "Payment in 30 days\nTools by the contractor"
+    assert SET.wo_default_terms() == want
+    assert f'name="wo_default_terms" rows="4">{want}</textarea>' in \
+        client.get("/settings/").get_data(as_text=True)
+    assert f'<textarea id="terms" name="terms" rows="4">{want}</textarea>' in \
+        client.get("/wo/create").get_data(as_text=True)
+    # The import's form opens with them too.
+    _tok, r = _confirm(client, _sheet(ONE_RATE))
+    assert f'<textarea id="terms" name="terms" rows="4">{want}</textarea>' in r.get_data(as_text=True)
+
+    wid, wo = _raised(client, (("", "1", "Pipe", "m", "1", "1", "1"),), terms=want)
+    # Spending the number writes the series back; the terms stay.
+    assert SET.wo_series()["next_no"] == "2" and SET.wo_default_terms() == want
+    # A work order's terms are its OWN: a later default does not reach it.
+    SET.save_wo_series("", "2", default_terms="Something else")
+    assert wo["terms"] == want
+    assert want in client.get(f"/wo/edit/{wid}").get_data(as_text=True)
+    SET.save_wo_series("", "2", default_terms="")
+    assert SET.wo_default_terms() == ""
+
+
+# ── Escaping — the section title, the site and the terms ─────────────────────
+
+def test_r4_r6_r7_a_section_title_the_site_and_the_terms_reach_every_page_escaped(client):
+    rows = (("s", "A", "Sec " + PAYLOAD, "", "", "", ""),
+            ("", "1", "Pipe", "m", "1", "", "5"))
+    wid, _wo = _raised(client, rows, tracks="labour", site="Site " + PAYLOAD,
+                       terms="Term " + PAYLOAD + "\nSecond " + PAYLOAD)
+    for url in (f"/wo/view/{wid}", f"/wo/print/{wid}", f"/wo/edit/{wid}", "/wo/"):
+        html = client.get(url).get_data(as_text=True)
+        assert "<script>alert(1)</script>" not in html, url
+        assert "<img src=x onerror=alert(2)>" not in html, url
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    for text in ("Subtotal - Sec &lt;script&gt;", "Site &lt;script&gt;",
+                 "Term &lt;script&gt;", "Second &lt;script&gt;"):
+        assert text in html, text
+    # …and on a refused form, which hands back what was typed.
+    r = _post(client, rows, tracks="labour", gst_rate="", site="Site " + PAYLOAD,
+              terms="Term " + PAYLOAD)
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200 and "<script>alert(1)</script>" not in html
+    assert "Site &lt;script&gt;" in html and "Term &lt;script&gt;" in html
+
+
+# ── The two new print goldens ────────────────────────────────────────────────
+
+GOLD_WO_LABOUR = "gold-wo-labour"
+GOLD_WO_BOTH = "gold-wo-both-gst"
+
+
+@pytest.fixture()
+def golden_wo_pass3(client, pinned_identity):
+    """
+    (a) labour only, with sections, GST, a site and terms; (b) both tracks
+    with GST. Every value written here — nothing derived from today.
+    """
+    head = {
+        "date": "2026-10-05", "status": "issued", "issued_on": "2026-10-06",
+        "contractor_id": "", "contractor_name": "Ravi Fabricators Pvt Ltd",
+        "contractor_source": "typed",
+        "to": "Ravi Fabricators Pvt Ltd\nShed 4, MIDC Bhosari\nPune 411026",
+        "contractor_gstin": "27AAAPZ1234C1ZV",
+        "project_id": "proj-gold", "project_name": "Kohinoor Techpark",
+        "notes": "Work to be completed within 30 days of issue.",
+        "created_at": "2026-10-05 10:00", "created_by": "",
+        "updated_at": "2026-10-05 10:00",
+    }
+    STORE["work_orders"][GOLD_WO_LABOUR] = {
+        **head, "id": GOLD_WO_LABOUR, "ref": "SF/WO/0002",
+        "tracks": "labour", "gst_rate": 18.0, "site": "Nxtra Data Centre, Lucknow",
+        "terms": "Payment 30 days after measurement\nTools and tackles by the contractor",
+        "lines": [
+            {"line_id": "bbbbbbbbbbb1", "is_header": True, "section": True,
+             "item_no": "D", "description": "WATER SPRINKLER SYSTEM",
+             "unit": "", "qty": None},
+            {"line_id": "bbbbbbbbbbb2", "is_header": True, "item_no": "1",
+             "description": "Installation of MS pipe, ERW, heavy class",
+             "unit": "", "qty": None},
+            {"line_id": "bbbbbbbbbbb3", "is_header": False, "item_no": "a",
+             "description": "150 mm dia", "unit": "Mtr", "qty": 120.0,
+             "labour_rate": 1080.0},
+            {"line_id": "bbbbbbbbbbb4", "is_header": False, "item_no": "b",
+             "description": "100 mm dia (rate only)", "unit": "Mtr", "qty": 0.0,
+             "labour_rate": 720.0},
+            {"line_id": "bbbbbbbbbbb5", "is_header": True, "section": True,
+             "item_no": "F", "description": "WATER SPRAY SYSTEM",
+             "unit": "", "qty": None},
+            {"line_id": "bbbbbbbbbbb6", "is_header": False, "item_no": "1",
+             "description": "Deluge valve, 100 mm", "unit": "Nos", "qty": 2.0,
+             "labour_rate": 9500.0},
+            {"line_id": "bbbbbbbbbbb7", "is_header": False, "item_no": "2",
+             "description": "Painting, two coats", "unit": "Sqm", "qty": 42.5,
+             "labour_rate": 65.25},
+        ],
+    }
+    STORE["work_orders"][GOLD_WO_BOTH] = {
+        **head, "id": GOLD_WO_BOTH, "ref": "SF/WO/0003",
+        "tracks": "both", "gst_rate": 18.0,
+        "lines": [
+            {"line_id": "ccccccccccc1", "item_no": "1", "unit": "Mtrs",
+             "description": "Supply and laying of 50 NB MS pipe\nincluding clamps",
+             "qty": 120.0, "material_rate": 410.0, "labour_rate": 95.5},
+            {"line_id": "ccccccccccc2", "item_no": "1.a", "unit": "Nos",
+             "description": "Sprinkler drop, pendent type",
+             "qty": 36.0, "material_rate": 0.0, "labour_rate": 180.0},
+            {"line_id": "ccccccccccc3", "item_no": "", "unit": "Sqm",
+             "description": "Painting, two coats of synthetic enamel",
+             "qty": 42.5, "material_rate": 65.25, "labour_rate": 0.0},
+        ],
+    }
+    yield
+    STORE["work_orders"].pop(GOLD_WO_LABOUR, None)
+    STORE["work_orders"].pop(GOLD_WO_BOTH, None)
+
+
+# Captured 5 October 2026 on their first render — two NEW prints; neither the
+# work order's first golden above nor any in tests/test_print_golden.py moved.
+WO_PASS3_GOLDENS = {
+    GOLD_WO_LABOUR: ("52543d8487c5b10d", 87065),
+    GOLD_WO_BOTH: ("110c01dc85774ccb", 85902),
+}
+
+
+@pytest.mark.parametrize("wid", [GOLD_WO_LABOUR, GOLD_WO_BOTH])
+def test_the_pass_3_work_order_prints_match_their_goldens(client, golden_wo_pass3, wid):
+    html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
+    got = (hashlib.sha256(html.encode("utf-8")).hexdigest()[:16], len(html))
+    assert got == WO_PASS3_GOLDENS[wid], (
+        f"the {wid} print changed: {got} against {WO_PASS3_GOLDENS[wid]}; "
+        f"blocks {_blocks(html, SHEET_BLOCKS)}")
+
+
+def test_the_pass_3_goldens_print_the_figures_they_describe(client, golden_wo_pass3):
+    lab = client.get(f"/wo/print/{GOLD_WO_LABOUR}").get_data(as_text=True)
+    # 120 x 1080 + 0 = 1,29,600 | 2 x 9500 + 42.5 x 65.25 (2,773.12) = 21,773.12.
+    assert _sums(lab) == [
+        ("Subtotal - WATER SPRINKLER SYSTEM", "1,29,600.00"),
+        ("Subtotal - WATER SPRAY SYSTEM", "21,773.12"),
+        ("WATER SPRINKLER SYSTEM", "1,29,600.00"), ("WATER SPRAY SYSTEM", "21,773.12"),
+        ("Total", "1,51,373.12"), ("GST @ 18%", "27,247.16"),
+        ("Total (incl. GST)", "1,78,620.28")]
+    both = client.get(f"/wo/print/{GOLD_WO_BOTH}").get_data(as_text=True)
+    # The first golden's figures, plus 18% on 69,913.12.
+    assert _sums(both) == [
+        ("Total", "17,940.00"), ("Grand Total (Material + Labour)", "69,913.12"),
+        ("GST @ 18%", "12,584.36"), ("Total (incl. GST)", "82,497.48")]

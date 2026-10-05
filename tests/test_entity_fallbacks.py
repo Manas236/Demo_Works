@@ -642,10 +642,17 @@ def _a_work_order() -> str:
         "contractor_phone": "020 2712 0000",
         "project_id": "proj-1", "project_name": "Sify Bangalore",
         "notes": "Complete within 30 days",
+        # 5 Oct 2026, pass 3 (R5, R6, R7) — GST, so the print draws its
+        # GST rows; a site and terms, so the sweep poisons both sinks.
+        "gst_rate": 18.0, "site": "Kohinoor Techpark, Hinjewadi",
+        "terms": "Payment 30 days after measurement" + chr(10) + "Tools by the contractor",
         "lines": [
             # 5 Oct 2026, fix pass — a HEADING line, so the sweep reaches the
             # print's heading row as well as the priced ones.
+            # Pass 3 (R4): a SECTION heading, so the print draws its
+            # subtotal and summary rows with the poisoned title in them.
             {"line_id": "0a0a0a0a0a00", "is_header": True, "item_no": "A",
+             "section": True,
              "description": "Civil works", "unit": "", "qty": None,
              "material_rate": None, "labour_rate": None},
             {"line_id": "0a0a0a0a0a01", "item_no": "1", "unit": "m",

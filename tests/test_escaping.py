@@ -441,6 +441,11 @@ POISONED_FIELDS = {
         "contractor_name", "contractor_phone", "contractor_source", "created_at",
         "lines[]/description", "lines[]/item_no", "lines[]/unit",
         "notes", "project_name", "ref", "to", "updated_at",
+        # Pass 3 (5 Oct 2026): the site (R6) and the terms (R7), each
+        # checked by mutation. A section title is `lines[]/description`,
+        # already here. `tracks` is a closed vocabulary like `status` and
+        # is not in the fixture; `gst_rate` is a number.
+        "site", "terms",
     ),}
 
 # `settings` is exempt from the field pin for the SAME measured reason it is

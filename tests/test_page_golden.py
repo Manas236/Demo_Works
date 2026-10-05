@@ -390,8 +390,20 @@ PAGES = {
     #       ("a499293306ea5d30", 80230,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "8cbae4b20e7083ef"})
-    ("settings",        "/settings/"):                 ("5b4a57215d0e88c9", 81573,
-        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "87037b9058f6019f"}),
+    # ⚠ **RE-BASELINED 5 October 2026 — `main` ONLY**, for the work order's
+    #   Default Terms & Conditions box in the Work Order Series section
+    #   (CLIENT_CHANGES.md §0 forty-third block, R7: "default_terms in the
+    #   WO's own settings record, editable at /settings").
+    #
+    #   Measured before the baseline was touched: with the new box cut out
+    #   of the rendered page, it hashed to the digest below exactly —
+    #   **+483 bytes · 6 lines ADDED · 0 REMOVED**. `head` / `shell` /
+    #   `chrome` did not move. The values it replaces:
+    #       ("5b4a57215d0e88c9", 81573,
+    #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
+    #         "chrome": "d107029c10eb2dec", "main": "87037b9058f6019f"})
+    ("settings",        "/settings/"):                 ("ba78271ef9858935", 82056,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "eb2f1c0f23b401d0"}),
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters
