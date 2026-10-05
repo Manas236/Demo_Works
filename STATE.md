@@ -10,16 +10,50 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 5 October 2026, later (**Work Orders —
-three fixes**: the import staged by the BOQ importer's own mechanism, heading
-lines, the contractor's phone — CLIENT_CHANGES.md §0 **forty-second** block,
-no charge; **the board does not move: 19 of 20 BUILT · 1 BLOCKED**).
-*Previously:* 5 October 2026 (**Work Orders for petty contractors** — a new
-buy-side document distinct from the purchase order, material and labour rates
-per line, the §0 **forty-first** block, Manas's rulings A to J, no charge).
-*Before that:* 4 October 2026 (**an RA bill can be raised FROM delivery
-challans or FROM the measurement, and a billed challan is marked and blocked**
-— the fortieth block).
+**As of:** branch `antigravity-dev`, 5 October 2026, evening (**Work Orders
+pass 3 — the client's real sheet**: one rate track or both, the shared
+reader's header band, quantity-0 rows left out, several tabs, sections with
+subtotals, GST, site and terms — CLIENT_CHANGES.md §0 **forty-third** block,
+rulings R1–R7, no charge; **the board does not move: 19 of 20 BUILT · 1
+BLOCKED**). *Previously:* 5 October 2026, later (**Work Orders — three
+fixes**: the import staged by the BOQ importer's own mechanism, heading lines,
+the contractor's phone — the §0 **forty-second** block, no charge).
+*Before that:* 5 October 2026 (**Work Orders for petty contractors** — a new
+buy-side document distinct from the purchase order, the §0 **forty-first**
+block, Manas's rulings A to J, no charge).
+
+- **5 October 2026, evening — Work Orders pass 3, the client's real sheet,
+  run on the OFFICE PC** (started at `686d083`, the remote's tip, clean; the
+  first attempt stopped because `fixtures/work_order_nxtra.xlsx` was absent,
+  and the file as delivered was renamed to it on Manas's choice — gitignored
+  by `fixtures/*.xlsx`, never committed, nothing of its text copied into a
+  tracked file; backup pair `samruddhi_qms-20261005-172256-pre-wo-pass3.sql` /
+  `…-attachments.zip`; every check with `DB_ENABLED=false`). Commits:
+  `fe03df7` the §0 block, `dfc7d96` the code with ABOUT.md, `e4daa5d` the
+  drop rule as measured on their sheet, `5e08f4c` the tests, `aac6dfa` one
+  code comment and one test fixture cleared of the sheet's own text, then
+  these docs. **R1** — `tracks` per work order (labour / material / both,
+  absent = both): one track asks for and stores only its own rate, a figure
+  typed in the other is refused naming the lines, and the print draws one Rate
+  and one Amount. **R2** — the shared reader's header band takes a rate label
+  under a heading and a units-only row; the BOQ importer now maps the
+  Sprinkler tab's rate column too, every existing test untouched. **R3** — on
+  a work-order import only: quantity 0 and no rate → left out and listed by
+  sheet row; with a rate → a rate-only line; no orphan heading survives.
+  **R4** — several tabs ticked on the preview, each mapped on its own; section
+  headings, "Subtotal - <section>" and a Summary on the print. **R5** —
+  `gst_rate`, prefilled 18, the tax derived and rounded once, "Total (incl.
+  GST)" in words — this **reverses ruling B's "no GST"**; no CGST/SGST/IGST
+  split (ABOUT.md §7 gap 59, open). **R6** the site; **R7** terms, with a
+  default kept in the work order's own settings record. On the client's own
+  file, ticked tabs Sprinkler and Wet Spray System, mapping accepted as
+  guessed: **zero fields to answer**, Labour only, 42 lines (33 + 9), 75 rows
+  left out, subtotals 3,07,080 and 45,720, Total 3,52,800, GST 63,504,
+  **4,16,304**, saved unedited. Tests **3,724 / 4 → 3,777 / 4** (row 1's
+  configuration only, the two Nxtra tests RAN; rows 2 and 3 not run). Two new
+  print goldens and no existing one moved; the `/settings/` page golden moved,
+  `main` only, +483 bytes, measured additive; the access matrix did not move.
+  Mutations: 29, all caught (two only after their tests were tightened).
 
 - **5 October 2026, later — Work Orders, the fix pass, run on the OFFICE PC**
   (Step 0 clean at `90320ec`, 0 ahead and 0 behind; backup pair
