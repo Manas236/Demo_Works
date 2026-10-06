@@ -175,10 +175,24 @@ def test_a_single_rate_column_is_left_for_the_user_to_call():
 
 
 def test_confirm_refuses_an_undecided_rate_and_then_takes_it_as_the_selling_rate(client):
+    """
+    ⚠ **AMENDED 6 October 2026** (CLIENT_CHANGES.md §0, forty-fourth block,
+    R1): the staged mapping is the ADVICE now, and the advice takes a lone
+    rate column as the selling rate — so the staged row no longer holds "?"
+    for column E, and posting it back as staged confirms at once. The refusal
+    is unchanged and is still proven: a "?" POSTED for the column is refused
+    exactly as before. Was:
+
+        m = dict(STORE["boq_imports"][tok]["mapping"])
+        r = client.post(f"/boq/import/{tok}", data=mapping_form(m))
+        assert r.status_code == 200    # the staged "?" refused
+    """
     data = xlsx([["Sr", "Description", "Qty", "Unit", "Rate", "Amount"],
                  ["1", "Pipe", 10, "Mtrs", 100, 1000]])
     tok = token_of(upload(client, data))
     m = dict(STORE["boq_imports"][tok]["mapping"])
+    assert m["4"] == "supply_rate", "the advice pre-sets a lone rate as the selling rate"
+    m["4"] = SI.UNDECIDED
     r = client.post(f"/boq/import/{tok}", data=mapping_form(m))
     assert r.status_code == 200
     assert "choose Supply or Installation" in r.get_data(as_text=True)
@@ -688,9 +702,16 @@ def test_the_staged_row_holds_cell_values_and_never_the_file(client):
     blob = json.dumps(rec)
     assert "PK\\u0003\\u0004" not in blob and "[Content_Types]" not in blob
     # `rate_mode` and `markup` from 1 October 2026 — selling rates or our cost.
+    # ⚠ AMENDED 6 October 2026 (the §0 forty-fourth block, R4/R5): `ticked`,
+    #   `tab_maps` and `names` — the tabs to build, the other tabs' mappings,
+    #   and the names as typed on the preview; still cell values only. Was:
+    #     {"id", "token", "user_id", "created_at", "created_ts", "filename",
+    #      "format", "sheets", "grid", "sheet_index", "mapping", "layout",
+    #      "known", "confirmed", "rate_mode", "markup"}
     assert set(rec) == {"id", "token", "user_id", "created_at", "created_ts", "filename",
                         "format", "sheets", "grid", "sheet_index", "mapping", "layout",
-                        "known", "confirmed", "rate_mode", "markup"}
+                        "known", "confirmed", "rate_mode", "markup",
+                        "ticked", "tab_maps", "names"}
     assert rec["grid"][0]["rows"][1][1][:2] == ["1", "Pipe"]
 
 

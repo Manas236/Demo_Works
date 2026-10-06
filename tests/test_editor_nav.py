@@ -671,7 +671,11 @@ def test_an_open_line_reads_identity_description_quantity_rates_then_the_fold(se
     # Closed, it still says what it holds — nothing is hidden, only tucked away.
     assert res["summary"] == "HSN 73063090 @ 18% &nbsp;&middot;&nbsp; SAC 995462 @ 18%"
     assert res["unitInQtyBand"], '"4 Mtrs." is one fact, so Unit sits with the quantity'
-    assert res["rateRows"] == 2 and res["rateCells"] == 6, "two legs down, three figures across"
+    # ⚠ AMENDED 6 October 2026 (CLIENT_CHANGES.md §0, forty-fourth block, R3):
+    #   a fourth figure across, the discount %. Was:
+    #     assert res["rateRows"] == 2 and res["rateCells"] == 6, "two legs down, three figures across"
+    assert res["rateRows"] == 2 and res["rateCells"] == 8, (
+        "two legs down, four figures across — base, escalation, unit rate, discount")
     assert res["hintBoxes"] == [True, True], "hint() still has somewhere to write"
     assert res["taxOnlyBehindTheFold"]
     assert res["headHasToggleAndRemove"]

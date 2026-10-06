@@ -901,3 +901,88 @@ def test_the_identity_is_restored_after_the_hostile_fixture():
     """
     assert B.COMPANY_TAGLINE == B.DEFAULTS["COMPANY_TAGLINE"]
     assert MARK not in B.COMPANY_TAGLINE
+
+
+# ══ 8. The BOQ import's column picker (6 October 2026) ═════════════════════
+#
+# CLIENT_CHANGES.md §0, forty-fourth block. Four new sinks, each fed by the
+# sheet or the user: the DETECTED NAMES (a title row and a client row above
+# the heading, prefilled into the preview's boxes and then the form's), the
+# TAB NAMES (a section title, a picker heading, every flag's "Tab · row N"),
+# each column's HEADING and SAMPLE values on the picker, and a typed DISC %
+# that comes back on a refused save. The ADVICE is the app's own sentences
+# and quotes no cell — asserted here too, by a heading that would show up.
+# A staged grid's cells are strings inside lists, which `_poison()` never
+# reaches, so these are swept with the payload placed in the cells directly.
+
+def _hostile_import(client):
+    import boqimport
+    import conftest
+    import sheetimport as SI
+    rows = [[PAYLOAD + " title"],
+            ["Client :", PAYLOAD + " client"],
+            ["Sr", "Description", "Qty", "Unit", "Supply Rate", "Disc %", "Remarks " + PAYLOAD],
+            ["1", "Desc " + PAYLOAD, 2, "Nos", 10, 5, "note " + PAYLOAD],
+            ["2", "Valve", None, "Nos", 10, None, ""]]
+    wb = SI.from_rows([("Tab " + PAYLOAD, "visible", rows), ("Two", "visible", rows)])
+    tok, _k = boqimport.stage(wb, "evil" + PAYLOAD + ".xlsx", conftest.ensure_test_user()["id"])
+    return tok
+
+
+def _assert_escaped(body, where):
+    assert "<script>alert(1)</script>" not in body, where
+    assert "<img src=x onerror=alert(2)>" not in body, where
+    assert "</title><script>alert(3)</script>" not in body, where
+    assert ESCAPED in body, f"{where}: the payload was stripped, or never reached the page"
+
+
+def test_the_import_pickers_names_tabs_headings_and_samples_are_escaped(client):
+    tok = _hostile_import(client)
+    r = client.post(f"/boq/import/{tok}", data={"picker": "1", "tab": ["0", "1"],
+                                                "action": "update",
+                                                "project_name": PAYLOAD + " typed",
+                                                "account_name": PAYLOAD + " acct"})
+    assert r.status_code == 303
+    body = client.get(f"/boq/import/{tok}").get_data(as_text=True)
+    _assert_escaped(body, "the picker")
+    assert f'value="{ESCAPED} typed"' in body, "the typed project name, escaped in its box"
+    assert "As you typed it." in body, "the typed name differs from the sheet's, and says so"
+    assert "Tab " + ESCAPED in body, "the tab name, escaped"
+    assert "Remarks " + ESCAPED in body, "a column heading on the picker, escaped"
+    # The advice never quotes a cell: no sentence carries the probe.
+    import sheetimport as SI
+    assert not any(MARK in s for s in SI.ADVICE.values())
+
+
+def test_the_detected_names_reach_the_prefilled_form_escaped(client):
+    tok = _hostile_import(client)
+    html = client.get(f"/boq/import/{tok}").get_data(as_text=True)
+    _assert_escaped(html, "the preview")
+    assert f'value="{ESCAPED} title"' in html and f'value="{ESCAPED} client"' in html
+    form = {"picker": "1", "tab": ["0", "1"], "action": "confirm",
+            "project_name": PAYLOAD + " title", "account_name": PAYLOAD + " client"}
+    for name, opts in re.findall(r'<select name="(map_\d+_\d+)"[^>]*>(.*?)</select>', html, re.S):
+        m = re.search(r'<option value="([^"]*)" selected>', opts)
+        form[name] = m.group(1) if m else ""
+        form["use_" + name[4:]] = "1" if form[name] else ""
+    r = client.post(f"/boq/import/{tok}", data=form)
+    assert r.status_code == 303, r.get_data(as_text=True)[:2000]
+    page = client.get(r.headers["Location"]).get_data(as_text=True)
+    _assert_escaped(page, "the prefilled form")
+    assert f'value="{ESCAPED} title"' in page and f'value="{ESCAPED} client"' in page
+    assert "<script>alert(1)</script>" not in page.split("var MODEL")[1].split("var SPECS")[0], \
+        "a tab name or a remark inside the editor's JSON"
+
+
+def test_a_typed_discount_comes_back_escaped_on_a_refused_save(client):
+    import json
+    model = {"sections": [{"code": "A", "title": "", "areas": []}],
+             "lines": [{"line_id": "", "item_no": "1", "section": "A", "description": "x",
+                        "total_qty": "1", "supply_rate": "10",
+                        "supply_disc_pct": PAYLOAD}]}
+    r = client.post("/boq/create", data={"date": "2026-10-06", "project_name": "P",
+                                          "account_name": "A", "boq_json": json.dumps(model)})
+    body = r.get_data(as_text=True)
+    assert r.status_code == 200 and "a discount must be a % from 0 to 100" in body
+    assert "<script>alert(1)</script>" not in body and "</title><script>" not in body
+    assert MARK in body, "the typed value survived the refusal (in the editor's JSON)"

@@ -2000,3 +2000,104 @@ def test_the_blank_identity_sweep_is_not_vacuous(
         "the specimen identity is pinned and NONE of SPECIMEN_STRINGS appears "
         "on the tax invoice — the blank-identity sweeps are hashing nothing")
     assert "27AAAAA0000A1Z5" in html, "the specimen GSTIN must print here"
+
+
+# ═══ A DISCOUNTED BOQ — pinned 6 October 2026 ══════════════════════════════
+#
+# CLIENT_CHANGES.md §0, forty-fourth block, R3: a line may carry a discount per
+# track, and the printed BOQ then draws **Disc %** and **Net Rate** for THAT
+# track only. A BOQ with no discount prints byte-identical — that is the
+# existing BOQ golden above, which did not move. This one pins the other half:
+# a supply track discounted on one of its two lines (an exact half among
+# them — 2.50 less 15% nets to 2.12, Python's round), the installation track
+# undiscounted, so its columns are the old ones. Base rate and escalation stay
+# off the print as always.
+
+GOLD_DISC_BOQ = "gold-disc-boq"
+
+
+@pytest.fixture()
+def golden_disc_boq(client, pinned_identity):
+    """One discounted schedule, written directly like every golden here."""
+    def line(**kw):
+        li = {"line_id": "", "item_no": "", "parent_item_no": "", "section": "A",
+              "is_header": False, "description": "", "remark": "", "unit": "Nos",
+              "area_qty": {}, "total_qty": 0.0,
+              "supply_base_rate": None, "supply_escalation_pct": None, "supply_rate": 0.0,
+              "supply_amount": 0.0, "supply_hsn": "", "supply_gst_rate": 18.0,
+              "install_base_rate": None, "install_escalation_pct": None, "install_rate": 0.0,
+              "install_amount": 0.0, "install_sac": "", "install_gst_rate": 18.0}
+        li.update(kw)
+        return li
+
+    import boq as BQ
+    lines = [
+        line(line_id="d00000000001", item_no="1", is_header=True, unit="",
+             description="Supply and fixing of sprinkler heads, complete."),
+        line(line_id="d00000000002", item_no="1.a", parent_item_no="1",
+             description="Pendant, 68 °C", total_qty=40.0, supply_base_rate=300.0,
+             supply_escalation_pct=10.0, supply_rate=330.0, supply_disc_pct=10.0,
+             install_rate=75.0),
+        line(line_id="d00000000003", item_no="1.b", parent_item_no="1",
+             description="Upright, 68 °C", total_qty=20.0, supply_rate=2.5,
+             supply_disc_pct=15.0, install_rate=80.0),
+        line(line_id="d00000000004", item_no="2", description="Flow switch",
+             total_qty=2.0, supply_rate=4500.0, install_rate=600.0),
+    ]
+    for li in lines:
+        if not li["is_header"]:
+            li["supply_amount"] = BQ.net_rate(li, "supply") * li["total_qty"]
+            li["install_amount"] = BQ.net_rate(li, "install") * li["total_qty"]
+    rec = {
+        "id": GOLD_DISC_BOQ, "ref": "SF/BOQ/26-27/0044", "fy": "26-27",
+        "date": "2026-10-06", "rev_no": 0, "supersedes": "", "project_id": "",
+        "project_name": "Kohinoor Techpark — Sprinklers",
+        "site_location": "Pune", "account_name": "Prudent Teqtis Pvt Ltd",
+        "contact_person": "", "to": "Prudent Teqtis Pvt Ltd\nPune, Maharashtra - 411001",
+        "bill_gstin": "", "ship_same": "on", "rate_basis_label": "Mohali Rates",
+        "sections": [{"code": "A", "title": "Sprinklers", "areas": []}],
+        "line_items": lines,
+        "payment_terms": "", "delivery_terms": "", "notes": "",
+        "company_branch": "", "auth_signatory": "",
+    }
+    sup, ins, tot = BQ.boq_totals(rec)
+    rec.update(supply_subtotal=sup, install_subtotal=ins, subtotal=tot)
+    STORE["boqs"][GOLD_DISC_BOQ] = rec
+    yield rec
+    STORE["boqs"].pop(GOLD_DISC_BOQ, None)
+
+
+# Measured 6 October 2026 on the office PC's .venv. `letterhead`, `doc-box` and
+# `signature` hash to the undiscounted BOQ golden's own bytes — the same sheet;
+# what differs is the record (`head` carries its ref), its party block, its one
+# section table (Disc % and Net Rate on the supply track) and its totals.
+DISC_BOQ_WHOLE, DISC_BOQ_LEN = "b62588d35cc6d559", 104756
+DISC_BOQ_BLOCKS = {"head":       "ad173a89e8583085",
+                   "letterhead": "1c197f96af8ad872",
+                   "foot-strip": "31227c23efe62134",
+                   "doc-box":    "64fcaef781b20ed2",
+                   "party":      "4e2d2f79e29f69fb",
+                   "sections":   "7624bd7cebb39cf7",
+                   "grand":      "d99b44e707fb7e25",
+                   "signature":  "7812a7b5e2ddb967"}
+
+
+def test_the_discounted_boq_document_matches_its_recorded_baseline(client, golden_disc_boq):
+    """`/boq/print/<id>` for a discounted schedule — the one NEW print golden of
+    the forty-fourth block. The undiscounted BOQ golden above did not move."""
+    r = client.get(f"/boq/print/{GOLD_DISC_BOQ}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), DISC_BOQ_WHOLE, DISC_BOQ_LEN, DISC_BOQ_BLOCKS,
+           markers=BOQ_SHEET_BLOCKS, what="discounted BOQ")
+
+
+def test_the_discounted_golden_is_hashing_a_real_document(client, golden_disc_boq):
+    """The control: the figures the golden pins are the net ones."""
+    html = client.get(f"/boq/print/{GOLD_DISC_BOQ}").get_data(as_text=True)
+    table = html[html.index('<table class="boq-table">'):html.index('<div class="boq-grand">')]
+    assert table.count(">Disc %<") == 1 and table.count(">Net Rate<") == 1, "supply only"
+    assert ">10%<" in table and ">15%<" in table
+    assert "297.00" in table and "11,880.00" in table, "330 less 10% = 297, x 40"
+    assert ">2.12<" in table and ">42.40<" in table, "2.50 less 15% = 2.125 -> 2.12, x 20"
+    assert "300.00" not in table and "Mohali" not in html, "the breakup stays off the print"
+    assert golden_disc_boq["supply_subtotal"] == pytest.approx(11880.0 + 42.4 + 9000.0)

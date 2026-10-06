@@ -1088,6 +1088,13 @@ REQUIRED = [
     # 5 Oct 2026, fix pass — the two users of the one staging mechanism.
     ("boqimport", "importstage", "purge / own / cap_per_user: the BOQ importer's own "
                                  "staging, moved into the leaf and called from here"),
+    # 6 Oct 2026 — the forty-fourth block.
+    ("boqimport", "address",     "is_active(): the account name the sheet gives is "
+                                 "matched to an ACTIVE address-book entry (R4) by the "
+                                 "book's own predicate, not a second copy of it"),
+    ("projectview", "boq",       "lines_without_cost(): the BOQ panel says \"cost not "
+                                 "recorded on N lines\" by the one rule (R3) — no "
+                                 "arithmetic across panels"),
     ("workorder", "importstage", "the work-order import stages through the SAME "
                                  "mechanism, in its own wo_imports collection"),
 ]
