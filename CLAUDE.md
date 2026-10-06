@@ -94,6 +94,15 @@ Fast facts so you don't get it wrong before reading:
   frozen and its series deliberately has **no** floor. ⚠ **No lock was
   added** — the minters are still unguarded scan-max-then-plus-one, which is
   why `--workers 1 --threads 1`. ABOUT.md §7 gap 36.
+- **A BOQ is saved AS IT IS** (6 Oct 2026, the §0 forty-fifth block): a blank
+  box is stored `None` — quantity, rates, base, escalation, discount — and the
+  amount is absent with it; a 0 is 0; nothing blocks on a blank (§7 gap 42
+  closed), and only text TYPED into a numeric box is refused. A record saved
+  so carries `blank_model: "as_is"`. ⚠ **A record WITHOUT it is a closed
+  historical set — never migrated, never "fixed"**: its 0s may have been
+  blanks and cannot be told apart, so they print and bill as the 0s they are.
+  The shared reader's default is the same rule; `sheetimport.build(…,
+  guided=True)` is the old one, kept for the work order. ABOUT.md §3 *As it is*.
 - **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
   `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
   refused, not opened** — so a route you add is unreachable until you classify

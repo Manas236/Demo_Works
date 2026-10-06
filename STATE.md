@@ -10,16 +10,48 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 6 October 2026 (**the BOQ import —
-the user chooses the columns, the app advises**: a column picker with
-advice on `/boq/import` and `/wo/import`, escalation and base never
-compulsory, a discount % on the BOQ line with one net-rate helper, names from
-the sheet, several tabs as sections — CLIENT_CHANGES.md §0 **forty-fourth**
-block, rulings R1–R6, no charge; **the board does not move: 19 of 20 BUILT ·
-1 BLOCKED**). *Previously:* 5 October 2026, evening (**Work Orders pass 3 —
-the client's real sheet** — the §0 **forty-third** block, rulings R1–R7, no
-charge). *Before that:* 5 October 2026, later (**Work Orders — three fixes**
-— the §0 **forty-second** block, no charge).
+**As of:** branch `antigravity-dev`, 6 October 2026, later (**the BOQ opens
+as it is** — blank stays blank, 0 stays 0, nothing blocks on a blank; §7 gap
+42 closed; the net rate half up — CLIENT_CHANGES.md §0 **forty-fifth** block,
+rulings A1–A8, no charge; **the board does not move: 19 of 20 BUILT · 1
+BLOCKED**). *Previously:* 6 October 2026 (**the BOQ import — the user
+chooses the columns, the app advises** — the §0 **forty-fourth** block,
+rulings R1–R6, no charge). *Before that:* 5 October 2026, evening (**Work
+Orders pass 3 — the client's real sheet** — the §0 **forty-third** block,
+rulings R1–R7, no charge).
+
+- **6 October 2026, later — the BOQ opens as it is, run on the OFFICE PC**
+  (Step 0 clean at `4e36106`, the remote's tip; backup pair
+  `samruddhi_qms-20261006-155906-pre-boq-as-is.sql` (212,344 bytes) /
+  `…-attachments.zip` (22 bytes, no files); every check with
+  `DB_ENABLED=false`; two client sheets were in `fixtures/`, gitignored,
+  `BOQ_Iron Mountain Rabale (1).xlsx` and `Jamnagar Final updated.xlsx`, so
+  the real-sheet acceptance RAN). Commits: `bc5dc2d` the §0 block, `cd5dd64`
+  the code with ABOUT.md, `3d46099` the tests, then these docs. **A1/A2** —
+  the shared reader's default reads a sheet as it is (blank `None`, 0 is 0,
+  text kept in the remark as `<Field>: <text>`, an Excel error as `… in
+  sheet`, a dash and a cached "" blank), nothing is a need, and a mismatch
+  KEEPS the rate with an amber note; the work order passes `guided=True` and
+  keeps its rules (§7 gap 65). **A3/A4** — a blank saves `None` (gap 42
+  CLOSED), the amount is absent unless both halves are present, typed text
+  in a numeric box is the one value refusal left; item number, description,
+  unit and account name may be blank; the red block, the needs bar, the jump,
+  the stopped save, "Not priced" and the soft unit ring are gone; a quiet
+  "N lines have no rate, M lines have no quantity" and "excludes N lines with
+  no amount" on screen only. **A5** — `blank_model: "as_is"` on every new
+  record; a blank prints blank and a 0 prints 0; old records never migrated
+  and print as they did. **A6** — RA: a no-rate line greyed, refused and
+  skipped by a prefill; a blank quantity takes the RO rule (*"0 approved …
+  over"*); the line picker prefills a blank quantity blank; "N lines not
+  priced" on the project page. **A8** — the net rate half up (2.50 less 15% =
+  2.13), Python, the editor and the reader alike. On the client's sheets:
+  Iron Mountain 224 lines and Jamnagar 92 saved with nothing asked, every
+  mapped cell blank-as-blank and 0-as-0, both totals to the paisa. Tests
+  **3,897 / 4 → 3,980 / 4** (row 1's configuration only; rows 2 and 3 not
+  run). One new print golden; the discounted golden re-baselined for A8 (+2
+  bytes, declared); every other print and page golden byte-identical; the
+  access matrix did not move. Mutations: 17, 16 caught, 1 equivalent. ⚠
+  **Not deployed** — for Manas's browser check first.
 
 - **6 October 2026 — the BOQ import's column picker, run on the OFFICE PC**
   (Step 0 clean at `426f50c`, the remote's tip, 0 ahead and 0 behind; backup
