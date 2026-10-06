@@ -372,6 +372,149 @@ def _derived_rate(base, pct: float):
     return float(base) * (1.0 + float(pct or 0.0) / 100.0)
 
 
+def _esc_pct(raw, base):
+    """
+    The escalation % a line stores (6 October 2026, R2).
+
+    **No base rate and nothing typed: `None`** — there is nothing to escalate,
+    and the record says so rather than claiming 0%. With a base rate it is
+    v1's reading, unchanged: a blank or unreadable box is 0.
+    """
+    if base is None and _opt_num(raw) is None:
+        return None
+    return _num(raw)
+
+
+# =============================================================================
+# THE DISCOUNT AND THE NET RATE — 6 October 2026 (CLIENT_CHANGES.md §0,
+# forty-fourth block, R3)
+# =============================================================================
+#
+# A line may carry a discount per track — `supply_disc_pct` /
+# `install_disc_pct`, a % from 0 to 100. **ABSENT means no discount**, and the
+# key is written only when somebody typed a figure (0 included): a 0 nobody
+# typed is a fact nobody stated. The model, per track:
+#
+#     unit rate   `supply_rate` — the LIST rate, stored as entered (§3 prop. 5)
+#     net rate    round(unit × (100 − disc) / 100, 2) — what is BILLED
+#     amount      quantity × net rate — what every total sums
+#
+# ⚠ **`net_rate()` is the ONE place a BOQ line is priced.** Every reader that
+#   needs what a line is billed at goes through it — the save's amounts, the
+#   printed Net Rate column, the editor's mirror (`_BOQ_JS` `netRate()`, held
+#   in step by tests/test_boq_import_picker.py) and the RA bill's approved rate
+#   (`ra.approved_rates()`). ABOUT.md §3 records the audit of every reader.
+#
+# ⚠ **Rounding: Python's `round(x, 2)`, the house rule** (`purchase.
+#   _line_total()`, `workorder.line_amounts()`) — half to EVEN on the exact
+#   binary value: 2.50 less 15% is exactly 2.125 and nets to **2.12**. Written
+#   as `unit × (100 − disc) / 100` rather than `unit × (1 − disc/100)` because
+#   `100 − disc` is exact for every discount anybody types, so a tie that is a
+#   tie on paper is a tie in binary too.
+#
+# ⚠ **No discount, no arithmetic.** With the key absent — or a typed 0 — the
+#   net rate IS the stored unit rate, unrounded, so a BOQ with no discount
+#   prices exactly as it always did: every stored amount, every total and every
+#   printed figure is byte-identical (the print goldens hold that).
+
+DISC_KEYS = {"supply": "supply_disc_pct", "install": "install_disc_pct"}
+
+DISC_REFUSAL = "a discount must be a % from 0 to 100"
+
+
+def _track(track: str) -> str:
+    """"supply" or "install" — `ra.py`'s leg name "installation" accepted."""
+    return "install" if str(track or "") in ("install", "installation") else "supply"
+
+
+def disc_value(raw) -> tuple:
+    """
+    `(value, bad)` for a typed discount box.
+
+    Blank, a dash and `None` are `(None, False)` — no discount. A number from 0
+    to 100, with or without a trailing "%" (people type "10%"), is
+    `(value, False)`. Anything else — text, a negative figure, more than 100 —
+    is `(None, True)`: **refused on save**, never read as "no discount", because
+    a discount silently dropped is a price silently raised.
+    """
+    if raw is None:
+        return None, False
+    if isinstance(raw, bool):
+        return None, True
+    if isinstance(raw, (int, float)):
+        v = float(raw)
+    else:
+        s = str(raw).strip().replace(",", "")
+        if s.endswith("%"):
+            s = s[:-1].strip()
+        if not s or s in ("-", "--", "—", "–"):
+            return None, False
+        try:
+            v = float(s)
+        except ValueError:
+            return None, True
+    if v != v or v in (float("inf"), float("-inf")) or v < 0 or v > 100:
+        return None, True
+    return v, False
+
+
+def disc_of(line: dict, track: str):
+    """The discount % a stored line carries on `track`, or None (none)."""
+    if not isinstance(line, dict):
+        return None
+    v, bad = disc_value(line.get(DISC_KEYS[_track(track)]))
+    return None if bad else v
+
+
+def net_of(unit, disc) -> float:
+    """The arithmetic alone: a unit rate less a discount %, to the paisa —
+    or the unit rate itself, untouched, when there is no discount."""
+    unit = float(unit or 0.0)
+    if disc is None or float(disc) == 0.0:
+        return unit
+    return round(unit * (100.0 - float(disc)) / 100.0, 2)
+
+
+def net_rate(line: dict, track: str) -> float:
+    """
+    What this line is BILLED at on `track` ("supply" | "install" |
+    "installation") — its unit rate less its discount. **The one helper** —
+    see the note above.
+    """
+    t = _track(track)
+    return net_of((line or {}).get(f"{t}_rate"), disc_of(line, t))
+
+
+def lines_without_cost(boq: dict) -> int:
+    """
+    How many priced lines carry NO base rate on a track they are billed on —
+    their COST is not recorded (6 October 2026, the §0 forty-fourth block, R3).
+
+    The base rate is the cost basis (§3); a line whose unit rate stands alone
+    — R2 makes that normal — has a selling price and no cost. Anything that
+    weighs revenue against cost must say so rather than read the missing cost
+    as zero, which would show the whole selling price as margin. A track a
+    line is not billed on (net rate 0) needs no cost.
+    """
+    n = 0
+    for li in boq.get("line_items") or []:
+        if not isinstance(li, dict) or li.get("is_header"):
+            continue
+        if any(net_rate(li, t) > 0 and li.get(f"{t}_base_rate") is None
+               for t in ("supply", "install")):
+            n += 1
+    return n
+
+
+def any_discount(boq: dict, track: str) -> bool:
+    """Does any line of this BOQ carry a discount on `track`? Decides whether
+    the sheet draws that track's Disc % and Net Rate columns at all. A typed 0
+    is no discount: it changes no figure, so it earns no column."""
+    return any(isinstance(li, dict) and not li.get("is_header")
+               and (disc_of(li, track) or 0.0) > 0
+               for li in boq.get("line_items") or [])
+
+
 # =============================================================================
 # HELPERS — the record
 # =============================================================================
@@ -1540,8 +1683,14 @@ def _esc_cell(pct) -> str:
     return f"{pct:g}%" if pct else ""
 
 
+def _disc_cell(pct) -> str:
+    """A discount % on the sheet — `_esc_cell()`'s format: blank for none."""
+    return _esc_cell(pct)
+
+
 def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
-                   show_rate_breakup: bool = False) -> str:
+                   show_rate_breakup: bool = False, show_s_disc: bool = False,
+                   show_i_disc: bool = False) -> str:
     """
     One section: its title band, its own column heads, its lines, its subtotal.
 
@@ -1560,6 +1709,14 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       rather than written as a number, because dropping three columns silently
       breaks any span that was counted by hand. `test_boq_print_columns.py`
       asserts every row of every section sums to the header width.
+
+    ⚠ **`show_s_disc` / `show_i_disc` (6 October 2026, the §0 forty-fourth
+      block, R3)** add a **Disc %** and a **Net Rate** column after that
+      track's U/ Rate, on the view AND the print — the net rate is what the
+      line is billed at, so it is not part of the withheld breakup. Both
+      default False and `_document_html()` passes True only for a track where
+      a line carries a discount (`any_discount()`), so a BOQ with none renders
+      **byte-identical**: every addition below is an empty string then.
     """
     code   = sec.get("code") or ""
     areas  = list(sec.get("areas") or [])
@@ -1574,9 +1731,12 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     show_s_esc = show_s_esc and show_rate_breakup
     show_i_esc = show_i_esc and show_rate_breakup
 
-    # [base] [, esc] , rate — the rate column is the only one always present.
-    n_supply_cols  = 1 + (1 if show_base else 0) + (1 if show_s_esc else 0)
-    n_install_cols = 1 + (1 if show_base else 0) + (1 if show_i_esc else 0)
+    # [base] [, esc] , rate [, disc, net] — the rate column is the only one
+    # always present.
+    n_supply_cols  = (1 + (1 if show_base else 0) + (1 if show_s_esc else 0)
+                      + (2 if show_s_disc else 0))
+    n_install_cols = (1 + (1 if show_base else 0) + (1 if show_i_esc else 0)
+                      + (2 if show_i_disc else 0))
 
     # ── Column widths ──────────────────────────────────────────────────
     # An explicit <colgroup>, per section, because the column COUNT is a
@@ -1601,12 +1761,20 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
         cols += ['<col class="cw-base"/>']                          # supply base
     if show_s_esc:
         cols += ['<col class="cw-esc"/>']
-    cols += ['<col class="cw-rate"/>', '<col class="cw-amt"/>']     # supply rate, amount
+    cols += ['<col class="cw-rate"/>']                              # supply rate
+    if show_s_disc:
+        # The existing width classes — no new rule in any stylesheet, so no
+        # page golden that loads one can move (R6).
+        cols += ['<col class="cw-esc"/>', '<col class="cw-rate"/>']  # disc %, net
+    cols += ['<col class="cw-amt"/>']                               # supply amount
     if show_base:
         cols += ['<col class="cw-base"/>']                          # install base
     if show_i_esc:
         cols += ['<col class="cw-esc"/>']
-    cols += ['<col class="cw-rate"/>', '<col class="cw-amt"/>']     # install rate, amount
+    cols += ['<col class="cw-rate"/>']                              # install rate
+    if show_i_disc:
+        cols += ['<col class="cw-esc"/>', '<col class="cw-rate"/>']
+    cols += ['<col class="cw-amt"/>']                               # install amount
     colgroup = "<colgroup>" + "".join(cols) + "</colgroup>"
 
     # ── Column heads ───────────────────────────────────────────────────
@@ -1638,10 +1806,16 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     if grouped:
         supply_th  = f'<th colspan="{n_supply_cols}">Supply</th>'
         install_th = f'<th colspan="{n_install_cols}">Installation</th>'
-        rate_ths   = (f'<th class="b-base">{P.esc(basis)}</th>{s_esc_th}'
-                      f'<th class="b-rate">U/ Rate</th>'
-                      f'<th class="b-base">{P.esc(basis)}</th>{i_esc_th}'
-                      f'<th class="b-rate">U/ Rate</th>')
+        # Grouped used to mean "the breakup is shown", so the base heads were
+        # unconditional; a discount groups the PRINT too (R3), which shows no
+        # base column. With the breakup shown and no discount these are the
+        # same bytes as before.
+        base_th    = f'<th class="b-base">{P.esc(basis)}</th>' if show_base else ""
+        disc_ths   = '<th class="b-esc">Disc %</th><th class="b-rate">Net Rate</th>'
+        rate_ths   = (f'{base_th}{s_esc_th}'
+                      f'<th class="b-rate">U/ Rate</th>{disc_ths if show_s_disc else ""}'
+                      f'{base_th}{i_esc_th}'
+                      f'<th class="b-rate">U/ Rate</th>{disc_ths if show_i_disc else ""}')
     else:
         supply_th  = f'<th class="b-rate"{rs}>Supply<br/>U/ Rate</th>'
         install_th = f'<th class="b-rate"{rs}>Installation<br/>U/ Rate</th>'
@@ -1709,6 +1883,15 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
                     if show_s_esc else "")
         i_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("install_escalation_pct"))}</td>'
                     if show_i_esc else "")
+        # Disc % and the NET rate, read through `net_rate()` — the one helper.
+        # Every line of a discounted track shows its net rate, discounted or
+        # not, so the column is the rate the line is billed at, top to bottom.
+        s_disc_tds = (f'<td class="b-esc">{_disc_cell(disc_of(li, "supply"))}</td>'
+                      f'<td class="b-rate">{_rate_cell(net_rate(li, "supply"))}</td>'
+                      if show_s_disc else "")
+        i_disc_tds = (f'<td class="b-esc">{_disc_cell(disc_of(li, "install"))}</td>'
+                      f'<td class="b-rate">{_rate_cell(net_rate(li, "install"))}</td>'
+                      if show_i_disc else "")
 
         body += f"""
         <tr class="{row_cls}">
@@ -1719,11 +1902,11 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
           <td class="b-unit">{P.esc(li.get("unit"))}</td>
           {s_base_td}
           {s_esc_td}
-          <td class="b-rate">{_rate_cell(li.get("supply_rate"))}</td>
+          <td class="b-rate">{_rate_cell(li.get("supply_rate"))}</td>{s_disc_tds}
           <td class="b-amt">{_inr(li.get("supply_amount"))}</td>
           {i_base_td}
           {i_esc_td}
-          <td class="b-rate">{_rate_cell(li.get("install_rate"))}</td>
+          <td class="b-rate">{_rate_cell(li.get("install_rate"))}</td>{i_disc_tds}
           <td class="b-amt">{_inr(li.get("install_amount"))}</td>
         </tr>"""
 
@@ -1947,20 +2130,36 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             return [], f"Line {item_no} has a negative quantity.", idx - 1
 
         # ── Rates ─────────────────────────────────────────────────────
+        # ⚠ **Escalation and base are OPTIONAL (6 October 2026, the §0
+        #   forty-fourth block, R2).** A line with no base rate and no
+        #   escalation keeps the escalation ABSENT (`None`) — it was stored as
+        #   0.0, a "0% escalation" nobody typed, which a revision then loaded
+        #   back into the box as "0". With a base rate the old reading stands:
+        #   a blank escalation is 0, and a typed unit rate is kept as entered.
         s_base = _opt_num(li.get("supply_base_rate"))
-        s_pct  = _num(li.get("supply_escalation_pct"))
+        s_pct  = _esc_pct(li.get("supply_escalation_pct"), s_base)
         s_rate = _opt_num(li.get("supply_rate"))
         if s_rate is None:
             s_rate = _derived_rate(s_base, s_pct) or 0.0
 
         i_base = _opt_num(li.get("install_base_rate"))
-        i_pct  = _num(li.get("install_escalation_pct"))
+        i_pct  = _esc_pct(li.get("install_escalation_pct"), i_base)
         i_rate = _opt_num(li.get("install_rate"))
         if i_rate is None:
             i_rate = _derived_rate(i_base, i_pct) or 0.0
 
         if s_rate < 0 or i_rate < 0:
             return [], f"Line {item_no} has a negative rate.", idx - 1
+
+        # The discount per track (R3). Absent unless typed; a typed figure
+        # outside 0–100, or one that is not a number, is refused — never read
+        # as "no discount".
+        s_disc, s_bad = disc_value(li.get("supply_disc_pct"))
+        i_disc, i_bad = disc_value(li.get("install_disc_pct"))
+        if s_bad or i_bad:
+            return [], f"Line {item_no}: {DISC_REFUSAL}.", idx - 1
+        s_net = net_of(s_rate, s_disc)
+        i_net = net_of(i_rate, i_disc)
 
         hsn = str(li.get("supply_hsn") or "").strip()
         sac = str(li.get("install_sac") or "").strip()
@@ -1972,7 +2171,7 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
         if sac and not _valid_tax_code(sac):
             return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits.", idx - 1
 
-        out.append({
+        row = {
             "line_id":        lid,
             "item_no":        item_no,
             "parent_item_no": _item_no(li.get("parent_item_no")),
@@ -1987,17 +2186,26 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             "supply_base_rate":      s_base,
             "supply_escalation_pct": s_pct,
             "supply_rate":           float(s_rate),
-            "supply_amount":         float(s_rate) * float(total_qty),
+            # quantity × the NET rate (R3) — with no discount the net rate IS
+            # `supply_rate`, unrounded, so this is the figure it always was.
+            "supply_amount":         float(s_net) * float(total_qty),
             "supply_hsn":            hsn,
             "supply_gst_rate":       _num(li.get("supply_gst_rate"), DEFAULT_GST_RATE),
 
             "install_base_rate":      i_base,
             "install_escalation_pct": i_pct,
             "install_rate":           float(i_rate),
-            "install_amount":         float(i_rate) * float(total_qty),
+            "install_amount":         float(i_net) * float(total_qty),
             "install_sac":            sac,
             "install_gst_rate":       _num(li.get("install_gst_rate"), DEFAULT_GST_RATE),
-        })
+        }
+        # Written ONLY when a figure was typed (0 included): absent is "no
+        # discount", and a 0 nobody typed would be a fact nobody stated.
+        if s_disc is not None:
+            row["supply_disc_pct"] = s_disc
+        if i_disc is not None:
+            row["install_disc_pct"] = i_disc
+        out.append(row)
 
     if not out:
         return [], "Add at least one line item.", -1
@@ -2076,6 +2284,11 @@ def line_problems(li: dict, sections_by_code: dict) -> list:
     for f in ("supply_rate", "install_rate"):
         v = _opt_num(li.get(f))
         if v is not None and v < 0:
+            out.append(f)
+    # The discount (6 October 2026, R3): `_clean_lines()` refuses a figure
+    # outside 0–100 and anything that is not a number.
+    for f in ("supply_disc_pct", "install_disc_pct"):
+        if disc_value(li.get(f))[1]:
             out.append(f)
     for f in ("supply_hsn", "install_sac"):
         v = str(li.get(f) or "").strip()
@@ -2336,8 +2549,17 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
     show_s_esc = (not HIDE_EMPTY_ESCALATION) or _any_escalation(boq, "supply_escalation_pct")
     show_i_esc = (not HIDE_EMPTY_ESCALATION) or _any_escalation(boq, "install_escalation_pct")
 
+    # Disc % and Net Rate — only for a track where a line carries a discount
+    # (6 October 2026, R3). With none, `_section_table()` is called exactly as
+    # it always was and the sheet is byte-identical.
+    disc_flags = {}
+    if any_discount(boq, "supply"):
+        disc_flags["show_s_disc"] = True
+    if any_discount(boq, "install"):
+        disc_flags["show_i_disc"] = True
+
     sections_html = "".join(
-        _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup)
+        _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup, **disc_flags)
         for s in _sections_of(boq)
     )
 
@@ -3002,6 +3224,9 @@ def _form_payload_from(src: dict) -> tuple:
             "install_rate":           _s(li["install_rate"]),
             "install_sac":            li.get("install_sac", ""),
             "install_gst_rate":       _s(li["install_gst_rate"]),
+            # 6 October 2026 (R3). Absent on the record reads as a blank box.
+            "supply_disc_pct":        _s(li.get("supply_disc_pct")),
+            "install_disc_pct":       _s(li.get("install_disc_pct")),
         }
         if row["is_header"]:
             # A header carries the clause and nothing else; blanking the rest
@@ -3010,7 +3235,8 @@ def _form_payload_from(src: dict) -> tuple:
             for k in ("unit", "total_qty", "supply_base_rate", "supply_escalation_pct",
                       "supply_rate", "supply_hsn", "supply_gst_rate",
                       "install_base_rate", "install_escalation_pct",
-                      "install_rate", "install_sac", "install_gst_rate"):
+                      "install_rate", "install_sac", "install_gst_rate",
+                      "supply_disc_pct", "install_disc_pct"):
                 row[k] = ""
             row["area_qty"] = {}
         lines.append(row)
@@ -3150,6 +3376,16 @@ BOQ_IMPORT_STYLES = """
                 border-radius:8px; background:var(--surface); }
   .lc-kidunit .form-group { width:170px; margin:0; }
   .lc-kidunit-note { font-size:.74rem; color:var(--muted); padding-bottom:.45rem; }
+
+  /* The rate table's fourth figure, Disc % (6 October 2026, R3). Restated
+     HERE, not in BOQ_STYLES: four register pages hash BOQ_STYLES
+     (tests/test_page_golden.py), and the editor is the one page that draws
+     this table. Loaded after BOQ_STYLES, so the later rule wins. */
+  .lc-rates { grid-template-columns:104px 130px 100px minmax(200px,1fr) 120px;
+              max-width:900px; }
+  @media screen and (max-width:520px) {
+    .lc-rates { grid-template-columns:repeat(2,1fr); }
+  }
 </style>
 """
 
@@ -3322,8 +3558,48 @@ function blankLine(code) {
     supply_base_rate: '', supply_escalation_pct: '', supply_rate: '',
     supply_hsn: '', supply_gst_rate: '',
     install_base_rate: '', install_escalation_pct: '', install_rate: '',
-    install_sac: '', install_gst_rate: ''
+    install_sac: '', install_gst_rate: '',
+    supply_disc_pct: '', install_disc_pct: ''
   };
+}
+
+/* ── The discount and the NET rate (6 October 2026, R3) ─────────────────
+   boq.py's disc_value() / net_of() / net_rate(), rule for rule — the server
+   is the authority and recomputes every amount on save; this is what the
+   form SHOWS while you type. tests/test_boq_import_picker.py holds the two
+   in step, the exact-half case included. */
+
+/* A typed discount: null for blank or a dash (no discount), the number for
+   0–100 with or without a trailing "%", and NaN for anything the save would
+   refuse. */
+function discNum(v) {
+  var s = String(v == null ? '' : v).replace(/,/g, '').trim();
+  if (s.charAt(s.length - 1) === '%') s = s.slice(0, -1).trim();
+  if (s === '' || s === '-' || s === '--' || s === '\\u2014' || s === '\\u2013') return null;
+  if (/^[+-]?0[xob]/i.test(s)) return NaN;
+  var n = Number(s);
+  return (isFinite(n) && n >= 0 && n <= 100) ? n : NaN;
+}
+
+/* Python's round(x, 2): the nearest paisa on the exact binary value, and a
+   TRUE tie (x × 8 a whole number, x × 100 ending in .5) to the even paisa —
+   2.125 rounds to 2.12. toFixed() rounds a tie up, so ties are caught first. */
+function round2(x) {
+  var e = x * 8;
+  if (e === Math.floor(e)) {
+    var c = e * 12.5, f = Math.floor(c);
+    if (c - f === 0.5) return (f % 2 === 0 ? f : f + 1) / 100;
+  }
+  return Number(x.toFixed(2));
+}
+
+/* What the line is billed at on this leg: the unit rate less its discount,
+   to the paisa — or the unit rate untouched when there is none. */
+function netRate(L, leg) {
+  var unit = num(L[leg + '_rate']);
+  var d = discNum(L[leg + '_disc_pct']);
+  if (d === null || isNaN(d) || d === 0) return unit;
+  return round2(unit * (100 - d) / 100);
 }
 
 function secOptions(cur) {
@@ -3477,8 +3753,11 @@ function cell(i, key, val, ph, aria) {
    writes into `sd<i>` / `id<i>`. Each cell carries its column head as
    data-lbl for the narrow layout, where the head row is hidden and the cells
    label themselves. */
-function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId) {
+function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId, phDisc) {
   var base = leg + '_base_rate', pct = leg + '_escalation_pct', rate = leg + '_rate';
+  var disc = leg + '_disc_pct';
+  /* The fourth figure across (6 October 2026, R3): the discount, with the net
+     rate and the amount it gives written under it by netHint(). */
   return '<div class="lc-rl">' + label + '</div>'
     + '<div class="lc-rc" data-lbl="Base rate">'
     +   cell(i, base, L[base], phBase, label + ' base rate') + '</div>'
@@ -3486,7 +3765,32 @@ function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId) {
     +   cell(i, pct, L[pct], phPct, label + ' escalation %') + '</div>'
     + '<div class="lc-rc' + needWrap(i, rate) + '" data-lbl="Unit rate">'
     +   cell(i, rate, L[rate], phRate, label + ' unit rate')
-    +   '<div class="derived" id="' + hintId + i + '"></div>' + npBtn(i, L, rate) + '</div>';
+    +   '<div class="derived" id="' + hintId + i + '"></div>' + npBtn(i, L, rate) + '</div>'
+    + '<div class="lc-rc' + needWrap(i, disc) + '" data-lbl="Disc %">'
+    +   cell(i, disc, L[disc], phDisc || 'disc %', label + ' discount %')
+    +   '<div class="derived" id="' + (leg === 'supply' ? 'sn' : 'in') + i + '"></div></div>';
+}
+
+/* Under each Disc % box: the net rate and the amount it gives — written only
+   while a discount is typed, so a line without one reads as it always did. */
+function netHint(i) {
+  var L = MODEL.lines[i];
+  if (!L || L.is_header) return;
+  var legs = [['sn', 'supply'], ['in', 'install']];
+  for (var p = 0; p < legs.length; p++) {
+    var box = el(legs[p][0] + i);
+    if (!box) continue;
+    var d = discNum(L[legs[p][1] + '_disc_pct']);
+    var txt = '';
+    if (d !== null && isNaN(d)) {
+      txt = 'a discount is a % from 0 to 100';
+    } else if (d) {
+      var n = netRate(L, legs[p][1]);
+      txt = 'net <b>' + (money(n) || '0.00') + '</b> &#183; amount '
+          + (money(n * num(qtyOf(L))) || '0.00');
+    }
+    box.innerHTML = txt;
+  }
 }
 
 /* An imported line's unit-rate box: "type rate" while the import is asking
@@ -3783,8 +4087,8 @@ function lineSummary(i, L) {
     +   (L.is_header
         ? '<span class="ls-tag">spec' + (kids.length ? ' · ' + kids.length + ' items' : '') + '</span>'
         : '<span class="ls-qty">' + esc(qty) + (qty ? ' ' + esc(L.unit || '') : '') + '</span>'
-          + '<span class="ls-rate">' + money(L.supply_rate) + '</span>'
-          + '<span class="ls-rate">' + money(L.install_rate) + '</span>')
+          + '<span class="ls-rate">' + money(netRate(L, 'supply')) + '</span>'
+          + '<span class="ls-rate">' + money(netRate(L, 'install')) + '</span>')
     + '</div>';
 }
 
@@ -3911,11 +4215,12 @@ function lineBody(i, L) {
   h += '<div class="lc-rates">'
     +   '<div class="lc-rh">Rates</div><div class="lc-rh">Base rate</div>'
     +   '<div class="lc-rh">Escalation %</div><div class="lc-rh">Unit rate</div>'
+    +   '<div class="lc-rh">Disc %</div>'
     +   (imp
-        ? rateRow(i, 'Supply', 'supply', L, 'rate', 'esc %', ratePh(i, 'supply_rate'), 'sd')
-          + rateRow(i, 'Installation', 'install', L, 'rate', 'esc %', ratePh(i, 'install_rate'), 'id')
-        : rateRow(i, 'Supply', 'supply', L, '1760  or  -', '15', '2024', 'sd')
-          + rateRow(i, 'Installation', 'install', L, '1200  or  -', '0', '1200', 'id'))
+        ? rateRow(i, 'Supply', 'supply', L, 'rate', 'esc %', ratePh(i, 'supply_rate'), 'sd', 'disc %')
+          + rateRow(i, 'Installation', 'install', L, 'rate', 'esc %', ratePh(i, 'install_rate'), 'id', 'disc %')
+        : rateRow(i, 'Supply', 'supply', L, '1760  or  -', '15', '2024', 'sd', 'disc %')
+          + rateRow(i, 'Installation', 'install', L, '1200  or  -', '0', '1200', 'id', 'disc %'))
     + '</div>';
 
   /* The fold. Open/closed lives on the line as `_more`, like `_open`, so a
@@ -3961,8 +4266,9 @@ function sectionTotals(code) {
     var L = MODEL.lines[idx[k]];
     if (L.is_header) continue;
     var q = num(qtyOf(L));
-    s += num(L.supply_rate) * q;
-    ins += num(L.install_rate) * q;
+    /* At the NET rate (R3) — with no discount, netRate() is num(rate). */
+    s += netRate(L, 'supply') * q;
+    ins += netRate(L, 'install') * q;
   }
   return [s, ins];
 }
@@ -4040,7 +4346,7 @@ function renderLines() {
   renderDupWarn();
   renderZeroQty();
   for (var k4 = 0; k4 < MODEL.lines.length; k4++) {
-    if (isOpen(MODEL.lines[k4])) hint(k4);
+    if (isOpen(MODEL.lines[k4])) { hint(k4); netHint(k4); }
   }
 }
 
@@ -4216,9 +4522,11 @@ function renderZeroQty() {
    `errMet()` are boq.py's `_need_met()` and `line_problems()`, rule for
    rule, and tests/test_boq_import_guided.py holds the two in step. */
 var NEED_ORDER = ['section', 'item_no', 'description', 'total_qty', 'rate',
-                  'supply_rate', 'install_rate', 'supply_hsn', 'install_sac'];
+                  'supply_rate', 'install_rate', 'supply_disc_pct', 'install_disc_pct',
+                  'supply_hsn', 'install_sac'];
 var MARK_KEYS = ['section', 'item_no', 'description', 'total_qty',
-                 'supply_rate', 'install_rate', 'supply_hsn', 'install_sac'];
+                 'supply_rate', 'install_rate', 'supply_disc_pct', 'install_disc_pct',
+                 'supply_hsn', 'install_sac'];
 var NEED_AT = -1;          /* where Prev / Next last took the user */
 var NEEDS_SEEN = false;    /* once shown, the bar stays to say "All filled" */
 var TAX_CODE = /^(?:\\d{4}|\\d{6}|\\d{8})$/;
@@ -4412,6 +4720,9 @@ function errMet(L, f) {
     return figure(L.total_qty) >= 0;
   }
   if (f === 'supply_rate' || f === 'install_rate') return figure(L[f]) >= 0;
+  /* boq.py's disc_value(): blank or a dash is no discount, 0–100 is one, and
+     anything else is refused on save (6 October 2026, R3). */
+  if (f === 'supply_disc_pct' || f === 'install_disc_pct') return !isNaN(discNum(L[f]));
   if (f === 'supply_hsn' || f === 'install_sac') {
     var v = String(L[f] || '').trim();
     return !v || TAX_CODE.test(v);
@@ -4526,7 +4837,8 @@ function needList() {
 /* The words the bar names a field by. */
 var NEED_LABEL = {section: 'section', item_no: 'item no.', description: 'description',
                   total_qty: 'qty', rate: 'rate', supply_rate: 'supply rate',
-                  install_rate: 'installation rate', supply_hsn: 'HSN', install_sac: 'SAC'};
+                  install_rate: 'installation rate', supply_disc_pct: 'supply disc %',
+                  install_disc_pct: 'installation disc %', supply_hsn: 'HSN', install_sac: 'SAC'};
 var FORM_LABEL = {date: 'Date', project_name: 'Project name', account_name: 'Account name'};
 
 /* Where Prev / Next last took the user, as the field itself — {i, f} or
@@ -4865,7 +5177,11 @@ function hint(i) {
       if (rate === '' || rate == null) {
         txt = 'suggests <b>' + d + '</b> &#8212; <a href="#" onclick="useRate('
             + i + ',&quot;' + pairs[p][3] + '&quot;,' + d + ');return false;">use</a>';
-      } else if (Math.abs(num(rate) - d) > 0.005) {
+      } else if (trimmed(pct) !== '' && Math.abs(num(rate) - d) > 0.005) {
+        /* ⚠ Only when an escalation was TYPED (6 October 2026, R2). With a
+           base and no escalation the unit rate typed or imported stands, and
+           saying "escalation implies <the base> — rate differs" on every such
+           line read as the form demanding an escalation. */
         txt = 'escalation implies ' + d + ' &#8212; rate differs, kept as entered';
       }
     }
@@ -4889,6 +5205,12 @@ function setLine(i, key, val) {
    || key === 'supply_rate' || key === 'install_base_rate'
    || key === 'install_escalation_pct' || key === 'install_rate') {
     hint(i);
+  }
+  /* The net rate and its amount follow the rate, the discount and the
+     quantity (R3), without a re-render. */
+  if (key === 'supply_rate' || key === 'install_rate' || key === 'supply_disc_pct'
+   || key === 'install_disc_pct' || key === 'total_qty') {
+    netHint(i);
   }
   /* Typed behind the fold: keep the fold's own summary line telling the truth
      without a re-render, which would take the caret with it. */
@@ -4919,6 +5241,7 @@ function setArea(i, area, val) {
   var box = el('tq' + i);
   if (box && sec) box.textContent = totalOf(MODEL.lines[i], sec.areas || []);
   if (MODEL.lines[i]._block) renderImportBlock();
+  netHint(i);
   refreshNeeds(i);
 }
 
@@ -5716,7 +6039,7 @@ def create_boq(imported: dict = None):
     <div class="form-section">
       <div class="section-title">&#127970; Customer</div>
       <div class="addr-pick">
-        <select id="bill_pick" onchange="applyAddr('bill', this)">{picker_options("— fill from address book —")}</select>
+        <select id="bill_pick" onchange="applyAddr('bill', this)">{picker_options("— fill from address book —", selected=str(prefill.get("bill_pick") or "") if import_banner else "")}</select>
         <a href="{url_for('address.list_addresses')}" target="_blank" rel="noopener" class="addr-pick-link">
           &#128214; manage address book
         </a>

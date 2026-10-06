@@ -68,6 +68,19 @@ figures, before the markup. Pre-selected — never decided — by the operator's
 own choice, then the layout's last confirmed mode, then the heading's words
 (`sheetimport.cost_words()`).
 
+The column picker (6 October 2026)
+----------------------------------
+CLIENT_CHANGES.md §0, forty-fourth block, R1–R6. The preview lists EVERY
+column of each ticked tab with three samples, an Import tick, a target and one
+line of advice (`sheetimport.advise()`); the tick and the target arrive set to
+the advice (`stage()` stores `sheetimport.advised_mapping()`), and an unticked
+column is mapped to "" and ignored completely. Several tabs build into one BOQ,
+one section per tab (`build_tabs()`); the names above the heading come through
+as editable suggestions, the account matched to the address book
+(`detected_names()`, `prefill_of()`). The staged row keeps `sheet_index` and
+`mapping` for the primary tab and adds `ticked`, `tab_maps` and `names`. A POST
+without the page's `picker` marker reads as v1 did.
+
 The upload never touches disk
 -----------------------------
 Werkzeug spools any file part over 500 KB to a temporary FILE while it parses
@@ -94,6 +107,7 @@ import branding as B
 import importstage as IS   # the staging mechanism, shared with workorder.py (5 Oct 2026)
 import pipeline as P
 import sheetimport as SI
+from address import is_active   # 6 Oct 2026 — the account name matched to the book (R4)
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES
 from store import STORE
@@ -194,6 +208,303 @@ def _sheet(rec: dict) -> dict:
         return {}
 
 
+# =============================================================================
+# SEVERAL TABS, ONE BOQ (6 October 2026, CLIENT_CHANGES.md §0 forty-fourth
+# block, R5) — the work order's pass-3 mechanism, on the BOQ's staged row
+# =============================================================================
+#
+# ⚠ **`sheet_index` and `mapping` keep their meaning**, so every caller and
+#   every test that reads them is unchanged: `sheet_index` is the PRIMARY tab
+#   (the first ticked, in workbook order) and `mapping` is its mapping.
+#   `ticked` lists every tab to build and `tab_maps` holds the others'. A row
+#   staged before this pass has neither and reads as its one sheet.
+
+def _tab_grid(rec: dict, i: int):
+    try:
+        return rec["grid"][int(i)]
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _tab_name(rec: dict, i: int) -> str:
+    try:
+        return str((rec.get("sheets") or [])[int(i)].get("name") or f"Sheet {int(i) + 1}")
+    except (IndexError, AttributeError, TypeError, ValueError):
+        return f"Sheet {i}"
+
+
+def _ticked(rec: dict) -> list:
+    """The tabs to build, in workbook order, each one staged."""
+    raw = rec.get("ticked")
+    if not raw:
+        raw = [rec.get("sheet_index") or 0]
+    out = []
+    for i in raw:
+        try:
+            i = int(i)
+        except (TypeError, ValueError):
+            continue
+        if _tab_grid(rec, i) is not None and i not in out:
+            out.append(i)
+    return sorted(out)
+
+
+def _default_mapping(rec: dict, i: int) -> dict:
+    """
+    A freshly ticked tab's mapping: its own confirmed layout when it has one;
+    else **the first ticked tab's picks when the headers match** (R5 — the
+    same template on every tab, chosen once); else the advice for this tab.
+    """
+    grid = _tab_grid(rec, i)
+    known, _lay = _known_mapping(grid)
+    if known is not None:
+        return known
+    sig = SI.signature(grid)
+    for j in _ticked(rec):
+        if j != i and sig and SI.signature(_tab_grid(rec, j)) == sig:
+            return dict(_mapping_of(rec, j))
+    return SI.advised_mapping(grid)
+
+
+def _mapping_of(rec: dict, i: int) -> dict:
+    """Tab `i`'s mapping — `mapping` for the primary tab, `tab_maps` for the
+    rest, the default for a tab nobody has mapped yet."""
+    if int(i) == int(rec.get("sheet_index") or 0):
+        return rec.get("mapping") or {}
+    m = (rec.get("tab_maps") or {}).get(str(i))
+    return dict(m) if isinstance(m, dict) else _default_mapping(rec, i)
+
+
+def _tab_problems(rec: dict) -> list:
+    """`mapping_problems()` for every ticked tab — named by tab when there
+    are several, exactly as before when there is one."""
+    tabs = _ticked(rec)
+    if not tabs:
+        return ["Tick at least one tab to import."]
+    probs = []
+    for i in tabs:
+        grid = _tab_grid(rec, i)
+        for p in SI.mapping_problems(grid, SI.clean_mapping(grid, _mapping_of(rec, i))):
+            probs.append(f"{_tab_name(rec, i)}: {p}" if len(tabs) > 1 else p)
+    return probs
+
+
+def _all_mappings(rec: dict) -> dict:
+    """Every ticked tab's targets in one dict — what the cost-mode refusal
+    reads (a base or escalation column on ANY tab is refused in cost mode)."""
+    out = {}
+    for i in _ticked(rec):
+        for c, t in _mapping_of(rec, i).items():
+            out[f"{i}:{c}"] = t
+    return out
+
+
+def build_tabs(rec: dict) -> dict:
+    """
+    `sheetimport.build()` over every ticked tab, MERGED into one result in
+    workbook order (R5).
+
+    **One tab is exactly v1's result** — the merge is not run, so a single-tab
+    import is byte-for-byte what it was. Several tabs:
+
+    * **each tab is a SECTION** — the sheet's own sections stay sections; a
+      section with no title of its own takes the TAB's name;
+    * **codes**: the code the sheet writes is kept; a code the reader assigned
+      is re-lettered A, B, C … in tab order, skipping every code a sheet wrote;
+      a code two tabs both wrote is renamed "A-2" and noted (v1's rule);
+    * every line, flag, need and check carries its `tab`, so "Row 12" says
+      which tab's row 12;
+    * `tab_totals` — each tab's own totals check, against its own total row —
+      and `totals`, the COMBINED figure: the sums of the tabs' computed and
+      sheet figures, judged within the same rupee.
+    """
+    tabs = _ticked(rec)
+    built = []
+    for i in tabs:
+        grid = _tab_grid(rec, i)
+        res = SI.build(grid, SI.clean_mapping(grid, _mapping_of(rec, i)))
+        built.append((i, res))
+    if len(built) == 1:
+        res = built[0][1]
+        res["tab_totals"] = []
+        return res
+
+    explicit = set()
+    for _i, res in built:
+        src = res.get("section_src") or []
+        for k, s in enumerate(res["sections"]):
+            if k < len(src) and src[k] == "sheet":
+                explicit.add(s["code"])
+    letters = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+    used, sections, lines, flags, needs, checks = set(), [], [], [], [], []
+    counts, tab_totals, renames = {}, [], []
+
+    def next_free():
+        for l in letters:
+            if l not in used and l not in explicit:
+                return l
+        n = 1
+        while f"S{n}" in used:
+            n += 1
+        return f"S{n}"
+
+    for i, res in built:
+        name = _tab_name(rec, i)
+        src = res.get("section_src") or []
+        remap = {}
+        for k, s in enumerate(res["sections"]):
+            code = s["code"] if (k < len(src) and src[k] == "sheet") else next_free()
+            if code in used:
+                base, n = code, 2
+                while f"{base}-{n}" in used:
+                    n += 1
+                renames.append({"row": 0, "col": "", "field": "Tab", "raw": base,
+                                "kind": "dup_section", "severity": "amber", "tab": name,
+                                "message": SI._FLAG_TEXT["dup_section"].format(
+                                    raw=base, new=f"{base}-{n}")})
+                code = f"{base}-{n}"
+            used.add(code)
+            remap[s["code"]] = code
+            sections.append({"code": code, "title": s["title"] or name})
+        for l in res["lines"]:
+            l = dict(l, section=remap.get(l["section"], l["section"]), tab=name)
+            lines.append(l)
+        flags += [dict(f, tab=name) for f in res["flags"]]
+        needs += [dict(n, tab=name) for n in res["needs"]]
+        checks += [dict(c, tab=name) for c in res["checks"]]
+        for k, v in (res.get("counts") or {}).items():
+            counts[k] = counts.get(k, 0) + v
+        tab_totals.append((name, res["totals"]))
+    flags += renames
+
+    # The combined figure: every tab's computed sum against every tab's sheet
+    # total, per track. Judged only where EVERY tab gave a figure for that
+    # track — a total missing on one tab is not a match on the rest.
+    combined = {}
+    for _n, t in tab_totals:
+        for c in t.get("checks") or []:
+            cur = combined.setdefault(c["track"], {"track": c["track"], "computed": 0.0,
+                                                   "sheet": 0.0, "column": c.get("column"),
+                                                   "all": True})
+            cur["computed"] = round(cur["computed"] + float(c.get("computed") or 0.0), 2)
+            if c.get("sheet") is None:
+                cur["all"] = False
+            else:
+                cur["sheet"] = round(cur["sheet"] + float(c["sheet"]), 2)
+    out_checks, judged = [], []
+    for c in combined.values():
+        ok = c.pop("all")
+        if not ok:
+            c.update(sheet=None, status="no_figure")
+        else:
+            c["difference"] = round(c["computed"] - c["sheet"], 2)
+            c["status"] = ("match" if abs(c["difference"]) <= SI.TOTALS_TOLERANCE
+                           else "mismatch")
+            judged.append(c["status"])
+        out_checks.append(c)
+    status = ("no_total" if not judged and all(t.get("status") == "no_total"
+                                                for _n, t in tab_totals)
+              else "mismatch" if "mismatch" in judged else "match" if judged else "no_figure")
+    totals = {"status": status, "row": None, "label": "", "checks": out_checks,
+              "total_rows": sum(int(t.get("total_rows") or 0) for _n, t in tab_totals),
+              "combined": True}
+    return {"sections": sections, "lines": lines, "flags": flags, "needs": needs,
+            "checks": checks, "counts": counts, "totals": totals,
+            "tab_totals": tab_totals}
+
+
+# =============================================================================
+# NAMES FROM THE SHEET (6 October 2026, R4) — suggestions, confirmed on the
+# preview, never saved by themselves
+# =============================================================================
+
+def detected_names(rec: dict) -> dict:
+    """
+    `{"project_name": (text, source), "account_name": (text, source)}` — what
+    the sheet suggests, each with the plain-words place it came from ("tab
+    “BOQ”, row 2"), from the first ticked tab that has one. Project falls back
+    to the PRIMARY tab's name, said as such. ("", "") where there is nothing.
+    """
+    out = {"project_name": ("", ""), "account_name": ("", "")}
+    for i in _ticked(rec):
+        names = SI.detect_names(_tab_grid(rec, i))
+        where = f"tab “{_tab_name(rec, i)}”"
+        if not out["project_name"][0] and names.get("project"):
+            p = names["project"]
+            out["project_name"] = (p["text"], f"{where}, row {int(p['row'])}")
+        if not out["account_name"][0] and names.get("client"):
+            c = names["client"]
+            out["account_name"] = (c["text"], f"{where}, row {int(c['row'])}")
+    if not out["project_name"][0]:
+        primary = int(rec.get("sheet_index") or 0)
+        out["project_name"] = (_tab_name(rec, primary),
+                               f"the name of tab “{_tab_name(rec, primary)}” — "
+                               f"nothing above its heading names the project")
+    return out
+
+
+def names_of(rec: dict) -> dict:
+    """The names the preview shows in its boxes: what the user typed there
+    once they have posted, otherwise the sheet's suggestion."""
+    typed = rec.get("names") or {}
+    found = detected_names(rec)
+    return {k: (typed[k] if k in typed else found[k][0]) for k in found}
+
+
+_MS = re.compile(r"^\s*m\s*/\s*s\.?\s*", re.I)
+
+
+def address_match(name: str):
+    """
+    `(address id, address)` of the ACTIVE address-book entry whose company
+    or label is this name — compared by `pipeline.norm_name()` (case and
+    spacing), with a leading "M/s" ignored on either side — else `(None,
+    None)`. The first by label when several match. Read straight out of
+    `STORE["addresses"]`, the one-way read every other reader of the book
+    uses; "active" is `address.is_active()`, the book's own predicate.
+    """
+    want = {P.norm_name(name), P.norm_name(_MS.sub("", name or ""))} - {""}
+    if not want:
+        return None, None
+    book = STORE.get("addresses") or {}
+    for aid, a in sorted(book.items(), key=lambda kv: (str(kv[1].get("label") or "").lower(),
+                                                       kv[0])):
+        if not isinstance(a, dict) or not is_active(a):
+            continue
+        for f in ("company", "label"):
+            v = str(a.get(f) or "")
+            if want & ({P.norm_name(v), P.norm_name(_MS.sub("", v))} - {""}):
+                return aid, a
+    return None, None
+
+
+def prefill_of(rec: dict) -> dict:
+    """
+    The plain form fields the prefilled `/boq/create` opens with (R4): the
+    project name, and the account — **from the address book when the name
+    matches an entry** (the picker pre-selected, its address, GSTIN and
+    contact filled exactly as choosing it by hand would), else the sheet's
+    name as free text. Nothing is saved: the form is the confirmation.
+    """
+    names = names_of(rec)
+    out = {}
+    if names["project_name"]:
+        out["project_name"] = names["project_name"]
+    acct = names["account_name"]
+    if acct:
+        out["account_name"] = acct
+        aid, a = address_match(acct)
+        if aid:
+            street = "\n".join(x for x in (a.get("line1"), a.get("line2"), a.get("landmark")) if x)
+            out.update({"bill_pick": aid,
+                        "account_name": a.get("company") or acct,
+                        "contact_person": a.get("contact_name") or "",
+                        "bill_addr": street, "bill_city": a.get("city") or "",
+                        "bill_state": a.get("state") or "", "bill_pin": a.get("pincode") or "",
+                        "bill_gstin": a.get("gstin") or ""})
+    return out
+
+
 def _known_mapping(grid: dict):
     """(mapping, layout record) when this sheet's layout has been confirmed
     before and its stored mapping still applies cleanly; (None, None) else."""
@@ -226,7 +537,10 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
     mapping, layout = _known_mapping(grid)
     known = mapping is not None and _auto_mode(grid)[0] == "selling"
     if mapping is None:
-        mapping = SI.guess_mapping(grid)
+        # ⚠ The ADVICE, not the bare guess (6 October 2026, R1): the tick and
+        #   the target arrive set to what `sheetimport.advise()` suggests, a
+        #   lone rate column as the selling rate among them.
+        mapping = SI.advised_mapping(grid)
     _imports()[token] = {
         "id": token, "token": token, "user_id": uid,
         "created_at": _now(), "created_ts": time.time(),
@@ -236,6 +550,12 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
         "layout": SI.signature(grid), "known": known, "confirmed": False,
         # "" until the operator posts a choice; `rate_mode()` reads it.
         "rate_mode": "", "markup": "",
+        # 6 October 2026 (R4/R5). `ticked` — the tabs to build, the reader's
+        # own pick by default; `tab_maps` — the mapping of every ticked tab
+        # OTHER than `sheet_index`, whose mapping stays in `mapping` as it
+        # always was; `names` — the project and account names as the user
+        # typed them on the preview, empty until they post.
+        "ticked": [sel], "tab_maps": {}, "names": {},
     }
     _cap_per_user(uid)
     if known:
@@ -393,6 +713,22 @@ def _with_make(remark: str, make: str) -> str:
     return f"{remark}; {bit}" if remark else bit
 
 
+def _with_note(remark: str, note: str) -> str:
+    """The sheet's own Remark column (6 October 2026, R1), word for word,
+    added to a line's remark — before any "Make: …"."""
+    note = (note or "").strip()
+    if not note:
+        return remark
+    return f"{remark}; {note}" if remark else note
+
+
+def _rowref(l: dict) -> str:
+    """Where a line came from, for its flag sentences: "Row 12" — or, when
+    several tabs are one BOQ (R5), "Sprinkler · row 12", since every tab has
+    a row 12."""
+    return f"{l['tab']} · row {l['row']}" if l.get("tab") else f"Row {l['row']}"
+
+
 def editor_model(result: dict, markup: float = None) -> dict:
     """
     `sheetimport.build()`'s result as the editor's boot model — the shape
@@ -413,6 +749,12 @@ def editor_model(result: dict, markup: float = None) -> dict:
         _cost      the tracks whose base rate came from a COST sheet — the
                    form fills their blank unit rate from its own base +
                    escalation suggestion on load, then drops the key
+
+    ⚠ **6 October 2026** (the §0 forty-fourth block): each row also carries
+      `supply_disc_pct` / `install_disc_pct` — the sheet's discount %, blank
+      when it gave none (R3) — and the sheet's own Remark column, word for
+      word, ahead of any "Make: …" (R1). On a merged several-tab result a
+      flag reads "<tab> · row N" (`_rowref()`).
 
     ⚠ **`markup` is the cost mode (1 October 2026).** None — selling rates —
       is v1's model exactly. A number: on every track where the sheet gave a
@@ -447,7 +789,8 @@ def editor_model(result: dict, markup: float = None) -> dict:
         if l.get("kind") == "group_label":
             tgt = last.get((l["section"], l["parent_item_no"])) if l["parent_item_no"] else None
             if tgt is not None:
-                lines[tgt]["remark"] = _with_make(lines[tgt]["remark"], l.get("make"))
+                lines[tgt]["remark"] = _with_make(_with_note(lines[tgt]["remark"],
+                                                             l.get("remark")), l.get("make"))
             continue
         if header and not l["item_no"] and l.get("kind") in ("spec_text", "subheading"):
             text = (l["description"] or "").strip()
@@ -457,7 +800,8 @@ def editor_model(result: dict, markup: float = None) -> dict:
                 if text:
                     base = row["description"].rstrip()
                     row["description"] = f"{base}\n{text}" if base else text
-                row["remark"] = _with_make(row["remark"], l.get("make"))
+                row["remark"] = _with_make(_with_note(row["remark"], l.get("remark")),
+                                           l.get("make"))
             elif l["section"] in sec_at:
                 sec = sections[sec_at[l["section"]]]
                 bits = [b for b in (text, f"Make: {l['make']}" if l.get("make") else "") if b]
@@ -471,7 +815,7 @@ def editor_model(result: dict, markup: float = None) -> dict:
             "section": l["section"],
             "is_header": header,
             "description": l["description"],
-            "remark": _with_make("", l.get("make")),
+            "remark": _with_make(_with_note("", l.get("remark")), l.get("make")),
             "unit": "" if header else l["unit"],
             "area_qty": {},
             "total_qty": "" if header else num_text(l["qty"]),
@@ -483,21 +827,27 @@ def editor_model(result: dict, markup: float = None) -> dict:
             "install_escalation_pct": "" if header else num_text(l["install_escalation_pct"]),
             "install_rate": "" if header else num_text(l["install_rate"]),
             "install_sac": "", "install_gst_rate": "",
+            # The discount per track (6 October 2026, R3) — blank unless the
+            # sheet gave one, and never a 0 the sheet did not write.
+            "supply_disc_pct": "" if header else num_text(l.get("supply_disc_pct")),
+            "install_disc_pct": "" if header else num_text(l.get("install_disc_pct")),
             "_row": l["row"],
         }
+        ref = _rowref(l)
         if l["flags"]:
-            row["_flags"] = [f"Row {l['row']}: {m}" for m in l["flags"]]
+            row["_flags"] = [f"{ref}: {m}" for m in l["flags"]]
         if l["block"] and not header:
             row["_block"] = True
         if l.get("needs") and not header:
-            row["_need"] = [{"f": n["field"], "m": f"Row {l['row']}: {n['message']}"}
+            row["_need"] = [{"f": n["field"], "m": f"{ref}: {n['message']}"}
                             for n in l["needs"]]
         if l.get("item_src"):
             row["_item_src"] = l["item_src"]
         if l.get("lump_sum"):
             row["_ls"] = True
         if l.get("rate_only") and not header:
-            row["remark"] = _with_make(SI.RATE_ONLY_REMARK, l.get("make"))
+            row["remark"] = _with_make(_with_note(SI.RATE_ONLY_REMARK, l.get("remark")),
+                                       l.get("make"))
             row["_ro"] = True
         if markup is not None and not header:
             cost = []
@@ -582,6 +932,15 @@ IMPORT_STYLES = """
 .imp-linkish{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-decoration:underline;}
 .imp-mode .form-group{max-width:14rem;margin-top:.7rem;}
 .imp-warn{color:#b45309;font-weight:600;}
+.imp-tabs{display:flex;gap:.4rem 1.2rem;flex-wrap:wrap;font-size:.86rem;}
+.imp-tab{display:inline-flex;gap:.35rem;align-items:center;}
+.imp-pick td{vertical-align:middle;}
+.imp-pick .imp-samp{color:var(--muted,#64748b);max-width:18rem;}
+.imp-pick .imp-adv{font-size:.76rem;max-width:20rem;}
+.imp-pick .imp-use{text-align:center;}
+.imp-pick tr.imp-off td{color:var(--muted,#64748b);background:#f8fafc;}
+.imp-names .fg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:.8rem 1.2rem;}
+.imp-names .imp-note{margin-top:.25rem;}
 </style>
 """
 
@@ -673,10 +1032,11 @@ def _upload_page(error: str = "") -> str:
     <p class="imp-note">An <b>.xlsx</b> or <b>.xls</b> file up to
     {SI.MAX_UPLOAD_BYTES // 1048576} MB. A workbook with macros (.xlsm) is refused
     &mdash; save it as .xlsx first. The file is read once and not kept.</p>
-    <p class="imp-note">You will see the sheet with a guessed column for each
-    heading, and every cell the reader could not take as a number, before
-    anything else happens. Then the ordinary <b>Create BOQ</b> form opens with
-    every line filled in. <b>Nothing is saved until you press Create BOQ.</b></p>
+    <p class="imp-note">You will see every column of the sheet with three sample
+    values and a suggestion of what to take &mdash; already ticked &mdash; and you
+    choose which columns to import; several tabs can go into one BOQ, one
+    section each. Then the ordinary <b>Create BOQ</b> form opens with every line
+    filled in. <b>Nothing is saved until you press Create BOQ.</b></p>
     <p class="imp-note">Only the <b>total</b> quantity is read; floor or area
     columns are left out. Where the sheet gives one rate per line, that rate is
     taken as the <b>selling</b> rate and the base rate is left blank for you to
@@ -697,7 +1057,10 @@ def _cell_text(v) -> str:
     return s
 
 
-def _target_select(col: int, current: str) -> str:
+def _target_select(col: int, current: str, tab: int = None) -> str:
+    """One column's target dropdown. Named `map_<tab>_<column>` on the column
+    picker (6 October 2026, R1/R5) — one per column per ticked tab; ticking
+    it on is `use_<tab>_<column>`. A target chosen ticks its box (`impTick`)."""
     opts = []
     if current == SI.UNDECIDED:
         opts.append(f'<option value="{SI.UNDECIDED}" selected>'
@@ -706,7 +1069,9 @@ def _target_select(col: int, current: str) -> str:
         sel = " selected" if key == current else ""
         opts.append(f'<option value="{P.esc(key)}"{sel}>{P.esc(label)}</option>')
     cls = ' class="is-undecided"' if current == SI.UNDECIDED else ""
-    return (f'<select name="map_{int(col)}"{cls} aria-label="Column '
+    name = f"map_{int(col)}" if tab is None else f"map_{int(tab)}_{int(col)}"
+    hook = "" if tab is None else f' onchange="impTick(this,&#39;use_{int(tab)}_{int(col)}&#39;)"'
+    return (f'<select name="{name}"{cls}{hook} aria-label="Column '
             f'{SI.col_letter(col)}">{"".join(opts)}</select>')
 
 
@@ -714,8 +1079,43 @@ def _money(v) -> str:
     return "&mdash;" if v is None else f"&#8377;&nbsp;{float(v):,.2f}"
 
 
+def totals_block(result: dict) -> str:
+    """
+    The totals check as the preview and the form's banner show it. One tab:
+    v1's one line, exactly. Several tabs (R5): the COMBINED figure first, then
+    each tab's own check against its own total row.
+    """
+    tabs = result.get("tab_totals") or []
+    if not tabs:
+        return _totals_html(result["totals"])
+    each = "".join(f"<li>{P.esc(name)} &mdash; {_totals_html(t)}</li>" for name, t in tabs)
+    return (f"{_totals_html(result['totals'])}"
+            f'<ul class="imp-flags">{each}</ul>')
+
+
 def _totals_html(totals: dict) -> str:
     status = totals.get("status")
+    if totals.get("combined"):
+        # Several tabs: the sums of every tab's figures (R5).
+        if status == "no_total":
+            return "Combined totals check: <b>no grand total found</b> on any tab."
+        parts = []
+        track_name = {"supply": "Supply", "install": "Installation",
+                      "both": "Supply + Installation"}
+        for c in totals.get("checks") or []:
+            name = track_name.get(c.get("track"), "")
+            if c.get("status") == "no_figure":
+                parts.append(f"{name}: computed {_money(c.get('computed'))}, not every "
+                             f"tab gives a total to compare")
+            elif c.get("status") == "match":
+                parts.append(f'{name}: <span class="imp-ok">matches</span> '
+                             f"{_money(c.get('sheet'))}")
+            else:
+                parts.append(f'{name}: <span class="imp-bad">does not match</span> &mdash; '
+                             f"the tabs' totals {_money(c.get('sheet'))}, quantity &times; rate "
+                             f"{_money(c.get('computed'))} (difference "
+                             f"{_money(c.get('difference'))})")
+        return "Combined totals check, every ticked tab: " + ("; ".join(parts) or "no rate mapped") + "."
     if status == "no_total":
         n = totals.get("total_rows") or 0
         why = (f" ({n} total row{'s' if n != 1 else ''} on the sheet, none marked "
@@ -746,6 +1146,10 @@ def _flag_list(flags: list, limit: int = BANNER_FLAG_ROWS) -> str:
     items = []
     for f in flags[:limit]:
         where = f"Row {int(f['row'])}" + (f", column {P.esc(f['col'])}" if f.get("col") else "")
+        if f.get("tab"):
+            # Several tabs, one BOQ (R5): every tab has a row 12.
+            where = (f"{P.esc(f['tab'])}" + (f" &middot; row {int(f['row'])}" if f.get("row") else "")
+                     + (f", column {P.esc(f['col'])}" if f.get("col") else ""))
         raw = f" (“{P.esc(f['raw'])}”)" if f.get("raw") and f.get("kind") in ("text", "na", "error") else ""
         cls = ' class="is-red"' if f.get("severity") == "red" else ""
         items.append(f"<li{cls}>{where} &middot; {P.esc(f['field'])}: "
@@ -883,7 +1287,8 @@ def summary_html(result: dict, model: dict, on_form: bool,
         for c in bad[:SUMMARY_ROWS]:
             figs = "; ".join(f"{COL_NAME.get(f['col'], P.esc(f['col']))}: sheet {_money(f['sheet'])}, "
                              f"the lines above {_money(f['lines'])}" for f in c["figures"])
-            rows.append(f'<li class="is-red">Row {int(c["row"])} &ldquo;{P.esc(c.get("label"))}&rdquo; '
+            tab = f"{P.esc(c['tab'])} &middot; " if c.get("tab") else ""
+            rows.append(f'<li class="is-red">{tab}Row {int(c["row"])} &ldquo;{P.esc(c.get("label"))}&rdquo; '
                         f'does not add up &mdash; {figs}</li>')
         chk = (f'<p class="imp-note"><span class="imp-bad">{len(bad)} do not add up</span>; '
                f'{len(checks) - len(bad)} do.</p><ul class="imp-flags">{"".join(rows)}</ul>')
@@ -891,7 +1296,9 @@ def summary_html(result: dict, model: dict, on_form: bool,
                  f'{"s" if len(checks) != 1 else ""} checked</h3>{chk}</div>')
 
     covered = {"no_qty", "no_rate_amt", "no_rate", "mismatch", "no_item", "no_desc",
-               "lump_sum", "total_bad", "ro_no_rate"}
+               "lump_sum", "total_bad", "ro_no_rate",
+               # 6 October 2026 (R3): the discount's two blocking checks.
+               "mismatch_net", "net_mismatch"}
     notes = [f for f in result.get("flags") or [] if f.get("kind") not in covered]
     if notes:
         parts.append(f'<details class="imp-group"><summary><b>{len(notes)}</b> other note'
@@ -936,15 +1343,133 @@ def _mode_card(mode: str, why: str, markup_raw: str) -> str:
     </div>{_MODE_JS}"""
 
 
+def _trunc(s: str, n: int) -> str:
+    s = str(s or "")
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+# A target chosen in a dropdown ticks that column's Import box: choosing what a
+# column is IS choosing to take it. Unticking is left to the user. A plain
+# string, so its braces are written once.
+_PICK_JS = """
+<script>
+function impTick(sel, name) {
+  var box = document.getElementsByName(name)[0];
+  if (box && sel.value !== '') box.checked = true;
+}
+</script>
+"""
+
+
+def _picker_html(rec: dict, i: int, several: bool) -> str:
+    """
+    One tab's COLUMN PICKER (6 October 2026, CLIENT_CHANGES.md §0 forty-fourth
+    block, R1): every non-empty column — its letter, its heading, three sample
+    values, an **Import** tick, the target and one line of advice.
+
+    The tick and the target arrive set to the ADVICE (`stage()` stores it);
+    after a POST they are what the user chose. An unticked column shows what
+    the advice would take, so ticking it back takes that. ⚠ The advice and the
+    headings are escaped here, and the advice never quotes a cell.
+    """
+    grid = _tab_grid(rec, i)
+    mapping = SI.clean_mapping(grid, _mapping_of(rec, i))
+    advice = SI.advise_mapping(grid)
+    labels = SI.header_labels(grid)
+    rows = []
+    for ci, c in enumerate(grid["cols"]):
+        cur = mapping.get(str(c), "")
+        adv_t, adv_r = advice.get(str(c), ("", ""))
+        on = cur != ""
+        shown = cur if on else adv_t
+        samples = " &middot; ".join(P.esc(_trunc(s, 40))
+                                    for s in SI.column_samples(grid, ci)) or "&mdash;"
+        rows.append(
+            f'<tr class="{"" if on else "imp-off"}">'
+            f'<td class="imp-rn">{SI.col_letter(c)}</td>'
+            f'<td class="imp-head">{P.esc(_trunc(labels.get(ci, ""), 60)) or "&mdash;"}</td>'
+            f'<td class="imp-samp">{samples}</td>'
+            f'<td class="imp-use"><input type="checkbox" name="use_{int(i)}_{int(c)}" value="1"'
+            f'{" checked" if on else ""} aria-label="Import column {SI.col_letter(c)}"/></td>'
+            f'<td>{_target_select(c, shown, tab=i)}</td>'
+            f'<td class="imp-adv">{P.esc(adv_r)}</td></tr>')
+    no_header = ("" if grid.get("header") else
+                 '<p class="imp-note">No heading row was recognised on this tab, so every '
+                 'column starts unticked and the lines start at the top. Tick and choose '
+                 'what each column holds.</p>')
+    title = f" &mdash; {P.esc(_tab_name(rec, i))}" if several else ""
+    return f"""
+    <div class="imp-card">
+      <h2>What each column holds{title}</h2>
+      {no_header}
+      <div class="imp-wrap">
+        <table class="imp-grid imp-pick">
+          <thead><tr><th>Col</th><th>Heading</th><th>On the sheet</th><th>Import</th>
+          <th>Take it as</th><th>Advice</th></tr></thead>
+          <tbody>{"".join(rows)}</tbody>
+        </table>
+      </div>
+      <p class="imp-note">Only a <b>ticked</b> column is read &mdash; an unticked one is
+      ignored completely: never imported, never asked about. The advice is already ticked
+      and chosen; change either. A lone rate column is suggested as your <b>selling</b>
+      rate, and the base rate then stays blank &mdash; unless the rates are <b>Our cost</b>,
+      above.</p>
+    </div>"""
+
+
+def _names_html(rec: dict) -> str:
+    """The project and account names from the sheet (R4) — editable boxes,
+    each saying where its suggestion came from, and whether the account
+    matches an address-book entry (it is then selected on the form)."""
+    found = detected_names(rec)
+    shown = names_of(rec)
+    typed = rec.get("names") or {}
+
+    def source(key):
+        text, where = found[key]
+        if key in typed and typed[key] != text:
+            return "As you typed it."
+        if not text:
+            return "Nothing above the heading names one &mdash; type it here or on the form."
+        return f"From the sheet: {P.esc(where)}."
+
+    match = ""
+    if shown["account_name"]:
+        aid, a = address_match(shown["account_name"])
+        if aid:
+            match = (f' Matches the address-book entry &ldquo;{P.esc(a.get("label"))}&rdquo;'
+                     f' &mdash; it will be selected on the form, its address filled.')
+    return f"""
+    <div class="imp-card imp-names">
+      <h2>Names from the sheet</h2>
+      <div class="fg2">
+        <div class="form-group">
+          <label for="project_name">Project name</label>
+          <input type="text" id="project_name" name="project_name" maxlength="200"
+                 value="{P.esc(shown["project_name"])}"/>
+          <p class="imp-note">{source("project_name")}</p>
+        </div>
+        <div class="form-group">
+          <label for="account_name">Account / bill-to name</label>
+          <input type="text" id="account_name" name="account_name" maxlength="200"
+                 value="{P.esc(shown["account_name"])}"/>
+          <p class="imp-note">{source("account_name")}{match}</p>
+        </div>
+      </div>
+      <p class="imp-note">Suggestions only &mdash; they fill the Create BOQ form, where you
+      can still change them. Nothing is saved until you press Create BOQ.</p>
+    </div>"""
+
+
 def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     grid = _grid(rec)
-    sheet = _sheet(rec)
-    mapping = SI.clean_mapping(grid, rec.get("mapping") or {})
-    result = SI.build(grid, mapping)
+    tabs = _ticked(rec)
+    several = len(tabs) > 1
+    result = build_tabs(rec)
     mode, why = rate_mode(rec, grid)
     if problems is None:
-        problems = (SI.mapping_problems(grid, mapping)
-                    + mode_problems(mode, rec.get("markup"), mapping))
+        problems = (_tab_problems(rec)
+                    + mode_problems(mode, rec.get("markup"), _all_mappings(rec)))
 
     alert = f'<div class="alert alert-error">&#10007; {P.esc(error)}</div>' if error else ""
     if problems:
@@ -953,14 +1478,16 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
                   'Before this can open as a BOQ:</div><ul style="margin:0 0 0 1.1rem;">'
                   + "".join(f"<li>{P.esc(p)}</li>" for p in problems) + "</ul></div>")
 
-    # Sheet picker.
-    opts = []
+    # The tabs (R5): every staged one with a tick; the reader's pick ticked.
+    tick_html = []
     for i, s in enumerate(rec.get("sheets") or []):
+        if not s.get("staged") or _tab_grid(rec, i) is None:
+            continue
         tag = "" if s.get("visibility") == "visible" else " (hidden)"
-        dis = "" if s.get("staged") else " disabled"
-        sel = " selected" if i == rec.get("sheet_index") else ""
-        opts.append(f'<option value="{i}"{sel}{dis}>{P.esc(s.get("name"))}{tag} '
-                    f'&middot; {int(s.get("rows") or 0)} rows</option>')
+        tick_html.append(
+            f'<label class="imp-tab"><input type="checkbox" name="tab" value="{i}"'
+            f'{" checked" if i in tabs else ""}/> {P.esc(s.get("name"))}{tag} '
+            f'&middot; {int(s.get("rows") or 0)} rows</label>')
     unread = [s for s in rec.get("sheets") or [] if not s.get("staged")]
     unread_html = ""
     if unread:
@@ -968,16 +1495,18 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
             f"<li>{P.esc(s.get('name'))}: {P.esc(s.get('refusal') or 'not read')}</li>"
             for s in unread) + "</ul>")
 
-    # The grid: column letters, a dropdown per column, the header row(s),
-    # then the first rows of data. Cells a flag came from are shaded.
+    # The primary tab's grid as read, the cells a flag came from shaded. The
+    # targets are chosen in the picker above it now, not in this grid.
     cols = grid["cols"]
+    primary = int(rec.get("sheet_index") or 0)
     flagged = {}
     for f in result["flags"]:
+        if several and f.get("tab") != _tab_name(rec, primary):
+            continue
         key = (f["row"], f["col"])
         if flagged.get(key) != "is-red":
             flagged[key] = "is-red" if f.get("severity") == "red" else "is-flag"
     head_cells = "".join(f"<th>{SI.col_letter(c)}</th>" for c in cols)
-    map_cells = "".join(f"<th>{_target_select(c, mapping.get(str(c), ''))}</th>" for c in cols)
     body_rows = []
     hdr = grid.get("header") or []
     shown = list(range(hdr[0], hdr[1] + 1)) if hdr else []
@@ -996,10 +1525,6 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     more_rows = len(grid["rows"]) - (start + SI.PREVIEW_ROWS)
     more_note = (f'<p class="imp-note">&hellip; and {more_rows} more rows on the sheet, '
                  f'all of which are read.</p>' if more_rows > 0 else "")
-    no_header = ("" if hdr else
-                 '<p class="imp-note">No heading row was recognised on this sheet, '
-                 'so every column starts as <i>ignore</i> and the lines start at the '
-                 'top. Choose what each column holds.</p>')
 
     c = result["counts"]
     model = editor_model(result)
@@ -1008,6 +1533,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
              f'<span><b>{heads}</b> spec headers</span>'
              f'<span><b>{len(result["sections"])}</b> sections</span>'
              f'<span><b>{c["totals_dropped"]}</b> total rows checked, not imported</span>'
+             + (f'<span><b>{len(tabs)}</b> tabs, one section each</span>' if several else "")
              + (f'<span><b>{c["repeats"]}</b> repeated heading rows skipped</span>'
                 if c.get("repeats") else "")
              + (f'<span><b>{c["group_labels"]}</b> group labels put in front of their '
@@ -1022,6 +1548,8 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
                  f'{int(lay.get("use_count") or 0)} time(s) before; its saved column '
                  f'choices are applied. Confirming again saves any change.</p>')
 
+    pickers = "".join(_picker_html(rec, i, several) for i in tabs)
+    unit_mapped = any("unit" in _mapping_of(rec, i).values() for i in tabs)
     act = url_for("boqimport.preview", token=token)
     body = f"""
   {alert}
@@ -1032,34 +1560,32 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     </div>
   </div>
   <form method="POST" action="{act}">
+    <input type="hidden" name="picker" value="1"/>
     <div class="imp-card">
       <h2>{P.esc(rec.get("filename"))}</h2>
-      <div class="imp-file">
-        <label for="sheet" style="font-weight:600;font-size:.85rem;">Sheet</label>
-        <select id="sheet" name="sheet">{"".join(opts)}</select>
-        <button class="btn btn-ghost" type="submit" name="action" value="update">Show this sheet</button>
+      <div class="imp-tabs">{"".join(tick_html)}</div>
+      <div class="imp-actions" style="justify-content:flex-start;margin-top:.6rem;">
+        <button class="btn btn-ghost" type="submit" name="action" value="update">Show the ticked tabs</button>
       </div>
-      <p class="imp-note">A hidden sheet is listed and never chosen for you.
-      Each import reads one sheet.</p>
+      <p class="imp-note">Tick every tab that belongs in this BOQ: each becomes a
+      <b>section</b>, titled as the tab is &mdash; its own section title if it has one,
+      else the tab&rsquo;s name. A hidden tab is listed and never ticked for you.</p>
       {unread_html}
       {known}
     </div>
     {_mode_card(mode, why, str(rec.get("markup") or ""))}
+    {_names_html(rec)}
+    {pickers}
 
     <div class="imp-card">
-      <h2>What each column holds</h2>
-      {no_header}
+      <h2>The sheet as read{f" &mdash; {P.esc(_tab_name(rec, primary))}" if several else ""}</h2>
       <div class="imp-wrap">
         <table class="imp-grid">
-          <thead><tr><th>Row</th>{head_cells}</tr><tr><th></th>{map_cells}</tr></thead>
+          <thead><tr><th>Row</th>{head_cells}</tr></thead>
           <tbody>{"".join(body_rows)}</tbody>
         </table>
       </div>
       {more_note}
-      <p class="imp-note">A rate column that does not say whether it is Supply or
-      Installation is left for you to choose. With one rate per line that rate is
-      the <b>selling</b> rate and the base rate stays blank &mdash; unless the rates
-      are <b>Our cost</b>, above. Amount columns are only used to check the totals.</p>
       <div class="imp-actions">
         <button class="btn btn-ghost" type="submit" name="action" value="update">Update preview</button>
       </div>
@@ -1072,27 +1598,29 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       <b>Checked against the sheet&rsquo;s cost figures</b> &mdash; every quantity &times;
       rate, subtotal, section total and the grand total below is the sheet&rsquo;s own
       arithmetic on its base rates, before the markup.</p>
-      <p style="margin:.6rem 0 0;font-size:.85rem;">{_totals_html(result["totals"])}</p>
-      {summary_html(result, model, on_form=False, unit_mapped="unit" in mapping.values())}
+      <div style="margin:.6rem 0 0;font-size:.85rem;">{totals_block(result)}</div>
+      {summary_html(result, model, on_form=False, unit_mapped=unit_mapped)}
       <p class="imp-note">A field that needs you is left <b>blank</b> on the form &mdash;
       nothing is worked out or turned into 0 &mdash; and ringed there; the form will not
-      save until each is filled. A link above confirms these columns and opens the form
-      on that field.</p>
+      save until each is filled. Only the columns you ticked are ever asked about. A link
+      above confirms these columns and opens the form on that field.</p>
       <div class="imp-actions">
         <button class="btn" type="submit" name="action" value="confirm">Confirm &amp; open the BOQ form</button>
       </div>
     </div>
-  </form>"""
+  </form>{_PICK_JS}"""
     return _page("Import BOQ", body)
 
 
 def _banner(token: str, rec: dict, result: dict, model: dict,
-            unit_mapped: bool = True, markup: float = None) -> str:
+            unit_mapped: bool = True, markup: float = None, prefill: dict = None) -> str:
     """The summary that sits on top of the prefilled form. Escaped here; the
     form's own `demo_banner` sits beside it. `markup` set: a cost sheet, and
-    the banner says so in the brief's own words (1 October 2026)."""
+    the banner says so in the brief's own words (1 October 2026). From 6
+    October 2026 it names every ticked tab (R5) and says which names the
+    sheet filled in (R4)."""
     c = result["counts"]
-    sheet = _sheet(rec)
+    tabs = _ticked(rec)
     blocked = sum(1 for l in result["lines"] if l["block"] and not l["is_header"])
     cost = ""
     if markup is not None:
@@ -1114,18 +1642,32 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
                f'(“NA”, a word, a sum written as text&hellip;). Those rows are marked '
                f'red. Type the quantity, or remove the line &mdash; a blank quantity '
                f'would be saved as 0, and an RA bill cannot claim against a line at 0.</p>')
+    names = ""
+    pf = prefill or {}
+    filled = [w for k, w in (("project_name", "the project name"),
+                             ("account_name", "the account name")) if pf.get(k)]
+    if filled:
+        book = (" &mdash; the account matches an address-book entry, which is selected "
+                "and its address filled" if pf.get("bill_pick") else "")
+        names = (f'<p style="margin:.4rem 0 0;">Filled in from the sheet: '
+                 f'{" and ".join(filled)}{book}. Check them.</p>')
     flags = summary_html(result, model, on_form=True, unit_mapped=unit_mapped)
     cls = "imp-banner has-red" if blocked else "imp-banner"
+    if len(tabs) > 1:
+        where = ("tabs " + ", ".join(f"“{P.esc(_tab_name(rec, i))}”" for i in tabs)
+                 + " (one section each)")
+    else:
+        where = f"sheet “{P.esc(_sheet(rec).get('name'))}”"
     return (f'<div class="{cls}">&#128229; Imported from <b>{P.esc(rec.get("filename"))}</b>, '
-            f'sheet “{P.esc(sheet.get("name"))}” &mdash; {c["lines"]} lines, '
+            f'{where} &mdash; {c["lines"]} lines, '
             f'{sum(1 for l in model["lines"] if l["is_header"])} spec headers, '
             f'{len(result["sections"])} section'
             f'{"s" if len(result["sections"]) != 1 else ""}; {c["totals_dropped"]} total '
             f'row{"s" if c["totals_dropped"] != 1 else ""} checked and left out. '
             f'<b>Nothing has been saved.</b> Check the lines, fill in the project and '
             f'customer, then press Create BOQ &mdash; or just leave the page.'
-            f'<p style="margin:.4rem 0 0;">{_totals_html(result["totals"])}</p>'
-            f'{cost}{known}{red}{flags}</div>')
+            f'<div style="margin:.4rem 0 0;">{totals_block(result)}</div>'
+            f'{cost}{known}{names}{red}{flags}</div>')
 
 
 # =============================================================================
@@ -1150,6 +1692,65 @@ def upload():
     return redirect(url_for("boqimport.preview", token=token), code=303)
 
 
+def _take_picker_post(rec: dict, form) -> list:
+    """
+    The column picker's POST (6 October 2026, R1/R4/R5): the ticked tabs, each
+    tab's targets — a column is taken only when its Import box is ticked —
+    and the two names as typed. Returns problems ([] when it was taken).
+
+    A tab ticked for the first time posts no targets of its own: it gets its
+    default (its known layout, the first tab's picks when the headers match,
+    else the advice) AFTER the posted tabs are stored, so a match copies what
+    was just chosen rather than what was chosen before.
+    """
+    sheets = rec.get("sheets") or []
+    tabs = []
+    for x in form.getlist("tab"):
+        try:
+            i = int(x)
+        except (TypeError, ValueError):
+            continue
+        if (0 <= i < len(sheets) and sheets[i].get("staged")
+                and _tab_grid(rec, i) is not None and i not in tabs):
+            tabs.append(i)
+    tabs.sort()
+    rec["names"] = {k: str(form.get(k) or "").strip()[:200]
+                    for k in ("project_name", "account_name")}
+    if not tabs:
+        return ["Tick at least one tab to import."]
+
+    posted = {}
+    for i in tabs:
+        grid = _tab_grid(rec, i)
+        if not any(k.startswith(f"map_{i}_") for k in form):
+            continue
+        picks = {}
+        for c in grid["cols"]:
+            picks[str(c)] = (str(form.get(f"map_{i}_{c}") or "")
+                             if form.get(f"use_{i}_{c}") else "")
+        posted[i] = SI.clean_mapping(grid, picks)
+
+    primary = tabs[0]
+    old_maps = {i: _mapping_of(rec, i) for i in tabs if i not in posted
+                and (i == rec.get("sheet_index") or str(i) in (rec.get("tab_maps") or {}))}
+    if primary != rec.get("sheet_index"):
+        rec["sheet_index"] = primary
+        rec["layout"] = SI.signature(_tab_grid(rec, primary))
+        rec["known"] = False
+    rec["ticked"] = tabs
+    maps = {**old_maps, **posted}
+    rec["mapping"] = maps.get(primary) or {}
+    rec["tab_maps"] = {str(i): m for i, m in maps.items() if i != primary}
+    for i in tabs:
+        if i not in maps:
+            m = _default_mapping(rec, i)
+            if i == primary:
+                rec["mapping"] = m
+            else:
+                rec["tab_maps"][str(i)] = m
+    return []
+
+
 @boqimport_bp.route("/<token>", methods=["GET", "POST"])
 def preview(token: str):
     purge()
@@ -1159,29 +1760,40 @@ def preview(token: str):
     if request.method == "GET":
         return _preview_page(token, rec)
 
-    # A different sheet: a fresh guess for it (or its known layout), and back
-    # to the preview. The mapping posted with it belonged to the old sheet.
-    try:
-        wanted = int(request.form.get("sheet", rec.get("sheet_index") or 0))
-    except (TypeError, ValueError):
-        wanted = rec.get("sheet_index") or 0
-    sheets = rec.get("sheets") or []
-    if (wanted != rec.get("sheet_index") and 0 <= wanted < len(sheets)
-            and sheets[wanted].get("staged") and rec["grid"][wanted] is not None):
-        rec["sheet_index"] = wanted
-        grid = rec["grid"][wanted]
-        known_map, _lay = _known_mapping(grid)
-        rec["mapping"] = known_map if known_map is not None else SI.guess_mapping(grid)
-        rec["layout"] = SI.signature(grid)
-        rec["known"] = False
-        # The selling / cost choice belonged to the old sheet: back to this
-        # sheet's own pre-selection.
-        rec["rate_mode"], rec["markup"] = "", ""
-        return redirect(url_for("boqimport.preview", token=token), code=303)
+    if request.form.get("picker"):
+        # The column picker (6 October 2026) — every tab's ticks and targets.
+        problems = _take_picker_post(rec, request.form)
+        if problems:
+            return _preview_page(token, rec, problems=problems)
+    else:
+        # ⚠ The v1 shape, still honoured: a `sheet` to switch to, and one flat
+        #   `map_<column>` per column for that sheet — every column taken,
+        #   the dropdown alone deciding. A request that is not the picker's
+        #   (an old page, a script) reads exactly as it always did.
+        try:
+            wanted = int(request.form.get("sheet", rec.get("sheet_index") or 0))
+        except (TypeError, ValueError):
+            wanted = rec.get("sheet_index") or 0
+        sheets = rec.get("sheets") or []
+        if (wanted != rec.get("sheet_index") and 0 <= wanted < len(sheets)
+                and sheets[wanted].get("staged") and rec["grid"][wanted] is not None):
+            rec["sheet_index"] = wanted
+            grid = rec["grid"][wanted]
+            known_map, _lay = _known_mapping(grid)
+            rec["mapping"] = known_map if known_map is not None else SI.advised_mapping(grid)
+            rec["layout"] = SI.signature(grid)
+            rec["known"] = False
+            rec["ticked"], rec["tab_maps"] = [wanted], {}
+            # The selling / cost choice belonged to the old sheet: back to this
+            # sheet's own pre-selection.
+            rec["rate_mode"], rec["markup"] = "", ""
+            return redirect(url_for("boqimport.preview", token=token), code=303)
+
+        grid = _grid(rec)
+        posted = {k[4:]: v for k, v in request.form.items() if k.startswith("map_")}
+        rec["mapping"] = SI.clean_mapping(grid, posted)
 
     grid = _grid(rec)
-    posted = {k[4:]: v for k, v in request.form.items() if k.startswith("map_")}
-    rec["mapping"] = SI.clean_mapping(grid, posted)
     # Selling rates or our cost (1 October 2026). Kept on every POST — an
     # "Update preview" as much as a confirm — so the choice survives a re-read.
     if request.form.get("rate_mode") in RATE_MODES:
@@ -1202,15 +1814,18 @@ def preview(token: str):
         return redirect(url_for("boqimport.preview", token=token), code=303)
 
     mode, _why = rate_mode(rec, grid)
-    problems = (SI.mapping_problems(grid, rec["mapping"])
-                + mode_problems(mode, rec.get("markup"), rec["mapping"]))
+    problems = _tab_problems(rec) + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
     if problems:
         return _preview_page(token, rec, problems=problems)
     markup = parse_markup(rec.get("markup")) if mode == "cost" else None
-    refusal = too_large(editor_model(SI.build(grid, rec["mapping"]), markup=markup))
+    # Every ticked tab, merged — and measured WHOLE against the BOQ's limits
+    # (R5): refused with its line count, never truncated.
+    refusal = too_large(editor_model(build_tabs(rec), markup=markup))
     if refusal:
         return _preview_page(token, rec, error=refusal)
-    _upsert_layout(grid, rec["mapping"], mode)
+    for i in _ticked(rec):
+        # Each tab's picks are remembered under its own header signature.
+        _upsert_layout(_tab_grid(rec, i), _mapping_of(rec, i), mode)
     rec["layout"] = SI.signature(grid)
     rec["confirmed"], rec["known"] = True, False
     dest = url_for("boqimport.form", token=token)
@@ -1230,28 +1845,30 @@ def form(token: str):
         return redirect(url_for("boqimport.preview", token=token), code=303)
 
     grid = _grid(rec)
-    mapping = SI.clean_mapping(grid, rec.get("mapping") or {})
     mode, _why = rate_mode(rec, grid)
-    problems = (SI.mapping_problems(grid, mapping)
-                + mode_problems(mode, rec.get("markup"), mapping))
+    problems = _tab_problems(rec) + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
     if problems:
         rec["known"] = False
         return _preview_page(token, rec, problems=problems)
     markup = parse_markup(rec.get("markup")) if mode == "cost" else None
-    result = SI.build(grid, mapping)
+    result = build_tabs(rec)
     model = editor_model(result, markup=markup)
     refusal = too_large(model)
     if refusal:
         rec["known"], rec["confirmed"] = False, False
         return _preview_page(token, rec, error=refusal)
 
+    # The names the sheet gave (R4) — suggestions, now on the ordinary form,
+    # where they are edited like anything else; nothing is saved here.
+    prefill = prefill_of(rec)
+    unit_mapped = any("unit" in _mapping_of(rec, i).values() for i in _ticked(rec))
     # IMPORT_STYLES rides with the banner: /boq/create does not load it, so the
     # banner's own classes were unstyled there until 30 September 2026.
-    html = BQ.create_boq(imported={"boot": model, "prefill": {},
+    html = BQ.create_boq(imported={"boot": model, "prefill": prefill,
                                    "banner_html": IMPORT_STYLES + _banner(
                                        token, rec, result, model,
-                                       unit_mapped="unit" in mapping.values(),
-                                       markup=markup)})
+                                       unit_mapped=unit_mapped,
+                                       markup=markup, prefill=prefill)})
     # Consumed. A known layout keeps its row for the Change-mapping link; the
     # 24-hour purge takes it.
     if rec.get("confirmed"):

@@ -2242,7 +2242,8 @@ def stage(wb: dict, filename: str, uid: str) -> str:
         # holds ONE column mapping PER TAB, keyed by the tab's index — the
         # columns differ from tab to tab.
         "ticked": [sel],
-        "mapping": {str(sel): guess_mapping(wb["grid"][sel])},
+        # 6 Oct 2026 (the §0 forty-fourth block, R1): pre-set to the ADVICE.
+        "mapping": {str(sel): advised_mapping(wb["grid"][sel])},
     }
     IS.cap_per_user(STAGE_COLLECTION, uid, MAX_STAGED_PER_USER)
     return token
@@ -2281,7 +2282,8 @@ def _mapping_of(rec: dict, i: int) -> dict:
     if m and all(isinstance(v, str) for v in m.values()):
         m = {str(rec.get("sheet_index") or 0): m}
     tab = m.get(str(i))
-    return dict(tab) if isinstance(tab, dict) else guess_mapping(_tab_grid(rec, i))
+    # A tab nobody has mapped yet starts from the ADVICE (6 October 2026, R1).
+    return dict(tab) if isinstance(tab, dict) else advised_mapping(_tab_grid(rec, i))
 
 
 def guess_mapping(grid: dict) -> dict:
@@ -2298,6 +2300,42 @@ def guess_mapping(grid: dict) -> dict:
     for col, t in SI.guess_mapping(grid).items():
         out[col] = SI.UNDECIDED if t == SI.UNDECIDED else _FROM_SI.get(t, "")
     return out
+
+
+# The advice in this document's words (6 October 2026, CLIENT_CHANGES.md §0
+# forty-fourth block, R1 — "the work order gets the same picker with its own
+# targets"). Where the BOQ's sentence names a selling rate, a work order's
+# names material or labour; a target a work order has no field for is skipped.
+_WO_REASON = {
+    "material_rate": "Looks like the material rate. Take it.",
+    "labour_rate":   "Looks like the labour rate. Take it.",
+    SI.UNDECIDED:    "A rate, but the sheet does not say material or labour. Choose one.",
+}
+_WO_SKIP = "Not used on a work order. Skip it."
+
+
+def advise_mapping(grid: dict) -> dict:
+    """
+    `{column: (target, reason)}` — `sheetimport.advise()` for every column,
+    asked as a WORK ORDER (`doc="wo"`: a lone rate stays "?", because a work
+    order has no selling rate to default to) and said in this document's
+    words: the BOQ's targets translated, anything a work order has no field
+    for — a base rate, an escalation, a discount, a remark — skipped.
+    """
+    out = {}
+    for col, (t, reason) in SI.advise_mapping(grid, doc="wo").items():
+        wt = SI.UNDECIDED if t == SI.UNDECIDED else (_FROM_SI.get(t, "") if t else "")
+        if t and not wt:
+            reason = _WO_SKIP
+        elif wt in _WO_REASON:
+            reason = _WO_REASON[wt]
+        out[col] = (wt, reason)
+    return out
+
+
+def advised_mapping(grid: dict) -> dict:
+    """The advice's targets alone — what a freshly staged tab starts from."""
+    return {c: t for c, (t, _r) in advise_mapping(grid).items()}
 
 
 def clean_mapping(grid: dict, posted, prefix: str = "map_") -> dict:
@@ -2780,21 +2818,43 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
     for i in tabs:
         grid = _tab_grid(rec, i)
         mapping = _mapping_of(rec, i)
+        advice = advise_mapping(grid)
         labels = SI.header_labels(grid)
         cols = grid["cols"]
-        heads = ""
+        # ⚠ THE COLUMN PICKER (6 October 2026, CLIENT_CHANGES.md §0 forty-fourth
+        #   block, R1) — the BOQ importer's, in this document's words: every
+        #   column with its heading, three sample values, an Import tick, the
+        #   target and one line of advice. ONE select per column, named
+        #   `map_<tab>_<column>` as before; the tick is `use_<tab>_<column>`.
+        #   An unticked column shows what the advice would take.
+        heads, pick_rows = "", ""
         for ci, c in enumerate(cols):
             cur = mapping.get(str(c), "")
+            adv_t, adv_r = advice.get(str(c), ("", ""))
+            on = cur != ""
+            shown = cur if on else adv_t
             opts = "".join(
-                f'<option value="{P.esc(k)}"{" selected" if k == cur else ""}>{P.esc(lbl)}</option>'
+                f'<option value="{P.esc(k)}"{" selected" if k == shown else ""}>{P.esc(lbl)}</option>'
                 for k, lbl in TARGETS)
-            if cur == SI.UNDECIDED:
+            if shown == SI.UNDECIDED:
                 opts = ('<option value="?" selected>— choose: material or labour? —</option>'
                         + opts)
+            samples = " &middot; ".join(
+                P.esc(s if len(s) <= 40 else s[:39] + "…")
+                for s in SI.column_samples(grid, ci)) or "&mdash;"
+            pick_rows += (
+                f'<tr><td class="imp-rn">{SI.col_letter(c)}</td>'
+                f'<td>{P.esc(labels.get(ci, "")) or "&mdash;"}</td>'
+                f'<td style="color:var(--muted);">{samples}</td>'
+                f'<td style="text-align:center;"><input type="checkbox" name="use_{i}_{c}" '
+                f'value="1"{" checked" if on else ""} aria-label="Import column '
+                f'{SI.col_letter(c)}"/></td>'
+                f'<td><select name="map_{i}_{c}" aria-label="{P.esc(_tab_name(rec, i))} '
+                f'column {SI.col_letter(c)}" onchange="woTick(this,&#39;use_{i}_{c}&#39;)">'
+                f'{opts}</select></td>'
+                f'<td style="font-size:.78rem;">{P.esc(adv_r)}</td></tr>')
             heads += (f'<th>{SI.col_letter(c)}<br/><span style="font-weight:400;">'
-                      f'{P.esc(labels.get(ci, ""))}</span><br/>'
-                      f'<select name="map_{i}_{c}" aria-label="{P.esc(_tab_name(rec, i))} '
-                      f'column {SI.col_letter(c)}">{opts}</select></th>')
+                      f'{P.esc(labels.get(ci, ""))}</span></th>')
         start = SI.data_start(grid)
         body_rows = ""
         for rnum, vals in grid["rows"][start:start + PREVIEW_ROWS]:
@@ -2827,6 +2887,14 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
       <div class="section-title">{P.esc(_tab_name(rec, i))}</div>
       {no_header}{left}
       <table class="imp-grid">
+        <thead><tr><th>Col</th><th>Heading</th><th>On the sheet</th><th>Import</th>
+        <th>Take it as</th><th>Advice</th></tr></thead>
+        <tbody>{pick_rows}</tbody>
+      </table>
+      <p style="font-size:.8rem;color:var(--muted);margin:.5rem 0 .8rem;">Only a
+      <b>ticked</b> column is read; an unticked one is ignored completely. The advice
+      is already ticked and chosen &mdash; change either.</p>
+      <table class="imp-grid">
         <thead><tr><th>Row</th>{heads}</tr></thead>
         <tbody>{body_rows}</tbody>
       </table>
@@ -2853,6 +2921,7 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
     are left out. The first {PREVIEW_ROWS} rows under each heading are shown.
   </div>
   <form method="POST" action="{url_for('workorder.import_preview', token=token)}">
+    <input type="hidden" name="picker" value="1"/>
     <div class="form-section">
       <div class="section-title">Tabs</div>
       <div class="imp-tabs">{tick_html}</div>
@@ -2860,7 +2929,13 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
     </div>
 {tables}
     <button type="submit" name="act" value="confirm" class="btn">Use these columns &rarr;</button>
-  </form>"""
+  </form>
+  <script>
+  function woTick(sel, name) {{
+    var box = document.getElementsByName(name)[0];
+    if (box && sel.value !== '') box.checked = true;
+  }}
+  </script>"""
     return _shell("Import Work Order Lines", body, WO_FORM_STYLES)
 
 
@@ -2907,12 +2982,22 @@ def import_preview(token: str):
         if _tab_grid(rec, i) is not None and (rec.get("sheets") or [{}] * (i + 1))[i].get("staged"):
             posted_tabs.append(i)
     maps = {}
+    # The column picker (6 October 2026, R1): a column is taken only when its
+    # Import box is ticked. A POST without the picker's marker (an older page,
+    # a script) reads as before — every column taken, its dropdown deciding.
+    picker = bool(request.form.get("picker"))
     for i in sorted(set(posted_tabs)):
         grid = _tab_grid(rec, i)
         if any(k.startswith(f"map_{i}_") for k in request.form):
-            maps[str(i)] = clean_mapping(grid, request.form, prefix=f"map_{i}_")
+            if picker:
+                picks = {f"map_{i}_{c}": (str(request.form.get(f"map_{i}_{c}") or "")
+                                          if request.form.get(f"use_{i}_{c}") else "")
+                         for c in grid["cols"]}
+                maps[str(i)] = clean_mapping(grid, picks, prefix=f"map_{i}_")
+            else:
+                maps[str(i)] = clean_mapping(grid, request.form, prefix=f"map_{i}_")
         else:
-            maps[str(i)] = _mapping_of(rec, i)       # freshly ticked: its guess
+            maps[str(i)] = _mapping_of(rec, i)       # freshly ticked: its advice
     old = rec.get("mapping") or {}
     if old and all(isinstance(v, str) for v in old.values()):
         old = {str(rec.get("sheet_index") or 0): old}

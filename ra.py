@@ -556,7 +556,17 @@ def approved_by_line(boq_id: str) -> dict:
 
 
 def approved_rates(boq_id: str) -> dict:
-    """{(line_id, leg): approved_rate} from the latest revision."""
+    """
+    {(line_id, leg): approved_rate} from the latest revision.
+
+    ⚠ **The NET rate from 6 October 2026** (CLIENT_CHANGES.md §0, forty-fourth
+      block, R3): the unit rate less the line's discount, through
+      `boq.net_rate()` — what the line is billed at, so it is what a claim is
+      prefilled with, frozen as `approved_rate` and compared by `rate_varies()`.
+      A line with no discount nets to its stored rate exactly, so every bill
+      on a schedule without one is the figure it always was. **A bill already
+      saved does not move**: its claim rows are the snapshot (§3 *RA Bill*).
+    """
     latest = latest_revision(boq_id)
     if not latest:
         return {}
@@ -569,8 +579,8 @@ def approved_rates(boq_id: str) -> dict:
         lid = BQ._line_id(li.get("line_id"))
         if not lid:
             continue
-        out[(lid, "supply")] = float(li.get("supply_rate") or 0.0)
-        out[(lid, "installation")] = float(li.get("install_rate") or 0.0)
+        out[(lid, "supply")] = BQ.net_rate(li, "supply")
+        out[(lid, "installation")] = BQ.net_rate(li, "installation")
     return out
 
 

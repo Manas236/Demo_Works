@@ -419,18 +419,18 @@ Consequences you must respect when editing:
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from — **and, from 11 September 2026, what a quotation line is written from too** (`quotation.create_quotation()` reads `STORE["specs"]` and seeds through `ensure_demo_specs()`). **Not a replacement for `product.py`** in the sense of its record shape — a clause is priced per leg, a product at one `base_price` with a BOM — but with the catalogue hidden it is the one library the sell side now draws on. |
-| [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. ⚠ **`create_boq(imported=None)` from 29 September 2026** — the one seam Import BOQ from Excel renders the form through; Flask never passes it, and the POST path never reads it. The form's *Import from Excel* button is a `url_for` string: **`boq.py` never imports `boqimport.py`**. |
-| [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. |
+| [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. ⚠ **`create_boq(imported=None)` from 29 September 2026** — the one seam Import BOQ from Excel renders the form through; Flask never passes it, and the POST path never reads it. The form's *Import from Excel* button is a `url_for` string: **`boq.py` never imports `boqimport.py`**. ⚠ **The discount and the net rate from 6 October 2026** (CLIENT_CHANGES.md §0 **forty-fourth** block, R3): `supply_disc_pct` / `install_disc_pct` on a line, absent unless typed; **`net_rate(line, track)` is the ONE price of a line** (amounts, the printed Net Rate, the editor's mirror, the RA bill's approved rate); Disc % and Net Rate print only for a track where a line carries a discount (`any_discount()`), so an undiscounted BOQ is byte-identical. A blank escalation with no base is stored ABSENT (`_esc_pct()`, R2), and `lines_without_cost()` is the one rule for "cost not recorded". §3 *Bill of Quantities*. |
+| [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. ⚠ **From 6 October 2026 (the §0 forty-fourth block) the preview is a COLUMN PICKER** (R1): every column with three samples, an Import tick and one line of advice, pre-set to the advice; **several tabs into one BOQ**, one section per tab (R5, `build_tabs()`); the project and account **names from the sheet** as editable suggestions, the account matched to the address book (R4, `prefill_of()` — and so it imports `address` for `is_active()`). |
 | [gst_lookup.py](gst_lookup.py) | 723 | **GSTIN auto-fill — the check and the portal, and a LEAF** (29 September 2026). No routes, no HTML. `offline()` is the 15-character shape, the official base-36 check character, the State and the PAN — no network; `lookup()` is the ONE public function behind which the GST portal search, the gstinapi.in fallback, the normalisation and the 30-day `gst_cache` sit; `captcha()` starts a portal session and returns its image **untouched — a human types every CAPTCHA and nothing here reads one**. ⚠ **Every outbound call goes through `_open()`**, `timeout=5`, one attempt, no retry — `tests/conftest.py` replaces it with a refusal around every test, so no sweep can phone the portal. ⚠ **The portal's cookie jars live in `_SESSIONS`, in RAM, and never reach STORE or MySQL.** Imports `store`, `pipeline` and the standard library only (`urllib`, so **no new dependency**). §5 `/address`, `docs/GST_PORTAL.md`. |
-| [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. |
+| [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. ⚠ **From 6 October 2026 (the §0 forty-fourth block) it also ADVISES** — `advise()`, pure, `(target, reason)` per column; `advise_mapping()` / `advised_mapping()` over a sheet — and **reads names** (`detect_names()`), a **discount %**, a **net rate** (check only) and a **remark** column; only TICKED columns are read for a line's data, flags and needs. Still imports nothing from the app. |
 | [importstage.py](importstage.py) | 98 | **The staged Excel upload — ONE mechanism, and a LEAF** (5 October 2026, CLIENT_CHANGES.md §0 forty-second block, fix 1). `purge()`, `own()` and `cap_per_user()` moved out of `boqimport.py` verbatim and parameterised by collection: token-keyed, owned, 24 hours, three per user, a persisted STORE collection. `boqimport.py` calls it with `boq_imports`, `workorder.py` with `wo_imports`. Imports `store` and nothing else (a whitelist test). §3 *BOQ import staging*. |
-| [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. From 4 Oct 2026 `/ra/create` also raises a bill FROM ticked challans (capped at their dispatch) or FROM the measurement (the unbilled remainder), writing `source_dc_ids` / `source_ms_ids` once — §5 `/ra`. |
+| [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. From 4 Oct 2026 `/ra/create` also raises a bill FROM ticked challans (capped at their dispatch) or FROM the measurement (the unbilled remainder), writing `source_dc_ids` / `source_ms_ids` once — §5 `/ra`. ⚠ **`approved_rates()` is the NET rate from 6 October 2026** (`boq.net_rate()`, the §0 forty-fourth block, R3): what a claim is prefilled with and frozen at; a bill already saved does not move. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
 | [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
-| [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. |
+| [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. ⚠ **6 October 2026 (the §0 forty-fourth block, R3):** the BOQ panel's figure is at the NET rate, and a BOQ with priced lines carrying no base rate says *cost not recorded on N lines* under its ref (`boq.lines_without_cost()`, so it imports `boq`) — words, never a zero cost; still no arithmetic across panels. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
-| [workorder.py](workorder.py) | 2961 | **Work Orders for petty contractors** (5 October 2026, CLIENT_CHANGES.md §0 **forty-first** block, rulings A–J). Its own `work_orders` collection — **not** inside `purchases` or `purchase_orders`: a PO buys material, a WO assigns work. Each line carries a **material rate AND a labour rate**; every amount and total is **derived**, never stored (`line_amounts()` / `totals_of()`). DRAFT / ISSUED / CANCELLED with the RA bill's semantics, prints on `docsheet.py` as the buy-side PO does (title WORK ORDER, the contractor in the vendor's place, **no GST**), one global series at `/settings`, the contractor an address-book pick (type `contractor`) with a typed fallback, an optional project. Excel import through `sheetimport.py` with its **own** mapping, staged through `importstage.py` in the persisted `wo_imports` (fix 1); heading lines (`is_header`) since the same day's fix pass. ⚠ **From the forty-third block (pass 3, the client's own sheet):** `tracks` (one rate track or both, declared per work order), `gst_rate` (derived GST, prefilled 18), `site`, `terms`, SECTION headings with subtotals and a summary, several tabs into one work order, and quantity-0 rows left out on an import. ⚠ **Mints no permission** — every route carries the PO's own `purchase.*` id for the same action. ⚠ **Imports none of** `boq`, `ra`, `invoice`, `purchase`, `po_draft` (nor `boqimport` / `boqpick`, which reach `boq`). §3 *Work Order*, §5 `/wo`. |
+| [workorder.py](workorder.py) | 2961 | **Work Orders for petty contractors** (5 October 2026, CLIENT_CHANGES.md §0 **forty-first** block, rulings A–J). Its own `work_orders` collection — **not** inside `purchases` or `purchase_orders`: a PO buys material, a WO assigns work. Each line carries a **material rate AND a labour rate**; every amount and total is **derived**, never stored (`line_amounts()` / `totals_of()`). DRAFT / ISSUED / CANCELLED with the RA bill's semantics, prints on `docsheet.py` as the buy-side PO does (title WORK ORDER, the contractor in the vendor's place, **no GST**), one global series at `/settings`, the contractor an address-book pick (type `contractor`) with a typed fallback, an optional project. Excel import through `sheetimport.py` with its **own** mapping, staged through `importstage.py` in the persisted `wo_imports` (fix 1); heading lines (`is_header`) since the same day's fix pass. ⚠ **From the forty-third block (pass 3, the client's own sheet):** `tracks` (one rate track or both, declared per work order), `gst_rate` (derived GST, prefilled 18), `site`, `terms`, SECTION headings with subtotals and a summary, several tabs into one work order, and quantity-0 rows left out on an import. ⚠ **Mints no permission** — every route carries the PO's own `purchase.*` id for the same action. ⚠ **Imports none of** `boq`, `ra`, `invoice`, `purchase`, `po_draft` (nor `boqimport` / `boqpick`, which reach `boq`). §3 *Work Order*, §5 `/wo`. ⚠ **From 6 October 2026 (the §0 forty-fourth block, R1) the import preview is the BOQ importer's COLUMN PICKER in this document's words** — `advise_mapping()` asks the shared advice as a work order (a lone rate stays a choice; a base, escalation, discount or remark has no field here and is skipped). |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. From 4 Oct 2026 it says *Billed in &lt;RA ref&gt;* and offers *Raise RA (Supply)*, reading the billed answer through the leaf `dcbill.py` — still never importing `ra.py`. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
@@ -509,6 +509,8 @@ app.py
  │                             │  two size caps, BOQ_STYLES), sheetimport, auth,
  │                             │  chrome, branding, pipeline, quotation (the form
  │                             │  widgets), store. Import BOQ from Excel — §5
+ │                             │  — and address (is_active(), 6 Oct 2026: the
+ │                             │  account name matched to the book, R4)
  ├─ ra.py ─────────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq
  │                             │  — and dcbill (4 Oct 2026), the billed-challan
  │                             │  leaf. Still NEVER challan: the challans are
@@ -569,6 +571,8 @@ app.py
  │                             │  section. It is the ONLY importer attendance.py
  │                             │  has ever had. ⚠ AND workorder.py, from 5 Oct
  │                             │  2026: project_panel_html(), rendered cells
+ │                             │  ⚠ AND boq.py, from 6 Oct 2026: lines_without_
+ │                             │  cost(), the "cost not recorded" rule (R3)
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
@@ -2587,8 +2591,28 @@ A `line_item` row:
  "supply_hsn": "73090090", "supply_gst_rate": 18.0,
  "install_base_rate": 1200.0, "install_escalation_pct": 0.0,
  "install_rate": 1200.0, "install_amount": 840000.0,
- "install_sac": "995461", "install_gst_rate": 18.0}
+ "install_sac": "995461", "install_gst_rate": 18.0,
+ # ── 6 October 2026 (CLIENT_CHANGES.md §0, forty-fourth block) ─────────────
+ "supply_disc_pct": 10.0,   # R3 — a % from 0 to 100, per track; ABSENT = no
+ "install_disc_pct": 5.0}   #   discount, written only when a figure was typed
 ```
+
+⚠ **Two changes from 6 October 2026** (the §0 forty-fourth block):
+
+* **R3 — the discount.** `supply_rate` / `install_rate` keep their meaning —
+  the unit (LIST) rate, stored as entered (property 5). The line is billed at
+  the **net rate**, `round(unit × (100 − disc) / 100, 2)`, and
+  `supply_amount` / `install_amount` are **quantity × net**, so every total —
+  the section subtotals, the stored trio, the register, the dashboard — is at
+  net without changing a line of their code. **`boq.net_rate(line, track)` is
+  the one place a line is priced**; *The net rate* below is the audit of every
+  reader. With no discount (absent, or a typed 0) the net rate IS the stored
+  unit rate, unrounded, so an undiscounted BOQ prices exactly as it did.
+* **R2 — escalation absent without a base.** A line with no base rate and no
+  escalation typed stores `supply_escalation_pct: None` (`_esc_pct()`), not
+  the `0.0` nobody typed — which a revision then loaded back into the box as
+  "0". With a base rate the v1 reading stands (blank escalation is 0). Every
+  reader already read it `or 0.0`; records written before keep their `0.0`.
 
 Eight properties this shape exists to guarantee:
 
@@ -2712,6 +2736,42 @@ LIVE** (the one live read on the bill — §5 `/ra/print`), so an issued bill on
 schedule with a repeated header number in one section may now reprint with the
 correct paragraph where it used to print the later one. **No print or page
 golden moved**: no golden fixture repeats a header number within a section.
+
+#### The net rate — `boq.net_rate()` and every reader of the price (6 October 2026)
+
+CLIENT_CHANGES.md §0, forty-fourth block, R3. **One helper owns what a line
+is billed at**: `boq.net_rate(line, track)` → `net_of(unit, disc)` →
+`round(unit × (100 − disc) / 100, 2)`, or the unit rate untouched when there
+is no discount. ⚠ **Rounding is Python's `round()`, the house rule**
+(`purchase._line_total()`, `workorder.line_amounts()`): half to EVEN on the
+exact binary value — 2.50 less 15% is exactly 2.125 and nets to **2.12**,
+pinned by `tests/test_boq_import_picker.py` and the discounted print golden.
+`unit × (100 − disc) / 100` rather than `unit × (1 − disc/100)` because
+`100 − disc` is exact for any discount typed, so a tie on paper is a tie in
+binary. The editor's `netRate()` / `round2()` are the same rule in the browser
+(a Node test holds them equal, ties included). A discount is `disc_value()`:
+blank or a dash is none; 0–100, with or without a trailing "%", is one;
+anything else is **refused on save**, never read as "no discount".
+
+**The audit** — every reader of a BOQ line's rate or amount in the repository:
+
+| reader | prices with | before | now |
+|---|---|---|---|
+| `boq._clean_lines()` — the save | `supply_amount` / `install_amount` | qty × unit rate | qty × **`net_of()`** — unchanged with no discount |
+| `boq.section_totals()` / `boq_totals()`, the stored trio, `/boq/` register, `dashboard.py`, `client.py`, `projectview.py` | the stored amounts / `subtotal` | sum of amounts | **code unchanged** — the amounts are at net, so every total is |
+| `boq._section_table()` — `/boq/view` and `/boq/print` | U/ Rate, Amount | unit rate, stored amount | the same, plus **Disc %** and **Net Rate** (`net_rate()`) on a discounted track only |
+| `_BOQ_JS` `sectionTotals()`, `lineSummary()`, `netHint()` | the editor's live figures | `num(rate)` | **`netRate()`**, `net_rate()` rule for rule |
+| `ra.approved_rates()` → the claim grid's prefill (`_claim_rows()`), `clean_claims()`'s `approved_rate`, `rate_varies()`, the from-challan / from-measurement prefills | the claim rate | `supply_rate` / `install_rate` | **`boq.net_rate()`** — **the RA bill snapshots the NET rate**, what is billed |
+| an RA bill already saved, `/ra/print` | its own claim rows | frozen | **unchanged** — a snapshot; nothing re-reads the BOQ |
+| `merged_ra.py` | its two bills' stored totals | — | **unchanged** — it reads no BOQ rate |
+| `boqpick.rows_html()` / `picked_lines()` → `/purchase/from-boq` | the PO rate box | `supply_base_rate` | **unchanged — the BASE rate**: the cost side, where a discount given to the client does not apply |
+| `po_draft.py` — the draft PO | — | carries no rate at all | **unchanged** (nothing priced) |
+| `challan.py`, `measurement.py` | — | carry no money | **unchanged** |
+| a proforma from a BOQ | — | **does not exist** — `proforma.py` reads quotations only | nothing to audit |
+| "spec-library add" | — | **no code path writes a BOQ line's rate into the library**: the library only *suggests* a base rate into an empty box (`fillFromSpec()` / `applyVariant()`) | nothing changed. A test holds that saving a discounted BOQ leaves `STORE["specs"]` byte-identical. The brief's rule — the LIST rate, never the net, and only where the library has none — is recorded for the day such a path is built: a discount is a deal with one client, not the product's rate |
+| `projectview.py` BOQ panel (the brief's "P&L") | the BOQ's stored `subtotal` | — | at net (stored) **+ "cost not recorded on N lines"** (`boq.lines_without_cost()`: a priced track with no base rate). There is still no P&L, margin or cross-panel figure (§7 gap 55) |
+| `boq.unpriced_lines()` — `/boq/view`'s amber note | rate 0 on both tracks | unit rate | **unchanged — the unit rate**: "not priced" is about the list rate; a 100% discount is a priced line billed at nil |
+| `tools/e2e_chain.py` | its own fixture rows | — | unchanged (no discounts) |
 
 ### RA Bill  (Running Account claim)
 
@@ -4735,8 +4795,23 @@ STORE["boq_imports"][token] = {
   "confirmed": bool,                 # confirmed in the preview
   "rate_mode": "" | "selling" | "cost",  # 1 Oct 2026 — "" until the operator posts one
   "markup":   "15",                  # 1 Oct 2026 — the Markup % AS TYPED; read only in cost mode
+  # ── 6 Oct 2026, the §0 forty-fourth block ─────────────────────────────────
+  "ticked":   [0, 2],                # R5 — the tabs to build, workbook order; [sheet_index] at stage
+  "tab_maps": {"2": {"<excel col>": target}},  # R5 — every ticked tab OTHER than sheet_index
+  "names":    {"project_name": "…", "account_name": "…"},   # R4 — as typed on the preview; {} until posted
 }
 ```
+
+⚠ **From 6 October 2026** (CLIENT_CHANGES.md §0, forty-fourth block):
+`mapping` is staged as the **ADVICE** (`sheetimport.advised_mapping()`), not
+the bare guess — R1, the tick and the target arrive set to it. A column
+mapped to `""` is an **unticked** column and is ignored completely.
+`sheet_index` is the PRIMARY tab (the first ticked, in workbook order) and
+`mapping` stays its mapping, so every reader of the two is unchanged;
+`ticked` and `tab_maps` carry the rest (R5). `names` holds only what the user
+TYPED — the sheet's suggestions are re-read from the grid on every render
+(`boqimport.detected_names()`), never stored as if somebody chose them. A row
+staged before this pass has none of the three and reads as its one sheet.
 
 ⚠ **`rate_mode` and `markup` from 1 October 2026** (§5 `/boq/import`, *Cost
 sheets*). `rate_mode` is `""` until the operator posts a choice — the
@@ -4798,6 +4873,12 @@ the prefilled form. A sheet with no recognised header has no signature and is
 never a known layout. **Neither collection is ever seeded**
 (`tests/test_hardening.py`): a seeded layout would skip the one screen where the
 operator sees which column became the rate.
+
+⚠ **From 6 October 2026** (the §0 forty-fourth block, R1/R5) a confirm
+upserts the layout of **every ticked tab**, each under its own signature, and
+a mapping now holds the user's TICKS: a column left unticked is stored `""`
+and the next upload of that template leaves it out again. Only the primary
+tab can make an upload a known layout; several tabs always pass the preview.
 
 ---
 
@@ -6841,6 +6922,19 @@ Two rate behaviours worth keeping:
   imported from a COST sheet (`_cost`) on load, and does nothing on any other
   form. The server's own fallback for a blank box, `_derived_rate()`, does not
   round — §5 `/boq/import`, *Cost sheets*.
+  ⚠ **From 6 October 2026 (the §0 forty-fourth block, R2) the hint says
+  "rate differs" only when an escalation was TYPED.** With a base and no
+  escalation, the unit rate typed or imported stands and the hint is silent —
+  it used to say *"escalation implies <the base> — rate differs"* on every
+  such line, which read as the form demanding an escalation. A blank rate
+  beside a base still gets *suggests … use*.
+- **A Disc % box per track** (6 October 2026, R3) — the rate table's fourth
+  figure across (`rateRow()`; its grid restated in `BOQ_IMPORT_STYLES`, never
+  `BOQ_STYLES`, which four page goldens hash). Under it `netHint()` writes the
+  net rate and the amount it gives, live; the section bars and the collapsed
+  rows read `netRate()`. A discount that is no % (text, below 0, above 100) is
+  ringed on a refused save (`line_problems()` / `errMet()`) and refused by
+  `_clean_lines()` — never read as "no discount".
 
 Validation, in order: JSON parses → date → project name → account name →
 sections have unique codes → **line count within `MAX_LINES`** → **payload
@@ -7331,6 +7425,21 @@ Left to right, and this is the authoritative list:
 
 † subject to `HIDE_EMPTY_ESCALATION` as well — see below.
 
+⚠ **Disc % and Net Rate — from 6 October 2026** (CLIENT_CHANGES.md §0,
+forty-fourth block, R3). For a track where **any line carries a discount**
+(`any_discount()`: a typed figure above 0), that track gains two columns
+straight after its U/ Rate — **Disc %** (blank on a line with none) and
+**Net Rate** (`net_rate()`, on every line of the track) — on `/boq/view` AND
+`/boq/print`: the net rate is what the line is billed at, so it is not part of
+the withheld breakup. The Amount column is quantity × net (stored). A track
+with no discount draws exactly the old columns, and **a BOQ with no discount
+prints byte-identical** — the BOQ print golden did not move; a second golden
+pins a discounted schedule. The two columns reuse the `cw-esc` / `cw-rate`
+width classes, so no stylesheet rule was added and no page golden moved. With
+the breakup hidden, a discount GROUPS the print's heads ("Supply" over U/ Rate ·
+Disc % · Net Rate), which is why the grouped head now draws its base heads only
+when the breakup is shown — the same bytes as before wherever it is.
+
 On the seeded 97-line Sify schedule that is **13 / 12 / 11** columns for
 sections A / B / C on the view (they declare 2 / 1 / 0 areas, and no line
 carries an installation escalation) against **10 / 9 / 8** on the print.
@@ -7498,6 +7607,127 @@ minted its `line_id` by `_clean_lines()` exactly as a typed line is. Nothing in
 `boqimport.py` writes `STORE["boqs"]`. The form carries an explicit
 `action="/boq/create"` on that path only — rendered at
 `/boq/import/<token>/form`, a form with no action would post back there.
+
+#### The column picker — the user chooses, the app advises (6 October 2026)
+
+CLIENT_CHANGES.md §0, **forty-fourth** block, Manas's rulings R1–R6, no
+charge. The client: *there is no standard BOQ format; more detection rules will
+never finish; let the user choose what to import, with the app advising what
+to take.* **The preview is now a column picker**, and every section below
+that describes a guess describes what the picker starts from.
+
+**The page, top to bottom:** the file and its **tabs**, each with a tick (the
+reader's pick ticked; a hidden tab listed, never ticked for you); *Rates on
+this sheet are* (unchanged); **Names from the sheet** (below); then, **per
+ticked tab**, *What each column holds* — one row per non-empty column: its
+letter, its heading, **three sample values** (`sheetimport.column_samples()`),
+an **Import** tick (`use_<tab>_<column>`), the target (`map_<tab>_<column>`,
+choosing one ticks its box) and **one line of advice**; then the primary tab's
+grid as read (the flagged cells shaded, no dropdowns any more), and *What will
+be imported* with the totals and the grouped summary as before. A hidden
+`picker=1` marks the page's own POST.
+
+**The advice — `sheetimport.advise(header_text, sample_values, context) ->
+(target, reason)`**, pure and deterministic; `advise_mapping()` works out the
+facts about the sheet once and asks it per column. It **builds on
+`guess_mapping()`, which did not change** (`tests/test_boq_import.py` still
+holds that a lone untracked rate is "?" to the guess): a column the guess
+places is advised to stay there, in plain words (*"Looks like your selling
+rate. Take it."*). What the advice adds:
+
+| column | advice |
+|---|---|
+| a lone untracked rate | **the supply SELLING rate** — the 29 Sep 2026 decision, kept; the reason says to change it if it is installation. (A work order: still a choice — it has no selling rate) |
+| untracked rates straight LEFT of a tracked unit rate | **that track's base rate**, and the one between them holding percentages its **escalation** — the Sify shape, *Mohali Rates · Rate increased in % · Supply U/ Rate* |
+| an escalation / base / rate / amount column empty all the way down | **skip** — *"No escalation in this sheet. Skip it; the unit rate stands on its own."* |
+| a heading with *disc*, *discount*, *less*, *rebate* | **Discount %** on its track (the heading's, else the rate to its left, else the one track mapped) — unless it says Amt / Amount / Rs / ₹ / value or a sample is above 100: then **Remark** — *"Looks like a discount amount, not a %. Map it to Remark."* (§7 gap 60) |
+| a *net* / *nett* rate | **net rate (check only)** beside a discount column; the **unit rate** when the track has no other; else skip |
+| *Remarks* / *Notes* / *Comments* | **Remark** — kept on the line, never printed |
+| *cumulative*, *running total*, *progressive*, *to date*, *previous*, *c/f* | skip — *"Running total, not a line value."* |
+| HSN / SAC / GST | skip — not read from the sheet |
+| a second column advised to a target already taken | skip — confirm refuses a target chosen twice |
+
+**The tick governs.** A column whose box is unticked is mapped to `""` and is
+**ignored completely**: never imported into a line, never flagged or asked
+about, never footed, never quoted in a *below the grand total* note (which
+now quotes ticked columns only). ⚠ **What it does NOT stop** is the reader
+using the whole ROW to decide what the row IS — a total row, a repeated
+heading — because that is the sheet's shape, not a column's data; restricting
+it would turn a total whose label sits in an unticked column into a line (§7
+gap 61). The page's targets now include `supply_disc_pct` /
+`install_disc_pct`, `supply_net_rate` / `install_net_rate` (check only) and
+`remark`, beside every v1 target (the combined *Amount (check only)* kept for
+sheets like Jamnagar).
+
+**Only the minimum is asked for (R2).** A line needs a description, a
+quantity (or the rate-only marker, as before) and, on the mapped tracks, a rate
+or an amount — and **only for a ticked column**: with no rate, base, amount or
+net column ticked, no line is asked for a rate; a **base rate alone prices a
+line** (the form works the unit rate out from it), so it is no longer "no
+rate". With **no Item No. column ticked**, the reader numbers the lines
+itself (`auto` chips): a heading row a header, the priced rows under it its
+sub-items, a priced row with no heading above it an item of its own — so the
+save's "needs an item number" is never asked of a sheet that has none.
+⚠ **The escalation audit.** The brief reported that Create BOQ treats the
+escalation % as compulsory. Measured: **nothing required it** — not
+`_clean_lines()` (a blank escalation was 0), not `_need_met()` /
+`line_problems()` / `annotate_needs()` (no escalation field in either), not
+`_BOQ_JS`'s `needMet()` / `errMet()` / `saveJSON()`. Three things made it LOOK
+required, and each is fixed: the hint said *"escalation implies X — rate
+differs"* on every line with a base and no escalation (now silent, §5 `/boq`);
+a blank escalation was stored as `0.0` and a revision reloaded it as "0" (now
+absent with no base, §3); and the importer took an escalation column even when
+it was empty (now advised out). Cost mode's markup stays required.
+
+**Names from the sheet (R4).** `sheetimport.detect_names()` reads the rows
+ABOVE the heading: a cell labelled Client / Customer / Owner / Party /
+Contractor / Employer / Buyer (with or without "Name of …" and a colon), else
+a cell opening "M/s" (kept whole, word for word) → the **account**; a cell
+labelled Project / Name of Work → the **project**, else the first row holding
+one text cell (a merged title) that is not a bare "BILL OF QUANTITIES" / "BOQ".
+⚠ **"Name of Work" is read as the PROJECT**, not the client the brief listed
+it under: on a tender BOQ it names the work itself. Nothing found → the
+project falls back to the **tab's name, said as such**; the account stays
+blank — never invented. The preview shows each in an editable box with where
+it came from (*"From the sheet: tab “BOQ”, row 2."*, or *"As you typed it."*);
+the boxes fill the form's Project Name and Account Name. **When the account
+matches an ACTIVE address-book entry** by `pipeline.norm_name()` (company or
+label, a leading "M/s" ignored either side), the form opens with that entry
+**selected in the picker** and its address, State, PIN, GSTIN and contact
+filled exactly as choosing it would (`boqimport.prefill_of()`, `bill_pick` →
+`picker_options(selected=…)`); else the sheet's name is free text. Nothing is
+saved until Create BOQ. A known layout (straight to the form) fills them too.
+
+**Item text word for word.** A description is the cell as written, ends
+trimmed — no case change, no rewording. Spec text still folds into its
+parent; a sheet's own sub-label (`a)`) still moves into the item number; a
+group label still goes in front of its sizes — each keeps the sheet's words.
+
+**Several tabs, one BOQ (R5)** — `boqimport.build_tabs()`. Tick the tabs, and
+each is mapped on its own (a freshly ticked tab takes its known layout, else
+**the first ticked tab's picks when its header signature matches**, else its
+advice). Confirm builds them in workbook order: the sheet's own sections stay
+sections and **a tab with no section title is one section titled by the tab's
+name**; a code the sheet wrote is kept, a reader-assigned one re-lettered
+A, B, C … in tab order, a code two tabs both wrote renamed `A-2` and noted.
+Every flag, need and footing check names its tab (*"Hydrant · row 12"*). The
+totals card shows the **combined** figure first, then each tab against its own
+total row. The whole is measured against `MAX_LINES` / `MAX_JSON_BYTES` and
+**refused with its line count, never cut**. One tab is exactly v1's result —
+the merge does not run. Each ticked tab's picks are remembered under its own
+signature.
+
+⚠ **A POST that is not the picker's** — v1's flat `map_<column>` plus
+`sheet` — still reads exactly as it did (every column taken, the dropdown
+deciding), so a script or an old page keeps working; the existing tests post
+that shape. The same rule holds on `/wo/import`.
+
+On the client's **Sify workbook** (repo root, gitignored), the default
+advice, untouched, chooses exactly the mapping `tools/gen_demo_data.py` was
+hand-written with — A item, B description, E quantity, F unit, G/H/I supply
+base · escalation · rate, K/L installation base · rate — asks for **nothing**,
+and foots to the sheet's own grand total on both tracks
+(`tests/test_boq_import_picker.py`, skipped where the workbook is absent).
 
 #### The file
 
@@ -8028,8 +8258,10 @@ the save path, run in memory, stores the same.
 
 #### What v1 does not do — measured on the client's own files
 
-* **One sheet per import.** Several of their workbooks keep one system per
-  sheet; each is its own import (and its own BOQ, or a section pasted in).
+* ~~**One sheet per import.** Several of their workbooks keep one system per
+  sheet; each is its own import (and its own BOQ, or a section pasted in).~~
+  **Superseded 6 October 2026** (the §0 forty-fourth block, R5): several tabs
+  import as one BOQ, one section per tab — *The column picker*, above.
 * **The heading row cannot be chosen.** A sheet whose headings are below row 40
   or use none of the keywords gets every column as *ignore* and its lines from
   the top; the operator maps the columns but cannot move the start. (From 30
@@ -8995,6 +9227,24 @@ survives a restart: the row is a STORE record and `db.load_into()` brings it
 back at boot (`tests/test_work_orders.py::test_a_staged_import_survives_a_new_process`).
 §7 gap 58 is closed. ~~⚠ **Not validated against the client's own WO sheet**,
 which has not arrived — §7 gap 56.~~ The sheet arrived — see below.
+
+#### The column picker (6 October 2026, the forty-fourth block, R1)
+
+The BOQ importer's picker (§5 `/boq/import`, *The column picker*), in this
+document's words: per ticked tab, every column with its heading, three sample
+values, an **Import** tick (`use_<tab>_<column>`), its target (one select per
+column, `map_<tab>_<column>`, as before) and one line of advice
+(`workorder.advise_mapping()` — the shared `sheetimport.advise()` asked as a
+work order). The advice speaks of the **material** and **labour** rates; **a
+lone untracked rate stays a CHOICE** (a work order has no selling rate to
+default to — `tests/test_wo_nxtra.py`'s *"looks like a rate but does not say
+which"* still holds); a base rate, an escalation, a discount or a remark column
+has no field on a work order and is advised *"Not used on a work order. Skip
+it."* A staged tab starts from the advice. **An unticked column is ignored**;
+a POST without the page's `picker` marker reads every column as before. The
+Nxtra acceptance tests pass unchanged — the advice and the old guess agree on
+that sheet. The grid of the first rows stays under the picker, without its
+dropdowns.
 
 #### The client's own sheet — pass 3 (5 October 2026, the forty-third block)
 
@@ -12399,6 +12649,31 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     see each other's rows — for this collection or any other. That is the
     single-worker rule `wsgi.py` enforces for the whole application (§2,
     `wsgi.py`), unchanged and not touched here.
+
+60. 🟡 **A discount written in RUPEES is not read — OPEN, by the brief**
+    (6 October 2026, CLIENT_CHANGES.md §0 forty-fourth block, R3). A BOQ
+    line's discount is a **%** (`supply_disc_pct` / `install_disc_pct`, 0 to
+    100). A sheet column holding the discount as an AMOUNT — headed *Disc Amt*,
+    *Discount (Rs)*, *value*, or with a figure above 100 — is advised to the
+    **Remark** (*"Looks like a discount amount, not a %. Map it to Remark."*),
+    so its words are kept and the line is priced at its undiscounted rate; a
+    figure above 100 mapped to Discount anyway is noted and left blank, never
+    read as a %. Where the sheet also has a line amount, the quantity × rate
+    check then flags the line with both figures. Supporting it means deciding
+    whether an amount discount is per unit or per line, and turning it into a
+    % — which rounds. A decision, not a patch.
+
+61. 🟡 **An unticked column can still decide what a ROW is — OPEN, by
+    design** (6 October 2026, the §0 forty-fourth block, R1). An unticked
+    column is never imported, flagged, footed or quoted in a note. But the
+    reader's ROW classification — is this a total ("Total" in any text cell,
+    a figure outside the quantity and item columns), a repeated heading, a
+    heading remnant — reads the whole row, as it always has. Restricting it to
+    ticked columns would turn a total whose label or figure sits in an
+    unticked column into a line, or a lump sum. The cost the other way: an
+    unticked notes column reading "Total as per drawing" on a row with a
+    figure makes that row a total check, and it is left out — counted in the
+    preview's *N total rows checked, not imported*, so it is said, not hidden.
 
 
 ## 8. Stale docs — do not trust these two files

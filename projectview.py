@@ -55,6 +55,8 @@ from store import STORE
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from ra import revision_chain
+# 6 Oct 2026 — lines_without_cost(), the one rule for "cost not recorded" (R3).
+import boq as BQ
 # 5 Oct 2026 — the Work Orders panel. What crosses is RENDERED CELLS (one
 # work order per row, its own value, no total): `attendance.py`'s arrangement.
 import workorder as WO
@@ -508,11 +510,20 @@ def view_project(id: str):
     boq_vals = []
     for boq in attached_boqs:
         # A BOQ stores its trio at §4.3; `subtotal` is the one the sheet prints.
+        # ⚠ At the NET rate from 6 October 2026 (the §0 forty-fourth block, R3):
+        #   every line amount is quantity × the rate less its discount, so this
+        #   is the revenue the schedule bills.
         val = _total_of(boq, "subtotal")
         boq_vals.append(val)
+        # …and where a priced line carries no base rate, its COST is not
+        # recorded: said in words, never shown as a zero cost (R3). Nothing is
+        # added up across panels — this page still does no subtraction.
+        no_cost = BQ.lines_without_cost(boq)
+        cost_note = (f'<div style="font-size:.75rem;color:var(--muted);">cost not recorded on '
+                     f'{no_cost} line{"" if no_cost == 1 else "s"}</div>' if no_cost else "")
         boq_html += f"""
         <tr>
-          <td><a href="{url_for('boq.view_boq', id=boq.get('id'))}"><b>{P.esc(boq.get('ref'))}</b></a></td>
+          <td><a href="{url_for('boq.view_boq', id=boq.get('id'))}"><b>{P.esc(boq.get('ref'))}</b></a>{cost_note}</td>
           <td>{P.esc(boq.get('date'))}</td>
           <td>Rev {int(boq.get('rev_no') or 0)}</td>
           <td>{P.esc(boq.get('account_name') or '—')}</td>

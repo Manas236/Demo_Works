@@ -51,6 +51,15 @@ key. `line_id` is minted by `boq._clean_lines()` on save, like any typed line.
 
 ⚠ **Only the TOTAL quantity is read (v1).** Floor / area split columns and
 separate take-off tabs are ignored — a decision, recorded in CLIENT_CHANGES.md.
+
+⚠ **6 October 2026 — the user chooses, this module ADVISES** (CLIENT_CHANGES.md
+§0, forty-fourth block). `advise()` suggests a target per column with one
+plain-English reason (§7 below), `detect_names()` reads the project and the
+customer from the rows above the heading (§8), and `build()` reads a discount
+% and a net rate (checked, never imported) and a Remark column. **Only the
+TICKED columns** — those the mapping gives a target — are read into a line,
+flagged, footed or quoted; whether a row is a total or a heading is still
+decided from the whole row.
 """
 
 import datetime
@@ -139,16 +148,27 @@ TARGETS = (
     ("supply_base_rate",       "Supply · base rate"),
     ("escalation_pct",         "Supply · escalation %"),
     ("supply_rate",            "Supply · unit rate"),
+    # 6 October 2026 (CLIENT_CHANGES.md §0, forty-fourth block, R1/R3): a
+    # discount % per track — a real field on the BOQ line — and the sheet's
+    # own net rate, read only to CHECK unit × (1 − discount) against it.
+    ("supply_disc_pct",        "Supply · discount %"),
+    ("supply_net_rate",        "Supply · net rate (check only)"),
     ("supply_amount",          "Supply · amount (check only)"),
     ("install_base_rate",      "Installation · base rate"),
     ("install_escalation_pct", "Installation · escalation %"),
     ("install_rate",           "Installation · unit rate"),
+    ("install_disc_pct",       "Installation · discount %"),
+    ("install_net_rate",       "Installation · net rate (check only)"),
     ("install_amount",         "Installation · amount (check only)"),
     ("amount",                 "Amount (check only)"),
     # 30 September 2026. The brand a line is priced on ("Jindal", "Newage")
     # has nowhere of its own on a BOQ line, so it goes into the line's
     # `remark` as "Make: Jindal" — captured, never printed, never lost.
     ("make",                   "Make (kept in the remark)"),
+    # 6 October 2026 (R1). The sheet's own notes column, into the line's
+    # `remark` — captured, never printed. Also where the advice sends a
+    # discount written in rupees, which this pass does not read as a discount.
+    ("remark",                 "Remark (internal, never printed)"),
 )
 TARGET_KEYS = tuple(k for k, _l in TARGETS)
 TARGET_LABEL = dict(TARGETS)
@@ -159,7 +179,9 @@ UNDECIDED = "?"
 RATE_FIELDS = ("supply_base_rate", "escalation_pct", "supply_rate",
                "install_base_rate", "install_escalation_pct", "install_rate")
 AMOUNT_FIELDS = ("supply_amount", "install_amount", "amount")
-PCT_FIELDS = ("escalation_pct", "install_escalation_pct")
+DISC_FIELDS = ("supply_disc_pct", "install_disc_pct")
+NET_FIELDS = ("supply_net_rate", "install_net_rate")
+PCT_FIELDS = ("escalation_pct", "install_escalation_pct") + DISC_FIELDS
 
 
 def available() -> dict:
@@ -1239,6 +1261,18 @@ _FLAG_TEXT = {
     # Notes only — listed under "other notes from the reader", never a need.
     "below_grand": "not imported — row {grand} is the grand total: {raw}",
     "make_number": "a number ({raw}) in the Make column — not kept",
+    # 6 October 2026 (CLIENT_CHANGES.md §0, forty-fourth block, R3) — the
+    # discount. The qty × rate check, extended: with a discount it is qty ×
+    # the NET rate, and a sheet's own net rate is checked against rate less
+    # discount. Both block, the rate left blank — v1's "mismatch" rule.
+    "mismatch_net": ("{track}: quantity {qty} × net rate {net} ({rate} less {disc}%) = {calc}, "
+                     "but the sheet's amount is {amount} — the rate is left blank; type the "
+                     "right one"),
+    "net_mismatch": ("{track}: rate {rate} less {disc}% = {calc}, but the sheet's net rate is "
+                     "{net} — the rate is left blank; type the right one"),
+    # …and a note: a discount that is no percentage is not read as one.
+    "disc_range": ("a discount of {raw} is not a % from 0 to 100 — left blank; a discount "
+                   "in rupees belongs in the Remark"),
 }
 
 # How far a figure may be off and still agree: a rupee, the totals check's own
@@ -1489,6 +1523,13 @@ def _numeric(value, kind: str, field: str):
         # The client's "-" in a rate cell: negotiated directly, not escalated —
         # blank, and NOT a flag. `boq._opt_num()` reads it the same way.
         return None, ""
+    if field in DISC_FIELDS:
+        # A discount cell (6 October 2026, R3): "10%" is how people write one,
+        # and "NA" / "nil" in it means no discount — blank, not a flag.
+        if s.endswith("%"):
+            s = s[:-1].strip()
+        if _NA.match(s):
+            return None, ""
     if _ERROR_TEXT.match(s):
         return None, "error"
     if _NA.match(s):
@@ -1774,6 +1815,23 @@ def build(grid: dict, mapping: dict) -> dict:
     tracks = [t for t in ("supply", "install") if f"{t}_rate" in col_of]
     amount_cols = [f for f in AMOUNT_FIELDS if f in col_of]
 
+    # ── 6 October 2026 (CLIENT_CHANGES.md §0, forty-fourth block, R1/R2) ────
+    # Only the TICKED columns are read for a line's data, flags and needs: a
+    # column mapped to nothing is ignored completely. (Whether a ROW is a total
+    # or a repeated heading is still decided from the whole row — that is the
+    # sheet's shape, not a column's data.)
+    ticked_cis = sorted(pos[str(c)] for c in cols
+                        if mapping.get(str(c), "") not in ("", UNDECIDED))
+    # No Item No. column ticked: the reader numbers the lines itself (R2 — a
+    # field whose column was not ticked is never asked for), by the sheet's
+    # own structure — a heading row a header, the priced rows under it its
+    # sub-items, a priced row with no heading above it an item of its own.
+    item_mapped = "item_no" in col_of
+    # Is any rate, base, amount or net column ticked at all? With none, no
+    # line is asked for a rate (R2): the user chose not to import any.
+    rate_mapped = any(f in col_of for f in RATE_FIELDS + AMOUNT_FIELDS + NET_FIELDS)
+    auto_no = {"n": 0}
+
     def track_of(col: str) -> str:
         if col == "supply_amount":
             return "supply"
@@ -1856,9 +1914,12 @@ def build(grid: dict, mapping: dict) -> dict:
         unit = _plain(uv, uk)
         mv, mk = cell("make")
         make = _plain(mv, mk)
+        # The sheet's own notes column (6 October 2026, R1) — word for word.
+        rv, rk = cell("remark")
+        remark = _plain(rv, rk)
 
         nums, nflags, raws = {}, {}, {}
-        for field in ("qty",) + RATE_FIELDS + AMOUNT_FIELDS:
+        for field in ("qty",) + RATE_FIELDS + AMOUNT_FIELDS + DISC_FIELDS + NET_FIELDS:
             v, k = cell(field)
             n, fk = _numeric(v, k, field)
             nums[field], nflags[field] = n, fk
@@ -1934,7 +1995,9 @@ def build(grid: dict, mapping: dict) -> dict:
         if grand_row is not None:
             if amount_only and footed_alone(rnum, desc or item, amounts_nz, nums):
                 continue
-            text = _row_summary(vals)
+            # The note quotes the TICKED columns only (R1): an unticked
+            # column is never read into anything the user is shown.
+            text = _row_summary([vals[ci] for ci in ticked_cis if ci < len(vals)])
             if text:
                 flag(rnum, "", "below_grand", raw=text,
                      field_label="Below the grand total", grand=grand_row)
@@ -1964,6 +2027,7 @@ def build(grid: dict, mapping: dict) -> dict:
                 cur_section = len(sections) - 1      # resolved to a code below
                 struct.new_section()
                 foot.new_section()
+                auto_no["n"] = 0
                 counts["sections"] += 1
                 continue
 
@@ -1976,14 +2040,23 @@ def build(grid: dict, mapping: dict) -> dict:
             flag(rnum, "make", "make_number", raw=make, field_label="Make")
             make = ""
 
+        # No Item No. column ticked (R2): the number the sheet's shape implies.
+        numbered_here = False
+        if not item_mapped and not item and (not priced or not struct.parent_header):
+            auto_no["n"] += 1
+            item, numbered_here = str(auto_no["n"]), True
+
         placed = struct.place(item, desc_raw, priced)
+        if numbered_here:
+            placed["item_src"] = "auto"
         line = {"row": rnum, "kind": placed["kind"], "item_no": placed["item_no"],
                 "parent_item_no": placed["parent_item_no"], "item_src": placed["item_src"],
                 "section": cur_section, "is_header": placed["is_header"],
                 "description": placed["description"], "unit": unit, "make": make,
+                "remark": remark,
                 "qty": None, "lump_sum": False, "rate_only": False,
                 "flags": [], "needs": [], "block": False}
-        for f in RATE_FIELDS:
+        for f in RATE_FIELDS + DISC_FIELDS:
             line[f] = None
 
         if ik == "date" and iv is not None:
@@ -2001,6 +2074,26 @@ def build(grid: dict, mapping: dict) -> dict:
             line["qty"] = nums["qty"]
             for f in RATE_FIELDS:
                 line[f] = nums[f]
+            # The discount per track (6 October 2026, R3): a % from 0 to 100.
+            # Anything else — a rupee figure above 100, a negative — is NOT a
+            # discount: left blank and noted below, never guessed into one.
+            disc_bad = []
+            for f in DISC_FIELDS:
+                d = nums[f]
+                if d is not None and not (0.0 <= d <= 100.0):
+                    disc_bad.append(f)
+                    d = None
+                line[f] = d
+
+            def net_of(t):
+                """quantity × THIS is what the sheet should show: the rate less
+                the discount, unrounded — the checks allow a rupee anyway."""
+                r = line[f"{t}_rate"]
+                if r is None:
+                    return None
+                d = line.get(f"{t}_disc_pct")
+                return r * (100.0 - d) / 100.0 if d else r
+
             if rate_only:
                 line["rate_only"] = True
                 counts["rate_only"] += 1
@@ -2045,17 +2138,38 @@ def build(grid: dict, mapping: dict) -> dict:
                     amt = amounts.get(col) if col else None
                     rate = line[rate_f]
                     name = "Supply" if t == "supply" else "Installation"
+                    disc = line.get(f"{t}_disc_pct")
+                    net = net_of(t)
+                    net_sheet = nums.get(f"{t}_net_rate")
                     if rate is None and amt is not None and abs(amt) >= 0.005:
                         msg = flag(rnum, rate_f, "no_rate_amt", severity="red",
                                    track=name, amount=_fmt(amt))["message"]
                         line["flags"].append(msg)
                         need(rate_f, msg)
                         rate_needed = True
+                    elif rate is not None and net_sheet is not None \
+                            and not Footing._near(net, net_sheet):
+                        # The sheet's own net rate against rate less discount
+                        # (6 October 2026, R3) — both figures, the rate blank.
+                        msg = flag(rnum, rate_f, "net_mismatch", severity="red", track=name,
+                                   rate=_fmt(rate), disc=_fmt(disc or 0), calc=_fmt(net),
+                                   net=_fmt(net_sheet))["message"]
+                        line["flags"].append(msg)
+                        line[rate_f] = None          # never guessed: left blank
+                        need(rate_f, msg)
+                        rate_needed = True
                     elif rate is not None and amt is not None and q is not None \
-                            and not Footing._near(q * rate, amt):
-                        msg = flag(rnum, rate_f, "mismatch", severity="red", track=name,
-                                   qty=_fmt(q), rate=_fmt(rate), calc=_fmt(q * rate),
-                                   amount=_fmt(amt))["message"]
+                            and not Footing._near(q * net, amt):
+                        if disc:
+                            # quantity × the NET rate (R3, the check extended).
+                            msg = flag(rnum, rate_f, "mismatch_net", severity="red",
+                                       track=name, qty=_fmt(q), net=_fmt(net),
+                                       rate=_fmt(rate), disc=_fmt(disc), calc=_fmt(q * net),
+                                       amount=_fmt(amt))["message"]
+                        else:
+                            msg = flag(rnum, rate_f, "mismatch", severity="red", track=name,
+                                       qty=_fmt(q), rate=_fmt(rate), calc=_fmt(q * rate),
+                                       amount=_fmt(amt))["message"]
                         line["flags"].append(msg)
                         line[rate_f] = None          # never guessed: left blank
                         need(rate_f, msg)
@@ -2063,6 +2177,7 @@ def build(grid: dict, mapping: dict) -> dict:
                 if "amount" in amounts and track_of("amount") == "both":
                     amt = amounts["amount"]
                     s, i = line["supply_rate"], line["install_rate"]
+                    sn, inn = net_of("supply"), net_of("install")
                     if s is None and i is None and abs(amt) >= 0.005:
                         msg = flag(rnum, "rate", "no_rate_amt", severity="red",
                                    track="Combined", amount=_fmt(amt))["message"]
@@ -2070,11 +2185,18 @@ def build(grid: dict, mapping: dict) -> dict:
                         need("rate", msg)
                         rate_needed = True
                     elif q is not None and (s is not None or i is not None) \
-                            and not Footing._near(q * ((s or 0) + (i or 0)), amt):
+                            and not Footing._near(q * ((sn or 0) + (inn or 0)), amt):
                         line["flags"].append(flag(
                             rnum, "amount", "mismatch_both", qty=_fmt(q),
-                            calc=_fmt(q * ((s or 0) + (i or 0))), amount=_fmt(amt))["message"])
-                no_rate = line["supply_rate"] is None and line["install_rate"] is None
+                            calc=_fmt(q * ((sn or 0) + (inn or 0))), amount=_fmt(amt))["message"])
+                # ⚠ A BASE rate prices a line too (6 October 2026, R2): the form
+                #   works the unit rate out from base + escalation, so a line
+                #   carrying only a base is not "no rate". And with no rate,
+                #   base, amount or net column ticked at all, no rate is asked
+                #   for — the user chose not to import one.
+                no_rate = (line["supply_rate"] is None and line["install_rate"] is None
+                           and line["supply_base_rate"] is None
+                           and line["install_base_rate"] is None and rate_mapped)
                 if rate_only and not rate_needed and no_rate:
                     # A rate-only line with no rate on either track (1 October
                     # 2026): the ordinary blocking "rate" need, worded for what
@@ -2112,10 +2234,20 @@ def build(grid: dict, mapping: dict) -> dict:
                 msg = flag(rnum, "item_no", "no_item", severity="red")["message"]
                 line["flags"].append(msg)
                 need("item_no", msg)
+
+            # The discount and net-rate cells' own notes (R3) — raised AFTER the
+            # rate needs, so a rate need never rides on a discount's flag.
+            for f in disc_bad:
+                line["flags"].append(f"{TARGET_LABEL[f]}: "
+                                     + flag(rnum, f, "disc_range", raw=raws[f])["message"])
+            for f in DISC_FIELDS + NET_FIELDS:
+                if nflags[f]:
+                    line["flags"].append(f"{TARGET_LABEL[f]}: "
+                                         + flag(rnum, f, nflags[f], raw=raws[f])["message"])
             counts["lines"] += 1
 
             # What this line puts on the running sums — the sheet's own amount
-            # where it gave one, quantity × rate where it did not.
+            # where it gave one, quantity × (net) rate where it did not.
             contrib = {}
             for col in amount_cols:
                 if col in amounts:
@@ -2123,7 +2255,7 @@ def build(grid: dict, mapping: dict) -> dict:
                     continue
                 t = track_of(col)
                 qq = line["qty"] or 0.0
-                s, i = line["supply_rate"] or 0.0, line["install_rate"] or 0.0
+                s, i = net_of("supply") or 0.0, net_of("install") or 0.0
                 contrib[col] = qq * (s if t == "supply" else i if t == "install" else s + i)
             foot.add(contrib)
 
@@ -2176,17 +2308,25 @@ def build(grid: dict, mapping: dict) -> dict:
         used.add(code)
         codes.append(code)
     out_sections = []
+    # Where each section's code came from, aligned with `sections` (6 October
+    # 2026, R5): "sheet" when the sheet wrote it, "auto" when the reader
+    # assigned it. Several tabs into one BOQ re-letter only the "auto" ones.
+    section_src = []
     if default_code:
         out_sections.append({"code": default_code, "title": ""})
+        section_src.append("auto")
     for s, code in zip(sections, codes):
         out_sections.append({"code": code, "title": s["title"]})
+        section_src.append("sheet" if s["code"] else "auto")
     for l in lines:
         l["section"] = default_code if l["section"] == DEFAULT else codes[l["section"]]
     if not out_sections:
         out_sections.append({"code": "A", "title": ""})
+        section_src.append("auto")
 
     return {"sections": out_sections, "lines": lines, "flags": flags,
             "needs": needs, "checks": checks, "counts": counts,
+            "section_src": section_src,
             "totals": _totals_check(lines, totals_rows, col_of)}
 
 
@@ -2212,10 +2352,14 @@ def _totals_check(lines: list, totals_rows: list, col_of: dict) -> dict:
     for l in lines:
         if l["is_header"] or l["qty"] is None:
             continue
-        if l.get("supply_rate") is not None:
-            computed["supply"] += l["qty"] * l["supply_rate"]
-        if l.get("install_rate") is not None:
-            computed["install"] += l["qty"] * l["install_rate"]
+        for t in ("supply", "install"):
+            r = l.get(f"{t}_rate")
+            if r is None:
+                continue
+            # At the NET rate when the line carries a discount (6 October
+            # 2026, R3) — what the sheet's own total is the sum of.
+            d = l.get(f"{t}_disc_pct")
+            computed[t] += l["qty"] * (r * (100.0 - d) / 100.0 if d else r)
 
     tracks = [t for t in ("supply", "install") if f"{t}_rate" in col_of]
     checks = []
@@ -2243,3 +2387,446 @@ def _totals_check(lines: list, totals_rows: list, col_of: dict) -> dict:
     return {"status": status, "row": grand["row"] if grand else None,
             "label": grand["label"] if grand else "", "checks": checks,
             "total_rows": len(totals_rows)}
+
+
+# =============================================================================
+# 7. THE ADVICE — what to take from each column (6 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0, forty-fourth block, R1. The client's words: there is
+# NO standard BOQ format, and more detection rules will never finish. So the
+# preview lists every column with three sample values, an Import tick, a
+# target and ONE LINE OF ADVICE, and the tick and the target arrive set to the
+# advice. The user decides; this only advises.
+#
+# `advise()` is PURE and deterministic — a header, its samples and a few facts
+# about the rest of the sheet in, `(target, reason)` out — so every rule is a
+# unit test and nothing about it depends on a request. `advise_mapping()` works
+# the facts out for a whole sheet and calls it once per column. ⚠ It BUILDS ON
+# `guess_mapping()`, which is unchanged: the reader's guess is one of the
+# facts, so every column the guess already places is advised to stay there.
+# What the advice adds is the columns the guess could not judge: a lone rate,
+# an empty escalation, a discount, a net rate, a remark, a running total.
+#
+# ⚠ **A lone rate column is advised as the SELLING rate** — the 29 September
+#   2026 decision, kept by the forty-fourth block. `guess_mapping()` still
+#   leaves it "?" (`tests/test_boq_import.py` holds that); the advice is what
+#   pre-sets it, on a screen the user confirms. A work order has no selling
+#   rate, so there a lone rate stays "?" to be chosen (`context["doc"]`).
+
+_RUNNING = re.compile(r"cumulat|running\s*total|progressive|to\s*date|\bupto\b|"
+                      r"\bprevious\b|\bc\s*/\s*f\b|\bb\s*/\s*f\b|carried|brought", re.I)
+_DISC_HEAD = re.compile(r"\bdisc\b|\bdisc\.|discount|\bless\b|rebate", re.I)
+_DISC_AMOUNT = re.compile(r"\bamt\b|amount|\brs\b|\brs\.|₹|\binr\b|\bvalue\b", re.I)
+_NET_HEAD = re.compile(r"\bnett?\b|after\s*disc", re.I)
+_REMARK_HEAD = re.compile(r"\bremarks?\b|\bnotes?\b|\bcomments?\b|\bobservations?\b", re.I)
+_TAX_HEAD = re.compile(r"\bhsn\b|\bsac\b|\bc?gst\b|\bsgst\b|\bigst\b|\btax\b", re.I)
+
+# The reasons, said once. Plain English, no column text in them — a header is
+# the sheet's own words and is shown beside the advice, escaped, never inside it.
+ADVICE = {
+    "empty":     "Nothing in this column. Skip it.",
+    "running":   "Running total, not a line value. Skip it.",
+    "disc":      "Looks like a discount %. Take it as Discount.",
+    "disc_amt":  "Looks like a discount amount, not a %. Map it to Remark.",
+    "net":       "The rate after the discount — used only to check rate less discount. Take it.",
+    "net_rate":  "Looks like your selling rate (after any discount). Take it.",
+    "net_skip":  ("A net rate, but the sheet has no discount column — the unit rate "
+                  "already carries the price. Skip it."),
+    "remark":    "Notes for the line. Keep them in the remark (never printed).",
+    "tax":       "HSN/SAC and GST are not read from the sheet. Skip it.",
+    "item_no":   "Item numbers. Take them.",
+    "description": "The line text — taken word for word. Take it.",
+    "qty":       "The total quantity. Take it.",
+    "qty_split": "A floor or area quantity — only the total quantity is read. Skip it.",
+    "unit":      "The unit of measure. Take it.",
+    "make":      "Brand or make — kept in the line's remark. Take it.",
+    "esc":       "Escalation % on the base rate. Take it; it never prints.",
+    "esc_none":  "No escalation in this sheet. Skip it; the unit rate stands on its own.",
+    "base":      "Base rate — your cost basis. Take it; it never prints.",
+    "base_pos":  ("Sits just before the unit rate it is escalated from — looks like the "
+                  "base rate. Take it; it never prints."),
+    "esc_pos":   ("Sits between a base rate and its unit rate, holding percentages — looks "
+                  "like the escalation %. Take it; it never prints."),
+    "base_none": "No base rates in this column. Skip it; the unit rate stands on its own.",
+    "rate":      "Looks like your selling rate. Take it.",
+    "rate_inst": "Looks like your installation rate. Take it.",
+    "rate_none": "No rates in this column. Skip it, and price the lines on the form.",
+    "lone":      ("Looks like your selling rate. Take it. The sheet does not say Supply "
+                  "or Installation — change it if this is installation."),
+    "choose":    "A rate, but the sheet does not say Supply or Installation. Choose one.",
+    "amount":    "Line amount — used only to check quantity × rate, never imported. Take it.",
+    "amount_none": "No amounts in this column. Skip it.",
+    "other":     "Not a column the BOQ uses. Skip it.",
+    "dup":       "The same target as a column to its left. Skip this one.",
+}
+
+
+def _is_blank(v) -> bool:
+    """A data cell that says nothing: empty, whitespace, a dash, or a zero."""
+    if v is None:
+        return True
+    if _is_number(v):
+        return abs(v) < 0.005
+    s = str(v).strip()
+    return not s or bool(_DASH.match(s))
+
+
+def _as_number(v):
+    """A sample as a number — a figure, or text that is one (with an optional
+    "%" or thousands commas) — else None."""
+    if _is_number(v):
+        return float(v)
+    s = str(v or "").strip()
+    if s.endswith("%"):
+        s = s[:-1].strip()
+    if _NUMERIC_TEXT.match(s):
+        return float(s.replace(",", ""))
+    return None
+
+
+def column_values(grid: dict, ci: int) -> list:
+    """Every data cell of grid column `ci`, in sheet order (header excluded)."""
+    return [_value(grid, ri, ci) for ri in range(data_start(grid), len(grid["rows"]))]
+
+
+def column_samples(grid: dict, ci: int, n: int = 3) -> list:
+    """The first `n` non-blank data cells of column `ci`, as display text —
+    what the preview shows beside each column, as the reader holds the cell."""
+    out = []
+    for v in column_values(grid, ci):
+        if _is_blank(v):
+            continue
+        if _is_number(v):
+            f = float(v)
+            out.append(str(int(f)) if f.is_integer() and abs(f) < 1e15 else repr(f))
+        else:
+            out.append(re.sub(r"\s+", " ", str(v)).strip())
+        if len(out) >= n:
+            break
+    return out
+
+
+def _track_word(label: str) -> str:
+    h = _hits(label)
+    return "supply" if "supply" in h else "install" if "installation" in h else ""
+
+
+def advise(header_text, sample_values, context=None) -> tuple:
+    """
+    `(suggested_target, reason)` for one column — PURE and deterministic.
+
+    `header_text` is the column's heading (combined for a two-row band);
+    `sample_values` its first data cells; `context` the facts about the rest
+    of the sheet that `advise_mapping()` works out, every key optional:
+
+      guess        guess_mapping()'s target for this column ("", "?", a key)
+      track        the track the heading names: "supply" | "install" | ""
+      left_track   the track of the nearest rate column to the LEFT
+      tracks       the tracks a unit or base rate is guessed on elsewhere
+      all_blank    True when every data cell is blank, a dash or zero
+      lone_rate    True for the sheet's only rate-like column, no track named
+      net_has_disc True when a discount column sits on this net rate's track
+      net_has_rate True when another unit-rate column sits on its track
+      doc          "boq" (default) | "wo" — a work order has no selling rate
+
+    The target is a `TARGET_KEYS` member, or `UNDECIDED` where the user must
+    choose. The reason is one of `ADVICE`'s sentences.
+    """
+    ctx = dict(context or {})
+    head = str(header_text or "").strip()
+    norm = _norm(head)
+    samples = [s for s in (sample_values or []) if not _is_blank(s)]
+    guess = ctx.get("guess") or ""
+    doc = ctx.get("doc") or "boq"
+    hits = _hits(head)
+
+    def track_for():
+        t = ctx.get("track") or _track_word(head) or ctx.get("left_track") or ""
+        if not t:
+            tracks = [x for x in (ctx.get("tracks") or []) if x]
+            t = tracks[0] if len(set(tracks)) == 1 else "supply"
+        return t
+
+    if not head and not samples:
+        return "", ADVICE["empty"]
+    if guess not in ("item_no", "description") and head and _RUNNING.search(norm):
+        return "", ADVICE["running"]
+
+    # A discount — a % per track, or (in rupees) not one at all.
+    if guess not in ("item_no", "description", "qty") and head and _DISC_HEAD.search(norm):
+        big = any((_as_number(s) or 0.0) > 100 for s in samples)
+        if _DISC_AMOUNT.search(norm) or big:
+            return "remark", ADVICE["disc_amt"]
+        return f"{track_for()}_disc_pct", ADVICE["disc"]
+
+    # A net rate — a check beside a discount, or the selling rate on its own.
+    if (guess not in ("item_no", "description", "qty") and head and _NET_HEAD.search(norm)
+            and ("rate" in hits or "price" in norm) and "amount" not in hits):
+        t = track_for()
+        if ctx.get("net_has_disc"):
+            return f"{t}_net_rate", ADVICE["net"]
+        if not ctx.get("net_has_rate"):
+            return f"{t}_rate", ADVICE["net_rate"]
+        return "", ADVICE["net_skip"]
+
+    if not guess and head and _REMARK_HEAD.search(norm):
+        return "remark", ADVICE["remark"]
+    if not guess and head and _TAX_HEAD.search(norm):
+        return "", ADVICE["tax"]
+
+    blank = bool(ctx.get("all_blank"))
+    if guess in ("item_no", "description", "qty", "unit", "make"):
+        return guess, ADVICE[guess]
+    if guess in ("escalation_pct", "install_escalation_pct"):
+        return ("", ADVICE["esc_none"]) if blank else (guess, ADVICE["esc"])
+    if guess in ("supply_base_rate", "install_base_rate"):
+        return ("", ADVICE["base_none"]) if blank else (guess, ADVICE["base"])
+    if guess in ("supply_rate", "install_rate"):
+        if blank:
+            return "", ADVICE["rate_none"]
+        return guess, ADVICE["rate" if guess == "supply_rate" else "rate_inst"]
+    if guess == UNDECIDED:
+        if blank:
+            return "", ADVICE["esc_none" if "esc" in hits else "rate_none"]
+        # Where it SITS: untracked rate columns straight to the left of a
+        # tracked unit rate are that rate's base, and the escalation between
+        # them (the Sify sheet's "Mohali Rates | Rate increased in % | Supply
+        # U/ Rate"). A BOQ only — a work order has neither field.
+        if doc == "boq" and ctx.get("base_for"):
+            t = ctx["base_for"]
+            return f"{t}_base_rate", ADVICE["base_pos"]
+        if doc == "boq" and ctx.get("esc_for"):
+            t = ctx["esc_for"]
+            return ("escalation_pct" if t == "supply" else "install_escalation_pct",
+                    ADVICE["esc_pos"])
+        if "esc" in hits:
+            # An escalation column naming no track, and nowhere telling.
+            return UNDECIDED, ADVICE["choose"]
+        if doc == "boq" and ctx.get("lone_rate"):
+            return "supply_rate", ADVICE["lone"]
+        return UNDECIDED, ADVICE["choose"]
+    if guess in AMOUNT_FIELDS:
+        return ("", ADVICE["amount_none"]) if blank else (guess, ADVICE["amount"])
+    if guess:
+        return guess, ADVICE["other"]
+    if "qty" in hits:
+        return "", ADVICE["qty_split"]
+    return "", ADVICE["other"]
+
+
+def advise_mapping(grid: dict, doc: str = "boq") -> dict:
+    """
+    `{str(Excel column): (target, reason)}` — `advise()` for every column of
+    the sheet, with the facts about the sheet worked out once.
+
+    A target advised for two columns keeps the FIRST (left-most) and advises
+    skipping the rest — confirm refuses a target chosen twice, and the leftmost
+    is what `guess_mapping()` already prefers.
+    """
+    if grid is None:
+        return {}
+    cols = grid["cols"]
+    labels = header_labels(grid)
+    guess = guess_mapping(grid)
+    g_of = {ci: guess.get(str(c), "") for ci, c in enumerate(cols)}
+    rate_targets = {"supply_rate": "supply", "install_rate": "install",
+                    "supply_base_rate": "supply", "install_base_rate": "install"}
+
+    def is_disc(ci):
+        n = _norm(labels.get(ci, ""))
+        return bool(n) and bool(_DISC_HEAD.search(n)) and g_of[ci] not in (
+            "item_no", "description", "qty")
+
+    def is_net(ci):
+        lab = labels.get(ci, "")
+        n, h = _norm(lab), _hits(lab)
+        return (bool(n) and bool(_NET_HEAD.search(n)) and ("rate" in h or "price" in n)
+                and "amount" not in h and not is_disc(ci))
+
+    blank = {ci: all(_is_blank(v) for v in column_values(grid, ci)) for ci in range(len(cols))}
+    tracks = [rate_targets[g] for ci, g in g_of.items() if g in rate_targets and not blank[ci]]
+
+    def left_track(ci):
+        for k in range(ci - 1, -1, -1):
+            g = g_of[k]
+            if g in ("supply_rate", "install_rate"):
+                return rate_targets[g]
+            if g == UNDECIDED and not is_net(k) and not blank[k]:
+                return "supply" if doc == "boq" else ""
+        return ""
+
+    def pct_like(ci) -> bool:
+        """Percentages: a cell formatted as one, or every figure 0–100."""
+        figs = []
+        for ri in range(data_start(grid), len(grid["rows"])):
+            v = _value(grid, ri, ci)
+            if _kind(grid, ri, ci) == "pct":
+                return True
+            if _is_number(v) and abs(v) >= 0.005:
+                figs.append(float(v))
+        return bool(figs) and all(0 <= f <= 100 for f in figs)
+
+    # Untracked rate columns straight to the LEFT of a tracked unit rate, with
+    # nothing else between: one is that track's base; two are base, then
+    # escalation — when the second holds percentages.
+    pos = {}
+    if doc == "boq":
+        for ci, g in g_of.items():
+            if g not in ("supply_rate", "install_rate") or blank[ci]:
+                continue
+            span, k = [], ci - 1
+            while (k >= 0 and g_of[k] == UNDECIDED and not blank[k]
+                   and not is_net(k) and not is_disc(k)):
+                span.insert(0, k)
+                k -= 1
+            t = rate_targets[g]
+            if len(span) == 1 and "esc" not in _hits(labels.get(span[0], "")):
+                pos[span[0]] = ("base_for", t)
+            elif len(span) == 2 and pct_like(span[1]):
+                pos[span[0]] = ("base_for", t)
+                pos[span[1]] = ("esc_for", t)
+
+    undecided = [ci for ci, g in g_of.items()
+                 if g == UNDECIDED and not is_net(ci) and not is_disc(ci) and not blank[ci]
+                 and "esc" not in _hits(labels.get(ci, "")) and ci not in pos]
+    tracked_rate = any(g in ("supply_rate", "install_rate") and not blank[ci]
+                       for ci, g in g_of.items())
+    lone = len(undecided) == 1 and not tracked_rate
+
+    def track_of_col(ci):
+        return _track_word(labels.get(ci, "")) or left_track(ci) or (
+            tracks[0] if len(set(tracks)) == 1 else "supply")
+
+    disc_tracks = {track_of_col(ci) for ci in range(len(cols)) if is_disc(ci)}
+
+    out, taken = {}, {}
+    for ci, c in enumerate(cols):
+        t_here = track_of_col(ci) if (is_disc(ci) or is_net(ci)) else ""
+        ctx = {"guess": g_of[ci], "track": _track_word(labels.get(ci, "")),
+               "left_track": left_track(ci), "tracks": tracks,
+               "all_blank": blank[ci], "lone_rate": lone and ci in undecided,
+               "net_has_disc": t_here in disc_tracks,
+               "net_has_rate": any(g_of[k] == f"{t_here}_rate" and not blank[k]
+                                   for k in range(len(cols)) if k != ci),
+               "doc": doc}
+        if ci in pos:
+            ctx[pos[ci][0]] = pos[ci][1]
+        target, reason = advise(labels.get(ci, ""), column_samples(grid, ci), ctx)
+        if target and target != UNDECIDED and target in taken:
+            target, reason = "", ADVICE["dup"]
+        if target and target != UNDECIDED:
+            taken[target] = ci
+        out[str(c)] = (target, reason)
+    return out
+
+
+def advised_mapping(grid: dict, doc: str = "boq") -> dict:
+    """`{str(column): target}` — the advice's targets alone: the mapping a
+    freshly staged sheet starts from (R1 — the tick and the target are
+    pre-set to the advice)."""
+    return {c: t for c, (t, _r) in advise_mapping(grid, doc).items()}
+
+
+# =============================================================================
+# 8. NAMES FROM THE SHEET — the project and the customer (6 October 2026, R4)
+# =============================================================================
+#
+# SUGGESTIONS the user confirms on the preview, never saved by themselves.
+# Only the rows ABOVE the heading are read: that is where a sheet writes its
+# title block. Each name comes with the row it was found on, so the preview
+# can say where. Nothing is invented: a sheet with no such row gives None.
+#
+# ⚠ **"Name of Work" is the PROJECT, not the customer** — the brief listed it
+#   among the client labels, but on an Indian tender BOQ it is the name of the
+#   work itself ("Name of Work: Fire fighting system at …"); read as the
+#   customer it would put the job's description in the bill-to box. It is
+#   read as the project title, and the pass report says so.
+
+_PARTY = r"(?:client|customer|owner|party|contractor|employer|buyer)"
+_CLIENT_LABEL = re.compile(
+    r"^\s*(?:name\s+of\s+(?:the\s+)?)?" + _PARTY +
+    r"(?:'s)?\s*(?:name)?\s*(?:[:\-–—]+\s*(?P<v>.*))?$", re.I | re.S)
+_MS_PREFIX = re.compile(r"^\s*m\s*/\s*s\.?\s*(?P<v>\S.*)$", re.I | re.S)
+_PROJECT_LABEL = re.compile(
+    r"^\s*(?:name\s+of\s+(?:the\s+)?)?(?:project|work)\s*(?:name|title)?"
+    r"\s*(?:[:\-–—]+\s*(?P<v>.*))?$", re.I | re.S)
+# A document title that names no job — "BILL OF QUANTITIES", "BOQ", "PRICE
+# SCHEDULE". Skipped as a project title; "BOQ for Fire Fighting at X" is not.
+_GENERIC_TITLE = re.compile(r"\b(?:bill\s+of\s+quantit(?:y|ies)|b\.?\s*o\.?\s*q\.?|"
+                            r"schedule\s+of\s+(?:rates|quantities)|price\s+schedule|"
+                            r"abstract|annexure|rate\s+schedule)\b|[^a-z]", re.I)
+
+
+def _texts(vals: list) -> list:
+    """`[(column index, text)]` of a row's non-empty text cells, in order."""
+    return [(ci, str(v).strip()) for ci, v in enumerate(vals)
+            if isinstance(v, str) and v.strip()]
+
+
+def _labelled(cells: list, rx) -> str:
+    """The value of the first cell matching a `Label: value` pattern — after
+    the colon, or the next text cell on the row — else ""."""
+    for k, (_ci, text) in enumerate(cells):
+        m = rx.match(text)
+        if not m:
+            continue
+        value = (m.group("v") or "").strip()
+        if not value and k + 1 < len(cells):
+            value = cells[k + 1][1]
+        if value:
+            return value
+    return ""
+
+
+def detect_names(grid: dict) -> dict:
+    """
+    `{"project": {"text", "row", "how"} | None, "client": {...} | None}` —
+    read from the rows above the heading, word for word (trimmed only).
+
+    * **client** — a cell labelled Client / Customer / Owner / Party /
+      Contractor / Employer / Buyer (also "Name of …", with or without ":"),
+      its value after the colon or in the next cell on the row; else a cell
+      that opens "M/s", the whole cell (`how`: "label" / "ms").
+    * **project** — a cell labelled Project / Name of Work, its value; else
+      the first row holding ONE text cell (a merged title) that is not a bare
+      document title like "BILL OF QUANTITIES" (`how`: "label" / "title").
+
+    The tab's name is not a guess here: the caller offers it as the fallback,
+    and says that is what it is.
+    """
+    out = {"project": None, "client": None}
+    hdr = (grid or {}).get("header") or []
+    if not hdr:
+        return out
+    title = None
+    for ri in range(0, hdr[0]):
+        rnum, vals = grid["rows"][ri]
+        cells = _texts(vals)
+        if not cells:
+            continue
+        if out["client"] is None:
+            v, how = _labelled(cells, _CLIENT_LABEL), "label"
+            if not v:
+                # "M/s Acme Infra" — the honorific is part of what the sheet
+                # wrote, so the cell is taken whole, word for word.
+                for _ci, text in cells:
+                    if _MS_PREFIX.match(text):
+                        v, how = text, "ms"
+                        break
+            if v:
+                out["client"] = {"text": v, "row": rnum, "how": how}
+                continue
+        if out["project"] is None:
+            v = _labelled(cells, _PROJECT_LABEL)
+            if v:
+                out["project"] = {"text": v, "row": rnum, "how": "label"}
+                continue
+        if title is None and len(cells) == 1:
+            text = cells[0][1]
+            if (len(_GENERIC_TITLE.sub("", text)) >= 3 and not _CLIENT_LABEL.match(text)
+                    and not _MS_PREFIX.match(text) and not _PROJECT_LABEL.match(text)):
+                title = {"text": text, "row": rnum, "how": "title"}
+    if out["project"] is None and title is not None:
+        out["project"] = title
+    return out
