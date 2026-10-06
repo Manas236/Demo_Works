@@ -1273,7 +1273,59 @@ _FLAG_TEXT = {
     # …and a note: a discount that is no percentage is not read as one.
     "disc_range": ("a discount of {raw} is not a % from 0 to 100 — left blank; a discount "
                    "in rupees belongs in the Remark"),
+    # 6 October 2026 (CLIENT_CHANGES.md §0, forty-fifth block) — the BOQ AS IT
+    # IS. Every one of these is a NOTE: amber, never a need, never a block, and
+    # no figure is changed by it.
+    "as_remark": "“{raw}” is not a number — the box is left blank and the text kept in the remark",
+    "as_mismatch": ("{track}: the sheet says {amount}, the BOQ computes {calc} (quantity {qty} × "
+                    "net rate {net}) — the rate is kept as the sheet has it; the BOQ bills "
+                    "quantity × rate"),
+    "as_no_rate_amt": ("{track}: the sheet says {amount}, but the line has no {track_l} rate, "
+                       "so the BOQ has no amount for it"),
+    "as_net": ("{track}: rate {rate} less {disc}% is {calc}, the sheet's net rate is {net} — "
+               "the rate and the discount are kept as the sheet has them"),
 }
+
+# The short name a numeric box goes by in a line's remark when the sheet wrote
+# text there (A1): "Qty: Included", "Supply rate: #VALUE! in sheet".
+REMARK_FIELD = {
+    "qty": "Qty", "supply_base_rate": "Supply base rate",
+    "escalation_pct": "Supply escalation %", "supply_rate": "Supply rate",
+    "install_base_rate": "Installation base rate",
+    "install_escalation_pct": "Installation escalation %",
+    "install_rate": "Installation rate", "supply_amount": "Supply amount",
+    "install_amount": "Installation amount", "amount": "Amount",
+    "supply_disc_pct": "Supply disc %", "install_disc_pct": "Installation disc %",
+    "supply_net_rate": "Supply net rate", "install_net_rate": "Installation net rate",
+}
+
+
+def _half_up(x: float) -> float:
+    """`boq.round_half_up()`'s rule, restated because this leaf may import
+    nothing of the app's (and only its listed standard library): the figure to
+    15 significant digits, then a half rounds AWAY from zero — Excel's ROUND
+    (A8). Worked on the digits, as `_BOQ_JS` `round2()` does, so binary noise
+    cannot move it: 2.125 -> 2.13, 5.025 (5.0249… in binary) -> 5.03.
+    `tests/test_boq_as_is.py` holds this, `boq.net_of()` and the editor equal."""
+    x = float(x)
+    neg, s = x < 0, f"{abs(x):.15g}"
+    if "e" in s or "n" in s:
+        return x                      # nowhere near a rate: left as it is
+    ip, _dot, fp = s.partition(".")
+    fp += "000"
+    digits = list(ip + fp[:2])
+    if fp[2] >= "5":
+        k = len(digits) - 1
+        while k >= 0 and digits[k] == "9":
+            digits[k] = "0"
+            k -= 1
+        if k < 0:
+            digits.insert(0, "1")
+        else:
+            digits[k] = str(int(digits[k]) + 1)
+    whole = "".join(digits)
+    v = float(whole[:-2] + "." + whole[-2:])
+    return -v if neg else v
 
 # How far a figure may be off and still agree: a rupee, the totals check's own
 # tolerance. Used by the footing checks and the qty × rate check alike.
@@ -1738,9 +1790,43 @@ def _group_labels(lines: list) -> int:
     return n
 
 
-def build(grid: dict, mapping: dict) -> dict:
+def build(grid: dict, mapping: dict, guided: bool = False) -> dict:
     """
     The confirmed mapping applied to every row under the header.
+
+    ⚠ **TWO MODES from 6 October 2026** (CLIENT_CHANGES.md §0, forty-fifth
+      block — the client: *"open my sheet as a BOQ AS IT IS"*).
+
+      * **As it is — the default, and the BOQ's** (`guided=False`, A1/A2).
+        Every mapped cell comes through as the sheet has it: blank → `None`,
+        0 → 0, a number → itself. TEXT in a numeric column ("Included",
+        "By client", "NA", "Nil", a sum written as text, a date, TRUE) leaves
+        the figure `None` and goes into the line's remark as `<Field>: <text>`
+        (`line["as_remark"]`); an Excel error as `<Field>: #VALUE! in sheet`;
+        a bare "-" is just blank. A formula's cached value is what is read,
+        and a cached "" — or none at all, which openpyxl cannot tell apart — is
+        blank (`counts["formula_blank"]`). **Nothing is a need and nothing
+        blocks**: no "no quantity", no "no rate", no "no item number", no "no
+        description"; a quantity × rate that differs from the sheet's amount
+        KEEPS the rate and is an amber note giving both figures
+        (`as_mismatch`). The kept rules: item-number rounding, a %-formatted
+        cell read as the % Excel shows, "RO" as a rate-only line at 0, a lump
+        sum for an amount alone, the footing checks and the row
+        classification.
+      * **Guided** (`guided=True`) — the 30 September / 1 October 2026 rules,
+        exactly as they were: blocking `needs`, a red `block` on a quantity the
+        reader could not take, a mismatched rate left BLANK. **The work-order
+        importer passes it** (`workorder.py`): the forty-fifth block is about
+        the BOQ, and the work order's own rulings (D, R1) are built on these
+        needs.
+    """
+    as_is = not guided
+    return _build(grid, mapping, as_is)
+
+
+def _build(grid: dict, mapping: dict, as_is: bool) -> dict:
+    """
+    `build()`'s body.
 
     Returns::
 
@@ -1843,7 +1929,10 @@ def build(grid: dict, mapping: dict) -> dict:
     counts = {"lines": 0, "headers": 0, "sections": 0, "totals_dropped": 0, "flagged": 0,
               "auto_items": 0, "sheet_items": 0, "lump_sums": 0, "needs": 0, "repeats": 0,
               "rate_only": 0, "rate_only_no_rate": 0, "below_grand": 0,
-              "group_labels": 0}
+              "group_labels": 0,
+              # As it is (6 October 2026): cells of text kept in a remark, and
+              # formula cells with no saved value that came in blank.
+              "as_remark": 0, "formula_blank": 0}
 
     def flag(rnum, field, kind, raw="", severity="amber", field_label=None, **extra):
         msg = _FLAG_TEXT[kind].format(raw=raw, n=MAX_CELL_CHARS, **extra)
@@ -1924,6 +2013,53 @@ def build(grid: dict, mapping: dict) -> dict:
             n, fk = _numeric(v, k, field)
             nums[field], nflags[field] = n, fk
             raws[field] = "" if v is None else str(v)
+
+        # ── As it is (6 October 2026, A1) ────────────────────────────────────
+        # A cell that is not a number keeps its WORDS, in the line's remark,
+        # and its figure is blank. Its flag becomes "as_remark" — still a
+        # flag, so the row is still a line the way it always was ("NA" in the
+        # quantity of a described row is a line with no quantity) — but never
+        # a need and never a block. A bare "-" and a formula with no saved
+        # value are simply blank: nothing to keep.
+        as_notes, as_flags, as_formula = [], [], 0
+        if as_is:
+            for field in ("qty",) + RATE_FIELDS + DISC_FIELDS + AMOUNT_FIELDS + NET_FIELDS:
+                fk = nflags[field]
+                if not fk or fk == "ro" or field not in col_of:
+                    continue
+                raw = raws[field].strip()
+                if fk == "formula":
+                    nflags[field] = ""
+                    as_formula += 1
+                    continue
+                if _DASH.match(raw):
+                    nflags[field] = ""
+                    continue
+                as_notes.append(f"{REMARK_FIELD[field]}: "
+                                + (f"{raw} in sheet" if fk == "error" else raw))
+                as_flags.append((field, raw))
+                nflags[field] = "as_remark"
+            # "NA" / "nil" in a discount column is no discount (the forty-
+            # fourth block) — and, as it is, the words are kept too (A1).
+            for f in DISC_FIELDS:
+                raw = raws[f].strip()
+                if (f in col_of and nums[f] is None and not nflags[f] and raw
+                        and not _DASH.match(raw)):
+                    as_notes.append(f"{REMARK_FIELD[f]}: {raw}")
+                    as_flags.append((f, raw))
+            # A discount that is no percentage (above 100, below 0) is not
+            # read as one — and its figure is not lost: it goes to the remark.
+            for f in DISC_FIELDS:
+                d = nums[f]
+                if d is not None and not (0.0 <= d <= 100.0) and f in col_of:
+                    as_notes.append(f"{REMARK_FIELD[f]}: {raws[f].strip()}")
+                    as_flags.append((f, raws[f].strip()))
+                    nums[f] = None
+        # The figures as the sheet wrote them, BEFORE the classification below
+        # reads a 0 rate on a row with no quantity as no rate (the owner's 30
+        # September ruling — a rule about what a row IS). As it is, a line
+        # keeps the sheet's 0 (A1).
+        sheet_nums = dict(nums)
         amounts = {f: nums[f] for f in amount_cols if nums[f] is not None}
         # ⚠ A ZERO amount is NO amount (the owner's ruling, 30 Sep 2026): the
         #   Jamnagar sheet carries a 0 in both amount cells of every spec row.
@@ -2058,6 +2194,15 @@ def build(grid: dict, mapping: dict) -> dict:
                 "flags": [], "needs": [], "block": False}
         for f in RATE_FIELDS + DISC_FIELDS:
             line[f] = None
+        if as_is:
+            # A1: the words of every cell that was not a number, for the
+            # line's remark (`boqimport.editor_model()` appends them), and one
+            # amber note each for the preview — never on the line's own chip.
+            line["as_remark"] = as_notes
+            for f, raw in as_flags:
+                flag(rnum, f, "as_remark", raw=raw)
+            counts["as_remark"] += len(as_notes)
+            counts["formula_blank"] += as_formula
 
         if ik == "date" and iv is not None:
             line["flags"].append(flag(rnum, "item_no", "item_date", raw=str(iv))["message"])
@@ -2072,8 +2217,11 @@ def build(grid: dict, mapping: dict) -> dict:
             counts["headers"] += 1
         else:
             line["qty"] = nums["qty"]
+            # As it is (A1), the sheet's own figures — a 0 rate on a row with
+            # no quantity stays 0 on the line (`sheet_nums`); guided, v1's.
+            src = sheet_nums if as_is else nums
             for f in RATE_FIELDS:
-                line[f] = nums[f]
+                line[f] = src[f]
             # The discount per track (6 October 2026, R3): a % from 0 to 100.
             # Anything else — a rupee figure above 100, a negative — is NOT a
             # discount: left blank and noted below, never guessed into one.
@@ -2109,131 +2257,191 @@ def build(grid: dict, mapping: dict) -> dict:
                                           amount=_fmt(sum(amounts_nz.values())))["message"])
                 counts["lump_sums"] += 1
 
-            for field in ("qty",) + RATE_FIELDS:
-                fk = nflags[field]
-                if not fk:
-                    continue
-                red = field == "qty"
-                f = flag(rnum, field, fk, raw=raws[field],
-                         severity="red" if red else "amber")
-                line["flags"].append(f"{TARGET_LABEL[field]}: {f['message']}")
-                if red:
-                    line["block"] = True
+            if as_is:
+                # ── As it is (6 October 2026, A2/A3): notes, never needs ──────
+                # Nothing here blanks, alters or fills a figure, and nothing is
+                # asked for: a blank quantity, a blank rate, a blank item number
+                # or description is what the sheet wrote. Where the sheet's own
+                # amount (or net rate) is not what the BOQ will compute from the
+                # line, an AMBER note gives both figures — the rate stays as the
+                # sheet has it, and the BOQ's amount stays quantity × net rate,
+                # because an RA bill bills quantity × rate.
+                q = line["qty"]
 
-            # ── The blocking checks ────────────────────────────────────────
-            q = line["qty"]
-            if q is None:
-                if line["block"]:
-                    need("total_qty", line["flags"][-1] if line["flags"] else _FLAG_TEXT["no_qty"])
-                else:
-                    msg = flag(rnum, "qty", "no_qty", severity="red")["message"]
-                    line["flags"].append(msg)
-                    need("total_qty", msg)
-            rate_needed = False
-            if not amount_only:
-                for t in ("supply", "install"):
-                    rate_f = f"{t}_rate"
-                    col = (f"{t}_amount" if f"{t}_amount" in amounts else
-                           "amount" if "amount" in amounts and track_of("amount") == t else "")
-                    amt = amounts.get(col) if col else None
-                    rate = line[rate_f]
-                    name = "Supply" if t == "supply" else "Installation"
-                    disc = line.get(f"{t}_disc_pct")
-                    net = net_of(t)
-                    net_sheet = nums.get(f"{t}_net_rate")
-                    if rate is None and amt is not None and abs(amt) >= 0.005:
-                        msg = flag(rnum, rate_f, "no_rate_amt", severity="red",
-                                   track=name, amount=_fmt(amt))["message"]
-                        line["flags"].append(msg)
-                        need(rate_f, msg)
-                        rate_needed = True
-                    elif rate is not None and net_sheet is not None \
-                            and not Footing._near(net, net_sheet):
-                        # The sheet's own net rate against rate less discount
-                        # (6 October 2026, R3) — both figures, the rate blank.
-                        msg = flag(rnum, rate_f, "net_mismatch", severity="red", track=name,
-                                   rate=_fmt(rate), disc=_fmt(disc or 0), calc=_fmt(net),
-                                   net=_fmt(net_sheet))["message"]
-                        line["flags"].append(msg)
-                        line[rate_f] = None          # never guessed: left blank
-                        need(rate_f, msg)
-                        rate_needed = True
-                    elif rate is not None and amt is not None and q is not None \
-                            and not Footing._near(q * net, amt):
-                        if disc:
-                            # quantity × the NET rate (R3, the check extended).
-                            msg = flag(rnum, rate_f, "mismatch_net", severity="red",
-                                       track=name, qty=_fmt(q), net=_fmt(net),
-                                       rate=_fmt(rate), disc=_fmt(disc), calc=_fmt(q * net),
-                                       amount=_fmt(amt))["message"]
-                        else:
-                            msg = flag(rnum, rate_f, "mismatch", severity="red", track=name,
-                                       qty=_fmt(q), rate=_fmt(rate), calc=_fmt(q * rate),
-                                       amount=_fmt(amt))["message"]
-                        line["flags"].append(msg)
-                        line[rate_f] = None          # never guessed: left blank
-                        need(rate_f, msg)
-                        rate_needed = True
-                if "amount" in amounts and track_of("amount") == "both":
-                    amt = amounts["amount"]
-                    s, i = line["supply_rate"], line["install_rate"]
-                    sn, inn = net_of("supply"), net_of("install")
-                    if s is None and i is None and abs(amt) >= 0.005:
-                        msg = flag(rnum, "rate", "no_rate_amt", severity="red",
-                                   track="Combined", amount=_fmt(amt))["message"]
-                        line["flags"].append(msg)
-                        need("rate", msg)
-                        rate_needed = True
-                    elif q is not None and (s is not None or i is not None) \
-                            and not Footing._near(q * ((sn or 0) + (inn or 0)), amt):
-                        line["flags"].append(flag(
-                            rnum, "amount", "mismatch_both", qty=_fmt(q),
-                            calc=_fmt(q * ((sn or 0) + (inn or 0))), amount=_fmt(amt))["message"])
-                # ⚠ A BASE rate prices a line too (6 October 2026, R2): the form
-                #   works the unit rate out from base + escalation, so a line
-                #   carrying only a base is not "no rate". And with no rate,
-                #   base, amount or net column ticked at all, no rate is asked
-                #   for — the user chose not to import one.
-                no_rate = (line["supply_rate"] is None and line["install_rate"] is None
-                           and line["supply_base_rate"] is None
-                           and line["install_base_rate"] is None and rate_mapped)
-                if rate_only and not rate_needed and no_rate:
-                    # A rate-only line with no rate on either track (1 October
-                    # 2026): the ordinary blocking "rate" need, worded for what
-                    # it is, so "Not priced" answers it. Asked whatever the
-                    # amount cells hold — its 0 is no quantity, so a 0 amount
-                    # does not price it at nil.
+                def boq_net(t):
+                    r = line[f"{t}_rate"]
+                    if r is None:
+                        return None
+                    d = line.get(f"{t}_disc_pct")
+                    return _half_up(r * (100.0 - d) / 100.0) if d else r
+
+                if not amount_only:
+                    for t in ("supply", "install"):
+                        rate_f = f"{t}_rate"
+                        col = (f"{t}_amount" if f"{t}_amount" in amounts else
+                               "amount" if "amount" in amounts and track_of("amount") == t else "")
+                        amt = amounts.get(col) if col else None
+                        rate = line[rate_f]
+                        name = "Supply" if t == "supply" else "Installation"
+                        disc = line.get(f"{t}_disc_pct")
+                        net = boq_net(t)
+                        net_sheet = nums.get(f"{t}_net_rate")
+                        if rate is None and amt is not None and abs(amt) >= 0.005:
+                            line["flags"].append(flag(
+                                rnum, rate_f, "as_no_rate_amt", track=name,
+                                track_l=name.lower(), amount=_fmt(amt))["message"])
+                        elif rate is not None and net_sheet is not None                                 and not Footing._near(net, net_sheet):
+                            line["flags"].append(flag(
+                                rnum, rate_f, "as_net", track=name, rate=_fmt(rate),
+                                disc=_fmt(disc or 0), calc=_fmt(net),
+                                net=_fmt(net_sheet))["message"])
+                        elif rate is not None and amt is not None and q is not None                                 and not Footing._near(q * net, amt):
+                            line["flags"].append(flag(
+                                rnum, rate_f, "as_mismatch", track=name, qty=_fmt(q),
+                                net=_fmt(net), calc=_fmt(q * net),
+                                amount=_fmt(amt))["message"])
+                    if "amount" in amounts and track_of("amount") == "both":
+                        amt = amounts["amount"]
+                        sn, inn = boq_net("supply"), boq_net("install")
+                        if sn is None and inn is None and abs(amt) >= 0.005:
+                            line["flags"].append(flag(
+                                rnum, "rate", "as_no_rate_amt", track="Combined",
+                                track_l="supply or installation",
+                                amount=_fmt(amt))["message"])
+                        elif q is not None and (sn is not None or inn is not None)                                 and not Footing._near(q * ((sn or 0) + (inn or 0)), amt):
+                            line["flags"].append(flag(
+                                rnum, "amount", "mismatch_both", qty=_fmt(q),
+                                calc=_fmt(q * ((sn or 0) + (inn or 0))),
+                                amount=_fmt(amt))["message"])
+                if rate_only and line["supply_rate"] is None and line["install_rate"] is None:
                     counts["rate_only_no_rate"] += 1
-                    cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
-                    if cause:
-                        need("rate", f"{cause[0]} — type a rate")
-                    else:
-                        msg = flag(rnum, "rate", "ro_no_rate", severity="red")["message"]
-                        line["flags"].append(msg)
-                        need("rate", msg)
-                # A quantity and no rate anywhere. An EXPLICIT zero amount is
-                # the sheet pricing the line at nil — the Sify schedule's four
-                # nil-priced lines — and is not asked about.
-                elif (not rate_only and not rate_needed and q is not None and no_rate
-                        and not amounts):
-                    cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
-                    if cause:
-                        # The rate cell was already flagged ("#REF!", "NA"): the
-                        # need rides on that flag rather than adding a second.
-                        need("rate", f"{cause[0]} — type a rate")
-                    else:
-                        msg = flag(rnum, "rate", "no_rate", severity="red")["message"]
-                        line["flags"].append(msg)
-                        need("rate", msg)
+            else:
+                for field in ("qty",) + RATE_FIELDS:
+                    fk = nflags[field]
+                    if not fk:
+                        continue
+                    red = field == "qty"
+                    f = flag(rnum, field, fk, raw=raws[field],
+                             severity="red" if red else "amber")
+                    line["flags"].append(f"{TARGET_LABEL[field]}: {f['message']}")
+                    if red:
+                        line["block"] = True
 
-            if not line["description"]:
-                msg = flag(rnum, "description", "no_desc", severity="red")["message"]
-                line["flags"].append(msg)
-                need("description", msg)
-            if not line["item_no"]:
-                msg = flag(rnum, "item_no", "no_item", severity="red")["message"]
-                line["flags"].append(msg)
-                need("item_no", msg)
+                # ── The blocking checks ────────────────────────────────────────
+                q = line["qty"]
+                if q is None:
+                    if line["block"]:
+                        need("total_qty", line["flags"][-1] if line["flags"] else _FLAG_TEXT["no_qty"])
+                    else:
+                        msg = flag(rnum, "qty", "no_qty", severity="red")["message"]
+                        line["flags"].append(msg)
+                        need("total_qty", msg)
+                rate_needed = False
+                if not amount_only:
+                    for t in ("supply", "install"):
+                        rate_f = f"{t}_rate"
+                        col = (f"{t}_amount" if f"{t}_amount" in amounts else
+                               "amount" if "amount" in amounts and track_of("amount") == t else "")
+                        amt = amounts.get(col) if col else None
+                        rate = line[rate_f]
+                        name = "Supply" if t == "supply" else "Installation"
+                        disc = line.get(f"{t}_disc_pct")
+                        net = net_of(t)
+                        net_sheet = nums.get(f"{t}_net_rate")
+                        if rate is None and amt is not None and abs(amt) >= 0.005:
+                            msg = flag(rnum, rate_f, "no_rate_amt", severity="red",
+                                       track=name, amount=_fmt(amt))["message"]
+                            line["flags"].append(msg)
+                            need(rate_f, msg)
+                            rate_needed = True
+                        elif rate is not None and net_sheet is not None \
+                                and not Footing._near(net, net_sheet):
+                            # The sheet's own net rate against rate less discount
+                            # (6 October 2026, R3) — both figures, the rate blank.
+                            msg = flag(rnum, rate_f, "net_mismatch", severity="red", track=name,
+                                       rate=_fmt(rate), disc=_fmt(disc or 0), calc=_fmt(net),
+                                       net=_fmt(net_sheet))["message"]
+                            line["flags"].append(msg)
+                            line[rate_f] = None          # never guessed: left blank
+                            need(rate_f, msg)
+                            rate_needed = True
+                        elif rate is not None and amt is not None and q is not None \
+                                and not Footing._near(q * net, amt):
+                            if disc:
+                                # quantity × the NET rate (R3, the check extended).
+                                msg = flag(rnum, rate_f, "mismatch_net", severity="red",
+                                           track=name, qty=_fmt(q), net=_fmt(net),
+                                           rate=_fmt(rate), disc=_fmt(disc), calc=_fmt(q * net),
+                                           amount=_fmt(amt))["message"]
+                            else:
+                                msg = flag(rnum, rate_f, "mismatch", severity="red", track=name,
+                                           qty=_fmt(q), rate=_fmt(rate), calc=_fmt(q * rate),
+                                           amount=_fmt(amt))["message"]
+                            line["flags"].append(msg)
+                            line[rate_f] = None          # never guessed: left blank
+                            need(rate_f, msg)
+                            rate_needed = True
+                    if "amount" in amounts and track_of("amount") == "both":
+                        amt = amounts["amount"]
+                        s, i = line["supply_rate"], line["install_rate"]
+                        sn, inn = net_of("supply"), net_of("install")
+                        if s is None and i is None and abs(amt) >= 0.005:
+                            msg = flag(rnum, "rate", "no_rate_amt", severity="red",
+                                       track="Combined", amount=_fmt(amt))["message"]
+                            line["flags"].append(msg)
+                            need("rate", msg)
+                            rate_needed = True
+                        elif q is not None and (s is not None or i is not None) \
+                                and not Footing._near(q * ((sn or 0) + (inn or 0)), amt):
+                            line["flags"].append(flag(
+                                rnum, "amount", "mismatch_both", qty=_fmt(q),
+                                calc=_fmt(q * ((sn or 0) + (inn or 0))), amount=_fmt(amt))["message"])
+                    # ⚠ A BASE rate prices a line too (6 October 2026, R2): the form
+                    #   works the unit rate out from base + escalation, so a line
+                    #   carrying only a base is not "no rate". And with no rate,
+                    #   base, amount or net column ticked at all, no rate is asked
+                    #   for — the user chose not to import one.
+                    no_rate = (line["supply_rate"] is None and line["install_rate"] is None
+                               and line["supply_base_rate"] is None
+                               and line["install_base_rate"] is None and rate_mapped)
+                    if rate_only and not rate_needed and no_rate:
+                        # A rate-only line with no rate on either track (1 October
+                        # 2026): the ordinary blocking "rate" need, worded for what
+                        # it is, so "Not priced" answers it. Asked whatever the
+                        # amount cells hold — its 0 is no quantity, so a 0 amount
+                        # does not price it at nil.
+                        counts["rate_only_no_rate"] += 1
+                        cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
+                        if cause:
+                            need("rate", f"{cause[0]} — type a rate")
+                        else:
+                            msg = flag(rnum, "rate", "ro_no_rate", severity="red")["message"]
+                            line["flags"].append(msg)
+                            need("rate", msg)
+                    # A quantity and no rate anywhere. An EXPLICIT zero amount is
+                    # the sheet pricing the line at nil — the Sify schedule's four
+                    # nil-priced lines — and is not asked about.
+                    elif (not rate_only and not rate_needed and q is not None and no_rate
+                            and not amounts):
+                        cause = [m for m in line["flags"] if m.startswith(("Supply", "Installation"))]
+                        if cause:
+                            # The rate cell was already flagged ("#REF!", "NA"): the
+                            # need rides on that flag rather than adding a second.
+                            need("rate", f"{cause[0]} — type a rate")
+                        else:
+                            msg = flag(rnum, "rate", "no_rate", severity="red")["message"]
+                            line["flags"].append(msg)
+                            need("rate", msg)
+
+                if not line["description"]:
+                    msg = flag(rnum, "description", "no_desc", severity="red")["message"]
+                    line["flags"].append(msg)
+                    need("description", msg)
+                if not line["item_no"]:
+                    msg = flag(rnum, "item_no", "no_item", severity="red")["message"]
+                    line["flags"].append(msg)
+                    need("item_no", msg)
+
 
             # The discount and net-rate cells' own notes (R3) — raised AFTER the
             # rate needs, so a rate need never rides on a discount's flag.
@@ -2241,7 +2449,7 @@ def build(grid: dict, mapping: dict) -> dict:
                 line["flags"].append(f"{TARGET_LABEL[f]}: "
                                      + flag(rnum, f, "disc_range", raw=raws[f])["message"])
             for f in DISC_FIELDS + NET_FIELDS:
-                if nflags[f]:
+                if nflags[f] and nflags[f] != "as_remark":
                     line["flags"].append(f"{TARGET_LABEL[f]}: "
                                          + flag(rnum, f, nflags[f], raw=raws[f])["message"])
             counts["lines"] += 1

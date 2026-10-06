@@ -2792,7 +2792,10 @@ def build_import(rec: dict) -> tuple:
         grid, mapping = _tab_grid(rec, i), maps[i]
         si_map = {c: (_TO_SI.get(t, "") if t != SI.UNDECIDED else "")
                   for c, t in mapping.items()}
-        result = SI.build(grid, si_map)
+        # `guided=True` (6 October 2026): the reader's default became the BOQ's
+        # "as it is" mode (CLIENT_CHANGES.md §0, forty-fifth block); a work
+        # order keeps the needs and blocks its own rulings are built on.
+        result = SI.build(grid, si_map, guided=True)
         rows += rows_from_build(result, mapping, item_column_values(grid, mapping),
                                 tracks=tracks, tab_name=_tab_name(rec, i),
                                 left_out=left_out)
@@ -2876,7 +2879,7 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
             lo = []
             si_map = {c: (_TO_SI.get(t, "") if t != SI.UNDECIDED else "")
                       for c, t in mapping.items()}
-            rows_from_build(SI.build(grid, si_map), mapping,
+            rows_from_build(SI.build(grid, si_map, guided=True), mapping,
                             item_column_values(grid, mapping),
                             tracks=import_tracks([_mapping_of(rec, j) for j in tabs]),
                             tab_name=_tab_name(rec, i), left_out=lo)

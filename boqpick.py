@@ -254,10 +254,15 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
         parent = child_of.get(lid)
         hide = ' style="display:none;"' if parent else ""
         cls = " is-child" if parent else ""
-        avail = float(li.get("total_qty") or 0.0)
+        # ⚠ A BLANK BOQ quantity (an as-is BOQ, 6 October 2026, the §0
+        #   forty-fifth block, A6) shows blank and PREFILLS blank — on the
+        #   challan, the draft PO, the purchase order and the measurement
+        #   sheet alike — never "0", a figure the schedule does not state.
+        raw_qty = li.get("total_qty")
+        avail_txt = "" if raw_qty is None else BQ._fmt_qty(float(raw_qty))
         ticked = " checked" if (chosen is None or lid in chosen) else ""
         qty_val = (qty_of or {}).get(lid)
-        qty_val = BQ._fmt_qty(avail) if qty_val is None else P.esc(qty_val)
+        qty_val = avail_txt if qty_val is None else P.esc(qty_val)
         pcs_cell = (f"""
           <td class="pk-pcs"><input type="text" inputmode="numeric" id="p_{lid}"
               value="" aria-label="Pieces"/></td>""") if with_pcs else ""
@@ -281,7 +286,7 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
           <td class="pk-desc"><span class="pk-clamp" title="{P.esc(raw_desc)}">
               {P.esc(" ".join(raw_desc.split()))}</span></td>
           <td class="pk-unit">{P.esc(li.get("unit") or "")}</td>
-          <td class="pk-avail">{BQ._fmt_qty(avail)}</td>
+          <td class="pk-avail">{avail_txt}</td>
           <td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
               value="{qty_val}" aria-label="{P.esc(qty_aria)}"/></td>{pcs_cell}{rate_cell}
         </tr>""")

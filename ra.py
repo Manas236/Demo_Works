@@ -536,6 +536,15 @@ def approved_by_line(boq_id: str) -> dict:
     two rates (§3), and the client's annexure tracks a separate balance for
     each leg against that same quantity — 11 lines are claimed on both.
     Specification headers carry no quantity and are skipped.
+
+    ⚠ **A BLANK quantity takes the rate-only line's rule** (6 October 2026,
+      CLIENT_CHANGES.md §0, forty-fifth block, A6). A rate-only line ("RO" on
+      the sheet) is approved at 0, so `overclaims()` refuses every claim on it
+      on the supply leg — *"0 approved … over"* — until a revision gives it a
+      quantity; on the installation leg the approved MEASUREMENT is the
+      ceiling, whatever the BOQ says. An as-is BOQ stores a blank quantity as
+      `None`, and the `or 0.0` below reads it exactly as the RO line's 0: the
+      SAME rule, not a new one. `tests/test_boq_as_is.py` holds the two equal.
     """
     latest = latest_revision(boq_id)
     if not latest:
@@ -566,6 +575,12 @@ def approved_rates(boq_id: str) -> dict:
       A line with no discount nets to its stored rate exactly, so every bill
       on a schedule without one is the figure it always was. **A bill already
       saved does not move**: its claim rows are the snapshot (§3 *RA Bill*).
+
+    ⚠ **`None` is a line with NO rate on that leg** (6 October 2026, the §0
+      forty-fifth block, A6): its unit rate was left blank on an as-is BOQ.
+      Such a line is not claimable — `no_rate_lines()` — until a revision gives
+      it a rate, which this, reading the LATEST revision, then picks up. A 0
+      is a rate (priced at nil) and stays claimable, as it always was.
     """
     latest = latest_revision(boq_id)
     if not latest:
@@ -582,6 +597,21 @@ def approved_rates(boq_id: str) -> dict:
         out[(lid, "supply")] = BQ.net_rate(li, "supply")
         out[(lid, "installation")] = BQ.net_rate(li, "installation")
     return out
+
+
+NO_RATE_MESSAGE = "No rate on the BOQ. Add it in a revision."
+
+
+def no_rate_lines(boq_id: str, leg: str, rates: dict = None) -> set:
+    """
+    The `line_id`s with NO rate on `leg` on the latest revision — a unit rate
+    left blank on an as-is BOQ (A6). They are not claimable: the claim grid
+    greys them with `NO_RATE_MESSAGE`, `clean_claims()` refuses a POST naming
+    one, and the challan / measurement prefill skips them and lists them.
+    """
+    if rates is None:
+        rates = approved_rates(boq_id)
+    return {lid for (lid, lg), r in rates.items() if lg == leg and r is None}
 
 
 def approved_labels(boq_id: str) -> dict:
@@ -1676,6 +1706,7 @@ def clean_claims(raw_lines: list, boq: dict, leg: str, prev: dict,
         if lid:
             by_id[lid] = li
     rates = approved_rates(str(boq.get("id") or ""))
+    no_rate = no_rate_lines("", leg, rates)
 
     out, seen = [], set()
     for li in raw_lines:
@@ -1693,6 +1724,14 @@ def clean_claims(raw_lines: list, boq: dict, leg: str, prev: dict,
         if lid in seen:
             return ([], "The same BOQ line was claimed twice in one bill.", lid)
         seen.add(lid)
+
+        # A6 (6 October 2026): a line with NO rate on this leg is not
+        # claimable, and a POST naming it is refused, naming the line — the
+        # grid greys it and posts no input for it, so only a hand-made
+        # payload reaches here.
+        if lid in no_rate:
+            return ([], f"Item {BQ._item_no(by_id[lid].get('item_no')) or '(no number)'} "
+                        f"({leg}): {NO_RATE_MESSAGE} It cannot be claimed until then.", lid)
 
         qty = BQ._num(li.get("qty"), 0.0)
         if qty < 0:
@@ -2162,6 +2201,25 @@ def unmatched_rows(sources: list, tip: set) -> list:
                         "unit": str(row.get("unit") or ""),
                         "qty": float(row.get("qty") or 0.0)})
     return out
+
+
+def _no_rate_skipped_html(boq: dict, rows: list) -> str:
+    """
+    The lines a challan or the measurement would have prefilled but that have
+    NO rate on this leg (A6) — named with the quantity left out, or nothing.
+    Spliced with no whitespace of its own, like every seam on this form.
+    """
+    if not rows:
+        return ""
+    label = {BQ._line_id(li.get("line_id")): BQ._item_no(li.get("item_no"))
+             for li in boq.get("line_items") or [] if not li.get("is_header")}
+    items = ", ".join(f'{_esc(label.get(lid) or "(no number)")} '
+                      f'({BQ._fmt_qty(float(q))})' for lid, q in rows)
+    n = len(rows)
+    return (f'<div class="form-hint"><span class="fh-icon">&#9888;</span>'
+            f'<span><b>Not prefilled &mdash; no rate on the BOQ</b>: {items}. '
+            f'{"This line" if n == 1 else "These lines"} cannot be claimed until a '
+            f'revision of the BOQ gives {"it" if n == 1 else "them"} a rate.</span></div>')
 
 
 def _unmatched_html(rows: list, noun: str) -> str:
@@ -3155,6 +3213,7 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
     operator happened to have expanded.
     """
     rates = approved_rates(str(boq.get("id") or ""))
+    no_rate = no_rate_lines("", leg, rates)
     families = _families(boq)
     child_of = {kid: hlid for hlid, kids in families.items() for kid in kids}
     open_family = {hlid for hlid, kids in families.items()
@@ -3202,7 +3261,24 @@ def _claim_rows(boq: dict, leg: str, prev: dict, entered: dict) -> str:
         approved = float(li.get("total_qty") or 0.0)
         claimed = float(prev.get((lid, leg), 0.0))
         balance = approved - claimed
-        app_rate = float(rates.get((lid, leg), 0.0))
+
+        # A6 (6 October 2026): NO rate on this leg — greyed, with the reason,
+        # and no input, so nothing about it is posted. It stays in the grid,
+        # for the reason every line does: the operator works down a sheet.
+        if lid in no_rate:
+            out.append(f"""
+        <tr class="cl-line{child_cls} cl-done cl-norate" id="row_{lid}"{hide}>
+          <td class="cl-no">{item}</td>
+          <td class="cl-desc"><span class="cl-clamp" title="{_esc(raw_desc)}">{_esc(" ".join(raw_desc.split()))}</span></td>
+          <td class="cl-unit">{_esc(li.get("unit") or "")}</td>
+          <td class="cl-num">{_qty(approved)}</td>
+          <td class="cl-num">{_qty(claimed)}</td>
+          <td class="cl-num">{_qty(balance)}</td>
+          <td class="cl-norate-msg" colspan="3" style="font-style:italic;">{_esc(NO_RATE_MESSAGE)}</td>
+        </tr>""")
+            continue
+
+        app_rate = float(rates.get((lid, leg)) or 0.0)
 
         row = entered.get(lid) or {}
         q_val = _esc(row.get("qty", ""))
@@ -4004,15 +4080,21 @@ def create_ra():
     if request.method == "GET":
         # The PREFILL. A line nothing feeds is not prefilled, and a line that is
         # not a priced line on this revision never is (`unmatched_rows()`).
+        # ⚠ Nor is a line with NO RATE on this leg (6 October 2026, A6): it
+        #   cannot be claimed, so it is skipped the same way and LISTED, so a
+        #   dispatched or measured quantity is never dropped without a word.
+        feed = {}
         if picked:
-            tip = _tip_line_ids(boq)
-            entered = {lid: {"qty": _qty_value(q)} for lid, q in dc_caps.items()
-                       if lid in tip and q > _QTY_EPSILON}
+            feed = {lid: q for lid, q in dc_caps.items() if q > _QTY_EPSILON}
         elif sheets:
+            feed = unbilled_remainder(boq_id, prev)
+        if picked or sheets:
             tip = _tip_line_ids(boq)
-            entered = {lid: {"qty": _qty_value(q)}
-                       for lid, q in unbilled_remainder(boq_id, prev).items()
-                       if lid in tip}
+            no_rate = no_rate_lines(boq_id, leg)
+            entered = {lid: {"qty": _qty_value(q)} for lid, q in feed.items()
+                       if lid in tip and lid not in no_rate}
+            source_html += _no_rate_skipped_html(
+                boq, [(lid, q) for lid, q in feed.items() if lid in tip and lid in no_rate])
         # A ticked challan that may not be billed is named, and left unticked.
         error = " ".join(dc_problems)
 

@@ -685,6 +685,16 @@ def _read_upload():
 # LINES — the staged grid shaped for the BOQ editor
 # =============================================================================
 
+def _with_notes(remark: str, notes) -> str:
+    """The words of every cell the sheet wrote as TEXT in a numeric column —
+    "Qty: Included", "Supply rate: #VALUE! in sheet" — appended to a line's
+    remark (6 October 2026, CLIENT_CHANGES.md §0, forty-fifth block, A1), so
+    nothing the sheet said is lost. After the sheet's own remark and Make."""
+    for n in notes or []:
+        remark = _with_note(remark, n)
+    return remark
+
+
 def num_text(v) -> str:
     """
     A number as the text the editor holds, EXACTLY.
@@ -735,12 +745,8 @@ def editor_model(result: dict, markup: float = None) -> dict:
     `boq._form_payload_from()` produces, plus UI keys the editor draws and
     `boq._clean_lines()` never reads:
 
-        _flags     the row's flag sentences — a chip on the row
-        _block     the quantity was left blank by a flag — red, and the form
-                   refuses to submit until it is typed (ABOUT.md §7 gap 42)
-        _row       the source row number, for the chip and the band
-        _need      the fields the import needs somebody to fill —
-                   [{"f": field, "m": sentence}]; the guided fix rings them
+        _flags     the row's notes — an amber chip on the row, never a block
+        _row       the source row number, for the chip
         _item_src  "auto" (worked out from the sheet's structure — an "auto"
                    chip) or "sheet"; the item-number source lives HERE only
         _ls        a lump sum — an "LS · review" chip
@@ -778,6 +784,14 @@ def editor_model(result: dict, markup: float = None) -> dict:
       clause anyway, and a sub-heading's to its section's title. A Make on
       either goes into the parent's remark. Nothing on the sheet is dropped.
 
+    ⚠ **As it is (6 October 2026, CLIENT_CHANGES.md §0, forty-fifth block).**
+      `_block` (a red quantity the form would not save without) and `_need`
+      (the boxes the guided fix rang and the save stopped on) are NO LONGER
+      WRITTEN: a blank is what the sheet said, and it saves blank (A3). Every
+      cell the sheet wrote as text in a numeric column comes into the line's
+      remark as `<Field>: <text>`, after the sheet's own remark and Make (A1,
+      `build()`'s `as_remark`) — on a folded spec-text row, into its parent's.
+
     Every line goes in with a blank `line_id`, so each is minted on save.
     """
     sections = [{"code": s["code"], "title": s["title"], "areas": []}
@@ -789,8 +803,8 @@ def editor_model(result: dict, markup: float = None) -> dict:
         if l.get("kind") == "group_label":
             tgt = last.get((l["section"], l["parent_item_no"])) if l["parent_item_no"] else None
             if tgt is not None:
-                lines[tgt]["remark"] = _with_make(_with_note(lines[tgt]["remark"],
-                                                             l.get("remark")), l.get("make"))
+                lines[tgt]["remark"] = _with_notes(_with_make(_with_note(
+                    lines[tgt]["remark"], l.get("remark")), l.get("make")), l.get("as_remark"))
             continue
         if header and not l["item_no"] and l.get("kind") in ("spec_text", "subheading"):
             text = (l["description"] or "").strip()
@@ -800,8 +814,8 @@ def editor_model(result: dict, markup: float = None) -> dict:
                 if text:
                     base = row["description"].rstrip()
                     row["description"] = f"{base}\n{text}" if base else text
-                row["remark"] = _with_make(_with_note(row["remark"], l.get("remark")),
-                                           l.get("make"))
+                row["remark"] = _with_notes(_with_make(_with_note(row["remark"], l.get("remark")),
+                                                       l.get("make")), l.get("as_remark"))
             elif l["section"] in sec_at:
                 sec = sections[sec_at[l["section"]]]
                 bits = [b for b in (text, f"Make: {l['make']}" if l.get("make") else "") if b]
@@ -815,7 +829,8 @@ def editor_model(result: dict, markup: float = None) -> dict:
             "section": l["section"],
             "is_header": header,
             "description": l["description"],
-            "remark": _with_make(_with_note("", l.get("remark")), l.get("make")),
+            "remark": _with_notes(_with_make(_with_note("", l.get("remark")), l.get("make")),
+                                  l.get("as_remark")),
             "unit": "" if header else l["unit"],
             "area_qty": {},
             "total_qty": "" if header else num_text(l["qty"]),
@@ -836,18 +851,14 @@ def editor_model(result: dict, markup: float = None) -> dict:
         ref = _rowref(l)
         if l["flags"]:
             row["_flags"] = [f"{ref}: {m}" for m in l["flags"]]
-        if l["block"] and not header:
-            row["_block"] = True
-        if l.get("needs") and not header:
-            row["_need"] = [{"f": n["field"], "m": f"{ref}: {n['message']}"}
-                            for n in l["needs"]]
         if l.get("item_src"):
             row["_item_src"] = l["item_src"]
         if l.get("lump_sum"):
             row["_ls"] = True
         if l.get("rate_only") and not header:
-            row["remark"] = _with_make(_with_note(SI.RATE_ONLY_REMARK, l.get("remark")),
-                                       l.get("make"))
+            row["remark"] = _with_notes(_with_make(_with_note(SI.RATE_ONLY_REMARK,
+                                                              l.get("remark")),
+                                                   l.get("make")), l.get("as_remark"))
             row["_ro"] = True
         if markup is not None and not header:
             cost = []
@@ -1160,6 +1171,14 @@ def _flag_list(flags: list, limit: int = BANNER_FLAG_ROWS) -> str:
     return f'<ul class="imp-flags">{"".join(items)}</ul>' if items else ""
 
 
+def _where(f: dict) -> str:
+    """"Row 12" — or "Sprinkler · row 12" when several tabs are one BOQ."""
+    row = f"row {int(f['row'])}" if f.get("row") else ""
+    if f.get("tab"):
+        return P.esc(f["tab"]) + (f" &middot; {row}" if row else "")
+    return row[:1].upper() + row[1:]
+
+
 FIELD_NAME = {"total_qty": "Quantity", "supply_rate": "Supply rate",
               "install_rate": "Installation rate", "rate": "Rate",
               "item_no": "Item No.", "description": "Description"}
@@ -1176,10 +1195,17 @@ def summary_html(result: dict, model: dict, on_form: bool,
                  unit_mapped: bool = True) -> str:
     """
     The import, GROUPED (30 September 2026) — what used to be one line per
-    flagged cell. Four groups, each counted:
+    flagged cell. The groups, each counted:
 
-      N fields need you            every blocking flag, each a link to its
-                                   box on the prefilled form
+      Nothing blocks the save      6 October 2026 (the forty-fifth block, A3):
+                                   a QUIET count of the lines with no rate and
+                                   no quantity — it replaced "N fields need
+                                   you", every blank the import asked about
+      N lines where the sheet's    the sheet's amount (or net rate) against what
+        figure is not the BOQ's    the BOQ computes, both figures — the rate
+                                   kept as the sheet has it (A2)
+      N cells of text …            text where a number belongs, kept in the
+                                   line's remark (A1)
       N item numbers filled in     from the sheet's structure — "auto" chips
       N lump sums                  an amount alone, taken as 1 LS — review
       N subtotals checked          every total row, footed; which do not add up
@@ -1197,34 +1223,66 @@ def summary_html(result: dict, model: dict, on_form: bool,
     save, and nothing is inferred from a description. The default leaves the
     summary exactly as it was.
 
-    On the preview a link is a submit button that confirms and lands on the
-    field; on the form it is an anchor handled by `needLink()`.
+    `on_form` is kept for its callers; nothing in the summary links to a
+    field any more — there is no field to send anybody to.
     """
     lines = model["lines"]
-    needs = [(i, n) for i, ln in enumerate(lines) for n in (ln.get("_need") or [])]
+    flags = result.get("flags") or []
 
-    def link(i, n):
-        ln = lines[i]
-        f = n["f"]
-        what = (f"line {i + 1}" + (f" &middot; item {P.esc(ln['item_no'])}" if ln["item_no"] else "")
-                + f" &middot; {FIELD_NAME.get(f, P.esc(f))}")
-        if on_form:
-            return (f'<a class="imp-need-link" href="#need-{i}-{P.esc(f)}" '
-                    f'onclick="return needLink({i},&#39;{P.esc(f)}&#39;)">{what}</a>')
-        return (f'<button class="imp-need-link imp-linkish" type="submit" name="action" '
-                f'value="confirm@{i}.{P.esc(f)}">{what}</button>')
+    # ── As it is (6 October 2026, CLIENT_CHANGES.md §0, forty-fifth block) ──
+    # What used to be "N fields need you" — every blank the import asked
+    # somebody to fill, each a link the form then stopped on — is a QUIET
+    # count now: a blank comes in blank, and nothing stops the save (A3).
+    body = [ln for ln in lines if not ln.get("is_header")]
 
-    parts = []
-    n = len(needs)
-    items = "".join(f"<li>{link(i, nd)} &mdash; {P.esc(nd['m'])}</li>"
-                    for i, nd in needs[:SUMMARY_ROWS])
-    if n > SUMMARY_ROWS:
-        items += f"<li>&hellip; and {n - SUMMARY_ROWS} more.</li>"
-    parts.append(
-        f'<div class="imp-group{" is-red" if n else ""}"><h3><b>{n}</b> field'
-        f'{"s need" if n != 1 else " needs"} you</h3>'
-        + (f'<ul class="imp-flags">{items}</ul>' if n else
-           '<p class="imp-note">Nothing blocks the save.</p>') + "</div>")
+    def _blank(ln, key):
+        return not str(ln.get(key) if ln.get(key) is not None else "").strip()
+
+    n_rate = sum(1 for ln in body
+                 if all(_blank(ln, f"{t}_rate") and t not in (ln.get("_cost") or [])
+                        for t in ("supply", "install")))
+    n_qty = sum(1 for ln in body if _blank(ln, "total_qty"))
+    quiet = BQ.blank_summary(n_rate, n_qty)
+    n_formula = int((result.get("counts") or {}).get("formula_blank") or 0)
+    formula = (f' {n_formula} formula cell{"s" if n_formula != 1 else ""} had no saved '
+               f'value and came in blank &mdash; if the sheet shows figures there, open '
+               f'it in Excel, save it, and import again.' if n_formula else "")
+    parts = [
+        f'<div class="imp-group" id="imp-blanks"><h3>Nothing blocks the save.</h3>'
+        f'<p class="imp-note">Every cell comes in as the sheet has it: a blank stays '
+        f'blank and a 0 stays 0.'
+        + (f" {P.esc(quiet)}." if quiet else "") + formula + "</p></div>"]
+
+    # The sheet's own figures against what the BOQ will compute (A2) — amber,
+    # never a block, the rate kept as the sheet has it.
+    sums = [f for f in flags if f.get("kind") in ("as_mismatch", "as_no_rate_amt",
+                                                  "as_net", "mismatch_both")]
+    if sums:
+        items = "".join(f"<li>{_where(f)}: {P.esc(f['message'])}</li>"
+                        for f in sums[:SUMMARY_ROWS])
+        if len(sums) > SUMMARY_ROWS:
+            items += f"<li>&hellip; and {len(sums) - SUMMARY_ROWS} more.</li>"
+        parts.append(
+            f'<div class="imp-group" id="imp-sums"><h3><b>{len(sums)}</b> line'
+            f'{"s" if len(sums) != 1 else ""} where the sheet&rsquo;s figure is not what '
+            f'the BOQ computes <span class="imp-tag">review</span></h3>'
+            f'<p class="imp-note">Nothing was changed: the rate stays as the sheet has '
+            f'it, and the BOQ&rsquo;s amount is quantity &times; rate, which is what an RA '
+            f'bill bills.</p><ul class="imp-flags">{items}</ul></div>')
+
+    # Text where a number belongs (A1): kept in the line's remark, word for word.
+    texts = [f for f in flags if f.get("kind") == "as_remark"]
+    if texts:
+        items = "".join(f"<li>{_where(f)} &middot; {P.esc(f['field'])}: "
+                        f"&ldquo;{P.esc(f['raw'])}&rdquo;</li>" for f in texts[:SUMMARY_ROWS])
+        if len(texts) > SUMMARY_ROWS:
+            items += f"<li>&hellip; and {len(texts) - SUMMARY_ROWS} more.</li>"
+        parts.append(
+            f'<details class="imp-group" id="imp-texts"><summary><b>{len(texts)}</b> '
+            f'cell{"s" if len(texts) != 1 else ""} of text where a number belongs, kept '
+            f'in the line&rsquo;s remark</summary><p class="imp-note">The figure is left '
+            f'blank and the words go into the remark as <i>Qty: Included</i> &mdash; '
+            f'nothing the sheet said is lost.</p><ul class="imp-flags">{items}</ul></details>')
 
     auto = [(i, ln) for i, ln in enumerate(lines) if ln.get("_item_src") == "auto"]
     sheet_n = (result.get("counts") or {}).get("sheet_items", 0)
@@ -1253,8 +1311,10 @@ def summary_html(result: dict, model: dict, on_form: bool,
     # sheet without "RO" in it reads exactly as it did.
     ro = [ln for ln in lines if ln.get("_ro")]
     if ro:
-        ro_none = sum(1 for ln in ro if any(n.get("f") in ("rate", "supply_rate", "install_rate")
-                                           for n in (ln.get("_need") or [])))
+        # As it is (A3): a rate-only line with no rate is a line with no rate —
+        # said, not asked about.
+        ro_none = sum(1 for ln in ro if _blank(ln, "supply_rate") and _blank(ln, "install_rate")
+                      and not ln.get("_cost"))
         eg = ", ".join(P.esc(ln["item_no"]) for ln in ro[:12]) + ("&hellip;" if len(ro) > 12 else "")
         parts.append(
             f'<div class="imp-group" id="imp-ro"><h3><b>{len(ro)}</b> rate-only line'
@@ -1262,8 +1322,7 @@ def summary_html(result: dict, model: dict, on_form: bool,
             f'quantity &mdash; {eg}. Each comes in at quantity 0 with its rates kept, marked '
             f'<b>rate only</b>, and says so in its remark.'
             + (f' {ro_none} of them ha{"ve" if ro_none != 1 else "s"} no rate on either track '
-               f'and {"are" if ro_none != 1 else "is"} among the fields that need you '
-               f'(<i>Not priced</i> answers it).' if ro_none else "")
+               f'and come{"" if ro_none != 1 else "s"} in with the rate blank.' if ro_none else "")
             + '</p></div>')
 
     if not unit_mapped:
@@ -1298,7 +1357,9 @@ def summary_html(result: dict, model: dict, on_form: bool,
     covered = {"no_qty", "no_rate_amt", "no_rate", "mismatch", "no_item", "no_desc",
                "lump_sum", "total_bad", "ro_no_rate",
                # 6 October 2026 (R3): the discount's two blocking checks.
-               "mismatch_net", "net_mismatch"}
+               "mismatch_net", "net_mismatch",
+               # …and the as-is notes (the forty-fifth block), grouped above.
+               "as_remark", "as_mismatch", "as_no_rate_amt", "as_net", "mismatch_both"}
     notes = [f for f in result.get("flags") or [] if f.get("kind") not in covered]
     if notes:
         parts.append(f'<details class="imp-group"><summary><b>{len(notes)}</b> other note'
@@ -1600,10 +1661,9 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       arithmetic on its base rates, before the markup.</p>
       <div style="margin:.6rem 0 0;font-size:.85rem;">{totals_block(result)}</div>
       {summary_html(result, model, on_form=False, unit_mapped=unit_mapped)}
-      <p class="imp-note">A field that needs you is left <b>blank</b> on the form &mdash;
-      nothing is worked out or turned into 0 &mdash; and ringed there; the form will not
-      save until each is filled. Only the columns you ticked are ever asked about. A link
-      above confirms these columns and opens the form on that field.</p>
+      <p class="imp-note">The BOQ opens <b>as the sheet is</b>: a blank cell stays
+      blank, a 0 stays 0, nothing is worked out or turned into 0, and nothing stops the
+      save. Only the columns you ticked are imported.</p>
       <div class="imp-actions">
         <button class="btn" type="submit" name="action" value="confirm">Confirm &amp; open the BOQ form</button>
       </div>
@@ -1621,7 +1681,6 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
     sheet filled in (R4)."""
     c = result["counts"]
     tabs = _ticked(rec)
-    blocked = sum(1 for l in result["lines"] if l["block"] and not l["is_header"])
     cost = ""
     if markup is not None:
         cost = (f'<p style="margin:.4rem 0 0;"><b>Imported from a cost sheet:</b> base rate = '
@@ -1634,14 +1693,6 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
                  f'{int(lay.get("use_count") or 0)} time(s) before, and applied its '
                  f'column choices. <a href="{url_for("boqimport.preview", token=token)}">'
                  f'Change mapping</a></p>')
-    red = ""
-    if blocked:
-        red = (f'<p style="margin:.4rem 0 0;color:#b91c1c;"><b>{blocked} line'
-               f'{"s" if blocked != 1 else ""} need a quantity before this BOQ can be '
-               f'saved.</b> The sheet gave it as something other than a number '
-               f'(“NA”, a word, a sum written as text&hellip;). Those rows are marked '
-               f'red. Type the quantity, or remove the line &mdash; a blank quantity '
-               f'would be saved as 0, and an RA bill cannot claim against a line at 0.</p>')
     names = ""
     pf = prefill or {}
     filled = [w for k, w in (("project_name", "the project name"),
@@ -1652,7 +1703,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
         names = (f'<p style="margin:.4rem 0 0;">Filled in from the sheet: '
                  f'{" and ".join(filled)}{book}. Check them.</p>')
     flags = summary_html(result, model, on_form=True, unit_mapped=unit_mapped)
-    cls = "imp-banner has-red" if blocked else "imp-banner"
+    cls = "imp-banner"
     if len(tabs) > 1:
         where = ("tabs " + ", ".join(f"“{P.esc(_tab_name(rec, i))}”" for i in tabs)
                  + " (one section each)")
@@ -1667,7 +1718,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
             f'<b>Nothing has been saved.</b> Check the lines, fill in the project and '
             f'customer, then press Create BOQ &mdash; or just leave the page.'
             f'<div style="margin:.4rem 0 0;">{totals_block(result)}</div>'
-            f'{cost}{known}{names}{red}{flags}</div>')
+            f'{cost}{known}{names}{flags}</div>')
 
 
 # =============================================================================
@@ -1801,8 +1852,10 @@ def preview(token: str):
     if "markup" in request.form:
         rec["markup"] = str(request.form.get("markup") or "").strip()[:20]
 
-    # "confirm@<line>.<field>" is a link in the grouped summary: confirm, and
-    # land on that field. Anything that is not exactly that shape is ignored.
+    # "confirm@<line>.<field>" was a link in the grouped summary: confirm, and
+    # land on that field. Nothing emits it from 6 October 2026 (A3 — no field
+    # needs anybody); an old page that posts it still confirms. Anything that
+    # is not exactly that shape is ignored.
     action = request.form.get("action") or ""
     goto = ""
     if action.startswith("confirm@"):

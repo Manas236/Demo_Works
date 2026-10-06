@@ -519,8 +519,18 @@ def view_project(id: str):
         # recorded: said in words, never shown as a zero cost (R3). Nothing is
         # added up across panels — this page still does no subtraction.
         no_cost = BQ.lines_without_cost(boq)
-        cost_note = (f'<div style="font-size:.75rem;color:var(--muted);">cost not recorded on '
-                     f'{no_cost} line{"" if no_cost == 1 else "s"}</div>' if no_cost else "")
+        # …and where a line carries NO rate on either track — left blank, on an
+        # as-is BOQ (6 October 2026, the §0 forty-fifth block, A6) — it is not
+        # priced and adds nothing to the figure beside it: said beside the
+        # cost note, in the same muted words. A 0 rate is priced, at nil.
+        no_price = len(BQ.lines_not_priced(boq))
+        bits = []
+        if no_price:
+            bits.append(f'{no_price} line{"" if no_price == 1 else "s"} not priced')
+        if no_cost:
+            bits.append(f'cost not recorded on {no_cost} line{"" if no_cost == 1 else "s"}')
+        cost_note = (f'<div style="font-size:.75rem;color:var(--muted);">'
+                     f'{" &middot; ".join(bits)}</div>' if bits else "")
         boq_html += f"""
         <tr>
           <td><a href="{url_for('boq.view_boq', id=boq.get('id'))}"><b>{P.esc(boq.get('ref'))}</b></a>{cost_note}</td>

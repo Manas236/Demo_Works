@@ -67,9 +67,11 @@ module imports THIS one and renders `/boq/create` prefilled through
 """
 
 import json
+import math
 import re
 import uuid
 from datetime import date as _date
+from decimal import ROUND_HALF_UP, Decimal
 
 from flask import Blueprint, redirect, request, url_for
 
@@ -214,6 +216,32 @@ _UNITS = ["Nos", "Nos.", "Mtrs", "Mtrs.", "Kgs.", "Set", "Lot", "Lump Sum",
 # than a constant.
 DEFAULT_RATE_BASIS = "Base Rate"
 
+# ── A BOQ as it is — blank stays blank, 0 stays 0 (6 October 2026) ──────────
+#
+# CLIENT_CHANGES.md §0, forty-fifth block, A1–A8. Every BOQ saved from this
+# date carries `"blank_model": "as_is"`, and on such a record:
+#
+#   * a box left BLANK is stored ABSENT (`None`) — quantity, unit rate, base
+#     rate, escalation, discount — and a typed 0 is stored as 0;
+#   * a line's amount is quantity × net rate when BOTH are present, and absent
+#     otherwise (a 0 in either is an amount of 0);
+#   * the print shows a blank as a blank cell and a 0 as 0 in the house format.
+#
+# ⚠ **A record WITHOUT the key is a CLOSED HISTORICAL SET, and it is never
+#   migrated.** Until this date the save wrote 0 for a blank (ABOUT.md §7
+#   gap 42), so on those records a 0 may have been a blank — and the two cannot
+#   be told apart. They are read exactly as they always were: a 0 rate prints
+#   blank, a 0 area cell prints blank, a `None` base rate prints "-". Nothing
+#   infers which of their zeros were once blanks; the marker is a WRITTEN fact
+#   about the records that carry it, the `rate_model` / `grid_model` rule.
+BLANK_MODEL_KEY = "blank_model"
+BLANK_MODEL = "as_is"
+
+
+def is_as_is(boq: dict) -> bool:
+    """Was this BOQ saved under the as-is rules (blank absent, 0 a typed 0)?"""
+    return isinstance(boq, dict) and boq.get(BLANK_MODEL_KEY) == BLANK_MODEL
+
 
 # =============================================================================
 # HELPERS — identity and numbers
@@ -356,33 +384,51 @@ def _opt_num(raw):
         return None
 
 
-def _derived_rate(base, pct: float):
-    """
-    base × (1 + pct/100) — the rate the escalation implies.
-
-    Only ever a *suggestion*. The stored `supply_rate` is whatever was entered,
-    because the client's own sheets carry a dozen lines where the two disagree
-    for a documented reason (a tamper switch at ₹2000/nos, a larger diameter at
-    the Bangalore site). Recomputing the rate from the escalation would quietly
-    rewrite a price that was agreed — the importer's job is to *report* that
-    disagreement, never to resolve it.
-    """
-    if base is None:
-        return None
-    return float(base) * (1.0 + float(pct or 0.0) / 100.0)
+_BLANK_TEXT = ("", "-", "--", "—", "–")
 
 
-def _esc_pct(raw, base):
-    """
-    The escalation % a line stores (6 October 2026, R2).
+class _NotANumber(Exception):
+    """Text typed into a numeric box — the save's refusal, already worded."""
 
-    **No base rate and nothing typed: `None`** — there is nothing to escalate,
-    and the record says so rather than claiming 0%. With a base rate it is
-    v1's reading, unchanged: a blank or unreadable box is 0.
+
+def typed_num(raw, pct: bool = False) -> tuple:
     """
-    if base is None and _opt_num(raw) is None:
-        return None
-    return _num(raw)
+    `(value, bad)` for one numeric box on the BOQ form (6 October 2026,
+    CLIENT_CHANGES.md §0, forty-fifth block, A3).
+
+    * Blank, `None` and a bare dash are `(None, False)` — **ABSENT, never 0**.
+      The dash is the client's own "-": nothing written.
+    * A number is `(value, False)` — thousands commas allowed, and on a
+      percentage box (`pct`) a trailing "%", because people type "15%".
+    * Anything else is `(None, True)`: **text typed into a numeric box**, which
+      the save refuses, naming the line. It is the one thing about a line's
+      figures that still may — a blank never does.
+
+    ⚠ This replaced three readers on the save path, each of which turned a
+      blank into a figure: `_num()` (blank and text → 0), `_esc_pct()` (a blank
+      escalation beside a base rate → 0) and `_derived_rate()` (a blank unit
+      rate beside a base → base × (1 + esc), filled in on the server). A blank
+      rate now saves blank; the form's "suggests … use" link still offers the
+      escalated figure, and a cost import still fills it on load (the
+      thirty-ninth block's ruling, `bootCost()`).
+    """
+    if raw is None:
+        return None, False
+    if isinstance(raw, bool):
+        return None, True
+    if isinstance(raw, (int, float)):
+        v = float(raw)
+        return (v, False) if math.isfinite(v) else (None, True)
+    s = str(raw).strip().replace(",", "")
+    if pct and s.endswith("%"):
+        s = s[:-1].strip()
+    if s in _BLANK_TEXT:
+        return None, False
+    try:
+        v = float(s)
+    except ValueError:
+        return None, True
+    return (v, False) if math.isfinite(v) else (None, True)
 
 
 # =============================================================================
@@ -405,17 +451,30 @@ def _esc_pct(raw, base):
 #   in step by tests/test_boq_import_picker.py) and the RA bill's approved rate
 #   (`ra.approved_rates()`). ABOUT.md §3 records the audit of every reader.
 #
-# ⚠ **Rounding: Python's `round(x, 2)`, the house rule** (`purchase.
-#   _line_total()`, `workorder.line_amounts()`) — half to EVEN on the exact
-#   binary value: 2.50 less 15% is exactly 2.125 and nets to **2.12**. Written
-#   as `unit × (100 − disc) / 100` rather than `unit × (1 − disc/100)` because
-#   `100 − disc` is exact for every discount anybody types, so a tie that is a
-#   tie on paper is a tie in binary too.
+# ⚠ **Rounding: HALF UP, Excel's ROUND — from 6 October 2026, later** (the
+#   §0 forty-fifth block, A8). The client's sheets are computed in Excel, and
+#   its ROUND takes a figure to 15 significant digits and then rounds a half
+#   AWAY from zero: 2.50 less 15% is 2.125 and nets to **2.13**, where
+#   Python's `round()` (half to even on the binary value, the forty-fourth
+#   block's rule) gave 2.12 and raised a false "does not match the sheet".
+#   So: the product as a float, written to 15 significant digits, then
+#   `Decimal.quantize(0.01, ROUND_HALF_UP)`. **Only the net rate changed** —
+#   every other rounding in the app is as it was (ABOUT.md §7 gap 62 records
+#   that the amount, quantity × rate, is still printed by `_inr()`'s own
+#   rounding, which can differ from Excel's on an exact half). `_BOQ_JS`
+#   `round2()` is the same rule in the browser; a Node test holds the two
+#   equal, the exact halves included. Written as `unit × (100 − disc) / 100`
+#   rather than `unit × (1 − disc/100)` because `100 − disc` is exact for
+#   every discount anybody types.
 #
 # ⚠ **No discount, no arithmetic.** With the key absent — or a typed 0 — the
 #   net rate IS the stored unit rate, unrounded, so a BOQ with no discount
 #   prices exactly as it always did: every stored amount, every total and every
 #   printed figure is byte-identical (the print goldens hold that).
+#
+# ⚠ **No unit rate, no net rate** (A4). A blank unit rate (`None`, an as-is
+#   record) nets to `None` — not 0 — and a line with no net rate has no amount
+#   and cannot be claimed on an RA bill (A6).
 
 DISC_KEYS = {"supply": "supply_disc_pct", "install": "install_disc_pct"}
 
@@ -466,23 +525,42 @@ def disc_of(line: dict, track: str):
     return None if bad else v
 
 
-def net_of(unit, disc) -> float:
-    """The arithmetic alone: a unit rate less a discount %, to the paisa —
-    or the unit rate itself, untouched, when there is no discount."""
-    unit = float(unit or 0.0)
+def round_half_up(x: float, places: int = 2) -> float:
+    """Excel's ROUND (A8): `x` to 15 significant digits, then a half rounds
+    AWAY from zero. 2.125 → 2.13; 5.025 (5.02499… in binary) → 5.03."""
+    q = Decimal(1).scaleb(-places)
+    return float(Decimal(f"{float(x):.15g}").quantize(q, rounding=ROUND_HALF_UP))
+
+
+def net_of(unit, disc):
+    """The arithmetic alone: a unit rate less a discount %, to the paisa,
+    HALF UP — or the unit rate itself, untouched, when there is no discount.
+    No unit rate (`None`, a blank box) is no net rate: `None`."""
+    unit, _bad = typed_num(unit)          # a stored float, or an editor string
+    if unit is None:
+        return None
     if disc is None or float(disc) == 0.0:
         return unit
-    return round(unit * (100.0 - float(disc)) / 100.0, 2)
+    return round_half_up(unit * (100.0 - float(disc)) / 100.0)
 
 
-def net_rate(line: dict, track: str) -> float:
+def net_rate(line: dict, track: str):
     """
     What this line is BILLED at on `track` ("supply" | "install" |
-    "installation") — its unit rate less its discount. **The one helper** —
-    see the note above.
+    "installation") — its unit rate less its discount, or `None` when the line
+    has no unit rate on that track (a blank, A4). **The one helper** — see the
+    note above.
     """
     t = _track(track)
     return net_of((line or {}).get(f"{t}_rate"), disc_of(line, t))
+
+
+def amount_of(qty, net):
+    """A line's amount on one track (A4): quantity × net rate when BOTH are
+    present, else `None` — never 0 for a blank. A 0 in either is 0."""
+    if qty is None or net is None:
+        return None
+    return float(net) * float(qty)
 
 
 def lines_without_cost(boq: dict) -> int:
@@ -500,10 +578,67 @@ def lines_without_cost(boq: dict) -> int:
     for li in boq.get("line_items") or []:
         if not isinstance(li, dict) or li.get("is_header"):
             continue
-        if any(net_rate(li, t) > 0 and li.get(f"{t}_base_rate") is None
+        if any((net_rate(li, t) or 0.0) > 0 and li.get(f"{t}_base_rate") is None
                for t in ("supply", "install")):
             n += 1
     return n
+
+
+def lines_not_priced(boq: dict) -> list:
+    """
+    The lines with NO unit rate on either track — both boxes left blank
+    (6 October 2026, the §0 forty-fifth block, A6) — in schedule order, as
+    `(section, item_no)`.
+
+    Blank is a valid answer, not an error: such a line saves, prints a blank
+    rate and a blank amount, and cannot be claimed on an RA bill until a
+    revision gives it a rate. ⚠ **A rate of 0 is a rate** — priced at nil —
+    and so is every 0 on a record saved before this date, where a 0 may have
+    been a blank and cannot be told apart (`is_as_is()`): nothing is guessed.
+    """
+    return [(str(li.get("section") or ""), _item_no(li.get("item_no")))
+            for li in boq.get("line_items") or []
+            if isinstance(li, dict) and not li.get("is_header")
+            and li.get("supply_rate") is None and li.get("install_rate") is None]
+
+
+def lines_without_qty(boq: dict) -> list:
+    """The lines whose quantity was left blank (`total_qty` absent, A3), as
+    `(section, item_no)`. A typed 0 is a quantity."""
+    return [(str(li.get("section") or ""), _item_no(li.get("item_no")))
+            for li in boq.get("line_items") or []
+            if isinstance(li, dict) and not li.get("is_header")
+            and li.get("total_qty") is None]
+
+
+def lines_without_amount(boq: dict, code: str = None) -> int:
+    """
+    How many lines carry NO amount on EITHER track — a blank quantity, or no
+    rate on any track — and so add nothing to any total (A4). `code` limits
+    it to one section. A supply-only line has a supply amount and is not
+    counted: it is in the total it belongs to. Every line of a record saved
+    before 6 October 2026 has a figure (`0.0` for a blank), so this is 0 there.
+    """
+    return sum(1 for li in boq.get("line_items") or []
+               if isinstance(li, dict) and not li.get("is_header")
+               and (code is None or li.get("section") == code)
+               and li.get("supply_amount") is None and li.get("install_amount") is None)
+
+
+def blank_summary(n_rate: int, n_qty: int) -> str:
+    """The quiet screen-only note (A3): "N lines have no rate, M lines have no
+    quantity" — either half left out at 0, and "" when both are. Plain text."""
+    bits = []
+    if n_rate:
+        bits.append(f"{n_rate} line{'s have' if n_rate != 1 else ' has'} no rate")
+    if n_qty:
+        bits.append(f"{n_qty} line{'s have' if n_qty != 1 else ' has'} no quantity")
+    return ", ".join(bits)
+
+
+def excludes_note(n: int) -> str:
+    """A4's words for a total that skipped lines, or ""."""
+    return (f"excludes {n} line{'s' if n != 1 else ''} with no amount" if n else "")
 
 
 def any_discount(boq: dict, track: str) -> bool:
@@ -658,28 +793,6 @@ def header_of(lines: list) -> dict:
             if p is not None and p >= 0 and lines[p].get("is_header")}
 
 
-def unpriced_lines(boq: dict) -> list:
-    """
-    The lines that carry a quantity and no rate on either track, in schedule
-    order, as `(section, item_no)`. `/boq/view`'s amber note lists them.
-
-    A valid state and not an error: the client's own sheets leave lines
-    unpriced on purpose and their totals add up without them, and the Sify
-    schedule's four nil-priced lines are exactly this. They print with a blank
-    rate and 0.00 in the amount — the note says so on the internal copy, and
-    the issued print is not touched.
-    """
-    out = []
-    for li in boq.get("line_items") or []:
-        if li.get("is_header"):
-            continue
-        if float(li.get("total_qty") or 0.0) > 0 \
-                and not float(li.get("supply_rate") or 0.0) \
-                and not float(li.get("install_rate") or 0.0):
-            out.append((str(li.get("section") or ""), _item_no(li.get("item_no"))))
-    return out
-
-
 def section_totals(boq: dict, code: str) -> tuple:
     """
     (supply, installation) for one section — COMPUTED, never stored.
@@ -689,6 +802,11 @@ def section_totals(boq: dict, code: str) -> tuple:
     The record stores only the BOQ-level trio (§4.3), and even those are
     recomputed here for the document so the printed sheet cannot contradict its
     own lines.
+
+    ⚠ **Present amounts only** (6 October 2026, A4): a line with no amount — a
+    blank quantity or a blank rate — adds nothing, by the `or 0.0` below. The
+    screen says how many it skipped (`lines_without_amount()`); the print does
+    not.
     """
     supply = install = 0.0
     for li in _lines_of(boq, code):
@@ -1639,14 +1757,25 @@ BOQ_DOC_SCRIPT = """
 </script>
 """
 
-# `/boq/view` ONLY (30 September 2026): its "N lines have a quantity but no
-# rate" note is screen furniture and never prints, even when the internal copy
-# is printed from the browser. A constant of its own, never a rule in
-# `BOQ_STYLES` (four page goldens hash that) or `BOQ_DOC_STYLES` (the print
-# golden hashes that); `/boq/print` does not load it and draws no note.
+# `/boq/view` ONLY (30 September 2026): its notes are screen furniture and
+# never print, even when the internal copy is printed from the browser. A
+# constant of its own, never a rule in `BOQ_STYLES` (four page goldens hash
+# that) or `BOQ_DOC_STYLES` (the print golden hashes that); `/boq/print` does
+# not load it and draws no note.
+#
+# ⚠ 6 October 2026 (the §0 forty-fifth block, A3/A4): the amber "N lines have
+#   a quantity but no rate" note is replaced by a QUIET one — "N lines have no
+#   rate, M lines have no quantity" — and each total that skipped lines says
+#   "excludes N lines with no amount" (`.skip-note`). Grey, not amber: a blank
+#   is a valid answer, not a thing to fix.
 BOQ_VIEW_STYLES = """
 <style>
-  @media print { .unpriced-note { display:none !important; } }
+  .quiet-note { margin:0 0 1rem; padding:.45rem .8rem; font-size:.82rem;
+                color:var(--muted); background:var(--surface, #f8fafc);
+                border:1px solid var(--border); border-radius:8px; }
+  .skip-note { margin:.2rem 0 .6rem; font-size:.74rem; color:var(--muted);
+               text-align:right; }
+  @media print { .unpriced-note, .quiet-note, .skip-note { display:none !important; } }
 </style>
 """
 
@@ -1655,42 +1784,70 @@ BOQ_VIEW_STYLES = """
 # THE PRINTED BOQ — rendering
 # =============================================================================
 
-def _rate_cell(rate) -> str:
+def _rate_cell(rate, as_is: bool = False) -> str:
     """
     A rate, or a blank cell when the track is not priced on this line.
 
-    Blank, not `0.00`: a line that is installation-only has no supply rate at
-    all, and printing 0.00 there says the material is free. The *amount*
-    column still prints 0.00, because that is a real figure that sums into the
-    subtotal — which is exactly how the client's own workbook renders it.
+    On an AS-IS record (6 October 2026, A5) the cell is what was entered: a
+    blank (`None`) prints blank and a 0 prints **0.00** — the client wrote 0.
+
+    On a record saved BEFORE that date a 0 prints blank, exactly as it always
+    did: there a 0 may have been a blank, and a line that is installation-only
+    stored 0.0 as its supply rate — printing 0.00 there would say the material
+    is free. Those records are never migrated (`is_as_is()`).
     """
+    if rate is None:
+        return ""
+    if as_is:
+        return _inr(rate)
     return _inr(rate) if rate else ""
 
 
-def _base_cell(base) -> str:
+def _qty_cell(qty) -> str:
+    """A quantity in the house format, or a blank cell for a blank (A5) —
+    never "0" for a quantity nobody wrote. A 0 is "0"."""
+    return "" if qty is None else _fmt_qty(float(qty))
+
+
+def _amt_cell(amount) -> str:
+    """An amount, or a blank cell when the line has none (A4/A5): a blank
+    quantity or a blank rate is no amount, and it is not 0.00."""
+    return "" if amount is None else _inr(amount)
+
+
+def _base_cell(base, as_is: bool = False) -> str:
     """
     A base rate, or "-" when the rate was entered directly.
 
     "-" is the client's own convention and it carries meaning: this line was
     negotiated rather than escalated off the base schedule. It is not zero and
     it is not missing data, so it prints as itself.
+
+    ⚠ On an AS-IS record a blank base prints BLANK (A5: never "-"): the
+    client's "-" is read as nothing written (A1), so there is no "-" to give
+    back. A record saved before 6 October 2026 keeps its "-".
     """
-    return "-" if base is None else _inr(base)
+    if base is None:
+        return "" if as_is else "-"
+    return _inr(base)
 
 
-def _esc_cell(pct) -> str:
-    pct = float(pct or 0.0)
-    return f"{pct:g}%" if pct else ""
+def _esc_cell(pct, as_is: bool = False) -> str:
+    """An escalation %: blank for none. On an as-is record a typed 0 is "0%"."""
+    if pct is None:
+        return ""
+    pct = float(pct)
+    return f"{pct:g}%" if (pct or as_is) else ""
 
 
-def _disc_cell(pct) -> str:
+def _disc_cell(pct, as_is: bool = False) -> str:
     """A discount % on the sheet — `_esc_cell()`'s format: blank for none."""
-    return _esc_cell(pct)
+    return _esc_cell(pct, as_is)
 
 
 def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
                    show_rate_breakup: bool = False, show_s_disc: bool = False,
-                   show_i_disc: bool = False) -> str:
+                   show_i_disc: bool = False, screen_notes: bool = False) -> str:
     """
     One section: its title band, its own column heads, its lines, its subtotal.
 
@@ -1717,11 +1874,20 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       default False and `_document_html()` passes True only for a track where
       a line carries a discount (`any_discount()`), so a BOQ with none renders
       **byte-identical**: every addition below is an empty string then.
+
+    ⚠ **As it is (6 October 2026, the §0 forty-fifth block, A5).** A blank
+      quantity, rate, amount, base, escalation or discount prints a BLANK cell
+      — never "0", "0.00", "-", "None" or "nan" — and on an as-is record a 0
+      prints as 0 in the house format. A record saved before that date prints
+      byte-identically (`is_as_is()` is False for it). `screen_notes` — passed
+      by `/boq/view` alone — adds "excludes N lines with no amount" under a
+      subtotal that skipped lines; the print never draws it.
     """
     code   = sec.get("code") or ""
     areas  = list(sec.get("areas") or [])
     lines  = _lines_of(boq, code)
     basis  = boq.get("rate_basis_label") or DEFAULT_RATE_BASIS
+    as_is  = is_as_is(boq)
 
     # The base rate columns and the escalation columns stand or fall together —
     # an escalation percentage with nothing to apply it to is not a column, it
@@ -1872,25 +2038,28 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
         for a in areas:
             v = area_qty.get(a)
             # A blank cell means the item does not appear on that floor. It is
-            # not a zero, and printing 0 would put an item everywhere.
-            area_tds += f'<td class="b-area">{_fmt_qty(v) if v else ""}</td>'
+            # not a zero, and printing 0 would put an item everywhere. On an
+            # as-is record a TYPED 0 is kept (only typed figures are stored)
+            # and prints 0 (A5).
+            shown = (_fmt_qty(v) if v is not None else "") if as_is else (_fmt_qty(v) if v else "")
+            area_tds += f'<td class="b-area">{shown}</td>'
 
-        s_base_td = (f'<td class="b-base">{_base_cell(li.get("supply_base_rate"))}</td>'
+        s_base_td = (f'<td class="b-base">{_base_cell(li.get("supply_base_rate"), as_is)}</td>'
                      if show_base else "")
-        i_base_td = (f'<td class="b-base">{_base_cell(li.get("install_base_rate"))}</td>'
+        i_base_td = (f'<td class="b-base">{_base_cell(li.get("install_base_rate"), as_is)}</td>'
                      if show_base else "")
-        s_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("supply_escalation_pct"))}</td>'
+        s_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("supply_escalation_pct"), as_is)}</td>'
                     if show_s_esc else "")
-        i_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("install_escalation_pct"))}</td>'
+        i_esc_td = (f'<td class="b-esc">{_esc_cell(li.get("install_escalation_pct"), as_is)}</td>'
                     if show_i_esc else "")
         # Disc % and the NET rate, read through `net_rate()` — the one helper.
         # Every line of a discounted track shows its net rate, discounted or
         # not, so the column is the rate the line is billed at, top to bottom.
-        s_disc_tds = (f'<td class="b-esc">{_disc_cell(disc_of(li, "supply"))}</td>'
-                      f'<td class="b-rate">{_rate_cell(net_rate(li, "supply"))}</td>'
+        s_disc_tds = (f'<td class="b-esc">{_disc_cell(disc_of(li, "supply"), as_is)}</td>'
+                      f'<td class="b-rate">{_rate_cell(net_rate(li, "supply"), as_is)}</td>'
                       if show_s_disc else "")
-        i_disc_tds = (f'<td class="b-esc">{_disc_cell(disc_of(li, "install"))}</td>'
-                      f'<td class="b-rate">{_rate_cell(net_rate(li, "install"))}</td>'
+        i_disc_tds = (f'<td class="b-esc">{_disc_cell(disc_of(li, "install"), as_is)}</td>'
+                      f'<td class="b-rate">{_rate_cell(net_rate(li, "install"), as_is)}</td>'
                       if show_i_disc else "")
 
         body += f"""
@@ -1898,16 +2067,16 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
           <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
           <td class="b-desc{child_cls}">{desc}</td>
           {area_tds}
-          <td class="b-qty">{_fmt_qty(float(li.get("total_qty") or 0.0))}</td>
+          <td class="b-qty">{_qty_cell(li.get("total_qty"))}</td>
           <td class="b-unit">{P.esc(li.get("unit"))}</td>
           {s_base_td}
           {s_esc_td}
-          <td class="b-rate">{_rate_cell(li.get("supply_rate"))}</td>{s_disc_tds}
-          <td class="b-amt">{_inr(li.get("supply_amount"))}</td>
+          <td class="b-rate">{_rate_cell(li.get("supply_rate"), as_is)}</td>{s_disc_tds}
+          <td class="b-amt">{_amt_cell(li.get("supply_amount"))}</td>
           {i_base_td}
           {i_esc_td}
-          <td class="b-rate">{_rate_cell(li.get("install_rate"))}</td>{i_disc_tds}
-          <td class="b-amt">{_inr(li.get("install_amount"))}</td>
+          <td class="b-rate">{_rate_cell(li.get("install_rate"), as_is)}</td>{i_disc_tds}
+          <td class="b-amt">{_amt_cell(li.get("install_amount"))}</td>
         </tr>"""
 
     # ── Section subtotal — COMPUTED, never stored ──────────────────────
@@ -1923,6 +2092,13 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       <td class="b-amt">{_inr(ins)}</td>
     </tr>"""
 
+    # A4, on the SCREEN only: the subtotal says what it skipped. Spliced with
+    # no whitespace of its own, so the print — which never passes
+    # `screen_notes` — is byte-identical.
+    skipped = lines_without_amount(boq, code) if screen_notes else 0
+    skip_html = (f'<div class="skip-note">Subtotal ({P.esc(code)}) '
+                 f'{excludes_note(skipped)}</div>' if skipped else "")
+
     return f"""
     <div class="sec-block">
       <div class="sec-head">
@@ -1930,7 +2106,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       </div>
       <div class="sec-wrap">
         <table class="boq-table">{colgroup}{head_html}<tbody>{body}</tbody></table>
-      </div>
+      </div>{skip_html}
     </div>"""
 
 
@@ -2003,9 +2179,24 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
     "line 47 needs a description" would hide the very row it is complaining
     about. The index is what lets the re-render force that one open.
 
-    Rates are stored **as entered**, never recomputed from the escalation:
-    see `_derived_rate`. Amounts *are* computed, always, so a stored amount can
-    never disagree with the rate and quantity printed beside it.
+    Rates are stored **as entered**, never recomputed from the escalation.
+    Amounts *are* computed, always, so a stored amount can never disagree with
+    the rate and quantity printed beside it.
+
+    ⚠ **As it is (6 October 2026, CLIENT_CHANGES.md §0, forty-fifth block,
+      A3/A4) — and ABOUT.md §7 gap 42 is CLOSED by it.** Every box a line
+      carries may be blank: item number, description, unit, quantity, unit
+      rate, base rate, escalation, discount, remark. A blank is stored ABSENT
+      (`None`), a typed 0 as 0, and the amount is quantity × net rate only when
+      both are present (`amount_of()`). The only thing about a line's figures
+      that is still refused is **text typed into a numeric box**
+      (`typed_num()`), named by its line. Unchanged: a negative quantity or
+      rate is refused, a discount outside 0–100 is refused (R3), an HSN/SAC
+      of the wrong shape is refused, and a line in a section that does not
+      exist is refused — none of those is a blank. Rules this pass REMOVED:
+      "Line N needs an item number", "Line N needs a description", a blank
+      quantity or rate stored as 0, a blank escalation beside a base stored as
+      0, and a blank unit rate filled in on the server from base + escalation.
     """
     # The line cap is checked FIRST, before any per-line work. Every other rule
     # here describes one row; this one describes the schedule, and validating
@@ -2060,13 +2251,12 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
         if code not in by_code:
             return [], f"Line {idx} is in section &quot;{P.esc(code)}&quot;, which is not defined above.", idx - 1
 
+        # Both may be blank (A3). A message names the line by its item number,
+        # as it always did — escaped, since the message is rendered as markup
+        # — or by its position when it has none.
         item_no = _item_no(li.get("item_no"))
-        if not item_no:
-            return [], f"Line {idx} needs an item number.", idx - 1
-
         description = str(li.get("description") or "").strip()
-        if not description:
-            return [], f"Line {item_no} needs a description.", idx - 1
+        name = f"Line {P.esc(item_no) if item_no else idx}"
 
         # Keep a well-formed, not-yet-used id verbatim; mint in every other
         # case. Headers get one too: they carry no quantity and nothing claims
@@ -2105,51 +2295,64 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             })
             continue
 
-        # ── Quantities ────────────────────────────────────────────────
-        areas = by_code[code]["areas"]
-        raw_aq = li.get("area_qty") or {}
-        area_qty = {}
-        for a in areas:
-            v = _opt_num(raw_aq.get(a))
-            # Only what was actually entered. A blank means "not on this floor",
-            # which is different from "none of them here".
-            if v is not None:
-                area_qty[a] = v
+        # ── Every numeric box, read as it is (A3) ─────────────────────
+        # Blank → absent, a number → itself, TEXT → refused, naming the line
+        # and the box: the one value refusal left on a line's figures.
+        def num_box(raw, label, pct=False):
+            v, bad = typed_num(raw, pct=pct)
+            if bad:
+                raise _NotANumber(f"{name}: &quot;{P.esc(str(raw).strip()[:40])}&quot; "
+                                  f"in {label} is not a number. Type a number, or leave "
+                                  f"it blank.")
+            return v
 
-        if areas:
-            # With an area breakdown the total IS the breakdown. Letting the two
-            # be typed independently on a *create* form invites a contradiction
-            # at the moment of entry; a client's workbook that already contains
-            # one is the importer's problem to report (Phase 2), not this
-            # form's to reproduce.
-            total_qty = sum(area_qty.values())
-        else:
-            total_qty = _num(li.get("total_qty"))
+        try:
+            # ── Quantities ────────────────────────────────────────────
+            areas = by_code[code]["areas"]
+            raw_aq = li.get("area_qty") or {}
+            area_qty = {}
+            for a in areas:
+                v = num_box(raw_aq.get(a) if isinstance(raw_aq, dict) else None,
+                            f"the {P.esc(a)} quantity")
+                # Only what was actually entered. A blank means "not on this
+                # floor", which is different from "none of them here".
+                if v is not None:
+                    area_qty[a] = v
 
-        if total_qty < 0:
-            return [], f"Line {item_no} has a negative quantity.", idx - 1
+            if areas:
+                # With an area breakdown the total IS the breakdown. Letting the
+                # two be typed independently on a *create* form invites a
+                # contradiction at the moment of entry. No area figure at all is
+                # a BLANK total (A3) — not 0.
+                total_qty = sum(area_qty.values()) if area_qty else None
+            else:
+                total_qty = num_box(li.get("total_qty"), "Total Qty")
 
-        # ── Rates ─────────────────────────────────────────────────────
-        # ⚠ **Escalation and base are OPTIONAL (6 October 2026, the §0
-        #   forty-fourth block, R2).** A line with no base rate and no
-        #   escalation keeps the escalation ABSENT (`None`) — it was stored as
-        #   0.0, a "0% escalation" nobody typed, which a revision then loaded
-        #   back into the box as "0". With a base rate the old reading stands:
-        #   a blank escalation is 0, and a typed unit rate is kept as entered.
-        s_base = _opt_num(li.get("supply_base_rate"))
-        s_pct  = _esc_pct(li.get("supply_escalation_pct"), s_base)
-        s_rate = _opt_num(li.get("supply_rate"))
-        if s_rate is None:
-            s_rate = _derived_rate(s_base, s_pct) or 0.0
+            # ── Rates ─────────────────────────────────────────────────
+            # Base, escalation and unit rate are each stored as entered —
+            # blank absent (A3). ⚠ Nothing is derived on the server any more:
+            # a blank unit rate beside a base rate saves BLANK (it used to be
+            # filled in as base × (1 + esc)), and a blank escalation beside a
+            # base saves blank (it used to be 0). The form still OFFERS the
+            # escalated figure ("suggests … use"), and a cost import still
+            # fills it on load — the thirty-ninth block's ruling.
+            s_base = num_box(li.get("supply_base_rate"), "the supply base rate")
+            s_pct  = num_box(li.get("supply_escalation_pct"), "the supply escalation %", pct=True)
+            s_rate = num_box(li.get("supply_rate"), "the supply unit rate")
+            i_base = num_box(li.get("install_base_rate"), "the installation base rate")
+            i_pct  = num_box(li.get("install_escalation_pct"),
+                             "the installation escalation %", pct=True)
+            i_rate = num_box(li.get("install_rate"), "the installation unit rate")
+            s_gst  = num_box(li.get("supply_gst_rate"), "the supply GST %", pct=True)
+            i_gst  = num_box(li.get("install_gst_rate"), "the installation GST %", pct=True)
+        except _NotANumber as exc:
+            return [], str(exc), idx - 1
 
-        i_base = _opt_num(li.get("install_base_rate"))
-        i_pct  = _esc_pct(li.get("install_escalation_pct"), i_base)
-        i_rate = _opt_num(li.get("install_rate"))
-        if i_rate is None:
-            i_rate = _derived_rate(i_base, i_pct) or 0.0
-
-        if s_rate < 0 or i_rate < 0:
-            return [], f"Line {item_no} has a negative rate.", idx - 1
+        # Negative figures keep the rule they always had: refused.
+        if total_qty is not None and total_qty < 0:
+            return [], f"{name} has a negative quantity.", idx - 1
+        if (s_rate is not None and s_rate < 0) or (i_rate is not None and i_rate < 0):
+            return [], f"{name} has a negative rate.", idx - 1
 
         # The discount per track (R3). Absent unless typed; a typed figure
         # outside 0–100, or one that is not a number, is refused — never read
@@ -2157,9 +2360,7 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
         s_disc, s_bad = disc_value(li.get("supply_disc_pct"))
         i_disc, i_bad = disc_value(li.get("install_disc_pct"))
         if s_bad or i_bad:
-            return [], f"Line {item_no}: {DISC_REFUSAL}.", idx - 1
-        s_net = net_of(s_rate, s_disc)
-        i_net = net_of(i_rate, i_disc)
+            return [], f"{name}: {DISC_REFUSAL}.", idx - 1
 
         hsn = str(li.get("supply_hsn") or "").strip()
         sac = str(li.get("install_sac") or "").strip()
@@ -2167,9 +2368,9 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
         # it. A blank is allowed here and flagged downstream, because the BOQ is
         # priced long before anybody classifies the goods.
         if hsn and not _valid_tax_code(hsn):
-            return [], f"Line {item_no}: HSN must be 4, 6 or 8 digits.", idx - 1
+            return [], f"{name}: HSN must be 4, 6 or 8 digits.", idx - 1
         if sac and not _valid_tax_code(sac):
-            return [], f"Line {item_no}: SAC must be 4, 6 or 8 digits.", idx - 1
+            return [], f"{name}: SAC must be 4, 6 or 8 digits.", idx - 1
 
         row = {
             "line_id":        lid,
@@ -2181,23 +2382,26 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             "remark":         str(li.get("remark") or "").strip(),
             "unit":           str(li.get("unit") or "").strip(),
             "area_qty":       area_qty,
-            "total_qty":      float(total_qty),
+            "total_qty":      total_qty,
 
             "supply_base_rate":      s_base,
             "supply_escalation_pct": s_pct,
-            "supply_rate":           float(s_rate),
-            # quantity × the NET rate (R3) — with no discount the net rate IS
-            # `supply_rate`, unrounded, so this is the figure it always was.
-            "supply_amount":         float(s_net) * float(total_qty),
+            "supply_rate":           s_rate,
+            # quantity × the NET rate (R3) when both are present, else absent
+            # (A4) — with no discount the net rate IS `supply_rate`, unrounded.
+            "supply_amount":         amount_of(total_qty, net_of(s_rate, s_disc)),
             "supply_hsn":            hsn,
-            "supply_gst_rate":       _num(li.get("supply_gst_rate"), DEFAULT_GST_RATE),
+            # GST is not a figure the client's sheet gives (the importer never
+            # reads it): a blank box still takes the house default, as it
+            # always has.
+            "supply_gst_rate":       DEFAULT_GST_RATE if s_gst is None else s_gst,
 
             "install_base_rate":      i_base,
             "install_escalation_pct": i_pct,
-            "install_rate":           float(i_rate),
-            "install_amount":         float(i_net) * float(total_qty),
+            "install_rate":           i_rate,
+            "install_amount":         amount_of(total_qty, net_of(i_rate, i_disc)),
             "install_sac":            sac,
-            "install_gst_rate":       _num(li.get("install_gst_rate"), DEFAULT_GST_RATE),
+            "install_gst_rate":       DEFAULT_GST_RATE if i_gst is None else i_gst,
         }
         # Written ONLY when a figure was typed (0 included): absent is "no
         # discount", and a 0 nobody typed would be a fact nobody stated.
@@ -2213,77 +2417,66 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
 
 
 # =============================================================================
-# FIELDS THAT NEED SOMEBODY — the guided fix on /boq/create (30 Sep 2026)
+# BOXES A REFUSED SAVE FOUND WRONG — on /boq/create (30 Sep 2026; 6 Oct 2026)
 # =============================================================================
 #
 # ⚠ **GUIDANCE ONLY. Nothing here changes what the save accepts** — that is
-#   `_clean_lines()` above, untouched, and it still saves a blank quantity as
-#   0 (ABOUT.md §7 gap 42, deliberately left open). These functions only say
-#   which boxes the page should light up, and they run on the SERVER so a
-#   refused POST re-renders with the same marks the browser was showing.
-#   `_BOQ_JS`'s `needMet()` is the same rule, kept in step by
-#   `tests/test_boq_import_guided.py`.
+#   `_clean_lines()` above. These functions only say which boxes the page
+#   should light up, and they run on the SERVER so a refused POST re-renders
+#   with the same marks the browser was showing. `_BOQ_JS`'s `errMet()` is
+#   the same rule, kept in step by `tests/test_boq_import_guided.py`.
 #
-# Two sources of marks, both UI keys that ride in `boq_json` and never reach
-# a record (`_clean_lines()` builds each line from named keys):
-#   `_need`  what the import asked for — [{"f": field, "m": sentence}]; set
-#            once by boqimport.editor_model() and never rewritten
+# One source of marks, a UI key that rides in `boq_json` and never reaches a
+# record (`_clean_lines()` builds each line from named keys):
 #   `_err`   what THIS refused POST's own per-line rules found — rewritten on
 #            every refused POST, for every line, imported or typed
-# `_needs` is written here on each render: the fields of either that are
-# still unmet.
+# `_needs` is written here on each render: the fields of it still wrong.
 
-def _rate_answered(v) -> bool:
-    """A rate box answers a flag when it holds a number, 0 included — "not
-    priced" is a valid answer (30 September 2026). Blank, "-" and text do not;
-    nor does a negative figure, which the save refuses anyway."""
-    n = _opt_num(v)
-    return n is not None and n >= 0
+# ⚠ **6 October 2026 — the §0 forty-fifth block, A3: NOTHING here marks a
+#   blank any more.** What an import asked for (`_need`), the red quantity
+#   block (`_block`), the "N fields need you" bar, the jump to the first field
+#   on load, the stopped save and "Not priced (₹0)" are all gone: a blank is a
+#   valid saved state, so there is nothing to answer. `_need` and `_block` are
+#   no longer written by the importer and are IGNORED here if an old page
+#   posts them. What is left is `_err` — the boxes a refused save found
+#   WRONG (text in a numeric box, a negative figure, a discount outside 0–100,
+#   an HSN/SAC of the wrong shape, a section that does not exist), never a box
+#   found empty.
 
-
-def _need_met(li: dict, field: str, areas: list) -> bool:
-    """Has `field` on line `li` been given what an import asked of it?
-    A number greater than 0 for a quantity; ANY typed number for a rate,
-    0 included (the client's sheets leave lines unpriced on purpose — a 0 is
-    an answer and only a blank still asks); any text for an item number or a
-    description. A header needs no figure."""
-    if field in ("total_qty", "supply_rate", "install_rate", "rate") and li.get("is_header"):
-        return True
-    if field == "total_qty":
-        if areas:
-            aq = li.get("area_qty") or {}
-            return sum(_opt_num(aq.get(a)) or 0.0 for a in areas) > 0
-        return (_opt_num(li.get("total_qty")) or 0.0) > 0
-    if field in ("supply_rate", "install_rate"):
-        return _rate_answered(li.get(field))
-    if field == "rate":
-        return (_rate_answered(li.get("supply_rate"))
-                or _rate_answered(li.get("install_rate")))
-    return bool(str(li.get(field) or "").strip())
+# The numeric boxes `_clean_lines()` reads with `typed_num()`, and whether each
+# is a percentage (a trailing "%" allowed).
+_NUM_BOXES = (("supply_base_rate", False), ("supply_escalation_pct", True),
+              ("supply_rate", False), ("supply_gst_rate", True),
+              ("install_base_rate", False), ("install_escalation_pct", True),
+              ("install_rate", False), ("install_gst_rate", True))
 
 
 def line_problems(li: dict, sections_by_code: dict) -> list:
     """
     The fields `_clean_lines()` would refuse on this one line, as field names —
-    the SAME rules in the same order, but every one of them rather than the
-    first. Used only to mark boxes on a refused POST; the refusal itself is
-    still `_clean_lines()`'s.
+    the SAME rules, but every one of them rather than the first. Used only to
+    mark boxes on a refused POST; the refusal itself is still
+    `_clean_lines()`'s. **A blank box is never one of them** (A3).
     """
     out = []
     code = str(li.get("section") or "").strip()
     if code not in sections_by_code:
         out.append("section")
-    if not _item_no(li.get("item_no")):
-        out.append("item_no")
-    if not str(li.get("description") or "").strip():
-        out.append("description")
     if li.get("is_header"):
         return out
-    if not (sections_by_code.get(code) or {}).get("areas") and _num(li.get("total_qty")) < 0:
-        out.append("total_qty")
-    for f in ("supply_rate", "install_rate"):
-        v = _opt_num(li.get(f))
-        if v is not None and v < 0:
+    areas = (sections_by_code.get(code) or {}).get("areas") or []
+    if areas:
+        aq = li.get("area_qty") if isinstance(li.get("area_qty"), dict) else {}
+        # An area box carries the quantity's mark (the first one does).
+        if any(typed_num(aq.get(a))[1] for a in areas):
+            out.append("total_qty")
+    else:
+        q, bad = typed_num(li.get("total_qty"))
+        if bad or (q is not None and q < 0):
+            out.append("total_qty")
+    for f, pct in _NUM_BOXES:
+        v, bad = typed_num(li.get(f), pct=pct)
+        if bad or (f in ("supply_rate", "install_rate") and v is not None and v < 0):
             out.append(f)
     # The discount (6 October 2026, R3): `_clean_lines()` refuses a figure
     # outside 0–100 and anything that is not a number.
@@ -2303,10 +2496,13 @@ def _err_met(li: dict, field: str, sections_by_code: dict) -> bool:
 
 def annotate_needs(lines: list, sections: list, with_errors: bool) -> int:
     """
-    Write `_needs` (the fields still unmet) onto every line dict, and — on a
+    Write `_needs` (the boxes still WRONG) onto every line dict, and — on a
     refused POST (`with_errors`) — rewrite `_err` from the posted values.
-    Returns how many fields need somebody. Lines that are not dicts are left
-    alone; `_clean_lines()` skips them too.
+    Returns how many boxes are wrong. Lines that are not dicts are left alone;
+    `_clean_lines()` skips them too.
+
+    ⚠ `_need` (what an import asked for) is IGNORED from 6 October 2026, A3:
+      a blank is never asked about. An import writes none any more.
     """
     by_code = {}
     for s in sections:
@@ -2316,16 +2512,9 @@ def annotate_needs(lines: list, sections: list, with_errors: bool) -> int:
     for li in lines:
         if not isinstance(li, dict):
             continue
-        areas = (by_code.get(str(li.get("section") or "").strip()) or {}).get("areas") or []
         if with_errors:
             li["_err"] = line_problems(li, by_code)
         fields = []
-        for n in li.get("_need") or []:
-            f = n.get("f") if isinstance(n, dict) else None
-            if f in ("item_no", "description", "total_qty", "supply_rate",
-                     "install_rate", "rate") and f not in fields \
-                    and not _need_met(li, f, areas):
-                fields.append(f)
         for f in li.get("_err") or []:
             if isinstance(f, str) and f not in fields and not _err_met(li, f, by_code):
                 fields.append(f)
@@ -2447,6 +2636,12 @@ def list_boqs():
             sup, ins, tot = boq_totals(b)
             n_lines = sum(1 for li in b.get("line_items", []) if not li.get("is_header"))
             n_secs  = len(_sections_of(b))
+            # A4 (6 October 2026, later): a total that skipped lines says so,
+            # on the screen. Only when it did — so a register with no blank in
+            # it renders the bytes it always did (the `/boq/` page golden).
+            n_skip = lines_without_amount(b)
+            skip = (f'<div style="font-size:.72rem;font-weight:400;color:var(--muted);">'
+                    f'{excludes_note(n_skip)}</div>' if n_skip else "")
             rows_html += f"""
             <tr>
               <td class="td-ref">{P.esc(b.get('ref'))}</td>
@@ -2456,7 +2651,7 @@ def list_boqs():
               <td class="td-muted col-h">{n_secs} section{"s" if n_secs != 1 else ""} · {n_lines} line{"s" if n_lines != 1 else ""}</td>
               <td class="td-muted col-h">&#8377;&nbsp;{sup:,.0f}</td>
               <td class="td-muted col-h">&#8377;&nbsp;{ins:,.0f}</td>
-              <td style="font-weight:700;color:var(--brand);">&#8377;&nbsp;{tot:,.0f}</td>
+              <td style="font-weight:700;color:var(--brand);">&#8377;&nbsp;{tot:,.0f}{skip}</td>
               <td><a href="{url_for('boq.view_boq', id=bid)}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
@@ -2527,7 +2722,8 @@ def list_boqs():
     return _page(template)
 
 
-def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
+def _document_html(boq: dict, show_rate_breakup: bool = False,
+                   screen_notes: bool = False) -> str:
     """
     The A4 sheet — letterhead, header block, section tables, totals, signature.
 
@@ -2540,6 +2736,10 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
     signature block — is built once, here. `boq_totals()` recomputes from the
     lines rather than reading the stored trio, so a printed sheet can never
     contradict its own lines (§3, property 7).
+
+    ⚠ `screen_notes` (6 October 2026, A4) — `/boq/view` only — adds the
+      "excludes N lines with no amount" lines under each subtotal and the
+      grand total that skipped any. Never on the print, which does not pass it.
     """
     sup, ins, total = boq_totals(boq)
 
@@ -2558,10 +2758,15 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
     if any_discount(boq, "install"):
         disc_flags["show_i_disc"] = True
 
+    if screen_notes:
+        disc_flags["screen_notes"] = True
     sections_html = "".join(
         _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup, **disc_flags)
         for s in _sections_of(boq)
     )
+    skipped = lines_without_amount(boq) if screen_notes else 0
+    grand_skip = (f'<div class="skip-note">Total {excludes_note(skipped)}</div>'
+                  if skipped else "")
 
     codes    = " + ".join(P.esc(s.get("code")) for s in _sections_of(boq))
     grand_lbl = f"TOTAL ({codes}) &gt;&gt;&gt;&gt;" if codes else "TOTAL &gt;&gt;&gt;&gt;"
@@ -2586,7 +2791,7 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
         </tr>
       </table>
       <div class="boq-words">{_amount_in_words(total)}</div>
-      {tax_note}
+      {tax_note}{grand_skip}
     </div>"""
 
     # ── Header meta, two columns ───────────────────────────────────────
@@ -2943,6 +3148,9 @@ def view_boq(id: str):
                    f'&#128465;&nbsp;Delete</a>')
 
     n_lines = sum(1 for li in boq.get("line_items", []) if not li.get("is_header"))
+    # A4: a total that skipped lines says so — on the screen only.
+    n_skip = lines_without_amount(boq)
+    panel_skip = f" &middot; {excludes_note(n_skip)}" if n_skip else ""
     panel_html = f"""
     <div class="boq-panel">
       <div class="bp-head">
@@ -2964,7 +3172,7 @@ def view_boq(id: str):
         <div class="bp-cell">
           <div class="bp-lbl">Total Basic Value</div>
           <div class="bp-val" style="color:var(--brand);">&#8377;&nbsp;{total:,.0f}</div>
-          <div class="bp-sub">taxes extra</div>
+          <div class="bp-sub">taxes extra{panel_skip}</div>
         </div>
         <div class="bp-cell">
           <div class="bp-lbl">Size</div>
@@ -2975,32 +3183,17 @@ def view_boq(id: str):
       {ra_html}
     </div>"""
 
-    # ── Lines with a quantity and no rate (30 September 2026) ────────────
-    # A soft amber note, never a block: "not priced" is a valid answer — the
-    # client's sheets leave lines unpriced on purpose and foot without them.
-    # Screen only. `.form-hint` is BOQ_STYLES' own hint, already on this
-    # page, and the issued `/boq/print` never draws it (`_document_html()` is
-    # untouched), so no stylesheet and no golden moves. Item numbers restart
-    # per section, so each is listed under its section.
-    unpriced = unpriced_lines(boq)
-    unpriced_html = ""
-    if unpriced:
-        by_sec: dict = {}
-        for sec, ino in unpriced:
-            by_sec.setdefault(sec, []).append(ino)
-        listing = " &middot; ".join(
-            f'<span class="fh-sec">{P.esc(sec) or "?"}</span> '
-            + ", ".join(P.esc(ino) or "&mdash;" for ino in inos)
-            for sec, inos in by_sec.items())
-        n_up = len(unpriced)
-        unpriced_html = (
-            '<div class="form-hint unpriced-note" id="unpriced-note">'
-            '<span class="fh-icon">&#9888;</span>'
-            f'<span><b>{n_up} line{"s have" if n_up != 1 else " has"} a quantity but no '
-            f'rate</b> &mdash; {listing}. '
-            f'{"They print" if n_up != 1 else "It prints"} with a blank rate and 0.00 in '
-            'the amount, and add nothing to the total. Nothing is blocked: a line left '
-            'unpriced on purpose is a valid answer.</span></div>')
+    # ── Blanks, said quietly (6 October 2026, the §0 forty-fifth block, A3) ──
+    # "N lines have no rate, M lines have no quantity" — grey, never amber,
+    # never a block: a blank is what the client wrote. Screen only
+    # (`BOQ_VIEW_STYLES` hides it in print; `/boq/print` never draws it).
+    # ⚠ It REPLACES the 30 September amber note "N lines have a quantity but
+    #   no rate", which read a 0 rate as no rate. A 0 is a rate now (A1), and on
+    #   a record saved before this date a 0 cannot be told from a blank, so it
+    #   is not counted (`lines_not_priced()`).
+    quiet = blank_summary(len(lines_not_priced(boq)), len(lines_without_qty(boq)))
+    unpriced_html = (f'<div class="quiet-note" id="blank-note">{P.esc(quiet)}.</div>'
+                     if quiet else "")
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -3032,7 +3225,7 @@ def view_boq(id: str):
 {panel_html}
 {unpriced_html}
 
-{_document_html(boq, show_rate_breakup=True)}
+{_document_html(boq, show_rate_breakup=True, screen_notes=True)}
 
 <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
 </main></body></html>"""
@@ -3276,17 +3469,13 @@ BOQ_IMPORT_STYLES = """
   .ls-flag { display:inline-block; margin-right:.45rem; padding:0 .4rem;
              border-radius:999px; font-size:.7rem; font-weight:700;
              background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
-  .ls-flag.is-red { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
   .lc-flags { margin:0 0 .8rem; padding:.5rem .7rem .5rem 1.6rem; font-size:.8rem;
               background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; }
-  .lc-flags.is-red { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
-  .form-hint.fh-red { background:#fef2f2; border-color:#fca5a5; border-left-color:#dc2626; }
-  .form-hint.fh-red .fh-icon { color:#dc2626; }
-  .form-hint.fh-red ul { margin:.35rem 0 0 1.1rem; padding:0; }
 
-  /* The guided fix (30 September 2026). A box that needs somebody: a ring
-     and an outer glow in the app's own accent, a "!" badge so the mark does
-     not rest on colour alone, and a soft pulse — off under reduced motion. */
+  /* A box a refused save found WRONG (30 September 2026; from 6 October 2026
+     never a box found empty — A3): a ring and an outer glow in the app's own
+     accent, a "!" badge so the mark does not rest on colour alone, and a soft
+     pulse — off under reduced motion. */
   /* The glow is branding.RED (#D5121A) at partial strength: --brand-lt is
      the pale tint used for surfaces and does not read as a glow on white. */
   .needs { border-color:var(--brand) !important;
@@ -3313,25 +3502,6 @@ BOQ_IMPORT_STYLES = """
                border-radius:999px; font-size:.66rem; font-weight:700;
                letter-spacing:.02em; vertical-align:middle;
                background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
-  /* The bar: sticky under the top bar, where the jump bar would sit — which
-     moves down beneath it while it shows. */
-  .needs-bar { position:sticky; top:60px; z-index:25; display:flex; align-items:center;
-               gap:.6rem; flex-wrap:wrap; margin-bottom:1rem; padding:.55rem .8rem;
-               background:var(--surface, #fff); border:2px solid var(--brand);
-               border-radius:10px; box-shadow:var(--shadow-sm); font-size:.88rem; }
-  .needs-bar .nb-txt { flex:1 1 auto; }
-  .needs-bar .nb-txt b { color:var(--brand); font-size:1rem; }
-  .needs-bar .nb-bang, .needs-bar .nb-ok { width:1.4rem; height:1.4rem; border-radius:50%;
-               display:inline-flex; align-items:center; justify-content:center;
-               font-weight:800; color:#fff; background:var(--brand); flex:none; }
-  .needs-bar.is-done { border-color:#16a34a; }
-  .needs-bar.is-done .nb-ok { background:#16a34a; }
-  .needs-bar.is-done .nb-txt b { color:#15803d; }
-  form.needs-on .jump-bar { top:120px; }
-  .imp-need-link { color:var(--brand); font-weight:600; }
-  .needs-bar .nb-where { margin-left:.5rem; color:var(--muted); font-weight:500; }
-  .needs-bar .nb-units { margin-left:.5rem; color:#92400e; font-weight:600; }
-
   /* What a child line belongs to (30 September 2026): the collapsed header's
      "<parent> ›", and the strip above Description — its text clamped to two
      lines, a click opens it. A parent that cannot be found is soft amber. */
@@ -3358,19 +3528,13 @@ BOQ_IMPORT_STYLES = """
   .lc-flags .lc-flags-ctx { list-style:none; margin-left:-.9rem; font-weight:700;
                             color:var(--navy); }
 
-  /* "Not priced" — an answer, so grey and never amber or red. */
-  .chip-np { display:inline-block; margin-right:.45rem; padding:0 .4rem;
-             border-radius:999px; font-size:.7rem; font-weight:700;
-             background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
-  .np-btn { display:inline-block; margin-top:.35rem; font-size:.72rem; font-weight:600;
-            color:#475569; background:#f8fafc; border:1px solid #cbd5e1;
-            border-radius:6px; padding:.2rem .55rem; cursor:pointer; }
-  .np-btn:hover { background:#e2e8f0; }
-
-  /* A unit the sheet did not give: a SOFT outline — never a block, never a
-     ring, not counted among the fields that need you. */
-  input.unit-soft { border-color:#fbbf24; box-shadow:0 0 0 2px rgba(251,191,36,.28);
-                    background:#fffbeb; }
+  /* The quiet note (6 October 2026, the §0 forty-fifth block, A3): "N lines
+     have no rate, M lines have no quantity". Grey — a blank is an answer. It
+     replaced the red band, the "Not priced (₹0)" button and the soft amber
+     ring on a blank unit, each a mark on a blank. */
+  .quiet-note { margin:0 0 1rem; padding:.45rem .8rem; font-size:.82rem;
+                color:var(--muted); background:var(--surface, #f8fafc);
+                border:1px solid var(--border); border-radius:8px; }
   .lc-kidunit { display:flex; flex-wrap:wrap; align-items:end; gap:.6rem;
                 margin-top:.8rem; padding:.5rem .6rem; border:1px dashed var(--border);
                 border-radius:8px; background:var(--surface); }
@@ -3581,25 +3745,52 @@ function discNum(v) {
   return (isFinite(n) && n >= 0 && n <= 100) ? n : NaN;
 }
 
-/* Python's round(x, 2): the nearest paisa on the exact binary value, and a
-   TRUE tie (x × 8 a whole number, x × 100 ending in .5) to the even paisa —
-   2.125 rounds to 2.12. toFixed() rounds a tie up, so ties are caught first. */
+/* Excel's ROUND (6 October 2026, the §0 forty-fifth block, A8) — boq.py's
+   round_half_up(): the figure to 15 significant digits, then a half rounds
+   AWAY from zero, worked on the DIGITS so binary noise cannot move it:
+   2.125 -> 2.13, and 5.025 (5.0249999… in binary) -> 5.03. It replaced
+   Python's round() here (half to even, 2.125 -> 2.12), which gave a figure
+   the client's Excel sheet does not show. */
 function round2(x) {
-  var e = x * 8;
-  if (e === Math.floor(e)) {
-    var c = e * 12.5, f = Math.floor(c);
-    if (c - f === 0.5) return (f % 2 === 0 ? f : f + 1) / 100;
+  if (!isFinite(x)) return x;
+  var neg = x < 0, s = Math.abs(x).toPrecision(15);
+  if (s.indexOf('e') >= 0) { var v0 = Number(Math.abs(x).toFixed(2)); return neg ? -v0 : v0; }
+  var p = s.split('.'), ip = p[0], fp = (p[1] || '') + '000';
+  var digits = (ip + fp.slice(0, 2)).split('');
+  if (fp.charAt(2) >= '5') {
+    var k = digits.length - 1;
+    while (k >= 0) {
+      if (digits[k] === '9') { digits[k] = '0'; k--; continue; }
+      digits[k] = String(Number(digits[k]) + 1);
+      break;
+    }
+    if (k < 0) digits.unshift('1');
   }
-  return Number(x.toFixed(2));
+  var all = digits.join('');
+  var v = Number(all.slice(0, -2) + '.' + all.slice(-2));
+  return neg ? -v : v;
 }
 
+/* A box as the server's typed_num() reads it: null for blank or a dash (A3:
+   absent, never 0), else the number. */
+function boxNum(v) { return typedNum(v); }
+
 /* What the line is billed at on this leg: the unit rate less its discount,
-   to the paisa — or the unit rate untouched when there is none. */
+   to the paisa — or the unit rate untouched when there is none. A BLANK unit
+   rate is no net rate: null (A4), never 0. */
 function netRate(L, leg) {
-  var unit = num(L[leg + '_rate']);
+  var u = boxNum(L[leg + '_rate']);
+  if (u === null) return null;
   var d = discNum(L[leg + '_disc_pct']);
-  if (d === null || isNaN(d) || d === 0) return unit;
-  return round2(unit * (100 - d) / 100);
+  if (d === null || isNaN(d) || d === 0) return u;
+  return round2(u * (100 - d) / 100);
+}
+
+/* A line's amount on one leg (A4): quantity x net rate when BOTH are present,
+   else null — boq.py's amount_of(). */
+function amountOf(L, leg) {
+  var q = boxNum(qtyOf(L)), n = netRate(L, leg);
+  return (q === null || n === null) ? null : q * n;
 }
 
 function secOptions(cur) {
@@ -3765,7 +3956,7 @@ function rateRow(i, label, leg, L, phBase, phPct, phRate, hintId, phDisc) {
     +   cell(i, pct, L[pct], phPct, label + ' escalation %') + '</div>'
     + '<div class="lc-rc' + needWrap(i, rate) + '" data-lbl="Unit rate">'
     +   cell(i, rate, L[rate], phRate, label + ' unit rate')
-    +   '<div class="derived" id="' + hintId + i + '"></div>' + npBtn(i, L, rate) + '</div>'
+    +   '<div class="derived" id="' + hintId + i + '"></div></div>'
     + '<div class="lc-rc' + needWrap(i, disc) + '" data-lbl="Disc %">'
     +   cell(i, disc, L[disc], phDisc || 'disc %', label + ' discount %')
     +   '<div class="derived" id="' + (leg === 'supply' ? 'sn' : 'in') + i + '"></div></div>';
@@ -3785,17 +3976,16 @@ function netHint(i) {
     if (d !== null && isNaN(d)) {
       txt = 'a discount is a % from 0 to 100';
     } else if (d) {
-      var n = netRate(L, legs[p][1]);
-      txt = 'net <b>' + (money(n) || '0.00') + '</b> &#183; amount '
-          + (money(n * num(qtyOf(L))) || '0.00');
+      var n = netRate(L, legs[p][1]), a = amountOf(L, legs[p][1]);
+      /* A blank rate or quantity has no net rate or no amount: said so. */
+      txt = n === null ? 'no unit rate'
+          : 'net <b>' + (money(n) || '0.00') + '</b> &#183; amount '
+            + (a === null ? 'none (no quantity)' : (money(a) || '0.00'));
     }
     box.innerHTML = txt;
   }
 }
 
-/* An imported line's unit-rate box: "type rate" while the import is asking
-   for it, "rate" otherwise. */
-function ratePh(i, key) { return needFor(i, key) ? 'type rate' : 'rate'; }
 
 /* The fields behind the panel's fold, and the one-line summary its <summary>
    shows while closed. The summary is rendered from MODEL and re-patched by
@@ -3911,6 +4101,15 @@ function childrenOf(i) {
 function money(v) {
   var n = num(v);
   if (!n) return '';
+  return n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+/* A figure AS IT IS (A5): blank for null, and a 0 is "0.00" — money() shows
+   a 0 as nothing, which on a line's own rate would read as a blank. */
+function figure2(v) {
+  if (v === null || v === undefined || v === '') return '';
+  var n = Number(v);
+  if (!isFinite(n)) return '';
   return n.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
@@ -4040,33 +4239,24 @@ function refreshCtx() {
   }
 }
 
-/* ── Import flags (Import BOQ from Excel, 29 September 2026) ──────────────
-   A line opened from an uploaded workbook may carry `_flags` (sentences about
-   cells the reader could not take as a number) and `_block` (its QUANTITY was
-   one of them, so it arrived blank). Both are UI state: they ride inside
-   `boq_json` like `_open`, survive a rejected POST, and never reach the record
-   because `_clean_lines()` builds each line from named keys.
+/* ── Import notes (Import BOQ from Excel, 29 September 2026) ──────────────
+   A line opened from an uploaded workbook may carry `_flags` — what the
+   reader said about the row: the sheet's amount against the BOQ's, a lump
+   sum to look at. UI state: it rides inside `boq_json` like `_open`, survives
+   a rejected POST, and never reaches the record because `_clean_lines()`
+   builds each line from named keys.
 
-   A blocked line is RED and the form will not submit while its quantity is
-   blank. The server would save a blank quantity as 0 (ABOUT.md §7 gap 42),
-   and an RA bill cannot claim against a line approved at 0 — so "NA" or a
-   word on the client's sheet must become a figure somebody typed, never a 0
-   nobody did. ("RO" is the exception from 1 October 2026: the sheet SAYS
-   rate only, so it arrives at 0 with a "rate only" chip and is not blocked.) */
-function isBlocked(L) {
-  return !!(L && L._block && !L.is_header && String(qtyOf(L)).trim() === '');
-}
-
+   ⚠ **No line is RED and nothing stops the save any more** (6 October 2026,
+   the §0 forty-fifth block, A3). `_block` — "the sheet gave no quantity as a
+   number, so the form will not submit until one is typed" — is gone with the
+   rule behind it: a blank quantity now saves BLANK (ABOUT.md §7 gap 42,
+   closed), and an import no longer writes the key. A note is amber, and only
+   a note. */
 function flagChip(L) {
   var f = L._flags || [];
-  if (!f.length && !L._block) return '';
-  if (isBlocked(L)) {
-    return '<span class="ls-flag is-red" title="' + esc(f.join('\\n')) + '">'
-      + '&#9888; quantity needed</span>';
-  }
   if (!f.length) return '';
   return '<span class="ls-flag" title="' + esc(f.join('\\n')) + '">&#9873; '
-    + f.length + ' flag' + (f.length === 1 ? '' : 's') + '</span>';
+    + f.length + ' note' + (f.length === 1 ? '' : 's') + '</span>';
 }
 
 /* The one-line summary — enough to scan a schedule and spot a wrong line.
@@ -4083,12 +4273,12 @@ function lineSummary(i, L) {
     +   '<span class="ls-no">' + esc(L.item_no || '—') + srcChip(L) + '</span>'
     +   '<span class="ls-ctx' + (c && c.missing ? ' is-miss' : '') + '" id="lsc' + i + '">'
     +     ctxSummary(c) + '</span>'
-    +   '<span class="ls-desc">' + flagChip(L) + npSlot(i, L) + esc(trunc(L.description, 96)) + '</span>'
+    +   '<span class="ls-desc">' + flagChip(L) + esc(trunc(L.description, 96)) + '</span>'
     +   (L.is_header
         ? '<span class="ls-tag">spec' + (kids.length ? ' · ' + kids.length + ' items' : '') + '</span>'
         : '<span class="ls-qty">' + esc(qty) + (qty ? ' ' + esc(L.unit || '') : '') + '</span>'
-          + '<span class="ls-rate">' + money(netRate(L, 'supply')) + '</span>'
-          + '<span class="ls-rate">' + money(netRate(L, 'install')) + '</span>')
+          + '<span class="ls-rate">' + figure2(netRate(L, 'supply')) + '</span>'
+          + '<span class="ls-rate">' + figure2(netRate(L, 'install')) + '</span>')
     + '</div>';
 }
 
@@ -4128,7 +4318,7 @@ function lineBody(i, L) {
       fl += '<li class="lc-flags-ctx" id="fctx' + i + '">' + whereOf(i) + '</li>';
     }
     for (var q = 0; q < L._flags.length; q++) fl += '<li>' + esc(L._flags[q]) + '</li>';
-    h += '<ul class="lc-flags' + (isBlocked(L) ? ' is-red' : '') + '">' + fl + '</ul>';
+    h += '<ul class="lc-flags">' + fl + '</ul>';
   }
 
   /* Where it sits, then what it is. The picker leads the description because
@@ -4197,10 +4387,9 @@ function lineBody(i, L) {
       +  '<input type="text" value="' + esc(L.total_qty) + '"'
       +  ' oninput="setLine(' + i + ',&quot;total_qty&quot;,this.value)"' + needAttr(i, 'total_qty') + '/></div>';
   }
-  /* An imported line whose sheet gave no unit gets a SOFT amber outline — it
-     never blocks, and it is not one of the fields that need you. */
-  h += fld(i, 'unit', 'Unit', L.unit, imp ? 'unit' : 'Mtrs', 'lc-area',
-           unitSoft(L) ? 'unit-soft' : '');
+  /* A blank unit is a blank unit (A3): no outline. The soft amber ring an
+     imported line used to get here was a mark on a blank, and is gone. */
+  h += fld(i, 'unit', 'Unit', L.unit, imp ? 'unit' : 'Mtrs', 'lc-area');
   if (!areas.length) {
     h += '<span class="lc-none">This section declares no areas '
       +  '&#8212; the total stands alone.</span>';
@@ -4209,16 +4398,17 @@ function lineBody(i, L) {
 
   /* Rates as one small table — two legs down, three figures across — so the
      eye reads a grid rather than ten labelled boxes. */
-  /* An imported line's blank boxes say what goes in them in words, and a
-     ringed one says "type rate": grey example figures on a blank or flagged
-     box read as values already filled in. The typed form keeps its examples. */
+  /* An imported line's blank boxes say what goes in them in words: grey
+     example figures on a blank box read as values already filled in. The
+     typed form keeps its examples. (A ringed rate box used to say "type
+     rate" — there is no such ring any more, A3.) */
   h += '<div class="lc-rates">'
     +   '<div class="lc-rh">Rates</div><div class="lc-rh">Base rate</div>'
     +   '<div class="lc-rh">Escalation %</div><div class="lc-rh">Unit rate</div>'
     +   '<div class="lc-rh">Disc %</div>'
     +   (imp
-        ? rateRow(i, 'Supply', 'supply', L, 'rate', 'esc %', ratePh(i, 'supply_rate'), 'sd', 'disc %')
-          + rateRow(i, 'Installation', 'install', L, 'rate', 'esc %', ratePh(i, 'install_rate'), 'id', 'disc %')
+        ? rateRow(i, 'Supply', 'supply', L, 'rate', 'esc %', 'rate', 'sd', 'disc %')
+          + rateRow(i, 'Installation', 'install', L, 'rate', 'esc %', 'rate', 'id', 'disc %')
         : rateRow(i, 'Supply', 'supply', L, '1760  or  -', '15', '2024', 'sd', 'disc %')
           + rateRow(i, 'Installation', 'install', L, '1200  or  -', '0', '1200', 'id', 'disc %'))
     + '</div>';
@@ -4259,18 +4449,22 @@ function lineCard(i, L, extraClass) {
     + '</div>';
 }
 
+/* [supply, installation, lines with no amount] for one section. At the NET
+   rate (R3); PRESENT amounts only (A4) — a line with a blank quantity or a
+   blank rate adds nothing, and one with no amount on EITHER track is counted
+   so the bar can say the total skipped it (boq.py's lines_without_amount()). */
 function sectionTotals(code) {
-  var s = 0, ins = 0;
+  var s = 0, ins = 0, skip = 0;
   var idx = linesOf(code);
   for (var k = 0; k < idx.length; k++) {
     var L = MODEL.lines[idx[k]];
     if (L.is_header) continue;
-    var q = num(qtyOf(L));
-    /* At the NET rate (R3) — with no discount, netRate() is num(rate). */
-    s += netRate(L, 'supply') * q;
-    ins += netRate(L, 'install') * q;
+    var a = amountOf(L, 'supply'), b = amountOf(L, 'install');
+    if (a !== null) s += a;
+    if (b !== null) ins += b;
+    if (a === null && b === null) skip++;
   }
-  return [s, ins];
+  return [s, ins, skip];
 }
 
 function renderLines() {
@@ -4291,7 +4485,8 @@ function renderLines() {
       +     '<span class="ls-chev">' + (isOpen(S) ? '▾' : '▸') + '</span>'
       +     '<span class="sb-code">' + esc(S.code || '?') + '</span>'
       +     '<span class="sb-title">' + esc(trunc(S.title, 74) || '(untitled section)') + '</span>'
-      +     '<span class="sb-count">' + idx.length + ' line' + (idx.length === 1 ? '' : 's') + '</span>'
+      +     '<span class="sb-count">' + idx.length + ' line' + (idx.length === 1 ? '' : 's')
+      +       (tot[2] ? ' &middot; total excludes ' + tot[2] + ' with no amount' : '') + '</span>'
       +     '<span class="ls-rate">' + money(tot[0]) + '</span>'
       +     '<span class="ls-rate">' + money(tot[1]) + '</span>'
       +   '</div>';
@@ -4341,8 +4536,7 @@ function renderLines() {
   PAR = null;
   el('line-editor').innerHTML = h;
   renderJump();
-  renderNeedsBar();
-  renderImportBlock();
+  renderBlankNote();
   renderDupWarn();
   renderZeroQty();
   for (var k4 = 0; k4 < MODEL.lines.length; k4++) {
@@ -4488,8 +4682,10 @@ function renderZeroQty() {
     if (L.is_header) continue;
     priced++;
     /* The same resolution `lineSummary()` and `sectionTotals()` use: with an
-       area breakdown the total IS the breakdown, so read it from the boxes. */
-    if (num(qtyOf(L)) === 0) n++;
+       area breakdown the total IS the breakdown, so read it from the boxes.
+       ⚠ A TYPED 0 only (6 October 2026, A3): a blank quantity is no
+       quantity, not 0, and is counted by the quiet note instead. */
+    if (boxNum(qtyOf(L)) === 0) n++;
   }
 
   if (!n || !priced) { box.innerHTML = ''; return; }
@@ -4509,38 +4705,39 @@ function renderZeroQty() {
   + '</div>';
 }
 
-/* ── Fields that need somebody — the guided fix (30 September 2026) ─────
-   A line may carry `_need` (what an import asked for, set once by
-   boqimport.editor_model()) and `_err` (what the last refused save found on
-   it, rewritten by the server on every refused POST). `needsOf()` is the
-   fields of either that are still unmet; each such box is RINGED, glows,
-   carries a "!" badge and pulses (not under reduced motion), and the sticky
-   bar at the top of the form counts them with Prev / Next.
+/* ── Boxes a refused save found WRONG — never a box found empty ──────────
+   ⚠ **6 October 2026, CLIENT_CHANGES.md §0, forty-fifth block, A3.** This
+   used to be "the guided fix": every field an import asked for (`_need`) was
+   RINGED, glowed, pulsed and carried a "!" badge, a sticky bar counted
+   "N fields need you" with Prev / Next, a form opened from an import jumped
+   to the first one, Save was stopped while any was blank, and a rate could be
+   answered "Not priced (₹0)". All of that existed because a value was BLANK,
+   and a blank is now a valid answer — so all of it is gone, and `_need` is
+   ignored if an old page posts it.
 
-   GUIDANCE ONLY. The server validates whatever arrives exactly as it always
-   has (ABOUT.md §7 gap 42 is deliberately still open). `needMet()` and
-   `errMet()` are boq.py's `_need_met()` and `line_problems()`, rule for
-   rule, and tests/test_boq_import_guided.py holds the two in step. */
+   What is left is `_err`: the boxes the server's last refused save found
+   WRONG — text typed into a numeric box, a negative figure, a discount
+   outside 0–100, an HSN/SAC of the wrong shape, a section that no longer
+   exists — plus the Date and Project Name when blank, the two header boxes
+   that still stop a save. Each is ringed until it is put right; Save takes
+   the user to the first one still wrong instead of posting a form the server
+   will refuse again. `errMet()` is boq.py's `line_problems()` rule for rule,
+   and tests/test_boq_import_guided.py holds the two in step. */
 var NEED_ORDER = ['section', 'item_no', 'description', 'total_qty', 'rate',
-                  'supply_rate', 'install_rate', 'supply_disc_pct', 'install_disc_pct',
-                  'supply_hsn', 'install_sac'];
-var MARK_KEYS = ['section', 'item_no', 'description', 'total_qty',
-                 'supply_rate', 'install_rate', 'supply_disc_pct', 'install_disc_pct',
-                 'supply_hsn', 'install_sac'];
-var NEED_AT = -1;          /* where Prev / Next last took the user */
-var NEEDS_SEEN = false;    /* once shown, the bar stays to say "All filled" */
+                  'supply_base_rate', 'supply_escalation_pct', 'supply_rate',
+                  'install_base_rate', 'install_escalation_pct', 'install_rate',
+                  'supply_disc_pct', 'install_disc_pct',
+                  'supply_hsn', 'supply_gst_rate', 'install_sac', 'install_gst_rate'];
+var MARK_KEYS = ['section', 'total_qty',
+                 'supply_base_rate', 'supply_escalation_pct', 'supply_rate',
+                 'install_base_rate', 'install_escalation_pct', 'install_rate',
+                 'supply_disc_pct', 'install_disc_pct',
+                 'supply_hsn', 'supply_gst_rate', 'install_sac', 'install_gst_rate'];
+var NEED_AT = -1;          /* where the last jump took the user */
 var TAX_CODE = /^(?:\\d{4}|\\d{6}|\\d{8})$/;
 
-/* A typed figure as the server's _opt_num() reads it: blank, "-" or text is 0. */
-function figure(v) {
-  var s = String(v == null ? '' : v).replace(/,/g, '').trim();
-  if (s === '') return 0;
-  var n = Number(s);
-  return isFinite(n) ? n : 0;
-}
-
-/* The same, keeping BLANK apart from 0: null for blank, a dash or text —
-   exactly what _opt_num() returns None for. */
+/* A typed figure, keeping BLANK apart from 0: null for blank, a dash or text —
+   exactly what boq.py's typed_num() returns None for. */
 function typedNum(v) {
   var s = String(v == null ? '' : v).replace(/,/g, '').trim();
   if (s === '' || s === '-' || s === '--' || s === '\\u2014' || s === '\\u2013') return null;
@@ -4549,122 +4746,23 @@ function typedNum(v) {
   return isFinite(n) ? n : null;
 }
 
-/* A rate box answers a flag when it holds a number, 0 INCLUDED (30 September
-   2026): the client's sheets leave lines unpriced on purpose and their totals
-   add up without them, so "not priced" is an answer. Only a blank still asks.
-   A negative figure does not answer — the save refuses it. `_rate_answered()`
-   in boq.py is the same rule. */
-function rateAnswered(v) { var n = typedNum(v); return n !== null && n >= 0; }
-
-function needMet(L, f) {
-  if (L.is_header && (f === 'total_qty' || f === 'rate'
-                      || f === 'supply_rate' || f === 'install_rate')) return true;
-  if (f === 'total_qty') {
-    var areas = (secByCode(L.section) || {}).areas || [];
-    if (areas.length) {
-      var t = 0;
-      for (var a = 0; a < areas.length; a++) t += figure((L.area_qty || {})[areas[a]]);
-      return t > 0;
-    }
-    return figure(L.total_qty) > 0;
-  }
-  if (f === 'supply_rate' || f === 'install_rate') return rateAnswered(L[f]);
-  if (f === 'rate') return rateAnswered(L.supply_rate) || rateAnswered(L.install_rate);
-  return String(L[f] == null ? '' : L[f]).trim() !== '';
+/* Is this box TEXT the save will refuse? boq.py's typed_num()[1]: blank and a
+   dash are fine (absent), a number is fine (a trailing "%" on a percentage
+   box), anything else is not a number. */
+function numBad(v, pct) {
+  var s = String(v == null ? '' : v).replace(/,/g, '').trim();
+  if (pct && s.charAt(s.length - 1) === '%') s = s.slice(0, -1).trim();
+  if (s === '' || s === '-' || s === '--' || s === '\\u2014' || s === '\\u2013') return false;
+  if (/^[+-]?0[xob]/i.test(s)) return true;
+  return !isFinite(Number(s));
 }
 
-/* ── "Not priced" — a valid answer to a rate flag (30 September 2026) ──────
-   Every rate the import asked for gets a "Not priced (₹0)" button beside its
-   ringed box. It types 0 into THAT box — the flagged track; a "rate" need
-   (either track) marks the supply one — which answers the flag like any typed
-   number, and the line then carries a grey "not priced" chip. The server
-   saves a 0 rate exactly as it always has: the line prints its quantity, a
-   blank rate and 0.00 in the amount. */
-var RATE_NEEDS = {rate: 1, supply_rate: 1, install_rate: 1};
+var PCT_BOX = {supply_escalation_pct: 1, install_escalation_pct: 1,
+               supply_gst_rate: 1, install_gst_rate: 1};
 
-/* The boxes an import's rate needs on this line mark: supply_rate and/or
-   install_rate. */
-function rateNeedKeys(L) {
-  var out = [], need = (L && L._need) || [];
-  for (var k = 0; k < need.length; k++) {
-    var f = need[k] && need[k].f;
-    if (!RATE_NEEDS[f]) continue;
-    var key = needKeyOf(f);
-    if (out.indexOf(key) < 0) out.push(key);
-  }
-  return out;
-}
-
-/* Answered as not priced: every rate the import asked for is answered, and
-   answered with 0 — on the flagged track, or on both for "either track". */
-function isNotPriced(L) {
-  if (!L || L.is_header) return false;
-  var need = L._need || [], any = false;
-  for (var k = 0; k < need.length; k++) {
-    var f = need[k] && need[k].f;
-    if (!RATE_NEEDS[f]) continue;
-    any = true;
-    if (!needMet(L, f)) return false;
-    if (f === 'rate') {
-      if (typedNum(L.supply_rate) || typedNum(L.install_rate)) return false;
-    } else if (typedNum(L[f])) {
-      return false;
-    }
-  }
-  return any;
-}
-
-function notPricedCount() {
-  var n = 0;
-  for (var i = 0; i < MODEL.lines.length; i++) if (isNotPriced(MODEL.lines[i])) n++;
-  return n;
-}
-
-function npChip(L) {
-  return isNotPriced(L)
-    ? '<span class="chip-np" title="Answered: not priced &#8212; saved at &#8377;0">not priced</span>'
-    : '';
-}
-
-/* The chip's place on the collapsed row — only on a line an import asked a
-   rate of, so every other row is exactly what it was. */
-function npSlot(i, L) {
-  if (!rateNeedKeys(L).length) return '';
-  return '<span class="np-slot" id="nps' + i + '">' + npChip(L) + '</span>';
-}
-
-/* The button, drawn under the unit-rate box of every track an import asked a
-   rate of, and hidden while that box is answered — so clearing the box brings
-   it back without a re-render. */
-function npBtn(i, L, key) {
-  if (rateNeedKeys(L).indexOf(key) < 0) return '';
-  return '<button type="button" class="np-btn" id="np' + i + '-' + key + '"'
-    + (needFor(i, key) ? '' : ' style="display:none;"')
-    + ' onclick="setNotPriced(' + i + ',&quot;' + key + '&quot;)"'
-    + ' title="Left unpriced on purpose: save this rate as 0">Not priced (&#8377;0)</button>';
-}
-
-function setNotPriced(i, key) {
-  var L = MODEL.lines[i];
-  if (!L) return;
-  L[key] = '0';
-  delete autoMap(L)[key];
-  renderLines();
-}
-
-/* ── Units the sheet did not give (30 September 2026) ─────────────────────
-   An imported line whose unit is blank gets a SOFT amber outline on its Unit
-   box. It never blocks the save and is NOT one of the fields that need you;
-   the bar carries a separate "· N units blank". Nothing is normalised and no
-   unit is inferred from a description. `_row` (the sheet row) is on every
-   line an import wrote and on no other. */
+/* Is this line imported? `_row` (the sheet row) is on every line an import
+   wrote and on no other. Its blank boxes say what goes in them in words. */
 function isImported(L) { return !!L && L._row !== undefined && L._row !== null && L._row !== ''; }
-function unitSoft(L) { return isImported(L) && !L.is_header && trimmed(L.unit) === ''; }
-function unitsBlank() {
-  var n = 0;
-  for (var i = 0; i < MODEL.lines.length; i++) if (unitSoft(MODEL.lines[i])) n++;
-  return n;
-}
 
 /* "Unit for all N sizes" — on every line with children: one unit box (the
    line's own widget) and Apply, which fills ONLY the children whose unit is
@@ -4712,14 +4810,29 @@ function applyKidUnit(i) {
 
 function errMet(L, f) {
   if (f === 'section') return !!secByCode(String(L.section || '').trim());
-  if (f === 'item_no' || f === 'description') return String(L[f] == null ? '' : L[f]).trim() !== '';
+  /* A blank item number or description is a valid answer (A3). */
+  if (f === 'item_no' || f === 'description') return true;
   if (L.is_header) return true;
   if (f === 'total_qty') {
     var sec = secByCode(String(L.section || '').trim());
-    if (sec && sec.areas && sec.areas.length) return true;
-    return figure(L.total_qty) >= 0;
+    if (sec && sec.areas && sec.areas.length) {
+      for (var a = 0; a < sec.areas.length; a++) {
+        if (numBad((L.area_qty || {})[sec.areas[a]], false)) return false;
+      }
+      return true;
+    }
+    if (numBad(L.total_qty, false)) return false;
+    var q = typedNum(L.total_qty);
+    return q === null || q >= 0;
   }
-  if (f === 'supply_rate' || f === 'install_rate') return figure(L[f]) >= 0;
+  if (f === 'supply_rate' || f === 'install_rate') {
+    if (numBad(L[f], false)) return false;
+    var r = typedNum(L[f]);
+    return r === null || r >= 0;
+  }
+  if (f === 'supply_base_rate' || f === 'install_base_rate' || PCT_BOX[f]) {
+    return !numBad(L[f], !!PCT_BOX[f]);
+  }
   /* boq.py's disc_value(): blank or a dash is no discount, 0–100 is one, and
      anything else is refused on save (6 October 2026, R3). */
   if (f === 'supply_disc_pct' || f === 'install_disc_pct') return !isNaN(discNum(L[f]));
@@ -4733,12 +4846,6 @@ function errMet(L, f) {
 function needsOf(L) {
   var out = [], k, f;
   if (!L) return out;
-  var need = L._need || [];
-  for (k = 0; k < need.length; k++) {
-    f = need[k] && need[k].f;
-    if (NEED_ORDER.indexOf(f) < 0 || out.indexOf(f) >= 0) continue;
-    if (!needMet(L, f)) out.push(f);
-  }
   var err = L._err || [];
   for (k = 0; k < err.length; k++) {
     f = err[k];
@@ -4749,7 +4856,7 @@ function needsOf(L) {
   return out;
 }
 
-/* Which rendered box carries a need: "rate" (either unit rate) marks the
+/* Which rendered box carries a mark: "rate" (either unit rate) marks the
    supply one. */
 function needKeyOf(f) { return f === 'rate' ? 'supply_rate' : f; }
 
@@ -4793,28 +4900,14 @@ function toggleMark(e, f) {
 }
 
 /* A value was typed: re-mark this line's boxes WITHOUT a re-render, which
-   would take the caret with it, and recount. The "Not priced" buttons, the
-   chip and the soft unit outline follow the same way. */
+   would take the caret with it. A box put right loses its ring. */
 function refreshNeeds(i) {
   for (var k = 0; k < MARK_KEYS.length; k++) {
     toggleMark(markedEl(i, MARK_KEYS[k]), needFor(i, MARK_KEYS[k]));
   }
-  var L = MODEL.lines[i];
-  var rk = ['supply_rate', 'install_rate'];
-  for (var r = 0; r < rk.length; r++) {
-    var b = el('np' + i + '-' + rk[r]);
-    if (b && b.style) b.style.display = needFor(i, rk[r]) ? '' : 'none';
-  }
-  var slot = el('nps' + i);
-  if (slot) slot.innerHTML = npChip(L);
-  var u = markedEl(i, 'unit');
-  if (u && u.classList) {
-    if (unitSoft(L)) u.classList.add('unit-soft'); else u.classList.remove('unit-soft');
-  }
-  renderNeedsBar();
 }
 
-/* Form fields the server marked on a refused save (project, customer, date). */
+/* Form fields the server marked on a refused save (the date, the project). */
 function formNeeds() {
   var out = [];
   if (!document.querySelectorAll) return out;
@@ -4832,76 +4925,6 @@ function needList() {
     for (var k = 0; k < n.length; k++) out.push({i: i, f: n[k]});
   }
   return out;
-}
-
-/* The words the bar names a field by. */
-var NEED_LABEL = {section: 'section', item_no: 'item no.', description: 'description',
-                  total_qty: 'qty', rate: 'rate', supply_rate: 'supply rate',
-                  install_rate: 'installation rate', supply_disc_pct: 'supply disc %',
-                  install_disc_pct: 'installation disc %', supply_hsn: 'HSN', install_sac: 'SAC'};
-var FORM_LABEL = {date: 'Date', project_name: 'Project name', account_name: 'Account name'};
-
-/* Where Prev / Next last took the user, as the field itself — {i, f} or
-   {el} — rather than a position in a list that shrinks as fields are
-   answered. */
-var CUR = null;
-
-function sameNeed(a, b) {
-  if (!a || !b) return false;
-  return a.el ? a.el === b.el : (!b.el && a.i === b.i && a.f === b.f);
-}
-
-function curIndex(list) {
-  for (var k = 0; k < list.length; k++) if (sameNeed(list[k], CUR)) return k;
-  return -1;
-}
-
-/* "4 of 11 · C 3.a Clean Agent (HFC-236)… › 2Kg · rate" — where the user is. */
-function whereNeed(t) {
-  if (t.el) {
-    var key = t.el.getAttribute ? t.el.getAttribute('data-needs-form') : '';
-    return esc(FORM_LABEL[key] || key || 'a form field');
-  }
-  return whereOf(t.i) + ' &middot; ' + esc(NEED_LABEL[t.f] || t.f);
-}
-
-function renderNeedsBar() {
-  var box = el('needs-bar');
-  if (!box) return;
-  var list = needList(), n = list.length;
-  var ub = unitsBlank();
-  if (n > 0) NEEDS_SEEN = true;
-  var form = box.parentNode;
-  if (!NEEDS_SEEN && !ub) {
-    box.style.display = 'none';
-    if (form && form.classList) form.classList.remove('needs-on');
-    return;
-  }
-  box.style.display = '';
-  if (form && form.classList) form.classList.add('needs-on');
-  box.className = 'needs-bar' + (n ? '' : ' is-done');
-  box.setAttribute('data-count', String(n));
-  /* Blank units are a note beside the count, never part of it. */
-  var units = ub ? ' <span class="nb-units">&middot; ' + ub + ' unit' + (ub === 1 ? '' : 's')
-                   + ' blank</span>' : '';
-  if (n) {
-    var k = curIndex(list);
-    var at = k >= 0
-      ? ' <span class="nb-where">' + (k + 1) + ' of ' + n + ' &middot; ' + whereNeed(list[k]) + '</span>'
-      : '';
-    box.innerHTML = '<span class="nb-bang" aria-hidden="true">!</span>'
-      + '<span class="nb-txt" role="status"><b>' + n + '</b> field' + (n === 1 ? ' needs' : 's need') + ' you'
-      + at + units + '</span>'
-      + '<button type="button" class="jb-btn" onclick="goNeed(-1)">&#8592; Prev</button>'
-      + '<button type="button" class="jb-btn" onclick="goNeed(1)">Next &#8594;</button>';
-    return;
-  }
-  var np = notPricedCount();
-  box.innerHTML = '<span class="nb-ok" aria-hidden="true">&#10003;</span>'
-    + '<span class="nb-txt" role="status">'
-    + (np ? '<b>All answered</b> &middot; ' + np + ' not priced (&#8377;0) &middot; review and save'
-          : '<b>All filled</b> &#8212; review and save')
-    + units + '</span>';
 }
 
 /* Open whatever hides line i: the line, its section, its header. Returns
@@ -4925,31 +4948,16 @@ function reducedMotion() {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-/* Where a field that has just been ANSWERED sat in the list, so Next goes on
-   to the one after it rather than skipping one: the list shrank under it.
-   Form fields come first, then lines in order, then NEED_ORDER within one. */
-function afterCur(list) {
-  if (!CUR || CUR.el) return 0;
-  for (var k = 0; k < list.length; k++) {
-    var t = list[k];
-    if (t.el) continue;
-    if (t.i > CUR.i || (t.i === CUR.i && NEED_ORDER.indexOf(t.f) > NEED_ORDER.indexOf(CUR.f))) return k;
-  }
-  return list.length;
-}
-
-/* Take the user to field k of the list: open what hides it, centre it, focus
-   it, and name it on the bar. */
+/* Take the user to box k of the list: open what hides it, centre it, focus
+   it. Used by Save, when a box a refused save found wrong is still wrong. */
 function showNeed(list, k) {
   var t = list[k];
   NEED_AT = k;
-  CUR = t;
   var target = t.el;
   if (!target) {
     if (openNeedPath(t.i)) renderLines();
     target = markedEl(t.i, needKeyOf(t.f));
   }
-  renderNeedsBar();
   if (!target) return;
   if (target.scrollIntoView) {
     target.scrollIntoView({block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth'});
@@ -4957,62 +4965,26 @@ function showNeed(list, k) {
   if (target.focus) target.focus({preventScroll: true});
 }
 
-/* Prev (-1) / Next (+1): the next unmet field to the CENTRE of the screen,
-   focused. Wraps at either end. Counted from the field the user is on, so
-   answering one and pressing Next lands on the one after it. */
-function goNeed(dir) {
-  var list = needList(), n = list.length;
-  if (!n) { renderNeedsBar(); return; }
-  var k = CUR ? curIndex(list) : -1, next;
-  if (k >= 0) next = (k + dir + n) % n;
-  else if (!CUR) next = dir > 0 ? 0 : n - 1;
-  else {
-    var a = afterCur(list);                   /* the answered field's place */
-    next = dir > 0 ? a % n : (a - 1 + n) % n;
-  }
-  showNeed(list, next);
-}
-
-/* A link in the import summary: "#need-<line>-<field>". */
-function needLink(i, f) {
-  var list = needList();
-  for (var k = 0; k < list.length; k++) {
-    if (list[k].i === i && list[k].f === f) { showNeed(list, k); return false; }
-  }
-  CUR = null;
-  goNeed(1);
-  return false;
-}
-
-/* Before the first render: every line with an unmet field is opened, so its
-   marked boxes exist on the page and the count is what the eye can find. */
+/* Before the first render: every line with a box still wrong is opened, so
+   its marked boxes exist on the page. */
 function bootNeeds() {
   for (var i = 0; i < MODEL.lines.length; i++) {
     if (needsOf(MODEL.lines[i]).length) openNeedPath(i);
   }
 }
 
-/* After it: wire the server-marked form fields, draw the bar, and — on a
-   form opened from an import — take the user to the first field (or the one
-   the preview's link named). */
+/* After it: wire the server-marked form fields so a typed value clears the
+   ring. ⚠ Nothing jumps anywhere on load any more — an import used to take
+   the user to the first blank (A3). */
 function startNeeds() {
   if (document.querySelectorAll) {
     var els = document.querySelectorAll('[data-needs-form]');
     for (var k = 0; k < els.length; k++) {
       els[k].addEventListener('input', function () {
         toggleMark(this, String(this.value || '').trim() ? '' : this.getAttribute('data-needs-form'));
-        renderNeedsBar();
       });
     }
   }
-  renderNeedsBar();
-  if (!GUIDE.imported) return;
-  var h = (typeof location !== 'undefined' && location.hash) || '';
-  var m = /^#need-(\\d+)-([a-z_]+)$/.exec(h);
-  if (m) { needLink(parseInt(m[1], 10), m[2]); return; }
-  NEED_AT = -1;
-  CUR = null;
-  goNeed(1);
 }
 
 /* The source of an item number and a lump sum, on the row and in its panel:
@@ -5071,37 +5043,25 @@ function itemPlaceholder(i) {
   return p ? nextChildNo(p, L.section, i) : '4.a';
 }
 
-/* ── Imported lines still waiting for a quantity — RED, and it BLOCKS ─────
-   The one band on this form that stops a save, because the thing it guards
-   is the one this form cannot guard on the server: a blank quantity is saved
-   as 0 (ABOUT.md §7 gap 42), and the sheet did not say 0 — it said "R.O.",
-   "NA" or "9.3+1.5+6". `saveJSON()` refuses while this band has rows. */
-function renderImportBlock() {
-  var box = el('import-block');
+/* ── The quiet note (6 October 2026, the §0 forty-fifth block, A3) ──────
+   "N lines have no rate, M lines have no quantity" — grey, live, and never a
+   block: it REPLACES the red band that listed imported lines waiting for a
+   quantity and stopped the save. boq.py's blank_summary(); "no rate" is no
+   unit rate on either track (a 0 is a rate), "no quantity" a blank one. */
+function renderBlankNote() {
+  var box = el('blank-note');
   if (!box) return;
-  var list = [];
+  var nr = 0, nq = 0;
   for (var i = 0; i < MODEL.lines.length; i++) {
-    if (isBlocked(MODEL.lines[i])) list.push(i);
+    var L = MODEL.lines[i];
+    if (!L || L.is_header) continue;
+    if (typedNum(L.supply_rate) === null && typedNum(L.install_rate) === null) nr++;
+    if (typedNum(qtyOf(L)) === null) nq++;
   }
-  if (!list.length) { box.innerHTML = ''; return; }
-  var items = '';
-  for (var k = 0; k < list.length && k < 40; k++) {
-    var L = MODEL.lines[list[k]];
-    items += '<li>Line ' + (list[k] + 1)
-      + (L.item_no ? ' &middot; item <b>' + esc(L.item_no) + '</b>' : '')
-      + ' &mdash; ' + esc((L._flags || [])[0] || 'the sheet gave no quantity as a number')
-      + '</li>';
-  }
-  if (list.length > 40) items += '<li>&hellip; and ' + (list.length - 40) + ' more.</li>';
-  box.innerHTML =
-    '<div class="form-hint fh-red">'
-  +   '<span class="fh-icon">&#9888;</span>'
-  +   '<span><b>' + list.length + ' imported line' + (list.length === 1 ? ' needs' : 's need')
-  +   ' a quantity before this BOQ can be saved.</b> The sheet did not give it as a '
-  +   'number, so it was left blank rather than guessed. A blank quantity would be '
-  +   'saved as 0, and an RA bill cannot claim against a line at 0. '
-  +   'Type the quantity, or remove the line.<ul>' + items + '</ul></span>'
-  + '</div>';
+  var bits = [];
+  if (nr) bits.push(nr + ' line' + (nr === 1 ? ' has' : 's have') + ' no rate');
+  if (nq) bits.push(nq + ' line' + (nq === 1 ? ' has' : 's have') + ' no quantity');
+  box.innerHTML = bits.length ? '<div class="quiet-note">' + bits.join(', ') + '.</div>' : '';
 }
 
 function renderJump() {
@@ -5218,9 +5178,10 @@ function setLine(i, key, val) {
     var ms = el('ms' + i);
     if (ms) ms.innerHTML = moreSummary(L);
   }
-  /* An imported line waiting for its quantity: the red band follows the
-     typing, without a re-render. */
-  if (key === 'total_qty' && L._block) renderImportBlock();
+  /* The quiet note follows a quantity or a rate as it is typed (A3). */
+  if (key === 'total_qty' || key === 'supply_rate' || key === 'install_rate') {
+    renderBlankNote();
+  }
   if (key === 'parent_item_no') {
     var ino = markedEl(i, 'item_no');
     if (ino) ino.setAttribute('placeholder', itemPlaceholder(i));
@@ -5240,7 +5201,7 @@ function setArea(i, area, val) {
   var sec = secByCode(MODEL.lines[i].section);
   var box = el('tq' + i);
   if (box && sec) box.textContent = totalOf(MODEL.lines[i], sec.areas || []);
-  if (MODEL.lines[i]._block) renderImportBlock();
+  renderBlankNote();
   netHint(i);
   refreshNeeds(i);
 }
@@ -5262,10 +5223,11 @@ function setSection(i, code) {
      is left alone, and a line bound for an area section keeps whatever it
      carried: `qtyOf()` never reads it there, and it is still in place if the
      line is moved back.
-     ⚠ NOT an imported line whose quantity was left blank on purpose (`_block`:
-     the sheet said "R.O." or "NA"). A moved row landing at 1 would turn that
-     into a figure nobody typed, which is the thing the block exists to stop. */
-  if (!areas.length && !MODEL.lines[i]._block
+     ⚠ NOT an IMPORTED line (6 October 2026, A1/A2): a blank there is what
+     the client's sheet said, and a moved row landing at 1 would be a figure
+     nobody wrote. (It used to be only an imported line the sheet had left
+     blank by a flag, `_block`, which no longer exists.) */
+  if (!areas.length && !isImported(MODEL.lines[i])
       && (MODEL.lines[i].total_qty === '' || MODEL.lines[i].total_qty == null)) {
     MODEL.lines[i].total_qty = DEFAULT_QTY;
   }
@@ -5456,29 +5418,18 @@ function delLine(i) {
    picker's typed/auto memory wiped, which is the opposite of the
    always-return-the-user's-input contract this form is held to.
 
-   ⚠ It REFUSES while an imported line is still waiting for its quantity
-   (`isBlocked`, 29 September 2026): it opens that line and its section and
-   brings the red band into view instead of submitting. A form with no
-   imported lines never reaches the branch. */
+   ⚠ **A blank never stops it** (6 October 2026, CLIENT_CHANGES.md §0,
+   forty-fifth block, A3). It used to refuse while an imported line waited for
+   its quantity (`isBlocked`) and while any field an import asked for was
+   empty (`needList()` over `_need`); both are gone with the rules behind
+   them. What still stops it is a box the server's LAST refused save found
+   wrong and that is still wrong — text in a numeric box, a negative figure,
+   a discount out of range — which the server would only refuse again: it
+   takes the user to the first one instead. */
 function saveJSON() {
-  for (var i = 0; i < MODEL.lines.length; i++) {
-    if (!isBlocked(MODEL.lines[i])) continue;
-    var L = MODEL.lines[i];
-    L._open = true;
-    var S = secByCode(L.section);
-    if (S) S._open = true;
-    renderLines();
-    var band = el('import-block');
-    if (band && band.scrollIntoView) band.scrollIntoView({block: 'start'});
-    return false;
-  }
-  /* A field the import (or the last refused save) marked is still empty:
-     stop HERE and take the user to the first one. Guidance only — the server
-     validates whatever arrives, exactly as before. */
-  if (needList().length) {
-    NEED_AT = -1;
-    CUR = null;
-    goNeed(1);
+  var list = needList();
+  if (list.length) {
+    showNeed(list, 0);
     return false;
   }
   el('boq_json').value = JSON.stringify(MODEL);
@@ -5553,7 +5504,6 @@ def create_boq(imported: dict = None):
     sections: list = []
     lines: list = []
     blockers: list = []
-    need_count = 0
     form_needs: list = []
 
     if request.method == "POST":
@@ -5569,8 +5519,11 @@ def create_boq(imported: dict = None):
             error = "The BOQ needs a date."
         if not error and not (form.get("project_name") or "").strip():
             error = "The BOQ needs a project name."
-        if not error and not (form.get("account_name") or "").strip():
-            error = "The BOQ needs a customer account name."
+        # ⚠ The account name may be BLANK from 6 October 2026 (the §0
+        #   forty-fifth block, A3: only the project name and the date may stop
+        #   a save on the header). A sheet often names no client, and the
+        #   importer never invents one (R4) — so this refusal stopped an
+        #   imported BOQ from saving as the client wrote it.
 
         if not error:
             sections, error = _clean_sections(raw_sections)
@@ -5699,6 +5652,12 @@ def create_boq(imported: dict = None):
                 "notes":           (form.get("notes") or "").strip(),
                 "company_branch":  (form.get("company_branch") or "").strip(),
                 "auth_signatory":  (form.get("auth_signatory") or "").strip(),
+
+                # The written fact that on THIS record a blank is absent and a
+                # 0 is a typed 0 (6 October 2026, A1–A5) — see BLANK_MODEL.
+                # Every record saved before it lacks the key and is read as it
+                # always was; nothing backfills it.
+                BLANK_MODEL_KEY:   BLANK_MODEL,
             }
             sup, ins, tot = boq_totals(boq)
             boq["supply_subtotal"]  = sup
@@ -5730,8 +5689,8 @@ def create_boq(imported: dict = None):
         # the page comes back with the same rings the browser was showing
         # (the guided fix, 30 September 2026). Guidance only: the refusal
         # above is the authority and nothing here changes what is accepted.
-        need_count = annotate_needs(lines, sections, with_errors=True)
-        form_needs = [k for k in ("date", "project_name", "account_name")
+        annotate_needs(lines, sections, with_errors=True)
+        form_needs = [k for k in ("date", "project_name")
                       if not (form.get(k) or "").strip()]
 
     # Filled by ?demo=1 below. Bound here so `_v` closes over something real
@@ -5805,11 +5764,15 @@ def create_boq(imported: dict = None):
         prefill = dict(imported.get("prefill") or {})
         import_banner = imported.get("banner_html", "")
         form_action = f' action="{url_for("boq.create_boq")}"'
-        need_count = annotate_needs(boot.get("lines") or [], boot.get("sections") or [],
-                                    with_errors=False)
+        annotate_needs(boot.get("lines") or [], boot.get("sections") or [],
+                       with_errors=False)
 
-    # The guided fix's sticky bar. Drawn here with the server's own count, so
-    # the page says it before any script runs; `renderNeedsBar()` takes over.
+    # The marks on the two header fields a refused save found empty — the
+    # date and the project name, the only header boxes that still stop a save
+    # (A3). ⚠ The "N fields need you" sticky bar that used to sit here is
+    # GONE (6 October 2026, the §0 forty-fifth block): a blank is a valid
+    # answer, so there is nothing to count. A refused save still names its
+    # line in the alert, opens it, and rings the box that is wrong.
     def _fmark(key: str) -> str:
         """The mark on a header field this refused save found empty."""
         if key not in form_needs:
@@ -5819,21 +5782,11 @@ def create_boq(imported: dict = None):
     def _fwrap(key: str) -> str:
         return " has-needs" if key in form_needs else ""
 
-    all_needs = need_count + len(form_needs)
-    if all_needs:
-        needs_bar = (f'<div id="needs-bar" class="needs-bar" data-count="{all_needs}">'
-                     f'<span class="nb-bang" aria-hidden="true">!</span>'
-                     f'<span class="nb-txt" role="status"><b>{all_needs}</b> field'
-                     f'{"s need" if all_needs != 1 else " needs"} you</span>'
-                     f'<button type="button" class="jb-btn" onclick="goNeed(-1)">&#8592; Prev</button>'
-                     f'<button type="button" class="jb-btn" onclick="goNeed(1)">Next &#8594;</button>'
-                     f'</div>')
-    else:
-        needs_bar = '<div id="needs-bar" class="needs-bar" data-count="0" style="display:none;"></div>'
-    # Where the page came from, for `startNeeds()`. Written INSIDE the page's
-    # one script block (tests/test_hardening.py counts them), ahead of
-    # `_BOQ_JS`, which reads it only if it is there — a harness that loads
-    # `_BOQ_JS` alone gets {}.
+    # Where the page came from. Written INSIDE the page's one script block
+    # (tests/test_hardening.py counts them), ahead of `_BOQ_JS`, which reads it
+    # only if it is there — a harness that loads `_BOQ_JS` alone gets {}.
+    # `imported` no longer takes the user anywhere on load (A3); it is kept
+    # because an imported line's blank boxes say what goes in them in words.
     guide_js = ("var BOQ_GUIDE = " + _json_for_script(
         {"imported": imported is not None and request.method == "GET",
          "refused": bool(error)}) + ";")
@@ -5972,7 +5925,6 @@ def create_boq(imported: dict = None):
 
   <form method="POST"{form_action} onsubmit="return saveJSON()">
     <input type="hidden" id="boq_json" name="boq_json"/>
-    {needs_bar}
 
     <div class="form-section">
       <div class="section-title">&#128203; BOQ Details</div>
@@ -6045,10 +5997,10 @@ def create_boq(imported: dict = None):
         </a>
       </div>
       <div class="fg2">
-        <div class="form-group{_fwrap('account_name')}">
+        <div class="form-group">
           <label for="account_name">Account Name</label>
           <input type="text" id="account_name" name="account_name"
-                 value="{_v('account_name')}" placeholder="Prudent Teqtis Pvt Ltd"{_fmark('account_name')} required/>
+                 value="{_v('account_name')}" placeholder="Prudent Teqtis Pvt Ltd"/>
         </div>
         <div class="form-group">
           <label for="contact_person">Contact Person</label>
@@ -6157,7 +6109,7 @@ def create_boq(imported: dict = None):
       </p>
 
       <div class="jump-bar" id="jump-bar"></div>
-      <div id="import-block"></div>
+      <div id="blank-note"></div>
       <div id="dup-warn"></div>
       <div id="zeroqty-hint"></div>
       <div id="line-editor"></div>

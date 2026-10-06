@@ -419,10 +419,10 @@ Consequences you must respect when editing:
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from — **and, from 11 September 2026, what a quotation line is written from too** (`quotation.create_quotation()` reads `STORE["specs"]` and seeds through `ensure_demo_specs()`). **Not a replacement for `product.py`** in the sense of its record shape — a clause is priced per leg, a product at one `base_price` with a BOM — but with the catalogue hidden it is the one library the sell side now draws on. |
-| [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. ⚠ **`create_boq(imported=None)` from 29 September 2026** — the one seam Import BOQ from Excel renders the form through; Flask never passes it, and the POST path never reads it. The form's *Import from Excel* button is a `url_for` string: **`boq.py` never imports `boqimport.py`**. ⚠ **The discount and the net rate from 6 October 2026** (CLIENT_CHANGES.md §0 **forty-fourth** block, R3): `supply_disc_pct` / `install_disc_pct` on a line, absent unless typed; **`net_rate(line, track)` is the ONE price of a line** (amounts, the printed Net Rate, the editor's mirror, the RA bill's approved rate); Disc % and Net Rate print only for a track where a line carries a discount (`any_discount()`), so an undiscounted BOQ is byte-identical. A blank escalation with no base is stored ABSENT (`_esc_pct()`, R2), and `lines_without_cost()` is the one rule for "cost not recorded". §3 *Bill of Quantities*. |
+| [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. ⚠ **`create_boq(imported=None)` from 29 September 2026** — the one seam Import BOQ from Excel renders the form through; Flask never passes it, and the POST path never reads it. The form's *Import from Excel* button is a `url_for` string: **`boq.py` never imports `boqimport.py`**. ⚠ **The discount and the net rate from 6 October 2026** (CLIENT_CHANGES.md §0 **forty-fourth** block, R3): `supply_disc_pct` / `install_disc_pct` on a line, absent unless typed; **`net_rate(line, track)` is the ONE price of a line** (amounts, the printed Net Rate, the editor's mirror, the RA bill's approved rate); Disc % and Net Rate print only for a track where a line carries a discount (`any_discount()`), so an undiscounted BOQ is byte-identical. A blank escalation with no base is stored ABSENT (`_esc_pct()`, R2), and `lines_without_cost()` is the one rule for "cost not recorded". §3 *Bill of Quantities*. ⚠ **From 6 October 2026, later (the §0 forty-fifth block, A1–A8): AS IT IS.** `typed_num()` reads every numeric box — blank is `None`, 0 is 0, typed text is refused naming the line — and `_esc_pct()`, `_derived_rate()` and the blank-is-0 reads are gone from the save; a line's amount is `amount_of()` (absent when either half is); a saved record carries `blank_model: "as_is"` and prints a blank as blank and a 0 as 0 (a record without it, never migrated, prints as it always did); the net rate rounds half up (`round_half_up()`); nothing in the editor blocks on a blank. §3 *As it is*, §7 gap 42 closed. |
 | [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. ⚠ **From 6 October 2026 (the §0 forty-fourth block) the preview is a COLUMN PICKER** (R1): every column with three samples, an Import tick and one line of advice, pre-set to the advice; **several tabs into one BOQ**, one section per tab (R5, `build_tabs()`); the project and account **names from the sheet** as editable suggestions, the account matched to the address book (R4, `prefill_of()` — and so it imports `address` for `is_active()`). |
 | [gst_lookup.py](gst_lookup.py) | 723 | **GSTIN auto-fill — the check and the portal, and a LEAF** (29 September 2026). No routes, no HTML. `offline()` is the 15-character shape, the official base-36 check character, the State and the PAN — no network; `lookup()` is the ONE public function behind which the GST portal search, the gstinapi.in fallback, the normalisation and the 30-day `gst_cache` sit; `captcha()` starts a portal session and returns its image **untouched — a human types every CAPTCHA and nothing here reads one**. ⚠ **Every outbound call goes through `_open()`**, `timeout=5`, one attempt, no retry — `tests/conftest.py` replaces it with a refusal around every test, so no sweep can phone the portal. ⚠ **The portal's cookie jars live in `_SESSIONS`, in RAM, and never reach STORE or MySQL.** Imports `store`, `pipeline` and the standard library only (`urllib`, so **no new dependency**). §5 `/address`, `docs/GST_PORTAL.md`. |
-| [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. ⚠ **From 6 October 2026 (the §0 forty-fourth block) it also ADVISES** — `advise()`, pure, `(target, reason)` per column; `advise_mapping()` / `advised_mapping()` over a sheet — and **reads names** (`detect_names()`), a **discount %**, a **net rate** (check only) and a **remark** column; only TICKED columns are read for a line's data, flags and needs. Still imports nothing from the app. |
+| [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. ⚠ **From 6 October 2026 (the §0 forty-fourth block) it also ADVISES** — `advise()`, pure, `(target, reason)` per column; `advise_mapping()` / `advised_mapping()` over a sheet — and **reads names** (`detect_names()`), a **discount %**, a **net rate** (check only) and a **remark** column; only TICKED columns are read for a line's data, flags and needs. Still imports nothing from the app. ⚠ **From 6 October 2026, later (the §0 forty-fifth block) `build()` has TWO MODES**: the default reads a sheet **as it is** — blank is `None`, 0 is 0, text in a numeric column is kept in the line's remark, nothing is a need or a block and a mismatch keeps the rate (§5 `/boq/import`, *As it is*) — and `build(…, guided=True)` is the 30 September rules, which only `workorder.py` passes. |
 | [importstage.py](importstage.py) | 98 | **The staged Excel upload — ONE mechanism, and a LEAF** (5 October 2026, CLIENT_CHANGES.md §0 forty-second block, fix 1). `purge()`, `own()` and `cap_per_user()` moved out of `boqimport.py` verbatim and parameterised by collection: token-keyed, owned, 24 hours, three per user, a persisted STORE collection. `boqimport.py` calls it with `boq_imports`, `workorder.py` with `wo_imports`. Imports `store` and nothing else (a whitelist test). §3 *BOQ import staging*. |
 | [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. From 4 Oct 2026 `/ra/create` also raises a bill FROM ticked challans (capped at their dispatch) or FROM the measurement (the unbilled remainder), writing `source_dc_ids` / `source_ms_ids` once — §5 `/ra`. ⚠ **`approved_rates()` is the NET rate from 6 October 2026** (`boq.net_rate()`, the §0 forty-fourth block, R3): what a claim is prefilled with and frozen at; a bill already saved does not move. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
@@ -2613,6 +2613,47 @@ A `line_item` row:
   the `0.0` nobody typed — which a revision then loaded back into the box as
   "0". With a base rate the v1 reading stands (blank escalation is 0). Every
   reader already read it `or 0.0`; records written before keep their `0.0`.
+  ⚠ **Superseded later the same day** (the §0 forty-fifth block, below): a
+  blank escalation is absent with or without a base, and `_esc_pct()` is
+  gone.
+
+#### As it is — blank stays blank, 0 stays 0 (6 October 2026, later)
+
+CLIENT_CHANGES.md §0, **forty-fifth** block, Manas's rulings A1–A8, no charge:
+the client's sheet must open as a BOQ **as it is**, and the save must not
+rewrite it. **§7 gap 42 is CLOSED.** On every BOQ saved from this pass:
+
+| box left | stored | amount | printed |
+|---|---|---|---|
+| blank (or the client's "-") | **`None`** — `total_qty`, `supply_rate` / `install_rate`, the base rates, the escalations, the discounts | `None` when the quantity **or** the net rate is `None` (`boq.amount_of()`) | a **blank cell** — never "0", "0.00", "-", "None", "nan" |
+| 0 | `0.0` | `0.0` (a 0 in either is an amount of 0) | **0** in the house format (`0.00` for money, `0` for a quantity) |
+| text (typed) | **refused**, naming the line (`typed_num()`) | — | — |
+
+* **The record says which rules it was saved under**: `"blank_model": "as_is"`
+  (`boq.BLANK_MODEL_KEY` / `BLANK_MODEL`, `boq.is_as_is()`), written by
+  `create_boq()`. ⚠ **A record without the key is a CLOSED HISTORICAL SET and
+  is never migrated**: until this pass the save wrote 0 for a blank, so a 0
+  there may have been a blank and cannot be told apart. It is read exactly as
+  it always was — a 0 rate prints blank, a 0 area cell prints blank, a `None`
+  base prints "-" — which is why no existing print golden moved. The
+  `rate_model` / `grid_model` rule, a fifth time. The demo seeder writes the
+  old shape (`_seed_line()`, unchanged) and carries no key.
+* **Nothing is derived on the server any more.** `_num()` read a blank or text
+  as 0, `_esc_pct()` read a blank escalation beside a base as 0, and
+  `_derived_rate()` filled a blank unit rate as base × (1 + esc); all three are
+  gone from the save. The form still OFFERS the escalated figure ("suggests …
+  use"), and a cost import still fills it on load (`bootCost()`, the
+  thirty-ninth block's ruling).
+* **Item number, description, unit and remark may be blank too**, and so may
+  the header's **account name** — only the **project name** and the **date**
+  still stop a save on the header. A message names a line by its item number,
+  or by its position when it has none (escaped — it is rendered as markup).
+* **GST % is not a figure the client's sheet gives** and keeps its house
+  default: a blank box is 18.
+* `boq.lines_not_priced()` (no unit rate on either track — a 0 is a rate),
+  `lines_without_qty()` and `lines_without_amount()` (no amount on either
+  track) are the counts every screen note reads; `blank_summary()` and
+  `excludes_note()` are their words.
 
 Eight properties this shape exists to guarantee:
 
@@ -2684,6 +2725,10 @@ Eight properties this shape exists to guarantee:
 6. **A `None` base rate is not zero.** It means the rate was negotiated
    directly rather than escalated — the `-` in the client's cell — and it
    prints as `-`. Collapsing it to 0.0 would state that the material is free.
+   ⚠ From 6 October 2026, later (A1/A5), **every** blank figure is `None` on an
+   as-is record — quantity, rates, escalation, discount and the amounts with
+   them — and a blank base prints a blank cell there, not "-" (the client's
+   "-" is read as nothing written). A record saved before keeps its "-".
 7. **Section subtotals are COMPUTED from `line_items`, never stored.** Only the
    BOQ-level trio is stored, for the register and the dashboard card, and the
    document recomputes even those so a printed sheet can never contradict its
@@ -2741,17 +2786,26 @@ golden moved**: no golden fixture repeats a header number within a section.
 
 CLIENT_CHANGES.md §0, forty-fourth block, R3. **One helper owns what a line
 is billed at**: `boq.net_rate(line, track)` → `net_of(unit, disc)` →
-`round(unit × (100 − disc) / 100, 2)`, or the unit rate untouched when there
-is no discount. ⚠ **Rounding is Python's `round()`, the house rule**
-(`purchase._line_total()`, `workorder.line_amounts()`): half to EVEN on the
-exact binary value — 2.50 less 15% is exactly 2.125 and nets to **2.12**,
-pinned by `tests/test_boq_import_picker.py` and the discounted print golden.
-`unit × (100 − disc) / 100` rather than `unit × (1 − disc/100)` because
-`100 − disc` is exact for any discount typed, so a tie on paper is a tie in
-binary. The editor's `netRate()` / `round2()` are the same rule in the browser
-(a Node test holds them equal, ties included). A discount is `disc_value()`:
-blank or a dash is none; 0–100, with or without a trailing "%", is one;
-anything else is **refused on save**, never read as "no discount".
+`round_half_up(unit × (100 − disc) / 100)`, or the unit rate untouched when
+there is no discount, or **`None` when the unit rate is blank** (A4, the
+forty-fifth block). ⚠ **Rounding is HALF UP, Excel's ROUND — from 6 October
+2026, later (A8)**: the product written to 15 significant digits, then a half
+rounds away from zero (`Decimal.quantize(ROUND_HALF_UP)`). 2.50 less 15% is
+2.125 and nets to **2.13**; 10.05 less 50% is 5.025 (5.0249… in binary) and
+nets to 5.03. It was Python's `round()`, half to even on the binary value,
+which gave 2.12 where the client's Excel sheet shows 2.13 and raised a false
+mismatch. **Only the net rate changed** — every other rounding is as it was
+(§7 gap 62: the amount, quantity × rate, is still printed by `_inr()`'s own
+rounding). `unit × (100 − disc) / 100` rather than `unit × (1 − disc/100)`
+because `100 − disc` is exact for any discount typed. The editor's `netRate()`
+/ `round2()` and the reader's `sheetimport._half_up()` (a leaf, so a
+restatement — on the digits, no `decimal` import) are the same rule; a Node
+test holds the editor equal to the server, the exact halves included, and
+`tests/test_boq_as_is.py` the reader. The discounted print golden moved by
+exactly that (+2 bytes, re-baselined and declared). A discount is
+`disc_value()`: blank or a dash is none; 0–100, with or without a trailing
+"%", is one; anything else is **refused on save**, never read as "no
+discount".
 
 **The audit** — every reader of a BOQ line's rate or amount in the repository:
 
@@ -2770,7 +2824,8 @@ anything else is **refused on save**, never read as "no discount".
 | a proforma from a BOQ | — | **does not exist** — `proforma.py` reads quotations only | nothing to audit |
 | "spec-library add" | — | **no code path writes a BOQ line's rate into the library**: the library only *suggests* a base rate into an empty box (`fillFromSpec()` / `applyVariant()`) | nothing changed. A test holds that saving a discounted BOQ leaves `STORE["specs"]` byte-identical. The brief's rule — the LIST rate, never the net, and only where the library has none — is recorded for the day such a path is built: a discount is a deal with one client, not the product's rate |
 | `projectview.py` BOQ panel (the brief's "P&L") | the BOQ's stored `subtotal` | — | at net (stored) **+ "cost not recorded on N lines"** (`boq.lines_without_cost()`: a priced track with no base rate). There is still no P&L, margin or cross-panel figure (§7 gap 55) |
-| `boq.unpriced_lines()` — `/boq/view`'s amber note | rate 0 on both tracks | unit rate | **unchanged — the unit rate**: "not priced" is about the list rate; a 100% discount is a priced line billed at nil |
+| ~~`boq.unpriced_lines()` — `/boq/view`'s amber note~~ → `boq.lines_not_priced()` (6 Oct 2026, later) | ~~rate 0 on both tracks~~ a BLANK unit rate on both tracks | unit rate | **the unit rate**: "not priced" is about the list rate; a 100% discount is a priced line billed at nil, and a 0 rate is a rate (A1). Read by `/boq/view`'s quiet note and the project page's "N lines not priced" |
+| `ra.approved_rates()` / `ra.no_rate_lines()` (6 Oct 2026, later) | `None` = no rate on that leg | — | **a line with no net rate is not claimable** (A6): greyed on the grid, refused on the POST, skipped and listed by a challan / measurement prefill |
 | `tools/e2e_chain.py` | its own fixture rows | — | unchanged (no discounts) |
 
 ### RA Bill  (Running Account claim)
@@ -2923,6 +2978,31 @@ Six properties this shape exists to guarantee:
    **It is also never reused**: a cancelled RA3 keeps the number and the next
    bill is RA4, because `next_ra_no()` takes max+1 over *every* bill in the
    chain including the cancelled ones.
+
+#### A line with no rate, and a line with no quantity (6 October 2026, later)
+
+CLIENT_CHANGES.md §0, forty-fifth block, A6. A BOQ saved as it is may carry a
+line with its unit rate left BLANK (`None`) — and then `ra.approved_rates()`
+gives `None` for that leg and the line is **not claimable**
+(`ra.no_rate_lines()`): the claim grid shows it greyed (`cl-done`, the
+exhausted line's own class — no rule was added to `RA_STYLES`, which the
+pinned `/ra/` register loads) with *"No rate on the BOQ. Add it in a
+revision."* and no input, so nothing about it is posted; `clean_claims()`
+refuses a POST naming it, naming the line and the leg; a prefill from
+challans or from the measurement skips it and lists it with the quantity left
+out (*"Not prefilled — no rate on the BOQ: 1.a (3)"*). Read from the LATEST
+revision, so **a revision that fills the rate makes the line claimable**. A 0
+rate is a rate — priced at nil, claimable as it always was. Saved bills are
+snapshots and do not move.
+
+**A blank quantity takes the rate-only line's rule — the SAME one, not a new
+one.** A rate-only line ("RO" on the sheet, the thirty-ninth block) is
+approved at quantity 0, so on the supply leg `overclaims()` refuses any claim
+on it as *"0 approved … over"* until a revision gives it a quantity, and on the
+installation leg the approved measurement is the ceiling, whatever the BOQ
+says. `approved_by_line()` reads `float(total_qty or 0.0)`, so a blank
+quantity (`None`) is read as exactly that 0. `tests/test_boq_as_is.py` holds
+the two refusals equal, message and all.
 
 #### The over-claim block
 
@@ -6936,12 +7016,24 @@ Two rate behaviours worth keeping:
   ringed on a refused save (`line_problems()` / `errMet()`) and refused by
   `_clean_lines()` — never read as "no discount".
 
-Validation, in order: JSON parses → date → project name → account name →
+Validation, in order: JSON parses → date → project name →
 sections have unique codes → **line count within `MAX_LINES`** → **payload
-within `MAX_JSON_BYTES`** → every line's section exists → item number present → description present → quantities and
-rates parse and are non-negative → HSN/SAC shape valid when filled. A rejected
-POST re-renders from the posted JSON, so nothing typed is lost and nothing is
-written to STORE.
+within `MAX_JSON_BYTES`** → every line's section exists → every numeric box
+is blank or a number (`typed_num()` — text is refused, naming the line) →
+quantities and rates non-negative → discount 0–100 → HSN/SAC shape valid when
+filled → the revision checks. A rejected POST re-renders from the posted JSON,
+so nothing typed is lost and nothing is written to STORE.
+
+⚠ **6 October 2026, later (the §0 forty-fifth block, A3): no refusal is
+caused by a BLANK.** Removed: *"The BOQ needs a customer account name"*,
+*"Line N needs an item number"*, *"Line N needs a description"* — and the
+browser's own refusals on a blank (below). What may still refuse, and why it
+is not a blank: text typed into a numeric box; a negative quantity or rate
+(the rule it always had); a discount outside 0–100 (the forty-fourth block's
+R3: *a discount silently dropped is a price silently raised*); an HSN/SAC of
+the wrong shape; a line in a section that does not exist (it would never
+print); `MAX_LINES` / `MAX_JSON_BYTES`; the revision refusals — there is no
+other "duplicate BOQ" check; and the header's date and project name.
 
 ##### The 600-line cap — `MAX_LINES`
 
@@ -7053,6 +7145,15 @@ and opens the full panel only for the line being worked on.
   `ra.approved_by_line()` reads `total_qty`, so a line approved at 0 has
   nothing to claim against and every RA claim on it is refused by the
   over-claim block.
+  ⚠ **A TYPED 0 only, from 6 October 2026, later (A3)**: a BLANK quantity is
+  no quantity, not 0, and is counted by the quiet note instead — *"N lines
+  have no rate, M lines have no quantity"* (`renderBlankNote()`, in the slot
+  the red import band used to fill, `#blank-note`), grey, live, never a
+  block. Each section bar adds *"· total excludes N with no amount"* when its
+  total skipped a line with no amount on either track (`sectionTotals()`'s
+  third figure, A4). An IMPORTED line moved to a section that takes a typed
+  total keeps its blank quantity (`setSection()` gives the default of 1 to a
+  typed line only).
 - **Repeated item numbers get an amber band** (`renderDupWarn()`), live as the
   user types. Two lines in the same section sharing an item number will print
   alike and be hard to tell apart on a measurement sheet — worth saying. It
@@ -7507,6 +7608,26 @@ which nothing else does until somebody is holding the paper.
 - A **`-` base rate** prints as `-` (view only — the print has no base rate
   column). A **missing rate** prints blank while its amount still prints
   `0.00`, exactly as the client's own sheet renders a nil-priced line.
+  ⚠ **That is the record saved BEFORE 6 October 2026, later.** On an as-is
+  record (`is_as_is()`, the §0 forty-fifth block, A5) every cell is what was
+  entered: a blank quantity, rate, amount, base, escalation or discount is a
+  **blank cell**, and a 0 is **0** in the house format — a 0 rate `0.00`, a 0
+  area figure `0` (a blank area is still blank). `_rate_cell()`,
+  `_qty_cell()`, `_amt_cell()`, `_base_cell()`, `_esc_cell()` and
+  `_disc_cell()` take the record's `as_is` flag; with it off they print the
+  bytes they always did, so every existing print golden but the discounted one
+  (moved by A8, not A5) is byte-identical, and `tests/test_print_golden.py`
+  pins one new sheet carrying blanks and zeros side by side.
+- **`/boq/view` says what a total skipped** (A4, screen only): under each
+  section table and the grand total, *"Subtotal (B) excludes 3 lines with no
+  amount"* / *"Total excludes 3 lines with no amount"* (`.skip-note`), and the
+  panel's Total Basic Value tile adds *"· excludes N lines with no amount"* —
+  a line with no amount on EITHER track (a blank quantity, or no rate at all);
+  a supply-only line is in the total it belongs to. `_document_html()` draws
+  them only when `/boq/view` passes `screen_notes=True`; `/boq/print` never
+  does, and `BOQ_VIEW_STYLES` hides them in print anyway. The amber
+  *"N lines have a quantity but no rate"* note is replaced by the quiet
+  *"N lines have no rate, M lines have no quantity"* (`#blank-note`).
 - **Escalation columns are hidden when every line in the BOQ has none**
   (`HIDE_EMPTY_ESCALATION`) — on a sheet already fighting for width, the
   description needs the millimetres more than an empty column does. Same
@@ -7659,7 +7780,9 @@ gap 61). The page's targets now include `supply_disc_pct` /
 `remark`, beside every v1 target (the combined *Amount (check only)* kept for
 sheets like Jamnagar).
 
-**Only the minimum is asked for (R2).** A line needs a description, a
+**Only the minimum is asked for (R2).** ⚠ *From later the same day NOTHING is
+asked for* — the §0 forty-fifth block, *As it is* below: a blank is what the
+sheet said and saves blank. What follows is R2 as built. A line needs a description, a
 quantity (or the rate-only marker, as before) and, on the mapped tracks, a rate
 or an amount — and **only for a ticked column**: with no rate, base, amount or
 net column ticked, no line is asked for a rate; a **base rate alone prices a
@@ -7953,7 +8076,59 @@ as before.
 
 **Never dropped without a word**: every amount is imported, footed, or flagged.
 
+#### As it is — what the reader does with every cell (6 October 2026, later)
+
+CLIENT_CHANGES.md §0, **forty-fifth** block, A1–A3, no charge. **The reader's
+default is now "as it is"** — `sheetimport.build(grid, mapping)`; the rules in
+the next three sections are the **guided** mode, `build(…, guided=True)`,
+which only the work-order importer passes (`workorder.py`: its own rulings D
+and R1 are built on those needs). For the BOQ:
+
+| the cell | the figure | its words |
+|---|---|---|
+| blank | `None` | — |
+| 0 | 0 | — |
+| a number (commas allowed; a %-formatted cell as the % Excel shows) | that number | — |
+| a bare "-" | `None` | — (nothing was written) |
+| text — "Included", "By client", "NA", "Nil", a sum written as text, a date, TRUE | `None` | **`<Field>: <text>`** in the line's remark, after the sheet's own remark and Make (`line["as_remark"]`, `REMARK_FIELD`) |
+| an Excel error | `None` | **`<Field>: #VALUE! in sheet`** |
+| a formula — its cached value; a cached "" | `None` | — (openpyxl reports a cached "" and "no saved value" alike, so both are blank; `counts["formula_blank"]` gives the preview ONE quiet line, never a flag per cell) |
+| an accounting-format 0 that Excel shows as "-" | **0** — the value wins | — |
+| a discount above 100 or below 0 | `None` | `Supply disc %: 250` |
+
+* **Nothing is a need, nothing blocks, nothing blanks a figure**: no "no
+  quantity", "no rate", "amount but no rate", "rate-only line with no rate",
+  "no item number", "no description"; `needs` is empty and no line carries
+  `block`. A **mismatch keeps the rate**: quantity × net rate against the
+  sheet's amount is an amber note — *"Supply: the sheet says 1,500, the BOQ
+  computes 1,000 (quantity 10 × net rate 100) — the rate is kept as the sheet
+  has it; the BOQ bills quantity × rate"* (`as_mismatch`) — and so is a net
+  rate off the sheet's (`as_net`) and an amount with no rate behind it
+  (`as_no_rate_amt`). The BOQ's amount stays quantity × net rate, because an
+  RA bill bills quantity × rate.
+* **The rules KEPT, each recorded in the pass report:** the item-number
+  rounding (A1 names it); a %-formatted cell read as the % Excel shows; "RO"
+  as a rate-only line at quantity 0 (the thirty-ninth block's ruling, not
+  reversed by name — its 0 is what the sheet's "rate only" says); a lump sum
+  for an amount alone, 1 LS at the amount (the thirty-seventh block's ruling,
+  the only way a BOQ line carries a figure that has no quantity or rate); the
+  footing checks; the row classification, which still reads a 0 rate on a row
+  with no quantity as no rate for deciding what a ROW is — while a LINE keeps
+  the sheet's own 0 (`sheet_nums`).
+* `boqimport.editor_model()` writes no `_need` and no `_block` any more, and
+  `summary_html()` replaces *"N fields need you"* with *"Nothing blocks the
+  save."* and a quiet *"N lines have no rate, M lines have no quantity."*, a
+  group for the sheet-vs-BOQ notes and a folded list of the cells of text kept
+  in a remark. No summary links to a field — there is none to send anybody to.
+* On the client's own sheets (gitignored; `tests/test_boq_as_is_client_sheets.py`,
+  skipped where absent): the Iron Mountain tab saves 224 lines and the
+  Jamnagar tab 92 with nothing asked, every mapped cell blank-as-blank and
+  0-as-0, and both tracks foot to the sheet's own grand total.
+
 #### The flags — what blocks, and what asks for a look
+
+⚠ **The GUIDED mode from 6 October 2026, later** — the BOQ no longer reads a
+sheet this way (above); the work order still does.
 
 **Blocking** (`build()`'s `needs`, the editor's `_need`) — the fields the form
 leads the user to:
@@ -8032,6 +8207,11 @@ it."* A sheet past 1,500 rows or 40 columns is refused at upload the same way.
 
 #### The prefilled form, and the red block
 
+⚠ **GONE 6 October 2026, later** (the §0 forty-fifth block, A3): no line is
+red, there is no `#import-block` band, `_block` is neither written nor read,
+`saveJSON()` never stops on a blank, and **§7 gap 42 is CLOSED** — the server
+saves a blank quantity as `None`. Kept here as the record of what was.
+
 Each line carries `_flags` (a chip on its row, the full list in its panel) and,
 where its quantity was left blank by a flag, `_block`. Both are UI keys: they
 ride in `boq_json`, survive a rejected POST, and never reach the record. **A
@@ -8043,6 +8223,27 @@ is moved. ⚠ **The block is in the browser only, and that is gap 42**: the
 server path was not changed in this pass, and it saves a blank quantity as 0.
 
 #### The guided fix on `/boq/create` (30 September 2026)
+
+⚠ **SUPERSEDED 6 October 2026, later** (the §0 forty-fifth block, A3 — it
+reverses by name the rules that a blank blocks the save and that the editor
+stops on unanswered fields). **Removed:** every mark an import's `_need` drew
+(the ring, the glow, the pulse, the "!" badge), the sticky *"N fields need
+you"* bar with Prev / Next (`renderNeedsBar()`, `goNeed()`, `needLink()`),
+the jump to the first field on load, the stopped save, *"Not priced (₹0)"*
+with its chip and *"All answered"* (`npBtn()`, `isNotPriced()`,
+`setNotPriced()`), the soft amber outline on a blank imported unit and the
+bar's *"· N units blank"* (`unitSoft()`, `unitsBlank()`), the *"type rate"*
+placeholder, and `boq._need_met()` / `_rate_answered()` / `needMet()` /
+`rateAnswered()`. **Kept:** `_err` — the boxes a refused save found WRONG
+(text in a numeric box, a negative figure, a discount out of range, an
+HSN/SAC of the wrong shape, a missing section) — ringed until put right, and
+`saveJSON()` takes the user to the first one still wrong rather than post a
+form the server would refuse again; the Date and Project Name marks on a
+refused save; `line_problems()` / `errMet()` held in step by a Node test, now
+over every numeric box (base, escalation and GST included) and with a blank
+item number or description no longer a problem. *"Unit for all N sizes"*,
+the context strips and the auto / LS / rate-only chips stay. What follows is
+the record of what was.
 
 Every field an import asked for (`_need`) — and every field a refused save
 found wrong (`_err`, below) — is **ringed** in the app's accent (`var(--brand)`),
@@ -8131,6 +8332,13 @@ import in its own `<script>var BOQ_GUIDE = …</script>`, so a harness that load
 move.
 
 #### Rate-only lines (1 October 2026)
+
+⚠ From 6 October 2026, later (the §0 forty-fifth block): still quantity 0 with
+its rates kept and the grey chip — but a rate-only line with **no rate** is no
+longer a need; it comes in with its rate blank, is counted on the preview, and
+cannot be claimed on an RA bill until a revision gives it a rate (A6). A 0 the
+sheet wrote in its rate is now kept as 0. "I.R." and "R. O." are text in the
+quantity: blank, kept in the remark, not blocked.
 
 A quantity cell reading **"RO", "R.O.", "R/O" or "RATE ONLY"** — any case,
 surrounding spaces ignored (`sheetimport._RO_QTY`) — means the sheet quotes a
@@ -8512,7 +8720,9 @@ fails if any State name or any GSTIN-shaped string reappears anywhere in
 #### The claim grid
 
 - **Every line of the approved BOQ is rendered**, in BOQ order, claim quantity
-  defaulting to 0 — never a shortlist. The operator works from a site
+  defaulting to 0 — never a shortlist. ⚠ A line with **no rate** on the bill's
+  leg (6 October 2026, later, A6 — §3 *A line with no rate*) is rendered too,
+  greyed, with *"No rate on the BOQ. Add it in a revision."* and no input. The operator works from a site
   measurement sheet against item numbers, and hiding an exhausted line hides
   the fact that it *is* exhausted, which is the state most likely to be
   mis-claimed. An exhausted line is greyed with its balance called out, not
@@ -12383,8 +12593,20 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     data decision, on live records, and INTRODUCTION.md §9's rule is that the
     client's imperfect data survives rather than being quietly corrected.
 
-42. 🔴 **A blank quantity is SAVED AS 0 — OPEN, and the one guard in front of
-    it is in the browser** (29 September 2026, found by Import BOQ from Excel).
+42. ~~🔴 **A blank quantity is SAVED AS 0 — OPEN, and the one guard in front of
+    it is in the browser** (29 September 2026, found by Import BOQ from Excel).~~
+
+    ✅ **CLOSED 6 October 2026, later — by the decision this entry asked for**
+    (CLIENT_CHANGES.md §0, forty-fifth block, A3, Manas's ruling): a blank
+    quantity is stored as **`None`** — absent, never 0 — and so is a blank rate,
+    base, escalation and discount; the amount is absent with it; the page no
+    longer stops the save, because there is nothing to stop. A record saved
+    before carries no `blank_model` key and is **not migrated**: its 0s may
+    have been blanks and cannot be told apart, so they are read as the 0s they
+    are (§3 *As it is*). The tripwire
+    `test_gap_42_a_blank_quantity_posted_anyway_is_saved_as_zero` fired as
+    written and was rewritten to the new rule, its old assertion quoted. The
+    entry is struck rather than deleted, as the record of why:
     `boq._clean_lines()` reads a line's typed total with `_num(li.get("total_qty"))`,
     whose default is `0.0`, so a blank box and a typed `0` store the same
     figure. For a hand-typed line that was always a small thing — the amber
@@ -12674,6 +12896,49 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     unticked notes column reading "Total as per drawing" on a row with a
     figure makes that row a total check, and it is left out — counted in the
     preview's *N total rows checked, not imported*, so it is said, not hidden.
+
+62. 🟡 **The AMOUNT is rounded by `_inr()`, not by Excel's rule — OPEN, by the
+    brief** (6 October 2026, later, the §0 forty-fifth block, A8). A8 moved
+    the NET RATE to Excel's half-up and ordered nothing else touched. The line
+    amount, quantity × net rate, is stored unrounded and printed through
+    `quotation._inr()` (`f"{v:.2f}"` — the binary value, so an exact half on
+    paper can fall either way): 3 × 0.835 is 2.5049999… in binary and prints
+    **2.50**, where Excel shows **2.51**. On a sheet whose amount cell is
+    `=ROUND(qty*rate, 2)` or simply displays 2 decimals, a line can then read
+    a paisa off. It never touches the totals check (±₹1.00) and has not shown
+    on either client sheet run in this pass (both foot to the paisa).
+    Changing it moves every printed amount on every document `_inr()`
+    prints, and `quotation.py` is frozen — a decision, not a patch.
+
+63. 🟠 **A revision may blank the rate of a line a DRAFT bill already claims —
+    OPEN** (6 October 2026, later, A6). `revision_blockers()` refuses to DROP
+    a claimed line, not to blank its rate. Once the latest revision has no
+    rate on that leg, the line is not claimable, so `/ra/edit` of that draft
+    shows it greyed with no input and **an edit drops the claim** without a
+    word (an issued bill is a snapshot and does not move). Refusing such a
+    revision, or keeping the drafted figure, are both new rules; found and
+    left.
+
+64. 🟡 **Only the PREFILL of a blank BOQ quantity or base rate is blank on the
+    documents raised from a schedule — OPEN** (6 October 2026, later, A6).
+    `boqpick.rows_html()` now shows and prefills a blank quantity blank on the
+    challan, the draft PO, the purchase order and the measurement sheet (a
+    blank base rate always prefilled blank). What a POST does with a box LEFT
+    blank is unchanged: `boqpick.picked_lines()` falls back to the BOQ's
+    figure, and to **0.0** when that is blank — the quantity, and a purchase
+    order's rate over a blank base — and the measurement sheet snapshots
+    `boq_qty` as 0.0 for a blank BOQ quantity (`measurement._with_boq_qty()`).
+    Each of those is the downstream document's own validation, not this
+    pass's to change.
+
+65. 🟡 **The work order still reads a sheet the GUIDED way — by design of the
+    forty-fifth block** (6 October 2026, later). The block is about the BOQ;
+    the shared reader's default became "as it is", and `workorder.py` passes
+    `guided=True` at both of its call sites, so a work-order import still
+    asks for a blank rate, blocks a word in the quantity and blanks a
+    mismatched rate — exactly as its own rulings (D, R1) were built.
+    Whether the client wants the work order "as it is" too is a question,
+    not an inference.
 
 
 ## 8. Stale docs — do not trust these two files
