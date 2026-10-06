@@ -4458,6 +4458,95 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 October 2026, later, by Manas Gawde — THE BOQ OPENS AS IT IS: BLANK STAYS BLANK, 0 STAYS 0, NOTHING BLOCKS ON A BLANK · NO CHARGE · POST-GO-LIVE · RULINGS A1 TO A8
+>
+> **A new block, not an amendment.** The forty-fourth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-fifth** occasion. It covers the items below
+> and nothing else.
+>
+> **What the client said, via Manas, 6 October 2026.** Their Excel sheet must
+> open as a BOQ **as it is**. If a cell is blank it comes in blank; if it is 0
+> it comes in as 0. The errors and red fields caused by blank values must go —
+> they said these can be removed. They were angry about it, and they are
+> right: the app has been refusing or rewriting their own data.
+>
+> **Manas's rulings, final — built to, not re-decided:**
+>
+> - **A1 — every mapped cell comes through as the sheet has it.** Blank →
+>   absent, never 0 and never "". 0 → 0. A number → that number (the existing
+>   item-number rounding stays). Text in a numeric column ("Included",
+>   "By client", "NA", "Nil") → the number is absent and the text goes into
+>   the line's remark as `<Field>: <text>`; a bare "-" is just blank. A formula
+>   cell is its cached value, and a cached "" is blank. An Excel error → blank,
+>   remark `<Field>: #VALUE! in sheet`. A cell whose value is 0 but shows "-"
+>   (an accounting format) is 0 — the value wins. A row with every mapped cell
+>   blank is no line.
+> - **A2 — never change a value the sheet wrote.** The rule that blanks the
+>   rate when quantity × rate does not match the sheet's amount is removed; the
+>   mismatch is a non-blocking amber note on screen giving both figures, and
+>   the BOQ's amount stays quantity × net rate, because an RA bill bills
+>   quantity × rate. No other import rule may alter, round (beyond the
+>   item-number rule) or fill in a value; each found is listed in the pass
+>   report.
+> - **A3 — blank is a valid saved state, and nothing blocks on a blank** — on
+>   the import, the typed form and a revision alike. Item number, description,
+>   unit, quantity, rate, base, escalation, discount, Make and remark may each
+>   be blank on a line; a blank quantity saves absent (ABOUT.md §7 **gap 42
+>   CLOSES**), and so does a blank rate. The rings and badges, the "N fields
+>   need you" bar, the jump to the first field, the stopped save, the
+>   server-side refusal and the "Not priced (₹0)" button go; what is left is a
+>   quiet screen-only "N lines have no rate, M lines have no quantity" on the
+>   form and on the BOQ's own page, never printed. What may still refuse a
+>   save: non-numeric text **typed** into a numeric box (naming the line),
+>   the size cap, the existing duplicate-BOQ detection, and the header's
+>   project name and date. Negative numbers keep the rule they have.
+> - **A4 — arithmetic with blanks.** Amount = quantity × net rate only when
+>   both are present; either blank → no amount (not 0); a 0 in either → 0.
+>   Section and BOQ totals sum the amounts present, and on screen a total that
+>   skipped lines says "excludes N lines with no amount" — not on print. The
+>   totals check against the sheet uses the same rule.
+> - **A5 — view and print show it as it is.** A blank prints a blank cell —
+>   never "0", "0.00", "-", "None" or "nan"; a 0 prints as 0 in the house
+>   format. A BOQ with no blank values prints byte-identical; one new print
+>   golden pins blanks and zeros side by side.
+> - **A6 — downstream.** An RA bill cannot claim a line with no (net) rate:
+>   the claim grid greys it with "No rate on the BOQ. Add it in a revision.",
+>   a POST naming it is refused naming the line, and a prefill from challans
+>   or the measurement skips it and lists it. A blank quantity takes the
+>   **same** over-claim rule as a rate-only line. The purchase order from a
+>   BOQ, the draft PO, the challan and the measurement sheet prefill a blank
+>   quantity or base rate blank, never 0. The project page says "N lines not
+>   priced". Revisions carry blanks, and a rate filled in a revision makes the
+>   line claimable. Saved RA bills and every other snapshot are untouched.
+>   **Existing BOQs are not migrated**: a 0 that was once a blank cannot be
+>   told apart, and nothing guesses.
+> - **A7 — the column picker, the advice, the names, the tabs and the
+>   discount** (the forty-fourth block) all stay; the advice never suggests
+>   filling or changing a value.
+> - **A8 — the net rate rounds HALF UP, as Excel's ROUND does**, in
+>   `boq.net_rate()` and the editor alike (2.50 less 15% is 2.13, not 2.12).
+>   Only the net-rate rounding changes; any other rounding that differs from
+>   Excel is recorded as a gap, not changed.
+>
+> ⚠ **This REVERSES, by name:** the 30 September and 1 October 2026 rules
+> (the thirty-seventh, thirty-eighth and thirty-ninth blocks) that a blank
+> blocks the save, that a quantity × rate mismatch blanks the rate, and that
+> the editor stops on unanswered fields — "Not priced" with them; and the
+> forty-fourth block's half-to-even rounding of the net rate. It **CLOSES**
+> ABOUT.md §7 gap 42.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his** —
+> a post-go-live fix to the import and the BOQ form the client is already
+> using. It changes no CC-2 item's state and moves no Phase 3 bar, and the
+> classification is his — an agent may not extend it to anything this block
+> does not name.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -5240,6 +5329,14 @@ what you ticked is asked for.** A line needs a description, a quantity and a
 rate (or an amount) — nothing else — and the form never rings a box for a
 column you did not import. **Escalation and base rate are never required**: a
 line with a rate and no base keeps both blank and the rate stands.
+
+→ **And later on 6 October 2026** (the §0 **forty-fifth** block, no charge):
+**your sheet opens as it is.** A blank cell comes in blank and a 0 comes in as
+0; nothing is turned red, nothing has to be filled in, and the BOQ saves with
+its blanks — a blank quantity is no longer saved as 0 (ABOUT.md §7 gap 42,
+closed). Words in a number column ("Included", "By client") go into the line's
+remark. Where the sheet's amount is not quantity × rate, both figures are
+shown and the rate is kept as you wrote it.
 
 ### G5 · BOQ import — cost sheets, rate-only lines, group labels, the grand total — ✅ Built, not deployed
 
