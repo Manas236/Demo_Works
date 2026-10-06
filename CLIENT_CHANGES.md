@@ -4377,6 +4377,87 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 October 2026, by Manas Gawde — BOQ IMPORT: THE USER CHOOSES THE COLUMNS, ESCALATION OPTIONAL, DISCOUNT, NAMES, TABS AS SECTIONS · NO CHARGE · POST-GO-LIVE · RULINGS R1 TO R6
+>
+> **A new block, not an amendment.** The forty-third block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-fourth** occasion. It covers the items below
+> and nothing else. It extends G1, G4 and G5 (the thirty-fourth, thirty-seventh,
+> thirty-eighth and thirty-ninth blocks) and re-opens none of them.
+>
+> **What the client said, via Manas, 6 October 2026.** There is **no standard
+> BOQ format**. A new client sheet breaks the import: too many red fields, and
+> rates and totals wrong. The Create BOQ form treats the escalation % as
+> compulsory, but many sheets carry no escalation at all and some carry a
+> discount. More auto-detection rules will never finish. The fix is to let the
+> user **CHOOSE** what to import from the sheet, with the app **ADVISING** what
+> to take. ⚠ *"The form treats escalation as compulsory"* is the client's
+> report as relayed; the escalation audit this pass runs is what confirms or
+> corrects it, and its finding goes in the pass report and ABOUT.md — it does
+> not re-open this block.
+>
+> **Manas's rulings, final — built to, not re-decided:**
+>
+> - **R1 — the preview becomes a column picker**, in the shared reader, for the
+>   BOQ and the work order alike. Every non-empty column of each ticked tab is
+>   listed with its header, three sample values, an **Import** tick, a target
+>   and one line of plain-English **advice** from a pure function
+>   (`sheetimport.advise()`); the tick and the target are pre-set to the
+>   advice. **An unticked column is ignored completely.** Targets: item no.,
+>   description, unit, quantity (total only, the v1 rule), make, remark, and per
+>   track rate, base, escalation, discount and amount; or ignore. The confirmed
+>   picks are remembered per layout as today; a cost layout still always stops
+>   at the preview. The work order gets the same picker with its own targets.
+> - **R2 — only the minimum is required; escalation and base are never
+>   compulsory.** Per line: a description, a quantity (or the rate-only marker,
+>   the existing rule), and on the mapped tracks a rate or an amount. A line
+>   with a unit rate and no base keeps base and escalation **blank — absent,
+>   never 0** — and the unit rate stands; with a base and no escalation, the
+>   unit rate typed or imported stands. Rings, the *N fields need you* bar and
+>   the flags follow **only the ticked targets**. Cost mode is unchanged (its
+>   markup stays required). ABOUT.md §7 **gap 42 stays open**.
+> - **R3 — discount is a real field on a BOQ line**: `supply_disc_pct` /
+>   `install_disc_pct`, absent = no discount, never written as 0 unless typed.
+>   Net rate = unit rate less the discount, rounded to the paisa; the line
+>   amount and every BOQ total are at net; **one helper**, `boq.net_rate()`,
+>   prices a line for every reader, audited and recorded in ABOUT.md §3. An RA
+>   bill snapshots the **net** rate; existing RA bills do not move. The draft PO
+>   and the purchase order from a BOQ keep the supply **base** rate. Disc % and
+>   Net Rate print only for a track where a line carries a discount, so a BOQ
+>   with none prints **byte-identical**. A discount **amount** column is not
+>   supported in this pass — the advice sends it to Remark, and the gap is
+>   recorded.
+> - **R4 — names from the sheet come through** as suggestions the user
+>   confirms on the preview, never auto-saved: the title rows above the heading
+>   for the project, a labelled client row for the account (pre-selecting an
+>   address-book entry whose name matches), the tab name as a fallback; each
+>   shown with its tab and row. Item descriptions come through **word for
+>   word**.
+> - **R5 — several tabs can be one BOQ, one tab per section** — the work
+>   order's pass-3 mechanism: tabs ticked on the preview, one mapping per tab,
+>   built in workbook order, a section per tab titled by the sheet or the tab,
+>   totals checked per tab and combined, the whole held to the existing size
+>   limits — refused, never truncated.
+> - **R6 — nothing else moves**: `product.py` and `quotation.py` stay closed;
+>   no new route unless unavoidable; no print golden moves but the one new
+>   discounted-BOQ golden.
+>
+> ⚠ **This NARROWS the 29 September 2026 ruling** (thirty-fourth block,
+> decision 2) **that a single sheet rate fills the selling rate**, by making
+> every target user-chosen. **The default advice still maps a lone rate column
+> to the selling rate**, and a single selling rate still leaves the base rate
+> blank.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his** —
+> a post-go-live fix to the import the client is already using. It changes no
+> CC-2 item's state and moves no Phase 3 bar, and the classification is his —
+> an agent may not extend it to anything this block does not name.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -5086,6 +5167,14 @@ one rule above: **"RO" in a quantity is now a rate-only line at 0** with its
 rates kept, not blank. Any other word in a quantity ("NA", "I.R.") still stays
 blank and flagged.
 
+→ **And on 6 October 2026** (the §0 **forty-fourth** block, no charge): **you
+choose the columns.** The check page lists every column of the sheet with
+three sample values, an *Import* tick and a one-line suggestion of what to do
+with it — the suggestion is already ticked, and a column you untick is left
+out completely. **Several tabs can go into one BOQ**, one section per tab, and
+the project and customer names written above the heading come through for you
+to confirm. A lone rate column is still suggested as your selling rate.
+
 ### G4 · BOQ import — the sheet's structure, its totals, a guided fix — ✅ Built, not deployed
 
 **Built.** The importer now reads a BOQ the way it is written:
@@ -5146,6 +5235,12 @@ resolver audit) and §5 `/boq` / `/boq/import`.
 
 → Extended on 1 October 2026 by **G5** (the §0 thirty-ninth block).
 
+→ **And on 6 October 2026** (the §0 **forty-fourth** block, no charge): **only
+what you ticked is asked for.** A line needs a description, a quantity and a
+rate (or an amount) — nothing else — and the form never rings a box for a
+column you did not import. **Escalation and base rate are never required**: a
+line with a rate and no base keeps both blank and the rate stands.
+
 ### G5 · BOQ import — cost sheets, rate-only lines, group labels, the grand total — ✅ Built, not deployed
 
 **Built**, after the import was tried on the client's Iron Mountain sheet
@@ -5174,6 +5269,15 @@ lines (13 with no rate, which need a rate or *Not priced*), every section and
 the grand total add up to the paisa — and at a 0% markup the BOQ's base totals
 equal the sheet's. The Jamnagar sheet is unchanged: the same 11 lines need a
 rate.
+
+→ **And on 6 October 2026** (the §0 **forty-fourth** block, no charge): **a
+discount is a field on the line.** Each line takes a *Disc %* per track; the
+line is billed at the rate less the discount, and every total, and every RA
+bill raised from now on, uses that net figure. Disc % and Net Rate are printed
+only where a line carries a discount — a BOQ with no discount prints exactly as
+before. A discount written as a rupee amount rather than a % is not read as a
+discount (the check page suggests keeping it in the Remark). The *Our cost*
+choice and its markup are unchanged.
 
 ⚠ **Not done, by the brief:** a heading stacked over three rows is not read —
 on this sheet the four cost columns are picked by hand once; and eleven "Lot"
