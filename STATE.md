@@ -10,17 +10,46 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 5 October 2026, evening (**Work Orders
-pass 3 — the client's real sheet**: one rate track or both, the shared
-reader's header band, quantity-0 rows left out, several tabs, sections with
-subtotals, GST, site and terms — CLIENT_CHANGES.md §0 **forty-third** block,
-rulings R1–R7, no charge; **the board does not move: 19 of 20 BUILT · 1
-BLOCKED**). *Previously:* 5 October 2026, later (**Work Orders — three
-fixes**: the import staged by the BOQ importer's own mechanism, heading lines,
-the contractor's phone — the §0 **forty-second** block, no charge).
-*Before that:* 5 October 2026 (**Work Orders for petty contractors** — a new
-buy-side document distinct from the purchase order, the §0 **forty-first**
-block, Manas's rulings A to J, no charge).
+**As of:** branch `antigravity-dev`, 6 October 2026 (**the BOQ import —
+the user chooses the columns, the app advises**: a column picker with
+advice on `/boq/import` and `/wo/import`, escalation and base never
+compulsory, a discount % on the BOQ line with one net-rate helper, names from
+the sheet, several tabs as sections — CLIENT_CHANGES.md §0 **forty-fourth**
+block, rulings R1–R6, no charge; **the board does not move: 19 of 20 BUILT ·
+1 BLOCKED**). *Previously:* 5 October 2026, evening (**Work Orders pass 3 —
+the client's real sheet** — the §0 **forty-third** block, rulings R1–R7, no
+charge). *Before that:* 5 October 2026, later (**Work Orders — three fixes**
+— the §0 **forty-second** block, no charge).
+
+- **6 October 2026 — the BOQ import's column picker, run on the OFFICE PC**
+  (Step 0 clean at `426f50c`, the remote's tip, 0 ahead and 0 behind; backup
+  pair `samruddhi_qms-20261006-132439-pre-boq-import-picker.sql` (212,344
+  bytes) / `…-attachments.zip`; every check with `DB_ENABLED=false`; no new
+  client sheet was placed in `fixtures/` for this pass). Commits: `0e41976`
+  the §0 block, `2225e6a` the code with ABOUT.md, `b23f4d5` the tests, then
+  these docs. **R1** — `sheetimport.advise()` (pure): every column listed with
+  three samples, an Import tick and one line of advice, pre-set to it; an
+  unticked column ignored completely; the work order gets the same picker in
+  its own words. **R2** — only description, quantity and a rate or amount are
+  asked, and only for ticked columns; a base alone prices a line; no Item No.
+  column and the reader numbers the lines. ⚠ **The escalation audit found
+  nothing that REQUIRED it** — the hint's *"rate differs"*, a blank stored
+  as 0 and reloaded as "0", and an empty escalation column taken by default
+  made it look required; all three fixed. **R3** — `supply_disc_pct` /
+  `install_disc_pct`, absent unless typed; `boq.net_rate()` the one price
+  (the save, the print, the editor, the RA bill at net); purchase prefill
+  still the base rate; Disc % / Net Rate printed only on a discounted track;
+  "cost not recorded on N lines" on the project page; a rupee discount
+  advised to the Remark (ABOUT.md §7 gap 60, open). **R4** — the project and
+  account from the rows above the heading, editable, the account selected
+  from the address book when it matches. **R5** — several tabs, one section
+  each, per-tab and combined totals. On the client's own Sify workbook the
+  default advice chose exactly the mapping `tools/gen_demo_data.py` was
+  written with: nothing to answer, both totals to the paisa. Tests
+  **3,777 / 4 → 3,897 / 4** (row 1's configuration only; rows 2 and 3 not
+  run). One new print golden, no existing golden moved, the access matrix
+  did not move. Mutations: 29, all caught (three after their tests were
+  tightened). ⚠ **Not deployed** — for Manas's browser check first.
 
 - **5 October 2026, evening — Work Orders pass 3, the client's real sheet,
   run on the OFFICE PC** (started at `686d083`, the remote's tip, clean; the
