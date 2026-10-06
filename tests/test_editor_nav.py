@@ -487,13 +487,42 @@ def test_no_ui_state_reaches_the_record(seeded, client):
 
 # ═══ Rejected POSTs ═══════════════════════════════════════════════════════
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank description is a valid saved state, so it no longer makes a
+#   findable failure; text typed into a numeric box (the one value refusal
+#   left) does.
+#   The test as it stood:
+#   def test_a_rejected_post_forces_the_offending_line_open(seeded, client):
+#       """
+#       Every line is collapsed by default. A complaint about line 47 that leaves
+#       line 47 shut is worse than no validation.
+#       """
+#       boot = _demo_boot(client)
+#       boot["lines"][46]["description"] = ""          # a real, findable failure
+#       for line in boot["lines"]:
+#           line["_open"] = False
+#       for sec in boot["sections"]:
+#           sec["_open"] = False
+#
+#       r = client.post("/boq/create", data={
+#           "date": "2026-06-15", "project_name": "P", "account_name": "A",
+#           "boq_json": json.dumps(boot)})
+#       assert r.status_code == 200
+#       html = r.get_data(as_text=True)
+#       assert "needs a description" in html
+#
+#       model = json.loads(re.search(r"var MODEL = (\{.*?\});\n", html, re.S).group(1))
+#       assert model["lines"][46]["_open"] is True, "the failing line stayed shut"
+#       opened = [s for s in model["sections"] if s.get("_open")]
+#       assert opened and opened[0]["code"] == model["lines"][46]["section"]
+
 def test_a_rejected_post_forces_the_offending_line_open(seeded, client):
     """
     Every line is collapsed by default. A complaint about line 47 that leaves
     line 47 shut is worse than no validation.
     """
     boot = _demo_boot(client)
-    boot["lines"][46]["description"] = ""          # a real, findable failure
+    boot["lines"][46]["supply_rate"] = "lots"      # a real, findable failure
     for line in boot["lines"]:
         line["_open"] = False
     for sec in boot["sections"]:
@@ -504,13 +533,37 @@ def test_a_rejected_post_forces_the_offending_line_open(seeded, client):
         "boq_json": json.dumps(boot)})
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert "needs a description" in html
+    assert "is not a number" in html
 
     model = json.loads(re.search(r"var MODEL = (\{.*?\});\n", html, re.S).group(1))
     assert model["lines"][46]["_open"] is True, "the failing line stayed shut"
     opened = [s for s in model["sections"] if s.get("_open")]
     assert opened and opened[0]["code"] == model["lines"][46]["section"]
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank account name now saves, so the rejection this test needs is a blank
+#   DATE — one of the two header boxes that still stop a save.
+#   The test as it stood:
+#   def test_a_rejected_post_keeps_input_and_open_state(seeded, client):
+#       boot = _demo_boot(client)
+#       boot["lines"][0]["_open"] = True
+#       boot["lines"][3]["_open"] = True
+#       boot["sections"][1]["_open"] = True
+#       boot["lines"][5]["description"] = "A" * 1500
+#
+#       r = client.post("/boq/create", data={
+#           "date": "2026-06-15", "project_name": "Kept Project",
+#           "account_name": "",                          # the rejection
+#           "boq_json": json.dumps(boot)})
+#       assert r.status_code == 200
+#       html = r.get_data(as_text=True)
+#       assert "Kept Project" in html
+#       model = json.loads(re.search(r"var MODEL = (\{.*?\});\n", html, re.S).group(1))
+#       assert model["lines"][0]["_open"] is True
+#       assert model["lines"][3]["_open"] is True
+#       assert model["sections"][1]["_open"] is True
+#       assert len(model["lines"][5]["description"]) == 1500
 
 def test_a_rejected_post_keeps_input_and_open_state(seeded, client):
     boot = _demo_boot(client)
@@ -520,8 +573,8 @@ def test_a_rejected_post_keeps_input_and_open_state(seeded, client):
     boot["lines"][5]["description"] = "A" * 1500
 
     r = client.post("/boq/create", data={
-        "date": "2026-06-15", "project_name": "Kept Project",
-        "account_name": "",                          # the rejection
+        "date": "", "project_name": "Kept Project",     # the rejection: no date
+        "account_name": "",
         "boq_json": json.dumps(boot)})
     assert r.status_code == 200
     html = r.get_data(as_text=True)
@@ -936,10 +989,12 @@ def test_a_typed_total_does_not_count_once_the_line_is_in_an_area_section(seeded
         renderLines();                  /* a value edit does not re-render */
         var beforeMove = {bar: barRates('C'), summary: summaryQty(0)};
         setSection(0, 'A');
+        STUB['blank-note'] = {innerHTML: ''};   /* 6 Oct 2026: the quiet note's slot */
         expandAll();
         var afterMove = {bar: barRates('A'), summary: summaryQty(0),
                          carried: MODEL.lines[0].total_qty,
-                         zeroBand: zeroBand().indexOf('quantity of 0') !== -1};
+                         zeroBand: zeroBand().indexOf('quantity of 0') !== -1,
+                         blankNote: STUB['blank-note'].innerHTML};
         setArea(0, 'L0', '3');
         renderLines();
         console.log(JSON.stringify({
@@ -953,5 +1008,11 @@ def test_a_typed_total_does_not_count_once_the_line_is_in_an_area_section(seeded
     assert res["afterMove"]["carried"] == "1"
     assert res["afterMove"]["bar"] == ["", ""]
     assert res["afterMove"]["summary"] == ""
-    assert res["afterMove"]["zeroBand"], "a line with no floor filled in is at 0"
+    # ⚠ AMENDED 6 October 2026 — the §0 forty-fifth block, A3: a line with no
+    #   floor filled in has NO quantity (blank, saved absent), not 0 — so the
+    #   zero band, which counts a TYPED 0, does not list it; the quiet note
+    #   counts it instead. The assertion as it stood:
+    #       assert res["afterMove"]["zeroBand"], "a line with no floor filled in is at 0"
+    assert not res["afterMove"]["zeroBand"], "blank, not 0"
+    assert "1 line has no quantity" in res["afterMove"]["blankNote"]
     assert res["afterArea"] == {"bar": ["1,500.00", ""], "summary": "3"}

@@ -297,6 +297,20 @@ def test_an_unticked_column_is_never_read_or_flagged_by_the_reader():
     assert all(l["remark"] == "" and l["supply_disc_pct"] is None for l in res["lines"])
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1: a
+#   discount of 250 is still not read as one, and it is now kept in the
+#   remark (its note's kind is "as_remark"; it was "disc_range"). "NA" in a
+#   discount is kept too.
+#   The test as it stood:
+#   def test_ticked_the_same_columns_are_read_and_flagged():
+#       """The control for the test above."""
+#       g = grid_of(JUNK)
+#       m = SI.advised_mapping(g)
+#       m["6"], m["7"] = "remark", "supply_disc_pct"
+#       res = SI.build(g, m)
+#       assert res["lines"][1]["remark"] == "see note"
+#       assert any(f["kind"] == "disc_range" and f["row"] == 2 for f in res["flags"])
+
 def test_ticked_the_same_columns_are_read_and_flagged():
     """The control for the test above."""
     g = grid_of(JUNK)
@@ -304,7 +318,9 @@ def test_ticked_the_same_columns_are_read_and_flagged():
     m["6"], m["7"] = "remark", "supply_disc_pct"
     res = SI.build(g, m)
     assert res["lines"][1]["remark"] == "see note"
-    assert any(f["kind"] == "disc_range" and f["row"] == 2 for f in res["flags"])
+    assert any(f["kind"] == "as_remark" and f["row"] == 2 for f in res["flags"])
+    assert res["lines"][0]["as_remark"] == ["Supply disc %: 250"]
+    assert res["lines"][1]["as_remark"] == ["Supply disc %: NA"]
 
 
 def test_an_unticked_column_never_reaches_the_form(client):
@@ -344,13 +360,31 @@ NO_ESC = [["Sr", "Description", "Qty", "Unit", "Rate", "Esc %", "Amount"],
           ["2", "Valve", 2, "Nos", 50, None, 100]]
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: the
+#   needs bar is gone, so its `data-count="0"` cannot be asserted; what is
+#   held is that there is no bar and nothing is asked.
+#   The test as it stood:
+#   def test_a_sheet_with_no_escalation_imports_with_nothing_to_ask_and_saves(client):
+#       tok, _k = stage([("BOQ", NO_ESC)])
+#       assert STORE["boq_imports"][tok]["mapping"]["5"] == "", "empty escalation advised out"
+#       html = open_form(client, tok)
+#       model = model_of(html)
+#       assert not any(l.get("_need") for l in model["lines"])
+#       assert 'data-count="0"' in html, "the needs bar has nothing to count"
+#       rec = save_model(client, model)
+#       assert isinstance(rec, dict), rec[:500]
+#       li = rec["line_items"][0]
+#       assert li["supply_rate"] == 100.0 and li["supply_base_rate"] is None
+#       assert li["supply_escalation_pct"] is None, "no base, no escalation: absent, never 0"
+#       assert li["install_escalation_pct"] is None
+
 def test_a_sheet_with_no_escalation_imports_with_nothing_to_ask_and_saves(client):
     tok, _k = stage([("BOQ", NO_ESC)])
     assert STORE["boq_imports"][tok]["mapping"]["5"] == "", "empty escalation advised out"
     html = open_form(client, tok)
     model = model_of(html)
     assert not any(l.get("_need") for l in model["lines"])
-    assert 'data-count="0"' in html, "the needs bar has nothing to count"
+    assert 'id="needs-bar"' not in html, "there is no needs bar at all"
     rec = save_model(client, model)
     assert isinstance(rec, dict), rec[:500]
     li = rec["line_items"][0]
@@ -359,13 +393,29 @@ def test_a_sheet_with_no_escalation_imports_with_nothing_to_ask_and_saves(client
     assert li["install_escalation_pct"] is None
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   a blank escalation beside a base rate is stored ABSENT, not 0.0 — the
+#   forty-fourth block kept v1's "blank is 0" reading when a base was
+#   present.
+#   The test as it stood:
+#   def test_base_given_and_escalation_blank_saves_with_the_typed_rate(client):
+#       rec = save_model(client, one_section(a_line(supply_base_rate="100",
+#                                                   supply_escalation_pct="",
+#                                                   supply_rate="120")))
+#       li = rec["line_items"][0]
+#       assert (li["supply_base_rate"], li["supply_escalation_pct"], li["supply_rate"]) == (
+#           100.0, 0.0, 120.0), "with a base the old reading stands; the typed rate stands"
+#       assert li["supply_amount"] == 1200.0
+#       assert "supply_disc_pct" not in li and "install_disc_pct" not in li, (
+#           "no discount typed: the key is absent — never a 0 nobody wrote")
+
 def test_base_given_and_escalation_blank_saves_with_the_typed_rate(client):
     rec = save_model(client, one_section(a_line(supply_base_rate="100",
                                                 supply_escalation_pct="",
                                                 supply_rate="120")))
     li = rec["line_items"][0]
     assert (li["supply_base_rate"], li["supply_escalation_pct"], li["supply_rate"]) == (
-        100.0, 0.0, 120.0), "with a base the old reading stands; the typed rate stands"
+        100.0, None, 120.0), "a blank escalation is absent, base or no base; the rate stands"
     assert li["supply_amount"] == 1200.0
     assert "supply_disc_pct" not in li and "install_disc_pct" not in li, (
         "no discount typed: the key is absent — never a 0 nobody wrote")
@@ -434,9 +484,31 @@ def test_the_hint_never_asks_for_an_escalation_that_was_not_typed():
 
 # ═══ E. The discount and the net rate — the one helper ═══════════════════════
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A8: the
+#   net rate rounds HALF UP as Excel's ROUND does — 2.50 less 15% is 2.13 (it
+#   was 2.12, half to even). Every other case is unchanged.
+#   The test as it stood:
+#   @pytest.mark.parametrize("unit,disc,net", [
+#       (2.5, 15, 2.12),          # 2.125 exactly — half to EVEN (the house round())
+#       (0.75, 50, 0.38),         # 0.375 exactly — half to even goes UP here
+#       (2024.0, 10, 1821.6),
+#       (100.0, 0, 100.0),        # a typed 0 is no arithmetic
+#       (100.0, None, 100.0),     # absent
+#       (7.000000000000001, None, 7.000000000000001),   # untouched, unrounded
+#       (1999.99, 12.5, 1749.99),
+#       (100.0, 100, 0.0),
+#   ])
+#   def test_net_rate_arithmetic(unit, disc, net):
+#       assert boq.net_of(unit, disc) == net
+#       line = {"supply_rate": unit, "install_rate": unit}
+#       if disc is not None:
+#           line["supply_disc_pct"] = line["install_disc_pct"] = disc
+#       assert boq.net_rate(line, "supply") == net
+#       assert boq.net_rate(line, "installation") == net, "ra.py's leg name is accepted"
+
 @pytest.mark.parametrize("unit,disc,net", [
-    (2.5, 15, 2.12),          # 2.125 exactly — half to EVEN (the house round())
-    (0.75, 50, 0.38),         # 0.375 exactly — half to even goes UP here
+    (2.5, 15, 2.13),          # 2.125 exactly — half UP, Excel's ROUND (A8)
+    (0.75, 50, 0.38),         # 0.375 exactly — up either way
     (2024.0, 10, 1821.6),
     (100.0, 0, 100.0),        # a typed 0 is no arithmetic
     (100.0, None, 100.0),     # absent
@@ -453,12 +525,24 @@ def test_net_rate_arithmetic(unit, disc, net):
     assert boq.net_rate(line, "installation") == net, "ra.py's leg name is accepted"
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A8
+#   reverses the forty-fourth block's half-to-even net rate by name: the
+#   exact half is pinned at 2.13.
+#   The test as it stood:
+#   def test_the_exact_half_is_pinned():
+#       """2.50 less 15% is EXACTLY 2.125 in binary: Python's round() takes it to
+#       the even paisa, 2.12 — `purchase._line_total()`'s and the work order's
+#       rule. A half-up rounding would print 2.13."""
+#       assert 2.5 * (100 - 15) / 100 == 2.125
+#       assert boq.net_of(2.5, 15) == 2.12
+
 def test_the_exact_half_is_pinned():
-    """2.50 less 15% is EXACTLY 2.125 in binary: Python's round() takes it to
-    the even paisa, 2.12 — `purchase._line_total()`'s and the work order's
-    rule. A half-up rounding would print 2.13."""
+    """2.50 less 15% is EXACTLY 2.125 in binary: Excel's ROUND — half up — takes
+    it to 2.13, and so does the BOQ now (A8). Python's round() would give 2.12,
+    the false "does not match the sheet" A8 was written to end."""
     assert 2.5 * (100 - 15) / 100 == 2.125
-    assert boq.net_of(2.5, 15) == 2.12
+    assert boq.net_of(2.5, 15) == 2.13
+    assert round(2.125, 2) == 2.12, "the house round() is unchanged everywhere else"
 
 
 @pytest.mark.parametrize("raw,want", [
@@ -471,6 +555,23 @@ def test_disc_value_reads_a_typed_discount(raw, want):
     assert boq.disc_value(raw) == want
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A8:
+#   2.50 less 15% nets to 2.13 (half up), so the line and the subtotal move
+#   by 0.01 × 2. The rest is unchanged.
+#   The test as it stood:
+#   def test_a_discounted_line_saves_at_net_and_the_totals_sum_net(client):
+#       rec = save_model(client, one_section(
+#           a_line(supply_rate="2024", supply_disc_pct="10", total_qty="3"),
+#           a_line(item_no="2", supply_rate="2.5", supply_disc_pct="15", total_qty="2",
+#                  install_rate="1000", install_disc_pct="5")))
+#       a, b = rec["line_items"]
+#       assert a["supply_rate"] == 2024.0 and a["supply_disc_pct"] == 10.0
+#       assert a["supply_amount"] == pytest.approx(1821.6 * 3)
+#       assert b["supply_amount"] == pytest.approx(2.12 * 2) and b["install_amount"] == 950.0 * 2
+#       assert "install_disc_pct" not in a, "absent unless typed — never a 0 nobody wrote"
+#       assert rec["supply_subtotal"] == pytest.approx(1821.6 * 3 + 2.12 * 2)
+#       assert rec["subtotal"] == pytest.approx(rec["supply_subtotal"] + 1900.0)
+
 def test_a_discounted_line_saves_at_net_and_the_totals_sum_net(client):
     rec = save_model(client, one_section(
         a_line(supply_rate="2024", supply_disc_pct="10", total_qty="3"),
@@ -479,9 +580,9 @@ def test_a_discounted_line_saves_at_net_and_the_totals_sum_net(client):
     a, b = rec["line_items"]
     assert a["supply_rate"] == 2024.0 and a["supply_disc_pct"] == 10.0
     assert a["supply_amount"] == pytest.approx(1821.6 * 3)
-    assert b["supply_amount"] == pytest.approx(2.12 * 2) and b["install_amount"] == 950.0 * 2
+    assert b["supply_amount"] == pytest.approx(2.13 * 2) and b["install_amount"] == 950.0 * 2
     assert "install_disc_pct" not in a, "absent unless typed — never a 0 nobody wrote"
-    assert rec["supply_subtotal"] == pytest.approx(1821.6 * 3 + 2.12 * 2)
+    assert rec["supply_subtotal"] == pytest.approx(1821.6 * 3 + 2.13 * 2)
     assert rec["subtotal"] == pytest.approx(rec["supply_subtotal"] + 1900.0)
 
 
@@ -504,9 +605,14 @@ def test_the_editor_prices_a_line_exactly_as_the_server_does():
     """`_BOQ_JS` `netRate()` / `round2()` / `discNum()` against `boq.net_of()`
     and `boq.disc_value()`, the exact halves included, and `errMet()` against
     `line_problems()` on the discount."""
+    # ⚠ EXTENDED 6 October 2026 (the §0 forty-fifth block, A8): the half-up
+    #   rule, and the halves binary cannot hold exactly — 10.05 less 50% is
+    #   5.025, stored as 5.0249…, which Excel's ROUND (and now the BOQ) takes
+    #   to 5.03. The list ended at (0.1, "30").
     cases = [(2.5, "15"), (0.75, "50"), (0.25, "50"), (5.25, "50"), (2024, "10"),
              (100.25, "10"), (1999.99, "12.5"), (7, "33.333"), (123.45, "7.5"),
-             (100, ""), (100, "0"), (100, "10%"), (100, "100"), (0.1, "30")]
+             (100, ""), (100, "0"), (100, "10%"), (100, "100"), (0.1, "30"),
+             (10.05, "50"), (1.15, "50"), (5.35, "50"), (99.99, "50"), (0.01, "50")]
     lines = [{"supply_rate": str(u), "supply_disc_pct": d} for u, d in cases]
     bad = ["", "-", "5", "5%", "101", "-1", "x", "1e3"]
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
@@ -628,27 +734,60 @@ DISC_SHEET = [["Sr", "Description", "Qty", "Unit", "Supply Rate", "Disc %", "Net
               ["4", "Tee", 3, "Nos", 40, 5, 38, 200]]           # amount wrong: 3 x 38 = 114
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A2: a
+#   quantity × net rate that differs from the sheet's amount KEEPS the rate
+#   and is an amber note on the line (it blanked the rate and was a need).
+#   The test as it stood:
+#   def test_the_discount_column_imports_and_both_checks_run():
+#       g = grid_of(DISC_SHEET)
+#       m = SI.advised_mapping(g)
+#       assert (m["5"], m["6"]) == ("supply_disc_pct", "supply_net_rate")
+#       res = SI.build(g, m)
+#       by = {l["item_no"]: l for l in res["lines"]}
+#       assert by["1"]["supply_disc_pct"] == 10.0 and not by["1"]["needs"]
+#       assert by["2"]["supply_disc_pct"] is None and not by["2"]["needs"]
+#       assert not by["3"]["needs"], "a net rate within a rupee agrees"
+#       tee = by["4"]
+#       assert tee["supply_rate"] is None, "the rate is left blank, never guessed"
+#       msg = tee["needs"][0]["message"]
+#       assert "net rate 38" in msg and "less 5%" in msg and "= 114" in msg and "200" in msg
+
 def test_the_discount_column_imports_and_both_checks_run():
     g = grid_of(DISC_SHEET)
     m = SI.advised_mapping(g)
     assert (m["5"], m["6"]) == ("supply_disc_pct", "supply_net_rate")
     res = SI.build(g, m)
     by = {l["item_no"]: l for l in res["lines"]}
-    assert by["1"]["supply_disc_pct"] == 10.0 and not by["1"]["needs"]
-    assert by["2"]["supply_disc_pct"] is None and not by["2"]["needs"]
-    assert not by["3"]["needs"], "a net rate within a rupee agrees"
+    assert by["1"]["supply_disc_pct"] == 10.0 and not by["1"]["flags"]
+    assert by["2"]["supply_disc_pct"] is None and not by["2"]["flags"]
+    assert not by["3"]["flags"], "a net rate within a rupee agrees"
     tee = by["4"]
-    assert tee["supply_rate"] is None, "the rate is left blank, never guessed"
-    msg = tee["needs"][0]["message"]
-    assert "net rate 38" in msg and "less 5%" in msg and "= 114" in msg and "200" in msg
+    assert tee["supply_rate"] == 40.0, "the rate is the sheet's — never blanked"
+    assert not res["needs"]
+    (msg,) = tee["flags"]
+    assert "the sheet says 200" in msg and "the BOQ computes 114" in msg
+    assert "net rate 38" in msg
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A2: the
+#   sheet's own net rate against rate less discount is an amber note that
+#   keeps both (it blanked the rate and was a need).
+#   The test as it stood:
+#   def test_a_sheet_net_rate_off_by_more_than_a_rupee_is_flagged():
+#       g = grid_of([DISC_SHEET[0], ["1", "Pipe", 10, "Mtr", 100, 10, 88.5, 885]])
+#       res = SI.build(g, SI.advised_mapping(g))
+#       (line,) = res["lines"]
+#       assert line["supply_rate"] is None
+#       assert "rate 100 less 10% = 90, but the sheet's net rate is 88.50" in line["needs"][0]["message"]
 
 def test_a_sheet_net_rate_off_by_more_than_a_rupee_is_flagged():
     g = grid_of([DISC_SHEET[0], ["1", "Pipe", 10, "Mtr", 100, 10, 88.5, 885]])
     res = SI.build(g, SI.advised_mapping(g))
     (line,) = res["lines"]
-    assert line["supply_rate"] is None
-    assert "rate 100 less 10% = 90, but the sheet's net rate is 88.50" in line["needs"][0]["message"]
+    assert line["supply_rate"] == 100.0 and line["supply_disc_pct"] == 10.0
+    assert not res["needs"]
+    assert any("rate 100 less 10% is 90, the sheet's net rate is 88.50" in m
+               for m in line["flags"])
 
 
 def test_the_totals_check_sums_at_net():
@@ -833,12 +972,24 @@ def test_a_tab_with_the_same_headers_takes_the_first_tabs_picks(client):
     assert rec["tab_maps"]["1"]["5"] == ""
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank quantity no longer raises a need to carry the tab's name, so the
+#   note that does is the sheet-vs-BOQ amount note on the line's `_flags`.
+#   The test as it stood:
+#   def test_a_flag_names_its_tab(client):
+#       bad = [TAB_A[0], ["1", "Pipe", None, "Mtr", 100, 1000]]
+#       tok, _k = stage([("Sprinkler", TAB_A), ("Hydrant", bad)])
+#       confirm(client, tok, action="update", tab=["0", "1"])
+#       model = model_of(open_form(client, tok))
+#       msgs = [n["m"] for l in model["lines"] for n in (l.get("_need") or [])]
+#       assert msgs and all(m.startswith("Hydrant · row 2:") for m in msgs)
+
 def test_a_flag_names_its_tab(client):
-    bad = [TAB_A[0], ["1", "Pipe", None, "Mtr", 100, 1000]]
+    bad = [TAB_A[0], ["1", "Pipe", 2, "Mtr", 100, 999]]
     tok, _k = stage([("Sprinkler", TAB_A), ("Hydrant", bad)])
     confirm(client, tok, action="update", tab=["0", "1"])
     model = model_of(open_form(client, tok))
-    msgs = [n["m"] for l in model["lines"] for n in (l.get("_need") or [])]
+    msgs = [m for l in model["lines"] for m in (l.get("_flags") or [])]
     assert msgs and all(m.startswith("Hydrant · row 2:") for m in msgs)
 
 

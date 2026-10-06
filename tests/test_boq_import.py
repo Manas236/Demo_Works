@@ -246,29 +246,74 @@ def test_a_dash_base_rate_is_blank_and_not_a_flag():
 
 # ═══ 2. Quantities that are not numbers ══════════════════════════════════════
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   text in the quantity is blank and kept in the remark as "Qty: <text>"; it
+#   is no longer a red flag and does not block. The blank-not-0 half is
+#   unchanged.
+#   The test as it stood:
+#   @pytest.mark.parametrize("raw", ["I.R.", "R. O."])
+#   def test_rate_only_stays_blank_and_flagged_and_never_zero(raw):
+#       """
+#       ⚠ **Amended 1 October 2026 (CLIENT_CHANGES.md §0, thirty-ninth block).**
+#       The parameters read `["R.O.", "I.R.", "RO", "Rate Only", "R. O."]`. The
+#       brief's four spellings — "RO", "R.O.", "R/O", "RATE ONLY" — are now a
+#       RATE-ONLY line at quantity 0 (`tests/test_boq_import_cost.py`); what the
+#       old pattern matched beyond those two words keeps v1's rule, asserted here
+#       unchanged.
+#       """
+#       res, _g, _m = built([HEAD, ["1", "Pipe", raw, "Mtrs", 100, None]])
+#       ln = line(res, "1")
+#       assert ln["qty"] is None
+#       assert ln["qty"] != 0
+#       assert ln["block"] is True
+#       assert any("Rate only on source sheet" in f for f in ln["flags"])
+#       f = next(f for f in res["flags"] if f["kind"] == "rate_only")
+#       assert f["severity"] == "red" and f["raw"] == raw and f["col"] == "C"
+#       # And on the way to the form: an EMPTY string, not "0".
+#       model = boqimport.editor_model(res)
+#       assert model["lines"][0]["total_qty"] == ""
+#       assert model["lines"][0]["_block"] is True
+
 @pytest.mark.parametrize("raw", ["I.R.", "R. O."])
 def test_rate_only_stays_blank_and_flagged_and_never_zero(raw):
-    """
-    ⚠ **Amended 1 October 2026 (CLIENT_CHANGES.md §0, thirty-ninth block).**
-    The parameters read `["R.O.", "I.R.", "RO", "Rate Only", "R. O."]`. The
-    brief's four spellings — "RO", "R.O.", "R/O", "RATE ONLY" — are now a
-    RATE-ONLY line at quantity 0 (`tests/test_boq_import_cost.py`); what the
-    old pattern matched beyond those two words keeps v1's rule, asserted here
-    unchanged.
-    """
+    """What the old rate-only pattern matched beyond the four RO spellings is
+    TEXT in the quantity (A1): blank — never 0 — and kept in the remark."""
     res, _g, _m = built([HEAD, ["1", "Pipe", raw, "Mtrs", 100, None]])
     ln = line(res, "1")
     assert ln["qty"] is None
     assert ln["qty"] != 0
-    assert ln["block"] is True
-    assert any("Rate only on source sheet" in f for f in ln["flags"])
-    f = next(f for f in res["flags"] if f["kind"] == "rate_only")
-    assert f["severity"] == "red" and f["raw"] == raw and f["col"] == "C"
-    # And on the way to the form: an EMPTY string, not "0".
+    assert ln["block"] is False and not ln["needs"]
+    assert ln["as_remark"] == [f"Qty: {raw}"]
+    f = next(f for f in res["flags"] if f["kind"] == "as_remark")
+    assert f["severity"] == "amber" and f["raw"] == raw and f["col"] == "C"
+    # And on the way to the form: an EMPTY string, not "0" — and no block.
     model = boqimport.editor_model(res)
     assert model["lines"][0]["total_qty"] == ""
-    assert model["lines"][0]["_block"] is True
+    assert "_block" not in model["lines"][0]
+    assert model["lines"][0]["remark"] == f"Qty: {raw}"
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   "NA", an Excel error and a date where a number belongs are each left
+#   blank and kept in the remark (an error as "… in sheet"); none blocks any
+#   more.
+#   The test as it stood:
+#   def test_na_an_excel_error_and_a_date_are_flagged_and_left_blank():
+#       res, _g, _m = built([
+#           HEAD,
+#           ["1", "Pipe", "NA", "Mtrs", 100, None],
+#           ["2", "Valve", "#VALUE!", "Nos", 100, None],
+#           ["3", "Hose", datetime.date(2024, 3, 1), "Nos", 100, None],
+#           ["4", "Nozzle", 5, "Nos", "#REF!", None],
+#       ])
+#       kinds = {f["row"]: f["kind"] for f in res["flags"]}
+#       assert kinds == {2: "na", 3: "error", 4: "date", 5: "error"}
+#       for item in ("1", "2", "3"):
+#           assert line(res, item)["qty"] is None and line(res, item)["block"]
+#       # A bad RATE is flagged amber and does not block: the quantity is there.
+#       four = line(res, "4")
+#       assert four["qty"] == 5.0 and four["supply_rate"] is None and not four["block"]
+#       assert next(f for f in res["flags"] if f["row"] == 5)["severity"] == "amber"
 
 def test_na_an_excel_error_and_a_date_are_flagged_and_left_blank():
     res, _g, _m = built([
@@ -279,46 +324,94 @@ def test_na_an_excel_error_and_a_date_are_flagged_and_left_blank():
         ["4", "Nozzle", 5, "Nos", "#REF!", None],
     ])
     kinds = {f["row"]: f["kind"] for f in res["flags"]}
-    assert kinds == {2: "na", 3: "error", 4: "date", 5: "error"}
+    assert kinds == {2: "as_remark", 3: "as_remark", 4: "as_remark", 5: "as_remark"}
     for item in ("1", "2", "3"):
-        assert line(res, item)["qty"] is None and line(res, item)["block"]
-    # A bad RATE is flagged amber and does not block: the quantity is there.
+        assert line(res, item)["qty"] is None and not line(res, item)["block"]
+    assert line(res, "1")["as_remark"] == ["Qty: NA"]
+    assert line(res, "2")["as_remark"] == ["Qty: #VALUE! in sheet"]
+    assert line(res, "3")["as_remark"] == ["Qty: 2024-03-01T00:00:00"]
     four = line(res, "4")
     assert four["qty"] == 5.0 and four["supply_rate"] is None and not four["block"]
-    assert next(f for f in res["flags"] if f["row"] == 5)["severity"] == "amber"
+    assert four["as_remark"] == ["Supply rate: #REF! in sheet"]
+    assert all(f["severity"] == "amber" for f in res["flags"]) and not res["needs"]
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   a sum written as text is still never worked out; it is blank and kept in
+#   the remark, no longer a block.
+#   The test as it stood:
+#   @pytest.mark.parametrize("raw", ["9.3+1.5+6", "1.2X3", "(2+3)*4"])
+#   def test_text_arithmetic_is_flagged_and_never_evaluated(raw):
+#       res, _g, _m = built([HEAD, ["1", "Pipe", raw, "Mtrs", 100, None]])
+#       ln = line(res, "1")
+#       assert ln["qty"] is None and ln["block"]
+#       f = res["flags"][0]
+#       assert f["kind"] == "arith" and f["raw"] == raw
+#       assert raw in f["message"]
+#       blob = json.dumps(res)
+#       for evaluated in ("16.8", "3.6", "20.0"):
+#           assert evaluated not in blob, f"{raw!r} was worked out to {evaluated}"
 
 @pytest.mark.parametrize("raw", ["9.3+1.5+6", "1.2X3", "(2+3)*4"])
 def test_text_arithmetic_is_flagged_and_never_evaluated(raw):
     res, _g, _m = built([HEAD, ["1", "Pipe", raw, "Mtrs", 100, None]])
     ln = line(res, "1")
-    assert ln["qty"] is None and ln["block"]
+    assert ln["qty"] is None and not ln["block"]
+    assert ln["as_remark"] == [f"Qty: {raw}"]
     f = res["flags"][0]
-    assert f["kind"] == "arith" and f["raw"] == raw
+    assert f["kind"] == "as_remark" and f["raw"] == raw
     assert raw in f["message"]
     blob = json.dumps(res)
     for evaluated in ("16.8", "3.6", "20.0"):
         assert evaluated not in blob, f"{raw!r} was worked out to {evaluated}"
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1: a
+#   formula's cached value is what is read, and a cached "" — which openpyxl
+#   reports exactly as "no saved value" — is blank; it is counted for one
+#   quiet note on the preview, not flagged and not blocking.
+#   The test as it stood:
+#   def test_a_formula_with_no_saved_value_is_flagged_not_computed():
+#       """openpyxl writes formulas with no cached value — exactly the case of a
+#       workbook generated by a tool and never opened and saved in Excel."""
+#       res, _g, _m = built([HEAD, ["1", "Pipe", "=2*5", "Mtrs", 100, None]])
+#       ln = line(res, "1")
+#       assert ln["qty"] is None and ln["block"]
+#       f = res["flags"][0]
+#       assert f["kind"] == "formula"
+#       assert "open and save in Excel" in f["message"]
+#       assert "10" not in json.dumps(ln["qty"])
+
 def test_a_formula_with_no_saved_value_is_flagged_not_computed():
-    """openpyxl writes formulas with no cached value — exactly the case of a
-    workbook generated by a tool and never opened and saved in Excel."""
+    """openpyxl writes formulas with no cached value — which the reader cannot
+    tell from a formula whose cached value is "" (A1: blank). Blank, counted
+    once for the preview's quiet note, never computed and never a block."""
     res, _g, _m = built([HEAD, ["1", "Pipe", "=2*5", "Mtrs", 100, None]])
     ln = line(res, "1")
-    assert ln["qty"] is None and ln["block"]
-    f = res["flags"][0]
-    assert f["kind"] == "formula"
-    assert "open and save in Excel" in f["message"]
+    assert ln["qty"] is None and not ln["block"] and ln["as_remark"] == []
+    assert res["counts"]["formula_blank"] == 1
+    assert not [f for f in res["flags"] if f["kind"] == "formula"]
     assert "10" not in json.dumps(ln["qty"])
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1: a
+#   word in a numeric column is kept in the remark; its note's kind is
+#   "as_remark" (it was "text").
+#   The test as it stood:
+#   def test_numbers_typed_as_text_are_read_but_words_are_not():
+#       res, _g, _m = built([HEAD, ["1", "Pipe", "1,200.50", "Mtrs", " 100 ", None],
+#                            ["2", "Valve", "twelve", "Nos", 5, None]])
+#       assert line(res, "1")["qty"] == 1200.5 and line(res, "1")["supply_rate"] == 100.0
+#       assert line(res, "2")["qty"] is None
+#       assert next(f for f in res["flags"] if f["row"] == 3)["kind"] == "text"
 
 def test_numbers_typed_as_text_are_read_but_words_are_not():
     res, _g, _m = built([HEAD, ["1", "Pipe", "1,200.50", "Mtrs", " 100 ", None],
                          ["2", "Valve", "twelve", "Nos", 5, None]])
     assert line(res, "1")["qty"] == 1200.5 and line(res, "1")["supply_rate"] == 100.0
     assert line(res, "2")["qty"] is None
-    assert next(f for f in res["flags"] if f["row"] == 3)["kind"] == "text"
+    assert line(res, "2")["as_remark"] == ["Qty: twelve"]
+    assert next(f for f in res["flags"] if f["row"] == 3)["kind"] == "as_remark"
 
 
 # ═══ 3. Rows that are not lines ══════════════════════════════════════════════
@@ -425,10 +518,21 @@ def test_four_level_numbering_and_float_item_numbers_are_kept_as_shown():
     assert all(isinstance(l["item_no"], str) for l in res["lines"])
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank item number is a valid saved state, so the blocking "no_item" flag
+#   is gone; the date in the item column is still noted.
+#   The test as it stood:
+#   def test_an_item_number_excel_turned_into_a_date_is_flagged():
+#       res, _g, _m = built([HEAD, [datetime.date(2026, 1, 1), "Was 1.1", 1, "Nos", 10, None]])
+#       assert res["lines"][0]["item_no"] == ""
+#       assert {f["kind"] for f in res["flags"]} >= {"item_date", "no_item"}
+
 def test_an_item_number_excel_turned_into_a_date_is_flagged():
     res, _g, _m = built([HEAD, [datetime.date(2026, 1, 1), "Was 1.1", 1, "Nos", 10, None]])
     assert res["lines"][0]["item_no"] == ""
-    assert {f["kind"] for f in res["flags"]} >= {"item_date", "no_item"}
+    kinds = {f["kind"] for f in res["flags"]}
+    assert "item_date" in kinds, "still said, as a note"
+    assert "no_item" not in kinds and not res["needs"], "a blank item number is valid (A3)"
 
 
 # ═══ 5. Sheets ═══════════════════════════════════════════════════════════════
@@ -855,35 +959,72 @@ def test_saving_the_imported_form_is_the_ordinary_save(client):
     assert not STORE["boq_imports"]
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. §7 gap
+#   42 is CLOSED by A3 — the tripwire's own docstring asked for exactly this
+#   rewrite: a blank quantity saves as ABSENT, not 0.
+#   The test as it stood:
+#   def test_gap_42_a_blank_quantity_posted_anyway_is_saved_as_zero(client):
+#       """
+#       ⚠ **A TRIPWIRE, not a requirement.** ABOUT.md §7 gap 42: `_clean_lines()`
+#       reads a blank typed quantity as 0.0, and this pass was told not to change
+#       that path. The browser refuses to submit while an imported line is still
+#       blank (the JS test below); a POST that bypasses the browser is saved at 0.
+#       When gap 42 is closed this test SHOULD fail — rewrite it to the new rule
+#       then, keeping this docstring's old assertion quoted.
+#
+#       ⚠ The blocked quantity is "NA" from 1 October 2026; it was "R.O.", which
+#       is now a rate-only line at quantity 0 and is no longer blank.
+#       """
+#       data = xlsx([HEAD, ["1", "Valve", "NA", "Nos", 500, None]])
+#       _tok, body = confirm_to_form(client, data)
+#       model = model_of(body)
+#       assert model["lines"][0]["total_qty"] == "" and model["lines"][0]["_block"]
+#       before = set(STORE["boqs"])
+#       assert _save(client, model).status_code == 302
+#       (bid,) = set(STORE["boqs"]) - before
+#       assert STORE["boqs"][bid]["line_items"][0]["total_qty"] == 0.0
+
 def test_gap_42_a_blank_quantity_posted_anyway_is_saved_as_zero(client):
     """
-    ⚠ **A TRIPWIRE, not a requirement.** ABOUT.md §7 gap 42: `_clean_lines()`
-    reads a blank typed quantity as 0.0, and this pass was told not to change
-    that path. The browser refuses to submit while an imported line is still
-    blank (the JS test below); a POST that bypasses the browser is saved at 0.
-    When gap 42 is closed this test SHOULD fail — rewrite it to the new rule
-    then, keeping this docstring's old assertion quoted.
-
-    ⚠ The blocked quantity is "NA" from 1 October 2026; it was "R.O.", which
-    is now a rate-only line at quantity 0 and is no longer blank.
+    ⚠ **The tripwire fired, as it was written to** — ABOUT.md §7 gap 42 is
+    CLOSED (6 October 2026, the §0 forty-fifth block, A3). A blank quantity is
+    saved ABSENT (`None`), never 0, whether the post came from the page or
+    not — and the page no longer stops it. The old assertion is quoted above.
     """
     data = xlsx([HEAD, ["1", "Valve", "NA", "Nos", 500, None]])
     _tok, body = confirm_to_form(client, data)
     model = model_of(body)
-    assert model["lines"][0]["total_qty"] == "" and model["lines"][0]["_block"]
+    assert model["lines"][0]["total_qty"] == "" and "_block" not in model["lines"][0]
     before = set(STORE["boqs"])
     assert _save(client, model).status_code == 302
     (bid,) = set(STORE["boqs"]) - before
-    assert STORE["boqs"][bid]["line_items"][0]["total_qty"] == 0.0
+    li = STORE["boqs"][bid]["line_items"][0]
+    assert li["total_qty"] is None and li["supply_amount"] is None
+    assert li["remark"] == "Qty: NA"
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3:
+#   "NA" no longer raises a flag (it goes to the remark) and there is no
+#   `_block`; the round trip of a line's notes is held with the one note left
+#   — the sheet's amount against the BOQ's.
+#   The test as it stood:
+#   def test_a_rejected_save_keeps_the_flags_on_the_rows(client):
+#       _tok, body = confirm_to_form(client, xlsx([HEAD, ["1", "Valve", "NA", "Nos", 5, None]]))
+#       model = model_of(body)
+#       r = _save(client, model, project_name="")
+#       assert r.status_code == 200
+#       again = model_of(r.get_data(as_text=True))
+#       assert again["lines"][0]["_block"] is True and again["lines"][0]["_flags"]
 
 def test_a_rejected_save_keeps_the_flags_on_the_rows(client):
-    _tok, body = confirm_to_form(client, xlsx([HEAD, ["1", "Valve", "NA", "Nos", 5, None]]))
+    _tok, body = confirm_to_form(client, xlsx([HEAD, ["1", "Valve", 4, "Nos", 5, 99]]))
     model = model_of(body)
+    assert model["lines"][0]["_flags"], "the sheet-vs-BOQ note"
     r = _save(client, model, project_name="")
     assert r.status_code == 200
     again = model_of(r.get_data(as_text=True))
-    assert again["lines"][0]["_block"] is True and again["lines"][0]["_flags"]
+    assert again["lines"][0]["_flags"] == model["lines"][0]["_flags"]
+    assert "_block" not in again["lines"][0]
 
 
 def test_duplicate_detection_still_runs_on_an_imported_revision(client):
@@ -967,30 +1108,65 @@ def _node(boot: dict, script: str):
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3
+#   removes the red band and the stopped save: the form submits with the
+#   imported quantity blank, and it is saved blank.
+#   The test as it stood:
+#   @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+#   def test_the_form_will_not_submit_while_an_imported_quantity_is_blank():
+#       # "NA" from 1 October 2026 — "R.O." is a rate-only line now, at 0.
+#       res, _g, _m = built([HEAD, ["1", "Pipe", 10, "Mtrs", 100, None],
+#                            ["2", "Valve", "NA", "Nos", 500, None]])
+#       boot = boqimport.editor_model(res)
+#       got = _node(boot, """
+#         var first = saveJSON();
+#         var band = STUB['import-block'].innerHTML;
+#         var posted = STUB['boq_json'].value;
+#         setLine(1, 'total_qty', '4');
+#         var second = saveJSON();
+#         console.log(JSON.stringify({first: first, band: band, posted: posted,
+#                                     second: second, after: STUB['import-block'].innerHTML,
+#                                     sent: JSON.parse(STUB['boq_json'].value).lines[1].total_qty}));
+#       """)
+#       assert got["first"] is False and got["posted"] == ""
+#       assert "1 imported line needs a quantity before this BOQ can be saved" in got["band"]
+#       assert got["second"] is True and got["after"] == "" and got["sent"] == "4"
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_the_form_will_not_submit_while_an_imported_quantity_is_blank():
-    # "NA" from 1 October 2026 — "R.O." is a rate-only line now, at 0.
+    """It submits (A3): a blank imported quantity is a valid answer."""
     res, _g, _m = built([HEAD, ["1", "Pipe", 10, "Mtrs", 100, None],
                          ["2", "Valve", "NA", "Nos", 500, None]])
     boot = boqimport.editor_model(res)
     got = _node(boot, """
       var first = saveJSON();
-      var band = STUB['import-block'].innerHTML;
-      var posted = STUB['boq_json'].value;
-      setLine(1, 'total_qty', '4');
-      var second = saveJSON();
-      console.log(JSON.stringify({first: first, band: band, posted: posted,
-                                  second: second, after: STUB['import-block'].innerHTML,
+      console.log(JSON.stringify({first: first, band: STUB['import-block'].innerHTML,
                                   sent: JSON.parse(STUB['boq_json'].value).lines[1].total_qty}));
     """)
-    assert got["first"] is False and got["posted"] == ""
-    assert "1 imported line needs a quantity before this BOQ can be saved" in got["band"]
-    assert got["second"] is True and got["after"] == "" and got["sent"] == "4"
+    assert got["first"] is True and got["band"] == "" and got["sent"] == ""
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: an
+#   IMPORTED line moved to another section still never gets the default of 1
+#   (the guard is now "imported", not `_block`), and the save is no longer
+#   stopped.
+#   The test as it stood:
+#   @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+#   def test_moving_a_blocked_line_does_not_give_it_a_default_quantity():
+#       # "NA" from 1 October 2026 — "R.O." is a rate-only line now, at 0.
+#       res, _g, _m = built([HEAD, ["A", "FIRST", None, None, None, None],
+#                            ["1", "Valve", "NA", "Nos", 500, None],
+#                            ["B", "SECOND", None, None, None, None],
+#                            ["1", "Pipe", 3, "Mtrs", 10, None]])
+#       boot = boqimport.editor_model(res)
+#       got = _node(boot, """
+#         setSection(0, 'B');
+#         console.log(JSON.stringify({qty: MODEL.lines[0].total_qty, ok: saveJSON()}));
+#       """)
+#       assert got == {"qty": "", "ok": False}
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_moving_a_blocked_line_does_not_give_it_a_default_quantity():
-    # "NA" from 1 October 2026 — "R.O." is a rate-only line now, at 0.
     res, _g, _m = built([HEAD, ["A", "FIRST", None, None, None, None],
                          ["1", "Valve", "NA", "Nos", 500, None],
                          ["B", "SECOND", None, None, None, None],
@@ -1000,19 +1176,35 @@ def test_moving_a_blocked_line_does_not_give_it_a_default_quantity():
       setSection(0, 'B');
       console.log(JSON.stringify({qty: MODEL.lines[0].total_qty, ok: saveJSON()}));
     """)
-    assert got == {"qty": "", "ok": False}
+    assert got == {"qty": "", "ok": True}
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   row's chip is amber and says "N notes"; the red "quantity needed" chip is
+#   gone. The row with a note is now the one whose amount differs from the
+#   sheet's.
+#   The test as it stood:
+#   @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+#   def test_a_flagged_row_carries_a_chip():
+#       res, _g, _m = built([HEAD, ["1", "Pipe", 10, "Mtrs", "#REF!", None],
+#                            ["2", "Valve", "NA", "Nos", 5, None]])
+#       got = _node(boqimport.editor_model(res), """
+#         MODEL.sections[0]._open = true; renderLines();
+#         console.log(JSON.stringify(STUB['line-editor'].innerHTML));
+#       """)
+#       assert 'class="ls-flag"' in got and 'class="ls-flag is-red"' in got
+#       assert "quantity needed" in got
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_a_flagged_row_carries_a_chip():
-    res, _g, _m = built([HEAD, ["1", "Pipe", 10, "Mtrs", "#REF!", None],
+    res, _g, _m = built([HEAD, ["1", "Pipe", 10, "Mtrs", 50, 999],
                          ["2", "Valve", "NA", "Nos", 5, None]])
     got = _node(boqimport.editor_model(res), """
       MODEL.sections[0]._open = true; renderLines();
       console.log(JSON.stringify(STUB['line-editor'].innerHTML));
     """)
-    assert 'class="ls-flag"' in got and 'class="ls-flag is-red"' in got
-    assert "quantity needed" in got
+    assert 'class="ls-flag"' in got and "1 note" in got
+    assert "is-red" not in got and "quantity needed" not in got
 
 
 # ═══ 16. The client's own files, when this box has them ══════════════════════

@@ -444,9 +444,20 @@ def test_area_columns_are_the_sections_own(client, created):
 
 
 def test_dash_prints_as_a_dash_not_a_zero(client, created):
-    bid, _b = created
+    # ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block, A1/A5.
+    #   A "-" typed in a base-rate box is nothing written: it saves ABSENT, and
+    #   on a BOQ saved from this date a blank prints a BLANK cell — never "-".
+    #   It is still not a zero. A record saved BEFORE the rule keeps its "-"
+    #   (the closed historical set, `boq.is_as_is()`), asserted second. Was:
+    #       assert '<td class="b-base">-</td>' in html
+    bid, b = created
     html = client.get(f"/boq/view/{bid}").get_data(as_text=True)
-    assert '<td class="b-base">-</td>' in html
+    assert '<td class="b-base">-</td>' not in html
+    assert '<td class="b-base"></td>' in html
+    assert '<td class="b-base">0.00</td>' not in html, "not a zero either"
+    b.pop("blank_model")
+    legacy = client.get(f"/boq/view/{bid}").get_data(as_text=True)
+    assert '<td class="b-base">-</td>' in legacy
 
 
 def test_remarks_do_not_print(client, created):
@@ -485,10 +496,17 @@ def test_user_text_is_escaped(client):
 # ── Validation ─────────────────────────────────────────────────────────────
 
 def test_rejected_post_writes_nothing(client):
-    r = client.post("/boq/create", data=dict(FORM, account_name=""))
+    # ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block, A3:
+    #   a blank ACCOUNT name no longer refuses a save (only the project name and
+    #   the date may, on the header) — a client's sheet often names no client.
+    #   The test is about a refused save writing nothing, so it is refused on
+    #   the project name instead. Was:
+    #       r = client.post("/boq/create", data=dict(FORM, account_name=""))
+    #       assert "customer account name" in r.get_data(as_text=True)
+    r = client.post("/boq/create", data=dict(FORM, project_name=""))
     assert r.status_code == 200
     assert STORE["boqs"] == {}
-    assert "customer account name" in r.get_data(as_text=True)
+    assert "needs a project name" in r.get_data(as_text=True)
 
 
 def test_line_in_an_undeclared_section_is_rejected(client):
@@ -532,8 +550,14 @@ def test_a_nil_priced_line_is_valid(client):
     b = next(iter(STORE["boqs"].values()))
     nil = [x for x in b["line_items"] if x["item_no"] == "37"][0]
     assert nil["total_qty"] == 140.0
-    assert nil["supply_rate"] == 0.0
-    assert nil["supply_amount"] == 0.0
+    # ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block,
+    #   A3/A4: the rate boxes were left BLANK, so the rate is ABSENT and so is
+    #   the amount — never a 0 nobody typed (§7 gap 42, closed). Still valid.
+    #   Was:
+    #       assert nil["supply_rate"] == 0.0
+    #       assert nil["supply_amount"] == 0.0
+    assert nil["supply_rate"] is None
+    assert nil["supply_amount"] is None
 
 
 def test_section_with_no_areas_takes_a_typed_total(client):
@@ -554,7 +578,10 @@ def test_section_with_no_areas_takes_a_typed_total(client):
     assert li["area_qty"] == {}
     assert li["total_qty"] == 1.0
     assert li["install_amount"] == 60000.0
-    assert li["supply_amount"] == 0.0
+    # ⚠ AMENDED 6 October 2026 — the §0 forty-fifth block, A4: the supply
+    #   rate was left blank, so the supply amount is absent, not 0. Was:
+    #       assert li["supply_amount"] == 0.0
+    assert li["supply_amount"] is None
 
 
 # ── The register ───────────────────────────────────────────────────────────

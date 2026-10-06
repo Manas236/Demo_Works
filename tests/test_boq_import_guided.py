@@ -19,6 +19,15 @@ The rules under test (ABOUT.md §5 `/boq/import`, *The structure*):
   qty × rate more than ±1.00 off the sheet's amount;
 * the prefilled form rings exactly those fields, server-side on a refused
   POST too — and the save accepts exactly what it always did.
+
+⚠ **Superseded 6 October 2026** (CLIENT_CHANGES.md §0, forty-fifth block —
+the BOQ opens AS IT IS). There are no blocking flags any more: a blank quantity
+or rate comes in blank and saves blank, a quantity × rate that differs from the
+sheet's amount KEEPS the rate (an amber note gives both figures), and the form
+rings only a box a refused save found WRONG — never a blank one. The structure,
+the footing checks and the lump sums are unchanged. Every test below that held
+the old rule is AMENDED, declared above it with the old test kept as a comment;
+tests/test_boq_as_is.py holds the new rule whole.
 """
 
 import io
@@ -129,17 +138,33 @@ def test_rows_5_to_17_derive_the_expected_structure():
     assert by_row(res, 7)["make"] == "OEM"
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: row
+#   13 (a quantity, no rate) is what the sheet says — no flag and no need;
+#   its rates come in blank.
+#   The test as it stood:
+#   def test_rows_6_and_8_carry_no_flag_and_row_13_needs_a_rate():
+#       res, _g, _m = jamnagar()
+#       assert not flags_on(res, 6) and not by_row(res, 6)["needs"]
+#       assert not flags_on(res, 8) and not by_row(res, 8)["needs"]
+#       thirteen = by_row(res, 13)
+#       assert [n["field"] for n in thirteen["needs"]] == ["rate"]
+#       assert [f["kind"] for f in flags_on(res, 13)] == ["no_rate"]
+#       assert flags_on(res, 13)[0]["severity"] == "red"
+#       assert thirteen["qty"] == 350.0
+#       # Row 13 is the ONLY blocking flag in rows 5 to 17.
+#       assert [(n["row"], n["field"]) for n in res["needs"]] == [(13, "rate")]
+#       assert res["counts"]["auto_items"] == 6
+
 def test_rows_6_and_8_carry_no_flag_and_row_13_needs_a_rate():
     res, _g, _m = jamnagar()
     assert not flags_on(res, 6) and not by_row(res, 6)["needs"]
     assert not flags_on(res, 8) and not by_row(res, 8)["needs"]
     thirteen = by_row(res, 13)
-    assert [n["field"] for n in thirteen["needs"]] == ["rate"]
-    assert [f["kind"] for f in flags_on(res, 13)] == ["no_rate"]
-    assert flags_on(res, 13)[0]["severity"] == "red"
+    assert thirteen["needs"] == [] and flags_on(res, 13) == []
     assert thirteen["qty"] == 350.0
-    # Row 13 is the ONLY blocking flag in rows 5 to 17.
-    assert [(n["row"], n["field"]) for n in res["needs"]] == [(13, "rate")]
+    assert thirteen["supply_rate"] is None and thirteen["install_rate"] is None
+    # Nothing in rows 5 to 17 asks for anything.
+    assert res["needs"] == []
     assert res["counts"]["auto_items"] == 6
 
 
@@ -320,14 +345,28 @@ def test_a_zero_amount_is_no_amount():
 
 # ═══ C. The real flags ════════════════════════════════════════════════════════
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A2: the
+#   rule that BLANKED the rate on a mismatch is removed — the rate stays as
+#   the sheet has it, and an amber note (never a need) gives both figures.
+#   The test as it stood:
+#   def test_qty_times_rate_off_the_amount_leaves_the_rate_blank_and_says_both():
+#       res = _foot([["1", "Pipe", 10, "Mtrs", 100, 1200, 50, 500]])
+#       ln = by_row(res, 2)
+#       assert ln["supply_rate"] is None, "never guessed: which of the two is wrong is not ours to say"
+#       assert ln["install_rate"] == 50.0
+#       (n,) = ln["needs"]
+#       assert n["field"] == "supply_rate"
+#       assert "10 × rate 100 = 1,000" in n["message"] and "1,200" in n["message"]
+
 def test_qty_times_rate_off_the_amount_leaves_the_rate_blank_and_says_both():
     res = _foot([["1", "Pipe", 10, "Mtrs", 100, 1200, 50, 500]])
     ln = by_row(res, 2)
-    assert ln["supply_rate"] is None, "never guessed: which of the two is wrong is not ours to say"
+    assert ln["supply_rate"] == 100.0, "never changed: the rate is the sheet's"
     assert ln["install_rate"] == 50.0
-    (n,) = ln["needs"]
-    assert n["field"] == "supply_rate"
-    assert "10 × rate 100 = 1,000" in n["message"] and "1,200" in n["message"]
+    assert ln["needs"] == []
+    (n,) = [x for x in res["flags"] if x["kind"] == "as_mismatch"]
+    assert n["severity"] == "amber" and n["field"] == "Supply · unit rate"
+    assert "the sheet says 1,200" in n["message"] and "the BOQ computes 1,000" in n["message"]
 
 
 def test_within_a_rupee_is_not_a_mismatch():
@@ -335,14 +374,32 @@ def test_within_a_rupee_is_not_a_mismatch():
     assert not res["needs"]
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank quantity is a valid saved state — it is not asked for.
+#   The test as it stood:
+#   def test_a_priced_line_with_no_quantity_needs_one():
+#       res = _foot([["1", "Pipe", None, "Mtrs", 100, 1000, None, None]])
+#       assert [n["field"] for n in by_row(res, 2)["needs"]] == ["total_qty"]
+
 def test_a_priced_line_with_no_quantity_needs_one():
     res = _foot([["1", "Pipe", None, "Mtrs", 100, 1000, None, None]])
-    assert [n["field"] for n in by_row(res, 2)["needs"]] == ["total_qty"]
+    ln = by_row(res, 2)
+    assert ln["needs"] == [] and ln["qty"] is None and not ln["flags"]
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A2/A3:
+#   an amount with no rate is no longer a need; an amber note says the
+#   sheet's amount has no rate behind it, so the BOQ has none.
+#   The test as it stood:
+#   def test_an_amount_with_no_rate_needs_the_rate_of_that_track():
+#       res = _foot([["1", "Pipe", 10, "Mtrs", 100, 1000, None, 700]])
+#       assert [n["field"] for n in by_row(res, 2)["needs"]] == ["install_rate"]
 
 def test_an_amount_with_no_rate_needs_the_rate_of_that_track():
     res = _foot([["1", "Pipe", 10, "Mtrs", 100, 1000, None, 700]])
-    assert [n["field"] for n in by_row(res, 2)["needs"]] == ["install_rate"]
+    ln = by_row(res, 2)
+    assert ln["needs"] == [] and ln["install_rate"] is None
+    assert any("the sheet says 700" in m and "no installation rate" in m for m in ln["flags"])
 
 
 def test_an_explicit_zero_amount_is_a_nil_priced_line_and_is_not_asked_about():
@@ -366,16 +423,32 @@ def token_of(resp) -> str:
     return resp.headers["Location"].split("/boq/import/")[1].split("/")[0].split("#")[0]
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: the
+#   group "N fields need you" and its confirm-and-land links are replaced by
+#   the quiet "Nothing blocks the save." and a count of the blanks.
+#   The test as it stood:
+#   def test_the_preview_groups_what_it_found(client):
+#       tok = token_of(upload(client, xlsx(TOP + HEAD2 + ROWS_5_17)))
+#       body = client.get(f"/boq/import/{tok}").get_data(as_text=True)
+#       assert "What each column holds" in body
+#       assert "<b>1</b> field needs you" in body
+#       assert "<b>6</b> item numbers filled in from the sheet&rsquo;s structure" in body
+#       assert "<b>0</b> lump sums" in body
+#       assert "subtotals checked" in body or "subtotal checked" in body
+#       assert "flagged cell" not in body, "the per-row dump is gone"
+#       assert 'value="confirm@5.rate"' in body
+
 def test_the_preview_groups_what_it_found(client):
     tok = token_of(upload(client, xlsx(TOP + HEAD2 + ROWS_5_17)))
     body = client.get(f"/boq/import/{tok}").get_data(as_text=True)
     assert "What each column holds" in body
-    assert "<b>1</b> field needs you" in body
+    assert "need you" not in body and "Nothing blocks the save." in body
+    assert "1 line has no rate." in body
     assert "<b>6</b> item numbers filled in from the sheet&rsquo;s structure" in body
     assert "<b>0</b> lump sums" in body
     assert "subtotals checked" in body or "subtotal checked" in body
     assert "flagged cell" not in body, "the per-row dump is gone"
-    assert 'value="confirm@5.rate"' in body
+    assert "confirm@" not in body, "no field to send anybody to"
 
 
 def test_a_summary_link_confirms_and_lands_on_the_field(client):
@@ -425,15 +498,29 @@ def bar_count(html: str) -> int:
     return int(re.search(r'id="needs-bar" class="needs-bar[^"]*" data-count="(\d+)"', html).group(1))
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: no
+#   field is marked and there is no bar; the blanks are counted quietly
+#   instead.
+#   The test as it stood:
+#   def test_the_prefilled_page_carries_one_marker_per_blocking_flag(client):
+#       res, _g, _m = built(BLOCKING)
+#       assert len(res["needs"]) == 3
+#       body = open_form(client, BLOCKING)
+#       model = model_of(body)
+#       assert sum(len(l.get("_needs") or []) for l in model["lines"]) == 3
+#       assert sum(len(l.get("_need") or []) for l in model["lines"]) == 3
+#       assert bar_count(body) == 3
+#       assert "<b>3</b> fields need you" in body
+
 def test_the_prefilled_page_carries_one_marker_per_blocking_flag(client):
     res, _g, _m = built(BLOCKING)
-    assert len(res["needs"]) == 3
+    assert res["needs"] == []
     body = open_form(client, BLOCKING)
     model = model_of(body)
-    assert sum(len(l.get("_needs") or []) for l in model["lines"]) == 3
-    assert sum(len(l.get("_need") or []) for l in model["lines"]) == 3
-    assert bar_count(body) == 3
-    assert "<b>3</b> fields need you" in body
+    assert sum(len(l.get("_needs") or []) for l in model["lines"]) == 0
+    assert all("_need" not in l for l in model["lines"])
+    assert 'id="needs-bar"' not in body and 'id="blank-note"' in body
+    assert "1 line has no rate, 1 line has no quantity." in body
 
 
 def test_auto_chips_ride_on_the_model(client):
@@ -451,31 +538,85 @@ def _post(client, model, **over):
     return client.post("/boq/create", data=form)
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: the
+#   blank lines carry no marks on a refused save (they carried 3) and there
+#   is no bar to count them; the project name the save refused is still
+#   marked.
+#   The test as it stood:
+#   def test_a_refused_post_re_renders_with_the_same_markers(client):
+#       model = model_of(open_form(client, BLOCKING))
+#       r = _post(client, model, project_name="")
+#       assert r.status_code == 200
+#       body = r.get_data(as_text=True)
+#       again = model_of(body)
+#       assert sum(len(l.get("_needs") or []) for l in again["lines"]) == 3
+#       # …and the header field this save refused is marked by the SERVER.
+#       assert 'data-needs-form="project_name" data-needs="project_name" class="needs"' in body
+#       assert bar_count(body) == 4
+#       assert '"refused": true' in body
+
 def test_a_refused_post_re_renders_with_the_same_markers(client):
     model = model_of(open_form(client, BLOCKING))
     r = _post(client, model, project_name="")
     assert r.status_code == 200
     body = r.get_data(as_text=True)
     again = model_of(body)
-    assert sum(len(l.get("_needs") or []) for l in again["lines"]) == 3
+    assert sum(len(l.get("_needs") or []) for l in again["lines"]) == 0
     # …and the header field this save refused is marked by the SERVER.
     assert 'data-needs-form="project_name" data-needs="project_name" class="needs"' in body
-    assert bar_count(body) == 4
+    assert 'id="needs-bar"' not in body
     assert '"refused": true' in body
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank is never marked, so the marks that follow the posted values are the
+#   WRONG ones — text typed into a numeric box — put right by typing a
+#   number. (The old post's blank account name now saves.)
+#   The test as it stood:
+#   def test_the_markers_follow_the_posted_values(client):
+#       model = model_of(open_form(client, BLOCKING))
+#       for l in model["lines"]:
+#           if any(n["f"] == "rate" for n in l.get("_need") or []):
+#               l["install_rate"] = "75"                  # one filled in, two left
+#       r = _post(client, model, account_name="")
+#       again = model_of(r.get_data(as_text=True))
+#       assert sum(len(l.get("_needs") or []) for l in again["lines"]) == 2
+
 def test_the_markers_follow_the_posted_values(client):
     model = model_of(open_form(client, BLOCKING))
-    for l in model["lines"]:
-        if any(n["f"] == "rate" for n in l.get("_need") or []):
-            l["install_rate"] = "75"                  # one filled in, two left
-    r = _post(client, model, account_name="")
+    model["lines"][1]["install_rate"] = "x"            # text in a numeric box: wrong
+    r = _post(client, model, project_name="")
     again = model_of(r.get_data(as_text=True))
-    assert sum(len(l.get("_needs") or []) for l in again["lines"]) == 2
+    assert [l.get("_needs") for l in again["lines"]][1] == ["install_rate"]
+    assert sum(len(l.get("_needs") or []) for l in again["lines"]) == 1
+    again["lines"][1]["install_rate"] = "75"
+    r = _post(client, again, project_name="")
+    assert sum(len(l.get("_needs") or []) for l in model_of(r.get_data(as_text=True))["lines"]) == 0
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank item number and a blank description are valid, so only the bad HSN
+#   is marked (it marked item_no, supply_hsn and description); the bar is
+#   gone.
+#   The test as it stood:
+#   def test_an_ordinary_validation_failure_is_marked_too(client):
+#       """A typed form, no import anywhere: the line the save refused is ringed."""
+#       model = {"sections": [{"code": "A", "title": "", "areas": []}],
+#                "lines": [{"item_no": "", "description": "Pipe", "section": "A",
+#                           "total_qty": "2", "supply_rate": "10", "supply_hsn": "12"},
+#                          {"item_no": "2", "description": "", "section": "A",
+#                           "total_qty": "1", "supply_rate": "5"}]}
+#       r = _post(client, model)
+#       assert r.status_code == 200
+#       body = r.get_data(as_text=True)
+#       again = model_of(body)
+#       assert again["lines"][0]["_needs"] == ["item_no", "supply_hsn"]
+#       assert again["lines"][1]["_needs"] == ["description"]
+#       assert bar_count(body) == 3
 
 def test_an_ordinary_validation_failure_is_marked_too(client):
-    """A typed form, no import anywhere: the line the save refused is ringed."""
+    """A typed form, no import anywhere: the box the save refused is ringed —
+    and a blank item number or description is not refused at all."""
     model = {"sections": [{"code": "A", "title": "", "areas": []}],
              "lines": [{"item_no": "", "description": "Pipe", "section": "A",
                         "total_qty": "2", "supply_rate": "10", "supply_hsn": "12"},
@@ -485,14 +626,29 @@ def test_an_ordinary_validation_failure_is_marked_too(client):
     assert r.status_code == 200
     body = r.get_data(as_text=True)
     again = model_of(body)
-    assert again["lines"][0]["_needs"] == ["item_no", "supply_hsn"]
-    assert again["lines"][1]["_needs"] == ["description"]
-    assert bar_count(body) == 3
+    assert again["lines"][0]["_needs"] == ["supply_hsn"]
+    assert again["lines"][1]["_needs"] == []
+    assert 'id="needs-bar"' not in body
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. §7 gap
+#   42 is CLOSED by A3: the blank quantity is saved as None, not 0.0.
+#   The test as it stood:
+#   def test_the_server_still_accepts_what_it_always_did(client):
+#       """GUIDANCE ONLY. A POST that ignores the rings is saved exactly as before
+#       — a blank quantity as 0, ABOUT.md §7 gap 42, deliberately left open."""
+#       model = model_of(open_form(client, BLOCKING))
+#       before = set(STORE["boqs"])
+#       r = _post(client, model)
+#       assert r.status_code == 302
+#       (bid,) = set(STORE["boqs"]) - before
+#       items = STORE["boqs"][bid]["line_items"]
+#       assert not any(k.startswith("_") for l in items for k in l)
+#       blank = next(l for l in items if l["description"] == "65 mm NB")
+#       assert blank["total_qty"] == 0.0
 
 def test_the_server_still_accepts_what_it_always_did(client):
-    """GUIDANCE ONLY. A POST that ignores the rings is saved exactly as before
-    — a blank quantity as 0, ABOUT.md §7 gap 42, deliberately left open."""
+    """A blank quantity is saved ABSENT — §7 gap 42, CLOSED (A3)."""
     model = model_of(open_form(client, BLOCKING))
     before = set(STORE["boqs"])
     r = _post(client, model)
@@ -501,12 +657,20 @@ def test_the_server_still_accepts_what_it_always_did(client):
     items = STORE["boqs"][bid]["line_items"]
     assert not any(k.startswith("_") for l in items for k in l)
     blank = next(l for l in items if l["description"] == "65 mm NB")
-    assert blank["total_qty"] == 0.0
+    assert blank["total_qty"] is None and blank["supply_amount"] is None
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: the
+#   bar is not drawn at all (it was drawn hidden).
+#   The test as it stood:
+#   def test_the_plain_form_has_a_hidden_bar_and_no_marks(client):
+#       body = client.get("/boq/create").get_data(as_text=True)
+#       assert '<div id="needs-bar" class="needs-bar" data-count="0" style="display:none;"></div>' in body
+#       assert "data-needs=" not in body.split("var MODEL")[0]
 
 def test_the_plain_form_has_a_hidden_bar_and_no_marks(client):
     body = client.get("/boq/create").get_data(as_text=True)
-    assert '<div id="needs-bar" class="needs-bar" data-count="0" style="display:none;"></div>' in body
+    assert 'id="needs-bar"' not in body, "there is no bar at all"
     assert "data-needs=" not in body.split("var MODEL")[0]
 
 
@@ -517,10 +681,61 @@ def test_the_pulse_stops_under_reduced_motion(client):
     assert "var(--brand)" in body
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3:
+#   `_need_met()` / `needMet()` are gone with the need; what is held in step
+#   is `line_problems()` / `errMet()`, now over every numeric box (text in a
+#   base, an escalation or a GST box is refused, a trailing "%" is not) and
+#   with a blank item number or description no longer a problem.
+#   The test as it stood:
+#   def test_python_and_js_agree_on_what_meets_a_need():
+#       """`_need_met()` and `line_problems()` against the page's `needMet()` and
+#       `errMet()`, over the cases that differ: blank, 0, "-", text, negative, a
+#       header, an area section, a bad HSN."""
+#       if NODE is None:
+#           pytest.skip("node not installed")
+#       sections = [{"code": "A", "title": "", "areas": []}, {"code": "B", "title": "", "areas": ["L0"]}]
+#       cases = [
+#           {"section": "A", "total_qty": ""}, {"section": "A", "total_qty": "0"},
+#           {"section": "A", "total_qty": "-"}, {"section": "A", "total_qty": "2"},
+#           {"section": "A", "total_qty": "abc"}, {"section": "A", "total_qty": "-3"},
+#           {"section": "A", "is_header": True, "total_qty": ""},
+#           {"section": "B", "area_qty": {"L0": "4"}}, {"section": "B", "area_qty": {}},
+#           {"section": "A", "supply_rate": "5", "install_rate": ""},
+#           {"section": "A", "supply_rate": "", "install_rate": "0"},
+#           {"section": "A", "supply_rate": "-1"},
+#           {"section": "Z", "item_no": "1", "description": "x"},
+#           {"section": "A", "item_no": " ", "description": "x", "supply_hsn": "1234x"},
+#           {"section": "A", "item_no": "1", "description": "x", "install_sac": "995461"},
+#       ]
+#       fields = ["total_qty", "supply_rate", "install_rate", "rate", "item_no", "description"]
+#       by_code = {s["code"]: s for s in sections}
+#       py = []
+#       for c in cases:
+#           areas = by_code.get(c["section"], {}).get("areas") or []
+#           py.append({"need": [boq._need_met(c, f, areas) for f in fields],
+#                      "err": sorted(boq.line_problems(c, by_code))})
+#       js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
+#       js = (js.replace("BOQ_BOOT", json.dumps({"sections": sections, "lines": []}))
+#               .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
+#       stub = ("var STUB = {}; ['bulk-spec','bulk-section','line-editor','sec-editor','boq_json']"
+#               ".forEach(function(k){ STUB[k] = {value:'', innerHTML:''}; });\n"
+#               "var document = { getElementById: function(id) { return STUB[id] || null; } };\n")
+#       script = ("var CASES = " + json.dumps(cases) + "; var F = " + json.dumps(fields) + ";\n"
+#                 "var ALL = ['section','item_no','description','total_qty','supply_rate',"
+#                 "'install_rate','supply_hsn','install_sac'];\n"
+#                 "console.log(JSON.stringify(CASES.map(function (c) {\n"
+#                 "  return {need: F.map(function (f) { return needMet(c, f); }),\n"
+#                 "          err: ALL.filter(function (f) { return !errMet(c, f); }).sort()};\n"
+#                 "})));")
+#       out = subprocess.run([NODE], input=stub + js + "\n" + script, capture_output=True,
+#                            text=True, timeout=30, encoding="utf8")
+#       assert out.returncode == 0, out.stderr
+#       assert json.loads(out.stdout.strip().splitlines()[-1]) == py
+
 def test_python_and_js_agree_on_what_meets_a_need():
-    """`_need_met()` and `line_problems()` against the page's `needMet()` and
-    `errMet()`, over the cases that differ: blank, 0, "-", text, negative, a
-    header, an area section, a bad HSN."""
+    """`line_problems()` against the page's `errMet()`, over the cases that
+    differ: blank, 0, "-", text, negative, a header, an area section, a bad
+    HSN, text in a base, an escalation or a GST box, "15%"."""
     if NODE is None:
         pytest.skip("node not installed")
     sections = [{"code": "A", "title": "", "areas": []}, {"code": "B", "title": "", "areas": ["L0"]}]
@@ -528,34 +743,30 @@ def test_python_and_js_agree_on_what_meets_a_need():
         {"section": "A", "total_qty": ""}, {"section": "A", "total_qty": "0"},
         {"section": "A", "total_qty": "-"}, {"section": "A", "total_qty": "2"},
         {"section": "A", "total_qty": "abc"}, {"section": "A", "total_qty": "-3"},
-        {"section": "A", "is_header": True, "total_qty": ""},
+        {"section": "A", "is_header": True, "total_qty": "x"},
         {"section": "B", "area_qty": {"L0": "4"}}, {"section": "B", "area_qty": {}},
+        {"section": "B", "area_qty": {"L0": "lots"}},
         {"section": "A", "supply_rate": "5", "install_rate": ""},
         {"section": "A", "supply_rate": "", "install_rate": "0"},
-        {"section": "A", "supply_rate": "-1"},
+        {"section": "A", "supply_rate": "-1"}, {"section": "A", "install_rate": "NA"},
         {"section": "Z", "item_no": "1", "description": "x"},
-        {"section": "A", "item_no": " ", "description": "x", "supply_hsn": "1234x"},
+        {"section": "A", "item_no": " ", "description": "", "supply_hsn": "1234x"},
         {"section": "A", "item_no": "1", "description": "x", "install_sac": "995461"},
+        {"section": "A", "supply_base_rate": "abc", "supply_escalation_pct": "15%"},
+        {"section": "A", "install_escalation_pct": "ten", "supply_gst_rate": "18%"},
+        {"section": "A", "install_gst_rate": "x", "install_base_rate": "1,200"},
     ]
-    fields = ["total_qty", "supply_rate", "install_rate", "rate", "item_no", "description"]
     by_code = {s["code"]: s for s in sections}
-    py = []
-    for c in cases:
-        areas = by_code.get(c["section"], {}).get("areas") or []
-        py.append({"need": [boq._need_met(c, f, areas) for f in fields],
-                   "err": sorted(boq.line_problems(c, by_code))})
+    py = [sorted(boq.line_problems(c, by_code)) for c in cases]
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = (js.replace("BOQ_BOOT", json.dumps({"sections": sections, "lines": []}))
             .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
     stub = ("var STUB = {}; ['bulk-spec','bulk-section','line-editor','sec-editor','boq_json']"
             ".forEach(function(k){ STUB[k] = {value:'', innerHTML:''}; });\n"
             "var document = { getElementById: function(id) { return STUB[id] || null; } };\n")
-    script = ("var CASES = " + json.dumps(cases) + "; var F = " + json.dumps(fields) + ";\n"
-              "var ALL = ['section','item_no','description','total_qty','supply_rate',"
-              "'install_rate','supply_hsn','install_sac'];\n"
+    script = ("var CASES = " + json.dumps(cases) + ";\n"
               "console.log(JSON.stringify(CASES.map(function (c) {\n"
-              "  return {need: F.map(function (f) { return needMet(c, f); }),\n"
-              "          err: ALL.filter(function (f) { return !errMet(c, f); }).sort()};\n"
+              "  return MARK_KEYS.filter(function (f) { return !errMet(c, f); }).sort();\n"
               "})));")
     out = subprocess.run([NODE], input=stub + js + "\n" + script, capture_output=True,
                          text=True, timeout=30, encoding="utf8")
@@ -616,82 +827,168 @@ def _boot(rows):
     return res, model
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: no
+#   box is marked, no badge is drawn and no bar is written for a blank (there
+#   were 3, one per blocking flag).
+#   The test as it stood:
+#   @needs_node
+#   def test_the_rendered_editor_carries_exactly_one_mark_per_blocking_flag():
+#       res, model = _boot(BLOCKING)
+#       got = _node(model, """
+#         var h = STUB['line-editor'].innerHTML;
+#         console.log(JSON.stringify({marks: (h.match(/data-needs="/g) || []).length,
+#                                     badges: (h.match(/has-needs/g) || []).length,
+#                                     autos: (h.match(/class="chip-auto"/g) || []).length,
+#                                     bar: STUB['needs-bar'].innerHTML}));
+#       """)
+#       assert got["marks"] == len(res["needs"]) == 3
+#       assert got["badges"] == 3
+#       assert got["autos"] >= 6
+#       assert "<b>3</b> fields need you" in got["bar"] and "Next" in got["bar"] and "Prev" in got["bar"]
+
 @needs_node
 def test_the_rendered_editor_carries_exactly_one_mark_per_blocking_flag():
     res, model = _boot(BLOCKING)
     got = _node(model, """
+      setAllOpen(true);   /* nothing opens itself now: no field needs anybody */
       var h = STUB['line-editor'].innerHTML;
       console.log(JSON.stringify({marks: (h.match(/data-needs="/g) || []).length,
                                   badges: (h.match(/has-needs/g) || []).length,
                                   autos: (h.match(/class="chip-auto"/g) || []).length,
                                   bar: STUB['needs-bar'].innerHTML}));
     """)
-    assert got["marks"] == len(res["needs"]) == 3
-    assert got["badges"] == 3
+    assert got["marks"] == len(res["needs"]) == 0
+    assert got["badges"] == 0
     assert got["autos"] >= 6
-    assert "<b>3</b> fields need you" in got["bar"] and "Next" in got["bar"] and "Prev" in got["bar"]
+    assert got["bar"] == ""
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3
+#   removes the jump to the first field on load and the Prev / Next that
+#   wrapped.
+#   The test as it stood:
+#   @needs_node
+#   def test_on_load_an_import_goes_to_the_first_field_and_next_wraps():
+#       _res, model = _boot(BLOCKING)
+#       got = _node(model, """
+#         var first = [FOCUSED, SCROLLED];
+#         goNeed(1); var second = FOCUSED;
+#         goNeed(1); var third = FOCUSED;
+#         goNeed(1); var wrapped = FOCUSED;
+#         goNeed(-1); var back = FOCUSED;
+#         console.log(JSON.stringify({first: first, second: second, third: third,
+#                                     wrapped: wrapped, back: back}));
+#       """, guide={"imported": True})
+#       lines = model["lines"]
+#       idx = [i for i, l in enumerate(lines) if l.get("_need")]
+#       want = []
+#       for i in idx:
+#           for n in lines[i]["_need"]:
+#               want.append(f"{i}:{'supply_rate' if n['f'] == 'rate' else n['f']}")
+#       assert got["first"] == [want[0], want[0] + ":center"]
+#       assert [got["second"], got["third"], got["wrapped"], got["back"]] == [
+#           want[1], want[2], want[0], want[2]]
 
 @needs_node
 def test_on_load_an_import_goes_to_the_first_field_and_next_wraps():
     _res, model = _boot(BLOCKING)
     got = _node(model, """
-      var first = [FOCUSED, SCROLLED];
-      goNeed(1); var second = FOCUSED;
-      goNeed(1); var third = FOCUSED;
-      goNeed(1); var wrapped = FOCUSED;
-      goNeed(-1); var back = FOCUSED;
-      console.log(JSON.stringify({first: first, second: second, third: third,
-                                  wrapped: wrapped, back: back}));
+      console.log(JSON.stringify({focused: FOCUSED, scrolled: SCROLLED, goNeed: typeof goNeed}));
     """, guide={"imported": True})
-    lines = model["lines"]
-    idx = [i for i, l in enumerate(lines) if l.get("_need")]
-    want = []
-    for i in idx:
-        for n in lines[i]["_need"]:
-            want.append(f"{i}:{'supply_rate' if n['f'] == 'rate' else n['f']}")
-    assert got["first"] == [want[0], want[0] + ":center"]
-    assert [got["second"], got["third"], got["wrapped"], got["back"]] == [
-        want[1], want[2], want[0], want[2]]
+    assert got == {"focused": None, "scrolled": None, "goNeed": "undefined"}
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   blank no longer "brings the mark back" — only a WRONG value is marked.
+#   The test now runs on a refused save's `_err` (text in the installation
+#   rate); the import's `_need` it used is gone, and so is the bar's "All
+#   filled".
+#   The test as it stood:
+#   @needs_node
+#   def test_a_valid_value_clears_the_mark_and_clearing_it_brings_it_back():
+#       """
+#       ⚠ **A typed 0 now ANSWERS a rate flag (30 September 2026)** — the owner's
+#       brief: the client's sheets leave lines unpriced on purpose. Until then this
+#       test held `zero == 1`, the old "a number greater than 0" rule. Only a blank
+#       still asks; tests/test_boq_child_context.py holds the rest of the rule.
+#       """
+#       _res, model = _boot(TOP + HEAD2 + ROWS_5_17)
+#       i = next(k for k, l in enumerate(model["lines"]) if l.get("_need"))
+#       got = _node(model, f"""
+#         var before = needList().length;
+#         setLine({i}, 'install_rate', '0');   var zero = needList().length;
+#         setLine({i}, 'install_rate', '');    var blank = needList().length;
+#         setLine({i}, 'install_rate', '75');  var filled = needList().length;
+#         var bar = STUB['needs-bar'].innerHTML;
+#         var lf = LF['{i}:supply_rate'];
+#         var cleared = lf && !lf.attrs['data-needs'];
+#         setLine({i}, 'install_rate', '');    var again = needList().length;
+#         var back = lf && lf.attrs['data-needs'];
+#         console.log(JSON.stringify({{before: before, zero: zero, blank: blank, filled: filled,
+#                                     bar: bar, cleared: cleared, again: again, back: back}}));
+#       """)
+#       assert (got["before"], got["zero"], got["blank"], got["filled"], got["again"]) == (1, 0, 1, 0, 1)
+#       assert "All filled" in got["bar"] and "review and save" in got["bar"]
+#       assert got["cleared"] is True and got["back"] == "rate"
 
 @needs_node
 def test_a_valid_value_clears_the_mark_and_clearing_it_brings_it_back():
-    """
-    ⚠ **A typed 0 now ANSWERS a rate flag (30 September 2026)** — the owner's
-    brief: the client's sheets leave lines unpriced on purpose. Until then this
-    test held `zero == 1`, the old "a number greater than 0" rule. Only a blank
-    still asks; tests/test_boq_child_context.py holds the rest of the rule.
-    """
+    """A box a refused save found WRONG — text in a numeric box — is marked;
+    a number clears the mark, and so does a BLANK (a valid answer, A3); more
+    text brings it back."""
     _res, model = _boot(TOP + HEAD2 + ROWS_5_17)
-    i = next(k for k, l in enumerate(model["lines"]) if l.get("_need"))
+    i = next(k for k, l in enumerate(model["lines"]) if not l["is_header"])
+    model["lines"][i]["install_rate"] = "x"
+    model["lines"][i]["_err"] = ["install_rate"]
     got = _node(model, f"""
+      MODEL.sections[0]._open = true; MODEL.lines[{i}]._open = true; renderLines();
       var before = needList().length;
-      setLine({i}, 'install_rate', '0');   var zero = needList().length;
-      setLine({i}, 'install_rate', '');    var blank = needList().length;
       setLine({i}, 'install_rate', '75');  var filled = needList().length;
-      var bar = STUB['needs-bar'].innerHTML;
-      var lf = LF['{i}:supply_rate'];
+      var lf = LF['{i}:install_rate'];
       var cleared = lf && !lf.attrs['data-needs'];
-      setLine({i}, 'install_rate', '');    var again = needList().length;
+      setLine({i}, 'install_rate', '');    var blank = needList().length;
+      setLine({i}, 'install_rate', 'y');   var again = needList().length;
       var back = lf && lf.attrs['data-needs'];
-      console.log(JSON.stringify({{before: before, zero: zero, blank: blank, filled: filled,
-                                  bar: bar, cleared: cleared, again: again, back: back}}));
+      console.log(JSON.stringify({{before: before, filled: filled, blank: blank,
+                                  again: again, cleared: cleared, back: back}}));
     """)
-    assert (got["before"], got["zero"], got["blank"], got["filled"], got["again"]) == (1, 0, 1, 0, 1)
-    assert "All filled" in got["bar"] and "review and save" in got["bar"]
-    assert got["cleared"] is True and got["back"] == "rate"
+    assert (got["before"], got["filled"], got["blank"], got["again"]) == (1, 0, 0, 1)
+    assert got["cleared"] is True and got["back"] == "install_rate"
 
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: an
+#   import full of blanks saves at once (it was stopped); what still stops
+#   the save in the browser is a box the server already refused as wrong.
+#   The test as it stood:
+#   @needs_node
+#   def test_save_is_stopped_in_the_browser_and_jumps_to_the_first_field():
+#       _res, model = _boot(BLOCKING)
+#       got = _node(model, """
+#         FOCUSED = null;
+#         var ok = saveJSON();
+#         console.log(JSON.stringify({ok: ok, posted: STUB['boq_json'].value, focused: FOCUSED}));
+#       """)
+#       assert got["ok"] is False and got["posted"] == "" and got["focused"]
 
 @needs_node
 def test_save_is_stopped_in_the_browser_and_jumps_to_the_first_field():
+    """A blank never stops the save (A3); a box a refused save found wrong
+    and still wrong does — the server would only refuse it again."""
     _res, model = _boot(BLOCKING)
+    got = _node(model, """
+      FOCUSED = null;
+      var ok = saveJSON();
+      console.log(JSON.stringify({ok: ok, posted: STUB['boq_json'].value.length > 0}));
+    """)
+    assert got == {"ok": True, "posted": True}
+    model["lines"][1]["install_rate"] = "x"
+    model["lines"][1]["_err"] = ["install_rate"]
     got = _node(model, """
       FOCUSED = null;
       var ok = saveJSON();
       console.log(JSON.stringify({ok: ok, posted: STUB['boq_json'].value, focused: FOCUSED}));
     """)
-    assert got["ok"] is False and got["posted"] == "" and got["focused"]
+    assert got["ok"] is False and got["posted"] == "" and got["focused"] == "1:install_rate"
 
 
 @needs_node

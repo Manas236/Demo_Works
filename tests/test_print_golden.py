@@ -41,6 +41,7 @@ moved.
 """
 
 import hashlib
+import re
 from datetime import date as _real_date
 
 import pytest
@@ -2071,14 +2072,35 @@ def golden_disc_boq(client, pinned_identity):
 # `signature` hash to the undiscounted BOQ golden's own bytes — the same sheet;
 # what differs is the record (`head` carries its ref), its party block, its one
 # section table (Disc % and Net Rate on the supply track) and its totals.
-DISC_BOQ_WHOLE, DISC_BOQ_LEN = "b62588d35cc6d559", 104756
+#
+# ⚠ RE-BASELINED 6 October 2026, later — CLIENT_CHANGES.md §0, forty-fifth
+#   block, A8: the net rate rounds HALF UP, as Excel's ROUND does. This golden
+#   was built to pin the exact half, and the exact half is what A8 changes BY
+#   NAME — so it is the one existing print golden that moves, and it moves in
+#   exactly the two blocks the arithmetic reaches, +2 bytes, measured by
+#   rendering the page under the old and the new rounding and diffing:
+#
+#       line 1.b  Net Rate   2.12       -> 2.13       (2.50 less 15% = 2.125)
+#                 Amount     42.40      -> 42.60      (× 20)
+#       BASIC VALUE SUBTOTAL (A), supply   20,922.40 -> 20,922.60
+#       TOTAL, supply                      20,922.40 -> 20,922.60
+#       TOTAL BASIC VALUE                  26,722.40 -> 26,722.60
+#       in words  "… Twenty Two Only"   ->  "… Twenty Three Only"     (+2 bytes)
+#
+#   `head`, `letterhead`, `foot-strip`, `doc-box`, `party` and `signature` hash
+#   exactly as before; the undiscounted BOQ golden above did not move at all.
+#   It read:
+#       DISC_BOQ_WHOLE, DISC_BOQ_LEN = "b62588d35cc6d559", 104756
+#       "sections":   "7624bd7cebb39cf7",
+#       "grand":      "d99b44e707fb7e25",
+DISC_BOQ_WHOLE, DISC_BOQ_LEN = "cd291621b7bdfa2b", 104758
 DISC_BOQ_BLOCKS = {"head":       "ad173a89e8583085",
                    "letterhead": "1c197f96af8ad872",
                    "foot-strip": "31227c23efe62134",
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "4e2d2f79e29f69fb",
-                   "sections":   "7624bd7cebb39cf7",
-                   "grand":      "d99b44e707fb7e25",
+                   "sections":   "87cec2766c2ce91e",
+                   "grand":      "b9c87b57fab1f5c2",
                    "signature":  "7812a7b5e2ddb967"}
 
 
@@ -2091,6 +2113,21 @@ def test_the_discounted_boq_document_matches_its_recorded_baseline(client, golde
            markers=BOQ_SHEET_BLOCKS, what="discounted BOQ")
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A8: the
+#   exact half nets to 2.13, half up (it pinned 2.12, half to even), so the
+#   line's amount is 42.60 and the supply subtotal 0.20 higher.
+#   The test as it stood:
+#   def test_the_discounted_golden_is_hashing_a_real_document(client, golden_disc_boq):
+#       """The control: the figures the golden pins are the net ones."""
+#       html = client.get(f"/boq/print/{GOLD_DISC_BOQ}").get_data(as_text=True)
+#       table = html[html.index('<table class="boq-table">'):html.index('<div class="boq-grand">')]
+#       assert table.count(">Disc %<") == 1 and table.count(">Net Rate<") == 1, "supply only"
+#       assert ">10%<" in table and ">15%<" in table
+#       assert "297.00" in table and "11,880.00" in table, "330 less 10% = 297, x 40"
+#       assert ">2.12<" in table and ">42.40<" in table, "2.50 less 15% = 2.125 -> 2.12, x 20"
+#       assert "300.00" not in table and "Mohali" not in html, "the breakup stays off the print"
+#       assert golden_disc_boq["supply_subtotal"] == pytest.approx(11880.0 + 42.4 + 9000.0)
+
 def test_the_discounted_golden_is_hashing_a_real_document(client, golden_disc_boq):
     """The control: the figures the golden pins are the net ones."""
     html = client.get(f"/boq/print/{GOLD_DISC_BOQ}").get_data(as_text=True)
@@ -2098,6 +2135,137 @@ def test_the_discounted_golden_is_hashing_a_real_document(client, golden_disc_bo
     assert table.count(">Disc %<") == 1 and table.count(">Net Rate<") == 1, "supply only"
     assert ">10%<" in table and ">15%<" in table
     assert "297.00" in table and "11,880.00" in table, "330 less 10% = 297, x 40"
-    assert ">2.12<" in table and ">42.40<" in table, "2.50 less 15% = 2.125 -> 2.12, x 20"
+    assert ">2.13<" in table and ">42.60<" in table, "2.50 less 15% = 2.125 -> 2.13 (half up), x 20"
     assert "300.00" not in table and "Mohali" not in html, "the breakup stays off the print"
-    assert golden_disc_boq["supply_subtotal"] == pytest.approx(11880.0 + 42.4 + 9000.0)
+    assert golden_disc_boq["supply_subtotal"] == pytest.approx(11880.0 + 42.6 + 9000.0)
+
+
+# ═══ A BOQ AS IT IS — blanks and zeros side by side, pinned 6 October 2026 ═══
+#
+# CLIENT_CHANGES.md §0, forty-fifth block, A5: on a BOQ saved under the as-is
+# rules (`blank_model: "as_is"`) a BLANK prints a blank cell — never "0",
+# "0.00", "-", "None" or "nan" — and a 0 prints as 0 in the house format. This
+# is the ONE new print golden of the pass; every existing golden but the
+# discounted one (A8, above) is byte-identical. The schedule carries, side by
+# side: a line with no quantity, a line with no rate, a line at 0 × 0, a line
+# with a 0 rate on one track and a blank on the other, a line with a 0 area
+# figure beside a blank one, and an ordinary priced line — so each cell of
+# each kind is on the sheet once.
+
+GOLD_ASIS_BOQ = "gold-asis-boq"
+
+
+@pytest.fixture()
+def golden_asis_boq(client, pinned_identity):
+    """One as-is schedule, written directly like every golden here."""
+    import boq as BQ
+
+    def line(**kw):
+        li = {"line_id": "", "item_no": "", "parent_item_no": "", "section": "A",
+              "is_header": False, "description": "", "remark": "", "unit": "Nos",
+              "area_qty": {}, "total_qty": None,
+              "supply_base_rate": None, "supply_escalation_pct": None, "supply_rate": None,
+              "supply_amount": None, "supply_hsn": "", "supply_gst_rate": 18.0,
+              "install_base_rate": None, "install_escalation_pct": None, "install_rate": None,
+              "install_amount": None, "install_sac": "", "install_gst_rate": 18.0}
+        li.update(kw)
+        return li
+
+    lines = [
+        line(line_id="a50000000001", item_no="1", is_header=True, unit="",
+             description="Sprinkler pipework, ERW to IS 1239, complete.",
+             total_qty=0.0, supply_rate=0.0, supply_amount=0.0,
+             install_rate=0.0, install_amount=0.0),
+        line(line_id="a50000000002", item_no="1.a", parent_item_no="1",
+             description="Blank quantity", supply_rate=250.0, install_rate=60.0),
+        line(line_id="a50000000003", item_no="1.b", parent_item_no="1",
+             description="Blank rates", total_qty=12.0),
+        line(line_id="a50000000004", item_no="1.c", parent_item_no="1",
+             description="Zero quantity, zero rates", total_qty=0.0,
+             supply_rate=0.0, install_rate=0.0),
+        line(line_id="a50000000005", item_no="2", description="Zero supply, blank installation",
+             total_qty=3.0, supply_rate=0.0),
+        line(line_id="a50000000006", item_no="3", description="Priced both tracks",
+             total_qty=2.0, supply_rate=1500.0, install_rate=400.0),
+        line(line_id="a50000000007", item_no="", description="No item number, blank unit",
+             unit="", total_qty=5.0, supply_rate=10.0),
+        line(line_id="a50000000008", item_no="B1", section="B",
+             description="A 0 on one floor, nothing on the other",
+             area_qty={"L0": 0.0}, total_qty=0.0, supply_rate=80.0),
+        line(line_id="a50000000009", item_no="B2", section="B",
+             description="Both floors", area_qty={"L0": 4.0, "L1": 6.0}, total_qty=10.0,
+             supply_rate=80.0, install_rate=0.0),
+    ]
+    for li in lines:
+        if not li["is_header"]:
+            li["supply_amount"] = BQ.amount_of(li["total_qty"], BQ.net_rate(li, "supply"))
+            li["install_amount"] = BQ.amount_of(li["total_qty"], BQ.net_rate(li, "install"))
+    rec = {
+        "id": GOLD_ASIS_BOQ, "ref": "SF/BOQ/26-27/0045", "fy": "26-27",
+        "date": "2026-10-06", "rev_no": 0, "supersedes": "", "project_id": "",
+        "project_name": "Andheri Data Centre — Sprinklers",
+        "site_location": "Mumbai", "account_name": "",
+        "contact_person": "", "to": "", "bill_gstin": "", "ship_same": "on",
+        "rate_basis_label": "Base Rate",
+        "sections": [{"code": "A", "title": "Sprinklers", "areas": []},
+                     {"code": "B", "title": "Hydrant", "areas": ["L0", "L1"]}],
+        "line_items": lines,
+        "payment_terms": "", "delivery_terms": "", "notes": "",
+        "company_branch": "", "auth_signatory": "",
+        BQ.BLANK_MODEL_KEY: BQ.BLANK_MODEL,
+    }
+    sup, ins, tot = BQ.boq_totals(rec)
+    rec.update(supply_subtotal=sup, install_subtotal=ins, subtotal=tot)
+    STORE["boqs"][GOLD_ASIS_BOQ] = rec
+    yield rec
+    STORE["boqs"].pop(GOLD_ASIS_BOQ, None)
+
+
+# Measured 6 October 2026 on the office PC's .venv. `letterhead`, `doc-box` and
+# `signature` hash to the undiscounted BOQ golden's own bytes — the same sheet.
+ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5e0d8c5000e0fd5c", 107790
+ASIS_BOQ_BLOCKS = {"head":       "777d7e8e392148fb",
+                   "letterhead": "1c197f96af8ad872",
+                   "foot-strip": "2a8f2f65687ae299",
+                   "doc-box":    "64fcaef781b20ed2",
+                   "party":      "9b5c06dd87a13664",
+                   "sections":   "6b697d970b1fd5d9",
+                   "grand":      "03c33dae6d5e90e3",
+                   "signature":  "7812a7b5e2ddb967"}
+
+
+def test_the_as_is_boq_document_matches_its_recorded_baseline(client, golden_asis_boq):
+    """`/boq/print/<id>` for a BOQ carrying blanks and zeros side by side — the
+    one NEW print golden of the forty-fifth block."""
+    r = client.get(f"/boq/print/{GOLD_ASIS_BOQ}")
+    assert r.status_code == 200
+    _check(r.get_data(as_text=True), ASIS_BOQ_WHOLE, ASIS_BOQ_LEN, ASIS_BOQ_BLOCKS,
+           markers=BOQ_SHEET_BLOCKS, what="as-is BOQ")
+
+
+def _row_cells(table: str, text: str) -> list:
+    for tr in re.findall(r'<tr class="row-line">(.*?)</tr>', table, re.S):
+        if text in tr:
+            return [re.sub(r"<[^>]+>", "", td).strip()
+                    for td in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+    raise AssertionError(text)
+
+
+def test_the_as_is_golden_is_hashing_blanks_and_zeros(client, golden_asis_boq):
+    """The control: what the golden pins IS blank-as-blank and 0-as-0."""
+    html = client.get(f"/boq/print/{GOLD_ASIS_BOQ}").get_data(as_text=True)
+    t = html[html.index('<table class="boq-table">'):html.index('<div class="boq-grand">')]
+    # Sr | Description | [areas] | Qty | Unit | S rate | S amt | I rate | I amt
+    assert _row_cells(t, "Blank quantity") == ["1.a", "Blank quantity", "", "Nos",
+                                               "250.00", "", "60.00", ""]
+    assert _row_cells(t, "Blank rates") == ["1.b", "Blank rates", "12", "Nos", "", "", "", ""]
+    assert _row_cells(t, "Zero quantity") == ["1.c", "Zero quantity, zero rates", "0", "Nos",
+                                              "0.00", "0.00", "0.00", "0.00"]
+    assert _row_cells(t, "Zero supply") == ["2", "Zero supply, blank installation", "3", "Nos",
+                                            "0.00", "0.00", "", ""]
+    assert _row_cells(t, "No item number") == ["", "No item number, blank unit", "5", "",
+                                               "10.00", "50.00", "", ""]
+    assert _row_cells(t, "A 0 on one floor") == ["B1", "A 0 on one floor, nothing on the other",
+                                                 "0", "", "0", "Nos", "80.00", "0.00", "", ""]
+    for bad in (">None<", ">nan<", ">-<", "excludes", "no quantity"):
+        assert bad not in html, bad

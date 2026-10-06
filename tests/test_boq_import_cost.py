@@ -210,11 +210,23 @@ def test_ro_in_the_quantity_is_a_rate_only_line_at_zero(raw):
     assert (row["supply_rate"], row["install_rate"]) == ("500", "120")
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   a word in the quantity other than the four RO spellings is still blank
+#   and still NOT a rate-only line, but it is kept in the remark and no
+#   longer blocks.
+#   The test as it stood:
+#   @pytest.mark.parametrize("raw", ["I.R.", "R. O.", "NA"])
+#   def test_other_words_in_the_quantity_keep_v1s_rule(raw):
+#       res, _g, _m = built([SIMPLE, ["1", "Gate valve", raw, "Nos", 500, None, None, None]])
+#       ln = line(res, "1")
+#       assert ln["qty"] is None and ln["block"] is True and ln["rate_only"] is False
+
 @pytest.mark.parametrize("raw", ["I.R.", "R. O.", "NA"])
 def test_other_words_in_the_quantity_keep_v1s_rule(raw):
     res, _g, _m = built([SIMPLE, ["1", "Gate valve", raw, "Nos", 500, None, None, None]])
     ln = line(res, "1")
-    assert ln["qty"] is None and ln["block"] is True and ln["rate_only"] is False
+    assert ln["qty"] is None and ln["block"] is False and ln["rate_only"] is False
+    assert ln["as_remark"] == [f"Qty: {raw}"]
 
 
 def test_a_rate_only_lines_make_follows_its_remark():
@@ -224,33 +236,68 @@ def test_a_rate_only_lines_make_follows_its_remark():
     assert row["remark"] == "Rate only (RO) on the source sheet; Make: Sant"
 
 
-@pytest.mark.parametrize("rates", [(None, None), (0, None), (0, 0)])
-def test_a_rate_only_line_with_no_rate_gets_the_blocking_rate_need(rates):
-    """A zero is no rate here: a rate-only line's 0 is no quantity anybody
-    measured, so it does not make a 0 rate count."""
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   the blocking "rate-only line with no rate" need is gone (a blank rate is
+#   a valid answer), and the sheet's own 0 rate on a rate-only line is kept
+#   as 0 — it was read as no rate.
+#   The test as it stood:
+#   @pytest.mark.parametrize("rates", [(None, None), (0, None), (0, 0)])
+#   def test_a_rate_only_line_with_no_rate_gets_the_blocking_rate_need(rates):
+#       """A zero is no rate here: a rate-only line's 0 is no quantity anybody
+#       measured, so it does not make a 0 rate count."""
+#       s, i = rates
+#       res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", s, None, i, None]])
+#       ln = line(res, "1")
+#       assert [n["field"] for n in ln["needs"]] == ["rate"]
+#       (f,) = [f for f in res["flags"] if f["row"] == 2]
+#       assert (f["kind"], f["severity"], f["message"]) == (
+#           "ro_no_rate", "red", "rate-only line with no rate")
+#       assert res["counts"]["rate_only_no_rate"] == 1
+#       assert ln["block"] is False, "the quantity is 0, not blank"
+
+@pytest.mark.parametrize("rates,want", [((None, None), (None, None, 1)),
+                                        ((0, None), (0.0, None, 0)),
+                                        ((0, 0), (0.0, 0.0, 0))])
+def test_a_rate_only_line_with_no_rate_gets_the_blocking_rate_need(rates, want):
+    """A rate-only line with no rate is a line with no rate — counted, never
+    asked about (A3) — and a 0 the sheet wrote in its rate is kept (A1)."""
     s, i = rates
     res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", s, None, i, None]])
     ln = line(res, "1")
-    assert [n["field"] for n in ln["needs"]] == ["rate"]
-    (f,) = [f for f in res["flags"] if f["row"] == 2]
-    assert (f["kind"], f["severity"], f["message"]) == (
-        "ro_no_rate", "red", "rate-only line with no rate")
-    assert res["counts"]["rate_only_no_rate"] == 1
+    assert ln["needs"] == [] and not [f for f in res["flags"] if f["row"] == 2]
+    assert (ln["supply_rate"], ln["install_rate"], res["counts"]["rate_only_no_rate"]) == want
     assert ln["block"] is False, "the quantity is 0, not blank"
 
 
-def test_a_rate_only_line_with_no_rate_is_asked_whatever_its_amount_cells_hold():
-    """An explicit 0 amount prices a QUANTITY at nil (the Sify rule). A rate-only
-    line has none, so the 0 says nothing and the rate is still asked for."""
-    res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", None, 0, None, 0]])
-    assert [n["field"] for n in line(res, "1")["needs"]] == ["rate"]
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3:
+#   nothing is asked of a blank rate, whatever the amount cells hold.
+#   The test as it stood:
+#   def test_a_rate_only_line_with_no_rate_is_asked_whatever_its_amount_cells_hold():
+#       """An explicit 0 amount prices a QUANTITY at nil (the Sify rule). A rate-only
+#       line has none, so the 0 says nothing and the rate is still asked for."""
+#       res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", None, 0, None, 0]])
+#       assert [n["field"] for n in line(res, "1")["needs"]] == ["rate"]
 
+def test_a_rate_only_line_with_no_rate_is_asked_whatever_its_amount_cells_hold():
+    res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", None, 0, None, 0]])
+    assert line(res, "1")["needs"] == [] and res["needs"] == []
+
+
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3:
+#   there is no need to answer, so "Not priced" has nothing to do; the line
+#   saves with its rate blank.
+#   The test as it stood:
+#   def test_not_priced_answers_a_rate_only_lines_need():
+#       res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", None, None, None, None]])
+#       model = boqimport.editor_model(res)
+#       assert boq.annotate_needs(model["lines"], model["sections"], with_errors=False) == 1
+#       model["lines"][0]["supply_rate"] = "0"          # what "Not priced (₹0)" types
+#       assert boq.annotate_needs(model["lines"], model["sections"], with_errors=False) == 0
 
 def test_not_priced_answers_a_rate_only_lines_need():
     res, _g, _m = built([SIMPLE, ["1", "DN 300", "RO", "Nos", None, None, None, None]])
     model = boqimport.editor_model(res)
-    assert boq.annotate_needs(model["lines"], model["sections"], with_errors=False) == 1
-    model["lines"][0]["supply_rate"] = "0"          # what "Not priced (₹0)" types
+    assert "_need" not in model["lines"][0]
     assert boq.annotate_needs(model["lines"], model["sections"], with_errors=False) == 0
 
 
@@ -623,12 +670,25 @@ def test_cost_mode_puts_each_rate_in_the_base_and_the_markup_in_the_escalation()
         "", "", "")
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: a
+#   line with no rate carries no need in either mode (it carried a "rate"
+#   need); what is held is that the cost mode changes nothing about a line's
+#   notes.
+#   The test as it stood:
+#   def test_lines_with_no_rate_keep_their_flags_in_cost_mode():
+#       res, sell = cost_model(None)
+#       _res, cost = cost_model(15.0)
+#       assert [l.get("_need") for l in sell["lines"]] == [l.get("_need") for l in cost["lines"]]
+#       assert [l.get("_flags") for l in sell["lines"]] == [l.get("_flags") for l in cost["lines"]]
+#       assert [n["field"] for n in by_row(res, 4)["needs"]] == ["rate"]
+
 def test_lines_with_no_rate_keep_their_flags_in_cost_mode():
     res, sell = cost_model(None)
     _res, cost = cost_model(15.0)
     assert [l.get("_need") for l in sell["lines"]] == [l.get("_need") for l in cost["lines"]]
+    assert all(l.get("_need") is None for l in cost["lines"])
     assert [l.get("_flags") for l in sell["lines"]] == [l.get("_flags") for l in cost["lines"]]
-    assert [n["field"] for n in by_row(res, 4)["needs"]] == ["rate"]
+    assert by_row(res, 4)["needs"] == []
 
 
 def test_selling_mode_is_v1_exactly():
@@ -689,11 +749,36 @@ def test_the_form_works_the_unit_rate_out_with_its_own_computation():
     assert got["left"] == 0 and got["same"] == "4969.15"
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3 ("a
+#   blank rate saves as absent"): the server's fallback that filled a blank
+#   unit rate as base × (1 + esc) — unrounded, 114.99999999999999 — is
+#   removed. The form's own computation for a cost import, 115, is unchanged.
+#   The test as it stood:
+#   @needs_node
+#   def test_the_rounding_the_existing_computation_applies():
+#       """The worked example ABOUT.md quotes. The FORM rounds to the paisa
+#       (`suggestRate()`: Math.round(x × 100) / 100); the SERVER, deriving a blank
+#       unit rate on save (`boq._derived_rate()`), does not round at all."""
+#       model = {"sections": [{"code": "A", "title": "", "areas": []}],
+#                "lines": [{"line_id": "", "item_no": "1", "parent_item_no": "", "section": "A",
+#                           "is_header": False, "description": "x", "remark": "", "unit": "Nos",
+#                           "area_qty": {}, "total_qty": "3", "supply_base_rate": "100",
+#                           "supply_escalation_pct": "15", "supply_rate": "",
+#                           "supply_hsn": "", "supply_gst_rate": "", "install_base_rate": "",
+#                           "install_escalation_pct": "", "install_rate": "",
+#                           "install_sac": "", "install_gst_rate": "", "_cost": ["supply"]}]}
+#       got = node(model, "console.log(JSON.stringify(MODEL.lines[0].supply_rate));")
+#       assert got == "115"
+#       assert boq._derived_rate(100.0, 15.0) == 114.99999999999999
+#       items, err, _i = boq._clean_lines(
+#           [dict(model["lines"][0], _cost=None)], [{"code": "A", "title": "", "areas": []}])
+#       assert not err and items[0]["supply_rate"] == 114.99999999999999
+
 @needs_node
 def test_the_rounding_the_existing_computation_applies():
-    """The worked example ABOUT.md quotes. The FORM rounds to the paisa
-    (`suggestRate()`: Math.round(x × 100) / 100); the SERVER, deriving a blank
-    unit rate on save (`boq._derived_rate()`), does not round at all."""
+    """The FORM rounds to the paisa (`suggestRate()`: Math.round(x × 100) /
+    100) and types it into a cost import's blank unit rate on load. The
+    SERVER no longer derives anything: a unit rate left blank saves blank."""
     model = {"sections": [{"code": "A", "title": "", "areas": []}],
              "lines": [{"line_id": "", "item_no": "1", "parent_item_no": "", "section": "A",
                         "is_header": False, "description": "x", "remark": "", "unit": "Nos",
@@ -704,10 +789,10 @@ def test_the_rounding_the_existing_computation_applies():
                         "install_sac": "", "install_gst_rate": "", "_cost": ["supply"]}]}
     got = node(model, "console.log(JSON.stringify(MODEL.lines[0].supply_rate));")
     assert got == "115"
-    assert boq._derived_rate(100.0, 15.0) == 114.99999999999999
+    assert not hasattr(boq, "_derived_rate"), "no server-side derivation left"
     items, err, _i = boq._clean_lines(
         [dict(model["lines"][0], _cost=None)], [{"code": "A", "title": "", "areas": []}])
-    assert not err and items[0]["supply_rate"] == 114.99999999999999
+    assert not err and items[0]["supply_rate"] is None and items[0]["supply_amount"] is None
 
 
 def test_the_printed_boq_never_shows_a_cost_imports_base_rate(client):
@@ -795,13 +880,33 @@ JAM_ROWS = [
 ]
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A3: row
+#   13 (a quantity, no rate) is no longer a blocking flag — it comes in with
+#   its rate blank. The structure half is unchanged.
+#   The test as it stood:
+#   def test_the_jamnagar_shape_still_produces_the_same_flags_and_structure():
+#       """Rows 5 to 17 of the client's Jamnagar sheet, as
+#       `tests/test_boq_import_guided.py` holds them: still one blocking flag
+#       (row 13, a quantity with no rate), the same items, no label, no note."""
+#       res, _g, _m = built(JAM_HEAD + JAM_ROWS)
+#       assert [(f["row"], f["kind"]) for f in res["flags"]] == [(13, "no_rate")]
+#       assert [(n["row"], n["field"]) for n in res["needs"]] == [(13, "rate")]
+#       assert [l["item_no"] for l in res["lines"] if l["item_no"]] == [
+#           "1", "1.a", "1.b", "1.c", "2", "2.a", "3", "3.a", "3.b"]
+#       assert by_row(res, 8)["kind"] == by_row(res, 15)["kind"] == "spec_text"
+#       assert res["counts"]["group_labels"] == res["counts"]["rate_only"] == 0
+#       assert res["counts"]["below_grand"] == 0
+#       model = boqimport.editor_model(res)
+#       one = next(l for l in model["lines"] if l["item_no"] == "1")
+#       assert one["description"].endswith("\nSupply, Installation, Testing & Commissioning of coal tar tape")
+
 def test_the_jamnagar_shape_still_produces_the_same_flags_and_structure():
-    """Rows 5 to 17 of the client's Jamnagar sheet, as
-    `tests/test_boq_import_guided.py` holds them: still one blocking flag
-    (row 13, a quantity with no rate), the same items, no label, no note."""
+    """Rows 5 to 17 of the client's Jamnagar sheet: the same items, no label,
+    no note — and, as it is, NO flag at all: row 13's quantity with no rate is
+    what the sheet says."""
     res, _g, _m = built(JAM_HEAD + JAM_ROWS)
-    assert [(f["row"], f["kind"]) for f in res["flags"]] == [(13, "no_rate")]
-    assert [(n["row"], n["field"]) for n in res["needs"]] == [(13, "rate")]
+    assert res["flags"] == [] and res["needs"] == []
+    assert by_row(res, 13)["qty"] == 350.0 and by_row(res, 13)["supply_rate"] is None
     assert [l["item_no"] for l in res["lines"] if l["item_no"]] == [
         "1", "1.a", "1.b", "1.c", "2", "2.a", "3", "3.a", "3.b"]
     assert by_row(res, 8)["kind"] == by_row(res, 15)["kind"] == "spec_text"
@@ -810,3 +915,5 @@ def test_the_jamnagar_shape_still_produces_the_same_flags_and_structure():
     model = boqimport.editor_model(res)
     one = next(l for l in model["lines"] if l["item_no"] == "1")
     assert one["description"].endswith("\nSupply, Installation, Testing & Commissioning of coal tar tape")
+
+

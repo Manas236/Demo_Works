@@ -986,3 +986,74 @@ def test_a_typed_discount_comes_back_escaped_on_a_refused_save(client):
     assert r.status_code == 200 and "a discount must be a % from 0 to 100" in body
     assert "<script>alert(1)</script>" not in body and "</title><script>" not in body
     assert MARK in body, "the typed value survived the refusal (in the editor's JSON)"
+
+
+# ══ 9. The BOQ as it is (6 October 2026) ═════════════════════════════════════
+#
+# CLIENT_CHANGES.md §0, forty-fifth block. Three new sinks of user text: a
+# cell of TEXT in a numeric column, which now travels into the line's remark
+# ("Qty: <text>", A1) and is listed by the preview's "cells of text kept in the
+# remark"; the save's refusal of text TYPED into a numeric box, which quotes
+# what was typed (A3); and the RA claim grid's no-rate row and refusal, which
+# name the line by its item number (A6).
+
+def test_text_in_a_numeric_cell_reaches_the_preview_and_the_remark_escaped(client):
+    import boqimport
+    import conftest
+    import sheetimport as SI
+    rows = [["Sr", "Description", "Qty", "Unit", "Supply Rate"],
+            ["1", "Pipe", PAYLOAD, "Nos", 10],
+            ["2", "Valve", 3, "Nos", PAYLOAD]]
+    wb = SI.from_rows([("BOQ", "visible", rows)])
+    tok, _k = boqimport.stage(wb, "t.xlsx", conftest.ensure_test_user()["id"])
+    html = client.get(f"/boq/import/{tok}").get_data(as_text=True)
+    _assert_escaped(html, "the preview's cells of text kept in the remark")
+    assert 'id="imp-texts"' in html, "the sink was reached"
+    form = {"picker": "1", "tab": ["0"], "action": "confirm"}
+    for name, opts in re.findall(r'<select name="(map_\d+_\d+)"[^>]*>(.*?)</select>', html, re.S):
+        m = re.search(r'<option value="([^"]*)" selected>', opts)
+        form[name] = m.group(1) if m else ""
+        form["use_" + name[4:]] = "1" if form[name] else ""
+    r = client.post(f"/boq/import/{tok}", data=form)
+    assert r.status_code == 303, r.get_data(as_text=True)[:1500]
+    page = client.get(r.headers["Location"]).get_data(as_text=True)
+    assert "<script>alert(1)</script>" not in page
+    model = page.split("var MODEL")[1].split("var SPECS")[0]
+    assert "<script>" not in model and MARK in model, "the remark rides in the editor's JSON, escaped"
+    assert "Qty: " + MARK in model
+
+
+def test_text_typed_into_a_numeric_box_comes_back_escaped_in_the_refusal(client):
+    import json
+    model = {"sections": [{"code": "A", "title": "", "areas": []}],
+             "lines": [{"line_id": "", "item_no": PAYLOAD[:12], "section": "A",
+                        "description": "x", "total_qty": PAYLOAD, "supply_rate": "10"}]}
+    r = client.post("/boq/create", data={"date": "2026-10-06", "project_name": "P",
+                                          "account_name": "", "boq_json": json.dumps(model)})
+    body = r.get_data(as_text=True)
+    assert r.status_code == 200 and "is not a number" in body
+    alert = re.search(r'<div class="alert alert-error">(.*?)</div>', body, re.S).group(1)
+    assert "<script>" not in alert and "&lt;script&gt;" in alert and MARK in alert
+
+
+def test_the_ra_no_rate_row_and_refusal_name_the_line_escaped(client):
+    import json
+    import conftest
+    model = {"sections": [{"code": "A", "title": "", "areas": []}],
+             "lines": [{"line_id": "", "item_no": PAYLOAD, "section": "A", "description": "x",
+                        "total_qty": "5", "supply_rate": ""}]}
+    before = set(STORE["boqs"])
+    r = client.post("/boq/create", data={"date": "2026-10-06", "project_name": "P",
+                                          "account_name": "A", "boq_json": json.dumps(model)})
+    assert r.status_code == 302
+    (bid,) = set(STORE["boqs"]) - before
+    conftest.chain_ready(bid)
+    lid = STORE["boqs"][bid]["line_items"][0]["line_id"]
+    grid = client.get(f"/ra/create?boq={bid}&leg=supply").get_data(as_text=True)
+    _assert_escaped(grid, "the claim grid's no-rate row")
+    refused = client.post(f"/ra/create?boq={bid}&leg=supply", data={
+        "date": "2026-10-06",
+        "ra_json": json.dumps({"lines": [{"line_id": lid, "qty": "1", "rate": "1"}]})})
+    body = refused.get_data(as_text=True)
+    assert "No rate on the BOQ" in body
+    _assert_escaped(body, "the RA no-rate refusal")

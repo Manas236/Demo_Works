@@ -537,8 +537,11 @@ def test_rejected_boq_post_keeps_everything(seeded, client):
                           "install_escalation_pct": "", "install_rate": "",
                           "install_sac": "", "install_gst_rate": "18"}]}
     before = len(STORE["boqs"])
+    # ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block, A3:
+    #   a blank account name SAVES now, so the refusal is a blank date. Was:
+    #       "date": "2026-06-15", … "account_name": "", …
     r = client.post("/boq/create", data={
-        "date": "2026-06-15", "project_name": "Kept Project",
+        "date": "", "project_name": "Kept Project",
         "site_location": "Kept Site", "rate_basis_label": "Kept Basis",
         "account_name": "", "bill_city": "Kept City", "notes": "Kept notes",
         "boq_json": json.dumps(payload)})

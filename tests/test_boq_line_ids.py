@@ -763,6 +763,40 @@ def test_the_zero_quantity_hint_says_it_is_valid_and_names_the_ra_consequence(cl
     assert "cannot claim against a line approved at 0" in body
 
 
+# ⚠ AMENDED 6 October 2026 — CLIENT_CHANGES.md §0, forty-fifth block. A1/A3:
+#   the amber "N lines have a quantity but no rate" note is replaced by a
+#   quiet note that counts BLANK rates — and the seeded schedule's four nil-
+#   priced lines store a 0, which is a rate. The view therefore carries no
+#   note; nothing reaches the print, as before.
+#   The test as it stood:
+#   def test_neither_advisory_band_reaches_the_printed_sheet(client, seeded):
+#       """
+#       The print is the client-facing document. A band on it would assert a defect
+#       in his schedule where there is none — a repeated item number and a
+#       provisional quantity are both legitimate.
+#
+#       The shared stylesheet rule rides along on the view page because
+#       `BOQ_STYLES` is one sheet; what must not appear is any MARKUP.
+#
+#       ⚠ **One amber note IS on `/boq/view` from 30 September 2026, by the
+#       owner's brief** — *"N lines have a quantity but no rate"* (the seeded Sify
+#       schedule's four nil-priced lines in B). It is not either of the editor's
+#       bands, and it is SCREEN-ONLY: `BOQ_VIEW_STYLES` hides it in print, and the
+#       issued `/boq/print` carries no note of any kind.
+#       """
+#       v = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
+#
+#       assert v.count('class="form-hint') == 1, "the unpriced note, and nothing else"
+#       assert '<div class="form-hint unpriced-note" id="unpriced-note">' in v
+#       assert "@media print { .unpriced-note { display:none !important; } }" in v
+#       assert 'id="dup-warn"' not in v
+#       assert 'id="zeroqty-hint"' not in v
+#       assert "renderZeroQty" not in v
+#       assert "renderDupWarn" not in v
+#
+#       p = client.get(f"/boq/print/{seeded}").get_data(as_text=True)
+#       assert 'class="form-hint' not in p and "unpriced-note" not in p
+
 def test_neither_advisory_band_reaches_the_printed_sheet(client, seeded):
     """
     The print is the client-facing document. A band on it would assert a defect
@@ -772,17 +806,16 @@ def test_neither_advisory_band_reaches_the_printed_sheet(client, seeded):
     The shared stylesheet rule rides along on the view page because
     `BOQ_STYLES` is one sheet; what must not appear is any MARKUP.
 
-    ⚠ **One amber note IS on `/boq/view` from 30 September 2026, by the
-    owner's brief** — *"N lines have a quantity but no rate"* (the seeded Sify
-    schedule's four nil-priced lines in B). It is not either of the editor's
-    bands, and it is SCREEN-ONLY: `BOQ_VIEW_STYLES` hides it in print, and the
-    issued `/boq/print` carries no note of any kind.
+    ⚠ The seeded Sify schedule was saved before 6 October 2026: its four
+    nil-priced lines in B store a 0 rate, and a 0 is a rate (A1) — so
+    `/boq/view` draws NO note for it at all. The quiet note's print rule is
+    on the page; the issued `/boq/print` carries no note of any kind.
     """
     v = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
 
-    assert v.count('class="form-hint') == 1, "the unpriced note, and nothing else"
-    assert '<div class="form-hint unpriced-note" id="unpriced-note">' in v
-    assert "@media print { .unpriced-note { display:none !important; } }" in v
+    assert v.count('class="form-hint') == 0, "no amber note: a 0 rate is a rate"
+    assert 'id="blank-note"' not in v and 'id="unpriced-note"' not in v
+    assert "@media print { .unpriced-note, .quiet-note, .skip-note { display:none !important; } }" in v
     assert 'id="dup-warn"' not in v
     assert 'id="zeroqty-hint"' not in v
     assert "renderZeroQty" not in v
@@ -790,6 +823,7 @@ def test_neither_advisory_band_reaches_the_printed_sheet(client, seeded):
 
     p = client.get(f"/boq/print/{seeded}").get_data(as_text=True)
     assert 'class="form-hint' not in p and "unpriced-note" not in p
+    assert "quiet-note" not in p and "skip-note" not in p
 
 
 def test_a_priced_line_with_zero_quantity_still_saves():
