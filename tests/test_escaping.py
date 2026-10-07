@@ -1057,3 +1057,50 @@ def test_the_ra_no_rate_row_and_refusal_name_the_line_escaped(client):
     body = refused.get_data(as_text=True)
     assert "No rate on the BOQ" in body
     _assert_escaped(body, "the RA no-rate refusal")
+
+
+# ══ 10. The quantity-0 rule (7 October 2026) ═══════════════════════════════════
+#
+# CLIENT_CHANGES.md §0, forty-sixth block. One new sink with three kinds of
+# sheet text in it: the report of rows LEFT OUT (each row's description, its
+# tab's name, and the title of a section that went with them) and of rows KEPT
+# for an amount — open on the preview, folded on the prefilled form. Every
+# piece is the sheet's own text, cut to 60 characters BEFORE it is escaped.
+
+def test_the_quantity_0_report_names_rows_tabs_and_sections_escaped(client):
+    import boqimport
+    import conftest
+    import sheetimport as SI
+    rows = [["Sr", "Description", "Qty", "Unit", "Supply Rate", "Supply Amount"],
+            ["1", "Pipe", 4, "Mtr", 100, 400],
+            ["2", "Gone " + PAYLOAD, 0, "Nos", None, None],
+            ["3", "Kept " + PAYLOAD, 0, "Nos", None, 75],
+            ["B", "SPRAY " + PAYLOAD, None, None, None, None],
+            ["1", "Nozzle", 0, "Nos", 0, 0]]
+    wb = SI.from_rows([("Tab " + PAYLOAD, "visible", rows)])
+    tok, _k = boqimport.stage(wb, "t.xlsx", conftest.ensure_test_user()["id"])
+    html = client.get(f"/boq/import/{tok}").get_data(as_text=True)
+    _assert_escaped(html, "the preview")
+    for block_id in ("imp-left", "imp-qty0-kept"):
+        block = re.search(rf'<details class="imp-group" id="{block_id}".*?</details>', html, re.S)
+        assert block, f"the sink {block_id} was reached"
+        block = block.group(0)
+        for fragment in FORBIDDEN.values():
+            assert fragment not in block, (block_id, fragment)
+        assert "<script" not in block and "<img" not in block, block_id
+        assert "Tab " + ESCAPED in block, f"{block_id}: the tab name, escaped"
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in block, f"{block_id}: the row, escaped"
+    left = re.search(r'id="imp-left".*?</details>', html, re.S).group(0)
+    assert "section &ldquo;SPRAY " + ESCAPED + "&rdquo;" in left, "the section's title, escaped"
+
+    form = {"picker": "1", "tab": ["0"], "action": "confirm"}
+    for name, opts in re.findall(r'<select name="(map_\d+_\d+)"[^>]*>(.*?)</select>', html, re.S):
+        m = re.search(r'<option value="([^"]*)" selected>', opts)
+        form[name] = m.group(1) if m else ""
+        form["use_" + name[4:]] = "1" if form[name] else ""
+    r = client.post(f"/boq/import/{tok}", data=form)
+    assert r.status_code == 303, r.get_data(as_text=True)[:1500]
+    page = client.get(r.headers["Location"]).get_data(as_text=True)
+    folded = re.search(r'<details class="imp-group" id="imp-left">.*?</details>', page, re.S)
+    assert folded, "the form carries the report, folded"
+    assert "<script" not in folded.group(0) and "Tab " + ESCAPED in folded.group(0)

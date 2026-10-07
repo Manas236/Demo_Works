@@ -378,7 +378,16 @@ def test_the_preview_and_the_form_never_ask_for_anything(client):
     model = json.loads(re.search(r"var MODEL = (\{.*?\});\nvar SPECS", page, re.S).group(1))
     by_no = {l["item_no"]: l for l in model["lines"]}
     assert by_no["2"]["total_qty"] == "" and by_no["3"]["supply_rate"] == ""
-    assert by_no["4"]["total_qty"] == "0" and by_no["4"]["supply_rate"] == "0"
+    # ⚠ AMENDED 7 October 2026 — CLIENT_CHANGES.md §0, forty-sixth block, which
+    #   NARROWS the forty-fifth block's "0 stays 0" for the import's line rows:
+    #   "4 Bend" has quantity 0, a 0 rate and a 0 amount, so it is LEFT OUT and
+    #   listed. The assertion as it stood:
+    #     assert by_no["4"]["total_qty"] == "0" and by_no["4"]["supply_rate"] == "0"
+    #   A 0 on a line that carries a rate still comes through as 0 —
+    #   tests/test_boq_import_qty0.py holds that, through the same import.
+    assert "4" not in by_no, "quantity 0, no rate, no amount: left out"
+    assert "<b>1</b> row left out" in html and "row 5 &ldquo;Bend&rdquo;" in html
+    assert "<b>1</b> row left out" in page, "the prefilled form carries the same count"
     assert by_no["5"]["total_qty"] == "" and by_no["5"]["remark"] == "Qty: Included"
     assert by_no["6"]["supply_rate"] == "50", "the mismatched rate is kept"
     for l in model["lines"]:
@@ -401,8 +410,13 @@ def test_the_imported_boq_saves_exactly_as_the_sheet_is(client):
     assert by_no["1"]["total_qty"] == 10.0 and by_no["1"]["supply_amount"] == 1000.0
     assert by_no["2"]["total_qty"] is None and by_no["2"]["supply_amount"] is None
     assert by_no["3"]["supply_rate"] is None and by_no["3"]["supply_amount"] is None
-    assert by_no["4"]["total_qty"] == 0.0 and by_no["4"]["supply_rate"] == 0.0
-    assert by_no["4"]["supply_amount"] == 0.0
+    # ⚠ AMENDED 7 October 2026 — CLIENT_CHANGES.md §0, forty-sixth block: "4 Bend"
+    #   (quantity 0, a 0 rate, a 0 amount) is left out of the import, so it is
+    #   not saved. The assertions as they stood:
+    #     assert by_no["4"]["total_qty"] == 0.0 and by_no["4"]["supply_rate"] == 0.0
+    #     assert by_no["4"]["supply_amount"] == 0.0
+    #   It carried an amount of 0, so the subtotal below did not move.
+    assert "4" not in by_no and len(rec["line_items"]) == 5
     assert by_no["5"]["remark"] == "Qty: Included" and by_no["5"]["total_qty"] is None
     assert by_no["6"]["supply_rate"] == 50.0 and by_no["6"]["supply_amount"] == 100.0
     assert rec[boq.BLANK_MODEL_KEY] == boq.BLANK_MODEL
