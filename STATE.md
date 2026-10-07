@@ -10,15 +10,46 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 6 October 2026, later (**the BOQ opens
-as it is** — blank stays blank, 0 stays 0, nothing blocks on a blank; §7 gap
-42 closed; the net rate half up — CLIENT_CHANGES.md §0 **forty-fifth** block,
-rulings A1–A8, no charge; **the board does not move: 19 of 20 BUILT · 1
-BLOCKED**). *Previously:* 6 October 2026 (**the BOQ import — the user
-chooses the columns, the app advises** — the §0 **forty-fourth** block,
-rulings R1–R6, no charge). *Before that:* 5 October 2026, evening (**Work
-Orders pass 3 — the client's real sheet** — the §0 **forty-third** block,
-rulings R1–R7, no charge).
+**As of:** branch `antigravity-dev`, 7 October 2026 (**the BOQ import
+leaves out a row with quantity 0 and no rate** — one row predicate shared
+with the work order, the BOQ's own heading and section rules —
+CLIENT_CHANGES.md §0 **forty-sixth** block, Manas's ruling, no charge; **the
+board does not move: 19 of 20 BUILT · 1 BLOCKED**). *Previously:* 6 October
+2026, later (**the BOQ opens as it is** — the §0 **forty-fifth** block,
+rulings A1–A8, no charge). *Before that:* 6 October 2026 (**the BOQ import —
+the user chooses the columns, the app advises** — the §0 **forty-fourth**
+block, rulings R1–R6, no charge).
+
+- **7 October 2026 — the BOQ import's quantity-0 rule, run on the OFFICE PC**
+  (Step 0 clean at `6c1cb90`, the remote's tip, 0 ahead and 0 behind; backup
+  pair `samruddhi_qms-20261007-124527-pre-boq-import-qty0.sql` (212,344
+  bytes) / `…-attachments.zip` (22 bytes, no files); every check with
+  `DB_ENABLED=false`; the Iron Mountain and Jamnagar sheets were in
+  `fixtures/`, gitignored, so the real-sheet acceptance RAN). Commits:
+  `6fa14be` the §0 block, `1d6a171` the code with ABOUT.md, `d7cea82` the
+  tests, then these docs. On a BOQ import a line whose quantity cell is the
+  number 0 and whose ticked rates and amounts carry no non-zero number is
+  LEFT OUT (`boqimport.drop_qty0()`, per tab in `build_tabs()`); a blank
+  quantity is not 0, "RO" is not 0, quantity 0 with a rate is kept
+  untouched, quantity 0 with only an amount is kept and listed. A parent
+  whose every child went goes with its spec text, one that keeps a child or
+  is itself priced stays; a section left with no lines goes; a heading with
+  nothing under it from the start is NOT touched (where the work order's R3
+  differs). The row test is ONE function, `sheetimport.qty0_unpriced()`,
+  called by `workorder._drop_qty0()` too — its rows held equal to the old
+  expression over 1,400 inputs per track setting — and every reader line
+  carries `price_figures`. The preview lists every row left out per tab by
+  row and description; the form carries the folded one-line count; screen
+  only. Import only: a 0 typed on `/boq/create` and every saved BOQ
+  untouched. On the client's sheets: Iron Mountain **0** rows left out, all
+  34 "RO" lines identical; Jamnagar **1** (row 116, item 2.a); both foot to
+  the grand total before and after. §7 gap 66 (a quantity-0 row whose only
+  rate is text, or an unsaved formula, is left out). Tests **3,980 / 4 →
+  4,037 / 4** (row 1's configuration; rows 2 and 3 not run), three further
+  configurations measured at both ends (ABOUT.md §1). Two `test_boq_as_is.py`
+  tests amended. No print or page golden moved; the access matrix did not
+  move. Mutations: 23, all caught. ⚠ **Not deployed** — for Manas's browser
+  check first.
 
 - **6 October 2026, later — the BOQ opens as it is, run on the OFFICE PC**
   (Step 0 clean at `4e36106`, the remote's tip; backup pair
