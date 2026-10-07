@@ -81,6 +81,18 @@ as editable suggestions, the account matched to the address book
 `mapping` for the primary tab and adds `ticked`, `tab_maps` and `names`. A POST
 without the page's `picker` marker reads as v1 did.
 
+Quantity 0 and no rate — left out (7 October 2026)
+--------------------------------------------------
+CLIENT_CHANGES.md §0, forty-sixth block. A line whose quantity cell is the
+number 0 and whose ticked rates and amounts carry no non-zero number is LEFT
+OUT of the import (`drop_qty0()`, per tab, inside `build_tabs()`), and so is a
+heading whose every child went and a section left with no lines. The row test
+is `sheetimport.qty0_unpriced()`, the work order's R3 predicate, shared. A
+blank quantity is never 0; quantity 0 WITH a rate is kept untouched; one with
+only an amount is kept and listed. The preview lists every row left out,
+per tab (`left_out_html()`), and the prefilled form says how many — screen
+only. The typed form and every saved BOQ are untouched.
+
 The upload never touches disk
 -----------------------------
 Werkzeug spools any file part over 500 KB to a temporary FILE while it parses
@@ -305,7 +317,11 @@ def build_tabs(rec: dict) -> dict:
     workbook order (R5).
 
     **One tab is exactly v1's result** — the merge is not run, so a single-tab
-    import is byte-for-byte what it was. Several tabs:
+    import is byte-for-byte what it was. ⚠ **From 7 October 2026 each tab's
+    result first passes `drop_qty0()`** (the §0 forty-sixth block): its rows
+    with quantity 0 and no rate are left out and reported under
+    `QTY0_REPORT_KEYS`; a tab the rule does not touch is byte-for-byte
+    `sheetimport.build()`'s result, no key added. Several tabs:
 
     * **each tab is a SECTION** — the sheet's own sections stay sections; a
       section with no title of its own takes the TAB's name;
@@ -323,7 +339,10 @@ def build_tabs(rec: dict) -> dict:
     for i in tabs:
         grid = _tab_grid(rec, i)
         res = SI.build(grid, SI.clean_mapping(grid, _mapping_of(rec, i)))
-        built.append((i, res))
+        # Quantity 0 and no rate: left out, per tab, before the merge (7 October
+        # 2026, the §0 forty-sixth block) — so a row number is that tab's, and
+        # a section the rule empties never takes a letter in the merge.
+        built.append((i, drop_qty0(res, _tab_name(rec, i))))
     if len(built) == 1:
         res = built[0][1]
         res["tab_totals"] = []
@@ -408,9 +427,150 @@ def build_tabs(rec: dict) -> dict:
     totals = {"status": status, "row": None, "label": "", "checks": out_checks,
               "total_rows": sum(int(t.get("total_rows") or 0) for _n, t in tab_totals),
               "combined": True}
+    # What each tab's quantity-0 rule left out (or kept and noted), tab by tab.
+    # Each key only when there is something in it, as `drop_qty0()` writes them.
+    reported = {}
+    for key in QTY0_REPORT_KEYS:
+        got = [e for _i, res in built for e in res.get(key) or []]
+        if got:
+            reported[key] = got
     return {"sections": sections, "lines": lines, "flags": flags, "needs": needs,
             "checks": checks, "counts": counts, "totals": totals,
-            "tab_totals": tab_totals}
+            "tab_totals": tab_totals, **reported}
+
+
+# =============================================================================
+# QUANTITY 0 AND NO RATE — LEFT OUT (7 October 2026, CLIENT_CHANGES.md §0,
+# forty-sixth block)
+# =============================================================================
+#
+# ⚠ **The ROW PREDICATE is `sheetimport.qty0_unpriced()`**, shared with the
+#   work order's R3 (`workorder._drop_qty0()`). What goes WITH such a row — a
+#   heading whose every child went, a section left with no lines — is decided
+#   here, by THE parent rule (`boq.parent_index()`), because a BOQ's headings
+#   are the reader's spec headers and a work order's are its own heading rows.
+#   The reader is untouched: `sheetimport.build()` still returns every line.
+
+# The keys `drop_qty0()` adds to a result — each ONLY when it has something in
+# it, so a sheet the rule does not touch is byte-for-byte the result it was.
+QTY0_REPORT_KEYS = ("left_out", "left_out_sections", "qty0_kept")
+
+# A line's own WORDS rather than a line: folded into its parent, so they go
+# where the parent goes and never keep it alive.
+_WORDS_OF_PARENT = ("spec_text", "group_label")
+# What counts as a parent's CHILD for "every child was left out".
+_CHILD_KINDS = ("header", "item", "sub_item")
+
+
+def _qty0_entry(l: dict, tab: str) -> dict:
+    """One row the report names: its tab, its sheet row, its item number and
+    the first line of its description, as the sheet wrote them."""
+    text = str(l.get("description") or "").strip().split("\n", 1)[0].strip()
+    return {"tab": tab, "row": l.get("row"), "item_no": l.get("item_no") or "",
+            "text": text}
+
+
+def drop_qty0(res: dict, tab: str = "") -> dict:
+    """
+    Leave out, from ONE tab's `sheetimport.build()` result, every line the
+    quantity-0 rule names — in place — and return the result.
+
+    * **A line** (not a header, not a rate-only "RO" line, not a lump sum)
+      whose quantity is the number 0 and whose ticked rates and amounts carry
+      no non-zero number — `SI.qty0_unpriced()` over its `price_figures` —
+      goes. A BLANK quantity is not 0. Quantity 0 with a rate stays, untouched.
+    * **Quantity 0, no rate, but an amount** stays, untouched, and is listed
+      (`qty0_kept`) — rule (c).
+    * **A parent goes when every child it has went**: a spec header, or a line
+      the rule names itself; deepest first, so an emptied sub-header empties
+      its header. A parent that keeps a child stays — so does one that is
+      itself priced. Its folded words (spec text, group labels) go with it.
+    * **A section left with no lines goes**, with everything in it — only one
+      that HAD a line, every one of which went.
+
+    `left_out` lists every sheet row that went (`{"tab", "row", "item_no",
+    "text"}`, sheet order), `left_out_sections` the sections (`{"tab", "code",
+    "title"}`). The counts the pages show are moved with the lines, and the
+    reader's notes on a row that went are dropped with it — the summary never
+    describes a row the BOQ does not hold. ⚠ `counts["formula_blank"]` is NOT
+    moved: it is advice about the SHEET (save it in Excel), and a formula with
+    no saved value may be the very reason a row read as unpriced.
+
+    Nothing to leave out and nothing to note: `res` is returned untouched, with
+    no key added.
+    """
+    lines = res["lines"]
+    parents = BQ.parent_index(lines)
+
+    cand, kept = set(), []
+    for i, l in enumerate(lines):
+        if l.get("is_header") or l.get("rate_only") or l.get("lump_sum"):
+            continue
+        figs = l.get("price_figures") or {}
+        if SI.qty0_unpriced(l.get("qty"), figs.values()):
+            cand.add(i)
+        elif SI.qty0_unpriced(l.get("qty"),
+                              [v for f, v in figs.items() if f in SI.QTY0_RATE_FIELDS]):
+            kept.append(i)                     # rule (c): an amount and no rate
+
+    kids = {}
+    for i, p in enumerate(parents):
+        if p is not None and p >= 0 and lines[i].get("kind") in _CHILD_KINDS:
+            kids.setdefault(p, []).append(i)
+    drop = {i for i in cand if i not in kids}
+    for p in sorted(kids, reverse=True):       # deepest first
+        if (lines[p].get("is_header") or p in cand) and all(k in drop for k in kids[p]):
+            drop.add(p)
+    for i, p in enumerate(parents):
+        if p is not None and p in drop and lines[i].get("kind") in _WORDS_OF_PARENT:
+            drop.add(i)
+
+    by_sec = {}
+    for i, l in enumerate(lines):
+        if not l.get("is_header"):
+            by_sec.setdefault(l.get("section"), []).append(i)
+    gone_secs = [code for code, idxs in by_sec.items() if all(i in drop for i in idxs)]
+    for i, l in enumerate(lines):
+        if l.get("section") in gone_secs:
+            drop.add(i)
+
+    if not drop and not kept:
+        return res
+
+    gone = [lines[i] for i in sorted(drop)]
+    gone_rows = {l.get("row") for l in gone}
+    res["lines"] = [l for i, l in enumerate(lines) if i not in drop]
+    if gone_secs:
+        keep = [k for k, s in enumerate(res["sections"]) if s["code"] not in gone_secs]
+        res["left_out_sections"] = [{"tab": tab, "code": s["code"], "title": s.get("title") or ""}
+                                    for s in res["sections"] if s["code"] in gone_secs]
+        src = res.get("section_src")
+        res["sections"] = [res["sections"][k] for k in keep]
+        if src is not None:
+            res["section_src"] = [src[k] for k in keep if k < len(src)]
+    res["flags"] = [f for f in res.get("flags") or [] if f.get("row") not in gone_rows]
+    res["needs"] = [n for n in res.get("needs") or [] if n.get("row") not in gone_rows]
+
+    c = res.get("counts") or {}
+    for key, n in (("lines", sum(1 for l in gone if not l.get("is_header"))),
+                   ("headers", sum(1 for l in gone if l.get("is_header")
+                                   and l.get("kind") != "group_label")),
+                   ("group_labels", sum(1 for l in gone if l.get("kind") == "group_label")),
+                   ("auto_items", sum(1 for l in gone if l.get("item_src") == "auto")),
+                   ("sheet_items", sum(1 for l in gone if l.get("item_src") == "sheet"
+                                       and l.get("kind") == "sub_item")),
+                   ("flagged", sum(1 for l in gone if l.get("flags"))),
+                   ("as_remark", sum(len(l.get("as_remark") or []) for l in gone))):
+        if n and key in c:
+            c[key] -= n
+
+    if gone:
+        res["left_out"] = [_qty0_entry(l, tab) for l in gone]
+    if kept:
+        res["qty0_kept"] = [dict(_qty0_entry(lines[i], tab), amounts={
+            f: v for f, v in (lines[i].get("price_figures") or {}).items()
+            if f in SI.AMOUNT_FIELDS and v != 0}) for i in kept]
+    return res
 
 
 # =============================================================================
@@ -1217,6 +1377,11 @@ def summary_html(result: dict, model: dict, on_form: bool,
     From 1 October 2026, a fifth group — *N rate-only lines* — drawn only
     when the sheet has one, so a sheet without "RO" reads as it did.
 
+    From 7 October 2026 (the §0 forty-sixth block), straight after the first
+    group: *N rows left out — quantity 0 and no rate on the sheet, or a heading
+    left with nothing under it*, and *N rows with quantity 0 and no rate but an
+    amount — kept* (`left_out_html()`), each drawn only when there is one.
+
     `unit_mapped` False — no column is mapped to Unit — adds one line (30
     September 2026): *This sheet has no Unit column: N lines have no unit
     (fill on the form)*. A note, not a flag: a blank unit never blocks the
@@ -1252,6 +1417,13 @@ def summary_html(result: dict, model: dict, on_form: bool,
         f'<p class="imp-note">Every cell comes in as the sheet has it: a blank stays '
         f'blank and a 0 stays 0.'
         + (f" {P.esc(quiet)}." if quiet else "") + formula + "</p></div>"]
+
+    # Quantity 0 and no rate (7 October 2026, the §0 forty-sixth block): what
+    # was left out, and what was kept because the sheet gives it an amount.
+    # "" when the rule touched nothing, so such a summary is what it was.
+    left = left_out_html(result, on_form)
+    if left:
+        parts.append(left)
 
     # The sheet's own figures against what the BOQ will compute (A2) — amber,
     # never a block, the rate kept as the sheet has it.
@@ -1366,6 +1538,75 @@ def summary_html(result: dict, model: dict, on_form: bool,
                      f'{"s" if len(notes) != 1 else ""} from the reader</summary>'
                      f'{_flag_list(notes)}</details>')
     return f'<div class="imp-summary">{"".join(parts)}</div>'
+
+
+def _qty0_row(e: dict) -> str:
+    """"row 12 “80 mm dia”" — or "row 12 (item 3.a)" where the row has no
+    description. Escaped here: the description is the sheet's text."""
+    out = f"row {int(e.get('row') or 0)}"
+    if e.get("text"):
+        return out + f" &ldquo;{P.esc(_trunc(e['text'], 60))}&rdquo;"
+    if e.get("item_no"):
+        return out + f" (item {P.esc(e['item_no'])})"
+    return out
+
+
+def _by_tab(entries: list) -> dict:
+    out = {}
+    for e in entries:
+        out.setdefault(e.get("tab") or "", []).append(e)
+    return out
+
+
+def left_out_html(result: dict, on_form: bool = False) -> str:
+    """
+    The quantity-0 rule's report (7 October 2026, CLIENT_CHANGES.md §0,
+    forty-sixth block), in the work order's own words: how many sheet rows were
+    left out and WHICH — grouped per tab, by row number and description — and
+    any section that went with them; then the rows with quantity 0 and no rate
+    that were KEPT because the sheet gives them an amount (rule (c)).
+
+    Open on the preview, where the rows are checked before confirming; FOLDED
+    on the prefilled form, where its summary line is the one-line count. Screen
+    only: nothing here is on the record, so nothing here can print. "" when the
+    rule touched nothing.
+    """
+    left = result.get("left_out") or []
+    secs = result.get("left_out_sections") or []
+    kept = result.get("qty0_kept") or []
+    is_open = "" if on_form else " open"
+    parts = []
+    if left or secs:
+        items = "".join(f"<li>{P.esc(tab) + ' &mdash; ' if tab else ''}"
+                        f"{', '.join(_qty0_row(e) for e in es)}</li>"
+                        for tab, es in _by_tab(left).items())
+        for s in secs:
+            name = s.get("title") or f"section {s.get('code') or ''}"
+            items += (f"<li>{P.esc(s['tab']) + ' &mdash; ' if s.get('tab') else ''}"
+                      f"section &ldquo;{P.esc(name)}&rdquo;, left with no lines, "
+                      f"went too</li>")
+        n = len(left)
+        parts.append(
+            f'<details class="imp-group" id="imp-left"{is_open}><summary><b>{n}</b> '
+            f'row{"" if n == 1 else "s"} left out &mdash; quantity 0 and no rate on the '
+            f'sheet, or a heading left with nothing under it</summary>'
+            f'<ul class="imp-flags">{items}</ul></details>')
+    if kept:
+        def amounts(e):
+            bits = [f"{COL_NAME.get(f, f)} {_money(v)}" for f, v in (e.get("amounts") or {}).items()]
+            return f" &mdash; the sheet&rsquo;s {'; '.join(bits)}" if bits else ""
+        items = "".join(f"<li>{P.esc(tab) + ' &mdash; ' if tab else ''}"
+                        f"{', '.join(_qty0_row(e) + amounts(e) for e in es)}</li>"
+                        for tab, es in _by_tab(kept).items())
+        k = len(kept)
+        parts.append(
+            f'<details class="imp-group" id="imp-qty0-kept"{is_open}><summary><b>{k}</b> '
+            f'row{"" if k == 1 else "s"} with quantity 0 and no rate but an amount on the '
+            f'sheet &mdash; kept as the sheet has {"it" if k == 1 else "them"}</summary>'
+            f'<p class="imp-note">Not left out: the sheet gives an amount. Check '
+            f'{"it" if k == 1 else "them"} &mdash; the BOQ&rsquo;s amount is quantity '
+            f'&times; rate.</p><ul class="imp-flags">{items}</ul></details>')
+    return "".join(parts)
 
 
 def _mode_card(mode: str, why: str, markup_raw: str) -> str:
@@ -1600,7 +1841,9 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
              + (f'<span><b>{c["group_labels"]}</b> group labels put in front of their '
                 f'sizes</span>' if c.get("group_labels") else "")
              + (f'<span><b>{c["below_grand"]}</b> rows below the grand total left out'
-                f'</span>' if c.get("below_grand") else "") + '</div>')
+                f'</span>' if c.get("below_grand") else "")
+             + (f'<span><b>{len(result["left_out"])}</b> rows left out &mdash; quantity 0, '
+                f'no rate</span>' if result.get("left_out") else "") + '</div>')
 
     known = ""
     if rec.get("layout") and rec["layout"] in _layouts():

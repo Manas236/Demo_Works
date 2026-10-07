@@ -60,6 +60,13 @@ customer from the rows above the heading (§8), and `build()` reads a discount
 TICKED columns** — those the mapping gives a target — are read into a line,
 flagged, footed or quoted; whether a row is a total or a heading is still
 decided from the whole row.
+
+⚠ **7 October 2026 — the quantity-0 rule's ROW PREDICATE lives here**
+(CLIENT_CHANGES.md §0, forty-sixth block): `qty0_unpriced()`, called by the
+work order's R3 and the BOQ import alike, and `price_figures` on every line —
+the sheet's own ticked rates and amounts — so the BOQ side can ask it. `build()`
+itself still returns every line, quantity 0 or not: what an importer LEAVES OUT
+is the importer's (`boqimport.drop_qty0()`, `workorder._drop_qty0()`).
 """
 
 import datetime
@@ -1299,6 +1306,45 @@ REMARK_FIELD = {
     "supply_net_rate": "Supply net rate", "install_net_rate": "Installation net rate",
 }
 
+# ── THE QUANTITY-0 RULE (7 October 2026, CLIENT_CHANGES.md §0, forty-sixth
+#    block) — ONE row predicate, two importers ───────────────────────────────
+#
+# A line whose quantity is the NUMBER 0 and which carries no non-zero price is
+# a row nobody is doing, and an import leaves it out. The predicate lives HERE,
+# in the leaf both importers already import, so the work order (its R3, the
+# forty-third block) and the BOQ (the forty-sixth block) cannot come to
+# disagree about what such a row is. What each does AROUND it — which headings
+# go with it, what is listed — stays with each importer: `workorder._drop_qty0()`
+# and `boqimport.drop_qty0()`.
+#
+# The BOQ's prices: every rate a line can be priced by — unit, base and net, per
+# track — and, as rule (c), every amount. Escalation % and discount % are not
+# prices: they move a rate, and with no rate there is nothing to move.
+QTY0_RATE_FIELDS = ("supply_base_rate", "supply_rate", "supply_net_rate",
+                    "install_base_rate", "install_rate", "install_net_rate")
+QTY0_PRICE_FIELDS = QTY0_RATE_FIELDS + AMOUNT_FIELDS
+
+
+def qty0_unpriced(qty, figures) -> bool:
+    """
+    True when `qty` is the NUMBER 0 and no value in `figures` is a number other
+    than 0 — the row the quantity-0 rule leaves out.
+
+    * `None` (a blank) is not 0: the forty-fifth block's blank stays blank, and
+      a blank quantity is never left out. Nor is anything that is not a finite
+      number — text, a bool, NaN.
+    * A figure is a PRICE only when it is a finite number other than 0: a blank
+      (`None`) and a 0 are both "no price", and so is anything that is not a
+      number. A negative figure is a price (a credit is a non-zero number).
+
+    Pure, and blind to where the figures came from: the caller decides which
+    figures count — the BOQ passes a line's ticked rates and amounts
+    (`QTY0_PRICE_FIELDS`), the work order its declared rates.
+    """
+    if not _is_number(qty) or qty != 0:
+        return False
+    return not any(_is_number(v) and v != 0 for v in figures)
+
 
 def _half_up(x: float) -> float:
     """`boq.round_half_up()`'s rule, restated because this leaf may import
@@ -1834,6 +1880,7 @@ def _build(grid: dict, mapping: dict, as_is: bool) -> dict:
          "lines":    [{"row", "kind", "item_no", "parent_item_no", "item_src",
                        "section", "is_header", "description", "unit", "make",
                        "qty", <rate fields>, "lump_sum", "rate_only",
+                       "price_figures": {<rate or amount field>: number},
                        "flags": [...], "needs": [{"field", "message"}],
                        "block": bool, ["group_label": str]}],
                      # kind: "subheading" | "header" | "item" | "spec_text" |
@@ -2191,6 +2238,12 @@ def _build(grid: dict, mapping: dict, as_is: bool) -> dict:
                 "description": placed["description"], "unit": unit, "make": make,
                 "remark": remark,
                 "qty": None, "lump_sum": False, "rate_only": False,
+                # The row's PRICES as the sheet wrote them (7 October 2026, the
+                # §0 forty-sixth block): every ticked rate — unit, base, net —
+                # and amount cell that holds a number, 0 included. What the
+                # quantity-0 rule reads (`qty0_unpriced()`); filled below on a
+                # priced line, {} on a header. Never reaches a record.
+                "price_figures": {},
                 "flags": [], "needs": [], "block": False}
         for f in RATE_FIELDS + DISC_FIELDS:
             line[f] = None
@@ -2222,6 +2275,10 @@ def _build(grid: dict, mapping: dict, as_is: bool) -> dict:
             src = sheet_nums if as_is else nums
             for f in RATE_FIELDS:
                 line[f] = src[f]
+            # The sheet's own figures, before any classification read a 0 as
+            # none: an unticked column was never read, so it is not here.
+            line["price_figures"] = {f: sheet_nums[f] for f in QTY0_PRICE_FIELDS
+                                     if sheet_nums[f] is not None}
             # The discount per track (6 October 2026, R3): a % from 0 to 100.
             # Anything else — a rupee figure above 100, a negative — is NOT a
             # discount: left blank and noted below, never guessed into one.

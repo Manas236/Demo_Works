@@ -2435,12 +2435,14 @@ def rows_from_build(result: dict, mapping: dict, sheet_codes=frozenset(),
       (`section` True), and a tab with no section title opens with its TAB
       NAME as one, so a work order built from several tabs keeps each tab as
       a group with its own subtotal.
-    * QTY-0 LINES (R3, a work-order import only): a priced line with quantity
-      0 and NO non-zero rate on any declared track is LEFT OUT — a BOQ row this
-      contractor is not doing. Quantity 0 WITH a rate is kept as a rate-only
-      line. A heading whose every child was left out goes too, and so does a
-      section left with nothing in it; nothing is left orphaned. Each sheet
-      row left out is appended to `left_out` as `(tab_name, row)`.
+    * QTY-0 LINES (R3): a priced line with quantity 0 and NO non-zero rate on
+      any declared track is LEFT OUT — a BOQ row this contractor is not doing.
+      Quantity 0 WITH a rate is kept as a rate-only line. A heading whose
+      every child was left out goes too, and so does a section left with
+      nothing in it; nothing is left orphaned. Each sheet row left out is
+      appended to `left_out` as `(tab_name, row)`. ⚠ From 7 October 2026 the
+      row test is `sheetimport.qty0_unpriced()`, shared with the BOQ import
+      (the §0 forty-sixth block); the heading rules here are the work order's.
     """
     rows = _rows_from_build(result, mapping, sheet_codes, tracks, tab_name)
     return _drop_qty0(rows, tracks or import_tracks([mapping]), tab_name, left_out)
@@ -2575,16 +2577,21 @@ def _rows_from_build(result: dict, mapping: dict, sheet_codes=frozenset(),
     return rows
 
 
-def _is_zero(text) -> bool:
-    v, why = _figure(text)
-    return why == "" and v == 0
-
-
 def _drop_qty0(rows: list, tracks: str, tab_name: str = "", left_out=None) -> list:
     """
-    R3 (5 October 2026), on a work-order import ONLY — `boqimport.py` never
-    calls this. The client's sheets are their whole BOQ, and a row with
-    quantity 0 is a row this contractor is not doing.
+    R3 (5 October 2026), on a work-order import — `boqimport.py` never calls
+    this. The client's sheets are their whole BOQ, and a row with quantity 0 is
+    a row this contractor is not doing.
+
+    ⚠ **From 7 October 2026 the ROW PREDICATE is `sheetimport.qty0_unpriced()`**
+      (CLIENT_CHANGES.md §0, forty-sixth block), shared with the BOQ import,
+      which leaves out the same kind of row under its own heading rules
+      (`boqimport.drop_qty0()`). It is handed this row's quantity and its
+      declared rates as `_figure()` reads them — a negative, an oversized or an
+      unreadable figure is `None` there, exactly as before — so the rows this
+      leaves out did not move: `tests/test_boq_import_qty0.py` holds the shared
+      call equal to the rule as it stood. The heading and section logic below
+      is the work order's and did not change.
 
     * quantity 0 AND no non-zero rate on any DECLARED track → left out;
     * quantity 0 WITH a rate → kept, a rate-only line, with a note saying so;
@@ -2598,12 +2605,12 @@ def _drop_qty0(rows: list, tracks: str, tab_name: str = "", left_out=None) -> li
     declared = TRACK_RATES.get(tracks, TRACK_RATES["both"])
     drop = set()
     for i, r in enumerate(rows):
-        if r.get("is_header") or not _is_zero(r.get("qty")):
+        if r.get("is_header"):
             continue
-        rated = any((_figure(r.get(f))[0] or 0) > 0 for f in declared)
-        if not rated:
+        qty = _figure(r.get("qty"))[0]
+        if SI.qty0_unpriced(qty, [_figure(r.get(f))[0] for f in declared]):
             drop.add(i)
-        elif "rate only" not in str(r.get("note") or "").lower():
+        elif qty == 0 and "rate only" not in str(r.get("note") or "").lower():
             note = f"Row {r.get('_row')}: rate only — quantity 0 on the sheet"
             r["note"] = (f"{r['note']}\n{note}" if r.get("note") else note)[:2000]
     heads = [i for i, r in enumerate(rows) if r.get("is_header")]
