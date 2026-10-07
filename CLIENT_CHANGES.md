@@ -4547,6 +4547,63 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 7 October 2026, by Manas Gawde — BOQ IMPORT: A ROW WITH QUANTITY 0 AND NO RATE IS LEFT OUT · NO CHARGE · POST-GO-LIVE · ONE RULING
+>
+> **A new block, not an amendment.** The forty-fifth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-sixth** occasion. It covers the item below and
+> nothing else.
+>
+> **Manas's ruling, 7 October 2026, final — built to, not re-decided.** On a
+> BOQ **import**, a would-be priced line is **LEFT OUT** when all three hold:
+>
+> - **(a)** its quantity cell is the **number 0** — a numeric 0, or a cell
+>   that reads as 0, an accounting-format 0 included. A **BLANK** quantity is
+>   not 0 and is not left out: the forty-fifth block's *blank stays blank*
+>   stands;
+> - **(b)** no **ticked** rate column on the row carries a non-zero number —
+>   supply rate, installation rate, base rate, net rate, whatever the user
+>   mapped. Blank or 0 both count as no rate;
+> - **(c)** no **ticked** amount column carries a non-zero number. A row with
+>   quantity 0, no rate and a non-zero amount is **not** left out: it is kept
+>   exactly as the reader keeps it today and listed on the preview as a note.
+>
+> **A row with quantity 0 and a non-zero rate is KEPT**, untouched: it is a
+> rate-only line (the thirty-ninth block's rule — the Iron Mountain sheet's
+> "RO" items). Headings, sub-headings, specification text, section titles and
+> total rows are not lines and are never left out by this rule directly.
+> **Orphans:** a specification header or parent whose every child was left out
+> by this rule goes too, and so does a section left with no lines — the work
+> order's R3 (the forty-third block) mirrored, because an orphan parent prints
+> as a specification paragraph with nothing priced under it, the clutter the
+> client asked to remove. A parent that keeps at least one child, and a parent
+> that is itself priced, stays.
+>
+> **The preview says how many rows were left out and which**, by sheet row
+> number and description, grouped per tab, in the work order's own words; the
+> prefilled Create BOQ form carries the same one-line count. **Screen only,
+> never printed.** The rule applies in *Selling rates* and *Our cost* mode
+> alike and on every ticked tab. **It applies to the IMPORT only**: a quantity
+> of 0 typed on the Create BOQ form keeps exactly today's behaviour, and BOQs
+> already saved are **not touched** — no backfill, no migration; a record
+> saved before prints byte-identically.
+>
+> ⚠ **This NARROWS the forty-fifth block's "0 stays 0" (A1) for the import's
+> LINE rows only**: a line whose quantity is 0 and which carries no rate and
+> no amount no longer comes in. **"Blank stays blank" is untouched**, and a 0
+> anywhere else — in a rate, in an amount, or on a line that carries a rate
+> or an amount — still comes in as 0.
+>
+> **Commercial status: NO CHARGE, by Manas's ruling, recorded here as his** —
+> a post-go-live fix to the import the client is already using. It changes no
+> CC-2 item's state and moves no Phase 3 bar, and the classification is his —
+> an agent may not extend it to anything this block does not name.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -5337,6 +5394,15 @@ its blanks — a blank quantity is no longer saved as 0 (ABOUT.md §7 gap 42,
 closed). Words in a number column ("Included", "By client") go into the line's
 remark. Where the sheet's amount is not quantity × rate, both figures are
 shown and the rate is kept as you wrote it.
+
+→ **And on 7 October 2026** (the §0 **forty-sixth** block, no charge): **a row
+with quantity 0 and no rate is left out.** It is a row you are not doing, so
+it no longer comes into the BOQ — and an item or a section left with nothing
+under it goes with it. The check page lists every row left out, tab by tab,
+by row number and description, and the BOQ form says how many. A row with
+quantity 0 **and** a rate is kept (a rate-only line), a row with quantity 0
+and an amount is kept and listed, and a **blank** quantity still comes in
+blank. BOQs already saved do not change.
 
 ### G5 · BOQ import — cost sheets, rate-only lines, group labels, the grand total — ✅ Built, not deployed
 
