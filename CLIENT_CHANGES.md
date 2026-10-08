@@ -4604,6 +4604,106 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 8 October 2026, by Manas Gawde — C6, THE PROJECT PROFIT & LOSS · NO CHARGE · OPEN QUESTION 4 ANSWERED · THE PROJECT PAGE'S PROHIBITION LIFTED FOR ONE PANEL · ONE PERMISSION MINTED
+>
+> **A new block, not an amendment.** The forty-sixth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-seventh** occasion. It covers the items below
+> and nothing else.
+>
+> **What is authorised: CLIENT_CHANGES-2.md C6, the last unbuilt Phase 3
+> item.** CC-2's C6 is two sentences and a trap, quoted whole: *"Planned margin
+> from the BOQ against actual cost from purchase orders and recorded charges,
+> with the difference shown. **Double-count trap:** attendance-based wages and
+> the installation base rate both represent labour. Subtracting both counts
+> labour twice. Decide which is authoritative before wiring C5 into C6."*
+>
+> **Open question 4 — ANSWERED, by Manas, 7 October 2026, recorded here as
+> his:** *the installation base rate does NOT include labour; labour is
+> separate.* So the base rate is the cost of the item and the site labour is a
+> cost of its own, and subtracting both does **not** count labour twice. CC-2
+> called this a question for the client; Manas is the client-facing owner and
+> this is his answer, given for the client. CC-2's Open question 4 **closes**
+> on it, and C6 is **unblocked by it** — the only obstacle PROGRESS.md §5 ever
+> recorded against C6.
+>
+> **Manas's domain facts, binding — built to, not re-decided:**
+>
+> - **The BASE rate is what an item COSTS Samruddhi.** The escalated / unit rate
+>   is what they SELL at; `boq.net_rate()` is the selling price after any
+>   discount.
+> - **Planned margin is always derived from the TIP revision** of each BOQ on
+>   the project, never snapshotted, and the panel names the revision and its
+>   date.
+> - **An estimate and an actual are never blended into one number.** They are
+>   separate rows; their difference is shown as a difference, labelled.
+>
+> **What is built, and where it goes beyond C6's two sentences — each part
+> named here so none of it is inferred later:**
+>
+> 1. **Planned** (C6's own first half): planned revenue and estimated cost from
+>    each tip revision, the planned margin and its percentage, and the coverage
+>    of the estimate — how many priced lines carry no base rate, and how many
+>    lines carry no rate or no quantity, skipped and counted, never read as 0.
+> 2. **To date** (C6's *"actual cost from purchase orders and recorded
+>    charges"*, widened by this block): billed revenue from issued RA bills and
+>    from tax invoices that reach the project through a proforma; actual cost
+>    from **committed** purchase orders, **issued work orders** (ABOUT.md §7
+>    gap 55 — its own row), charges and **site labour** priced by the
+>    attendance module's own wage arithmetic. Each source is its own row. The
+>    margin to date and the estimate-versus-actual difference are shown and
+>    labelled. ⚠ **Billed revenue, work orders and site labour are not in C6's
+>    text**; they are authorised here.
+> 3. **Cash** — billed including GST, received, written off (A5) and
+>    outstanding — **GST-inclusive and labelled so**, kept apart from the two
+>    tax-exclusive sections above (ABOUT.md §7 gap 31's mix-up must not recur).
+>    ⚠ **Not in C6's text**; authorised here.
+> 4. **Cost tagged to no project** — one line under the `/projects` register
+>    (the 16 August 2026 ruling and ABOUT.md §7 gap B5: untagged cost must not
+>    vanish). ⚠ **Not in C6's text**; authorised here.
+>
+> Screen only — nothing prints. **Every figure is derived when the page opens
+> and nothing new is stored** on any record. No new route and no new
+> collection.
+>
+> ⚠ **THE PROJECT PAGE'S PROHIBITION IS LIFTED BY NAME, FOR ONE PANEL ONLY.**
+> `projectview.py`'s docstring forbids *"a figure that only exists by combining
+> two panels — no revenue total, no cost total, no margin, no profit, no net,
+> no balance"*, because *"the moment it does, the project page becomes a P&L
+> that nobody signed off on."* **This block is that sign-off, for the Profit &
+> Loss panel and for nothing else.** Every other panel on the page stays under
+> the prohibition exactly as written, and the page itself still performs no
+> arithmetic: the figures are computed in a new module, `pnl.py`, and the page
+> only renders them. PROGRESS.md §6-F, which said the guard *"must be amended
+> in the same pass that builds C6, not silently overridden"*, is answered here.
+>
+> **ONE PERMISSION IS MINTED: `project.pnl`**, granted by default to **Owner
+> and Director only**. Margin is commercially sensitive, and Sales Manager,
+> Purchase Manager and Accountant all hold `project.view`. Everybody without
+> it sees the project page and the register **byte-for-byte as before**. An
+> Owner grants it to any other role at `/roles`, with a checkbox. ⚠ **It is a
+> PANEL permission**: it gates a panel and a line, not a page of its own, and
+> the access suite's rule that every permission must gate an endpoint is
+> narrowed to admit **exactly this one**, declared, consulted by name on the
+> two pages it names — no route was invented to satisfy the rule. ⚠ **The
+> labour row additionally needs `attendance.view`** (CC-2 B4's HR wall): a
+> holder of `project.pnl` without it is told the row is withheld, and the
+> totals beside it say they exclude it.
+>
+> **Commercial status: NO CHARGE, by Manas's word of 2 October 2026, recorded
+> here as his.** ⚠ This repository held no earlier record of that word; this
+> block is the record. MG/SF/2026-02 tags C6 as Phase 3C scope; delivering it
+> at no charge is his decision, and the classification is his — an agent may
+> not extend it to anything this block does not name.
+>
+> **The board moves: C6 BLOCKED → BUILT, 19 of 20 → 20 of 20 BUILT.** Built,
+> not deployed.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
