@@ -1104,3 +1104,82 @@ def test_the_quantity_0_report_names_rows_tabs_and_sections_escaped(client):
     folded = re.search(r'<details class="imp-group" id="imp-left">.*?</details>', page, re.S)
     assert folded, "the form carries the report, folded"
     assert "<script" not in folded.group(0) and "Tab " + ESCAPED in folded.group(0)
+
+
+# ── C6 — the Profit & Loss panel and the register's line (8 October 2026) ───
+#
+# CLIENT_CHANGES.md §0 forty-seventh block. The panel prints text that came off
+# other records — a schedule's ref and date (the revision label), an RA bill's
+# ref and the BOQ ref it stores, a merged RA's serial and its legs' refs, a tax
+# invoice's number — inside notes as well as cells. Each is driven here with
+# the payload, on a project whose name carries it too, and the panel is cut
+# out and swept on its own so a sink elsewhere on the page cannot mask one in
+# it. The register's line carries figures and counts only.
+
+def test_the_pnl_panel_and_the_register_line_escape_every_new_sink(client):
+    import copy
+    keep = ("projects", "ra_bills", "receipts", "purchase_orders", "work_orders",
+            "charges", "attendance")
+    saved = {k: copy.deepcopy(STORE.get(k) or {}) for k in keep}
+    try:
+        for k in keep:
+            STORE.setdefault(k, {}).clear()
+        STORE["projects"]["esc-p"] = {"id": "esc-p", "name": "Esc " + PAYLOAD,
+                                      "site_address_id": "", "site_address": ""}
+        STORE["projects"]["esc-q"] = {"id": "esc-q", "name": "Other",
+                                      "site_address_id": "", "site_address": ""}
+
+        def boq(bid, rev, sup, project, ref, date):
+            return {"id": bid, "rev_no": rev, "supersedes": sup,
+                    "project_id": project, "ref": ref, "date": date,
+                    "blank_model": "as_is", "line_items": [
+                        {"line_id": "e1", "total_qty": 1.0, "supply_rate": 10.0,
+                         "supply_base_rate": 8.0, "description": "x"}]}
+        STORE["boqs"]["esc-b0"] = boq("esc-b0", 0, "", "esc-p", "B0 " + PAYLOAD, "2026-01-01")
+        STORE["boqs"]["esc-b1"] = boq("esc-b1", 1, "esc-b0", "esc-p", "B1 " + PAYLOAD,
+                                      "D1 " + PAYLOAD)
+        # A chain whose latest revision is filed under another project.
+        STORE["boqs"]["esc-c0"] = boq("esc-c0", 0, "", "esc-p", "C0", "2026-01-02")
+        STORE["boqs"]["esc-c1"] = boq("esc-c1", 1, "esc-c0", "esc-q", "C1 " + PAYLOAD,
+                                      "2026-01-03")
+        STORE["ra_bills"]["esc-ra1"] = {
+            "id": "esc-ra1", "boq_id": "esc-b0", "boq_ref": "B0 " + PAYLOAD,
+            "boq_rev_no": 0, "ra_no": 1, "ref": "RA1 " + PAYLOAD, "leg": "supply",
+            "status": "issued", "claim_subtotal": 100.0, "grand_total": 118.0,
+            "tax_invoice_ref": "TI9 " + PAYLOAD}
+        STORE["ra_bills"]["esc-ra2"] = {
+            "id": "esc-ra2", "boq_id": "esc-b1", "boq_ref": "B1", "boq_rev_no": 1,
+            "ra_no": 2, "ref": "RA2 " + PAYLOAD, "leg": "installation",
+            "status": "issued", "claim_subtotal": 50.0, "grand_total": 59.0}
+        STORE["merged_ras"]["esc-m"] = {
+            "id": "esc-m", "status": "live", "tax_invoice_ref": "MI " + PAYLOAD,
+            "supply_ra_id": "esc-ra1", "installation_ra_id": "esc-ra2",
+            "supply_ref": "RA1 " + PAYLOAD, "installation_ref": "RA2 " + PAYLOAD,
+            "grand_total": 177.0}
+        STORE["proformas"]["esc-pi"] = {"id": "esc-pi", "project_id": "esc-p"}
+        STORE["invoices"]["esc-ti"] = {"id": "esc-ti", "proforma_id": "esc-pi",
+                                       "ref": "TI9 " + PAYLOAD, "subtotal": 100.0,
+                                       "grand_total": 118.0}
+        STORE["purchases"]["esc-po"] = {"id": "esc-po", "project_id": "",
+                                        "status": "Issued", "taxable_value": 5.0,
+                                        "vendor_name": "V " + PAYLOAD}
+
+        html = client.get("/projects/view/esc-p").get_data(as_text=True)
+        _assert_escaped(html, "the project page")
+        assert "Esc " + ESCAPED in html, "the project name, escaped"
+        start = html.index('<div class="panel pnl" id="pnl">')
+        panel = html[start:html.index("<!-- BOQs Panel -->", start)]
+        for fragment in FORBIDDEN.values():
+            assert fragment not in panel, fragment
+        for label in ("B1 ", "D1 ", "C1 ", "RA1 ", "B0 ", "MI ", "RA2 ", "TI9 "):
+            assert label + ESCAPED in panel, f"{label.strip()}: escaped in the panel"
+
+        register = client.get("/projects/").get_data(as_text=True)
+        _assert_escaped(register, "the projects register")
+        line = register[register.index('<p class="proj-untagged"'):]
+        line = line[:line.index("</p>")]
+        assert MARK not in line, "the register's line carries no user text"
+    finally:
+        for k, v in saved.items():
+            STORE[k].clear()
+            STORE[k].update(v)

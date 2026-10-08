@@ -803,8 +803,23 @@ def test_only_projectview_imports_the_attendance_module():
     than a blacklist for the reason `test_auth_imports_nothing_that_prints` is a
     whitelist: a blacklist has to be remembered when somebody adds a module, and
     a second consumer of this module is the thing that has to stay hard.
+
+    ⚠ **REWRITTEN AGAIN 8 October 2026 — the allowlist is TWO.** CLIENT_CHANGES.md
+    §0's forty-seventh block builds C6 (Open question 4 answered: labour is
+    separate from the installation base rate), and `pnl.py` prices the P&L's
+    site-labour row through `attendance.labour_cost_of()`. The previous line,
+    verbatim:
+
+        permitted = {"projectview"}          # and nothing else, ever, without a block
+
+    and the previous first message, verbatim: *"Exactly one module may —
+    projectview.py, under the FIFTH override block of 30 August 2026 — and a
+    labour figure reaching any OTHER module is C6, which is BLOCKED on CC-2's
+    Open question 4."* It is still an allowlist, both entries are named with
+    the block that put them there, and what `pnl.py` may take is held by
+    `test_the_pnl_takes_readers_and_one_sum_and_never_the_wage_arithmetic`.
     """
-    permitted = {"projectview"}          # and nothing else, ever, without a block
+    permitted = {"projectview", "pnl"}   # and nothing else, ever, without a block
     offenders = []
     for path in REPO.glob("*.py"):
         if path.name in ("attendance.py", "app.py"):
@@ -822,14 +837,16 @@ def test_only_projectview_imports_the_attendance_module():
 
     assert set(offenders) <= permitted, (
         f"{sorted(set(offenders) - permitted)} import attendance.py. Exactly "
-        f"one module may — projectview.py, under the FIFTH override block of "
-        f"30 August 2026 — and a labour figure reaching any OTHER module is C6, "
-        f"which is BLOCKED on CC-2's Open question 4.")
+        f"two modules may — projectview.py (the FIFTH override block of "
+        f"30 August 2026, the Site Labour section) and pnl.py (the "
+        f"forty-seventh block of 8 October 2026, C6's labour row) — and a "
+        f"labour figure reaching any OTHER module is a third place a wage "
+        f"could be computed.")
     assert set(offenders) == permitted, (
-        "projectview.py no longer imports attendance.py. If the Site Labour "
-        "section was removed, narrow this allowlist back to empty and restore "
-        "the original assertion quoted in the docstring above — do not leave a "
-        "permission standing that nothing exercises.")
+        f"{sorted(permitted - set(offenders))} no longer imports attendance.py. "
+        f"If its section was removed, narrow this allowlist and restore the "
+        f"previous assertion quoted in the docstring above — do not leave a "
+        f"permission standing that nothing exercises.")
 
 
 def test_the_labour_section_consumes_the_module_and_does_not_reimplement_it():
@@ -877,6 +894,55 @@ def test_the_labour_section_consumes_the_module_and_does_not_reimplement_it():
             f"projectview.py reaches for attendance.{banned} — the arithmetic "
             f"stays in the module that owns it, and a caller that can compute a "
             f"wage can hardcode a multiplier")
+
+
+def test_the_pnl_takes_readers_and_one_sum_and_never_the_wage_arithmetic():
+    """
+    ⚠ **The second permitted consumer, held to the first one's rule** (C6,
+    8 October 2026). `pnl.py` prices the P&L's site-labour row, and it does so
+    through `labour_cost_of()` — which reads the OT multiplier INSIDE this
+    module and prices each marking with `cost_of()` — never by reaching the
+    arithmetic itself. A caller that passes its own multiplier can pass a
+    literal one: the statutory-underpayment defect CC-2 names.
+    """
+    src = (REPO / "pnl.py").read_text(encoding="utf8")
+    for accessor in ("labour_cost_of", "markings_for_project",
+                     "markings_on_no_project"):
+        assert f"AT.{accessor}(" in src, (
+            f"pnl.py must consume attendance.{accessor}() rather than "
+            f"reimplement it")
+    for banned in ("cost_of(", "ot_amount", "day_rate_of", "site_costs",
+                   "STANDARD_HOURS_PER_DAY", "ot_multiplier",
+                   "STORE[\"attendance\"]", "STORE.get(\"attendance\")",
+                   "AT.records("):
+        hits = [ln for ln in src.splitlines()
+                if banned in ln and "labour_cost_of" not in ln
+                and not ln.lstrip().startswith(("#", "`"))]
+        assert not hits, (
+            f"pnl.py reaches for {banned!r} — the wage arithmetic and the "
+            f"collection stay in attendance.py: {hits}")
+
+
+def test_labour_cost_of_is_cost_of_summed_with_the_setting(client):
+    """The one summing function, proved against `cost_of()` itself: the same
+    markings, the same multiplier, the same total — and a refused marking
+    counted, never costed."""
+    rows = [
+        {"status": "present", "day_rate": 1000.0, "ot_hours": 2.0},
+        {"status": "absent", "day_rate": 800.0, "ot_hours": 0.0},
+        {"status": "present", "monthly_salary": 24000.0, "rate_model": "pre_day_rate"},
+    ]
+    saved = STORE["settings"].pop(S.LABOUR_RECORD, None)
+    try:
+        STORE["settings"][S.LABOUR_RECORD] = {"ot_multiplier": "2"}
+        got = AT.labour_cost_of(rows)
+        want = sum(AT.cost_of(r, 2.0)["total"] for r in rows[:2])
+        assert got == {"total": want, "markings": 3, "costed": 2, "refused": 1}
+        assert got["total"] == 1500.0       # 1,000 + (1,000 ÷ 8) × 2 × 2, + 0
+    finally:
+        STORE["settings"].pop(S.LABOUR_RECORD, None)
+        if saved is not None:
+            STORE["settings"][S.LABOUR_RECORD] = saved
 
 
 def test_the_employee_master_links_out_without_importing_back():

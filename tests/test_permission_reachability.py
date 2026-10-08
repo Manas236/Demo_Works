@@ -261,11 +261,26 @@ def test_every_permission_gates_at_least_one_route():
     The mirror image: a permission that guards nothing is dead weight in the
     role editor, and a role editor full of meaningless ticks is how a real grant
     gets made by accident.
+
+    ⚠ **REWRITTEN 8 October 2026 — CC-2 C6, CLIENT_CHANGES.md §0 forty-seventh
+    block.** The old lines, verbatim:
+
+        used = set(auth.ROUTE_PERMISSIONS.values()) - {auth.PUBLIC, auth.AUTHENTICATED}
+        unused = sorted(set(auth.PERMISSIONS) - used)
+        assert unused == [], (
+            f"{len(unused)} permission(s) gate no route: {', '.join(unused)}")
+
+    `project.pnl` guards a panel and a line, not a route, and is declared in
+    `auth.PANEL_PERMISSIONS`. It is excused here BY NAME and nothing else is:
+    `tests/test_access_control.py::test_every_catalogue_permission_gates_something`
+    holds the declaration itself — exactly one, on classified pages that
+    consult it — and `tests/test_pnl_access.py` proves the tick does something.
     """
     used = set(auth.ROUTE_PERMISSIONS.values()) - {auth.PUBLIC, auth.AUTHENTICATED}
     unused = sorted(set(auth.PERMISSIONS) - used)
-    assert unused == [], (
-        f"{len(unused)} permission(s) gate no route: {', '.join(unused)}")
+    assert unused == sorted(auth.PANEL_PERMISSIONS) == ["project.pnl"], (
+        f"{len(unused)} permission(s) gate no route: {', '.join(unused)} — "
+        f"only the declared panel permission project.pnl may")
     invented = sorted(used - set(auth.PERMISSIONS))
     assert invented == [], (
         f"ROUTE_PERMISSIONS names {len(invented)} permission(s) that do not "

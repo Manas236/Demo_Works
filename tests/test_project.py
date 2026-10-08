@@ -152,25 +152,23 @@ def _visible_text(html: str) -> str:
     return re.sub(r"(?s)<[^>]+>", " ", html)
 
 
-def test_no_profit_margin_or_net_on_project_view(client):
-    """
-    The project page may show what each document is worth. It may NOT show any
-    figure that only exists by combining two panels.
+def _without_the_pnl_panel(html: str) -> tuple:
+    """`(page with the Profit & Loss panel cut out, the panel)` — the panel is
+    the one region the prohibition is lifted for (CLIENT_CHANGES.md §0
+    forty-seventh block), so the old assertions run over everything else."""
+    start = html.find('<div class="panel pnl" id="pnl">')
+    if start < 0:
+        return html, ""
+    end = html.index("<!-- BOQs Panel -->", start)
+    return html[:start] + html[end:], html[start:end]
 
-    This test used to assert that no rupee symbol appeared anywhere, which is
-    no longer the rule — the rule is that the page performs no subtraction, so
-    that nothing on it can be read as a margin.
-    """
-    _seed_priced_project()
-    html = client.get("/projects/view/p1").get_data(as_text=True)
+
+def _no_combined_figure(html: str, where: str) -> None:
+    """The old test's two assertions, verbatim in substance, over `html`."""
     text = _visible_text(html)
-
     for word in ("profit", "margin", "net"):
         assert not re.search(rf"\b{word}\b", text, re.I), \
-            f"the word {word!r} appears on the project page"
-
-    # No cross-panel arithmetic: every difference between two panel totals is
-    # a number this page must be unable to show.
+            f"the word {word!r} appears on the project page ({where})"
     panels = {
         "BOQ": BOQ_VALUE, "PI": PI_TOTAL, "TI": TI_TOTAL,
         "PO": PO_TOTAL, "charges": CHARGE_GROSS,
@@ -181,7 +179,93 @@ def test_no_profit_margin_or_net_on_project_view(client):
                 continue
             diff = _inr(abs(a - b))
             assert diff not in html, \
-                f"{diff} on the page — that is {a_name} minus {b_name}"
+                f"{diff} on the page ({where}) — that is {a_name} minus {b_name}"
+
+
+def test_no_profit_margin_or_net_on_project_view(client):
+    """
+    The project page may show what each document is worth. It may NOT show any
+    figure that only exists by combining two panels.
+
+    This test used to assert that no rupee symbol appeared anywhere, which is
+    no longer the rule — the rule is that the page performs no subtraction, so
+    that nothing on it can be read as a margin.
+
+    ⚠ **REWRITTEN 8 October 2026 — CC-2 C6, CLIENT_CHANGES.md §0
+    forty-seventh block, which lifts the prohibition BY NAME for the Profit &
+    Loss panel and for nothing else.** The old body, verbatim:
+
+        _seed_priced_project()
+        html = client.get("/projects/view/p1").get_data(as_text=True)
+        text = _visible_text(html)
+
+        for word in ("profit", "margin", "net"):
+            assert not re.search(rf"\\b{word}\\b", text, re.I), \\
+                f"the word {word!r} appears on the project page"
+
+        # No cross-panel arithmetic: every difference between two panel totals is
+        # a number this page must be unable to show.
+        panels = {
+            "BOQ": BOQ_VALUE, "PI": PI_TOTAL, "TI": TI_TOTAL,
+            "PO": PO_TOTAL, "charges": CHARGE_GROSS,
+        }
+        for a_name, a in panels.items():
+            for b_name, b in panels.items():
+                if a_name == b_name:
+                    continue
+                diff = _inr(abs(a - b))
+                assert diff not in html, \\
+                    f"{diff} on the page — that is {a_name} minus {b_name}"
+
+    It signed in as the Owner, who now holds `project.pnl`, so it went red on
+    the panel C6 IS. What it protected still holds and is asserted three ways:
+
+    1. **A reader without `project.pnl` gets the old assertions over the WHOLE
+       page, unchanged** — an Accountant, who holds `project.view`.
+    2. **The Owner gets them over the whole page MINUS the one panel** — every
+       other panel is still under the prohibition.
+    3. **The combined figures exist inside that panel and nowhere else** — the
+       margin to date here is the tax invoice less the charge, exactly the
+       cross-panel difference the old test forbade, and it is found in the
+       panel only.
+    """
+    import auth
+    _seed_priced_project()
+    # The seed's tax invoice stores a grand total and no taxable value, which
+    # the P&L counts as "no stored taxable figure" and never reads as one. A
+    # zero-rated invoice states its subtotal equal to its total; give it one,
+    # so the panel has a real cross-panel difference to carry.
+    STORE["invoices"]["ti1"]["subtotal"] = TI_TOTAL
+
+    # 1. Without project.pnl — the old test, over the whole page.
+    uid = "proj-test-accountant"
+    STORE["users"][uid] = {"id": uid, "username": "proj-acct@test",
+                           "display_name": "Accountant", "password_hash": "x",
+                           "role_ids": ["role-accountant"], "active": True}
+    try:
+        with client.session_transaction() as s:
+            owner = s[auth.SESSION_KEY]
+            s[auth.SESSION_KEY] = uid
+        html = client.get("/projects/view/p1").get_data(as_text=True)
+        assert 'id="pnl"' not in html
+        _no_combined_figure(html, "without project.pnl")
+    finally:
+        with client.session_transaction() as s:
+            s[auth.SESSION_KEY] = owner
+        STORE["users"].pop(uid, None)
+
+    # 2. The Owner — the old test, over everything but the one panel.
+    html = client.get("/projects/view/p1").get_data(as_text=True)
+    rest, panel = _without_the_pnl_panel(html)
+    assert panel, "the Owner holds project.pnl and should see the P&L panel"
+    _no_combined_figure(rest, "outside the Profit & Loss panel")
+
+    # 3. …and the combined figure lives in that panel, and only there. The PO
+    #    carries no status, so it reads as Draft and is not a cost; the margin
+    #    to date is TI 98,765 − charge 5,678 = 93,087.
+    combined = _inr(TI_TOTAL - CHARGE_GROSS)
+    assert combined in panel and combined not in rest
+    assert re.search(r"\bmargin\b", _visible_text(panel), re.I)
 
 
 def test_each_panel_shows_its_documents_value_and_a_total(client):

@@ -26,12 +26,15 @@ Three properties, and they fail for different reasons:
   any session would fail it.
 """
 
+import pathlib
 import re
 
 import pytest
 
 import auth
 from store import STORE
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
 # ── Building a concrete URL for every rule ─────────────────────────────────
@@ -129,13 +132,56 @@ def test_every_catalogue_permission_gates_something():
     And no dead permissions. A checkbox in the role editor that grants access to
     nothing is worse than no checkbox: somebody ticks it, and the access they
     were trying to give silently does not arrive.
+
+    ⚠ **REWRITTEN 8 October 2026 — CC-2 C6, CLIENT_CHANGES.md §0 forty-seventh
+    block.** The old assertion, verbatim:
+
+        used = {p for p in auth.ROUTE_PERMISSIONS.values()
+                if p not in (auth.PUBLIC, auth.AUTHENTICATED)}
+        dead = sorted(set(auth.PERMISSIONS) - used)
+        assert not dead, (
+            f"these permissions are in the catalogue but gate no endpoint: {dead}. "
+            f"Either wire them to a route or take them off the role editor.")
+
+    `project.pnl` gates a PANEL — the Profit & Loss on `/projects/view/<id>`
+    and one line under `/projects/` — and no endpoint: both pages stay on
+    `project.view`, and inventing a route to satisfy this test would have been
+    a page nobody asked for. So the rule now counts a permission as live when
+    it gates an endpoint **or** is a DECLARED panel permission — and the
+    declaration is held harder than a route entry is: an allowlist of exactly
+    one, every page it names a classified, non-public endpoint, and the module
+    serving each page consulting it by name. The checkbox's real effect is
+    proved in `tests/test_pnl_access.py`, by granting it to a role and seeing
+    the panel arrive. A permission that is neither is still refused.
     """
     used = {p for p in auth.ROUTE_PERMISSIONS.values()
             if p not in (auth.PUBLIC, auth.AUTHENTICATED)}
-    dead = sorted(set(auth.PERMISSIONS) - used)
+    dead = sorted(set(auth.PERMISSIONS) - used - set(auth.PANEL_PERMISSIONS))
     assert not dead, (
         f"these permissions are in the catalogue but gate no endpoint: {dead}. "
         f"Either wire them to a route or take them off the role editor.")
+
+    # ⚠ The panel permissions, and the only one there is. A second needs its
+    #   own §0 block, and this line is where that decision becomes visible.
+    assert set(auth.PANEL_PERMISSIONS) == {"project.pnl"}, (
+        f"auth.PANEL_PERMISSIONS is {sorted(auth.PANEL_PERMISSIONS)}; exactly "
+        f"one panel permission was authorised (the forty-seventh §0 block)")
+    for perm, endpoints in auth.PANEL_PERMISSIONS.items():
+        assert perm in auth.PERMISSIONS, f"{perm} is declared but not in the catalogue"
+        assert perm not in used, (
+            f"{perm} gates an endpoint, so it is not a panel permission — take "
+            f"it out of PANEL_PERMISSIONS")
+        assert endpoints, f"{perm} names no page to render a panel on"
+        for endpoint in endpoints:
+            gate = auth.ROUTE_PERMISSIONS.get(endpoint)
+            assert gate and gate not in (auth.PUBLIC, auth.AUTHENTICATED), (
+                f"{perm} names {endpoint}, which is not a classified, "
+                f"permission-gated endpoint")
+            module = endpoint.split(".", 1)[0]
+            src = (REPO / f"{module}.py").read_text(encoding="utf8")
+            assert f'has_perm("{perm}")' in src, (
+                f"{module}.py serves {endpoint} and never consults {perm} by "
+                f"name — the checkbox would grant nothing there")
 
 
 # ── 2. Anonymous callers are refused everywhere that is not public ─────────

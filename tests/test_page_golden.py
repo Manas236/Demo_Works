@@ -341,10 +341,27 @@ PAGES = {
         {"head": "660a40e2abebd6f2", "shell": "75cda0afbae27209", "chrome": "07b78e62d2bbf81c", "main": "30651a1c7dcacad9"}),
     ("measurements",    "/measurement/"):              ("087142596310c260", 68945,
         {"head": "eb56381f8be8ac28", "shell": "75cda0afbae27209", "chrome": "604e1a5956a90ace", "main": "357bd0902a7b8770"}),
-    ("projects",        "/projects/"):                 ("1dcdc0e2798636eb", 49548,
-        {"head": "35ced4411e03de2e", "shell": "75cda0afbae27209", "chrome": "89e92c31f075ea28", "main": "b61a7f3ca9178c9b"}),
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("74f683d1a779159f", 76963,
-        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209", "chrome": "b03da1368479ad8b", "main": "85908eff05b3e868"}),
+    # ⚠ **RE-BASELINED 8 October 2026 — `main` ONLY, and for the OWNER ONLY**,
+    #   for CC-2 C6 (CLIENT_CHANGES.md §0 forty-seventh block). This file signs
+    #   in as `gold-owner`, who holds `project.pnl`; the register gains the
+    #   "Cost not tagged to any project" line and the project page gains the
+    #   Profit & Loss panel. Measured before the baseline was touched: with
+    #   `project.pnl` withheld from the same Owner, both pages hashed to the OLD
+    #   digests below exactly; and with the line (**+461 bytes**) and the panel
+    #   (**+6,368 bytes**) cut back out of the new pages, both again hashed to
+    #   the old digests — **0 bytes removed, `head` / `shell` / `chrome`
+    #   unmoved**. A role WITHOUT `project.pnl` is pinned byte-for-byte against
+    #   `3a14375` in `tests/test_pnl_access.py`. The old values:
+    #       ("projects", "/projects/"): ("1dcdc0e2798636eb", 49548,
+    #        {"head": "35ced4411e03de2e", "shell": "75cda0afbae27209",
+    #         "chrome": "89e92c31f075ea28", "main": "b61a7f3ca9178c9b"})
+    #       ("project page", …): ("74f683d1a779159f", 76963,
+    #        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209",
+    #         "chrome": "b03da1368479ad8b", "main": "85908eff05b3e868"})
+    ("projects",        "/projects/"):                 ("2f4005ad31c9a322", 50009,
+        {"head": "35ced4411e03de2e", "shell": "75cda0afbae27209", "chrome": "89e92c31f075ea28", "main": "e7babe8cdc1b11fc"}),
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("ed03e4a8109be779", 83331,
+        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209", "chrome": "b03da1368479ad8b", "main": "ebeb42c9b7836fc1"}),
     ("employees",       "/employee/"):                 ("fd7d40f31d63a52e", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "75cda0afbae27209", "chrome": "8ad3f37192de4e4d", "main": "14f4d8921e680fc4"}),
     ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("772b3d71abb8f8ee", 72731,

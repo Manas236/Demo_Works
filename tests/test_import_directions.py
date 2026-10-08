@@ -766,6 +766,53 @@ FORBIDDEN = [
     ("importstage", "auth",        "any", "the caller passes the user id"),
     ("importstage", "db",          "any", "the rows are a STORE collection; db.py "
                                           "mirrors them like any other"),
+
+    # ── pnl.py — C6, the project profit and loss (8 October 2026) ─────────
+    # CLIENT_CHANGES.md §0 forty-seventh block. The arithmetic lives here and
+    # nowhere else; `projectview.py` renders it and `project.py` reaches it
+    # inside one function. Every document it reads that is not in REQUIRED
+    # below is read out of STORE directly — the one-way trick again.
+    ("pnl", "projectview", "any", "projectview.py imports pnl.py for the panel; "
+                                  "the reverse is a cycle"),
+    ("pnl", "project",     "any", "pnl.py reads STORE['projects'] directly; "
+                                  "project.py imports pnl.py inside "
+                                  "_untagged_line(), so the reverse is a cycle"),
+    ("pnl", "auth",        "any", "who may see a figure is decided per view by the "
+                                  "page that renders it, never by the arithmetic "
+                                  "(ABOUT.md §7 gap 24)"),
+    ("pnl", "flask",       "any", "no route, no request — figures in, a dict out"),
+    ("pnl", "settings",    "any", "the OT multiplier is read INSIDE "
+                                  "attendance.labour_cost_of(); a caller that "
+                                  "passes its own can pass a literal one"),
+    ("pnl", "employee",    "any", "a wage is attendance.py's arithmetic, and the "
+                                  "employee master is the HR wall's"),
+    ("pnl", "charge",      "any", "charges are read from STORE['charges'] directly; "
+                                  "charge.py is a page module"),
+    ("pnl", "invoice",     "any", "a tax invoice is read from STORE['invoices'] "
+                                  "through its proforma's project_id"),
+    ("pnl", "proforma",    "any", "the proforma is read from STORE['proformas'] "
+                                  "for its project_id and nothing else"),
+    ("pnl", "receipt",     "any", "the receipts arithmetic lives upstream in ra.py"),
+    ("pnl", "po_draft",    "any", "a draft PO is an intent: counted out of "
+                                  "STORE['purchase_orders'] for the note, never priced"),
+    ("pnl", "dashboard",   "any", "the P&L renders nothing but the register's "
+                                  "one sentence"),
+    ("attendance", "pnl", "any", "pnl.py imports attendance.py for "
+                                 "labour_cost_of(); the reverse is a cycle"),
+    ("ra",         "pnl", "any", "pnl.py imports ra.py"),
+    ("boq",        "pnl", "any", "pnl.py imports boq.py"),
+    ("purchase",   "pnl", "any", "pnl.py imports purchase.py"),
+    ("workorder",  "pnl", "any", "pnl.py imports workorder.py"),
+    ("merged_ra",  "pnl", "any", "pnl.py imports merged_ra.py"),
+    ("dashboard",  "pnl", "any", "the dashboard carries counts, never a margin"),
+    # ⚠ project.py MAY reach pnl.py — inside `_untagged_line()` only. pnl.py
+    #   imports boq, ra and purchase, and project.py is held to a leaf (every
+    #   `("project", …)` row above): a module-level arrow would hang the whole
+    #   document chain under the project entity.
+    ("project", "pnl",  "module", "pnl.py is reached inside _untagged_line() only, "
+                                  "so the leaf stays a leaf"),
+    ("project", "auth", "module", "has_perm() is asked inside _untagged_line() "
+                                  "only — the register's line is a per-view check"),
 ]
 
 
@@ -1097,6 +1144,25 @@ REQUIRED = [
                                  "arithmetic across panels"),
     ("workorder", "importstage", "the work-order import stages through the SAME "
                                  "mechanism, in its own wo_imports collection"),
+    # 8 Oct 2026 — C6, the project profit and loss (the §0 forty-seventh block).
+    ("pnl", "boq",        "net_rate(), amount_of(), round_half_up(), typed_num() "
+                          "and the three line counts — the plan is priced by "
+                          "the BOQ's own helpers, never a second copy"),
+    ("pnl", "ra",         "latest_revision() for the TIP, status_of() for what "
+                          "is billed, and the receipts arithmetic for the cash"),
+    ("pnl", "merged_ra",  "live_merge_of(): the merged RA is a NOTE, never money"),
+    ("pnl", "purchase",   "PO_STATUSES / DEFAULT_STATUS — which orders are "
+                          "committed — and charges_of() / charge_totals()"),
+    ("pnl", "workorder",  "status_of() and totals_of(): a work order is its OWN "
+                          "cost row (ABOUT.md §7 gap 55)"),
+    ("pnl", "attendance", "labour_cost_of(), markings_for_project(), "
+                          "markings_on_no_project() — the wage is attendance.py's "
+                          "own arithmetic, the second permitted importer"),
+    ("pnl", "quotation",  "_inr, for the register's one sentence"),
+    ("projectview", "pnl", "project_pnl(): the Profit & Loss panel renders the "
+                           "dict and computes nothing"),
+    ("project", "pnl",    "untagged_cost() and register_line_html(), inside "
+                          "_untagged_line() only"),
 ]
 
 
