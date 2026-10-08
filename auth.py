@@ -354,7 +354,9 @@ def secret_key_warning(source: str) -> str:
 # =============================================================================
 # Derived from `app.url_map`, not invented: every id below gates at least one
 # real endpoint in `ROUTE_PERMISSIONS`, and `tests/test_access_control.py`
-# asserts in both directions that the two stay in step.
+# asserts in both directions that the two stay in step. ⚠ **One exception,
+# declared rather than tolerated** (8 October 2026): `project.pnl` gates a
+# PANEL on a real endpoint's page, not an endpoint — `PANEL_PERMISSIONS`.
 #
 # Naming is `<module>.<action>`. `group` is display only — it is what the role
 # editor renders its checkbox blocks from.
@@ -494,6 +496,15 @@ PERMISSIONS = {
     "project.create":        ("Create a project",                         "Projects"),
     "project.edit":          ("Edit a project",                           "Projects"),
     "project.delete":        ("Delete a project",                         "Projects"),
+    # C6 — the project profit and loss (8 October 2026, CLIENT_CHANGES.md §0
+    # forty-seventh block). ⚠ **A PANEL permission, the only one in this
+    # catalogue**: it opens no page of its own. It decides whether the Profit &
+    # Loss panel renders on `/projects/view/<id>` and whether the "Cost not
+    # tagged to any project" line renders under `/projects/` — both pages stay
+    # on `project.view`, which Sales Manager, Purchase Manager and Accountant
+    # hold, and margin is commercially sensitive. See `PANEL_PERMISSIONS` below
+    # for why a permission that gates no endpoint is not a dead checkbox here.
+    "project.pnl":           ("View a project's profit and loss",         "Projects"),
 
     "spec.view":             ("View the specification library",           "Library"),
     "spec.create":           ("Add a specification",                      "Library"),
@@ -550,6 +561,25 @@ def _permission_groups() -> list:
 
 PUBLIC = "__public__"                # reachable with no session at all
 AUTHENTICATED = "__authenticated__"  # any logged-in user, no permission needed
+
+# ── Panel permissions — a permission that gates PART of a page ──────────────
+#
+# Permission id -> the classified endpoints whose page renders something ONLY
+# for a holder of it. The registry below is endpoint-level (ABOUT.md §7 gap
+# 24), so it cannot say "this panel on that page needs a second permission";
+# a panel permission is checked per view with `has_perm()`, the shape the
+# Site Labour panel's `attendance.view` check already uses.
+#
+# ⚠ **Exactly one, and a second needs its own §0 block.** `project.pnl` (C6,
+#   8 October 2026) is the only permission in the catalogue that gates no
+#   endpoint, and `tests/test_access_control.py::test_every_catalogue_
+#   permission_gates_something` admits it ONLY because it is declared here,
+#   because every endpoint named here is classified and non-public, and
+#   because the module serving each one consults it by name. A checkbox that
+#   grants nothing is still refused; this one grants a panel and a line.
+PANEL_PERMISSIONS = {
+    "project.pnl": ("projectview.view_project", "project.list_projects"),
+}
 
 # ── Hidden blueprints — a module switched OFF for everybody ──────────────────
 #
@@ -1150,6 +1180,11 @@ BUILTIN_ROLES = {
             "attendance.delete",
             "project.delete", "spec.delete", "product.create", "product.delete",
             "address.delete", "settings.edit",
+            # C6 (8 October 2026, the §0 forty-seventh block). Owner and
+            # Director only by default — margin is commercially sensitive,
+            # and it is deliberately NOT in `_OPERATIONS`, which would hand it
+            # to Operation Head too. An Owner grants it anywhere at /roles.
+            "project.pnl",
             # The five destructive verbs minted 23 September 2026. They sit on
             # the admin tier for the same reason `project.delete` does — the
             # records they destroy are roots, not leaves. ⚠ Holding the

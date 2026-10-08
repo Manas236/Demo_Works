@@ -166,6 +166,15 @@ authoritative; this asks which project a day was worked for, which is a fact
 somebody on site knows. Recording the second does not answer the first, and no
 margin, project total or net is built anywhere.
 
+✅ **C6 IS BUILT — 8 October 2026, CLIENT_CHANGES.md §0 forty-seventh block.**
+The paragraph above is kept as written, because it was true when it was
+written and what changed is the question, not this module: **Open question 4
+was answered by Manas on 7 October 2026 — the installation base rate does not
+include labour; labour is separate.** So a marking's wage is a cost row of its
+own on the project P&L (`pnl.py`), and the `project_id` above is what puts it
+on the right project. Attributing a day is still not costing it: the costing
+is `cost_of()`, here, reached through `labour_cost_of()` below.
+
 ════════════════════════════════════════════════════════════════════════════
 ⚠ SITE IS AN ADDRESS-BOOK PICKER, AND IS STILL DELIBERATELY NOT A PROJECT
 ════════════════════════════════════════════════════════════════════════════
@@ -253,6 +262,20 @@ for what that day cost. `projectview.py`'s standing prohibition — *"no revenue
 total, no cost total, no margin, no profit, no net, no balance"* — is untouched,
 and the two sums the Site Labour section now draws are two columns inside **one**
 panel, which its first sentence has always permitted.
+
+✅ **SUPERSEDED IN PART, 8 October 2026 (the §0 forty-seventh block) — and the
+paragraph above is kept because each clause of it is answered separately.**
+Open question 4 is answered (labour is separate from the installation base
+rate), C6 is built in `pnl.py`, and `projectview.py`'s prohibition is lifted by
+name for its Profit & Loss panel alone. **The import allowlist is TWO now** —
+`projectview.py` and `pnl.py` — and `test_only_projectview_imports_the_
+attendance_module` is rewritten to say so, its old assertion kept. What did NOT
+change: `pnl.py` takes **readers and one summing function** —
+`markings_for_project()`, `markings_on_no_project()` and `labour_cost_of()` —
+and may not reach `cost_of()`, `ot_amount()`, `day_rate_of()` or `site_costs()`;
+the multiplier is read inside `labour_cost_of()`, so no caller can pass a
+literal one. The dashboard card is still counts only, and `charge.py` is still
+forbidden in both directions.
 
 Imports, and why `settings` is on the list
 ------------------------------------------
@@ -593,6 +616,59 @@ def unattributed_at_site(address_id) -> list:
     """
     return [r for r in markings_at_site(address_id)
             if not str(r.get("project_id") or "").strip()]
+
+
+def markings_on_no_project() -> list:
+    """
+    Every marking booked to NO live project, newest day first — a blank
+    `project_id` (a legacy marking, or a site that carries no project) **or**
+    one naming a project that no longer exists (C6, 8 October 2026).
+
+    ⚠ **Both, and that is the point.** The `/projects` register's *"Cost not
+    tagged to any project"* line (CLIENT_CHANGES.md §0 forty-seventh block,
+    ABOUT.md §7 gap B5) exists so that untagged cost cannot vanish, and a
+    marking pointing at a deleted project is on no project's page either. It
+    reads `STORE["projects"]` directly, the way `projects_on_site()` does —
+    `attendance → project` stays refused.
+    """
+    live = set((STORE.get("projects") or {}).keys())
+    return sorted((r for r in records().values()
+                   if str(r.get("project_id") or "").strip() not in live),
+                  key=lambda r: (str(r.get("date") or ""),
+                                 str(r.get("employee_name") or "").lower()),
+                  reverse=True)
+
+
+def labour_cost_of(rows) -> dict:
+    """
+    `{"total", "markings", "costed", "refused"}` — what a set of markings cost,
+    summed by THIS module's own arithmetic (C6, 8 October 2026).
+
+    ⚠ **The P&L reaches the wage through here and nowhere else.** `pnl.py` is
+    the second module allowed to import this one (CLIENT_CHANGES.md §0
+    forty-seventh block), and it may not reach `cost_of()`, `ot_amount()` or
+    `day_rate_of()` itself: a second module able to compute a wage is a second
+    place the OT multiplier could be hardcoded — the statutory-underpayment
+    defect CC-2 names. So the multiplier is read HERE, through the one
+    accessor, and each marking is priced by `cost_of()`, day rate plus OT.
+
+    ⚠ **A refused marking is COUNTED and contributes nothing** — `site_costs()`'s
+    rule. A total quietly missing a person's wage and a total counting a monthly
+    salary as a day's are the same class of defect, so the caller is told how
+    many were left out and says so. An absent day is costed at nil, which is a
+    real nil (CC-2: *"Salary as 0 or 1 based on attendance"*).
+    """
+    multiplier = S.ot_multiplier()
+    total, costed, refused = 0.0, 0, 0
+    for r in rows:
+        c = cost_of(r, multiplier)
+        if c["refused"]:
+            refused += 1
+            continue
+        costed += 1
+        total = round(total + c["total"], 2)
+    return {"total": total, "markings": len(rows), "costed": costed,
+            "refused": refused}
 
 
 def site_costs(date: str) -> list:

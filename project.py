@@ -22,6 +22,14 @@ Two things it is not
 definitions are the client's and their CA's.  This module groups BOQs, computes
 nothing, and shows no money.
 
+⚠ **8 October 2026 — the P&L exists now, and it is still not THIS module.**
+CC-2 C6 is built in `pnl.py` (CLIENT_CHANGES.md §0 forty-seventh block, which
+records the definitions this paragraph was waiting for). This module still
+computes nothing: the register's one new line — *"Cost not tagged to any
+project"* — is `pnl.untagged_cost()` rendered by `pnl.register_line_html()`,
+shown ONLY to a holder of `project.pnl`, and reached through a FUNCTION-BODY
+import in `_untagged_line()` so this module stays the leaf described below.
+
 **It is not a display label.**  `project_name` stays on the BOQ as a display
 field, but the grouping key is `project_id` — a UUID minted here.
 
@@ -80,6 +88,14 @@ lives in `ra.py`.
 project.py does NOT import: boq, challan, purchase, po_draft, invoice, ra,
 receipt, quotation, product, docsheet, boqpick.  That list is asserted in
 tests/test_import_directions.py.
+
+⚠ **Two function-body imports from 8 October 2026, and neither is a module-level
+arrow:** `auth` (for `has_perm("project.pnl")` and `has_perm("attendance.view")`)
+and `pnl` (C6), both inside `_untagged_line()` alone. `pnl.py` imports boq, ra
+and purchase; a module-level `project → pnl` would hang the document chain under
+this leaf, so `tests/test_import_directions.py` refuses it at module level.
+(⚠ The *"boq.py imports project.py"* sentence above is stale: `boq.py` imports
+nothing from here, measured 8 October 2026.)
 """
 
 import uuid
@@ -367,6 +383,25 @@ PROJECT_FORM_STYLES = """
 """
 
 
+def _untagged_line() -> str:
+    """
+    The *"Cost not tagged to any project"* line under the register — CC-2 C6,
+    CLIENT_CHANGES.md §0 forty-seventh block, and the 16 August 2026 ruling
+    (ABOUT.md §7 gap B5): untagged cost must not vanish.
+
+    `""` for a reader without `project.pnl`, so for them the register is
+    byte-for-byte what it was. The arithmetic and the sentence are `pnl.py`'s;
+    this module decides only who sees it — per view, gap 24's shape. ⚠ Both
+    imports are function-body on purpose: see the module docstring.
+    """
+    import auth
+    if not auth.has_perm("project.pnl"):
+        return ""
+    import pnl
+    return pnl.register_line_html(
+        pnl.untagged_cost(include_labour=auth.has_perm("attendance.view")))
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -439,7 +474,7 @@ def list_projects():
           <tbody>
             {rows if rows else '<tr><td colspan="5" style="text-align:center; color:#999; padding:2rem;">No projects yet.</td></tr>'}
           </tbody>
-        </table>
+        </table>{_untagged_line()}
       </main>
     </body>
     </html>

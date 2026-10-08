@@ -427,14 +427,15 @@ Consequences you must respect when editing:
 | [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. From 4 Oct 2026 `/ra/create` also raises a bill FROM ticked challans (capped at their dispatch) or FROM the measurement (the unbilled remainder), writing `source_dc_ids` / `source_ms_ids` once — §5 `/ra`. ⚠ **`approved_rates()` is the NET rate from 6 October 2026** (`boq.net_rate()`, the §0 forty-fourth block, R3): what a claim is prefilled with and frozen at; a bill already saved does not move. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
-| [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. |
-| [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. ⚠ **6 October 2026 (the §0 forty-fourth block, R3):** the BOQ panel's figure is at the NET rate, and a BOQ with priced lines carrying no base rate says *cost not recorded on N lines* under its ref (`boq.lines_without_cost()`, so it imports `boq`) — words, never a zero cost; still no arithmetic across panels. |
+| [project.py](project.py) | 675 | **Project entity and management.** Top-level entity representing a commercial engagement. Groups BOQs, PIs, and POs. ⚠ **Its site comes from the ADDRESS BOOK from 30 Aug 2026** — `site_address_id` is the join, `site_address` is demoted to the label snapshot, and the form is a picker with no free-text fallback. Reads `SITE_TYPES` from `address.py`; never defines its own. ⚠ **8 October 2026 (C6):** the register carries one more line for a holder of `project.pnl` — *"Cost not tagged to any project"* — through `_untagged_line()`, which imports `auth` and `pnl` **inside the function only**, so the module is still the leaf the import table holds it to. |
+| [projectview.py](projectview.py) | 894 | **Project Detail Page.** ⚠ **Its POST branch ATTACHES and DETACHES a BOQ from 9 September 2026** (§7 gap 33) &mdash; both walk `ra.revision_chain()` and move the **whole chain**, and both sit behind the per-view `project.edit` guard because the endpoint itself is classified `project.view`. Detach exists because there is **no `/boq/edit` route**, so without it a schedule filed against the wrong project was filed there permanently. Displays grouped documents attached to a project without showing any figure that only exists by combining two panels. ⚠ **The margin / project-total / net prohibition is UNCHANGED**; each panel still adds its own one column up, which five of them always did. Imports `project.py` for `site_drift()` and `others_on_site()`, and &mdash; 30 Aug 2026, fifth pass &mdash; `attendance.py` and `settings.py` for the **Site Labour** section (§5). ⚠ **That section renders TWO labelled groups from 30 Aug 2026 (sixth pass)** &mdash; *booked to this project* and *at this site, unattributed* &mdash; **summed separately and never added together**, with the ambiguity note now conditional on the second group being non-empty. ⚠ **6 October 2026 (the §0 forty-fourth block, R3):** the BOQ panel's figure is at the NET rate, and a BOQ with priced lines carrying no base rate says *cost not recorded on N lines* under its ref (`boq.lines_without_cost()`, so it imports `boq`) — words, never a zero cost; still no arithmetic across panels. ⚠ **8 October 2026 (the §0 forty-seventh block, CC-2 C6): the prohibition is LIFTED BY NAME for ONE panel** — the **Profit & Loss** (`_pnl_panel()`), which renders `pnl.project_pnl()` and computes nothing itself; every other panel stays under it word for word. It renders only for `project.pnl` (an `auth.PANEL_PERMISSIONS` entry) and travels with its own stylesheet, so for every other reader the page is **byte-for-byte as at `3a14375`** (`tests/test_pnl_access.py`). Imports `pnl.py`. §5 `/projects`. |
+| [pnl.py](pnl.py) | 697 | **The project profit and loss — CC-2 C6** (8 October 2026, CLIENT_CHANGES.md §0 **forty-seventh** block; Open question 4 answered by Manas: the installation base rate does not include labour). **No routes, nothing stored**: `project_pnl(id, include_labour)` returns three sections that never mix — **planned** (each TIP revision via `ra.latest_revision()`, revenue at `boq.net_rate()`, cost at the base rate, blanks skipped and counted, coverage via `boq.lines_without_cost()`), **to date** (issued RA bills at their stored `claim_subtotal`, tax invoices through a proforma at `subtotal`, a TI carrying an issued bill's `tax_invoice_ref` counted once as the bill; committed POs at `taxable_value` with non-taxable charges a row of their own, issued work orders before GST, charges at `taxable_amount`, site labour by `attendance.labour_cost_of()`) — both tax-exclusive — and **cash**, GST-inclusive, RA bills only. `untagged_cost()` and `register_line_html()` are the `/projects` register's one line. Imports boq, ra, merged_ra (the note only), purchase, workorder, attendance, quotation (`_inr`), store; **never** auth, settings, project or projectview. §5 `/projects`. |
 | [po_draft.py](po_draft.py) | 949 | **Draft purchase order from a BOQ.** Sent to a supplier to be priced: description and quantity only, **no rates and no GST**, one global number series. Its own collection. Not `purchase.py` — see §5. |
 | [workorder.py](workorder.py) | 2961 | **Work Orders for petty contractors** (5 October 2026, CLIENT_CHANGES.md §0 **forty-first** block, rulings A–J). Its own `work_orders` collection — **not** inside `purchases` or `purchase_orders`: a PO buys material, a WO assigns work. Each line carries a **material rate AND a labour rate**; every amount and total is **derived**, never stored (`line_amounts()` / `totals_of()`). DRAFT / ISSUED / CANCELLED with the RA bill's semantics, prints on `docsheet.py` as the buy-side PO does (title WORK ORDER, the contractor in the vendor's place, **no GST**), one global series at `/settings`, the contractor an address-book pick (type `contractor`) with a typed fallback, an optional project. Excel import through `sheetimport.py` with its **own** mapping, staged through `importstage.py` in the persisted `wo_imports` (fix 1); heading lines (`is_header`) since the same day's fix pass. ⚠ **From the forty-third block (pass 3, the client's own sheet):** `tracks` (one rate track or both, declared per work order), `gst_rate` (derived GST, prefilled 18), `site`, `terms`, SECTION headings with subtotals and a summary, several tabs into one work order, and quantity-0 rows left out on an import (the row test `sheetimport.qty0_unpriced()` from 7 October 2026, shared with the BOQ import; the heading rules stay this module's). ⚠ **Mints no permission** — every route carries the PO's own `purchase.*` id for the same action. ⚠ **Imports none of** `boq`, `ra`, `invoice`, `purchase`, `po_draft` (nor `boqimport` / `boqpick`, which reach `boq`). §3 *Work Order*, §5 `/wo`. ⚠ **From 6 October 2026 (the §0 forty-fourth block, R1) the import preview is the BOQ importer's COLUMN PICKER in this document's words** — `advise_mapping()` asks the shared advice as a work order (a lone rate stays a choice; a base, escalation, discount or remark has no field here and is skipped). |
 | [challan.py](challan.py) | 1094 | **Delivery challan from a BOQ.** Goods leaving the yard: description, quantity and unit, **no money of any kind**. Its own collection. Beside the RA bill on the project chain and **deliberately not reconciled with it** — see §5 and §7 gap 19. From 4 Oct 2026 it says *Billed in &lt;RA ref&gt;* and offers *Raise RA (Supply)*, reading the billed answer through the leaf `dcbill.py` — still never importing `ra.py`. |
 | [charge.py](charge.py) | 372 | **Business expenses ledger** &mdash; travel, food, wages, consumables, not in any BOQ. A leaf. ⚠ Titled *"Employee & Miscellaneous Charges"* until 29 Aug 2026, with **no employee record behind it** (PROGRESS.md §6-E): `person` is free text somebody types. Corrected when C4 shipped a real employee master. **The module is not renamed** &mdash; the description was what was wrong. |
 | [employee.py](employee.py) | 1192 | **Employee master** &mdash; details and the **day rate** (CC-2 **C4**, 29 Aug 2026). Its own `employees` collection. A leaf, and the only one `attendance.py` imports. ✅ **Linked from the nav and the launcher since 29 August 2026 (third pass)** &mdash; it shipped with neither, deliberately, and every print golden moved when they arrived. Owner, Director and HR only (B4). ⚠ **It held a MONTHLY salary and a free-text `site` until 30 Aug 2026, and both were OUR errors** &mdash; it carries a **day rate** and an **address-book link** now, and it owns the vocabulary for both corrections that `attendance.py` reads. |
-| [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. |
+| [attendance.py](attendance.py) | 1628 | **Attendance & site-wise labour cost** &mdash; daily presentee/absentee, overtime and what a day on a site cost (CC-2 **C5**, 29 Aug 2026). Its own `attendance` collection. Imports `employee.py` and `settings.py`. ⚠ **`projectview.py` imports it from 30 Aug 2026 (fifth pass) and is the ONLY module that may** &mdash; it takes `marking_cells()`, `markings_at_site()` and, from the sixth pass, `markings_for_project()` and `unattributed_at_site()`: rendered cells and readers, never the arithmetic. It was imported by **nothing** until then. C6 is still BLOCKED. ⚠ **A marking carries a `project_id` from 30 Aug 2026 (sixth pass)** &mdash; `charge.py`'s shape, picker filtered to the site, **several projects REQUIRE a choice**, and `STORE["projects"]` is read directly because `attendance → project` is refused. **Beyond CC-2; §4c.** ⚠ **The OT multiplier is a SETTING** &mdash; a literal one would compute a statutory underpayment. ⚠ **`wage_days_per_month` is GONE (30 Aug 2026)**: CC-2's `salary` is a **day rate**, so there was never anything to divide. Owner, Director and HR only. ⚠ **8 October 2026 (C6): a SECOND importer, `pnl.py`**, and two published functions for it &mdash; `labour_cost_of(rows)` (the multiplier read here, each marking priced by `cost_of()`, a refused marking counted and never costed) and `markings_on_no_project()` (a blank or dangling `project_id`). `pnl.py` may not reach `cost_of()` itself; the import allowlist is **two**. |
 | [attachment.py](attachment.py) | 817 | **File attachments on a charge and on a receipt** (CC-2 **B8**, 2 Sep 2026). The **only** module that returns file bytes, and the first record in this app whose payload is not in the database — the file is on disk under `attachment.root()`, the record holds a **relative path**. A **bottom-of-graph** module like `approval.py`: `charge.py` and `receipt.py` import it, so it imports neither. Type is decided by **magic bytes**, never by extension or the browser's `Content-Type`; 5 MB cap refused before the store is touched; the cascade deletes the file **and** the row. ⚠ **Compulsory on a charge, optional on a receipt** — CC-2's asymmetry, carried as data in `PARENTS`. ⚠ **Mints no permission**: each of its six endpoints carries the PARENT's own. ⚠ **B7 gates the download and that is OURS** — through `approval.can_print()`, not a second copy of the rule. See §3. |
 | [merged_ra.py](merged_ra.py) | 1022 | **The merged RA bill** (CC-2 **C3**, 2 Sep 2026) — one issued RA-Supply bill and one issued RA-Installation bill from the same revision chain, stacked onto one sheet under **one minted tax invoice number**. Its own `merged_ras` collection; a separate document type, the same relationship as Draft PO → PO. ⚠ **It holds NO claims of its own** — copying them in would make the over-claim guard count the same quantity twice. ⚠ Totals are the **sum of the two bills' stored totals**, never recomputed from the live BOQ. ⚠ **Imports `ra.py`; `ra.py` may NOT import it back** — it reads `STORE['merged_ras']` directly and links with `url_for`, the one-way trick. ⚠ **Mints `SF/MI/...`, never `TI`** — `invoice.py` owns that series and a second counter under it would put one statutory serial on two documents. ⚠ **Mints no permission**: every route carries `ra.*`. See §3. |
 | [cascade.py](cascade.py) | 196 | **The shared dependent-record graph for delete** (22 September 2026) — no routes, a data-only registry (`CASCADE_GRAPH`) of which of the 8 transactional-chain collections reference which, plus `impact_of()` (preview the transitive closure) and `delete_cascade()` (destroy it, children before parent). Sits where `pipeline.py` sits: reads `STORE[...]` directly, imports `attachment.py` only, never imports back. ⚠ **Master/reference data (Address, Employee, Project, Spec, Product) is deliberately OUT OF SCOPE** — their existing hand-written guards (`address.references_of()`, `project.attached_boq_count()`, `product.can_delete_product()`) are untouched; this module only walks records that exist *because* a parent does. ⚠ **A Tax Invoice anywhere in the closure is a hard stop** (`CascadeBlocked`) — there is no delete route for one, and the walk refuses the whole operation rather than cascade partially past it. **Called by seven routes** (23 September 2026): `/boq/delete`, `/quotation/delete`, `/proforma/delete`, `/purchase/delete`, `/po/delete`, `/receipt/delete` and, for its styles alone, `/invoice/cancel`. `impact_html()` renders the counted closure onto every confirmation page, and `CASCADE_STYLES` is the sheet that draws it — a route that destroys something the page did not name is a defect. **9 tests** in [tests/test_cascade.py](tests/test_cascade.py) for the walk, **28** in [tests/test_delete_rollout.py](tests/test_delete_rollout.py) for the routes. |
@@ -449,7 +450,7 @@ Consequences you must respect when editing:
 | `tools/seed_demo_scenario.py` | 404 | A coherent demo set (30 Aug 2026, fifth pass): two sites, one project each, three employees on confirmed day rates, eight markings including one absentee. `--write` / `--purge`, idempotent. ⚠ **Not a seeder** &mdash; nothing in the app imports it, a fresh install is still empty of `employees` and `attendance`, and a test fails if a module so much as names it. |
 | `fixtures/README.md` | — | Where to put the two client workbooks. **They are gitignored** — see the note there about what is already in the history. |
 | [settings.py](settings.py) | 1171 | Company identity + bank details form, the two document number **counters** (draft PO, delivery challan) and, from 25 September 2026, the **starting-number floor for every other series**. None of them is a branding override — each is its own record, so `apply_settings()` never pushes one onto the letterhead and the nav's amber dot never counts a blank one. ⚠ **The floors' RULE lives in `series.py`, not here**, because `boq.py` may not import this module (§7 gap 36); this file owns the form, the validator and the refusal that names the current max. ⚠ **A counter and a floor are different things**: the draft PO and challan counters advance on every save and spend a number even on a delete; a floor is a lower bound that only ever moves a series forward. The quotation series has **no** control, by decision — `quotation.py` is frozen and a quotation is not a statutory document. |
-| [auth.py](auth.py) | 2609 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). ⚠ **The `approval` blueprint is treated the same way while the ladder is switched off** (12 September 2026) — `blueprint_off_reason()` answers with its own reason, read from `approval.ladder_on()` through a function-body import, the five `*.approve` grants are frozen on `/roles` and marked `⊗` in the matrix (§2g, §2i). |
+| [auth.py](auth.py) | 2609 | **Identity, roles and access control** (Phase 3B). The 61-permission catalogue, the endpoint→permission registry, seven builtin roles, the `before_request` gate that refuses anything unclassified, and the login / setup / account / users / roles / access-log pages. A **bottom-of-graph** module — see below. ⚠ **`HIDDEN_BLUEPRINTS` from 11 September 2026** — a blueprint named there is refused for everybody, an Owner included, with its permissions and rows untouched (§2g). ⚠ **The `approval` blueprint is treated the same way while the ladder is switched off** (12 September 2026) — `blueprint_off_reason()` answers with its own reason, read from `approval.ladder_on()` through a function-body import, the five `*.approve` grants are frozen on `/roles` and marked `⊗` in the matrix (§2g, §2i). ⚠ **`PANEL_PERMISSIONS` from 8 October 2026** — `project.pnl` (C6), the one permission that gates a panel rather than an endpoint, declared with the pages it renders on (§2g *Panel permissions*). |
 | [pipeline.py](pipeline.py) | 639 | Sales stages, customer PO, win/loss, **and the app's shared utilities** (`esc`, `json_for_script`, `parse_money`, `fy_of`, `fy_ref`). Pure logic, no routes. |
 | [address.py](address.py) | 1029 | **The address book, and now a MASTER with guards** (30 Aug 2026, fourth pass) &mdash; the pickers quotations, purchase orders, challans, the muster and now projects all use, plus `references_of()`, the delete refusal, the archive, the edit log and the `type` lock. ⚠ Its own docstring said *"nothing else in the app reads STORE['addresses']"* until this pass; **six collections do**. Owns `SITE_TYPES`, moved out of `employee.py` so two pickers cannot disagree about what a site is. ⚠ **GSTIN auto-fill from 29 September 2026** — the GSTIN box moved to the TOP of the add and edit forms, four routes (a CAPTCHA/lookup pair per form), the check character on a new or changed GSTIN, the not-Active acknowledgement and two new keys on the record. All of it reaches the portal through `gst_lookup.py`; §5 `/address`. ⚠ **A sixth type, `contractor`, from 5 October 2026** — the work order's party; the GSTIN fill is type-agnostic and serves it unchanged, and `REFERENCE_SOURCES` gained `work_orders`. |
 | [extractor.py](extractor.py) | 407 | "Market News" page. **Hardcoded dummy data**, dark theme, decorative. |
@@ -553,6 +554,9 @@ app.py
  │                             │  it — projectview.py, from 30 Aug 2026 — and
  │                             │  what crosses is RENDERED CELLS, never the
  │                             │  arithmetic. C6 is still BLOCKED
+ │                             │  ⚠ 8 Oct 2026: TWO importers — pnl.py too
+ │                             │  (C6 built), through labour_cost_of(); the
+ │                             │  arithmetic still never leaves this module
  ├─ project.py ─────────────────┤  imports dashboard, branding, store, pipeline
  │                             │  — and address.py, for the SITE picker and
  │                             │  SITE_TYPES (30 Aug 2026). address.py does NOT
@@ -573,6 +577,17 @@ app.py
  │                             │  2026: project_panel_html(), rendered cells
  │                             │  ⚠ AND boq.py, from 6 Oct 2026: lines_without_
  │                             │  cost(), the "cost not recorded" rule (R3)
+ │                             │  ⚠ AND pnl.py, from 8 Oct 2026: the Profit &
+ │                             │  Loss panel renders project_pnl(), C6
+ ├─ pnl.py ─────────────────────┤  imports boq, ra, merged_ra (the note, never
+ │                             │  money), purchase, workorder, attendance
+ │                             │  (labour_cost_of — NEVER cost_of), quotation
+ │                             │  (_inr) and store (8 Oct 2026, C6). NEVER auth
+ │                             │  (who may see is the page's question), settings
+ │                             │  (the multiplier is attendance's), project or
+ │                             │  projectview (both import IT). project.py
+ │                             │  reaches it INSIDE _untagged_line() only, so
+ │                             │  the project leaf stays a leaf
  └─ extractor.py ──────────────┘  imports branding only
 
 pipeline.py  imports nothing from the app  ← keep it that way
@@ -1586,6 +1601,44 @@ refuses a bill with a receipt against it rather than cascading into the
 money; `approval.can_modify()` still gates every approvable document. What
 the wiring added is the preview and the previously-missing guards, not a
 new licence to destroy. §7 gap 40 is closed.
+
+#### Panel permissions — `project.pnl`, a permission that gates part of a page (8 October 2026)
+
+CC-2 **C6** puts the project profit and loss on `/projects/view/<id>`, which
+is `project.view` — and **Sales Manager, Purchase Manager and Accountant all
+hold `project.view`**. Margin is commercially sensitive (CLIENT_CHANGES.md §0
+forty-seventh block), so the panel needs a permission of its own:
+**`project.pnl`**, Owner and Director by default.
+
+⚠ **The registry could not express it, and that is gap 24 again, not a new
+design.** `ROUTE_PERMISSIONS` maps an endpoint to one permission; "this panel
+on that page needs a second one" is a per-view check. The Site Labour panel
+already does exactly that with `attendance.view`. What was new is a permission
+that gates **only** a panel, and the catalogue's own rule — *"every id below
+gates at least one real endpoint"*, held by
+`tests/test_access_control.py::test_every_catalogue_permission_gates_something`
+and `tests/test_permission_reachability.py::test_every_permission_gates_at_least_one_route`
+— called that a dead checkbox.
+
+**The rule was narrowed, not dropped, and no route was invented to satisfy
+it.** `auth.PANEL_PERMISSIONS` declares `project.pnl` with the two pages it
+renders on (`projectview.view_project`, `project.list_projects`). Both tests
+were rewritten with their old assertions kept verbatim, and the declaration is
+held harder than a registry row: **an allowlist of exactly one**, every page it
+names a classified non-public endpoint, and the module serving each page
+consulting it by name (`has_perm("project.pnl")`). The checkbox's real effect
+is proved by ticking it on Accountant and watching the panel arrive
+(`tests/test_pnl_access.py`). The access matrix's appendix says *"part of …
+— a panel, no page of its own"* rather than an em-dash, and its §4 gained a
+fifth caveat.
+
+⚠ **Two checks on the one panel.** `project.pnl` decides whether the panel
+exists; `attendance.view` decides whether its **site-labour row** is shown,
+because a wage total is B4's "HR information". A holder of the first without
+the second is told the row is withheld and the totals say they exclude it.
+⚠ **Everybody without `project.pnl` gets both pages byte-for-byte as at
+`3a14375`** — the panel and its stylesheet are one string spliced onto the end
+of an existing line, and four roles' digests are pinned against that commit.
 
 ### 2h. `po_parts.py`'s alias rule — the client's own strings, and nothing else
 
@@ -2823,10 +2876,11 @@ discount".
 | `challan.py`, `measurement.py` | — | carry no money | **unchanged** |
 | a proforma from a BOQ | — | **does not exist** — `proforma.py` reads quotations only | nothing to audit |
 | "spec-library add" | — | **no code path writes a BOQ line's rate into the library**: the library only *suggests* a base rate into an empty box (`fillFromSpec()` / `applyVariant()`) | nothing changed. A test holds that saving a discounted BOQ leaves `STORE["specs"]` byte-identical. The brief's rule — the LIST rate, never the net, and only where the library has none — is recorded for the day such a path is built: a discount is a deal with one client, not the product's rate |
-| `projectview.py` BOQ panel (the brief's "P&L") | the BOQ's stored `subtotal` | — | at net (stored) **+ "cost not recorded on N lines"** (`boq.lines_without_cost()`: a priced track with no base rate). There is still no P&L, margin or cross-panel figure (§7 gap 55) |
+| `projectview.py` BOQ panel (the brief's "P&L") | the BOQ's stored `subtotal` | — | at net (stored) **+ "cost not recorded on N lines"** (`boq.lines_without_cost()`: a priced track with no base rate). There is still no P&L, margin or cross-panel figure (§7 gap 55) — *in this panel; from 8 Oct 2026 the separate Profit & Loss panel carries one, `pnl.plan_of()` below* |
 | ~~`boq.unpriced_lines()` — `/boq/view`'s amber note~~ → `boq.lines_not_priced()` (6 Oct 2026, later) | ~~rate 0 on both tracks~~ a BLANK unit rate on both tracks | unit rate | **the unit rate**: "not priced" is about the list rate; a 100% discount is a priced line billed at nil, and a 0 rate is a rate (A1). Read by `/boq/view`'s quiet note and the project page's "N lines not priced" |
 | `ra.approved_rates()` / `ra.no_rate_lines()` (6 Oct 2026, later) | `None` = no rate on that leg | — | **a line with no net rate is not claimable** (A6): greyed on the grid, refused on the POST, skipped and listed by a challan / measurement prefill |
 | `tools/e2e_chain.py` | its own fixture rows | — | unchanged (no discounts) |
+| `pnl.plan_of()` — the project P&L's PLANNED section (8 Oct 2026, C6) | revenue and estimated cost | — | revenue at **`boq.net_rate()`**, cost at the **base rate**, each × `total_qty` through `boq.amount_of()`, read from the TIP revision; a blank stays out and is counted (§5 `/projects`) |
 
 ### RA Bill  (Running Account claim)
 
@@ -3750,6 +3804,21 @@ of an unfiled site has no move at all. ⚠ `challan.py`'s consignee keeps a
 free-text fallback and this deliberately does not; the tie-breaker is the join
 key. Only `address.SITE_TYPES` addresses are offered, and that is enforced on
 the **POST** and not only in the option list.
+
+#### The project P&L adds NO field to any record (CC-2 C6, 8 October 2026)
+
+⚠ **Nothing is stored — not on the project, not on a BOQ, not on any
+document.** `pnl.project_pnl()` derives every figure when the page opens, from
+fields that already exist: a BOQ line's `total_qty`, rates, base rates and
+discounts; an RA bill's stored `claim_subtotal`, `grand_total`, `status`,
+`boq_id` and `tax_invoice_ref`; a proforma's `project_id` and a tax invoice's
+`subtotal` / `grand_total` / `status`; a purchase order's `status`,
+`taxable_value` (or, before A3, `subtotal`) and `charges`; a work order's lines
+and `status`; a charge's `taxable_amount`; a marking's own snapshot; the
+receipts. The **planned** figures are never snapshotted — the tip revision is
+re-read every time — and a document's money is never re-read from the BOQ. No
+migration, no backfill. Who may see it is `project.pnl` (§2g *Panel
+permissions*); the page is §5 `/projects`.
 
 #### The live database after the migration — MEASURED, 30 August 2026
 
@@ -10221,6 +10290,20 @@ holds that, and `test_only_projectview_imports_the_attendance_module` holds the
 import as an **allowlist of one** — stricter than the blacklist it replaced,
 because a blacklist has to be remembered when somebody adds a module.
 
+✅ **8 October 2026 — C6 IS BUILT, and this section's heading is history.**
+CLIENT_CHANGES.md §0's forty-seventh block records Manas's answer to Open
+question 4 — the installation base rate does not include labour; labour is
+separate — and builds the project P&L in `pnl.py`. **A second module imports
+this one**, and it is held to the first one's rule: `pnl.py` takes
+`markings_for_project()`, `markings_on_no_project()` and **`labour_cost_of()`**
+— a summing function published HERE, which reads the OT multiplier itself and
+prices each marking with `cost_of()` — and may not reach `cost_of()`,
+`ot_amount()`, `day_rate_of()`, `site_costs()` or the multiplier
+(`test_the_pnl_takes_readers_and_one_sum_and_never_the_wage_arithmetic`). The
+allowlist is **two** now, both named with the block that put them there. The
+dashboard card is still counts only and `charge.py` is still forbidden in both
+directions.
+
 ⚠ **`projectview.py`'s own prohibition is untouched**, and it always permitted
 this: its first sentence is *"Each panel shows the documents' OWN values and
 adds that one column up"*, which five panels already exercised through
@@ -10265,6 +10348,85 @@ is a restatement of what that day was.
 Held by [tests/test_attendance.py](tests/test_attendance.py),
 [tests/test_day_rate_pin.py](tests/test_day_rate_pin.py) and
 [tests/test_site_picker.py](tests/test_site_picker.py).
+
+---
+
+### `/projects` — Projects, the project page, and the Profit & Loss · [project.py](project.py) · [projectview.py](projectview.py) · [pnl.py](pnl.py) · **CC-2 C6**
+
+*(This page had no §5 entry until 8 October 2026; its rules lived in §2, §3
+*Project*, §5 `/attendance` and §7 gap 24b, which still hold them.)*
+
+| Route | View | Permission |
+|---|---|---|
+| `GET /projects/` | `project.list_projects` — the register | `project.view` |
+| `GET,POST /projects/create` · `/edit/<id>` · `/delete/<id>` | the form and the confirm-then-destroy | `project.create` · `.edit` · `.delete` (Owner-only) |
+| `GET,POST /projects/view/<id>` | `projectview.view_project` — the project page; its POST attaches / detaches a BOQ chain under a per-view `project.edit` check (gap 24b) | `project.view` |
+
+The page lists what is filed under the project, one panel per document type,
+each adding up its own column and never another's: schedules, proforma
+invoices, tax invoices (inherited through their proforma), purchase orders,
+work orders (where the reader may open one), charges, and Site Labour in two
+groups. ⚠ **The prohibition at the top of `projectview.py` stands for every
+one of those panels, word for word.**
+
+#### The Profit & Loss panel — CC-2 C6 (8 October 2026)
+
+CLIENT_CHANGES.md §0 **forty-seventh** block. CC-2's C6 is *"planned margin
+from the BOQ against actual cost from purchase orders and recorded charges,
+with the difference shown"*, and its double-count trap is answered: **the
+installation base rate does not include labour** (Manas, 7 October 2026), so
+site labour is a cost row of its own. The block authorises, by name, what goes
+beyond C6's two sentences — billed revenue, work orders, site labour, the cash
+section and the register's line.
+
+**Who sees it:** a holder of **`project.pnl`** — Owner and Director by default
+(§2g *Panel permissions*). It sits between the project's details and the
+schedules panel; for anybody else it is the empty string and the page is
+byte-for-byte as before. **Screen only** — the project page has no print
+route. **Every figure is derived when the page opens** (`pnl.project_pnl()`);
+`projectview._pnl_panel()` renders and computes nothing.
+
+**Three sections, never mixed** — §7 gap 31 was a tax-exclusive figure set
+beside a tax-inclusive one, and each heading here says which it is:
+
+| section | row | source and rule |
+|---|---|---|
+| **Planned** · tax-exclusive | per schedule: planned revenue, estimated cost | the **TIP** revision of each chain filed under the project (`ra.latest_revision()`), named with its revision and date. Per line and track: revenue = qty × `boq.net_rate()`, cost = qty × base rate (`boq.amount_of()`, the BOQ's own product). A track with no rate contributes nothing (a base on it is counted); a blank quantity skips the line (counted); a 0 rate is a rate. |
+| | planned margin, % of planned revenue | revenue − cost of the rounded totals; the % to two decimals, half up, and *"no planned revenue to take a percentage of"* when there is none. Coverage beside it: *"N of M priced lines has / have no base rate"* (`boq.lines_without_cost()`, M = lines billed above 0 on a track), `boq.blank_summary()`'s words for lines with no rate or no quantity, and base rates sitting on a track with no rate. |
+| **To date** · tax-exclusive | RA bills, issued — taxable value | ISSUED only (`ra.status_of()`; an unknown status reads as issued, `ra.py`'s default) on any revision of the project's schedules, at the bill's own stored **`claim_subtotal`** — never re-read from the BOQ. |
+| | tax invoices, through a proforma — taxable value | non-cancelled, at `subtotal`. ⚠ A tax invoice whose number equals an **issued** RA bill's `tax_invoice_ref` (case and spacing ignored) is the same billing and is counted **once, as the RA bill**, with a note. A TI with no stored `subtotal` is skipped and counted — never its `grand_total`. |
+| | purchase orders, committed — taxable value | `Issued`, `Acknowledged`, `Partially Received`, `Received` (`pnl.COMMITTED_PO_STATUSES`, derived from `purchase.PO_STATUSES`) at `taxable_value` — or `subtotal` on an order written before A3. `Draft` (also a missing status — `purchase.py`'s own default), `Cancelled` and any unrecognised status are counted and not costed. ⚠ **`purchase.job_cost()` counts a Draft; this does not.** |
+| | purchase orders — charges outside the tax base | a row of its own, only when one exists (A3's non-taxable charge sits after tax and is still a cost). |
+| | work orders, issued — before GST | `workorder.totals_of()["grand"]`; draft and cancelled counted and not costed. Its own row (§7 gap 55). |
+| | charges — taxable amount | every charge tagged to the project, at `taxable_amount`. |
+| | site labour — booked to this project | markings carrying this `project_id`, priced by `attendance.labour_cost_of()` (day rate + OT at the setting). A marking that predates the day rate is counted and not costed, and the panel says so. ⚠ Shown only with `attendance.view`; otherwise *withheld*, and the two totals below say they exclude it. |
+| | spent to date · margin to date | the sum of the rows above; billed less spent, labelled as **timing, not the final result**. |
+| | estimate against actual | estimated cost and spent to date, and the difference — *"not yet spent of the estimate"* or *"spent beyond the estimate"* — with the coverage note beside it. A difference, never a blend. |
+| **Cash** · GST included | billed incl. GST, received, written off, outstanding | the same issued RA bills: `grand_total`, `ra.received_against()`, `ra.written_off_against()` (A5) and `ra.outstanding_of()` summed. Receipts exist against RA bills only, so the tax invoices' GST-inclusive value is stated beside the section and kept out of the outstanding. |
+
+**Never added, always said:** a **merged RA** (CC-2 C3) carries the sum of its
+two legs' stored totals, so it is never counted — its legs already are — and a
+note names it. A draft RA bill, a cancelled one, a cancelled tax invoice, a
+purchase order in Draft or cancelled, a **draft PO sent out for pricing**
+(`po_draft.py` — an intent, never a cost) and an unissued or cancelled work
+order are listed under *"Not counted, on purpose"*. A bill raised under an
+**earlier revision** than the tip raises the page's amber band
+(`ra.party_drift()`'s shape): its figures are its own and are not restated.
+**Rounding:** line products unrounded, as the BOQ stores them; every total
+rounded once to the paisa, half up (`boq.round_half_up()`); every difference
+taken between two rounded totals.
+
+#### The register's line — cost tagged to no project
+
+Under the `/projects` table, for a holder of `project.pnl`: *"Cost not tagged
+to any project: ₹X — tax-exclusive: committed purchase orders, issued work
+orders, charges, site labour"* (`pnl.untagged_cost()` /
+`register_line_html()`). The same sources and statuses as a project's actual
+cost, for every record whose `project_id` is blank **or names a project that no
+longer exists** (counted and said). It is the 16 August 2026 ruling and §7 gap
+B5: untagged cost must not vanish, and it is never spread across the projects
+that were tagged. Labour is withheld without `attendance.view`, as on the
+panel. It carries figures and counts only — no user text.
 
 ---
 
@@ -11353,6 +11515,18 @@ B5. 🟠 **Job costing is material only — NARROWED, and the narrowing has its 
 
    Nothing about the record shapes needs to change for that — `project_id` is
    present or it is not, and both are already derivable.
+
+   ✅ **CLOSED 8 October 2026, exactly as prescribed above** (CC-2 C6, the §0
+   forty-seventh block). The profit view exists (§5 `/projects`), and the
+   unattributed spend is **a visible line of its own** under the `/projects`
+   register — *"Cost not tagged to any project: ₹X"* — committed purchase
+   orders, issued work orders, charges and site labour with no `project_id`,
+   **or one naming a project that no longer exists**, never filtered out and
+   never spread across the tagged projects (`pnl.untagged_cost()`). The C6 view
+   is also no longer *material only*: labour (site markings), work orders and
+   charges are cost rows of their own. What stays true: a stock purchase is
+   still genuinely untagged, and the line cannot tell that from one somebody
+   forgot to tag — it shows both, which is the point.
 B6. **Vendor addresses are the only vendor record.** There is no vendor master —
    no payment terms, no lead time, no ratings, no GSTIN validation at the point
    of purchase. `type: "vendor"` in the address book is carrying that whole
@@ -12897,14 +13071,22 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     retained, or deducted. `totals_of()` is the document's own value and
     nothing else. Anything that reads a WO as spend is reading a promise.
 
-55. 🔴 **In the future project P&L a work order must be its OWN cost row —
+55. ~~🔴 **In the future project P&L a work order must be its OWN cost row —
     never merged with purchase orders or the charges ledger's Labour head:
     double-count risk, OPEN** (5 October 2026, ruling H). A WO's material leg
     may cover material a PO also bought, and its labour leg may be the same
     gang a charge already booked as wages. Summing WO + PO + Labour head would
     count the same rupee twice. `/projects/view` therefore **lists** work
     orders and adds nothing up (`workorder.project_panel_html()`); the P&L that
-    reconciles the three is not built and is not this module's to build.
+    reconciles the three is not built and is not this module's to build.~~
+
+    ✅ **CLOSED 8 October 2026 for what it asked — its own row** (C6, the §0
+    forty-seventh block). The P&L carries issued work orders on a row of
+    their own, before GST, beside purchase orders, charges and site labour,
+    each on its own row and none merged into another. ⚠ **What it warned about
+    is NOT reconciled** — a work order's material leg may still buy what a PO
+    bought, and its labour leg may be the gang a charge or a marking already
+    costed. Separate rows make that visible; they do not detect it. Gap 68.
 
 56. 🟡 **The work-order importer has never seen the client's own sheet — the
     sample has not arrived, OPEN** (5 October 2026, ruling D). It reuses
@@ -13050,6 +13232,66 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     sheet in Excel and saving it brings the row back if the formula gives a
     rate. Keeping such a row instead — a text cell counted as a price — is a
     different rule, and not this one's to make.
+
+67. 🟠 **An RA bill and a tax invoice can describe the same billing, and the
+    P&L can only see it through a shared NUMBER — OPEN** (8 October 2026,
+    C6). The BOQ chain bills through RA bills and the quotation chain through
+    tax invoices, and no field links the two (CLIENT_CHANGES.md item 7 meant
+    the RA bill to *be* the tax invoice for BOQ work). The one link that
+    exists is a serial typed onto a bill before the RI series — an RA bill
+    whose `tax_invoice_ref` is a `SF/TI/…` number — and `pnl.py` counts such a
+    pair once, as the RA bill, with a note. A quotation-chain invoice raised
+    for the same supply under a DIFFERENT number is counted twice and nothing
+    can tell. Making it detectable means a link between the chains, which
+    §2b deliberately keeps apart.
+
+68. 🟠 **The P&L's cost rows are separate, not reconciled — a rupee can sit in
+    two of them, OPEN** (8 October 2026, C6; gap 55's warning, carried). A
+    charge booked under a wages head and a marking for the same day, a work
+    order's labour leg and the markings of the gang it paid, a work order's
+    material leg and a purchase order for the same pipe — each is shown on its
+    own row and summed into *spent to date*. Nothing records that two rows are
+    one payment, so nothing subtracts it. Manas's 7 October answer settles the
+    BOQ base rate against labour (separate, so no double count there); it does
+    not settle these.
+
+69. 🟡 **The approval ladder's verdict is not consulted, OPEN, by decision**
+    (8 October 2026, C6). The P&L reads a document's LIFECYCLE status (issued,
+    committed, cancelled), not `approval_status`. A purchase order or charge
+    REJECTED on the ladder (while it was on) still counts if its lifecycle says
+    so: a rejection is not a cancellation, and the ladder is switched off in
+    code (§2i). Whether a rejected charge is still a cost is the client's call.
+
+70. 🟡 **The margin reads a bill's TAXABLE value, so its deductions sit only in
+    the cash section, OPEN** (8 October 2026, C6). An RA bill's tax is
+    computed on `claim_subtotal`, and its `deductions` (retention, advance
+    recovery, cess) reduce `net_payable` and `grand_total` only. The P&L's
+    billed revenue is `claim_subtotal` — retention is revenue whose cash is
+    withheld, not lost — and the cash section's outstanding is after the
+    deductions. A deduction that is really a cost to Samruddhi (a labour cess)
+    is therefore in neither cost row. Recorded rather than guessed.
+
+71. 🟡 **Payments against a TAX INVOICE are recorded nowhere, so the cash
+    section is RA bills only, OPEN** (8 October 2026, C6). Receipts are filed
+    against RA bills (§2c). A tax invoice's GST-inclusive value is stated
+    beside the cash section and kept out of its outstanding, because there is
+    no record from which to say whether it was paid. `invoice.py`'s own print
+    falls back from `subtotal` to `grand_total` (`invoice.py:1119`); the P&L
+    deliberately does not — a tax invoice with no stored `subtotal` is counted
+    as carrying no taxable figure.
+
+72. 🟡 **Three code comments still say "C6 is BLOCKED", reported and not
+    edited** (8 October 2026). `employee.py` (its module docstring and the
+    site-picker comment) and `dashboard.py` (`_metrics()` and the attendance
+    card) say C6 is blocked. The RULES beside them still hold — the dashboard
+    carries counts and no labour cost, and `employee ↮ charge` is still
+    refused — so only the reason is stale. Left alone so the C6 pass did not
+    touch two modules it otherwise does not change. The same stale reason is
+    in the FAILURE MESSAGE of
+    `tests/test_attendance.py::test_the_project_page_builds_no_margin_total_or_net`,
+    which still passes and still guards the right thing (`projectview.py`
+    assigns no margin, net or total of its own — the P&L's are `pnl.py`'s), so
+    it was not rewritten.
 
 
 ## 8. Stale docs — do not trust these two files

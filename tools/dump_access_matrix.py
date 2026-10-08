@@ -234,7 +234,7 @@ ROLE_NOTES = {
                "any existing role whose permissions they hold themselves, reset "
                "a member of staff's password, and read the refused-access log. "
                "They can also edit the company identity and bank details at "
-               "Settings.",
+               "Settings, and read each project's profit and loss.",
         "cannot": "**Change what a role means.** This is the single line "
                   "between Director and Owner, and it is the point of the "
                   "split: a Director who could edit role definitions could give "
@@ -249,7 +249,8 @@ ROLE_NOTES = {
                   "through it. The rule underneath all three is one rule — a "
                   "permission you do not hold, you cannot confer, and an "
                   "account holding one you do not hold, you cannot take over.",
-        "claims": {"holds": ["admin.users", "settings.edit", "charge.view"],
+        "claims": {"holds": ["admin.users", "settings.edit", "charge.view",
+                             "project.pnl"],
                    "lacks": ["admin.roles"]},
     },
     "operation-head": {
@@ -261,11 +262,14 @@ ROLE_NOTES = {
         "cannot": "Touch the sell chain — no quotations, proforma invoices or "
                   "tax invoices. Record or edit money received. Administer "
                   "users or roles. Delete a charge once it is recorded, or "
-                  "change the company identity.",
+                  "change the company identity. See a project's profit and "
+                  "loss — margin is commercially sensitive, and it is Owner "
+                  "and Director only by default.",
         "claims": {"holds": ["boq.create", "ra.issue", "dc.create", "charge.create",
                              "measurement.create", "measurement.approve"],
                    "lacks": ["quotation.create", "invoice.create", "receipt.create",
-                             "admin.users", "charge.delete", "settings.edit"]},
+                             "admin.users", "charge.delete", "settings.edit",
+                             "project.pnl"]},
     },
     "hr": {
         "can": "**The employee master** — add somebody to the register, record "
@@ -286,15 +290,18 @@ ROLE_NOTES = {
                   "client stated and nobody has priced. "
                   "⚠ Attendance is a **labour cost tracker, not payroll**: no "
                   "PF, no ESIC, no professional tax, no minimum-wage check and "
-                  "no payslip, and it is wired into no profit-and-loss view — "
-                  "C6 is BLOCKED.",
+                  "no payslip. Its wages feed the project profit and loss (C6, "
+                  "8 October 2026) as the site-labour row — which HR does not "
+                  "see, because HR holds neither the project page nor "
+                  "`project.pnl`.",
         "claims": {"holds": ["charge.view", "charge.delete", "address.view",
                              "employee.view", "employee.create",
                              "employee.edit", "employee.delete",
                              "attendance.view", "attendance.create",
                              "attendance.edit", "attendance.delete"],
                    "lacks": ["boq.view", "ra.view", "quotation.view",
-                             "purchase.view", "receipt.view", "admin.users"]},
+                             "purchase.view", "receipt.view", "admin.users",
+                             "project.view", "project.pnl"]},
     },
     "sales-manager": {
         "can": "The whole sell chain: write quotations, raise proforma "
@@ -305,12 +312,14 @@ ROLE_NOTES = {
         "cannot": "**See the wages ledger** — this is B4's one stated "
                   "restriction, applied literally. They cannot raise or issue "
                   "an RA bill (reading and printing only), record money "
-                  "received, touch the buy side at all, or administer users.",
+                  "received, touch the buy side at all, or administer users. "
+                  "They read a project page but not its profit and loss.",
         "claims": {"holds": ["quotation.create", "invoice.create", "client.edit",
                              "boq.create", "ra.print", "measurement.view"],
                    "lacks": ["charge.view", "ra.create", "ra.issue",
                              "receipt.create", "purchase.view", "admin.users",
-                             "measurement.create", "measurement.approve"]},
+                             "measurement.create", "measurement.approve",
+                             "project.pnl"]},
     },
     "purchase-manager": {
         "can": "The whole buy side: raise purchase orders and update their "
@@ -322,11 +331,12 @@ ROLE_NOTES = {
         "cannot": "**See the wages ledger** — B4's stated restriction again. "
                   "They cannot touch the sell chain, RA bills or money "
                   "received, delete a delivery challan once raised, or "
-                  "administer users.",
+                  "administer users. They read a project page but not its "
+                  "profit and loss.",
         "claims": {"holds": ["purchase.create", "po.create", "dc.create",
                              "address.edit"],
                    "lacks": ["charge.view", "quotation.view", "ra.view",
-                             "receipt.view", "admin.users",
+                             "receipt.view", "admin.users", "project.pnl",
                              # C2. Withheld as OUR default, exactly as `ra.*`
                              # above it is: dispatch is theirs, a measurement
                              # feeds an installation claim. A checkbox reverses
@@ -346,12 +356,16 @@ ROLE_NOTES = {
                   "wall; if the client wants it, it is a checkbox and not a "
                   "deployment. They also cannot create or edit any document — "
                   "no quotation, no invoice, no bill, no purchase order — and "
-                  "cannot administer users.",
+                  "cannot administer users. They read a project page but not "
+                  "its profit and loss; granting `project.pnl` is a checkbox, "
+                  "and its labour row would still be withheld from them by "
+                  "the same HR wall.",
         "claims": {"holds": ["receipt.create", "receipt.delete", "client.view",
                              "ra.print", "invoice.view", "measurement.print"],
                    "lacks": ["charge.view", "invoice.create", "ra.create",
                              "quotation.create", "purchase.create", "admin.users",
-                             "measurement.create"]},
+                             "measurement.create", "project.pnl",
+                             "attendance.view"]},
     },
 }
 
@@ -579,7 +593,7 @@ def build() -> str:
     w("")
 
     # ── The caveats that a grid cannot show ────────────────────────────────
-    w("## 4. Four things the grid does not show")
+    w("## 4. Five things the grid does not show")
     w("")
     w("**1. A user may hold several roles, and gets the union.** "
       "CLIENT_CHANGES-2.md B4: *\"One user may hold several roles — the client "
@@ -614,6 +628,17 @@ def build() -> str:
       "is a change made through a page that is otherwise a read. ABOUT.md §7 "
       "gap 24b.")
     w("")
+    w("**5. One permission opens part of a page, not a page.** "
+      "`project.pnl` (CC-2 C6, 8 October 2026) decides whether the Profit & "
+      "Loss panel renders on a project's page and whether the *Cost not "
+      "tagged to any project* line renders under the projects register. Both "
+      "pages are `project.view`'s, which Sales Manager, Purchase Manager and "
+      "Accountant hold; margin is commercially sensitive, so the panel is "
+      "Owner and Director by default and the page is otherwise unchanged. "
+      "**The panel's site-labour row also needs `attendance.view`** — the HR "
+      "wall again — so a role granted `project.pnl` without it is told that "
+      "row is withheld.")
+    w("")
     w("---")
     w("")
 
@@ -628,7 +653,17 @@ def build() -> str:
     for group, perms in auth._permission_groups():
         for pid, _label in perms:
             endpoints = _endpoints_for(pid)
-            w(f"| `{pid}` | " + (", ".join(f"`{e}`" for e in endpoints) or "—") + " |")
+            opens = ", ".join(f"`{e}`" for e in endpoints)
+            # ⚠ A PANEL permission (8 October 2026) opens no page of its own;
+            #   it decides what renders ON the pages named here. Said in words,
+            #   never left as an em-dash that would read as a dead checkbox.
+            panel = auth.PANEL_PERMISSIONS.get(pid)
+            if panel:
+                part = ("part of " + ", ".join(f"`{e}`" for e in panel)
+                        + " — a panel, no page of its own "
+                          "(`auth.PANEL_PERMISSIONS`)")
+                opens = f"{opens}; {part}" if opens else part
+            w(f"| `{pid}` | " + (opens or "—") + " |")
     w("")
     w("Two endpoint classes carry no permission at all:")
     w("")

@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 84 permissions · 149 classified endpoints.**
+**7 roles · 85 permissions · 149 classified endpoints.**
 
 ---
 
@@ -14,7 +14,7 @@
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **588 cells**. **52** of them can be traced to a line of the specification. The rest — **536** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **595 cells**. **52** of them can be traced to a line of the specification. The rest — **543** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -147,6 +147,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Create a project<br/>`project.create` | · | · | · |  |  |  |  |
 | Edit a project<br/>`project.edit` | · | · | · |  |  |  |  |
 | Delete a project<br/>`project.delete` | · | · |  |  |  |  |  |
+| View a project's profit and loss<br/>`project.pnl` | · | · |  |  |  |  |  |
 
 ### Library
 
@@ -177,7 +178,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **84** | **83** | **49** | **15** | **23** | **20** | **15** |
+| **Total permissions held** | **85** | **84** | **49** | **15** | **23** | **20** | **15** |
 
 ---
 
@@ -265,7 +266,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*84 of 84 permissions.*
+*85 of 85 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -273,55 +274,55 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*83 of 84 permissions.*
+*84 of 85 permissions.*
 
-**What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings.
+**What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings, and read each project's profit and loss.
 
 **What they explicitly cannot do.** **Change what a role means.** This is the single line between Director and Owner, and it is the point of the split: a Director who could edit role definitions could give themselves any permission in the system, so "cannot alter role definitions" would mean nothing. They also cannot grant anybody the Owner role, or create a new Owner account — that would be the same escalation by another door. **Nor can they touch an Owner's account at all**: not its password, not its roles, not whether it is switched on. Setting an Owner's password is signing in as an Owner, which is the same door again with no role change needed to walk through it. The rule underneath all three is one rule — a permission you do not hold, you cannot confer, and an account holding one you do not hold, you cannot take over.
 
 ### Operation Head
 
-*49 of 84 permissions.*
+*49 of 85 permissions.*
 
 **What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
 
-**What they explicitly cannot do.** Touch the sell chain — no quotations, proforma invoices or tax invoices. Record or edit money received. Administer users or roles. Delete a charge once it is recorded, or change the company identity.
+**What they explicitly cannot do.** Touch the sell chain — no quotations, proforma invoices or tax invoices. Record or edit money received. Administer users or roles. Delete a charge once it is recorded, or change the company identity. See a project's profit and loss — margin is commercially sensitive, and it is Owner and Director only by default.
 
 ### HR
 
-*15 of 84 permissions.*
+*15 of 85 permissions.*
 
 **What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. **And attendance** (C5): mark who was on which site each day, record overtime, and read the site-wise labour cost that comes out of it. Also the wages and site-expense ledger, and the address book.
 
-**What they explicitly cannot do.** Everything else. HR sees no schedule, no bill, no quotation, no purchase order and no money received. This is still the narrowest role in the system and deliberately so. ⚠ Read what the employee master **is**: CLIENT_CHANGES-2.md C4 is *"employee details and salary"* and that is the whole of it — the master itself holds no attendance, no overtime and no wage calculation; those are C5's, in their own module. HR's right to *edit* a salary is still an untagged line the client stated and nobody has priced. ⚠ Attendance is a **labour cost tracker, not payroll**: no PF, no ESIC, no professional tax, no minimum-wage check and no payslip, and it is wired into no profit-and-loss view — C6 is BLOCKED.
+**What they explicitly cannot do.** Everything else. HR sees no schedule, no bill, no quotation, no purchase order and no money received. This is still the narrowest role in the system and deliberately so. ⚠ Read what the employee master **is**: CLIENT_CHANGES-2.md C4 is *"employee details and salary"* and that is the whole of it — the master itself holds no attendance, no overtime and no wage calculation; those are C5's, in their own module. HR's right to *edit* a salary is still an untagged line the client stated and nobody has priced. ⚠ Attendance is a **labour cost tracker, not payroll**: no PF, no ESIC, no professional tax, no minimum-wage check and no payslip. Its wages feed the project profit and loss (C6, 8 October 2026) as the site-labour row — which HR does not see, because HR holds neither the project page nor `project.pnl`.
 
 ### Sales Manager
 
-*23 of 84 permissions.*
+*23 of 85 permissions.*
 
 **What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills and measurement sheets.
 
-**What they explicitly cannot do.** **See the wages ledger** — this is B4's one stated restriction, applied literally. They cannot raise or issue an RA bill (reading and printing only), record money received, touch the buy side at all, or administer users.
+**What they explicitly cannot do.** **See the wages ledger** — this is B4's one stated restriction, applied literally. They cannot raise or issue an RA bill (reading and printing only), record money received, touch the buy side at all, or administer users. They read a project page but not its profit and loss.
 
 ### Purchase Manager
 
-*20 of 84 permissions.*
+*20 of 85 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
 
-**What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction again. They cannot touch the sell chain, RA bills or money received, delete a delivery challan once raised, or administer users.
+**What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction again. They cannot touch the sell chain, RA bills or money received, delete a delivery challan once raised, or administer users. They read a project page but not its profit and loss.
 
 ### Accountant
 
-*15 of 84 permissions.*
+*15 of 85 permissions.*
 
 **What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills and the measurement sheets those bills were built from, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
-**What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction, and the one most likely to be questioned, because an accountant booking wages is ordinary. It is withheld because the specification says Accounts is on the far side of the HR wall; if the client wants it, it is a checkbox and not a deployment. They also cannot create or edit any document — no quotation, no invoice, no bill, no purchase order — and cannot administer users.
+**What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction, and the one most likely to be questioned, because an accountant booking wages is ordinary. It is withheld because the specification says Accounts is on the far side of the HR wall; if the client wants it, it is a checkbox and not a deployment. They also cannot create or edit any document — no quotation, no invoice, no bill, no purchase order — and cannot administer users. They read a project page but not its profit and loss; granting `project.pnl` is a checkbox, and its labour row would still be withheld from them by the same HR wall.
 
 ---
 
-## 4. Four things the grid does not show
+## 4. Five things the grid does not show
 
 **1. A user may hold several roles, and gets the union.** CLIENT_CHANGES-2.md B4: *"One user may hold several roles — the client explicitly wants Sales and Purchase linkable."* So somebody who is both Sales Manager and Purchase Manager can do everything in both columns. Read the grid as *what each role adds*, never as *what a person is limited to*.
 
@@ -330,6 +331,8 @@ Written for somebody who has not read the code, and checked against the grid abo
 **3. Permissions are per page, not per record.** The gate answers *"may this user issue RA bills"*. It cannot answer *"may this user issue **this** RA bill"*. Nothing here restricts anybody to their own projects, their own clients or their own documents. This is ABOUT.md §7 gap 24, and it is the load-bearing part of the approvals work (B6): *"a user cannot approve a record they created"* is a per-record question and cannot be expressed in this grid at all.
 
 **4. A page that accepts both reading and writing is classified once.** The registry maps an endpoint to one permission, and most pages answer both GET and POST on one endpoint. Usually that is right and is stricter than splitting them. One route needed a separate guard for its write path — `/projects/view/<id>`, where attaching a schedule to a project is a change made through a page that is otherwise a read. ABOUT.md §7 gap 24b.
+
+**5. One permission opens part of a page, not a page.** `project.pnl` (CC-2 C6, 8 October 2026) decides whether the Profit & Loss panel renders on a project's page and whether the *Cost not tagged to any project* line renders under the projects register. Both pages are `project.view`'s, which Sales Manager, Purchase Manager and Accountant hold; margin is commercially sensitive, so the panel is Owner and Director by default and the page is otherwise unchanged. **The panel's site-labour row also needs `attendance.view`** — the HR wall again — so a role granted `project.pnl` without it is told that row is withheld.
 
 ---
 
@@ -408,6 +411,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `project.create` | `project.create_project` |
 | `project.edit` | `project.edit_project` |
 | `project.delete` | `project.delete_project` |
+| `project.pnl` | part of `projectview.view_project`, `project.list_projects` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
 | `spec.view` | `spec.list_specs`, `spec.view_spec` |
 | `spec.create` | `spec.add_spec` |
 | `spec.edit` | `spec.edit_spec` |

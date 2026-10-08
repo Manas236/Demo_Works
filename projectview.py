@@ -34,7 +34,9 @@ See `_site_labour()` and `_labour_group()` at the foot of this file.
 CLIENT_CHANGES.md §0's **fifth** block of 30 August 2026 is the authority for
 the section existing at all; its **sixth** block is the authority for the two
 groups. ⚠ **Neither is CC-2 scope** and **C6 stays BLOCKED** on Open question 4:
-attributing a day is not costing a project.
+attributing a day is not costing a project. *(8 October 2026: Open question 4
+is answered — labour is separate from the installation base rate — and C6 is
+built; see the next paragraph but one. The two groups are unchanged.)*
 
 Each panel shows the documents' OWN values and adds that one column up. What
 this page must never show is a figure that only exists by combining two panels
@@ -42,6 +44,18 @@ this page must never show is a figure that only exists by combining two panels
 The page reads what the sell side billed and what the buy side committed side
 by side; it does not do the subtraction, because the moment it does, the
 project page becomes a P&L that nobody signed off on.
+
+⚠ **LIFTED BY NAME FOR ONE PANEL, AND FOR NO OTHER — 8 October 2026.**
+CLIENT_CHANGES.md §0's **forty-seventh** block is the sign-off the paragraph
+above asks for: CC-2 **C6**, the **Profit & Loss** panel (`_pnl_panel()`),
+may show figures that combine sources — billed less spent, plan less estimate.
+That panel and nothing else. **Every other panel on this page is under the
+prohibition exactly as written**, `_sum_cell()` still adds one panel's own
+column and never two, and this module still does **no arithmetic of its own**:
+every P&L figure arrives from `pnl.py` and is only rendered here. The panel
+renders only for a holder of `project.pnl` (Owner and Director by default);
+for everybody else it is the empty string and the page is byte-for-byte what it
+was.
 """
 
 from flask import Blueprint, redirect, request, url_for
@@ -60,6 +74,9 @@ import boq as BQ
 # 5 Oct 2026 — the Work Orders panel. What crosses is RENDERED CELLS (one
 # work order per row, its own value, no total): `attendance.py`'s arrangement.
 import workorder as WO
+# 8 Oct 2026 — C6, the Profit & Loss panel. ALL of its arithmetic lives in
+# `pnl.py`; this module renders the dict it returns and computes nothing.
+import pnl as PNL
 
 projectview_bp = Blueprint("projectview", __name__, url_prefix="/projects")
 
@@ -130,6 +147,10 @@ def _alert(msg: str, kind: str = "error") -> str:
 #   or the BOQ installation base rate is authoritative for labour cost. This
 #   section answers it in no direction. It **presents markings**; it is not a
 #   cost authority, and no figure it renders may be subtracted from anything.
+#   *(8 October 2026: Open question 4 is answered and C6 is built — the P&L
+#   panel's labour row is `attendance.labour_cost_of()`, reached from
+#   `pnl.py`. THIS section is unchanged: it still presents markings, and its
+#   own sums are still never subtracted from anything on this page.)*
 #
 # ⚠ **THE MECHANISM IS DIFFERENT FROM EVERY OTHER PANEL ON THIS PAGE, and that
 #   is the whole reason the wording below is written the way it is.**
@@ -400,6 +421,327 @@ def _labour_group(rows, multiplier, kind: str) -> str:
         </table>
         {short}
       </div>"""
+
+
+# =============================================================================
+# PROFIT & LOSS — CC-2 C6, the one panel the prohibition is lifted for
+# =============================================================================
+#
+# ⚠ **RENDERING ONLY.** Every figure below is a value out of
+#   `pnl.project_pnl()`; nothing here adds, subtracts or compares money. That
+#   is what keeps the lift to ONE panel honest — a second arithmetic path on
+#   this page is exactly how the prohibition would erode.
+#
+# ⚠ **TWO permission checks, both per view (ABOUT.md §7 gap 24's shape).**
+#   `project.pnl` decides whether the panel exists at all — for everybody else
+#   it is the empty string, spliced where an empty string leaves the page
+#   byte-for-byte as it was. `attendance.view` decides whether the labour row
+#   is shown: a holder of `project.pnl` who may not see wages (CC-2 B4) is told
+#   the row is withheld, and the totals say they exclude it.
+#
+# ⚠ **The stylesheet travels INSIDE the panel**, not in the page's `<head>`, so
+#   a reader without `project.pnl` does not receive one byte of it.
+
+PNL_CSS = """
+      <style>
+        .pnl h3 { display:flex; justify-content:space-between; align-items:baseline;
+                  gap:1rem; flex-wrap:wrap; font-size:.82rem; text-transform:uppercase;
+                  letter-spacing:.05em; color:var(--navy); margin:1.5rem 0 .6rem;
+                  padding-bottom:.35rem; border-bottom:2px solid var(--border); }
+        .pnl h3 span { font-weight:400; text-transform:none; letter-spacing:0;
+                       color:var(--muted); font-size:.8rem; }
+        .pnl-lead { font-size:.85rem; color:var(--muted); line-height:1.6; margin:0 0 .5rem; }
+        .pnl-lead b { color:var(--navy); }
+        .pnl-figure { display:flex; flex-wrap:wrap; align-items:baseline; gap:.6rem;
+                      margin:.9rem 0 .4rem; font-size:.95rem; }
+        .pnl-figure b { font-size:1.15rem; color:var(--navy); }
+        .pnl-figure em { font-style:normal; color:var(--muted); font-size:.85rem; }
+        .pnl-note { font-size:.8rem; color:var(--muted); line-height:1.6; margin:.35rem 0; }
+        .pnl-note b { color:var(--navy); }
+        .pnl-warn { background:#FFF6E5; border:1px solid #F0D8A8;
+                    border-left:3px solid var(--saffron); border-radius:8px;
+                    padding:.6rem .9rem; margin:.5rem 0; font-size:.82rem;
+                    line-height:1.5; color:#6B4E00; }
+        table.pnl-rows { width:100%; border-collapse:collapse; font-size:.9rem; }
+        table.pnl-rows th, table.pnl-rows td { padding:.5rem; text-align:left;
+                       font-weight:400; border-bottom:1px solid var(--border); }
+        table.pnl-rows td { text-align:right; font-variant-numeric:tabular-nums;
+                            white-space:nowrap; }
+        table.pnl-rows th span { color:var(--muted); font-size:.8rem; }
+        table.pnl-rows tr.pnl-group th { font-size:.75rem; text-transform:uppercase;
+                       color:var(--muted); font-weight:700; background:var(--surface); }
+        table.pnl-rows tr.pnl-sum th, table.pnl-rows tr.pnl-sum td,
+        table.data tr.pnl-sum td { font-weight:700; color:var(--navy); }
+        table.pnl-rows tr.pnl-result th, table.pnl-rows tr.pnl-result td {
+                       font-weight:700; color:var(--navy); background:var(--surface);
+                       border-top:2px solid var(--border); }
+        .pnl-variance { margin:.9rem 0 .4rem; padding:.7rem .9rem; line-height:1.6;
+                        border:1px solid var(--border); border-radius:8px; font-size:.86rem; }
+        .pnl-variance b { color:var(--navy); }
+      </style>"""
+
+
+def _pnl_rs(v) -> str:
+    """A headline P&L figure: the rupee sign and Indian grouping, or the page's
+    em-dash where there is no figure. Never escaped — a money format (§9)."""
+    return f"&#8377;&nbsp;{_inr(v)}" if v is not None else "—"
+
+
+def _pnl_n(n: int, one: str, many: str = "") -> str:
+    """`1 bill` / `2 bills` — a count stated in words."""
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def _pnl_panel(proj) -> str:
+    """
+    The Profit & Loss panel — CC-2 **C6**, CLIENT_CHANGES.md §0 forty-seventh
+    block — or `""` for a reader without `project.pnl`.
+
+    Three sections that never mix: PLANNED and TO DATE are tax-exclusive, CASH
+    includes GST and says so (ABOUT.md §7 gap 31). Every count of something
+    left out is stated beside the figure it would have changed.
+    """
+    if not auth.has_perm("project.pnl"):
+        return ""
+    see_wages = auth.has_perm("attendance.view")
+    r = PNL.project_pnl(proj.get("id"), include_labour=see_wages)
+    plan, todate, cash, excl = r["planned"], r["to_date"], r["cash"], r["excluded"]
+
+    # ── 1. PLANNED ──────────────────────────────────────────────────────────
+    if not plan["tips"]:
+        planned_html = ('<p class="pnl-note">No schedule is attached to this '
+                        'project, so there is no plan for the figures below to '
+                        'be set against.</p>')
+    else:
+        body = ""
+        for t in plan["tips"]:
+            body += (
+                f'<tr><td><a href="{url_for("boq.view_boq", id=t["boq_id"])}">'
+                f'<b>{P.esc(t["ref"]) or "(no ref)"}</b></a></td>'
+                f'<td>Rev {t["rev_no"]}</td>'
+                f'<td>{P.esc(t["date"]) or "—"}</td>'
+                f'<td class="num">{_amt(t["revenue"])}</td>'
+                f'<td class="num">{_amt(t["cost"])}</td></tr>')
+        if len(plan["tips"]) > 1:
+            body += (f'<tr class="pnl-sum"><td colspan="3">All schedules</td>'
+                     f'<td class="num">{_amt(plan["revenue"])}</td>'
+                     f'<td class="num">{_amt(plan["cost"])}</td></tr>')
+        pct = (f'{plan["margin_pct"]:.2f}% of planned revenue'
+               if plan["margin_pct"] is not None else
+               'no planned revenue to take a percentage of')
+        cover = []
+        if plan["no_base"]:
+            cover.append(
+                f'<b>{plan["no_base"]} of {_pnl_n(plan["priced"], "priced line")} '
+                f'{"has" if plan["no_base"] == 1 else "have"} no base rate</b> '
+                f'&mdash; {"its" if plan["no_base"] == 1 else "their"} cost is '
+                f'not in the estimate, so the estimated cost is understated and '
+                f'the planned margin overstated by an amount this data cannot '
+                f'say. Add the base rate in a revision.')
+        elif plan["priced"]:
+            cover.append(f'Every priced line carries a base rate '
+                         f'({_pnl_n(plan["priced"], "line")}).')
+        blank = BQ.blank_summary(plan["no_rate"], plan["no_qty"])
+        if blank:
+            cover.append(f'{P.esc(blank[:1].upper() + blank[1:])} &mdash; left '
+                         f'out of both figures, never read as 0.')
+        if plan["base_on_unpriced"]:
+            n = plan["base_on_unpriced"]
+            cover.append(f'{_pnl_n(n, "base rate")} {"sits" if n == 1 else "sit"} '
+                         f'on a track with no selling rate and '
+                         f'{"is" if n == 1 else "are"} not in the estimate.')
+        if plan["elsewhere"]:
+            refs = ", ".join(P.esc(b.get("ref")) or "(no ref)"
+                             for b in plan["elsewhere"])
+            cover.append(f'&#9888; The latest revision of {refs} is filed under '
+                         f'another project, so it is planned there and not here.')
+        planned_html = (
+            f'<table class="data"><thead><tr><th>Schedule</th><th>Revision</th>'
+            f'<th>Dated</th><th class="num">Planned revenue</th>'
+            f'<th class="num">Estimated cost</th></tr></thead>'
+            f'<tbody>{body}</tbody></table>'
+            f'<div class="pnl-figure"><span>Planned margin</span>'
+            f'<b>{_pnl_rs(plan["margin"])}</b><em>{pct}</em></div>'
+            + "".join(f'<p class="pnl-note">{c}</p>' for c in cover))
+
+    # ── 2. TO DATE ──────────────────────────────────────────────────────────
+    lab = todate["labour"]
+    no_lab = " <span>(excluding site labour, withheld)</span>" if lab["withheld"] else ""
+    if lab["withheld"]:
+        labour_row = ('<tr><th>Site labour &mdash; booked to this project '
+                      '<span>(withheld: it needs the View attendance '
+                      'permission, which your roles do not include)</span></th>'
+                      '<td>—</td></tr>')
+    else:
+        labour_row = (f'<tr><th>Site labour &mdash; booked to this project, day '
+                      f'rate and overtime <span>({_pnl_n(lab["markings"], "marking")})'
+                      f'</span></th><td>{_amt(lab["total"])}</td></tr>')
+    exempt_row = ""
+    if todate["po_exempt"]["count"]:
+        exempt_row = (f'<tr><th>Purchase orders &mdash; charges outside the tax '
+                      f'base <span>({_pnl_n(todate["po_exempt"]["count"], "order")})'
+                      f'</span></th><td>{_amt(todate["po_exempt"]["amount"])}</td></tr>')
+    rows_html = (
+        f'<tr class="pnl-group"><th colspan="2">Billed</th></tr>'
+        f'<tr><th>RA bills, issued &mdash; taxable value '
+        f'<span>({_pnl_n(todate["ra"]["count"], "bill")})</span></th>'
+        f'<td>{_amt(todate["ra"]["amount"])}</td></tr>'
+        f'<tr><th>Tax invoices, through a proforma &mdash; taxable value '
+        f'<span>({_pnl_n(todate["ti"]["count"], "invoice")})</span></th>'
+        f'<td>{_amt(todate["ti"]["amount"])}</td></tr>'
+        f'<tr class="pnl-sum"><th>Billed to date</th>'
+        f'<td>{_amt(todate["billed"])}</td></tr>'
+        f'<tr class="pnl-group"><th colspan="2">Spent &mdash; one row per source, '
+        f'nothing blended</th></tr>'
+        f'<tr><th>Purchase orders, committed &mdash; taxable value '
+        f'<span>({_pnl_n(todate["po"]["count"], "order")})</span></th>'
+        f'<td>{_amt(todate["po"]["amount"])}</td></tr>'
+        f'{exempt_row}'
+        f'<tr><th>Work orders, issued &mdash; before GST '
+        f'<span>({_pnl_n(todate["wo"]["count"], "work order")})</span></th>'
+        f'<td>{_amt(todate["wo"]["amount"])}</td></tr>'
+        f'<tr><th>Charges &mdash; taxable amount '
+        f'<span>({_pnl_n(todate["charges"]["count"], "charge")})</span></th>'
+        f'<td>{_amt(todate["charges"]["amount"])}</td></tr>'
+        f'{labour_row}'
+        f'<tr class="pnl-sum"><th>Spent to date{no_lab}</th>'
+        f'<td>{_amt(todate["actual"])}</td></tr>'
+        f'<tr class="pnl-result"><th>Margin to date{no_lab}</th>'
+        f'<td>{_amt(todate["margin"])}</td></tr>')
+
+    notes = [('<b>Billed so far, less spent so far.</b> Part-way through a '
+              'project this reflects timing &mdash; material bought before it '
+              'is billed, labour paid before it is claimed &mdash; and is not '
+              'the result the project will finish on.')]
+    if lab.get("refused"):
+        n = lab["refused"]
+        notes.append(f'{_pnl_n(n, "marking")} {"predates" if n == 1 else "predate"} '
+                     f'the day-rate correction and {"is" if n == 1 else "are"} '
+                     f'not costed &mdash; the labour row is short by '
+                     f'{"it" if n == 1 else "them"}.')
+    for key, what in (("ra", "RA bill"), ("ti", "tax invoice"),
+                      ("po", "purchase order"), ("charges", "charge")):
+        n = todate[key].get("no_figure") or 0
+        if n:
+            notes.append(f'{_pnl_n(n, what)} {"carries" if n == 1 else "carry"} '
+                         f'no stored taxable figure and {"is" if n == 1 else "are"} '
+                         f'not in the figures above.')
+    left_out = [txt for n, txt in (
+        (excl["ra_draft"], _pnl_n(excl["ra_draft"], "draft RA bill")),
+        (excl["ra_cancelled"], _pnl_n(excl["ra_cancelled"], "cancelled RA bill")),
+        (excl["ti_cancelled"], _pnl_n(excl["ti_cancelled"], "cancelled tax invoice")),
+        (excl["po_draft_status"], _pnl_n(excl["po_draft_status"],
+                                         "purchase order still in Draft",
+                                         "purchase orders still in Draft")),
+        (excl["po_cancelled"], _pnl_n(excl["po_cancelled"], "cancelled purchase order")),
+        (excl["po_unknown"], _pnl_n(excl["po_unknown"],
+                                    "purchase order in a status this page does not recognise",
+                                    "purchase orders in a status this page does not recognise")),
+        (excl["po_drafts"], _pnl_n(excl["po_drafts"],
+                                   "draft purchase order sent out for pricing (an intent, never a cost)",
+                                   "draft purchase orders sent out for pricing (an intent, never a cost)")),
+        (excl["wo_draft"], _pnl_n(excl["wo_draft"], "work order not yet issued",
+                                  "work orders not yet issued")),
+        (excl["wo_cancelled"], _pnl_n(excl["wo_cancelled"], "cancelled work order")),
+    ) if n]
+    if left_out:
+        notes.append('<b>Not counted, on purpose:</b> ' + " &middot; ".join(left_out) + '.')
+    for m in r["merged"]:
+        legs = " and ".join(P.esc(x) for x in m["legs"] if x)
+        notes.append(f'{P.esc(m["ref"]) or "A merged RA"} stacks {legs} onto one '
+                     f'tax invoice. Both bills are counted once above; the merged '
+                     f'document&rsquo;s own total is their sum and is not added '
+                     f'again.')
+    for s in r["same_number"]:
+        notes.append(f'Tax invoice {P.esc(s["ti_ref"])} carries the same tax '
+                     f'invoice number as RA bill {P.esc(s["ra_ref"])} &mdash; one '
+                     f'billing on two records. It is counted once, as the RA '
+                     f'bill; the tax invoice&rsquo;s own taxable value '
+                     f'({_amt(s["taxable"])}) is not added.')
+    drift = ""
+    if r["earlier_revision"]:
+        items = "; ".join(
+            f'<b>{P.esc(e["ref"])}</b> was raised against {P.esc(e["boq_ref"])} '
+            f'Rev {e["rev_no"]}, and the plan reads {P.esc(e["tip_ref"])} '
+            f'Rev {e["tip_rev_no"]}, dated {P.esc(e["tip_date"]) or "—"}'
+            for e in r["earlier_revision"])
+        drift = (f'<div class="pm-drift"><span class="pm-drift-icon">&#9888;</span>'
+                 f'<span>{items}. Each bill&rsquo;s figures are its own and are '
+                 f'deliberately <b>not</b> restated against the later revision '
+                 f'&mdash; the two may legitimately disagree.</span></div>')
+    if plan["cost"] is None:
+        variance_html = ('<div class="pnl-variance"><b>Estimate against actual.</b> '
+                         'No schedule is attached, so there is no estimate to set '
+                         'the cost spent against.</div>')
+    else:
+        ahead = todate["variance"] >= 0
+        variance_html = (
+            f'<div class="pnl-variance"><b>Estimate against actual.</b> '
+            f'Estimated cost {_pnl_rs(plan["cost"])} &middot; spent to date'
+            f'{" (excluding site labour)" if lab["withheld"] else ""} '
+            f'{_pnl_rs(todate["actual"])} &middot; '
+            f'{"not yet spent of the estimate" if ahead else "spent beyond the estimate"} '
+            f'<b>{_pnl_rs(abs(todate["variance"]))}</b>.'
+            + (f' <span class="pnl-note">The estimate leaves out '
+               f'{plan["no_base"]} of {_pnl_n(plan["priced"], "priced line")} '
+               f'(no base rate).</span>' if plan["no_base"] else
+               ' <span class="pnl-note">The estimate covers every priced line.</span>')
+            + '</div>')
+
+    # ── 3. CASH — GST included ──────────────────────────────────────────────
+    cash_notes = ['Receipts are recorded against RA bills only. Outstanding is '
+                  'only as correct as the write-offs recorded against them make '
+                  'it.']
+    if cash["ti_count"]:
+        one = cash["ti_count"] == 1
+        cash_notes.append(
+            f'{"The tax invoice above comes" if one else "The " + _pnl_n(cash["ti_count"], "tax invoice") + " above come"} to '
+            f'{_pnl_rs(cash["ti_billed"])} including GST. No payment against a '
+            f'tax invoice is recorded in this app, so '
+            f'{"it is" if one else "they are"} not in the outstanding.')
+    if cash.get("ti_no_figure"):
+        cash_notes.append(f'{_pnl_n(cash["ti_no_figure"], "tax invoice")} '
+                          f'{"carries" if cash["ti_no_figure"] == 1 else "carry"} '
+                          f'no stored total including GST.')
+    if cash["no_figure"]:
+        cash_notes.append(f'{_pnl_n(cash["no_figure"], "RA bill")} '
+                          f'{"carries" if cash["no_figure"] == 1 else "carry"} no '
+                          f'stored grand total and {"is" if cash["no_figure"] == 1 else "are"} '
+                          f'not in the cash figures.')
+    cash_html = (
+        f'<table class="pnl-rows">'
+        f'<tr><th>RA bills, issued &mdash; billed including GST '
+        f'<span>({_pnl_n(cash["count"], "bill")})</span></th>'
+        f'<td>{_amt(cash["billed"])}</td></tr>'
+        f'<tr><th>Received</th><td>{_amt(cash["received"])}</td></tr>'
+        f'<tr><th>Written off &mdash; allowed short</th>'
+        f'<td>{_amt(cash["written_off"])}</td></tr>'
+        f'<tr class="pnl-result"><th>Outstanding</th>'
+        f'<td>{_amt(cash["outstanding"])}</td></tr></table>'
+        + "".join(f'<p class="pnl-note">{c}</p>' for c in cash_notes))
+
+    return f"""
+
+    <!-- Profit & Loss — CC-2 C6, CLIENT_CHANGES.md §0 forty-seventh block.
+         Rendered ONLY for project.pnl; the one panel the prohibition in this
+         module's docstring is lifted for. Every figure is pnl.py's. -->
+    <div class="panel pnl" id="pnl">{PNL_CSS}
+      <div class="panel-head">
+        <h2>Profit &amp; Loss</h2>
+        <span style="font-size:0.8rem;color:var(--muted);">Worked out as this page opens &mdash; nothing here is stored</span>
+      </div>
+      <p class="pnl-lead">Three sections, never mixed. <b>Planned</b> and <b>To date</b> are before GST; <b>Cash</b> includes it.</p>
+      <h3>Planned <span>from the latest revision of each schedule &middot; tax-exclusive</span></h3>
+      {planned_html}
+      <h3>To date <span>what was billed and what was spent &middot; tax-exclusive</span></h3>
+      {drift}
+      <table class="pnl-rows">{rows_html}</table>
+      {"".join(f'<p class="pnl-note">{n}</p>' for n in notes)}
+      {variance_html}
+      <h3>Cash <span>GST included</span></h3>
+      {cash_html}
+    </div>"""
+
 
 @projectview_bp.route("/view/<id>", methods=["GET", "POST"])
 def view_project(id: str):
@@ -733,6 +1075,10 @@ def view_project(id: str):
             f'Edit Project</a>.</span></div>')
 
     labour_html = _site_labour(proj)
+    # C6 — "" for a reader without `project.pnl`, and spliced onto the end of
+    # an existing line below, so that for them the page is byte-for-byte what
+    # it was (`tests/test_pnl_access.py` pins it against `3a14375`).
+    pnl_panel = _pnl_panel(proj)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -843,7 +1189,7 @@ def view_project(id: str):
         <span class="pm-lbl">Notes</span>
         <span class="pm-val">{P.esc(proj.get('notes')) or '—'}</span>
       </div>
-    </div>
+    </div>{pnl_panel}
 
     <!-- BOQs Panel -->
     <div class="panel">
