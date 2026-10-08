@@ -10,7 +10,8 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 7 October 2026 (**the BOQ import
+**As of:** branch `antigravity-dev`, 8 October 2026 (**C6, the project
+profit & loss** — CLIENT_CHANGES.md §0 **forty-seventh** block, Manas's ruling, no charge; **the board reads 20 of 20 BUILT**). *Previously:* 7 October 2026 (**the BOQ import
 leaves out a row with quantity 0 and no rate** — one row predicate shared
 with the work order, the BOQ's own heading and section rules —
 CLIENT_CHANGES.md §0 **forty-sixth** block, Manas's ruling, no charge; **the
@@ -19,6 +20,23 @@ board does not move: 19 of 20 BUILT · 1 BLOCKED**). *Previously:* 6 October
 rulings A1–A8, no charge). *Before that:* 6 October 2026 (**the BOQ import —
 the user chooses the columns, the app advises** — the §0 **forty-fourth**
 block, rulings R1–R6, no charge).
+
+- **8 October 2026 — C6, the project profit & loss, run on the OFFICE PC**
+  (Step 0 clean at `3a14375`, the remote's tip, 0 ahead and 0 behind; backup
+  pair `samruddhi_qms-20261008-132724-pre-c6-pnl.sql` (212,344 bytes) /
+  `…-attachments.zip` (22 bytes, no files); every suite run with
+  `DB_ENABLED=false`). Commits: `5e9d82e` the §0 block, `2df435e` the code
+  with ABOUT.md and the access matrix, `c00931a` the tests, then these docs.
+  Open question 4 answered by Manas on 7 October — the installation base rate
+  does not include labour; labour is separate — and C6 built on it. CC-2 **C6** is BUILT: `pnl.py` derives a project's profit and loss and stores nothing — PLANNED from each tip revision (revenue at the net rate, cost at the base rate, blanks skipped and counted, the base-rate coverage stated beside the margin), TO DATE (issued RA bills at their stored taxable value, tax invoices through a proforma, a TI sharing an issued bill's number counted once; committed POs, issued work orders, charges and site labour each on its own row; margin to date labelled as timing; estimate against actual), both tax-exclusive, and CASH, GST-inclusive. The panel on `/projects/view/<id>` and a *Cost not tagged to any project* line under `/projects/` render only for the new **`project.pnl`** (Owner + Director; an `auth.PANEL_PERMISSIONS` entry); everyone else gets both pages byte-for-byte as at `3a14375`. `projectview.py`'s prohibition is lifted by name for that one panel.
+  ⚠ The access suite's dead-permission rule was narrowed to admit exactly one
+  declared panel permission rather than invent a route (ABOUT.md §2g). Gaps
+  B5 and 55 closed; 67–72 opened (what the P&L does not reconcile). Tests
+  **4,037 / 4 → 4,128 / 4** (row 1's configuration; rows 2 and 3 not run),
+  three further configurations measured at both ends (ABOUT.md §1). Mutations: **38, 37 caught and 1 equivalent** (a blank quantity read as 0 adds 0 × rate; the count it should move is `boq.lines_without_qty()`'s, not `pnl.py`'s — the same mutation reading it as 1 is caught).
+  The local MySQL's Owner and Director roles were granted `project.pnl` by
+  the reconcile tool, `--only project.pnl`. ⚠ **Not deployed** — for Manas's
+  browser check first; **20 of 20 BUILT is code and tests, not delivery.**
 
 - **7 October 2026 — the BOQ import's quantity-0 rule, run on the OFFICE PC**
   (Step 0 clean at `6c1cb90`, the remote's tip, 0 ahead and 0 behind; backup
