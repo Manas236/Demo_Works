@@ -145,8 +145,8 @@ supported one:**
 | # | Environment | Result | Measured |
 |---|---|---|---|
 | 1 | openpyxl installed **and** both client workbooks present | **3,429 passed, 4 skipped** | **30 Sep 2026 — MEASURED FOR THE FIRST TIME**, on the office PC (CPython 3.14.3 system interpreter, `sify_boq.xlsx` and `annexure.xlsx` at the repo root, no `client_docs/`) *(start of the thirty-seventh-block pass at `c341b0a`: **3,388 passed, 4 skipped, 1 FAILED** — `tests/test_boq_import.py::test_importing_the_sify_workbook_reproduces_the_seeded_boq`, which had never run anywhere: the importer took the Sify sheet's REPEATED heading above section B as the header and dropped all 18 lines of section A. Fixed in the pass (the first heading wins); the test passes as written. +40 `tests/test_boq_import_guided.py`, +1 the Sify test turning green)* *(was "unknown", and before that "842 passed" — see below)* |
-| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` — which from 29 Sep 2026 pins `openpyxl 3.1.5`, `xlrd 2.0.2` and `defusedxml 0.7.1` as RUNTIME dependencies — + `pytest==9.1.1`), both client workbooks **absent** | **3,611 passed, 7 skipped** | **4 Oct 2026 — MEASURED ON THE LAPTOP'S OWN `.venv`** *(an RA bill raised FROM delivery challans or FROM the measurement, and a billed challan marked and blocked — CLIENT_CHANGES.md §0 **fortieth** block, no charge: **no bar moved and no CC-2 item changed state**. **+48 passed, +0 skipped**, reconciling per file: `tests/test_ra_from_source.py` (**37**, new) and `tests/test_import_directions.py` (**+11** — seven `FORBIDDEN` rows and the whitelist test for the leaf `dcbill.py`, two `REQUIRED` rows, and the test pinning `measurement.py`'s one `auth` import to `_raise_ra_btn()`). 37 + 11 = **48**. One existing row was NARROWED, not added — `("measurement", "auth", "any")` → `"module"`, the old row kept verbatim beside it; `tests/test_entity_fallbacks.py`'s sweep fixture was extended and `tests/test_escaping.py`'s field pin gained `dispatch_to`, neither moving a count. The start-of-pass baseline was re-measured — **3,563 / 7** at `b967796` — and matched. ⚠ **No print golden and no page golden moved**; `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,563 passed, 7 skipped**, **1 Oct 2026** *(the Iron Mountain sheet — cost sheets, rate-only lines, group labels, nothing below the grand total, rounded item numbers, a number in Make — CLIENT_CHANGES.md §0 **thirty-ninth** block: **no bar moved and no CC-2 item changed state**. **+98 passed, +0 skipped**, reconciling per file: `tests/test_boq_import_cost.py` (**101**, new) and `tests/test_boq_import.py` (**−3**: `test_rate_only_stays_blank_and_flagged_and_never_zero` narrowed from five spellings to the two that keep v1's rule — the brief turned "RO", "R.O." and "Rate Only" into rate-only lines). 101 − 3 = **98**. Seven existing tests were AMENDED, each declared in its own docstring or comment — that one, `test_four_level_numbering_and_float_item_numbers_are_kept_as_shown` ("1.10" → "1.1"), `test_the_staged_row_holds_cell_values_and_never_the_file` (+ `rate_mode`, `markup`), and four that used "R.O." as their example of a blocked quantity and now use "NA". The start-of-pass baseline was re-measured — **3,465 / 7** at `e7fb470` — and matched. ⚠ **No print golden and no page golden moved**; `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,465 passed, 7 skipped**, **30 Sep 2026, later still** *(the G4 follow-up — what a child line belongs to, "not priced" as an answer, blank units, placeholders — CLIENT_CHANGES.md §0 **thirty-eighth** block: **no bar moved and no CC-2 item changed state**. **+39 passed, +0 skipped**, all of it `tests/test_boq_child_context.py` (**39**, new). Two existing tests were AMENDED, not added — `tests/test_boq_import_guided.py::test_a_valid_value_clears_the_mark_and_clearing_it_brings_it_back` (a typed 0 now answers a rate flag, the brief's rule) and `tests/test_boq_line_ids.py::test_neither_advisory_band_reaches_the_printed_sheet` (the one screen-only note `/boq/view` now carries). `client_docs/` IS present on this box, so the `.xls` test runs. ⚠ **No print golden and no page golden moved**; `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,426 passed, 7 skipped**, measured at the start of the same pass at `256a620` *(the thirty-seventh block's +40, never before run in a `.venv`: 3,386 + 40 = 3,426, exactly the `row 3 + 119 passed and + 1 skipped` the note under this table predicted)* — previously **3,386 passed, 7 skipped**, **30 Sep 2026** *(copy labels on the DC, TI, RA and merged RA, the joint measurement sheet's print layout, and its typed sign-off — CLIENT_CHANGES.md §0 **thirty-sixth** block; **no bar moved and no CC-2 item changed state**. **+110 passed, +0 skipped**, reconciling per file: `tests/test_copies.py` (**73**, new), `tests/test_measurement_layout.py` (**19**, new), `tests/test_measurement_signoff.py` (**16**, new), `tests/test_print_golden.py` (**+1**, the joint-sheet golden pinned for the first time) and `tests/test_import_directions.py` (**+1**, `docsheet ↛ merged_ra`). 73+19+16+1+1 = **110**. The start-of-pass baseline was re-measured — **3,276 / 7** — and matched. ⚠ **Four print goldens re-baselined, DECLARED** (TI, RA, merged RA, DC — every copy of the set, by default) **and one pinned for the first time** (the joint measurement sheet); every other print and page golden is byte-identical. `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,276 passed, 7 skipped**, **29 Sep 2026, later** *(GSTIN auto-fill on the address book — CLIENT_CHANGES.md §0 **thirty-fifth** block; **no bar moved and no CC-2 item changed state**. **+109 passed, +0 skipped**, reconciling per file: `tests/test_gst_lookup.py` (**103**, new — no workbook reader, so it counts in row 3 too) and `tests/test_import_directions.py` (**+6** — four `FORBIDDEN` rows, the `address → gst_lookup` arrow and the `gst_lookup.py` leaf test). 103 + 6 = **109**. The start-of-pass baseline was re-measured — **3,167 / 7** — and matched. ⚠ **No print golden and no page golden moved** — the GST sheet and script are emitted on the two address forms only, and `/address/` is byte-identical. ⚠ **`docs/ACCESS_MATRIX.md` moved by four endpoints**, 135 → 139, under the existing `address.create` / `address.edit`; no permission minted)* — previously **3,167 passed, 7 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1 — new chargeable scope outside MG/SF/2026-06, CLIENT_CHANGES.md §0 **thirty-fourth** block; **no bar moved and no CC-2 item changed state**. **+84 passed and +1 skipped**, reconciling per file: `tests/test_boq_import.py` (**78** passed + **1** skipped — the Sify reproduction test, whose workbook is absent), `tests/test_import_directions.py` (**+6** — two `FORBIDDEN` rows, two `REQUIRED` rows, the `sheetimport.py` leaf test and the one-reader test). 78 + 6 = **84**. The start-of-pass baseline was re-measured — **3,083 / 6** — and matched. ⚠ **No print golden and no page golden moved**; `/boq/create` is pinned by neither. ⚠ **`docs/ACCESS_MATRIX.md` moved by three endpoints under the existing `boq.create`**, 132 → 135, and no permission was minted)* — previously **3,083 passed, 6 skipped**, **27 Sep 2026** *(the Owner-only username rename with its own append-only trail, two tests that could only pass on the box they were written on, and the photo upload row — the owner's own decision, CLIENT_CHANGES.md §0 **thirty-third** block; **no bar moved and no CC-2 item changed state**. **+63**, reconciling per file: `tests/test_username_rename.py` (**55**, new), `tests/test_profile_photo.py` (**+7**, 30 → 36) and `tests/test_wsgi_single_worker.py` (**+1**, the lock-acquire control). 55+7+1 = **63**. ⚠ **The start-of-pass baseline was re-measured — 3,020 / 6 — and is 30 ABOVE the 2,990 recorded here**: the 26 September profile-photo commits added `tests/test_profile_photo.py` (30) and one `tests/test_import_directions.py` row for the leaf `photo.py`, and moved no figure in any document. ⚠ **These are the first figures in this table with 0 ERRORS in them.** Every Windows run since 26 September reported **2 errors** as well — one parametrised case whose 65,560-character id overflows `PYTEST_CURRENT_TEST`, which Windows caps at 32,767. 3,020 + 63 = 3,083. ⚠ **No golden moved and `docs/ACCESS_MATRIX.md` did not move** — no endpoint and no permission were added, and `/account` and `/users/edit` are pinned by no golden)* — previously **2,990 passed, 6 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse — a Director was shown the Owner role on `/users/create`, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new). A UX defect fix on built Phase 3B work, and **no guard changed**: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,791 / 4** — and matched. 2,791 + 15 = 2,806)* — previously **2,791 passed, 4 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page — a phone's print service picks the paper, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,787 / 4** — ⚠ **94 above the 2,693 recorded here**: the seven commits `0c493e1` … `5f4ddc0` of 14–15 September (the print-route pins, the page goldens, the chrome extraction, the sidebar, the measurement-grid fix and the deployment runbook) added 94 across 17 test files — `tests/test_page_golden.py` (**25**, new) and `tests/test_sidebar.py` (**26**, new) among them — and moved no figure in any document. 2,787 + 4 = 2,791)* — previously **2,693 passed, 4 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
-| 3 | openpyxl **absent** (and xlrd and defusedxml, the two readers' other half, from 29 Sep 2026), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **3,493 passed, 8 skipped** | *(**4 October 2026 — RA from a challan / a measurement sheet**, CLIENT_CHANGES.md §0 **fortieth** block: **no bar moved and no CC-2 item changed state** — **+48 passed and +0 skipped**, the same two files as row 2: none of the new tests needs a workbook reader, so the `.venv`'s +48 is this row's too. ⚠ **Measured on the LAPTOP'S global `C:\Program Files\Python310`**, openpyxl, xlrd and defusedxml genuinely absent — and run by full path: the terminal's `python` resolves to the `.venv`, which is how a first attempt at this row measured the `.venv` twice. The start-of-pass figure, measured the same way at `b967796`, was **3,445 / 8** and matched. 3,445 + 48 = 3,493. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,445 passed, 8 skipped** *(**1 October 2026 — the Iron Mountain sheet**, CLIENT_CHANGES.md §0 **thirty-ninth** block: **no bar moved and no CC-2 item changed state** — **+100 passed and +1 skipped**: `tests/test_boq_import_cost.py` (**101**, new) builds its sheets with `sheetimport.from_rows()` and so runs here but for its one real-workbook test, which skips inside the function without openpyxl. `tests/test_boq_import.py`'s −3 does not show here: that module is one collection skip in this configuration. ⚠ **Measured on the LAPTOP'S global `C:\Program Files\Python310`**, openpyxl, xlrd and defusedxml genuinely absent; the start-of-pass figure, measured the same way at `e7fb470`, was **3,345 / 7** and matched. 3,345 + 100 = 3,445. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,345 passed, 7 skipped** *(**30 September 2026, later still — the G4 follow-up**, CLIENT_CHANGES.md §0 **thirty-eighth** block: **no bar moved and no CC-2 item changed state** — **+38 passed and +1 skipped**: `tests/test_boq_child_context.py` (**39**, new) runs here but for its one preview test, which builds a workbook and skips on a function-level `importorskip("openpyxl")`. ⚠ **Measured on the LAPTOP'S global interpreter itself** — openpyxl, xlrd and defusedxml genuinely not installed there, no shim — and the start-of-pass figure was measured the same way at `256a620`: **3,307 / 6**, matching the office PC's shimmed figure exactly. 3,307 + 38 = 3,345. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,307 passed, 6 skipped** *(**30 September 2026, later — the BOQ import's structure, totals and guided fix**, CLIENT_CHANGES.md §0 **thirty-seventh** block: **no bar moved and no CC-2 item changed state** — **+0 passed and +1 skipped** in this configuration: `tests/test_boq_import_guided.py` (**40** tests, new) is one module-level `importorskip("openpyxl")` skip here. ⚠ **Measured on the OFFICE PC, not the laptop**: CPython 3.14.3 system interpreter with openpyxl, xlrd and defusedxml BLOCKED from importing by a `PYTHONPATH` shim of three packages that raise `ImportError`, and both workbooks moved aside for the run. The start-of-pass figure was measured the same way at `c341b0a` — **3,307 / 5**, matching the recorded figure exactly, which is the evidence the shim reproduces the configuration. 3,307 / 5 → 3,307 / 6. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,307 passed, 5 skipped**, **30 Sep 2026** *(copy labels, the joint sheet's layout and its sign-off, **+110 passed and +0 skipped**, measured not derived — from a start-of-pass **3,197 / 5**, re-measured and matching; none of the new tests needs a workbook reader, so the +110 is the `.venv`'s too. The row-2/row-3 relationship still holds exactly: 3,307 + 79 passed and + 2 skipped = 3,386 / 7)* — previously **3,197 passed, 5 skipped**, **29 Sep 2026, later** *(GSTIN auto-fill, **+109 passed and +0 skipped**, measured not derived — from a start-of-pass **3,088 / 5**, re-measured in a clean worktree of `66f4f6b` as 3,086 / 7, whose two extra skips are `tests/test_env_isolation.py`'s in a checkout with no `.env`. 3,088 + 109 = 3,197 reconciles. The row-2/row-3 relationship still holds exactly: 3,197 + 79 passed and + 2 skipped = 3,276 / 7)* — previously **3,088 passed, 5 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1, **+6 passed and +1 skipped**, measured not derived — from a start-of-pass **3,082 / 4**, re-measured and matching. The +6 are `tests/test_import_directions.py`'s AST checks, which need no reader; the +1 is `tests/test_boq_import.py`'s module-level `importorskip("openpyxl")`, **one** skip for 78 uncollected tests. ⚠ **This row is the proof the readers are imported lazily**: the app boots, `/boq/import` renders its "not installed" notice, and both escaping sweeps walk the import pages with no workbook reader in the interpreter at all. ⚠ **The row-2/row-3 relationship CHANGED in this pass** — see the paragraph under this table)* — previously **3,082 passed, 4 skipped**, **27 Sep 2026** *(the username rename, the two box-specific tests and the photo upload row, **+63**, measured not derived — from a start-of-pass **3,019 / 4**, re-measured, and 30 above the recorded 2,989 for the reason row 2 gives. 3,019 + 63 = 3,082 reconciles. The row-2/row-3 relationship still holds exactly: 3,082 + 1 passed and + 2 skipped = 3,083 / 6. ⚠ **Both rows carried 2 ERRORS as well until this pass and neither row recorded them**; both read 0 now. ⚠ **This row says `no .venv` and the laptop it was measured on HAS one** — the figure is still the global interpreter's, run with the `.venv` nowhere on `sys.path`, which is what the row has always meant)* — previously **2,989 passed, 4 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse, **+15**, measured not derived — from a start-of-pass **2,790 / 2**, re-measured and matching. 2,790 + 15 = 2,805 reconciles. The row-2/row-3 relationship still holds exactly: 2,805 + 1 passed and + 2 skipped = 2,806 / 4)* — previously **2,790 passed, 2 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page, **+4**, measured not derived — from a start-of-pass **2,786 / 2**, re-measured, and 94 above the recorded 2,692 for the reason row 2 gives. 2,786 + 4 = 2,790 reconciles. The row-2/row-3 relationship still holds exactly: 2,790 + 1 passed and + 2 skipped = 2,791 / 4)* — previously **2,692 passed, 2 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
+| 2 | **THE SUPPORTED CONFIGURATION** — `.venv` on CPython 3.10.11, built by the cold-start block above (`requirements.txt` — which from 29 Sep 2026 pins `openpyxl 3.1.5`, `xlrd 2.0.2` and `defusedxml 0.7.1` as RUNTIME dependencies — + `pytest==9.1.1`), both client workbooks **absent** | **3,793 passed, 7 skipped** | **21 Oct 2026 — MEASURED ON THE LAPTOP'S OWN `.venv`** *(a picture beside the description on the proforma invoice, the purchase order and the draft PO — CLIENT_CHANGES.md §0 **forty-second** block: **no bar moved and no CC-2 item changed state**. **+59 passed, +0 skipped**, reconciling per file: `tests/test_line_pictures.py` (**44**, new) and `tests/test_import_directions.py` (**+15** — 10 `FORBIDDEN` rows: `lineimage` imports none of the four documents that import it, nor `quotation`, `invoice`, `docsheet`, `auth` or `flask`, and `attachment` only inside a function; 4 `REQUIRED`; the leaf's whitelist test). 44 + 15 = **59**. ⚠ **The start-of-pass baseline was NOT re-measured** — the pass began on the 18 October pass's uncommitted tree — and the end figure reconciles exactly with that pass's recorded 3,734 / 7. ⚠ **One golden moved, declared**: `/proforma/view`'s `head` block (`PI_*` in `tests/test_print_golden.py`), +91 characters — exactly the Pictures button, proved by removing that one string and getting the old digest back. No printed document moved; the golden PO did not move at all. `docs/ACCESS_MATRIX.md` moved **166 → 170 endpoints** — four picture routes, each under an existing permission; 84 permissions, unchanged)* — previously **3,734 passed, 7 skipped**, **18 Oct 2026** *(Import from Excel on every document that is typed in — the purchase order's extra parts, the quotation, the measurement grid, the delivery challan, the draft PO, the RA bill, the address book, the spec library and the employee master — CLIENT_CHANGES.md §0 **forty-first** block: **no bar moved and no CC-2 item changed state**. **+123 passed, +0 skipped**, reconciling per file: `tests/test_doc_import.py` (**88**, new) and `tests/test_import_directions.py` (**+35** — 24 `FORBIDDEN` rows: no document module, nor `boq`, `boqimport`, `boqpick`, `specpick` or `sheetimport`, imports `docimport`, and no document module imports `sheetimport`; 11 `REQUIRED`: `docimport` imports the reader, `boqimport`'s upload path and legend, the six create seams and the three registers). 88 + 35 = **123**, and collection says the same — 3,618 → 3,741, no other file moved. The start-of-pass baseline was re-measured — **3,611 / 7** at `383135b` — and matched. ⚠ **One golden moved, declared**: the `/po/create` picker's `head` block (`PICK_*` in `tests/test_print_golden.py`), +96 characters — exactly the Import button, proved by removing that one string and getting the old digest back, whole and block for block. No printed document moved. `docs/ACCESS_MATRIX.md` moved **139 → 166 endpoints** — twenty-seven `/import/<kind>` routes, each under its document's existing create permission; 84 permissions, unchanged)* — previously **3,611 passed, 7 skipped**, **4 Oct 2026** *(an RA bill raised FROM delivery challans or FROM the measurement, and a billed challan marked and blocked — CLIENT_CHANGES.md §0 **fortieth** block, no charge: **no bar moved and no CC-2 item changed state**. **+48 passed, +0 skipped**, reconciling per file: `tests/test_ra_from_source.py` (**37**, new) and `tests/test_import_directions.py` (**+11** — seven `FORBIDDEN` rows and the whitelist test for the leaf `dcbill.py`, two `REQUIRED` rows, and the test pinning `measurement.py`'s one `auth` import to `_raise_ra_btn()`). 37 + 11 = **48**. One existing row was NARROWED, not added — `("measurement", "auth", "any")` → `"module"`, the old row kept verbatim beside it; `tests/test_entity_fallbacks.py`'s sweep fixture was extended and `tests/test_escaping.py`'s field pin gained `dispatch_to`, neither moving a count. The start-of-pass baseline was re-measured — **3,563 / 7** at `b967796` — and matched. ⚠ **No print golden and no page golden moved**; `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,563 passed, 7 skipped**, **1 Oct 2026** *(the Iron Mountain sheet — cost sheets, rate-only lines, group labels, nothing below the grand total, rounded item numbers, a number in Make — CLIENT_CHANGES.md §0 **thirty-ninth** block: **no bar moved and no CC-2 item changed state**. **+98 passed, +0 skipped**, reconciling per file: `tests/test_boq_import_cost.py` (**101**, new) and `tests/test_boq_import.py` (**−3**: `test_rate_only_stays_blank_and_flagged_and_never_zero` narrowed from five spellings to the two that keep v1's rule — the brief turned "RO", "R.O." and "Rate Only" into rate-only lines). 101 − 3 = **98**. Seven existing tests were AMENDED, each declared in its own docstring or comment — that one, `test_four_level_numbering_and_float_item_numbers_are_kept_as_shown` ("1.10" → "1.1"), `test_the_staged_row_holds_cell_values_and_never_the_file` (+ `rate_mode`, `markup`), and four that used "R.O." as their example of a blocked quantity and now use "NA". The start-of-pass baseline was re-measured — **3,465 / 7** at `e7fb470` — and matched. ⚠ **No print golden and no page golden moved**; `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,465 passed, 7 skipped**, **30 Sep 2026, later still** *(the G4 follow-up — what a child line belongs to, "not priced" as an answer, blank units, placeholders — CLIENT_CHANGES.md §0 **thirty-eighth** block: **no bar moved and no CC-2 item changed state**. **+39 passed, +0 skipped**, all of it `tests/test_boq_child_context.py` (**39**, new). Two existing tests were AMENDED, not added — `tests/test_boq_import_guided.py::test_a_valid_value_clears_the_mark_and_clearing_it_brings_it_back` (a typed 0 now answers a rate flag, the brief's rule) and `tests/test_boq_line_ids.py::test_neither_advisory_band_reaches_the_printed_sheet` (the one screen-only note `/boq/view` now carries). `client_docs/` IS present on this box, so the `.xls` test runs. ⚠ **No print golden and no page golden moved**; `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,426 passed, 7 skipped**, measured at the start of the same pass at `256a620` *(the thirty-seventh block's +40, never before run in a `.venv`: 3,386 + 40 = 3,426, exactly the `row 3 + 119 passed and + 1 skipped` the note under this table predicted)* — previously **3,386 passed, 7 skipped**, **30 Sep 2026** *(copy labels on the DC, TI, RA and merged RA, the joint measurement sheet's print layout, and its typed sign-off — CLIENT_CHANGES.md §0 **thirty-sixth** block; **no bar moved and no CC-2 item changed state**. **+110 passed, +0 skipped**, reconciling per file: `tests/test_copies.py` (**73**, new), `tests/test_measurement_layout.py` (**19**, new), `tests/test_measurement_signoff.py` (**16**, new), `tests/test_print_golden.py` (**+1**, the joint-sheet golden pinned for the first time) and `tests/test_import_directions.py` (**+1**, `docsheet ↛ merged_ra`). 73+19+16+1+1 = **110**. The start-of-pass baseline was re-measured — **3,276 / 7** — and matched. ⚠ **Four print goldens re-baselined, DECLARED** (TI, RA, merged RA, DC — every copy of the set, by default) **and one pinned for the first time** (the joint measurement sheet); every other print and page golden is byte-identical. `docs/ACCESS_MATRIX.md` did not move — no route, no permission)* — previously **3,276 passed, 7 skipped**, **29 Sep 2026, later** *(GSTIN auto-fill on the address book — CLIENT_CHANGES.md §0 **thirty-fifth** block; **no bar moved and no CC-2 item changed state**. **+109 passed, +0 skipped**, reconciling per file: `tests/test_gst_lookup.py` (**103**, new — no workbook reader, so it counts in row 3 too) and `tests/test_import_directions.py` (**+6** — four `FORBIDDEN` rows, the `address → gst_lookup` arrow and the `gst_lookup.py` leaf test). 103 + 6 = **109**. The start-of-pass baseline was re-measured — **3,167 / 7** — and matched. ⚠ **No print golden and no page golden moved** — the GST sheet and script are emitted on the two address forms only, and `/address/` is byte-identical. ⚠ **`docs/ACCESS_MATRIX.md` moved by four endpoints**, 135 → 139, under the existing `address.create` / `address.edit`; no permission minted)* — previously **3,167 passed, 7 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1 — new chargeable scope outside MG/SF/2026-06, CLIENT_CHANGES.md §0 **thirty-fourth** block; **no bar moved and no CC-2 item changed state**. **+84 passed and +1 skipped**, reconciling per file: `tests/test_boq_import.py` (**78** passed + **1** skipped — the Sify reproduction test, whose workbook is absent), `tests/test_import_directions.py` (**+6** — two `FORBIDDEN` rows, two `REQUIRED` rows, the `sheetimport.py` leaf test and the one-reader test). 78 + 6 = **84**. The start-of-pass baseline was re-measured — **3,083 / 6** — and matched. ⚠ **No print golden and no page golden moved**; `/boq/create` is pinned by neither. ⚠ **`docs/ACCESS_MATRIX.md` moved by three endpoints under the existing `boq.create`**, 132 → 135, and no permission was minted)* — previously **3,083 passed, 6 skipped**, **27 Sep 2026** *(the Owner-only username rename with its own append-only trail, two tests that could only pass on the box they were written on, and the photo upload row — the owner's own decision, CLIENT_CHANGES.md §0 **thirty-third** block; **no bar moved and no CC-2 item changed state**. **+63**, reconciling per file: `tests/test_username_rename.py` (**55**, new), `tests/test_profile_photo.py` (**+7**, 30 → 36) and `tests/test_wsgi_single_worker.py` (**+1**, the lock-acquire control). 55+7+1 = **63**. ⚠ **The start-of-pass baseline was re-measured — 3,020 / 6 — and is 30 ABOVE the 2,990 recorded here**: the 26 September profile-photo commits added `tests/test_profile_photo.py` (30) and one `tests/test_import_directions.py` row for the leaf `photo.py`, and moved no figure in any document. ⚠ **These are the first figures in this table with 0 ERRORS in them.** Every Windows run since 26 September reported **2 errors** as well — one parametrised case whose 65,560-character id overflows `PYTEST_CURRENT_TEST`, which Windows caps at 32,767. 3,020 + 63 = 3,083. ⚠ **No golden moved and `docs/ACCESS_MATRIX.md` did not move** — no endpoint and no permission were added, and `/account` and `/users/edit` are pinned by no golden)* — previously **2,990 passed, 6 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse — a Director was shown the Owner role on `/users/create`, ABOUT.md §2g and §5 `/users`; **+15** in `tests/test_identity_offers.py` (new). A UX defect fix on built Phase 3B work, and **no guard changed**: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,791 / 4** — and matched. 2,791 + 15 = 2,806)* — previously **2,791 passed, 4 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page — a phone's print service picks the paper, ABOUT.md §5 `/boq`; **+4** in `tests/test_boq.py` (*The sheet on a portrait page*). A defect fix on an existing document: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,787 / 4** — ⚠ **94 above the 2,693 recorded here**: the seven commits `0c493e1` … `5f4ddc0` of 14–15 September (the print-route pins, the page goldens, the chrome extraction, the sidebar, the measurement-grid fix and the deployment runbook) added 94 across 17 test files — `tests/test_page_golden.py` (**25**, new) and `tests/test_sidebar.py` (**26**, new) among them — and moved no figure in any document. 2,787 + 4 = 2,791)* — previously **2,693 passed, 4 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill — *"if I have entered price it is not a placeholder"*, ABOUT.md §5 `/purchase`; **+5** in `tests/test_po_extra_lines.py` §6 (52 → 57), four rewritten. The owner's own ruling, recorded in CLIENT_CHANGES.md §0's twenty-ninth block: **no bar moved and no CC-2 item changed state**. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,688 passed, 4 skipped**, **14 Sep 2026** *(SECOND change of this date — the two PO repeaters on the upstream forms and the reprice form's Amount column, ABOUT.md §5 `/purchase`; **+27** in `tests/test_po_upstream_repeaters.py` (new — 20 for the repeaters and the Amount column, 7 for the extra-part HSN box, which also moved the PO print golden by +66 stylesheet bytes). The owner's own decision, CLIENT_CHANGES.md §0 twenty-ninth block: **no bar moved and no CC-2 item changed state**. The start-of-change baseline was re-measured — **2,661 / 4** — and matched)* — previously **2,661 passed, 4 skipped**, **14 Sep 2026** *(the BOQ editor quantifies a new line at 1, ABOUT.md §5 `/boq`; **+6** in `tests/test_editor_nav.py` (27 → 33). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,655 / 4** — and matched)* — previously **2,655 passed, 4 skipped**, **13 Sep 2026** *(the BOQ line panel rearranged — four bands and a fold, ABOUT.md §5 `/boq`; **+4** in `tests/test_editor_nav.py` (23 → 27). UX only: **no bar moved and no CC-2 item changed state**. The start-of-pass baseline was re-measured — **2,651 / 4** — and matched)* — previously **2,651 passed, 4 skipped**, **12 Sep 2026** *(the quotation source following the catalogue switch, Supply only, gap 38 closed and the APPROVAL LADDER switched off in code — the owner's own decisions, CLIENT_CHANGES.md §0 twenty-eighth block; **no bar moved**. **+218**, reconciling per file and per change: change 1 `tests/test_quotation_switch.py` (**18**, new), `tests/test_escaping.py` (**+2**, the script-embed test parametrised over both embeds) and `tests/test_import_directions.py` (**+12** rows for the new leaf `specpick.py`); change 2 `tests/test_quotation_spec_picker.py` (**+7**, 48 → 55, the install-leg tests retargeted); change 3 `tests/test_po_gap38.py` (**28**, new); change 4 `tests/test_approvals_off.py` (**148**, new) and `tests/test_approval_grandfather.py` (**+3**). 18+2+12+7+28+148+3 = **218**. The start-of-pass baseline was re-measured — **2,433 / 4** — and matched)* — previously **2,433 passed, 4 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library. **+88**, reconciling per file: `tests/test_product_hidden.py` (**40**) and `tests/test_quotation_spec_picker.py` (**48**). 40+48 = **88**. **No bar moved and no CC-2 item changed state** — the owner's own decision, CLIENT_CHANGES.md §0 twenty-seventh block. ⚠ **It read 2,345 / 4 at the start of that pass, MEASURED, and 61 above the 2,284 recorded here**: the 10 September commit `1d7725a` added `tests/test_editor_nav.py` and moved no figure in any document. 2,345 + 88 = 2,433)* — previously **2,284 passed, 4 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage (§7 gap 33) and the quantity float-comparison audit (§7 gap 34). **+48**, reconciling per file: `tests/test_boq_project_link.py` (**17**) and `tests/test_qty_float_precision.py` (**31**). 17+31 = **48**. **No bar moved and no CC-2 item changed state**: gap 33 is a defect fix against F.04 of MG/SF/2026-02 §3 and gap 34 changed no code at all. Previously **2,236 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,236 passed, 4 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET. **+123**, reconciling per file: `tests/test_e2e_chain_helpers.py` (**63**), `tests/test_measurement_joint.py` (**42**), `tests/test_measurement_grid_backfill.py` (**13**), `tests/test_print_golden.py` (**+5**, 11 → 16) and `tests/test_import_directions.py` (**net 0** — one new test, one parametrised `FORBIDDEN` row removed). 63+42+13+5+0 = **123**. **No bar moved and no CC-2 item changed state**: C2 was BUILT before this pass and is BUILT after it, because redrawing a document's printed sheet does not build an item. Previously **2,082 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,082 passed, 4 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues. **+47 in one new file**, `tests/test_dashboard_boq_ra.py`. **No bar moved and no CC-2 item changed state**: this is UX on an existing page, and CC-2's untagged “visual dashboard” lines 1 and 2 stay untagged, unpriced and unanswered — see CLIENT_CHANGES.md. Previously **2,035 / 4**, re-measured at the start of this pass rather than quoted, and it matched)* — previously **2,035 passed, 4 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**: all three are DOMAIN.md §4.2 or defect fixes, and no CC-2 item changed state)* |
+| 3 | openpyxl **absent** (and xlrd and defusedxml, the two readers' other half, from 29 Sep 2026), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`** | **3,674 passed, 9 skipped** | *(**21 October 2026 — a picture beside the description**, CLIENT_CHANGES.md §0 **forty-second** block: **no bar moved and no CC-2 item changed state** — **+59 passed and +0 skipped**, the same two files as row 2: Pillow is installed on this interpreter, so `tests/test_line_pictures.py`'s module-level `importorskip("PIL")` runs all 44. ⚠ **Measured on the LAPTOP'S global `C:\Program Files\Python310`**, by full path; the start-of-pass figure was not re-measured, and 3,615 + 59 = 3,674 reconciles with the recorded one. One golden moved (row 2 names it); `docs/ACCESS_MATRIX.md` moved 166 → 170 endpoints.)* previously **3,615 passed, 9 skipped** *(**18 October 2026 — Import from Excel on every document that is typed in**, CLIENT_CHANGES.md §0 **forty-first** block: **no bar moved and no CC-2 item changed state** — **+122 passed and +1 skipped**, the same two files as row 2 but for one test: `tests/test_doc_import.py`'s `test_a_real_xlsx_upload_reaches_the_preview` writes a real `.xlsx` and skips inside the function without openpyxl; every other test there builds its sheet with `sheetimport.from_rows()` and runs here. ⚠ **Measured on the LAPTOP'S global `C:\Program Files\Python310`**, by full path. The start-of-pass figure, measured the same way at `383135b` but in a scratch worktree, read **3,491 / 10**: a fresh worktree has no `.env`, so `tests/test_env_isolation.py`'s two `.env` tests skip there, and in this checkout they pass — **3,493 / 8**, matching. 3,493 + 122 = 3,615; 8 + 1 = 9. One golden moved (row 2 names it); `docs/ACCESS_MATRIX.md` moved 139 → 166 endpoints.)* previously **3,493 passed, 8 skipped** *(**4 October 2026 — RA from a challan / a measurement sheet**, CLIENT_CHANGES.md §0 **fortieth** block: **no bar moved and no CC-2 item changed state** — **+48 passed and +0 skipped**, the same two files as row 2: none of the new tests needs a workbook reader, so the `.venv`'s +48 is this row's too. ⚠ **Measured on the LAPTOP'S global `C:\Program Files\Python310`**, openpyxl, xlrd and defusedxml genuinely absent — and run by full path: the terminal's `python` resolves to the `.venv`, which is how a first attempt at this row measured the `.venv` twice. The start-of-pass figure, measured the same way at `b967796`, was **3,445 / 8** and matched. 3,445 + 48 = 3,493. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,445 passed, 8 skipped** *(**1 October 2026 — the Iron Mountain sheet**, CLIENT_CHANGES.md §0 **thirty-ninth** block: **no bar moved and no CC-2 item changed state** — **+100 passed and +1 skipped**: `tests/test_boq_import_cost.py` (**101**, new) builds its sheets with `sheetimport.from_rows()` and so runs here but for its one real-workbook test, which skips inside the function without openpyxl. `tests/test_boq_import.py`'s −3 does not show here: that module is one collection skip in this configuration. ⚠ **Measured on the LAPTOP'S global `C:\Program Files\Python310`**, openpyxl, xlrd and defusedxml genuinely absent; the start-of-pass figure, measured the same way at `e7fb470`, was **3,345 / 7** and matched. 3,345 + 100 = 3,445. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,345 passed, 7 skipped** *(**30 September 2026, later still — the G4 follow-up**, CLIENT_CHANGES.md §0 **thirty-eighth** block: **no bar moved and no CC-2 item changed state** — **+38 passed and +1 skipped**: `tests/test_boq_child_context.py` (**39**, new) runs here but for its one preview test, which builds a workbook and skips on a function-level `importorskip("openpyxl")`. ⚠ **Measured on the LAPTOP'S global interpreter itself** — openpyxl, xlrd and defusedxml genuinely not installed there, no shim — and the start-of-pass figure was measured the same way at `256a620`: **3,307 / 6**, matching the office PC's shimmed figure exactly. 3,307 + 38 = 3,345. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,307 passed, 6 skipped** *(**30 September 2026, later — the BOQ import's structure, totals and guided fix**, CLIENT_CHANGES.md §0 **thirty-seventh** block: **no bar moved and no CC-2 item changed state** — **+0 passed and +1 skipped** in this configuration: `tests/test_boq_import_guided.py` (**40** tests, new) is one module-level `importorskip("openpyxl")` skip here. ⚠ **Measured on the OFFICE PC, not the laptop**: CPython 3.14.3 system interpreter with openpyxl, xlrd and defusedxml BLOCKED from importing by a `PYTHONPATH` shim of three packages that raise `ImportError`, and both workbooks moved aside for the run. The start-of-pass figure was measured the same way at `c341b0a` — **3,307 / 5**, matching the recorded figure exactly, which is the evidence the shim reproduces the configuration. 3,307 / 5 → 3,307 / 6. No golden moved; `docs/ACCESS_MATRIX.md` did not move.)* previously **3,307 passed, 5 skipped**, **30 Sep 2026** *(copy labels, the joint sheet's layout and its sign-off, **+110 passed and +0 skipped**, measured not derived — from a start-of-pass **3,197 / 5**, re-measured and matching; none of the new tests needs a workbook reader, so the +110 is the `.venv`'s too. The row-2/row-3 relationship still holds exactly: 3,307 + 79 passed and + 2 skipped = 3,386 / 7)* — previously **3,197 passed, 5 skipped**, **29 Sep 2026, later** *(GSTIN auto-fill, **+109 passed and +0 skipped**, measured not derived — from a start-of-pass **3,088 / 5**, re-measured in a clean worktree of `66f4f6b` as 3,086 / 7, whose two extra skips are `tests/test_env_isolation.py`'s in a checkout with no `.env`. 3,088 + 109 = 3,197 reconciles. The row-2/row-3 relationship still holds exactly: 3,197 + 79 passed and + 2 skipped = 3,276 / 7)* — previously **3,088 passed, 5 skipped**, **29 Sep 2026** *(Import BOQ from Excel v1, **+6 passed and +1 skipped**, measured not derived — from a start-of-pass **3,082 / 4**, re-measured and matching. The +6 are `tests/test_import_directions.py`'s AST checks, which need no reader; the +1 is `tests/test_boq_import.py`'s module-level `importorskip("openpyxl")`, **one** skip for 78 uncollected tests. ⚠ **This row is the proof the readers are imported lazily**: the app boots, `/boq/import` renders its "not installed" notice, and both escaping sweeps walk the import pages with no workbook reader in the interpreter at all. ⚠ **The row-2/row-3 relationship CHANGED in this pass** — see the paragraph under this table)* — previously **3,082 passed, 4 skipped**, **27 Sep 2026** *(the username rename, the two box-specific tests and the photo upload row, **+63**, measured not derived — from a start-of-pass **3,019 / 4**, re-measured, and 30 above the recorded 2,989 for the reason row 2 gives. 3,019 + 63 = 3,082 reconciles. The row-2/row-3 relationship still holds exactly: 3,082 + 1 passed and + 2 skipped = 3,083 / 6. ⚠ **Both rows carried 2 ERRORS as well until this pass and neither row recorded them**; both read 0 now. ⚠ **This row says `no .venv` and the laptop it was measured on HAS one** — the figure is still the global interpreter's, run with the `.venv` nowhere on `sys.path`, which is what the row has always meant)* — previously **2,989 passed, 4 skipped**, **22 Sep 2026** *(the identity pages stop offering what they then refuse, **+15**, measured not derived — from a start-of-pass **2,790 / 2**, re-measured and matching. 2,790 + 15 = 2,805 reconciles. The row-2/row-3 relationship still holds exactly: 2,805 + 1 passed and + 2 skipped = 2,806 / 4)* — previously **2,790 passed, 2 skipped**, **20 Sep 2026** *(the BOQ sheet fits a portrait page, **+4**, measured not derived — from a start-of-pass **2,786 / 2**, re-measured, and 94 above the recorded 2,692 for the reason row 2 gives. 2,786 + 4 = 2,790 reconciles. The row-2/row-3 relationship still holds exactly: 2,790 + 1 passed and + 2 skipped = 2,791 / 4)* — previously **2,692 passed, 2 skipped**, **14 Sep 2026** *(THIRD change of this date — the placeholder mark narrowed to the server fill, **+5**, measured not derived; 2,687 + 5 = 2,692 reconciles. The row-2/row-3 relationship still holds exactly: 2,692 + 1 passed and + 2 skipped = 2,693 / 4)* — previously **2,687 passed, 2 skipped**, **14 Sep 2026** *(SECOND change of this date — the PO repeaters and the extra-part HSN box, **+27**, measured not derived; 2,660 + 27 = 2,687 reconciles. The row-2/row-3 relationship still holds exactly: 2,687 + 1 passed and + 2 skipped = 2,688 / 4)* — previously **2,660 passed, 2 skipped**, **14 Sep 2026** *(the default-quantity pass, **+6**, measured not derived — from a start-of-pass **2,654 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,660 + 1 passed and + 2 skipped = 2,661 / 4)* — previously **2,654 passed, 2 skipped**, **13 Sep 2026** *(the BOQ line-panel pass, **+4**, measured not derived. The row-3 start figure was **not** re-measured this time — only row 2 was — and 2,650 + 4 = 2,654 reconciles. The row-2/row-3 relationship still holds exactly: 2,654 + 1 passed and + 2 skipped = 2,655 / 4)* — previously **2,650 passed, 2 skipped**, **12 Sep 2026** *(the four-change pass of that date, **+218**, measured not derived — from a start-of-pass **2,432 / 2**, re-measured and matching. The row-2/row-3 relationship still holds exactly: 2,650 + 1 passed and + 2 skipped = 2,651 / 4)* — previously **2,432 passed, 2 skipped**, **11 Sep 2026** *(the catalogue hidden and the quotation written from the spec library, **+88**, measured not derived — from a start-of-pass **2,344 / 2**, itself measured and 61 above the recorded 2,283 for the reason row 2 gives. The row-2/row-3 relationship still holds exactly: 2,432 + 1 passed and + 2 skipped = 2,433 / 4)* — previously **2,283 passed, 2 skipped**, **9 Sep 2026** *(SEVENTEENTH pass — the BOQ→project linkage and the quantity float audit, **+48**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,283 + 1 passed and + 2 skipped = 2,284 / 4)* — previously **2,235 passed, 2 skipped**, **6 Sep 2026** *(FIFTEENTH pass — the end-to-end chain driver and the JOINT MEASUREMENT SHEET, **+123**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,204 + 1 passed and + 2 skipped = 2,205 / 4)* — previously **2,081 passed, 2 skipped**, **5 Sep 2026** *(FOURTEENTH pass — the dashboard's BOQ/RA visual cues, **+47**, measured not derived. The row-2/row-3 relationship still holds exactly: 2,081 + 1 passed and + 2 skipped = 2,082 / 4)* — previously **2,034 passed, 2 skipped**, **3 Sep 2026** *(THIRTEENTH pass — the single-leg `tax_invoice_ref`, the attachments half of the backup, and the merged-RA over-claim walk. **No bar moved**)* |
 
 *(Rows 2 and 3 read **1,152 / 3** and **1,151 / 1** before the **Phase 3A**
 pass of 27 August 2026, which added **74** across
@@ -209,6 +209,14 @@ cases in **both** configurations — a print-rule check that does not apply to t
 one pinned page that is a form. So **row 2 is always exactly `row 3 + 1 passed
 and + 2 skipped`**: openpyxl accounts for that, and `test_nav_reachability.py`
 accounts for the remaining skip in both rows.
+
+⚠ **From 18 October 2026 it reads `row 3 + 119 passed and − 2 skipped` —
+MEASURED, both rows on the laptop** (3,734 / 7 against 3,615 / 9; **confirmed
+unchanged on 21 October 2026**, 3,793 / 7 against 3,674 / 9 — the pictures
+pass's 59 run in both). One move on
+top of the two below: `tests/test_doc_import.py`'s real-workbook test passes
+in row 2 and skips inside its function in row 3 (+1 passed, −1 skipped), the
+same shape as `tests/test_boq_import_cost.py`'s. It read:
 
 ⚠ **From 1 October 2026 it reads `row 3 + 118 passed and − 1 skipped` —
 MEASURED, both rows on the laptop** (3,563 / 7 against 3,445 / 8; **confirmed
@@ -406,9 +414,9 @@ Consequences you must respect when editing:
 | [wsgi.py](wsgi.py) | 280 | **The production entry point** (9 September 2026) — `gunicorn --workers 1 --bind 0.0.0.0:8000 wsgi:application`. Imports the same `app` object and configures it no differently, because a production-only code path is a path nobody has tested. ⚠ **It exists almost entirely to make a multi-process deployment REFUSE TO RUN.** `STORE` is one dict in ONE process's RAM and `db.sync()` writes all of it back per request, so two workers is two divergent copies of the whole application state overwriting each other **with no error of any kind**. **Two guards, because gunicorn has two modes:** an exclusive OS advisory lock taken at import (catches plain `--workers 2`), and a per-request pid check (catches `--workers 2 --preload`, where the lock is taken once and *inherited* across `fork()` — guard 1 alone would have left a hole exactly that size). ⚠ **Neither guard is in `app.py`**, and that is a constraint rather than a preference: the dev reloader is deliberately two processes, and `tests/conftest.py` imports `app`. Scale with `--threads`, never `--workers`. See `tests/test_wsgi_single_worker.py`. |
 | [store.py](store.py) | 49 | The `STORE` dict. Single shared object, imported everywhere. |
 | [db.py](db.py) | 532 | MySQL persistence by snapshot-and-diff, with per-collection failure isolation. |
-| [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. |
+| [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. From 21 October 2026 also **`letterhead_top()`** — the client's own banner at the top of every printed letterhead, called by all three places that draw one (§6). |
 | [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). From 30 September 2026 also the **statutory copies** (`COPIES_DC`, `COPIES_TAX_INVOICE`, `copies()`) and the **landscape variant** of the frame (`LANDSCAPE_*`). A **leaf** — see §2d. |
-| [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. |
+| [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. From 18 October 2026 `grid_html(pcs_of=…)` prefills the draft PO's Pcs box (Import from Excel); None emits the bytes it always did. |
 | [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
 | [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
@@ -420,9 +428,10 @@ Consequences you must respect when editing:
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
 | [spec.py](spec.py) | 1152 | **Specification library.** Clauses of work with *sized variants*. What a BOQ line is written from — **and, from 11 September 2026, what a quotation line is written from too** (`quotation.create_quotation()` reads `STORE["specs"]` and seeds through `ensure_demo_specs()`). **Not a replacement for `product.py`** in the sense of its record shape — a clause is priced per leg, a product at one `base_price` with a BOM — but with the catalogue hidden it is the one library the sell side now draws on. |
 | [boq.py](boq.py) | 4012 | **Bill of quantities.** The priced schedule for a project. Head of a *second* sell-side chain — see §2b. Owns `line_id`, the key an RA claim matches on. ⚠ **`create_boq(imported=None)` from 29 September 2026** — the one seam Import BOQ from Excel renders the form through; Flask never passes it, and the POST path never reads it. The form's *Import from Excel* button is a `url_for` string: **`boq.py` never imports `boqimport.py`**. |
-| [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. |
+| [boqimport.py](boqimport.py) | 811 | **Import BOQ from Excel** (29 September 2026, CLIENT_CHANGES.md §0 thirty-fourth block — new chargeable scope). Upload → preview (sheet, a target per column, the flags, the totals check) → `/boq/create` **prefilled**. **Nothing is saved until Create BOQ is pressed**, and that save is the ordinary one. Owns the two collections `boq_imports` (the staged grid, owned, 24-hour, consumed) and `import_layouts` (a confirmed mapping per header signature). Imports `boq` and `sheetimport`; mints no permission — all three routes carry `boq.create`. §5 `/boq/import`. ⚠ **From 18 October 2026 it also owns the import LEGEND** (`legend_html()`, `BOQ_LEGEND`) — drawn on its own two pages and shared with `docimport.py`, which imports this module for it, for `_read_upload()` and for `IMPORT_STYLES`; this module never imports that one back. |
 | [gst_lookup.py](gst_lookup.py) | 723 | **GSTIN auto-fill — the check and the portal, and a LEAF** (29 September 2026). No routes, no HTML. `offline()` is the 15-character shape, the official base-36 check character, the State and the PAN — no network; `lookup()` is the ONE public function behind which the GST portal search, the gstinapi.in fallback, the normalisation and the 30-day `gst_cache` sit; `captcha()` starts a portal session and returns its image **untouched — a human types every CAPTCHA and nothing here reads one**. ⚠ **Every outbound call goes through `_open()`**, `timeout=5`, one attempt, no retry — `tests/conftest.py` replaces it with a refusal around every test, so no sweep can phone the portal. ⚠ **The portal's cookie jars live in `_SESSIONS`, in RAM, and never reach STORE or MySQL.** Imports `store`, `pipeline` and the standard library only (`urllib`, so **no new dependency**). §5 `/address`, `docs/GST_PORTAL.md`. |
-| [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. |
+| [docimport.py](docimport.py) | 2003 | **Import from Excel on every OTHER document that is typed in** (18 October 2026, CLIENT_CHANGES.md §0 forty-first block; commercial status deliberately unstated). One upload → preview → hand-off engine for **nine kinds** — the purchase order's extra parts, quotation picks, the measurement grid, challan / draft PO / RA quantities against BOQ lines, and the address / spec / employee registers. Every column carries a dropdown and **ignore** keeps it out; a **legend** lists the columns the document cannot be made without. The six line documents land on their OWN create form through an `imported` seam — **nothing is saved until that form's Save**; the three registers land on a review page whose *Create* writes only the rows that pass the register's own `_validate()`, through its own `create_record()`. ⚠ **A BOQ line is reached by `line_id`**: a sheet's item number only proposes one, and a number the schedule carries twice is never chosen for the operator. Three endpoints PER KIND (`approval.py`'s minting), each under its document's existing create permission. Owns `doc_imports` and `doc_import_layouts`. §5 `/import`. |
+| [sheetimport.py](sheetimport.py) | 1397 | **The workbook reader — a LEAF that imports nothing from the app.** Bytes and a filename in, plain dicts out: format by leading bytes, the 5 MB / 50 MB-inflated caps, defusedxml or refuse, `.xlsm` refused, the header and its guessed mapping, the row rules (lines, spec headers, sections, dropped totals, flags) and the totals check. `openpyxl` and `xlrd` are imported **inside functions only** — `photo.py`'s arrangement — so a box without them boots. `tests/test_import_directions.py` holds the leaf and that it is the only module that may name a workbook reader. ⚠ **From 18 October 2026 it also carries a SCHEMA half (§7 of the file)** — `target()`, `schema_header()` / `schema_guess()` / `schema_problems()` / `schema_rows()` / `schema_signature()` / `schema_pick()` and the four cell readers `cell_text` / `cell_code` / `cell_number` / `cell_date` — what every OTHER document's import shares; the BOQ half above it is untouched. Still no import from the app, and a test pins that the new section adds none. |
 | [ra.py](ra.py) | 3903 | **Running Account bills.** Claims against a BOQ revision, with the entry form. Carries a tax block per DOMAIN.md §4, computed **per rate slab** off each claim's own `gst_rate` — see §5. Also owns the **receipts arithmetic** — `received_against` / `written_off_against` / `outstanding_of` / `previous_balance` — because `create_ra()` has to snapshot the carried balance at save, which puts it upstream of `receipt.py`. From 4 Oct 2026 `/ra/create` also raises a bill FROM ticked challans (capped at their dispatch) or FROM the measurement (the unbilled remainder), writing `source_dc_ids` / `source_ms_ids` once — §5 `/ra`. |
 | [receipt.py](receipt.py) | 809 | **Payments RECEIVED against an RA bill.** Its own collection; never a list on the bill or the BOQ. Carries the A5 **`write_off`** beside `amount` — §2-A5. Imports `ra.py`; `ra.py` links back with `url_for` only. |
 | [client.py](client.py) | 603 | **Client-wise segregation and party edits.** A ledger grouping BOQs by client, providing total value and outstanding balances across all their RA claims. Includes near-duplicate detection. |
@@ -437,6 +446,7 @@ Consequences you must respect when editing:
 | [merged_ra.py](merged_ra.py) | 1022 | **The merged RA bill** (CC-2 **C3**, 2 Sep 2026) — one issued RA-Supply bill and one issued RA-Installation bill from the same revision chain, stacked onto one sheet under **one minted tax invoice number**. Its own `merged_ras` collection; a separate document type, the same relationship as Draft PO → PO. ⚠ **It holds NO claims of its own** — copying them in would make the over-claim guard count the same quantity twice. ⚠ Totals are the **sum of the two bills' stored totals**, never recomputed from the live BOQ. ⚠ **Imports `ra.py`; `ra.py` may NOT import it back** — it reads `STORE['merged_ras']` directly and links with `url_for`, the one-way trick. ⚠ **Mints `SF/MI/...`, never `TI`** — `invoice.py` owns that series and a second counter under it would put one statutory serial on two documents. ⚠ **Mints no permission**: every route carries `ra.*`. See §3. |
 | [cascade.py](cascade.py) | 196 | **The shared dependent-record graph for delete** (22 September 2026) — no routes, a data-only registry (`CASCADE_GRAPH`) of which of the 8 transactional-chain collections reference which, plus `impact_of()` (preview the transitive closure) and `delete_cascade()` (destroy it, children before parent). Sits where `pipeline.py` sits: reads `STORE[...]` directly, imports `attachment.py` only, never imports back. ⚠ **Master/reference data (Address, Employee, Project, Spec, Product) is deliberately OUT OF SCOPE** — their existing hand-written guards (`address.references_of()`, `project.attached_boq_count()`, `product.can_delete_product()`) are untouched; this module only walks records that exist *because* a parent does. ⚠ **A Tax Invoice anywhere in the closure is a hard stop** (`CascadeBlocked`) — there is no delete route for one, and the walk refuses the whole operation rather than cascade partially past it. **Called by seven routes** (23 September 2026): `/boq/delete`, `/quotation/delete`, `/proforma/delete`, `/purchase/delete`, `/po/delete`, `/receipt/delete` and, for its styles alone, `/invoice/cancel`. `impact_html()` renders the counted closure onto every confirmation page, and `CASCADE_STYLES` is the sheet that draws it — a route that destroys something the page did not name is a defect. **9 tests** in [tests/test_cascade.py](tests/test_cascade.py) for the walk, **28** in [tests/test_delete_rollout.py](tests/test_delete_rollout.py) for the routes. |
 | [dcbill.py](dcbill.py) | 106 | **"Is this delivery challan billed, and by which RA bill?" — ONE predicate, and a LEAF** (4 October 2026, CLIENT_CHANGES.md §0 fortieth block, ruling C). A challan is billed when a **non-cancelled** RA bill lists it in `source_dc_ids`; `billed_by()` answers for one, `billing_index()` is the same walk for a register. **Derived, never stored** — cancelling or deleting the bill frees the challan with no write to it. Imports `store` and **nothing else** (a whitelist test). ⚠ It exists because `ra.py` (the picker on `/ra/create` and the POST refusal) and `challan.py` (the *Billed in* mark) both need the answer and may not import each other; the one-way STORE read from each side would have been two copies of one predicate — §7 gap 16b's failure. `bill_is_live()` tests the raw status and is held equal to `ra.is_cancelled()` over every status value, `approval.can_print()`'s arrangement. See §5 `/ra` *Raised from challans or from the measurement*. |
+| [lineimage.py](lineimage.py) | 456 | **A picture beside a document line — a LEAF** (21 October 2026, CLIENT_CHANGES.md §0 forty-second block). Re-encodes an upload through `photo.load()` (the profile photo's validation, shared) into a JPEG no larger than 360 px, and writes it **once** as a file under `attachment.root()/line-images/`, **named by the sha256 of its own bytes** — so an id IS its content and referencing it is as good as a copy for the snapshot rule. A line carries only `image: <id>`; `src_of()` is the one reader and inlines the file as a `data:` URI at render, refusing anything whose bytes no longer hash to its name. Owns the library default (`library_image_for()` — a clause's picture by EXACT code), the Image column (`sheet_has_images()`, `with_column()`, `cell()`, `SHEET_CSS` — drawn only on a sheet that has a picture) and the shared half of every Pictures page (`rows_html()`, `apply_post()` — one upload per request, a fingerprint per line). Imports `photo`, `pipeline` and `store` at module level; `attachment` inside `root()` and Pillow inside `save()` only. §3 *Line pictures*, §5 *Pictures*. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -507,6 +517,16 @@ app.py
  │                             │  two size caps, BOQ_STYLES), sheetimport, auth,
  │                             │  chrome, branding, pipeline, quotation (the form
  │                             │  widgets), store. Import BOQ from Excel — §5
+ ├─ docimport.py ──────────────┤  imports sheetimport, boqimport (the upload
+ │                             │  reader, the stylesheet, the legend), and every
+ │                             │  document it lands on — purchase, quotation,
+ │                             │  measurement, challan, po_draft, ra (each one's
+ │                             │  `imported` create seam), address, spec,
+ │                             │  employee (each register's own _validate() and
+ │                             │  create_record()) — plus boq, specpick, auth,
+ │                             │  chrome, branding, pipeline, store. NOTHING
+ │                             │  imports it back: every Import button is a
+ │                             │  url_for string (18 Oct 2026) — §5 `/import`
  ├─ ra.py ─────────────────────┤  imports dashboard, branding, store, pipeline, quotation, boq
  │                             │  — and dcbill (4 Oct 2026), the billed-challan
  │                             │  leaf. Still NEVER challan: the challans are
@@ -594,6 +614,12 @@ dcbill.py    imports store and NOTHING else (4 Oct 2026) — the ONE "is this
              challan billed?" predicate. ra.py and challan.py both import it
              and may not import each other; a leaf that reached either would
              couple them through the basement. A whitelist test holds it
+lineimage.py imports photo, pipeline, store at module level (21 Oct 2026) —
+             attachment inside root() and Pillow inside save() only. Imported
+             by proforma, purchase, po_draft and spec; imports NONE of them,
+             nor quotation, invoice, docsheet, auth or flask. A PI that reached
+             purchase.py through it would join the two pipelines in the
+             basement. A whitelist test holds it
 ```
 
 `proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py` and
@@ -708,6 +734,12 @@ office. Two concrete instances, both found by writing this module:
 
 So the chrome is now **one module of functions taking data and returning HTML
 strings**, plus the CSS constants.
+
+⚠ **The top of the letterhead is NOT here since 21 October 2026.** It is the
+client's banner, `branding.letterhead_top()`, because the BOQ and the frozen
+quotation draw letterheads of their own and must draw the same picture, and
+`quotation.py` cannot import this leaf. `letterhead()` calls it and keeps the
+address and contact lines below it — §6 *The letterhead banner*.
 
 **What is NOT in it, and this is the load-bearing part:** any tax arithmetic,
 any per-chain business logic, any route. The totals *rows* are furniture and
@@ -2005,6 +2037,8 @@ STORE = {
                             #         from 30 Aug 2026 one PROJECT, beyond CC-2
     "boq_imports":  {},     # token -> ONE staged Excel upload (grid, not file) — 29 Sep 2026
     "import_layouts": {},   # header signature -> the confirmed column mapping
+    "doc_imports":  {},     # token -> ONE staged upload for any OTHER document — 18 Oct 2026
+    "doc_import_layouts": {},  # kind + header signature -> the confirmed mapping
     "addresses":    {},     # uuid -> address
     "settings":     {},     # "company" -> branding overrides (a singleton row)
     "_seeded":      False,  # product seeder guard
@@ -2143,6 +2177,9 @@ should not be one.
   `to`, `bill_gstin`, `ship_same`, `ship_*`
 - **Frozen content:** `line_items` (a **copy**, `[dict(r) for r in …]`),
   `subtotal`, `tax_type`, `tax_info`, `grand_total`, `total_qty`
+- **A picture per line** (21 Oct 2026): `line_items[].image`, the library's
+  at raise or uploaded since — the one thing on a PI line that changes after
+  issue, and it moves no figure. §3 *Line pictures*.
 - **The invoice's own fields:** `po_number`, `po_date`, `advance_pct`,
   `amount_due`, `balance_due`, `payment_terms`, `delivery_terms`,
   `delivery_date`, `dispatch_through`, `incoterms`, `validity_days`, `notes`,
@@ -2309,6 +2346,8 @@ record to freeze a copy of, because the decision to buy is ours.
     charges has `taxable_value == subtotal` and every stored total written
     before A3 is reproduced to the rupee. A **non-taxable** charge is added
     after the tax.
+- **A picture per line** (21 Oct 2026): `image` on a `line_items` row (never a
+  header) or an `extra_lines` row — §3 *Line pictures*.
 - **Reprice trail (A1, 28 Aug 2026):** `reprice_log[]`, each entry
   `{at, by, status, note, lines[]}` where a line is
   `{name, part_no, rate_from, rate_to, disc_from, disc_to}`. **Only lines that
@@ -2363,7 +2402,7 @@ quotation → PI → tax invoice chain, which is live business. An entry there i
 *thing we sell* at one `base_price` with a BOM; an entry here is a *clause of
 work* with a supply rate and an installation rate.
 
-Five properties this shape exists to guarantee:
+Six properties this shape exists to guarantee:
 
 1. **`variants` is always a list and never null.** An unsized item — a flow
    switch, a liaisoning charge — carries **exactly one** variant with an empty
@@ -2382,6 +2421,10 @@ Five properties this shape exists to guarantee:
 5. **`spec_text` is COPIED onto a BOQ line, never referenced**, which is why a
    line item carries no `spec_id` — and why `delete_spec()` needs no dependency
    guard. See §5's `/spec` section.
+6. **`image`** (21 October 2026) — the clause's picture, the library default a
+   PI line written from it takes at raise. Optional; set only by
+   `/spec/picture/<id>`, and `edit_spec()`'s `s.update(data)` leaves it alone
+   because `_validate()` never produces the key. §3 *Line pictures*.
 
 ### Bill of Quantities
 
@@ -4641,6 +4684,106 @@ never a known layout. **Neither collection is ever seeded**
 (`tests/test_hardening.py`): a seeded layout would skip the one screen where the
 operator sees which column became the rate.
 
+### Document import staging  (`doc_imports`, Import from Excel on every other document, 18 October 2026)
+
+`boq_imports`' shape and rules, for the nine kinds `docimport.py` serves.
+Written only by `docimport.stage()`.
+
+```
+STORE["doc_imports"][token] = {
+  "id": token, "token": token,       # secrets.token_urlsafe(24)
+  "kind": "purchase" | "quotation" | "measurement" | "challan" | "dpo" | "ra"
+          | "address" | "spec" | "employee",   # a token opens ITS kind only
+  "user_id": "<uid>",                # the only user who may open it
+  "created_at", "created_ts",        # the 24-hour purge reads created_ts
+  "filename", "format",              # AS UPLOADED — display only, escaped
+  "sheets": [...], "grid": [...],    # sheetimport.read()'s staged shape
+  "sheet_index": 0,
+  "header_row": None | 7,            # the heading's EXCEL row, typed on the
+                                     #   preview; None = found by the schema
+  "mapping": {"<excel col>": target key | ""},  # "" = ignore: not read at all
+  "ctx": {"boq_id": "<uuid>", "leg": "supply"}, # schedule-bound kinds only
+  "options": {"type": "vendor"},     # the address kind's default type
+  "matches": {"<excel row>": "<line_id>" | "" | "<spec id>:<size>"},
+                                     # what the operator chose on the preview;
+                                     #   "" = leave the row out
+  "confirmed": bool, "layout": "<sha256>" | "", "known": bool,
+}
+```
+
+1. **The file is not in it** — cell values only, `boq_imports`' first rule.
+2. **Owned, and owned per kind.** `docimport._own()` answers a token only to
+   its `user_id` AND only on its own kind's routes: a purchase-order token is
+   not a way into the address book. Everything else gets the same **404**.
+3. **Short-lived and bounded.** Purged after 24 hours on every request to
+   `/import`; at most **ten per user across every kind** (the oldest go).
+4. **Not consumed by a line document's form, consumed by a register's
+   Create.** A reload of a prefilled order works until the purge; a second
+   *Create* on an address sheet is a 404, never a second set of addresses.
+5. **`matches` is the operator's choice, never the guess.** The proposal is
+   recomputed from the sheet on every request; a posted line id that is not a
+   priced line on the schedule's tip is ignored, and `""` leaves the row out.
+   ⚠ **Only a CHANGED row is stored**: every row's dropdown is posted with the
+   preview, and a value equal to the proposal is dropped rather than frozen —
+   and a POST that changes the column mapping clears `matches`, because a
+   choice made against the old mapping would override the new proposal.
+
+### Document import layout  (`doc_import_layouts`)
+
+`import_layouts`' shape plus `kind`, keyed by `sheetimport.schema_signature()`
+— the heading's texts and columns **with the kind folded in**, so a vendor list
+and a staff list that share a heading are never one layout. A confirmed
+mapping is offered on the next upload's preview and **never skips it**. Neither
+collection is ever seeded.
+
+### Line pictures  (`image`, 21 October 2026 — CLIENT_CHANGES.md §0 forty-second block)
+
+**Not a collection.** One optional key, on five shapes, holding the id of a
+file `lineimage.py` wrote:
+
+```python
+image: "<64 hex>"     # sha256 of the stored JPEG's own bytes; ABSENT = no picture
+```
+
+| record | where the key sits | written by |
+|---|---|---|
+| Specification | the clause itself — one picture for every size | `/spec/picture/<id>` |
+| Proforma invoice | `line_items[]` | `create_proforma()` (the library default) and `/proforma/pictures/<id>` |
+| Purchase order | `line_items[]` (not a header row) and `extra_lines[]` | `/purchase/pictures/<id>`; `from_draft()` copies a draft line's; `_parse_extra_lines()` keeps an extra line's through a reprice |
+| Draft PO | `items[]` (not a header row) | `/po/pictures/<id>` |
+| Tax invoice | `line_items[]` — **copied from the PI, printed nowhere** | `invoice.create_invoice()`'s `dict(r)` copy, unchanged |
+
+The file is `attachment.root() / "line-images" / f"{id}.jpg"`: a fresh Pillow
+re-encode, no larger than 360 px on its long side, never cropped, no metadata.
+
+Five properties this shape exists to guarantee:
+
+1. **The bytes are not on the record.** Twenty pictures on one order held as
+   base64 would put ~400 KB through `db.sync()`'s re-serialise-and-hash loop on
+   every request, for a payload that never changes — §4's finding about B8,
+   and the same answer: a file, and a small value pointing at it.
+2. **An id IS its content.** Named by its own sha256, so the bytes behind an id
+   can never change and referencing one is as good as a copy — the snapshot
+   rule (CLIENT_CHANGES.md §1.2) holds without copying. The same picture
+   uploaded twice is one file. `lineimage.src_of()` — **the only reader** —
+   re-hashes what it reads and refuses a file that no longer matches its name,
+   a non-JPEG, an oversized file and any value not shaped like an id, so a row
+   edited in MySQL or a file swapped on disk can never reach an `<img src>`.
+3. **Absent means no picture, and no empty key is written.** `LI.carry()` and
+   `fill_from_library()` add the key only when there is a picture; an extra
+   line saved with a blank picture box carries no key. Every record written
+   before 21 October 2026 reads as "no picture" and is never backfilled.
+4. **The library default is an EXACT code match, written once, at raise.** A
+   quotation line from the library carries the clause's code as `part_no`
+   (`specpick.py`), and codes are unique (`spec._validate()`); `create_proforma()`
+   fills a blank line from it onto the **PI's copy**, never the quotation's.
+   Changing the clause's picture afterwards reaches no PI already carrying
+   one. A catalogue line whose `part_no` happened to equal a clause's code would
+   take that clause's picture — shown on the convert form before it is raised,
+   and removable on the PI's Pictures page.
+5. **Never deleted** — one file may be shared by many lines and nothing counts
+   them. §7 gap 56.
+
 ---
 
 ---
@@ -5400,6 +5543,39 @@ to the chain is covered by it. The number is never released. Owner-only.
 | `POST /quotation/<id>/update` | `update_quotation` — pipeline fields only |
 | `GET /quotation/view/<id>` | `view_quotation` — the printed document |
 
+#### Import from Excel — 18 October 2026 · ⚠ FOURTH NARROW UNFREEZE
+
+Under CLIENT_CHANGES.md §0's forty-first block, inside **`create_quotation()`
+only** — no function was added and no other one touched, so
+`tests/test_nav_user_chip.py`'s five-name list did not grow. Three seams, each
+of which renders exactly what it did with `imported` None: an `imported`
+keyword (the spec-library picks `docimport.py` matched, restored through the
+picker's own `prev-sel-data` block), an **Import from Excel** button drawn in
+the **library mode only** (a `{import_btn}` placeholder that renders empty in
+the product mode, so the `1d7725a` golden is untouched), and a
+`{form_action}` placeholder that is empty unless the page was rendered at
+`/import/quotation/<token>/apply`. §5 `/import`.
+
+⚠ **And a reflected sink closed on the way — §7 gap 53.** A refused POST used
+to drop the posted `selections_json` string raw into
+`<script type="application/json" id="prev-sel-data">`, so `</script>` in it
+closed the block. It is parsed and re-serialised through
+`P.json_for_script()` now; a GET still emits `[]`.
+
+#### The letterhead banner — 21 October 2026 · ⚠ FIFTH NARROW UNFREEZE
+
+Under CLIENT_CHANGES.md §0's forty-third block, inside **`view_quotation()`
+only** — already unfrozen on 29 August, so `tests/test_nav_user_chip.py`'s
+five-name list did not grow; its comment gained the date. **One line**: the
+text letterhead's eight (the two-tone name, the tagline, the legal name, the
+roundel) became `{B.letterhead_top()}`, the call `docsheet.letterhead()` and
+the BOQ make — §6 *The letterhead banner*. The page's `_nav()`, its deal panel,
+its contact line and its foot strip are untouched. `VIEW_DOC_STYLES` was
+**not** edited: the banner's styling is on its own `<img>`. The quotation is
+pinned by no golden, so it is held by
+`tests/test_print_golden.py::test_every_letterhead_opens_with_the_clients_banner`
+instead, which fails by name if the old band is written back.
+
 #### Register (`/quotation/`)
 
 Four summary tiles (Open Pipeline / PO Expected / Won / Lost, with win-rate and
@@ -5664,6 +5840,7 @@ nothing. The PI number is not released. Owner-only.
 | `GET /proforma/` | `list_proformas` — register |
 | `GET,POST /proforma/from/<qid>` | `create_proforma` — convert a quotation |
 | `GET /proforma/view/<id>` | `view_proforma` — the printed document |
+| `GET,POST /proforma/pictures/<id>` | `pictures` — a picture beside each line, `proforma.create` (21 Oct 2026) — §5 *Pictures* |
 
 **A proforma invoice is a different instrument from the quotation it comes out
 of**, which is why it is a separate record and not a render mode. A quotation
@@ -6015,6 +6192,7 @@ forward link to find it would assume the very consistency this is restoring.
 | `POST /purchase/<id>/update` | `update_purchase` — status and note only |
 | `GET,POST /purchase/edit/<id>` | `edit_purchase_rates` — **reprice a live PO and maintain its A3 charge lines**, §2f-A1. Any status but `Cancelled`; every reprice is recorded |
 | `GET /purchase/view/<id>` | `view_purchase` — the printed purchase order |
+| `GET,POST /purchase/pictures/<id>` | `pictures` — a picture beside each line, `purchase.create`, refused where a reprice is (21 Oct 2026) — §5 *Pictures* |
 
 **Read §1 "There are two pipelines" before editing this file.** This is the
 only module where money goes *out*, and it links to no sell-side document.
@@ -6095,6 +6273,13 @@ Unlike `po_draft.vendor_from()` there is **no free-text fallback**: a draft PO
 is a request for a quotation and may go to a fabricator nobody has filed, while
 this document commits money and quotes the vendor's GSTIN back on a record we
 claim input tax credit against.
+
+**Import parts from Excel (18 October 2026).** The page-top carries a button
+to `/import/purchase`, and `create_purchase(imported=…)` renders this form with
+a sheet's rows in the **extra-part** repeater — as the posted shape, so each
+value is the text the sheet held and a blank rate stays blank for
+`_parse_extra_lines()`'s placeholder rule. Nothing is saved until *Raise
+Purchase Order*. §5 `/import`.
 
 #### Raised from a BOQ, and converted from a draft — see §2f
 
@@ -6540,6 +6725,7 @@ Held by [tests/test_po_extra_lines.py](tests/test_po_extra_lines.py).
 | `GET,POST /spec/add` | `add_spec` |
 | `GET,POST /spec/edit/<id>` | `edit_spec` |
 | `GET,POST /spec/delete/<id>` | `delete_spec` — GET confirms, POST deletes |
+| `POST /spec/picture/<id>` | `picture` — the clause's picture, the library default for a PI line, `spec.edit` (21 Oct 2026) — §5 *Pictures* |
 
 **Read the Specification entry in §3 before editing this file**, and do not
 confuse it with `product.py` — the two describe different things and both are
@@ -6552,6 +6738,12 @@ characters, cannot be maintained by delete-and-re-add. `add` and `edit` share
 **always returns data** — a rejected form re-renders with the user's clause
 intact. That contract comes from `address._validate()`, the one module in this
 repo that already did edit properly.
+
+**Import many from Excel (18 October 2026).** The ADD form carries a button to
+`/import/spec`; rows sharing a code — and a row with no code under a coded row
+— become ONE clause with a size per row, checked by `_validate()` and written by
+`create_record()`, lifted out of `add_spec()` so the import writes what the form
+writes. A code already in the library is refused by row. §5 `/import`.
 
 **Delete has no dependency guard, deliberately.** `product.can_delete_product()`
 blocks removal of anything used as a child in an assembly, because a BOM holds a
@@ -7858,6 +8050,160 @@ the save path, run in memory, stores the same.
   D 14, D 15, E 2, E 3, G, H 1, I 1, J 1.01, J 1.02): each carries a 0 in its
   amount or its rate, so none is a blocking flag.
 
+#### The legend (18 October 2026)
+
+Both pages carry the **legend** `docimport.py` shares (`boqimport.legend_html()`,
+`BOQ_LEGEND`): *Description* and *Quantity (total)* — the two columns confirm
+refuses without — on the upload page, and again on the preview with each line
+marked ✓ with its column letter or ✗ *not chosen yet*. Nothing else about the
+BOQ import moved. See `/import` below.
+
+---
+
+### `/import` — Import from Excel, every other document · [docimport.py](docimport.py)
+
+**Built 18 October 2026** — CLIENT_CHANGES.md §0 **forty-first** block. ⚠ Its
+commercial status is deliberately unstated there and is not decided here.
+
+| Route (per kind) | View | Permission |
+|---|---|---|
+| `GET,POST /import/<kind>` | `upload_<kind>` — the upload form and the legend; a schedule-bound kind with no `?boq=` lists the current revisions to choose from | the document's create permission |
+| `GET,POST /import/<kind>/<token>` | `preview_<kind>` — sheet, heading row, a dropdown per column, the legend ticked off, BOQ-line / clause matching, what will come in | the same |
+| `GET /import/<kind>/<token>/apply` | `apply_<kind>` — the document's create form, PREFILLED; for a register, the review page | the same |
+| `POST /import/<kind>/<token>/apply` | the three registers only — *Create* | the same |
+
+**Nine kinds, 27 endpoints, no permission minted** — each kind's three carry
+its document's existing create permission (`tests/test_doc_import.py` asserts
+each equals the permission of the create endpoint its kind names), minted per
+kind by `docimport._register_routes()` because the registry maps one endpoint
+to one permission. `docs/ACCESS_MATRIX.md` 139 → 166.
+
+| kind | the sheet becomes | lands on | the legend — the columns it cannot be made without |
+|---|---|---|---|
+| `purchase` | the order's **extra-part** lines | `/purchase/create` | Part / description · Quantity |
+| `quotation` | spec-library **Supply** picks | `/quotation/create` (library mode only) | Quantity · Spec code **or** Description |
+| `measurement` | the **joint grid**'s location rows | `/measurement/create?boq=` | Location · at least one grid column |
+| `challan` | dispatch quantities against BOQ lines | `/dc/create?boq=` | Item No. · Dispatch qty |
+| `dpo` | order quantities (and Pcs) against BOQ lines | `/po/create?boq=` | Item No. · Order qty |
+| `ra` | claim quantities (and rates) against BOQ lines | `/ra/create?boq=&leg=` — the MANUAL path | Item No. · This claim qty |
+| `address` | one address per row | review → *Create* | Address line 1 · City · State · PIN code · Label **or** Company |
+| `spec` | one clause per code, one size per row | review → *Create* | Code · Title · Clause text |
+| `employee` | one person per row | review → *Create* | Name |
+
+**Every column carries a dropdown, and *ignore* keeps it out** — an ignored
+column is not read at all (`sheetimport.schema_rows()` reads mapped columns
+only). The guess fills each target once, leftmost first, and a target may
+`prefer` a heading (an RA sheet's *This bill qty* over its *BOQ qty*). The
+heading row is found by the schema (the first row in 40 where two cells read as
+two targets) and **can be typed** — *The headings are on row N* — which redoes
+the guess for that row. A confirmed mapping is remembered per kind and heading
+and offered next time, on the preview, never instead of it.
+
+**The legend lists ONLY what the document needs**, from `required` targets and
+`any_of` groups in each kind's schema; every optional column is in the
+dropdowns and nowhere in the legend. `test_every_upload_page_renders_and_lists_only_the_required_columns`
+holds both halves for all nine.
+
+#### Nothing is saved until the document's own Save
+
+The six line documents land on their **own create view**, called through one
+`imported` seam each — `create_boq(imported=…)`'s arrangement — with the form
+posting to that document's own route by name:
+
+| seam | what it fills | ⚠ |
+|---|---|---|
+| `purchase.create_purchase(imported)` | the extra-part repeater, as the POSTED shape (a `MultiDict` of `extra_desc` / `extra_qty` / …) | a blank rate stays blank, so `_parse_extra_lines()` fills a seeded part's **placeholder** on save and marks it — the import changes nothing about that rule |
+| `quotation.create_quotation(imported)` | `prev-sel-data`, the picker's own restore block | **the FOURTH narrow unfreeze of `quotation.py`**, inside `create_quotation()` only; library mode only; the product-mode page is still `1d7725a`'s bytes (the button is a placeholder that renders empty there) |
+| `measurement.create_ms(imported)` | the joint grid's rows (`data["_grid"]`) | the BOQ lines measured are still ticked on the form |
+| `challan.create_dc(imported)` / `po_draft.create_po(imported)` | `_chosen` / `_qty` (and `_pcs`) — only the matched lines arrive ticked | `boqpick.grid_html()` gained `pcs_of`; None emits the bytes it always did |
+| `ra.create_ra(imported)` | `entered[line_id]` — the quantity, and the rate where the sheet gave one | **the manual path**: no challan, no sheet, no source key written; the over-claim block, C1 and every cap check the POST unchanged |
+
+Each seam is a keyword argument Flask never passes, read on the GET and never
+on the POST, and each draws a banner — what was read, every note, *Change the
+columns* — in the import's own styles. **A line document's staged row is not
+consumed**, so a reload of the prefilled form works until the purge.
+
+The three registers land on a **review page**: every row, and the verdict of
+the register's OWN validator on it (`address._validate()` +
+`_gst_status_error()`, `spec._validate()`, `employee._validate()`). *Create*
+writes **only the rows that pass**, through `create_record()` — lifted out of
+each register's add route verbatim, so the import writes the same record shape
+the form does — and consumes the staged row, so a second press is a 404. A GET
+of the review page writes nothing.
+
+#### A BOQ line is reached by `line_id`, and the sheet only proposes one
+
+The fortieth block's constraint, kept although these three kinds were chosen
+knowing a sheet carries no `line_id`. `BoqLineKind._match()`, against the
+priced lines of the schedule's TIP:
+
+| the row says | proposed |
+|---|---|
+| an item number exactly one priced line carries (section, when mapped, filters first) | that line — **✓ matched**, still a dropdown |
+| a number the schedule carries more than once | **nothing — "choose which line"**, the candidates offered. Never chosen for the operator, unless a mapped Description equals exactly one of them word for word |
+| a number that is a specification header there | nothing — said so |
+| a number nothing carries | nothing — the whole schedule offered, while the page's option budget (`MATCH_OPTIONS_CAP`) lasts |
+
+Every row's dropdown can be changed or set to *leave this row out*; what the
+operator posts is what is filled in, and a posted id that is not a priced line
+on the tip is ignored. **A row left at its proposal is not stored as a choice**,
+and choosing a different column (a Section column, say) throws away the
+choices made against the old mapping and proposes afresh. **Two rows for one line are not added up** — the second
+is listed and left for the form. A blank, 0 or unreadable quantity is not
+prefilled. The match, the item number and the description are presentation:
+the save is the picker's own POST, keyed on the `line_id` each prefilled row
+carries.
+
+#### The quotation's clause matching
+
+A **spec code** is matched exactly (case aside); with no code column, a
+**description** matches only when it is a clause's **title** word for word. A
+sized clause needs a size named exactly (a variant label, or its dimension with
+or without its unit), and otherwise waits on a dropdown of that clause's sizes.
+A row that names nothing the library has waits on a dropdown of every clause and
+size. The price is the sheet's rate where it gives one, otherwise the library's
+supply rate, and **an empty box where the library has none** —
+`specpick.process_selections()` refuses an unpriced shown line on the POST, as
+it always has. ⚠ **While the catalogue switch is emptied** (the product
+picker), the upload page says the import works with the library and draws no
+form: a sheet carries no product id.
+
+#### Cells, and what is never guessed
+
+`sheetimport`'s four readers: a number is read from a number cell or from text
+that IS a number (₹, Rs, thousands commas allowed; `%` for a percentage, and a
+%-formatted cell ×100); a dash is no figure; anything else is **left blank and
+said**, never 0. **A date is read from a date cell or `YYYY-MM-DD` text only —
+`01/04/2026` is NOT read**, because which of 1 April and 4 January a sheet
+meant is not ours to say. A code (a PIN, a phone, an employee code) written as a
+number loses its `.0`. An **employee's site** is matched to an active site or
+office in the address book by its label **exactly** (`strip()` and nothing
+else — the 30 August rule); anything else refuses the row. An **address's
+State** is matched case-insensitively to the book's list; an abbreviation is
+not. A row whose **label is already in the address book**, a **spec code
+already in the library** and a **duplicate employee code** inside the sheet are
+refused by row. Rows sharing a **spec code**, and rows with no code under a
+coded row, are **one clause in several sizes**.
+
+#### What it does not do
+
+* **One sheet per import**, as `/boq/import`.
+* **A heading over two rows is not combined** — type the row that names the
+  columns; a stacked heading above it is left out.
+* **A register is NOT all-or-nothing**: a row that fails is listed and not
+  created, and the rows that pass are — a decision, so a sheet with one bad
+  PIN code does not hold back forty good vendors. The review page says how
+  many of each before anything is written, and the message after *Create*
+  says how many were left out.
+* **Attendance, charges, receipts, projects** have no import (attendance was
+  offered and not chosen; a charge needs its compulsory attachment).
+* **The measurement sheet's BOQ lines** are not imported — only the grid.
+
+⚠ **One golden moved, declared**: `/po/create`'s `head` block (in
+`tests/test_print_golden.py`), by exactly its Import button — +96 characters,
+measured by stripping the button and getting `ad38de27596e55cc` back. No other
+golden and no printed document moved.
+
 ---
 
 ### `/ra` — Running Account Bills · [ra.py](ra.py)
@@ -8273,6 +8619,20 @@ touched, and **no print or page golden moved**.
 brief's instruction — so a manual supply bill can still claim a billed
 challan's quantity, limited only by the BOQ cumulative cap. §7 gap 52.
 
+#### Claim quantities from Excel (18 October 2026)
+
+The create form's page-top carries **Import from Excel** →
+`/import/ra?boq=<id>&leg=<leg>` (`_entry_form(top_html=…)`, spliced the
+4 October way — empty on edit). `create_ra(imported=…)` is a third prefill
+beside challans and the measurement, and **it is the manual path**: no `dc` or
+`ms` is read, no source key is written, and `entered[line_id]` carries the
+sheet's quantity and — only where the sheet gave one — its rate. The C1 refusal
+is checked on the upload and again before the form renders; the over-claim
+block, the measurement cap and every cap check the POST exactly as for a typed
+bill. A row is matched to a line only as a proposal the operator confirms —
+§5 `/import`. ⚠ **Gap 52 is unchanged by it**: an imported manual bill can
+claim a billed challan's quantity exactly as a typed one can.
+
 #### The receipts panel, and what it deliberately does NOT do
 
 `/ra/view` carries a **Receipts against this bill** table with the bill's grand
@@ -8580,6 +8940,7 @@ it cannot live in `cascade.py`.
 | `GET /po/view/<id>` | `view_po` — the document with its action bar |
 | `GET /po/print/<id>` | `print_po` — the document alone |
 | `GET,POST /po/edit/<id>` | `edit_po` — vendor, date and notes only, never the lines |
+| `GET,POST /po/pictures/<id>` | `pictures` — a picture beside each line, `po.edit` (21 Oct 2026) — §5 *Pictures* |
 | `GET,POST /po/delete/<id>` | `delete_po` — GET confirms, POST deletes |
 
 **CLIENT_CHANGES.md item 4.** A BOQ-side document asking a supplier to price
@@ -8639,6 +9000,13 @@ same collapsed-on-arrival default, the same expand/collapse bar, and the same
 rule that **a folded row is hidden, never removed** — what saves must not depend
 on what the operator happened to have open.
 
+**Import from Excel (18 October 2026).** The create form's page-top carries a
+button to `/import/dpo?boq=<id>`; `create_po(imported=…)` arrives with only the
+lines the sheet matched ticked, at the sheet's quantity and Pcs
+(`boqpick.grid_html(pcs_of=…)`). A refused POST now hands the typed Pcs back
+too. ⚠ **The button moved the pinned `/po/create` golden — `head` alone, +96
+characters, declared** (§5 `/import`).
+
 #### Numbering — global, and a number is never released
 
 **`SF/DPO/0001`, and both halves live at `/settings`.** The prefix and the next
@@ -8687,6 +9055,77 @@ issued order's commercial content. Ordering different lines means raising
 another draft PO, which is cheap and leaves a trail.
 
 ---
+
+### Pictures — a picture beside the description · [lineimage.py](lineimage.py) · `/proforma/pictures` · `/purchase/pictures` · `/po/pictures` · `/spec/picture`
+
+21 October 2026, CLIENT_CHANGES.md §0 **forty-second** block. The client asked
+for a picture beside each line's description on the PI and the PO. Manas's
+four answers are the design: **the library is the default and every line can
+override it**; **the real PO and the draft PO** both; **a separate Image
+column** after Part No; commercial status **left unstated**. §3 *Line
+pictures* has the record shape; this is the pages.
+
+| Route | Permission | What it changes |
+|---|---|---|
+| `POST /spec/picture/<id>` | `spec.edit` | the clause's picture (upload / replace / remove), drawn on `/spec/view/<id>` |
+| `GET,POST /proforma/pictures/<id>` | `proforma.create` | a PI line's picture, plus **Use the library's picture** for lines with none |
+| `GET,POST /purchase/pictures/<id>` | `purchase.create` | an item line's or an extra part's picture; each change on the order's history |
+| `GET,POST /po/pictures/<id>` | `po.edit` | a draft PO line's picture |
+
+**No permission was minted** — each page carries the permission of the act it
+belongs to (raising the PI, pricing the order, editing the draft, editing the
+clause), and `docs/ACCESS_MATRIX.md` moved 166 → 170 endpoints. Each document's
+view page draws its **Pictures** button only where `auth.can_reach()` says yes;
+the PO's also asks `purchase.pictures_allowed()`.
+
+**How the sheet changes.** `lineimage.sheet_has_images()` decides per
+document: when **no** line resolves to a picture nothing is drawn — no column,
+no stylesheet — so every document written before this pass, and every one
+nobody adds a picture to, prints **byte-for-byte** what it did. When one does,
+the Image column sits between Part No and the description (`with_column()`),
+every line gets a cell (an empty one where it has no picture, a header row
+included), every summary label's `colspan` grows from 4 to 5
+(`DS.sum_row(span=)` / `total_row(span=)` — the default is the old literal),
+and `LI.SHEET_CSS` rides in: 20 mm, the picture held inside 18 mm square and
+never cropped. **Proved by printing**: a PI, a PO and a draft PO with pictures,
+printed to PDF in headless Chrome on A4 and with `@page{size:auto}` injected
+(the phone's Letter paper), each read as a page on both.
+
+**The judgement calls — the agent's, not Manas's:**
+
+- ⚠ **The per-line override lives on the document's own Pictures page, not as
+  a file box on the create and reprice forms.** Six forms produce or reprice
+  these documents. nginx refuses a request over 8 MB with its OWN 413 page
+  (DEPLOY.md) and a phone photo is 3–5 MB, so a form carrying several file
+  boxes fails on the second picture with nothing of ours on screen; and a
+  browser cannot refill a file box, so every refused save would empty them. One
+  upload per request, from a page whose only job is pictures, has neither
+  problem. This is NOT the 14 September "add it later on the edit form"
+  deviation the owner rejected: no create or reprice form carries pictures and
+  the Pictures page serves all of them alike, before the document is printed.
+- **Every row of the extra-parts repeater carries a hidden `extra_image`** —
+  on all four PO forms, blank on a new row — because the reprice form re-reads
+  the extra lines whole and the lists are read by position: a picture must
+  ride on its own row or it lands on the wrong part. A posted id is kept only
+  if it is the minted shape AND the store holds the file.
+- **A purchase order's pictures follow the reprice route's two refusals** —
+  never on a Cancelled order, never on an approved one while the ladder is on
+  (`pictures_allowed()` = `can_edit_rates()` then `approval.can_modify()`). A
+  picture is part of what the vendor is sent. The PI and the draft PO have no
+  lifecycle to gate on.
+- **A line is addressed by position plus a fingerprint** (`li:3`, `xl:0`,
+  `it:2`, and a 16-character hash of its description), so a page opened before
+  a reprice reordered the extra parts refuses rather than putting the picture
+  on whichever part moved into that slot.
+- **The picture is snapshotted onto the PI at raise, not looked up at print.**
+  A clause's picture changed next month does not reach an invoice already sent;
+  an invoice raised before the clause had one takes it from its Pictures page.
+- **The quotation and the tax invoice print no picture** — the request named
+  the PI and the PO. The TI's lines carry the PI's `image` keys unread.
+
+Held by [tests/test_line_pictures.py](tests/test_line_pictures.py) (44), the
+escaping and entity sweeps (the three Pictures pages are in their URL map), and
+`tests/test_import_directions.py` (the leaf's whitelist and 14 rows).
 
 ### `/dc` — Delivery Challans · [challan.py](challan.py)
 
@@ -8793,6 +9232,12 @@ advances, never `max+1` over the survivors — `po_draft.next_ref()` shipped as
 `max+1` and was fixed, and this is the fixed implementation. The paper has
 travelled with a load of material.
 
+**Import from Excel (18 October 2026).** The create form carries a button to
+`/import/challan?boq=<id>`; `create_dc(imported=…)` arrives with only the
+matched lines ticked, at the sheet's dispatch quantity. The match is a
+proposal the operator confirms — §5 `/import` — and the save is `picked_lines()`
+on `line_id`, unchanged.
+
 #### Over-dispatch WARNS and never blocks
 
 An amber band on `/dc/view` names every line whose cumulative dispatched
@@ -8864,6 +9309,14 @@ both modules import.
 installation claim: what was found on site, against BOQ lines, going through an
 approval ladder, and — once approved — the ceiling `ra.overclaims()` checks every
 installation claim against. See §2j for the two guards and where each lives.
+
+**Import grid from Excel (18 October 2026)** — `/measurement/create` carries a
+button to `/import/measurement?boq=<id>`, and `create_ms(imported=…)` renders
+the form with the site's own sheet in the joint grid (`data["_grid"]`); the
+BOQ lines measured are still ticked on the form. §5 `/import`. ⚠ **A refused
+save now keeps the grid that was typed** — it re-rendered from the seventeen
+seeded rows (or, on edit, the stored ones) until this pass, so every location
+typed in was lost to an unrelated refusal: §7 gap 54, `_posted_grid()`.
 
 **The edit route re-picks the LINES, which is the opposite of `/dc/edit`.** A
 challan is signed for on arrival and its lines are what left the yard, so moving
@@ -9058,6 +9511,14 @@ and still destroys on GET — so this route ships its own hand-written GET test.
 no overtime, no salary calculation, and no link to `charge.py`, to projects or
 to a P&L. `employee.py ↔ charge.py` is forbidden **in both directions** at AST
 level, because that edge is the first step of **C5**.
+
+**Import many from Excel (18 October 2026).** `/employee/new` carries a button
+to `/import/employee`; each row goes through `_validate()` exactly as the form
+posts it and is written by `create_record()`, lifted out of `new_employee()`
+verbatim — so an imported person carries no `rate_model` key, which
+`tests/test_day_rate_pin.py` sweeps for. The rate is a **DAY rate**; a site is
+matched to the address book by its label **exactly** and never guessed; a code
+repeated inside the sheet is refused on the second row. §5 `/import`.
 
 Held by [tests/test_employee.py](tests/test_employee.py).
 
@@ -9450,6 +9911,15 @@ confirmation page because deletion is irreversible, and this is reversible in
 one click from the same page, so a confirmation step would be ceremony rather
 than a guard.
 
+**Import many from Excel (18 October 2026).** `/address/add` carries a button
+to `/import/address`; each row goes through `_validate()` and
+`_gst_status_error()` exactly as the form's POST does — so a NEW GSTIN must pass
+its check character — and is written by `create_record()`, lifted out of
+`add_address()` verbatim (the same `_apply_gst_fields()` stamp). A row whose
+label is already in the book is refused, and so is one that repeats an earlier
+row's. Rows that do not say their type take the type chosen on the preview.
+§5 `/import`.
+
 Indian postal format, rendered top-to-bottom by `format_address_lines()`:
 contact/company → line1 (building) → line2 (street) → landmark →
 `City - PIN` → `State, India`.
@@ -9774,8 +10244,60 @@ The dashboard's footer nudge is keyed on `COMPANY_ADDR/PHONE/EMAIL` together
 (`_footer_contact()`), and the nav's amber dot on **all 15** settings fields
 (`_nav()`). Both link to `/settings` and clear themselves.
 
-`COMPANY_TAGLINE` ("Fire Protection Systems & Services") is an **assumption**
-drawn from the trading name — confirm the client's actual letterhead wording.
+~~`COMPANY_TAGLINE` ("Fire Protection Systems & Services") is an **assumption**
+drawn from the trading name — confirm the client's actual letterhead wording.~~
+✅ **Answered 21 October 2026 — "Fire Protection and Safety Engineers"**, the
+client's own wording: it is on the banner Manas sent, and in cell A2 of the
+client's own `client_docs/Kalyan_Site.xlsx` and `Skyline.xlsx`. The default
+changed; a tagline somebody saved at `/settings` is untouched, because
+`edit_settings()` stores only what differs from the default — and a database
+that never saved one reads the new default with no write at all.
+
+### The letterhead banner — `letterhead_top()` (21 October 2026)
+
+Every printed letterhead opens with **one picture**, the client's own banner:
+the SF roundel at the left, **SAMRUDDHI FIRE** in red Algerian and the tagline
+under it. `branding.letterhead_top()` draws it and **all three places that
+draw a letterhead call it** — `docsheet.letterhead()` (the nine documents on
+the shared sheet), `boq._document_html()` and `quotation.view_quotation()`
+(§5 `/quotation`, the fifth narrow unfreeze). It lives here, not in
+`docsheet.py`, because `quotation.py` cannot import that leaf. The legal name,
+the address and the contact line stay **text** under it: each is a
+`/settings` field, and the GSTIN in that line is Rule 46's.
+
+- **Why a picture.** Algerian is the font the client's own workbooks set the
+  name in, and it ships with Microsoft Office — no phone and no browser has it.
+  A picture is also the only way to carry the roundel and the lettering as one
+  piece of artwork. §5's *one typeface* rule governs the document's
+  **text**; the banner is artwork, as the roundel always was.
+- **Why rebuilt, not the screenshot.** What Manas sent was a screenshot of an
+  Excel sheet: it carried the sheet's gridlines — one ran full width between
+  the name and the tagline and would have printed on every page — at ~160 dpi.
+  `assets/build_banner.py` redraws it from the same three ingredients (the
+  Algerian name in the workbooks' own `FFFF0000`, the tagline in Arial, the
+  1024 px roundel `build_assets.py` already makes) and crops it to its ink.
+  The PNG is committed; the script needs the Windows fonts and runs only when
+  the banner has to change.
+- **⚠ 130 mm wide is a page-count decision, not a taste.** Drawn across the
+  full 190 mm band it stood 26 mm tall, and the golden quotation — one page
+  before — printed a second page carrying one line and a repeated letterhead.
+  At 130 mm it is 18.5 mm tall against the ~15 mm of the text row it replaced,
+  and **all eleven printed documents print on exactly the pages they did
+  before**, on A4 and on phone-sized paper (headless Chrome, `@page{size:auto}`
+  for the phone, the house method). Centred; a landscape sheet gets the same
+  banner, not a wider one. The styling is on the `<img>`, `logo_img()`'s way,
+  because the letterhead's rules live in the frozen `VIEW_DOC_STYLES`.
+- **If the PNG is missing** the text letterhead it replaced is drawn instead —
+  a document with no name on it is worse than one that looks as it used to.
+- **The tagline is in the picture AND in the foot strip's text.**
+  `LETTERHEAD_ALT` says what the banner says, and
+  `tests/test_print_golden.py::test_the_banner_says_what_the_foot_strip_says`
+  fails if the default tagline and the banner disagree. Rebuild the banner and
+  the tagline changes with it, in the same commit.
+- **Weight.** 27 KB, inlined once per letterhead — the 26 KB roundel it
+  replaced was too, so a page grew by ~1 KB per copy.
+  `test_the_banner_is_the_committed_artwork_and_stays_light` holds it under
+  40 KB; a phone photo dropped in its place would add megabytes to every copy.
 
 ### Chart palette — `CHART_*` (§2b)
 
@@ -9798,7 +10320,9 @@ adjacent pair ΔE 20.3 under protanopia) and 3:1 contrast on the light surface.
 **If you change a hex here, re-run the validator** — don't eyeball it.
 
 Artwork is inlined via `_data_uri()`. `LOGO_URI` (64px, nav) and `LOGO_DOC_URI`
-(256px, letterhead) are separate on purpose; the favicon is a 32px PNG rather
+(256px, ~~letterhead~~ the text letterhead's roundel — **`letterhead_top()`'s
+fallback only** since 21 October 2026; `LETTERHEAD_URI` is the banner) are
+separate on purpose; the favicon is a 32px PNG rather
 than the `.ico`, because the `.ico` carries every size to 256 and would add
 ~68 KB of base64 to **every** page.
 
@@ -11887,6 +12411,78 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     empty — which `overclaims()` reads as "predates measurement" (§3, the
     joint-sheet note; the form makes such a sheet impossible to save, so only
     a hand-written or migrated record can be one).
+
+
+53. ✅ **`/quotation/create` echoed a refused POST's `selections_json` RAW into
+    a `<script>` block — CLOSED 18 October 2026, found by the Import from Excel
+    pass.** `prev_selections = form.get("selections_json", "[]")` went into
+    `<script type="application/json" id="prev-sel-data">` untouched, so a POST
+    carrying `</script>` closed the block and everything after it parsed as
+    HTML — §7.9e's sink, missed because it is a REFLECTED POST value and both
+    escaping sweeps plant STORED payloads. The import writes its picks through
+    this exact block, which is how it was found. It is parsed and re-serialised
+    through `P.json_for_script()`; what is not a JSON list is no selection,
+    which is what the POST above it already refused it as. A GET emits `[]`
+    either way, so the pinned product-mode page did not move.
+    `tests/test_doc_import.py::test_a_refused_quotation_post_cannot_break_out_of_its_script_block`,
+    mutation-checked. Inside `create_quotation()`, under the forty-first
+    block's narrow unfreeze.
+
+54. ✅ **A refused measurement save threw away the grid that was typed —
+    CLOSED 18 October 2026.** `_entry_form()` drew `data["_grid"]` when set
+    and the seventeen seeded rows (on edit, the stored ones) when not, and no
+    POST path ever set it — so a missing date, an over-measured line or a bad
+    cell sent the operator back to an empty grid with every location gone,
+    the one form in this app that broke the always-return-the-user's-input
+    contract (`address._validate()`'s). An imported grid would have been lost
+    the same way. `_validate()` now reads the posted grid back as typed
+    (`_posted_grid()`), and the save still goes through `parse_grid()`
+    unchanged. `test_a_refused_measurement_save_keeps_the_grid_that_was_typed`,
+    mutation-checked.
+
+55. 🟡 **What Import from Excel leaves to the operator — a RECORD, open by
+    design** (18 October 2026, CLIENT_CHANGES.md §0 forty-first block). None of
+    these is a defect; each is a place the importer refuses to guess, and the
+    operator meets it as a note or a dropdown:
+    - **A sheet's BOQ item number only proposes a line.** A number the schedule
+      carries twice (Sify A·17) waits on a dropdown; the save keys on
+      `line_id`. A sheet that numbers lines differently from the schedule
+      (`4.1` against `4.a`) matches nothing and offers the schedule.
+    - **`01/04/2026` written as text is not a date** — 1 April and 4 January
+      are both readings. A date cell, or `YYYY-MM-DD`, is.
+    - **A heading stacked over two rows is not combined**, for any kind but
+      the BOQ: the operator types the row that names the columns.
+    - **A register imports row by row, not all-or-nothing**: the failing rows
+      are listed and not created; the passing ones are.
+    - **The quotation import needs the spec-library picker** — while the
+      catalogue switch is emptied it draws the reason and no form.
+    - **An employee's site must be spelled exactly as its address-book label**;
+      an address's State must be the full name (any case), never `MH`.
+
+56. 🟡 **A line picture's FILE is never deleted — OPEN, by design** (21 October
+    2026, CLIENT_CHANGES.md §0 forty-second block). `lineimage.py` stores each
+    picture once, named by the sha256 of its bytes, so one file may sit behind
+    a spec clause, several PI lines and several PO lines at once, and nothing
+    indexes who uses it. Removing a picture from a line, deleting the document,
+    or replacing the clause's picture leaves the file under
+    `attachment.root()/line-images/`. At ~15–30 KB a picture that is the cost
+    chosen over a reference count that one missed path would make wrong — and
+    a wrong count deletes a picture a printed order still needs. A sweep is a
+    small tool (walk every collection's lines for `image`, delete what nothing
+    names) and has not been written. The backup zips these files with the
+    attachments.
+
+57. 🟡 **The Reprice button is drawn on an APPROVED purchase order, and the
+    route then refuses — OPEN, found 21 October 2026, not fixed.** `view_purchase()`
+    draws Reprice on `can_edit_rates()` alone (any status but Cancelled), while
+    `edit_purchase_rates()` also refuses on `approval.can_modify()`. On an order
+    approved before the ladder was switched off the button leads straight to
+    *"its figures are locked"* — the control the owner's 22 September rule says
+    must not be drawn (§2g). The pinned golden PO is exactly such an order and
+    carries the button, so the fix moves that golden's `head` block; it was left
+    for its own decision rather than folded into the pictures pass. The Pictures
+    button beside it asks `purchase.pictures_allowed()`, which carries both
+    refusals, and is not drawn there.
 
 
 ## 8. Stale docs — do not trust these two files

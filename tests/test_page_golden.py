@@ -364,8 +364,17 @@ PAGES = {
     #       ("f12eaac1c07efbaa", 74589,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"})
-    ("settings",        "/settings/"):                 ("a499293306ea5d30", 80230,
-        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "8cbae4b20e7083ef"}),
+    #
+    # ⚠ **RE-BASELINED 21 October 2026 — `main` ONLY, −4 bytes.** The tagline
+    #   default became the client's own wording (CLIENT_CHANGES.md §0, the
+    #   forty-third block): "Fire Protection Systems & Services" →
+    #   "Fire Protection and Safety Engineers". The Tagline box prints it twice
+    #   — as its value, since the pinned identity sets no tagline, and as the
+    #   example in its placeholder — and each is two bytes shorter, the old
+    #   one's `&` having printed as `&amp;`. Was
+    #       ("a499293306ea5d30", 80230, {..., "main": "8cbae4b20e7083ef"})
+    ("settings",        "/settings/"):                 ("41378c392e1ed06d", 80226,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "a646c95cfdfa507c"}),
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

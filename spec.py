@@ -57,6 +57,7 @@ from flask import Blueprint, redirect, request, url_for
 
 import branding as B
 import demo_data as DD
+import lineimage as LI   # the clause's picture — the leaf (21 Oct 2026)
 import pipeline as P
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -682,6 +683,14 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
 
     js = _VARIANT_JS
 
+    # Import from Excel (18 October 2026) — many clauses at once, on the ADD
+    # form only. Drawn unconditionally there: `docimport.upload_spec` carries
+    # `spec.create`, this form's own permission, and `tests/test_doc_import.py`
+    # holds the two equal.
+    import_btn = ("" if is_edit else
+                  f'\n      <a href="{url_for("docimport.upload_spec")}" '
+                  f'class="btn btn-ghost">&#128229; Import many from Excel</a>')
+
     return f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
@@ -693,7 +702,7 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
   {alert_html}
   <div class="page-top">
     <h1>{heading}</h1>
-    <div style="display:flex;gap:.7rem;">
+    <div style="display:flex;gap:.7rem;">{import_btn}
       <a href="{url_for('spec.list_specs')}" class="btn btn-ghost">&#8592; Library</a>
     </div>
   </div>
@@ -974,6 +983,16 @@ def view_spec(id: str):
     variants = s.get("variants") or []
     unsized  = len(variants) == 1 and not variants[0].get("label")
 
+    # The message a redirect brought here (21 October 2026). The add and edit
+    # routes have always redirected here with one and it was never shown; the
+    # clause's picture upload needs it, because its refusals arrive this way.
+    msg = request.args.get("msg")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if request.args.get("type", "success") == "success" else "&#10007;"
+        alert_html = (f'<div class="alert alert-{P.esc(request.args.get("type", "success"))}">'
+                      f'{icon} {P.esc(msg)}</div>')
+
     if unsized:
         v = variants[0]
         sup = v.get("default_supply_base_rate")
@@ -1022,7 +1041,7 @@ def view_spec(id: str):
           <a href="{url_for('spec.edit_spec', id=id)}" class="btn">&#9998;&nbsp;Edit</a>
         </div>
       </div>
-
+{alert_html}
       <div class="spec-head">
         <div class="sh-code">{P.esc(s.get('code'))}</div>
         <div class="sh-title">{P.esc(s.get('title'))}</div>
@@ -1057,10 +1076,98 @@ def view_spec(id: str):
         <div class="section-title">&#128207; Variants</div>
         {var_html}
       </div>
-
+{_picture_section(s, id)}
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · specification library</p></footer>
     </main></body></html>"""
     return _page(template)
+
+
+def _picture_section(s: dict, id: str) -> str:
+    """
+    The clause's picture — the LIBRARY DEFAULT a proforma line written from
+    this clause gets when the PI is raised (21 October 2026, `lineimage.py`).
+
+    One picture per clause, shared by every size: the variants are one part
+    at several diameters. The upload controls are drawn only for a role the
+    gate lets reach `spec.picture`; anybody who can read the clause sees the
+    picture itself.
+    """
+    import auth as _AUTH
+    iid = LI.image_of(s)
+    src = LI.src_of(iid)
+    if src:
+        thumb = f'<img src="{src}" alt="" style="max-width:160px;max-height:160px;object-fit:contain;display:block;"/>'
+    elif iid:
+        thumb = '<span class="unsized-note">The picture file is missing &mdash; upload it again.</span>'
+    else:
+        thumb = '<span class="unsized-note">No picture yet.</span>'
+    acts = ""
+    if _AUTH.can_reach("spec.picture"):
+        action = url_for("spec.picture", id=id)
+        acts = (f'<form method="POST" action="{action}" enctype="multipart/form-data" '
+                f'style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.7rem;">'
+                f'<input type="hidden" name="action" value="upload"/>'
+                f'<input type="file" name="picture" accept="{LI.ACCEPT}" required '
+                f'aria-label="Picture for this clause" style="max-width:240px;font-size:.8rem;"/>'
+                f'<button type="submit" class="btn btn-ghost">{"Replace" if iid else "Upload"}</button></form>')
+        if iid:
+            acts += (f'<form method="POST" action="{action}" style="margin-top:.5rem;">'
+                     f'<input type="hidden" name="action" value="remove"/>'
+                     f'<button type="submit" class="btn btn-ghost">Remove</button></form>')
+    return f"""
+      <div class="form-section">
+        <div class="section-title">&#128247; Picture</div>
+        {thumb}
+        {acts}
+        <p style="margin-top:.7rem;font-size:.78rem;color:var(--muted);">
+          A proforma invoice line written from this clause carries this picture
+          in its <b>Image</b> column, set when the invoice is raised &mdash; and
+          an invoice raised earlier can take it from its own Pictures page.
+          Changing it here does not reach an invoice already carrying a picture.
+          JPEG, PNG or WebP up to 5&nbsp;MB.
+        </p>
+      </div>
+"""
+
+
+@spec_bp.route("/picture/<id>", methods=["POST"])
+def picture(id: str):
+    """
+    Set or remove the clause's picture (21 October 2026). `spec.edit`.
+
+    **The picture only.** The clause, its codes and its variants are the edit
+    form's; this posts nothing else and `edit_spec()` posts no picture —
+    `s.update(data)` there leaves the `image` key exactly as it is, because
+    `_validate()` never produces one.
+    """
+    ensure_demo_specs()
+    s = STORE["specs"].get(id)
+    if not s:
+        return redirect(url_for("spec.list_specs", msg="Spec not found.", type="error"))
+    if request.form.get("action") == "remove":
+        if not LI.image_of(s):
+            return redirect(url_for("spec.view_spec", id=id,
+                                    msg="This clause has no picture to remove.", type="error"))
+        LI.clear_image(s)
+        return redirect(url_for("spec.view_spec", id=id,
+                                msg="Picture removed from the clause.", type="success"))
+    image_id, error = LI.save(request.files.get("picture"))
+    if error:
+        return redirect(url_for("spec.view_spec", id=id, msg=error, type="error"))
+    LI.set_image(s, image_id)
+    return redirect(url_for("spec.view_spec", id=id,
+                            msg="Picture saved on the clause.", type="success"))
+
+
+def create_record(data: dict) -> str:
+    """
+    Write ONE new spec from `_validate()`'s data and return its id — the add
+    form's write, lifted out of `add_spec()` on 18 October 2026 so Import from
+    Excel writes a clause exactly as the form does.
+    """
+    sid = str(uuid.uuid4())
+    STORE["specs"][sid] = {"id": sid, **data}
+    return sid
 
 
 @spec_bp.route("/add", methods=["GET", "POST"])
@@ -1072,8 +1179,7 @@ def add_spec():
         if error:
             return _render_form(data, error, "add")
 
-        sid = str(uuid.uuid4())
-        STORE["specs"][sid] = {"id": sid, **data}
+        sid = create_record(data)
         return redirect(url_for("spec.view_spec", id=sid,
                                 msg=f"Spec {data['code']} added.", type="success"))
 

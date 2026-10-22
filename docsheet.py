@@ -279,6 +279,11 @@ def letterhead(show_web: bool = True, show_gstin: bool = True,
     """
     The company identity band, as the repeating `<thead>` of the page frame.
 
+    It opens with the client's own banner — `B.letterhead_top()`, from 21
+    October 2026, which the BOQ and the quotation draw too — and keeps the
+    address and contact lines below it as text, because every one of them is a
+    `/settings` field and the GSTIN is Rule 46's.
+
     `.page-frame` is an outer `<table>` and this is its header group, because
     `display:table-header-group` is the only mechanism a browser gives us to
     repeat a band on every printed page — `position:fixed` does not survive
@@ -310,14 +315,7 @@ def letterhead(show_web: bool = True, show_gstin: bool = True,
       gap 18. Drop the flag and the branch the day somebody rules on it.
     """
     return f"""  <thead><tr><td>
-    <div class="lh">
-      <div>
-        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
-        {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
-      </div>
-      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-    </div>
+    {B.letterhead_top()}
     <div class="lh-rule"></div>
     <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
     <div class="lh-contact">
@@ -691,7 +689,7 @@ def items_table(columns, rows_html: str) -> str:
 # formatted; nothing here adds, rounds or decides a tax head.
 
 def sum_row(label: str, amount: str, indent: int = 8,
-            blanks: tuple = SUM_BLANKS) -> str:
+            blanks: tuple = SUM_BLANKS, span: int = 4) -> str:
     """
     One right-hand summary row — a subtotal, a tax line, a deduction.
 
@@ -700,28 +698,34 @@ def sum_row(label: str, amount: str, indent: int = 8,
     the buy side is one more blank, not a wider label. The default reproduces
     the sell-side row byte-for-byte, which is what keeps the three pinned
     documents in `tests/test_print_golden.py` where they are.
+
+    `span` is the label's `colspan` — S.No / Part No / Description / HSN, four
+    on both column sets. ⚠ **It is 5 only on a sheet that carries the Image
+    column** (21 October 2026, `lineimage.py`), which sits inside that run; the
+    default is the old literal, so no other sheet moves by a byte.
     """
     pad = " " * indent
     cells = "".join(f"<td class=\"{c}\"></td>" for c in blanks)
     return (f"\n{pad}<tr class=\"row-sum\">\n"
-            f"{pad}  <td colspan=\"4\" class=\"sum-lbl\">{label}</td>\n"
+            f"{pad}  <td colspan=\"{span}\" class=\"sum-lbl\">{label}</td>\n"
             f"{pad}  {cells}\n"
             f"{pad}  <td class=\"c-total\">{amount}</td>\n"
             f"{pad}</tr>")
 
 
 def total_row(label: str, qty: str, amount: str, indent: int = 4,
-              blanks: tuple = TOTAL_BLANKS) -> str:
+              blanks: tuple = TOTAL_BLANKS, span: int = 4) -> str:
     """
     The closing row, carrying the document's total quantity and value.
 
-    `blanks` follows the quantity cell, for the same reason `sum_row()`'s does.
-    The default reproduces the sell-side row byte-for-byte.
+    `blanks` follows the quantity cell, for the same reason `sum_row()`'s does,
+    and `span` is `sum_row()`'s. The defaults reproduce the sell-side row
+    byte-for-byte.
     """
     pad = " " * indent
     cells = "".join(f"<td class=\"{c}\"></td>" for c in blanks)
     return (f"\n{pad}<tr class=\"row-total row-sum\">\n"
-            f"{pad}  <td colspan=\"4\" class=\"sum-lbl\">{label}</td>\n"
+            f"{pad}  <td colspan=\"{span}\" class=\"sum-lbl\">{label}</td>\n"
             f"{pad}  <td class=\"c-qty\">{qty}</td>\n"
             f"{pad}  {cells}\n"
             f"{pad}  <td class=\"c-total\">{amount}</td>\n"

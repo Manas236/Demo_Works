@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 84 permissions · 139 classified endpoints.**
+**7 roles · 84 permissions · 170 classified endpoints.**
 
 ---
 
@@ -346,13 +346,13 @@ Read off the live route registry, so it cannot drift from what the application a
 | `boq.delete` | `boq.delete_boq` |
 | `boq.print` | `boq.print_boq` |
 | `measurement.view` | `measurement.list_ms`, `measurement.view_ms` |
-| `measurement.create` | `measurement.create_ms` |
+| `measurement.create` | `docimport.apply_measurement`, `docimport.preview_measurement`, `docimport.upload_measurement`, `measurement.create_ms` |
 | `measurement.edit` | `measurement.edit_ms` |
 | `measurement.delete` | `measurement.delete_ms` |
 | `measurement.print` | `measurement.print_ms` |
 | `measurement.approve` | `approval.approve_measurement`, `approval.reject_measurement` |
 | `ra.view` | `merged_ra.list_merged`, `merged_ra.view_merged`, `ra.list_ras`, `ra.view_ra` |
-| `ra.create` | `merged_ra.create_merged`, `ra.create_ra` |
+| `ra.create` | `docimport.apply_ra`, `docimport.preview_ra`, `docimport.upload_ra`, `merged_ra.create_merged`, `ra.create_ra` |
 | `ra.edit` | `ra.edit_ra` |
 | `ra.delete` | `ra.delete_ra` |
 | `ra.issue` | `ra.issue_ra` |
@@ -366,28 +366,28 @@ Read off the live route registry, so it cannot drift from what the application a
 | `client.view` | `client.list_clients` |
 | `client.edit` | `client.edit_party` |
 | `quotation.view` | `quotation.list_quotations`, `quotation.view_quotation` |
-| `quotation.create` | `quotation.create_quotation` |
+| `quotation.create` | `docimport.apply_quotation`, `docimport.preview_quotation`, `docimport.upload_quotation`, `quotation.create_quotation` |
 | `quotation.edit` | `quotation.update_quotation` |
 | `quotation.delete` | `quotation.delete_quotation` |
 | `proforma.view` | `proforma.list_proformas`, `proforma.view_proforma` |
-| `proforma.create` | `proforma.create_proforma` |
+| `proforma.create` | `proforma.create_proforma`, `proforma.pictures` |
 | `proforma.delete` | `proforma.delete_proforma` |
 | `invoice.view` | `invoice.list_invoices`, `invoice.view_invoice` |
 | `invoice.create` | `invoice.create_invoice` |
 | `invoice.cancel` | `invoice.cancel_invoice` |
 | `invoice.approve` | `approval.approve_invoice`, `approval.reject_invoice` |
 | `purchase.view` | `purchase.list_purchases`, `purchase.view_purchase` |
-| `purchase.create` | `purchase.create_purchase`, `purchase.edit_purchase_rates`, `purchase.from_boq`, `purchase.from_draft` |
+| `purchase.create` | `docimport.apply_purchase`, `docimport.preview_purchase`, `docimport.upload_purchase`, `purchase.create_purchase`, `purchase.edit_purchase_rates`, `purchase.from_boq`, `purchase.from_draft`, `purchase.pictures` |
 | `purchase.edit` | `purchase.update_purchase` |
 | `purchase.delete` | `purchase.delete_purchase` |
 | `purchase.approve` | `approval.approve_purchase`, `approval.reject_purchase` |
 | `po.view` | `po_draft.list_pos`, `po_draft.view_po` |
-| `po.create` | `po_draft.create_po` |
-| `po.edit` | `po_draft.edit_po` |
+| `po.create` | `docimport.apply_dpo`, `docimport.preview_dpo`, `docimport.upload_dpo`, `po_draft.create_po` |
+| `po.edit` | `po_draft.edit_po`, `po_draft.pictures` |
 | `po.delete` | `po_draft.delete_po` |
 | `po.print` | `po_draft.print_po` |
 | `dc.view` | `challan.list_dcs`, `challan.view_dc` |
-| `dc.create` | `challan.create_dc` |
+| `dc.create` | `challan.create_dc`, `docimport.apply_challan`, `docimport.preview_challan`, `docimport.upload_challan` |
 | `dc.edit` | `challan.edit_dc` |
 | `dc.delete` | `challan.delete_dc` |
 | `dc.print` | `challan.print_dc` |
@@ -397,7 +397,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `charge.delete` | `attachment.delete_charge`, `charge.delete_charge` |
 | `charge.approve` | `approval.approve_charge`, `approval.reject_charge` |
 | `employee.view` | `employee.list_employees`, `employee.view_employee` |
-| `employee.create` | `employee.new_employee` |
+| `employee.create` | `docimport.apply_employee`, `docimport.preview_employee`, `docimport.upload_employee`, `employee.new_employee` |
 | `employee.edit` | `employee.edit_employee` |
 | `employee.delete` | `employee.delete_employee` |
 | `attendance.view` | `attendance.list_attendance` |
@@ -409,14 +409,14 @@ Read off the live route registry, so it cannot drift from what the application a
 | `project.edit` | `project.edit_project` |
 | `project.delete` | `project.delete_project` |
 | `spec.view` | `spec.list_specs`, `spec.view_spec` |
-| `spec.create` | `spec.add_spec` |
-| `spec.edit` | `spec.edit_spec` |
+| `spec.create` | `docimport.apply_spec`, `docimport.preview_spec`, `docimport.upload_spec`, `spec.add_spec` |
+| `spec.edit` | `spec.edit_spec`, `spec.picture` |
 | `spec.delete` | `spec.delete_spec` |
 | `product.view` | `product.list_products`, `product.view_product` |
 | `product.create` | `product.add_product` |
 | `product.delete` | `product.delete_product` |
 | `address.view` | `address.list_addresses`, `address.view_address` |
-| `address.create` | `address.add_address`, `address.gst_captcha_add`, `address.gst_lookup_add` |
+| `address.create` | `address.add_address`, `address.gst_captcha_add`, `address.gst_lookup_add`, `docimport.apply_address`, `docimport.preview_address`, `docimport.upload_address` |
 | `address.edit` | `address.edit_address`, `address.gst_captcha_edit`, `address.gst_lookup_edit` |
 | `address.delete` | `address.archive_address`, `address.delete_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |

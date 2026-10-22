@@ -9,6 +9,7 @@ Routes
   GET       /proforma/              — register of issued proforma invoices
   GET,POST  /proforma/from/<qid>    — convert a quotation into a proforma invoice
   GET       /proforma/view/<id>     — the printed proforma invoice document
+  GET,POST  /proforma/pictures/<id> — a picture beside each line (21 Oct 2026)
 
 Why this is its own module and not a render mode of the quotation
 -----------------------------------------------------------------
@@ -42,6 +43,7 @@ from flask import Blueprint, request, redirect, url_for
 
 import branding as B
 import cascade
+import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docsheet as DS
@@ -720,6 +722,13 @@ def create_proforma(qid: str):
                 "company_branch": q.get("company_branch", ""),
                 "auth_signatory": q.get("auth_signatory", ""),
             }
+            # ── Pictures: the library's, by default (21 October 2026) ──────
+            # A line written from a spec-library clause carries the clause's
+            # code as its part_no; where that clause has a picture, the line
+            # gets it — onto the PI's own COPY of the line, never the
+            # quotation's. Only a blank is filled. Changing or removing one
+            # is the PI's Pictures page; the figures above are untouched.
+            LI.fill_from_library(pi["line_items"])
             STORE["proformas"][pid] = pi
 
             # The PI is a real event in the deal's life, so it belongs on the
@@ -775,11 +784,24 @@ def create_proforma(qid: str):
     v_notes    = _v("notes")
 
     # ── Frozen line-item preview ───────────────────────────────────────────
+    # The picture each line will carry, drawn as a first column ONLY when at
+    # least one line will carry one — the library's for its code, the rule
+    # `create_proforma()` applies on POST (21 October 2026).
+    pic_of = [LI.image_of(r) or LI.library_image_for(r.get("part_no"))
+              for r in q.get("line_items", [])]
+    with_pics = any(LI.src_of(i) for i in pic_of)
     rows_html = ""
-    for r in q.get("line_items", []):
+    for r, pic in zip(q.get("line_items", []), pic_of):
         comp = " fz-comp" if r.get("depth", 0) == 1 else ""
+        pic_cell = ""
+        if with_pics:
+            src = LI.src_of(pic)
+            pic_cell = ('<td style="width:56px;">'
+                        + (f'<img src="{src}" alt="" style="max-width:48px;'
+                           f'max-height:48px;object-fit:contain;display:block;"/>'
+                           if src else "") + '</td>')
         rows_html += f"""
-        <tr class="{comp.strip()}">
+        <tr class="{comp.strip()}">{pic_cell}
           <td>{P.esc(r.get('name'))}</td>
           <td class="td-muted">{P.esc(r.get('part_no'))}</td>
           <td class="fz-num">{_fmt_qty(float(r.get('qty') or 0))} {P.esc(r.get('unit'))}</td>
@@ -788,25 +810,34 @@ def create_proforma(qid: str):
         </tr>"""
 
     tax_total = float((q.get("tax_info") or {}).get("total") or 0.0)
+    pic_th = "<th>Picture</th>" if with_pics else ""
+    span = 5 if with_pics else 4
+    pic_hint = ""
+    if with_pics:
+        n_pics = sum(1 for i in pic_of if LI.src_of(i))
+        pic_hint = (f" {n_pics} line{'' if n_pics == 1 else 's'} will carry the "
+                    f"specification library&rsquo;s picture. Change or remove any "
+                    f"picture on the invoice&rsquo;s <b>Pictures</b> page once it "
+                    f"is raised.")
     frozen_html = f"""
     <div class="frozen-wrap"><table>
-      <thead><tr>
+      <thead><tr>{pic_th}
         <th>Description</th><th>Part No</th>
         <th class="fz-num">Qty</th><th class="fz-num">Rate</th><th class="fz-num">Amount</th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
       <tfoot>
-        <tr><td colspan="4" class="fz-num">Subtotal</td>
+        <tr><td colspan="{span}" class="fz-num">Subtotal</td>
             <td class="fz-num">{_inr(q.get('subtotal') or grand)}</td></tr>
-        <tr><td colspan="4" class="fz-num">Tax</td>
+        <tr><td colspan="{span}" class="fz-num">Tax</td>
             <td class="fz-num">{_inr(tax_total)}</td></tr>
-        <tr><td colspan="4" class="fz-num">Invoice Value</td>
+        <tr><td colspan="{span}" class="fz-num">Invoice Value</td>
             <td class="fz-num">{_inr(grand)}</td></tr>
       </tfoot>
     </table></div>
     <p class="frozen-hint">
       These lines are copied onto the invoice exactly as quoted and are frozen at
-      issue. To invoice different quantities or prices, raise a new quotation first.
+      issue. To invoice different quantities or prices, raise a new quotation first.{pic_hint}
     </p>"""
 
     # ── The running position ───────────────────────────────────────────────
@@ -1017,6 +1048,12 @@ def view_proforma(id: str):
                                 msg="Proforma invoice not found.", type="error"))
 
     # ── Line-item rows — identical treatment to the quotation document ─────
+    #
+    # ⚠ **The Image column (21 October 2026) is drawn only when a line carries
+    #   a picture that resolves** — `LI.sheet_has_images()`. A PI with none,
+    #   which is every PI raised before pictures existed, renders byte-for-byte
+    #   what it always rendered; `tests/test_print_golden.py` holds that.
+    pics = LI.sheet_has_images(pi.get("line_items", []))
     sno, total_qty, table_rows = 0, 0.0, ""
     for row in pi.get("line_items", []):
         sno += 1
@@ -1025,11 +1062,12 @@ def view_proforma(id: str):
         indent  = "indent-1" if depth == 1 else ("indent-2" if depth >= 2 else "")
         if depth == 0:
             total_qty += float(row.get("qty") or 0)
+        img_td = f"\n          {LI.cell(row)}" if pics else ""
 
         table_rows += f"""
         <tr class="{row_cls}">
           <td class="c-sno">{sno}</td>
-          <td class="c-partno">{P.esc(row.get('part_no'))}</td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td class="c-desc {indent}">{P.esc(row.get('name'))}</td>
           <td class="c-hsn">{P.esc(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
@@ -1044,10 +1082,12 @@ def view_proforma(id: str):
     grand    = float(pi.get("grand_total") or 0.0)
     has_tax  = tax_type != "exempt" and float(tax_info.get("total") or 0) > 0
 
+    # The label spans S.No / Part No / (Image) / Description / HSN.
+    span = 5 if pics else 4
     if has_tax:
         table_rows += f"""
         <tr class="row-sum">
-          <td colspan="4" class="sum-lbl">Subtotal</td>
+          <td colspan="{span}" class="sum-lbl">Subtotal</td>
           <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
           <td class="c-total">{_inr(subtotal)}</td>
         </tr>"""
@@ -1062,14 +1102,14 @@ def view_proforma(id: str):
             rate_label = f" @ {r:g}%" if r else ""
             table_rows += f"""
             <tr class="row-sum">
-              <td colspan="4" class="sum-lbl">{tname}{rate_label}</td>
+              <td colspan="{span}" class="sum-lbl">{tname}{rate_label}</td>
               <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
               <td class="c-total">{_inr(tamt)}</td>
             </tr>"""
 
     table_rows += f"""
     <tr class="row-total row-sum">
-      <td colspan="4" class="sum-lbl">{"Invoice Value" if has_tax else "Total"}</td>
+      <td colspan="{span}" class="sum-lbl">{"Invoice Value" if has_tax else "Total"}</td>
       <td class="c-qty">{_fmt_qty(total_qty)}</td>
       <td class="c-unit"></td><td class="c-price"></td>
       <td class="c-total">{_inr(grand)}</td>
@@ -1248,13 +1288,21 @@ def view_proforma(id: str):
                   f'style="color:#b91c1c;border-color:#fecaca;">'
                   f'&#128465;&nbsp;Delete</a>')
 
+    # ── Pictures (21 October 2026) — drawn for whoever the gate lets through,
+    # and only them. The newline lives inside the string.
+    pics_btn = ""
+    if _AUTH.can_reach("proforma.pictures"):
+        pics_btn = (f'\n    <a href="{url_for("proforma.pictures", id=id)}" '
+                    f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
+    img_th = f'\n          <th class="{LI.COLUMN[0]}">{LI.COLUMN[1]}</th>' if pics else ""
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(pi.get('ref')) + " Proforma Invoice")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.SHEET_CSS if pics else ""}
 </head>
 <body>
 <main>
@@ -1266,7 +1314,7 @@ def view_proforma(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {back_q}
     <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
-    {raise_ti}{del_pi}
+    {raise_ti}{del_pi}{pics_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -1297,7 +1345,7 @@ def view_proforma(id: str):
       <table class="q-table">
         <thead><tr>
           <th class="c-sno">S.No</th>
-          <th class="c-partno">Part No</th>
+          <th class="c-partno">Part No</th>{img_th}
           <th class="c-desc">Description of Goods</th>
           <th class="c-hsn">HSN/SAC</th>
           <th class="c-qty">Qty</th>
@@ -1345,6 +1393,86 @@ def view_proforma(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+def _picture_entries(pi: dict) -> list:
+    """Every line of the PI, numbered as the printed sheet numbers them."""
+    return [LI.entry(f"li:{n}", n + 1, r.get("part_no"), r.get("name"), r)
+            for n, r in enumerate(pi.get("line_items", []))]
+
+
+@proforma_bp.route("/pictures/<id>", methods=["GET", "POST"])
+def pictures(id: str):
+    """
+    The picture beside each line of a proforma invoice (21 October 2026).
+
+    **The figures are not reachable from here.** A picture is the only thing
+    this page writes, onto the PI's own copy of the line — the quotation's line
+    is a different dict (`create_proforma()` copied it). One upload per request
+    (`lineimage.py` says why), then back to this page with a message.
+
+    `proforma.create` — choosing what the invoice shows is part of raising it.
+    The PI has no lifecycle to gate on: it is never cancelled, and a tax
+    invoice already raised from it keeps its own copy of the lines.
+    """
+    pi = STORE["proformas"].get(id)
+    if not pi:
+        return redirect(url_for("proforma.list_proformas",
+                                msg="Proforma invoice not found.", type="error"))
+    lines = pi.get("line_items", [])
+    here = url_for("proforma.pictures", id=id)
+
+    if request.method == "POST":
+        if request.form.get("action") == "library":
+            n = LI.fill_from_library(lines)
+            msg = (f"The library's picture was put on {n} line{'' if n == 1 else 's'}."
+                   if n else "No line without a picture has one in the library.")
+            return redirect(url_for("proforma.pictures", id=id, msg=msg,
+                                    type="success"))
+        msg, err = LI.apply_post(request.form, request.files, _picture_entries(pi))
+        return redirect(url_for("proforma.pictures", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    # The library button is drawn only when it would fill something.
+    lib_n = sum(1 for r in lines
+                if not LI.image_of(r) and LI.library_image_for(r.get("part_no")))
+    lib_html = ""
+    if lib_n:
+        lib_html = (f'<form method="POST" action="{here}" class="pic-lib">'
+                    f'<input type="hidden" name="action" value="library"/>'
+                    f'<button type="submit" class="btn">Use the library&rsquo;s picture '
+                    f'on {lib_n} line{"" if lib_n == 1 else "s"} with none</button></form>')
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(str(pi.get('ref')) + " Pictures")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.PAGE_CSS}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Pictures &middot; <span>{P.esc(pi.get('ref'))}</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{url_for('proforma.view_proforma', id=id)}" class="btn btn-ghost">&#8592; Back to the invoice</a>
+        </div>
+      </div>
+
+      {_alert(request.args.get("msg"), request.args.get("type", "success"))}
+
+      <div class="form-section">
+        <div class="section-title">A picture beside each line</div>
+        <p class="frozen-hint" style="margin:0 0 1rem;">
+          A picture prints in an <b>Image</b> column beside the description. A
+          line with none prints an empty cell; an invoice with no picture at all
+          prints no Image column. JPEG, PNG or WebP up to 5&nbsp;MB, one line at
+          a time &mdash; it is shrunk to {LI.MAX_SIDE}&nbsp;px and stored once.
+          Nothing else on the invoice changes here.
+        </p>
+        {lib_html}
+        {LI.rows_html(_picture_entries(pi), here, editable=True)}
+      </div>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
+    </main></body></html>""")
 
 
 @proforma_bp.route("/delete/<id>", methods=["GET", "POST"])

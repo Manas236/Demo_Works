@@ -666,10 +666,12 @@ def test_the_printed_sheet_reuses_the_shared_document_furniture(client, seeded):
     # The letterhead is `docsheet.letterhead()`'s and not a second one drawn
     # here — the standing rule that a new document derived from an existing
     # chain reuses the printed layout that already exists.
-    assert '<div class="lh">' in h and '<div class="lh-addr">' in h
+    # Its band opens with the client's banner since 21 October 2026, where it
+    # used to open with the text `<div class="lh">`.
+    assert '<div class="lh-banner">' in h and '<div class="lh-addr">' in h
     # ...and it is inside the page frame's own <thead>, which is what makes it
     # repeat on page two.
-    assert h.index("<thead>") < h.index('<div class="lh">')
+    assert h.index("<thead>") < h.index('<div class="lh-banner">')
 
 
 def test_no_money_reaches_the_printed_sheet(client, seeded):

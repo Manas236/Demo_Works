@@ -265,6 +265,10 @@ def _fresh_store():
     # row left behind reads to `test_hardening.py` exactly like a seeder.
     STORE.setdefault("boq_imports", {}).clear()
     STORE.setdefault("import_layouts", {}).clear()
+    # Import from Excel on every other document (18 Oct 2026) — the same two,
+    # for the same reasons, one importer along.
+    STORE.setdefault("doc_imports", {}).clear()
+    STORE.setdefault("doc_import_layouts", {}).clear()
     # GSTIN auto-fill (29 Sep 2026). A cached lookup planted by one test would
     # fill the next test's form with no CAPTCHA and gate its save on a status
     # it never asked about. The RAM-only portal sessions and the per-user rate

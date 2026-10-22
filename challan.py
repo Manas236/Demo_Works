@@ -525,7 +525,7 @@ def _consignee_block_form(data: dict) -> str:
 
 
 def _entry_form(boq: dict, data: dict, error: str = "",
-                dc: dict = None) -> str:
+                dc: dict = None, banner_html: str = "") -> str:
     """
     The create form: the line picker, the consignee, and the dispatch fields.
 
@@ -533,9 +533,20 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     are what left the yard, and a challan is signed for on arrival — moving the
     lines under a signed receipt is how a dispute starts. `/po/edit` makes the
     same call, and `purchase.update_purchase()` made it first.
+
+    `banner_html` (18 October 2026) is Import from Excel's note — what was read
+    and which sheet rows matched no line. It is the importer's own escaped
+    markup, spliced under the alert; "" emits the form it always emitted.
     """
     boq_ref = P.esc(boq.get("ref") or "")
     editing = dc is not None
+    # Import from Excel (18 October 2026). Drawn on the create form only, and
+    # unconditionally: `docimport.upload_challan` carries `dc.create`, the
+    # very permission this form is classified under, so whoever sees the form
+    # can follow the button — `tests/test_doc_import.py` holds the two equal.
+    import_btn = ("" if editing else
+                  f'\n      <a href="{url_for("docimport.upload_challan", boq=boq.get("id"))}" '
+                  f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     action = (url_for("challan.edit_dc", id=dc["id"]) if editing
               else url_for("challan.create_dc", boq=boq.get("id")))
 
@@ -573,13 +584,13 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 <main>
   <div class="page-top">
     <h1>{"Edit Delivery" if editing else "Delivery"} <span>Challan</span></h1>
-    <div style="display:flex;gap:.7rem;">
+    <div style="display:flex;gap:.7rem;">{import_btn}
       <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">&#8592; {boq_ref}</a>
     </div>
   </div>
 
-  {_alert(error)}
+  {_alert(error)}{banner_html}
 
   <div class="set-intro" style="background:var(--surface);border:1px solid var(--border);
        border-left:3px solid var(--brand);border-radius:var(--radius);
@@ -985,8 +996,15 @@ def list_dcs():
 
 
 @challan_bp.route("/create", methods=["GET", "POST"])
-def create_dc():
-    boq_id = request.args.get("boq") or ""
+def create_dc(imported: dict = None):
+    """
+    `imported` (18 October 2026) is the one seam Import from Excel renders this
+    form through — `docimport.py` calls it on a GET with the schedule, the
+    lines the sheet matched and their quantities. Flask never passes it, and
+    the POST path never reads it: the save is the ordinary one, matched on
+    `line_id` by `picked_lines()` exactly as a ticked line is.
+    """
+    boq_id = (imported or {}).get("boq_id") or request.args.get("boq") or ""
     boq = (STORE.get("boqs") or {}).get(boq_id)
     if not boq:
         return redirect(url_for("boq.list_boqs",
@@ -1003,14 +1021,22 @@ def create_dc():
                                 type="error"))
 
     if request.method == "GET":
-        return _entry_form(boq, {
+        data = {
             "date": _date.today().isoformat(),
             "dispatch_mode": DEFAULT_DISPATCH_MODE,
             # DC54 consigns to Samruddhi themselves. `COMPANY_LEGAL` is the
             # name `/settings` can edit; `COMPANY_NAME` is baked into the logo
             # artwork and is the fallback the rest of this app uses.
             "consignee_name": B.COMPANY_LEGAL or B.COMPANY_NAME,
-        })
+        }
+        if imported:
+            # Only the lines the sheet matched arrive ticked, at the sheet's
+            # quantity; everything else on the schedule is unticked.
+            data["_chosen"] = set(imported.get("chosen") or ())
+            data["_qty"] = dict(imported.get("qty") or {})
+            return _entry_form(boq, data,
+                               banner_html=imported.get("banner_html") or "")
+        return _entry_form(boq, data)
 
     data, error = _validate(request.form)
     items, line_error = ([], "") if error else picked_lines(data["dc_json"], boq)

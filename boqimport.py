@@ -591,8 +591,81 @@ IMPORT_STYLES = """
 .imp-linkish{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-decoration:underline;}
 .imp-mode .form-group{max-width:14rem;margin-top:.7rem;}
 .imp-warn{color:#b45309;font-weight:600;}
+.imp-legend{border-left:3px solid var(--brand,#d5121a);}
+.imp-leg{border-collapse:collapse;width:100%;font-size:.84rem;margin-top:.5rem;}
+.imp-leg th,.imp-leg td{border-top:1px solid var(--border,#e2e8f0);padding:.42rem .5rem;vertical-align:top;text-align:left;}
+.imp-leg th{width:12rem;font-weight:700;white-space:nowrap;text-transform:none;letter-spacing:0;font-size:.86rem;color:var(--text,#1e293b);background:none;}
+.imp-leg td.lg-st{width:9.5rem;white-space:nowrap;font-weight:600;}
+.imp-leg tr.is-ok td.lg-st{color:#15803d;}
+.imp-leg tr.is-missing td.lg-st{color:#b91c1c;}
+@media (max-width:620px){.imp-leg th{width:auto;white-space:normal;}.imp-leg td.lg-st{width:auto;}}
 </style>
 """
+
+
+# =============================================================================
+# THE LEGEND — the columns a document cannot be made without (18 Oct 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0, forty-first block. One box, drawn on the upload page —
+# so the operator can get their sheet ready before uploading — and again on the
+# preview beside the column dropdowns, where each line says whether a column
+# has been chosen for it yet. **Only the columns the document needs** are
+# listed: everything else is offered in the dropdowns and never demanded, and
+# a legend that listed every optional column would bury the two that matter.
+#
+# Shared by this module and `docimport.py`, which imports it — this module
+# never imports that one back.
+
+BOQ_LEGEND = (
+    {"label": "Description", "keys": ("description",),
+     "about": "What the line is — the specification clause, or the size under "
+              "it. A priced row with no description cannot be saved."},
+    {"label": "Quantity (total)", "keys": ("qty",),
+     "about": "The total quantity for the line. Floor or area columns are left "
+              "out; only the total is read. A word here (“NA”, a sum written "
+              "as text) is left blank for you to fill — never turned into 0."},
+)
+
+
+def legend_html(items, noun: str, mapping: dict = None,
+                letter_of=None) -> str:
+    """
+    The legend card. `items` is `[{"label", "keys", "about"}]` — a line is met
+    when ANY of its `keys` is mapped (a column for the spec code OR for the
+    description, on a quotation). `mapping` None is the upload page: no status
+    column, nothing has been read yet. `letter_of` turns an Excel column index
+    into its letter; `sheetimport.col_letter` when not given.
+    """
+    letter_of = letter_of or SI.col_letter
+    rows = []
+    for it in items:
+        st = ""
+        cls = ""
+        if mapping is not None:
+            cols = [letter_of(int(c)) for c, t in mapping.items()
+                    if t in it["keys"] and str(c).lstrip("-").isdigit()]
+            if cols:
+                cls = ' class="is-ok"'
+                st = (f'<td class="lg-st">&#10003; column{"s" if len(cols) > 1 else ""} '
+                      f'{P.esc(", ".join(cols))}</td>')
+            else:
+                cls = ' class="is-missing"'
+                st = '<td class="lg-st">&#10007; not chosen yet</td>'
+        rows.append(f"<tr{cls}>{st}<th>{P.esc(it['label'])}</th>"
+                    f"<td>{P.esc(it['about'])}</td></tr>")
+    when = ("Each line turns green once a column below is chosen for it."
+            if mapping is not None else
+            "Your own headings are fine &mdash; the next page shows a guess "
+            "for every column, and you choose what each one holds.")
+    return f"""
+    <div class="imp-card imp-legend">
+      <h2>Columns the sheet must have</h2>
+      <p class="imp-note">These are the only columns the {P.esc(noun)} cannot be
+      made without. Everything else on the sheet is optional &mdash; choose it
+      from a column&rsquo;s dropdown, or leave it as <i>ignore</i>. {when}</p>
+      <table class="imp-leg"><tbody>{"".join(rows)}</tbody></table>
+    </div>"""
 
 # The preview's "Rates on this sheet are" card (1 October 2026): shows the
 # Markup % box while "Our cost" is chosen, makes it required then, and warns
@@ -691,7 +764,8 @@ def _upload_page(error: str = "") -> str:
     taken as the <b>selling</b> rate and the base rate is left blank for you to
     fill in later &mdash; unless you mark the sheet&rsquo;s rates as <b>our
     cost</b> on the next page, with a markup.</p>
-  </div>"""
+  </div>
+  {legend_html(BOQ_LEGEND, "BOQ")}"""
     return _page("Import BOQ", body)
 
 
@@ -1054,6 +1128,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       {known}
     </div>
     {_mode_card(mode, why, str(rec.get("markup") or ""))}
+    {legend_html(BOQ_LEGEND, "BOQ", mapping)}
 
     <div class="imp-card">
       <h2>What each column holds</h2>

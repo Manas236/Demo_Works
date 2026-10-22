@@ -220,7 +220,7 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **3,493 passed / 8 skipped** on 4 October 2026 (RA from a challan / a measurement sheet — previously 3,445 / 8, 3,345 / 7 and 3,307 / 6 before that), verified by
+The baseline is **3,674 passed / 9 skipped** on 21 October 2026 (a picture beside the description on the PI, the PO and the draft PO — previously 3,615 / 9, 3,493 / 8, 3,445 / 8 and 3,345 / 7 before that), verified by
 running the suite in this configuration: openpyxl **absent** (and xlrd and defusedxml), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
 ⚠ **On the laptop this was last measured on a `.venv` DOES exist**, and the row still means what it says: the figure is the one the **global interpreter** produces, with the `.venv` nowhere on `sys.path`. The second row below is the same checkout run through `.venv\Scripts\python`.
@@ -577,6 +577,12 @@ holds the diff since `eff0034` to exactly those functions:
   and rendering the `1d7725a` page **byte for byte** when it is not
   (`tests/test_quotation_switch.py` holds a golden captured from that commit).
   The library picker is **Supply only**.
+- **18 October 2026** — the **FOURTH**, inside `create_quotation()` only, for
+  the Import from Excel seam (§0 forty-first block; ABOUT.md §5 `/quotation`).
+- **21 October 2026** — the **FIFTH**, inside `view_quotation()` only and one
+  line: the text letterhead became `branding.letterhead_top()`, the client's
+  banner that every other letterhead draws (§0 **forty-third** block; ABOUT.md
+  §6 *The letterhead banner*). No function added — the list still holds five.
 
 **`product.py` has never been unfrozen and still is not.** A **sixth**
 `quotation.py` function needs a sixth §0 block naming it; the test is what

@@ -36,7 +36,9 @@ Record shape (on the existing `users` record; nothing else changes)::
   can never put anything but a base64 JPEG into an `<img src>`.
 
 ⚠ **Imports nothing from the app.** `auth.py` and `chrome.py` both import this
-  module; `tests/test_import_directions.py` holds the leaf.
+  module, and from 21 October 2026 `lineimage.py` does too, for `load()` —
+  pictures beside a document line refuse exactly what a profile photo
+  refuses; `tests/test_import_directions.py` holds the leaf.
 """
 
 import base64
@@ -84,30 +86,37 @@ def _size_of(fs) -> int:
     return int(size)
 
 
-def encode(fs) -> tuple:
+def load(fs, noun: str = "photo") -> tuple:
     """
-    `(data_uri, error)` for one uploaded file. Exactly one of the two is "".
+    `(image, error)` for one uploaded file — a decoded Pillow image in RGB,
+    upright, flattened onto white, or `(None, "<sentence>")`.
+
+    The validating half of `encode()`, shared since 21 October 2026 with
+    `lineimage.py` (pictures beside a document line), which sizes the result
+    differently but must refuse exactly what this refuses: the same 5 MB, the
+    same three formats by leading bytes, the same decompression-bomb ceiling.
+    `noun` is the only difference in what the operator is told.
 
     Order is size, then leading bytes, then decode — the cheap refusals first.
     """
     if fs is None or not (fs.filename or "").strip():
-        return "", "No photo was chosen."
+        return None, f"No {noun} was chosen."
     size = _size_of(fs)
     if size <= 0:
-        return "", "That file is empty."
+        return None, "That file is empty."
     if size > MAX_BYTES:
-        return "", (f"That photo is {size / 1048576:.1f} MB and the limit is "
-                    f"{MAX_BYTES / 1048576:.0f} MB.")
+        return None, (f"That {noun} is {size / 1048576:.1f} MB and the limit is "
+                      f"{MAX_BYTES / 1048576:.0f} MB.")
 
     raw = fs.stream.read(MAX_BYTES + 1)
     fmt = _sniff(raw[:16])
     if not fmt:
-        return "", f"That file is not a {ALLOWED_LABEL} image."
+        return None, f"That file is not a {ALLOWED_LABEL} image."
 
     try:
         from PIL import Image, ImageOps
     except ImportError:
-        return "", "Photo upload is not available on this server yet."
+        return None, f"{noun.capitalize()} upload is not available on this server yet."
 
     try:
         with warnings.catch_warnings():
@@ -119,14 +128,14 @@ def encode(fs) -> tuple:
             try:
                 img = Image.open(io.BytesIO(raw))
                 if (img.format or "").upper() != fmt:
-                    return "", f"That file is not a {ALLOWED_LABEL} image."
+                    return None, f"That file is not a {ALLOWED_LABEL} image."
                 img.load()
             finally:
                 Image.MAX_IMAGE_PIXELS = old_limit
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
-        return "", "That image is too large to process. Use a normal photo."
+        return None, f"That image is too large to process. Use a normal {noun}."
     except Exception:
-        return "", "That image could not be read. Try saving it again as a JPEG."
+        return None, "That image could not be read. Try saving it again as a JPEG."
 
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "LA", "P"):
@@ -136,6 +145,20 @@ def encode(fs) -> tuple:
         img = bg
     else:
         img = img.convert("RGB")
+    return img, ""
+
+
+def encode(fs) -> tuple:
+    """
+    `(data_uri, error)` for one uploaded file. Exactly one of the two is "".
+
+    `load()` validates and decodes; this crops to the chip's square.
+    """
+    img, error = load(fs, "photo")
+    if error:
+        return "", error
+
+    from PIL import Image, ImageOps
     img = ImageOps.fit(img, (SIDE, SIDE), Image.LANCZOS, centering=(0.5, 0.4))
 
     out = io.BytesIO()

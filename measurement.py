@@ -1193,9 +1193,44 @@ def _validate(form) -> tuple:
     # The sign-off (30 September 2026). Seven fields, all optional — a sheet
     # is normally countersigned after the visit, so they are blank at create.
     data.update(_signoff_form_data(form))
+    # ⚠ **The grid as posted, for a re-render (18 October 2026).** A refused
+    #   save re-rendered the grid from the seventeen seeded rows (or, on edit,
+    #   from the stored ones), so every location and figure typed into it was
+    #   lost the moment anything else on the form was refused — and an
+    #   imported grid with it. `_posted_grid()` reads it back as typed; None
+    #   (nothing posted, or not JSON) keeps the old behaviour exactly.
+    data["_grid"] = _posted_grid(data["grid_json"])
     if not data["date"]:
         return data, "A measurement date is required."
     return data, ""
+
+
+def _posted_grid(raw: str):
+    """
+    The posted grid as the rows the form draws — `{label, values, remarks}`
+    with every value as the TEXT that was typed — or None when nothing usable
+    was posted. A re-render only: nothing here is validated, and the save
+    still goes through `parse_grid()`.
+    """
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    rows = payload.get("rows") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return None
+    out = []
+    for r in rows[:MAX_GRID_ROWS]:
+        if not isinstance(r, dict):
+            continue
+        vals = r.get("values") if isinstance(r.get("values"), dict) else {}
+        out.append({"label": str(r.get("label") or "")[:120],
+                    "values": {str(k): str(v) for k, v in vals.items()
+                               if v not in (None, "")},
+                    "remarks": str(r.get("remarks") or "")[:300]})
+    return out
 
 
 def picked_lines(raw: str, boq: dict) -> tuple:
@@ -1209,7 +1244,8 @@ def picked_lines(raw: str, boq: dict) -> tuple:
 
 
 def _entry_form(boq: dict, data: dict, error: str = "",
-                breaches: list = None, sheet: dict = None) -> str:
+                breaches: list = None, sheet: dict = None,
+                banner_html: str = "") -> str:
     """
     The create form: the line picker and the field header.
 
@@ -1219,11 +1255,23 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     signature starts a dispute. A measurement sheet is corrected *before* it is
     approved and locked afterwards by `approval.can_modify()`, so the lines are
     exactly the thing an edit is for.
+
+    `banner_html` (18 October 2026) is Import from Excel's note on the grid it
+    filled in, spliced under the alerts; "" emits the form it always emitted.
     """
     boq_ref = P.esc(boq.get("ref") or "")
     editing = sheet is not None
     action = (url_for("measurement.edit_ms", id=sheet["id"]) if editing
               else url_for("measurement.create_ms", boq=boq.get("id")))
+    # Import from Excel (18 October 2026) — the joint grid from the site's own
+    # sheet. Create form only, and drawn unconditionally:
+    # `docimport.upload_measurement` carries `measurement.create`, this form's
+    # own permission (`tests/test_doc_import.py` holds the two equal). No
+    # `auth` import is taken for it — this module reaches `auth` in
+    # `_raise_ra_btn()` alone, and a test pins exactly that.
+    import_btn = ("" if editing else
+                  f'\n      <a href="{url_for("docimport.upload_measurement", boq=boq.get("id"))}" '
+                  f'class="btn btn-ghost">&#128229; Import grid from Excel</a>')
 
     picker = BP.grid_html(
         boq,
@@ -1258,14 +1306,14 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 <main>
   <div class="page-top">
     <h1>{"Edit " if editing else ""}Measurement <span>Sheet</span></h1>
-    <div style="display:flex;gap:.7rem;">
+    <div style="display:flex;gap:.7rem;">{import_btn}
       <a href="{url_for('measurement.list_ms')}" class="btn btn-ghost">All Measurements</a>
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">&#8592; {boq_ref}</a>
     </div>
   </div>
 
   {_alert(error)}
-  {_breach_band(breaches)}
+  {_breach_band(breaches)}{banner_html}
 
   <div class="set-intro" style="background:var(--surface);border:1px solid var(--border);
        border-left:3px solid var(--brand);border-radius:var(--radius);
@@ -2161,8 +2209,15 @@ def list_ms():
 
 
 @measurement_bp.route("/create", methods=["GET", "POST"])
-def create_ms():
-    boq_id = request.args.get("boq") or ""
+def create_ms(imported: dict = None):
+    """
+    `imported` (18 October 2026) is the one seam Import from Excel renders this
+    form through, on a GET: the schedule and the grid rows read off the site's
+    sheet. Flask never passes it; the POST path never reads it, and the grid
+    is still cleaned by `parse_grid()` against the columns `/settings` holds
+    at the moment of the save.
+    """
+    boq_id = (imported or {}).get("boq_id") or request.args.get("boq") or ""
     boq = (STORE.get("boqs") or {}).get(boq_id)
     if not boq:
         return redirect(url_for("boq.list_boqs",
@@ -2182,8 +2237,13 @@ def create_ms():
         # The counterparty starts as the BOQ's bill-to party — the value the
         # printed band has always been derived from (`account_name`,
         # snapshotted below) — and the operator may change it.
-        return _entry_form(boq, {"date": _date.today().isoformat(),
-                                 "counterparty_name": boq.get("account_name", "")})
+        data = {"date": _date.today().isoformat(),
+                "counterparty_name": boq.get("account_name", "")}
+        if imported:
+            data["_grid"] = list(imported.get("grid") or [])
+            return _entry_form(boq, data,
+                               banner_html=imported.get("banner_html") or "")
+        return _entry_form(boq, data)
 
     data, error = _validate(request.form)
     items, line_error = ([], "") if error else picked_lines(data["ms_json"], boq)

@@ -187,6 +187,15 @@ DO_NOT_POISON_PATHS = {
     # which `_poison()` never reaches; `tests/test_boq_import.py` uploads a
     # workbook with the payload in every cell and sweeps both pages instead.
     "mapping", "sheets[]/visibility", "grid[]/kinds",
+    # A staged import for any OTHER document (`doc_imports`, 18 October 2026).
+    # `kind` names the importer that owns the row, and `docimport._own()`
+    # answers 404 to a token whose kind is not the route's — poisoning it would
+    # turn every import page into the not-found page, a broken fixture rather
+    # than an escaping test. `ctx` holds the schedule id and the RA leg, both
+    # looked up, never printed as prose. The file name and every sheet name ARE
+    # prose and are poisoned and pinned below; `mapping` and `grid[]/kinds`
+    # are excluded by the rows above for the reason they give.
+    "kind", "ctx",
 }
 
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")
@@ -252,6 +261,9 @@ POISONED_COLLECTIONS = (
     # Import BOQ from Excel (29 Sep 2026). `import_layouts` is NOT here: it
     # holds a hash and a column->target map, and no page prints either.
     "boq_imports",
+    # Import from Excel on every other document (18 Oct 2026) — the same
+    # call one importer along: `doc_import_layouts` is a hash and a map.
+    "doc_imports",
 )
 
 # ⚠ Collections that are still poisoned, but whose **count** may legitimately be
@@ -415,6 +427,15 @@ POISONED_FIELDS = {
     # the preview and the prefilled form's banner; `created_at` and `format`
     # are stored and printed nowhere. See DO_NOT_POISON_PATHS for the cells.
     "boq_imports": (
+        "created_at", "filename", "format", "sheets[]/name",
+    ),
+    # Import from Excel on every other document (18 Oct 2026). `filename` and
+    # `sheets[]/name` reach the preview, a register's review page and the
+    # banner on every prefilled form; `created_at` and `format` are stored and
+    # printed nowhere. The grid's cells are strings inside lists, which
+    # `_poison()` never reaches — `tests/test_doc_import.py` puts the payload in
+    # a cell and in both names, and sweeps the preview and the prefilled form.
+    "doc_imports": (
         "created_at", "filename", "format", "sheets[]/name",
     ),}
 

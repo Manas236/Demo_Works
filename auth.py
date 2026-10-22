@@ -804,6 +804,9 @@ ROUTE_PERMISSIONS = {
     "proforma.view_proforma":     "proforma.view",
     "proforma.create_proforma":   "proforma.create",
     "proforma.delete_proforma":   "proforma.delete",
+    # Pictures beside a line (21 Oct 2026, lineimage.py). Choosing what the
+    # invoice shows is part of raising it; no permission was minted.
+    "proforma.pictures":          "proforma.create",
     "invoice.list_invoices":      "invoice.view",
     "invoice.view_invoice":       "invoice.view",
     "invoice.create_invoice":     "invoice.create",
@@ -833,12 +836,16 @@ ROUTE_PERMISSIONS = {
     # force a per-role decision that CLIENT_CHANGES-2.md B4 does not
     # authorise us to take on the client's behalf.
     "purchase.edit_purchase_rates": "purchase.create",
+    # Pictures beside a line (21 Oct 2026, lineimage.py) — what goes to the
+    # vendor, so the reprice route's permission and its two refusals.
+    "purchase.pictures":          "purchase.create",
     "po_draft.list_pos":          "po.view",
     "po_draft.view_po":           "po.view",
     "po_draft.create_po":         "po.create",
     "po_draft.edit_po":           "po.edit",
     "po_draft.delete_po":         "po.delete",
     "po_draft.print_po":          "po.print",
+    "po_draft.pictures":          "po.edit",     # pictures beside a line, 21 Oct 2026
 
     # ── Dispatch ─────────────────────────────────────────────────────────────
     "challan.list_dcs":           "dc.view",
@@ -956,6 +963,7 @@ ROUTE_PERMISSIONS = {
     "spec.add_spec":              "spec.create",
     "spec.edit_spec":             "spec.edit",
     "spec.delete_spec":           "spec.delete",
+    "spec.picture":               "spec.edit",   # the clause's picture, 21 Oct 2026
     "product.list_products":      "product.view",
     "product.view_product":       "product.view",
     "product.add_product":        "product.create",
@@ -988,6 +996,46 @@ ROUTE_PERMISSIONS = {
     "address.gst_lookup_add":     "address.create",
     "address.gst_captcha_edit":   "address.edit",
     "address.gst_lookup_edit":    "address.edit",
+
+    # ── Import from Excel, on every other document (18 October 2026) ─────────
+    #
+    # ⚠ **NO PERMISSION IS MINTED, and each kind carries its DOCUMENT'S create
+    #   permission on all three of its endpoints** — Import BOQ from Excel's
+    #   rule (above), nine times: every one of them ends at that document's own
+    #   create form (or, for a register, at that register's own validator and
+    #   write), and whoever may fill the form in by hand may fill it from their
+    #   own sheet. The upload and preview POSTs write only the staging row.
+    #   **Three endpoints PER KIND**, minted by `docimport._register_routes()`
+    #   — `approval.py`'s arrangement — because this registry maps one
+    #   endpoint to one permission. `tests/test_doc_import.py` asserts every
+    #   row here equals the permission of the create endpoint its kind names.
+    "docimport.upload_purchase":     "purchase.create",
+    "docimport.preview_purchase":    "purchase.create",
+    "docimport.apply_purchase":      "purchase.create",
+    "docimport.upload_quotation":    "quotation.create",
+    "docimport.preview_quotation":   "quotation.create",
+    "docimport.apply_quotation":     "quotation.create",
+    "docimport.upload_measurement":  "measurement.create",
+    "docimport.preview_measurement": "measurement.create",
+    "docimport.apply_measurement":   "measurement.create",
+    "docimport.upload_challan":      "dc.create",
+    "docimport.preview_challan":     "dc.create",
+    "docimport.apply_challan":       "dc.create",
+    "docimport.upload_dpo":          "po.create",
+    "docimport.preview_dpo":         "po.create",
+    "docimport.apply_dpo":           "po.create",
+    "docimport.upload_ra":           "ra.create",
+    "docimport.preview_ra":          "ra.create",
+    "docimport.apply_ra":            "ra.create",
+    "docimport.upload_address":      "address.create",
+    "docimport.preview_address":     "address.create",
+    "docimport.apply_address":       "address.create",
+    "docimport.upload_spec":         "spec.create",
+    "docimport.preview_spec":        "spec.create",
+    "docimport.apply_spec":          "spec.create",
+    "docimport.upload_employee":     "employee.create",
+    "docimport.preview_employee":    "employee.create",
+    "docimport.apply_employee":      "employee.create",
 }
 
 

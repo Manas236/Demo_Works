@@ -14,6 +14,7 @@ Routes
   GET       /po/view/<id>     — the document, with the action bar
   GET       /po/print/<id>    — the document alone, ready for Ctrl+P
   GET,POST  /po/edit/<id>     — vendor, date and notes only
+  GET,POST  /po/pictures/<id> — a picture beside each line (21 Oct 2026)
   GET,POST  /po/delete/<id>   — GET confirms, POST deletes
 
 Why this is NOT `purchase.py`
@@ -78,6 +79,7 @@ import boqpick as BP
 import branding as B
 import cascade
 import docsheet as DS
+import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import settings as SET
 from address import picker_options, format_address_lines
@@ -393,7 +395,7 @@ def _vendor_block_form(data: dict) -> str:
 
 
 def _entry_form(boq: dict, data: dict, error: str = "",
-                po: dict = None) -> str:
+                po: dict = None, banner_html: str = "") -> str:
     """
     The create form: the line picker, the vendor, and the document's own fields.
 
@@ -401,9 +403,18 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     draft PO are a snapshot and changing them behind a document the supplier is
     already pricing is how a dispute starts — the same call `purchase.py` makes
     about an issued order's commercial content.
+
+    `banner_html` (18 October 2026) is Import from Excel's note, spliced under
+    the alert; "" emits the form it always emitted.
     """
     boq_ref = P.esc(boq.get("ref") or "")
     editing = po is not None
+    # Import from Excel (18 October 2026). Create form only, and drawn
+    # unconditionally: `docimport.upload_dpo` carries `po.create`, this form's
+    # own permission — `tests/test_doc_import.py` holds the two equal.
+    import_btn = ("" if editing else
+                  f'\n      <a href="{url_for("docimport.upload_dpo", boq=boq.get("id"))}" '
+                  f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     action = (url_for("po_draft.edit_po", id=po["id"]) if editing
               else url_for("po_draft.create_po", boq=boq.get("id")))
 
@@ -426,7 +437,8 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             doc_word="PO",
             chosen=data.get("_chosen"),
             qty_of=data.get("_qty"),
-            with_pcs=True)
+            with_pcs=True,
+            pcs_of=data.get("_pcs"))
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -441,13 +453,13 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 <main>
   <div class="page-top">
     <h1>{"Edit Draft" if editing else "Draft"} <span>Purchase Order</span></h1>
-    <div style="display:flex;gap:.7rem;">
+    <div style="display:flex;gap:.7rem;">{import_btn}
       <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All Draft POs</a>
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">&#8592; {boq_ref}</a>
     </div>
   </div>
 
-  {_alert(error)}
+  {_alert(error)}{banner_html}
 
   <div class="set-intro" style="background:var(--surface);border:1px solid var(--border);
        border-left:3px solid var(--brand);border-radius:var(--radius);
@@ -526,22 +538,30 @@ def _document_html(po: dict) -> str:
     by design has no value to total — printing "Order Value 0.00" under a column
     of empty rate cells would state that the material is free.
     """
+    # ⚠ **The Image column (21 October 2026) is drawn only when a line carries
+    #   a picture that resolves**, and its stylesheet rides in with it, inside
+    #   the document — this function is the whole sheet for both `/po/view` and
+    #   `/po/print`. A draft PO with no picture renders byte-for-byte what it
+    #   always did; `tests/test_print_golden.py` pins `/po/print`.
+    pics = LI.sheet_has_images(po.get("items", []))
     rows = ""
     sno = 0
     for row in po.get("items", []):
         if row.get("is_header"):
+            img_td = f"\n          {LI.EMPTY_CELL}" if pics else ""
             rows += f"""
         <tr class="row-assembly">
           <td class="c-sno"></td>
-          <td class="c-partno">{P.esc(row.get("item_no", ""))}</td>
+          <td class="c-partno">{P.esc(row.get("item_no", ""))}</td>{img_td}
           <td colspan="6" class="c-desc">{P.esc(row.get("description", ""))}</td>
         </tr>"""
             continue
         sno += 1
+        img_td = f"\n          {LI.cell(row)}" if pics else ""
         rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sno}</td>
-          <td class="c-partno">{P.esc(row.get("item_no", ""))}</td>
+          <td class="c-partno">{P.esc(row.get("item_no", ""))}</td>{img_td}
           <td class="c-desc">{P.esc(row.get("description", ""))}</td>
           <td class="c-qty">{BQ._fmt_qty(row.get("qty") or 0)}</td>
           <td class="c-pcs">{P.esc(row.get("pcs", ""))}</td>
@@ -568,7 +588,7 @@ def _document_html(po: dict) -> str:
         note_html = (f'<div class="po-note" style="margin-top:4mm;">'
                      f'<b>Notes:</b> {P.esc(po["notes"])}</div>')
 
-    return f"""
+    return f"""{LI.SHEET_CSS if pics else ""}
 <div class="quotation-doc">
 
 {DS.sheet_open(show_web=False)}
@@ -581,7 +601,7 @@ def _document_html(po: dict) -> str:
                 DS.secondary_block("Deliver To", po.get("delivery_to")),
                 meta_col_1, meta_col_2)}
 
-{DS.items_table(PO_COLUMNS, rows)}
+{DS.items_table(LI.with_column(PO_COLUMNS) if pics else PO_COLUMNS, rows)}
   </div>
 
   <div class="po-ask">
@@ -682,8 +702,13 @@ def list_pos():
 
 
 @po_draft_bp.route("/create", methods=["GET", "POST"])
-def create_po():
-    boq_id = request.args.get("boq") or ""
+def create_po(imported: dict = None):
+    """
+    `imported` (18 October 2026) is the one seam Import from Excel renders this
+    form through, on a GET — the schedule, the matched lines, their quantities
+    and pieces. Flask never passes it; the POST path never reads it.
+    """
+    boq_id = (imported or {}).get("boq_id") or request.args.get("boq") or ""
     boq = (STORE.get("boqs") or {}).get(boq_id)
     if not boq:
         return redirect(url_for("boq.list_boqs",
@@ -699,6 +724,12 @@ def create_po():
                                 type="error"))
 
     if request.method == "GET":
+        if imported:
+            return _entry_form(boq, {"date": _date.today().isoformat(),
+                                     "_chosen": set(imported.get("chosen") or ()),
+                                     "_qty": dict(imported.get("qty") or {}),
+                                     "_pcs": dict(imported.get("pcs") or {})},
+                               banner_html=imported.get("banner_html") or "")
         return _entry_form(boq, {"date": _date.today().isoformat()})
 
     data, error = _validate(request.form, boq)
@@ -713,6 +744,10 @@ def create_po():
         data["_chosen"] = {BQ._line_id(r.get("line_id")) for r in posted
                            if isinstance(r, dict)}
         data["_qty"] = {BQ._line_id(r.get("line_id")): r.get("qty")
+                        for r in posted if isinstance(r, dict)}
+        # The typed Pcs too (18 October 2026) — it was dropped on a refused
+        # save until the picker learned to prefill it.
+        data["_pcs"] = {BQ._line_id(r.get("line_id")): str(r.get("pcs") or "")[:16]
                         for r in posted if isinstance(r, dict)}
         return _entry_form(boq, data, error)
 
@@ -784,6 +819,14 @@ def view_po(id: str):
             f'<span style="font-size:.82rem;color:var(--muted);margin-right:.5rem;">'
             f'Converted to</span>{chips}</div>')
 
+    # Pictures (21 October 2026) — drawn only for a role the gate lets
+    # through. The newline lives inside the string.
+    import auth as _AUTH
+    pics_btn = ""
+    if _AUTH.can_reach("po_draft.pictures"):
+        pics_btn = (f'\n    <a href="{url_for("po_draft.pictures", id=id)}" '
+                    f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
+
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -804,7 +847,7 @@ def view_po(id: str):
     <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All Draft POs</a>
     <a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(po.get('boq_ref'))}</a>
     {convert_html}
-    <a href="{url_for('po_draft.edit_po', id=id)}" class="btn btn-ghost">Edit</a>
+    <a href="{url_for('po_draft.edit_po', id=id)}" class="btn btn-ghost">Edit</a>{pics_btn}
     <a href="{url_for('po_draft.delete_po', id=id)}" class="btn btn-ghost">Delete</a>
     <a href="{url_for('po_draft.print_po', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
@@ -892,6 +935,77 @@ def edit_po(id: str):
     # `ref` is deliberately untouched. An edit never reissues the number.
     return redirect(url_for("po_draft.view_po", id=id,
                             msg="Draft purchase order updated.", type="success"))
+
+
+def _picture_entries(po: dict) -> list:
+    """Every line that can carry a picture, numbered as the sheet numbers them."""
+    out, sno = [], 0
+    for n, r in enumerate(po.get("items") or []):
+        if r.get("is_header"):
+            continue
+        sno += 1
+        out.append(LI.entry(f"it:{n}", sno, r.get("item_no"), r.get("description"), r))
+    return out
+
+
+@po_draft_bp.route("/pictures/<id>", methods=["GET", "POST"])
+def pictures(id: str):
+    """
+    The picture beside each line of a draft PO (21 October 2026).
+
+    The draft is what a supplier prices from, so this is where a picture does
+    the most work: they quote for the part they can see. `po.edit` — the edit
+    route's permission, and like that route it never moves a line; the
+    picture is the only thing written. A converted order takes each line's
+    picture with it (`purchase.from_draft()`); one already converted keeps
+    the copy it took. One upload per request (`lineimage.py` says why).
+    """
+    po = (STORE.get("purchase_orders") or {}).get(id)
+    if not po:
+        return redirect(url_for("po_draft.list_pos",
+                                msg="That draft PO no longer exists.", type="error"))
+
+    here = url_for("po_draft.pictures", id=id)
+    if request.method == "POST":
+        msg, err = LI.apply_post(request.form, request.files, _picture_entries(po))
+        return redirect(url_for("po_draft.pictures", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(str(po.get('ref')) + " Pictures")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{LI.PAGE_CSS}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Pictures &middot; <span>{P.esc(po.get('ref'))}</span></h1>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{url_for('po_draft.view_po', id=id)}" class="btn btn-ghost">&#8592; Back to the draft PO</a>
+    </div>
+  </div>
+
+  {_flash()}
+
+  <div class="form-section">
+    <div class="section-title">A picture beside each line</div>
+    <p class="field-hint" style="margin:0 0 1rem;">
+      A picture prints in an <b>Image</b> column beside the description, so the
+      supplier prices the part they can see. A line with none prints an empty
+      cell; a draft with no picture at all prints no Image column. JPEG, PNG or
+      WebP up to 5&nbsp;MB, one line at a time &mdash; it is shrunk to
+      {LI.MAX_SIDE}&nbsp;px and stored once. Nothing else on the draft changes here.
+    </p>
+    {LI.rows_html(_picture_entries(po), here, editable=True)}
+  </div>
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · draft purchase order</p></footer>
+</main>
+</body></html>""")
 
 
 @po_draft_bp.route("/delete/<id>", methods=["GET", "POST"])

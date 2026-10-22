@@ -2431,14 +2431,7 @@ def _document_html(boq: dict, show_rate_breakup: bool = False) -> str:
 
   <table class="page-frame">
     <thead><tr><td>
-      <div class="lh">
-        <div>
-          <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-          <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
-          {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
-        </div>
-        <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-      </div>
+      {B.letterhead_top()}
       <div class="lh-rule"></div>
       <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
       <div class="lh-contact">

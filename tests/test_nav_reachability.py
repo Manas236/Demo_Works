@@ -345,6 +345,31 @@ UNLINKED_ON_PURPOSE = {
     # and `tests/test_gst_lookup.py` asserts the form carries its URL.
     "address.gst_captcha_add": "not a page: the CAPTCHA image the address form's "
                                "script fetches",
+    # ── Import from Excel on every other document, 18 October 2026 ─────────
+    #
+    # `boqimport.upload`'s reason, nine times: each is a way of FILLING IN one
+    # document's create form (or of adding many rows to a register), not a
+    # register itself, and hangs off that form's own Import button —
+    # `tests/test_doc_import.py::test_the_create_form_draws_the_import_button`
+    # and its two siblings assert every button is there.
+    "docimport.upload_purchase":    "a way of filling in /purchase/create, linked "
+                                    "from that form's Import parts button",
+    "docimport.upload_quotation":   "a way of filling in /quotation/create, linked "
+                                    "from that form's Import button (library mode)",
+    "docimport.upload_measurement": "a way of filling in /measurement/create, "
+                                    "linked from that form's Import grid button",
+    "docimport.upload_challan":     "a way of filling in /dc/create, linked from "
+                                    "that form's Import from Excel button",
+    "docimport.upload_dpo":         "a way of filling in /po/create, linked from "
+                                    "that form's Import from Excel button",
+    "docimport.upload_ra":          "a way of filling in /ra/create, linked from "
+                                    "that form's Import from Excel button",
+    "docimport.upload_address":     "many addresses at once, linked from the Add "
+                                    "Address form's Import button",
+    "docimport.upload_spec":        "many clauses at once, linked from the Add "
+                                    "Spec form's Import button",
+    "docimport.upload_employee":    "many employees at once, linked from the New "
+                                    "Employee form's Import button",
 }
 
 

@@ -122,11 +122,16 @@ def test_every_reference_collection_has_a_seeder(client):
     # and when. A seeded row would be an invented legal name and status for
     # somebody's GSTIN — filling a form with no CAPTCHA and gating a save on a
     # "Cancelled" nobody was told.
+    # `doc_imports` and `doc_import_layouts` (Import from Excel on every other
+    # document, 18 Oct 2026) are `boq_imports` / `import_layouts` one importer
+    # along, for the same reason: each is a trace of somebody uploading their
+    # own sheet, and a seeded layout would pre-choose columns nobody confirmed.
     transactional = {"quotations", "proformas", "invoices", "purchases", "purchase_orders",
                      "ra_bills", "receipts", "delivery_challans", "measurements",
                      "projects", "charges", "attachments", "merged_ras",
                      "employees", "attendance", "users",
-                     "boq_imports", "import_layouts", "gst_cache"}
+                     "boq_imports", "import_layouts", "gst_cache",
+                     "doc_imports", "doc_import_layouts"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

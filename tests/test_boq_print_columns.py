@@ -20,6 +20,7 @@ already there.
     one out anywhere fails here rather than at the client's desk.
 """
 
+import re
 from html.parser import HTMLParser
 
 import pytest
@@ -33,6 +34,9 @@ from store import STORE
 # is why the header has two shapes: with the breakup hidden AND no areas, the
 # second header row has nothing left to carry.
 BOQ_ID = DD.BOQ_META["id"]
+
+# An inlined image — the logos, the letterhead banner. See the omit test below.
+_DATA_URI = re.compile(r"data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+")
 
 # Section subtotals and the total, computed from the seeded lines BEFORE this
 # change and pinned here. `_document_html` recomputes from `line_items` on every
@@ -147,6 +151,11 @@ def viewed(client):
 
 def test_print_omits_base_rate_and_escalation_columns(printed):
     """Neither the heads nor a single cell of the three dropped columns."""
+    # ⚠ Searched with the inlined artwork taken out. A base64 data URI is
+    #   random-looking letters, and on 21 October 2026 the client's letterhead
+    #   banner happened to contain "Esc" — a failure about a picture's bytes,
+    #   not about a column. Every word a reader can see is still searched.
+    printed = _DATA_URI.sub("", printed)
     assert "Base Rate" not in printed
     assert "Esc" not in printed            # "Esc. %" and anything else spelling it
     assert 'class="b-base"' not in printed

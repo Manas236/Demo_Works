@@ -3376,7 +3376,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
                 action: str, ra_no: int, back_url: str, date_val: str,
                 notes_val: str, submit_label: str, frozen_note: str = "",
                 source_html: str = "", hidden_html: str = "",
-                tail_html: str = "") -> str:
+                tail_html: str = "", top_html: str = "") -> str:
     """
     The claim grid, shared by create and edit — one form, two entry points.
 
@@ -3384,17 +3384,23 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
     not a second parameter that could disagree with it, and it is not what gets
     handed to `_boq_facts()`.
 
-    The last three are the 4 October 2026 seams — the challan picker and the
+    The next three are the 4 October 2026 seams — the challan picker and the
     source notes above the form, the hidden `dc` / `ms` fields inside it, the
     live warning after the page script. ⚠ **Each is spliced in with no
     whitespace of its own**, so with all three empty this function emits the
     bytes it always emitted: the manual form is unchanged, byte for byte.
+
+    `top_html` (18 October 2026) is the *Import from Excel* button beside Back
+    on the create form — spliced the same way, and "" on edit.
     """
     heading = f"RA{int(ra_no or 0)}"
+    back = f'<a href="{back_url}" class="btn btn-ghost">&#8592; Back</a>'
+    if top_html:
+        back = f'<div style="display:flex;gap:.7rem;">{top_html}\n    {back}</div>'
     return _shell(heading, f"""
   <div class="page-top">
     <h1>{heading}</h1>
-    <a href="{back_url}" class="btn btn-ghost">&#8592; Back</a>
+    {back}
   </div>
   {_alert(error)}
   {frozen_note}
@@ -3856,7 +3862,7 @@ def cancel_ra(id: str):
 
 
 @ra_bp.route("/create", methods=["GET", "POST"])
-def create_ra():
+def create_ra(imported: dict = None):
     """
     Raise a new RA bill against a BOQ.
 
@@ -3869,6 +3875,13 @@ def create_ra():
     and a rate and has no leg of its own. There is no shape in which a
     mixed-leg bill can be expressed, which is a stronger guarantee than a UI
     that merely discourages one.
+
+    `imported` (18 October 2026) is the one seam Import from Excel renders this
+    form through, on a GET: the schedule, the leg, and the claim quantities
+    the sheet matched, keyed on `line_id`. ⚠ **It is the MANUAL path** — no
+    challan, no sheet, no source key written — and it is a PREFILL, nothing
+    more: the over-claim block, the C1 refusal and every cap check the POST
+    exactly as they check a typed bill. Flask never passes it.
     """
     BQ.ensure_demo_boq()
     boqs = STORE["boqs"]
@@ -3878,14 +3891,16 @@ def create_ra():
     #    `dc=` per ticked challan, or `ms=<sheet>` from /measurement/view); on
     #    the POST it arrives ONLY in the form's hidden fields, so the action
     #    URL stays the one the manual path has always used.
-    if request.method == "POST":
+    if imported:
+        dc_wanted, ms_id = [], ""
+    elif request.method == "POST":
         dc_wanted = [x for x in request.form.getlist("dc") if str(x or "").strip()]
         ms_id = (request.form.get("ms") or "").strip()
     else:
         dc_wanted = [x for x in request.args.getlist("dc") if str(x or "").strip()]
         ms_id = (request.args.get("ms") or "").strip()
 
-    boq_id = (request.values.get("boq") or "").strip()
+    boq_id = ((imported or {}).get("boq_id") or request.values.get("boq") or "").strip()
     # The two buttons name only their own record, so the schedule is the TIP of
     # that record's chain — the revision a claim is raised against.
     if not boq_id and (ms_id or dc_wanted):
@@ -3898,7 +3913,7 @@ def create_ra():
                      "That challan no longer exists.")))
         boq_id = latest_revision(str(origin.get("boq_id") or ""))
 
-    leg = (request.values.get("leg")
+    leg = ((imported or {}).get("leg") or request.values.get("leg")
            or ("installation" if ms_id else "supply")).strip()
     if leg not in LEGS:
         leg = "supply"
@@ -4027,6 +4042,15 @@ def create_ra():
             entered = {lid: {"qty": _qty_value(q)}
                        for lid, q in unbilled_remainder(boq_id, prev).items()
                        if lid in tip}
+        elif imported:
+            # Import from Excel (18 October 2026): the quantities the sheet
+            # matched, and a rate only where the sheet gave one — a line the
+            # sheet named nothing for keeps the approved rate, as typed bills
+            # do. Never a line that is not a priced line on this revision.
+            tip = _tip_line_ids(boq)
+            entered = {lid: dict(row) for lid, row in (imported.get("entered") or {}).items()
+                       if lid in tip and isinstance(row, dict)}
+            source_html += imported.get("banner_html") or ""
         # A ticked challan that may not be billed is named, and left unticked.
         error = " ".join(dc_problems)
 
@@ -4181,6 +4205,12 @@ def create_ra():
                                     msg=msg, type="success"))
 
     ra_no = next_ra_no(boq_id)
+    # Import from Excel (18 October 2026) — claim quantities off the client's
+    # own annexure. Drawn unconditionally on this form: `docimport.upload_ra`
+    # carries `ra.create`, this route's own permission, and
+    # `tests/test_doc_import.py` holds the two equal.
+    top_html = (f'<a href="{url_for("docimport.upload_ra", boq=boq_id, leg=leg)}" '
+                f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),
@@ -4188,7 +4218,8 @@ def create_ra():
         back_url=url_for("boq.view_boq", id=boq_id),
         date_val=date_val, notes_val=notes_val,
         submit_label="Save RA bill",
-        source_html=source_html, hidden_html=hidden_html, tail_html=tail_html)
+        source_html=source_html, hidden_html=hidden_html, tail_html=tail_html,
+        top_html=top_html)
 
 
 @ra_bp.route("/edit/<id>", methods=["GET", "POST"])

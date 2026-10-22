@@ -875,9 +875,19 @@ def list_employees():
 
 def _form(data: dict, error: str, action: str, submit_label: str,
           heading: str, back: str, stale: dict = None,
-          stale_site: dict = None) -> str:
-    """The create and edit forms, which are one form with two labels."""
+          stale_site: dict = None, import_url: str = "") -> str:
+    """
+    The create and edit forms, which are one form with two labels.
+
+    `import_url` (18 October 2026) draws *Import many from Excel* beside Back —
+    passed by the create route only; "" renders the page-top it always did.
+    """
     checked = " checked" if data.get("active") else ""
+    back_html = f'<a href="{back}" class="btn btn-ghost">&#8592; Back</a>'
+    if import_url:
+        back_html = (f'<div style="display:flex;gap:.7rem;"><a href="{import_url}" '
+                     f'class="btn btn-ghost">&#128229; Import many from Excel</a>'
+                     f'{back_html}</div>')
 
     # ⚠ **A marked record opens with the rate box EMPTY and the old figure only
     #   named in the band above it.** Prefilling the box with the monthly
@@ -903,7 +913,7 @@ def _form(data: dict, error: str, action: str, submit_label: str,
     return _shell(heading, f"""
   <div class="page-top">
     <h1>{heading}</h1>
-    <a href="{back}" class="btn btn-ghost">&#8592; Back</a>
+    {back_html}
   </div>
   {_alert(error)}
   {stale_band}
@@ -989,37 +999,51 @@ def new_employee():
     if request.method == "POST":
         data, error = _validate(request.form)
         if not error:
-            eid = str(uuid.uuid4())
-            employees()[eid] = {
-                "id":          eid,
-                "name":        data["name"],
-                "code":        data["code"],
-                "designation": data["designation"],
-                # ⚠ Three keys, not one. `site` is the address LABEL
-                # snapshotted, `site_address_id` is the link, and
-                # `site_source` says which of `resolve_site()`'s three
-                # outcomes applied.
-                "site":             data["site"],
-                SITE_ADDRESS_FIELD: data[SITE_ADDRESS_FIELD],
-                SITE_SOURCE_FIELD:  data[SITE_SOURCE_FIELD],
-                "date_joined": data["date_joined"],
-                # ⚠ A DAY rate. A record written here carries no `rate_model`
-                # key at all, which is what `tests/test_day_rate_pin.py` sweeps
-                # for: an employee created after the migration must never carry
-                # the old-model marker, or the closed set has grown.
-                "day_rate":    data["day_rate"],
-                "active":      data["active"],
-                "notes":       data["notes"],
-                "created_at":  _now(),
-                "updated_at":  _now(),
-            }
+            eid = create_record(data)
             return redirect(url_for("employee.view_employee", id=eid,
                                     msg=f"{data['name']} added to the register.",
                                     type="success"))
 
+    # Import from Excel (18 October 2026), drawn unconditionally:
+    # `docimport.upload_employee` carries `employee.create`, this form's own
+    # permission, and `tests/test_doc_import.py` holds the two equal.
     return _form(data, error, action=url_for("employee.new_employee"),
                  submit_label="Add employee", heading="New <span>Employee</span>",
-                 back=url_for("employee.list_employees"))
+                 back=url_for("employee.list_employees"),
+                 import_url=url_for("docimport.upload_employee"))
+
+
+def create_record(data: dict) -> str:
+    """
+    Write ONE new employee from `_validate()`'s data and return the id — the
+    create form's write, lifted out of `new_employee()` verbatim on 18 October
+    2026 so Import from Excel adds a person exactly as the form does.
+    """
+    eid = str(uuid.uuid4())
+    employees()[eid] = {
+        "id":          eid,
+        "name":        data["name"],
+        "code":        data["code"],
+        "designation": data["designation"],
+        # ⚠ Three keys, not one. `site` is the address LABEL
+        # snapshotted, `site_address_id` is the link, and
+        # `site_source` says which of `resolve_site()`'s three
+        # outcomes applied.
+        "site":             data["site"],
+        SITE_ADDRESS_FIELD: data[SITE_ADDRESS_FIELD],
+        SITE_SOURCE_FIELD:  data[SITE_SOURCE_FIELD],
+        "date_joined": data["date_joined"],
+        # ⚠ A DAY rate. A record written here carries no `rate_model`
+        # key at all, which is what `tests/test_day_rate_pin.py` sweeps
+        # for: an employee created after the migration must never carry
+        # the old-model marker, or the closed set has grown.
+        "day_rate":    data["day_rate"],
+        "active":      data["active"],
+        "notes":       data["notes"],
+        "created_at":  _now(),
+        "updated_at":  _now(),
+    }
+    return eid
 
 
 
