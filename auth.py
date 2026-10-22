@@ -807,9 +807,14 @@ ROUTE_PERMISSIONS = {
     # Pictures beside a line (21 Oct 2026, lineimage.py). Choosing what the
     # invoice shows is part of raising it; no permission was minted.
     "proforma.pictures":          "proforma.create",
+    # Raised FROM a BOQ (22 Oct 2026, CLIENT_CHANGES.md §0 forty-fourth
+    # block). The same document in the same series, so the same permission
+    # as raising it from a quotation / a proforma — none was minted.
+    "proforma.from_boq":          "proforma.create",
     "invoice.list_invoices":      "invoice.view",
     "invoice.view_invoice":       "invoice.view",
     "invoice.create_invoice":     "invoice.create",
+    "invoice.from_boq":           "invoice.create",
     # ⚠ CANCEL, not delete. There is no delete route for a tax invoice
     #   anywhere in this app, by design — see the catalogue note on
     #   `invoice.cancel` and `cascade.py`'s hard stop.

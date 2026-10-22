@@ -220,7 +220,7 @@ you start, backup or no backup.
 
 ### 5.5 Never reduce the test count
 
-The baseline is **3,674 passed / 9 skipped** on 21 October 2026 (a picture beside the description on the PI, the PO and the draft PO — previously 3,615 / 9, 3,493 / 8, 3,445 / 8 and 3,345 / 7 before that), verified by
+The baseline is **3,738 passed / 9 skipped** on 22 October 2026 (every document raised from the BOQ — previously 3,674 / 9 on 21 October 2026, a picture beside the description on the PI, the PO and the draft PO — previously 3,615 / 9, 3,493 / 8, 3,445 / 8 and 3,345 / 7 before that), verified by
 running the suite in this configuration: openpyxl **absent** (and xlrd and defusedxml), both client workbooks **absent**, global `C:\Program Files\Python310` (CPython 3.10.11), **no `.venv`**.
 
 ⚠ **On the laptop this was last measured on a `.venv` DOES exist**, and the row still means what it says: the figure is the one the **global interpreter** produces, with the `.venv` nowhere on `sys.path`. The second row below is the same checkout run through `.venv\Scripts\python`.

@@ -4386,6 +4386,92 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 22 October 2026, by Manas Gawde — EVERY DOCUMENT RAISED FROM THE BOQ, THE THREE RA TYPES, AND ONE "FOR" AT THE FOOT OF THE BOQ
+>
+> **A new block, not an amendment.** The forty-third block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-fourth** occasion. It covers the items below
+> and nothing else.
+>
+> ⚠ **Numbered in THIS checkout's sequence, which has diverged.** Written on
+> the laptop on top of its own uncommitted forty-first to forty-third blocks;
+> the office PC's `antigravity-dev` carries DIFFERENT blocks forty-one to
+> forty-seven. This work was pushed to its own branch,
+> `laptop/boq-raise-all`, by Manas's choice; when the two lines are merged,
+> which numbers move is his decision, and this block's content is not
+> altered by a renumbering.
+>
+> **What was asked for, in his words:** *"what they wanted was that every
+> document could be raised from BoQ only and RA especially all 3 types, Supply,
+> Installation and then Supply and Installation both"*; *"in documents that get
+> generated near the bottom For Samruddhi is repeated twice once on left and
+> once on right, please remove the left one"*; and *"do these changes and push
+> them"*. A client request after go-live, relayed by Manas.
+>
+> **Decisions taken — his, answered before any code was written, not the
+> agent's:**
+>
+> 1. **"Supply and Installation both" is the MERGED RA** (CC-2 C3 — one tax
+>    invoice stacking an issued supply bill and an issued installation bill,
+>    the client's own ₹500 + ₹700 = ₹1,200 example), reached from the BOQ.
+>    *A new single RA bill claiming both legs per line was offered and not
+>    chosen* — it would have broken "one leg per bill" and with it the
+>    over-claim guard, the challan and measurement caps and the merge.
+> 2. **All three RA types are ALWAYS shown on the BOQ**; one whose step is
+>    missing is greyed and says what to raise first. *Keeping them hidden, and
+>    dropping the challan / measurement prerequisite, were offered and not
+>    chosen.* C1's order of working is unchanged.
+> 3. **"All means all, even TI"** — offered "just the RA set now", he answered
+>    *"bro proforma as well, when i said all i mean all, even TI"*. So the
+>    **Proforma Invoice and the Tax Invoice are raised from the BOQ** too.
+>    ⚠ **This reverses item 7's recorded answer** (§2 below — *"Tax Invoice
+>    directly from the BOQ — answered differently"*), by the person entitled to
+>    reverse it. The risk item 7 named is real and is recorded, not closed:
+>    ABOUT.md §7 gap 58.
+> 4. **The left "For Samruddhi" goes.** Found on one document only — the
+>    printed **BOQ**, whose signature panel said it in both cells; every other
+>    sheet carries GSTIN / PAN on the left. Removed there.
+>
+> **Judgement calls — the agent's, not his, each listed in ABOUT.md §5
+> (`/boq`, `/proforma`, `/invoice`):** the PI and TI raised from a BOQ are the
+> ordinary documents in their ordinary series, written in `proforma.py` and
+> `invoice.py` (§2f's precedent — a module owns the shape it writes, and a third
+> tax-invoice series would break Rule 46(b)'s one consecutive run) rather than in
+> a new BOQ-chain module, which §1.1 below had foreseen for the proforma; each
+> lets the operator choose Supply, Installation or both — "both" STACKS the two
+> legs, two rows per line each with its own HSN / SAC, never one combined rate;
+> the rate is the schedule's selling rate and is not edited, the quantity is;
+> the tax head is chosen, never derived (§1.5); the tax is per rate slab; a TI
+> raised from a BOQ NAMES the live RA bills and tax invoices already on the
+> schedule rather than refusing; every raise control on the BOQ is drawn only
+> for a role the gate admits; the action bar became a grouped *Raise from this
+> BOQ* bar. **Two defects found on the way and closed with it, declared:** the
+> BOQ's right-hand signature escaped an already-escaped company branch
+> (`&amp;amp;`), and `proforma._sel_keep()` reached a stored value into a
+> dropdown unescaped — `quotation._sel_opts()` does not escape and is frozen.
+>
+> **What was built:** two routes, `/proforma/from-boq/<id>` and
+> `/invoice/from-boq/<id>`, under the EXISTING `proforma.create` and
+> `invoice.create` — no permission minted; `docs/ACCESS_MATRIX.md` 170 → 172
+> endpoints. The *RA · Supply & Installation* chip opens the existing
+> `/merged/create`, which was not changed beyond a link back to the BOQ.
+> `cascade.py` gained `boqs → proformas / invoices`, so a BOQ with a tax invoice
+> under it is never deleted.
+>
+> **One golden moved, declared:** the printed BOQ's `signature` block, −83
+> bytes — exactly the left cell. No other print golden and no page golden moved;
+> the PI and TI goldens are byte-identical.
+>
+> ⚠ **Its commercial status is NOT recorded here** — it was not asked, and how
+> it is charged is Manas's call; an agent may not take it, infer it, or extend
+> another block's classification onto it. It moves no Phase 3 bar and changes
+> no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4419,6 +4505,16 @@ of these is reversed. Full graph in [ABOUT.md §2b](ABOUT.md).
 PO, delivery challan, proforma) is built **in the BOQ chain**, not by reaching
 into the existing `/purchase`, `/proforma` or `/invoice` module. Where the
 existing module already does a similar job, that is not a reason to import it.
+
+⚠ **Not how the real PO, the proforma or the tax invoice off a BOQ were built.**
+The real PO (16 August, ABOUT.md §2f) and, on 22 October 2026, the proforma and
+the tax invoice (§0 forty-fourth block) are the ORDINARY documents in their own
+number series, so they are written by the modules that own those shapes —
+`purchase.py`, `proforma.py`, `invoice.py` import `boq.py`, never the reverse. A
+tax invoice in a module of its own would have needed a second `TI` counter, and
+Rule 46(b) wants one consecutive run. The import prohibitions above all still
+hold: `boq.py` imports none of the three and `ra.py` still may not import
+`invoice.py`.
 
 ### 1.2 Snapshot immutability — a printed document is driven by its own rows
 
@@ -4802,6 +4898,10 @@ picker; [tests/test_challan.py](tests/test_challan.py).
 `/boq/view` now carries **`+ RA · Supply`** and **`+ RA · Installation`** in
 its action bar, beside *Revise*.
 
+*(From 22 October 2026 a third, **`+ RA · Supply & Installation`** — the merged
+RA — and all three are always shown, greyed with the reason when the step
+before is missing; §0 forty-fourth block, G9 below.)*
+
 **Built ahead of the Phase 2 gate, and correctly so** — §0's exemption. RA
 billing against a BOQ was sold under MG/SF/2026-01 and the billing itself
 worked; there was simply no way to reach it from the schedule on screen. That
@@ -4834,7 +4934,17 @@ diverge on a hand-edited fork.
 
 ---
 
-### 7 · Tax Invoice directly from the BOQ — ↩ Answered differently
+### 7 · Tax Invoice directly from the BOQ — ✅ Built, not deployed (22 Oct 2026 — the earlier answer reversed)
+
+⚠ **REVERSED 22 October 2026, by Manas Gawde** (§0, forty-fourth block —
+*"when i said all i mean all, even TI"*). `/boq/view` raises a **Tax Invoice**
+and a **Proforma Invoice** directly, through `/invoice/from-boq/<id>` and
+`/proforma/from-boq/<id>` — the ordinary documents in their ordinary series,
+supply, installation or both. The risk the answer below named is real and is
+recorded, not closed: a tax invoice raised from the BOQ and the RA bills on the
+same schedule are not counted against each other (ABOUT.md §7 gap 58); the form
+names the RA bills already raised instead. **What follows is the answer as it
+stood until that date, kept unedited.**
 
 **Not being built as its own path.** The need is met by a **full-value RA
 prefill**: an RA bill claiming the full approved quantity is the tax invoice,
@@ -4971,6 +5081,31 @@ authorised by its own §0 block, which is where its commercial status lives.
 | G6 | RA bill raised FROM delivery challans or FROM the measurement sheet; a billed challan marked and blocked | ✅ **Built, not deployed** — 4 Oct 2026 under the §0 **fortieth** block (Manas's rulings A / B / C); **no charge, by Manas's ruling** |
 | G7 | A picture beside the description on the proforma invoice, the purchase order and the draft PO | ✅ **Built, not deployed** — 21 Oct 2026 under the §0 **forty-second** block (Manas's four answers); **commercial status deliberately left unstated, by his choice** |
 | G8 | The client's own banner at the top of every printed document | ✅ **Built, not deployed** — 21 Oct 2026 under the §0 **forty-third** block; **commercial status not recorded — Manas's call** |
+| G9 | Every document raised from the BOQ — the three RA types (Supply, Installation, Supply & Installation), the Proforma Invoice and the Tax Invoice — and one "For Samruddhi" at the foot of the printed BOQ | ✅ **Built, not deployed** — 22 Oct 2026 under the §0 **forty-fourth** block (Manas's answers); reverses item 7's answer; **commercial status not recorded — Manas's call** |
+
+### G9 · Every document from the BOQ, and three RA types — ✅ Built, not deployed
+
+**What the client gets.** The BOQ page has a **Raise from this BOQ** bar,
+grouped by job: *Purchase* (Draft PO, Purchase Order), *Site* (Delivery
+Challan, Measurement), *RA bills* (**RA · Supply**, **RA · Installation**,
+**RA · Supply & Installation**) and *Invoices* (**Proforma Invoice**, **Tax
+Invoice**). All three RA types are always shown; one that cannot be raised yet
+is greyed and says what to raise first — a delivery challan for supply, a
+measurement sheet for installation, one issued bill of each for *Supply &
+Installation*, which is the single combined tax invoice over the two. The
+Proforma and Tax Invoice are raised for Supply, Installation or both, each
+line at the schedule's own rate with its own HSN / SAC, the lines ticked and
+the quantities lowered as needed; they are numbered in the usual series and
+the BOQ lists them. The printed BOQ says **For SAMRUDDHI FIRE** once, over the
+signature.
+
+**What it does not do.** A tax invoice raised from the BOQ is not counted
+against the RA bills on the same schedule, nor they against it — the form names
+the RA bills already raised so the same work is not invoiced twice by mistake,
+but it does not stop it. No other printed document changed.
+
+Authorised by the §0 **forty-fourth** block, where Manas's answers are recorded
+and where its commercial status is left for him.
 
 ### G8 · The client's own banner on every document — ✅ Built, not deployed
 

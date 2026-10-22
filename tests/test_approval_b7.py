@@ -671,20 +671,46 @@ def test_the_tax_invoice_has_no_edit_route_to_gate():
       `can_cancel()`, never by `can_modify()`, while `ra.delete_ra()` beside it
       IS gated by `can_modify()`. Cancelling and deleting are different acts
       and the guard follows the act, not the module.
+
+    ⚠ **AMENDED on 22 October 2026**, when `/invoice/from-boq/<id>` was built
+      (CLIENT_CHANGES.md §0, forty-fourth block). The assertion this replaces
+      was, in full and verbatim:
+
+          assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice"], (
+              f"invoice.py has grown a write route beyond creation and cancellation: "
+              f"{invoice_writes}. It is an approvable document, so the new route "
+              f"needs approval.can_modify() and a line in the test above — unless it "
+              f"is a withdrawal path, which is gated on its own terms (read the "
+              f"docstring before relaxing this).")
+
+      The third route is a second CREATION path — a tax invoice raised from a
+      BOQ instead of from a proforma. It modifies nothing that exists, so
+      `can_modify()` has nothing to refuse; what a create route owes the
+      ladder is `approval.stamp_creator()` at the write site, and the second
+      half below asserts both creation paths make that call. Any FOURTH write
+      route still fails here.
     """
     import app as app_module
+    import inspect
+    import invoice
 
     invoice_writes = sorted(
         r.endpoint for r in app_module.app.url_map.iter_rules()
         if r.endpoint.startswith("invoice.")
         and {"POST"} & r.methods
         and "approval" not in r.endpoint)
-    assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice"], (
-        f"invoice.py has grown a write route beyond creation and cancellation: "
-        f"{invoice_writes}. It is an approvable document, so the new route "
-        f"needs approval.can_modify() and a line in the test above — unless it "
-        f"is a withdrawal path, which is gated on its own terms (read the "
-        f"docstring before relaxing this).")
+    assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice",
+                              "invoice.from_boq"], (
+        f"invoice.py has grown a write route beyond its two creation paths and "
+        f"cancellation: {invoice_writes}. It is an approvable document, so the "
+        f"new route needs approval.can_modify() and a line in the test above — "
+        f"unless it is a withdrawal path, which is gated on its own terms (read "
+        f"the docstring before relaxing this).")
+    for fn in (invoice.create_invoice, invoice.from_boq):
+        assert "approval.stamp_creator(ti)" in inspect.getsource(fn), (
+            f"{fn.__name__}() creates a tax invoice without stamping its "
+            f"creator — B6's self-approval rule and the approvals-off mark both "
+            f"depend on that call at the write site.")
 
     # The prohibition itself, stated as an assertion rather than left to the
     # shape of the list above: no route in this module may destroy an invoice.

@@ -1751,7 +1751,13 @@ BOQ_SHEET_BLOCKS = [
 # was 8c59fc3c47f82c7d / 103885 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     `letterhead` alone; the strip prints the BOQ's reference, not the
 #     tagline. See the note above TI_WHOLE.
-BOQ_WHOLE, BOQ_LEN = "50e84de64a63594e", 104933
+# was 50e84de64a63594e / 104933 before 22 Oct 2026 — "For SAMRUDDHI FIRE"
+#     printed TWICE at the foot of the BOQ, once in the left cell and once
+#     over the signatory; the client asked for the left one to go (CLIENT_
+#     CHANGES.md §0 forty-fourth block). `signature` alone, −83 bytes: the left
+#     cell is now an empty `<div></div>`, kept so the signature stays right.
+#     No other block and no other document moved.
+BOQ_WHOLE, BOQ_LEN = "c6c0a018c2549970", 104850
 BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
               "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872
               "foot-strip": "0f66996df1483847",
@@ -1759,7 +1765,7 @@ BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
               "party":      "9b34f96c4ac7cd01",
               "sections":   "2e4d91620fb69579",
               "grand":      "2599e3fd773e385a",
-              "signature":  "7812a7b5e2ddb967"}
+              "signature":  "59983b7201b3d042"}   # was 7812a7b5e2ddb967
 
 # was 05e26ae227bb678e / 83807 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE

@@ -572,6 +572,11 @@ def populated(client):
             # back to the house em-dash.
             "/purchase/from-boq/<boq_id>":     bid,
             "/purchase/from-draft/<draft_id>": dpid,
+            # The proforma and the tax invoice raised FROM a BOQ (22 Oct 2026).
+            # Each prints the whole 97-line picker and the schedule's party
+            # block, so the payload reaches them through both.
+            "/proforma/from-boq/<boq_id>":     bid,
+            "/invoice/from-boq/<boq_id>":      bid,
             "/quotation/view/<id>": qid,
             "/approval/approve/ra/<id>":       rid,
             "/approval/reject/ra/<id>":        rid,

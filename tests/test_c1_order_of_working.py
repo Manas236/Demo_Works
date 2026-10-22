@@ -256,6 +256,12 @@ def test_the_boq_page_hides_a_chip_whose_step_is_missing(client, seeded):
     """
     Presentation. It stops somebody clicking into a refusal they could have been
     spared; it is **not** what refuses them, and the tests above are.
+
+    ⚠ **From 22 October 2026 the chip is DRAWN, greyed, with no link** (CLIENT_
+      CHANGES.md §0 forty-fourth block — the client wants to see that all three
+      RA types exist). What this test holds is unchanged and is the part that
+      matters: no LINK into the refusal. `tests/test_boq_raise_all.py` holds the
+      greyed chip and its printed reason.
     """
     h = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
     assert "/ra/create?boq=" not in h

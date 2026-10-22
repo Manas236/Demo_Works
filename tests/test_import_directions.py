@@ -1100,6 +1100,19 @@ REQUIRED = [
     *[(mod, "lineimage", "the Image column, the Pictures page and the one "
                          "content-addressed store every document shares")
       for mod in ("proforma", "purchase", "po_draft", "spec")],
+
+    # 22 Oct 2026 — the proforma and the tax invoice raised FROM a BOQ
+    # (CLIENT_CHANGES.md §0, forty-fourth block). purchase.py's arrows up the
+    # chain (§2f), for its reason: a module owns the shape it writes, so the
+    # PI and the TI stay in their own series. The REVERSE arrows stay
+    # forbidden above — `boq ↛ proforma`, `boq ↛ invoice`, `boqpick ↛ either`.
+    ("proforma", "boq",     "superseded_ids — a superseded schedule is refused "
+                            "at the route — plus header_of, _line_id, _item_no "
+                            "and MAX_LINES: the PI is raised from the schedule"),
+    ("proforma", "boqpick", "the line picker, at its FOURTH consumer; the tax "
+                            "invoice reaches it through proforma.boq_grid()"),
+    ("invoice",  "boq",     "superseded_ids, for the same route-level refusal"),
+    ("invoice",  "boqpick", "picked_lines(): the ticked rows off the POST"),
 ]
 
 

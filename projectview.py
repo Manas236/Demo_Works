@@ -542,9 +542,13 @@ def view_project(id: str):
     else:
         pi_html = '<tr><td colspan="4" style="color:var(--muted);">No proforma invoices attached.</td></tr>'
 
-    # Tax Invoices (inheriting via proforma)
+    # Tax Invoices (inheriting via proforma — or, for one raised straight from
+    # a BOQ on 22 October 2026 or later, carrying the BOQ's project itself)
     attached_tis = []
     for ti in STORE.get("invoices", {}).values():
+        if ti.get("project_id") == id:
+            attached_tis.append(ti)
+            continue
         pi_id = ti.get("proforma_id")
         if pi_id:
             pi = STORE.get("proformas", {}).get(pi_id)

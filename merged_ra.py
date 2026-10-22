@@ -744,10 +744,19 @@ def create_merged():
               <input type="text" name="notes" value="{_esc(request.form.get('notes'))}"/></div>
             <button type="submit" class="btn">Raise merged document</button>"""
 
+    # Opened from a BOQ's *RA · Supply & Installation* (22 October 2026): the
+    # way back to the schedule, beside the register.
+    back_boq = ""
+    if boq_id in boqs:
+        back_boq = (f'<a href="{url_for("boq.view_boq", id=boq_id)}" class="btn btn-ghost">'
+                    f'&#8592; {_esc(boqs[boq_id].get("ref"))}</a>')
+
     return _shell("Merge two RA bills", f"""
       <div class="page-top">
         <h1>Merge <span>two RA bills</span></h1>
-        <a href="{url_for('merged_ra.list_merged')}" class="btn btn-ghost">&#8592; Merged register</a>
+        <div style="display:flex;gap:.7rem;">{back_boq}
+          <a href="{url_for('merged_ra.list_merged')}" class="btn btn-ghost">&#8592; Merged register</a>
+        </div>
       </div>
       {_alert(error)}
       <form method="POST" action="{url_for('merged_ra.create_merged')}">
