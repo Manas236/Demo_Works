@@ -452,6 +452,40 @@ def populated(client):
         ["1", "Imported work-order line", "m", 2, 100, 40]])]),
         "fixture-wo.xlsx", conftest.ensure_test_user()["id"])
 
+    # Import from Excel on every other document (18 October 2026). One staged
+    # import per kind, through the REAL `docimport.stage()`, owned by the user
+    # the sweep signs in as and CONFIRMED, so `/import/<kind>/<token>` renders
+    # the preview and `/apply` renders the prefilled form (or a register's
+    # review page) — neither consumes the row on a GET, so the sweep can walk
+    # each one more than once. Every text cell is a value the pages print.
+    import docimport
+    _spec_code = next(iter(STORE["specs"].values()))["code"]
+    _doc_rows = {
+        "purchase":    [["Part", "Qty", "Rate"], ["Fixture gate valve", 2, 150]],
+        "quotation":   [["Code", "Qty"], [_spec_code, 1]],
+        "measurement": [["Location", "25 NB", "Remarks"], ["H1", 4, "fixture riser"]],
+        "challan":     [["Item", "Qty"], ["4.1", 1], ["17", 1]],
+        "dpo":         [["Item", "Order qty", "Pcs"], ["4.1", 1, 2], ["17", 1, None]],
+        "ra":          [["Item", "This bill qty"], ["4.1", 1], ["17", 1]],
+        "address":     [["Label", "Address", "City", "State", "PIN"],
+                        ["Fixture vendor", "Plot 1", "Pune", "Maharashtra", 411001],
+                        ["Fixture bad", "Plot 2", "Pune", "MH", 411001]],
+        "spec":        [["Code", "Title", "Specification", "Size"],
+                        ["FIX-IMP", "Fixture clause", "Fixture text", "25 mm"]],
+        "employee":    [["Name", "Emp Code", "Day rate"], ["Fixture person", "FX-1", 900],
+                        ["Fixture dup", "FX-1", 900]],
+    }
+    _doc_ctx = {"measurement": {"boq_id": bid}, "challan": {"boq_id": bid},
+                "dpo": {"boq_id": bid}, "ra": {"boq_id": bid, "leg": "supply"}}
+    doc_tokens = {}
+    for _k, _rows in _doc_rows.items():
+        _t = docimport.stage(docimport.KINDS[_k],
+                             SI.from_rows([("Fixture sheet", "visible", _rows)]),
+                             f"fixture-{_k}.xlsx", conftest.ensure_test_user()["id"],
+                             _doc_ctx.get(_k, {}))
+        STORE["doc_imports"][_t]["confirmed"] = True
+        doc_tokens[_k] = _t
+
     yield {
         "ids": {
             "/address/delete/<id>": next(iter(STORE["addresses"])),
@@ -543,6 +577,14 @@ def populated(client):
             # lets through — pointed at an Issued order this route redirects,
             # and the sweep would be checking a redirect rather than a page.
             "/purchase/edit/<id>":  next(iter(STORE["purchases"])),
+            # The three Pictures pages (21 Oct 2026). Each prints every line's
+            # description and part number, so the escaping sweep reads them
+            # with the payload in both. The seeded order is a Draft, which
+            # `pictures_allowed()` lets through — an Issued-and-approved one
+            # would redirect, and the sweep would be reading a redirect.
+            "/proforma/pictures/<id>": pid,
+            "/purchase/pictures/<id>": next(iter(STORE["purchases"])),
+            "/po/pictures/<id>":       dpid,
             # The two BOQ-side create forms. Both render a populated page: the
             # first the whole 97-line picker with a rate box per line, the
             # second the draft's own rows — and `_a_draft_po` deliberately
@@ -550,6 +592,11 @@ def populated(client):
             # back to the house em-dash.
             "/purchase/from-boq/<boq_id>":     bid,
             "/purchase/from-draft/<draft_id>": dpid,
+            # The proforma and the tax invoice raised FROM a BOQ (22 Oct 2026).
+            # Each prints the whole 97-line picker and the schedule's party
+            # block, so the payload reaches them through both.
+            "/proforma/from-boq/<boq_id>":     bid,
+            "/invoice/from-boq/<boq_id>":      bid,
             "/quotation/view/<id>": qid,
             "/approval/approve/ra/<id>":       rid,
             "/approval/reject/ra/<id>":        rid,
@@ -589,6 +636,9 @@ def populated(client):
             "/spec/delete/<id>":    blank["REG-BLANK-UNSIZED"],
             "/spec/edit/<id>":      blank["REG-BLANK-UNSIZED"],
             "/spec/view/<id>":      blank["REG-BLANK-UNSIZED"],
+            # Import from Excel (18 October 2026) — the staged imports above.
+            **{f"/import/{_k}/<token>": _t for _k, _t in doc_tokens.items()},
+            **{f"/import/{_k}/<token>/apply": _t for _k, _t in doc_tokens.items()},
         },
         # The second spec's pages, which the id map above has no room for: one
         # rule, two records, and the sized one is the other half of the `if`.
@@ -624,6 +674,8 @@ def populated(client):
     STORE.setdefault("import_layouts", {}).clear()
     STORE.setdefault("work_orders", {}).clear()
     STORE.setdefault("wo_imports", {}).clear()
+    STORE.setdefault("doc_imports", {}).clear()
+    STORE.setdefault("doc_import_layouts", {}).clear()
 
 
 def _a_work_order() -> str:

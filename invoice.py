@@ -8,6 +8,7 @@ Routes
 ------
   GET       /invoice/              — register of issued tax invoices
   GET,POST  /invoice/from/<pid>    — raise a tax invoice from a proforma invoice
+  GET,POST  /invoice/from-boq/<id> — raise a tax invoice from a BOQ (22 Oct 2026)
   GET       /invoice/view/<id>     — the printed tax invoice (Rule 46 document)
 
 Why this is a separate document again, and not a PI render mode
@@ -89,6 +90,29 @@ from quotation import (
 # is how the three start contradicting each other.
 from quotation import _DISPATCH, _PAY_TERMS, _STATES_IN
 from proforma import PROFORMA_STYLES, _sel_keep
+
+# A tax invoice raised FROM a BOQ (22 October 2026) is built by the same
+# helpers as a PI raised from one — the leg, the clause headings, the per-slab
+# tax — read from `proforma.py` along the arrow this module already had. One
+# builder, so the PI and the TI raised off one schedule cannot disagree about
+# what a line costs. `boq` itself is reached for the revision rule only.
+import boq as BQ
+import boqpick as BP
+from proforma import (
+    FROM_BOQ_FORM_STYLES,
+    boq_chain,
+    boq_choice_html,
+    boq_customer,
+    boq_figures,
+    boq_grid,
+    boq_heading_row,
+    boq_leg,
+    boq_leg_label,
+    boq_line_items,
+    boq_project_id,
+    boq_replay,
+    boq_tax_head,
+)
 
 invoice_bp = Blueprint("invoice", __name__, url_prefix="/invoice")
 
@@ -288,6 +312,10 @@ def _missing_hsn(line_items: list) -> list:
     """
     seen, out = set(), []
     for r in line_items or []:
+        # A clause heading or leg band (a document raised from a BOQ) is not a
+        # supply and carries no code by design.
+        if r.get("is_header"):
+            continue
         if not str(r.get("hsn") or "").strip():
             nm = str(r.get("name") or "").strip() or "(unnamed line)"
             if nm not in seen:
@@ -318,7 +346,8 @@ def _build_ti_terms(ti: dict) -> list:
     terms = []
 
     src = P.esc(ti.get("proforma_ref")).strip()
-    if src:
+    boq_src = P.esc(ti.get("boq_ref")).strip()
+    if src and not boq_src:
         terms.append(
             f"Supplied against our Proforma Invoice {src}"
             + (f" dated {P.esc(ti['proforma_date'])}" if ti.get("proforma_date") else "")
@@ -326,6 +355,17 @@ def _build_ti_terms(ti: dict) -> list:
                if ti.get("quotation_ref") else "")
             + ". The technical scope, exclusions and terms of that quotation "
               "continue to govern this supply in full."
+        )
+    elif boq_src:
+        # Raised from a schedule, directly or through a PI raised from one
+        # (22 October 2026). Only such an invoice says this.
+        terms.append(
+            "Supplied against our "
+            + (f"Proforma Invoice {src}"
+               + (f" dated {P.esc(ti['proforma_date'])}" if ti.get("proforma_date") else "")
+               + ", raised on our " if src else "")
+            + f"Bill of Quantities {boq_src}. The specifications, quantities and "
+              "terms of that schedule continue to govern this work in full."
         )
 
     po = P.esc(ti.get("po_number")).strip()
@@ -620,12 +660,18 @@ def list_invoices():
             badge    = ('<span class="ti-badge paid">settled</span>' if net <= 0
                         else f'<span class="ti-badge due">&#8377;&nbsp;{net:,.0f} due</span>')
             src_url  = url_for("proforma.view_proforma", id=ti.get("proforma_id", ""))
+            src_txt  = P.esc(ti.get('proforma_ref'))
+            # Raised straight from a schedule (22 October 2026): the cell names
+            # the BOQ and links to it. Every other row renders as before.
+            if ti.get("boq_id") and not ti.get("proforma_id"):
+                src_url = url_for("boq.view_boq", id=ti.get("boq_id"))
+                src_txt = f"BOQ {P.esc(ti.get('boq_ref'))}"
             rows_html += f"""
             <tr>
               <td class="td-ref">{P.esc(ti.get('ref'))}</td>
               <td class="td-muted">{P.esc(ti.get('date'))}</td>
               <td class="td-cust">{P.esc(_customer_of(ti))}</td>
-              <td class="col-h"><a href="{src_url}" class="btn-view">{P.esc(ti.get('proforma_ref'))}</a></td>
+              <td class="col-h"><a href="{src_url}" class="btn-view">{src_txt}</a></td>
               <td class="col-h">{P.esc(ti.get('place_of_supply'))}
                   <span class="td-muted">({P.esc(ti.get('pos_code'))})</span></td>
               <td class="td-muted">&#8377;&nbsp;{float(ti.get('grand_total') or 0):,.0f}</td>
@@ -654,7 +700,8 @@ def list_invoices():
           <p style="margin-top:.4rem;font-size:.88rem;">
             A tax invoice is raised from a proforma invoice at the time the goods
             are despatched &mdash; open the PI the customer has paid against and
-            use <b>Raise Tax Invoice</b>.</p>
+            use <b>Raise Tax Invoice</b> &mdash; or from a bill of quantities,
+            with <b>+ Tax Invoice</b> on the BOQ.</p>
           <a href="{pi_url}" class="btn" style="display:inline-block;margin-top:1.1rem;">
             Go to Proforma Register</a>
         </div>"""
@@ -789,6 +836,12 @@ def create_invoice(pid: str):
                 "company_branch": pi.get("company_branch", ""),
                 "auth_signatory": pi.get("auth_signatory", ""),
             }
+            # A PI raised from a BOQ (22 October 2026) passes its schedule on,
+            # so the invoice names it and the BOQ lists it. Copied only when
+            # present: an invoice off a quotation's PI gains no key at all.
+            if pi.get("boq_id"):
+                for k in ("boq_id", "boq_ref", "boq_rev_no", "boq_leg", "project_id"):
+                    ti[k] = pi.get(k, "")
             STORE["invoices"][iid] = ti
             # B6 — the creator, captured at the write site. See approval.py.
             approval.stamp_creator(ti)
@@ -824,6 +877,9 @@ def create_invoice(pid: str):
         pos_default = pi.get("ship_state", "")
     if pos_default not in GST_STATE_CODES:
         pos_default = q_src.get("bill_state", "")
+    if pos_default not in GST_STATE_CODES and pi.get("boq_id"):
+        # A PI raised from a BOQ has no quotation; its schedule has the State.
+        pos_default = ((STORE.get("boqs") or {}).get(pi["boq_id"]) or {}).get("bill_state", "")
     if pos_default not in GST_STATE_CODES:
         pos_default = ""
 
@@ -877,6 +933,11 @@ def create_invoice(pid: str):
     # ── Frozen line-item preview ───────────────────────────────────────────
     rows_html = ""
     for r in pi.get("line_items", []):
+        if r.get("is_header"):
+            # A clause or leg band off a BOQ-raised PI: words, no figures.
+            rows_html += f"""
+        <tr class="fz-comp"><td colspan="6"><b>{P.esc(r.get('name'))}</b></td></tr>"""
+            continue
         comp = " fz-comp" if r.get("depth", 0) == 1 else ""
         rows_html += f"""
         <tr class="{comp.strip()}">
@@ -1066,6 +1127,348 @@ def create_invoice(pid: str):
     return _page(template)
 
 
+@invoice_bp.route("/from-boq/<boq_id>", methods=["GET", "POST"])
+def from_boq(boq_id: str):
+    """
+    Raise a GST tax invoice FROM a bill of quantities (22 October 2026).
+
+    ⚠ **This reverses CLIENT_CHANGES.md item 7's answer, by Manas's decision**
+      (§0, fifty-first block): *"proforma as well … even TI"*. Item 7 had
+      answered "Tax Invoice directly from the BOQ" with the RA bill, which is
+      headed TAX INVOICE, and warned that a second route to one supply makes
+      two records that can disagree about it. That risk is real and it is
+      **surfaced, not blocked**: the form names every live RA bill and every
+      tax invoice already on this schedule's chain, and says what a second
+      document for the same work would be. Nothing counts this invoice
+      against the RA over-claim block — ABOUT.md §7 gap 78.
+
+    The ordinary tax invoice: the `SF/TI/yy-yy/nnnn` series, Rule 46's fields,
+    the approval stamp, the same printed sheet and the same cancel route. The
+    lines are `proforma.boq_line_items()`'s — the leg chosen, the schedule's
+    selling rate, the supply HSN or installation SAC, the clause headings —
+    and the tax is per slab (`proforma.boq_figures()`).
+
+    The tax head is CHOSEN, and `_tax_warning()` says so when it disagrees
+    with the place of supply — the same warning a PI-raised invoice gets, for
+    the same reason: the head is a commercial decision, never a silent fix.
+    """
+    boq = (STORE.get("boqs") or {}).get(boq_id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs",
+                                msg="Choose a bill of quantities to invoice against.",
+                                type="error"))
+    if boq_id in BQ.superseded_ids():
+        return redirect(url_for("boq.view_boq", id=boq_id,
+                                msg="That schedule has been superseded. Raise the "
+                                    "tax invoice against the current revision.",
+                                type="error"))
+
+    f = request.form
+    is_post = request.method == "POST"
+    leg = boq_leg(f.get("leg") if is_post else request.args.get("leg"))
+    head = boq_tax_head(f.get("tax_type") if is_post else "")
+    error = ""
+    chosen = qty_of = None
+
+    if is_post:
+        ti_date = (f.get("date") or "").strip()
+        pos     = (f.get("place_of_supply") or "").strip()
+        adv     = _money(f.get("advance_received"), 0.0)
+
+        if not ti_date:
+            error = "Invoice date is required."
+        elif not pos:
+            error = "Place of supply is required — it decides whether this supply attracts IGST or CGST + SGST."
+        elif pos not in GST_STATE_CODES:
+            error = f"'{pos}' is not a GST State. Pick one from the list."
+        elif adv < 0:
+            error = "Advance received must be a number, e.g. 125000."
+
+        picked, line_err = ([], "") if error else BP.picked_lines(
+            f.get("ti_json") or "", boq, max_lines=BQ.MAX_LINES,
+            empty_msg=("No lines are ticked. A tax invoice with nothing on it "
+                       "is not a document — tick at least one line, or cancel."),
+            cap_msg="Raise more than one tax invoice.")
+        error = error or line_err
+        items, item_err = ([], "") if error else boq_line_items(picked, boq, leg)
+        error = error or item_err
+
+        if not error:
+            subtotal, tax_info, grand, total_qty = boq_figures(items, head)
+            if adv > grand:
+                error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
+                         f"value (₹{grand:,.2f}).")
+
+        if not error:
+            iid = str(uuid.uuid4())
+            ti = {
+                "id":  iid,
+                "ref": _next_ref(ti_date),
+                "fy":  _fy_of(ti_date),
+                "date": ti_date,
+
+                # ── No proforma and no quotation behind it. The keys are
+                #    present and empty, so every reader finds its shape.
+                "proforma_id":    "",
+                "proforma_ref":   "",
+                "proforma_date":  "",
+                "quotation_id":   "",
+                "quotation_ref":  "",
+
+                # ── The schedule, stored rather than looked up.
+                "boq_id":     boq_id,
+                "boq_ref":    boq.get("ref", ""),
+                "boq_rev_no": int(boq.get("rev_no") or 0),
+                "boq_leg":    leg,
+                "project_id": boq_project_id(boq),
+
+                **boq_customer(boq),
+
+                "line_items":  items,
+                "subtotal":    subtotal,
+                "tax_type":    head,
+                "tax_info":    tax_info,
+                "grand_total": grand,
+                "total_qty":   total_qty,
+
+                "place_of_supply": pos,
+                "pos_code":        GST_STATE_CODES[pos],
+                "reverse_charge":  f.get("reverse_charge") == "1",
+
+                "advance_received": adv,
+                "net_payable":      round(grand - adv, 2),
+
+                "po_number":        (f.get("po_number") or "").strip(),
+                "po_date":          (f.get("po_date") or "").strip(),
+                "dispatch_through": (f.get("dispatch_through") or "").strip(),
+                "dispatch_doc_no":  (f.get("dispatch_doc_no") or "").strip(),
+                "vehicle_no":       (f.get("vehicle_no") or "").strip().upper(),
+                "eway_bill_no":     (f.get("eway_bill_no") or "").strip(),
+                "payment_terms":    (f.get("payment_terms") or "").strip(),
+                "notes":            (f.get("notes") or "").strip(),
+
+                "company_branch": boq.get("company_branch", ""),
+                "auth_signatory": boq.get("auth_signatory", ""),
+            }
+            STORE["invoices"][iid] = ti
+            # B6 — the creator, captured at the write site. See approval.py.
+            approval.stamp_creator(ti)
+            return redirect(url_for("invoice.view_invoice", id=iid,
+                                    msg=f"Tax invoice {ti['ref']} created against "
+                                        f"{boq.get('ref') or 'the schedule'}.",
+                                    type="success"))
+
+        chosen, qty_of = boq_replay(f.get("ti_json") or "")
+
+    def _v(name: str, fallback: str = "") -> str:
+        if is_post:
+            return (f.get(name) or "").strip()
+        return str(fallback or "").strip()
+
+    # Place of supply defaults to where the work is: the site when it differs
+    # from billing, else the billing State — on the form only, as always.
+    pos_default = ""
+    if not boq.get("ship_same") and boq.get("ship_state"):
+        pos_default = boq.get("ship_state", "")
+    if pos_default not in GST_STATE_CODES:
+        pos_default = boq.get("bill_state", "")
+    if pos_default not in GST_STATE_CODES:
+        pos_default = ""
+
+    v_date     = _v("date", _today())
+    v_pos      = _v("place_of_supply", pos_default)
+    v_po_no    = _v("po_number")
+    v_po_date  = _v("po_date")
+    v_adv      = _v("advance_received", "0.00")
+    v_dispatch = _v("dispatch_through")
+    v_doc_no   = _v("dispatch_doc_no")
+    v_vehicle  = _v("vehicle_no")
+    v_eway     = _v("eway_bill_no")
+    v_pay      = _v("payment_terms", boq.get("payment_terms", ""))
+    v_notes    = _v("notes")
+    rc_checked = ("checked" if (f.get("reverse_charge") == "1" if is_post
+                                else DEFAULT_REVERSE_CHARGE) else "")
+
+    # ── What else already bills this schedule — surfaced, never blocked ───
+    # Read off STORE directly with the status matched literally: this module
+    # may not import `ra.py` (§2b), and the RA strip on `/boq/view` reads the
+    # same collection the same way.
+    chain = boq_chain(boq_id)
+    ras = sorted((r for r in (STORE.get("ra_bills") or {}).values()
+                  if str(r.get("boq_id") or "") in chain
+                  and str(r.get("status") or "").strip().lower() != "cancelled"),
+                 key=lambda r: int(r.get("ra_no") or 0))
+    tis = sorted(((i, t) for i, t in STORE["invoices"].items()
+                  if str(t.get("boq_id") or "") in chain
+                  and str(t.get("status") or "") != "cancelled"),
+                 key=lambda kv: kv[1].get("ref", ""))
+    dup_bits = []
+    if ras:
+        dup_bits.append(
+            f"<b>{len(ras)} RA bill{'s' if len(ras) != 1 else ''} already "
+            f"claim{'' if len(ras) != 1 else 's'} on this schedule</b> ("
+            + ", ".join(f"RA{int(r.get('ra_no') or 0)} {P.esc(r.get('leg'))}"
+                        for r in ras)
+            + "). An RA bill is itself a tax invoice: invoicing the same work "
+              "here as well bills it twice, and nothing on this form counts the "
+              "two against each other.")
+    if tis:
+        dup_bits.append(
+            "<b>Tax invoices already raised from this schedule:</b> "
+            + ", ".join(
+                f'<a href="{url_for("invoice.view_invoice", id=i)}">{P.esc(t.get("ref"))}</a>'
+                f' ({boq_leg_label(t.get("boq_leg"))})' for i, t in tis)
+            + ". A second invoice for the same supply is a duplicate.")
+    dup_html = ""
+    if dup_bits:
+        dup_html = ('<div class="boq-dup">'
+                    + "".join(f"<p>{b}</p>" for b in dup_bits) + "</div>")
+
+    tax_msg = _tax_warning(v_pos, head)
+    warn_html = ""
+    if tax_msg:
+        warn_html = ('<div class="gst-warn"><p><b>Tax head may not match the '
+                     f'place of supply.</b> {P.esc(tax_msg)} Choose the head that '
+                     'fits before raising it — it is not corrected for you.</p></div>')
+
+    back = url_for("boq.view_boq", id=boq_id)
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Tax Invoice from BOQ")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{FROM_BOQ_FORM_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Tax Invoice <span>from BOQ</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{back}" class="btn btn-ghost">&#8592; {P.esc(boq.get('ref'))}</a>
+          <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>
+        </div>
+      </div>
+
+      {_alert(error, "error")}
+
+      <div class="src-note">
+        From bill of quantities <b>{P.esc(boq.get('ref'))}</b>
+        &middot; {P.esc(boq.get('project_name'))} &middot; {P.esc(_customer_of(boq))}
+        <div class="sn-sub">The invoice will be numbered {P.esc(_next_ref(v_date))}
+          &mdash; consecutive within FY {P.esc(_fy_of(v_date))}, as Rule 46 requires.</div>
+      </div>
+
+      {dup_html}
+      {warn_html}
+
+      <form method="POST" action="{url_for("invoice.from_boq", boq_id=boq_id)}"
+            onsubmit="return saveJSON();">
+        <input type="hidden" name="ti_json" id="ti_json" value=""/>
+
+        <div class="form-section">
+          <div class="section-title">Invoice</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="date">Invoice Date *</label>
+              <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
+            </div>
+            <div class="form-group">
+              <label for="po_number">Customer PO / Work Order No.</label>
+              <input type="text" id="po_number" name="po_number" value="{P.esc(v_po_no)}"
+                     placeholder="their order number"/>
+            </div>
+            <div class="form-group">
+              <label for="po_date">Customer PO Date</label>
+              <input type="date" id="po_date" name="po_date" value="{P.esc(v_po_date)}"/>
+            </div>
+          </div>
+          <div class="fg2" style="margin-top:.9rem;">{boq_choice_html(leg, head)}
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">GST particulars</div>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="place_of_supply">Place of Supply *</label>
+              {_sel_keep("place_of_supply", _POS_STATES, v_pos)}
+              <small class="field-hint">The State where the work is delivered.
+                It decides IGST (inter-State) against CGST + SGST (intra-State),
+                and prints with its GST State code.</small>
+            </div>
+            <div class="form-group">
+              <label for="reverse_charge">Reverse Charge</label>
+              <label style="display:flex;align-items:center;gap:.5rem;font-weight:500;
+                            text-transform:none;letter-spacing:0;">
+                <input type="checkbox" id="reverse_charge" name="reverse_charge"
+                       value="1" {rc_checked} style="width:auto;"/>
+                Tax is payable on reverse charge basis
+              </label>
+              <small class="field-hint">The declaration prints either way — Rule
+                46 requires the status on the face of the invoice.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Settlement</div>
+          <div class="adv-row">
+            <div class="form-group" style="max-width:220px;">
+              <label for="advance_received">Advance Already Received (&#8377;)</label>
+              <input type="number" id="advance_received" name="advance_received"
+                     value="{P.esc(v_adv)}" min="0" step="0.01"/>
+            </div>
+            <div class="adv-out">
+              Anything already received against this work &mdash; it is shown as
+              an adjustment, and the invoice is still raised for the full value
+              of what was supplied.
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Despatch</div>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="dispatch_through">Dispatch Through</label>
+              {_sel_keep("dispatch_through", _DISPATCH, v_dispatch)}
+            </div>
+            <div class="form-group">
+              <label for="dispatch_doc_no">LR / Docket No.</label>
+              <input type="text" id="dispatch_doc_no" name="dispatch_doc_no"
+                     value="{P.esc(v_doc_no)}" placeholder="transporter's consignment note"/>
+            </div>
+            <div class="form-group">
+              <label for="vehicle_no">Vehicle No.</label>
+              <input type="text" id="vehicle_no" name="vehicle_no"
+                     value="{P.esc(v_vehicle)}" placeholder="e.g. MH 04 AB 1234"/>
+            </div>
+            <div class="form-group">
+              <label for="eway_bill_no">E-Way Bill No.</label>
+              <input type="text" id="eway_bill_no" name="eway_bill_no"
+                     value="{P.esc(v_eway)}" placeholder="12 digits, where applicable"/>
+            </div>
+            <div class="form-group">
+              <label for="payment_terms">Payment Terms</label>
+              {_sel_keep("payment_terms", _PAY_TERMS, v_pay)}
+            </div>
+            <div class="form-group">
+              <label for="notes">Note on the invoice <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <input type="text" id="notes" name="notes" value="{P.esc(v_notes)}"
+                     placeholder="e.g. Supply for Basement 1, first lot"/>
+            </div>
+          </div>
+        </div>
+{boq_grid(boq, chosen, qty_of, "ti_json", "tax invoice")}
+        <div class="form-actions">
+          <button type="submit" class="btn">Raise Tax Invoice</button>
+          <a href="{back}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · tax invoice</p></footer>
+    </main></body></html>"""
+    return _page(template)
+
+
 @invoice_bp.route("/view/<id>")
 def view_invoice(id: str):
     """
@@ -1097,6 +1500,11 @@ def view_invoice(id: str):
     #    HSN cell, which is the one column a tax invoice cannot leave blank.
     sno, total_qty, table_rows = 0, 0.0, ""
     for row in ti.get("line_items", []):
+        # A clause or leg band on an invoice raised from a BOQ (22 October
+        # 2026): words only, not numbered, no HSN chip. No other TI has one.
+        if row.get("is_header"):
+            table_rows += boq_heading_row(row)
+            continue
         sno += 1
         depth   = row.get("depth", 0)
         row_cls = "row-assembly" if row.get("type") == "assembly" else "row-item"
@@ -1149,18 +1557,28 @@ def view_invoice(id: str):
                                _fmt_qty(total_qty), _inr(grand))
 
     # ── Header meta ───────────────────────────────────────────────────────
+    # An invoice off a BOQ (22 October 2026) — directly, or through a PI
+    # raised from one — names its schedule, and drops the labels of documents
+    # it never had. Every other invoice's head is exactly as it was.
+    boq_ref = ti.get("boq_ref")
+    no_pi = bool(boq_ref) and not ti.get("proforma_ref")
+    no_q = bool(boq_ref) and not ti.get("quotation_ref")
     meta_col_1 = (
         _meta("Tax Invoice No.",      P.esc(ti.get("ref"))) +
-        _meta("Against Proforma",     P.esc(ti.get("proforma_ref"))) +
+        ("" if no_pi else
+         _meta("Against Proforma",    P.esc(ti.get("proforma_ref")))) +
+        (_meta("Against BOQ",         P.esc(boq_ref)) if boq_ref else "") +
         _meta("Buyer's PO No.",       P.esc(ti.get("po_number"))) +
         _meta("Buyer's GSTIN",        P.esc(ti.get("bill_gstin"))) +
         _meta("Mode/Term of Payment", P.esc(ti.get("payment_terms")))
     )
     meta_col_2 = (
         _meta("Date",             P.esc(ti.get("date"))) +
-        _meta("Proforma Date",    P.esc(ti.get("proforma_date"))) +
+        ("" if no_pi else
+         _meta("Proforma Date",   P.esc(ti.get("proforma_date")))) +
         _meta("Buyer's PO Date",  P.esc(ti.get("po_date"))) +
-        _meta("Against Quotation", P.esc(ti.get("quotation_ref"))) +
+        ("" if no_q else
+         _meta("Against Quotation", P.esc(ti.get("quotation_ref")))) +
         _meta("Dispatch Through", P.esc(ti.get("dispatch_through")))
     )
 
@@ -1206,7 +1624,7 @@ def view_invoice(id: str):
         <div class="set-row"><span>Total Invoice Value</span>
              <span class="set-amt">{_inr(grand)}</span></div>
         <div class="set-row"><span>Less: advance received against
-             {P.esc(ti.get('proforma_ref')) or "proforma invoice"}</span>
+             {P.esc(ti.get('proforma_ref')) or P.esc(ti.get('boq_ref')) or "proforma invoice"}</span>
              <span class="set-amt">{_inr(adv)}</span></div>
         <div class="set-row set-net"><span>Net Amount Payable</span>
              <span class="set-amt">{_inr(net)}</span></div>
@@ -1326,6 +1744,9 @@ def view_invoice(id: str):
                if ti.get("proforma_id") in STORE["proformas"] else "")
     back_pi = (f'<a href="{pi_view}" class="btn btn-ghost">&#8592; Proforma '
                f'{P.esc(ti.get("proforma_ref"))}</a>' if pi_view else "")
+    if not back_pi and ti.get("boq_id") in (STORE.get("boqs") or {}):
+        back_pi = (f'<a href="{url_for("boq.view_boq", id=ti["boq_id"])}" '
+                   f'class="btn btn-ghost">&#8592; BOQ {P.esc(ti.get("boq_ref"))}</a>')
 
     # ── Cancel ───────────────────────────────────────────────────────────
     # ⚠ **There is no Delete control here and there must never be one.** A GST

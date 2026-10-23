@@ -223,6 +223,8 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
     UNFROZEN_QUOTATION_FUNCTIONS = {
         "view_quotation",          # 29 Aug 2026 — the deal panel's committed figure
                                    # 23 Sep 2026 — and the Delete button, one line
+                                   # 21 Oct 2026 — and the letterhead banner, one
+                                   #   line (§0 fiftieth block); not widened
         "_product_catalog_json",   # 11 Sep 2026 — the spec-library embed
         "_process_selections",     # 11 Sep 2026 — a pick becomes a line
         "create_quotation",        # 11 Sep 2026 — the picker and its POST

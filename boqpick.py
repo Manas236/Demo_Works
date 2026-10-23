@@ -180,7 +180,7 @@ def line_ids(boq: dict) -> list:
 def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
               with_pcs: bool = False, qty_aria: str = "Quantity",
               with_rate: bool = False, rate_of: dict = None,
-              rate_aria: str = "Rate") -> str:
+              rate_aria: str = "Rate", pcs_of: dict = None) -> str:
     """
     One row per BOQ line, every box ticked unless a rejected POST says otherwise.
 
@@ -217,6 +217,11 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
     ⚠ **The INSTALLATION track is never read.** `install_base_rate` is labour,
       not purchased goods, and a material PO has no business carrying it — see
       `purchase.INCLUDE_INSTALL_TRACK`.
+
+    `pcs_of` (18 October 2026) prefills the Pcs box per line — Import from
+    Excel on a draft PO, whose sheet may carry a pieces column. None emits the
+    blank box this function always emitted, so `/po/create` is byte-identical
+    without it.
     """
     fams = families(boq)
     child_of = {kid: h for h, kids in fams.items() for kid in kids}
@@ -263,9 +268,10 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
         ticked = " checked" if (chosen is None or lid in chosen) else ""
         qty_val = (qty_of or {}).get(lid)
         qty_val = avail_txt if qty_val is None else P.esc(qty_val)
+        pcs_val = P.esc((pcs_of or {}).get(lid) or "")
         pcs_cell = (f"""
           <td class="pk-pcs"><input type="text" inputmode="numeric" id="p_{lid}"
-              value="" aria-label="Pieces"/></td>""") if with_pcs else ""
+              value="{pcs_val}" aria-label="Pieces"/></td>""") if with_pcs else ""
 
         rate_cell = ""
         if with_rate:
@@ -407,7 +413,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               chosen: set = None, qty_of: dict = None,
               with_pcs: bool = False, avail_label: str = "In BOQ",
               with_rate: bool = False, rate_of: dict = None,
-              rate_label: str = "Rate", rate_aria: str = "Rate") -> str:
+              rate_label: str = "Rate", rate_aria: str = "Rate",
+              pcs_of: dict = None) -> str:
     """
     The whole grid as one form section — tools bar, table, refusal band, and
     the script that drives them.
@@ -444,7 +451,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               <th class="pk-in">{qty_label}</th>{pcs_head}{rate_head}
             </tr></thead>
             <tbody>{rows_html(boq, chosen, qty_of, with_pcs, qty_aria,
-                              with_rate, rate_of, rate_aria)}</tbody>
+                              with_rate, rate_of, rate_aria, pcs_of)}</tbody>
           </table>
         </div>
         <div class="alert alert-error pk-none" id="pk-none">

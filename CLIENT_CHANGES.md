@@ -4704,6 +4704,339 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 18 October 2026, by Manas Gawde — IMPORT FROM EXCEL ON EVERY DOCUMENT THAT IS TYPED IN, A COLUMN CHOICE PER COLUMN, AND A LEGEND OF THE COLUMNS EACH ONE NEEDS
+>
+> ⚠ **Renumbered at the merge of 23 October 2026.** Written on the laptop as
+> the **forty-first** block, on a line that had diverged from `antigravity-dev` at
+> `383135b`; the office line's blocks forty-one to forty-seven keep their
+> numbers and this one follows them. Its content is unchanged; only block and
+> §7 gap numbers moved (the laptop's gaps 53–58 are 73–78).
+>
+> **A new block, not an amendment.** The forty-seventh block and every block before
+> it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-eighth** occasion. It covers the items below
+> and nothing else. It extends Import BOQ from Excel (the thirty-fourth block
+> and the three after it) to other documents and does not re-open any of them.
+>
+> **What was asked for, in his words:** *"we need to add the import excel to
+> every document and letting them choose which column go through"*, and *"a
+> legend box to tell them what each column head are what and these only
+> contain the important ones like these need to be there for the doc to be
+> created"*.
+>
+> **Decisions taken — his, answered the same day, not the agent's:**
+>
+> 1. **Which documents.** Line documents: the **purchase order** (its
+>    extra-part lines), the **measurement sheet** (its joint grid), the
+>    **quotation** and the **delivery challan, the draft PO and the RA bill**.
+>    Registers, one row = one record: the **address book**, the **spec
+>    library** and the **employee master**. *Attendance was offered and not
+>    chosen.* The **proforma** and the **tax invoice** were not offered: each
+>    is copied from the document before it and never typed in, so there is
+>    nothing to import into.
+> 2. **The quotation takes a FOURTH narrow unfreeze of `quotation.py`** —
+>    `create_quotation()` only, for the import seam — accepted when it was
+>    chosen, with the unfreeze named in the question. No other function in
+>    that file is opened.
+> 3. **The challan, the draft PO and the RA bill were chosen although a sheet
+>    carries no `line_id`.** The question said matching would go by item
+>    number and was "not recommended"; it was chosen. What is built honours the
+>    fortieth block's constraint instead of breaking it: the item number only
+>    PROPOSES a BOQ line, a number the schedule carries more than once is
+>    **never chosen for the operator**, every proposal is a dropdown the
+>    operator confirms, and what reaches the save is the `line_id` the picker
+>    has always posted. Nothing is matched on `item_no` at save.
+> 4. **Which column goes through** — every column of the sheet carries a
+>    dropdown of what it may be, and **ignore** keeps a column out.
+> 5. **The legend lists only the columns the document cannot be made
+>    without**, and appears on the upload page (so the sheet can be got ready)
+>    and again on the preview beside the dropdowns, each line marked chosen or
+>    not.
+> 6. **Commercial status: deliberately LEFT UNSTATED, by his choice when
+>    asked.** It is neither called chargeable nor called free here, and an
+>    agent may not take it, infer it, or extend the thirty-fourth block's
+>    classification onto it.
+>
+> **What was built:** `docimport.py` — one upload → preview → hand-off engine
+> for nine kinds, three endpoints per kind under that document's EXISTING
+> create permission (no permission minted; `docs/ACCESS_MATRIX.md` 139 → 166
+> endpoints); a schema half of `sheetimport.py`; the legend, shared with
+> `/boq/import`, which now draws it too; and an `imported` seam on six create
+> routes (`purchase`, `quotation`, `measurement`, `challan`, `po_draft`, `ra`)
+> plus a `create_record()` lifted out of each register's add route. **Nothing
+> is saved until the document's own Save** — or, for a register, its review
+> page's *Create*, which writes only the rows that pass that register's own
+> validator. Every refusal on the save (the over-claim block, C1, the
+> measurement cap, the GST guard, the placeholder mark) checks an imported
+> value exactly as a typed one. The judgement calls beyond these six decisions
+> are listed in ABOUT.md §5 `/import` and are the agent's, not his.
+>
+> **Two defects found on the way and closed with it, each declared:** the
+> quotation create form echoed a refused POST's `selections_json` raw into a
+> `<script>` block (a reflected sink, ABOUT.md §7 gap 73), and a refused
+> measurement save re-rendered the grid from its seventeen seeded rows,
+> losing every location typed (gap 74).
+>
+> **One golden moved, declared:** `/po/create`'s `head` block, by exactly the
+> Import button (+96 characters — measured by removing the button and getting
+> the old digest back). No printed document moved.
+>
+> It moves no Phase 3 bar and changes no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
+
+> ### ⚠ AUTHORISATION — 21 October 2026, by Manas Gawde — A PICTURE BESIDE THE DESCRIPTION ON THE PROFORMA INVOICE, THE PURCHASE ORDER AND THE DRAFT PO
+>
+> ⚠ **Renumbered at the merge of 23 October 2026.** Written on the laptop as
+> the **forty-second** block, on a line that had diverged from `antigravity-dev` at
+> `383135b`; the office line's blocks forty-one to forty-seven keep their
+> numbers and this one follows them. Its content is unchanged; only block and
+> §7 gap numbers moved (the laptop's gaps 53–58 are 73–78).
+>
+> **A new block, not an amendment.** The forty-eighth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **forty-ninth** occasion. It covers the items below
+> and nothing else.
+>
+> **What was asked for, in his words:** *"In PI and PO they want images to be
+> added as well beside description."* A client request after go-live, relayed
+> by Manas.
+>
+> **Decisions taken — his, answered before any code was written, not the
+> agent's:**
+>
+> 1. **Where a line's picture comes from: the library by default, overridable
+>    per line.** A picture is set once on a specification-library clause; a
+>    proforma line written from that clause carries it automatically. Any PI,
+>    PO or draft-PO line can have its own picture uploaded, replaced or
+>    removed. *"Per line only" and "library only" were offered and not
+>    chosen.*
+> 2. **Which purchase orders: the real PO AND the draft PO.** *"Real PO only"
+>    was offered and not chosen.*
+> 3. **How it sits on the sheet: a separate Image column**, after Part No.
+>    *A thumbnail inside the description cell was offered (and recommended)
+>    and not chosen.*
+> 4. **Commercial status: deliberately LEFT UNSTATED, by his choice when
+>    asked.** It is neither called chargeable nor called free here, and an
+>    agent may not take it, infer it, or extend another block's classification
+>    onto it.
+>
+> **What was built:** `lineimage.py`, a leaf — pictures re-encoded through
+> Pillow (the profile photo's validation, shared through `photo.load()`) and
+> written **once** as files under the attachment root, named by their own
+> sha256; a line carries only that id. A **Pictures** page on each of the
+> three documents (`/proforma/pictures/<id>`, `/purchase/pictures/<id>`,
+> `/po/pictures/<id>`) and a picture box on the clause's own page
+> (`/spec/picture/<id>`), **four endpoints, each under an EXISTING
+> permission** — `proforma.create`, `purchase.create`, `po.edit`,
+> `spec.edit`. No permission minted; `docs/ACCESS_MATRIX.md` 166 → 170
+> endpoints. A PI raised from a quotation takes the library's picture for
+> each line whose part number is a clause's code, exactly; a draft PO
+> converted to an order takes each line's picture across.
+>
+> **Judgement calls — the agent's, not his, each listed in ABOUT.md §5
+> *Pictures*:** the per-line override lives on the document's own Pictures
+> page rather than as a file box on each of the six create and reprice
+> forms, because nginx refuses a request over 8 MB with its own page and a
+> phone photo is 3–5 MB, and a browser cannot refill a file box on a refused
+> form; a purchase order's pictures follow the reprice route's two refusals
+> (never on a Cancelled order, never on an approved one while the ladder is
+> on); the column is drawn only on a document that has a picture, so every
+> existing document prints exactly as before; a picture file is never
+> deleted, because one file may be shared by many lines (ABOUT.md §7 gap 76).
+>
+> **One defect found on the way and closed with it, declared:** `/spec/view`
+> never displayed the message it is redirected with — *"Spec … added"* and
+> *"updated"* were sent and never shown. It shows them now; the clause's
+> upload needs it, because its refusals arrive the same way.
+>
+> **One golden moved, declared:** `/proforma/view`'s `head` block, by exactly
+> the Pictures button (+91 characters — measured by removing that string and
+> getting the old digest back). No printed document moved; the golden PO did
+> not move at all (it is an approved order, so no button is drawn).
+>
+> It moves no Phase 3 bar and changes no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
+
+> ### ⚠ AUTHORISATION — 21 October 2026, by Manas Gawde — THE CLIENT'S OWN BANNER AT THE TOP OF EVERY PRINTED DOCUMENT
+>
+> ⚠ **Renumbered at the merge of 23 October 2026.** Written on the laptop as
+> the **forty-third** block, on a line that had diverged from `antigravity-dev` at
+> `383135b`; the office line's blocks forty-one to forty-seven keep their
+> numbers and this one follows them. Its content is unchanged; only block and
+> §7 gap numbers moved (the laptop's gaps 53–58 are 73–78).
+>
+> **A new block, not an amendment.** The forty-ninth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **fiftieth** occasion. It covers the items below
+> and nothing else.
+>
+> **What was asked for, in his words:** *"you know how every document is
+> having a Samrudhhi fire as an header ? well i sort of want this image to be
+> there instead"*, with a screenshot of the banner — the SF roundel,
+> **SAMRUDDHI FIRE** in red, *FIRE PROTECTION AND SAFETY ENGINEERS* under it.
+>
+> **The plan he was answering, and how it was answered — recorded exactly,
+> because it was not answered item by item.** The agent replied with what the
+> change touches and three questions, each with a recommendation: (1) the
+> screenshot as sent or a clean rebuild — **rebuild recommended**, because the
+> screenshot carries the Excel sheet's gridlines; (2) whether the quotation is
+> included, *"That means you authorising the `view_quotation()` edit for the
+> header"*; (3) whether the tagline default changes to *"Fire Protection and
+> Safety Engineers"* so the foot strip matches. His reply was *"so if you can
+> do it plaese start doing it"*. **The agent took that as yes to the plan as
+> offered, with each recommended answer** — he did not answer the three
+> separately, and each of them is one line to reverse if that reading was
+> wrong:
+>
+> 1. **The banner is rebuilt, not the screenshot.** `assets/build_banner.py`
+>    redraws it from the client's own ingredients (the Algerian name in the
+>    workbooks' own red, the tagline, the existing 1024 px roundel) with no
+>    gridlines.
+> 2. **The quotation is included — a FIFTH narrow unfreeze of `quotation.py`,
+>    inside `view_quotation()` only**, which was already unfrozen on 29 August,
+>    so no function is added to the list. One line: the text letterhead became
+>    the same `branding.letterhead_top()` call the other two letterheads make.
+>    `VIEW_DOC_STYLES` is not edited. `product.py` is not opened.
+> 3. **The tagline default is the client's own wording**, "Fire Protection and
+>    Safety Engineers", which the banner says and the client's own
+>    `Kalyan_Site.xlsx` / `Skyline.xlsx` say in cell A2. The old one was a
+>    guess ABOUT.md §6 had flagged for confirmation. A tagline saved at
+>    `/settings` is untouched; no stored data is rewritten.
+>
+> **One judgement call — the agent's, not his:** the banner prints **130 mm
+> wide**, centred, not across the full band. At full width it stood 26 mm tall
+> and the golden quotation printed a second page carrying one line; at 130 mm
+> every printed document prints on the pages it did before, on A4 and on
+> phone-sized paper. ABOUT.md §6 *The letterhead banner* has the measurement.
+>
+> **What was built:** `branding.letterhead_top()`, the one definition, called
+> by all three places that draw a letterhead — `docsheet.letterhead()` (nine
+> documents), `boq._document_html()` and `quotation.view_quotation()`; the
+> legal name, address and contact line stay text under it. No route, no
+> permission, no record shape changed; `docs/ACCESS_MATRIX.md` does not move.
+>
+> **Goldens moved, declared — every printed document, on purpose:** the
+> `letterhead` block on all nine pinned documents (+1,062 bytes a letterhead),
+> `foot-strip` on the eight whose strip prints the tagline (−2 bytes, the old
+> one's `&amp;`), and `signature` on the four that print a copy set, because
+> copies 2 and 3 carry their own letterhead. One screen page: `/settings`'
+> `main`, −4 bytes, the tagline box's value and example. **No figure, no
+> party block and no items table moved on any document.**
+>
+> ⚠ **Its commercial status is NOT recorded here** — it was not asked, and how
+> it is charged is Manas's call; an agent may not take it, infer it, or extend
+> another block's classification onto it. It moves no Phase 3 bar and changes
+> no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
+
+> ### ⚠ AUTHORISATION — 22 October 2026, by Manas Gawde — EVERY DOCUMENT RAISED FROM THE BOQ, THE THREE RA TYPES, AND ONE "FOR" AT THE FOOT OF THE BOQ
+>
+> ⚠ **Renumbered at the merge of 23 October 2026.** Written on the laptop as
+> the **forty-fourth** block, on a line that had diverged from `antigravity-dev` at
+> `383135b`; the office line's blocks forty-one to forty-seven keep their
+> numbers and this one follows them. Its content is unchanged; only block and
+> §7 gap numbers moved (the laptop's gaps 53–58 are 73–78).
+>
+> **A new block, not an amendment.** The fiftieth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **fifty-first** occasion. It covers the items below
+> and nothing else.
+>
+> ⚠ **Numbered in THIS checkout's sequence, which has diverged.** Written on
+> the laptop on top of its own uncommitted forty-eighth to fiftieth blocks;
+> the office PC's `antigravity-dev` carries DIFFERENT blocks forty-one to
+> forty-seven. This work was pushed to its own branch,
+> `laptop/boq-raise-all`, by Manas's choice; when the two lines are merged,
+> which numbers move is his decision, and this block's content is not
+> altered by a renumbering.
+>
+> **What was asked for, in his words:** *"what they wanted was that every
+> document could be raised from BoQ only and RA especially all 3 types, Supply,
+> Installation and then Supply and Installation both"*; *"in documents that get
+> generated near the bottom For Samruddhi is repeated twice once on left and
+> once on right, please remove the left one"*; and *"do these changes and push
+> them"*. A client request after go-live, relayed by Manas.
+>
+> **Decisions taken — his, answered before any code was written, not the
+> agent's:**
+>
+> 1. **"Supply and Installation both" is the MERGED RA** (CC-2 C3 — one tax
+>    invoice stacking an issued supply bill and an issued installation bill,
+>    the client's own ₹500 + ₹700 = ₹1,200 example), reached from the BOQ.
+>    *A new single RA bill claiming both legs per line was offered and not
+>    chosen* — it would have broken "one leg per bill" and with it the
+>    over-claim guard, the challan and measurement caps and the merge.
+> 2. **All three RA types are ALWAYS shown on the BOQ**; one whose step is
+>    missing is greyed and says what to raise first. *Keeping them hidden, and
+>    dropping the challan / measurement prerequisite, were offered and not
+>    chosen.* C1's order of working is unchanged.
+> 3. **"All means all, even TI"** — offered "just the RA set now", he answered
+>    *"bro proforma as well, when i said all i mean all, even TI"*. So the
+>    **Proforma Invoice and the Tax Invoice are raised from the BOQ** too.
+>    ⚠ **This reverses item 7's recorded answer** (§2 below — *"Tax Invoice
+>    directly from the BOQ — answered differently"*), by the person entitled to
+>    reverse it. The risk item 7 named is real and is recorded, not closed:
+>    ABOUT.md §7 gap 78.
+> 4. **The left "For Samruddhi" goes.** Found on one document only — the
+>    printed **BOQ**, whose signature panel said it in both cells; every other
+>    sheet carries GSTIN / PAN on the left. Removed there.
+>
+> **Judgement calls — the agent's, not his, each listed in ABOUT.md §5
+> (`/boq`, `/proforma`, `/invoice`):** the PI and TI raised from a BOQ are the
+> ordinary documents in their ordinary series, written in `proforma.py` and
+> `invoice.py` (§2f's precedent — a module owns the shape it writes, and a third
+> tax-invoice series would break Rule 46(b)'s one consecutive run) rather than in
+> a new BOQ-chain module, which §1.1 below had foreseen for the proforma; each
+> lets the operator choose Supply, Installation or both — "both" STACKS the two
+> legs, two rows per line each with its own HSN / SAC, never one combined rate;
+> the rate is the schedule's selling rate and is not edited, the quantity is;
+> the tax head is chosen, never derived (§1.5); the tax is per rate slab; a TI
+> raised from a BOQ NAMES the live RA bills and tax invoices already on the
+> schedule rather than refusing; every raise control on the BOQ is drawn only
+> for a role the gate admits; the action bar became a grouped *Raise from this
+> BOQ* bar. **Two defects found on the way and closed with it, declared:** the
+> BOQ's right-hand signature escaped an already-escaped company branch
+> (`&amp;amp;`), and `proforma._sel_keep()` reached a stored value into a
+> dropdown unescaped — `quotation._sel_opts()` does not escape and is frozen.
+>
+> **What was built:** two routes, `/proforma/from-boq/<id>` and
+> `/invoice/from-boq/<id>`, under the EXISTING `proforma.create` and
+> `invoice.create` — no permission minted; `docs/ACCESS_MATRIX.md` 170 → 172
+> endpoints. The *RA · Supply & Installation* chip opens the existing
+> `/merged/create`, which was not changed beyond a link back to the BOQ.
+> `cascade.py` gained `boqs → proformas / invoices`, so a BOQ with a tax invoice
+> under it is never deleted.
+>
+> **One golden moved, declared:** the printed BOQ's `signature` block, −83
+> bytes — exactly the left cell. No other print golden and no page golden moved;
+> the PI and TI goldens are byte-identical.
+>
+> ⚠ **Its commercial status is NOT recorded here** — it was not asked, and how
+> it is charged is Manas's call; an agent may not take it, infer it, or extend
+> another block's classification onto it. It moves no Phase 3 bar and changes
+> no CC-2 item's state.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
@@ -4737,6 +5070,16 @@ of these is reversed. Full graph in [ABOUT.md §2b](ABOUT.md).
 PO, delivery challan, proforma) is built **in the BOQ chain**, not by reaching
 into the existing `/purchase`, `/proforma` or `/invoice` module. Where the
 existing module already does a similar job, that is not a reason to import it.
+
+⚠ **Not how the real PO, the proforma or the tax invoice off a BOQ were built.**
+The real PO (16 August, ABOUT.md §2f) and, on 22 October 2026, the proforma and
+the tax invoice (§0 fifty-first block) are the ORDINARY documents in their own
+number series, so they are written by the modules that own those shapes —
+`purchase.py`, `proforma.py`, `invoice.py` import `boq.py`, never the reverse. A
+tax invoice in a module of its own would have needed a second `TI` counter, and
+Rule 46(b) wants one consecutive run. The import prohibitions above all still
+hold: `boq.py` imports none of the three and `ra.py` still may not import
+`invoice.py`.
 
 ### 1.2 Snapshot immutability — a printed document is driven by its own rows
 
@@ -5120,6 +5463,10 @@ picker; [tests/test_challan.py](tests/test_challan.py).
 `/boq/view` now carries **`+ RA · Supply`** and **`+ RA · Installation`** in
 its action bar, beside *Revise*.
 
+*(From 22 October 2026 a third, **`+ RA · Supply & Installation`** — the merged
+RA — and all three are always shown, greyed with the reason when the step
+before is missing; §0 fifty-first block, G10 below.)*
+
 **Built ahead of the Phase 2 gate, and correctly so** — §0's exemption. RA
 billing against a BOQ was sold under MG/SF/2026-01 and the billing itself
 worked; there was simply no way to reach it from the schedule on screen. That
@@ -5152,7 +5499,17 @@ diverge on a hand-edited fork.
 
 ---
 
-### 7 · Tax Invoice directly from the BOQ — ↩ Answered differently
+### 7 · Tax Invoice directly from the BOQ — ✅ Built, not deployed (22 Oct 2026 — the earlier answer reversed)
+
+⚠ **REVERSED 22 October 2026, by Manas Gawde** (§0, fifty-first block —
+*"when i said all i mean all, even TI"*). `/boq/view` raises a **Tax Invoice**
+and a **Proforma Invoice** directly, through `/invoice/from-boq/<id>` and
+`/proforma/from-boq/<id>` — the ordinary documents in their ordinary series,
+supply, installation or both. The risk the answer below named is real and is
+recorded, not closed: a tax invoice raised from the BOQ and the RA bills on the
+same schedule are not counted against each other (ABOUT.md §7 gap 78); the form
+names the RA bills already raised instead. **What follows is the answer as it
+stood until that date, kept unedited.**
 
 **Not being built as its own path.** The need is met by a **full-value RA
 prefill**: an RA bill claiming the full approved quantity is the tax invoice,
@@ -5288,6 +5645,70 @@ authorised by its own §0 block, which is where its commercial status lives.
 | G3 | Joint measurement sheet — the sign-off typed on the form and saved | ✅ **Built, not deployed** — 30 Sep 2026 under the §0 **thirty-sixth** block (item C); **commercial status not recorded — Manas's call**. The same block's items A (copy labels) and B (the joint sheet's print layout) are repairs, not G items |
 | G6 | RA bill raised FROM delivery challans or FROM the measurement sheet; a billed challan marked and blocked | ✅ **Built, not deployed** — 4 Oct 2026 under the §0 **fortieth** block (Manas's rulings A / B / C); **no charge, by Manas's ruling** |
 | G7 | Work Orders for petty contractors — material and labour rates per line, Excel upload, issued on Samruddhi's letterhead | ✅ **Built, not deployed** — 5 Oct 2026 under the §0 **forty-first** block (Manas's rulings A to J); **no charge, by Manas's ruling** |
+| G8 | A picture beside the description on the proforma invoice, the purchase order and the draft PO | ✅ **Built, not deployed** — 21 Oct 2026 under the §0 **forty-ninth** block (Manas's four answers); **commercial status deliberately left unstated, by his choice** |
+| G9 | The client's own banner at the top of every printed document | ✅ **Built, not deployed** — 21 Oct 2026 under the §0 **fiftieth** block; **commercial status not recorded — Manas's call** |
+| G10 | Every document raised from the BOQ — the three RA types (Supply, Installation, Supply & Installation), the Proforma Invoice and the Tax Invoice — and one "For Samruddhi" at the foot of the printed BOQ | ✅ **Built, not deployed** — 22 Oct 2026 under the §0 **fifty-first** block (Manas's answers); reverses item 7's answer; **commercial status not recorded — Manas's call** |
+
+### G10 · Every document from the BOQ, and three RA types — ✅ Built, not deployed
+
+**What the client gets.** The BOQ page has a **Raise from this BOQ** bar,
+grouped by job: *Purchase* (Draft PO, Purchase Order), *Site* (Delivery
+Challan, Measurement), *RA bills* (**RA · Supply**, **RA · Installation**,
+**RA · Supply & Installation**) and *Invoices* (**Proforma Invoice**, **Tax
+Invoice**). All three RA types are always shown; one that cannot be raised yet
+is greyed and says what to raise first — a delivery challan for supply, a
+measurement sheet for installation, one issued bill of each for *Supply &
+Installation*, which is the single combined tax invoice over the two. The
+Proforma and Tax Invoice are raised for Supply, Installation or both, each
+line at the schedule's own rate with its own HSN / SAC, the lines ticked and
+the quantities lowered as needed; they are numbered in the usual series and
+the BOQ lists them. The printed BOQ says **For SAMRUDDHI FIRE** once, over the
+signature.
+
+**What it does not do.** A tax invoice raised from the BOQ is not counted
+against the RA bills on the same schedule, nor they against it — the form names
+the RA bills already raised so the same work is not invoiced twice by mistake,
+but it does not stop it. No other printed document changed.
+
+Authorised by the §0 **fifty-first** block, where Manas's answers are recorded
+and where its commercial status is left for him.
+
+### G9 · The client's own banner on every document — ✅ Built, not deployed
+
+**What the client gets.** Every document the system prints — quotation,
+proforma, tax invoice, RA bill, merged tax invoice, purchase order, draft PO,
+delivery challan, BOQ and both measurement sheets — now opens with their own
+banner: the SF roundel, **SAMRUDDHI FIRE** in red, and *FIRE PROTECTION AND
+SAFETY ENGINEERS*. The registered name, address, phone, e-mail and GSTIN still
+print underneath as before, and are still changed at **Settings**. The page
+footer reads *Fire Protection and Safety Engineers* to match.
+
+**What it does not do.** No document gets longer: each prints on the same
+number of pages as before, on paper and from a phone. The screens of the
+application are unchanged — only printed documents carry the banner.
+
+Authorised by the §0 **fiftieth** block, where how Manas's reply was read
+is recorded, and where its commercial status is left for him.
+
+### G8 · A picture beside the description — ✅ Built, not deployed
+
+**What the client gets.** The proforma invoice, the purchase order and the
+draft purchase order can print a picture of each item in an **Image** column
+beside its description. A picture is set once on a specification-library
+clause, and a proforma invoice raised from a quotation written from that
+clause shows it on its own. Any line on any of the three documents can be
+given its own picture, or have one replaced or removed, from the document's
+**Pictures** button. A draft PO's pictures carry onto the order it is
+converted into.
+
+**What it does not do.** A document with no picture prints exactly as it did
+— no empty column. The quotation and the tax invoice print no pictures. A
+purchase order line raised from a BOQ has no link back to the library, so it
+gets a picture only when one is uploaded on the order (or on the draft it came
+from). Pictures go up one at a time.
+
+Authorised by the §0 **forty-ninth** block, where its commercial status —
+**left unstated** — is recorded as Manas's choice.
 
 ### G7 · Work Orders for petty contractors — ✅ Built, not deployed, no charge
 

@@ -690,6 +690,29 @@ FORBIDDEN = [
     ("boq", "sheetimport",     "any", "the BOQ never reads a workbook; boqimport.py "
                                       "hands it an editor model"),
 
+    # ── Import from Excel on every other document, 18 October 2026 ─────────
+    # docimport.py imports each document it lands on, to render that
+    # document's create form through its one `imported` seam (or to reach a
+    # register's own validator and write). Every Import button reaches back
+    # with url_for("docimport.upload_<kind>"), a string — the reverse import
+    # would be a cycle at boot, and a document that knew its importer would be
+    # one that could start saving from it.
+    *[(mod, "docimport", "any", "docimport.py imports this module; its Import "
+                                "button is a url_for string")
+      for mod in ("purchase", "quotation", "measurement", "challan", "po_draft",
+                  "ra", "address", "spec", "employee", "boq", "boqimport",
+                  "boqpick", "specpick", "sheetimport")],
+    # …and no document reads a workbook itself: the sheet reaches it as the
+    # posted shape its own form would have sent.
+    *[(mod, "sheetimport", "any", "only the importers read a workbook; a "
+                                  "document is handed its own form's shape")
+      for mod in ("purchase", "quotation", "measurement", "challan", "po_draft",
+                  "ra", "address", "spec", "employee")],
+    # The BOQ importer is the furniture the generic one reuses, never the
+    # other way round.
+    ("boqimport", "docimport", "any", "docimport.py reuses boqimport's upload "
+                                      "reader, stylesheet and legend"),
+
     # ── GSTIN auto-fill, 29 September 2026 ──────────────────────────────────
     # gst_lookup.py is a leaf: address.py imports it for the check, the
     # lookup and the pattern the form shares. The reverse would be a cycle at
@@ -813,6 +836,31 @@ FORBIDDEN = [
                                   "so the leaf stays a leaf"),
     ("project", "auth", "module", "has_perm() is asked inside _untagged_line() "
                                   "only — the register's line is a per-view check"),
+    # ── lineimage.py — pictures beside a document line (21 Oct 2026) ────────
+    # CLIENT_CHANGES.md §0, forty-ninth block. Four modules import it — the
+    # proforma, the purchase order, the draft PO and the spec library — so it
+    # may import none of them back, and none of the sell chain's or the
+    # sheet's modules either: if it reached `purchase.py` the PI would be
+    # coupled to the buy side through the basement, which ABOUT.md §1 says
+    # must never happen. `attachment` is reached inside `root()` only: it
+    # imports `approval` and through it the auth layer.
+    *[("lineimage", mod, "any", "it is imported BY this document module; the "
+                                "pictures are written onto the lines it is "
+                                "handed, and nothing about one document is "
+                                "this leaf's to know")
+      for mod in ("proforma", "purchase", "po_draft", "spec")],
+    ("lineimage", "quotation",  "any", "the PI's lines arrive as dicts; the leaf "
+                                       "never reads the quotation"),
+    ("lineimage", "invoice",    "any", "the tax invoice prints no picture"),
+    ("lineimage", "docsheet",   "any", "the sheet is the documents' — the leaf "
+                                       "hands them one cell and one column"),
+    ("lineimage", "auth",       "any", "who may change a picture is each "
+                                       "document's route permission and gate"),
+    ("lineimage", "flask",      "any", "it owns no route; each document owns "
+                                       "its Pictures page"),
+    ("lineimage", "attachment", "module", "attachment imports approval, and "
+                                          "through it the auth layer; root() "
+                                          "reaches it in its function body"),
 ]
 
 
@@ -1114,6 +1162,18 @@ REQUIRED = [
     ("boqimport", "boq",         "create_boq(imported=…), MAX_LINES and MAX_JSON_BYTES: "
                                  "the prefilled form IS the ordinary one"),
 
+    # Import from Excel on every other document (18 Oct 2026). The reader and
+    # the schema functions, the BOQ importer's upload reader / stylesheet /
+    # legend, and each document's own create seam — the prefilled page IS the
+    # document's create view, so nothing in docimport.py writes a document.
+    ("docimport", "sheetimport", "the reader and the schema functions"),
+    ("docimport", "boqimport",   "_read_upload(), IMPORT_STYLES, legend_html(), "
+                                 "num_text(): one upload path and one legend"),
+    *[("docimport", mod, "the create seam the prefilled form is rendered through")
+      for mod in ("purchase", "quotation", "measurement", "challan", "po_draft", "ra")],
+    *[("docimport", mod, "the register's own _validate() and create_record()")
+      for mod in ("address", "spec", "employee")],
+
     ("address", "gst_lookup", "the GSTIN check, the portal lookup and the one "
                               "pattern the form, the save and the lookup share"),
 
@@ -1163,6 +1223,23 @@ REQUIRED = [
                            "dict and computes nothing"),
     ("project", "pnl",    "untagged_cost() and register_line_html(), inside "
                           "_untagged_line() only"),
+    # 21 Oct 2026 — the four users of the one picture store.
+    *[(mod, "lineimage", "the Image column, the Pictures page and the one "
+                         "content-addressed store every document shares")
+      for mod in ("proforma", "purchase", "po_draft", "spec")],
+
+    # 22 Oct 2026 — the proforma and the tax invoice raised FROM a BOQ
+    # (CLIENT_CHANGES.md §0, fifty-first block). purchase.py's arrows up the
+    # chain (§2f), for its reason: a module owns the shape it writes, so the
+    # PI and the TI stay in their own series. The REVERSE arrows stay
+    # forbidden above — `boq ↛ proforma`, `boq ↛ invoice`, `boqpick ↛ either`.
+    ("proforma", "boq",     "superseded_ids — a superseded schedule is refused "
+                            "at the route — plus header_of, _line_id, _item_no "
+                            "and MAX_LINES: the PI is raised from the schedule"),
+    ("proforma", "boqpick", "the line picker, at its FOURTH consumer; the tax "
+                            "invoice reaches it through proforma.boq_grid()"),
+    ("invoice",  "boq",     "superseded_ids, for the same route-level refusal"),
+    ("invoice",  "boqpick", "picked_lines(): the ticked rows off the POST"),
 ]
 
 
@@ -1262,6 +1339,22 @@ def test_po_parts_imports_nothing_at_all():
       towards becoming one.
     """
     assert imports_of("po_parts") == set()
+
+
+def test_lineimage_is_a_leaf():
+    """
+    Pictures beside a document line (21 October 2026), held as a WHITELIST.
+
+    At module level it reaches `photo` (the shared validation), `pipeline`
+    (`esc`) and `store` (the library default reads `STORE["specs"]`) and
+    nothing else of ours; `attachment` only inside `root()`, and Pillow only
+    inside `save()`, so a server without Pillow still boots and says so.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"lineimage"}
+    assert imports_of("lineimage", top_level_only=True) & ours == {"photo", "pipeline", "store"}
+    assert imports_of("lineimage") & ours == {"photo", "pipeline", "store", "attachment"}
+    assert "PIL" not in imports_of("lineimage", top_level_only=True)
+    assert "flask" not in imports_of("lineimage")
 
 
 def test_photo_imports_nothing_from_the_app():

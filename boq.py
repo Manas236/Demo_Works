@@ -1776,6 +1776,18 @@ BOQ_VIEW_STYLES = """
   .skip-note { margin:.2rem 0 .6rem; font-size:.74rem; color:var(--muted);
                text-align:right; }
   @media print { .unpriced-note, .quiet-note, .skip-note { display:none !important; } }
+
+  /* Raise from this BOQ (22 October 2026) — every document the schedule
+     starts, grouped by the job it belongs to rather than laid out as one row
+     of equal buttons. Screen only. */
+  .raise-bar { display:flex; flex-wrap:wrap; gap:.6rem 1.4rem;
+               margin:-.2rem 0 1.1rem; align-items:flex-start; }
+  .rb-group  { display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; }
+  .rb-lbl    { font-size:.7rem; font-weight:700; letter-spacing:.06em;
+               text-transform:uppercase; color:var(--muted); margin-right:.15rem; }
+  .rb-off    { opacity:.5; cursor:not-allowed; }
+  .rb-hint   { flex-basis:100%; font-size:.78rem; color:var(--muted); }
+  @media print { .raise-bar { display:none !important; } }
 </style>
 """
 
@@ -2849,6 +2861,13 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
         notes_html = (f'<div class="tnc-section"><div class="tnc-title">Notes</div>'
                       f'<div style="white-space:pre-wrap;">{P.esc(boq.get("notes"))}</div></div>')
 
+    # ⚠ **"For <company>" prints ONCE, on the right, over the signatory**
+    #   (22 October 2026, CLIENT_CHANGES.md §0 fifty-first block). The left
+    #   cell used to say it a second time — the only sheet in the app that did;
+    #   every other one carries GSTIN / PAN there or nothing. The empty cell is
+    #   kept so `.sig-block`'s space-between still pushes the signature right.
+    #   Both values are escaped HERE, so the sheet interpolates them as they
+    #   are — escaping them again printed `&amp;amp;` for an `&` in a branch.
     comp_br   = P.esc(boq.get("company_branch")) or P.esc(B.COMPANY_NAME)
     signatory = P.esc(boq.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
 
@@ -2858,14 +2877,7 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
 
   <table class="page-frame">
     <thead><tr><td>
-      <div class="lh">
-        <div>
-          <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-          <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
-          {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
-        </div>
-        <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-      </div>
+      {B.letterhead_top()}
       <div class="lh-rule"></div>
       <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
       <div class="lh-contact">
@@ -2906,12 +2918,10 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
       {notes_html}
 
       <div class="sig-block">
+        <div></div>
         <div>
-          <div class="sig-kv"><b>For</b><span>{P.esc(comp_br)}</span></div>
-        </div>
-        <div>
-          <div class="sig-for">For {P.esc(comp_br)}</div>
-          <div class="sig-name">{P.esc(signatory)}</div>
+          <div class="sig-for">For {comp_br}</div>
+          <div class="sig-name">{signatory}</div>
         </div>
       </div>
       <div class="sig-note">
@@ -2931,9 +2941,12 @@ def view_boq(id: str):
     """
     The BOQ on screen — the operations panel, the RA chips, and the sheet.
 
-    Also the **entry point to RA billing**: the action bar carries one link per
-    leg into `/ra/create`, offered only on the tip of a revision chain. Both
-    that and `Revise` branch on a single `is_tip`, so they cannot disagree.
+    Also the **entry point to every document raised from a schedule** — the
+    *Raise from this BOQ* bar: draft PO, purchase order, challan, measurement,
+    the three RA bills (supply, installation, and both on one merged tax
+    invoice), the proforma invoice and the tax invoice — offered only on the
+    tip of a revision chain. That bar and `Revise` branch on a single
+    `is_tip`, so they cannot disagree.
 
     This is the INTERNAL view, so it passes `show_rate_breakup=True`: the base
     rate and the escalation percentage stay visible to whoever is pricing or
@@ -3013,6 +3026,38 @@ def view_boq(id: str):
           <div class="bp-sub" style="margin-top:.4rem;">claimed basic value &middot; taxes extra</div>
         </div>"""
 
+    # ── Proforma and tax invoices raised FROM this BOQ (22 October 2026) ──
+    # The same one-way trick as the RA strip: STORE read directly, url_for for
+    # the link — `boq.py` may import neither `proforma.py` nor `invoice.py`.
+    # The figure is the document's own `subtotal`, the basic value, for the
+    # RA chip's reason (gap 31): it sits beside a tax-exclusive tile. A
+    # cancelled tax invoice says so and shows no figure, as a cancelled bill.
+    inv_chips = []
+    for pid, pi in sorted((STORE.get("proformas") or {}).items(),
+                          key=lambda kv: str(kv[1].get("ref") or "")):
+        if pi.get("boq_id") == id:
+            inv_chips.append(
+                f'<a class="ra-chip" href="{url_for("proforma.view_proforma", id=pid)}">'
+                f'{P.esc(pi.get("ref"))} &middot; &#8377;&nbsp;'
+                f'{float(pi.get("subtotal") or 0):,.0f}</a>')
+    for tid, ti in sorted((STORE.get("invoices") or {}).items(),
+                          key=lambda kv: str(kv[1].get("ref") or "")):
+        if ti.get("boq_id") == id:
+            void = str(ti.get("status") or "").strip().lower() == "cancelled"
+            money = ("cancelled" if void else
+                     f'&#8377;&nbsp;{float(ti.get("subtotal") or 0):,.0f}')
+            style = ' style="opacity:.55;"' if void else ""
+            inv_chips.append(
+                f'<a class="ra-chip" href="{url_for("invoice.view_invoice", id=tid)}"'
+                f'{style}>{P.esc(ti.get("ref"))} &middot; {money}</a>')
+    if inv_chips:
+        ra_html += f"""
+        <div class="ra-block">
+          <span class="ra-lbl">Proforma &amp; tax invoices raised</span>
+          <div class="ra-strip">{"".join(inv_chips)}</div>
+          <div class="bp-sub" style="margin-top:.4rem;">basic value &middot; taxes extra</div>
+        </div>"""
+
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
     alert_html = ""
@@ -3048,7 +3093,8 @@ def view_boq(id: str):
     #
     # **One button per leg**, because a bill covers one leg by construction —
     # the leg is chosen before any quantity is entered and a claim row has none
-    # of its own. These are the two the picker itself offers.
+    # of its own. These are the two the picker itself offers. The third RA chip
+    # (22 October 2026, below) is not a third leg: it is the merged document.
     #
     # Offered only on the TIP, for the reason the picker filters to the latest
     # revision: a claim is measured against what is approved NOW, and a bill
@@ -3086,12 +3132,14 @@ def view_boq(id: str):
     # `/measurement/create` refuses one at the route as well — a link is not a
     # guard.
     #
-    # ⚠ **The two RA chips are now drawn only when the step before them
-    # exists**, which is C1's order of working. THIS IS PRESENTATION AND NOT
-    # THE GATE. `ra._c1_refusal()` refuses the typed URL, and
-    # `tests/test_c1_order_of_working.py` hits each address directly to prove
-    # it. Hiding a button is not access control (B5's rule); what hiding does is
-    # stop somebody clicking into a refusal they could have been spared.
+    # ⚠ **The two RA chips LINK only when the step before them exists**, which
+    # is C1's order of working; until then each is drawn greyed with no link
+    # and says which step is missing (22 October 2026 — until then it was not
+    # drawn at all). THIS IS PRESENTATION AND NOT THE GATE. `ra._c1_refusal()`
+    # refuses the typed URL, and `tests/test_c1_order_of_working.py` hits each
+    # address directly to prove it. Greying a button is not access control
+    # (B5's rule); what it does is stop somebody clicking into a refusal they
+    # could have been spared, while still showing that the bill exists.
     #
     # `boq.py` may import neither `ra.py` nor `challan.py` nor `measurement.py`
     # (§2b), so both conditions are read off STORE directly — the same one-way
@@ -3101,33 +3149,121 @@ def view_boq(id: str):
     # function-body import of the bottom-of-graph module rather than a literal
     # `== "approved"`, so this chip and the gate cannot disagree about the
     # switch (12 September 2026).
+    #
+    # ⚠ **EVERY DOCUMENT IS RAISED FROM HERE, and the RA set is THREE — 22
+    #   October 2026** (CLIENT_CHANGES.md §0, fifty-first block, Manas's
+    #   answers). The client's words: *"every document could be raised from
+    #   BoQ only and RA especially all 3 types, Supply, Installation and then
+    #   Supply and Installation both"* — and, asked, *"proforma as well … even
+    #   TI"*. So the bar below carries all of them, grouped by job:
+    #
+    #   - **RA · Supply & Installation is the MERGED RA** (CC-2 C3, the
+    #     client's own ₹500 + ₹700 = ₹1,200 example) — one tax invoice over an
+    #     issued supply bill and an issued installation bill. It opens
+    #     `/merged/create` with this schedule already chosen; nothing about the
+    #     merge changed.
+    #   - **The three RA chips are always DRAWN**, and a chip whose step is
+    #     missing is drawn greyed, with no link, and says what to raise first
+    #     — Manas's answer, so the client can see the three types exist. A
+    #     greyed chip is a `<span>`, never an `<a>`: it cannot be clicked into
+    #     the refusal, and the refusal is still `ra._c1_refusal()`'s.
+    #   - **Proforma Invoice and Tax Invoice** open `/proforma/from-boq` and
+    #     `/invoice/from-boq` — the real documents in their own series, ABOUT.md
+    #     §5. `boq.py` imports neither; `url_for` only, as everywhere here.
+    #
+    #   Each control is drawn only for somebody `auth.can_reach()` says the
+    #   gate would admit — the owner's rule (22 September 2026): a control that
+    #   can only produce a refusal is not drawn. Presentation, not the gate.
     import approval as _AP
+    import auth as _AUTH
     _chain = _ancestor_ids(id) | {id}
     _has_dc = any(str(dc.get("boq_id") or "") in _chain
                   for dc in (STORE.get("delivery_challans") or {}).values())
     _has_ms = any(str(m.get("boq_id") or "") in _chain and _AP.accepted(m)
                   for m in (STORE.get("measurements") or {}).values())
+    # An issued bill per leg is what `/merged/create` can pair. Read off STORE
+    # with the status matched literally, the chip's own precedent above —
+    # `boq.py` may not import `ra.py` or `merged_ra.py`. A status that is
+    # neither draft nor cancelled reads as issued, which is `ra.status_of()`'s
+    # own default. The merge page still says which bill is unavailable and why.
+    _issued_legs = {str(r.get("leg") or "")
+                    for r in (STORE.get("ra_bills") or {}).values()
+                    if str(r.get("boq_id") or "") in _chain
+                    and str(r.get("status") or "").strip().lower()
+                    not in ("draft", "cancelled")}
+    _has_pair = {"supply", "installation"} <= _issued_legs
 
-    ra_btns = ""
+    def _raise(endpoint: str, href: str, label: str, live: bool = True,
+               why: str = "") -> str:
+        """
+        One control: a link, a greyed chip that says why, or nothing.
+
+        The URL is built at the call site with a LITERAL endpoint, so the
+        reachability sweep and `tests/test_import_directions.py` can see every
+        link this bar draws; `endpoint` is what `can_reach()` is asked about.
+        """
+        if not _AUTH.can_reach(endpoint):
+            return ""
+        if not live:
+            return (f'<span class="btn btn-ghost rb-off" aria-disabled="true" '
+                    f'title="{P.esc(why)}">&#43;&nbsp;{label}</span>')
+        return (f'<a href="{href}" '
+                f'class="btn btn-ghost">&#43;&nbsp;{label}</a>')
+
+    def _group(title: str, *controls) -> str:
+        inner = "".join(c for c in controls if c)
+        return (f'<div class="rb-group"><span class="rb-lbl">{title}</span>'
+                f'{inner}</div>') if inner else ""
+
+    raise_html = ""
     if is_tip:
-        ra_btns = (
-            f'<a href="{url_for("po_draft.create_po", boq=id)}" '
-            f'class="btn btn-ghost">&#43;&nbsp;Draft PO</a>'
-            f'<a href="{url_for("purchase.from_boq", boq_id=id)}" '
-            f'class="btn btn-ghost">&#43;&nbsp;Raise Purchase Order</a>'
-            f'<a href="{url_for("challan.create_dc", boq=id)}" '
-            f'class="btn btn-ghost">&#43;&nbsp;Delivery Challan</a>'
-            f'<a href="{url_for("measurement.create_ms", boq=id)}" '
-            f'class="btn btn-ghost">&#43;&nbsp;Measurement</a>'
-        )
-        if _has_dc:
-            ra_btns += (
-                f'<a href="{url_for("ra.create_ra", boq=id, leg="supply")}" '
-                f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Supply</a>')
-        if _has_ms:
-            ra_btns += (
-                f'<a href="{url_for("ra.create_ra", boq=id, leg="installation")}" '
-                f'class="btn btn-ghost">&#43;&nbsp;RA &middot; Installation</a>')
+        why_dc = "Raise a delivery challan first — supply is claimed against material that has gone out."
+        why_ms = "Raise a measurement sheet first — installation is claimed against work measured."
+        why_pair = ("Needs an issued RA · Supply and an issued RA · Installation "
+                    "first — this one invoice stacks the two.")
+        ra_sup = _raise("ra.create_ra",
+                        url_for("ra.create_ra", boq=id, leg="supply"),
+                        "RA &middot; Supply", _has_dc, why_dc)
+        ra_ins = _raise("ra.create_ra",
+                        url_for("ra.create_ra", boq=id, leg="installation"),
+                        "RA &middot; Installation", _has_ms, why_ms)
+        ra_both = _raise("merged_ra.create_merged",
+                         url_for("merged_ra.create_merged", boq=id),
+                         "RA &middot; Supply &amp; Installation", _has_pair, why_pair)
+        groups = "".join((
+            _group("Purchase",
+                   _raise("po_draft.create_po",
+                          url_for("po_draft.create_po", boq=id), "Draft PO"),
+                   _raise("purchase.from_boq",
+                          url_for("purchase.from_boq", boq_id=id), "Raise Purchase Order")),
+            _group("Site",
+                   _raise("challan.create_dc",
+                          url_for("challan.create_dc", boq=id), "Delivery Challan"),
+                   _raise("measurement.create_ms",
+                          url_for("measurement.create_ms", boq=id), "Measurement")),
+            _group("RA bills", ra_sup, ra_ins, ra_both),
+            _group("Invoices",
+                   _raise("proforma.from_boq",
+                          url_for("proforma.from_boq", boq_id=id), "Proforma Invoice"),
+                   _raise("invoice.from_boq",
+                          url_for("invoice.from_boq", boq_id=id), "Tax Invoice")),
+        ))
+        # The reasons are printed, not only put in a tooltip: the owner works
+        # from a phone, and a phone has no hover.
+        hints = [w for c, w in ((ra_sup, why_dc), (ra_ins, why_ms), (ra_both, why_pair))
+                 if c and "rb-off" in c]
+        hint_html = ""
+        if hints:
+            hint_html = ('<div class="rb-hint">&#9432;&nbsp;'
+                         + " &middot; ".join(
+                             f"{lbl}: {P.esc(w)}" for lbl, w in
+                             (("RA &middot; Supply", why_dc),
+                              ("RA &middot; Installation", why_ms),
+                              ("RA &middot; Supply &amp; Installation", why_pair))
+                             if w in hints)
+                         + "</div>")
+        if groups:
+            raise_html = f'\n<div class="raise-bar">{groups}{hint_html}</div>\n'
 
     # ── Delete ───────────────────────────────────────────────────────────
     # Drawn only for somebody the gate would actually let through — the same
@@ -3139,7 +3275,6 @@ def view_boq(id: str):
     # Offered on the tip only, and for the route's own reason rather than for
     # symmetry with its neighbours: `delete_boq()` refuses a superseded record
     # outright, because the newer revision's `supersedes` would dangle.
-    import auth as _AUTH
     del_btn = ""
     if is_tip and _AUTH.can_reach("boq.delete_boq"):
         del_btn = (f'\n    <a href="{url_for("boq.delete_boq", id=id)}" '
@@ -3215,12 +3350,11 @@ def view_boq(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
     <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
-    {revise_btn}
-    {ra_btns}{del_btn}
+    {revise_btn}{del_btn}
     <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
-
+{raise_html}
 {alert_html}
 {panel_html}
 {unpriced_html}

@@ -82,7 +82,7 @@ def _v_acct(v):   return "" if _ACCT_RE.match(v)  else "Account number should be
 
 IDENTITY_FIELDS = [
     ("COMPANY_LEGAL",     "Legal Name",         "M/s Samruddhi Fire Services",        None),
-    ("COMPANY_TAGLINE",   "Tagline",            "Fire Protection Systems & Services", None),
+    ("COMPANY_TAGLINE",   "Tagline",            "Fire Protection and Safety Engineers", None),
     ("COMPANY_ADDR",      "Registered Address", "Shop 3, …, Mumbai - 400001",         None),
     ("COMPANY_PHONE",     "Phone",              "8898420303",                         _v_phone),
     ("COMPANY_EMAIL",     "E-mail",             "samruddhifire@gmail.com",            _v_email),

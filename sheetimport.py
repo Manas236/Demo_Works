@@ -3095,3 +3095,346 @@ def detect_names(grid: dict) -> dict:
     if out["project"] is None and title is not None:
         out["project"] = title
     return out
+
+
+# =============================================================================
+# 9. ANY DOCUMENT — a SCHEMA of targets (18 October 2026)
+# =============================================================================
+#
+# Import from Excel on every document that is typed in (CLIENT_CHANGES.md §0,
+# forty-eighth block). Everything above this line is the BOQ's reader and is
+# untouched by it: sections, two tracks, footing totals and the structure of a
+# priced schedule are BOQ facts, and no other document has them.
+#
+# What every document shares is smaller, and it is this section: find the
+# heading, guess which column is which, refuse a mapping that cannot be
+# confirmed, and hand back the rows as cell values. A SCHEMA says what a
+# document's columns are:
+#
+#     {"targets": [target(...), ...],          # what a column may be mapped to
+#      "any_of":  [{"keys": (...), "label": "...", "about": "..."}]}
+#
+# A target is `required` when the document cannot be created without that
+# column — those, and the any-of groups, are what the LEGEND lists. Everything
+# else is offered in the column dropdowns and never demanded.
+#
+# ⚠ **Nothing here decides a value.** A cell that is not a number is not made
+#   one, a date written as text is not read as a date, and a heading is only
+#   ever a GUESS the operator confirms or changes. The rows come back as the
+#   cell values the sheet saved, each with the reader's kind beside it.
+
+def target(key: str, label: str, *, required: bool = False, about: str = "",
+           kw: str = "", avoid: str = "", prefer: str = "") -> dict:
+    """
+    One column a document can take. `kw` is a regular expression tried against
+    a heading cell (lower-cased, whitespace-collapsed) to GUESS this column;
+    `avoid` vetoes a heading `kw` would otherwise take ("unit rate" is not a
+    unit); `prefer`, when set, is tried first, so an RA sheet's "This bill qty"
+    is taken over the "BOQ qty" to its left. `about` is the legend's sentence —
+    what goes in the column.
+    """
+    return {"key": key, "label": label, "required": bool(required),
+            "about": about, "kw": kw, "avoid": avoid, "prefer": prefer}
+
+
+def schema_keys(schema: dict) -> tuple:
+    return tuple(t["key"] for t in schema.get("targets") or ())
+
+
+def schema_label(schema: dict) -> dict:
+    return {t["key"]: t["label"] for t in schema.get("targets") or ()}
+
+
+def _schema_hits(label, schema: dict) -> set:
+    """The target keys a heading cell reads as — a guess, nothing more."""
+    t = _norm(label)
+    if not t or len(t) > HEADER_LABEL_MAX:
+        return set()
+    out = set()
+    for tg in schema.get("targets") or ():
+        if tg["kw"] and re.search(tg["kw"], t) and not (
+                tg["avoid"] and re.search(tg["avoid"], t)):
+            out.add(tg["key"])
+    return out
+
+
+def _cell_label(v) -> str:
+    """A heading cell as text. A number is a heading too — a pipe-size column
+    headed `25` is as much a heading as one headed `25 NB`."""
+    if v is None:
+        return ""
+    if _is_number(v):
+        f = float(v)
+        return str(int(f)) if f.is_integer() else f"{f:.10g}"
+    return str(v)
+
+
+def schema_header(grid: dict, schema: dict, row: int = None) -> list:
+    """
+    `[i, i]` — the grid-row index of the heading — or `[]`.
+
+    `row` is the heading's ORIGINAL row number as the operator sees it in
+    Excel, typed on the preview: when given it is used as it stands, and a row
+    number with nothing on it is no heading. Otherwise the FIRST row in the
+    first 40 with at least two cells that read as two different targets — the
+    BOQ reader's first-heading-wins rule (30 September 2026), for its reason:
+    a heading the sheet repeats further down is not the start of the data.
+    """
+    rows = grid.get("rows") or []
+    if row is not None:
+        for ri, (rnum, _vals) in enumerate(rows):
+            if rnum == row:
+                return [ri, ri]
+        return []
+    for ri, (rnum, vals) in enumerate(rows):
+        if rnum > HEADER_SCAN_ROWS:
+            break
+        keys, cells = set(), 0
+        for v in vals:
+            h = _schema_hits(_cell_label(v), schema)
+            if h:
+                cells += 1
+                keys |= h
+        if cells >= 2 and len(keys) >= 2:
+            return [ri, ri]
+    return []
+
+
+def schema_labels(grid: dict, hdr: list) -> dict:
+    """{grid column index: heading text} for the heading row `hdr`."""
+    if not hdr:
+        return {}
+    vals = grid["rows"][hdr[0]][1]
+    return {ci: _cell_label(v).strip() for ci, v in enumerate(vals)
+            if _cell_label(v).strip()}
+
+
+def schema_guess(grid: dict, schema: dict, hdr: list) -> dict:
+    """
+    {str(Excel column index): target key | ""} — the first guess the preview
+    shows under every column. Targets are tried in the schema's own order and
+    each is given to ONE column at most, the leftmost whose heading reads as
+    it. A column nothing reads as starts as ignore.
+    """
+    cols = grid["cols"]
+    out = {str(c): "" for c in cols}
+    labels = schema_labels(grid, hdr)
+    for tg in schema.get("targets") or ():
+        if not tg["kw"]:
+            continue
+        free = [ci for ci in sorted(labels) if not out[str(cols[ci])]
+                and tg["key"] in _schema_hits(labels[ci], {"targets": [tg]})]
+        if tg.get("prefer"):
+            liked = [ci for ci in free if re.search(tg["prefer"], _norm(labels[ci]))]
+            free = liked or free
+        if free:
+            out[str(cols[free[0]])] = tg["key"]
+    return out
+
+
+def schema_clean(grid: dict, posted: dict, schema: dict) -> dict:
+    """A posted {column: target} reduced to known columns and known targets.
+    Anything else reads as ignore."""
+    keys = set(schema_keys(schema))
+    out = {}
+    for c in grid["cols"]:
+        t = str(posted.get(str(c), "") or "")
+        out[str(c)] = t if t in keys else ""
+    return out
+
+
+def schema_problems(grid: dict, mapping: dict, schema: dict) -> list:
+    """Why this mapping cannot be confirmed yet — [] when it can. The same
+    three sentences the BOQ's `mapping_problems()` says, for any document."""
+    label = schema_label(schema)
+    seen = {}
+    for c in grid["cols"]:
+        t = mapping.get(str(c), "")
+        if t:
+            seen.setdefault(t, []).append(col_letter(c))
+    probs = []
+    for t, letters in seen.items():
+        if len(letters) > 1:
+            probs.append(f"{label.get(t, t)} is chosen for {len(letters)} columns "
+                         f"({', '.join(letters)}). Keep one.")
+    for tg in schema.get("targets") or ():
+        if tg["required"] and tg["key"] not in seen:
+            probs.append(f"Choose the column that holds the {tg['label']}.")
+    for grp in schema.get("any_of") or ():
+        if not any(k in seen for k in grp["keys"]):
+            probs.append(f"Choose a column for {grp['label']}.")
+    return probs
+
+
+def schema_rows(grid: dict, mapping: dict, hdr: list) -> tuple:
+    """
+    `(rows, repeats)` — every row under the heading with something in a MAPPED
+    column, as `{"row": Excel row number, "cells": {key: (value, kind)}}`.
+
+    A row with nothing in any mapped column is not a row of this document and
+    is not returned; a row that repeats the heading (every mapped cell equal to
+    its column's heading) is skipped and counted, the BOQ reader's rule for a
+    heading printed again on a later page.
+    """
+    cols = grid["cols"]
+    pos = {str(c): i for i, c in enumerate(cols)}
+    col_of = {t: pos[c] for c, t in mapping.items() if t and c in pos}
+    labels = schema_labels(grid, hdr)
+    start = hdr[1] + 1 if hdr else 0
+    out, repeats = [], 0
+    for ri in range(start, len(grid["rows"])):
+        rnum, vals = grid["rows"][ri]
+        cells = {}
+        for key, ci in col_of.items():
+            v = vals[ci] if ci < len(vals) else None
+            k = _kind(grid, ri, ci)
+            if v is None or (isinstance(v, str) and not v.strip()):
+                if k == "formula":
+                    cells[key] = ("", k)
+                continue
+            cells[key] = (v, k)
+        if not cells:
+            continue
+        if labels and all(isinstance(v, str) and _norm(v) == _norm(labels.get(col_of[k], ""))
+                          for k, (v, _kd) in cells.items()):
+            repeats += 1
+            continue
+        out.append({"row": rnum, "cells": cells})
+    return out, repeats
+
+
+def schema_signature(grid: dict, hdr: list, kind: str) -> str:
+    """The LAYOUT SIGNATURE of one document's sheet — `signature()`'s rule with
+    the document's name folded in, so a vendor list and a staff list that
+    happen to share a heading are never one layout. "" with no heading."""
+    labels = schema_labels(grid, hdr)
+    if not labels:
+        return ""
+    cols = grid["cols"]
+    payload = json.dumps([str(kind)] + sorted((int(cols[ci]), _norm(l)) for ci, l in labels.items()),
+                         ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def schema_pick(wb: dict, schema: dict) -> int:
+    """
+    The sheet to pre-select for this document: the VISIBLE staged sheet whose
+    heading reads as the most targets, then the one with the most rows under
+    it; the first wins a tie. A hidden sheet is never chosen for the operator
+    (`pick_sheet()`'s rule) unless no visible one could be staged at all.
+    """
+    best, best_rank = None, None
+    grids = wb.get("grid") or []
+    for i, s in enumerate(wb.get("sheets") or []):
+        grid = grids[i] if i < len(grids) else None
+        if not s.get("staged") or grid is None:
+            continue
+        hdr = schema_header(grid, schema)
+        hits = len({k for l in schema_labels(grid, hdr).values()
+                    for k in _schema_hits(l, schema)}) if hdr else 0
+        under = len(grid["rows"]) - (hdr[1] + 1 if hdr else 0)
+        rank = (s.get("visibility") == "visible", hits, under)
+        if best_rank is None or rank > best_rank:
+            best, best_rank = i, rank
+    if best is None:
+        raise Refused("No sheet in that workbook could be read.")
+    return best
+
+
+# ── One cell, read as the column it was mapped to ──────────────────────────
+#
+# Each returns `(value, why)`. `why` is "" when the cell read cleanly, and
+# otherwise the reason it could not be read — a plain sentence for the row's
+# note. A cell that cannot be read is never guessed at: the value is blank.
+
+_MONEY_TEXT = re.compile(r"^\s*(?:₹|rs\.?|inr)\s*", re.I)
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+def cell_text(value, kind: str = "") -> tuple:
+    """A text column: the cell as the sheet shows it, trimmed."""
+    if kind == "formula":
+        return "", "a formula with no saved value"
+    if kind == "error":
+        return "", f"an Excel error ({value})"
+    if value is None:
+        return "", ""
+    if kind == "date":
+        s = str(value)
+        return (s[:10] if _ISO_DATE.match(s) else s), ""
+    if _is_number(value):
+        return _num_display(value, kind), ""
+    return str(value).strip(), ""
+
+
+def cell_code(value, kind: str = "") -> tuple:
+    """A code written as a number — a PIN, a phone number, an employee code:
+    a whole number has no ".0", and anything else is its text."""
+    if _is_number(value) and float(value).is_integer() and abs(value) < 1e15:
+        return str(int(value)), ""
+    return cell_text(value, kind)
+
+
+def cell_item(value, kind: str = "") -> tuple:
+    """An item number — `_item_text()`'s rule, the BOQ importer's own."""
+    if kind == "formula":
+        return "", "a formula with no saved value"
+    if kind == "error":
+        return "", f"an Excel error ({value})"
+    if kind == "date":
+        return "", "a date where an item number should be"
+    return _item_text(value, kind), ""
+
+
+def cell_number(value, kind: str = "", percent: bool = False) -> tuple:
+    """
+    A number column. A number cell is itself — ×100 when `percent` and the
+    cell is formatted as a percentage (0.1 shown as 10%). Text is read only
+    when it IS a plain number, optionally with ₹ / Rs, thousands commas and,
+    for `percent`, a trailing "%". Blank and a dash are no figure, not 0.
+    """
+    if kind == "formula":
+        return None, "a formula with no saved value"
+    if kind == "error":
+        return None, f"an Excel error ({value})"
+    if kind == "date":
+        return None, "a date where a number should be"
+    if value is None:
+        return None, ""
+    if _is_number(value):
+        v = float(value)
+        return (v * 100.0 if percent and kind == "pct" else v), ""
+    s = _MONEY_TEXT.sub("", str(value)).strip()
+    if percent and s.endswith("%"):
+        s = s[:-1].strip()
+    if not s or _DASH.match(s):
+        return None, ""
+    if _NUMERIC_TEXT.match(s):
+        return float(s.replace(",", "")), ""
+    return None, f"“{str(value).strip()[:40]}” is not a number"
+
+
+def cell_date(value, kind: str = "") -> tuple:
+    """
+    A date column, as `YYYY-MM-DD`. A date cell is its date; text is taken
+    only when it is already written that way. ⚠ **"01/04/2026" is NOT read**:
+    it is 1 April in India and 4 January in Excel's own default, and which one
+    a sheet meant is not ours to say.
+    """
+    if kind == "formula":
+        return "", "a formula with no saved value"
+    if kind == "error":
+        return "", f"an Excel error ({value})"
+    if value is None:
+        return "", ""
+    s = str(value).strip()
+    if _ISO_DATE.match(s):
+        try:
+            datetime.date.fromisoformat(s[:10])
+            return s[:10], ""
+        except ValueError:
+            pass
+    if not s:
+        return "", ""
+    return "", (f"“{s[:40]}” is not a date this reader takes — make the cell a "
+                f"date in Excel, or write it as YYYY-MM-DD")

@@ -16,8 +16,10 @@ company name, a hex colour or an image path — import from here instead.
 ║      COMPANY_PAN · COMPANY_BRANCHES                                       ║
 ║      BANK_NAME · BANK_ACCOUNT_NAME · BANK_ACCOUNT_NO · BANK_IFSC          ║
 ║      BANK_BRANCH                                                          ║
-║  COMPANY_TAGLINE is an assumption drawn from the trading name — confirm   ║
-║  the wording the client actually uses on their letterhead.                ║
+║  COMPANY_TAGLINE is the client's own wording since 21 October 2026: the   ║
+║  banner Manas sent says it, and so do the client's own workbooks          ║
+║  (client_docs/Kalyan_Site.xlsx and Skyline.xlsx, cell A2). It replaced    ║
+║  "Fire Protection Systems & Services", a guess drawn from the trade name. ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -30,7 +32,7 @@ from pathlib import Path
 # =============================================================================
 COMPANY_NAME      = "SAMRUDDHI FIRE"           # trading name, from the signboard
 COMPANY_LEGAL     = ""                         # e.g. "M/s Samruddhi Fire Services"
-COMPANY_TAGLINE   = "Fire Protection Systems & Services"   # ASSUMPTION — confirm
+COMPANY_TAGLINE   = "Fire Protection and Safety Engineers"  # the client's own — see above
 COMPANY_ADDR      = ""
 COMPANY_PHONE     = "8898420303"
 COMPANY_EMAIL     = "samruddhifire@gmail.com"
@@ -303,11 +305,18 @@ def _data_uri(filename: str, mime: str = "image/png") -> str:
 
 
 LOGO_URI     = _data_uri("logo-64.png")        # nav bar / small chrome
-LOGO_DOC_URI = _data_uri("logo-256.png")       # letterhead, print quality
+LOGO_DOC_URI = _data_uri("logo-256.png")       # the TEXT letterhead's roundel —
+                                               # letterhead_top()'s fallback only
 # A 32px PNG, not favicon.ico: the .ico carries every size up to 256 and would
 # add ~68 KB of base64 to every page for a 16px tab icon.
 FAVICON_URI  = _data_uri("favicon-32.png")
 GANESH_URI   = _data_uri("ganesh.png")
+
+# The client's own banner, at the top of every printed letterhead (21 October
+# 2026). `assets/build_banner.py` makes it and says where each part comes from.
+LETTERHEAD_URI = _data_uri("letterhead-banner.png")
+# What the banner says, word for word, for anything that cannot see a picture.
+LETTERHEAD_ALT = "SAMRUDDHI FIRE - FIRE PROTECTION AND SAFETY ENGINEERS"
 
 # Drop into <head> of every page.
 HEAD_ICON = f'<link rel="icon" href="{FAVICON_URI}"/>' if FAVICON_URI else ""
@@ -343,3 +352,58 @@ def logo_img(px: int = 30, doc: bool = False, alt: str = "") -> str:
     alt = _esc(alt or f"{COMPANY_NAME} logo")
     return (f'<img src="{uri}" alt="{alt}" width="{px}" height="{px}" '
             f'style="width:{px}px;height:{px}px;object-fit:contain;display:block;"/>')
+
+
+def letterhead_top() -> str:
+    """
+    The top of every printed letterhead: the client's own banner, then the
+    legal name when one is set (21 October 2026, CLIENT_CHANGES.md §0, the
+    fiftieth block).
+
+    Three places draw a letterhead — `docsheet.letterhead()` for the documents
+    that print through the shared sheet, `boq._document_html()` and
+    `quotation.view_quotation()` — and all three call this, so the banner is
+    one definition however many copies of the frame there are. It lives here
+    and not in `docsheet.py` because `quotation.py` cannot import that leaf
+    (the leaf imports it), and all three already import this module.
+
+    **The banner is a picture** because its lettering is Algerian, an Office
+    font no phone and no browser carries. It bakes in the trading name, the
+    tagline and the roundel, which is why none of the three is drawn beside it
+    any more. The legal name stays text: it is a `/settings` field and the
+    registered name of the supplier.
+
+    ⚠ **The styling is on the element**, `logo_img()`'s way, not in a sheet:
+    the letterhead's rules live in `quotation.VIEW_DOC_STYLES`, which is
+    frozen, and the BOQ loads a stack of its own.
+
+    ⚠ **130 mm wide, centred — and the width is a page-count decision.** At
+    the full 190 mm of a portrait band the banner stood 26 mm tall, and a
+    three-line quotation that used to fit one page printed a second carrying
+    one line and a repeated letterhead. 130 mm is 18.5 mm tall against the
+    ~15 mm of the text letterhead it replaced, and every pinned document prints
+    on the pages it printed on before, desktop and phone (ABOUT.md §6 has the
+    measurement). A landscape sheet gets the same banner, not a wider one;
+    `max-width:100%` lets a phone screen shrink it.
+
+    If the PNG is missing, the text letterhead it replaced is drawn instead —
+    a document with no name on it is worse than one that looks as it used to.
+    """
+    legal = (f'\n      <div class="lh-legal">{_esc(COMPANY_LEGAL)}</div>'
+             if COMPANY_LEGAL else "")
+    if not LETTERHEAD_URI:
+        return (f'<div class="lh">\n'
+                f'      <div>\n'
+                f'        <div class="lh-name">{name_html("lh-name-fire")}</div>\n'
+                f'        <div class="lh-tag">&#8212; {_esc(COMPANY_TAGLINE)} &#8212;</div>'
+                f'{legal}\n'
+                f'      </div>\n'
+                f'      <div class="lh-mark">{logo_img(56, doc=True)}</div>\n'
+                f'    </div>')
+    # The URI is generated markup built at import from the artwork on disk,
+    # and is deliberately left raw, as `logo_img()` leaves its own.
+    return (f'<div class="lh-banner"><img src="{LETTERHEAD_URI}" '
+            f'alt="{_esc(LETTERHEAD_ALT)}" '
+            f'style="display:block;width:130mm;max-width:100%;height:auto;'
+            f'margin:0 auto;"/>'
+            f'</div>{legal}')

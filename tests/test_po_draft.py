@@ -409,7 +409,7 @@ def test_the_draft_po_prints_on_the_same_sheet_as_the_buy_side_po(client, boq_ti
     html = client.get(f"/po/print/{_only_po()['id']}").get_data(as_text=True)
 
     assert 'class="page-frame"' in html, "no shared page frame"
-    assert 'class="lh-name"' in html, "no letterhead"
+    assert 'class="lh-banner"' in html, "no letterhead"
     assert 'class="doc-header"' in html, "no shared party block"
     assert 'class="q-table"' in html, "not the shared items table"
     assert 'class="sig-block"' in html, "no signature block"

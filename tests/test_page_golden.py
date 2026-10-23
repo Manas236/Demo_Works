@@ -394,6 +394,15 @@ PAGES = {
     #       ("f12eaac1c07efbaa", 74589,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "741824ea93f3b3cb"})
+    #
+    # ⚠ **RE-BASELINED 21 October 2026 — `main` ONLY, −4 bytes.** The tagline
+    #   default became the client's own wording (CLIENT_CHANGES.md §0, the
+    #   fiftieth block): "Fire Protection Systems & Services" →
+    #   "Fire Protection and Safety Engineers". The Tagline box prints it twice
+    #   — as its value, since the pinned identity sets no tagline, and as the
+    #   example in its placeholder — and each is two bytes shorter, the old
+    #   one's `&` having printed as `&amp;`. Was
+    #       ("a499293306ea5d30", 80230, {..., "main": "8cbae4b20e7083ef"})
     # ⚠ **RE-BASELINED AGAIN 5 October 2026 — `main` ONLY**, for the Work
     #   Order Series section (CLIENT_CHANGES.md §0 forty-first block, ruling F:
     #   "own prefix + next number in /settings"). A control that has to be ON
@@ -419,8 +428,13 @@ PAGES = {
     #       ("5b4a57215d0e88c9", 81573,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "87037b9058f6019f"})
-    ("settings",        "/settings/"):                 ("ba78271ef9858935", 82056,
-        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "eb2f1c0f23b401d0"}),
+    # ⚠ **RE-BASELINED 23 October 2026, at the merge of the office and laptop
+    #   lines — `main` ONLY, −4 bytes**: the notes above, combined. The office
+    #   line's Work Order Series section and Default Terms box are here (+1,343,
+    #   +483) and so is the laptop line's tagline default (−4). Was
+    #       ("ba78271ef9858935", 82056, {..., "main": "eb2f1c0f23b401d0"})
+    ("settings",        "/settings/"):                 ("6fb1e35f5488db36", 82052,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "56df0925a4c75aa4"}),
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

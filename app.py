@@ -28,6 +28,12 @@ from boq import boq_bp           # BOQ: the priced schedule for a project. Head 
 from boqimport import boqimport_bp  # Import BOQ from Excel (29 Sep 2026): upload,
                                  # preview, then /boq/create PREFILLED. Imports
                                  # boq.py; boq.py links here with url_for only.
+from docimport import docimport_bp  # Import from Excel on every OTHER document
+                                 # that is typed in (18 Oct 2026): upload, map
+                                 # the columns, then the document's own create
+                                 # form PREFILLED — or, for the three registers,
+                                 # a review page. Imports each document module;
+                                 # none of them imports it back (url_for only).
 from ra import ra_bp             # RA bills: progressive claims against a BOQ
                                   # revision. Headed TAX INVOICE per DOMAIN.md §4.
 from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
@@ -232,6 +238,10 @@ app.register_blueprint(attachment_bp)         # Mounted at /attachment — CC-2 
                                               #   under the PARENT record's own
                                               #   view permission.
 app.register_blueprint(address_bp)            # Mounted at /address
+app.register_blueprint(docimport_bp)          # Mounted at /import — REQUIRED by
+                                              # every create form that draws an
+                                              # Import from Excel button
+                                              # (url_for("docimport.upload_<kind>"))
 app.register_blueprint(settings_bp)           # Mounted at /settings
 app.register_blueprint(auth_bp)               # Mounted at / — /login, /setup,
                                               # /account, /users, /roles.

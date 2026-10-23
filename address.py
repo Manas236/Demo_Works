@@ -1659,6 +1659,38 @@ def _gst_widget(data: dict, urls: dict, previous_gstin: str,
 """
 
 
+def _back_and_import(list_url: str, form_kind: str) -> str:
+    """
+    The page-top's right-hand side: Back, and — on the ADD form only — *Import
+    many from Excel* (18 October 2026). Drawn unconditionally there:
+    `docimport.upload_address` carries `address.create`, the add form's own
+    permission (`tests/test_doc_import.py` holds the two equal). The edit form
+    renders the bare Back link it always rendered.
+    """
+    back = f'<a href="{list_url}" class="btn btn-ghost">&#8592; Address Book</a>'
+    if form_kind != "add":
+        return back
+    return (f'<div style="display:flex;gap:.7rem;">'
+            f'<a href="{url_for("docimport.upload_address")}" class="btn btn-ghost">'
+            f'&#128229; Import many from Excel</a>{back}</div>')
+
+
+def create_record(data: dict) -> str:
+    """
+    Write ONE new address from `_validate()`'s data, and return its id.
+
+    The add form's write, lifted out of `add_address()` verbatim on 18 October
+    2026 so Import from Excel writes an address exactly as the form does — the
+    same record shape and the same `_apply_gst_fields()` stamp — rather than
+    through a second copy of it.
+    """
+    new_id = str(uuid.uuid4())
+    record = {"id": new_id, **data}
+    _apply_gst_fields(record)
+    STORE["addresses"][new_id] = record
+    return new_id
+
+
 def _render_form(data: dict, *, heading: str, action_url: str,
                  submit_label: str, error: str | None,
                  refs: list | None = None, type_locked: bool = False,
@@ -1731,7 +1763,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
         {error_html}
         <div class="page-top">
           <h1>{_e(heading)}</h1>
-          <a href="{list_url}" class="btn btn-ghost">&#8592; Address Book</a>
+          {_back_and_import(list_url, form_kind)}
         </div>
         {lock_html}
 
@@ -1997,10 +2029,7 @@ def add_address():
         if not error:
             error = _gst_status_error(data, request.form)
         if not error:
-            new_id = str(uuid.uuid4())
-            record = {"id": new_id, **data}
-            _apply_gst_fields(record)
-            STORE["addresses"][new_id] = record
+            create_record(data)
             return redirect(url_for(
                 "address.list_addresses",
                 msg=f"'{data['label']}' added to the address book.",

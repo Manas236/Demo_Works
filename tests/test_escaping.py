@@ -187,6 +187,15 @@ DO_NOT_POISON_PATHS = {
     # which `_poison()` never reaches; `tests/test_boq_import.py` uploads a
     # workbook with the payload in every cell and sweeps both pages instead.
     "mapping", "sheets[]/visibility", "grid[]/kinds",
+    # A staged import for any OTHER document (`doc_imports`, 18 October 2026).
+    # `kind` names the importer that owns the row, and `docimport._own()`
+    # answers 404 to a token whose kind is not the route's — poisoning it would
+    # turn every import page into the not-found page, a broken fixture rather
+    # than an escaping test. `ctx` holds the schedule id and the RA leg, both
+    # looked up, never printed as prose. The file name and every sheet name ARE
+    # prose and are poisoned and pinned below; `mapping` and `grid[]/kinds`
+    # are excluded by the rows above for the reason they give.
+    "kind", "ctx",
 }
 
 _LOOKS_LIKE_AN_ID = re.compile(r"[0-9a-fA-F-]{8,}\Z")
@@ -261,6 +270,9 @@ POISONED_COLLECTIONS = (
     #   strings inside lists, which `_poison()` never reaches; the import page
     #   is swept with a payload in a cell by `tests/test_work_orders.py`).
     "wo_imports",
+    # Import from Excel on every other document (18 Oct 2026) — the same
+    # call one importer along: `doc_import_layouts` is a hash and a map.
+    "doc_imports",
 )
 
 # ⚠ Collections that are still poisoned, but whose **count** may legitimately be
@@ -446,6 +458,15 @@ POISONED_FIELDS = {
         # already here. `tracks` is a closed vocabulary like `status` and
         # is not in the fixture; `gst_rate` is a number.
         "site", "terms",
+    ),
+    # Import from Excel on every other document (18 Oct 2026). `filename` and
+    # `sheets[]/name` reach the preview, a register's review page and the
+    # banner on every prefilled form; `created_at` and `format` are stored and
+    # printed nowhere. The grid's cells are strings inside lists, which
+    # `_poison()` never reaches — `tests/test_doc_import.py` puts the payload in
+    # a cell and in both names, and sweeps the preview and the prefilled form.
+    "doc_imports": (
+        "created_at", "filename", "format", "sheets[]/name",
     ),}
 
 # `settings` is exempt from the field pin for the SAME measured reason it is

@@ -554,10 +554,18 @@ def golden_wo(client, pinned_identity):
 
 # Captured 5 October 2026 when the document was created — the first golden of
 # a NEW print; it moved no other golden in tests/test_print_golden.py.
-WO_WHOLE = "779dd2f7415cc6b4"
-WO_LEN = 85375
-WO_BLOCKS = {"head": "52d2340373bfc69c", "letterhead": "2800166c693cc2f1",
-             "foot-strip": "1efaaf73d3a0a076", "doc-box": "a501572dc0470479",
+#
+# ⚠ RE-BASELINED 23 October 2026, at the merge of the office and laptop lines —
+#   `letterhead` and `foot-strip` ONLY, by exactly the laptop line's own
+#   declared moves on the purchase order's golden, whose sheet this is: the
+#   client's banner (§0 fiftieth block) 2800166c693cc2f1 -> cb317962a23773f0,
+#   and the tagline in the foot strip 1efaaf73d3a0a076 -> 3e5d06b5f8519396
+#   (+1,060 bytes in all). Every other block hashes as before. Was
+#   ("779dd2f7415cc6b4", 85375).
+WO_WHOLE = "a31cfd6c6e00798b"
+WO_LEN = 86435
+WO_BLOCKS = {"head": "52d2340373bfc69c", "letterhead": "cb317962a23773f0",
+             "foot-strip": "3e5d06b5f8519396", "doc-box": "a501572dc0470479",
              "party": "c1c123f5c20956ad", "items": "8ca1a53b005eba46",
              "signature": "66c13b84cc80040d"}
 
@@ -1733,9 +1741,14 @@ def golden_wo_pass3(client, pinned_identity):
 
 # Captured 5 October 2026 on their first render — two NEW prints; neither the
 # work order's first golden above nor any in tests/test_print_golden.py moved.
+#
+# ⚠ RE-BASELINED 23 October 2026, at the merge — the same two blocks and the
+#   same +1,060 bytes as WO_WHOLE above (the banner and the tagline); every
+#   other block hashes as before. Were ("52543d8487c5b10d", 87065) and
+#   ("110c01dc85774ccb", 85902).
 WO_PASS3_GOLDENS = {
-    GOLD_WO_LABOUR: ("52543d8487c5b10d", 87065),
-    GOLD_WO_BOTH: ("110c01dc85774ccb", 85902),
+    GOLD_WO_LABOUR: ("ab01a068bbca186d", 88125),
+    GOLD_WO_BOTH: ("a7b63dc911f11fb2", 86962),
 }
 
 

@@ -508,8 +508,28 @@ def test_the_link_graph_is_built_from_literal_endpoints_almost_everywhere():
     #   instead, which is stricter than a literal at a call site would have
     #   been, because a register missing from the table is then a page nothing
     #   reaches rather than one a stale literal still vouches for.
-    assert computed <= 18, (
+    # ⚠ **RAISED 18 → 19 on 18 October 2026 (Import from Excel on every other
+    #   document), on the same terms.** The previous assertion, kept verbatim:
+    #
+    #       assert computed <= 18, (
+    #           f"{computed} url_for() call sites use a computed endpoint, up from the "
+    #           f"17 measured on 5 September 2026 (the dashboard's BOQ/RA visual cues). "
+    #           f"The sweep can only see one if its endpoint name appears as a literal "
+    #           f"too. Check the new one, then raise this bound deliberately.")
+    #
+    #   The nineteenth is `docimport._url()`, the ONE place that module builds a
+    #   link to its own pages: `url_for(prefix + kind.key, ...)`. It is computed
+    #   for `approval.py`'s and `attachment.py`'s structural reason — the
+    #   routes are minted per kind, because the registry maps one endpoint to
+    #   one permission and each kind carries its document's. ⚠ **Unlike those,
+    #   it DOES contribute edges**: the three prefixes are literals inside the
+    #   function (`"docimport.upload_"`, `"docimport.preview_"`,
+    #   `"docimport.apply_"`), which the prefix rule in `_link_edges()` resolves
+    #   to every minted endpoint. Every one of the 27 is then reached — the
+    #   upload pages from the literal `url_for("docimport.upload_<kind>")` on
+    #   each document's own create form. Checked, then raised.
+    assert computed <= 19, (
         f"{computed} url_for() call sites use a computed endpoint, up from the "
-        f"17 measured on 5 September 2026 (the dashboard's BOQ/RA visual cues). "
-        f"The sweep can only see one if its endpoint name appears as a literal "
-        f"too. Check the new one, then raise this bound deliberately.")
+        f"19 measured on 18 October 2026 (Import from Excel on every other "
+        f"document). The sweep can only see one if its endpoint name appears as "
+        f"a literal too. Check the new one, then raise this bound deliberately.")

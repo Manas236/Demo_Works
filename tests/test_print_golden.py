@@ -40,9 +40,11 @@ Never update one of these to make a red suite green without knowing why it
 moved.
 """
 
+import base64
 import hashlib
 import re
 from datetime import date as _real_date
+from pathlib import Path
 
 import pytest
 
@@ -538,19 +540,61 @@ GOLD_TI = "gold-ti"
 #   * on the default page, `signature` also carries copies 2 and 3, which are
 #     copy 1 byte-for-byte apart from the label (asserted in
 #     `tests/test_copies.py`, not left to this comment).
-TI_WHOLE = "a571453b8b187735"
-TI_LEN = 195699
+#
+# ── RE-BASELINED 21 October 2026 — THE CLIENT'S OWN BANNER ON EVERY LETTERHEAD ─
+#
+# CLIENT_CHANGES.md §0, the fiftieth block. DECLARED for all nine documents
+# in this file: the text letterhead — the name painted two-tone, the tagline
+# between em dashes, the 256 px roundel — is replaced by one picture,
+# `assets/letterhead-banner.png`, drawn by `branding.letterhead_top()`; and the
+# tagline default becomes the client's own wording, "Fire Protection and Safety
+# Engineers", where "Fire Protection Systems & Services" was a guess. MEASURED
+# as two halves, each against the suite as the half before it left it:
+#
+#   banner    `letterhead` ALONE, +1,062 bytes per letterhead (+1,048 on the
+#             BOQ, which indents its own copy differently): the banner's
+#             base64 is 1,272 characters longer than the 256 px roundel's it
+#             replaces, less the name and tagline markup that went with it.
+#             On the four documents that print a copy SET (TI, RA, merged, DC)
+#             `signature` moved too — copies 2 and 3 run to the end of the page
+#             inside that block, each with its own letterhead: +3,186 =
+#             3 × 1,062 on the whole page.
+#   tagline   `foot-strip` ALONE, −2 bytes per strip: `Fire Protection Systems
+#             &amp; Services` is two characters longer than its replacement.
+#             The BOQ did not move — its strip prints the schedule's reference
+#             instead — and neither did any `letterhead`: the tagline is in
+#             the picture now, not in the band's text, which is what the two
+#             halves agreeing on every `letterhead` digest shows.
+#
+#   head, doc-box, party, items, sections, grand and grid are byte-identical on
+#   all nine, and so is every figure. The SAME-letterhead assertions below hold
+#   as they did: TI, RA, merged, DC and the joint sheet share 339c37010c483651;
+#   the proforma (branches) and the two purchase orders (no web) still differ.
+#   The `/po/create` picker carries no letterhead and did not move.
+#
+#   ⚠ **The banner was first drawn across the full 190 mm band, and that was
+#     measured and withdrawn in the same pass.** It stood 26 mm tall, and the
+#     golden QUOTATION — one page before — printed a second carrying one line
+#     and a repeated letterhead (headless Chrome, A4). Cropped to its own ink
+#     and drawn 130 mm wide it is 18.5 mm tall, and all eleven printed
+#     documents print on the pages they did before, desktop and phone-sized
+#     paper alike. The digests here are the 130 mm ones.
+#
+# was a571453b8b187735 / 195699 before the 21 Oct 2026 LETTERHEAD BANNER pass
+TI_WHOLE = "4a7c232bd358c5ef"
+TI_LEN = 198879
 TI_BLOCKS = {"head":       "cc95826af94b9984",   # was b5312294e91a796f,
                                                   # was 59522cc02d192043,
                                                   # was 13840b8797d6e721,
                                                   # was f76089afb5505200,
                                                   # was 49524db46e29dcc5
-             "letterhead": "3c080a57f60c89e9",
-             "foot-strip": "1efaaf73d3a0a076",
+             "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
+             "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "1628f0996b607772",   # was 5e4d6a24b0a5b726
              "party":      "a7c0e4ecf0b1491f",
              "items":      "ace24562781a2e31",
-             "signature":  "26d63afbc5714259"}   # was f5511fad8e1212cc
+             "signature":  "dff4da7d88d26587"}   # was 26d63afbc5714259,
+                                                  # was f5511fad8e1212cc
 
 # was 4f7794a81d90071c / 101851 before the 27 Aug 2026 escaping pass
 # Was e21237eb007ee61b / 101,859 before the 27 Aug 2026 Phase 3A pass added the
@@ -656,7 +700,9 @@ TI_BLOCKS = {"head":       "cc95826af94b9984",   # was b5312294e91a796f,
 # was a7b30226a545aa62 / 106807 before the 29 Aug 2026 MEASUREMENT nav entry
 # was ac40e815028168a7 / 107149 before the 14 Sep 2026 extra-parts HSN box
 # was 787bf73b6440206f / 107215 before the 14 Sep 2026 nav removal
-PO_WHOLE, PO_LEN = "32a83f94e0620545", 97918
+# was 32a83f94e0620545 / 97918 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+PO_WHOLE, PO_LEN = "766ed2f54d4455f1", 98978
 PO_BLOCKS = {"head":       "bf2fc2b883a29ca6",   # was b0183c538998f277,
                                                  # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,
@@ -665,8 +711,8 @@ PO_BLOCKS = {"head":       "bf2fc2b883a29ca6",   # was b0183c538998f277,
                                                  # was c4b27c10e58c1b4f,
                                                  # was 5354379fd4182ed2,
                                                  # was d0df61b20bb3a42e
-             "letterhead": "2800166c693cc2f1",
-             "foot-strip": "1efaaf73d3a0a076",
+             "letterhead": "cb317962a23773f0",   # was 2800166c693cc2f1
+             "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "ffe286e7afd8c90b",
              "party":      "307d35714073c084",
              "items":      "5e17a6d93410823c",   # was fd759d99cf4b162a
@@ -677,13 +723,26 @@ GOLD_PI = "gold-pi"
 # was d4fe110738e8d20f / 103781 before the 29 Aug 2026 nav re-baseline
 # was 9a509c8c1f87ce5c / 104029 before the 29 Aug 2026 MEASUREMENT nav entry
 # was 8cf87b4361ccc740 / 104371 before the 14 Sep 2026 nav removal
-PI_WHOLE = "cdf95f1856eff934"
-PI_LEN = 95074
-PI_BLOCKS = {"head":       "8d0355644f96b13c",   # was fb2abee257b52d86,
+# was cdf95f1856eff934 / 95074 before the 21 Oct 2026 PICTURES pass. **+91
+#     bytes, in ONE block, and it is one thing:** the
+#     `\n    <a href="/proforma/pictures/gold-pi" ...>Pictures</a>` anchor in
+#     the screen action bar, drawn because the golden client can reach
+#     `proforma.pictures`. MEASURED, not derived: removing that one 91-byte
+#     string from the new page gives back cdf95f1856eff934 exactly. `items` did
+#     NOT move — the golden PI's lines carry no picture, so no Image column and
+#     no `.c-img` stylesheet are drawn; every figure is unchanged. The golden
+#     PO did not move at all: it is APPROVED, so `purchase.pictures_allowed()`
+#     refuses it and no button is drawn (the same lock that withholds Delete).
+# was dded298848fde613 / 95165 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+PI_WHOLE = "a7cbb6c59b153765"
+PI_LEN = 96225
+PI_BLOCKS = {"head":       "f947cd7d3d6700f5",   # was 8d0355644f96b13c,
+                                                  # was fb2abee257b52d86,
                                                   # was 0250890a6d6e2f6b,
                                                   # was a3b342e73adf07fc
-             "letterhead": "1c368b0c8259abe0",
-             "foot-strip": "1efaaf73d3a0a076",
+             "letterhead": "bfb41f646e64b978",   # was 1c368b0c8259abe0
+             "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "77fa68a83f706064",
              "party":      "9427bbb3e9495dd8",
              "items":      "ee2126dae594bc30",
@@ -702,18 +761,21 @@ GOLD_RA = "gold-ra"
 #     RA bill is headed TAX INVOICE and prints Rule 48's set now; see the note
 #     above TI_WHOLE for what moved in which block. The RA bill had no copy
 #     labels before, in any commit on any branch.
-RA_WHOLE = "6620a2d2d80ac71f"
-RA_LEN = 176926
+# was 6620a2d2d80ac71f / 176926 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+RA_WHOLE = "a89e24d6c07f36c8"
+RA_LEN = 180106
 RA_BLOCKS = {"head":       "04352cf9a114cef6",   # was 184a84d3609eaf57,
                                                   # was 837ea9b648848976,
                                                   # was 924f39af975d8d7b,
                                                   # was ea1ccbaa59c99616
-             "letterhead": "3c080a57f60c89e9",
-             "foot-strip": "1efaaf73d3a0a076",
+             "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
+             "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "6825f4877677a096",   # was 44c7368b5a1b2380
              "party":      "0a1ad2e74686542a",
              "items":      "92f5cc2dd233b05b",
-             "signature":  "2b6837686196c8a3"}   # was 4ebebebbdf2383c8
+             "signature":  "e597061d224c485a"}   # was 2b6837686196c8a3,
+                                                  # was 4ebebebbdf2383c8
 
 
 def test_the_tax_invoice_document_is_unchanged(client, golden):
@@ -1044,9 +1106,17 @@ GOLD_PICK_BOQ = "gold-pick"
 #     confirmation page so it can draw the "this also destroys N records"
 #     block. It is loaded in po_draft.py's shared head, which this form
 #     shares; the picker itself did not change.
-PICK_WHOLE = "ad38de27596e55cc"
-PICK_LEN = 81832
-PICK_BLOCKS = {"head":    "b07f3fb758299248",   # was af77ecc07bfca6ff,
+# was ad38de27596e55cc / 81832 before Import from Excel (18 Oct 2026).
+#     ⚠ **`head` ALONE moved, +96 characters, and they are exactly one link** —
+#     `\n      <a href="/import/dpo?boq=gold-pick" class="btn btn-ghost">&#128229;
+#     Import from Excel</a>` in the page-top beside *All Draft POs*, which falls
+#     before the `set-intro` marker. MEASURED, not assumed: the page with that
+#     one string removed hashes to ad38de27596e55cc / 81832 again, whole and
+#     block for block. The picker, its rows and its script did not move.
+PICK_WHOLE = "88b7f41c4c06dce6"
+PICK_LEN = 81928
+PICK_BLOCKS = {"head":    "2fc16fd060a023cf",   # was b07f3fb758299248,
+                                                # was af77ecc07bfca6ff,
                                                 # was 8bf28275fa127606,
                                                 # was 2bf1b714db890d61,
                                                 # was 04f4809335b2c9e8
@@ -1153,14 +1223,17 @@ def golden_dc(client, pinned_identity):
 #     TI_WHOLE. `doc-box` did NOT move here: the challan's title band is the
 #     `<caption>` above the letterhead, so the band and its label are in
 #     `head`. The challan had no copy labels before, in any commit.
-DC_WHOLE, DC_LEN = "58555aff975adc5e", 165092
+# was 58555aff975adc5e / 165092 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+DC_WHOLE, DC_LEN = "a01edfe5b74a1c94", 168272
 DC_BLOCKS = {"head":       "70716c3255fe6d74",   # was f3f5e6b5c49c9e9f
-             "letterhead": "3c080a57f60c89e9",
-             "foot-strip": "1efaaf73d3a0a076",
+             "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
+             "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "57c1a660915be1d9",
              "party":      "429e9f10652d220b",
              "items":      "6ad4a95ae07c0108",
-             "signature":  "1c33e871a464441d"}   # was 53c1b52f4aa0c8ba
+             "signature":  "4c67e2914eee5b40"}   # was 1c33e871a464441d,
+                                                  # was 53c1b52f4aa0c8ba
 
 
 def test_the_delivery_challan_document_matches_its_recorded_baseline(
@@ -1356,10 +1429,12 @@ MS_SHEET_BLOCKS = [
 #   letterhead, foot-strip, doc-box, party, signoff — byte-identical.
 # Before the repair: whole d5c6b083b3784353 / 88802, head 66e13ccf7dbdaaa3,
 # grid 5c2e52f3cc69a105 (the other five as below).
-MS_WHOLE, MS_LEN = "e230983bc8ec05ef", 94995
+# was e230983bc8ec05ef / 94995 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+MS_WHOLE, MS_LEN = "5a316b5a51d1a0a1", 96055
 MS_BLOCKS = {"head":       "db302526da349396",   # was 66e13ccf7dbdaaa3
-             "letterhead": "3c080a57f60c89e9",
-             "foot-strip": "1efaaf73d3a0a076",
+             "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
+             "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "57c1a660915be1d9",
              "party":      "1550ac634c9f7ca0",
              "grid":       "3e4e50c608dd40e9",   # was 5c2e52f3cc69a105
@@ -1674,20 +1749,31 @@ BOQ_SHEET_BLOCKS = [
 # it (`tests/test_page_golden.py`) did not move either.
 # Was 6083201b22f6d952 / 100879 with head 738417a9ea306621 and sections
 # 1d50afce5c49c30c.
-BOQ_WHOLE, BOQ_LEN = "8c59fc3c47f82c7d", 103885
+# was 8c59fc3c47f82c7d / 103885 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     `letterhead` alone; the strip prints the BOQ's reference, not the
+#     tagline. See the note above TI_WHOLE.
+# was 50e84de64a63594e / 104933 before 22 Oct 2026 — "For SAMRUDDHI FIRE"
+#     printed TWICE at the foot of the BOQ, once in the left cell and once
+#     over the signatory; the client asked for the left one to go (CLIENT_
+#     CHANGES.md §0 fifty-first block). `signature` alone, −83 bytes: the left
+#     cell is now an empty `<div></div>`, kept so the signature stays right.
+#     No other block and no other document moved.
+BOQ_WHOLE, BOQ_LEN = "c6c0a018c2549970", 104850
 BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
-              "letterhead": "1c197f96af8ad872",
+              "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872
               "foot-strip": "0f66996df1483847",
               "doc-box":    "64fcaef781b20ed2",
               "party":      "9b34f96c4ac7cd01",
               "sections":   "2e4d91620fb69579",
               "grand":      "2599e3fd773e385a",
-              "signature":  "7812a7b5e2ddb967"}
+              "signature":  "59983b7201b3d042"}   # was 7812a7b5e2ddb967
 
-DPO_WHOLE, DPO_LEN = "05e26ae227bb678e", 83807
+# was 05e26ae227bb678e / 83807 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+DPO_WHOLE, DPO_LEN = "6d1c275ab3b648fd", 84867
 DPO_BLOCKS = {"head":       "9c5d3f7bb956b98a",
-              "letterhead": "2800166c693cc2f1",
-              "foot-strip": "1efaaf73d3a0a076",
+              "letterhead": "cb317962a23773f0",   # was 2800166c693cc2f1
+              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
               "doc-box":    "9370df26fb1e5084",
               "party":      "9d89e73813bb61f7",
               "items":      "bb3a316d1cd1b2cc",
@@ -1730,14 +1816,17 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # MERGED TAX INVOICE, so Rule 48's set; the label sits in the `<caption>` band,
 # which is in `head`. See the note above TI_WHOLE. Was 50e27290a88a97ef /
 # 87957; `letterhead`, `foot-strip`, `party` and `items` untouched.
-MERGED_WHOLE, MERGED_LEN = "a84dce3a8c55d8c2", 173631
+# was a84dce3a8c55d8c2 / 173631 before the 21 Oct 2026 LETTERHEAD BANNER pass —
+#     see the note above TI_WHOLE
+MERGED_WHOLE, MERGED_LEN = "1646b229cb85a727", 176811
 MERGED_BLOCKS = {"head":       "482cb74cab6f5f0e",   # was 1e9bbe98af7f4e8d,
                                                      # was e38255e4e2ed0d90
-                 "letterhead": "3c080a57f60c89e9",
-                 "foot-strip": "11c5bd67c2fabaa9",
+                 "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
+                 "foot-strip": "a3f2d37e04a583e1",   # was 11c5bd67c2fabaa9
                  "party":      "aa58dd01cfddecc3",
                  "items":      "e0f2b72ef4632192",   # was 30ecad09926182e7
-                 "signature":  "a6452d6103bae384"}   # was 0598f5bb4f174a53,
+                 "signature":  "90a0f2169769a8aa"}   # was a6452d6103bae384,
+                                                     # was 0598f5bb4f174a53,
                                                      # was d5b89b346e0b46ff
 
 
@@ -2093,15 +2182,23 @@ def golden_disc_boq(client, pinned_identity):
 #       DISC_BOQ_WHOLE, DISC_BOQ_LEN = "b62588d35cc6d559", 104756
 #       "sections":   "7624bd7cebb39cf7",
 #       "grand":      "d99b44e707fb7e25",
-DISC_BOQ_WHOLE, DISC_BOQ_LEN = "cd291621b7bdfa2b", 104758
+#
+# ⚠ RE-BASELINED 23 October 2026, at the merge of the office and laptop lines —
+#   `letterhead` and `signature` ONLY, and by exactly the laptop line's own
+#   declared moves on the undiscounted BOQ golden above: the client's banner
+#   (§0 fiftieth block) 1c197f96af8ad872 -> 4fcc7501ec466c23, and one "For" at
+#   the foot (fifty-first block) 7812a7b5e2ddb967 -> 59983b7201b3d042. Every
+#   other block hashes as before. Whole page was:
+#       DISC_BOQ_WHOLE, DISC_BOQ_LEN = "cd291621b7bdfa2b", 104758
+DISC_BOQ_WHOLE, DISC_BOQ_LEN = "9f059fe6700c2969", 105723
 DISC_BOQ_BLOCKS = {"head":       "ad173a89e8583085",
-                   "letterhead": "1c197f96af8ad872",
+                   "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872 (banner, merge 23 Oct)
                    "foot-strip": "31227c23efe62134",
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "4e2d2f79e29f69fb",
                    "sections":   "87cec2766c2ce91e",
                    "grand":      "b9c87b57fab1f5c2",
-                   "signature":  "7812a7b5e2ddb967"}
+                   "signature":  "59983b7201b3d042"}   # was 7812a7b5e2ddb967 (one "For", merge 23 Oct)
 
 
 def test_the_discounted_boq_document_matches_its_recorded_baseline(client, golden_disc_boq):
@@ -2223,15 +2320,22 @@ def golden_asis_boq(client, pinned_identity):
 
 # Measured 6 October 2026 on the office PC's .venv. `letterhead`, `doc-box` and
 # `signature` hash to the undiscounted BOQ golden's own bytes — the same sheet.
-ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5e0d8c5000e0fd5c", 107790
+# ⚠ RE-BASELINED 23 October 2026, at the merge of the office and laptop lines —
+#   `letterhead` and `signature` ONLY, and by exactly the laptop line's own
+#   declared moves on the undiscounted BOQ golden above: the client's banner
+#   (§0 fiftieth block) 1c197f96af8ad872 -> 4fcc7501ec466c23, and one "For" at
+#   the foot (fifty-first block) 7812a7b5e2ddb967 -> 59983b7201b3d042. Every
+#   other block hashes as before. Whole page was:
+#       ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5e0d8c5000e0fd5c", 107790
+ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "405e364eec391eaa", 108755
 ASIS_BOQ_BLOCKS = {"head":       "777d7e8e392148fb",
-                   "letterhead": "1c197f96af8ad872",
+                   "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872 (banner, merge 23 Oct)
                    "foot-strip": "2a8f2f65687ae299",
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "9b5c06dd87a13664",
                    "sections":   "6b697d970b1fd5d9",
                    "grand":      "03c33dae6d5e90e3",
-                   "signature":  "7812a7b5e2ddb967"}
+                   "signature":  "59983b7201b3d042"}   # was 7812a7b5e2ddb967 (one "For", merge 23 Oct)
 
 
 def test_the_as_is_boq_document_matches_its_recorded_baseline(client, golden_asis_boq):
@@ -2269,3 +2373,121 @@ def test_the_as_is_golden_is_hashing_blanks_and_zeros(client, golden_asis_boq):
                                                  "0", "", "0", "Nos", "80.00", "0.00", "", ""]
     for bad in (">None<", ">nan<", ">-<", "excludes", "no quantity"):
         assert bad not in html, bad
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE CLIENT'S OWN BANNER ON EVERY LETTERHEAD — 21 October 2026
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# CLIENT_CHANGES.md §0, the fiftieth block. The digests above say THAT every
+# pinned letterhead moved; these say WHAT a letterhead is now, on every
+# document that prints — including the two no digest pins: the quotation, whose
+# band lives in the frozen `quotation.py` (`view_quotation()` was opened for
+# that one line), and the legacy one-table measurement sheet.
+
+GOLD_MS_LEGACY = "gold-legacy-ms"
+
+
+@pytest.fixture()
+def golden_ms_legacy(golden_ms):
+    """
+    The joint golden sheet with its grid taken off — `measurement.is_joint()`
+    is False on it, so `/measurement/print` draws the older one-table sheet.
+    `golden_ms` clears the collection afterwards.
+    """
+    sheet = dict(STORE["measurements"][GOLD_MS], id=GOLD_MS_LEGACY)
+    for key in ("grid_model", "grid_columns", "grid_rows"):
+        sheet.pop(key, None)
+    STORE["measurements"][GOLD_MS_LEGACY] = sheet
+    yield
+
+
+LETTERHEAD_ROUTES = PRINT_ROUTES + [
+    ("measurement sheet (legacy)", f"/measurement/print/{GOLD_MS_LEGACY}"),
+    ("quotation",                  f"/quotation/view/{GOLD_Q}"),
+]
+
+
+def _letterhead(html: str) -> str:
+    """The first letterhead band on the page: the page frame's `<thead>`."""
+    start = html.find("<thead><tr><td>")
+    assert start >= 0, "no page-frame letterhead on this page"
+    return html[start:html.find("</thead>", start)]
+
+
+@pytest.mark.parametrize("name,url", LETTERHEAD_ROUTES)
+def test_every_letterhead_opens_with_the_clients_banner(
+        name, url, client, golden, golden_ra, golden_dc, golden_dpo,
+        golden_merged, golden_ms, golden_ms_legacy):
+    """
+    Three places draw a letterhead — `docsheet.letterhead()`, the BOQ's own
+    copy and the quotation's — and all three must open with the one picture
+    `branding.letterhead_top()` draws. A copy of the old band written back into
+    any one of them fails here by name.
+
+    The text letterhead is gone from every one of them, because the banner
+    already carries the name, the tagline and the roundel. What stays is text:
+    the legal name, the address and the contact line, each a `/settings`
+    field — and the GSTIN in that line is Rule 46's.
+    """
+    band = _letterhead(client.get(url).get_data(as_text=True))
+    assert f'<div class="lh-banner"><img src="{B.LETTERHEAD_URI}"' in band, (
+        f"{name}: {url} does not open its letterhead with the client's banner "
+        f"— every letterhead is drawn by branding.letterhead_top()")
+    for gone in ('class="lh-name"', 'class="lh-tag"', 'class="lh-mark"'):
+        assert gone not in band, (
+            f"{name}: {url} still draws the TEXT letterhead ({gone}) beside a "
+            f"banner that already carries the name, tagline and roundel")
+    assert f'<div class="lh-legal">{settings_mod.DEMO_COMPANY["COMPANY_LEGAL"]}</div>' in band, (
+        f"{name}: {url} lost the legal name from under the banner")
+    for kept in ('class="lh-addr"', 'class="lh-contact"'):
+        assert kept in band, f"{name}: {url} lost {kept} from its letterhead"
+
+
+def test_the_banner_is_the_committed_artwork_and_stays_light():
+    """
+    The data URI is the PNG on disk, byte for byte, so what prints is what
+    `assets/build_banner.py` made. And it stays small: it is inlined once per
+    letterhead and a tax invoice prints three copies, so a phone photo dropped
+    in its place would add megabytes to every document. The ceiling is the
+    weight of the 26 KB roundel it replaced, with room to spare.
+    """
+    blob = (Path(B.__file__).resolve().parent / "assets"
+            / "letterhead-banner.png").read_bytes()
+    assert blob[:8] == b"\x89PNG\r\n\x1a\n", "the banner is not a PNG"
+    assert B.LETTERHEAD_URI == (
+        "data:image/png;base64," + base64.b64encode(blob).decode("ascii"))
+    assert len(blob) <= 40_000, (
+        f"the banner is {len(blob):,} bytes. It is inlined into every "
+        f"letterhead of every copy of every document; rebuild it with "
+        f"assets/build_banner.py rather than dropping a heavier file in")
+
+
+def test_the_banner_says_what_the_foot_strip_says():
+    """
+    The tagline is baked into the picture AND printed as text in the foot strip
+    of the same page, so the two must not disagree — which is what the old
+    default did. If the banner is ever rebuilt with other words, change
+    `COMPANY_TAGLINE` and `LETTERHEAD_ALT` with it.
+    """
+    assert B.COMPANY_NAME in B.LETTERHEAD_ALT
+    assert B.DEFAULTS["COMPANY_TAGLINE"].upper() in B.LETTERHEAD_ALT, (
+        f"the banner reads {B.LETTERHEAD_ALT!r} and the foot strip's default "
+        f"tagline is {B.DEFAULTS['COMPANY_TAGLINE']!r}")
+
+
+def test_a_missing_banner_falls_back_to_the_text_letterhead(
+        client, golden, monkeypatch):
+    """
+    `branding._data_uri()` answers "" for a missing file, and a document with
+    no name on it is worse than one that looks as it used to. So the band falls
+    back to the text letterhead the banner replaced — asserted on a real
+    document, not only on the helper.
+    """
+    monkeypatch.setattr(B, "LETTERHEAD_URI", "")
+    band = _letterhead(
+        client.get(f"/invoice/view/{GOLD_TI}").get_data(as_text=True))
+    assert 'class="lh-banner"' not in band
+    assert 'class="lh-name"' in band and 'class="lh-mark"' in band
+    assert f"&#8212; {B.COMPANY_TAGLINE} &#8212;" in band
+    assert 'class="lh-legal"' in band, "the fallback dropped the legal name"

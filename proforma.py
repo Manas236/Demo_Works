@@ -9,6 +9,9 @@ Routes
   GET       /proforma/              — register of issued proforma invoices
   GET,POST  /proforma/from/<qid>    — convert a quotation into a proforma invoice
   GET       /proforma/view/<id>     — the printed proforma invoice document
+  GET,POST  /proforma/pictures/<id> — a picture beside each line (21 Oct 2026)
+  GET,POST  /proforma/from-boq/<id> — raise a proforma invoice from a BOQ
+                                      (22 Oct 2026 — see RAISED FROM A BOQ)
 
 Why this is its own module and not a render mode of the quotation
 -----------------------------------------------------------------
@@ -34,14 +37,23 @@ looking like they came out of the same office.
 Import direction: proforma -> quotation -> dashboard. `quotation.py` must never
 import this module; it links here with `url_for("proforma.…")` and reads
 `STORE["proformas"]` directly, so no cycle exists.
+
+From 22 October 2026 also proforma -> boq and proforma -> boqpick, for a PI
+raised FROM a bill of quantities — `purchase.py`'s arrow (ABOUT.md §2f), for
+its reason: a module owns the shape it writes, and the PI belongs in the PI
+series. `boq.py` must never import this module; `/boq/view` links here with
+`url_for` and reads `STORE["proformas"]` directly.
 """
 
 import uuid
 from datetime import date as _date
 from flask import Blueprint, request, redirect, url_for
 
+import boq as BQ        # the schedule a PI is raised FROM (22 Oct 2026) — §2f's arrow
+import boqpick as BP    # the BOQ line picker, at its FOURTH and FIFTH consumers
 import branding as B
 import cascade
+import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docsheet as DS
@@ -166,11 +178,22 @@ def _sel_keep(name: str, options: list, current: str) -> str:
     is carried over from a saved record rather than typed fresh, so anything
     unrecognised (hand-edited data, or a list that has been edited since) is
     prepended and kept selected.
+
+    ⚠ **Every option is escaped HERE** (22 October 2026), because
+      `quotation._sel_opts()` interpolates option text raw and `quotation.py`
+      is frozen. The prepended value is a stored record's text — a BOQ's
+      free-text payment terms reach the PI and TI raised from it this way —
+      so it is user input on its way into HTML. No value in the five shared
+      vocabularies changes under `P.esc` (checked when this was written), so
+      every form that only ever offered those renders byte for byte as before;
+      the browser posts the decoded text, so the value round-trips unchanged.
     """
     cur = (current or "").strip()
     opts = list(options)
     if cur and cur not in opts:
         opts.insert(0, cur)
+    opts = [P.esc(o) for o in opts]
+    cur = P.esc(cur)
     return _sel_opts(name, opts, cur or (opts[0] if opts else ""), cur)
 
 
@@ -248,12 +271,21 @@ def _build_pi_terms(pi: dict) -> list:
     # is escaped here rather than trusted. (quotation.py's _build_tnc does not
     # — ABOUT.md §7.7. That is the gap, not the pattern.)
     src = P.esc(pi.get("quotation_ref")).strip()
+    boq_src = P.esc(pi.get("boq_ref")).strip()
     if src:
         terms.append(
             f"This proforma invoice is raised against our Quotation {src}"
             + (f" dated {P.esc(pi['quotation_date'])}." if pi.get("quotation_date") else ".")
             + " The technical scope, exclusions and terms of that quotation "
               "continue to govern this supply in full."
+        )
+    elif boq_src:
+        # Raised from a schedule (22 October 2026). Only such a PI says this.
+        terms.append(
+            f"This proforma invoice is raised against our Bill of Quantities "
+            f"{boq_src}. The specifications, quantities and terms of that "
+            f"schedule continue to govern this work in full; quantities are "
+            f"provisional and billed as executed."
         )
 
     pct = float(pi.get("advance_pct") or 0.0)
@@ -315,6 +347,332 @@ def _alert(msg: str, msg_type: str) -> str:
         return ""
     icon = "&#10003;" if msg_type == "success" else "&#10007;"
     return f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
+
+
+# =============================================================================
+# RAISED FROM A BOQ — 22 October 2026
+# =============================================================================
+# CLIENT_CHANGES.md §0, fifty-first block. The client wants every document
+# raised from the schedule, "even TI". The proforma invoice and the tax invoice
+# raised from a BOQ are the ORDINARY documents — the same collection, the same
+# PI-nnnn / SF/TI/yy-yy/nnnn series, the same printed sheet — so they are
+# written here and in `invoice.py`, which own those shapes, and not in a third
+# module that would need a third number series. `purchase.from_boq()` set the
+# precedent (ABOUT.md §2f); `invoice.py` imports what follows from here, the
+# arrow it already had.
+#
+# What a BOQ gives a sell-side line that a quotation never did:
+#
+#   * **Two tracks.** Every BOQ line is priced to SUPPLY and to INSTALL, each
+#     with its own code (supply HSN, installation SAC) and its own GST rate.
+#     The operator chooses Supply, Installation, or both — the RA bill's three
+#     types. "Both" STACKS the two, supply rows first, each leg under its own
+#     band row — the merged RA's arrangement, and the reason a line is never
+#     collapsed to one combined rate: one row would carry one code, and goods
+#     and the service that installs them are taxed under two.
+#   * **Specification headers.** A size line ("150mm dia") means nothing
+#     without the clause above it, so the clause comes across as a heading row
+#     carrying no money — the purchase order's rule (`_po_lines_from_picked()`).
+#   * **Per-line GST rates**, so the tax is computed per RATE SLAB and rounded
+#     once per slab — `ra.compute_tax_totals()`'s rule — and a document with
+#     two slabs prints one tax row per slab rather than one wrong rate.
+#
+# ⚠ **The rate is the schedule's SELLING rate** (`supply_rate` /
+#   `install_rate`) and is not editable — the document states what was agreed,
+#   exactly as a PI from a quotation states what was quoted. The QUANTITY is
+#   the operator's, defaulting to the schedule's: a PI may ask for a lot.
+# ⚠ **The tax head is CHOSEN on the form, never derived** (CLIENT_CHANGES.md
+#   §1.5): CGST + SGST by default, the RA bill's default. The tax invoice's own
+#   form warns when it disagrees with the place of supply, as it always has.
+
+BOQ_LEGS = (("supply", "Supply"),
+            ("installation", "Installation"),
+            ("both", "Supply &amp; Installation"))
+
+BOQ_TAX_HEADS = (("cgst_sgst", "CGST + SGST (intra-State)"),
+                 ("igst", "IGST (inter-State)"))
+
+# leg -> (rate field, code field, GST-rate field, band label)
+_LEG_FIELDS = {
+    "supply":       ("supply_rate",  "supply_hsn",  "supply_gst_rate",  "SUPPLY"),
+    "installation": ("install_rate", "install_sac", "install_gst_rate", "INSTALLATION"),
+}
+
+# A BOQ line with no GST rate is taxed at this — `ra.build_claim()`'s fold of a
+# falsy BOQ rate, for its reason: a blank on the schedule is "not stated",
+# never "nil-rated".
+_BOQ_DEFAULT_GST = 18.0
+
+
+def boq_leg(raw) -> str:
+    """The leg off a form or a query string; anything unknown is Supply."""
+    raw = str(raw or "").strip().lower()
+    return raw if raw in dict(BOQ_LEGS) else "supply"
+
+
+def boq_tax_head(raw) -> str:
+    """The tax head off a form; anything unknown is CGST + SGST."""
+    raw = str(raw or "").strip().lower()
+    return raw if raw in dict(BOQ_TAX_HEADS) else "cgst_sgst"
+
+
+def boq_leg_label(leg: str) -> str:
+    """'Supply', 'Installation' or 'Supply &amp; Installation' — markup-safe."""
+    return dict(BOQ_LEGS).get(leg, "")
+
+
+def _heading_item(name: str, part_no: str = "", line_id: str = "",
+                  band: str = "") -> dict:
+    """A row that carries words and no money — a spec clause or a leg band."""
+    row = {"type": "item", "is_header": True, "line_id": line_id,
+           "name": name, "part_no": part_no, "hsn": "",
+           "qty": 0.0, "unit": "", "price": 0.0, "total": 0.0, "depth": 0}
+    if band:
+        row["leg_band"] = band
+    return row
+
+
+def boq_line_items(picked: list, boq: dict, leg: str) -> tuple:
+    """
+    `(line_items, error)` — `boqpick.picked_lines()` rows in the sell chain's
+    line shape, for one leg or both.
+
+    Snapshotted here and now, as every document raised from a schedule is: the
+    printed PI or TI never re-reads the BOQ (CLIENT_CHANGES.md §1.2).
+
+    A ticked line that is **not priced on a leg** is left off that leg — an
+    installation-only line has no supply row, and a 0.00 row on an invoice says
+    the thing was free. A clause heading prints only above a line that made it
+    onto the leg. Matching is on `line_id` alone (§1.4).
+    """
+    lines = boq.get("line_items") or []
+    by_lid, head_lid = {}, {}
+    heads = BQ.header_of(lines)
+    for i, li in enumerate(lines):
+        lid = BQ._line_id(li.get("line_id"))
+        if not lid:
+            continue
+        by_lid[lid] = li
+        if i in heads:
+            head_lid[lid] = BQ._line_id(lines[heads[i]].get("line_id"))
+
+    parts = ("supply", "installation") if leg == "both" else (leg,)
+    out, priced = [], 0
+    for part in parts:
+        rate_f, code_f, gst_f, band = _LEG_FIELDS[part]
+        rows, last_head = [], None
+        for row in picked:
+            if row.get("is_header"):
+                continue
+            lid = str(row.get("line_id") or "")
+            src = by_lid.get(lid) or {}
+            rate = float(src.get(rate_f) or 0.0)
+            if rate <= 0:
+                continue
+            qty = float(row.get("qty") or 0.0)
+            if qty <= 0:
+                return [], (f"Quantity for item {row.get('item_no') or '(unnumbered)'} "
+                            f"must be greater than zero.")
+            hid = head_lid.get(lid)
+            if hid and hid != last_head and hid in by_lid:
+                h = by_lid[hid]
+                rows.append(_heading_item(str(h.get("description") or ""),
+                                          BQ._item_no(h.get("item_no")), hid))
+                last_head = hid
+            rows.append({
+                "type": "item", "is_header": False,
+                "line_id": lid,      # THE key back to the schedule line
+                "leg": part,
+                "name": str(row.get("description") or ""),
+                "part_no": str(row.get("item_no") or ""),
+                "hsn": str(src.get(code_f) or ""),
+                "gst_rate": float(src.get(gst_f) or _BOQ_DEFAULT_GST),
+                "qty": qty,
+                "unit": str(row.get("unit") or ""),
+                "price": rate,
+                "total": round(qty * rate, 2),
+                "depth": 0,
+            })
+            priced += 1
+        if rows:
+            out.append(_heading_item(band, band=part))
+            out.extend(rows)
+
+    if not priced:
+        return [], (f"None of the ticked lines carries a "
+                    f"{boq_leg_label(leg).replace('&amp;', '&').lower()} rate on "
+                    f"this schedule, so there is nothing to invoice. Choose "
+                    f"another leg, or tick priced lines.")
+    return out, ""
+
+
+def boq_figures(items: list, tax_type: str) -> tuple:
+    """
+    `(subtotal, tax_info, grand_total, total_qty)` for BOQ-raised lines.
+
+    Taxed **per rate slab**, rounded once per slab and then summed —
+    `ra.compute_tax_totals()`'s rule 2, so every printed tax row foots. The
+    `tax_info` dict is the sell chain's own shape, which the PI and TI sheets
+    print row by row: one slab gives `CGST` / `SGST` (or `IGST`) with their
+    rates, exactly what a quotation stores; two or more give one key per head
+    per slab — `CGST @ 9%` — because a single "CGST @ 9%" over a 6% line is a
+    tax invoice stating a rate it did not charge.
+    """
+    slabs = {}
+    total_qty = 0.0
+    for r in items:
+        if r.get("is_header"):
+            continue
+        rate = float(r.get("gst_rate") or 0.0)
+        slabs[rate] = slabs.get(rate, 0.0) + float(r.get("total") or 0.0)
+        total_qty += float(r.get("qty") or 0.0)
+    subtotal = round(sum(slabs.values()), 2)
+
+    tax_info, total = {}, 0.0
+    one = len(slabs) == 1
+    for rate in sorted(slabs):
+        taxable = slabs[rate]
+        if tax_type == "igst":
+            amt = round(taxable * rate / 100.0, 2)
+            tax_info["IGST" if one else f"IGST @ {rate:g}%"] = amt
+            total += amt
+        else:
+            half = round(taxable * rate / 200.0, 2)
+            tax_info["CGST" if one else f"CGST @ {rate / 2:g}%"] = half
+            tax_info["SGST" if one else f"SGST @ {rate / 2:g}%"] = half
+            total += 2 * half
+    if one:
+        rate = next(iter(slabs))
+        if tax_type == "igst":
+            tax_info["igst_rate"] = rate
+        else:
+            tax_info["cgst_rate"] = rate / 2
+            tax_info["sgst_rate"] = rate / 2
+    tax_info["total"] = round(total, 2)
+    grand = round(subtotal + tax_info["total"], 2)
+    return subtotal, tax_info, grand, total_qty
+
+
+def boq_customer(boq: dict) -> dict:
+    """The schedule's customer block, copied — the fields a PI and a TI carry."""
+    keys = ("account_name", "contact_person", "to", "bill_gstin", "ship_same",
+            "ship_acct_name", "ship_addr", "ship_city", "ship_state", "ship_pin",
+            "ship_phone", "ship_gstin")
+    return {k: boq.get(k, "") for k in keys}
+
+
+def boq_project_id(boq: dict) -> str:
+    """
+    The project the document inherits from its BOQ — **stored, never
+    derived**, `purchase._project_of_boq()`'s rule: a BOQ with no live project
+    gives none, and never falls back to its free-text `project_name`.
+    """
+    pid = str(boq.get("project_id") or "")
+    return pid if pid in (STORE.get("projects") or {}) else ""
+
+
+def boq_chain(boq_id: str) -> set:
+    """The BOQ and every revision it supersedes — "same project" here."""
+    return BQ._ancestor_ids(boq_id) | {boq_id}
+
+
+def boq_replay(raw: str) -> tuple:
+    """`(chosen, qty_of)` off a rejected POST, so no tick or quantity is lost."""
+    import json
+    try:
+        rows = (json.loads(raw or "{}").get("lines") or [])
+    except (ValueError, TypeError, AttributeError):
+        rows = []
+    rows = [r for r in rows if isinstance(r, dict)]
+    return ({BQ._line_id(r.get("line_id")) for r in rows},
+            {BQ._line_id(r.get("line_id")): r.get("qty") for r in rows})
+
+
+def boq_choice_html(leg: str, tax_type: str) -> str:
+    """The leg and the tax head, as two rows of radio pills."""
+    legs = "".join(
+        f'<label><input type="radio" name="leg" value="{k}"'
+        f'{" checked" if k == leg else ""}/> {lbl}</label>'
+        for k, lbl in BOQ_LEGS)
+    heads = "".join(
+        f'<label><input type="radio" name="tax_type" value="{k}"'
+        f'{" checked" if k == tax_type else ""}/> {lbl}</label>'
+        for k, lbl in BOQ_TAX_HEADS)
+    return f"""
+          <div class="form-group">
+            <label>What is being invoiced *</label>
+            <div class="leg-pick">{legs}</div>
+            <small class="field-hint">Supply and Installation are each priced on
+              the schedule with their own HSN / SAC and GST rate. Both prints the
+              two stacked &mdash; supply first, then installation &mdash; as the
+              merged RA does. A ticked line not priced for a leg is left off it.</small>
+          </div>
+          <div class="form-group">
+            <label>Tax head *</label>
+            <div class="leg-pick">{heads}</div>
+          </div>"""
+
+
+def boq_grid(boq: dict, chosen, qty_of, payload_id: str, doc_word: str) -> str:
+    """`boqpick`'s grid, in this document's words."""
+    return BP.grid_html(
+        boq,
+        title="Lines to invoice",
+        intro_html=f"""        <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+          Every line is ticked to start with. Untick what this {doc_word} does not
+          cover, and lower a quantity to invoice part of a line. The rate is the
+          schedule&rsquo;s own and is not edited here.
+        </p>""",
+        qty_label="Invoice qty",
+        qty_aria="Invoice quantity",
+        empty_note=(f"Nothing is ticked. A {doc_word} with no lines on it is "
+                    f"not a document."),
+        payload_id=payload_id,
+        doc_word=doc_word,
+        chosen=chosen,
+        qty_of=qty_of)
+
+
+def boq_heading_row(row: dict, img_td: str = "") -> str:
+    """
+    A clause or a leg band on the printed sheet: words, no S.No and no figures.
+
+    Only a document raised from a BOQ carries one, so every other PI and TI
+    renders exactly the rows it always did.
+    """
+    name = P.esc(row.get("name"))
+    if row.get("leg_band"):
+        name = f"<b>{name}</b>"
+    return f"""
+        <tr class="row-assembly">
+          <td class="c-sno"></td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
+          <td class="c-desc">{name}</td>
+          <td class="c-hsn"></td>
+          <td class="c-qty"></td>
+          <td class="c-unit"></td>
+          <td class="c-price"></td>
+          <td class="c-total"></td>
+        </tr>"""
+
+
+# The picker's stylesheet, wrapped for the two from-BOQ forms, plus the pills.
+# A separate constant and never part of PROFORMA_STYLES, which the printed PI
+# and both registers load and the goldens hash.
+FROM_BOQ_FORM_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
+  .leg-pick { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .leg-pick label {
+    display:flex; align-items:center; gap:.4rem; margin:0;
+    padding:.45rem .8rem; border:1px solid var(--border); border-radius:8px;
+    cursor:pointer; font-weight:600; text-transform:none; letter-spacing:0;
+  }
+  .leg-pick input { width:auto; margin:0; }
+  .boq-dup {
+    background:#FFF8E6; border:1px solid #E8C86A; border-left:3px solid #C79200;
+    border-radius:8px; padding:.7rem .9rem; margin:0 0 1rem; font-size:.84rem;
+  }
+</style>
+"""
 
 
 # =============================================================================
@@ -535,12 +893,18 @@ def list_proformas():
             badge    = (f'<span class="pi-badge part">{pct:g}% advance</span>'
                         if pct < 100 else '<span class="pi-badge">full value</span>')
             src_url  = url_for("quotation.view_quotation", id=pi.get("quotation_id", ""))
+            src_txt  = P.esc(pi.get('quotation_ref'))
+            # Raised from a schedule (22 October 2026): the cell names the BOQ
+            # and links to it. Every other row renders exactly as before.
+            if pi.get("boq_id") and not pi.get("quotation_id"):
+                src_url = url_for("boq.view_boq", id=pi.get("boq_id"))
+                src_txt = f"BOQ {P.esc(pi.get('boq_ref'))}"
             rows_html += f"""
             <tr>
               <td class="td-ref">{P.esc(pi.get('ref'))}</td>
               <td class="td-muted">{P.esc(pi.get('date'))}</td>
               <td class="td-cust">{P.esc(_customer_of(pi))}</td>
-              <td class="col-h"><a href="{src_url}" class="btn-view">{P.esc(pi.get('quotation_ref'))}</a></td>
+              <td class="col-h"><a href="{src_url}" class="btn-view">{src_txt}</a></td>
               <td class="col-h">{badge}</td>
               <td class="td-muted">&#8377;&nbsp;{float(pi.get('grand_total') or 0):,.0f}</td>
               <td class="td-total">&#8377;&nbsp;{float(pi.get('amount_due') or 0):,.0f}</td>
@@ -562,7 +926,8 @@ def list_proformas():
           <strong>No proforma invoices yet</strong>
           <p style="margin-top:.4rem;font-size:.88rem;">
             A proforma invoice is raised from a quotation — open the quotation the
-            customer has agreed to and use <b>Raise Proforma</b>.</p>
+            customer has agreed to and use <b>Raise Proforma</b> — or from a bill
+            of quantities, with <b>+ Proforma Invoice</b> on the BOQ.</p>
           <a href="{qtn_url}" class="btn" style="display:inline-block;margin-top:1.1rem;">
             Go to Quotation Register</a>
         </div>"""
@@ -720,6 +1085,13 @@ def create_proforma(qid: str):
                 "company_branch": q.get("company_branch", ""),
                 "auth_signatory": q.get("auth_signatory", ""),
             }
+            # ── Pictures: the library's, by default (21 October 2026) ──────
+            # A line written from a spec-library clause carries the clause's
+            # code as its part_no; where that clause has a picture, the line
+            # gets it — onto the PI's own COPY of the line, never the
+            # quotation's. Only a blank is filled. Changing or removing one
+            # is the PI's Pictures page; the figures above are untouched.
+            LI.fill_from_library(pi["line_items"])
             STORE["proformas"][pid] = pi
 
             # The PI is a real event in the deal's life, so it belongs on the
@@ -775,11 +1147,24 @@ def create_proforma(qid: str):
     v_notes    = _v("notes")
 
     # ── Frozen line-item preview ───────────────────────────────────────────
+    # The picture each line will carry, drawn as a first column ONLY when at
+    # least one line will carry one — the library's for its code, the rule
+    # `create_proforma()` applies on POST (21 October 2026).
+    pic_of = [LI.image_of(r) or LI.library_image_for(r.get("part_no"))
+              for r in q.get("line_items", [])]
+    with_pics = any(LI.src_of(i) for i in pic_of)
     rows_html = ""
-    for r in q.get("line_items", []):
+    for r, pic in zip(q.get("line_items", []), pic_of):
         comp = " fz-comp" if r.get("depth", 0) == 1 else ""
+        pic_cell = ""
+        if with_pics:
+            src = LI.src_of(pic)
+            pic_cell = ('<td style="width:56px;">'
+                        + (f'<img src="{src}" alt="" style="max-width:48px;'
+                           f'max-height:48px;object-fit:contain;display:block;"/>'
+                           if src else "") + '</td>')
         rows_html += f"""
-        <tr class="{comp.strip()}">
+        <tr class="{comp.strip()}">{pic_cell}
           <td>{P.esc(r.get('name'))}</td>
           <td class="td-muted">{P.esc(r.get('part_no'))}</td>
           <td class="fz-num">{_fmt_qty(float(r.get('qty') or 0))} {P.esc(r.get('unit'))}</td>
@@ -788,25 +1173,34 @@ def create_proforma(qid: str):
         </tr>"""
 
     tax_total = float((q.get("tax_info") or {}).get("total") or 0.0)
+    pic_th = "<th>Picture</th>" if with_pics else ""
+    span = 5 if with_pics else 4
+    pic_hint = ""
+    if with_pics:
+        n_pics = sum(1 for i in pic_of if LI.src_of(i))
+        pic_hint = (f" {n_pics} line{'' if n_pics == 1 else 's'} will carry the "
+                    f"specification library&rsquo;s picture. Change or remove any "
+                    f"picture on the invoice&rsquo;s <b>Pictures</b> page once it "
+                    f"is raised.")
     frozen_html = f"""
     <div class="frozen-wrap"><table>
-      <thead><tr>
+      <thead><tr>{pic_th}
         <th>Description</th><th>Part No</th>
         <th class="fz-num">Qty</th><th class="fz-num">Rate</th><th class="fz-num">Amount</th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
       <tfoot>
-        <tr><td colspan="4" class="fz-num">Subtotal</td>
+        <tr><td colspan="{span}" class="fz-num">Subtotal</td>
             <td class="fz-num">{_inr(q.get('subtotal') or grand)}</td></tr>
-        <tr><td colspan="4" class="fz-num">Tax</td>
+        <tr><td colspan="{span}" class="fz-num">Tax</td>
             <td class="fz-num">{_inr(tax_total)}</td></tr>
-        <tr><td colspan="4" class="fz-num">Invoice Value</td>
+        <tr><td colspan="{span}" class="fz-num">Invoice Value</td>
             <td class="fz-num">{_inr(grand)}</td></tr>
       </tfoot>
     </table></div>
     <p class="frozen-hint">
       These lines are copied onto the invoice exactly as quoted and are frozen at
-      issue. To invoice different quantities or prices, raise a new quotation first.
+      issue. To invoice different quantities or prices, raise a new quotation first.{pic_hint}
     </p>"""
 
     # ── The running position ───────────────────────────────────────────────
@@ -1001,6 +1395,281 @@ def create_proforma(qid: str):
     return _page(template)
 
 
+@proforma_bp.route("/from-boq/<boq_id>", methods=["GET", "POST"])
+def from_boq(boq_id: str):
+    """
+    Raise a proforma invoice FROM a bill of quantities (22 October 2026).
+
+    The ordinary PI — `PI-nnnn`, `STORE["proformas"]`, the same printed sheet
+    and the same onward *Raise Tax Invoice* — written from the schedule rather
+    than from a quotation. See *RAISED FROM A BOQ* above for the leg, the
+    headings, the rate and the tax.
+
+    What differs from `create_proforma()`, and why:
+
+    * **The lines are ticked, and the leg is chosen** — Supply, Installation,
+      or both. The rate is the schedule's and is not edited.
+    * **No running position across PIs.** A quotation's PIs are shares of one
+      quoted value; a BOQ's PIs each carry their own lines (supply this month,
+      labour next), so there is no one "order value" to measure a share of.
+      `prior_invoiced` is 0 and the advance % is a share of THIS document. The
+      form lists the PIs already raised from the schedule, so a second one is
+      a decision, not an accident.
+    * **The project is inherited from the BOQ** and stored.
+
+    A **superseded** revision is refused at the route — `/purchase/from-boq`'s
+    rule; `/boq/view` draws the link on the tip only, and a link is not a
+    guard.
+    """
+    boq = (STORE.get("boqs") or {}).get(boq_id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs",
+                                msg="Choose a bill of quantities to invoice against.",
+                                type="error"))
+    if boq_id in BQ.superseded_ids():
+        return redirect(url_for("boq.view_boq", id=boq_id,
+                                msg="That schedule has been superseded. Raise the "
+                                    "proforma invoice against the current revision.",
+                                type="error"))
+
+    f = request.form
+    is_post = request.method == "POST"
+    leg = boq_leg(f.get("leg") if is_post else request.args.get("leg"))
+    head = boq_tax_head(f.get("tax_type") if is_post else "")
+    error = ""
+    chosen = qty_of = None
+
+    if is_post:
+        pi_date  = (f.get("date") or "").strip()
+        pct      = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
+        validity = (f.get("validity_days") or "").strip()
+
+        if not pi_date:
+            error = "Invoice date is required."
+        elif pct < 0:
+            error = "Advance % must be a number, e.g. 30."
+        elif not (0 < pct <= 100):
+            error = "Advance % must be greater than 0 and no more than 100."
+        elif validity and not validity.isdigit():
+            error = "Validity must be a whole number of days."
+
+        picked, line_err = ([], "") if error else BP.picked_lines(
+            f.get("pi_json") or "", boq, max_lines=BQ.MAX_LINES,
+            empty_msg=("No lines are ticked. A proforma invoice with nothing on "
+                       "it is not a document — tick at least one line, or cancel."),
+            cap_msg="Raise more than one proforma invoice.")
+        error = error or line_err
+        items, item_err = ([], "") if error else boq_line_items(picked, boq, leg)
+        error = error or item_err
+
+        if not error:
+            subtotal, tax_info, grand, total_qty = boq_figures(items, head)
+            due = round(grand * pct / 100.0, 2)
+            pid = str(uuid.uuid4())
+            pi = {
+                "id":  pid,
+                "ref": _next_ref(),
+                "date": pi_date,
+
+                # ── No quotation behind it. The keys are present and empty, so
+                #    every reader of a PI finds the shape it always found.
+                "quotation_id":   "",
+                "quotation_ref":  "",
+                "quotation_date": "",
+
+                # ── The schedule it was raised from. `boq_ref` is stored, not
+                #    looked up, so the PI prints if the BOQ is ever removed.
+                "boq_id":     boq_id,
+                "boq_ref":    boq.get("ref", ""),
+                "boq_rev_no": int(boq.get("rev_no") or 0),
+                "boq_leg":    leg,
+
+                **boq_customer(boq),
+
+                "line_items":  items,
+                "subtotal":    subtotal,
+                "tax_type":    head,
+                "tax_info":    tax_info,
+                "grand_total": grand,
+                "total_qty":   total_qty,
+
+                "po_number":     (f.get("po_number") or "").strip(),
+                "po_date":       (f.get("po_date") or "").strip(),
+                "advance_pct":   pct,
+                "amount_due":    due,
+                "project_id":    boq_project_id(boq),
+
+                "prior_invoiced": 0.0,
+                "prior_refs":     [],
+                "balance_due":    round(grand - due, 2),
+                "payment_terms": (f.get("payment_terms") or "").strip(),
+                "delivery_terms": (f.get("delivery_terms") or "").strip(),
+                "delivery_date": (f.get("delivery_date") or "").strip(),
+                "dispatch_through": (f.get("dispatch_through") or "").strip(),
+                "incoterms":     (f.get("incoterms") or "").strip(),
+                "validity_days": validity,
+                "notes":         (f.get("notes") or "").strip(),
+
+                "company_branch": boq.get("company_branch", ""),
+                "auth_signatory": boq.get("auth_signatory", ""),
+            }
+            STORE["proformas"][pid] = pi
+            return redirect(url_for("proforma.view_proforma", id=pid,
+                                    msg=f"Proforma invoice {pi['ref']} created "
+                                        f"against {boq.get('ref') or 'the schedule'}.",
+                                    type="success"))
+
+        chosen, qty_of = boq_replay(f.get("pi_json") or "")
+
+    def _v(name: str, fallback: str = "") -> str:
+        if is_post:
+            return (f.get(name) or "").strip()
+        return str(fallback or "").strip()
+
+    v_date     = _v("date", _today())
+    v_po_no    = _v("po_number")
+    v_po_date  = _v("po_date")
+    v_pct      = _v("advance_pct", f"{DEFAULT_ADVANCE_PCT:g}")
+    v_pay      = _v("payment_terms", boq.get("payment_terms", ""))
+    v_del_t    = _v("delivery_terms", boq.get("delivery_terms", ""))
+    v_del_d    = _v("delivery_date")
+    v_dispatch = _v("dispatch_through")
+    v_inco     = _v("incoterms")
+    v_valid    = _v("validity_days", DEFAULT_PI_VALIDITY)
+    v_notes    = _v("notes")
+
+    chain = boq_chain(boq_id)
+    earlier = sorted(((p_id, p) for p_id, p in STORE["proformas"].items()
+                      if str(p.get("boq_id") or "") in chain),
+                     key=lambda kv: _ref_num(kv[1]))
+    earlier_html = ""
+    if earlier:
+        chips = "".join(
+            f'<a class="pi-chip" href="{url_for("proforma.view_proforma", id=p_id)}">'
+            f'{P.esc(p.get("ref"))} &middot; {boq_leg_label(p.get("boq_leg"))} &middot; '
+            f'&#8377;&nbsp;{float(p.get("amount_due") or 0):,.0f}</a>'
+            for p_id, p in earlier)
+        earlier_html = (f'<div class="pi-strip">{chips}</div>'
+                        f'<div class="sn-sub">Already raised from this schedule. '
+                        f'Each carries its own lines &mdash; check that this one '
+                        f'does not ask for the same work twice.</div>')
+
+    proj = (STORE.get("projects") or {}).get(boq_project_id(boq)) or {}
+    proj_bit = (f' &middot; project <b>{P.esc(proj.get("name"))}</b>' if proj else "")
+    back = url_for("boq.view_boq", id=boq_id)
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Proforma Invoice from BOQ")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{FROM_BOQ_FORM_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Proforma Invoice <span>from BOQ</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{back}" class="btn btn-ghost">&#8592; {P.esc(boq.get('ref'))}</a>
+          <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
+        </div>
+      </div>
+
+      {_alert(error, "error")}
+
+      <div class="src-note">
+        From bill of quantities <b>{P.esc(boq.get('ref'))}</b>
+        &middot; {P.esc(boq.get('project_name'))} &middot; {P.esc(_customer_of(boq))}{proj_bit}
+        <div class="sn-sub">The invoice will be numbered {_next_ref()}.</div>
+        {earlier_html}
+      </div>
+
+      <form method="POST" action="{url_for("proforma.from_boq", boq_id=boq_id)}"
+            onsubmit="return saveJSON();">
+        <input type="hidden" name="pi_json" id="pi_json" value=""/>
+
+        <div class="form-section">
+          <div class="section-title">Invoice</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="date">Invoice Date *</label>
+              <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
+            </div>
+            <div class="form-group">
+              <label for="po_number">Customer PO / Work Order No.</label>
+              <input type="text" id="po_number" name="po_number" value="{P.esc(v_po_no)}"
+                     placeholder="their order number, if received"/>
+            </div>
+            <div class="form-group">
+              <label for="po_date">Customer PO Date</label>
+              <input type="date" id="po_date" name="po_date" value="{P.esc(v_po_date)}"/>
+            </div>
+          </div>
+          <div class="fg2" style="margin-top:.9rem;">{boq_choice_html(leg, head)}
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Amount Requested</div>
+          <div class="adv-row">
+            <div class="form-group" style="max-width:170px;">
+              <label for="advance_pct">Advance % *</label>
+              <input type="number" id="advance_pct" name="advance_pct" list="adv-presets"
+                     value="{P.esc(v_pct)}" min="0.01" max="100" step="any" required/>
+              <datalist id="adv-presets">
+                {"".join(f'<option value="{p}"></option>' for p in ADVANCE_PRESETS)}
+              </datalist>
+            </div>
+            <div class="adv-out">100 asks for the whole value of the lines ticked
+              below; 30 asks for a 30% advance on them and shows the balance as
+              payable before dispatch.</div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Terms carried onto this invoice</div>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="payment_terms">Payment Terms</label>
+              {_sel_keep("payment_terms", _PAY_TERMS, v_pay)}
+            </div>
+            <div class="form-group">
+              <label for="delivery_terms">Terms of Delivery</label>
+              {_sel_keep("delivery_terms", _DEL_TERMS, v_del_t)}
+            </div>
+            <div class="form-group">
+              <label for="delivery_date">Delivery Date</label>
+              <input type="date" id="delivery_date" name="delivery_date" value="{P.esc(v_del_d)}"/>
+            </div>
+            <div class="form-group">
+              <label for="dispatch_through">Dispatch Through</label>
+              {_sel_keep("dispatch_through", _DISPATCH, v_dispatch)}
+            </div>
+            <div class="form-group">
+              <label for="incoterms">Incoterms</label>
+              {_sel_keep("incoterms", _INCOTERMS, v_inco)}
+            </div>
+            <div class="form-group">
+              <label for="validity_days">PI Validity (days)</label>
+              <input type="number" id="validity_days" name="validity_days"
+                     value="{P.esc(v_valid)}" min="0" step="1"/>
+            </div>
+            <div class="form-group span2">
+              <label for="notes">Note on the invoice <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <input type="text" id="notes" name="notes" value="{P.esc(v_notes)}"
+                     placeholder="e.g. Advance against material for Basement 1"/>
+            </div>
+          </div>
+        </div>
+{boq_grid(boq, chosen, qty_of, "pi_json", "proforma invoice")}
+        <div class="form-actions">
+          <button type="submit" class="btn">Raise Proforma Invoice</button>
+          <a href="{back}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
+    </main></body></html>"""
+    return _page(template)
+
+
 @proforma_bp.route("/view/<id>")
 def view_proforma(id: str):
     """
@@ -1017,19 +1686,32 @@ def view_proforma(id: str):
                                 msg="Proforma invoice not found.", type="error"))
 
     # ── Line-item rows — identical treatment to the quotation document ─────
+    #
+    # ⚠ **The Image column (21 October 2026) is drawn only when a line carries
+    #   a picture that resolves** — `LI.sheet_has_images()`. A PI with none,
+    #   which is every PI raised before pictures existed, renders byte-for-byte
+    #   what it always rendered; `tests/test_print_golden.py` holds that.
+    pics = LI.sheet_has_images(pi.get("line_items", []))
     sno, total_qty, table_rows = 0, 0.0, ""
     for row in pi.get("line_items", []):
+        # A clause or leg band on a PI raised from a BOQ (22 October 2026):
+        # words only, and not numbered. No other PI carries one.
+        if row.get("is_header"):
+            table_rows += boq_heading_row(
+                row, f"\n          {LI.cell(row)}" if pics else "")
+            continue
         sno += 1
         depth   = row.get("depth", 0)
         row_cls = "row-assembly" if row.get("type") == "assembly" else "row-item"
         indent  = "indent-1" if depth == 1 else ("indent-2" if depth >= 2 else "")
         if depth == 0:
             total_qty += float(row.get("qty") or 0)
+        img_td = f"\n          {LI.cell(row)}" if pics else ""
 
         table_rows += f"""
         <tr class="{row_cls}">
           <td class="c-sno">{sno}</td>
-          <td class="c-partno">{P.esc(row.get('part_no'))}</td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td class="c-desc {indent}">{P.esc(row.get('name'))}</td>
           <td class="c-hsn">{P.esc(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
@@ -1044,10 +1726,12 @@ def view_proforma(id: str):
     grand    = float(pi.get("grand_total") or 0.0)
     has_tax  = tax_type != "exempt" and float(tax_info.get("total") or 0) > 0
 
+    # The label spans S.No / Part No / (Image) / Description / HSN.
+    span = 5 if pics else 4
     if has_tax:
         table_rows += f"""
         <tr class="row-sum">
-          <td colspan="4" class="sum-lbl">Subtotal</td>
+          <td colspan="{span}" class="sum-lbl">Subtotal</td>
           <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
           <td class="c-total">{_inr(subtotal)}</td>
         </tr>"""
@@ -1062,14 +1746,14 @@ def view_proforma(id: str):
             rate_label = f" @ {r:g}%" if r else ""
             table_rows += f"""
             <tr class="row-sum">
-              <td colspan="4" class="sum-lbl">{tname}{rate_label}</td>
+              <td colspan="{span}" class="sum-lbl">{tname}{rate_label}</td>
               <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
               <td class="c-total">{_inr(tamt)}</td>
             </tr>"""
 
     table_rows += f"""
     <tr class="row-total row-sum">
-      <td colspan="4" class="sum-lbl">{"Invoice Value" if has_tax else "Total"}</td>
+      <td colspan="{span}" class="sum-lbl">{"Invoice Value" if has_tax else "Total"}</td>
       <td class="c-qty">{_fmt_qty(total_qty)}</td>
       <td class="c-unit"></td><td class="c-price"></td>
       <td class="c-total">{_inr(grand)}</td>
@@ -1077,16 +1761,21 @@ def view_proforma(id: str):
 
     # ── Header meta ───────────────────────────────────────────────────────
     validity = P.esc(pi.get("validity_days")).strip()
+    # A PI raised from a BOQ (22 October 2026) names its schedule in place of
+    # a quotation it never had; every other PI's head is exactly as it was.
+    from_boq = bool(pi.get("boq_ref")) and not pi.get("quotation_ref")
     meta_col_1 = (
         _meta("Proforma Invoice No.",  P.esc(pi.get("ref"))) +
-        _meta("Against Quotation",     P.esc(pi.get("quotation_ref"))) +
+        (_meta("Against BOQ",          P.esc(pi.get("boq_ref"))) if from_boq else
+         _meta("Against Quotation",    P.esc(pi.get("quotation_ref")))) +
         _meta("Buyer's PO No.",        P.esc(pi.get("po_number"))) +
         _meta("Mode/Term of Payment",  P.esc(pi.get("payment_terms"))) +
         _meta("Terms of Delivery",     P.esc(pi.get("delivery_terms")))
     )
     meta_col_2 = (
         _meta("Date",             P.esc(pi.get("date"))) +
-        _meta("Quotation Date",   P.esc(pi.get("quotation_date"))) +
+        ("" if from_boq else
+         _meta("Quotation Date",  P.esc(pi.get("quotation_date")))) +
         _meta("Buyer's PO Date",  P.esc(pi.get("po_date"))) +
         _meta("Dispatch Through", P.esc(pi.get("dispatch_through"))) +
         _meta("Validity",         f"{validity} days" if validity else "") +
@@ -1199,6 +1888,9 @@ def view_proforma(id: str):
     if pi.get("quotation_ref"):
         src_line = (f'<span class="ds-src"> &middot; against Quotation '
                     f'{P.esc(pi["quotation_ref"])}</span>')
+    elif pi.get("boq_ref"):
+        src_line = (f'<span class="ds-src"> &middot; against Bill of Quantities '
+                    f'{P.esc(pi["boq_ref"])}</span>')
 
     comp_br   = P.esc(pi.get("company_branch")) or B.COMPANY_NAME
     signatory = P.esc(pi.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
@@ -1207,6 +1899,9 @@ def view_proforma(id: str):
               if pi.get("quotation_id") in STORE["quotations"] else "")
     back_q = (f'<a href="{q_view}" class="btn btn-ghost">&#8592; Quotation '
               f'{P.esc(pi.get("quotation_ref"))}</a>' if q_view else "")
+    if not back_q and pi.get("boq_id") in (STORE.get("boqs") or {}):
+        back_q = (f'<a href="{url_for("boq.view_boq", id=pi["boq_id"])}" '
+                  f'class="btn btn-ghost">&#8592; BOQ {P.esc(pi.get("boq_ref"))}</a>')
 
     # ── Onward to the tax invoice ─────────────────────────────────────────
     # Built from url_for plus a direct read of STORE["invoices"]. This module
@@ -1248,13 +1943,21 @@ def view_proforma(id: str):
                   f'style="color:#b91c1c;border-color:#fecaca;">'
                   f'&#128465;&nbsp;Delete</a>')
 
+    # ── Pictures (21 October 2026) — drawn for whoever the gate lets through,
+    # and only them. The newline lives inside the string.
+    pics_btn = ""
+    if _AUTH.can_reach("proforma.pictures"):
+        pics_btn = (f'\n    <a href="{url_for("proforma.pictures", id=id)}" '
+                    f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
+    img_th = f'\n          <th class="{LI.COLUMN[0]}">{LI.COLUMN[1]}</th>' if pics else ""
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(pi.get('ref')) + " Proforma Invoice")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.SHEET_CSS if pics else ""}
 </head>
 <body>
 <main>
@@ -1266,7 +1969,7 @@ def view_proforma(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {back_q}
     <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
-    {raise_ti}{del_pi}
+    {raise_ti}{del_pi}{pics_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -1297,7 +2000,7 @@ def view_proforma(id: str):
       <table class="q-table">
         <thead><tr>
           <th class="c-sno">S.No</th>
-          <th class="c-partno">Part No</th>
+          <th class="c-partno">Part No</th>{img_th}
           <th class="c-desc">Description of Goods</th>
           <th class="c-hsn">HSN/SAC</th>
           <th class="c-qty">Qty</th>
@@ -1345,6 +2048,98 @@ def view_proforma(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+def _picture_entries(pi: dict) -> list:
+    """
+    Every line of the PI, numbered as the printed sheet numbers them.
+
+    A heading row on a PI raised from a BOQ is not a line and is not numbered
+    on the sheet, so it is not offered here either; the key keeps the row's
+    own index, so it is stable whatever is skipped. With no heading rows —
+    every PI raised from a quotation — this is exactly the list it always was.
+    """
+    out, sno = [], 0
+    for n, r in enumerate(pi.get("line_items", [])):
+        if r.get("is_header"):
+            continue
+        sno += 1
+        out.append(LI.entry(f"li:{n}", sno, r.get("part_no"), r.get("name"), r))
+    return out
+
+
+@proforma_bp.route("/pictures/<id>", methods=["GET", "POST"])
+def pictures(id: str):
+    """
+    The picture beside each line of a proforma invoice (21 October 2026).
+
+    **The figures are not reachable from here.** A picture is the only thing
+    this page writes, onto the PI's own copy of the line — the quotation's line
+    is a different dict (`create_proforma()` copied it). One upload per request
+    (`lineimage.py` says why), then back to this page with a message.
+
+    `proforma.create` — choosing what the invoice shows is part of raising it.
+    The PI has no lifecycle to gate on: it is never cancelled, and a tax
+    invoice already raised from it keeps its own copy of the lines.
+    """
+    pi = STORE["proformas"].get(id)
+    if not pi:
+        return redirect(url_for("proforma.list_proformas",
+                                msg="Proforma invoice not found.", type="error"))
+    lines = pi.get("line_items", [])
+    here = url_for("proforma.pictures", id=id)
+
+    if request.method == "POST":
+        if request.form.get("action") == "library":
+            n = LI.fill_from_library(lines)
+            msg = (f"The library's picture was put on {n} line{'' if n == 1 else 's'}."
+                   if n else "No line without a picture has one in the library.")
+            return redirect(url_for("proforma.pictures", id=id, msg=msg,
+                                    type="success"))
+        msg, err = LI.apply_post(request.form, request.files, _picture_entries(pi))
+        return redirect(url_for("proforma.pictures", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    # The library button is drawn only when it would fill something.
+    lib_n = sum(1 for r in lines
+                if not LI.image_of(r) and LI.library_image_for(r.get("part_no")))
+    lib_html = ""
+    if lib_n:
+        lib_html = (f'<form method="POST" action="{here}" class="pic-lib">'
+                    f'<input type="hidden" name="action" value="library"/>'
+                    f'<button type="submit" class="btn">Use the library&rsquo;s picture '
+                    f'on {lib_n} line{"" if lib_n == 1 else "s"} with none</button></form>')
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(str(pi.get('ref')) + " Pictures")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.PAGE_CSS}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Pictures &middot; <span>{P.esc(pi.get('ref'))}</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{url_for('proforma.view_proforma', id=id)}" class="btn btn-ghost">&#8592; Back to the invoice</a>
+        </div>
+      </div>
+
+      {_alert(request.args.get("msg"), request.args.get("type", "success"))}
+
+      <div class="form-section">
+        <div class="section-title">A picture beside each line</div>
+        <p class="frozen-hint" style="margin:0 0 1rem;">
+          A picture prints in an <b>Image</b> column beside the description. A
+          line with none prints an empty cell; an invoice with no picture at all
+          prints no Image column. JPEG, PNG or WebP up to 5&nbsp;MB, one line at
+          a time &mdash; it is shrunk to {LI.MAX_SIDE}&nbsp;px and stored once.
+          Nothing else on the invoice changes here.
+        </p>
+        {lib_html}
+        {LI.rows_html(_picture_entries(pi), here, editable=True)}
+      </div>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
+    </main></body></html>""")
 
 
 @proforma_bp.route("/delete/<id>", methods=["GET", "POST"])

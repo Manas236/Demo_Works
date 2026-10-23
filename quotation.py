@@ -1205,7 +1205,15 @@ def _sel_opts(name, options, default, form_val=None):
 
 
 @quotation_bp.route("/create", methods=["GET", "POST"])
-def create_quotation():
+def create_quotation(imported: dict = None):
+    # ── Import from Excel (18 October 2026, CLIENT_CHANGES.md §0, forty-eighth
+    # block — the FOURTH narrow unfreeze of this function) ───────────────────
+    # `imported` is the one seam `docimport.py` renders this form through, on
+    # a GET, with the spec-library picks a sheet matched. Flask never passes
+    # it and the POST never reads it: the picks are rebuilt from the library
+    # by `_process_selections()` exactly as hand-picked ones are. It exists in
+    # the LIBRARY mode only — a sheet has no catalogue product id to carry —
+    # and with it None this function renders byte for byte what it did.
     # ── WHICH library the picker reads follows the catalogue switch ──────────
     # (12 September 2026, CLIENT_CHANGES.md §0, twenty-eighth block). While
     # `"product"` is in `auth.HIDDEN_BLUEPRINTS` the page is written from the
@@ -1412,6 +1420,16 @@ def create_quotation():
     # ── GET / re-render with error ─────────────────────────────────────
     list_url     = url_for("quotation.list_quotations")
     error_html   = f'<div class="alert alert-error">&#10007; {P.esc(error)}</div>' if error else ""
+    # Import from Excel: the importer's own escaped note sits where an error
+    # would, the button only in the library mode (the product mode's bytes are
+    # pinned to `1d7725a`), and the form posts to THIS route by name — rendered
+    # at `/import/quotation/<token>/apply`, an empty action would post there.
+    if imported and from_library:
+        error_html = imported.get("banner_html") or ""
+    import_btn = ("" if not from_library else
+                  f'\n    <a href="{url_for("docimport.upload_quotation")}" '
+                  f'class="btn btn-ghost">&#128229;&nbsp;Import from Excel</a>')
+    form_action = url_for("quotation.create_quotation") if imported else ""
     today_str    = str(_date.today())
     catalog_json = _product_catalog_json()
 
@@ -1744,7 +1762,25 @@ function addComp(pidx) {
         v = form.get(k, d)
         return v if v is not None else d
 
-    prev_selections  = form.get("selections_json", "[]")
+    # ⚠ **Re-serialised, never echoed (18 October 2026).** This used to be the
+    #   posted `selections_json` string itself, dropped raw into the
+    #   `<script type="application/json">` block below — so a refused POST
+    #   carrying `</script>` closed the block and everything after it parsed as
+    #   HTML: ABOUT.md §7 gap 9e's sink, missed here because it is a reflected
+    #   POST value and no stored-payload sweep reaches it. It is parsed and
+    #   written back through `P.json_for_script()`; what was not a JSON list is
+    #   no selection at all, which is what the POST above already refused it
+    #   as. A GET is `[]` either way, so the pinned product-mode page is
+    #   unchanged. Found and closed by the Import from Excel pass, because the
+    #   importer's picks travel through this exact block.
+    if imported and from_library:
+        _prev = list(imported.get("selections") or [])
+    else:
+        try:
+            _prev = json.loads(form.get("selections_json", "[]") or "[]")
+        except (ValueError, TypeError):
+            _prev = []
+    prev_selections  = P.json_for_script(_prev if isinstance(_prev, list) else [])
     init_tax_type    = _fv("tax_type", "cgst_sgst")
     init_cgst        = _fv("tax_cgst", "9")
     init_sgst        = _fv("tax_sgst", "9")
@@ -1785,7 +1821,7 @@ function addComp(pidx) {
 
 <div class="page-top">
   <h1>Create <span>Quotation</span></h1>
-  <div style="display:flex;gap:.7rem;align-items:center;">
+  <div style="display:flex;gap:.7rem;align-items:center;">{import_btn}
     <button type="button" onclick="fillDemoData()"
             class="btn btn-ghost"
             style="border-color:#a5b4fc;color:var(--brand);"
@@ -1804,7 +1840,7 @@ function addComp(pidx) {
 <!-- Embed prior selections as raw JSON — never put JSON in an HTML attribute -->
 <script type="application/json" id="prev-sel-data">{prev_sel}</script>
 
-<form method="POST" action="" id="qf">
+<form method="POST" action="{form_action}" id="qf">
 <input type="hidden" id="selections_json" name="selections_json" value="[]"/>
 
 <!-- ════════ SECTION 1: QUOTATION DETAILS ════════ -->
@@ -2436,6 +2472,8 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         page_title          = B.page_title("New Quotation"),
         list_url            = list_url,
         error_html          = error_html,
+        import_btn          = import_btn,
+        form_action         = form_action,
         catalog_json        = catalog_json,
         prev_sel            = prev_selections,   # goes into <script> tag, NOT an HTML attribute
         next_ref            = _next_ref(),
@@ -2967,14 +3005,7 @@ def view_quotation(id: str):
        printed page; see the note in VIEW_DOC_STYLES. -->
   <table class="page-frame">
   <thead><tr><td>
-    <div class="lh">
-      <div>
-        <div class="lh-name">{B.name_html("lh-name-fire")}</div>
-        <div class="lh-tag">&#8212; {P.esc(B.COMPANY_TAGLINE)} &#8212;</div>
-        {f'<div class="lh-legal">{P.esc(B.COMPANY_LEGAL)}</div>' if B.COMPANY_LEGAL else ''}
-      </div>
-      <div class="lh-mark">{B.logo_img(56, doc=True)}</div>
-    </div>
+    {B.letterhead_top()}
     <div class="lh-rule"></div>
     <div class="lh-addr">Registered Address: {B.field(B.COMPANY_ADDR, "registered address")}</div>
     <div class="lh-contact">

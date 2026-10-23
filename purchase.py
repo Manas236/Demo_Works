@@ -10,6 +10,7 @@ Routes
   GET,POST  /purchase/create         — raise a PO on a vendor
   POST      /purchase/<id>/update    — move it along its lifecycle
   GET       /purchase/view/<id>      — the printed purchase order
+  GET,POST  /purchase/pictures/<id>  — a picture beside each line (21 Oct 2026)
 
 Why this is a separate pipeline and not a fourth link in the document chain
 ---------------------------------------------------------------------------
@@ -82,6 +83,7 @@ from flask import Blueprint, request, redirect, url_for
 import approval
 import branding as B
 import cascade
+import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docsheet as DS
@@ -792,6 +794,11 @@ def _parse_extra_lines(form) -> tuple:
     rates  = form.getlist("extra_rate")
     discs  = form.getlist("extra_discount")
     hsns   = form.getlist("extra_hsn")
+    # The row's picture id (21 October 2026) — a hidden box on every row, so a
+    # reprice, which re-reads this repeater whole, keeps the picture on the row
+    # it was set on. Not part of `rows`: a row that is only a picture id is a
+    # blank row, and a picture is never what makes a row exist.
+    images = form.getlist("extra_image")
     rows = max(len(descs), len(units), len(qtys), len(rates), len(discs), len(hsns))
 
     def _at(seq, n):
@@ -864,6 +871,11 @@ def _parse_extra_lines(form) -> tuple:
         if disc_err:
             return [], disc_err
 
+        # Only an id this store minted AND still holds is kept. A posted value
+        # is never trusted into a record by shape alone.
+        image = LI.valid_id(_at(images, n))
+        pic = {LI.KEY: image} if image and LI.exists(image) else {}
+
         out.append({
             "type": "extra",
             "description": desc,
@@ -881,6 +893,7 @@ def _parse_extra_lines(form) -> tuple:
             "rate_is_assumed": assumed,
             # ⚠ NO `line_id`. Deliberate, load-bearing, and asserted by a test.
             #   An extra line has no BOQ ancestor and must never claim one.
+            **pic,
         })
     return out, ""
 
@@ -1002,7 +1015,8 @@ def _charge_section_html(charges: list, posted_labels=None, posted_amounts=None,
 DEFAULT_EXTRA_ROWS = 3
 
 
-def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="") -> str:
+def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="",
+                    image="") -> str:
     """
     One row of the extra-line repeater. Also the `<template>` a new row clones.
 
@@ -1030,6 +1044,13 @@ def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="") -> str:
       a stored placeholder line and a rejected POST show the figure with no
       keystroke and no JavaScript; `xlFill()` does the same live as the
       description changes. The rule is above `_parse_extra_lines()`.
+
+    ⚠ **`extra_image` is on EVERY row, blank or not** (21 October 2026). It
+      carries the row's picture id through a save of this repeater — the
+      reprice form re-reads the extra lines whole — and the lists are read by
+      position, so a row without the box would shift every picture below it
+      onto the wrong part. A hidden input draws no grid cell. The picture
+      itself is set on the order's Pictures page, never typed here.
     """
     # Looked up on the description alone, whether or not the box carries a
     # value: ghost text is invisible behind a value, and the moment the box is
@@ -1053,6 +1074,7 @@ def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="") -> str:
                  data-seed="{seed}" oninput="recalc()"/>
           <input type="number" name="extra_discount" value="{P.esc(disc)}"
                  min="0" max="100" step="any" placeholder="0" oninput="recalc()"/>
+          <input type="hidden" name="extra_image" value="{P.esc(LI.valid_id(image))}"/>
           <span class="ln-amt">&#8212;</span>
           <button type="button" class="btn-remove-line"
                   onclick="this.closest('.xl-row').remove(); recalc();">&#215;</button>
@@ -1089,6 +1111,7 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
         rates = posted.getlist("extra_rate")
         discs = posted.getlist("extra_discount")
         hsns  = posted.getlist("extra_hsn")
+        imgs  = posted.getlist("extra_image")
         n_rows = max(len(descs), len(units), len(qtys), len(rates), len(discs),
                      len(hsns))
         for n in range(n_rows):
@@ -1099,6 +1122,7 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
                 rates[n] if n < len(rates) else "",
                 discs[n] if n < len(discs) else "",
                 hsns[n]  if n < len(hsns)  else "",
+                imgs[n]  if n < len(imgs)  else "",
             ))
     else:
         for r in extra_lines or []:
@@ -1116,9 +1140,11 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
                 # Absent on every extra line written before 14 Sep 2026; reads
                 # as blank, and the chip on the printed order asks for it.
                 str(r.get("hsn") or ""),
+                # The picture rides through a reprice on its own row.
+                LI.image_of(r),
             ))
     while len(rows_data) < DEFAULT_EXTRA_ROWS:
-        rows_data.append(("", "", "", "", "", ""))
+        rows_data.append(("", "", "", "", "", "", ""))
 
     rows = "".join(_extra_row_html(*r) for r in rows_data)
     options = "".join(f'<option value="{P.esc(n)}"></option>'
@@ -2043,7 +2069,7 @@ def list_purchases():
 
 
 @purchase_bp.route("/create", methods=["GET", "POST"])
-def create_purchase():
+def create_purchase(imported: dict = None):
     """
     Raise a purchase order on a vendor.
 
@@ -2052,6 +2078,15 @@ def create_purchase():
     buy is ours. The optional `quotation_id` says which job it is for, and is
     genuinely optional: stock and consumables are bought with no deal behind
     them.
+
+    `imported` (18 October 2026) is the one seam Import from Excel renders this
+    form through, on a GET: the sheet's rows as the extra-parts repeater's
+    POSTED shape (a MultiDict of `extra_desc` / `extra_qty` / …, every value
+    the text the sheet held), so they reach the box exactly as
+    `_extra_section_html()` hands back a refused POST. Flask never passes it,
+    and the POST never reads it: `_parse_extra_lines()` — the server prefill,
+    the placeholder mark, the no-`line_id` rule — reads the rows as it reads
+    typed ones.
     """
     from product import ensure_demo_products
     ensure_demo_products()
@@ -2192,9 +2227,13 @@ def create_purchase():
         charge_section = _charge_section_html(
             [], f.getlist("charge_label"), f.getlist("charge_amount"), f)
         extra_section = _extra_section_html([], posted=f)
+    elif imported:
+        charge_section = _charge_section_html([])
+        extra_section = _extra_section_html([], posted=imported.get("extra"))
     else:
         charge_section = _charge_section_html([])
         extra_section = _extra_section_html([])
+    banner_html = (imported or {}).get("banner_html") or ""
 
     # ── Field values: the user's own input on a failed POST, else default ──
     def _v(name: str, fallback: str = "") -> str:
@@ -2288,10 +2327,13 @@ def create_purchase():
     <main>
       <div class="page-top">
         <h1>New <span>Purchase Order</span></h1>
-        <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">&#8592; All Purchase Orders</a>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{url_for("docimport.upload_purchase")}" class="btn btn-ghost">&#128229; Import parts from Excel</a>
+          <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">&#8592; All Purchase Orders</a>
+        </div>
       </div>
 
-      {_alert(error, "error")}
+      {_alert(error, "error")}{banner_html}
 
       <div class="buy-note">
         This is the <b>buy side</b> &mdash; an order <b>we place on a vendor</b>,
@@ -3115,6 +3157,11 @@ def from_draft(draft_id: str):
                     "price": float(rate),
                     "total": round(float(rate) * float(qty), 2),
                     "depth": 0,
+                    # The draft line's picture, when it has one (21 Oct 2026):
+                    # the supplier priced the part in the picture, so the
+                    # order placed on them shows the same one. No key at all
+                    # on a line without one.
+                    **LI.carry(row),
                 })
             if not error and not any(not r["is_header"] for r in items):
                 error = "This draft PO has no lines to order."
@@ -3794,6 +3841,104 @@ def edit_purchase_rates(id: str):
     return _page(template)
 
 
+def pictures_allowed(po: dict) -> tuple:
+    """
+    `(allowed, reason)` for changing the pictures on an order.
+
+    **The reprice route's two refusals, in its order, and nothing else** — a
+    picture is part of what goes to the vendor, so it is changed under the
+    same rules as the rate beside it: never on a Cancelled order
+    (`can_edit_rates()`), never on an APPROVED one while the ladder is on
+    (`approval.can_modify()`). One predicate, read by the route and by the
+    action bar, so the button and the refusal cannot disagree.
+    """
+    allowed, why = can_edit_rates(po)
+    if not allowed:
+        return False, why.replace("cannot be repriced", "cannot have its pictures changed")
+    return approval.can_modify("purchase", po)
+
+
+def _picture_entries(po: dict) -> list:
+    """
+    Every line of the order that can carry a picture, numbered as the printed
+    sheet numbers them: item rows first (a specification header takes no
+    number and no picture), then the extra parts, continuing the count.
+    """
+    out, sno = [], 0
+    for n, r in enumerate(po.get("line_items") or []):
+        if r.get("is_header"):
+            continue
+        sno += 1
+        out.append(LI.entry(f"li:{n}", sno, r.get("part_no"), r.get("name"), r))
+    for n, r in enumerate(extra_lines_of(po)):
+        sno += 1
+        out.append(LI.entry(f"xl:{n}", sno, "", r.get("description"), r))
+    return out
+
+
+@purchase_bp.route("/pictures/<id>", methods=["GET", "POST"])
+def pictures(id: str):
+    """
+    The picture beside each line of a purchase order (21 October 2026).
+
+    `purchase.create`, the reprice route's permission, and refused on both
+    verbs by `pictures_allowed()`. **Only the picture is written** — no rate,
+    quantity or line moves here — and each change goes on the order's own
+    status history, because it changes what the vendor is sent. One upload
+    per request (`lineimage.py` says why).
+
+    An extra part's picture rides through a later reprice on its row's hidden
+    `extra_image` box; an item row is repriced in place and keeps its own.
+    """
+    po = STORE["purchases"].get(id)
+    if not po:
+        return redirect(url_for("purchase.list_purchases",
+                                msg="Purchase order not found.", type="error"))
+    allowed, why = pictures_allowed(po)
+    if not allowed:
+        return redirect(url_for("purchase.view_purchase", id=id,
+                                msg=why, type="error"))
+
+    here = url_for("purchase.pictures", id=id)
+    if request.method == "POST":
+        msg, err = LI.apply_post(request.form, request.files, _picture_entries(po))
+        if msg:
+            _log(po, msg)
+        return redirect(url_for("purchase.pictures", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(str(po.get('ref')) + " Pictures")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{LI.PAGE_CSS}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Pictures &middot; <span>{P.esc(po.get('ref'))}</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{url_for('purchase.view_purchase', id=id)}" class="btn btn-ghost">&#8592; Back to the order</a>
+        </div>
+      </div>
+
+      {_alert(request.args.get("msg"), request.args.get("type", "success"))}
+
+      <div class="form-section">
+        <div class="section-title">A picture beside each line</div>
+        <p class="field-hint" style="margin:0 0 1rem;">
+          A picture prints in an <b>Image</b> column beside the description, so
+          the vendor sees the part you mean. A line with none prints an empty
+          cell; an order with no picture at all prints no Image column. JPEG,
+          PNG or WebP up to 5&nbsp;MB, one line at a time &mdash; it is shrunk
+          to {LI.MAX_SIDE}&nbsp;px and stored once. No rate, quantity or line
+          changes here, and every change is written on the order&rsquo;s history.
+        </p>
+        {LI.rows_html(_picture_entries(po), here, editable=True)}
+      </div>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order</p></footer>
+    </main></body></html>""")
+
+
 @purchase_bp.route("/view/<id>")
 def view_purchase(id: str):
     """
@@ -3810,6 +3955,14 @@ def view_purchase(id: str):
                                 msg="Purchase order not found.", type="error"))
 
     # ── Line rows ─────────────────────────────────────────────────────────
+    #
+    # ⚠ **The Image column (21 October 2026) is drawn only when a line — an
+    #   item or an extra part — carries a picture that resolves.** An order
+    #   with none renders byte-for-byte what it always rendered, which is what
+    #   keeps the pinned golden's `items` block still. `img_td` is the empty
+    #   string then, and the newline that would precede it lives inside it.
+    pics = LI.sheet_has_images(list(po.get("line_items") or []) + extra_lines_of(po))
+    span = 5 if pics else 4
     sno, total_qty, table_rows = 0, 0.0, ""
     for row in po.get("line_items", []):
         # A specification header, carried down from a BOQ line's parent clause
@@ -3821,15 +3974,17 @@ def view_purchase(id: str):
         # produce one — so this branch is never taken on a PO raised at
         # `/purchase/create`, and that document is byte-for-byte what it was.
         if row.get("is_header"):
+            img_td = f"\n          {LI.EMPTY_CELL}" if pics else ""
             table_rows += f"""
         <tr class="row-assembly">
           <td class="c-sno"></td>
-          <td class="c-partno">{P.esc(row.get('part_no'))}</td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td colspan="7" class="c-desc">{P.esc(row.get('name'))}</td>
         </tr>"""
             continue
         sno += 1
         total_qty += float(row.get("qty") or 0)
+        img_td = f"\n          {LI.cell(row)}" if pics else ""
         # A line written before A2 has no `discount_pct` at all, and one saved
         # with the box left blank has 0.0. Both print an em dash rather than
         # "0 %", because a discount of nothing is not a discount and a column of
@@ -3839,7 +3994,7 @@ def view_purchase(id: str):
         table_rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sno}</td>
-          <td class="c-partno">{P.esc(row.get('part_no'))}</td>
+          <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td class="c-desc">{P.esc(row.get('name'))}</td>
           <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
@@ -3898,10 +4053,11 @@ def view_purchase(id: str):
             #   flagging it is the better error; if one ever needs to be
             #   expressed, it needs a field, not a zero.
             rate_cell = B.field("", "rate")
+        img_td = f"\n          {LI.cell(row)}" if pics else ""
         table_rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sno}</td>
-          <td class="c-partno"></td>
+          <td class="c-partno"></td>{img_td}
           <td class="c-desc">{P.esc(row.get('description'))}</td>
           <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
           <td class="c-qty">{_fmt_qty(qty)}</td>
@@ -3951,7 +4107,7 @@ def view_purchase(id: str):
     # document still for every order already in the database.
     if charges and has_tax:
         table_rows += DS.sum_row("Sub Total", _inr(subtotal),
-                                 blanks=_SUM_BLANKS)
+                                 blanks=_SUM_BLANKS, span=span)
     for c in charges:
         if not c.get("taxable"):
             continue
@@ -3959,11 +4115,11 @@ def view_purchase(id: str):
         # label raw and the label here is free text somebody typed (ABOUT.md §9).
         table_rows += DS.sum_row(P.esc(c.get("label")),
                                  _inr(c.get("amount") or 0),
-                                 indent=12, blanks=_SUM_BLANKS)
+                                 indent=12, blanks=_SUM_BLANKS, span=span)
 
     if has_tax:
         table_rows += DS.sum_row("Taxable Value", _inr(taxable_value),
-                                 blanks=_SUM_BLANKS)
+                                 blanks=_SUM_BLANKS, span=span)
         rate_keys = {"CGST": "cgst_rate", "SGST": "sgst_rate",
                      "IGST": "igst_rate", "VAT": "vat_rate"}
         skip = {"total", *rate_keys.values()}
@@ -3973,7 +4129,7 @@ def view_purchase(id: str):
             r = tax_info.get(rate_keys.get(tname, ""), 0)
             lbl = f" @ {r:g}%" if r else ""
             table_rows += DS.sum_row(f"{tname}{lbl}", _inr(tamt), indent=12,
-                                     blanks=_SUM_BLANKS)
+                                     blanks=_SUM_BLANKS, span=span)
     else:
         # An exempt order has no Taxable Value row to hang the charges under, so
         # a taxable charge on one still needs its own row above — printed by the
@@ -3988,10 +4144,10 @@ def view_purchase(id: str):
             continue
         table_rows += DS.sum_row(f"{P.esc(c.get('label'))} (no tax)",
                                  _inr(c.get("amount") or 0),
-                                 indent=12, blanks=_SUM_BLANKS)
+                                 indent=12, blanks=_SUM_BLANKS, span=span)
 
     table_rows += DS.total_row("Order Value", _fmt_qty(total_qty), _inr(grand),
-                               blanks=_TOTAL_BLANKS)
+                               blanks=_TOTAL_BLANKS, span=span)
 
     # ── Header meta ───────────────────────────────────────────────────────
     meta_col_1 = (
@@ -4169,6 +4325,14 @@ def view_purchase(id: str):
                   f'style="color:#b91c1c;border-color:#fecaca;">'
                   f'&#128465;&nbsp;Delete</a>')
 
+    # ── Pictures (21 October 2026) — the same two refusals the route makes,
+    # read here so the bar never offers a refusal, and `can_reach()` for the
+    # role. Presentation, not the gate: `pictures()` refuses a typed URL.
+    pics_btn = ""
+    if pictures_allowed(po)[0] and _AUTH.can_reach("purchase.pictures"):
+        pics_btn = (f'\n    <a href="{url_for("purchase.pictures", id=id)}" '
+                    f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
+
     # Empty string on an order that has never been repriced, so the panel of an
     # order raised before 28 August 2026 renders byte-for-byte as it did.
     rp = _reprice_html(po)
@@ -4202,7 +4366,7 @@ def view_purchase(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(po.get('ref')) + " Purchase Order")}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{PURCHASE_STYLES}
+  {DS.SHEET_STYLES}{PURCHASE_STYLES}{LI.SHEET_CSS if pics else ""}
 </head>
 <body>{approval.print_block("purchase", po)}
 <main>
@@ -4213,7 +4377,7 @@ def view_purchase(id: str):
     {_status_badge(po.get('status'))}
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}{del_po}
+    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}{pics_btn}{del_po}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -4234,7 +4398,7 @@ def view_purchase(id: str):
 
     {status_strip}
 
-{DS.items_table(DS.BUY_COLUMNS, table_rows)}
+{DS.items_table(LI.with_column(DS.BUY_COLUMNS) if pics else DS.BUY_COLUMNS, table_rows)}
 
 {DS.amount_words("Order Value (in words)", grand)}
   </div>
