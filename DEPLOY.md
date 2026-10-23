@@ -1218,3 +1218,19 @@ change.
 ⚠ It is a **public** page. It must never describe the application's internal
 documents, workflow, roles or staff. It carries only what the client already
 publishes on samruddhifire.com.
+
+⚠ **The phone number on this page is the public one, `+91 88986 06303`** (client
+instruction, 29 September 2026). It is deliberately *not*
+`branding.COMPANY_PHONE` / the `/settings` `COMPANY_PHONE`, which is the private
+line that prints on the letterhead of every document. The two are separate on
+purpose — do not "fix" the page to match `/settings`, and do not copy the page's
+number into `/settings`.
+
+The page also carries a short **Terms of use / Privacy** block (`#legal`, linked
+from the footer, added 29 September 2026). It is deliberately thin: the site
+sets no cookies and collects nothing, and the only thing it says about the
+application is that `Staff Login` is a private system for authorised employees —
+which the `Staff Login` button already reveals. Keep it that way: it must not
+grow into a description of the internal documents, workflow or roles. It is not
+legal advice and has not been reviewed by a lawyer; if the client wants a
+warranted policy, that is their solicitor's text to supply.
