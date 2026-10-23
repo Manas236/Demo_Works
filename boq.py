@@ -3133,8 +3133,11 @@ def view_boq(id: str):
     # Drawn only for somebody the gate would actually let through — the same
     # rule as the nav and the register rows (`auth.can_reach()`, ABOUT.md §2g).
     # ⚠ **This is presentation, not the gate.** `/boq/delete/<id>` is in
-    # `ROUTE_PERMISSIONS` and in `OWNER_ONLY`, and refuses a typed URL on its
-    # own; hiding the button only spares a click into a refusal.
+    # `ROUTE_PERMISSIONS` and refuses a typed URL on its own; hiding the button
+    # only spares a click into a refusal. ⚠ It is **no longer in
+    # `auth.OWNER_ONLY`** (21 October 2026, CLIENT_CHANGES.md §0 forty-seventh
+    # block) — `boq.delete` alone now decides, so this button is drawn for a
+    # Director too, and `cascade.py` still names the closure before it.
     #
     # Offered on the tip only, and for the route's own reason rather than for
     # symmetry with its neighbours: `delete_boq()` refuses a superseded record

@@ -1513,15 +1513,28 @@ proves all of it for all seven roles, both verbs, every document.
 
 #### `OWNER_ONLY` — a harder rule than the permission registry (22 September 2026)
 
-Deleting a document now takes the **Owner** tier, full stop — a rule layered
-**on top of** `ROUTE_PERMISSIONS`, not a replacement for it. `auth.OWNER_ONLY`
-is a hardcoded set of twelve endpoints, checked in `_gate()` *after* the
-ordinary permission check passes: a Director who holds `ra.delete` via
-`/roles` is still refused `ra.delete_ra`, with a 403 naming the Owner tier
-rather than the missing-permission page. `can_reach()` carries the same
-second check, so a delete link a Director cannot use does not render for them
-either — the same "hiding is presentation; the gate is the gate" pairing
-§2g's nav section already describes for `HIDDEN_BLUEPRINTS`.
+Deleting **most** documents takes the **Owner** tier — a rule layered **on top
+of** `ROUTE_PERMISSIONS`, not a replacement for it. `auth.OWNER_ONLY` is a
+hardcoded set of endpoints, checked in `_gate()` *after* the ordinary
+permission check passes: a Director who holds `ra.delete` via `/roles` is
+still refused `ra.delete_ra`, with a 403 naming the Owner tier rather than the
+missing-permission page. `can_reach()` carries the same second check, so a
+delete link a Director cannot use does not render for them either — the same
+"hiding is presentation; the gate is the gate" pairing §2g's nav section
+already describes for `HIDDEN_BLUEPRINTS`.
+
+⚠ **"Full stop" was true from 23 September to 21 October 2026 and is not any
+more.** Five endpoints were taken back out of the set on 21 October
+(CLIENT_CHANGES.md §0 **forty-seventh** block, by Manas Gawde) and are gated
+by their `*.delete` permission alone — the four transaction documents and the
+draft work order that mirrors the PO. They are named in
+`auth.PERMISSION_ONLY_DESTROYS`, a set **nothing reads at runtime**, so that
+the carve-out is a decision on the page rather than five absences from the set
+above. The reason it was taken: the 23 September pass granted a Director
+`boq.delete`, `quotation.delete`, `proforma.delete` and `purchase.delete` in
+`BUILTIN_ROLES` while this gate made all four inert, so ticking them at
+`/roles/edit/<id>` saved a grant that changed nothing and reported no error —
+which is exactly how it was found.
 
 This is deliberately **not** the same shape as "the permission happens to be
 granted to Owner only" — that would be an ordinary `/roles` checkbox, and an
@@ -1530,15 +1543,11 @@ cannot be loosened that way; it is the same kind of harder-than-the-registry
 rule as `_may_administer()` guarding `/users/deactivate` beyond what
 `admin.users` alone would allow (§2g, above).
 
-`OWNER_ONLY` names exactly the **seventeen** endpoints that destroy a document
-(`STORE[...].pop`/`del`), plus the one that withdraws the document nothing may
-destroy, pinned rather than derived — **and from 5 October 2026 one more,
-`workorder.delete_wo`**, because the purchase order it mirrors is Owner-only
-(CLIENT_CHANGES.md §0 forty-first block, ruling I):
+`OWNER_ONLY` names **thirteen** endpoints, pinned rather than derived — twelve
+that destroy a document (`STORE[...].pop`/`del`) and the one that withdraws
+the document nothing may destroy:
 
 ```
-boq.delete_boq             quotation.delete_quotation
-proforma.delete_proforma   purchase.delete_purchase
 invoice.cancel_invoice     <- withdraws; does NOT destroy. See below.
 ra.delete_ra           receipt.delete_receipt    po_draft.delete_po
 challan.delete_dc      measurement.delete_ms     charge.delete_charge
@@ -1546,6 +1555,22 @@ employee.delete_employee   attendance.delete_attendance
 project.delete_project     spec.delete_spec      product.delete_product
 address.delete_address
 ```
+
+`PERMISSION_ONLY_DESTROYS` names the **five** that destroy a document and are
+gated by their permission alone (21 October 2026):
+
+```
+boq.delete_boq             quotation.delete_quotation
+proforma.delete_proforma   purchase.delete_purchase
+workorder.delete_wo        <- follows the PO, forty-first block ruling I
+```
+
+⚠ **`workorder.delete_wo` is not an independent decision in either direction.**
+The forty-first block fixes a draft work order's access as exactly the purchase
+order's, per action; it was Owner-only from 5 October because the PO was, and
+it left the set on 21 October because the PO did.
+`tests/test_work_orders.py::test_every_work_order_route_is_classified_and_mirrored_from_the_po`
+asserts the two sit on the same side of this line, whichever side that is.
 
 ⚠ **`invoice.cancel_invoice` destroys nothing and is in the set anyway.**
 That is not an inconsistency with the rule above it — it is the rule applied
@@ -1563,17 +1588,25 @@ archiving is reversible (the delete-refusal's own escape hatch — §3
 Address) and an attachment's delete route removes one uploaded file, not the
 charge or receipt it evidences. `OWNER_ONLY` is a rule about destroying a
 document, not every route that happens to carry a `*.delete` permission id.
-`tests/test_owner_only_delete.py` proves both directions — a Director
-refused on GET and POST though the permission is held, an Owner let through —
-and pins the exclusions directly rather than leaving them to be inferred from
-the set's absence.
+`tests/test_owner_only_delete.py` proves every direction — a Director refused
+on GET and POST though the permission is held (`ra.delete_ra`), a Director let
+*through* on each of the five carved out, a role holding no `*.delete` still
+refused on those five, an Owner let through — and pins both sets plus the
+exclusions directly rather than leaving them to be inferred from an absence.
+It also walks the live `url_map` for every path containing "delete" and fails
+on one that is in neither set: before 21 October a new delete route had only
+one possible tier, and now it has two, so leaving it unclassified would hand it
+the looser one by default.
 
 ✅ **Wired to [cascade.py](cascade.py) on 23 September 2026.** The gate
 controls *who* may reach a delete route; `cascade.py` controls *what a
-delete takes with it*. The set above grew by five — `boq.delete_boq`,
+delete takes with it*. On that date the set grew by five — `boq.delete_boq`,
 `quotation.delete_quotation`, `proforma.delete_proforma`,
 `purchase.delete_purchase` and `invoice.cancel_invoice` — and the routes
 that had a transitive closure worth showing now print it before the button.
+⚠ **Four of those five have since left the set** (21 October 2026) and the
+printed closure is what they are left with; `cascade.py` itself was not
+touched by that block and gates nothing on the tier.
 
 ⚠ **`invoice.cancel_invoice` is in the set and destroys nothing**, which is
 not an inconsistency: it is the ONLY way to withdraw a tax invoice, because
@@ -5720,7 +5753,9 @@ function it decorates.
 Deleting a quotation **cascades into its proforma invoices**, and is refused
 outright if a tax invoice sits under any of them — the block is found by the
 walk two hops up, not by a hand-written check here, so the next document added
-to the chain is covered by it. The number is never released. Owner-only.
+to the chain is covered by it. The number is never released. **`quotation.delete`
+alone from 21 October 2026** — it left `OWNER_ONLY` with the other three
+transaction documents (§0 forty-seventh block), so a Director reaches it.
 
 
 | Route | View |
@@ -5986,7 +6021,8 @@ GST number has to stay consecutive, so removing the document an invoice was
 raised from would leave a gap nothing can explain. Withdraw the invoice with
 `/invoice/cancel/<id>` instead. The Delete control is **not drawn at all** once
 any TI exists — the route refuses it either way, and offering a refusal teaches
-nothing. The PI number is not released. Owner-only.
+nothing. The PI number is not released. **`proforma.delete` alone from
+21 October 2026** (§0 forty-seventh block); it is no longer Owner-only.
 
 
 | Route | View |
@@ -6321,10 +6357,14 @@ as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 
 #### `/purchase/delete/<id>` — 23 September 2026
 
-Owner-only, and refused on an APPROVED order while the ladder is on —
+**`purchase.delete` alone from 21 October 2026** — it left `OWNER_ONLY` (§0
+forty-seventh block) and `/wo/delete/<id>` left with it, by ruling I. Still
+refused on an APPROVED order while the ladder is on —
 `approval.can_modify()`, the same predicate the edit routes use, because
 deleting is a stronger act than editing and cannot be the looser of the two.
-The number is not released: the order has been sent to a vendor.
+⚠ That predicate is **unchanged** by the carve-out: taking the Owner tier off
+this route did not take the approval guard off it. The number is not released:
+the order has been sent to a vendor.
 
 ⚠ **The draft's back-link is cleaned here and NOT by `cascade.py`.**
 `from_draft()` appends the new order's id to `draft["converted_po_ids"]` — a
@@ -7374,8 +7414,11 @@ right and the conclusion is now handled rather than avoided.
 it takes them with it.** `cascade.impact_of("boqs", id)` walks the whole
 closure — RA bills, the receipts under those, delivery challans, measurement
 sheets, draft POs and real POs — and the confirmation page prints the count
-and the per-type breakdown **before** the button. Owner-only
-(`auth.OWNER_ONLY`), and the largest blast radius in the application.
+and the per-type breakdown **before** the button. **The largest blast radius in
+the application** — and from 21 October 2026 `boq.delete` alone opens it
+(§0 forty-seventh block), so the printed closure is now the *only* thing
+standing between a Director and all of it. It was Owner-only from
+23 September to 21 October.
 
 ⚠ **A revision chain is NOT cascaded into, and a superseded record is
 refused.** `supersedes` links two BOQs that are the same job at two points in
@@ -9427,7 +9470,7 @@ another draft PO, which is cheap and leaves a trail.
 | `GET,POST /wo/edit/<id>` | `edit_wo` — header AND lines, **DRAFT only** |
 | `GET,POST /wo/issue/<id>` | `issue_wo` — GET confirms, POST issues |
 | `GET,POST /wo/cancel/<id>` | `cancel_wo` — GET confirms, POST cancels; a reason is required; no un-cancel |
-| `GET,POST /wo/delete/<id>` | `delete_wo` — **DRAFT only**, Owner only, GET confirms, POST destroys |
+| `GET,POST /wo/delete/<id>` | `delete_wo` — **DRAFT only**, `purchase.delete` alone (not Owner-only since 21 Oct 2026, following the PO), GET confirms, POST destroys |
 
 CLIENT_CHANGES.md §0 **forty-first** block — the call with Samruddhi on
 5 October 2026 and Manas's rulings A to J. §3 *Work Order* is the record.
@@ -9443,7 +9486,7 @@ the endpoint lists under `purchase.*` grew:
 | register, view, print | `purchase.view` | `list_purchases`, `view_purchase` (the PO's print) |
 | create, import, **edit** | `purchase.create` | `create_purchase`, and `edit_purchase_rates` — editing changes what we agreed to PAY |
 | issue, cancel | `purchase.edit` | `update_purchase` — a PO is issued and cancelled by its status |
-| delete | `purchase.delete` + **`OWNER_ONLY`** | `delete_purchase`, Owner only |
+| delete | `purchase.delete` **alone** (21 Oct 2026; was `+ OWNER_ONLY`) | `delete_purchase` |
 
 ⚠ **Why reuse rather than mirror into `wo.*`:** a freshly minted permission
 reaches no STORED role on a live database (§2g, *a permission the registry
@@ -13050,6 +13093,34 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     sheet in Excel and saving it brings the row back if the formula gives a
     rate. Keeping such a row instead — a text cell counted as a price — is a
     different rule, and not this one's to make.
+
+67. 🟠 **`docs/ACCESS_MATRIX.md` does not model the Owner tier at all, so it
+    OVERSTATES thirteen delete grants — OPEN** (found 21 October 2026, the §0
+    forty-seventh block pass; the condition itself has shipped since
+    22 September 2026). `tools/dump_access_matrix.py` generates the grid from
+    `auth.PERMISSIONS`, `auth.ROUTE_PERMISSIONS` and `auth.BUILTIN_ROLES` —
+    and **not** from `auth.OWNER_ONLY`. So the grid shows Director holding
+    `ra.delete`, `receipt.delete`, `dc.delete`, `measurement.delete`,
+    `charge.delete`, `employee.delete`, `attendance.delete`,
+    `project.delete`, `spec.delete`, `product.delete`, `address.delete`,
+    `po.delete` and `invoice.cancel` with **nothing to say that `_gate()`
+    refuses the route anyway**, which is the exact confusion the forty-seventh
+    block was called in to fix on the other four. CLAUDE.md sends a reader to
+    this file first for "who can do what", so the one document that is meant
+    to settle the question is the one that cannot.
+
+    ⚠ **It is not wrong *because of* the forty-seventh block** — that block
+    made four of its rows accidentally correct, and the matrix was regenerated
+    byte-identical. It was already wrong for all seventeen.
+
+    The fix is a mark and an appendix line, not a new idea: the generator
+    already prints `⊘` for a hidden blueprint and `⊗` for a route the approval
+    switch refuses to everybody, and this is the same shape — granted, and
+    refused by a rule above the grant. A third mark for "Owner tier required"
+    plus `PERMISSION_ONLY_DESTROYS` named in the appendix would do it.
+    **Deliberately not done in the forty-seventh block's pass**, which was
+    authorised for the gate and not for the generator, and which must be able
+    to say the grid did not move.
 
 
 ## 8. Stale docs — do not trust these two files

@@ -2123,8 +2123,11 @@ def cancel_wo(id: str):
 @workorder_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_wo(id: str):
     """
-    Delete a DRAFT. GET confirms, POST destroys. Owner-only (`auth.OWNER_ONLY`),
-    as the PO's delete is.
+    Delete a DRAFT. GET confirms, POST destroys. Gated by `purchase.delete`
+    alone — **not** Owner-only since 21 October 2026, because the PO's delete
+    is not either (CLIENT_CHANGES.md §0 forty-seventh block; the forty-first
+    block's ruling I keeps this route on exactly the PO's access, per action,
+    and `auth.PERMISSION_ONLY_DESTROYS` names both).
 
     **The number is not released.** The counter at `/settings` only advances,
     so the next work order takes the next number and this one's is spent.

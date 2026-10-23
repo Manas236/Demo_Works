@@ -10,15 +10,77 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**As of:** branch `antigravity-dev`, 7 October 2026 (**the BOQ import
-leaves out a row with quantity 0 and no rate** — one row predicate shared
-with the work order, the BOQ's own heading and section rules —
-CLIENT_CHANGES.md §0 **forty-sixth** block, Manas's ruling, no charge; **the
-board does not move: 19 of 20 BUILT · 1 BLOCKED**). *Previously:* 6 October
-2026, later (**the BOQ opens as it is** — the §0 **forty-fifth** block,
-rulings A1–A8, no charge). *Before that:* 6 October 2026 (**the BOQ import —
-the user chooses the columns, the app advises** — the §0 **forty-fourth**
-block, rulings R1–R6, no charge).
+**As of:** branch `antigravity-dev`, 21 October 2026 (**four document deletes
+leave the Owner tier, and the Owner role's permission drift is repaired** —
+CLIENT_CHANGES.md §0 **forty-seventh** block, Manas's ruling, no charge; **the
+board does not move: 19 of 20 BUILT · 1 BLOCKED**). *Previously:* 7 October
+2026 (**the BOQ import leaves out a row with quantity 0 and no rate** — the §0
+**forty-sixth** block). *Before that:* 6 October 2026, later (**the BOQ opens
+as it is** — the §0 **forty-fifth** block, rulings A1–A8, no charge).
+
+- **21 October 2026 — four document deletes leave the Owner tier, and the
+  Owner role's drift is repaired. Run on the PRODUCTION BOX** (`/opt/samruddhi`,
+  the live checkout; working tree carried pre-existing edits to `DEPLOY.md` and
+  `deploy/landing/index.html`, untouched by this pass; backup pair
+  `samruddhi_qms-20261021-114734-pre-owner-only-carveout.sql` (560,090 bytes) /
+  `…-attachments.zip` (22 bytes, no files) taken before anything was written).
+
+  **What prompted it:** an Owner ticked `boq.delete`, `quotation.delete`,
+  `proforma.delete` and `purchase.delete` on the **Director** role at 11:27 on
+  21 October, the page said *"Director updated."*, the grant persisted — and
+  the Director saw no change, because `auth.OWNER_ONLY` refuses those routes to
+  anyone outside the Owner tier *after* the permission check passes, and
+  `can_reach()` hides the button so there is not even a refusal to read. The
+  thirtieth block built that deliberately; the same pass also granted those
+  four to Director in `BUILTIN_ROLES`, so the app stated the grant in three
+  places and honoured it in none.
+
+  **The change:** five endpoints leave `auth.OWNER_ONLY` and are gated by
+  their own permission alone — `boq.delete_boq`,
+  `quotation.delete_quotation`, `proforma.delete_proforma`,
+  `purchase.delete_purchase`, and `workorder.delete_wo` **following the PO by
+  the forty-first block's ruling I, not as a decision of its own**. They are
+  named in the new `auth.PERMISSION_ONLY_DESTROYS`, which **nothing reads at
+  runtime** — the gate still consults `OWNER_ONLY` and nothing else — so the
+  carve-out is a decision on the page rather than five absences. ⚠ **The Tax
+  Invoice's cancel does NOT move**, nor do the other twelve: RA, receipt,
+  draft PO, challan, measurement, charge, employee, attendance, Project, Spec,
+  Product, Address. The HR wall, the measurement cap, the approval ladder and
+  `cascade.py` are untouched; `approval.can_modify()` still refuses deleting
+  an approved PO when the ladder is on, and every closure still prints before
+  its button. A role holding no `*.delete` is refused exactly as before.
+
+  **The drift repair, SEPARATELY:** `tools/reconcile_role_permissions.py
+  --write` granted **5** permissions across **2** roles — `role-owner` was
+  missing `invoice.cancel`, `proforma.delete`, `purchase.delete` and
+  `quotation.delete`, and `role-director` was missing `invoice.cancel`. ⚠
+  **`invoice.cancel` reached NO role at all**, so withdrawing a tax invoice was
+  unreachable by everybody, an Owner included — the exact defect that tool
+  exists for, shipping for the fourth time. Additive only; nothing was removed.
+  Director's `invoice.cancel` stays **inert by design** (still Owner-only).
+
+  Tests **3,918 / 123 → 3,931 / 123** — **+13**, all
+  `tests/test_owner_only_delete.py` (5 → 18): both sets pinned, the two proved
+  disjoint, a `url_map` sweep failing on a delete route in neither set, and the
+  carve-out proved from both sides (a Director through all five, a role with no
+  `*.delete` refused on all five, both methods). ⚠ **Measured on the
+  production box's `.venv`, which is NOT one of ABOUT.md §1's three recorded
+  configurations** — 123 skips, against row 1's 4 — so these two figures are
+  comparable only to each other. Both ends measured in this pass, the baseline
+  by stashing the change. One test rewritten, not deleted:
+  `test_work_orders.py::test_delete_is_owner_only_exactly_as_the_pos` →
+  `…_is_exactly_the_pos_and_is_now_the_permission_alone`, same property,
+  moved answer. `tests/test_delete_rollout.py`'s docstring corrected.
+  No print or page golden moved. ⚠ **`docs/ACCESS_MATRIX.md` did not move** —
+  regenerated and byte-identical: no permission, role or route was added, and
+  the generator **has never modelled `OWNER_ONLY` at all**, which is its own
+  open gap — **ABOUT.md §7 gap 67**, recorded in this pass and deliberately not
+  fixed by it: the grid still overstates the thirteen delete grants that are
+  *still* Owner-only, and has done since 22 September 2026.
+
+  ⚠ **NOT YET RESTARTED at the time of writing** — the DB carries the
+  reconciled roles and the running process still carries the old ones in RAM.
+  `sudo systemctl restart samruddhi.service` closes that window.
 
 - **7 October 2026 — the BOQ import's quantity-0 rule, run on the OFFICE PC**
   (Step 0 clean at `6c1cb90`, the remote's tip, 0 ahead and 0 behind; backup
