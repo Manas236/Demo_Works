@@ -23,7 +23,7 @@ says so. Nothing was deployed by the merge.
 
 - **Measured once, in the cloud, at the merge commit:** CPython 3.13.17 on Linux,
   `requirements.txt` installed (openpyxl + xlrd + defusedxml), no client workbook,
-  Node 22 — **4,361 passed, 17 skipped, 0 failed**; the same environment gave
+  Node 22 — **4,363 passed, 17 skipped, 0 failed** (4,361 at the merge commit, +2 for the net-rate fix that followed it); the same environment gave
   4,115 / 17 for `7e22d55` and 3,854 / 10 for `fa42e27`. The three PC
   configurations were **not** re-measured; the figures quoted for them below are
   each line's last, before the merge.

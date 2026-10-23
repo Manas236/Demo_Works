@@ -466,7 +466,15 @@ def boq_line_items(picked: list, boq: dict, leg: str) -> tuple:
                 continue
             lid = str(row.get("line_id") or "")
             src = by_lid.get(lid) or {}
-            rate = float(src.get(rate_f) or 0.0)
+            # ⚠ Merge of 23 October 2026: the line is billed at its NET rate —
+            #   `boq.net_rate()`, the one price of a line on the office line's
+            #   forty-fourth block (R3) — never the unit rate before discount.
+            #   An undiscounted line's net rate IS its unit rate, untouched; a
+            #   blank rate (an as-is BOQ, A4) is `None` and the line is left off
+            #   this leg, as an unpriced line always was here. `rate_f` stays the
+            #   field that says which leg a line is priced on.
+            net = BQ.net_rate(src, part)
+            rate = 0.0 if net is None else float(net)
             if rate <= 0:
                 continue
             qty = float(row.get("qty") or 0.0)

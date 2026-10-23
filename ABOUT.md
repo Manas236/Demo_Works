@@ -14101,7 +14101,15 @@ text is unchanged, and every reference to them was moved with them.*
     a rule only the client can give. `tests/test_boq_raise_all.py::test_the_form_names_the_ra_bills_already_on_the_schedule`
     pins the warning; nothing pins a block, because there is none.
 
-
+79. 🟡 **A ticked BOQ line with NO rate on the leg is left off a PI or TI raised
+   from the BOQ without being named — OPEN.** Since the merge of 23 October 2026
+   `proforma.boq_line_items()` bills a line at `boq.net_rate()` (the office line's
+   forty-fourth block, R3), so a discounted line is invoiced at its net price —
+   before the merge it was invoiced at the unit rate, over-billing the discount.
+   A blank rate (an as-is BOQ, A4) is `None`, and the line is left off that leg as
+   an unpriced line always was here — no 500 — but, unlike the RA prefill (A6),
+   the form does not list what it left off. `tests/test_boq_raise_all.py` pins
+   both halves.
 ## 8. Stale docs — do not trust these two files
 
 Both are leftover scratch files. **Neither is imported by anything**

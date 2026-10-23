@@ -538,3 +538,37 @@ def test_a_listed_term_renders_byte_for_byte_as_before():
         cur = opts[1]
         assert (proforma._sel_keep("x", opts, cur)
                 == quotation._sel_opts("x", opts, cur, cur))
+
+
+# ═══ THE MERGE OF 23 OCTOBER 2026 — a BOQ raised at its NET rate ═════════════
+#
+# The office line's forty-fourth block (R3) made `boq.net_rate()` the one price
+# of a line; the laptop line's PI and TI from a BOQ were written before it
+# existed and read the unit rate. These pin the merged behaviour.
+
+def test_a_discounted_line_is_invoiced_at_its_net_rate(client, sched):
+    _h, kids = _family(sched)
+    line = kids[0]
+    line["supply_disc_pct"] = 10.0
+    net = BQ.net_rate(line, "supply")
+    assert net == BQ.round_half_up(line["supply_rate"] * 0.9) and net < line["supply_rate"]
+    r = _pi_post(client, sched, _payload((line, 4)))
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:2000]
+    priced = [x for x in _only("proformas")["line_items"] if not x.get("is_header")]
+    assert priced[0]["price"] == net and priced[0]["total"] == round(4 * net, 2)
+    r = _ti_post(client, sched, _payload((line, 4)))
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:2000]
+    inv = next(i for i in STORE["invoices"].values() if i.get("boq_id") == sched)
+    priced = [x for x in inv["line_items"] if not x.get("is_header")]
+    assert priced[0]["price"] == net
+
+
+def test_a_blank_rate_line_is_left_off_not_a_500(client, sched):
+    _h, kids = _family(sched)
+    kids[0]["supply_rate"] = None          # an as-is BOQ's blank box (A4)
+    r = _pi_post(client, sched, _payload((kids[0], 4), (kids[1], 2)))
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:2000]
+    priced = [x for x in _only("proformas")["line_items"] if not x.get("is_header")]
+    assert [x["line_id"] for x in priced] == [kids[1]["line_id"]]
+    r = client.get(f"/proforma/from-boq/{sched}")
+    assert r.status_code == 200
