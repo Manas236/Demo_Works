@@ -660,7 +660,18 @@ def test_the_gate_refuses_a_role_without_the_purchase_permissions(client):
     assert client.get("/wo/create").status_code == 403
 
 
-def test_delete_is_owner_only_exactly_as_the_pos(client):
+def test_delete_access_is_exactly_the_pos_and_is_now_the_permission_alone(client):
+    """
+    Ruling I's property is unchanged — the work order's delete is exactly the
+    PO's, per action — but the answer moved on 21 October 2026 (§0 fifty-second
+    block): both left `auth.OWNER_ONLY`, so `purchase.delete` alone decides.
+
+    ⚠ **GET only for the holder.** `/wo/delete/<id>` answers both methods at
+      one endpoint — the confirm page and the write — so a POST here would
+      destroy the draft and prove nothing about the gate. The GET is what shows
+      the Director is through it, and the record surviving is what shows the
+      confirm page is all they got.
+    """
     wid = _create(client)
     auth.ensure_builtin_roles()
     d = auth.find_user("wo-director") or auth.create_user(
@@ -668,6 +679,17 @@ def test_delete_is_owner_only_exactly_as_the_pos(client):
     assert "purchase.delete" in auth.permissions_of(d)
     with client.session_transaction() as s:
         s[auth.SESSION_KEY] = d["id"]
+    assert client.get(f"/wo/delete/{wid}").status_code != 403
+    assert client.get("/purchase/delete/zz").status_code != 403
+    assert wid in STORE["work_orders"], "the confirm page destroyed the draft"
+
+    # The mirror from the other side: a role holding no `purchase.delete` is
+    # refused on both, on both methods. HR holds none.
+    hr = auth.find_user("wo-hr-del") or auth.create_user(
+        "wo-hr-del", "HR", "wo-hr-del-password-1", ["role-hr"], created_by="test")
+    assert "purchase.delete" not in auth.permissions_of(hr)
+    with client.session_transaction() as s:
+        s[auth.SESSION_KEY] = hr["id"]
     for method in ("GET", "POST"):
         assert client.open(f"/wo/delete/{wid}", method=method).status_code == 403
         assert client.open("/purchase/delete/zz", method=method).status_code == 403

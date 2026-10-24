@@ -1940,7 +1940,9 @@ def view_proforma(id: str):
     # and NOT drawn at all once a tax invoice has been raised from this PI —
     # `delete_proforma()` refuses that case outright, so offering the control
     # would be offering a refusal. ⚠ Presentation, not the gate: the route is
-    # in ROUTE_PERMISSIONS and in OWNER_ONLY and refuses a typed URL itself.
+    # in ROUTE_PERMISSIONS and refuses a typed URL itself. ⚠ It left
+    # `auth.OWNER_ONLY` on 21 October 2026 (§0 fifty-second block), so
+    # `proforma.delete` alone now decides and a Director sees this control.
     # The newline and indent live INSIDE the string, so a proforma nobody may
     # delete renders the action bar byte-for-byte as it always did.
     import auth as _AUTH

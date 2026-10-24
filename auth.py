@@ -896,7 +896,9 @@ ROUTE_PERMISSIONS = {
     #                                  PAY — `edit_purchase_rates`' reasoning)
     #      issue / cancel          -> purchase.edit   (a lifecycle move — a PO is
     #                                  issued and cancelled by `update_purchase`)
-    #      delete                  -> purchase.delete, and OWNER_ONLY below
+    #      delete                  -> purchase.delete, and NOT Owner-only
+    #                                  since 21 October 2026 — it follows the
+    #                                  PO out of OWNER_ONLY by ruling I
     "workorder.list_wos":         "purchase.view",
     "workorder.view_wo":          "purchase.view",
     "workorder.print_wo":         "purchase.view",
@@ -1104,15 +1106,23 @@ ROUTE_PERMISSIONS = {
 # =============================================================================
 # OWNER-ONLY ROUTES — a harder rule than the permission registry above
 # =============================================================================
-# Every route that destroys a document, plus the Tax Invoice cancel/void
-# route, requires the Owner tier — deliberately **on top of**, not instead of,
-# the permission each one is classified with above. This is not the same
-# thing as "the underlying `*.delete` permission happens to be granted to
+# A route in this set requires the Owner tier — deliberately **on top of**,
+# not instead of, the permission it is classified with above. This is not the
+# same thing as "the underlying `*.delete` permission happens to be granted to
 # Owner only" — that would be a `/roles` checkbox setting, reversible with no
 # code change, the same as every other permission in this app. This is
 # harder: an Owner cannot loosen it by editing a role and granting `ra.delete`
 # to somebody else, the same shape as `_may_administer()` guarding
 # `/users/deactivate` beyond what `admin.users` alone would allow.
+#
+# ⚠ **It is no longer EVERY route that destroys a document** (21 October 2026,
+# CLIENT_CHANGES.md §0 **fifty-second** block). The 23 September block made
+# the tier universal and said why — "destroying a document is not a checkbox".
+# Five routes were taken back out of it on 21 October, and they are named in
+# `PERMISSION_ONLY_DESTROYS` below rather than simply absent from here, so the
+# carve-out is a decision somebody can find and account for instead of five
+# gaps. **Nothing else moved**: the rule is unchanged for every endpoint still
+# in this set, the Tax Invoice's cancel/void route among them.
 #
 # ⚠ **Archiving an address and removing one attachment are deliberately NOT
 # here.** Both are real actions on a document but neither destroys one: an
@@ -1122,20 +1132,21 @@ ROUTE_PERMISSIONS = {
 # about destroying documents, not every state-changing route that happens to
 # share a `*.delete` permission with one.
 #
-# One set, read from one place, the same shape as `HIDDEN_BLUEPRINTS` — a new
-# delete route is covered the day its endpoint is added here, and
-# `tests/test_owner_only_delete.py` walks `app.url_map` for every endpoint
-# whose path contains "delete" and fails on one that is missing from this set
-# (or present without a real destroy behind it).
+# Read from one place — `_gate()` and `can_reach()` and nothing else, the same
+# shape as `HIDDEN_BLUEPRINTS`. `tests/test_owner_only_delete.py` pins both
+# sets and walks `app.url_map` for every endpoint whose path contains
+# "delete", failing on one that is in neither set (nor in the test's own
+# `NOT_A_DESTROY`). A new delete route is therefore unclassified — and loudly
+# so — until somebody chooses its tier on purpose.
 OWNER_ONLY: set = {
-    "boq.delete_boq",
-    "quotation.delete_quotation",
-    "proforma.delete_proforma",
-    "purchase.delete_purchase",
+    # ⚠ The four transaction documents and the draft work order are NOT here
+    # any more; see `PERMISSION_ONLY_DESTROYS` below.
+    #
     # Cancelling a tax invoice is not deleting one — the number stays spent and
     # the record stays readable. It sits here anyway because it is the ONLY way
     # to withdraw an invoice, and withdrawing one is the same order of act as
-    # destroying any other document.
+    # destroying any other document. ⚠ It stays Owner-only through the
+    # fifty-second block: a GST series is not a Director's to break.
     "invoice.cancel_invoice",
     "ra.delete_ra",
     "receipt.delete_receipt",
@@ -1149,11 +1160,52 @@ OWNER_ONLY: set = {
     "spec.delete_spec",
     "product.delete_product",
     "address.delete_address",
-    # 5 October 2026 — a DRAFT work order is destroyed (`STORE.pop`), and the
-    # PO it mirrors (`purchase.delete_purchase`, above) is Owner-only, so this
-    # is too: CLIENT_CHANGES.md §0 forty-first block, ruling I — the same
-    # access as the PO, per action. An issued or cancelled work order has no
-    # delete at all; it is cancelled and reissued.
+}
+
+
+# =============================================================================
+# THE DESTROY ROUTES THAT ARE *NOT* OWNER-ONLY — the fifty-second block
+# =============================================================================
+# ⚠ **Nothing reads this set.** `_gate()` and `can_reach()` consult
+# `OWNER_ONLY` and nothing else, exactly as before, so adding an endpoint here
+# does not grant anything and removing one does not refuse anything. It is a
+# **declaration**: these five routes really do destroy a document and really
+# are gated by their `*.delete` permission alone. Written down because the
+# alternative is five names missing from the set above, which reads as an
+# oversight and invites a well-meaning "fix" that quietly re-tightens a
+# decision somebody took.
+#
+# **Why these five** (CLIENT_CHANGES.md §0, fifty-second block, 21 October
+# 2026, by Manas Gawde). The 23 September block granted a Director
+# `boq.delete`, `quotation.delete`, `proforma.delete` and `purchase.delete` in
+# `BUILTIN_ROLES` while the Owner gate made every one of them inert — the
+# catalogue said the admin tier owned the verb and the gate said otherwise, and
+# the first person to tick those boxes at `/roles/edit/<id>` found a saved
+# grant that changed nothing. From this block the grant is what it appears to
+# be. The transaction documents are the ones a Director is answerable for; the
+# records that outlive a deal are not here, and `cascade.py` still prints the
+# transitive closure before the button on every one of them.
+#
+# **`workorder.delete_wo` is not an independent decision.** The forty-first
+# block, ruling I, fixes a draft work order's access as "exactly the purchase
+# order's, per action", and `purchase.delete_purchase` has just moved. It
+# follows the PO or the ruling is broken;
+# `tests/test_work_orders.py::test_every_work_order_route_is_classified_and_mirrored_from_the_po`
+# asserts the two sit on the same side and is what would catch it.
+#
+# ⚠ **What did NOT move.** `invoice.cancel_invoice` (a statutory series),
+# `ra.delete_ra`, `receipt.delete_receipt`, `po_draft.delete_po`,
+# `challan.delete_dc`, `measurement.delete_ms`, the employee/attendance/charge
+# records behind the HR wall, and the master data every document points at —
+# Project, Spec, Product, Address. The measurement cap
+# (`measurement.feeds_ceiling()`) and the approval ladder are untouched by this
+# block, and `approval.can_modify()` is still what gates deleting an approvable
+# document.
+PERMISSION_ONLY_DESTROYS: set = {
+    "boq.delete_boq",
+    "quotation.delete_quotation",
+    "proforma.delete_proforma",
+    "purchase.delete_purchase",
     "workorder.delete_wo",
 }
 
@@ -1240,12 +1292,22 @@ BUILTIN_ROLES = {
             "project.pnl",
             # The five destructive verbs minted 23 September 2026. They sit on
             # the admin tier for the same reason `project.delete` does — the
-            # records they destroy are roots, not leaves. ⚠ Holding the
-            # permission is not the same as being able to use it: every one of
-            # these endpoints is also in OWNER_ONLY, so a Director is refused
-            # at the gate. Granting here keeps the catalogue honest about which
-            # tier the verb belongs to; the Owner check above it is the harder
-            # rule. See OWNER_ONLY's docstring.
+            # records they destroy are roots, not leaves.
+            #
+            # ⚠ **Four of the five are now operative** (21 October 2026, §0
+            # fifty-second block): `boq.delete`, `quotation.delete`,
+            # `proforma.delete` and `purchase.delete` gate their routes on
+            # their own, because those endpoints left `OWNER_ONLY`. Between
+            # 23 September and 21 October this grant was deliberately inert —
+            # the catalogue named the tier and the Owner gate overrode it — and
+            # that gap is what the fifty-second block closes.
+            #
+            # ⚠ **`invoice.cancel` is still inert for a Director**, and on
+            # purpose: `invoice.cancel_invoice` stays in `OWNER_ONLY` because a
+            # GST series has to stay consecutive. It is granted here for the
+            # reason the other four were — the catalogue states which tier the
+            # verb belongs to — and the Owner check is still the harder rule
+            # above it. See `PERMISSION_ONLY_DESTROYS`.
             "boq.delete", "quotation.delete", "proforma.delete",
             "purchase.delete", "invoice.cancel",
             "admin.users", "admin.access_log",

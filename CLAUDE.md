@@ -112,6 +112,21 @@ Fast facts so you don't get it wrong before reading:
   reader without it gets `/projects/view` and `/projects/` byte-for-byte as
   before (`tests/test_pnl_access.py` pins that against `3a14375`). The labour
   row also needs `attendance.view`. ABOUT.md §5 `/projects`.
+- **DELETING A DOCUMENT IS OWNER-ONLY — EXCEPT FOR FIVE ROUTES** (22 Sep 2026,
+  narrowed 21 Oct 2026). `auth.OWNER_ONLY` is a second gate checked *on top of* the
+  permission, so granting `ra.delete` at `/roles/edit/<id>` does **not** let a
+  Director delete an RA bill. ⚠ **Five endpoints left that set on 21 Oct 2026**
+  (CLIENT_CHANGES.md §0 **fifty-second** block) and are gated by their
+  permission alone: BOQ, quotation, proforma and PO delete, plus the draft work
+  order that mirrors the PO. They are named in `auth.PERMISSION_ONLY_DESTROYS`,
+  which **nothing reads at runtime** — the gate still consults `OWNER_ONLY` and
+  nothing else. The Tax Invoice's cancel stays Owner-only; so do the other
+  twelve. **A new delete route is in neither set and
+  `tests/test_owner_only_delete.py` fails until you choose its tier** — and
+  that choice needs a §0 block, not a judgement call. ⚠ **`docs/ACCESS_MATRIX.md`
+  does not model this gate at all** and overstates every grant it covers
+  (ABOUT.md §7 gap 80), so do not answer "can a Director delete X?" from the
+  grid alone.
 - **The app is closed (Phase 3B, 26 Aug 2026).** Every route is gated by
   `auth.ROUTE_PERMISSIONS`, and **an endpoint missing from that registry is
   refused, not opened** — so a route you add is unreachable until you classify

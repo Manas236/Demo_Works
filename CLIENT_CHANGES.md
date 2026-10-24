@@ -5036,6 +5036,101 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 21 October 2026, by Manas Gawde — FOUR DOCUMENT DELETES LEAVE THE OWNER TIER · NO CHARGE · POST-GO-LIVE · PARTLY REVERSES THE THIRTIETH BLOCK
+>
+> *Recorded as the forty-seventh block on `prod/delete-narrowing-21oct` (`c89c173`), live on prod from 21 Oct 2026; renumbered at the merge of 24 Oct 2026.*
+>
+> **A new block, not an amendment.** The forty-sixth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped — **the thirtieth block included**, which this one partly reverses
+> and does not rewrite. This is the **forty-seventh** occasion. It covers the
+> ruling below and nothing else.
+>
+> #### What prompted it
+>
+> **A permission that saved and did nothing.** An Owner ticked `boq.delete`,
+> `quotation.delete`, `proforma.delete` and `purchase.delete` on the
+> **Director** role at `/roles/edit/role-director`, the page reported
+> *"Director updated."*, the grant persisted — and the Director it was granted
+> to saw no change whatever, because `auth.OWNER_ONLY` refuses those routes to
+> anyone outside the Owner tier *after* the permission check has already
+> passed, and `can_reach()` then hides the button so there is not even a
+> refusal to read. The thirtieth block built that deliberately and said so:
+> *"destroying a document is not a checkbox."*
+>
+> ⚠ **The editor offered the grant anyway.** The same pass that made the tier
+> universal also granted those four permissions to Director in
+> `auth.BUILTIN_ROLES` "to keep the catalogue honest about which tier the verb
+> belongs to", and the role editor draws them as ordinary tickable boxes — it
+> marks a permission frozen by `HIDDEN_BLUEPRINTS` or by the approval ladder,
+> and it has nothing to say about the Owner tier. So the application stated the
+> grant in three places and honoured it in none.
+>
+> #### The ruling
+>
+> **1. Four transaction-document deletes leave `auth.OWNER_ONLY`** and are
+> gated by their own permission alone: `/boq/delete/<id>`,
+> `/quotation/delete/<id>`, `/proforma/delete/<id>`, `/purchase/delete/<id>`.
+> A Director holds all four and from today they work. **The thirtieth block's
+> rule is not deleted and is not weakened for anything else** — it is narrowed,
+> by name, to these four.
+>
+> **2. `/wo/delete/<id>` follows the PO, and that is not a second decision.**
+> The forty-first block, ruling I, fixes a draft work order's access as
+> *exactly* the purchase order's, per action. The PO's delete moved, so this
+> moved with it.
+>
+> **3. The Tax Invoice does not move.** `/invoice/cancel/<id>` stays
+> Owner-only. A GST series has to run consecutively, withdrawing an invoice is
+> the only way to take one back, and that is not a Director's to do.
+>
+> **4. Nothing else moves.** `ra.delete_ra`, `receipt.delete_receipt`,
+> `po_draft.delete_po`, `challan.delete_dc`, `measurement.delete_ms`, the
+> employee / attendance / charge records behind the HR wall, and the master
+> data every document points at — Project, Spec, Product, Address — are all
+> still Owner-only. **Nothing about the HR wall, the measurement cap, the
+> approval ladder or `cascade.py` is touched**: `approval.can_modify()` still
+> refuses deleting an approved PO when the ladder is on, and every one of these
+> routes still prints its transitive closure, counted and by type, before the
+> button.
+>
+> **5. The permission is still the gate.** Taking the Owner tier off a route
+> left it gated, not open: a role holding no `*.delete` is refused exactly as
+> before. HR, Sales Manager, Purchase Manager and Accountant reach none of the
+> five.
+>
+> #### What I am accepting, stated plainly
+>
+> **A Director can now destroy a BOQ, and a BOQ is the largest blast radius in
+> this application** — its closure takes the RA bills under it, the receipts
+> under those, the delivery challans, the measurement sheets and the POs. The
+> confirmation page naming that closure is now the only thing between a
+> Director and all of it. That is the trade I am making: the four people who
+> hold the Director role are the people answerable for these documents, and a
+> grant that silently does nothing is worse than a grant that does what it says.
+>
+> #### What this does NOT license
+>
+> **No agent may extend this to a sixth endpoint.** `auth.OWNER_ONLY` and
+> `auth.PERMISSION_ONLY_DESTROYS` are both pinned by
+> `tests/test_owner_only_delete.py`, and every delete route in the live
+> `url_map` must sit in one of them — a new one is a decision, and it is mine.
+> **`quotation.py` and `product.py` are NOT unfrozen** and were not edited:
+> this block changes `auth.py` and three comments, and the quotation's delete
+> button already asks `can_reach()`. **No permission was minted, no role
+> definition changed, and no route was added or removed** — which is why
+> `docs/ACCESS_MATRIX.md` does not move.
+>
+> **Commercial status: NO CHARGE, by my ruling** — a post-go-live defect fix on
+> work already delivered under the thirtieth block, where the application did
+> not do what its own three records said it did. It changes no CC-2 item's
+> state and moves no Phase 3 bar.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 

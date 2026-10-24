@@ -17,10 +17,17 @@ different claim and needs a different kind of test:
 - **The two guards that were missing entirely** — Project never counted
   charges or attendance, Employee counted nothing at all.
 
-⚠ The `client` fixture signs in as the seeded **Owner**. Every route here is in
-  `auth.OWNER_ONLY`, so any other role would get a 403 and these tests would be
-  measuring the gate rather than the route. The gate itself is proved in
+⚠ The `client` fixture signs in as the seeded **Owner**, and these tests want
+  it to stay that way: an Owner clears every gate, so a failure here is the
+  route's and not the gate's. The gate is proved in
   `tests/test_owner_only_delete.py`, which is where a non-Owner belongs.
+
+  It used to be true that every route here was in `auth.OWNER_ONLY` and no
+  other role could reach one at all. Since 21 October 2026 (§0 fifty-second
+  block) four of them — BOQ, quotation, proforma, PO — are gated by their
+  `*.delete` permission alone and a Director reaches them. That changes who may
+  call these routes; it changes nothing about what they do when called, which
+  is all this file measures.
 """
 
 import pytest
