@@ -27,6 +27,8 @@ and deployed **on the production box itself**.
   only copy of the production line lived. Nothing was renumbered on either of the
   other two lines, and no behaviour of any line was chosen over another's.
 
+- **Measured at the merge commit, on the production box:** **4,268 passed, 125 skipped, 0 failed** — measured at the merge commit on the PRODUCTION BOX, in the worktree `/home/ubuntu/merge-final-20261024` against its own throwaway venv (CPython 3.12, `requirements.txt` + pytest). ⚠ **A FOURTH configuration, not one of ABOUT.md §1's three**, so it is comparable only to itself: 108 of the skips are Node (the JS reader) absent from this box, 12 a client workbook absent, 3 permanent by design and 2 the worktree having no `.env`. The goldens were run first and separately: **91 passed, 2 skipped, nothing re-baselined.**
+
 The three histories follow, each as it stood before this merge.
 
 *The office and laptop lines, before this merge:* branch `antigravity-dev`, 23 October 2026 — **THE TWO LINES ARE MERGED.**
