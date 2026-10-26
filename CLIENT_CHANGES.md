@@ -5131,6 +5131,69 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 26 October 2026, by Manas Gawde — A PRELOADED SIGNATURE AND STAMP, A "MAKE" COLUMN ON THE PO AND DRAFT PO, AND NO BROWSER HEADER OR FOOTER ON A PRINTED DOCUMENT · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The fifty-second block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **fifty-third** occasion. It covers the three client
+> asks below and nothing else, built in one pass as three commits, each of
+> which records its own part of this block.
+>
+> **Commercial status: NO CHARGE, on Manas's instruction** — three client asks
+> after go-live. They change no CC-2 item's state and move no Phase 3 bar.
+>
+> #### Change 1 — the director's signature and the company stamp, preloaded
+>
+> **What was asked for:** the director's signature and the round SAMRUDDHI FIRE
+> / NAVI MUMBAI stamp, supplied in a Word file (`sign & stamp.docx`, untracked —
+> nothing derived from it is committed), stored once at `/settings` by an Owner
+> and printed above *Authorised Signatory* on every print, drafts included, of
+> the tax invoice (ordinary, RA-generated, raised from a BOQ), the proforma, the
+> quotation, the purchase order, the draft PO, the work order and the delivery
+> challan — on the challan our side only.
+>
+> **What was built:** two keys on the company record, `SIGNATURE_IMAGE` and
+> `STAMP_IMAGE`, PNG data URIs re-encoded by Pillow (`photo.load(...,
+> keep_alpha=True)`, the profile photo's refusals); an Owner-only *Signature &
+> Stamp* section on `/settings` — a Director is refused on the POST with a 403
+> and is not shown it; and `docsheet._sig_art()` inside the shared
+> `sig_block()`. The proforma's and the quotation's hand-written panels were
+> wired through `sig_block()` — **the quotation as a SIXTH narrow unfreeze of
+> `quotation.py`, inside `view_quotation()` only** (two lines: a function-body
+> import and the call that replaced eleven lines of identical markup). With
+> neither mark set every printed document is byte-for-byte what it was; **no
+> print golden moved**. One page golden moved, declared: `/settings/`'s `main`,
+> +2,959 bytes, the Owner-only section and nothing else. No route and no
+> permission — `docs/ACCESS_MATRIX.md` does not move.
+>
+> **Judgement calls — the agent's, each listed in ABOUT.md §2d and §5:**
+>
+> 1. **The stamp is not fully transparent, and that premise was corrected
+>    rather than built on.** Its corners are clear; its disc is opaque white.
+>    It is stored exactly as supplied and printed with
+>    `mix-blend-mode:multiply`, so the white vanishes over the signature the
+>    way paper does under a rubber stamp.
+> 2. **The signed panel is exactly as tall as the unsigned one.** A 40 mm
+>    signature is ~20 mm tall against the 15 mm gap it fills; at +7 mm the
+>    golden quotation's panel fell onto a second page. The art band is 19 mm
+>    (~38 mm of signature) and the panel's top margin gives 4 mm back.
+> 3. **Every document whose panel is `sig_block()` carries the marks** — the
+>    merged RA and the measurement sheet too, which were not named. The BOQ,
+>    whose panel is its own, does not.
+> 4. **"This is a Computer Generated Document, no signature required"** still
+>    prints under the documents that carried it.
+> 5. **The Owner check is in the view, on the existing endpoint**
+>    (`/users/edit/<id>`'s photo precedent), not a new route in `OWNER_ONLY` —
+>    that set is a rule about destroying a document.
+> 6. **The local database was seeded through `settings.set_mark()`**, the
+>    upload's own writer, by POSTing the cleaned images to `/settings/` as an
+>    Owner — not by a write to the row.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 

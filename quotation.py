@@ -2604,6 +2604,7 @@ def view_quotation(id: str):
     # delete renders the action bar byte-for-byte as it always did.
     import auth as _AUTH
     import cascade as _CAS
+    import docsheet as _DS   # the signature panel (26 Oct 2026); in-function: the leaf imports this module
     del_q = ""
     if (_AUTH.can_reach("quotation.delete_quotation")
             and _CAS.impact_of("quotations", id)["blocked"] is None):
@@ -3059,17 +3060,7 @@ def view_quotation(id: str):
     <ol class="tnc-ol">{tnc_html}</ol>
   </div>
 
-  <div class="sig-block">
-    <div class="sig-kv">
-      <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
-      <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
-    </div>
-    <div class="sig-right">
-      <div class="sig-for">For {comp_br}</div>
-      <div class="sig-name">{signatory}</div>
-    </div>
-  </div>
-  <div class="sig-note">This is a Computer Generated Document, no signature required</div>
+{_DS.sig_block(comp_br, signatory, computer_generated=True)}
 
   </td></tr></tbody>
   </table>

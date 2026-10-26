@@ -932,6 +932,51 @@ identical**, and `tests/test_work_orders.py` pins that digest; the RA print
 golden did not move. `invoice.INVOICE_STYLES` keeps its own older `.lc-*` copy
 untouched — the pinned `/invoice/` register loads that sheet.
 
+#### The signature and the stamp — `_sig_art()` (26 October 2026)
+
+CLIENT_CHANGES.md §0, the **fifty-third** block, change 1. An Owner uploads the
+director's signature and the round company stamp at `/settings` (§5); both
+print in **`sig_block()`'s right-hand panel**, the signature between *For
+SAMRUDDHI FIRE* and *Authorised Signatory*, the stamp overlapping its left
+edge the way a wet stamp sits on a signed sheet. One function, so every
+document whose panel is `sig_block()` carries them — and from this date that
+is **every** printed document but the BOQ:
+
+| Document | How it reaches `sig_block()` |
+|---|---|
+| tax invoice (ordinary and raised from a BOQ — one route), RA bill, merged RA | already did |
+| purchase order, draft PO, work order, delivery challan, measurement sheet | already did |
+| **proforma invoice** | **wired 26 Oct 2026** — its hand-written panel was the same bytes |
+| **quotation** | **wired 26 Oct 2026** — §5 `/quotation`, the sixth narrow unfreeze |
+| BOQ | **not wired** — its panel is its own (`boq.py`), and the BOQ was not asked for |
+
+- **With neither mark set, `_sig_art()` is `""` and `sig_block()` emits exactly
+  the bytes it always did** — every print golden is untouched, and the two
+  wired documents were measured whole-page identical before and after.
+- **The styling is on the elements**, `branding.letterhead_top()`'s way: the
+  quotation loads `VIEW_DOC_STYLES` directly and a rule in any shared sheet
+  would move every golden for documents carrying no mark.
+- ⚠ **The signed panel is exactly as tall as the unsigned one, and that is a
+  page-count decision.** A 40 mm signature stands ~20 mm against the 15 mm
+  wet-signature gap, and the panel cannot split across pages; the first cut
+  (+7 mm) pushed the golden quotation's whole panel onto a second page,
+  measured in a headless print. The art band is 19 mm and the panel's 6 mm top
+  margin gives 4 mm back (`style="margin-top:2mm"`, only when a mark is set).
+  With the client's own two marks every pinned document prints on the pages
+  it printed on before.
+- ⚠ **The stamp is `mix-blend-mode:multiply`.** The client's stamp PNG is
+  transparent only outside the ring — its disc is opaque white — so drawn
+  plainly it would blank out the signature where they overlap. Multiply makes
+  white vanish and ink darken ink, which is what a rubber stamp does. The
+  stamp is kept exactly as uploaded otherwise.
+- **The challan's receiver box on the left stays blank**: the marks are our
+  side's, and the panel's left cell is `left_html`.
+- **The CANCELLED / DRAFT watermark still prints over everything** —
+  `.lc-mark` is `z-index:2` and the stamp takes no z-index of its own.
+- *"This is a Computer Generated Document, no signature required"* still
+  prints under the documents that carried it. It is still true; nobody asked
+  for it to go.
+
 ### 2e. `boqpick.py` — one grid, two documents, and why it is also a leaf
 
 The BOQ line picker — a checkbox per line, an editable quantity defaulting to
@@ -6040,6 +6085,23 @@ pinned by no golden, so it is held by
 `tests/test_print_golden.py::test_every_letterhead_opens_with_the_clients_banner`
 instead, which fails by name if the old band is written back.
 
+#### The signature panel — 26 October 2026 · ⚠ SIXTH NARROW UNFREEZE
+
+Under CLIENT_CHANGES.md §0's **fifty-third** block (change 1), inside
+**`view_quotation()` only** — the five-name list in
+`tests/test_nav_user_chip.py` did not grow. **Two lines**: a function-body
+`import docsheet as _DS` beside the two function-body imports already there
+(at module level it would be a cycle — the leaf imports this file), and the
+eleven hand-written lines of the GSTIN/PAN + *For … / Authorised Signatory*
+panel became `{_DS.sig_block(comp_br, signatory, computer_generated=True)}`.
+With no mark set at `/settings` that call emits **the same bytes** the eleven
+lines did — measured on the golden quotation, whole page, before and after —
+and with one set it carries the preloaded signature and stamp exactly as
+every other document does (§2d *The signature and the stamp*).
+`VIEW_DOC_STYLES` is **not** edited. The quotation still has no print golden,
+so `tests/test_sign_stamp.py::test_the_quotations_panel_is_the_literal_it_used_to_write`
+pins the panel against the old literal instead.
+
 #### Register (`/quotation/`)
 
 Four summary tiles (Open Pipeline / PO Expected / Won / Lost, with win-rate and
@@ -6451,6 +6513,11 @@ inside `.quotation-doc`, and introduces no new font, type size or border weight
 — it only uses the `--fs-*` and `--rule-*` already defined there. Keep it that
 way; that restraint is the reason the two documents look like they came from
 the same office.
+
+⚠ **The signature panel is `DS.sig_block()` from 26 October 2026** (§0 fifty-third
+block) — it was written by hand here, in the same bytes, and was wired through
+the leaf so the preloaded signature and stamp reach the PI (§2d). The PI golden
+did not move.
 
 What a PI has to say that a quotation does not:
 
@@ -11332,7 +11399,7 @@ no way out.
 
 | Route | View |
 |---|---|
-| `GET,POST /settings/` | `edit_settings` |
+| `GET,POST /settings/` | `edit_settings` — and, Owner only, the signature/stamp actions (below) |
 
 One form. **Company Identity** (legal name, tagline, address, phone, e-mail,
 web, GSTIN, PAN, branches, signatory) and **Bank Details** (bank, account name,
@@ -11412,12 +11479,62 @@ a live divisor. `tests/test_day_rate_pin.py` fails if the name reappears in
 
 ```
 POST /settings/  →  STORE["settings"]["company"] = {only non-default values}
-                 →  branding.apply_settings(overrides)
+                      + the two marks, CARRIED ACROSS (they are not on the form)
+                 →  branding.apply_settings(record)
                  →  next render picks them up. No restart.
 
 app.py boot      →  db.load_into(STORE)
                  →  B.apply_settings(settings.load_saved())
 ```
+
+#### The signature and the stamp — Owner only (26 October 2026)
+
+CLIENT_CHANGES.md §0, the **fifty-third** block, change 1. A *Signature &
+Stamp* section above the main form: a preview, **Upload / Replace** and
+**Remove** for the authorised signature and for the company stamp. They print
+on every document `docsheet.sig_block()` draws (§2d *The signature and the
+stamp*).
+
+| Key on `STORE["settings"]["company"]` | What it holds |
+|---|---|
+| `SIGNATURE_IMAGE` | `"data:image/png;base64,…"` — absent = none |
+| `STAMP_IMAGE` | the same shape |
+
+- **Two keys on the company record**, because they are company identity:
+  `apply_settings()` pushes them onto `branding.SIGNATURE_IMAGE` /
+  `STAMP_IMAGE` exactly as it pushes the GSTIN, and `docsheet.py` reads them
+  there (it may not import this module). They are **not** in
+  `IDENTITY_FIELDS` or `branding.SETTINGS_KEYS`: no text box, not counted by
+  the completeness meter or the nav's amber dot, and a missing one is the
+  normal state, not a gap.
+- ⚠ **OWNER ONLY, enforced on the POST.** `settings.edit` is held by a
+  Director too. The section posts to the same endpoint with
+  `action=signature_upload|signature_remove|stamp_upload|stamp_remove` —
+  `/users/edit/<id>`'s photo arrangement — and `edit_settings()` refuses that
+  action with a **403** and writes nothing unless `auth.is_owner()`. The
+  section is drawn from the same predicate, so a Director never sees it and
+  their page is byte-for-byte what it was. **No route and no permission were
+  added**, so `docs/ACCESS_MATRIX.md` does not move — and it still does not
+  model this in-view check, exactly as it does not model `OWNER_ONLY` (§7
+  gap 80).
+- ⚠ **A text save carries the marks across.** The main form rebuilds the
+  record from its own fields; `_marks_of(load_saved())` is merged back in, so
+  saving the GSTIN does not delete the signature — and a Director's ordinary
+  save is not a way round the Owner rule.
+- **Stored the way `photo.py` stores a face, but as PNG**: `photo.load(...,
+  keep_alpha=True)` does every refusal (5 MB, JPEG/PNG/WebP by leading bytes,
+  the decompression-bomb ceiling), then `_encode_mark()` shrinks to
+  `MARK_MAX_SIDE` = 600 px without cropping and writes a fresh PNG from the
+  pixels alone (`Image.frombytes()`, so no ICC profile, text chunk or EXIF
+  survives). PNG and not JPEG because the stamp prints over the signature and
+  has to keep its transparency.
+- **`branding.image_src()` is the only reader**, `photo.src_of()`'s rule: only
+  a `data:image/png;base64,` string under `IMAGE_MAX_STORED` (512 KB) reaches
+  an `<img src>`, so a row edited directly in MySQL cannot put anything else on
+  a printed document.
+- **`settings.set_mark()` / `clear_mark()` are the one writer.** The route
+  calls them, and so does anything that seeds a database — never a raw write
+  to the record.
 
 #### The one rule that makes this work
 

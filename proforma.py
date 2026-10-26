@@ -2034,17 +2034,7 @@ def view_proforma(id: str):
     <ol class="tnc-ol">{tnc_html}</ol>
   </div>
 
-  <div class="sig-block">
-    <div class="sig-kv">
-      <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
-      <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
-    </div>
-    <div class="sig-right">
-      <div class="sig-for">For {comp_br}</div>
-      <div class="sig-name">{signatory}</div>
-    </div>
-  </div>
-  <div class="sig-note">This is a Computer Generated Document, no signature required</div>
+{DS.sig_block(comp_br, signatory, computer_generated=True)}
 
   </td></tr></tbody>
   </table>

@@ -38,7 +38,9 @@ Record shape (on the existing `users` record; nothing else changes)::
 ⚠ **Imports nothing from the app.** `auth.py` and `chrome.py` both import this
   module, and from 21 October 2026 `lineimage.py` does too, for `load()` —
   pictures beside a document line refuse exactly what a profile photo
-  refuses; `tests/test_import_directions.py` holds the leaf.
+  refuses; `tests/test_import_directions.py` holds the leaf. From 26 October
+  2026 `settings.py` calls `load(..., keep_alpha=True)` for the authorised
+  signature and the company stamp, which keep their transparency.
 """
 
 import base64
@@ -86,7 +88,7 @@ def _size_of(fs) -> int:
     return int(size)
 
 
-def load(fs, noun: str = "photo") -> tuple:
+def load(fs, noun: str = "photo", keep_alpha: bool = False) -> tuple:
     """
     `(image, error)` for one uploaded file — a decoded Pillow image in RGB,
     upright, flattened onto white, or `(None, "<sentence>")`.
@@ -96,6 +98,13 @@ def load(fs, noun: str = "photo") -> tuple:
     differently but must refuse exactly what this refuses: the same 5 MB, the
     same three formats by leading bytes, the same decompression-bomb ceiling.
     `noun` is the only difference in what the operator is told.
+
+    `keep_alpha` (26 October 2026) returns an image that carries transparency
+    as **RGBA instead of flattening it onto white** — the authorised signature
+    and the company stamp at `/settings`, which print over a document and are
+    re-encoded as PNG for exactly that reason. An image with no transparency
+    still comes back RGB. Every other caller leaves it off and gets what this
+    always returned.
 
     Order is size, then leading bytes, then decode — the cheap refusals first.
     """
@@ -138,6 +147,9 @@ def load(fs, noun: str = "photo") -> tuple:
         return None, "That image could not be read. Try saving it again as a JPEG."
 
     img = ImageOps.exif_transpose(img)
+    if keep_alpha and (img.mode in ("RGBA", "LA", "PA")
+                       or (img.mode == "P" and "transparency" in img.info)):
+        return img.convert("RGBA"), ""
     if img.mode in ("RGBA", "LA", "P"):
         img = img.convert("RGBA")
         bg = Image.new("RGB", img.size, (255, 255, 255))

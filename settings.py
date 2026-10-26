@@ -6,7 +6,10 @@ Mounted at : /settings  (registered in app.py)
 
 Routes
 ------
-  GET,POST /settings/   — one form for everything client-specific
+  GET,POST /settings/   — one form for everything client-specific; and, OWNER
+                          ONLY, `action=signature_upload|signature_remove|
+                          stamp_upload|stamp_remove` from the small multipart
+                          forms above it (26 October 2026)
 
 Why this exists
 ---------------
@@ -34,12 +37,15 @@ Clearing a field restores the default rather than saving a blank — see
 `branding.apply_settings()`.
 """
 
+import base64
+import io
 import re
 from datetime import date as _date
 
 from flask import Blueprint, request, redirect, url_for
 
 import branding as B
+import photo            # the upload's validation, shared (26 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOORS (25 Sep 2026)
 from chrome import BASE_STYLES, _nav
@@ -214,6 +220,109 @@ def ensure_demo_settings() -> None:
 def load_saved() -> dict:
     """The stored overrides. Also the hook app.py calls at boot."""
     return STORE["settings"].get(RECORD_ID) or {}
+
+
+# =============================================================================
+# THE AUTHORISED SIGNATURE AND THE COMPANY STAMP — Owner only (26 Oct 2026)
+# =============================================================================
+#
+# Two pictures that print over `docsheet.sig_block()`'s "Authorised Signatory"
+# line on every signed document. They are **two keys on the company record**
+# (`SIGNATURE_IMAGE`, `STAMP_IMAGE`), not a record of their own: they ARE
+# company identity — they print on the letterhead's documents and
+# `apply_settings()` pushes them onto `branding` exactly as it pushes the
+# GSTIN. They are not text fields, so they are not in `IDENTITY_FIELDS`, the
+# completeness meter does not count them, and the main form never posts them.
+#
+# ⚠ **OWNER ONLY, enforced on the POST.** `settings.edit` is held by a
+#   Director too; a signature is the one thing on this page that signs
+#   documents in somebody's name, so changing it takes the Owner tier.
+#   `/users/edit/<id>`'s photo action is the precedent: same endpoint, an
+#   `action` field, the guard in the POST branch, and the control not drawn
+#   for anybody it would only refuse.
+#
+# ⚠ **Stored the way `photo.py` stores a face** — leading bytes checked, 5 MB
+#   cap, decompression-bomb ceiling, re-encoded by Pillow so no metadata and no
+#   polyglot survives — **but as PNG, not JPEG**, because a stamp printed over
+#   a signature has to keep its transparency. `photo.load(keep_alpha=True)`.
+MARKS = {
+    # action prefix: (record key, what the operator calls it)
+    "signature": ("SIGNATURE_IMAGE", "authorised signature"),
+    "stamp":     ("STAMP_IMAGE",     "company stamp"),
+}
+MARK_ACTIONS = {f"{kind}_{verb}" for kind in MARKS for verb in ("upload", "remove")}
+
+# 600 px on the long side is ~380 dpi at the 40 mm a signature prints at —
+# sharp on paper — while a pasted phone photo cannot make every printed page
+# carry megabytes. Smaller images are never enlarged.
+MARK_MAX_SIDE = 600
+
+MARK_OWNER_ONLY = ("Only an Owner can change the authorised signature or the "
+                   "company stamp.")
+
+
+def _encode_mark(fs, noun: str) -> tuple:
+    """
+    `(data_uri, error)` for one uploaded mark. Exactly one of the two is "".
+
+    `photo.load()` does every refusal; this keeps the alpha, shrinks to
+    `MARK_MAX_SIDE` without cropping, and writes a fresh PNG from the pixels
+    alone — `Image.frombytes()` carries no `info`, so no ICC profile, text chunk
+    or EXIF reaches the record.
+    """
+    img, error = photo.load(fs, noun, keep_alpha=True)
+    if error:
+        return "", error
+    from PIL import Image
+    img.thumbnail((MARK_MAX_SIDE, MARK_MAX_SIDE), Image.LANCZOS)
+    clean = Image.frombytes(img.mode, img.size, img.tobytes())
+    out = io.BytesIO()
+    clean.save(out, "PNG", optimize=True)
+    uri = "data:image/png;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+    if not B.image_src(uri):
+        return "", f"That {noun} could not be made small enough. Try a simpler image."
+    return uri, ""
+
+
+def _marks_of(record: dict) -> dict:
+    """The two mark keys a record carries — what a text save must keep."""
+    return {k: record[k] for k in B.IMAGE_KEYS if (record or {}).get(k)}
+
+
+def _save_record(record: dict) -> None:
+    """Store the company record — or drop it when nothing is left — and push it."""
+    if record:
+        STORE["settings"][RECORD_ID] = record
+    else:
+        STORE["settings"].pop(RECORD_ID, None)
+    B.apply_settings(record)
+
+
+def set_mark(kind: str, fs) -> str:
+    """
+    Upload or replace one mark. Returns the refusal, or "" on success.
+
+    **The one writer.** The `/settings` POST calls it, and so does anything that
+    seeds a database — never a raw write to the record — so a mark that reached
+    a document passed every check an upload passes.
+    """
+    key, noun = MARKS[kind]
+    uri, error = _encode_mark(fs, noun)
+    if error:
+        return error
+    _save_record({**load_saved(), key: uri})
+    return ""
+
+
+def clear_mark(kind: str) -> str:
+    """Remove one mark. Returns the refusal, or "" on success."""
+    key, noun = MARKS[kind]
+    record = dict(load_saved())
+    if not record.get(key):
+        return f"There is no {noun} to remove."
+    record.pop(key, None)
+    _save_record(record)
+    return ""
 
 
 # =============================================================================
@@ -950,15 +1059,107 @@ def _page(html: str) -> str:
     return html
 
 
+def _marks_section() -> str:
+    """
+    The signature and the stamp — a preview, Upload / Replace and Remove for
+    each. **Drawn for an Owner only**, from the same predicate the POST branch
+    enforces; a control that can only produce a refusal is not drawn (ABOUT.md
+    §2g). Its own small multipart forms, outside the main form, because a form
+    cannot nest and the main form posts no files.
+
+    Styled on the elements with `auth.FILE_INPUT_STYLE` — `/users/edit/<id>`'s
+    photo row, the widget an Owner already uses — so `SETTINGS_STYLES` and the
+    page's `head` stay as they were.
+    """
+    import auth
+
+    action = url_for("settings.edit_settings")
+    cards = ""
+    for kind, (key, noun) in MARKS.items():
+        src = B.image_src(load_saved().get(key))
+        if src:
+            preview = (f'<img src="{P.esc(src)}" alt="{P.esc(noun)}" '
+                       f'style="max-width:100%;max-height:110px;display:block;"/>')
+            remove = f"""
+            <form method="post" action="{action}" style="margin:.4rem 0 0;">
+              <input type="hidden" name="action" value="{kind}_remove"/>
+              <button class="btn btn-ghost" type="submit">Remove</button>
+            </form>"""
+            verb = "Replace"
+        else:
+            preview = ('<span class="fld-hint">None set &mdash; the printed '
+                       'sheet keeps its blank space for a signature in ink.</span>')
+            remove, verb = "", "Upload"
+        cards += f"""
+          <div class="form-group">
+            <label>{P.esc(noun.capitalize())}</label>
+            <div style="min-height:118px;display:flex;align-items:center;
+                 justify-content:center;border:1px dashed var(--border);
+                 border-radius:8px;background:#fff;padding:.4rem;">{preview}</div>
+            <form method="post" action="{action}" enctype="multipart/form-data"
+                  style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.5rem 0 0;">
+              <input type="hidden" name="action" value="{kind}_upload"/>
+              <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required
+                     style="{auth.FILE_INPUT_STYLE}"/>
+              <button class="btn" type="submit" style="flex:0 0 auto;">{verb}</button>
+            </form>{remove}
+          </div>"""
+    return f"""
+      <div class="form-section">
+        <div class="section-title">Signature &amp; Stamp &mdash; Owner only</div>
+        <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+          Printed above <b>Authorised Signatory</b>, the stamp overlapping the
+          signature, on every tax invoice (RA bills and the merged RA
+          included), proforma invoice, quotation, purchase order, draft PO,
+          work order, delivery challan (our side only &mdash; the receiver's
+          box stays blank) and measurement sheet, drafts included. The BOQ
+          does not carry them. Leave both empty and every document prints
+          exactly as before. {P.esc(photo.ALLOWED_LABEL)}, up
+          to {photo.MAX_BYTES // 1048576} MB; kept as a PNG so a transparent
+          background stays transparent, and any metadata is removed.
+        </p>
+        <div class="fg2">{cards}
+        </div>
+      </div>"""
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
 
 @settings_bp.route("/", methods=["GET", "POST"])
 def edit_settings():
-    error, notice = "", ""
+    import auth
 
-    if request.method == "POST":
+    error, notice = "", ""
+    status = 200
+    is_owner = auth.is_owner(auth.current_user())
+
+    # The signature and the stamp post here too, each from its own small
+    # multipart form carrying `action` — `/users/edit/<id>`'s photo
+    # arrangement. Owner only, checked HERE and not merely by not drawing the
+    # forms: a Director reaches this route through `settings.edit` and could
+    # post the action by hand. Refused with a 403 and nothing written.
+    mark_action = (request.form.get("action") or "") if request.method == "POST" else ""
+    if mark_action not in MARK_ACTIONS:
+        mark_action = ""
+    if mark_action:
+        kind, _, verb = mark_action.partition("_")
+        if not is_owner:
+            error, status = MARK_OWNER_ONLY, 403
+        elif verb == "upload":
+            error = set_mark(kind, request.files.get("image"))
+        else:
+            error = clear_mark(kind)
+        if not error:
+            noun = MARKS[kind][1]
+            done = ("saved — it now prints on every signed document"
+                    if verb == "upload" else "removed")
+            return redirect(url_for("settings.edit_settings",
+                                    msg=f"The {noun} has been {done}.",
+                                    type="success"))
+
+    if request.method == "POST" and not mark_action:
         data, error = _validate(request.form)
         po_data, po_error = _validate_po_series(request.form)
         dc_data, dc_error = _validate_dc_series(request.form)
@@ -983,12 +1184,11 @@ def edit_settings():
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
                          if v and v != B.DEFAULTS.get(k, "")}
-            if overrides:
-                STORE["settings"][RECORD_ID] = overrides
-            else:
-                STORE["settings"].pop(RECORD_ID, None)
-
-            B.apply_settings(overrides)
+            # The signature and the stamp ride on this record and are not on
+            # this form, so they are carried across — without this, saving the
+            # text would delete them (and a Director's save would be a way
+            # round the Owner-only rule).
+            _save_record({**overrides, **_marks_of(load_saved())})
             return redirect(url_for("settings.edit_settings",
                                     msg="Company details saved.", type="success"))
         values = data
@@ -1104,7 +1304,7 @@ def edit_settings():
           <div class="set-count">{filled} of {total} filled in</div>
         </div>
       </div>
-
+{_marks_section() if is_owner else ""}
       <form method="POST" action="{url_for("settings.edit_settings")}">
 
         <div class="form-section">
@@ -1324,4 +1524,4 @@ def edit_settings():
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · company settings</p></footer>
     </main></body></html>"""
-    return _page(template)
+    return _page(template), status

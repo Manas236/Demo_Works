@@ -831,6 +831,54 @@ def bank_block(note_html: str = "") -> str:
   </div>"""
 
 
+def _sig_art() -> str:
+    """
+    The authorised signature over the name line, with the company stamp
+    overlapping its left edge — the way a wet stamp sits on a signed sheet
+    (26 October 2026). `""` when neither is set at `/settings`, which is what
+    keeps `sig_block()` byte-identical for every document until one is.
+
+    Both images are read from `branding`, which only ever holds a value
+    `branding.image_src()` accepted — a base64 PNG and nothing else.
+
+    ⚠ **The styling is on the elements**, `branding.letterhead_top()`'s way:
+      this panel prints on sheets that load different stacks — the quotation
+      loads `VIEW_DOC_STYLES` directly and is frozen — and a rule added to any
+      shared sheet would move every print golden for documents with no mark.
+      Sizes are the paper's: a ~40 mm signature, a 28 mm stamp.
+
+    ⚠ **The signed panel is no taller than the unsigned one, and that is a
+      page-count decision** (`letterhead_top()`'s 130 mm is the same kind).
+      A 40 mm signature stands ~20 mm, the gap it replaces is 15 mm, and the
+      panel cannot split across pages (`break-inside:avoid`) — so the first
+      cut, +7 mm, pushed the golden quotation's whole panel onto a second
+      page, measured in a headless print. The art band is 19 mm and
+      `sig_block()` takes the difference back out of the panel's own 6 mm top
+      margin; net height is unchanged and every pinned document prints on the
+      pages it printed on before.
+
+    ⚠ **The stamp is multiplied, not laid over.** The client's stamp PNG is
+      transparent outside the ring only; its disc is opaque white. Drawn
+      plainly that disc would blank out the signature where the two overlap.
+      `mix-blend-mode:multiply` lets white vanish and ink darken ink — what a
+      rubber stamp actually does to the paper. The CANCELLED watermark
+      (`.lc-mark`, `z-index:2`) still prints above both.
+    """
+    sign, stamp = B.SIGNATURE_IMAGE, B.STAMP_IMAGE
+    if not (sign or stamp):
+        return ""
+    sign_img = (f'\n        <img class="sig-sign" src="{P.esc(sign)}" '
+                f'alt="Authorised signature" style="display:block;width:40mm;'
+                f'height:19mm;object-fit:contain;"/>') if sign else ""
+    # Centred on the band's height, its right edge ~8 mm into the signature.
+    stamp_img = (f'\n        <img class="sig-stamp" src="{P.esc(stamp)}" '
+                 f'alt="Company stamp" style="position:absolute;left:-20mm;'
+                 f'top:-4.5mm;width:28mm;height:28mm;object-fit:contain;'
+                 f'mix-blend-mode:multiply;"/>') if stamp else ""
+    return (f'\n      <div class="sig-art" style="position:relative;width:40mm;'
+            f'height:19mm;">{sign_img}{stamp_img}\n      </div>')
+
+
 def sig_block(branch: str = "", signatory: str = "",
               computer_generated: bool = False,
               left_html: str = None) -> str:
@@ -847,6 +895,14 @@ def sig_block(branch: str = "", signatory: str = "",
     person signing is the consignee rather than us. Every other document wants
     the statutory pair, so it **defaults to `None` and emits the bytes it
     always did**; the goldens prove that.
+
+    The preloaded signature and stamp (`_sig_art()`, 26 October 2026) go in
+    the right-hand panel only — **our** side. On the challan the receiver's
+    box on the left stays blank for the consignee's own hand. With neither
+    mark set this emits exactly the bytes it always did; with one set, the
+    art takes the 15 mm gap the name line kept for a wet signature (plus 4 mm
+    of the panel's top margin), so the name closes up to sit under it and the
+    panel stays the height it was.
     """
     # `branch` and `signatory` arrive escaped from the caller (the docstring
     # above says so, and every caller does it), so only the fallbacks are
@@ -860,10 +916,17 @@ def sig_block(branch: str = "", signatory: str = "",
       <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
       <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
     </div>"""
-    return f"""  <div class="sig-block">
+    art = _sig_art()
+    # `.sig-name`'s 15 mm top margin IS the wet-signature gap; with the art in
+    # it the name closes up beneath, and the panel gives 4 mm of its 6 mm top
+    # margin to the 19 mm band — net height unchanged (`_sig_art()`). Absent
+    # art, neither attribute — the old bytes.
+    block_style = ' style="margin-top:2mm;"' if art else ""
+    name_style = ' style="margin-top:0;"' if art else ""
+    return f"""  <div class="sig-block"{block_style}>
     {left}
     <div class="sig-right">
-      <div class="sig-for">For {comp}</div>
-      <div class="sig-name">{who}</div>
+      <div class="sig-for">For {comp}</div>{art}
+      <div class="sig-name"{name_style}>{who}</div>
     </div>
   </div>{note}"""

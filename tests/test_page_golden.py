@@ -433,8 +433,21 @@ PAGES = {
     #   line's Work Order Series section and Default Terms box are here (+1,343,
     #   +483) and so is the laptop line's tagline default (−4). Was
     #       ("ba78271ef9858935", 82056, {..., "main": "eb2f1c0f23b401d0"})
-    ("settings",        "/settings/"):                 ("6fb1e35f5488db36", 82052,
-        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "56df0925a4c75aa4"}),
+    # ⚠ **RE-BASELINED 26 October 2026 — `main` ONLY, +2,959 bytes**, for the
+    #   Owner-only *Signature & Stamp* section (CLIENT_CHANGES.md §0, the
+    #   fifty-third block, change 1). This page is rendered for an OWNER, who
+    #   is shown the control; a Director is not, and sees the old bytes.
+    #
+    #   Measured before the baseline was touched: with the new section cut out
+    #   of the rendered page it is 82,052 bytes and `main` hashes to
+    #   `56df0925a4c75aa4` — the digest below — exactly. `head` / `shell` /
+    #   `chrome` did not move; the section is styled on its elements so
+    #   `SETTINGS_STYLES` is untouched. The values it replaces:
+    #       ("6fb1e35f5488db36", 82052,
+    #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
+    #         "chrome": "d107029c10eb2dec", "main": "56df0925a4c75aa4"})
+    ("settings",        "/settings/"):                 ("e8ac29906e5c9ec0", 85011,
+        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209", "chrome": "d107029c10eb2dec", "main": "1d689a32192b71b7"}),
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

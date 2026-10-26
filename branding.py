@@ -25,6 +25,7 @@ company name, a hex colour or an image path — import from here instead.
 
 import base64
 import html
+import re
 from pathlib import Path
 
 # =============================================================================
@@ -99,18 +100,59 @@ SETTINGS_KEYS = (
 DEFAULTS = {k: globals()[k] for k in SETTINGS_KEYS}
 
 
+# ── The two marks a signed sheet carries (26 October 2026) ─────────────────
+# The authorised signature and the round company stamp, uploaded by an Owner
+# at `/settings` and printed in `docsheet.sig_block()`. Both are PNG data URIs
+# on the same `STORE["settings"]["company"]` record as the fields above —
+# `settings._encode_mark()` writes them — and both default to "", which is
+# what keeps every printed signature block byte-identical until one is set.
+#
+# ⚠ **Deliberately NOT in `SETTINGS_KEYS`.** Those are typed text fields: the
+#   form draws a box for each, `_completeness()` counts them and a blank one
+#   prints an amber chip. A picture is none of those things, and a missing
+#   signature is the ordinary state rather than a gap to flag.
+SIGNATURE_IMAGE = ""
+STAMP_IMAGE = ""
+IMAGE_KEYS = ("SIGNATURE_IMAGE", "STAMP_IMAGE")
+
+# A ceiling on what a stored mark may make every printed page carry — each
+# copy of a three-copy tax invoice embeds both. `settings.py` refuses an upload
+# past it and `image_src()` refuses a record past it, so one constant governs
+# both halves.
+IMAGE_MAX_STORED = 512 * 1024
+_IMAGE_RE = re.compile(r"^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$")
+
+
+def image_src(value) -> str:
+    """
+    A stored mark as an `<img src>`, or "" — never anything else.
+
+    The only reader, `photo.src_of()`'s rule: a value is returned only when it
+    is exactly the shape `settings._encode_mark()` writes, so a settings row
+    edited directly in MySQL cannot put anything but a base64 PNG onto a
+    printed document.
+    """
+    if (isinstance(value, str) and len(value) <= IMAGE_MAX_STORED
+            and _IMAGE_RE.match(value)):
+        return value
+    return ""
+
+
 def apply_settings(saved: dict) -> None:
     """
     Push saved settings onto this module. Idempotent; safe to call repeatedly.
 
     A key that is missing or blank falls back to its DEFAULTS entry, which is
     what makes "clear the field and save" restore the default instead of
-    leaving a permanent blank.
+    leaving a permanent blank. The two marks have no default: a missing or
+    malformed one is "", and nothing prints.
     """
     saved = saved or {}
     for key in SETTINGS_KEYS:
         value = str(saved.get(key, "") or "").strip()
         globals()[key] = value or DEFAULTS[key]
+    for key in IMAGE_KEYS:
+        globals()[key] = image_src(saved.get(key))
 
 
 def current_settings() -> dict:
