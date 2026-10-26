@@ -5189,6 +5189,45 @@ one automatic.
 >    upload's own writer, by POSTing the cleaned images to `/settings/` as an
 >    Owner — not by a write to the row.
 >
+> #### Change 2 — a "Make" column on the purchase order and the draft PO
+>
+> **What was asked for:** Make — the brand of an item, "SANT" on a butterfly
+> valve — as a free-text, optional field per line on the purchase order and the
+> draft PO, on their create and edit forms, printed as a column immediately
+> right of "Description of goods", narrow; snapshotted like every other line
+> field; carried by every path that builds PO lines; prefilled only from a make
+> field the BOQ line or the spec variant already has; an old order with no make
+> printing an empty cell, the column never hidden.
+>
+> **What was built:** `make` on `line_items`, `extra_lines` and the draft PO's
+> `items`, absent when blank; a Make box on `/purchase/create`,
+> `/purchase/edit/<id>`, `/purchase/from-boq` (the shared picker's new
+> `with_make`), `/purchase/from-draft` (opened at the draft line's own), the
+> draft PO's create picker and its edit form; **Make** in the column picker of
+> both Excel imports that build PO lines (purchase parts, draft PO); the column
+> in `docsheet.BUY_COLUMNS` and `po_draft.PO_COLUMNS`, 18 mm, its width riding
+> inside the items block.
+>
+> **Prefill: none, because there is nothing to prefill from.** No BOQ line and
+> no spec variant has a make field. The BOQ importer keeps a sheet's Make column
+> inside the line's free-text remark ("Make: Jindal"); a remark is not a field,
+> so it is not read — ABOUT.md §7 gap 81 records it as a decision to take.
+>
+> **ONE declared re-baseline, three goldens:** the purchase order's `items`
+> (+262 bytes) and the draft PO's `items` (+262 bytes) — **only the table
+> blocks**; each recovers its old whole-page digest exactly when the column is
+> stripped back out. ⚠ **And `/po/create`'s picker form** (`tools`, `rows`,
+> `js`, +828 characters) — not a printed document, but pinned in the same file:
+> the draft PO's create form IS the picker, so "Make on the create form" moves
+> it, and it too recovers its old blocks exactly with the column removed. No
+> `head` block moved anywhere.
+>
+> **Five existing tests AMENDED**, each with its old assertion kept verbatim:
+> the buy sheet's width (9 → 10 columns, `test_po_discount.py`,
+> `test_boq_to_po.py`), the header-row and label colspans with a picture
+> (`test_line_pictures.py`, two tests), and the extra-part head
+> (`test_po_upstream_repeaters.py`).
+>
 > **The gate is not lifted.** It is still the default and it still stands.
 > Overrides are not a precedent and do not make a subsequent one automatic; an
 > override remains a decision that is taken and recorded, never one an agent may

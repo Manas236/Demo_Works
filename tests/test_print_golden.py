@@ -702,7 +702,15 @@ TI_BLOCKS = {"head":       "cc95826af94b9984",   # was b5312294e91a796f,
 # was 787bf73b6440206f / 107215 before the 14 Sep 2026 nav removal
 # was 32a83f94e0620545 / 97918 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-PO_WHOLE, PO_LEN = "766ed2f54d4455f1", 98978
+# was 766ed2f54d4455f1 / 98978 before 26 Oct 2026 — the MAKE COLUMN
+#     (CLIENT_CHANGES.md §0 fifty-third block, change 2), declared.
+#     ⚠ **`items` ALONE moved, +262 bytes.** MEASURED, not assumed: remove the
+#     one `<style>` carrying `docsheet.MAKE_CSS`, the one `<th class="c-make">`
+#     and the golden's two empty `<td class="c-make"></td>` cells, and put the
+#     summary labels' colspan back from 5 to 4, and the page hashes to
+#     766ed2f54d4455f1 / 98978 again, whole. `head` did not move: the column's
+#     width rides inside the items block, not in `PURCHASE_STYLES`.
+PO_WHOLE, PO_LEN = "bb87f899701ea744", 99240
 PO_BLOCKS = {"head":       "bf2fc2b883a29ca6",   # was b0183c538998f277,
                                                  # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,
@@ -715,7 +723,8 @@ PO_BLOCKS = {"head":       "bf2fc2b883a29ca6",   # was b0183c538998f277,
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "ffe286e7afd8c90b",
              "party":      "307d35714073c084",
-             "items":      "5e17a6d93410823c",   # was fd759d99cf4b162a
+             "items":      "d6563a7e3202057d",   # was 5e17a6d93410823c (Make),
+                                                 # was fd759d99cf4b162a
              "signature":  "5717ca48143d8b6e"}
 
 GOLD_PI = "gold-pi"
@@ -1113,8 +1122,19 @@ GOLD_PICK_BOQ = "gold-pick"
 #     before the `set-intro` marker. MEASURED, not assumed: the page with that
 #     one string removed hashes to ad38de27596e55cc / 81832 again, whole and
 #     block for block. The picker, its rows and its script did not move.
-PICK_WHOLE = "88b7f41c4c06dce6"
-PICK_LEN = 81928
+# was 88b7f41c4c06dce6 / 81928 before 26 Oct 2026 — the draft PO's create
+#     form gained the MAKE column (CLIENT_CHANGES.md §0 fifty-third block,
+#     change 2: "Make … on the create and edit forms"), declared.
+#     ⚠ **`tools`, `rows` and `js` moved, +828 characters, and they are
+#     exactly the column**: the `<th class="pk-make">` in the grid's head row
+#     (which falls in `tools`), one `<td class="pk-make">` box per line, the
+#     `make:` field in `saveJSON()`, and every specification header's colspan
+#     one wider. MEASURED: with those removed, the three blocks hash to
+#     76ba5972ff18f235 / a57b4602a006fa6f / f1bae1908e487e97 again. `head`
+#     did not move — the box is styled on the element, so `PICKER_CSS` (spliced
+#     into `PO_STYLES`) is untouched.
+PICK_WHOLE = "4c531e683060cc1f"
+PICK_LEN = 82756
 PICK_BLOCKS = {"head":    "2fc16fd060a023cf",   # was b07f3fb758299248,
                                                 # was af77ecc07bfca6ff,
                                                 # was 8bf28275fa127606,
@@ -1124,10 +1144,10 @@ PICK_BLOCKS = {"head":    "2fc16fd060a023cf",   # was b07f3fb758299248,
                "vendor":  "715e7c6cd4634448",
                "details": "53b096aa21f5264c",
                "lines":   "10ed04f5fad93d1e",
-               "tools":   "76ba5972ff18f235",
-               "rows":    "a57b4602a006fa6f",
+               "tools":   "bbf296057d6fb154",   # was 76ba5972ff18f235 (Make)
+               "rows":    "9987f464a6ef64cd",   # was a57b4602a006fa6f (Make)
                "payload": "0b433e5e3f3e5705",
-               "js":      "f1bae1908e487e97"}
+               "js":      "8bbde42b5e5f5415"}   # was f1bae1908e487e97 (Make)
 
 
 def test_the_boq_line_picker_is_unchanged(client, golden_picker):
@@ -1770,13 +1790,20 @@ BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
 
 # was 05e26ae227bb678e / 83807 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-DPO_WHOLE, DPO_LEN = "6d1c275ab3b648fd", 84867
+# was 6d1c275ab3b648fd / 84867 before 26 Oct 2026 — the MAKE COLUMN
+#     (CLIENT_CHANGES.md §0 fifty-third block, change 2), declared.
+#     ⚠ **`items` ALONE moved, +262 bytes.** MEASURED: remove the one `<style>`
+#     carrying `docsheet.MAKE_CSS`, the `<th class="c-make">`, the two
+#     `<td class="c-make"></td>` cells, and put the specification header's
+#     colspan back from 7 to 6, and the page hashes to 6d1c275ab3b648fd / 84867
+#     again, whole.
+DPO_WHOLE, DPO_LEN = "2e548fe24d08ee18", 85129
 DPO_BLOCKS = {"head":       "9c5d3f7bb956b98a",
               "letterhead": "cb317962a23773f0",   # was 2800166c693cc2f1
               "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
               "doc-box":    "9370df26fb1e5084",
               "party":      "9d89e73813bb61f7",
-              "items":      "bb3a316d1cd1b2cc",
+              "items":      "c4bb425068b2815e",   # was bb3a316d1cd1b2cc (Make)
               "signature":  "66c13b84cc80040d"}
 
 # The merged sheet writes its party block straight into the page frame with no

@@ -386,9 +386,17 @@ def test_the_po_prints_the_column_for_an_item_and_an_extra_part(client):
     assert items.count('<img src="data:image/jpeg;base64,') == 1
     # The header row and the item row each carry an empty Image cell, the
     # description span of the header is unchanged, every summary label is 5.
+    #
+    # ⚠ AMENDED 26 October 2026 (CLIENT_CHANGES.md §0 fifty-third block,
+    #   change 2): the Make column joined the buy sheet immediately right of
+    #   the description, inside both runs — so the header row spans one more
+    #   cell and every summary label is 6 with the Image column. The assertion
+    #   is otherwise the same. It was, verbatim:
+    #       assert 'colspan="7" class="c-desc"' in items
+    #       assert 'colspan="4"' not in items and 'colspan="5"' in items
     assert items.count('<td class="c-img"></td>') == 2
-    assert 'colspan="7" class="c-desc"' in items
-    assert 'colspan="4"' not in items and 'colspan="5"' in items
+    assert 'colspan="8" class="c-desc"' in items
+    assert 'colspan="5"' not in items and 'colspan="6"' in items
 
 
 def test_the_draft_po_prints_the_column_on_view_and_on_print(client):
@@ -400,7 +408,10 @@ def test_the_draft_po_prints_the_column_on_view_and_on_print(client):
         items = _items_block(html)
         assert '<th class="c-img">Image</th>' in items
         assert items.count('<img src="data:image/jpeg;base64,') == 1
-        assert 'colspan="6" class="c-desc"' in items
+        # ⚠ AMENDED 26 October 2026 (§0 fifty-third block, change 2): the
+        #   draft PO's Make column is inside the header row's span. Was:
+        #       assert 'colspan="6" class="c-desc"' in items
+        assert 'colspan="7" class="c-desc"' in items
         assert LI.SHEET_CSS in html
 
 

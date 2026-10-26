@@ -370,7 +370,12 @@ def test_every_form_offers_an_hsn_box_on_the_extra_row(shop, client):
                  f"/purchase/from-draft/{did}"):
         html = client.get(path).get_data(as_text=True)
         assert 'name="extra_hsn"' in html, f"{path}: no HSN box on the extra row"
-        assert "<span>Part</span><span>HSN</span>" in html, f"{path}: no HSN column head"
+        # ⚠ AMENDED 26 October 2026 (CLIENT_CHANGES.md §0 fifty-third block,
+        #   change 2): the Make box sits between the part and its HSN, where
+        #   the printed order puts the column. Was, verbatim:
+        #       assert "<span>Part</span><span>HSN</span>" in html, ...
+        assert "<span>Part</span><span>Make</span><span>HSN</span>" in html, (
+            f"{path}: no HSN column head")
 
 
 def test_an_hsn_typed_on_an_extra_part_is_stored_and_printed(shop, client):

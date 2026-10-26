@@ -230,13 +230,21 @@ def test_every_row_of_the_printed_table_is_nine_cells_wide(client):
     Order Value out from under the Amount column and prints a document that
     looks fine until somebody reads the wrong number off it. So every row is
     counted, including the ones `docsheet` builds.
+
+    ⚠ **AMENDED 26 October 2026** (CLIENT_CHANGES.md §0 fifty-third block,
+    change 2): the Make column made the buy sheet TEN cells wide. The name is
+    kept so the history reads; the guarantee — every row exactly as wide as
+    the head — is unchanged. The two assertions were, verbatim:
+
+        assert table.count("<th ") == 9 == len(DS.BUY_COLUMNS)
+        assert width == 9, f"a row is {width} cells wide, not 9: {body[:120]}"
     """
     assert _raise_po(client, rate="1000", qty="10", disc="10").status_code == 302
     po = _only_po()
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
 
     table = html.split('<div class="items-wrap">', 1)[1].split("</table>", 1)[0]
-    assert table.count("<th ") == 9 == len(DS.BUY_COLUMNS)
+    assert table.count("<th ") == 10 == len(DS.BUY_COLUMNS)
 
     for row in table.split("<tr")[1:]:
         body = row.split("</tr>", 1)[0]
@@ -248,7 +256,7 @@ def test_every_row_of_the_printed_table_is_nine_cells_wide(client):
                 span = int(head.split('colspan="', 1)[1].split('"', 1)[0])
             width += span
         if width:                      # the <thead> row has no <td> at all
-            assert width == 9, f"a row is {width} cells wide, not 9: {body[:120]}"
+            assert width == 10, f"a row is {width} cells wide, not 10: {body[:120]}"
 
 
 # ── What must NOT have happened ────────────────────────────────────────────

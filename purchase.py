@@ -437,6 +437,9 @@ def _parse_lines(form) -> tuple:
     qtys  = form.getlist("line_qty")
     rates = form.getlist("line_rate")
     discs = form.getlist("line_discount")
+    # Make (26 Oct 2026) — free text, optional, indexed like the discount: a
+    # short list is a POST from a form that predates the box, and reads blank.
+    makes = form.getlist("line_make")
 
     items = []
     for idx, (pid, qty_raw, rate_raw) in enumerate(zip(ids, qtys, rates)):
@@ -464,6 +467,7 @@ def _parse_lines(form) -> tuple:
             discs[idx] if idx < len(discs) else "", p["name"])
         if disc_err:
             return [], disc_err
+        make = str(makes[idx] if idx < len(makes) else "").strip()[:BP.MAKE_MAX]
 
         items.append({
             "type":    "item",
@@ -476,6 +480,9 @@ def _parse_lines(form) -> tuple:
             "discount_pct": disc,
             "total":   _line_total(rate, qty, disc),
             "depth":   0,
+            # Snapshotted with the line; absent when blank — `LI.carry()`'s
+            # rule, so a line nobody gave a make carries no empty key.
+            **({"make": make} if make else {}),
         })
 
     return items, ""
@@ -799,7 +806,11 @@ def _parse_extra_lines(form) -> tuple:
     # it was set on. Not part of `rows`: a row that is only a picture id is a
     # blank row, and a picture is never what makes a row exist.
     images = form.getlist("extra_image")
-    rows = max(len(descs), len(units), len(qtys), len(rates), len(discs), len(hsns))
+    # The part's make — the vendor's brand, "SANT" (26 October 2026). Free
+    # text and optional, exactly as the HSN box is.
+    makes  = form.getlist("extra_make")
+    rows = max(len(descs), len(units), len(qtys), len(rates), len(discs), len(hsns),
+               len(makes))
 
     def _at(seq, n):
         return str(seq[n] if n < len(seq) else "").strip()
@@ -811,9 +822,10 @@ def _parse_extra_lines(form) -> tuple:
         # Free text, as an item row's `hsn` is — the catalogue never validated
         # one against a tariff either. Blank is allowed and prints the chip.
         hsn  = _at(hsns, n)[:8]
+        make = _at(makes, n)[:BP.MAKE_MAX]
         qty_raw, rate_raw, disc_raw = _at(qtys, n), _at(rates, n), _at(discs, n)
 
-        if not (desc or unit or qty_raw or rate_raw or disc_raw or hsn):
+        if not (desc or unit or qty_raw or rate_raw or disc_raw or hsn or make):
             continue
 
         if not desc:
@@ -894,6 +906,8 @@ def _parse_extra_lines(form) -> tuple:
             # ⚠ NO `line_id`. Deliberate, load-bearing, and asserted by a test.
             #   An extra line has no BOQ ancestor and must never claim one.
             **pic,
+            # Absent when blank, as the picture is.
+            **({"make": make} if make else {}),
         })
     return out, ""
 
@@ -1016,7 +1030,7 @@ DEFAULT_EXTRA_ROWS = 3
 
 
 def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="",
-                    image="") -> str:
+                    image="", make="") -> str:
     """
     One row of the extra-line repeater. Also the `<template>` a new row clones.
 
@@ -1051,6 +1065,11 @@ def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="",
       position, so a row without the box would shift every picture below it
       onto the wrong part. A hidden input draws no grid cell. The picture
       itself is set on the order's Pictures page, never typed here.
+
+    `extra_make` (26 October 2026) sits immediately after the part, where the
+    printed order puts its Make column. Its grid track is `MAKE_FORM_STYLES`',
+    loaded by the form pages only — `PURCHASE_STYLES` is hashed by the PO
+    golden's `head`.
     """
     # Looked up on the description alone, whether or not the box carries a
     # value: ghost text is invisible behind a value, and the moment the box is
@@ -1063,6 +1082,8 @@ def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="",
           <input type="text" name="extra_desc" value="{P.esc(desc)}"
                  list="xl-parts" maxlength="200" placeholder="part, as you would say it to the vendor"
                  oninput="xlFill(this)"/>
+          <input type="text" name="extra_make" value="{P.esc(make)}"
+                 maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="text" name="extra_hsn" value="{P.esc(hsn)}"
                  maxlength="8" placeholder="HSN" inputmode="numeric"/>
           <input type="text" name="extra_unit" value="{P.esc(unit)}"
@@ -1112,8 +1133,9 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
         discs = posted.getlist("extra_discount")
         hsns  = posted.getlist("extra_hsn")
         imgs  = posted.getlist("extra_image")
+        makes = posted.getlist("extra_make")
         n_rows = max(len(descs), len(units), len(qtys), len(rates), len(discs),
-                     len(hsns))
+                     len(hsns), len(makes))
         for n in range(n_rows):
             rows_data.append((
                 descs[n] if n < len(descs) else "",
@@ -1123,6 +1145,7 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
                 discs[n] if n < len(discs) else "",
                 hsns[n]  if n < len(hsns)  else "",
                 imgs[n]  if n < len(imgs)  else "",
+                makes[n] if n < len(makes) else "",
             ))
     else:
         for r in extra_lines or []:
@@ -1142,9 +1165,11 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
                 str(r.get("hsn") or ""),
                 # The picture rides through a reprice on its own row.
                 LI.image_of(r),
+                # Absent on every extra line written before 26 Oct 2026.
+                str(r.get("make") or ""),
             ))
     while len(rows_data) < DEFAULT_EXTRA_ROWS:
-        rows_data.append(("", "", "", "", "", "", ""))
+        rows_data.append(("", "", "", "", "", "", "", ""))
 
     rows = "".join(_extra_row_html(*r) for r in rows_data)
     options = "".join(f'<option value="{P.esc(n)}"></option>'
@@ -1153,7 +1178,7 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
         <div class="form-section">
           <div class="section-title">Extra parts &mdash; not on the schedule</div>
           <div class="xl-head">
-            <span>Part</span><span>HSN</span><span>Unit</span><span>Qty</span>
+            <span>Part</span><span>Make</span><span>HSN</span><span>Unit</span><span>Qty</span>
             <span>Rate (&#8377;)</span><span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
@@ -1176,8 +1201,9 @@ def _extra_section_html(extra_lines: list, posted=None) -> str:
             have not seen, a blank rate asks the vendor to price it.
             <b>HSN</b> is optional here and is not
             checked against any tariff &mdash; leave it blank and the printed
-            order marks it as still to add. Leave a whole row blank and it is
-            not used.</small>
+            order marks it as still to add. <b>Make</b> is the brand you want
+            &mdash; optional, printed in its own column beside the part. Leave
+            a whole row blank and it is not used.</small>
         </div>"""
 
 
@@ -1498,6 +1524,10 @@ def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
             "price":     rate,
             "total":     round(rate * qty, 2),
             "depth":     0,
+            # The make typed in the picker (26 Oct 2026). A BOQ line has no
+            # make of its own to prefill from, so it opens blank; absent when
+            # left blank.
+            **({"make": row["make"]} if row.get("make") else {}),
         })
 
     if not any(not r["is_header"] for r in items):
@@ -1894,6 +1924,48 @@ FROM_BOQ_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
 
 
 # =============================================================================
+# CSS — the Make column on the FORMS (26 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0, the fifty-third block, change 2. Every form that writes
+# a purchase-order line gains a **Make** box immediately after the part — where
+# the printed order puts the column — so each repeating grid gains one track.
+#
+# ⚠ **A separate constant, loaded AFTER the sheets it overrides, on the form
+#   pages only** — `FROM_BOQ_STYLES`' reasoning exactly: `PURCHASE_STYLES` is
+#   loaded by `/purchase/view` and the pinned `/purchase/` register, so a track
+#   added there would move a printed document's `head` for a box no printed
+#   document draws. The printed column's own width is `docsheet.MAKE_CSS`,
+#   inside the items block.
+#
+# On a phone the Make box is hidden with the HSN, unit and discount boxes the
+# narrow layout already drops — the same rule, one box more.
+MAKE_FORM_STYLES = """
+<style>
+  .line-row, .line-head {
+    grid-template-columns:1fr 120px 90px 130px 80px 120px 34px;
+  }
+  .xl-head, .xl-row {
+    grid-template-columns:1fr 110px 100px 80px 80px 110px 70px 110px 34px;
+  }
+  .dl-head, .dl-row { grid-template-columns:74px 1fr 110px 70px 96px 112px; }
+  .dl-row input[name="dl_make"] { text-align:left; }
+  @media (max-width:640px){
+    .line-row, .line-head { grid-template-columns:1fr 70px 110px; }
+    .line-head span:nth-child(4) { display:block; }
+    .line-head span:nth-child(2), .line-head span:nth-child(5),
+    .line-head span:nth-child(6), .line-head span:nth-child(7),
+    .line-row input[name="line_make"],
+    .xl-row input[name="extra_make"],
+    .dl-head span:nth-child(3), .dl-row input[name="dl_make"] { display:none; }
+    .xl-row { grid-template-columns:1fr 70px 90px; }
+    .dl-head, .dl-row { grid-template-columns:60px 1fr 90px 100px; }
+  }
+</style>
+"""
+
+
+# =============================================================================
 # RENDERING — why these views do not call render_template_string()
 # =============================================================================
 #
@@ -2261,18 +2333,22 @@ def create_purchase(imported: dict = None):
     prior_qtys  = f.getlist("line_qty")        if request.method == "POST" else []
     prior_rates = f.getlist("line_rate")       if request.method == "POST" else []
     prior_discs = f.getlist("line_discount")   if request.method == "POST" else []
+    prior_makes = f.getlist("line_make")       if request.method == "POST" else []
     # `zip` on four lists would silently drop every row if the discount list
     # came in short, so it is indexed separately and a missing one reads blank.
-    rows_data = [(i, q, r, prior_discs[n] if n < len(prior_discs) else "")
+    # The make (26 Oct 2026) the same way.
+    rows_data = [(i, q, r, prior_discs[n] if n < len(prior_discs) else "",
+                  prior_makes[n] if n < len(prior_makes) else "")
                  for n, (i, q, r) in enumerate(zip(prior_ids, prior_qtys, prior_rates))]
     while len(rows_data) < DEFAULT_LINE_ROWS:
-        rows_data.append(("", "", "", ""))
+        rows_data.append(("", "", "", "", ""))
 
     lines_html = ""
-    for sel, qty, rate, disc in rows_data:
+    for sel, qty, rate, disc, make in rows_data:
         lines_html += f"""
         <div class="line-row">
           <select name="line_product_id" onchange="fillRate(this)">{_product_options(sel)}</select>
+          <input type="text" name="line_make" value="{P.esc(make)}" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="number" name="line_qty" value="{P.esc(qty)}" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" value="{P.esc(rate)}" min="0" step="0.01" placeholder="Rate"/>
           <input type="number" name="line_discount" value="{P.esc(disc)}" min="0" max="100" step="any" placeholder="0"/>
@@ -2322,7 +2398,7 @@ def create_purchase(imported: dict = None):
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("New Purchase Order")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -2394,7 +2470,7 @@ def create_purchase(imported: dict = None):
           <div class="section-title">Items ordered</div>
           {items_note}
           <div class="line-head">
-            <span>Item</span><span>Qty</span><span>Rate (&#8377;)</span>
+            <span>Item</span><span>Make</span><span>Qty</span><span>Rate (&#8377;)</span>
             <span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
@@ -2479,6 +2555,7 @@ def create_purchase(imported: dict = None):
       <template id="line-tpl">
         <div class="line-row">
           <select name="line_product_id" onchange="fillRate(this)">{_product_options()}</select>
+          <input type="text" name="line_make" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="number" name="line_qty" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" min="0" step="0.01" placeholder="Rate"/>
           <input type="number" name="line_discount" min="0" max="100" step="any" placeholder="0"/>
@@ -2658,7 +2735,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
     return _page(f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{FROM_BOQ_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{FROM_BOQ_STYLES}{MAKE_FORM_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -2931,7 +3008,7 @@ def from_boq(boq_id: str):
     f = request.form
     data = _form_values(f, is_post)
     error = ""
-    chosen = qty_of = rate_of = None
+    chosen = qty_of = rate_of = make_of = None
 
     if is_post:
         vendor_fields, error = _vendor_from(f)
@@ -2942,7 +3019,7 @@ def from_boq(boq_id: str):
 
         picked, line_err = ([], "") if error else BP.picked_lines(
             f.get("po_json") or "", boq, with_pcs=False, with_rate=True,
-            max_lines=BQ.MAX_LINES,
+            with_make=True, max_lines=BQ.MAX_LINES,
             empty_msg=("No lines are ticked. A purchase order with nothing on "
                        "it is not a document — tick at least one line, or cancel."),
             cap_msg="Raise more than one order.")
@@ -2971,7 +3048,7 @@ def from_boq(boq_id: str):
                                     type="success"))
 
         # Hand the operator back exactly what they ticked and typed.
-        chosen, qty_of, rate_of = _replay_picked(f.get("po_json") or "")
+        chosen, qty_of, rate_of, make_of = _replay_picked(f.get("po_json") or "")
 
     extra_section, charge_section = _upstream_repeaters(f, is_post)
 
@@ -3004,7 +3081,9 @@ def from_boq(boq_id: str):
         with_rate=True,
         rate_of=rate_of,
         rate_label="Rate (&#8377;)",
-        rate_aria="Rate")
+        rate_aria="Rate",
+        with_make=True,
+        make_of=make_of)
 
     back_html = (f'<a href="{url_for("boq.view_boq", id=boq_id)}" '
                  f'class="btn btn-ghost">&#8592; {boq_ref}</a>')
@@ -3042,11 +3121,12 @@ def _upstream_repeaters(f, is_post: bool) -> tuple:
 
 def _replay_picked(raw: str) -> tuple:
     """
-    `(chosen, qty_of, rate_of)` off a rejected POST, so nothing typed is lost.
+    `(chosen, qty_of, rate_of, make_of)` off a rejected POST, so nothing typed
+    is lost.
 
-    `po_draft.create_po()`'s arrangement, with the rate column added. A form
-    that throws the operator's ticks away on a validation failure is worse than
-    no validation on a 97-line schedule.
+    `po_draft.create_po()`'s arrangement, with the rate column added — and the
+    make (26 October 2026). A form that throws the operator's ticks away on a
+    validation failure is worse than no validation on a 97-line schedule.
     """
     import json
     try:
@@ -3056,7 +3136,9 @@ def _replay_picked(raw: str) -> tuple:
     rows = [r for r in rows if isinstance(r, dict)]
     return ({BQ._line_id(r.get("line_id")) for r in rows},
             {BQ._line_id(r.get("line_id")): r.get("qty") for r in rows},
-            {BQ._line_id(r.get("line_id")): r.get("rate") for r in rows})
+            {BQ._line_id(r.get("line_id")): r.get("rate") for r in rows},
+            {BQ._line_id(r.get("line_id")): str(r.get("make") or "")[:BP.MAKE_MAX]
+             for r in rows})
 
 
 @purchase_bp.route("/from-draft/<draft_id>", methods=["GET", "POST"])
@@ -3112,11 +3194,13 @@ def from_draft(draft_id: str):
                         delivery_to=draft.get("delivery_to") or "",
                         notes=draft.get("notes") or "")
     error = ""
-    posted_qty, posted_rate = {}, {}
+    posted_qty, posted_rate, posted_make = {}, {}, {}
 
     if is_post:
         posted_qty = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_qty")))
         posted_rate = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_rate")))
+        # The make (26 Oct 2026), opened at the draft line's own and editable.
+        posted_make = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_make")))
 
         vendor_fields, error = _vendor_from(f)
         if not data["date"]:
@@ -3147,6 +3231,8 @@ def from_draft(draft_id: str):
                 rate = BQ._num(posted_rate.get(lid), None)
                 if rate is None or rate < 0:
                     rate = _draft_rate_of(row, base_of)
+                make = str(posted_make[lid] if lid in posted_make
+                           else row.get("make") or "").strip()[:BP.MAKE_MAX]
                 src = _boq_lines_by_id(boq).get(lid) or {}
                 items.append({
                     "type": "item", "is_header": False, "line_id": lid,
@@ -3162,6 +3248,8 @@ def from_draft(draft_id: str):
                     # order placed on them shows the same one. No key at all
                     # on a line without one.
                     **LI.carry(row),
+                    # The make, the same way (26 Oct 2026).
+                    **({"make": make} if make else {}),
                 })
             if not error and not any(not r["is_header"] for r in items):
                 error = "This draft PO has no lines to order."
@@ -3205,10 +3293,15 @@ def from_draft(draft_id: str):
         if rate_v is None:
             r = _draft_rate_of(row, base_of, blank_when_unknown=True)
             rate_v = "" if r is None else f"{float(r):.2f}"
+        make_v = posted_make.get(raw_lid)
+        if make_v is None:
+            make_v = str(row.get("make") or "")
         lines_html += f"""
         <div class="dl-row">
           <span class="dl-no">{P.esc(row.get("item_no") or "")}</span>
           <span class="dl-desc">{P.esc(" ".join(str(row.get("description") or "").split())[:180])}</span>
+          <input type="text" name="dl_make" value="{P.esc(make_v)}"
+                 maxlength="{BP.MAKE_MAX}" placeholder="Make" aria-label="Make"/>
           <span class="dl-unit">{P.esc(row.get("unit") or "")}</span>
           <input type="hidden" name="dl_line_id" value="{lid}"/>
           <input type="text" inputmode="decimal" name="dl_qty" value="{P.esc(qty_v)}"
@@ -3232,7 +3325,7 @@ def from_draft(draft_id: str):
           to be priced.
         </p>
         <div class="dl-head">
-          <span>Item</span><span>Description</span><span>Unit</span>
+          <span>Item</span><span>Description</span><span>Make</span><span>Unit</span>
           <span style="text-align:right;">Qty</span>
           <span style="text-align:right;">Rate (&#8377;)</span>
         </div>
@@ -3530,8 +3623,12 @@ def _reprice(po: dict, form) -> str:
     rows  = _priced_rows(po)
     rates = form.getlist("line_rate")
     discs = form.getlist("line_discount")
+    # Make (26 Oct 2026) — positional like the rates. A post carrying none at
+    # all is a tab opened before the box existed, and leaves every make as it
+    # is; a post carrying the wrong number is refused with the rates' sentence.
+    makes = form.getlist("line_make")
 
-    if len(rates) != len(rows):
+    if len(rates) != len(rows) or (makes and len(makes) != len(rows)):
         return ("That order has changed since this form was opened. "
                 "Reopen it and try again.")
 
@@ -3561,12 +3658,19 @@ def _reprice(po: dict, form) -> str:
         disc, err = _parse_discount(discs[n] if n < len(discs) else "", name)
         if err:
             return err
-        staged.append((row, rate, disc))
+        make = str(makes[n]).strip()[:BP.MAKE_MAX] if makes else None
+        staged.append((row, rate, disc, make))
 
-    for row, rate, disc in staged:
+    for row, rate, disc, make in staged:
         row["price"] = rate
         row["discount_pct"] = disc
         row["total"] = _line_total(rate, float(row.get("qty") or 0.0), disc)
+        if make is not None:
+            # Absent when blank — the line shape `_parse_lines()` writes.
+            if make:
+                row["make"] = make
+            else:
+                row.pop("make", None)
 
     # The same three figures the create form writes, from the same helper, using
     # the rates already stored on the order. The tax TYPE is not editable here:
@@ -3644,12 +3748,17 @@ def edit_purchase_rates(id: str):
         # moved" is not a question with an answer. What matters for the message
         # is only whether the list is the one that went in.
         extra_was = extra_lines_of(po)
+        make_was = [str(r.get("make") or "") for _i, r in _priced_rows(po)]
         error = _reprice(po, request.form)
         if not error:
             after = float(po.get("grand_total") or 0.0)
             note  = (request.form.get("note") or "").strip()
             moved = _record_reprice(po, was, note)
             extra_moved = extra_lines_of(po) != extra_was
+            # A make is not a rate, so it never enters `reprice_log`; a save
+            # that changed only makes still goes on the order's own trail.
+            makes_moved = sum(1 for a, (_i, r) in zip(make_was, _priced_rows(po))
+                              if a != str(r.get("make") or ""))
             # The order's own trail gets one line; the per-line detail lives in
             # `reprice_log` and prints under the document. Two records of one
             # event, and neither restates the other.
@@ -3661,6 +3770,12 @@ def edit_purchase_rates(id: str):
                 msg = f"Rates updated on {n} line{'' if n == 1 else 's'}."
                 if extra_moved:
                     msg += " Extra parts updated."
+                if makes_moved:
+                    msg += " Make updated."
+            elif makes_moved and not extra_moved:
+                k = makes_moved
+                _log(po, note or f"Make updated on {k} line{'' if k == 1 else 's'}.")
+                msg = f"Make updated on {k} line{'' if k == 1 else 's'}."
             elif extra_moved:
                 # `reprice_log` records rate movements on ITEM lines and is
                 # rendered as such, so an extra-line edit does not fake an entry
@@ -3670,6 +3785,8 @@ def edit_purchase_rates(id: str):
                                   f"&#8377;{before:,.0f} "
                                   f"&#8594; &#8377;{after:,.0f}."))
                 msg = "Extra parts updated."
+                if makes_moved:
+                    msg += " Make updated."
             else:
                 msg = "Nothing changed, so nothing was recorded."
             return redirect(url_for("purchase.view_purchase", id=id,
@@ -3677,13 +3794,15 @@ def edit_purchase_rates(id: str):
 
     # ── The rows ──────────────────────────────────────────────────────────
     #
-    # Six cells, which is exactly what `.line-row` already lays out for the
-    # create form: item, qty, rate, discount, amount, spacer. Reusing that grid
+    # Seven cells, which is exactly what `.line-row` lays out for the create
+    # form: item, make, qty, rate, discount, amount, spacer. Reusing that grid
     # rather than declaring a new one is not tidiness — `PURCHASE_STYLES` is
     # loaded by `/purchase/view`, whose bytes are pinned, so a rule added for
-    # this page would move a printed document that did not change.
+    # this page would move a printed document that did not change. The Make
+    # track (26 Oct 2026) is `MAKE_FORM_STYLES`', for that reason.
     posted_rates = request.form.getlist("line_rate")    if request.method == "POST" else []
     posted_discs = request.form.getlist("line_discount") if request.method == "POST" else []
+    posted_makes = request.form.getlist("line_make")     if request.method == "POST" else []
 
     # The same widget the create form draws, so the two cannot describe one
     # field two ways. A rejected POST comes back with what was typed.
@@ -3702,6 +3821,7 @@ def edit_purchase_rates(id: str):
         rate = posted_rates[n] if n < len(posted_rates) else f"{float(row.get('price') or 0.0):.2f}"
         disc = posted_discs[n] if n < len(posted_discs) else (
             f"{float(row.get('discount_pct') or 0.0):g}" if row.get("discount_pct") else "")
+        make = posted_makes[n] if n < len(posted_makes) else str(row.get("make") or "")
         # `data-qty` is what `recalc()` multiplies by: the quantity is not
         # editable here, so it is not in an input, and the visible "10 Nos" is
         # a label rather than a number. The Amount cell opens on the stored
@@ -3711,6 +3831,8 @@ def edit_purchase_rates(id: str):
         <div class="line-row" data-qty="{float(row.get('qty') or 0.0):g}">
           <span>{P.esc(row.get('name'))}
             <span class="bn-sub">{P.esc(row.get('part_no'))}</span></span>
+          <input type="text" name="line_make" value="{P.esc(make)}"
+                 maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <span>{_fmt_qty(float(row.get('qty') or 0.0))} {P.esc(row.get('unit'))}</span>
           <input type="number" name="line_rate" value="{P.esc(rate)}"
                  min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
@@ -3746,7 +3868,7 @@ def edit_purchase_rates(id: str):
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Reprice " + str(po.get('ref')))}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -3758,9 +3880,10 @@ def edit_purchase_rates(id: str):
 
       <div class="buy-note">
         {sent_note}
-        <div class="bn-sub">Rates and discounts on the <b>items</b> &mdash;
-          their quantities, the lines themselves and the vendor are not editable
-          here, and the tax stays as raised ({P.esc(tax_note)}).
+        <div class="bn-sub">Rates, discounts and the <b>make</b> on the
+          <b>items</b> &mdash; their quantities, the lines themselves and the
+          vendor are not editable here, and the tax stays as raised
+          ({P.esc(tax_note)}).
           <b>Every change is recorded</b> &mdash; who, when, and the old rate
           against the new one on each item line that moves &mdash; and it prints
           under the order.
@@ -3775,7 +3898,7 @@ def edit_purchase_rates(id: str):
         <div class="form-section">
           <div class="section-title">What we pay</div>
           <div class="line-head">
-            <span>Item</span><span>Qty</span><span>Rate (&#8377;)</span>
+            <span>Item</span><span>Make</span><span>Qty</span><span>Rate (&#8377;)</span>
             <span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
@@ -3962,7 +4085,9 @@ def view_purchase(id: str):
     #   keeps the pinned golden's `items` block still. `img_td` is the empty
     #   string then, and the newline that would precede it lives inside it.
     pics = LI.sheet_has_images(list(po.get("line_items") or []) + extra_lines_of(po))
-    span = 5 if pics else 4
+    # The summary label spans S.No / Part No / (Image) / Description / Make /
+    # HSN. Make (26 October 2026) is inside that run — `DS.BUY_COLUMNS`.
+    span = 6 if pics else 5
     sno, total_qty, table_rows = 0, 0.0, ""
     for row in po.get("line_items", []):
         # A specification header, carried down from a BOQ line's parent clause
@@ -3979,7 +4104,7 @@ def view_purchase(id: str):
         <tr class="row-assembly">
           <td class="c-sno"></td>
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
-          <td colspan="7" class="c-desc">{P.esc(row.get('name'))}</td>
+          <td colspan="8" class="c-desc">{P.esc(row.get('name'))}</td>
         </tr>"""
             continue
         sno += 1
@@ -3996,6 +4121,7 @@ def view_purchase(id: str):
           <td class="c-sno">{sno}</td>
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td class="c-desc">{P.esc(row.get('name'))}</td>
+          <td class="c-make">{P.esc(row.get('make'))}</td>
           <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
@@ -4059,6 +4185,7 @@ def view_purchase(id: str):
           <td class="c-sno">{sno}</td>
           <td class="c-partno"></td>{img_td}
           <td class="c-desc">{P.esc(row.get('description'))}</td>
+          <td class="c-make">{P.esc(row.get('make'))}</td>
           <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
           <td class="c-qty">{_fmt_qty(qty)}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
@@ -4398,7 +4525,8 @@ def view_purchase(id: str):
 
     {status_strip}
 
-{DS.items_table(LI.with_column(DS.BUY_COLUMNS) if pics else DS.BUY_COLUMNS, table_rows)}
+{DS.items_table(LI.with_column(DS.BUY_COLUMNS) if pics else DS.BUY_COLUMNS, table_rows,
+                css=DS.MAKE_CSS)}
 
 {DS.amount_words("Order Value (in words)", grand)}
   </div>

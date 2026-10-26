@@ -13,7 +13,7 @@ Routes
   GET,POST  /po/create?boq=   — pick the lines, pick the vendor, raise the draft
   GET       /po/view/<id>     — the document, with the action bar
   GET       /po/print/<id>    — the document alone, ready for Ctrl+P
-  GET,POST  /po/edit/<id>     — vendor, date and notes only
+  GET,POST  /po/edit/<id>     — vendor, date, notes, and each line's make
   GET,POST  /po/pictures/<id> — a picture beside each line (21 Oct 2026)
   GET,POST  /po/delete/<id>   — GET confirms, POST deletes
 
@@ -266,7 +266,7 @@ def picked_lines(raw: str, boq: dict) -> tuple:
     it is typed on the form and blank is normal.
     """
     return BP.picked_lines(
-        raw, boq, with_pcs=True, max_lines=MAX_PO_LINES,
+        raw, boq, with_pcs=True, with_make=True, max_lines=MAX_PO_LINES,
         empty_msg=("No lines are ticked. A purchase order with nothing on it "
                    "is not a document — tick at least one line, or cancel."),
         cap_msg="Raise more than one order.")
@@ -438,7 +438,42 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             chosen=data.get("_chosen"),
             qty_of=data.get("_qty"),
             with_pcs=True,
-            pcs_of=data.get("_pcs"))
+            pcs_of=data.get("_pcs"),
+            with_make=True,
+            make_of=data.get("_make"))
+
+    # Make, per line, on EDIT (26 October 2026). The lines stay a snapshot —
+    # nothing else on them is editable here — but the brand a supplier is asked
+    # to price is the one detail that is commonly settled after the draft is
+    # raised. Keyed by the row's index in `items`, so a header in between can
+    # never shift a make onto the wrong line.
+    makes_html = ""
+    if editing:
+        typed = data.get("_makes") or {}
+        cells = ""
+        for n, row in enumerate(po.get("items") or []):
+            if row.get("is_header"):
+                continue
+            val = typed.get(n, row.get("make") or "")
+            desc = " ".join(str(row.get("description") or "").split())[:90]
+            cells += f"""
+        <div class="form-group">
+          <label for="item_make_{n}">{P.esc(row.get("item_no") or "")} &middot; {P.esc(desc)}</label>
+          <input type="text" id="item_make_{n}" name="item_make_{n}"
+                 value="{P.esc(val)}" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
+        </div>"""
+        if cells:
+            makes_html = f"""
+    <div class="form-section">
+      <div class="section-title">Make, per line</div>
+      <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+        The brand you want on each line &mdash; it prints in its own column
+        beside the description. Leave a box blank for no make. The lines
+        themselves are not editable here.
+      </p>
+      <div class="fg2">{cells}
+      </div>
+    </div>"""
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -498,7 +533,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
       </div>
     </div>
 
-    {picker}
+    {picker}{makes_html}
 
     <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.4rem;">
       <button type="submit" class="btn">{"Save changes" if editing else "Raise draft PO"}</button>
@@ -519,8 +554,11 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 # two agree, so the draft PO and the buy-side PO read as the same document.
 # Two differences, and both are the client's ask: a **Pcs** column beside Qty,
 # and a **Rate** column that is present but empty — the supplier writes in it.
+# **Make** (26 October 2026) sits immediately right of the description, as on
+# the purchase order — `docsheet.MAKE_CSS` keeps it narrow.
 PO_COLUMNS = (("c-sno", "S.No"), ("c-partno", "Item No"),
-              ("c-desc", "Description of Material"), ("c-qty", "Qty"),
+              ("c-desc", "Description of Material"), ("c-make", "Make"),
+              ("c-qty", "Qty"),
               ("c-pcs", "Pcs"), ("c-unit", "Unit"),
               ("c-rate-blank", "Rate"), ("c-total", "Amount"))
 
@@ -553,7 +591,7 @@ def _document_html(po: dict) -> str:
         <tr class="row-assembly">
           <td class="c-sno"></td>
           <td class="c-partno">{P.esc(row.get("item_no", ""))}</td>{img_td}
-          <td colspan="6" class="c-desc">{P.esc(row.get("description", ""))}</td>
+          <td colspan="7" class="c-desc">{P.esc(row.get("description", ""))}</td>
         </tr>"""
             continue
         sno += 1
@@ -563,6 +601,7 @@ def _document_html(po: dict) -> str:
           <td class="c-sno">{sno}</td>
           <td class="c-partno">{P.esc(row.get("item_no", ""))}</td>{img_td}
           <td class="c-desc">{P.esc(row.get("description", ""))}</td>
+          <td class="c-make">{P.esc(row.get("make"))}</td>
           <td class="c-qty">{BQ._fmt_qty(row.get("qty") or 0)}</td>
           <td class="c-pcs">{P.esc(row.get("pcs", ""))}</td>
           <td class="c-unit">{P.esc(row.get("unit", ""))}</td>
@@ -601,7 +640,8 @@ def _document_html(po: dict) -> str:
                 DS.secondary_block("Deliver To", po.get("delivery_to")),
                 meta_col_1, meta_col_2)}
 
-{DS.items_table(LI.with_column(PO_COLUMNS) if pics else PO_COLUMNS, rows)}
+{DS.items_table(LI.with_column(PO_COLUMNS) if pics else PO_COLUMNS, rows,
+                css=DS.MAKE_CSS)}
   </div>
 
   <div class="po-ask">
@@ -728,7 +768,8 @@ def create_po(imported: dict = None):
             return _entry_form(boq, {"date": _date.today().isoformat(),
                                      "_chosen": set(imported.get("chosen") or ()),
                                      "_qty": dict(imported.get("qty") or {}),
-                                     "_pcs": dict(imported.get("pcs") or {})},
+                                     "_pcs": dict(imported.get("pcs") or {}),
+                                     "_make": dict(imported.get("make") or {})},
                                banner_html=imported.get("banner_html") or "")
         return _entry_form(boq, {"date": _date.today().isoformat()})
 
@@ -749,6 +790,9 @@ def create_po(imported: dict = None):
         # save until the picker learned to prefill it.
         data["_pcs"] = {BQ._line_id(r.get("line_id")): str(r.get("pcs") or "")[:16]
                         for r in posted if isinstance(r, dict)}
+        # And the typed Make (26 Oct 2026), for the same reason.
+        data["_make"] = {BQ._line_id(r.get("line_id")): str(r.get("make") or "")[:BP.MAKE_MAX]
+                         for r in posted if isinstance(r, dict)}
         return _entry_form(boq, data, error)
 
     # Carry the typed Pcs across. It is not on the BOQ and never will be.
@@ -897,12 +941,15 @@ def print_po(id: str):
 @po_draft_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_po(id: str):
     """
-    Vendor, date, delivery address and notes. **Not the lines.**
+    Vendor, date, delivery address and notes — and each line's **make**
+    (26 October 2026). **Not the lines.**
 
     An issued draft PO is a document a supplier is pricing, and moving the lines
     under it is how a dispute starts — `purchase.update_purchase()` makes the
     same call about an issued order's commercial content. Ordering different
     lines means raising another draft PO, which is cheap and leaves a trail.
+    The make is the one per-line detail that is open here: it names the brand
+    the supplier is asked to price, and it changes no line, quantity or ref.
     """
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
@@ -925,13 +972,27 @@ def edit_po(id: str):
         }, po=po)
 
     data, error = _validate(request.form, boq)
+    # Only a box the form drew is read, by the row's own index; a POST from a
+    # tab opened before the boxes existed leaves every make as it is.
+    makes = {}
+    for n, row in enumerate(po.get("items") or []):
+        key = f"item_make_{n}"
+        if not row.get("is_header") and key in request.form:
+            makes[n] = (request.form.get(key) or "").strip()[:BP.MAKE_MAX]
     if error:
+        data["_makes"] = makes
         return _entry_form(boq, data, error, po=po)
 
     po["date"] = data["date"]
     po["notes"] = data["notes"]
     po["delivery_to"] = data["delivery_to"]
     po.update(data["vendor"])
+    for n, make in makes.items():
+        # Absent when blank — the line shape `picked_lines()` writes.
+        if make:
+            po["items"][n]["make"] = make
+        else:
+            po["items"][n].pop("make", None)
     # `ref` is deliberately untouched. An edit never reissues the number.
     return redirect(url_for("po_draft.view_po", id=id,
                             msg="Draft purchase order updated.", type="success"))

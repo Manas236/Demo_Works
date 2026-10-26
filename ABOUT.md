@@ -1028,6 +1028,14 @@ is `docsheet.letterhead()`'s `show_web` precedent:
   carries a rate box per line prefilled from `supply_base_rate`. The draft PO
   must never carry one — its whole point is that the supplier fills the rates
   in — and the challan carries no money at all.
+- **`with_make`** (26 October 2026, CLIENT_CHANGES.md §0 fifty-third block,
+  change 2) — the draft PO's and the real PO's: a free-text **Make** box per
+  line right after the description, posted as `make` and kept on the line only
+  when non-blank (`MAKE_MAX` = 60, the one cap every Make path uses). It opens
+  blank: no BOQ line has a make to prefill from (§7 gap 81). Styled **on the
+  element**, so `PICKER_CSS` did not move; the challan does not ask for it.
+  `/po/create`'s picker golden moved by exactly the column — declared in
+  `tests/test_print_golden.py`.
 
 ⚠ **`.pk-rate`'s CSS is deliberately NOT in `PICKER_CSS`.** That constant is
 spliced into `po_draft.PO_STYLES` at a fixed character position and
@@ -1038,7 +1046,7 @@ beside the only two pages that draw the column, and
 `PURCHASE_STYLES`.
 
 **The header row's colspan is computed, not written down.** `4 + with_pcs +
-with_rate`, for the reason `boq.py` derives its spans from `n_supply_cols`: a
+with_rate + with_make`, for the reason `boq.py` derives its spans from `n_supply_cols`: a
 flag that leaves a row one cell short is exactly the class of breakage nothing
 notices until somebody is holding the paper.
 
@@ -2542,6 +2550,18 @@ record to freeze a copy of, because the decision to buy is ours.
     after the tax.
 - **A picture per line** (21 Oct 2026): `image` on a `line_items` row (never a
   header) or an `extra_lines` row — §3 *Line pictures*.
+- **A make per line** (26 Oct 2026, CLIENT_CHANGES.md §0 fifty-third block,
+  change 2): `make` on a `line_items` row (never a header) or an `extra_lines`
+  row — the brand, free text, at most `boqpick.MAKE_MAX` (60) characters, and
+  **absent when blank** (`LI.carry()`'s rule: no empty key on a line nobody
+  gave one). Snapshotted with the line and printed from it; nothing re-reads it
+  from anywhere. Written by every path that writes a line — `/purchase/create`
+  (`line_make` / `extra_make`), `/purchase/edit/<id>`, `/purchase/from-boq`
+  (the picker's `make`), `/purchase/from-draft` (`dl_make`, opened at the
+  draft line's own) and Import from Excel — and **never prefilled**: no BOQ
+  line and no spec variant has a make field (§7 gap 81). The **draft PO**'s
+  `items` rows carry the same key, under the same rules. Absent on every line
+  written before 26 Oct 2026, which prints an empty cell.
 - **Reprice trail (A1, 28 Aug 2026):** `reprice_log[]`, each entry
   `{at, by, status, note, lines[]}` where a line is
   `{name, part_no, rate_from, rate_to, disc_from, disc_to}`. **Only lines that
@@ -6998,6 +7018,28 @@ What a PO says that no sell-side document does:
   prices firm; no amendment on the invoice alone.
   ⚠ Generic buyer's terms, **not checked against Samruddhi's actual purchasing
   policy** — same caveat as the other three documents.
+- **A Make column, immediately right of "Description of Goods"** (26 October
+  2026, CLIENT_CHANGES.md §0 fifty-third block, change 2) — the brand of the
+  line, "SANT" on a butterfly valve. It is in `docsheet.BUY_COLUMNS`, so the
+  sheet is **ten** columns: the summary labels span 5 (6 with the Image
+  column) and a specification header 8. It is narrow — `docsheet.MAKE_CSS`,
+  18 mm — so Description absorbs the width, and that rule is passed to
+  `DS.items_table(css=…)` to ride **inside the items block**, not in
+  `PURCHASE_STYLES`: the golden's `head` did not move. A line with no make
+  prints an empty cell; the column is never hidden. The draft PO carries the
+  same column in the same place.
+
+  **On the forms**, every PO form gains a Make box right after the part — the
+  create form's item and extra-part rows, the reprice form's item rows
+  (applied positionally like the rates; a tab opened before the box existed
+  posts none and leaves every make as it is; a make-only save goes on the
+  order's trail, never into `reprice_log`, which records rates), the from-BOQ
+  picker (`boqpick` `with_make`) and the from-draft rows (`dl_make`, opened at
+  the draft line's make). The extra track in each repeating grid is
+  `MAKE_FORM_STYLES`, loaded by the form pages only, for the same golden
+  reason. **Import from Excel** offers **Make** in the column picker of both
+  the purchase-parts import and the draft-PO import (an optional target, so
+  the legend of required columns is unchanged).
 
 #### Numbering
 
@@ -10149,6 +10191,14 @@ is a document a supplier is pricing, and moving the lines under it is how a
 dispute starts — `purchase.update_purchase()` makes the same call about an
 issued order's commercial content. Ordering different lines means raising
 another draft PO, which is cheap and leaves a trail.
+
+⚠ **Except each line's Make** (26 October 2026, §0 fifty-third block, change
+2): a *Make, per line* section, one box per non-header line, keyed by the
+row's index in `items` (`item_make_<n>`) so a header in between cannot shift a
+make onto the wrong line. It names the brand the supplier is asked to price
+and changes no line, quantity or reference. A blank box removes the key. A
+real PO converted from the draft earlier keeps the make it was raised with —
+the snapshot rule.
 
 ---
 
@@ -14299,6 +14349,20 @@ text is unchanged, and every reference to them was moved with them.*
     to say the grid did not move.
 
     ⚠ *Recorded as gap 67 on `prod/delete-narrowing-21oct` (`c89c173`), live on prod from 21 Oct 2026; renumbered at the merge of 24 Oct 2026, where origin's own gap 67 held the number.*
+
+81. 🟡 **A purchase order's Make is never prefilled from the BOQ, though an
+    imported BOQ often KNOWS it — OPEN, by instruction** (26 October 2026,
+    CLIENT_CHANGES.md §0 fifty-third block, change 2). The brief said: prefill
+    from a make/brand **field** on the BOQ line or the spec variant if one
+    exists, otherwise leave it blank, and add no field to either. Neither has
+    one (`tests/test_po_make.py` asserts that, so it fails the day one
+    appears). But the BOQ importer keeps a sheet's Make column **inside the
+    line's `remark`** as `"Make: Jindal"` (`boqimport._with_make()`), and the
+    BOQ editor already parses it back out for display (`boq.py`'s
+    `(?:^|;)\s*Make:` regex). A remark is free text, not a field, so the
+    picker does **not** read it and every Make box opens blank — tested. Reading
+    it would be one function over the remark, with the risk that a hand-typed
+    remark containing "Make:" is taken as one; that is a decision, not a fix.
 
 ## 8. Stale docs — do not trust these two files
 

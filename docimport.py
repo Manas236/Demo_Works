@@ -91,6 +91,7 @@ import address as AD
 import auth
 import boq as BQ
 import boqimport as BI
+import boqpick as BP   # MAKE_MAX — the one cap on a line's make (26 Oct 2026)
 import branding as B
 import challan as DC
 import employee as EMP
@@ -244,6 +245,24 @@ def _t(cells: dict, key: str, reader=SI.cell_text):
     return reader(v, k)
 
 
+# A sheet's Make column (26 October 2026) — the headings the BOQ importer
+# already reads as a make (`sheetimport._MAKE`), as a search rather than a
+# whole-cell match. A guess, as every `kw` is; the picker can change it.
+_MAKE_KW = r"\bmakes?\b|\bbrand\b|manufactur|\bmfr\b"
+
+
+def _make_of(cells: dict, n, notes: list) -> str:
+    """A row's Make, as text, cut to what a line keeps (`BP.MAKE_MAX`)."""
+    make, why = _t(cells, "make")
+    if why:
+        notes.append(_note(n, f"Make: {why} — left blank."))
+        return ""
+    if len(make) > BP.MAKE_MAX:
+        notes.append(_note(n, f"The make runs past the {BP.MAKE_MAX} characters a "
+                              f"line keeps; the order keeps the first {BP.MAKE_MAX}."))
+    return make[:BP.MAKE_MAX]
+
+
 # ── Purchase order — the extra-part repeater ─────────────────────────────────
 
 class PurchaseKind(Kind):
@@ -262,6 +281,9 @@ class PurchaseKind(Kind):
                             "is left out — the order would refuse it.",
                       kw=r"descr|particular|\bitems?\b|\bparts?\b|material|\bname\b|specification|product",
                       avoid=r"\bsr\b|s\.?\s?no|serial|\bcode\b|hsn|\bqty|quantit|\brate|price|amount|\bunits?\b|disc|\bno\.?$"),
+            # Make (26 October 2026) — the brand the vendor is asked to supply,
+            # printed beside the description. Optional, free text.
+            SI.target("make", "Make", kw=_MAKE_KW),
             SI.target("hsn", "HSN", kw=r"\bhsn\b|\bsac\b"),
             SI.target("unit", "Unit", kw=r"\bunits?\b|\buom\b|u\.o\.m",
                       avoid=r"rate|price|cost|amount"),
@@ -325,10 +347,11 @@ class PurchaseKind(Kind):
                 notes.append(_note(n, f"HSN “{hsn[:20]}” is longer than the 8 "
                                       f"characters the order keeps."))
             unit, _w = _t(c, "unit")
+            make = _make_of(c, n, notes)
             items.append({"row": n, "description": desc, "hsn": hsn[:8],
                           "unit": unit[:30],
                           "qty": BI.num_text(qty), "rate": BI.num_text(rate),
-                          "discount": BI.num_text(disc)})
+                          "discount": BI.num_text(disc), "make": make})
         return {"items": items, "notes": notes,
                 "stats": [(len(items), "part" if len(items) == 1 else "parts")]}
 
@@ -341,6 +364,7 @@ class PurchaseKind(Kind):
             md.add("extra_rate", it["rate"])
             md.add("extra_discount", it["discount"])
             md.add("extra_hsn", it["hsn"])
+            md.add("extra_make", it.get("make", ""))
         return PU.create_purchase(imported={
             "extra": md, "banner_html": _banner(self, rec, built)})
 
@@ -917,7 +941,9 @@ class DraftPOKind(BoqLineKind):
     qty_about = ("How much of the line the supplier is asked to price. A word or a "
                  "sum written as text is left out for you to type.")
     qty_prefer = r"order|required|req\.?"
-    extra_targets = (SI.target("pcs", "Pcs", kw=r"\bpcs\b|pieces|\bpc\b"),)
+    extra_targets = (SI.target("pcs", "Pcs", kw=r"\bpcs\b|pieces|\bpc\b"),
+                     # Make (26 October 2026) — prefills the picker's Make box.
+                     SI.target("make", "Make", kw=_MAKE_KW))
 
     def back_url(self, ctx):
         return url_for("po_draft.create_po", boq=ctx.get("boq_id")) if ctx.get("boq_id") \
@@ -925,7 +951,7 @@ class DraftPOKind(BoqLineKind):
 
     def _extra_values(self, c, n, notes):
         pcs, _w = _t(c, "pcs", SI.cell_code)
-        return {"pcs": pcs[:16]}
+        return {"pcs": pcs[:16], "make": _make_of(c, n, notes)}
 
     def apply(self, token, rec, built):
         return DPO.create_po(imported={
@@ -933,6 +959,7 @@ class DraftPOKind(BoqLineKind):
             "chosen": {it["lid"] for it in built["items"]},
             "qty": {it["lid"]: it["qty"] for it in built["items"]},
             "pcs": {it["lid"]: it["pcs"] for it in built["items"] if it.get("pcs")},
+            "make": {it["lid"]: it["make"] for it in built["items"] if it.get("make")},
             "banner_html": _banner(self, rec, built)})
 
 

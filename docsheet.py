@@ -699,29 +699,54 @@ SELL_COLUMNS = (("c-sno", "S.No"), ("c-partno", "Part No"),
 #   chain's three documents are pinned byte-for-byte in
 #   `tests/test_print_golden.py`, and a discount a vendor allowed *us* has no
 #   business appearing on a quotation we send a customer.
+#
+# **Make** (26 October 2026, CLIENT_CHANGES.md §0 fifty-third block, change 2)
+# is the brand of the line — "SANT" on a butterfly valve — and sits
+# IMMEDIATELY right of the description, narrow (`MAKE_CSS`), so Description
+# absorbs the width. It is inside the label run a summary row spans, which is
+# why the purchase order's `span` is 5 (6 with the Image column), not 4.
 BUY_COLUMNS = (("c-sno", "S.No"), ("c-partno", "Part No"),
-               ("c-desc", "Description of Goods"), ("c-hsn", "HSN/SAC"),
+               ("c-desc", "Description of Goods"), ("c-make", "Make"),
+               ("c-hsn", "HSN/SAC"),
                ("c-qty", "Qty"), ("c-unit", "Unit"),
                ("c-price", "Rate"), ("c-disc", "Disc %"),
                ("c-total", "Amount"))
 
+# The Make column's width, raw — `BANK_CSS`'s arrangement — and passed to
+# `items_table(css=…)` by the two documents that draw the column, so the rule
+# rides INSIDE the items block: the purchase order's and the draft PO's
+# stylesheets are hashed by their goldens' `head` blocks, and a column that
+# only those two tables carry has no business moving them.
+MAKE_CSS = """\
+        .quotation-doc .c-make { width:18mm; text-align:left;
+            font-size:var(--fs-xs); overflow-wrap:anywhere; }
+"""
+
 # The blank cells a summary row lays down between its label and its amount.
 # Named rather than inlined because a table with a ninth column needs one more
 # of them — and the label's `colspan` is **not** what changes. The label spans
-# S.No / Part No / Description / HSN on both sheets, which is four either way.
+# S.No / Part No / Description / HSN on both sheets, which is four either way
+# — ⚠ five on the buy sheet from 26 October 2026, whose Make column sits
+# inside that run (`span=`, not a blank).
 SUM_BLANKS   = ("c-qty", "c-unit", "c-price")
 TOTAL_BLANKS = ("c-unit", "c-price")
 
 
-def items_table(columns, rows_html: str) -> str:
+def items_table(columns, rows_html: str, css: str = "") -> str:
     """
     The items-table shell. `columns` is a sequence of `(css_class, label)`;
     the rows are built by the caller, because what a row *says* is the one
     thing about this table that is not chrome.
+
+    `css` (26 October 2026) is raw CSS for a column only this table carries —
+    `MAKE_CSS` — emitted as a `<style>` inside the wrapper, so it travels with
+    the table and not in the sheet's head. **Defaults to "" and then emits the
+    bytes this always emitted.**
     """
     heads = "\n".join(f'          <th class="{cls}">{label}</th>'
                       for cls, label in columns)
-    return f"""    <div class="items-wrap">
+    style = f"\n      <style>\n{css}      </style>" if css else ""
+    return f"""    <div class="items-wrap">{style}
       <table class="q-table">
         <thead><tr>
 {heads}

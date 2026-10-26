@@ -40,6 +40,13 @@ is hashed byte-for-byte, so a rule added here would move a golden for a column
 that page does not render. It lives in `purchase.FROM_BOQ_STYLES`, beside the
 only page that draws the column.
 
+`with_make` (26 October 2026, CLIENT_CHANGES.md §0 fifty-third block) is the
+draft PO's and the real PO's: a free-text **Make** box per line, immediately
+right of the description — where both printed orders put the column — and
+blank, because no BOQ line carries a make to prefill from. Its styling is on
+the element, so `PICKER_CSS` (spliced into the pinned `/po/create`'s head)
+does not move; the delivery challan does not ask for it and is unchanged.
+
 ⚠ **`ra.py`'s claim grid is deliberately NOT folded in here.** It carries the
 cumulative over-claim guard and two money columns, the guard is load-bearing,
 and it re-styles on every keystroke. It is a different animal with a wider
@@ -70,6 +77,16 @@ import json
 
 import boq as BQ
 import pipeline as P
+
+
+# The longest make a line keeps — "SANT", "Kirloskar Brothers". One figure for
+# every path that writes one: this grid, the purchase order's own forms and the
+# draft PO's, which all import this leaf.
+MAKE_MAX = 60
+
+# The Make box's look, on the element: `.pk-in input`'s rule, left-aligned.
+_MAKE_INPUT_STYLE = ("width:100%;padding:.28rem .4rem;border:1px solid var(--border);"
+                     "border-radius:6px;font:inherit;")
 
 
 # =============================================================================
@@ -180,7 +197,8 @@ def line_ids(boq: dict) -> list:
 def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
               with_pcs: bool = False, qty_aria: str = "Quantity",
               with_rate: bool = False, rate_of: dict = None,
-              rate_aria: str = "Rate", pcs_of: dict = None) -> str:
+              rate_aria: str = "Rate", pcs_of: dict = None,
+              with_make: bool = False, make_of: dict = None) -> str:
     """
     One row per BOQ line, every box ticked unless a rejected POST says otherwise.
 
@@ -222,13 +240,18 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
     Excel on a draft PO, whose sheet may carry a pieces column. None emits the
     blank box this function always emitted, so `/po/create` is byte-identical
     without it.
+
+    `with_make` (26 October 2026) adds the Make box after the description;
+    `make_of` prefills it — a rejected POST, or Import from Excel. No BOQ line
+    carries a make, so it otherwise opens blank.
     """
     fams = families(boq)
     child_of = {kid: h for h, kids in fams.items() for kid in kids}
     # The header row's colspan covers every column after Item. Computed rather
     # than written down, so a flag cannot silently leave a row one cell short —
     # `boq.py`'s rule about spans derived from `n_supply_cols` (ABOUT.md §5).
-    span = str(4 + (1 if with_pcs else 0) + (1 if with_rate else 0))
+    span = str(4 + (1 if with_pcs else 0) + (1 if with_rate else 0)
+               + (1 if with_make else 0))
     out = []
 
     for li in boq.get("line_items") or []:
@@ -284,13 +307,20 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
           <td class="pk-rate"><input type="text" inputmode="decimal" id="r_{lid}"
               value="{P.esc(rate_val)}" aria-label="{P.esc(rate_aria)}"/></td>""")
 
+        make_cell = ""
+        if with_make:
+            make_val = P.esc(str((make_of or {}).get(lid) or "")[:MAKE_MAX])
+            make_cell = (f"""
+          <td class="pk-make"><input type="text" id="m_{lid}" value="{make_val}"
+              maxlength="{MAKE_MAX}" aria-label="Make" style="{_MAKE_INPUT_STYLE}"/></td>""")
+
         out.append(f"""
         <tr class="pk-row{cls}" id="row_{lid}"{hide}>
           <td class="pk-tick"><input type="checkbox" id="c_{lid}"{ticked}
               onchange="tick('{lid}')" aria-label="Include this line"/></td>
           <td class="pk-no">{item}</td>
           <td class="pk-desc"><span class="pk-clamp" title="{P.esc(raw_desc)}">
-              {P.esc(" ".join(raw_desc.split()))}</span></td>
+              {P.esc(" ".join(raw_desc.split()))}</span></td>{make_cell}
           <td class="pk-unit">{P.esc(li.get("unit") or "")}</td>
           <td class="pk-avail">{avail_txt}</td>
           <td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
@@ -381,7 +411,7 @@ function saveJSON() {
     var lid = LINE_IDS[i], c = el('c_' + lid);
     if (!c || !c.checked) continue;
     lines.push({line_id: lid,
-                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD____RATE_FIELD__});
+                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD____RATE_FIELD____MAKE_FIELD__});
   }
   el('__PAYLOAD_ID__').value = JSON.stringify({lines: lines});
   return true;
@@ -397,14 +427,18 @@ _PCS_FIELD = """,
 _RATE_FIELD = """,
                 rate: (el('r_' + lid) || {}).value || ''"""
 
+_MAKE_FIELD = """,
+                make: (el('m_' + lid) || {}).value || ''"""
+
 
 def js(payload_id: str, doc_word: str, with_pcs: bool = False,
-       with_rate: bool = False) -> str:
+       with_rate: bool = False, with_make: bool = False) -> str:
     """The fold, the ticks and the payload builder, wired to one form."""
     return (_JS_TEMPLATE
             .replace("__DOC_WORD__", doc_word)
             .replace("__PCS_FIELD__", _PCS_FIELD if with_pcs else "")
             .replace("__RATE_FIELD__", _RATE_FIELD if with_rate else "")
+            .replace("__MAKE_FIELD__", _MAKE_FIELD if with_make else "")
             .replace("__PAYLOAD_ID__", payload_id))
 
 
@@ -414,7 +448,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               with_pcs: bool = False, avail_label: str = "In BOQ",
               with_rate: bool = False, rate_of: dict = None,
               rate_label: str = "Rate", rate_aria: str = "Rate",
-              pcs_of: dict = None) -> str:
+              pcs_of: dict = None, with_make: bool = False,
+              make_of: dict = None) -> str:
     """
     The whole grid as one form section — tools bar, table, refusal band, and
     the script that drives them.
@@ -428,6 +463,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
     pcs_head = ('\n              <th class="pk-pcs">Pcs</th>') if with_pcs else ""
     rate_head = (f'\n              <th class="pk-rate">{rate_label}</th>'
                  if with_rate else "")
+    make_head = ('\n              <th class="pk-make" style="width:120px;">Make</th>'
+                 if with_make else "")
     return f"""
       <div class="form-section">
         <div class="section-title">{title}</div>
@@ -445,13 +482,14 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
             <thead><tr>
               <th class="pk-tick"></th>
               <th class="pk-no">Item</th>
-              <th class="pk-desc">Description</th>
+              <th class="pk-desc">Description</th>{make_head}
               <th class="pk-unit">Unit</th>
               <th class="pk-avail">{avail_label}</th>
               <th class="pk-in">{qty_label}</th>{pcs_head}{rate_head}
             </tr></thead>
             <tbody>{rows_html(boq, chosen, qty_of, with_pcs, qty_aria,
-                              with_rate, rate_of, rate_aria, pcs_of)}</tbody>
+                              with_rate, rate_of, rate_aria, pcs_of,
+                              with_make, make_of)}</tbody>
           </table>
         </div>
         <div class="alert alert-error pk-none" id="pk-none">
@@ -462,7 +500,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
         var LINE_IDS = {BQ._json_for_script(line_ids(boq))};
         var FAMILIES = {BQ._json_for_script(families(boq))};
       </script>
-      {js(payload_id, doc_word, with_pcs, with_rate)}"""
+      {js(payload_id, doc_word, with_pcs, with_rate, with_make)}"""
 
 
 # =============================================================================
@@ -471,7 +509,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
 
 def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
                  max_lines: int = None, with_pcs: bool = False,
-                 with_rate: bool = False) -> tuple:
+                 with_rate: bool = False, with_make: bool = False) -> tuple:
     """
     Returns `(items, error)` — the BOQ lines that were **ticked**, snapshotted.
 
@@ -496,6 +534,10 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
     `supply_base_rate`, and a missing base rate falls back to `0.0` — exactly
     the quantity's rule one field over, and for its reason: the prefill is what
     the operator saw, so an empty box means "as offered", never "free".
+
+    `with_make` carries the Make box back as `make` on a non-header row,
+    trimmed to `MAKE_MAX` — and **absent when blank**, so a line nobody gave a
+    make carries no empty key. A specification header never has one.
     """
     if max_lines is None:
         max_lines = BQ.MAX_LINES
@@ -515,7 +557,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             by_lid[lid] = li
 
     # Which ids the operator actually ticked.
-    picked, qty_of, rate_of = [], {}, {}
+    picked, qty_of, rate_of, make_of = [], {}, {}, {}
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -525,6 +567,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
         picked.append(lid)
         qty_of[lid] = row.get("qty")
         rate_of[lid] = row.get("rate")
+        make_of[lid] = row.get("make")
 
     if not picked:
         return [], empty_msg
@@ -593,5 +636,9 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
                 base = li.get("supply_base_rate")
                 rate = 0.0 if base is None else float(base)
             row["rate"] = float(rate)
+        if with_make:
+            make = str(make_of.get(lid) or "").strip()[:MAKE_MAX]
+            if make:
+                row["make"] = make
         items.append(row)
     return items, ""
