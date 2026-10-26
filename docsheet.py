@@ -91,11 +91,80 @@ import pipeline as P
 # STYLES
 # =============================================================================
 
+# =============================================================================
+# THE PAGE EDGE — no browser header or footer on paper (26 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0, the fifty-third block, change 3. Chrome and Edge print
+# their own header and footer — the date and time, the page title, the URL and
+# "1/3" — in the page MARGIN. `@page { margin:0 }` leaves them nowhere to draw
+# it, so it is not printed, whatever the print dialog's "Headers and footers"
+# box says (measured in headless Chrome 155 and Edge 143 with it ON).
+#
+# The safe margin is then put back INSIDE the page, on every page:
+#
+# * left and right — padding on the body, which every page fragment carries;
+# * top and bottom — padding on the `.page-frame`'s `<thead>` and `<tfoot>`
+#   cells. That is the mechanism that already repeats the letterhead and the
+#   foot strip on every printed page (`display:table-header-group`), so the
+#   margin repeats with them — not a second repetition system beside it.
+# * a title band (`<caption>` — the challan, the merged RA, the measurement
+#   sheet) sits ABOVE the `<thead>` on page one, so it takes the 10 mm itself
+#   and pulls the frame up under it by the same 10 mm: the letterhead still
+#   follows the band directly, as it always did. ⚠ Selected as
+#   `caption.sheet-band`, one class MORE specific than `BAND_CSS`: that sheet
+#   is spliced in AFTER this one and its `padding` shorthand would otherwise
+#   zero the top — measured, the band printed 1 mm from the paper's edge.
+# * anything a page draws in `<main>` BEFORE the sheet — a screen panel on
+#   `/boq/view` or `/measurement/view` — does not print at all: it sat above
+#   the frame, so nothing put its margin back, and it is screen furniture.
+#   On every print route nothing visible precedes the sheet, so this hides
+#   nothing there (measured: their printed text is unchanged).
+#
+# ⚠ **Only `margin` is set.** Each sheet keeps the `size` and orientation it
+#   asks for — A4 portrait (`VIEW_DOC_STYLES`), A4 landscape (the BOQ,
+#   `LANDSCAPE_CSS`). A later `@page` rule of equal specificity wins per
+#   descriptor, so this must come AFTER every sheet that sets a margin: it ends
+#   `SHEET_STYLES`, `LANDSCAPE_CSS` asks for margin 0 itself, and the three
+#   sheets that stack by hand — the quotation, the proforma and the BOQ — load
+#   `PRINT_EDGE_STYLES` last.
+#
+# ⚠ **The browser's own "Page x of y" goes with the footer, and nothing here
+#   replaces it.** ABOUT.md §7 gap 82 says why CSS page numbers were not
+#   shipped.
+PRINT_EDGE_CSS = """\
+  /* ── The page edge ──────────────────────────────────────────────────────
+     No @page margin: nowhere for the browser's header and footer to print.
+     The 10 mm margin is inside the page instead, on every page. */
+  @media print {
+    @page { margin:0; }
+    html body { padding:0 10mm !important; }
+    .page-frame > thead > tr > td { padding-top:10mm; }
+    .page-frame > tfoot > tr > td { padding-bottom:10mm; }
+    .quotation-doc .page-frame > caption.sheet-band {
+      padding-top:10mm; margin-bottom:-10mm; }
+    /* A page that SHOWS a sheet among its screen panels (/boq/view's project
+       panel, /measurement/view's approval panel) printed them above it, and
+       with no @page margin they would print against the paper's edge. On
+       paper the sheet is the document: VIEW_DOC_STYLES' rule for the nav and
+       the deal panel, one step wider. */
+    main > :has(~ .doc-outer) { display:none !important; }
+  }
+"""
+
+PRINT_EDGE_STYLES = f"""
+<style>
+{PRINT_EDGE_CSS}</style>
+"""
+
 # The stack every printed sheet loads, in the order it has always been loaded
 # in. A module layers its own sheet *after* this one and introduces no new
 # font, type size or border weight — that restraint is why the documents look
 # related, and it is stated in ABOUT.md §5 for each of them in turn.
-SHEET_STYLES = f"{BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}"
+# `PRINT_EDGE_STYLES` ends it (26 October 2026) — after `VIEW_DOC_STYLES`,
+# whose `@page` margin it replaces.
+SHEET_STYLES = (f"{BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}"
+                f"{PRINT_EDGE_STYLES}")
 
 # Rules for the blocks this module introduces to a sheet that did not carry
 # them before. Scoped inside `.quotation-doc` exactly as `PROFORMA_STYLES` is,
@@ -200,9 +269,11 @@ DOCSHEET_STYLES = f"""
 LANDSCAPE_CSS = """\
   /* ── The landscape page ───────────────────────────────────────────────
      A later @page rule of equal specificity wins, so this replaces the
-     `size:A4 portrait` in VIEW_DOC_STYLES for the page that loads it. */
+     `size:A4 portrait` in VIEW_DOC_STYLES for the page that loads it.
+     Margin 0, as PRINT_EDGE_CSS asks (26 Oct 2026): this loads after it,
+     and the margin is inside the page. */
   @media print {
-    @page { size:A4 landscape; margin:9mm 8mm 8mm; }
+    @page { size:A4 landscape; margin:0; }
     .doc-outer.sheet-landscape { max-width:none; }
   }
   .doc-outer.sheet-landscape { max-width:297mm; }

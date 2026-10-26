@@ -499,6 +499,35 @@ def _check(html: str, expect_whole: str, expect_len: int, expect_blocks=None,
 #     `BASE_STYLES`, which carries the `nav {}` rules. They are dead on these
 #     pages now and are left where they are: `BASE_STYLES` is shared by every
 #     page in the application and is not this commit's to edit.
+#
+# ⚠ **RE-BASELINED 26 October 2026 — THE PAGE EDGE, `head` ALONE, on every
+#   printed document** (CLIENT_CHANGES.md §0 fifty-third block, change 3: no
+#   browser header or footer on paper). ONE declared re-baseline. Every sheet
+#   now loads `docsheet.PRINT_EDGE_STYLES` — `@page { margin:0 }` and the 10 mm
+#   margin put back inside the page — at the end of its stylesheet stack, and
+#   the joint measurement sheet's `LANDSCAPE_CSS` asks for margin 0 itself.
+#
+#     | document           | before  | after   | delta  | blocks moved |
+#     | tax invoice        | 198,879 | 199,832 |   +953 | head         |
+#     | proforma           |  96,225 |  97,178 |   +953 | head         |
+#     | purchase order     |  99,240 | 100,193 |   +953 | head         |
+#     | RA bill            | 180,106 | 181,059 |   +953 | head         |
+#     | delivery challan   | 168,272 | 169,225 |   +953 | head         |
+#     | joint measurement  |  96,055 |  97,112 | +1,057 | head         |
+#     | BOQ                | 104,850 | 105,803 |   +953 | head         |
+#     | draft PO           |  85,129 |  86,082 |   +953 | head         |
+#     | merged tax invoice | 176,811 | 177,764 |   +953 | head         |
+#     | discounted BOQ     | 105,723 | 106,676 |   +953 | head         |
+#     | as-is BOQ          | 108,755 | 109,708 |   +953 | head         |
+#     | /po/create picker  |  82,756 |  82,756 |      0 | none         |
+#
+#   953 bytes is exactly `PRINT_EDGE_STYLES`; the joint sheet's further 104
+#   are `LANDSCAPE_CSS`'s margin and its two-line comment. MEASURED, not
+#   assumed: with that stylesheet removed and the landscape margin put back,
+#   every page above is byte-identical to its capture from before the change
+#   (the work order's three goldens in tests/test_work_orders.py too). No
+#   letterhead, party, items, totals or signature block moved — and no page
+#   golden: the registers do not load the sheet.
 GOLD_TI = "gold-ti"
 # was ab555e45cd245fa5 / 110208 before the 27 Aug 2026 escaping pass
 # was f91031b44e1e7dc7 / 110216 before the 29 Aug 2026 nav re-baseline
@@ -581,9 +610,11 @@ GOLD_TI = "gold-ti"
 #     paper alike. The digests here are the 130 mm ones.
 #
 # was a571453b8b187735 / 195699 before the 21 Oct 2026 LETTERHEAD BANNER pass
-TI_WHOLE = "4a7c232bd358c5ef"
-TI_LEN = 198879
-TI_BLOCKS = {"head":       "cc95826af94b9984",   # was b5312294e91a796f,
+# was 4a7c232bd358c5ef / 198879 before the 26 Oct 2026 PAGE EDGE — see above
+TI_WHOLE = "1fbb4b006cfd12de"
+TI_LEN = 199832
+TI_BLOCKS = {"head":       "6715688604fc56b4",   # was cc95826af94b9984 (page edge),
+                                                  # was b5312294e91a796f,
                                                   # was 59522cc02d192043,
                                                   # was 13840b8797d6e721,
                                                   # was f76089afb5505200,
@@ -710,8 +741,10 @@ TI_BLOCKS = {"head":       "cc95826af94b9984",   # was b5312294e91a796f,
 #     summary labels' colspan back from 5 to 4, and the page hashes to
 #     766ed2f54d4455f1 / 98978 again, whole. `head` did not move: the column's
 #     width rides inside the items block, not in `PURCHASE_STYLES`.
-PO_WHOLE, PO_LEN = "bb87f899701ea744", 99240
-PO_BLOCKS = {"head":       "bf2fc2b883a29ca6",   # was b0183c538998f277,
+# was bb87f899701ea744 / 99240 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+PO_WHOLE, PO_LEN = "ae90e14f6bb98530", 100193
+PO_BLOCKS = {"head":       "d5dcf006e5a8f876",   # was bf2fc2b883a29ca6 (page edge),
+                                                 # was b0183c538998f277,
                                                  # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,
                                                  # was 823a24d818d5f0c3,
@@ -744,9 +777,11 @@ GOLD_PI = "gold-pi"
 #     refuses it and no button is drawn (the same lock that withholds Delete).
 # was dded298848fde613 / 95165 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-PI_WHOLE = "a7cbb6c59b153765"
-PI_LEN = 96225
-PI_BLOCKS = {"head":       "f947cd7d3d6700f5",   # was 8d0355644f96b13c,
+# was a7cbb6c59b153765 / 96225 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+PI_WHOLE = "bf009adade1b81ca"
+PI_LEN = 97178
+PI_BLOCKS = {"head":       "aa1c5df88915a319",   # was f947cd7d3d6700f5 (page edge),
+                                                  # was 8d0355644f96b13c,
                                                   # was fb2abee257b52d86,
                                                   # was 0250890a6d6e2f6b,
                                                   # was a3b342e73adf07fc
@@ -772,9 +807,11 @@ GOLD_RA = "gold-ra"
 #     labels before, in any commit on any branch.
 # was 6620a2d2d80ac71f / 176926 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-RA_WHOLE = "a89e24d6c07f36c8"
-RA_LEN = 180106
-RA_BLOCKS = {"head":       "04352cf9a114cef6",   # was 184a84d3609eaf57,
+# was a89e24d6c07f36c8 / 180106 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+RA_WHOLE = "6bc631a0e697752e"
+RA_LEN = 181059
+RA_BLOCKS = {"head":       "c42fcf29d70a3d97",   # was 04352cf9a114cef6 (page edge),
+                                                  # was 184a84d3609eaf57,
                                                   # was 837ea9b648848976,
                                                   # was 924f39af975d8d7b,
                                                   # was ea1ccbaa59c99616
@@ -1245,8 +1282,10 @@ def golden_dc(client, pinned_identity):
 #     `head`. The challan had no copy labels before, in any commit.
 # was 58555aff975adc5e / 165092 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-DC_WHOLE, DC_LEN = "a01edfe5b74a1c94", 168272
-DC_BLOCKS = {"head":       "70716c3255fe6d74",   # was f3f5e6b5c49c9e9f
+# was a01edfe5b74a1c94 / 168272 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+DC_WHOLE, DC_LEN = "220de3e9f51f5773", 169225
+DC_BLOCKS = {"head":       "094e1c25e5ac35b1",   # was 70716c3255fe6d74 (page edge),
+                                                 # was f3f5e6b5c49c9e9f
              "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "57c1a660915be1d9",
@@ -1451,8 +1490,11 @@ MS_SHEET_BLOCKS = [
 # grid 5c2e52f3cc69a105 (the other five as below).
 # was e230983bc8ec05ef / 94995 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-MS_WHOLE, MS_LEN = "5a316b5a51d1a0a1", 96055
-MS_BLOCKS = {"head":       "db302526da349396",   # was 66e13ccf7dbdaaa3
+# was 5a316b5a51d1a0a1 / 96055 before the 26 Oct 2026 PAGE EDGE — see above
+#     GOLD_TI; +1,057 here, the extra 104 being LANDSCAPE_CSS's margin 0
+MS_WHOLE, MS_LEN = "2e0d4e5be75d70fe", 97112
+MS_BLOCKS = {"head":       "6eca6ee86d24faf3",   # was db302526da349396 (page edge),
+                                                 # was 66e13ccf7dbdaaa3
              "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "57c1a660915be1d9",
@@ -1778,8 +1820,9 @@ BOQ_SHEET_BLOCKS = [
 #     CHANGES.md §0 fifty-first block). `signature` alone, −83 bytes: the left
 #     cell is now an empty `<div></div>`, kept so the signature stays right.
 #     No other block and no other document moved.
-BOQ_WHOLE, BOQ_LEN = "c6c0a018c2549970", 104850
-BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
+# was c6c0a018c2549970 / 104850 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+BOQ_WHOLE, BOQ_LEN = "a90eaad2a053214d", 105803
+BOQ_BLOCKS = {"head":       "9769db14ee792650",   # was c945d7ee01ba87eb (page edge)
               "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872
               "foot-strip": "0f66996df1483847",
               "doc-box":    "64fcaef781b20ed2",
@@ -1797,8 +1840,9 @@ BOQ_BLOCKS = {"head":       "c945d7ee01ba87eb",
 #     `<td class="c-make"></td>` cells, and put the specification header's
 #     colspan back from 7 to 6, and the page hashes to 6d1c275ab3b648fd / 84867
 #     again, whole.
-DPO_WHOLE, DPO_LEN = "2e548fe24d08ee18", 85129
-DPO_BLOCKS = {"head":       "9c5d3f7bb956b98a",
+# was 2e548fe24d08ee18 / 85129 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+DPO_WHOLE, DPO_LEN = "2de6d544c3fa7fa1", 86082
+DPO_BLOCKS = {"head":       "551ebbc23caf028e",   # was 9c5d3f7bb956b98a (page edge)
               "letterhead": "cb317962a23773f0",   # was 2800166c693cc2f1
               "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
               "doc-box":    "9370df26fb1e5084",
@@ -1845,8 +1889,10 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # 87957; `letterhead`, `foot-strip`, `party` and `items` untouched.
 # was a84dce3a8c55d8c2 / 173631 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
-MERGED_WHOLE, MERGED_LEN = "1646b229cb85a727", 176811
-MERGED_BLOCKS = {"head":       "482cb74cab6f5f0e",   # was 1e9bbe98af7f4e8d,
+# was 1646b229cb85a727 / 176811 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+MERGED_WHOLE, MERGED_LEN = "5b06ac443cb31921", 177764
+MERGED_BLOCKS = {"head":       "ba3818da0d5fffd1",   # was 482cb74cab6f5f0e (page edge),
+                                                     # was 1e9bbe98af7f4e8d,
                                                      # was e38255e4e2ed0d90
                  "letterhead": "339c37010c483651",   # was 3c080a57f60c89e9
                  "foot-strip": "a3f2d37e04a583e1",   # was 11c5bd67c2fabaa9
@@ -2217,8 +2263,9 @@ def golden_disc_boq(client, pinned_identity):
 #   the foot (fifty-first block) 7812a7b5e2ddb967 -> 59983b7201b3d042. Every
 #   other block hashes as before. Whole page was:
 #       DISC_BOQ_WHOLE, DISC_BOQ_LEN = "cd291621b7bdfa2b", 104758
-DISC_BOQ_WHOLE, DISC_BOQ_LEN = "9f059fe6700c2969", 105723
-DISC_BOQ_BLOCKS = {"head":       "ad173a89e8583085",
+# was 9f059fe6700c2969 / 105723 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+DISC_BOQ_WHOLE, DISC_BOQ_LEN = "20a051eb01a77aa0", 106676
+DISC_BOQ_BLOCKS = {"head":       "b9c71d2d51b5f084",   # was ad173a89e8583085 (page edge)
                    "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872 (banner, merge 23 Oct)
                    "foot-strip": "31227c23efe62134",
                    "doc-box":    "64fcaef781b20ed2",
@@ -2354,8 +2401,9 @@ def golden_asis_boq(client, pinned_identity):
 #   the foot (fifty-first block) 7812a7b5e2ddb967 -> 59983b7201b3d042. Every
 #   other block hashes as before. Whole page was:
 #       ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5e0d8c5000e0fd5c", 107790
-ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "405e364eec391eaa", 108755
-ASIS_BOQ_BLOCKS = {"head":       "777d7e8e392148fb",
+# was 405e364eec391eaa / 108755 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
+ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5dd540b043b2458b", 109708
+ASIS_BOQ_BLOCKS = {"head":       "5e92e0100f640d1f",   # was 777d7e8e392148fb (page edge)
                    "letterhead": "4fcc7501ec466c23",   # was 1c197f96af8ad872 (banner, merge 23 Oct)
                    "foot-strip": "2a8f2f65687ae299",
                    "doc-box":    "64fcaef781b20ed2",

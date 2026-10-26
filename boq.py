@@ -3333,13 +3333,18 @@ def view_boq(id: str):
     unpriced_html = (f'<div class="quiet-note" id="blank-note">{P.esc(quiet)}.</div>'
                      if quiet else "")
 
+    # The page edge (26 Oct 2026): margin 0, kept inside the page — LAST, after
+    # BOQ_STYLES' landscape @page, whose margin it replaces. In the function
+    # body: the BOQ takes one constant from the print leaf, not a module edge.
+    import docsheet as _DS
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{BOQ_VIEW_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{BOQ_VIEW_STYLES}{_DS.PRINT_EDGE_STYLES}
   {BOQ_DOC_SCRIPT}
 </head>
 <body>
@@ -3395,13 +3400,15 @@ def print_boq(id: str):
     if not boq:
         return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
 
+    import docsheet as _DS   # the page edge, as `view_boq()` takes it
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{_DS.PRINT_EDGE_STYLES}
   <style>
     @media print {{ .no-print {{ display:none !important; }} }}
   </style>

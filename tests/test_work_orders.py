@@ -562,9 +562,14 @@ def golden_wo(client, pinned_identity):
 #   and the tagline in the foot strip 1efaaf73d3a0a076 -> 3e5d06b5f8519396
 #   (+1,060 bytes in all). Every other block hashes as before. Was
 #   ("779dd2f7415cc6b4", 85375).
-WO_WHOLE = "a31cfd6c6e00798b"
-WO_LEN = 86435
-WO_BLOCKS = {"head": "52d2340373bfc69c", "letterhead": "cb317962a23773f0",
+# ⚠ RE-BASELINED 26 October 2026 — the PAGE EDGE, `head` ALONE, +953 bytes
+#   (CLIENT_CHANGES.md §0 fifty-third block, change 3; the table and the
+#   measurement are above GOLD_TI in tests/test_print_golden.py). With
+#   `docsheet.PRINT_EDGE_STYLES` removed the page is ("a31cfd6c6e00798b",
+#   86435) again, byte for byte. Was head "52d2340373bfc69c".
+WO_WHOLE = "bb26f9f19bd52b0c"
+WO_LEN = 87388
+WO_BLOCKS = {"head": "460eb8178e965b34", "letterhead": "cb317962a23773f0",
              "foot-strip": "3e5d06b5f8519396", "doc-box": "a501572dc0470479",
              "party": "c1c123f5c20956ad", "items": "8ca1a53b005eba46",
              "signature": "66c13b84cc80040d"}
@@ -1768,9 +1773,14 @@ def golden_wo_pass3(client, pinned_identity):
 #   same +1,060 bytes as WO_WHOLE above (the banner and the tagline); every
 #   other block hashes as before. Were ("52543d8487c5b10d", 87065) and
 #   ("110c01dc85774ccb", 85902).
+# ⚠ RE-BASELINED 26 October 2026 — the PAGE EDGE, +953 bytes each, the
+#   stylesheet alone (§0 fifty-third block, change 3). MEASURED: with
+#   `docsheet.PRINT_EDGE_STYLES` removed each page is byte-identical to the
+#   digest it replaces. Were ("ab01a068bbca186d", 88125) and
+#   ("a7b63dc911f11fb2", 86962).
 WO_PASS3_GOLDENS = {
-    GOLD_WO_LABOUR: ("ab01a068bbca186d", 88125),
-    GOLD_WO_BOTH: ("a7b63dc911f11fb2", 86962),
+    GOLD_WO_LABOUR: ("c54772d3dd430c4e", 89078),
+    GOLD_WO_BOTH: ("ca730e7b8c8113f7", 87915),
 }
 
 

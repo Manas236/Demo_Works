@@ -5228,6 +5228,41 @@ one automatic.
 > (`test_line_pictures.py`, two tests), and the extra-part head
 > (`test_po_upstream_repeaters.py`).
 >
+> #### Change 3 — no browser header or footer on a printed document
+>
+> **What was asked for:** the date and time, URL, title and page numbers that
+> Chrome and Edge print at the top and bottom of every page, gone — by setting
+> the `@page` margin to 0 in the shared print CSS and re-creating ~10–12 mm of
+> margin inside the page on every page, through the mechanism that already
+> repeats the letterhead; on every print route; verified in a real headless
+> browser with headers and footers left on; our own page numbers only if
+> proved.
+>
+> **What was built:** `docsheet.PRINT_EDGE_CSS` — `@page { margin:0 }`, 10 mm
+> on the body's sides, 10 mm on the `.page-frame`'s `<thead>` and `<tfoot>`
+> cells, a title band carrying page one's top margin itself, and anything drawn
+> above the sheet on a view page withheld from paper. It ends `SHEET_STYLES`;
+> `LANDSCAPE_CSS` asks for margin 0; the proforma, the quotation (one line in
+> `view_quotation()`, the same narrow unfreeze as change 1) and the BOQ load it
+> last. Every sheet keeps its own size and orientation.
+>
+> **Verified, not assumed:** headless Chrome 155.0.8059.85 and Edge
+> 143.0.3650.96, headers and footers on, 23 documents and multi-page variants,
+> portrait and landscape: no date, time, `file://` path, title or page counter
+> in any PDF's text, nothing within 5 mm of any edge (9.9 mm the closest). The
+> same check on the old CSS found all five on every document.
+>
+> **Page numbers are LOST, and that is recorded rather than worked round** —
+> ABOUT.md §7 gap 82. A CSS counter was proved to render with the browser's
+> footer suppressed, but only with a non-zero bottom `@page` margin, and it
+> runs on across a statutory copy set; neither was shipped.
+>
+> **ONE declared re-baseline: the stylesheet block (`head`) of every printed
+> document**, +953 bytes (+1,057 on the landscape joint sheet) — eleven
+> goldens in `tests/test_print_golden.py` and three in
+> `tests/test_work_orders.py`. With the edge stylesheet removed every page is
+> byte-identical to its capture from before; **no content block moved**.
+>
 > **The gate is not lifted.** It is still the default and it still stands.
 > Overrides are not a precedent and do not make a subsequent one automatic; an
 > override remains a decision that is taken and recorded, never one an agent may

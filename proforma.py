@@ -1967,7 +1967,7 @@ def view_proforma(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(pi.get('ref')) + " Proforma Invoice")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.SHEET_CSS if pics else ""}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.SHEET_CSS if pics else ""}{DS.PRINT_EDGE_STYLES}
 </head>
 <body>
 <main>
