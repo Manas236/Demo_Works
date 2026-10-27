@@ -5268,6 +5268,97 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 27 October 2026, by Manas Gawde — A DOCUMENT NUMBER TYPED BY HAND, FORWARD ONLY, AND A SEARCH ON THE MUSTER · NO CHARGE · POST-GO-LIVE · TWO AUDITS
+>
+> ⚠ **An UNPUSHED office-PC pass (HSN / Draft PO editing) may hold this same
+> number, and the merge renumbers THIS one, exactly as the 24 October merge
+> did.** This block is written on `cloud/yogesh-27oct`, branched from
+> `antigravity-dev` at `c6a385a`. The office PC carries work that is not in
+> this checkout and that will number its own §0 block from the same free slot.
+> When the two lines meet, origin's numbers stand and this block moves —
+> its content is not altered by a renumbering, and the same applies to the
+> §7 gap this pass mints (**gap 83**, the next free number here) and to
+> nothing else: this pass mints no §2b G-item, no CC-2 item and no other id.
+>
+> **A new block, not an amendment.** The fifty-third block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **fifty-fourth** occasion. It covers the four items
+> below and nothing else.
+>
+> **What prompted it:** a client call on **27 October 2026 with Yogesh
+> Bankar**, relayed by Manas.
+>
+> **Commercial status: NO CHARGE for items A and B, on Manas's instruction** —
+> post-go-live work against scope already sold. Items C and D are **audits,
+> and no code was written for either**. No CC-2 item changes state and no
+> Phase 3 bar moves.
+>
+> #### What is IN this pass
+>
+> **Item A — a document number typed by hand, forward only.** On the Proforma
+> Invoice, the Tax Invoice (**including a TI raised from a BOQ**), the
+> Purchase Order (`purchase.py`, the buy-side order) and the Delivery Challan.
+> The create form prefills the next auto number; the prefix and the financial
+> year are read-only and only the numeric tail can be typed. A number is
+> accepted only when it is **strictly greater than the highest ever used** in
+> that series — counting cancelled and deleted documents — and keeping the
+> prefilled default is always allowed. On save the series advances to
+> entered + 1, and a skipped number is never handed out later.
+>
+> **Item B — a search on the attendance pages.** Filter by worker, by
+> project/site and by a date range, with presets for the last 10 days, this
+> month and last month; days present, OT hours and the wage per worker, and a
+> totals row. Screen only.
+>
+> #### What is NOT in this pass, and why — each recorded rather than assumed
+>
+> 1. ⚠ **The DRAFT PO is deliberately OUT of item A.** `po_draft.py` is being
+>    edited by the unpushed office-PC pass (HSN / Draft PO editing). Touching
+>    it here guarantees a merge conflict in the one file that pass is about, so
+>    the draft PO keeps its stored high-water counter untouched. It is the
+>    fifth sell-and-buy document a manual number would naturally reach and it
+>    is left for whichever line owns `po_draft.py` when the two meet.
+> 2. ⚠ **The RA bill's `ra_no` is OUT, and that is structural rather than a
+>    scheduling choice.** It is the per-project RA sequence, reset per BOQ by
+>    design — `series.py`'s header already refuses it a floor for the same
+>    reason. **The measurement sheet, the work order and the quotation are
+>    out** too: the first two were not asked for, and `quotation.py` is frozen
+>    and its series deliberately carries no floor (the thirty-first block).
+> 3. ⚠ **SALARY SLIP / PAYROLL IS NOT IN THIS PASS and is NEW SCOPE.** It was
+>    raised on the call and is **to be quoted separately**. Nothing in this
+>    pass moves toward it; `attendance.py`'s own standing note that this is not
+>    a payroll system is untouched.
+> 4. ⚠ **A PDF work order read into a BOQ is NOT in this pass — PENDING CLIENT
+>    SAMPLES.** The client has not yet supplied the PDFs. The existing Excel
+>    importers are untouched and no PDF reader was added, because a reader
+>    written against a shape nobody has seen is a reader that will be rewritten.
+> 5. ⚠ **ROUNDING IS UNCONFIRMED, SO IT IS AUDIT ONLY.** The client said
+>    *"rounding off is not happening, .50 stays .50"*. What they want instead
+>    — a Round Off line, a rupee-rounded grand total, or per-line rounding — was
+>    **not established on the call**. Item D is a written audit of what every
+>    document does today and **no rounding behaviour was changed anywhere**.
+>    Gap 15's rule applies: do not encode a guess about somebody's numbering or
+>    their money.
+>
+> #### Items C and D — audits, report only
+>
+> **Item C — the access audit.** Which roles hold `admin.roles` and
+> `admin.users` by default, and what a Director can and cannot do about users
+> and roles, each answered from `auth.py` with the exact URL. ⚠ **Live roles on
+> the production box are editable at runtime and may differ from these
+> defaults** — the audit says so in terms. Nothing was built from it.
+>
+> **Item D — the rounding audit.** Quotation, PI, TI, TI from BOQ, RA tax
+> invoice (single and merged), PO, Draft PO, DC and Work Order: whether the
+> grand total is rounded to the rupee, whether a Round Off line exists, where
+> rounding happens and whether it is per line, per slab or grand total.
+> **No code was changed.**
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
