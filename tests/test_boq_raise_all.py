@@ -241,7 +241,17 @@ def test_the_proforma_form_renders_the_schedule(client, sched):
     assert f'id="c_{kids[0]["line_id"]}"' in html
     assert 'name="leg" value="supply" checked' in html
     assert 'name="leg" value="both"' in html
-    assert "The invoice will be numbered PI-" in html
+    # ⚠ **AMENDED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth
+    #   block, item A.** The old line, kept verbatim:
+    #
+    #     assert "The invoice will be numbered PI-" in html
+    #
+    #   The sentence it looked for is gone because the number is no longer a
+    #   statement on the page — it is a prefilled field whose `PI-` prefix is
+    #   read-only text and whose tail is typeable. What this test is for is
+    #   unchanged: the form has to tell you which number it is about to take.
+    assert 'class="dnum-fixed">PI-</span>' in html
+    assert 'name="doc_no_seq"' in html
 
 
 def test_a_supply_proforma_carries_the_supply_rate_and_hsn(client, sched):

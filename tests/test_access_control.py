@@ -161,11 +161,28 @@ def test_every_catalogue_permission_gates_something():
         f"these permissions are in the catalogue but gate no endpoint: {dead}. "
         f"Either wire them to a route or take them off the role editor.")
 
-    # ⚠ The panel permissions, and the only one there is. A second needs its
-    #   own §0 block, and this line is where that decision becomes visible.
-    assert set(auth.PANEL_PERMISSIONS) == {"project.pnl"}, (
+    # ⚠ The panel permissions. This line is where a new one becomes visible,
+    #   and it has now fired once: a second was authorised on 27 October 2026.
+    #
+    # ⚠ **AMENDED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth
+    #   block, item A.** The old assertion, kept verbatim rather than deleted,
+    #   because an allowlist that is widened silently is an allowlist nobody
+    #   can audit:
+    #
+    #     assert set(auth.PANEL_PERMISSIONS) == {"project.pnl"}, (
+    #         f"auth.PANEL_PERMISSIONS is {sorted(auth.PANEL_PERMISSIONS)}; exactly "
+    #         f"one panel permission was authorised (the forty-seventh §0 block)")
+    #
+    #   `docnum.override` joins it for the same structural reason `project.pnl`
+    #   is here: it opens no page. It unlocks a FIELD on eight create forms
+    #   that are all gated by their own document permission already, and the
+    #   server half of the gate refuses a changed number on the POST. Each of
+    #   the two is still held to every other assertion below — named pages,
+    #   classified endpoints, and the serving module consulting it by name.
+    assert set(auth.PANEL_PERMISSIONS) == {"project.pnl", "docnum.override"}, (
         f"auth.PANEL_PERMISSIONS is {sorted(auth.PANEL_PERMISSIONS)}; exactly "
-        f"one panel permission was authorised (the forty-seventh §0 block)")
+        f"two panel permissions were authorised (the forty-seventh and "
+        f"fifty-fourth §0 blocks)")
     for perm, endpoints in auth.PANEL_PERMISSIONS.items():
         assert perm in auth.PERMISSIONS, f"{perm} is declared but not in the catalogue"
         assert perm not in used, (

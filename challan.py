@@ -108,6 +108,7 @@ import branding as B
 # module learns the answer WITHOUT importing `ra.py` — the prohibition above is
 # untouched — and without a second copy of the predicate beside `ra.py`'s.
 import dcbill as DCB
+import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 import pipeline as P
 import settings as SET
@@ -204,12 +205,63 @@ def next_ref() -> str:
     return SET.dc_ref_of(SET.dc_series())
 
 
-def _spend_ref() -> str:
-    """Take the next number and advance the counter. Call once, at save."""
+def _spend_ref(seq: int = 0) -> str:
+    """
+    Take a number and advance the counter past it. Call once, at save.
+
+    ⚠ **`seq` is the TYPED number** (27 October 2026, CLIENT_CHANGES.md §0's
+      fifty-fourth block). 0 means "whatever the series was pointing at", which
+      is what every caller meant before this argument existed and is still what
+      the import seam and an operator who leaves the box alone get.
+
+    ⚠ **The counter goes to `seq + 1`, not to `next_no + 1`.** That is item A's
+      point 4 and it is the whole of it: a number typed ahead of the series
+      SPENDS everything it skipped, so the skipped ones are never handed out
+      later. The counter has only ever gone forwards here — see this module's
+      `next_ref()`, whose comment is explicit that deleting a challan spends
+      its number — so this is that rule applied to a bigger step, not a new
+      one.
+    """
     series = SET.dc_series()
-    ref = SET.dc_ref_of(series)
-    SET.save_dc_series(series["prefix"], int(series["next_no"] or 1) + 1)
+    n = int(seq) if int(seq or 0) > 0 else int(series["next_no"] or 1)
+    ref = SET.dc_ref_of({"prefix": series["prefix"], "next_no": n})
+    SET.save_dc_series(series["prefix"], n + 1)
+    DN.note_used(DN.DC, "", n)
     return ref
+
+
+def _may_set_number() -> bool:
+    """
+    May this user type a document number? The function-body `import auth` is
+    the hatch `_raise_ra_btn()` already takes for `can_reach()`.
+    """
+    import auth as _AUTH
+    return _AUTH.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    """The id of whoever is saving — never their display name (gap 41)."""
+    import auth as _AUTH
+    return str((_AUTH.current_user() or {}).get("id") or "")
+
+
+def _number_control(typed: str, may: bool) -> tuple:
+    """
+    `(default_seq, control_html)` for the challan's number field.
+
+    ⚠ **A blank prefix means the whole number is typeable**, and that is
+      right rather than an edge case: `settings.dc_ref_of()`'s own docstring
+      records that a blank prefix gives the bare integer `54`, *"the client's
+      own book and the reason the prefix defaults to blank"*. There is no
+      fixed part to protect, so `docnum.split_ref()` returns none and the
+      field is the number.
+
+    ⚠ **No skip note** — that belongs to the tax invoice alone (point 6).
+    """
+    series = SET.dc_series()
+    seq = int(series["next_no"] or 1)
+    return seq, DN.number_field(DN.DC, SET.dc_ref_of(series),
+                                may_override=may, typed=typed)
 
 
 def challans_of_boq(boq_id: str) -> list:
@@ -402,6 +454,11 @@ def _validate(form) -> tuple:
         "consignee_phone":  (form.get("consignee_phone") or "").strip()[:32],
         "notes":            (form.get("notes") or "").strip()[:2000],
         "dc_json":          form.get("dc_json") or "",
+        # The typed document number, carried back like every other field
+        # (27 October 2026). It is VALIDATED in `create_dc()`, not here: this
+        # function serves the edit route too, and an edit never reissues the
+        # number.
+        "doc_no_seq":       (form.get("doc_no_seq") or "").strip()[:12],
     }
     if not data["date"]:
         return data, "A challan needs a date."
@@ -550,6 +607,28 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     action = (url_for("challan.edit_dc", id=dc["id"]) if editing
               else url_for("challan.create_dc", boq=boq.get("id")))
 
+    # ⚠ **The number is typeable on CREATE and nowhere else.** `edit_dc()`
+    #   says in terms that `ref` is "deliberately untouched — an edit never
+    #   reissues the number", and that rule is older than this field and is
+    #   not being reopened: a challan is signed for on arrival and the paper
+    #   carrying the number has already travelled with a load of material.
+    #   §0's fifty-fourth block, item A point 2 — a challan has no unissued
+    #   state to be editable in.
+    if editing:
+        dc_number_html = (
+            f'This challan is numbered <b>{P.esc(dc.get("ref"))}</b>. An edit '
+            f'never reissues a challan number — the paper has gone out with '
+            f'the goods.')
+    else:
+        _default_seq, control = _number_control(data.get("doc_no_seq", ""),
+                                                _may_set_number())
+        dc_number_html = (
+            f'<label for="doc_no_seq" style="display:block;font-size:.78rem;'
+            f'text-transform:uppercase;letter-spacing:.04em;color:var(--muted);'
+            f'margin-bottom:.3rem;">Challan No.</label>{control}'
+            f'<div class="dnum-note">One running series, from '
+            f'<a href="{url_for("settings.edit_settings")}">Settings</a>.</div>')
+
     picker = ""
     if not editing:
         picker = BP.grid_html(
@@ -577,7 +656,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Edit Delivery Challan" if editing else "Delivery Challan")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{CHALLAN_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{CHALLAN_STYLES}{DN.NUMBER_STYLES}
 </head>
 <body>
 {_nav()}
@@ -597,8 +676,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
        padding:.9rem 1.1rem;margin-bottom:1.2rem;font-size:.86rem;line-height:1.6;">
     Against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}
     &middot; {P.esc(boq.get("account_name") or "")}<br/>
-    This challan will be numbered <b>{P.esc(next_ref()) if not editing else P.esc(dc.get("ref"))}</b>
-    from the one running series at <a href="{url_for('settings.edit_settings')}">Settings</a>.
+    {dc_number_html}
   </div>
 
   <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not editing else "true"};">
@@ -1041,6 +1119,16 @@ def create_dc(imported: dict = None):
     data, error = _validate(request.form)
     items, line_error = ([], "") if error else picked_lines(data["dc_json"], boq)
     error = error or line_error
+
+    # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth block,
+    #   item A point 9. `_spend_ref()` below is what moves the counter, and it
+    #   is reached only past every refusal.
+    may_number = _may_set_number()
+    default_seq = int(SET.dc_series()["next_no"] or 1)
+    seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
+                                    default_seq, may_number)
+    error = error or num_err
+
     if error:
         # Hand the operator back exactly what they ticked and typed.
         try:
@@ -1054,9 +1142,10 @@ def create_dc(imported: dict = None):
         return _entry_form(boq, data, error)
 
     cid = new_id()
+    default_ref = SET.dc_ref_of(SET.dc_series())
     STORE.setdefault("delivery_challans", {})[cid] = {
         "id": cid,
-        "ref": _spend_ref(),
+        "ref": _spend_ref(seq_used),
         "date": data["date"],
         # The BOQ this came from — a specific revision, exactly as an RA bill
         # and a draft PO name one. Both refs are STORED, not looked up, so the
@@ -1078,6 +1167,8 @@ def create_dc(imported: dict = None):
         "items": items,
         "company_branch": "", "auth_signatory": "",
     }
+    DN.record_override(STORE["delivery_challans"][cid], default_ref,
+                       STORE["delivery_challans"][cid]["ref"], _actor_id())
     over = over_dispatched(STORE["delivery_challans"][cid])
     msg = "Delivery challan raised."
     if over:

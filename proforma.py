@@ -56,6 +56,7 @@ import cascade
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -153,7 +154,49 @@ def _next_ref() -> str:
       still what orders the register; the leaf's `WHOLE` mode is the same
       split on `-`.
     """
-    return f"{_REF_PREFIX}-{SER.next_seq('PI', ''):04d}"
+    return _ref_for(SER.next_seq("PI", ""))
+
+
+def _ref_for(seq: int) -> str:
+    """
+    The proforma number for one ORDINAL — the shape, without the counter.
+
+    Split out of `_next_ref()` on 27 October 2026 (CLIENT_CHANGES.md §0's
+    fifty-fourth block) so a number the operator typed is spelled by exactly
+    the same code as one the series minted. Two spellings of one number is how
+    a typed `50` becomes `PI-50` on a document the customer files a payment
+    against.
+    """
+    return f"{_REF_PREFIX}-{int(seq):04d}"
+
+
+def _may_set_number() -> bool:
+    """
+    May this user type a document number? The function-body `import auth` is
+    the hatch `view_proforma()` already takes for `can_reach()`.
+    """
+    import auth as _AUTH
+    return _AUTH.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    """The id of whoever is saving — never their display name (gap 41)."""
+    import auth as _AUTH
+    return str((_AUTH.current_user() or {}).get("id") or "")
+
+
+def _number_control(typed: str, may: bool) -> tuple:
+    """
+    `(default_seq, control_html)` for the proforma's number field.
+
+    ⚠ **No skip note.** That is the tax invoice's, and only the tax invoice's
+    — a gap in the PI series is nobody's business but ours, while a gap in a
+    tax invoice series shows in the *documents issued* table of a GSTR-1.
+    §0's fifty-fourth block, item A point 6.
+    """
+    seq = SER.next_seq("PI", "")
+    return seq, DN.number_field(DN.PI, _ref_for(seq), may_override=may,
+                                typed=typed)
 
 
 def _pct(raw: str, default: float) -> float:
@@ -983,6 +1026,8 @@ def create_proforma(qid: str):
 
     f     = request.form
     error = ""
+    may_number = _may_set_number()
+    seq_used = default_seq = 0
 
     # ── What this quotation has already been invoiced for ──────────────────
     # Read once, before either branch: the POST path needs it to compute a
@@ -1026,11 +1071,19 @@ def create_proforma(qid: str):
                      f"&#8377;&nbsp;{invoiced:,.0f}. "
                      f"Tick the box below to raise it anyway.")
 
+        # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth block,
+        #   item A point 9.
+        if not error:
+            default_seq = SER.next_seq("PI", "")
+            seq_used, num_err = DN.validate(DN.PI, "", f.get("doc_no_seq"),
+                                            default_seq, may_number)
+            error = error or num_err
+
         if not error:
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
-                "ref": _next_ref(),
+                "ref": _ref_for(seq_used),
                 "date": pi_date,
 
                 # ── Back-link to the source. quotation_ref is stored, not
@@ -1119,6 +1172,10 @@ def create_proforma(qid: str):
             else:
                 msg += "."
             P.log_event(q, msg)
+
+            DN.note_used(DN.PI, "", seq_used)
+            DN.record_override(pi, _ref_for(default_seq), pi["ref"],
+                               _actor_id())
 
             return redirect(url_for("proforma.view_proforma", id=pid,
                                     msg=f"Proforma invoice {pi['ref']} created.",
@@ -1286,10 +1343,13 @@ def create_proforma(qid: str):
 
     q_view = url_for("quotation.view_quotation", id=qid)
 
+    _default_seq, pi_number_html = _number_control(
+        f.get("doc_no_seq") if request.method == "POST" else "", may_number)
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Raise Proforma Invoice")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -1306,7 +1366,8 @@ def create_proforma(qid: str):
         From quotation <b>{P.esc(q.get('ref'))}</b> dated {P.esc(q.get('date'))}
         &middot; {P.esc(_customer_of(q))}
         &middot; quoted value <b>&#8377;&nbsp;{grand:,.0f}</b>
-        <div class="sn-sub">The invoice will be numbered {_next_ref()}.</div>
+        <div class="sn-sub">A running series, not reset by the financial
+          year.</div>
         {existing_html}
       </div>
 
@@ -1315,6 +1376,10 @@ def create_proforma(qid: str):
         <div class="form-section">
           <div class="section-title">Invoice</div>
           <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Proforma No.</label>
+              {pi_number_html}
+            </div>
             <div class="form-group">
               <label for="date">Invoice Date *</label>
               <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
@@ -1446,6 +1511,8 @@ def from_boq(boq_id: str):
     head = boq_tax_head(f.get("tax_type") if is_post else "")
     error = ""
     chosen = qty_of = None
+    may_number = _may_set_number()
+    seq_used = default_seq = 0
 
     if is_post:
         pi_date  = (f.get("date") or "").strip()
@@ -1471,12 +1538,18 @@ def from_boq(boq_id: str):
         error = error or item_err
 
         if not error:
+            default_seq = SER.next_seq("PI", "")
+            seq_used, num_err = DN.validate(DN.PI, "", f.get("doc_no_seq"),
+                                            default_seq, may_number)
+            error = error or num_err
+
+        if not error:
             subtotal, tax_info, grand, total_qty = boq_figures(items, head)
             due = round(grand * pct / 100.0, 2)
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
-                "ref": _next_ref(),
+                "ref": _ref_for(seq_used),
                 "date": pi_date,
 
                 # ── No quotation behind it. The keys are present and empty, so
@@ -1522,6 +1595,9 @@ def from_boq(boq_id: str):
                 "auth_signatory": boq.get("auth_signatory", ""),
             }
             STORE["proformas"][pid] = pi
+            DN.note_used(DN.PI, "", seq_used)
+            DN.record_override(pi, _ref_for(default_seq), pi["ref"],
+                               _actor_id())
             return redirect(url_for("proforma.view_proforma", id=pid,
                                     msg=f"Proforma invoice {pi['ref']} created "
                                         f"against {boq.get('ref') or 'the schedule'}.",
@@ -1566,10 +1642,13 @@ def from_boq(boq_id: str):
     proj_bit = (f' &middot; project <b>{P.esc(proj.get("name"))}</b>' if proj else "")
     back = url_for("boq.view_boq", id=boq_id)
 
+    _default_seq, pi_number_html = _number_control(
+        f.get("doc_no_seq") if is_post else "", may_number)
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Proforma Invoice from BOQ")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{FROM_BOQ_FORM_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{FROM_BOQ_FORM_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -1585,7 +1664,8 @@ def from_boq(boq_id: str):
       <div class="src-note">
         From bill of quantities <b>{P.esc(boq.get('ref'))}</b>
         &middot; {P.esc(boq.get('project_name'))} &middot; {P.esc(_customer_of(boq))}{proj_bit}
-        <div class="sn-sub">The invoice will be numbered {_next_ref()}.</div>
+        <div class="sn-sub">A running series, not reset by the financial
+          year.</div>
         {earlier_html}
       </div>
 
@@ -1596,6 +1676,10 @@ def from_boq(boq_id: str):
         <div class="form-section">
           <div class="section-title">Invoice</div>
           <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Proforma No.</label>
+              {pi_number_html}
+            </div>
             <div class="form-group">
               <label for="date">Invoice Date *</label>
               <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>

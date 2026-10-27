@@ -86,6 +86,7 @@ import cascade
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -234,10 +235,52 @@ def _next_ref(datestr: str) -> str:
       back on their invoice, so a go-live that restarts it at 0001 beside a
       running book is the same problem the sell side has.
     """
-    fy = P.fy_of(datestr)
+    return _ref_for(datestr, SER.next_seq("PO", P.fy_of(datestr)))
+
+
+def _ref_for(datestr: str, seq: int) -> str:
+    """
+    The purchase order number for one ORDINAL — the shape, without the
+    counter.
+
+    Split out of `_next_ref()` on 27 October 2026 (CLIENT_CHANGES.md §0's
+    fifty-fourth block) so a number the operator typed is spelled by the same
+    code as one the series minted. The vendor quotes this number back on their
+    invoice, so two spellings of it is two numbers to reconcile by hand.
+    """
     # No 16-char cap: that is Rule 46's limit on a tax invoice, not ours.
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
-                    SER.next_seq("PO", fy), cap=64)
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, P.fy_of(datestr), seq,
+                    cap=64)
+
+
+def _may_set_number() -> bool:
+    """
+    May this user type a document number? The function-body `import auth` is
+    the hatch `view_purchase()` already takes for `can_reach()`.
+    """
+    import auth as _AUTH
+    return _AUTH.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    """The id of whoever is saving — never their display name (gap 41)."""
+    import auth as _AUTH
+    return str((_AUTH.current_user() or {}).get("id") or "")
+
+
+def _number_control(po_date: str, typed: str, may: bool) -> tuple:
+    """
+    `(default_seq, control_html)` for the purchase order's number field.
+
+    ⚠ **No skip note, and that is not an omission.** The GSTR-1 warning
+    belongs to the TAX INVOICE: Rule 46(b)'s consecutive series is what we
+    ISSUE as a supplier. A purchase order is our own buy-side book and a gap
+    in it is nobody's business but ours — `_next_ref()`'s own comment already
+    says the statutory cap does not apply here, for the same reason.
+    """
+    seq = SER.next_seq("PO", P.fy_of(po_date))
+    return seq, DN.number_field(DN.PO, _ref_for(po_date, seq),
+                                may_override=may, typed=typed)
 
 
 def is_open(po: dict) -> bool:
@@ -2165,6 +2208,8 @@ def create_purchase(imported: dict = None):
 
     f     = request.form
     error = ""
+    may_number = _may_set_number()
+    seq_used = default_seq = 0
 
     if request.method == "POST":
         po_date   = (f.get("date") or "").strip()
@@ -2217,11 +2262,20 @@ def create_purchase(imported: dict = None):
              grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
                                             charges, extra_lines)
 
+            # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth
+            #   block, item A point 9.
+            default_seq = SER.next_seq("PO", P.fy_of(po_date))
+            seq_used, num_err = DN.validate(DN.PO, P.fy_of(po_date),
+                                            f.get("doc_no_seq"), default_seq,
+                                            may_number)
+            error = error or num_err
+
+        if not error:
             q   = STORE["quotations"].get(qid) or {}
             pid = str(uuid.uuid4())
             po = {
                 "id":   pid,
-                "ref":  _next_ref(po_date),
+                "ref":  _ref_for(po_date, seq_used),
                 "fy":   P.fy_of(po_date),
                 "date": po_date,
 
@@ -2287,6 +2341,10 @@ def create_purchase(imported: dict = None):
             if q:
                 P.log_event(q, f"Purchase order {po['ref']} raised on "
                                f"{P.esc(po['vendor_name'])} for &#8377;{grand:,.0f}.")
+
+            DN.note_used(DN.PO, po["fy"], seq_used)
+            DN.record_override(po, _ref_for(po_date, default_seq), po["ref"],
+                               _actor_id())
 
             return redirect(url_for("purchase.view_purchase", id=pid,
                                     msg=f"Purchase order {po['ref']} created.",
@@ -2395,10 +2453,14 @@ def create_purchase(imported: dict = None):
         for s in PO_STATUSES if s != "Cancelled"
     )
 
+    _default_seq, po_number_html = _number_control(
+        v_date, f.get("doc_no_seq") if request.method == "POST" else "",
+        may_number)
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("New Purchase Order")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -2416,7 +2478,7 @@ def create_purchase(imported: dict = None):
         not a document for a customer.
         <div class="bn-sub">The GST here is <b>input tax we pay</b>, the opposite
           side of the ledger from a tax invoice. Nothing on this page touches a
-          proforma or a tax invoice. The next number is {P.esc(_next_ref(v_date))}.</div>
+          proforma or a tax invoice.</div>
       </div>
 
       <form method="POST" action="{url_for("purchase.create_purchase")}">
@@ -2424,6 +2486,10 @@ def create_purchase(imported: dict = None):
         <div class="form-section">
           <div class="section-title">Order</div>
           <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Purchase Order No.</label>
+              {po_number_html}
+            </div>
             <div class="form-group">
               <label for="date">PO Date *</label>
               <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
@@ -2702,6 +2768,10 @@ def _form_values(f, is_post: bool, **defaults) -> dict:
         "dispatch_through": v("dispatch_through"),
         "incoterms":        v("incoterms"),
         "notes":            v("notes", defaults.get("notes", "")),
+        # The typed document number, carried back onto a rejected form like
+        # every other field here (27 October 2026). Blank on a GET, which is
+        # what makes `_number_control()` fall back to the prefill.
+        "doc_no_seq":       v("doc_no_seq"),
     }
 
 
@@ -2732,10 +2802,15 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
         f'<option{" selected" if s == data["status"] else ""}>{s}</option>'
         for s in PO_STATUSES if s != "Cancelled"
     )
+    # The same control `/purchase/create` renders, from the same function, so
+    # the three create paths cannot drift apart on the one field whose value
+    # a vendor quotes back at us.
+    _default_seq, po_number_html = _number_control(
+        data["date"], data.get("doc_no_seq", ""), _may_set_number())
     return _page(f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{FROM_BOQ_STYLES}{MAKE_FORM_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{FROM_BOQ_STYLES}{MAKE_FORM_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -2749,8 +2824,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
       <div class="buy-note">
         This is the <b>buy side</b> &mdash; a <b>real purchase order we place on a
         vendor</b>, in the ordinary register and the ordinary series.
-        <div class="bn-sub">{intro_html}
-          The next number is {P.esc(_next_ref(data["date"]))}.</div>
+        <div class="bn-sub">{intro_html}</div>
       </div>
 
       <form method="POST" action="{action}" onsubmit="return {onsubmit};">
@@ -2759,6 +2833,10 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
         <div class="form-section">
           <div class="section-title">Order</div>
           <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Purchase Order No.</label>
+              {po_number_html}
+            </div>
             <div class="form-group">
               <label for="date">PO Date *</label>
               <input type="date" id="date" name="date" value="{P.esc(data['date'])}" required/>
@@ -2869,7 +2947,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
 
 
 def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
-                       boq: dict = None, project_id: str = "",
+                       seq: int, boq: dict = None, project_id: str = "",
                        project_name: str = "", draft: dict = None,
                        origin: str = "", extra_lines: list = None,
                        charges: list = None) -> dict:
@@ -2919,7 +2997,7 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
     pid = str(uuid.uuid4())
     po = {
         "id":   pid,
-        "ref":  _next_ref(data["date"]),
+        "ref":  _ref_for(data["date"], seq),
         "fy":   P.fy_of(data["date"]),
         "date": data["date"],
 
@@ -3036,12 +3114,25 @@ def from_boq(boq_id: str):
         charges, charge_err = ([], "") if error else _parse_charges(f)
         error = error or charge_err
 
+        # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth block,
+        #   item A point 9. Both upstream routes go through here.
+        if not error:
+            default_seq = SER.next_seq("PO", P.fy_of(data["date"]))
+            seq_used, num_err = DN.validate(DN.PO, P.fy_of(data["date"]),
+                                            f.get("doc_no_seq"), default_seq,
+                                            _may_set_number())
+            error = error or num_err
+
         if not error:
             po = _write_upstream_po(
                 data=data, vendor_fields=vendor_fields, items=items, boq=boq,
+                seq=seq_used,
                 project_id=project_id, project_name=project_name,
                 origin=f", against {boq.get('ref') or 'a schedule'}",
                 extra_lines=extra_lines, charges=charges)
+            DN.note_used(DN.PO, po["fy"], seq_used)
+            DN.record_override(po, _ref_for(data["date"], default_seq),
+                               po["ref"], _actor_id())
             return redirect(url_for("purchase.view_purchase", id=po["id"],
                                     msg=f"Purchase order {po['ref']} created "
                                         f"against {boq.get('ref') or 'the schedule'}.",
@@ -3261,12 +3352,25 @@ def from_draft(draft_id: str):
         charges, charge_err = ([], "") if error else _parse_charges(f)
         error = error or charge_err
 
+        # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth block,
+        #   item A point 9. Both upstream routes go through here.
+        if not error:
+            default_seq = SER.next_seq("PO", P.fy_of(data["date"]))
+            seq_used, num_err = DN.validate(DN.PO, P.fy_of(data["date"]),
+                                            f.get("doc_no_seq"), default_seq,
+                                            _may_set_number())
+            error = error or num_err
+
         if not error:
             po = _write_upstream_po(
                 data=data, vendor_fields=vendor_fields, items=items, boq=boq,
+                seq=seq_used,
                 project_id=project_id, project_name=project_name, draft=draft,
                 origin=f", converted from draft {draft.get('ref') or ''}".rstrip(),
                 extra_lines=extra_lines, charges=charges)
+            DN.note_used(DN.PO, po["fy"], seq_used)
+            DN.record_override(po, _ref_for(data["date"], default_seq),
+                               po["ref"], _actor_id())
             # The link back, on the draft. A LIST, not a scalar: converting twice
             # is permitted, and a single field would let the second conversion
             # quietly erase the first one's trail.
@@ -3736,6 +3840,24 @@ def edit_purchase_rates(id: str):
                                 msg=why_not, type="error"))
 
     error = ""
+
+    # ⚠ **THE PURCHASE ORDER IS THE ONE OF THE FOUR WITH A GENUINE UNISSUED
+    #   STATE, so it is the one whose number stays typeable after create**
+    #   (CLIENT_CHANGES.md §0's fifty-fourth block, item A point 2). The tax
+    #   invoice has no draft — its only later state is `cancelled`; the
+    #   proforma has no status field at all; and `challan.edit_dc()` says in
+    #   terms that `ref` is "deliberately untouched — an edit never reissues
+    #   the number". The PO has `Draft`, which `PO_STATUSES` defines as
+    #   "written, not yet sent to the vendor", and a number that has not gone
+    #   to a vendor is still ours.
+    #
+    # ⚠ **This is layered ON TOP of this route's own rule, not mixed into
+    #   it.** A1 deliberately unlocked REPRICING on an Issued order and that
+    #   is unchanged; the NUMBER is a different question with a different
+    #   answer, and once the order is Issued it is immutable here.
+    number_editable = (po.get("status") or DEFAULT_STATUS) == "Draft"
+    may_number = number_editable and _may_set_number()
+
     if request.method == "POST":
         before = float(po.get("grand_total") or 0.0)
         # Captured BEFORE `_reprice()` writes, because it mutates the rows in
@@ -3749,7 +3871,24 @@ def edit_purchase_rates(id: str):
         # is only whether the list is the one that went in.
         extra_was = extra_lines_of(po)
         make_was = [str(r.get("make") or "") for _i, r in _priced_rows(po)]
-        error = _reprice(po, request.form)
+
+        # ⚠ The number is read and checked BEFORE `_reprice()` writes, so a
+        #   refused number leaves the order's figures exactly as they were.
+        #   `_reprice()` mutates the rows in place and there is no undo.
+        ref_was = str(po.get("ref") or "")
+        default_seq = DN.ordinal_of(ref_was)
+        seq_now, num_err = DN.validate(
+            DN.PO, po.get("fy") or P.fy_of(po.get("date")),
+            request.form.get("doc_no_seq"), default_seq, may_number)
+        error = num_err or _reprice(po, request.form)
+        if not error and seq_now != default_seq:
+            ref_now = _ref_for(po.get("date"), seq_now)
+            po["ref"] = ref_now
+            DN.note_used(DN.PO, po.get("fy") or P.fy_of(po.get("date")),
+                         seq_now)
+            DN.record_override(po, ref_was, ref_now, _actor_id())
+            _log(po, f"Purchase order number changed by hand from "
+                     f"{P.esc(ref_was)} to {P.esc(ref_now)}.")
         if not error:
             after = float(po.get("grand_total") or 0.0)
             note  = (request.form.get("note") or "").strip()
@@ -3865,10 +4004,33 @@ def edit_purchase_rates(id: str):
     elif po.get("tax_type") == "igst":
         tax_note = f"IGST {float(tax_info.get('igst_rate') or 0):g}%"
 
+    # The number section is drawn ONLY while the order is a Draft. An Issued
+    # order's number is immutable, and a read-only box on a page is a worse
+    # way of saying so than not drawing it: the sentence beside the status
+    # already says the vendor is holding this document.
+    number_section = ""
+    if number_editable:
+        number_section = f"""
+        <div class="form-section">
+          <div class="section-title">Order number</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Purchase Order No.</label>
+              {DN.number_field(DN.PO, str(po.get("ref") or ""),
+                               may_override=may_number,
+                               typed=(request.form.get("doc_no_seq")
+                                      if request.method == "POST" else ""))}
+              <small class="field-hint">This order is still a Draft, so its
+                number is ours to change. Once it is Issued the number is
+                fixed.</small>
+            </div>
+          </div>
+        </div>"""
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Reprice " + str(po.get('ref')))}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -3895,6 +4057,7 @@ def edit_purchase_rates(id: str):
       </div>
 
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
+        {number_section}
         <div class="form-section">
           <div class="section-title">What we pay</div>
           <div class="line-head">

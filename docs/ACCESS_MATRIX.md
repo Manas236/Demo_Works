@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 85 permissions · 182 classified endpoints.**
+**7 roles · 86 permissions · 182 classified endpoints.**
 
 ---
 
@@ -14,7 +14,7 @@
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **595 cells**. **52** of them can be traced to a line of the specification. The rest — **543** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **602 cells**. **52** of them can be traced to a line of the specification. The rest — **550** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -170,6 +170,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Edit company identity and bank details<br/>`settings.edit` | · | · |  |  |  |  |  |
+| Set a document number by hand<br/>`docnum.override` | · | · |  |  |  |  |  |
 | Create, edit and deactivate users<br/>`admin.users` | § | § |  |  |  |  |  |
 | Define what a role means<br/>`admin.roles` | § | § |  |  |  |  |  |
 | Read the refused-access log<br/>`admin.access_log` | · | · |  |  |  |  |  |
@@ -178,7 +179,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **85** | **84** | **49** | **15** | **23** | **20** | **15** |
+| **Total permissions held** | **86** | **85** | **49** | **15** | **23** | **20** | **15** |
 
 ---
 
@@ -266,7 +267,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*85 of 85 permissions.*
+*86 of 86 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -274,7 +275,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*84 of 85 permissions.*
+*85 of 86 permissions.*
 
 **What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings, and read each project's profit and loss.
 
@@ -282,7 +283,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Operation Head
 
-*49 of 85 permissions.*
+*49 of 86 permissions.*
 
 **What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
 
@@ -290,7 +291,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### HR
 
-*15 of 85 permissions.*
+*15 of 86 permissions.*
 
 **What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. **And attendance** (C5): mark who was on which site each day, record overtime, and read the site-wise labour cost that comes out of it. Also the wages and site-expense ledger, and the address book.
 
@@ -298,7 +299,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Sales Manager
 
-*23 of 85 permissions.*
+*23 of 86 permissions.*
 
 **What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills and measurement sheets.
 
@@ -306,7 +307,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Purchase Manager
 
-*20 of 85 permissions.*
+*20 of 86 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
 
@@ -314,7 +315,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Accountant
 
-*15 of 85 permissions.*
+*15 of 86 permissions.*
 
 **What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills and the measurement sheets those bills were built from, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
@@ -424,6 +425,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `address.edit` | `address.edit_address`, `address.gst_captcha_edit`, `address.gst_lookup_edit` |
 | `address.delete` | `address.archive_address`, `address.delete_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |
+| `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
 | `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_user`, `auth.list_users` |
 | `admin.roles` | `auth.create_role`, `auth.edit_role`, `auth.list_roles` |
 | `admin.access_log` | `auth.access_log` |

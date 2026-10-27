@@ -276,11 +276,25 @@ def test_every_permission_gates_at_least_one_route():
     holds the declaration itself — exactly one, on classified pages that
     consult it — and `tests/test_pnl_access.py` proves the tick does something.
     """
+    # ⚠ **AMENDED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth
+    #   block, item A.** The 8 October line, kept verbatim:
+    #
+    #     assert unused == sorted(auth.PANEL_PERMISSIONS) == ["project.pnl"], (
+    #         f"{len(unused)} permission(s) gate no route: {', '.join(unused)} — "
+    #         f"only the declared panel permission project.pnl may")
+    #
+    #   `docnum.override` is the second panel permission: it unlocks the
+    #   document-number field on eight create forms and gates no route of its
+    #   own. The shape of the check is unchanged — the excused set is still
+    #   exactly `auth.PANEL_PERMISSIONS` and nothing else is excused — only
+    #   its contents moved, and `tests/test_access_control.py` holds the
+    #   declaration itself.
     used = set(auth.ROUTE_PERMISSIONS.values()) - {auth.PUBLIC, auth.AUTHENTICATED}
     unused = sorted(set(auth.PERMISSIONS) - used)
-    assert unused == sorted(auth.PANEL_PERMISSIONS) == ["project.pnl"], (
+    assert unused == sorted(auth.PANEL_PERMISSIONS) == ["docnum.override",
+                                                        "project.pnl"], (
         f"{len(unused)} permission(s) gate no route: {', '.join(unused)} — "
-        f"only the declared panel permission project.pnl may")
+        f"only the declared panel permissions may")
     invented = sorted(used - set(auth.PERMISSIONS))
     assert invented == [], (
         f"ROUTE_PERMISSIONS names {len(invented)} permission(s) that do not "

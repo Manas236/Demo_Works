@@ -422,6 +422,7 @@ Consequences you must respect when editing:
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
 | [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
 | [series.py](series.py) | 339 | **The document-number FLOOR, and the one scan per series** (25 September 2026, §7 gap 36). Holds `SERIES` — nine numbered series, what each scans and how each reads its highest issued number — plus the floors record and the rule `next = max(existing max in the scope + 1, floor)`. A **fifth leaf**, and the strictest one in the repository: it imports `store` and **nothing else**, not even `pipeline` or `branding`, because it answers an ORDINAL and the prefix, the series segment and Rule 46(b)'s cap stay with the minter. ⚠ It exists because **`boq.py` may not import `settings.py`** — a floor reachable from some minters and not others is not a floor. ⚠ `series -> invoice` and `series -> ra` are both refused: `ra.py` may never import `invoice.py`, and a leaf that imported either would defeat that through the basement. ⚠ **No lock.** The minters stay unguarded scan-max-then-plus-one and `--threads 1` is still load-bearing. |
+| [docnum.py](docnum.py) | 511 | **The MANUAL document number, forward only — a LEAF** (27 October 2026, CLIENT_CHANGES.md §0 fifty-fourth block, item A). Holds the rule *accepted ⟺ entered > the highest ordinal EVER used in this scope, or entered == the prefilled default*, the **high-water ledger** that makes "ever" outlive a deleted record (`STORE["settings"]["document_number_highwater"]`, raised by `note_used()` on every save), the cross-collection tax-invoice scan, and `number_field()` — the one control all four create forms render, prefix and FY as un-postable text, only the tail typeable. ⚠ **It exists because `ra.py` may never import `invoice.py`**: a TI number can be in `invoices.ref`, `ra_bills.tax_invoice_ref` or `merged_ras.tax_invoice_ref`, and a check written inside either module would defeat that prohibition through the basement — `docsheet.py`'s and `series.py`'s argument, a third time. Imports `store` and `pipeline` and nothing else from the app; **not `auth`** — the four document modules answer the permission themselves and pass the boolean in. ⚠ **It does not feed the AUTOMATIC minter**: `series.next_seq()` is untouched and every automatic number is what it always was, which is why no golden moved (§7 gap 83). ⚠ **No lock**, exactly as `series.py`. |
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
@@ -651,6 +652,17 @@ lineimage.py imports photo, pipeline, store at module level (21 Oct 2026) —
              nor quotation, invoice, docsheet, auth or flask. A PI that reached
              purchase.py through it would join the two pipelines in the
              basement. A whitelist test holds it
+docnum.py    imports store and pipeline and NOTHING else (27 Oct 2026) — the
+             ONE rule for a document number typed by hand. Imported by
+             invoice, proforma, purchase and challan; imports NONE of them,
+             nor ra, merged_ra, po_draft, settings, auth or flask. The TI
+             check has to see ra_bills and merged_ras as well as invoices,
+             and ra.py may never import invoice.py — so the scan lives here
+             or it couples them through the basement. ⚠ It takes `pipeline`
+             where series.py is refused it, and the difference is real: this
+             leaf RENDERS a field and must escape what it interpolates (§9),
+             while series.py answers an ordinal and formats nothing. A
+             whitelist test holds it
 ```
 
 `proforma.py`, `invoice.py`, `purchase.py`, `ra.py`, `po_draft.py`,
@@ -5317,6 +5329,94 @@ and a staff list that share a heading are never one layout. A confirmed
 mapping is offered on the next upload's preview and **never skips it**. Neither
 collection is ever seeded.
 
+### A document number typed by hand  (`number_override`, 27 October 2026 — CLIENT_CHANGES.md §0 fifty-fourth block)
+
+**Not a collection, and two shapes rather than one.** A key on four document
+records, and one settings record that no document points at.
+
+**On the document** — written only when the number actually moved, so a
+document numbered automatically carries nothing and reads exactly as every
+record written before 27 October 2026 does:
+
+```python
+number_override: {
+    "from": "SF/TI/26-27/0001",   # what the series WOULD have issued
+    "to":   "SF/TI/26-27/0050",   # what was typed
+    "by":   "<user id>",          # the ID. NEVER the display name — §7 gap 41
+    "at":   "2026-10-27 14:05:11",
+}
+```
+
+**In `STORE["settings"]`** — its own key, exactly as `document_series_floors`,
+`po_draft_series` and `delivery_challan_series` are, so
+`branding.apply_settings()` never pushes it onto the letterhead and **the
+nav's amber completeness dot never counts it as a missing statutory detail**:
+
+```python
+document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
+```
+
+| record | the key | the series it is scoped in |
+|---|---|---|
+| Tax invoice | `number_override` | `TI`, per financial year — Rule 46(b) |
+| Proforma invoice | `number_override` | `PI`, one running series, no year |
+| Purchase order | `number_override` | `PO`, per financial year |
+| Delivery challan | `number_override` | `DC`, one running series, no year |
+
+1. **The rule is `docnum.validate()` and lives in one place** — a number is
+   accepted only when it is **strictly greater than the highest ordinal ever
+   used** in that scope, or is exactly the prefilled default. The refusal
+   names the current highest, because an error that says only "invalid" costs
+   somebody an afternoon (INTRODUCTION.md §2).
+
+2. ⚠ **"EVER used" is three readings and the answer is the largest** — the
+   scan over the surviving records, the challan's stored counter, and the
+   ledger. A **cancelled** tax invoice counts because its record is still in
+   `invoices` and nothing filters on status; a **deleted** proforma or order
+   counts because the ledger outlived it. A scan alone answers *"what is the
+   highest number still in the store"*, which is a different question, and
+   the difference is exactly a document whose paper has already left the
+   building.
+
+3. ⚠ **The tax invoice scans FOUR places at once, and on the ORDINAL across
+   series codes.** `invoices.ref` (the ordinary TI and the one raised from a
+   BOQ — the same collection), `ra_bills.tax_invoice_ref` and
+   `merged_ras.tax_invoice_ref`. `SF/RI/26-27/0007` and `SF/TI/26-27/0007`
+   both contribute **7**. That is stricter than the three-series design (`TI`
+   / `MI` / `RI` were measured on 25 September 2026 and cannot collide when
+   minted automatically) and it is deliberate: this is the one path where a
+   **human types a statutory serial**, which is precisely the case the three
+   series do not protect — §7 gap 32, whose live record is an RA bill carrying
+   a typed `SF/TI/26-27/0007`. ⚠ **It does not close gap 32**, which is about
+   a value already on the live database and about the automatic minters.
+
+4. ⚠ **Which year a stored string belongs to is read from the STRING first.**
+   `SF/TI/26-27/0007` typed onto a bill whose own `fy` is `27-28` is a
+   `26-27` number — `series.py`'s `SERIES_PREFIX` lesson, in the one place it
+   matters most. The record's `fy` is the fallback for a string with no year.
+
+5. **On save the series advances to entered + 1**, so a skipped number is
+   never handed out later. For the three `max+1` series that is the record
+   itself doing the work; for the challan `_spend_ref(seq)` writes
+   `seq + 1` into the stored counter, which is that module's own
+   "deleting a challan SPENDS its number" rule applied to a bigger step.
+
+6. ⚠ **Only the PURCHASE ORDER is editable after create**, and only while it
+   is a `Draft`. That is read off each module rather than invented: a tax
+   invoice has no draft (its only later status is `cancelled`), a proforma
+   has no status field at all, and `challan.edit_dc()` says in terms that
+   `ref` is *"deliberately untouched — an edit never reissues the number"*.
+   `PO_STATUSES` defines `Draft` as "written, not yet sent to the vendor".
+
+7. **Absent means the number was automatic**, and no empty key is written.
+   Nothing is ever backfilled, and the trail is **stored and never printed**.
+
+8. ⚠ **The ledger does not feed the AUTOMATIC minter.** `series.next_seq()`
+   is untouched, so deleting a PI or a PO still lets the automatic series
+   re-issue that ordinal exactly as it did before — §7 **gap 83**.
+
+---
+
 ### Line pictures  (`image`, 21 October 2026 — CLIENT_CHANGES.md §0 forty-ninth block)
 
 **Not a collection.** One optional key, on five shapes, holding the id of a
@@ -6441,6 +6541,28 @@ needed no new CSS. ⚠ **Never build a coverage ratio out of that pair.**
 
 ### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
 
+
+#### The document number, typed by hand — 27 October 2026
+
+CLIENT_CHANGES.md §0's **fifty-fourth** block, item A. The create form
+prefills the next automatic number; the prefix and the financial year are
+rendered as **text, not as a disabled input** — so they cannot be posted at
+all rather than merely not clicked — and only the numeric tail is a box.
+A typed number is accepted only when it is **strictly greater than the highest
+ordinal ever used** in that series, counting cancelled and deleted documents;
+keeping the prefill is always allowed; the refusal names the current highest.
+On save the series advances to entered + 1.
+
+The rule, the scan and the control are all `docnum.py`'s — §2, §3 *A document
+number typed by hand*. The field is typeable only for **`docnum.override`**
+(Owner + Director by default, an `auth.PANEL_PERMISSIONS` entry that gates no
+endpoint), and the server refuses a CHANGED number on the POST as well, since
+a read-only attribute is a hint rather than a rule. The check and the counter
+advance are in the **save path and never on a GET** — a GET that moved a
+counter would burn a serial every time somebody opened the form and changed
+their mind. Every override is stamped on the record as `number_override`
+(from, to, user **id**, timestamp) and **is never printed**.
+
 #### `/proforma/delete/<id>` — 23 September 2026
 
 Deleting a PI is refused the moment a tax invoice has been raised from it: a
@@ -6675,6 +6797,39 @@ for the same reason `.pi-chip` lives in `QUOTATION_STYLES`.
 
 ### `/invoice` — Tax Invoices · [invoice.py](invoice.py)
 
+
+#### The document number, typed by hand — 27 October 2026
+
+CLIENT_CHANGES.md §0's **fifty-fourth** block, item A. The create form
+prefills the next automatic number; the prefix and the financial year are
+rendered as **text, not as a disabled input** — so they cannot be posted at
+all rather than merely not clicked — and only the numeric tail is a box.
+A typed number is accepted only when it is **strictly greater than the highest
+ordinal ever used** in that series, counting cancelled and deleted documents;
+keeping the prefill is always allowed; the refusal names the current highest.
+On save the series advances to entered + 1.
+
+The rule, the scan and the control are all `docnum.py`'s — §2, §3 *A document
+number typed by hand*. The field is typeable only for **`docnum.override`**
+(Owner + Director by default, an `auth.PANEL_PERMISSIONS` entry that gates no
+endpoint), and the server refuses a CHANGED number on the POST as well, since
+a read-only attribute is a hint rather than a rule. The check and the counter
+advance are in the **save path and never on a GET** — a GET that moved a
+counter would burn a serial every time somebody opened the form and changed
+their mind. Every override is stamped on the record as `number_override`
+(from, to, user **id**, timestamp) and **is never printed**.
+
+⚠ **The tax invoice is the one that scans four places.** Uniqueness is per
+GSTIN per financial year across every tax invoice this application prints —
+`invoices.ref` (the ordinary TI **and the one raised from a BOQ**, the same
+collection), `ra_bills.tax_invoice_ref` and `merged_ras.tax_invoice_ref` — and
+the union is taken on the **ordinal**, so `SF/RI/26-27/0007` blocks a TI
+override to 0007. That scan is in the leaf because **`ra.py` may never import
+`invoice.py`**. ⚠ **The TI form is also the only one carrying the skip note**:
+a non-blocking, non-printing line saying that a number ahead of the prefill
+leaves a gap in the *documents issued* table of a GSTR-1. A gap in a challan
+or a buy-side order is nobody's business but ours.
+
 #### `/invoice/cancel/<id>` — 23 September 2026 · ⚠ THERE IS NO DELETE ROUTE
 
 **And there must never be one.** A GST invoice number has to run
@@ -6894,6 +7049,39 @@ as over-invoiced — three PIs at 33.34% come to 100.02% and are not a mistake).
 ---
 
 ### `/purchase` — Purchase Orders · [purchase.py](purchase.py) · **BUY SIDE**
+
+
+#### The document number, typed by hand — 27 October 2026
+
+CLIENT_CHANGES.md §0's **fifty-fourth** block, item A. The create form
+prefills the next automatic number; the prefix and the financial year are
+rendered as **text, not as a disabled input** — so they cannot be posted at
+all rather than merely not clicked — and only the numeric tail is a box.
+A typed number is accepted only when it is **strictly greater than the highest
+ordinal ever used** in that series, counting cancelled and deleted documents;
+keeping the prefill is always allowed; the refusal names the current highest.
+On save the series advances to entered + 1.
+
+The rule, the scan and the control are all `docnum.py`'s — §2, §3 *A document
+number typed by hand*. The field is typeable only for **`docnum.override`**
+(Owner + Director by default, an `auth.PANEL_PERMISSIONS` entry that gates no
+endpoint), and the server refuses a CHANGED number on the POST as well, since
+a read-only attribute is a hint rather than a rule. The check and the counter
+advance are in the **save path and never on a GET** — a GET that moved a
+counter would burn a serial every time somebody opened the form and changed
+their mind. Every override is stamped on the record as `number_override`
+(from, to, user **id**, timestamp) and **is never printed**.
+
+⚠ **The purchase order is the ONE of the four whose number stays editable
+after create**, and only while it is a `Draft` — `PO_STATUSES` defines that as
+"written, not yet sent to the vendor". The field is drawn on
+`/purchase/edit/<id>` for a Draft and **not drawn at all** from `Issued`
+onward, and the POST refuses a change there. This is layered **on top of**
+that route's own rule rather than mixed into it: A1 deliberately unlocked
+repricing on an Issued order and that is unchanged; the number is a different
+question. The other three types have no unissued state — a tax invoice has no
+draft, a proforma has no status field, and `edit_dc()` says in terms that a
+challan's `ref` is never reissued.
 
 #### `/purchase/delete/<id>` — 23 September 2026
 
@@ -10598,6 +10786,37 @@ escaping and entity sweeps (the three Pictures pages are in their URL map), and
 | `GET /dc/print/<id>` | `print_dc` — the document alone |
 | `GET,POST /dc/edit/<id>` | `edit_dc` — consignee and dispatch fields only, never the lines |
 | `GET,POST /dc/delete/<id>` | `delete_dc` — GET confirms, POST deletes |
+
+#### The document number, typed by hand — 27 October 2026
+
+CLIENT_CHANGES.md §0's **fifty-fourth** block, item A. The create form
+prefills the next automatic number; the prefix and the financial year are
+rendered as **text, not as a disabled input** — so they cannot be posted at
+all rather than merely not clicked — and only the numeric tail is a box.
+A typed number is accepted only when it is **strictly greater than the highest
+ordinal ever used** in that series, counting cancelled and deleted documents;
+keeping the prefill is always allowed; the refusal names the current highest.
+On save the series advances to entered + 1.
+
+The rule, the scan and the control are all `docnum.py`'s — §2, §3 *A document
+number typed by hand*. The field is typeable only for **`docnum.override`**
+(Owner + Director by default, an `auth.PANEL_PERMISSIONS` entry that gates no
+endpoint), and the server refuses a CHANGED number on the POST as well, since
+a read-only attribute is a hint rather than a rule. The check and the counter
+advance are in the **save path and never on a GET** — a GET that moved a
+counter would burn a serial every time somebody opened the form and changed
+their mind. Every override is stamped on the record as `number_override`
+(from, to, user **id**, timestamp) and **is never printed**.
+
+⚠ **The challan's series is a stored high-water counter, not a `max+1` scan**,
+so "the highest ever used" is `next_no - 1` and `_spend_ref(seq)` writes
+`seq + 1` back — this module's own "deleting a challan SPENDS its number"
+rule, applied to a bigger step. ⚠ **With the prefix blank the whole number is
+typeable**, and that is right rather than an edge case: `settings.dc_ref_of()`
+records that a blank prefix gives the bare integer, *"the client's own book"*,
+so there is no fixed part to protect. The number is settable **on create
+only** — `/dc/edit/<id>` never reissues it.
+
 
 **CLIENT_CHANGES.md item 5**, built to their own **DC54**, which is the ground
 truth for the layout rather than a starting point.
@@ -14461,6 +14680,61 @@ text is unchanged, and every reference to them was moved with them.*
     3" — with no per-copy reset in Chromium. A long BOQ printed today has
     unnumbered pages. If numbers are wanted, the bottom-margin counter is the
     route, and the copy-set wording is the question to settle first.
+
+83. 🟠 **The MANUAL number counts a deleted document and the AUTOMATIC one
+    does not — OPEN, by decision** (27 October 2026, CLIENT_CHANGES.md §0
+    fifty-fourth block, item A).
+
+    ⚠ **This number may move at a merge.** It is the next free gap number on
+    `cloud/yogesh-27oct`; an unpushed office-PC pass (HSN / Draft PO editing)
+    may mint the same one, and the merge renumbers whichever line yields —
+    exactly as the 24 October merge renumbered the production line's gap 67 to
+    80. The content is not altered by a renumbering.
+
+    `docnum.highest_used()` is the max of three readings — the scan over the
+    surviving records, the challan's stored counter, and the high-water ledger
+    `STORE["settings"]["document_number_highwater"]` (§3 *A document number
+    typed by hand*). **`series.next_seq()` reads only the first.** So:
+
+    | | typed by hand | minted automatically |
+    |---|---|---|
+    | a CANCELLED tax invoice's number | counted | counted (the record is still there) |
+    | a DELETED proforma's or order's number | **counted** | **not counted — re-issued** |
+    | an RA bill's `tax_invoice_ref` | counted, for a TI | not counted |
+
+    Delete `PI-0050` and the next automatic proforma is `PI-0050` again,
+    while typing 50 is refused. Both halves were deliberate and neither is
+    accidental:
+
+    * **The ledger was not wired into the minter**, because that would change
+      what number every save produces for everybody — a behaviour change on
+      a live series, for a feature only two roles can reach, in a pass that
+      had no reason to move an automatic number. Leaving `next_seq()` alone
+      is what kept **every print and register golden byte-identical**, which
+      is the evidence that nothing a reader sees moved.
+    * **The validator was not narrowed to the scan**, because "no reuse after
+      a delete" is the brief's own requirement for the typed path and the
+      scan cannot answer it.
+
+    **What it costs.** A reused automatic number is the pre-existing
+    behaviour of `max+1` over surviving records and is not new here —
+    `invoice._next_ref()`'s own docstring says max+1 exists so that *"deleting
+    a record never re-issues a number"*, which is true only while the record
+    is still there, and a tax invoice cannot be deleted at all (it is
+    cancelled, and the record stays). So the exposure is the **proforma and
+    the purchase order**, where a delete route exists and the number is not
+    statutory. What is new is that the two paths now disagree, and a reader
+    who finds 0050 refused by hand and then issued automatically has to be
+    able to find out why.
+
+    📌 **What it would take.** One line — `next_seq()` taking the ledger into
+    its `max()`. It needs a §0 block rather than a judgement call, because it
+    moves a live series, and the measurement to go with it: every golden
+    re-run, and the client asked whether a gap left by a deleted proforma
+    should be skipped or filled. Gap 15's rule applies.
+
+    ⚠ **It does not touch gap 32**, which is about a value already on the
+    live database and about the automatic minters. Gap 32 stays OPEN.
 
 ## 8. Stale docs — do not trust these two files
 

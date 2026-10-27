@@ -674,6 +674,88 @@ FORBIDDEN = [
                                      "db.py mirrors it"),
     ("series", "flask",       "any", "it owns no route and builds no HTML"),
 
+    # ── docnum.py — the MANUAL document number is a LEAF (27 October 2026) ─
+    #
+    # CLIENT_CHANGES.md §0's fifty-fourth block, item A. It holds the rule
+    # ("strictly greater than the highest EVER used, counting cancelled and
+    # deleted"), the high-water ledger that outlives a deleted document, and
+    # the one number control all four create forms render.
+    #
+    # ⚠ **`docnum -> invoice` and `docnum -> ra` are the LOAD-BEARING pair,
+    #   and they are the reason this module exists at all.** Item A point 5
+    #   requires the tax invoice's uniqueness check to scan EVERY place a TI
+    #   number can be — `invoices.ref` (the ordinary TI and the one raised
+    #   from a BOQ, the same collection), `ra_bills.tax_invoice_ref` and
+    #   `merged_ras.tax_invoice_ref`. **`ra.py` may never import
+    #   `invoice.py`** (its own header says so at length, and the row is
+    #   eleven screens up). A check written inside either module would satisfy
+    #   that prohibition on paper and defeat it in practice, because the
+    #   coupling would run through the basement — `docsheet.py`'s argument,
+    #   and `series.py`'s, used a third time. So the leaf reads the three
+    #   collections out of `STORE` directly and neither document module gains
+    #   an edge.
+    #
+    # ⚠ **`docnum -> auth` is refused**, although the rule has a permission
+    #   in it. `auth.py` sits at the BOTTOM of the graph and is imported by
+    #   everything through `dashboard.py`; a leaf that reached it would be
+    #   reachable from the bottom in both directions. The four document
+    #   modules each answer the permission question themselves, with the
+    #   function-body `import auth` they already take for `can_reach()`, and
+    #   pass the boolean in. `tests/test_docnum.py` holds the same line.
+    #
+    # ⚠ **`docnum -> pipeline` is ALLOWED and `series -> pipeline` is not.**
+    #   The difference is real rather than an inconsistency: `series.py`
+    #   answers an ORDINAL and does no formatting at all, while this module
+    #   renders the field and must escape what it interpolates (ABOUT.md §9).
+    #   `pipeline.py` imports nothing from the app, so the edge couples it to
+    #   nothing. It is listed in REQUIRED below.
+    ("docnum", "invoice",     "any", "ra.py may never import invoice.py; a "
+                                     "leaf that imported either would defeat "
+                                     "that prohibition through the basement, "
+                                     "and the TI scan is the whole reason "
+                                     "this leaf exists"),
+    ("docnum", "ra",          "any", "same, from the other side"),
+    ("docnum", "merged_ra",   "any", "and the third tax-invoice source"),
+    ("docnum", "proforma",    "any", "the leaf reads STORE['proformas'] "
+                                     "directly"),
+    ("docnum", "purchase",    "any", "same"),
+    ("docnum", "challan",     "any", "same — and it reads the challan's "
+                                     "stored counter out of STORE['settings'] "
+                                     "rather than through settings.py"),
+    ("docnum", "settings",    "any", "settings.py imports quotation; nothing "
+                                     "downstream may import back. The challan "
+                                     "series record is read from "
+                                     "STORE['settings'] directly, which is "
+                                     "series.py's arrangement"),
+    ("docnum", "quotation",   "any", "quotation.py is FROZEN and its series "
+                                     "takes no manual number either"),
+    ("docnum", "po_draft",    "any", "the draft PO is deliberately outside "
+                                     "item A — §0's fifty-fourth block"),
+    ("docnum", "product",     "any", "the other frozen file"),
+    ("docnum", "boq",         "any", "a schedule is not a numbered statutory "
+                                     "document"),
+    ("docnum", "auth",        "any", "the gate is central and auth.py is at "
+                                     "the bottom of the graph; the four "
+                                     "document modules pass the boolean in"),
+    ("docnum", "series",      "any", "the FLOOR and the MANUAL number are two "
+                                     "rules over one store, and neither is "
+                                     "the other's input: next_seq() is what "
+                                     "prefills the form, and the minters "
+                                     "already call it"),
+    ("docnum", "branding",    "any", "the leaf answers an ORDINAL and renders "
+                                     "one field; the company prefix and the "
+                                     "Rule 46(b) cap stay with the minter"),
+    ("docnum", "dashboard",   "any", "it renders a field, not a page"),
+    ("docnum", "chrome",      "any", "same"),
+    ("docnum", "docsheet",    "any", "the field is on a FORM, never on a "
+                                     "printed sheet — the override trail is "
+                                     "stored and never printed"),
+    ("docnum", "boqpick",     "any", "it picks no lines"),
+    ("docnum", "db",          "any", "it mutates STORE like every other "
+                                     "module; db.py mirrors it"),
+    ("docnum", "flask",       "any", "it owns no route and reads no request: "
+                                     "the typed value is passed in"),
+
     # The other direction: the printed sheet may not depend on the shell.
     # `docsheet.py` reads `BASE_STYLES` through `dashboard.py`'s re-export,
     # deliberately, and says so at the import.
@@ -899,6 +981,28 @@ REQUIRED = [
     ("series",      "store",  "STORE['settings'] for the floors, and each "
                               "collection for its own max — read DIRECTLY, "
                               "which is the whole reason it can be a leaf"),
+
+    # ── docnum.py, the manual document number (27 October 2026) ────────
+    # The four modules that let a number be typed reach the ONE rule, so the
+    # read-only half of the field and the validated half cannot drift apart.
+    ("invoice",  "docnum", "the tax invoice's typed number — and the scan "
+                           "that sees an RA bill's statutory serial without "
+                           "invoice.py importing ra.py"),
+    ("proforma", "docnum", "the proforma's typed number"),
+    ("purchase", "docnum", "the buy-side PO's typed number, on all three "
+                           "create paths and on a DRAFT order's reprice form"),
+    ("challan",  "docnum", "the challan's typed number, over its stored "
+                           "high-water counter"),
+    ("docnum",   "store",  "the three tax-invoice collections, the proformas, "
+                           "the purchases, the challans and "
+                           "STORE['settings'] — all read DIRECTLY, which is "
+                           "the whole reason it can be a leaf"),
+    ("docnum",   "pipeline", "esc and json_for_script. ⚠ series.py is refused "
+                             "this arrow because it does no formatting at "
+                             "all; this leaf RENDERS the field and must "
+                             "escape what it interpolates (ABOUT.md §9). "
+                             "pipeline.py imports nothing from the app, so "
+                             "the edge couples it to nothing"),
 
     ("boq", "quotation", "the document toolkit — _inr, _fmt_qty, _amount_in_words, "
                          "_meta, VIEW_DOC_STYLES, QUOTATION_STYLES"),

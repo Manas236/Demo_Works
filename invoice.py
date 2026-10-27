@@ -69,6 +69,7 @@ import branding as B
 import cascade
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, _nav
 from store import STORE
@@ -222,9 +223,57 @@ def _next_ref(datestr: str) -> str:
       implied: `--workers 1 --threads 1` is a correctness requirement, not a
       tuning choice (DEPLOY.md §8.2).
     """
-    fy = _fy_of(datestr)
-    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
-                    SER.next_seq("TI", fy), cap=16)
+    return _ref_for(datestr, SER.next_seq("TI", _fy_of(datestr)))
+
+
+def _ref_for(datestr: str, seq: int) -> str:
+    """
+    The tax invoice number for one ORDINAL — the shape, without the counter.
+
+    Split out of `_next_ref()` on 27 October 2026 (CLIENT_CHANGES.md §0's
+    fifty-fourth block) so a number the operator typed is spelled by exactly
+    the same code as one the series minted. Two spellings of one serial is how
+    a hand-typed `0050` ends up as `SF/TI/26-27/50` on the only document whose
+    number the GST portal checks.
+
+    ⚠ The Rule 46(b) 16-character cap rides here, where it always did.
+    """
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, _fy_of(datestr), seq, cap=16)
+
+
+def _may_set_number() -> bool:
+    """
+    May this user type a document number?
+
+    The function-body `import auth` is the hatch `view_invoice()` three
+    screens down already takes for `can_reach()`, and the reason is the same:
+    `auth.py` sits at the BOTTOM of the import graph and a module-level import
+    from here is not the arrow to add for one boolean.
+    """
+    import auth as _AUTH
+    return _AUTH.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    """The id of whoever is saving — never their display name (gap 41)."""
+    import auth as _AUTH
+    return str((_AUTH.current_user() or {}).get("id") or "")
+
+
+def _number_control(ti_date: str, typed: str, may: bool) -> tuple:
+    """
+    `(default_seq, control_html)` for the tax invoice's number field.
+
+    ⚠ **The TI is the one document that carries the skip note** —
+    CLIENT_CHANGES.md §0's fifty-fourth block, item A point 6. A gap in a tax
+    invoice series shows in the *documents issued* table of a GSTR-1 return,
+    which is a thing the filer has to be able to explain; a gap in a challan
+    or a purchase order is nobody's business but ours.
+    """
+    seq = SER.next_seq("TI", _fy_of(ti_date))
+    return seq, DN.number_field(DN.TI, _ref_for(ti_date, seq),
+                                may_override=may, typed=typed,
+                                skip_note=True)
 
 
 def _money(raw: str, default: float = 0.0) -> float:
@@ -754,6 +803,10 @@ def create_invoice(pid: str):
     f     = request.form
     error = ""
     grand = float(pi.get("grand_total") or 0.0)
+    may_number = _may_set_number()
+    # The ordinal actually saved. Set on the POST branch and read at the write;
+    # on a GET it is the series' own next number and nothing has been typed.
+    seq_used = 0
 
     if request.method == "POST":
         ti_date = (f.get("date") or "").strip()
@@ -772,11 +825,22 @@ def create_invoice(pid: str):
             error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
                      f"value (₹{grand:,.2f}).")
 
+        # ⚠ **The check and the advance are in the SAVE path, never on a GET**
+        #   — §0's fifty-fourth block, item A point 9. A GET that moved a
+        #   counter would burn a statutory serial every time somebody opened
+        #   the form and changed their mind.
+        if not error:
+            default_seq = SER.next_seq("TI", _fy_of(ti_date))
+            seq_used, num_err = DN.validate(DN.TI, _fy_of(ti_date),
+                                            f.get("doc_no_seq"), default_seq,
+                                            may_number)
+            error = error or num_err
+
         if not error:
             iid = str(uuid.uuid4())
             ti = {
                 "id":  iid,
-                "ref": _next_ref(ti_date),
+                "ref": _ref_for(ti_date, seq_used),
                 "fy":  _fy_of(ti_date),
                 "date": ti_date,
 
@@ -853,6 +917,12 @@ def create_invoice(pid: str):
             if q:
                 P.log_event(q, f"Tax invoice {ti['ref']} raised for "
                                f"&#8377;{grand:,.0f} against {ti['proforma_ref']}.")
+
+            # The series moves to entered + 1 by the ledger being raised to
+            # `seq_used`: `_next_ref()` is max+1 over it and over the records.
+            DN.note_used(DN.TI, ti["fy"], seq_used)
+            DN.record_override(ti, _ref_for(ti_date, default_seq), ti["ref"],
+                               _actor_id())
 
             return redirect(url_for("invoice.view_invoice", id=iid,
                                     msg=f"Tax invoice {ti['ref']} created.",
@@ -987,10 +1057,14 @@ def create_invoice(pid: str):
 
     pi_view = url_for("proforma.view_proforma", id=pid)
 
+    _default_seq, ti_number_html = _number_control(
+        v_date, f.get("doc_no_seq") if request.method == "POST" else "",
+        may_number)
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Raise Tax Invoice")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -1007,8 +1081,8 @@ def create_invoice(pid: str):
         From proforma <b>{P.esc(pi.get('ref'))}</b> dated {P.esc(pi.get('date'))}
         &middot; {P.esc(_customer_of(pi))}
         &middot; invoice value <b>&#8377;&nbsp;{grand:,.0f}</b>
-        <div class="sn-sub">The invoice will be numbered {P.esc(_next_ref(v_date))}
-          &mdash; consecutive within FY {P.esc(_fy_of(v_date))}, as Rule 46 requires.</div>
+        <div class="sn-sub">Consecutive within FY {P.esc(_fy_of(v_date))}, as
+          Rule 46 requires.</div>
         {existing_html}
       </div>
 
@@ -1019,6 +1093,10 @@ def create_invoice(pid: str):
         <div class="form-section">
           <div class="section-title">Invoice</div>
           <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Invoice No.</label>
+              {ti_number_html}
+            </div>
             <div class="form-group">
               <label for="date">Invoice Date *</label>
               <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
@@ -1169,6 +1247,8 @@ def from_boq(boq_id: str):
     head = boq_tax_head(f.get("tax_type") if is_post else "")
     error = ""
     chosen = qty_of = None
+    may_number = _may_set_number()
+    seq_used = 0
 
     if is_post:
         ti_date = (f.get("date") or "").strip()
@@ -1199,11 +1279,22 @@ def from_boq(boq_id: str):
                 error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
                          f"value (₹{grand:,.2f}).")
 
+        # ⚠ Same series, same ledger, same scan as the PI-raised invoice
+        #   above — a TI raised from a BOQ is an ORDINARY tax invoice in its
+        #   own series (§0's fifty-first block), so there is nothing to
+        #   special-case here and deliberately no second code path.
+        if not error:
+            default_seq = SER.next_seq("TI", _fy_of(ti_date))
+            seq_used, num_err = DN.validate(DN.TI, _fy_of(ti_date),
+                                            f.get("doc_no_seq"), default_seq,
+                                            may_number)
+            error = error or num_err
+
         if not error:
             iid = str(uuid.uuid4())
             ti = {
                 "id":  iid,
-                "ref": _next_ref(ti_date),
+                "ref": _ref_for(ti_date, seq_used),
                 "fy":  _fy_of(ti_date),
                 "date": ti_date,
 
@@ -1253,6 +1344,9 @@ def from_boq(boq_id: str):
             STORE["invoices"][iid] = ti
             # B6 — the creator, captured at the write site. See approval.py.
             approval.stamp_creator(ti)
+            DN.note_used(DN.TI, ti["fy"], seq_used)
+            DN.record_override(ti, _ref_for(ti_date, default_seq), ti["ref"],
+                               _actor_id())
             return redirect(url_for("invoice.view_invoice", id=iid,
                                     msg=f"Tax invoice {ti['ref']} created against "
                                         f"{boq.get('ref') or 'the schedule'}.",
@@ -1333,10 +1427,13 @@ def from_boq(boq_id: str):
 
     back = url_for("boq.view_boq", id=boq_id)
 
+    _default_seq, ti_number_html = _number_control(
+        v_date, f.get("doc_no_seq") if is_post else "", may_number)
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Tax Invoice from BOQ")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{FROM_BOQ_FORM_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{FROM_BOQ_FORM_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -1352,8 +1449,8 @@ def from_boq(boq_id: str):
       <div class="src-note">
         From bill of quantities <b>{P.esc(boq.get('ref'))}</b>
         &middot; {P.esc(boq.get('project_name'))} &middot; {P.esc(_customer_of(boq))}
-        <div class="sn-sub">The invoice will be numbered {P.esc(_next_ref(v_date))}
-          &mdash; consecutive within FY {P.esc(_fy_of(v_date))}, as Rule 46 requires.</div>
+        <div class="sn-sub">Consecutive within FY {P.esc(_fy_of(v_date))}, as
+          Rule 46 requires.</div>
       </div>
 
       {dup_html}
@@ -1366,6 +1463,10 @@ def from_boq(boq_id: str):
         <div class="form-section">
           <div class="section-title">Invoice</div>
           <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Invoice No.</label>
+              {ti_number_html}
+            </div>
             <div class="form-group">
               <label for="date">Invoice Date *</label>
               <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>

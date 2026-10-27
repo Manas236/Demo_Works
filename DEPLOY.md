@@ -997,6 +997,40 @@ The tool refuses to seed into memory if MySQL is not live
 and rejects 25 named placeholders (`tools/seed_users.py:40-46`). It is idempotent
 — a re-run leaves an existing user untouched (`tools/seed_users.py:108-116`).
 
+### 9.4a ☠ A PERMISSION MINTED BY A PASS REACHES NO LIVE ROLE UNTIL YOU RUN THIS
+
+**On every deploy that ships a new permission, after the code is in place and
+before anybody is told the feature exists:**
+
+```bash
+sudo -u samruddhi .venv/bin/python tools/backup_db.py --label pre-reconcile
+sudo -u samruddhi .venv/bin/python tools/reconcile_role_permissions.py          # report
+sudo -u samruddhi .venv/bin/python tools/reconcile_role_permissions.py --write  # grant
+```
+
+**Why it is not optional.** `auth.ensure_builtin_roles()` deliberately never
+rewrites an existing role's permission list — once an Owner has edited what
+*Director* means, a restart must not undo it. The cost is that a permission
+minted in a later pass **never reaches a database that already has its roles**:
+it exists in code, it exists on a fresh database, and on the live one **no role
+holds it, the Owner included**, because `auth._gate()` has no Owner bypass.
+`tools/reconcile_role_permissions.py`'s own header records that this has
+shipped **three** times already (B6's four `*.approve`, C4/C5's `employee.*`
+and `attendance.*`, C2's `measurement.*`), and the 21 October 2026 repair found
+`invoice.cancel` reaching **no role at all**.
+
+⚠ **27 October 2026 — `docnum.override` is the current instance.**
+CLIENT_CHANGES.md §0's **fifty-fourth** block, item A: setting a document
+number by hand is granted to **Owner and Director** in `auth.BUILTIN_ROLES`,
+and `docs/ACCESS_MATRIX.md` shows it there. **That is the fresh-database
+picture.** On the live box the two roles already exist, so until this tool runs
+with `--write` **nobody can type a document number — an Owner included** — and
+the symptom is silent: the field renders read-only and a changed number is
+refused on the POST, which looks exactly like the feature not having been
+deployed. It could **not** be run from the pass that built it: there is no
+MySQL in that environment and no live database to reconcile against, and faking
+it would have been worse than saying so.
+
 ### 9.5 nginx and TLS
 
 ```nginx
@@ -1192,6 +1226,7 @@ anything in §8 ships (`tools/seed_users.py:22-23`).
 - [ ] nginx `client_max_body_size 8m`, and a 4 MB PDF uploads successfully
 - [ ] TLS live; 3306 not reachable from outside the box
 - [ ] First Owner created; `/setup` no longer reachable
+- [ ] **`tools/reconcile_role_permissions.py --write` run — §9.4a.** Mandatory on any deploy carrying a new permission; without it the permission reaches **no live role, the Owner included**, and the symptom is silence. 27 Oct 2026: `docnum.override`
 - [ ] **`/settings` fully populated with the client's real GSTIN, PAN and bank details — §6.3**
 - [ ] **One document of each type printed and the letterhead read by a human** — no `27AAAAA0000A1Z5`, no `SPECIMEN BANK LTD.`
 - [ ] **`.env` contains `SAMRUDDHI_DEMO_DATA=false`** — §6, §9.3. (It is the code's default too; set it explicitly so nothing about this box is implicit.)

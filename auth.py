@@ -519,6 +519,20 @@ PERMISSIONS = {
     "address.delete":        ("Delete an address",                        "Library"),
 
     "settings.edit":         ("Edit company identity and bank details",   "Administration"),
+    # Item A of the 27 October 2026 call (CLIENT_CHANGES.md §0's fifty-fourth
+    # block). ⚠ **A PANEL permission — the second in this catalogue, and it
+    # opens no page of its own.** It decides whether the document-number field
+    # on four create forms is typeable, and the server half refuses a CHANGED
+    # number on the POST: a read-only input is a hint, not a rule. Without it
+    # the forms render and save exactly as they did before, on the automatic
+    # number. See `PANEL_PERMISSIONS`.
+    #
+    # ⚠ It is **Administration**, not one permission per document chain. The
+    #   right it grants is "overrule a statutory counter", which is the same
+    #   right on all four and is an administrator's; four ids would invite
+    #   somebody to hold it on the challan and not the tax invoice, which is
+    #   the combination that makes no sense.
+    "docnum.override":       ("Set a document number by hand",            "Administration"),
     "admin.users":           ("Create, edit and deactivate users",        "Administration"),
     "admin.roles":           ("Define what a role means",                 "Administration"),
     "admin.access_log":      ("Read the refused-access log",              "Administration"),
@@ -579,6 +593,17 @@ AUTHENTICATED = "__authenticated__"  # any logged-in user, no permission needed
 #   grants nothing is still refused; this one grants a panel and a line.
 PANEL_PERMISSIONS = {
     "project.pnl": ("projectview.view_project", "project.list_projects"),
+    # 27 October 2026 — the eight create routes whose number field it unlocks.
+    # ⚠ `purchase.edit_purchase_rates` is on the list because the PURCHASE
+    #   ORDER is the one of the four with a genuine unissued state (`Draft`),
+    #   so its number stays typeable there until the order is Issued. The
+    #   other three types have no draft, so their number is settable at create
+    #   and never again — see docnum.py and ABOUT.md §5.
+    "docnum.override": ("invoice.create_invoice", "invoice.from_boq",
+                        "proforma.create_proforma", "proforma.from_boq",
+                        "purchase.create_purchase", "purchase.from_boq",
+                        "purchase.from_draft", "purchase.edit_purchase_rates",
+                        "challan.create_dc"),
 }
 
 # ── Hidden blueprints — a module switched OFF for everybody ──────────────────
@@ -1310,6 +1335,14 @@ BUILTIN_ROLES = {
             # above it. See `PERMISSION_ONLY_DESTROYS`.
             "boq.delete", "quotation.delete", "proforma.delete",
             "purchase.delete", "invoice.cancel",
+            # Item A, 27 October 2026 (§0's fifty-fourth block). Owner and
+            # Director by default, as the brief sets it, and deliberately NOT
+            # in `_OPERATIONS` — a statutory serial typed by hand is an
+            # administrator's act, and `project.pnl` three entries up sets the
+            # precedent for a panel permission on this tier. An Owner grants
+            # it anywhere else at /roles/edit/<id> with a checkbox, no code
+            # change and no re-login.
+            "docnum.override",
             "admin.users", "admin.access_log",
         ])),
     ),
