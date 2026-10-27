@@ -671,6 +671,167 @@ def labour_cost_of(rows) -> dict:
             "refused": refused}
 
 
+# =============================================================================
+# SEARCH — a range of days, filtered (item B, 27 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0's **fifty-fourth** block, item B. The muster is a DAY
+# at a time because that is the unit CC-2 records in and the unit the
+# "one employee, one site, one day" constraint is written on. This is the
+# other question the same records answer: what did one person, or one site,
+# cost over a stretch of days.
+#
+# ⚠ **The arithmetic is NOT redefined here.** Every figure comes from
+#   `cost_of()` at `S.ot_multiplier()`, which is the one wage path in this
+#   application — `labour_cost_of()`'s own rule, stated in its docstring as
+#   the reason `pnl.py` may not reach past it. A second place able to compute
+#   a wage is a second place the OT multiplier could be hardcoded, which is
+#   the statutory-underpayment defect CC-2 names.
+
+# What the preset buttons mean. The value is the query string; the label is
+# what the button says.
+PRESET_LAST_10 = "last10"
+PRESET_THIS_MONTH = "this-month"
+PRESET_LAST_MONTH = "last-month"
+
+PRESETS = (
+    (PRESET_LAST_10,     "Last 10 days"),
+    (PRESET_THIS_MONTH,  "This month"),
+    (PRESET_LAST_MONTH,  "Last month"),
+)
+
+
+def preset_range(name: str, today: str = "") -> tuple:
+    """
+    `(from, to)` for one preset, as ISO dates. `("", "")` for an unknown name.
+
+    ⚠ **"Last 10 days" INCLUDES today**, so it is today minus nine — ten
+      days of markings, not eleven. Stated here because "last 10 days" is the
+      kind of phrase two people read two ways, and the page says which.
+
+    ⚠ **"Last month" is the previous CALENDAR month**, first to last, not
+      the last thirty days. A wages question is asked by the month somebody
+      is being paid for.
+    """
+    try:
+        end = datetime.date.fromisoformat(str(today or "").strip() or _today())
+    except ValueError:
+        end = datetime.date.today()
+
+    if name == PRESET_LAST_10:
+        return (end - datetime.timedelta(days=9)).isoformat(), end.isoformat()
+    if name == PRESET_THIS_MONTH:
+        return end.replace(day=1).isoformat(), end.isoformat()
+    if name == PRESET_LAST_MONTH:
+        last_end = end.replace(day=1) - datetime.timedelta(days=1)
+        return last_end.replace(day=1).isoformat(), last_end.isoformat()
+    return "", ""
+
+
+def _iso_or_blank(raw) -> str:
+    """An ISO date, or "" for anything that is not one. Never raises."""
+    text = str(raw or "").strip()
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return ""
+    return text
+
+
+def search_markings(date_from: str = "", date_to: str = "",
+                    employee_id: str = "", site: str = "",
+                    project_id: str = "") -> list:
+    """
+    Every marking matching the filters, newest day first then by name.
+
+    A blank filter matches everything, which is what makes "one or all" one
+    control rather than two. `date_from` and `date_to` are **inclusive** on
+    both ends and are compared as ISO strings — a date in this collection is
+    always `YYYY-MM-DD` (`mark_attendance()` writes `_validate()`'s output and
+    nothing else), and ISO dates sort lexicographically, which is the whole
+    reason the format was chosen.
+
+    ⚠ **`site` matches the snapshotted LABEL**, which is what `site_costs()`
+      groups by and what the muster prints. An address renamed next March must
+      not restate which site somebody worked on last August, so the label on
+      the record is the answer and the address book is only where the picker's
+      options come from.
+    """
+    lo = _iso_or_blank(date_from)
+    hi = _iso_or_blank(date_to)
+    want_emp = str(employee_id or "").strip()
+    want_site = str(site or "").strip()
+    want_proj = str(project_id or "").strip()
+
+    out = []
+    for r in records().values():
+        day = str(r.get("date") or "")
+        if lo and day < lo:
+            continue
+        if hi and day > hi:
+            continue
+        if want_emp and str(r.get("employee_id") or "") != want_emp:
+            continue
+        if want_site and str(r.get("site") or "").strip() != want_site:
+            continue
+        if want_proj and str(r.get("project_id") or "") != want_proj:
+            continue
+        out.append(r)
+    out.sort(key=lambda r: (str(r.get("date") or ""),
+                            str(r.get("employee_name") or "").lower()),
+             reverse=True)
+    return out
+
+
+def worker_costs(rows) -> list:
+    """
+    `[{employee_id, employee, days_present, days_marked, ot_hours, day_cost,
+       ot_cost, total, refused, unmapped}, …]`, one per worker, name order.
+
+    **`site_costs()`'s shape, keyed on the person instead of the place**, and
+    computed the same way: `cost_of()` per marking at `S.ot_multiplier()`,
+    live, never stored. A maintained total is a number one code path can
+    forget to update, and this repo has paid for that twice.
+
+    ⚠ **A refused marking is COUNTED and contributes nothing** — the rule
+      `site_costs()` and `labour_cost_of()` both hold. Dropping it would hide
+      that somebody worked; folding its old monthly figure into the money
+      would overstate the person by a factor of about twenty-six. Both halves
+      are reported so the page can say the total is short and by how many.
+
+    ⚠ **`days_present` is days marked PRESENT**, which is the figure a wage
+      is paid on (CC-2: *"Salary as 0 or 1 based on attendance"*).
+      `days_marked` is beside it so an absence is visible rather than merely
+      missing from a count.
+    """
+    multiplier = S.ot_multiplier()
+    buckets = {}
+    for r in rows:
+        key = str(r.get("employee_id") or "") or f"?{r.get('employee_name')}"
+        b = buckets.setdefault(key, {
+            "employee_id": str(r.get("employee_id") or ""),
+            "employee": str(r.get("employee_name") or "").strip() or "(unnamed)",
+            "code": str(r.get("employee_code") or ""),
+            "days_present": 0, "days_marked": 0, "ot_hours": 0.0,
+            "day_cost": 0.0, "ot_cost": 0.0, "total": 0.0,
+            "refused": 0, "unmapped": False,
+        })
+        if EMP.is_unmapped_site(r):
+            b["unmapped"] = True
+        b["days_marked"] += 1
+        c = cost_of(r, multiplier)
+        if str(r.get("status") or "") == PRESENT:
+            b["days_present"] += 1
+            b["ot_hours"] += _num(r.get("ot_hours"))
+        if c["refused"]:
+            b["refused"] += 1
+            continue
+        b["day_cost"] = round(b["day_cost"] + c["day"], 2)
+        b["ot_cost"] = round(b["ot_cost"] + c["ot"], 2)
+        b["total"] = round(b["total"] + c["total"], 2)
+    return sorted(buckets.values(), key=lambda b: b["employee"].lower())
+
+
 def site_costs(date: str) -> list:
     """
     `[{site, people, present, ot_hours, day_cost, ot_cost, total, refused}, …]`
@@ -918,6 +1079,15 @@ ATTENDANCE_STYLES = "\n<style>\n" + MARKING_CELL_CSS + """
     color:#6B4E00;
   }
   .att-stale b { color:#8A5A00; }
+  /* The preset row on /attendance/search (27 October 2026). A row of links,
+     not buttons: every filter on that page is a query argument, so a result
+     is something somebody can send to somebody else. `.att-on` marks the one
+     currently in force. */
+  .att-presets { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:1.2rem; }
+  .att-presets .att-on {
+    border-color:var(--navy); color:var(--navy); font-weight:600;
+  }
+
   /* ⚠ `.att-norate` moved into MARKING_CELL_CSS above, spliced back in at the
      position the cell rules have always occupied. It is a CELL rule and the
      project page's Site Labour section renders that cell too. */
@@ -1344,6 +1514,7 @@ def list_attendance():
     <h1>Attendance <span>&amp; labour cost</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('attendance.mark_attendance', date=date)}" class="btn">+ Mark a day</a>
+      <a href="{url_for('attendance.search_attendance')}" class="btn btn-ghost">Search</a>
       <a href="{url_for('employee.list_employees')}" class="btn btn-ghost">Employees</a>
     </div>
   </div>
@@ -1520,6 +1691,228 @@ def _form(data: dict, error: str, action: str, submit_label: str,
 }})();
 </script>
 """
+
+
+# =============================================================================
+# THE SEARCH PAGE  (item B, 27 October 2026)
+# =============================================================================
+
+def _search_filter_options(rows_all, sel_emp, sel_site, sel_proj) -> tuple:
+    """
+    `(employee_html, site_html, project_html)` for the three pickers.
+
+    ⚠ **The site and project lists are built from the MARKINGS, not from the
+      address book and the project register.** Two reasons, and both are the
+      page being honest about what it can answer: a site nobody has ever been
+      marked on would be an option that always returns nothing, and an
+      **unmapped** site string (one the address book does not hold —
+      ABOUT.md §3) would be missing from a list built the other way, which is
+      exactly the attribution the muster's own unmapped band exists to make
+      visible rather than hide.
+    """
+    emp = ['<option value="">All workers</option>']
+    seen_emp = {}
+    for r in rows_all:
+        eid = str(r.get("employee_id") or "")
+        if eid and eid not in seen_emp:
+            name = str(r.get("employee_name") or "").strip() or "(unnamed)"
+            code = str(r.get("employee_code") or "").strip()
+            seen_emp[eid] = f"{name} ({code})" if code else name
+    for eid, label in sorted(seen_emp.items(), key=lambda kv: kv[1].lower()):
+        sel = " selected" if eid == sel_emp else ""
+        emp.append(f'<option value="{_esc(eid)}"{sel}>{_esc(label)}</option>')
+
+    sites = sorted({str(r.get("site") or "").strip() for r in rows_all
+                    if str(r.get("site") or "").strip()})
+    site = ['<option value="">All sites</option>']
+    for name in sites:
+        sel = " selected" if name == sel_site else ""
+        site.append(f'<option value="{_esc(name)}"{sel}>{_esc(name)}</option>')
+
+    projs = {}
+    for r in rows_all:
+        pid = str(r.get("project_id") or "")
+        if pid:
+            projs[pid] = str(r.get("project_name") or "").strip() or "(unnamed)"
+    proj = ['<option value="">All projects</option>']
+    for pid, label in sorted(projs.items(), key=lambda kv: kv[1].lower()):
+        sel = " selected" if pid == sel_proj else ""
+        proj.append(f'<option value="{_esc(pid)}"{sel}>{_esc(label)}</option>')
+
+    return "".join(emp), "".join(site), "".join(proj)
+
+
+@attendance_bp.route("/search")
+def search_attendance():
+    """
+    A range of days, filtered by worker, by site or project, and totalled per
+    worker — CLIENT_CHANGES.md §0's **fifty-fourth** block, item B.
+
+    **A separate page rather than a panel on the muster**, and that is a
+    decision rather than a convenience. `/attendance/` answers "who is on site
+    today" and is written on the one-employee-one-site-one-day constraint;
+    this answers "what did this person cost over these days", which is a
+    different unit and a different table. Folding the second into the first
+    would have moved the muster's page golden for every reader including the
+    ones who never search.
+
+    **Screen only.** No print route and no print stylesheet: the brief says so,
+    and a wage summary is not a document we issue to anybody.
+
+    ⚠ **No new permission.** It is classified `attendance.view` in
+      `auth.ROUTE_PERMISSIONS`, the same gate the muster carries — the brief
+      says to reuse the existing ones and mint none, and a role that may read
+      a day's labour cost may read a fortnight's.
+
+    ⚠ **GET only, and it writes nothing.** Every filter is a query argument,
+      so a result is a link somebody can send to somebody else.
+    """
+    args = request.args
+    preset = (args.get("preset") or "").strip()
+
+    if preset:
+        date_from, date_to = preset_range(preset)
+    else:
+        date_from = _iso_or_blank(args.get("from"))
+        date_to = _iso_or_blank(args.get("to"))
+
+    # The default view is the last 10 days rather than every marking ever
+    # taken: an unbounded first page is the one that is slowest and least
+    # useful, and the preset buttons say what the range is.
+    if not preset and not date_from and not date_to:
+        preset = PRESET_LAST_10
+        date_from, date_to = preset_range(PRESET_LAST_10)
+
+    sel_emp = (args.get("employee_id") or "").strip()
+    sel_site = (args.get("site") or "").strip()
+    sel_proj = (args.get("project_id") or "").strip()
+
+    rows = search_markings(date_from, date_to, sel_emp, sel_site, sel_proj)
+    workers = worker_costs(rows)
+    multiplier = S.ot_multiplier()
+
+    emp_opts, site_opts, proj_opts = _search_filter_options(
+        list(records().values()), sel_emp, sel_site, sel_proj)
+
+    # ── the preset buttons, each keeping the other filters ──────────────────
+    keep = {k: v for k, v in (("employee_id", sel_emp), ("site", sel_site),
+                              ("project_id", sel_proj)) if v}
+    chips = "".join(
+        f'<a class="btn btn-ghost{" att-on" if preset == name else ""}" '
+        f'href="{url_for("attendance.search_attendance", preset=name, **keep)}">'
+        f'{_esc(label)}</a>'
+        for name, label in PRESETS)
+
+    if workers:
+        body_rows = "".join(f"""
+      <tr>
+        <td>{_esc(w['employee'])}{
+          f'<span class="reg-sub-line">{_esc(w["code"])}</span>' if w['code'] else ''}{
+          f'<span class="reg-sub-line">{w["refused"]} not costed &mdash; day '
+          f'rate not confirmed</span>' if w['refused'] else ''}{
+          EMP.unmapped_site_note_html() if w['unmapped'] else ''}</td>
+        <td class="num">{w['days_present']} of {w['days_marked']}</td>
+        <td class="num">{P.esc(f"{w['ot_hours']:g}")}</td>
+        <td class="num">{rupees(w['day_cost'])}</td>
+        <td class="num">{rupees(w['ot_cost'])}</td>
+        <td class="num"><b>{rupees(w['total'])}</b></td>
+      </tr>""" for w in workers)
+        tot_present = sum(w["days_present"] for w in workers)
+        tot_marked = sum(w["days_marked"] for w in workers)
+        tot_ot = round(sum(w["ot_hours"] for w in workers), 2)
+        tot_day = round(sum(w["day_cost"] for w in workers), 2)
+        tot_otc = round(sum(w["ot_cost"] for w in workers), 2)
+        tot_all = round(sum(w["total"] for w in workers), 2)
+        short_by = sum(w["refused"] for w in workers)
+        table = f"""
+  <div class="reg-card">
+    <div class="reg-head">
+      <span class="reg-title">Per worker &mdash; {_esc(date_from or "the beginning")}
+        to {_esc(date_to or "today")}</span>
+      <span class="reg-note">{len(workers)}
+        {"worker" if len(workers) == 1 else "workers"},
+        {len(rows)} {"marking" if len(rows) == 1 else "markings"}.</span>
+    </div>
+    <div class="reg-scroll">
+      <table class="reg-table">
+        <thead><tr>
+          <th>Worker</th><th class="num">Days present</th>
+          <th class="num">OT hours</th><th class="num">Day rate</th>
+          <th class="num">Overtime</th><th class="num">Total</th>
+        </tr></thead>
+        <tbody>{body_rows}</tbody>
+        <tfoot><tr>
+          <td class="num"><b>All workers</b></td>
+          <td class="num"><b>{tot_present} of {tot_marked}</b></td>
+          <td class="num"><b>{P.esc(f"{tot_ot:g}")}</b></td>
+          <td class="num"><b>{rupees(tot_day)}</b></td>
+          <td class="num"><b>{rupees(tot_otc)}</b></td>
+          <td class="num"><b>{rupees(tot_all)}</b></td>
+        </tr></tfoot>
+      </table>
+    </div>
+    <p class="reg-note" style="padding:.8rem 1.1rem;margin:0;">
+      Computed from the markings in this range at
+      <b>&times;{P.esc(f"{multiplier:g}")}</b> overtime, from
+      <a href="{url_for('settings.edit_settings')}">Settings</a> &mdash; the same
+      arithmetic as the day's muster, and nothing is stored.{
+        f' <b>This total is short by {short_by} '
+        f'{"marking" if short_by == 1 else "markings"}</b> whose day rate is '
+        f'not confirmed.' if short_by else ''}
+    </p>
+  </div>"""
+    else:
+        table = """
+  <div class="reg-card">
+    <div class="reg-empty">No markings match. Widen the dates, or clear a
+      filter.</div>
+  </div>"""
+
+    return _shell("Search attendance", f"""
+  {_flash()}
+  <div class="page-top">
+    <h1>Search <span>attendance</span></h1>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{url_for('attendance.list_attendance')}" class="btn btn-ghost">&#8592; Today's muster</a>
+    </div>
+  </div>
+
+  <div class="att-note">
+    <b>What a stretch of days came to, per worker.</b> The wage is the
+    employee's own <b>day rate</b> for each day marked present, plus overtime
+    at the multiplier in Settings &mdash; the muster's arithmetic, over a range
+    instead of a day.
+    <div class="an-sub">{NOT_PAYROLL}</div>
+  </div>
+
+  <form method="GET" action="{url_for('attendance.search_attendance')}" class="att-daybar">
+    <div class="form-group">
+      <label for="employee_id">Worker</label>
+      <select id="employee_id" name="employee_id">{emp_opts}</select>
+    </div>
+    <div class="form-group">
+      <label for="site">Site</label>
+      <select id="site" name="site">{site_opts}</select>
+    </div>
+    <div class="form-group">
+      <label for="project_id">Project</label>
+      <select id="project_id" name="project_id">{proj_opts}</select>
+    </div>
+    <div class="form-group">
+      <label for="from">From</label>
+      <input type="date" id="from" name="from" value="{_esc(date_from)}"/>
+    </div>
+    <div class="form-group">
+      <label for="to">To</label>
+      <input type="date" id="to" name="to" value="{_esc(date_to)}"/>
+    </div>
+    <button type="submit" class="btn">Search</button>
+  </form>
+
+  <div class="att-presets">{chips}</div>
+
+  {table}
+""")
 
 
 @attendance_bp.route("/mark", methods=["GET", "POST"])

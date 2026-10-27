@@ -327,6 +327,24 @@ UNLINKED_ON_PURPOSE = {
     #   argument against it.
     "merged_ra.list_merged": "a sub-register of the RA register, which CC-2 names "
                           "as the merge action's home; linked from there",
+    # ── Attendance search, 27 October 2026 ────────────────────────
+    #
+    # CLIENT_CHANGES.md §0's fifty-fourth block, item B. A second READING of
+    # the muster's own collection — the same records, over a range of days
+    # instead of one — so it is a sub-page of `/attendance/` in exactly the
+    # sense `/roles` is a sub-page of `/users`, which is the precedent five
+    # entries above. `/attendance/` carries the **Search** button, and
+    # `test_the_search_page_is_on_the_muster` asserts that directly, so this
+    # entry is not a way of avoiding the requirement.
+    #
+    # ⚠ **It is NOT here to protect a golden.** A rail entry would move the
+    #   `head` of every pinned page by roughly the 248 bytes the `Employees`
+    #   entry measured on 29 August 2026, and nothing on any printed sheet
+    #   would change. If the owner asks for a rail entry, add it and
+    #   re-baseline; this comment must not be read as an argument against it.
+    "attendance.search_attendance": "a second reading of the muster's own "
+                                    "collection; the Search button on "
+                                    "/attendance/ is its entry point",
     # ── Import BOQ from Excel, 29 September 2026 ────────────────────────────
     #
     # A way of FILLING IN /boq/create, not a register: it ends on that form and
@@ -439,6 +457,24 @@ def test_every_classified_page_is_reachable_from_the_nav_or_the_launcher():
         "these pages are classified, permissioned and reachable, and nothing "
         "links to them — add a card, add a nav entry, or add a name to "
         f"UNLINKED_ON_PURPOSE with the reason: {orphans}")
+
+
+def test_the_search_page_is_on_the_muster(client):
+    """
+    ⚠ **The half `UNLINKED_ON_PURPOSE` owes.** An entry on that list is a
+    promise that the page is reachable some other way, and a promise nothing
+    checks is how `/access-log` stayed linked from nowhere for a month. This
+    is the check — the button is on the muster, and following it works.
+    """
+    html = client.get("/attendance/").get_data(as_text=True)
+    # ⚠ The ANCHOR, not the bare path. A mutation that deleted the button
+    #   survived the bare-path version of this assertion, because the module's
+    #   shared stylesheet carries a CSS comment naming the same URL — which
+    #   is a page that ships the string and does not link to it, the exact
+    #   failure this file exists to catch.
+    assert '<a href="/attendance/search"' in html, (
+        "the muster no longer links to the search page, and nothing else does")
+    assert client.get("/attendance/search").status_code == 200
 
 
 def test_the_exception_list_names_no_endpoint_that_does_not_exist():

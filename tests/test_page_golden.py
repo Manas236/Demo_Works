@@ -364,8 +364,24 @@ PAGES = {
         {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209", "chrome": "b03da1368479ad8b", "main": "ebeb42c9b7836fc1"}),
     ("employees",       "/employee/"):                 ("fd7d40f31d63a52e", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "75cda0afbae27209", "chrome": "8ad3f37192de4e4d", "main": "14f4d8921e680fc4"}),
-    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("772b3d71abb8f8ee", 72731,
-        {"head": "f7e83482d5632c42", "shell": "75cda0afbae27209", "chrome": "864f7a2ba55bb64a", "main": "bb8159e0b0291642"}),
+    # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth
+    #   block, item B** (the attendance search). The only golden this pass
+    #   moves, and `head` and `main` only: `main` gains the **Search** button
+    #   in the page-top, and `head` gains the eight lines of `.att-presets`
+    #   CSS that the search page needs and that rides in the module's shared
+    #   `ATTENDANCE_STYLES`.
+    #
+    #   Measured before the baseline was touched, by rendering this page with
+    #   the change and again with the button and the CSS block stripped back
+    #   out: **+506 bytes, 10 lines added, 0 removed**, and the stripped
+    #   render reproduced the old digest exactly. `shell` and `chrome` did not
+    #   move — no rail entry was added, which is why no OTHER page and no
+    #   printed document moved at all. The old values:
+    #       ("772b3d71abb8f8ee", 72731,
+    #        {"head": "f7e83482d5632c42", "shell": "75cda0afbae27209",
+    #         "chrome": "864f7a2ba55bb64a", "main": "bb8159e0b0291642"})
+    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("aaa704c1ef16122e", 73237,
+        {"head": "8fb0c3cb6ad47c05", "shell": "75cda0afbae27209", "chrome": "864f7a2ba55bb64a", "main": "4fd344e6ce33374a"}),
     ("charges",         "/charge/"):                   ("52eec3cf3cd7c8cd", 66001,
         {"head": "575d38b1b9bde174", "shell": "75cda0afbae27209", "chrome": "19250b6392869c12", "main": "daf605a8f367bb3e"}),
     ("address book",    "/address/"):                  ("def4ca415fbc0f49", 75650,

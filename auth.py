@@ -1005,6 +1005,11 @@ ROUTE_PERMISSIONS = {
     # registry's fourth caveat describes, not the `/projects/view/<id>`
     # exception.
     "attendance.list_attendance":  "attendance.view",
+    # Item B, 27 October 2026 (CLIENT_CHANGES.md §0's fifty-fourth block). A
+    # range of days, filtered and totalled per worker. ⚠ **No new permission,
+    # by the brief**: a role that may read one day's labour cost may read a
+    # fortnight's, and the page writes nothing.
+    "attendance.search_attendance": "attendance.view",
     "attendance.mark_attendance":  "attendance.create",
     "attendance.edit_attendance":  "attendance.edit",
     "attendance.delete_attendance": "attendance.delete",

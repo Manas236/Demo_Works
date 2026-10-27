@@ -11206,9 +11206,53 @@ Held by [tests/test_employee.py](tests/test_employee.py).
 
 ### `/attendance` — Attendance & site-wise labour cost · [attendance.py](attendance.py) · **CC-2 C5**
 
+#### Search — a range of days, filtered · `/attendance/search` · 27 October 2026
+
+CLIENT_CHANGES.md §0's **fifty-fourth** block, item B. The muster is a **day**
+at a time because that is the unit CC-2 records in and the unit
+"one employee, one site, one day" is written on. This is the other question
+the same records answer: what did one person, or one site, cost over a stretch
+of days.
+
+**Three filters and three presets.** Worker (one or all), site, project, and a
+date range inclusive at both ends; **Last 10 days** (today minus nine — ten
+days, and the page says so), **This month** (the 1st to today) and **Last
+month** (the previous **calendar** month, because a wages question is asked by
+the month somebody is being paid for). Per worker: days present of days
+marked, OT hours, day rate, overtime and total, with a **totals row**.
+
+⚠ **The arithmetic is NOT redefined.** `worker_costs()` prices each marking
+through `cost_of()` at `settings.ot_multiplier()` — the one wage path, which
+is `labour_cost_of()`'s own stated rule and the reason `pnl.py` may not reach
+past it. A second module able to compute a wage is a second place the OT
+multiplier could be hardcoded, which is the statutory-underpayment defect CC-2
+names. `tests/test_attendance_search.py::test_the_wage_is_not_redefined_here`
+reads the function's source and holds it.
+
+⚠ **A refused marking is COUNTED and contributes nothing** — `site_costs()`'s
+rule, applied to the person instead of the place. An old monthly-model record
+is shown, counted in days, and costed at nothing.
+
+⚠ **The filter lists are built from the MARKINGS, not from the address book
+and the project register.** A site nobody has been marked on would be an
+option that always returns nothing, and an **unmapped** site string would be
+missing altogether — which is exactly the attribution the muster's unmapped
+band exists to surface.
+
+⚠ **No new permission and no new collection.** `attendance.view`, the muster's
+own gate (the brief says reuse and mint none), **GET only**, writes nothing,
+**screen only — no print route**. It is off the rail and off the launcher
+deliberately, as a sub-page of the muster the way `/roles` is of `/users`;
+`/attendance/` carries the **Search** button and
+`tests/test_nav_reachability.py::test_the_search_page_is_on_the_muster` holds
+that. One page golden moved — `/attendance/`, `head` and `main` only, +506
+bytes measured additive.
+
+
 | Route | View |
 |---|---|
 | `GET /attendance/` | `list_attendance` — one day's muster + the site-wise cost; `?date=` moves the day. ⚠ **One of only two pages in this app an owner has ever opened** — see *"The two register screens"* below |
+| `GET /attendance/search` | `search_attendance` — a RANGE of days, filtered by worker, site and project, totalled per worker (27 October 2026) |
 | `GET,POST /attendance/mark` | `mark_attendance` |
 | `GET,POST /attendance/edit/<id>` | `edit_attendance` |
 | `GET,POST /attendance/delete/<id>` | `delete_attendance` — **GET confirms, POST destroys** |
