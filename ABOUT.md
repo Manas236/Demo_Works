@@ -14780,6 +14780,49 @@ text is unchanged, and every reference to them was moved with them.*
     ⚠ **It does not touch gap 32**, which is about a value already on the
     live database and about the automatic minters. Gap 32 stays OPEN.
 
+84. 🟠 **The ONLY rupee rounding in the application rounds a half-rupee to the
+    EVEN rupee — FOUND 27 October 2026 by item D's audit, OPEN, and NOT
+    changed.**
+
+    ⚠ **This number may move at a merge**, for the same reason gap 83 does —
+    see that entry's note.
+
+    `ra.compute_rounding_off()` ([ra.py:1357](ra.py#L1357)) is the one place in
+    this application that rounds a grand total to the rupee. It is
+    `float(round(unrounded_total))`, and **Python's `round()` is round-half-to-
+    EVEN**, not round-half-up. Measured:
+
+    | `net_payable + tax_amount` | `rounding_off` | printed grand total |
+    |---|---|---|
+    | 1456.78 | +0.22 | 1457 |
+    | **1456.50** | **−0.50** | **1456** — rounded DOWN |
+    | **1457.50** | **+0.50** | **1458** — rounded UP |
+
+    So two bills whose totals differ by one rupee round a half-rupee in
+    opposite directions. It reaches the **RA tax invoice** and, through
+    `merged_ra._sum_totals()`'s `rounding_off`, the **merged RA** — the two
+    documents that have a *Rounding Off* line at all. Every other document
+    (quotation, PI, TI, TI from a BOQ, PO, draft PO, DC, work order) does no
+    rupee rounding of any kind and prints the paise it computed, so a .50
+    stays .50 on them.
+
+    📌 **What it would take, and why nothing was done.** One word —
+    `decimal.Decimal(...).quantize(Decimal("1"), rounding=ROUND_HALF_UP)` in
+    place of `round()`. It was **not** changed, and that is item D's whole
+    instruction: the client said *"rounding off is not happening, .50 stays
+    .50"*, and what they want instead — half-up on the RA, a Round Off line on
+    the other eight, a rupee-rounded grand total everywhere, or nothing — was
+    **not established on the call**. Gap 15's rule applies: do not encode a
+    guess about somebody's money. ⚠ **It also moves every live figure it
+    touches**: a bill already issued at 1456 would reprint at 1457, so this is
+    a change with a cut-over date attached, not a one-word fix.
+
+    ⚠ **A second, smaller instance, recorded with it.** `_inr()`'s
+    `f"{abs(v):.2f}"` is also half-to-even, at the **paisa**. It is a display
+    format over a figure already rounded to 2 dp by the arithmetic above it, so
+    it changes nothing that is stored or filed — but it is the same bias in
+    the same place twice, and anybody fixing the first should look at it.
+
 ## 8. Stale docs — do not trust these two files
 
 Both are leftover scratch files. **Neither is imported by anything**

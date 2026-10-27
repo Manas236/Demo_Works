@@ -5354,6 +5354,16 @@ one automatic.
 > rounding happens and whether it is per line, per slab or grand total.
 > **No code was changed.**
 >
+> ⚠ **The audit found one thing worth the client's attention and it is
+> RECORDED, not fixed — ABOUT.md §7 gap 84.** The only rupee rounding in the
+> application, `ra.compute_rounding_off()`, uses Python's `round()`, which is
+> round-half-to-**even**: a total of 1456.50 prints 1456 and 1457.50 prints
+> 1458. It reaches the RA tax invoice and the merged RA, the two documents
+> that carry a *Rounding Off* line at all; the other eight do no rupee
+> rounding and print the paise they computed. Changing it would move figures
+> on bills already issued, so it needs the client's answer and a cut-over
+> date, not a one-word edit.
+>
 > **The gate is not lifted.** It is still the default and it still stands.
 > Overrides are not a precedent and do not make a subsequent one automatic; an
 > override remains a decision that is taken and recorded, never one an agent may
