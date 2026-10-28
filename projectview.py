@@ -68,7 +68,7 @@ import settings as S
 from store import STORE
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
-from ra import revision_chain
+from ra import revision_chain, latest_revision
 # 6 Oct 2026 — lines_without_cost(), the one rule for "cost not recorded" (R3).
 import boq as BQ
 # 5 Oct 2026 — the Work Orders panel. What crosses is RENDERED CELLS (one
@@ -850,13 +850,36 @@ def view_project(id: str):
     
     boq_html = ""
     boq_vals = []
+    n_superseded = 0
     for boq in attached_boqs:
         # A BOQ stores its trio at §4.3; `subtotal` is the one the sheet prints.
         # ⚠ At the NET rate from 6 October 2026 (the §0 forty-fourth block, R3):
         #   every line amount is quantity × the rate less its discount, so this
         #   is the revenue the schedule bills.
         val = _total_of(boq, "subtotal")
-        boq_vals.append(val)
+        # ⚠ **Only the LATEST revision of a chain counts toward the total**
+        #   (28 Oct 2026, the client's report: revisions were being stacked).
+        #   Every revision of a chain is attached — attach walks the chain —
+        #   so summing every row added Rev 0 + Rev 1 + Rev 2 of ONE schedule.
+        #   A superseded revision is still LISTED, muted and named, because it
+        #   is history the client may need to open; it is never ADDED.
+        #   `latest_revision()` is the helper the P&L's `tips_of()` and the
+        #   over-claim guard already use, so the three cannot disagree.
+        bid = str(boq.get("id") or "")
+        tip_id = latest_revision(bid) or bid
+        superseded = tip_id != bid
+        if superseded:
+            n_superseded += 1
+            tip_rev = int((STORE.get("boqs", {}).get(tip_id) or {}).get("rev_no") or 0)
+            rev_cell = (f'Rev {int(boq.get("rev_no") or 0)}'
+                        f'<div style="font-size:.75rem;color:var(--muted);">'
+                        f'superseded by Rev {tip_rev}</div>')
+            val_cell = (f'<span style="color:var(--muted);text-decoration:line-through;">'
+                        f'{_amt(val)}</span>')
+        else:
+            boq_vals.append(val)
+            rev_cell = f'Rev {int(boq.get("rev_no") or 0)}'
+            val_cell = _amt(val)
         # …and where a priced line carries no base rate, its COST is not
         # recorded: said in words, never shown as a zero cost (R3). Nothing is
         # added up across panels — this page still does no subtraction.
@@ -873,22 +896,86 @@ def view_project(id: str):
             bits.append(f'cost not recorded on {no_cost} line{"" if no_cost == 1 else "s"}')
         cost_note = (f'<div style="font-size:.75rem;color:var(--muted);">'
                      f'{" &middot; ".join(bits)}</div>' if bits else "")
+        row_style = ' style="opacity:.6;"' if superseded else ""
         boq_html += f"""
-        <tr>
+        <tr{row_style}>
           <td><a href="{url_for('boq.view_boq', id=boq.get('id'))}"><b>{P.esc(boq.get('ref'))}</b></a>{cost_note}</td>
           <td>{P.esc(boq.get('date'))}</td>
-          <td>Rev {int(boq.get('rev_no') or 0)}</td>
+          <td>{rev_cell}</td>
           <td>{P.esc(boq.get('account_name') or '—')}</td>
-          <td style="text-align:right;">{_amt(val)}</td>
+          <td style="text-align:right;">{val_cell}</td>
         </tr>
         """
     if attached_boqs:
         boq_html += _total_row(4, _sum_cell(boq_vals))
+        if n_superseded:
+            boq_html += (f'<tr><td colspan="5" style="font-size:.78rem;color:var(--muted);">'
+                         f'Total counts the latest revision of each schedule only; '
+                         f'{n_superseded} superseded revision'
+                         f'{"" if n_superseded == 1 else "s"} listed for reference.</td></tr>')
     else:
         boq_html = '<tr><td colspan="5" style="color:var(--muted);">No schedules attached.</td></tr>'
 
+    # ── Raised from this project's BOQs (28 Oct 2026) ────────────────────────
+    # The client's report: documents raised from a BOQ did not show up on its
+    # project. RA bills, merged RAs, delivery challans, measurement sheets and
+    # product inquiries (draft POs) were on NO panel of this page at all — the
+    # RA figures reached only the P&L, which most roles cannot see. They are
+    # listed here by `boq_id` against every revision of every attached chain,
+    # so attaching a BOQ brings them automatically. A LIST, with no total: the
+    # money already lives in the P&L panel, and this page still adds nothing
+    # up across kinds. Each kind is drawn only for a reader who could open it.
+    _proj_boq_ids = {str(b.get("id") or "") for b in attached_boqs}
+    _raised = []   # (sort date, kind, ref, date, status, amount cell, url)
+
+    # ⚠ `link` is a LITERAL `url_for` per kind, never `url_for(endpoint)`:
+    #   `tests/test_page_reachability.py` builds the link graph from literal
+    #   endpoint names and caps computed ones.
+    def _raised_add(endpoint, link, kind, coll, ref_key, amount_key="", status_fn=None):
+        if not auth.can_reach(endpoint):
+            return
+        for rid, d in (STORE.get(coll) or {}).items():
+            if str(d.get("boq_id") or "") not in _proj_boq_ids:
+                continue
+            status = (status_fn(d) if status_fn else str(d.get("status") or ""))
+            amt = _amt(_total_of(d, amount_key)) if amount_key else "&mdash;"
+            _raised.append((str(d.get("date") or ""), kind,
+                            str(d.get(ref_key) or ""), str(d.get("date") or ""),
+                            status, amt, link(d.get("id") or rid)))
+
+    _raised_add("ra.view_ra", lambda i: url_for("ra.view_ra", id=i), "RA bill", "ra_bills", "ref", "grand_total",
+                lambda d: f'{str(d.get("leg") or "").title()} · '
+                          f'{str(d.get("status") or "issued").title()}')
+    _raised_add("merged_ra.view_merged", lambda i: url_for("merged_ra.view_merged", id=i), "Merged RA", "merged_ras",
+                "tax_invoice_ref", "grand_total",
+                lambda d: str(d.get("status") or "live").title())
+    _raised_add("challan.view_dc", lambda i: url_for("challan.view_dc", id=i), "Delivery challan", "delivery_challans", "ref")
+    _raised_add("measurement.view_ms", lambda i: url_for("measurement.view_ms", id=i), "Measurement sheet", "measurements", "ref")
+    _raised_add("po_draft.view_po", lambda i: url_for("po_draft.view_po", id=i), "Product inquiry", "purchase_orders", "ref")
+    _raised.sort(key=lambda r: (r[0], r[2]), reverse=True)
+
+    raised_html = ""
+    for _d, kind, ref, date, status, amt, href in _raised:
+        raised_html += f"""
+        <tr>
+          <td>{P.esc(kind)}</td>
+          <td><a href="{href}"><b>{P.esc(ref) or '&mdash;'}</b></a></td>
+          <td>{P.esc(date)}</td>
+          <td>{P.esc(status) or '&mdash;'}</td>
+          <td style="text-align:right;">{amt}</td>
+        </tr>"""
+    if not raised_html:
+        raised_html = ('<tr><td colspan="5" style="color:var(--muted);">'
+                       'Nothing raised from these BOQs yet.</td></tr>')
+
     # Proformas
-    attached_pis = [pi for pi in STORE.get("proformas", {}).values() if pi.get("project_id") == id]
+    # ⚠ PI, TI and PO all go through `pnl.project_of()` (28 Oct 2026): a
+    #   document raised from a BOQ follows that BOQ's project as it stands now,
+    #   so attaching a BOQ brings everything raised from it. The P&L and the
+    #   untagged-cost line read the same function, so this page and those
+    #   figures cannot disagree about which project a document is on.
+    attached_pis = [pi for pi in STORE.get("proformas", {}).values()
+                    if PNL.project_of(pi) == id]
     attached_pis.sort(key=lambda p: (str(p.get("date") or ""), str(p.get("ref") or "")), reverse=True)
     pi_html = ""
     pi_vals = []
@@ -910,17 +997,9 @@ def view_project(id: str):
 
     # Tax Invoices (inheriting via proforma — or, for one raised straight from
     # a BOQ on 22 October 2026 or later, carrying the BOQ's project itself)
-    attached_tis = []
-    for ti in STORE.get("invoices", {}).values():
-        if ti.get("project_id") == id:
-            attached_tis.append(ti)
-            continue
-        pi_id = ti.get("proforma_id")
-        if pi_id:
-            pi = STORE.get("proformas", {}).get(pi_id)
-            if pi and pi.get("project_id") == id:
-                attached_tis.append(ti)
-                
+    attached_tis = [ti for ti in STORE.get("invoices", {}).values()
+                    if PNL.project_of(ti, "invoice") == id]
+
     attached_tis.sort(key=lambda t: (str(t.get("date") or ""), str(t.get("ref") or "")), reverse=True)
     ti_html = ""
     ti_vals = []
@@ -941,7 +1020,8 @@ def view_project(id: str):
         ti_html = '<tr><td colspan="4" style="color:var(--muted);">No tax invoices attached.</td></tr>'
 
     # Purchase Orders
-    attached_pos = [po for po in STORE.get("purchases", {}).values() if po.get("project_id") == id]
+    attached_pos = [po for po in STORE.get("purchases", {}).values()
+                    if PNL.project_of(po) == id]
     attached_pos.sort(key=lambda p: (str(p.get("date") or ""), str(p.get("ref") or "")), reverse=True)
     po_html = ""
     po_vals = []
@@ -1245,11 +1325,33 @@ def view_project(id: str):
       </table>
     </div>
 
+    <!-- Raised from these BOQs (28 Oct 2026) -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Raised from these BOQs</h2>
+        <span style="font-size:0.8rem;color:var(--muted);">RA bills, challans, measurement sheets and inquiries &mdash; added automatically</span>
+      </div>
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Ref</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th style="text-align:right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {raised_html}
+        </tbody>
+      </table>
+    </div>
+
     <!-- Proformas Panel -->
     <div class="panel">
       <div class="panel-head">
         <h2>Proforma Invoices</h2>
-        <span style="font-size:0.8rem;color:var(--muted);">Proformas are tagged by hand on creation</span>
+        <span style="font-size:0.8rem;color:var(--muted);">Raised from this project's BOQs appear automatically; others are tagged on creation</span>
       </div>
       <table class="data">
         <thead>
@@ -1270,7 +1372,7 @@ def view_project(id: str):
     <div class="panel">
       <div class="panel-head">
         <h2>Tax Invoices</h2>
-        <span style="font-size:0.8rem;color:var(--muted);">Tax invoices inherit their project from their proforma</span>
+        <span style="font-size:0.8rem;color:var(--muted);">Follow their BOQ, or their proforma</span>
       </div>
       <table class="data">
         <thead>
@@ -1291,7 +1393,7 @@ def view_project(id: str):
     <div class="panel">
       <div class="panel-head">
         <h2>Purchase Orders</h2>
-        <span style="font-size:0.8rem;color:var(--muted);">Purchase orders are tagged by hand on creation</span>
+        <span style="font-size:0.8rem;color:var(--muted);">Raised from this project's BOQs appear automatically; others are tagged on creation</span>
       </div>
       <table class="data">
         <thead>

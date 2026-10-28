@@ -11513,6 +11513,43 @@ work orders (where the reader may open one), charges, and Site Labour in two
 groups. ⚠ **The prohibition at the top of `projectview.py` stands for every
 one of those panels, word for word.**
 
+#### Which project a document is on — DERIVED, not stored (28 October 2026)
+
+The client's report from the 28 Oct 2026 Yogesh meeting: documents raised from
+a BOQ did not appear on its project, and BOQ revisions were added together.
+Both were defects against delivered scope (§0 gate exempt), fixed together.
+
+- **`pnl.project_of(doc, kind="")` is the one reader.** A document whose
+  `boq_id` resolves to a live BOQ belongs to **that BOQ's project as it stands
+  now**; a tax invoice (`kind="invoice"`) otherwise follows its proforma;
+  anything else keeps the `project_id` a person chose. A `boq_id` that no
+  longer resolves falls through to the stored tag. ⚠ This **supersedes** the
+  older *"inherited at create and then STORED, never derived"* rule
+  (`purchase._project_of_boq()`, `proforma.boq_project_id()`): those still
+  write the snapshot at create, but nothing reads it for grouping while the
+  BOQ exists. That snapshot is why a BOQ attached after its documents were
+  raised left them on no project, and why the proforma raised from a BOQ (which
+  stored no project at all) was on none.
+- It is read by the PI, TI and PO panels on `/projects/view`, the P&L's tax
+  invoices and PO cost, and `untagged_cost()` — so an order is on a project
+  **or** untagged, never both and never neither. ⚠ `_tax_invoices_of()` had
+  read through the proforma only, so a tax invoice raised straight from a BOQ
+  was drawn on the page and missing from the P&L; fixed by the same reader.
+- **Raised from these BOQs**, a new panel: RA bills, merged RAs, delivery
+  challans, measurement sheets and product inquiries (draft POs) whose
+  `boq_id` is any revision of an attached chain. A list with no total — the
+  money stays in the P&L. Each kind is drawn only where `auth.can_reach()` its
+  view; `url_for` is literal per kind (`tests/test_page_reachability.py`).
+- **The BOQ panel totals each chain's LATEST revision only**
+  (`ra.latest_revision()`, the helper `pnl.tips_of()` and the over-claim guard
+  use). Superseded revisions stay listed, muted, struck through and named
+  *"superseded by Rev N"*, with a count under the total.
+- Tests: `tests/test_project_rollup_oct28.py` (11 of its 13 fail on the code
+  before this pass; the 2 that pass are controls). `tests/test_project.py`'s
+  panel test had pinned Rev 0 + Rev 1 summed and now pins the tip. The page
+  goldens (`test_page_golden.py`, `test_pnl_access.py`) were re-baselined with
+  the measurement recorded beside them.
+
 #### The Profit & Loss panel — CC-2 C6 (8 October 2026)
 
 CLIENT_CHANGES.md §0 **forty-seventh** block. CC-2's C6 is *"planned margin

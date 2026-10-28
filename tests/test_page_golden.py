@@ -360,8 +360,22 @@ PAGES = {
     #         "chrome": "b03da1368479ad8b", "main": "85908eff05b3e868"})
     ("projects",        "/projects/"):                 ("2f4005ad31c9a322", 50009,
         {"head": "35ced4411e03de2e", "shell": "75cda0afbae27209", "chrome": "89e92c31f075ea28", "main": "e7babe8cdc1b11fc"}),
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("ed03e4a8109be779", 83331,
-        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209", "chrome": "b03da1368479ad8b", "main": "ebeb42c9b7836fc1"}),
+    # ⚠ **RE-BASELINED 28 October 2026 — `main` ONLY** (the Yogesh meeting's
+    #   project-page bugs: documents raised from a BOQ now follow it onto its
+    #   project, and only a chain's latest revision is totalled). `main` gains
+    #   the *Raised from these BOQs* panel (**+2,200 bytes** on this world) and
+    #   three panel captions change wording. Measured before the baseline was
+    #   touched: with that panel cut out and the three captions put back, this
+    #   page and all four non-`project.pnl` roles' pages in
+    #   `tests/test_pnl_access.py` were BYTE-IDENTICAL to the old renders —
+    #   **0 other bytes moved, `head` / `shell` / `chrome` unmoved**. The golden
+    #   world has no superseded revision, so the BOQ total did not move here;
+    #   `tests/test_project_rollup_oct28.py` covers that. The old value:
+    #       ("project page", …): ("ed03e4a8109be779", 83331,
+    #        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209",
+    #         "chrome": "b03da1368479ad8b", "main": "ebeb42c9b7836fc1"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("97b3a40f2d68e3e7", 85531,
+        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209", "chrome": "b03da1368479ad8b", "main": "56a6540cddadb9c8"}),
     ("employees",       "/employee/"):                 ("fd7d40f31d63a52e", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "75cda0afbae27209", "chrome": "8ad3f37192de4e4d", "main": "14f4d8921e680fc4"}),
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth

@@ -42,14 +42,31 @@ REGISTER = "/projects/"
 WITHOUT_PNL = ("operation-head", "sales-manager", "purchase-manager", "accountant")
 
 # (role slug, url) -> (sha256[:16], byte length) — measured at `3a14375`.
+#
+# ⚠ **The four PROJECT_PAGE rows were RE-BASELINED 28 October 2026**, and the
+#   REGISTER rows were not touched. That pass (the Yogesh meeting's project-page
+#   bugs) adds a *Raised from these BOQs* panel that EVERY role with
+#   `project.view` sees, filtered per row kind by `auth.can_reach()`, and
+#   rewords three panel captions. It adds no P&L content. Measured before these
+#   literals were changed: for each of the four roles, the new page with that
+#   panel cut out and the three captions put back was BYTE-IDENTICAL to the
+#   page this file pinned — so what this test exists to prove (no P&L byte
+#   reaches a role without `project.pnl`) still holds, and the only movement
+#   is the panel: +2,200 (operation head), +1,715 (sales manager), +1,176
+#   (purchase manager — it may open challans and inquiries only), +1,715
+#   (accountant). The values measured at `3a14375` were:
+#       operation-head   ("fb919ddfbef860ab", 71798)
+#       sales-manager    ("2a423f8d5b5d3c89", 71147)
+#       purchase-manager ("3a3ef2d13f8b372f", 70085)
+#       accountant       ("712012bebccff293", 70955)
 BEFORE = {
-    ("operation-head",   PROJECT_PAGE): ("fb919ddfbef860ab", 71798),
+    ("operation-head",   PROJECT_PAGE): ("e5cbf6b0b1d27247", 73998),
     ("operation-head",   REGISTER):     ("dc998c9637141b9d", 46214),
-    ("sales-manager",    PROJECT_PAGE): ("2a423f8d5b5d3c89", 71147),
+    ("sales-manager",    PROJECT_PAGE): ("4b27365a64e87f88", 72862),
     ("sales-manager",    REGISTER):     ("e099a2f75ec7d4e4", 45563),
-    ("purchase-manager", PROJECT_PAGE): ("3a3ef2d13f8b372f", 70085),
+    ("purchase-manager", PROJECT_PAGE): ("81af0892cbed53d8", 71261),
     ("purchase-manager", REGISTER):     ("b87ee99b425ba029", 44501),
-    ("accountant",       PROJECT_PAGE): ("712012bebccff293", 70955),
+    ("accountant",       PROJECT_PAGE): ("b50006d2a63f996b", 72670),
     ("accountant",       REGISTER):     ("af54c7d7988a0bec", 45371),
 }
 

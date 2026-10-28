@@ -172,6 +172,52 @@ def _pid(rec) -> str:
     return str((rec or {}).get("project_id") or "").strip()
 
 
+def project_of(rec, kind: str = "") -> str:
+    """
+    The project a DOCUMENT belongs to — derived at read time, never stored.
+
+    28 October 2026, the client's own report from the Yogesh meeting: *"when I
+    add a BoQ, the documents I raised from that BoQ should be added
+    automatically, and they are not."* They were not because every document
+    raised from a BOQ copied the BOQ's `project_id` **once, at create** — so a
+    BOQ attached to its project AFTER its proforma, tax invoice or purchase
+    order was raised left all three on no project, permanently, and a BOQ moved
+    between projects left them on the old one. The proforma raised from a BOQ
+    never stored a project at all.
+
+    The rule now, in this order:
+
+    1. **A document raised from a BOQ belongs to that BOQ's project as it stands
+       NOW.** `boq_id` resolving to a live schedule is the whole test. A BOQ on
+       no project puts its documents on no project; attaching the BOQ brings
+       every one of them with it, and moving it moves them.
+    2. **A tax invoice raised from a proforma** (`kind="invoice"`) follows its
+       proforma — which may itself follow a BOQ under rule 1.
+    3. **Anything else** — a PO entered from scratch, a hand-tagged proforma —
+       keeps the `project_id` a person chose. That is a human decision and is
+       never overridden, because there is nothing upstream to derive from.
+
+    ⚠ **A `boq_id` that no longer resolves falls through to rule 3**, so a
+      document whose schedule was deleted keeps the project it was raised on
+      rather than vanishing from every page.
+
+    ⚠ **This is the ONE reader** for the PI, TI and PO panels on
+      `/projects/view`, the P&L's tax invoices and PO cost, and the untagged
+      cost line — so a document can never be on a project's page and in the
+      untagged total at the same time.
+    """
+    rec = rec or {}
+    boqs = STORE.get("boqs") or {}
+    boq = boqs.get(str(rec.get("boq_id") or ""))
+    if boq is not None:
+        return _pid(boq)
+    if kind == "invoice":
+        pi = (STORE.get("proformas") or {}).get(str(rec.get("proforma_id") or ""))
+        if pi is not None:
+            return project_of(pi)
+    return _pid(rec)
+
+
 def _project_boq_ids(project_id: str) -> set:
     """Every BOQ id filed under this project — every revision, because an RA
     bill is raised against a SPECIFIC revision. A blank id matches nothing."""
@@ -315,16 +361,18 @@ def _bills_of(boq_ids: set) -> list:
 
 
 def _tax_invoices_of(project_id: str) -> list:
-    """Every tax invoice that reaches this project through its proforma's
-    `project_id` — the inheritance `/projects/view` already draws."""
+    """Every tax invoice on this project by `project_of(…, "invoice")` — its
+    BOQ, else its proforma, else its own tag.
+
+    ⚠ Until 28 October 2026 this read the proforma ONLY, so a tax invoice
+      raised straight from a BOQ (22 Oct 2026, no proforma behind it) was drawn
+      on `/projects/view` and silently left out of this P&L."""
     pid = str(project_id or "").strip()
     if not pid:
         return []
-    proformas = STORE.get("proformas") or {}
     out = []
     for tid, ti in (STORE.get("invoices") or {}).items():
-        pi = proformas.get(str(ti.get("proforma_id") or ""))
-        if pi and _pid(pi) == pid:
+        if project_of(ti, "invoice") == pid:
             out.append((tid, ti))
     out.sort(key=lambda kv: (str(kv[1].get("date") or ""),
                              str(kv[1].get("ref") or ""), kv[0]))
@@ -450,7 +498,7 @@ def project_pnl(project_id, include_labour: bool = True) -> dict:
     po_amount, po_exempt, po_count, po_exempt_count, po_no_figure = 0.0, 0.0, 0, 0, 0
     po_draft_status = po_cancelled = po_unknown = 0
     for po in (STORE.get("purchases") or {}).values():
-        if not pid or _pid(po) != pid:
+        if not pid or project_of(po) != pid:
             continue
         # `purchase.py`'s own reading: a missing status is its default, Draft.
         status = str(po.get("status") or "") or PU.DEFAULT_STATUS
@@ -605,9 +653,13 @@ def untagged_cost(include_labour: bool = True) -> dict:
     po_amount, po_count, dangling, no_figure = 0.0, 0, 0, 0
     for po in (STORE.get("purchases") or {}).values():
         status = str(po.get("status") or "") or PU.DEFAULT_STATUS
-        if status not in COMMITTED_PO_STATUSES or not _untagged(po):
+        # ⚠ `project_of()`, the reader the project's own PO cost uses, so an
+        #   order raised from a BOQ is counted on that BOQ's project OR here,
+        #   never both and never neither (28 Oct 2026).
+        po_pid = project_of(po)
+        if status not in COMMITTED_PO_STATUSES or po_pid in live:
             continue
-        dangling += _dangling(po)
+        dangling += bool(po_pid)
         taxable = _po_taxable(po)
         if taxable is None:
             no_figure += 1

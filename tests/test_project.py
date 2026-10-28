@@ -291,8 +291,13 @@ def test_each_panel_shows_its_documents_value_and_a_total(client):
     assert _inr(PO_TOTAL) in html       # SF/PO/26-27/0011  ->     43,210.00
     assert _inr(CHARGE_GROSS) in html   # R. Kulkarni       ->      5,678.00
 
-    # The BOQ panel totals its own two rows and nothing else.
-    assert _inr(BOQ_VALUE + 65433.0) in html, "BOQ panel total missing"
+    # The BOQ panel totals the LATEST revision of each chain only.
+    # ⚠ 28 Oct 2026: 0008 is Rev 1 of 0007 (`supersedes: b1`), so this used to
+    #   assert Rev 0 + Rev 1 summed — the exact stacking the client reported.
+    #   Both rows are still listed (asserted above); only the tip is added.
+    assert _inr(BOQ_VALUE + 65433.0) not in html, "revisions must not be stacked"
+    assert ('<td colspan="4">Total</td><td style="text-align:right;">'
+            + _inr(65433.0) + '</td>') in html, "BOQ panel total missing"
     assert html.count("<td colspan=\"4\">Total</td>") == 2, \
         "expected a Total row under the BOQ panel and under the charges panel"
     assert html.count("<td colspan=\"3\">Total</td>") == 3, \
