@@ -7111,7 +7111,7 @@ forward link to find it would assume the very consistency this is restoring.
 | `GET,POST /purchase/from-boq/<boq_id>` | `from_boq` — **raise one from a schedule**, §2f |
 | `GET,POST /purchase/from-draft/<draft_id>` | `from_draft` — **convert a priced draft**, §2f |
 | `POST /purchase/<id>/update` | `update_purchase` — status and note only |
-| `GET,POST /purchase/edit/<id>` | `edit_purchase_rates` — **reprice a live PO and maintain its A3 charge lines**, §2f-A1. Any status but `Cancelled`; every reprice is recorded |
+| `GET,POST /purchase/edit/<id>` | `edit_purchase_rates` — **reprice a live PO and maintain its A3 charge lines**, §2f-A1. Any status but `Cancelled`; every reprice is recorded. **HSN on item lines** (28 Oct 2026, `line_hsn`, positional like `line_make`): any HSN while the order is a Draft, only a BLANK one from Issued onward — the 26 Oct fill-blanks-only ruling, one predicate `purchase.hsn_editable()` for the read-only box and the refusal. Not a rate, so it never enters `reprice_log`; it goes on the order's own trail |
 | `GET /purchase/view/<id>` | `view_purchase` — the printed purchase order |
 | `GET,POST /purchase/pictures/<id>` | `pictures` — a picture beside each line, `purchase.create`, refused where a reprice is (21 Oct 2026) — §5 *Pictures* |
 

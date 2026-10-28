@@ -2008,6 +2008,24 @@ MAKE_FORM_STYLES = """
 """
 
 
+# The reprice form's item grid with an HSN track (28 Oct 2026). Scoped to
+# `.rp-hsn`, which only `/purchase/edit` draws, so the create form's grid and
+# every printed page stay byte-identical.
+REPRICE_HSN_STYLES = """
+<style>
+  .rp-hsn .line-row, .rp-hsn .line-head {
+    grid-template-columns:1fr 110px 90px 80px 120px 70px 110px 34px;
+  }
+  @media (max-width:640px){
+    .rp-hsn .line-row, .rp-hsn .line-head { grid-template-columns:1fr 70px 110px; }
+    .rp-hsn .line-head span:nth-child(3), .rp-hsn .line-head span:nth-child(8),
+    .rp-hsn .line-row input[name="line_hsn"] { display:none; }
+    .rp-hsn .line-head span:nth-child(5) { display:block; }
+  }
+</style>
+"""
+
+
 # =============================================================================
 # RENDERING — why these views do not call render_template_string()
 # =============================================================================
@@ -3702,6 +3720,28 @@ def _reprice_html(po: dict) -> str:
     return out
 
 
+# The HSN box's cap: the extra lines' `[:8]` (`_parse_extra_lines()`), and the
+# longest code GST knows, an 8-digit HSN.
+HSN_MAX = 8
+
+
+def hsn_editable(po: dict, row: dict) -> bool:
+    """
+    May this item line's HSN be changed on the reprice form?
+
+    **Any HSN while the order is a Draft; only a BLANK one after that.** The
+    26 October 2026 ruling for documents already created is "fill blanks only
+    — an HSN already printed is never overwritten", and a Draft PO is the one
+    state in which nothing has gone to a vendor yet — the same line
+    `edit_purchase_rates()` draws for the document number. One predicate, read
+    by the form (read-only box) and by `_reprice()` (refusal), so the two
+    cannot disagree.
+    """
+    if (po.get("status") or DEFAULT_STATUS) == "Draft":
+        return True
+    return not str(row.get("hsn") or "").strip()
+
+
 def _priced_rows(po: dict) -> list:
     """
     `(index, row)` for every line that carries money.
@@ -3731,8 +3771,16 @@ def _reprice(po: dict, form) -> str:
     # all is a tab opened before the box existed, and leaves every make as it
     # is; a post carrying the wrong number is refused with the rates' sentence.
     makes = form.getlist("line_make")
+    # HSN (28 Oct 2026) — positional like the make, and absent from a tab
+    # opened before the box existed, which then leaves every HSN as it is.
+    # ⚠ The rule is the one taken on 26 Oct 2026 for documents already
+    #   created: while the order is a DRAFT it has not gone to the vendor and
+    #   the HSN is ours to change; from Issued onward a blank may be FILLED
+    #   and a printed HSN is never overwritten (`hsn_editable()`).
+    hsns = form.getlist("line_hsn")
 
-    if len(rates) != len(rows) or (makes and len(makes) != len(rows)):
+    if (len(rates) != len(rows) or (makes and len(makes) != len(rows))
+            or (hsns and len(hsns) != len(rows))):
         return ("That order has changed since this form was opened. "
                 "Reopen it and try again.")
 
@@ -3763,9 +3811,22 @@ def _reprice(po: dict, form) -> str:
         if err:
             return err
         make = str(makes[n]).strip()[:BP.MAKE_MAX] if makes else None
-        staged.append((row, rate, disc, make))
+        hsn = None
+        if hsns:
+            typed = str(hsns[n]).strip()[:HSN_MAX]
+            stored = str(row.get("hsn") or "").strip()
+            if typed != stored:
+                if not hsn_editable(po, row):
+                    return (f"HSN for '{name}' is already printed as "
+                            f"{stored} and this order is no longer a Draft, "
+                            f"so it cannot be changed. Only a blank HSN can "
+                            f"be filled in.")
+                hsn = typed
+        staged.append((row, rate, disc, make, hsn))
 
-    for row, rate, disc, make in staged:
+    for row, rate, disc, make, hsn in staged:
+        if hsn is not None:
+            row["hsn"] = hsn
         row["price"] = rate
         row["discount_pct"] = disc
         row["total"] = _line_total(rate, float(row.get("qty") or 0.0), disc)
@@ -3871,6 +3932,7 @@ def edit_purchase_rates(id: str):
         # is only whether the list is the one that went in.
         extra_was = extra_lines_of(po)
         make_was = [str(r.get("make") or "") for _i, r in _priced_rows(po)]
+        hsn_was = [str(r.get("hsn") or "") for _i, r in _priced_rows(po)]
 
         # ⚠ The number is read and checked BEFORE `_reprice()` writes, so a
         #   refused number leaves the order's figures exactly as they were.
@@ -3898,6 +3960,8 @@ def edit_purchase_rates(id: str):
             # that changed only makes still goes on the order's own trail.
             makes_moved = sum(1 for a, (_i, r) in zip(make_was, _priced_rows(po))
                               if a != str(r.get("make") or ""))
+            hsns_moved = sum(1 for a, (_i, r) in zip(hsn_was, _priced_rows(po))
+                             if a != str(r.get("hsn") or ""))
             # The order's own trail gets one line; the per-line detail lives in
             # `reprice_log` and prints under the document. Two records of one
             # event, and neither restates the other.
@@ -3928,6 +3992,14 @@ def edit_purchase_rates(id: str):
                     msg += " Make updated."
             else:
                 msg = "Nothing changed, so nothing was recorded."
+            if hsns_moved:
+                # An HSN is not a rate either, so it goes on the order's own
+                # trail and never into `reprice_log` — the make's precedent.
+                k = hsns_moved
+                hsn_msg = f"HSN updated on {k} line{'' if k == 1 else 's'}."
+                _log(po, hsn_msg)
+                msg = (hsn_msg if msg.startswith("Nothing changed")
+                       else f"{msg} {hsn_msg}")
             return redirect(url_for("purchase.view_purchase", id=id,
                                     msg=msg, type="success"))
 
@@ -3942,6 +4014,7 @@ def edit_purchase_rates(id: str):
     posted_rates = request.form.getlist("line_rate")    if request.method == "POST" else []
     posted_discs = request.form.getlist("line_discount") if request.method == "POST" else []
     posted_makes = request.form.getlist("line_make")     if request.method == "POST" else []
+    posted_hsns  = request.form.getlist("line_hsn")      if request.method == "POST" else []
 
     # The same widget the create form draws, so the two cannot describe one
     # field two ways. A rejected POST comes back with what was typed.
@@ -3961,6 +4034,10 @@ def edit_purchase_rates(id: str):
         disc = posted_discs[n] if n < len(posted_discs) else (
             f"{float(row.get('discount_pct') or 0.0):g}" if row.get("discount_pct") else "")
         make = posted_makes[n] if n < len(posted_makes) else str(row.get("make") or "")
+        hsn = posted_hsns[n] if n < len(posted_hsns) else str(row.get("hsn") or "")
+        hsn_ro = "" if hsn_editable(po, row) else (
+            ' readonly title="Already printed on an order that is no longer '
+            'a Draft, so it stays as it is."')
         # `data-qty` is what `recalc()` multiplies by: the quantity is not
         # editable here, so it is not in an input, and the visible "10 Nos" is
         # a label rather than a number. The Amount cell opens on the stored
@@ -3972,6 +4049,8 @@ def edit_purchase_rates(id: str):
             <span class="bn-sub">{P.esc(row.get('part_no'))}</span></span>
           <input type="text" name="line_make" value="{P.esc(make)}"
                  maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
+          <input type="text" name="line_hsn" value="{P.esc(hsn)}"
+                 maxlength="{HSN_MAX}" placeholder="HSN"{hsn_ro}/>
           <span>{_fmt_qty(float(row.get('qty') or 0.0))} {P.esc(row.get('unit'))}</span>
           <input type="number" name="line_rate" value="{P.esc(rate)}"
                  min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
@@ -4030,7 +4109,7 @@ def edit_purchase_rates(id: str):
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Reprice " + str(po.get('ref')))}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}{DN.NUMBER_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}{REPRICE_HSN_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
@@ -4042,8 +4121,9 @@ def edit_purchase_rates(id: str):
 
       <div class="buy-note">
         {sent_note}
-        <div class="bn-sub">Rates, discounts and the <b>make</b> on the
-          <b>items</b> &mdash; their quantities, the lines themselves and the
+        <div class="bn-sub">Rates, discounts, the <b>make</b> and the
+          <b>HSN</b> on the <b>items</b> (any HSN while the order is a Draft,
+          only a blank one after that) &mdash; their quantities, the lines themselves and the
           vendor are not editable here, and the tax stays as raised
           ({P.esc(tax_note)}).
           <b>Every change is recorded</b> &mdash; who, when, and the old rate
@@ -4058,10 +4138,10 @@ def edit_purchase_rates(id: str):
 
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
         {number_section}
-        <div class="form-section">
+        <div class="form-section rp-hsn">
           <div class="section-title">What we pay</div>
           <div class="line-head">
-            <span>Item</span><span>Make</span><span>Qty</span><span>Rate (&#8377;)</span>
+            <span>Item</span><span>Make</span><span>HSN</span><span>Qty</span><span>Rate (&#8377;)</span>
             <span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
