@@ -77,6 +77,11 @@ import workorder as WO
 # 8 Oct 2026 — C6, the Profit & Loss panel. ALL of its arithmetic lives in
 # `pnl.py`; this module renders the dict it returns and computes nothing.
 import pnl as PNL
+# 28 Oct 2026 (§0 fifty-eighth block, item 3) — filing a LOOSE purchase order,
+# proforma, work order or charge under a project by hand. The candidate rule,
+# the write, the trail and every refusal live in that leaf; `purchase.py`,
+# `proforma.py`, `workorder.py` and `charge.py` are all untouched by it.
+import projtag as PT
 
 projectview_bp = Blueprint("projectview", __name__, url_prefix="/projects")
 
@@ -1041,6 +1046,36 @@ def view_project(id: str):
                      f"It can now be attached to another."),
                 type="success"))
 
+        # ── ATTACH / DETACH A LOOSE DOCUMENT (28 October 2026) ─────────────
+        #
+        # §0's fifty-eighth block, item 3. Under the SAME per-view
+        # `project.edit` guard as the two BOQ branches above — it is reached
+        # only after that check, and for the same reason: writing a
+        # `project_id` onto a purchase order is a change to that order, not a
+        # reading of this page.
+        #
+        # ⚠ **Every rule is `projtag.py`'s.** Which documents are offered,
+        #   which are refused because they follow a BOQ, what the write is and
+        #   what goes on the trail all live in that leaf; this branch splits
+        #   `kind:id` and reports the answer. `pnl.project_of()` is still the
+        #   one reader of *"which project is this document on"*, and the leaf
+        #   asks it rather than adding a second rule.
+        #
+        # ⚠ **`purchase.py`, `proforma.py`, `workorder.py` and `charge.py` are
+        #   NOT edited by this** — the write happens from the leaf, onto the
+        #   optional `project_id` those four already carry.
+        if action in ("attach_doc", "detach_doc"):
+            kind, _sep, doc_id = (request.form.get("doc") or "").partition(":")
+            user = auth.current_user() or {}
+            who = (user.get("display_name") or user.get("username") or "")
+            if action == "attach_doc":
+                note, err = PT.attach(kind, doc_id, id, who)
+            else:
+                note, err = PT.detach(kind, doc_id, id, who)
+            return redirect(url_for("projectview.view_project", id=id,
+                                    msg=err or note,
+                                    type="error" if err else "success"))
+
     msg = request.args.get("msg")
     msg_type = request.args.get("type", "success")
     
@@ -1360,6 +1395,15 @@ def view_project(id: str):
             f'Edit Project</a>.</span></div>')
 
     labour_html = _site_labour(proj)
+    # ── Attach document (28 October 2026) ───────────────────────────────────
+    # §0's fifty-eighth block, item 3. Drawn only for somebody the POST branch
+    # would actually admit — `project.edit`, the per-view guard above — which
+    # is the owner's rule of 22 September 2026: a control that can only
+    # produce a refusal is not drawn. **Presentation, not the gate**: the POST
+    # refuses a typed form on its own. For everybody else it is the empty
+    # string, so their page is byte-for-byte what it was.
+    attach_panel = (PT.picker_html(id, url_for("projectview.view_project", id=id))
+                    if auth.has_perm("project.edit") else "")
     # C6 — "" for a reader without `project.pnl`, and spliced onto the end of
     # an existing line below, so that for them the page is byte-for-byte what
     # it was (`tests/test_pnl_access.py` pins it against `3a14375`).
@@ -1638,7 +1682,7 @@ def view_project(id: str):
           {charge_html}
         </tbody>
       </table>
-    </div>
+    </div>{attach_panel}
 
     <!-- Site Labour Panel -->
     <!-- ⚠ The sub-title here is NOT the charges panel's wording and must never

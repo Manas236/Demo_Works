@@ -430,8 +430,21 @@ PAGES = {
     #       ("project page", …): ("b40cbe634515dfca", 85531,
     #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "b51ad113e721dcbe", "main": "56a6540cddadb9c8"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("743a34c2b98c0499", 87728,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "80ecaec1f7e9225b"}),
+    #
+    # ⚠ **RE-BASELINED AGAIN, same day — §0's fifty-eighth block, item 3**
+    #   (attach a loose document by hand). `main` ONLY, a second time:
+    #   `main` gains the *Attach document* panel — two pickers and a
+    #   paragraph, no figure of any kind (`projtag.picker_html()`).
+    #   **+2,353 bytes.** Measured by reverting `projectview.py` and deleting
+    #   `projtag.py`: `main` came back `80ecaec1f7e9225b` exactly and
+    #   `head` / `shell` / `chrome` never moved. The panel is drawn only for a
+    #   holder of `project.edit`, which is why only ONE of the eight rows in
+    #   `tests/test_pnl_access.py` moved with it. The value before item 3:
+    #       ("project page", …): ("743a34c2b98c0499", 87728,
+    #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "b51ad113e721dcbe", "main": "80ecaec1f7e9225b"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("994d761e70c27a65", 90081,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "a2c311e0f0026245"}),
     ("employees",       "/employee/"):                 ("ef174191c4b15546", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "a1e6c63a6d4c6ac2", "chrome": "73071add0b4a2df7", "main": "14f4d8921e680fc4"}),
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth

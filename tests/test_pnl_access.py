@@ -77,7 +77,27 @@ WITHOUT_PNL = ("operation-head", "sales-manager", "purchase-manager", "accountan
 #       accountant       PROJECT_PAGE ("b50006d2a63f996b", 72670)
 #       accountant       REGISTER     ("af54c7d7988a0bec", 45371)
 BEFORE = {
-    ("operation-head",   PROJECT_PAGE): ("62d3055badec47a3", 73998),
+    # ⚠ **RE-BASELINED 29 October 2026 — CLIENT_CHANGES.md §0's fifty-eighth
+    #   block, item 3** (attach a loose document by hand). THIS ROW ONLY, out
+    #   of all eight: Operation Head is the one role in `WITHOUT_PNL` that
+    #   holds **`project.edit`**, and the *Attach document* panel is drawn only
+    #   for a holder of it (`projtag.picker_html()`, spliced where an empty
+    #   string leaves the page byte-for-byte as it was). **+2,353 bytes.**
+    #
+    #   Sales Manager, Purchase Manager and Accountant hold no `project.edit`,
+    #   get the empty string, and their three rows below are **UNCHANGED** —
+    #   which is the measurement that says the panel is gated and not merely
+    #   added. Measured before the baseline was touched by reverting
+    #   `projectview.py` and deleting `projtag.py`: this row came back
+    #   `("62d3055badec47a3", 73998)` exactly and the other seven never moved.
+    #
+    #   ⚠ **This is NOT a P&L leak and the file's own rule is intact.** The
+    #   panel carries no figure of any kind — it is two pickers and a
+    #   paragraph. Operation Head still gets no `project.pnl` panel, which
+    #   `test_only_owner_and_director_see_the_panel` below still holds.
+    #   The old value:
+    #       ("operation-head", PROJECT_PAGE): ("62d3055badec47a3", 73998),
+    ("operation-head",   PROJECT_PAGE): ("a371184c00c7be5b", 76351),
     ("operation-head",   REGISTER):     ("fccc00dd8367f34e", 46214),
     ("sales-manager",    PROJECT_PAGE): ("dec7a61b388ce6c7", 72862),
     ("sales-manager",    REGISTER):     ("08984bbd0406f98a", 45563),

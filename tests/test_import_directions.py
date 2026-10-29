@@ -943,6 +943,31 @@ FORBIDDEN = [
     ("lineimage", "attachment", "module", "attachment imports approval, and "
                                           "through it the auth layer; root() "
                                           "reaches it in its function body"),
+
+    # ── projtag.py — filing a LOOSE document by hand (28 October 2026) ──────
+    # CLIENT_CHANGES.md §0, fifty-eighth block, item 3. `projectview.py`
+    # imports it; it imports `pnl.py` (the ONE reader of "which project is
+    # this document on"), `pipeline` and `store`, and **no page module at
+    # all**. That is the point of it existing: the write, the trail, the
+    # candidate rule and every refusal are one definition instead of four, and
+    # `purchase.py` and `proforma.py` — both being edited on an unpushed
+    # office-PC line — are not touched. The records arrive as the dicts they
+    # are, which is `lineimage.py`'s arrangement one register along.
+    *[("projtag", mod, "any", "the leaf is handed a RECORD and writes the "
+                              "optional project_id that document already "
+                              "carries; it knows nothing about the document")
+      for mod in ("purchase", "proforma", "workorder", "charge", "invoice",
+                  "boq", "ra", "merged_ra", "quotation", "po_draft",
+                  "challan", "measurement", "attendance", "payroll",
+                  "project", "projectview", "docsheet", "auth", "flask")],
+    # …and nothing imports it back. `pnl.py` above all: it is imported BY this
+    # leaf, and a reverse arrow would make the P&L depend on the thing that
+    # tags documents for it.
+    *[(mod, "projtag", "any", "projectview.py is the only importer; a document "
+                              "module that knew about hand-tagging would be "
+                              "one that could start writing project trails")
+      for mod in ("pnl", "purchase", "proforma", "workorder", "charge",
+                  "project", "boq", "ra", "dashboard", "chrome")],
 ]
 
 

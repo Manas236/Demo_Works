@@ -1395,6 +1395,16 @@ beside branding.py and pipeline.py. dashboard.py must **never** import
 `index()` pulls `ensure_demo_products` / `ensure_demo_addresses` in **inside the
 function body** for exactly that reason; that is deliberate, not an oversight.
 
+### 2l. `projtag.py` — filing a loose document under a project (28 September… 28 October 2026)
+
+A **leaf** added on 28 October 2026 (§0 **fifty-eighth** block, item 3). It
+imports `pnl`, `pipeline`, `store` and `datetime`; `projectview.py` is its only
+importer. It owns which documents may be hand-filed under a project, the write,
+the trail and every refusal — see §3 *Attach a LOOSE document by hand* and §5
+`/projects`. It exists as a module rather than four edits because `purchase.py`
+and `proforma.py` are being edited on an unpushed line, and because one
+definition of the write cannot drift the way four can.
+
 ### 2k. `chrome.py` — the app shell, and why it is the fourth leaf (14 September 2026)
 
 `BASE_STYLES`, `ICONS`, `USER_CHIP_STYLES`, `PINNED_PAGES`, `_user_chip()`,
@@ -11785,6 +11795,73 @@ Both were defects against delivered scope (§0 gate exempt), fixed together.
   panel test had pinned Rev 0 + Rev 1 summed and now pins the tip. The page
   goldens (`test_page_golden.py`, `test_pnl_access.py`) were re-baselined with
   the measurement recorded beside them.
+
+#### Attach a LOOSE document by hand — `projtag.py` (28 October 2026, §0 **fifty-eighth** block, item 3)
+
+The client's ask: a purchase order, proforma, work order or charge that was
+**never raised from a BOQ** should be filable under a project from the
+project's own page. There was no way at all before — those four forms carry a
+project picker at **create** and nothing afterwards, and three of the four
+modules have no edit screen offering one. The POST actions are `attach_doc`
+and `detach_doc` on `/projects/view/<id>`, under the **same per-view
+`project.edit` guard** as `attach_boq` / `detach_boq` (gap 24b's shape), and
+the panel is drawn only for a holder of it.
+
+**`projtag.py` is a new LEAF and owns every rule**: `KINDS` (the four
+attachable types), `candidates()`, `attached()`, `attach()`, `detach()`,
+`derives_from_boq()`, the trail and `picker_html()`.
+
+- ⚠ **`pnl.project_of()` IS the answer and this asks it.** No second rule is
+  added, so the attach list, the project page's panels, the P&L and the
+  untagged-cost line cannot disagree about which project a document is on.
+- ⚠ **A DOCUMENT THAT DERIVES ITS PROJECT FROM A BOQ IS REFUSED — attach and
+  detach both — and the refusal names the schedule and the way forward.** It
+  follows its BOQ; a hand tag that disagreed would be a **second** answer to a
+  question that has one, and `project_of()` would go on reporting the BOQ's
+  project while the record carried something else. `derives_from_boq()` asks
+  whether `boq_id` **resolves**, which is `project_of()`'s own test — so a
+  record whose schedule was deleted falls through to its stored tag there and
+  **is** hand-taggable here. The two must agree or a document could be refused
+  by one and called untagged by the other.
+- ⚠ **A TAX INVOICE IS NOT AN ATTACHABLE KIND.** It inherits through its
+  proforma **at read time** (`project_of(ti, "invoice")`) and nothing is
+  written on it; moving its proforma moves it.
+- **Offered:** a document following no BOQ and on **no live project** — a
+  `project_id` naming a deleted project counts as untagged, which is
+  `projectview.py`'s eligible-BOQ rule of 9 September 2026 one collection
+  along and exists because otherwise such a record is offered by no project's
+  picker and is unreachable from any screen. A PO in **Draft** is offered:
+  attaching is filing, not costing, and what a Draft contributes (nothing) is
+  `pnl.py`'s rule and is not duplicated.
+- **One `<select>`, values `kind:id`,** with an `<optgroup>` per kind. Four
+  selects would be four chances to post a work order id against the purchases
+  collection.
+- **The write:** `project_id`, plus the project's **name snapshotted** beside
+  it (`charge.py`'s pattern, which `purchase.py` and `workorder.py` follow), so
+  a row filed by hand reads the same as one tagged at create. Detach clears
+  both. ⚠ **Only a document currently on THIS project is detached** —
+  DOMAIN.md §6's rule, and what the BOQ detach branch already does.
+- **The trail: ONE field, `project_trail`, written from one place.** Who,
+  when, from which project, to which, with both project **names** snapshotted
+  so it still reads after a rename or a delete. Appended, never edited —
+  `status_history`'s and `access_history`'s shape. ⚠ It is deliberately **not**
+  each module's own trail field: `purchase.py` has `status_history` and the
+  other three have nothing, and writing four shapes from here is how the
+  record of who moved what stops being readable. **A record with no key has
+  never been moved by hand; nothing is backfilled.**
+- ⚠ **Why a leaf and not four edits.** `purchase.py` and `proforma.py` are
+  being edited on an unpushed office-PC line and this pass leaves them alone;
+  `workorder.py` and `charge.py` are untouched for the same reason, not
+  because they are protected. The independent merit is that the write, the
+  refusal and the candidate rule are **one definition** instead of four that
+  can drift. `projtag.py` imports **`pnl`, `pipeline`, `store` and `datetime`
+  and nothing else** — no page module at all;
+  `tests/test_import_directions.py` holds both directions and
+  `test_the_leaf_imports_no_document_module` states it beside the behaviour.
+- Tests: `tests/test_project_attach_doc.py` (30). The project page's `main`
+  golden moved and ONE of `test_pnl_access.py`'s eight rows — Operation Head,
+  the only `WITHOUT_PNL` role holding `project.edit`; the other three are
+  byte-identical, which is the measurement that says the panel is gated.
 
 #### Labour lands on the project by itself (28 October 2026, §0 **fifty-eighth** block, item 2)
 
