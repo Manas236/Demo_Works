@@ -699,13 +699,48 @@ def test_the_tax_invoice_has_no_edit_route_to_gate():
         if r.endpoint.startswith("invoice.")
         and {"POST"} & r.methods
         and "approval" not in r.endpoint)
+    # ⚠ **EXTENDED 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth**
+    #   block, A1) for `invoice.fill_hsn` — the page that fills a BLANK HSN on
+    #   an issued tax invoice. It is a fourth write route and it is listed here
+    #   deliberately rather than excluded, because that is what makes a FIFTH
+    #   one fail. The list it replaces, in full and verbatim:
+    #
+    #       assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice",
+    #                                 "invoice.from_boq"], (
+    #           f"invoice.py has grown a write route beyond its two creation paths and "
+    #           f"cancellation: {invoice_writes}. It is an approvable document, so the "
+    #           f"new route needs approval.can_modify() and a line in the test above — "
+    #           f"unless it is a withdrawal path, which is gated on its own terms (read "
+    #           f"the docstring before relaxing this).")
+    #
+    #   It is not weakened, and the reason `fill_hsn()` does not call
+    #   `approval.can_modify()` is the same shape as `cancel_invoice()`'s and is
+    #   asserted below rather than assumed: it writes **only a tax code, only
+    #   onto a line that has none**, and `hsnfill.editable()` is what refuses
+    #   every other case. There is no figure, no quantity and no total it could
+    #   move, so there is nothing for the ladder to protect — and an approved
+    #   invoice whose line is missing an HSN is exactly the one Rule 46(g)
+    #   needs filled.
     assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice",
-                              "invoice.from_boq"], (
-        f"invoice.py has grown a write route beyond its two creation paths and "
-        f"cancellation: {invoice_writes}. It is an approvable document, so the "
-        f"new route needs approval.can_modify() and a line in the test above — "
-        f"unless it is a withdrawal path, which is gated on its own terms (read "
+                              "invoice.fill_hsn", "invoice.from_boq"], (
+        f"invoice.py has grown a write route beyond its two creation paths, "
+        f"cancellation and the HSN fill: {invoice_writes}. It is an approvable "
+        f"document, so the new route needs approval.can_modify() and a line in "
+        f"the test above — unless it is a withdrawal path or writes nothing but "
+        f"a blank statutory code, each of which is gated on its own terms (read "
         f"the docstring before relaxing this).")
+    # The fill route writes a code and nothing else, and that is what stands in
+    # for `can_modify()`. Asserted on the source so a later edit that reaches a
+    # figure from there fails here.
+    _fill_src = inspect.getsource(invoice.fill_hsn)
+    assert "HF.apply_post(" in _fill_src, (
+        "fill_hsn() must write through hsnfill.apply_post(), which is the one "
+        "place the fill-blanks-only rule is enforced.")
+    for forbidden in ("\"price\"", "\"qty\"", "\"total\"", "\"subtotal\"",
+                      "\"grand_total\"", "\"tax_info\"", "\"ref\""):
+        assert forbidden not in _fill_src, (
+            f"fill_hsn() mentions {forbidden} — it may write a tax code and "
+            f"nothing else, which is why it needs no approval gate.")
     for fn in (invoice.create_invoice, invoice.from_boq):
         assert "approval.stamp_creator(ti)" in inspect.getsource(fn), (
             f"{fn.__name__}() creates a tax invoice without stamping its "

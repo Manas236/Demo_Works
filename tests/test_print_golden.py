@@ -623,9 +623,11 @@ GOLD_TI = "gold-ti"
 #
 # was a571453b8b187735 / 195699 before the 21 Oct 2026 LETTERHEAD BANNER pass
 # was 4a7c232bd358c5ef / 198879 before the 26 Oct 2026 PAGE EDGE — see above
-TI_WHOLE = "d7d2dad0a825bea8"   # was 1fbb4b006cfd12de (SF mark 1.5x, 29 Oct 2026)
-TI_LEN = 206516   # was 199832 (SF mark 1.5x, 29 Oct 2026)
-TI_BLOCKS = {"head":       "6715688604fc56b4",   # was cc95826af94b9984 (page edge),
+TI_WHOLE = "0d37060deb1c65ed"   # was d7d2dad0a825bea8 (a blank HSN prints a dash +
+                                #   the screen note and the HSN button, §0 59th A1,
+                                #   29 Oct 2026), was 1fbb4b006cfd12de (SF mark 1.5x)
+TI_LEN = 208852   # was 206516 (§0 59th A1, 29 Oct 2026), was 199832 (SF mark 1.5x)
+TI_BLOCKS = {"head":       "7175047fae9ddfae",   # was 6715688604fc56b4 (§0 59th A1),   # was cc95826af94b9984 (page edge),
                                                   # was b5312294e91a796f,
                                                   # was 59522cc02d192043,
                                                   # was 13840b8797d6e721,
@@ -636,7 +638,12 @@ TI_BLOCKS = {"head":       "6715688604fc56b4",   # was cc95826af94b9984 (page ed
              "doc-box":    "1628f0996b607772",   # was 5e4d6a24b0a5b726
              "party":      "a7c0e4ecf0b1491f",
              "items":      "ace24562781a2e31",
-             "signature": "0745d80e3fbad056"}   # was dff4da7d88d26587 (SF mark 1.5x, 29 Oct 2026), was 26d63afbc5714259,
+             # ⚠ The LAST block runs to the end of the response, so on this
+             #   document it holds the Duplicate and Triplicate copies too —
+             #   and therefore their items tables. It moves with `items` for
+             #   that reason and for no other (§0 59th A1, 29 Oct 2026).
+             "signature": "517cf54f5f4b2adb"}   # was 0745d80e3fbad056 (§0 59th A1,
+                                                #   29 Oct 2026), was dff4da7d88d26587 (SF mark 1.5x), was 26d63afbc5714259,
                                                   # was f5511fad8e1212cc
 
 # was 4f7794a81d90071c / 101851 before the 27 Aug 2026 escaping pass
@@ -754,8 +761,10 @@ TI_BLOCKS = {"head":       "6715688604fc56b4",   # was cc95826af94b9984 (page ed
 #     766ed2f54d4455f1 / 98978 again, whole. `head` did not move: the column's
 #     width rides inside the items block, not in `PURCHASE_STYLES`.
 # was bb87f899701ea744 / 99240 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-PO_WHOLE, PO_LEN = "576cc3e7a9ddba40", 102421   # was ae90e14f6bb98530 / 100193 (SF mark 1.5x, 29 Oct 2026)
-PO_BLOCKS = {"head":       "d5dcf006e5a8f876",   # was bf2fc2b883a29ca6 (page edge),
+PO_WHOLE, PO_LEN = "249b2e228c4df02c", 104761   # was 576cc3e7a9ddba40 / 102421
+                                #   (§0 59th A1, 29 Oct 2026), was ae90e14f6bb98530 /
+                                #   100193 (SF mark 1.5x)
+PO_BLOCKS = {"head":       "6a1a651b90ded6e8",   # was d5dcf006e5a8f876 (§0 59th A1),   # was bf2fc2b883a29ca6 (page edge),
                                                  # was b0183c538998f277,
                                                  # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,
@@ -790,9 +799,10 @@ GOLD_PI = "gold-pi"
 # was dded298848fde613 / 95165 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was a7cbb6c59b153765 / 96225 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-PI_WHOLE = "f6642309ef59b171"   # was bf009adade1b81ca (SF mark 1.5x, 29 Oct 2026)
-PI_LEN = 99406   # was 97178 (SF mark 1.5x, 29 Oct 2026)
-PI_BLOCKS = {"head":       "aa1c5df88915a319",   # was f947cd7d3d6700f5 (page edge),
+PI_WHOLE = "bd2c396381b313b2"   # was f6642309ef59b171 (§0 59th A1, 29 Oct 2026),
+                                #   was bf009adade1b81ca (SF mark 1.5x)
+PI_LEN = 101849   # was 99406 (§0 59th A1, 29 Oct 2026), was 97178 (SF mark 1.5x)
+PI_BLOCKS = {"head":       "0721e2b8c58c88bb",   # was aa1c5df88915a319 (§0 59th A1),   # was f947cd7d3d6700f5 (page edge),
                                                   # was 8d0355644f96b13c,
                                                   # was fb2abee257b52d86,
                                                   # was 0250890a6d6e2f6b,

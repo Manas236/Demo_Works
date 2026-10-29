@@ -386,7 +386,13 @@ def test_an_hsn_typed_on_an_extra_part_is_stored_and_printed(shop, client):
     assert po["extra_lines"][0]["hsn"] == "73072900"
 
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
-    row = html.split("150mm flange", 1)[1].split("</tr>", 1)[0]
+    # ⚠ Read inside the ITEMS TABLE, not from the first mention of the
+    #   part anywhere on the page: from 29 October 2026 the screen-only
+    #   "a code is missing" note above the sheet names the line too
+    #   (§0 fifty-ninth block, A1), and `split(desc, 1)` found that
+    #   instead. The sheet is what these assertions are about.
+    sheet = html.split('<div class="items-wrap">', 1)[1]
+    row = sheet.split("150mm flange", 1)[1].split("</tr>", 1)[0]
     assert '<td class="c-hsn">73072900</td>' in row
     assert "add HSN" not in row, "a typed HSN must not be chipped"
 
@@ -396,14 +402,33 @@ def test_a_blank_hsn_still_prints_the_chip_but_can_now_be_answered(shop, client)
     The chip is right to ask — the house rule is that a blank statutory field
     never looks deliberate — and this pins that it still asks. What changed is
     that the reprice form now carries the box to answer it with.
+
+    ⚠ **REWRITTEN 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth**
+    block, A1). A blank HSN now prints an **em-dash**, not the amber chip:
+    the chip is for a statutory detail only `/settings` can answer, and a
+    line's HSN stopped being one on the day it became fillable on the
+    document itself. The box the second half asserts is unchanged and is
+    still the point of the test. The old assertion, verbatim:
+
+        assert '<span class="todo-chip">add HSN</span>' in row
+
+    and the docstring line it replaced, verbatim:
+        "and this pins that it still asks."  ->  it now prints a dash instead.
     """
     r = _from_boq(client, shop, shop["lines"][:1], **ADDITIONS)
     assert r.status_code == 302
     po = _only_po()
     assert po["extra_lines"][0]["hsn"] == ""
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
-    row = html.split("150mm flange", 1)[1].split("</tr>", 1)[0]
-    assert '<span class="todo-chip">add HSN</span>' in row
+    # ⚠ Read inside the ITEMS TABLE, not from the first mention of the
+    #   part anywhere on the page: from 29 October 2026 the screen-only
+    #   "a code is missing" note above the sheet names the line too
+    #   (§0 fifty-ninth block, A1), and `split(desc, 1)` found that
+    #   instead. The sheet is what these assertions are about.
+    sheet = html.split('<div class="items-wrap">', 1)[1]
+    row = sheet.split("150mm flange", 1)[1].split("</tr>", 1)[0]
+    assert '<td class="c-hsn">&mdash;</td>' in row
+    assert '<span class="todo-chip">add HSN</span>' not in row
 
     edit = client.get(f"/purchase/edit/{po['id']}").get_data(as_text=True)
     assert 'name="extra_hsn" value=""' in edit, "the reprice form must offer the box"
@@ -428,14 +453,33 @@ def test_the_hsn_round_trips_through_the_reprice_form(shop, client):
 
 
 def test_an_extra_line_written_before_the_box_reads_as_blank(shop, client):
-    """No backfill: a stored row with no `hsn` key prints the chip, as it did."""
+    """
+    No backfill: a stored row with no `hsn` key reads as blank, as it did.
+
+    ⚠ **REWRITTEN 29 October 2026** (§0 **fifty-ninth** block, A1) for the
+    same reason as the test above — a blank HSN prints an em-dash now. The
+    assertion this test exists for is the **absence of a backfill**, which is
+    unchanged. The old assertion, verbatim:
+
+        assert '<span class="todo-chip">add HSN</span>' in row
+
+    and the docstring it replaced, verbatim:
+        '''No backfill: a stored row with no `hsn` key prints the chip, as it did.'''
+    """
     r = _from_boq(client, shop, shop["lines"][:1], **ADDITIONS)
     assert r.status_code == 302
     po = _only_po()
     del po["extra_lines"][0]["hsn"]
+    assert "hsn" not in po["extra_lines"][0], "nothing backfilled the key"
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
-    row = html.split("150mm flange", 1)[1].split("</tr>", 1)[0]
-    assert '<span class="todo-chip">add HSN</span>' in row
+    # ⚠ Read inside the ITEMS TABLE, not from the first mention of the
+    #   part anywhere on the page: from 29 October 2026 the screen-only
+    #   "a code is missing" note above the sheet names the line too
+    #   (§0 fifty-ninth block, A1), and `split(desc, 1)` found that
+    #   instead. The sheet is what these assertions are about.
+    sheet = html.split('<div class="items-wrap">', 1)[1]
+    row = sheet.split("150mm flange", 1)[1].split("</tr>", 1)[0]
+    assert '<td class="c-hsn">&mdash;</td>' in row
     edit = client.get(f"/purchase/edit/{po['id']}").get_data(as_text=True)
     assert 'name="extra_hsn" value=""' in edit
 

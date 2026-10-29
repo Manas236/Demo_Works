@@ -71,6 +71,7 @@ import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -374,8 +375,21 @@ def _missing_hsn(line_items: list) -> list:
 
 
 def _hsn_cell(code: str) -> str:
-    """An HSN cell on the printed sheet — amber 'add HSN' chip when blank."""
-    return B.field(str(code or "").strip(), "HSN")
+    """
+    An HSN cell on the printed sheet — **an em-dash when blank**.
+
+    ⚠ **It was `B.field(code, "HSN")`, the amber *add HSN* chip, until
+      29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth** block, A1), and
+      the change is an INTENDED print change that moved this document's
+      golden. The chip is for a statutory detail only an Owner at `/settings`
+      can answer; a line's missing HSN is fillable on the invoice itself from
+      the same pass (`/invoice/hsn/<id>`), so the chip was pointing a customer
+      at a box they cannot reach. The note that says a code is missing is on
+      the screen above the sheet and is never printed (`HF.screen_note()`).
+      The line it replaced, verbatim:
+          return B.field(str(code or "").strip(), "HSN")
+    """
+    return HF.print_cell(code)
 
 
 def _build_ti_terms(ti: dict) -> list:
@@ -980,9 +994,9 @@ def create_invoice(pid: str):
             "<b>Missing HSN/SAC.</b> Rule 46 makes it mandatory on a tax invoice, "
             "and the customer cannot claim input tax credit on a line without it. "
             f"These lines have none:<ul>{items}</ul>"
-            "Add the code on the product in the catalogue, then raise the "
-            "quotation again — this invoice will print an amber chip in the "
-            "cell rather than a blank."
+            "Add the code on the specification-library clause for the next "
+            "document, and fill it on this invoice from its own page once it "
+            "is raised &mdash; a blank prints as a dash."
         )
 
     tax_msg = _tax_warning(v_pos, pi.get("tax_type", "exempt"))
@@ -1865,13 +1879,31 @@ def view_invoice(id: str):
                       f'style="color:#b91c1c;border-color:#fecaca;">'
                       f'Cancel Invoice</a>')
 
+    # ── HSN (29 October 2026, §0 fifty-ninth block, A1) ──────────────────
+    # ⚠ **The note sits ABOVE `.doc-outer`, which `PRINT_EDGE_CSS` withholds
+    #   from paper** — it is on screen and never on the customer's copy. Drawn
+    #   only when a line is actually missing a code, so a complete invoice is
+    #   byte-for-byte what it was. Gone on a cancelled invoice, whose lines
+    #   are the record of what was cancelled.
+    live = str(ti.get("status") or "") != "cancelled"
+    hsn_entries = _hsn_entries(ti)
+    hsn_btn, hsn_note = "", ""
+    if live and _AUTH.can_reach("invoice.fill_hsn"):
+        hsn_btn = (f'\n    <a href="{url_for("invoice.fill_hsn", id=id)}" '
+                   f'class="btn btn-ghost">HSN / SAC</a>')
+        hsn_note = HF.screen_note(hsn_entries,
+                                  url_for("invoice.fill_hsn", id=id),
+                                  "tax invoice")
+    elif live:
+        hsn_note = HF.screen_note(hsn_entries, "", "tax invoice")
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(ti.get('ref')) + " Tax Invoice")}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{DS.COPY_STYLES}
+  {DS.SHEET_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{DS.COPY_STYLES}{HF.NOTE_CSS if hsn_note else ""}
 </head>
 <body>{approval.print_block("invoice", ti)}
 <main>
@@ -1883,13 +1915,13 @@ def view_invoice(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {copy_switch}
     {back_pi}
-    <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>{cancel_btn}
+    <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>{hsn_btn}{cancel_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-
+{hsn_note}
 <div class="doc-outer">
 {sheets_html}
 </div>
@@ -1900,6 +1932,98 @@ def view_invoice(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+def _hsn_entries(ti: dict) -> list:
+    """Every line that can carry an HSN, numbered as the sheet numbers them."""
+    out, sno = [], 0
+    for n, r in enumerate(ti.get("line_items") or []):
+        if r.get("is_header"):
+            continue
+        sno += 1
+        out.append(HF.entry(f"li:{n}", sno, str(r.get("part_no") or ""),
+                            str(r.get("name") or ""), r))
+    return out
+
+
+@invoice_bp.route("/hsn/<id>", methods=["GET", "POST"])
+def fill_hsn(id: str):
+    """
+    Fill a blank HSN on an ISSUED tax invoice (29 October 2026, §0
+    **fifty-ninth** block, A1) — the ordinary one and the one raised from a
+    BOQ, which is the same record in the same collection.
+
+    ⚠ **A tax invoice has no draft state and never will**, so the rule is
+      **fill blanks only** with no branch at all: `HF.editable(False, …)`. A
+      code already on a statutory record has reached the customer's GSTR-2B
+      and is not ours to move; a **blank** one is a line the customer cannot
+      claim input tax credit on, which is Rule 46(g) and the whole reason this
+      page exists. Every fill goes on the invoice's own `hsn_trail` — who,
+      when, which line, what value.
+
+    ⚠ **A CANCELLED invoice is refused.** Its number is spent and its record
+      is the evidence of why; filling a code on it would edit history.
+
+    `invoice.create` — the Pictures page's precedent one document along.
+    **No permission was minted.**
+    """
+    ti = STORE["invoices"].get(id)
+    if not ti:
+        return redirect(url_for("invoice.list_invoices",
+                                msg="Tax invoice not found.", type="error"))
+    if str(ti.get("status") or "") == "cancelled":
+        return redirect(url_for("invoice.view_invoice", id=id, type="error",
+                                msg="That tax invoice is cancelled. Its lines "
+                                    "are the record of what was cancelled and "
+                                    "are not editable."))
+    here = url_for("invoice.fill_hsn", id=id)
+    entries = _hsn_entries(ti)
+
+    if request.method == "POST":
+        import auth as _AUTH
+        who = str((_AUTH.current_user() or {}).get("username") or "")
+        msg, err = HF.apply_post(request.form, entries, False, ti, who,
+                                 "tax invoice")
+        return redirect(url_for("invoice.fill_hsn", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(str(ti.get('ref')) + " HSN")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{HF.NOTE_CSS}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>HSN / SAC &middot; <span>{P.esc(ti.get('ref'))}</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{url_for('invoice.view_invoice', id=id)}" class="btn btn-ghost">&#8592; Back to the invoice</a>
+        </div>
+      </div>
+
+      {_alert(request.args.get("msg"), request.args.get("type", "success"))}
+
+      <form method="POST" action="{here}">
+      <div class="form-section">
+        <div class="section-title">Fill a blank code</div>
+        <p class="frozen-hint" style="margin:0 0 1rem;">
+          Rule 46(g) makes HSN/SAC mandatory, and a line without one costs the
+          customer the input tax credit on it. Only a <b>blank</b> code can be
+          filled: one already printed on this invoice has reached the customer
+          and stays as it is. A blank prints as a dash. Nothing else on the
+          invoice &mdash; no figure, no quantity, no total &mdash; is reachable
+          from here, and every fill is recorded below.
+        </p>
+        {HF.rows_html(entries, here, is_draft=False)}
+        <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.2rem;">
+          <button type="submit" class="btn">Save codes</button>
+          <a href="{url_for('invoice.view_invoice', id=id)}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </div>
+      </form>
+      {HF.trail_html(ti)}
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · tax invoice</p></footer>
+    </main></body></html>""")
 
 
 @invoice_bp.route("/cancel/<id>", methods=["GET", "POST"])

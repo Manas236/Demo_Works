@@ -101,6 +101,7 @@ import approval
 import boq as BQ
 import branding as B
 import docsheet as DS
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import ra as RA
@@ -888,7 +889,7 @@ def print_merged(id: str):
         n += 1
         rows += (f'<tr><td class="c-sno">{n}</td>'
                  f'<td class="c-desc">{_esc(r.get("description"))}</td>'
-                 f'<td class="c-hsn">{_esc(r.get("hsn_sac"))}</td>'
+                 f'<td class="c-hsn">{HF.print_cell(r.get("hsn_sac"))}</td>'
                  f'<td class="c-qty">{_esc(RA._qty(r.get("qty")))}</td>'
                  f'<td class="c-unit">{_esc(r.get("unit"))}</td>'
                  f'<td class="c-rate">{DS._inr(float(r.get("rate") or 0.0))}</td>'

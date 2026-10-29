@@ -621,6 +621,16 @@ def populated(client):
             "/proforma/pictures/<id>": pid,
             "/purchase/pictures/<id>": next(iter(STORE["purchases"])),
             "/po/pictures/<id>":       dpid,
+            # The four HSN fill pages (29 Oct 2026, §0 fifty-ninth block, A1).
+            # Each prints every line's description, item number and part
+            # number, so the payload reaches them through all three. The BOQ
+            # one is pointed at the TIP (a superseded revision redirects) and
+            # the RA one at a bill that is not cancelled, for the same reason
+            # the Pictures rows above are pointed at a Draft order.
+            "/boq/hsn/<id>":           bid,
+            "/proforma/hsn/<id>":      pid,
+            "/invoice/hsn/<id>":       iid,
+            "/ra/hsn/<id>":            rid,
             # The two BOQ-side create forms. Both render a populated page: the
             # first the whole 97-line picker with a rate box per line, the
             # second the draft's own rows — and `_a_draft_po` deliberately

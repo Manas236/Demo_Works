@@ -83,6 +83,7 @@ from flask import Blueprint, request, redirect, url_for
 import approval
 import branding as B
 import cascade
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
@@ -3722,12 +3723,22 @@ def _reprice_html(po: dict) -> str:
 
 # The HSN box's cap: the extra lines' `[:8]` (`_parse_extra_lines()`), and the
 # longest code GST knows, an 8-digit HSN.
-HSN_MAX = 8
+#
+# ⚠ **Re-exported from `hsnfill.py` from 29 October 2026** (§0 fifty-ninth
+#   block, A1) rather than redeclared, so the cap on this form, on the extra
+#   parts' box and on every other document's fill page is one number. The
+#   literal it replaces was `8`.
+HSN_MAX = HF.HSN_MAX
 
 
-def hsn_editable(po: dict, row: dict) -> bool:
+def is_draft(po: dict) -> bool:
+    """Is this order still a Draft? The one state in which nothing has gone out."""
+    return (po.get("status") or DEFAULT_STATUS) == "Draft"
+
+
+def hsn_editable(po: dict, row: dict, field: str = "hsn") -> bool:
     """
-    May this item line's HSN be changed on the reprice form?
+    May this line's HSN be changed?
 
     **Any HSN while the order is a Draft; only a BLANK one after that.** The
     26 October 2026 ruling for documents already created is "fill blanks only
@@ -3736,10 +3747,43 @@ def hsn_editable(po: dict, row: dict) -> bool:
     `edit_purchase_rates()` draws for the document number. One predicate, read
     by the form (read-only box) and by `_reprice()` (refusal), so the two
     cannot disagree.
+
+    ⚠ **The rule itself moved to `hsnfill.editable()` on 29 October 2026**
+      (§0 fifty-ninth block, A1) so that the BOQ, the spec library, the
+      proforma, the tax invoice, the RA bill and the product inquiry read the
+      SAME predicate rather than a copy of it. **The answer for a purchase
+      order is unchanged** — `tests/test_po_hsn_edit.py` holds that, with
+      every assertion it was written with. The body it replaced, verbatim:
+          if (po.get("status") or DEFAULT_STATUS) == "Draft":
+              return True
+          return not str(row.get("hsn") or "").strip()
     """
-    if (po.get("status") or DEFAULT_STATUS) == "Draft":
-        return True
-    return not str(row.get("hsn") or "").strip()
+    return HF.editable(is_draft(po), (row or {}).get(field))
+
+
+def _extra_hsn_refusal(po: dict, posted: list) -> str:
+    """
+    "" when every posted extra part respects the fill-blanks-only rule, else
+    the refusal — and nothing has been written when it returns one.
+
+    Matched by **normalised description**, because `_parse_extra_lines()`
+    re-reads this repeater whole and its rows are not positional. A stored row
+    that carried a printed code and still carries the same description may not
+    have that code changed; everything else is free.
+    """
+    if is_draft(po):
+        return ""
+    printed = {}
+    for row in extra_lines_of(po):
+        code = HF.stored(row, "hsn")
+        if code:
+            printed.setdefault(P.norm_name(row.get("description")), code)
+    for row in posted or []:
+        was = printed.get(P.norm_name(row.get("description")))
+        if was and HF.stored(row, "hsn") != was:
+            label = str(row.get("description") or "this part")[:60]
+            return HF.refusal(f"'{label}'", was, "order")
+    return ""
 
 
 def _priced_rows(po: dict) -> list:
@@ -3800,6 +3844,17 @@ def _reprice(po: dict, form) -> str:
     extra_lines, extra_err = _parse_extra_lines(form)
     if extra_err:
         return extra_err
+    # ⚠ **An extra part's HSN obeys the same fill-blanks-only rule from
+    #   29 October 2026** (§0 fifty-ninth block, A1: *"the rule everywhere"*),
+    #   and it is matched on the **description**, not on the position. This
+    #   repeater gains and loses rows, so position is not identity here — but a
+    #   row whose description is unchanged is the same part, and an HSN already
+    #   printed beside that description is the one the vendor has. A row that
+    #   was added, removed or re-described is not matched and takes whatever
+    #   was typed, because there is no printed code for it to contradict.
+    err = _extra_hsn_refusal(po, extra_lines)
+    if err:
+        return err
 
     staged = []
     for n, (_idx, row) in enumerate(rows):
@@ -3998,6 +4053,18 @@ def edit_purchase_rates(id: str):
                 k = hsns_moved
                 hsn_msg = f"HSN updated on {k} line{'' if k == 1 else 's'}."
                 _log(po, hsn_msg)
+                # ⚠ **And the leaf's own trail, which carries the per-line
+                #   detail the order's history line does not** (§0
+                #   fifty-ninth block, A1: *"who, when, line, value"*). Two
+                #   records of one event; `status_history` keeps the sentence
+                #   1fdc09e wrote and `tests/test_po_hsn_edit.py` asserts.
+                for a, (_i, r) in zip(hsn_was, _priced_rows(po)):
+                    now = str(r.get("hsn") or "")
+                    if a != now:
+                        HF._log(po, HF.entry("", r.get("part_no") or "",
+                                             str(r.get("name") or ""),
+                                             str(r.get("name") or ""), r),
+                                now, _actor_id())
                 msg = (hsn_msg if msg.startswith("Nothing changed")
                        else f"{msg} {hsn_msg}")
             return redirect(url_for("purchase.view_purchase", id=id,
@@ -4365,7 +4432,7 @@ def view_purchase(id: str):
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td class="c-desc">{P.esc(row.get('name'))}</td>
           <td class="c-make">{P.esc(row.get('make'))}</td>
-          <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
+          <td class="c-hsn">{HF.print_cell(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
           <td class="c-price">{_inr(row.get('price') or 0)}</td>
@@ -4429,7 +4496,7 @@ def view_purchase(id: str):
           <td class="c-partno"></td>{img_td}
           <td class="c-desc">{P.esc(row.get('description'))}</td>
           <td class="c-make">{P.esc(row.get('make'))}</td>
-          <td class="c-hsn">{B.field(row.get('hsn'), "HSN")}</td>
+          <td class="c-hsn">{HF.print_cell(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(qty)}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
           <td class="c-price">{rate_cell}</td>
@@ -4703,6 +4770,27 @@ def view_purchase(id: str):
         pics_btn = (f'\n    <a href="{url_for("purchase.pictures", id=id)}" '
                     f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
 
+    # ── HSN (29 October 2026, §0 fifty-ninth block, A1) ──────────────────
+    # The note only; the box that answers it has been on the reprice form
+    # since 1fdc09e, so this points there rather than adding a second page.
+    # ⚠ **It sits ABOVE `.doc-outer`, which `PRINT_EDGE_CSS` withholds from
+    #   paper** — on screen and never on the vendor's copy. Drawn only when a
+    #   line is actually missing a code, so a complete order is byte-for-byte
+    #   what it was.
+    _hsn_rows = []
+    for _n, (_i, _r) in enumerate(_priced_rows(po)):
+        _hsn_rows.append(HF.entry(f"li:{_i}", _n + 1, str(_r.get("part_no") or ""),
+                                  str(_r.get("name") or ""), _r))
+    for _n, _r in enumerate(extra_lines_of(po)):
+        _hsn_rows.append(HF.entry(f"xl:{_n}", f"x{_n + 1}", "",
+                                  str(_r.get("description") or ""), _r))
+    hsn_note = HF.screen_note(
+        _hsn_rows,
+        (url_for("purchase.edit_purchase_rates", id=id)
+         if can_edit_rates(po) and _AUTH.can_reach("purchase.edit_purchase_rates")
+         else ""),
+        "purchase order")
+
     # Empty string on an order that has never been repriced, so the panel of an
     # order raised before 28 August 2026 renders byte-for-byte as it did.
     rp = _reprice_html(po)
@@ -4736,7 +4824,7 @@ def view_purchase(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(po.get('ref')) + " Purchase Order")}</title>
   {B.HEAD_ICON}
-  {DS.SHEET_STYLES}{PURCHASE_STYLES}{LI.SHEET_CSS if pics else ""}
+  {DS.SHEET_STYLES}{PURCHASE_STYLES}{LI.SHEET_CSS if pics else ""}{HF.NOTE_CSS if hsn_note else ""}
 </head>
 <body>{approval.print_block("purchase", po)}
 <main>
@@ -4753,7 +4841,7 @@ def view_purchase(id: str):
 </div>
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-{panel}
+{hsn_note}{panel}
 
 <div class="doc-outer">
 <div class="quotation-doc">

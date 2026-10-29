@@ -78,6 +78,7 @@ from flask import Blueprint, redirect, request, url_for
 import branding as B
 import cascade
 import demo_data as DD
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 from address import INDIAN_STATES, picker_options, picker_payload
@@ -3366,6 +3367,23 @@ def view_boq(id: str):
     unpriced_html = (f'<div class="quiet-note" id="blank-note">{P.esc(quiet)}.</div>'
                      if quiet else "")
 
+    # ── HSN / SAC (29 October 2026, §0 fifty-ninth block, A1) ────────────
+    # ⚠ **Both notes sit ABOVE the document**, which `BOQ_VIEW_STYLES` and
+    #   `PRINT_EDGE_CSS` withhold from paper, so neither reaches the printed
+    #   schedule. The button is drawn only for a reader the gate admits and
+    #   only on the tip, and the note only when a code is actually missing —
+    #   so a complete schedule renders byte-for-byte what it did.
+    hsn_btn, hsn_note = "", ""
+    if is_tip:
+        _entries = _hsn_entries(boq)
+        if _AUTH.can_reach("boq.fill_hsn"):
+            hsn_btn = (f'\n    <a href="{url_for("boq.fill_hsn", id=id)}" '
+                       f'class="btn btn-ghost">HSN / SAC</a>')
+            hsn_note = HF.screen_note(_entries,
+                                      url_for("boq.fill_hsn", id=id), "schedule")
+        else:
+            hsn_note = HF.screen_note(_entries, "", "schedule")
+
     # The page edge (26 Oct 2026): margin 0, kept inside the page — LAST, after
     # BOQ_STYLES' landscape @page, whose margin it replaces. In the function
     # body: the BOQ takes one constant from the print leaf, not a module edge.
@@ -3377,7 +3395,7 @@ def view_boq(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{BOQ_VIEW_STYLES}{_DS.PRINT_EDGE_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{BOQ_VIEW_STYLES}{HF.NOTE_CSS if hsn_note else ""}{_DS.PRINT_EDGE_STYLES}
   {BOQ_DOC_SCRIPT}
 </head>
 <body>
@@ -3391,7 +3409,7 @@ def view_boq(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
     <a href="{url_for('boq.create_boq')}" class="btn btn-ghost">+ New</a>
-    {revise_btn}{del_btn}
+    {revise_btn}{hsn_btn}{del_btn}
     <a href="{url_for('boq.print_boq', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
 </div>
@@ -3399,6 +3417,7 @@ def view_boq(id: str):
 {alert_html}
 {panel_html}
 {unpriced_html}
+{hsn_note}
 
 {_document_html(boq, show_rate_breakup=True, screen_notes=True)}
 
@@ -6366,6 +6385,142 @@ def create_boq(imported: dict = None):
 {js}
 </body></html>"""
     return _page(template)
+
+
+def _hsn_entries(boq: dict) -> list:
+    """
+    Every fillable tax code on this schedule — **TWO per priced line**.
+
+    ⚠ A BOQ line is the one record in this application that carries two codes,
+      and they are different taxes on different things: `supply_hsn` is the
+      HSN of the **goods** and `install_sac` is the SAC of the **service**.
+      `ra.build_claim()` snapshots whichever one the leg needs, and a blank
+      SAC on an installation claim costs the customer input tax credit exactly
+      as a blank HSN does on a supply one. So both are offered, each as its
+      own entry with its own key.
+
+    A specification header carries neither by design (DOMAIN.md §2.2) and is
+    skipped, the way every other reader here skips it.
+    """
+    out, sno = [], 0
+    for n, li in enumerate(boq.get("line_items") or []):
+        if li.get("is_header"):
+            continue
+        sno += 1
+        label = _item_no(li.get("item_no"))
+        desc = str(li.get("description") or "")
+        out.append(HF.entry(f"li:{n}:s", sno, label, desc, li,
+                            field="supply_hsn", code_label="HSN"))
+        out.append(HF.entry(f"li:{n}:i", sno, label, desc, li,
+                            field="install_sac", code_label="SAC"))
+    return out
+
+
+@boq_bp.route("/hsn/<id>", methods=["GET", "POST"])
+def fill_hsn(id: str):
+    """
+    Fill a blank HSN or SAC on a saved BOQ (29 October 2026, §0 **fifty-ninth**
+    block, A1).
+
+    ⚠ **FILL BLANKS ONLY, and there is no draft branch here.** A BOQ has no
+      draft state: it is approved by the customer the moment it is written, and
+      every RA bill on the chain is measured against it. So `HF.editable()` is
+      asked with `is_draft=False` and a code already on a line stays as it is.
+      The full editor at `/boq/create?revise=<id>` is where a code is
+      *changed* — that mints a new revision, which is the only thing that may
+      move a schedule's own figures.
+
+    ⚠ **This is the ONLY route in this module that writes to a saved BOQ's
+      lines, and it writes nothing but a tax code.** No quantity, no rate, no
+      base rate, no escalation, no discount, no description, no amount and no
+      total is reachable from here, which is why it does not need to recompute
+      a single figure: `supply_hsn` and `install_sac` are in no arithmetic
+      anywhere (`amount_of()`, `net_rate()`, the stored trio). That is what
+      makes it safe on a schedule that already has claims against it.
+
+    ⚠ **It reaches no document already raised.** An RA bill, a tax invoice and
+      a proforma each snapshot the code at raise (CLIENT_CHANGES.md §1.2) and
+      have their own fill pages; what is filled here is what the **next**
+      document off this schedule carries.
+
+    ⚠ **A SUPERSEDED revision is refused** — the same predicate every other
+      control on `/boq/view` branches on. Nobody is measuring against it, and
+      the tip is where a code is wanted.
+
+    `boq.create` — the permission that already means "write a BOQ's lines".
+    **No permission was minted.**
+    """
+    boq = STORE["boqs"].get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs",
+                                msg="That BOQ no longer exists.", type="error"))
+    if id in superseded_ids():
+        return redirect(url_for("boq.view_boq", id=id, type="error",
+                                msg="That schedule has been superseded. Fill "
+                                    "the code on the current revision."))
+    here = url_for("boq.fill_hsn", id=id)
+    entries = _hsn_entries(boq)
+
+    # The register's own banner idiom — `boq.py` has no `_alert()` helper.
+    msg = (request.args.get("msg") or "").strip()
+    msg_type = request.args.get("type", "success")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if msg_type == "success" else "&#10007;"
+        alert_html = f'<div class="alert alert-{P.esc(msg_type)}">{icon} {P.esc(msg)}</div>'
+
+    if request.method == "POST":
+        import auth as _AUTH
+        who = str((_AUTH.current_user() or {}).get("username") or "")
+        msg, err = HF.apply_post(request.form, entries, False, boq, who,
+                                 "schedule")
+        return redirect(url_for("boq.fill_hsn", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title(str(boq.get('ref') or '') + " HSN")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{HF.NOTE_CSS}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>HSN / SAC &middot; <span>{P.esc(boq.get('ref'))}</span></h1>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">&#8592; Back to the BOQ</a>
+      <a href="{url_for('boq.create_boq', revise=id)}" class="btn btn-ghost">&#8635;&nbsp;Revise instead</a>
+    </div>
+  </div>
+
+  {alert_html}
+
+  <form method="POST" action="{here}">
+  <div class="form-section">
+    <div class="section-title">Fill a blank code</div>
+    <p class="form-hint"><span>Two codes per line: the <b>HSN</b> of the goods
+      on the supply leg and the <b>SAC</b> of the service on the installation
+      leg. Only a <b>blank</b> one can be filled here &mdash; a code already on
+      a line is changed by <b>revising</b> the schedule, which is the only
+      thing that may move what an RA bill is measured against. What you fill
+      reaches the <b>next</b> document raised from this BOQ and no document
+      already raised; each of those has its own page. Nothing else on the
+      schedule &mdash; no quantity, no rate, no amount &mdash; is reachable
+      from here.</span></p>
+    {HF.rows_html(entries, here, is_draft=False)}
+    <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.2rem;">
+      <button type="submit" class="btn">Save codes</button>
+      <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </div>
+  </form>
+  {HF.trail_html(boq)}
+
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
+</main></body></html>""")
 
 
 @boq_bp.route("/delete/<id>", methods=["GET", "POST"])

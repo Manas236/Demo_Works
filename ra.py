@@ -61,6 +61,7 @@ from flask import Blueprint, redirect, request, url_for
 import approval
 import boq as BQ
 import branding as B
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 # CC-2 **C1/C2**. The one-way arrow CC-2 states in its own words — *"approved
 # measurements become the source of installation quantity on RA-Installation"*.
 # `measurement.py` must never import this module back; it is refused at AST
@@ -4787,6 +4788,16 @@ def view_ra(id: str):
     issue_btn = _gated("&#10003; Issue", "ra.issue_ra", iss_allowed, iss_why)
     cancel_btn = _gated("&#10007; Cancel", "ra.cancel_ra", can_allowed, can_why)
     print_btn = f'<a class="btn" href="{url_for("ra.print_ra", id=id)}" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Tax Invoice</a>'
+    # HSN / SAC (29 October 2026, §0 fifty-ninth block, A1). `_gated()`'s own
+    # rule: present with its refusal on it rather than hidden. A cancelled
+    # bill's claims are the record of what was withdrawn.
+    hsn_ok = not is_cancelled(bill)
+    hsn_btn = _gated("HSN / SAC", "ra.fill_hsn", hsn_ok,
+                     "A cancelled bill's claims are the record of what was "
+                     "withdrawn and are not editable.")
+    hsn_note = (HF.screen_note(_hsn_entries(bill),
+                               url_for("ra.fill_hsn", id=id) if hsn_ok else "",
+                               "RA bill") if hsn_ok else "")
 
     # The cancellation band. Loud, at the top, and it names the reason — a
     # cancelled bill that looks like a live one on screen is how somebody sends
@@ -4891,10 +4902,11 @@ def view_ra(id: str):
     <h1>RA{_esc(bill.get('ra_no'))} <span>&middot; {_esc(bill.get('leg'))}</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.view_boq', id=boq_id)}" class="btn btn-ghost">&#8592; BOQ</a>
-      {edit_btn}{issue_btn}{cancel_btn}{print_btn}{del_btn}
+      {edit_btn}{issue_btn}{hsn_btn}{cancel_btn}{print_btn}{del_btn}
     </div>
   </div>
   {_flash()}
+  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}
   {cancelled_html}
   {lock_html}
   {rate_note}
@@ -5226,10 +5238,16 @@ def print_ra(id: str):
         last_header_key = header_key
 
         hsn_sac = (c.get("hsn_sac") or "").strip()
-        # A blank code prints as the house amber chip, exactly as it does on the
-        # tax invoice and in the catalogue — never as an empty cell. Rule 46(g):
-        # a line without one costs the customer the input tax credit on it.
-        hsn_display = _esc(hsn_sac) if hsn_sac else B.field("", "HSN/SAC code")
+        # ⚠ **A blank code prints an EM-DASH from 29 October 2026**
+        #   (CLIENT_CHANGES.md §0 **fifty-ninth** block, A1) — an intended
+        #   print change that moved this bill's golden. It printed the house
+        #   amber chip until then, which is for a statutory detail only
+        #   `/settings` can answer; a claim's missing SAC is fillable on the
+        #   bill itself from the same pass (`/ra/hsn/<id>`). Rule 46(g) still
+        #   holds and the screen note above the sheet still says so — it is
+        #   just never printed. The line it replaced, verbatim:
+        #       hsn_display = _esc(hsn_sac) if hsn_sac else B.field("", "HSN/SAC code")
+        hsn_display = HF.print_cell(hsn_sac)
         qty = float(c.get("qty") or 0.0)
         rate = float(c.get("rate") or 0.0)
         amt = float(c.get("amount") or (qty * rate))
@@ -5450,6 +5468,97 @@ def print_ra(id: str):
 </main>
 </body></html>"""
     return _page(html)
+
+
+def _hsn_entries(bill: dict) -> list:
+    """
+    Every claim row that can carry an HSN/SAC, numbered as the sheet numbers
+    them. The key is `hsn_sac` — an RA claim's own field name, which is why
+    `hsnfill.entry()` takes the field rather than assuming one.
+    """
+    out = []
+    for n, c in enumerate(bill.get("claims") or []):
+        out.append(HF.entry(f"cl:{n}", n + 1, BQ._item_no(c.get("item_no")),
+                            str(c.get("description") or ""), c,
+                            field="hsn_sac", code_label="HSN/SAC"))
+    return out
+
+
+@ra_bp.route("/hsn/<id>", methods=["GET", "POST"])
+def fill_hsn(id: str):
+    """
+    Fill an HSN/SAC on an RA bill (29 October 2026, §0 **fifty-ninth** block,
+    A1).
+
+    ⚠ **This bill IS a tax invoice** — it is headed TAX INVOICE and carries its
+      own statutory serial (INTRODUCTION.md §8, DOMAIN.md §4.2), so it is one
+      of the documents A1 names by name. The rule is therefore the one from
+      `hsnfill.editable()` with the bill's own lifecycle behind it: **any code
+      while the bill is a DRAFT; once ISSUED, only a blank one may be filled.**
+      `status_of()` is the predicate, the same one `can_edit()` reads.
+
+    ⚠ **A CANCELLED bill is refused.** Its claims are the record of what was
+      withdrawn.
+
+    ⚠ **The merged RA has no page of its own and needs none** — it holds no
+      claims (`merged_ra.py`: copying them in would make the over-claim guard
+      count a quantity twice) and stacks its two source bills' rows at render,
+      so a code filled here appears on it. That is the one-way trick, not an
+      omission.
+
+    `ra.edit` — the permission of the act this belongs to, and the one that
+    already means "change what a bill says". **No permission was minted.**
+    """
+    bill = STORE["ra_bills"].get(id)
+    if not bill:
+        return redirect(url_for("ra.list_ras",
+                                msg="That RA bill no longer exists.", type="error"))
+    if is_cancelled(bill):
+        return redirect(url_for("ra.view_ra", id=id, type="error",
+                                msg="That bill is cancelled. Its claims are "
+                                    "the record of what was withdrawn and are "
+                                    "not editable."))
+    draft = is_draft(bill)
+    here = url_for("ra.fill_hsn", id=id)
+    entries = _hsn_entries(bill)
+
+    if request.method == "POST":
+        import auth as _AUTH
+        who = str((_AUTH.current_user() or {}).get("username") or "")
+        msg, err = HF.apply_post(request.form, entries, draft, bill, who,
+                                 "RA bill")
+        return redirect(url_for("ra.fill_hsn", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    rule = ("This bill is still a <b>draft</b>, so any code on it can be "
+            "changed." if draft else
+            "This bill is <b>issued</b>, so only a <b>blank</b> code can be "
+            "filled &mdash; one already printed has gone to the customer and "
+            "stays as it is.")
+    return _shell(f"RA{bill.get('ra_no')} HSN", f"""
+  <div class="page-top">
+    <h1>HSN / SAC <span>&middot; RA{_esc(bill.get('ra_no'))}</span></h1>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592; Back to the bill</a>
+    </div>
+  </div>
+  {_flash()}
+  {HF.NOTE_CSS}
+  <form method="POST" action="{here}">
+  <div class="form-section">
+    <div class="section-title">Fill a code</div>
+    <p class="form-hint"><span>{rule} A blank prints as a dash. No quantity,
+      rate or amount is reachable from here, and every fill is recorded
+      below.</span></p>
+    {HF.rows_html(entries, here, is_draft=draft)}
+    <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.2rem;">
+      <button type="submit" class="btn">Save codes</button>
+      <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </div>
+  </form>
+  {HF.trail_html(bill)}
+""")
 
 
 @ra_bp.route("/delete/<id>", methods=["GET", "POST"])

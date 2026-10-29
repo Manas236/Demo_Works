@@ -969,6 +969,45 @@ FORBIDDEN = [
                                           "through it the auth layer; root() "
                                           "reaches it in its function body"),
 
+    # ── hsnfill.py — the ONE HSN rule (29 October 2026) ─────────────────────
+    # CLIENT_CHANGES.md §0, fifty-ninth block, A1. EIGHT modules import it —
+    # the BOQ, the spec library, the proforma, the tax invoice, the RA bill,
+    # the merged RA, the purchase order and the draft PO — so it may import
+    # none of them back. It is `lineimage.py`'s position in the graph and for
+    # the same reason: a leaf handed a record knows nothing about the document
+    # it belongs to, so the rule cannot acquire a per-document exception by
+    # accident.
+    #
+    # ⚠ **`branding` is the load-bearing one.** The whole point of
+    #   `print_cell()` is that a blank code does NOT draw `branding.field()`'s
+    #   amber chip; an arrow to the module that owns the chip is how that
+    #   comes back, and `tests/test_hsn_fill.py` asserts the same absence from
+    #   the other side.
+    *[("hsnfill", mod, "any", "it is imported BY this document module; the "
+                              "codes are written onto the lines it is handed, "
+                              "and nothing about one document is this leaf's "
+                              "to know")
+      for mod in ("boq", "spec", "proforma", "invoice", "ra", "merged_ra",
+                  "purchase", "po_draft")],
+    ("hsnfill", "branding",  "any", "the amber `add HSN` chip lives there and "
+                                    "print_cell() exists precisely so a blank "
+                                    "code does NOT draw it"),
+    ("hsnfill", "settings",  "any", "boq.py may not import settings.py, so a "
+                                    "leaf boq.py imports may not either — "
+                                    "series.py's constraint, used again"),
+    ("hsnfill", "docsheet",  "any", "the sheet is the documents' — the leaf "
+                                    "hands them one cell"),
+    ("hsnfill", "auth",      "any", "who may fill a code is each document's "
+                                    "route permission and gate; the leaf is "
+                                    "handed the name of whoever did"),
+    ("hsnfill", "chrome",    "any", "it renders pieces of a page, never a page"),
+    ("hsnfill", "flask",     "any", "it owns no route; each document owns its "
+                                    "own fill page"),
+    ("hsnfill", "store",     "any", "⚠ it reads NO collection. Every record it "
+                                    "touches is handed to it by the route that "
+                                    "owns it, which is what stops the rule "
+                                    "learning which document it is on"),
+
     # ── pnl_chart.py — the P&L's two pictures (28 October 2026) ─────────────
     # CLIENT_CHANGES.md §0, fifty-eighth block, item 5. A LEAF: it imports
     # `branding` (the validated palette), `pipeline` (esc) and `quotation`
@@ -1408,6 +1447,16 @@ REQUIRED = [
                          "content-addressed store every document shares")
       for mod in ("proforma", "purchase", "po_draft", "spec")],
 
+    # 29 Oct 2026 — the eight users of the ONE HSN rule (§0 fifty-ninth block,
+    # A1). Listed so a ninth document that grows an HSN box has to reach the
+    # same predicate rather than writing a second one, which is the whole
+    # point of the leaf. `purchase.py` is on the list because `1fdc09e`'s
+    # `hsn_editable()` now delegates to it.
+    *[(mod, "hsnfill", "the fill-blanks-only predicate, the printed dash and "
+                       "the screen-only missing-code note — one rule, read by "
+                       "the form and by the refusal")
+      for mod in ("boq", "proforma", "invoice", "ra", "merged_ra", "purchase")],
+
     # 22 Oct 2026 — the proforma and the tax invoice raised FROM a BOQ
     # (CLIENT_CHANGES.md §0, fifty-first block). purchase.py's arrows up the
     # chain (§2f), for its reason: a module owns the shape it writes, so the
@@ -1535,6 +1584,53 @@ def test_lineimage_is_a_leaf():
     assert imports_of("lineimage") & ours == {"photo", "pipeline", "store", "attachment"}
     assert "PIL" not in imports_of("lineimage", top_level_only=True)
     assert "flask" not in imports_of("lineimage")
+
+
+def test_hsnfill_is_a_leaf():
+    """
+    The ONE HSN rule (29 October 2026), held as a WHITELIST.
+
+    It reaches `pipeline` (`esc`) and **nothing else of ours**, at any level —
+    no in-function escape hatch either, which `lineimage.py` needs for
+    `attachment` and this does not.
+
+    ⚠ **It does not import `store`**, and that is the sharper half: it reads
+      no collection at all. Every record it writes to is handed to it by the
+      route that owns it. A leaf that could reach `STORE` could learn which
+      document it was on, and the rule would start acquiring per-document
+      exceptions.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"hsnfill"}
+    assert imports_of("hsnfill", top_level_only=True) & ours == {"pipeline"}
+    assert imports_of("hsnfill") & ours == {"pipeline"}
+    assert "flask" not in imports_of("hsnfill")
+    assert "branding" not in imports_of("hsnfill")
+
+
+def test_the_hsn_rule_is_written_down_exactly_once():
+    """
+    ⚠ The one thing A1 must NOT have done is leave a second copy of the rule
+    behind. Swept over the source of every module that has an HSN box: the
+    status literal that decides "is this a draft" may appear, but the
+    *predicate* — blank-or-draft — may live only in the leaf.
+    """
+    import ast
+    leaf = (REPO / "hsnfill.py").read_text(encoding="utf8")
+    assert leaf.count("def editable(") == 1
+    for mod in ("boq", "proforma", "invoice", "ra", "merged_ra", "purchase",
+                "po_draft", "spec"):
+        src = (REPO / f"{mod}.py").read_text(encoding="utf8")
+        # Strip docstrings and comments before looking, so a quoted copy of the
+        # old body in a "what this replaced" note does not read as live code.
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef, ast.Module)):
+                doc = ast.get_docstring(node, clean=False)
+                if doc:
+                    src = src.replace(doc, "")
+        code = "\n".join(l.split("#", 1)[0] for l in src.split("\n"))
+        assert "def editable(" not in code, f"{mod}.py carries a second predicate"
 
 
 def test_photo_imports_nothing_from_the_app():

@@ -58,6 +58,7 @@ import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -1805,7 +1806,7 @@ def view_proforma(id: str):
           <td class="c-sno">{sno}</td>
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
           <td class="c-desc {indent}">{P.esc(row.get('name'))}</td>
-          <td class="c-hsn">{P.esc(row.get('hsn'))}</td>
+          <td class="c-hsn">{HF.print_cell(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
           <td class="c-price">{_inr(row.get('price') or 0)}</td>
@@ -2045,13 +2046,31 @@ def view_proforma(id: str):
                     f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
     img_th = f'\n          <th class="{LI.COLUMN[0]}">{LI.COLUMN[1]}</th>' if pics else ""
 
+    # ── HSN (29 October 2026, §0 fifty-ninth block, A1) ──────────────────
+    # The button and the note are drawn only for a reader the gate admits, and
+    # the note only when a line is actually missing a code — so a complete
+    # invoice renders byte-for-byte what it did. ⚠ **The note sits ABOVE
+    # `.doc-outer`, which `PRINT_EDGE_CSS` withholds from paper**, so it is on
+    # screen and never on the customer's copy. The newlines live inside the
+    # strings.
+    hsn_entries = _hsn_entries(pi)
+    hsn_btn, hsn_note = "", ""
+    if _AUTH.can_reach("proforma.fill_hsn"):
+        hsn_btn = (f'\n    <a href="{url_for("proforma.fill_hsn", id=id)}" '
+                   f'class="btn btn-ghost">HSN / SAC</a>')
+        hsn_note = HF.screen_note(hsn_entries,
+                                  url_for("proforma.fill_hsn", id=id),
+                                  "proforma invoice")
+    elif _AUTH.can_reach("proforma.view_proforma"):
+        hsn_note = HF.screen_note(hsn_entries, "", "proforma invoice")
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(pi.get('ref')) + " Proforma Invoice")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.SHEET_CSS if pics else ""}{DS.PRINT_EDGE_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{LI.SHEET_CSS if pics else ""}{HF.NOTE_CSS if hsn_note else ""}{DS.PRINT_EDGE_STYLES}
 </head>
 <body>
 <main>
@@ -2063,14 +2082,14 @@ def view_proforma(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {back_q}
     <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
-    {raise_ti}{del_pi}{pics_btn}
+    {raise_ti}{del_pi}{pics_btn}{hsn_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
 {ti_strip}
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-
+{hsn_note}
 <div class="doc-outer">
 <div class="quotation-doc">
 
@@ -2221,6 +2240,92 @@ def pictures(id: str):
         {lib_html}
         {LI.rows_html(_picture_entries(pi), here, editable=True)}
       </div>
+
+      <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
+    </main></body></html>""")
+
+
+def _hsn_entries(pi: dict) -> list:
+    """Every line that can carry an HSN, numbered as the sheet numbers them."""
+    out, sno = [], 0
+    for n, r in enumerate(pi.get("line_items") or []):
+        if r.get("is_header"):
+            continue
+        sno += 1
+        out.append(HF.entry(f"li:{n}", sno, str(r.get("part_no") or ""),
+                            str(r.get("name") or ""), r))
+    return out
+
+
+@proforma_bp.route("/hsn/<id>", methods=["GET", "POST"])
+def fill_hsn(id: str):
+    """
+    Fill a blank HSN on a proforma invoice (29 October 2026, §0 **fifty-ninth**
+    block, A1).
+
+    ⚠ **A proforma has no draft state**, so every line here is treated as
+      ISSUED and the rule is **fill blanks only** — `HF.editable(False, …)`.
+      That is not a shortcut: a PI is a request for money that has gone to the
+      customer, and `invoice.create_invoice()` copies these lines onto the tax
+      invoice, so a code changed here would silently disagree with one already
+      printed on an invoice raised from it. A **blank** filled here is the
+      whole point: the next tax invoice raised from this PI takes it.
+
+    It reaches **no tax invoice already raised** — that document holds its own
+    copy of the lines (CLIENT_CHANGES.md §1.2) and has its own fill page.
+
+    `proforma.create` — the Pictures page's precedent, and the permission of
+    the act this belongs to. **No permission was minted.**
+    """
+    pi = STORE["proformas"].get(id)
+    if not pi:
+        return redirect(url_for("proforma.list_proformas",
+                                msg="Proforma invoice not found.", type="error"))
+    here = url_for("proforma.fill_hsn", id=id)
+    entries = _hsn_entries(pi)
+
+    if request.method == "POST":
+        import auth as _AUTH
+        who = str((_AUTH.current_user() or {}).get("username") or "")
+        msg, err = HF.apply_post(request.form, entries, False, pi, who,
+                                 "proforma invoice")
+        return redirect(url_for("proforma.fill_hsn", id=id, msg=msg or err,
+                                type="error" if err else "success"))
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title(str(pi.get('ref')) + " HSN")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{HF.NOTE_CSS}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>HSN / SAC &middot; <span>{P.esc(pi.get('ref'))}</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{url_for('proforma.view_proforma', id=id)}" class="btn btn-ghost">&#8592; Back to the invoice</a>
+        </div>
+      </div>
+
+      {_alert(request.args.get("msg"), request.args.get("type", "success"))}
+
+      <form method="POST" action="{here}">
+      <div class="form-section">
+        <div class="section-title">Fill a blank code</div>
+        <p class="frozen-hint" style="margin:0 0 1rem;">
+          Only a <b>blank</b> code can be filled on a proforma: one already
+          printed has gone to the customer and stays as it is. A blank prints
+          as a dash. What you fill here reaches the <b>next</b> tax invoice
+          raised from this proforma and <b>no invoice already raised</b> —
+          each of those holds its own copy and its own page. Nothing else on
+          the invoice changes here.
+        </p>
+        {HF.rows_html(entries, here, is_draft=False)}
+        <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.2rem;">
+          <button type="submit" class="btn">Save codes</button>
+          <a href="{url_for('proforma.view_proforma', id=id)}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </div>
+      </form>
+      {HF.trail_html(pi)}
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
     </main></body></html>""")

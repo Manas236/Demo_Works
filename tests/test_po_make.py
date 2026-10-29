@@ -82,9 +82,21 @@ def _heads(html: str) -> list:
 
 
 def _row_of(html: str, text: str) -> str:
-    """The printed table row carrying `text`."""
-    at = html.index(text)
-    return html[html.rindex("<tr", 0, at):html.index("</tr>", at)]
+    """
+    The printed table row carrying `text`.
+
+    ⚠ **Searched inside the ITEMS TABLE, not the whole page**, from
+      29 October 2026 (§0 **fifty-ninth** block, A1): the screen-only "an
+      HSN is missing" note above the sheet names the line as well, and
+      `html.index(text)` found that first — which is not a table row and has
+      no `<tr` before it. The two lines it replaces, verbatim:
+
+          at = html.index(text)
+          return html[html.rindex("<tr", 0, at):html.index("</tr>", at)]
+    """
+    sheet = html.split('<div class="items-wrap">', 1)[-1]
+    at = sheet.index(text)
+    return sheet[sheet.rindex("<tr", 0, at):sheet.index("</tr>", at)]
 
 
 def _cells(row: str) -> list:

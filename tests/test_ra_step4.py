@@ -79,6 +79,20 @@ def test_print_ra_non_existent_bill_redirects(client, clean_store):
 
 
 def test_blank_hsn_sac_renders_amber_warning_badge_on_print(client, clean_store):
+    """
+    ⚠ **REWRITTEN 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth**
+    block, A1). A blank HSN/SAC now prints an **em-dash**, not the house amber
+    chip: the chip is for a statutory detail only `/settings` can answer, and
+    a claim's SAC stopped being one on the day `/ra/hsn/<id>` made it fillable
+    on the bill itself. The assertion the test exists for is unchanged — that
+    a blank code is never printed as a bare empty cell. The old assertion, in
+    full and verbatim:
+
+        assert "add HSN/SAC code" in html   # the house amber chip, as on the tax invoice
+
+    It is not weakened: the dash is asserted positively AND the chip is
+    asserted absent, so a page that printed neither still fails here.
+    """
     line = boq_line("1", 100)
     line["supply_hsn"] = ""
     make_boq("b1", [line])
@@ -90,7 +104,8 @@ def test_blank_hsn_sac_renders_amber_warning_badge_on_print(client, clean_store)
     res = client.get("/ra/print/r1")
     assert res.status_code == 200
     html = res.get_data(as_text=True)
-    assert "add HSN/SAC code" in html   # the house amber chip, as on the tax invoice
+    assert '<td class="c-hsn">&mdash;</td>' in html
+    assert "add HSN/SAC code" not in html
 
 
 def test_no_rendered_page_contains_doubled_rara_prefix(client, clean_store):

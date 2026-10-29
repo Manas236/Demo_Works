@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 91 permissions · 203 classified endpoints.**
+**7 roles · 91 permissions · 207 classified endpoints.**
 
 ---
 
@@ -357,7 +357,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `dashboard.view` | `dashboard.index` |
 | `extractor.view` | `extractor.index` |
 | `boq.view` | `boq.list_boqs`, `boq.view_boq` |
-| `boq.create` | `boq.create_boq`, `boqimport.form`, `boqimport.preview`, `boqimport.upload` |
+| `boq.create` | `boq.create_boq`, `boq.fill_hsn`, `boqimport.form`, `boqimport.preview`, `boqimport.upload` |
 | `boq.delete` | `boq.delete_boq` |
 | `boq.print` | `boq.print_boq` |
 | `measurement.view` | `measurement.list_ms`, `measurement.view_ms` |
@@ -368,7 +368,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `measurement.approve` | `approval.approve_measurement`, `approval.reject_measurement` |
 | `ra.view` | `merged_ra.list_merged`, `merged_ra.view_merged`, `ra.list_ras`, `ra.view_ra` |
 | `ra.create` | `docimport.apply_ra`, `docimport.preview_ra`, `docimport.upload_ra`, `merged_ra.create_merged`, `ra.create_ra`, `raboth.create_both` |
-| `ra.edit` | `ra.edit_ra` |
+| `ra.edit` | `ra.edit_ra`, `ra.fill_hsn` |
 | `ra.delete` | `ra.delete_ra` |
 | `ra.issue` | `ra.issue_ra` |
 | `ra.cancel` | `merged_ra.cancel_merged`, `ra.cancel_ra` |
@@ -385,10 +385,10 @@ Read off the live route registry, so it cannot drift from what the application a
 | `quotation.edit` | `quotation.update_quotation` |
 | `quotation.delete` | `quotation.delete_quotation` |
 | `proforma.view` | `proforma.list_proformas`, `proforma.view_proforma` |
-| `proforma.create` | `proforma.create_proforma`, `proforma.from_boq`, `proforma.pictures` |
+| `proforma.create` | `proforma.create_proforma`, `proforma.fill_hsn`, `proforma.from_boq`, `proforma.pictures` |
 | `proforma.delete` | `proforma.delete_proforma` |
 | `invoice.view` | `invoice.list_invoices`, `invoice.view_invoice` |
-| `invoice.create` | `invoice.create_invoice`, `invoice.from_boq` |
+| `invoice.create` | `invoice.create_invoice`, `invoice.fill_hsn`, `invoice.from_boq` |
 | `invoice.cancel` | `invoice.cancel_invoice` |
 | `invoice.approve` | `approval.approve_invoice`, `approval.reject_invoice` |
 | `purchase.view` | `purchase.list_purchases`, `purchase.view_purchase`, `workorder.list_wos`, `workorder.print_wo`, `workorder.view_wo` |

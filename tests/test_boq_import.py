@@ -1070,8 +1070,16 @@ def test_every_import_route_carries_the_boq_create_permission():
     for ep in eps:
         assert auth.ROUTE_PERMISSIONS[ep] == auth.ROUTE_PERMISSIONS["boq.create_boq"] == "boq.create"
     doc = (REPO / "docs" / "ACCESS_MATRIX.md").read_text(encoding="utf8")
-    assert ("| `boq.create` | `boq.create_boq`, `boqimport.form`, "
-            "`boqimport.preview`, `boqimport.upload` |") in doc
+    # ⚠ **The matrix row gained `boq.fill_hsn` on 29 October 2026**
+    #   (CLIENT_CHANGES.md §0 **fifty-ninth** block, A1) — the page that fills
+    #   a blank HSN/SAC on a saved schedule, classified under this SAME
+    #   permission rather than a new one. The assertion is not weakened: it
+    #   still pins the exact generated row, so a fifth endpoint sliding under
+    #   `boq.create` still fails here. The row it replaces, verbatim:
+    #       assert ("| `boq.create` | `boq.create_boq`, `boqimport.form`, "
+    #               "`boqimport.preview`, `boqimport.upload` |") in doc
+    assert ("| `boq.create` | `boq.create_boq`, `boq.fill_hsn`, "
+            "`boqimport.form`, `boqimport.preview`, `boqimport.upload` |") in doc
 
 
 def test_a_role_without_boq_create_is_refused_every_import_route(client):

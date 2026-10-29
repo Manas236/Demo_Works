@@ -856,6 +856,10 @@ ROUTE_PERMISSIONS = {
     # confirmation naming every dependent record and destroys nothing, the
     # POST destroys the lot through `cascade.delete_cascade()`.
     "boq.delete_boq":             "boq.delete",
+    # Fill a blank HSN/SAC on a saved schedule (29 Oct 2026, §0 fifty-ninth
+    # block, A1). `boq.create` — the permission that already means "write a
+    # BOQ's lines". It writes a tax code and nothing else; no permission minted.
+    "boq.fill_hsn":               "boq.create",
     "boq.print_boq":              "boq.print",
     # Import BOQ from Excel (29 Sep 2026) — the SAME permission as
     # `boq.create_boq`, on all three, and no new permission minted: every one
@@ -873,6 +877,10 @@ ROUTE_PERMISSIONS = {
     "ra.create_ra":               "ra.create",
     "ra.edit_ra":                 "ra.edit",
     "ra.delete_ra":               "ra.delete",
+    # Fill an HSN/SAC on an RA bill — any code while draft, a blank one once
+    # issued (29 Oct 2026, §0 fifty-ninth block, A1). `ra.edit` already means
+    # "change what a bill says"; no permission minted.
+    "ra.fill_hsn":                "ra.edit",
     "ra.issue_ra":                "ra.issue",
     "ra.cancel_ra":               "ra.cancel",
     "ra.print_ra":                "ra.print",
@@ -918,6 +926,9 @@ ROUTE_PERMISSIONS = {
     # Pictures beside a line (21 Oct 2026, lineimage.py). Choosing what the
     # invoice shows is part of raising it; no permission was minted.
     "proforma.pictures":          "proforma.create",
+    # Fill a blank HSN on a proforma (29 Oct 2026, §0 fifty-ninth block, A1) —
+    # the Pictures page's precedent and its permission. No permission minted.
+    "proforma.fill_hsn":          "proforma.create",
     # Raised FROM a BOQ (22 Oct 2026, CLIENT_CHANGES.md §0 fifty-first
     # block). The same document in the same series, so the same permission
     # as raising it from a quotation / a proforma — none was minted.
@@ -930,6 +941,10 @@ ROUTE_PERMISSIONS = {
     #   anywhere in this app, by design — see the catalogue note on
     #   `invoice.cancel` and `cascade.py`'s hard stop.
     "invoice.cancel_invoice":     "invoice.cancel",
+    # Fill a blank HSN on an ISSUED tax invoice (29 Oct 2026, §0 fifty-ninth
+    # block, A1). `invoice.create` — a cancelled invoice is refused in the
+    # view, not by a second permission. No permission minted.
+    "invoice.fill_hsn":           "invoice.create",
 
     # ── Buy side ─────────────────────────────────────────────────────────────
     "purchase.list_purchases":    "purchase.view",

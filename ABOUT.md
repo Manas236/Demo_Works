@@ -452,6 +452,7 @@ Consequences you must respect when editing:
 | [dcbill.py](dcbill.py) | 106 | **"Is this delivery challan billed, and by which RA bill?" — ONE predicate, and a LEAF** (4 October 2026, CLIENT_CHANGES.md §0 fortieth block, ruling C). A challan is billed when a **non-cancelled** RA bill lists it in `source_dc_ids`; `billed_by()` answers for one, `billing_index()` is the same walk for a register. **Derived, never stored** — cancelling or deleting the bill frees the challan with no write to it. Imports `store` and **nothing else** (a whitelist test). ⚠ It exists because `ra.py` (the picker on `/ra/create` and the POST refusal) and `challan.py` (the *Billed in* mark) both need the answer and may not import each other; the one-way STORE read from each side would have been two copies of one predicate — §7 gap 16b's failure. `bill_is_live()` tests the raw status and is held equal to `ra.is_cancelled()` over every status value, `approval.can_print()`'s arrangement. See §5 `/ra` *Raised from challans or from the measurement*. |
 | [lineimage.py](lineimage.py) | 456 | **A picture beside a document line — a LEAF** (21 October 2026, CLIENT_CHANGES.md §0 forty-ninth block). Re-encodes an upload through `photo.load()` (the profile photo's validation, shared) into a JPEG no larger than 360 px, and writes it **once** as a file under `attachment.root()/line-images/`, **named by the sha256 of its own bytes** — so an id IS its content and referencing it is as good as a copy for the snapshot rule. A line carries only `image: <id>`; `src_of()` is the one reader and inlines the file as a `data:` URI at render, refusing anything whose bytes no longer hash to its name. Owns the library default (`library_image_for()` — a clause's picture by EXACT code), the Image column (`sheet_has_images()`, `with_column()`, `cell()`, `SHEET_CSS` — drawn only on a sheet that has a picture) and the shared half of every Pictures page (`rows_html()`, `apply_post()` — one upload per request, a fingerprint per line). Imports `photo`, `pipeline` and `store` at module level; `attachment` inside `root()` and Pillow inside `save()` only. §3 *Line pictures*, §5 *Pictures*. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
+| [hsnfill.py](hsnfill.py) | 330 | **The HSN/SAC rule — a LEAF** (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A1). One predicate, `editable(is_draft, current)`: **any code while the document is a draft; from issued onward only a BLANK one may be filled.** `1fdc09e` built that rule for the purchase order's item lines and `purchase.hsn_editable()` now delegates here rather than keeping a copy — the answer for a purchase order is unchanged (`tests/test_po_hsn_edit.py`). Also owns `print_cell()` — the ONE printed HSN cell in the application, **an em-dash when blank**, which is what replaced `branding.field()`'s amber chip; `screen_note()`, the **screen-only** note naming the lines with none; `clean()` and `HSN_MAX` (8, re-exported by `purchase.py`); the shared half of every fill page (`rows_html()`, `apply_post()` — staged, so a refused value writes nothing at all, with a per-line fingerprint); and the one trail field `hsn_trail`. ⚠ **Imports `pipeline` and NOTHING else of ours, at any level** — not `branding` (that is where the chip lives) and **not `store`**: it reads no collection, so the rule cannot learn which document it is on. Eight modules import it. §3 *The HSN/SAC code*, §5 *HSN / SAC*. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
 | `tools/backfill_line_ids.py` | 99 | One-time migration: mints `line_id` on BOQ lines written before the field. Idempotent; takes `--dry-run`. |
@@ -5650,6 +5651,61 @@ Five properties this shape exists to guarantee:
    them. §7 gap 76.
 
 ---
+
+---
+
+### The HSN/SAC code, and the trail of every fill  (29 October 2026 — CLIENT_CHANGES.md §0 fifty-ninth block)
+
+**No new collection, and no new code field.** Every HSN/SAC this pass touches
+was already on its record; what is new is **who may change it**, and one
+optional key recording that somebody did.
+
+The field is **not** one name. Six shapes carry a code and they are not
+interchangeable:
+
+| record | key(s) | why |
+|---|---|---|
+| BOQ line | **`supply_hsn` AND `install_sac`** | two taxes on two different things — the HSN of the goods and the SAC of the service. `ra.build_claim()` snapshots whichever the leg needs |
+| Specification clause | `supply_hsn`, `install_sac` | the library default the BOQ editor copies at pick time |
+| Proforma invoice line | `hsn` | `create_proforma()`'s own copy |
+| Tax invoice line | `hsn` | `create_invoice()`'s `dict(r)` copy of the PI's |
+| Purchase order line / extra part | `hsn` | typed, or carried from the BOQ's `supply_hsn` |
+| RA claim | **`hsn_sac`** | snapshotted at `build_claim()` and never re-derived |
+
+⚠ **`hsnfill.entry()` therefore takes the field name** rather than assuming
+one. A single assumed key is how a BOQ's SAC would have gone unfillable.
+
+The one new key, on the document record and not on the line:
+
+```python
+hsn_trail: [{"at": "2026-10-29 16:04",   # YYYY-MM-DD HH:MM
+             "by": "<username>",          # "unknown" if there is no session
+             "line": "3",                 # the S.No the sheet prints
+             "label": "BV-150",           # the part/item number, SNAPSHOTTED
+             "field": "supply_hsn",
+             "code": "HSN",               # or "SAC", or "HSN/SAC"
+             "value": "84818030"}]        # ABSENT = never filled by hand
+```
+
+Four properties:
+
+1. **Appended, never edited, never deleted** — `auth.py`'s `access_history`
+   and `projtag.py`'s `project_trail` shape, used again.
+2. **The line's own label and description are snapshotted beside the
+   position**, because a reprice can reorder the lines and a position alone
+   would then say nothing.
+3. **Absent means never filled by hand**, and nothing is backfilled. Every
+   record written before 29 October 2026 reads that way and is correct.
+4. ⚠ **A purchase order ALSO keeps its `status_history` line.** That is the
+   opposite call from `projtag.py`'s, which refused to write four shapes —
+   and deliberately: there is one shape here, `purchase.py` has a trail of
+   its own, `1fdc09e` already writes to it and
+   `tests/test_po_hsn_edit.py` asserts it. Two records of one event, and
+   neither restates the other.
+
+⚠ **A blank code is stored as `""` or is absent, and the two are the same
+thing** to `hsnfill.stored()`. Nothing in this pass writes an empty key onto a
+line that never had one.
 
 ---
 
@@ -11072,6 +11128,92 @@ Held by [tests/test_line_pictures.py](tests/test_line_pictures.py) (44), the
 escaping and entity sweeps (the three Pictures pages are in their URL map), and
 `tests/test_import_directions.py` (the leaf's whitelist and 14 rows).
 
+### HSN / SAC — fill a blank code · [hsnfill.py](hsnfill.py) · `/boq/hsn` · `/proforma/hsn` · `/invoice/hsn` · `/ra/hsn`
+
+29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A1. Manas's
+26 October ruling: an HSN can be added or corrected on a BOQ line, a
+Specification Library entry, every **draft** document with lines, and an
+**issued tax invoice** — the ordinary one, an RA bill's and one raised from a
+BOQ. **The rule everywhere is `1fdc09e`'s: any code while draft, only a BLANK
+one once issued.** §3 *The HSN/SAC code* has the record shapes; this is the
+pages.
+
+| Route | Permission | Draft rule | What it changes |
+|---|---|---|---|
+| `GET,POST /boq/hsn/<id>` | `boq.create` | **blanks only** — a BOQ has no draft state | both codes on every priced line (`supply_hsn`, `install_sac`) |
+| `GET,POST /proforma/hsn/<id>` | `proforma.create` | **blanks only** — a PI has no draft state | each line's `hsn` |
+| `GET,POST /invoice/hsn/<id>` | `invoice.create` | **blanks only** — and never will have one | each line's `hsn`. Refused on a cancelled invoice |
+| `GET,POST /ra/hsn/<id>` | `ra.edit` | **any while `status_of()` is draft** | each claim's `hsn_sac`. Refused on a cancelled bill |
+| `GET,POST /purchase/edit/<id>` | `purchase.create` | **any while the order is `Draft`** | `line_hsn` per item line (`1fdc09e`) and each extra part's |
+| `GET,POST /spec/edit/<id>` | `spec.edit` | n/a — the library is not a document | `supply_hsn` / `install_sac` on the clause |
+
+**No permission was minted.** Each page carries the permission of the act it
+belongs to, exactly as the four Pictures pages do, and
+`docs/ACCESS_MATRIX.md` moved 203 → 207 endpoints.
+
+**What the page is, and what it deliberately is not.** One form, one Save, one
+row per fillable code, and **nothing else on the document is reachable from
+it** — no quantity, no rate, no base rate, no discount, no amount, no total,
+no reference. That is why `invoice.fill_hsn()` needs no `approval.can_modify()`
+gate and `tests/test_approval_b7.py` asserts the absence of every one of those
+keys from its source: there is nothing for the ladder to protect, and an
+approved invoice whose line has no HSN is exactly the one Rule 46(g) needs
+filled. It is also why `/boq/hsn` is safe on a schedule that already has
+claims against it — `supply_hsn` and `install_sac` are in no arithmetic
+anywhere (`amount_of()`, `net_rate()`, the stored trio).
+
+**The judgement calls — the agent's, not Manas's:**
+
+- ⚠ **A blank code prints an EM-DASH, and the amber chip is gone from the HSN
+  cell on every document.** `branding.field()` is for a statutory detail only
+  an Owner at `/settings` can answer — a GSTIN, a PAN, an IFSC — where the
+  only answer is for somebody to go and type it. A line's missing HSN stopped
+  being that on the day this page shipped, so the chip was pointing a customer
+  at a box they cannot reach. `branding.field()` is **unchanged** and still
+  draws the chip everywhere else. It moved three print goldens (§5 below and
+  the commit).
+- ⚠ **The note that says a code is missing is SCREEN ONLY**, drawn above
+  `.doc-outer`, which `docsheet.PRINT_EDGE_CSS` withholds from paper
+  (`main > :has(~ .doc-outer)`). A customer's copy carries the code or a dash;
+  it has no business carrying our to-do list. Held by
+  `tests/test_hsn_fill.py`, which asserts the note's position relative to the
+  sheet rather than trusting it.
+- ⚠ **A BOQ offers BOTH codes per line and is FILL-ONLY.** A code already on
+  a line is changed by **revising** the schedule, which is the only thing that
+  may move what an RA bill is measured against. The full editor at
+  `/boq/create?revise=<id>` is still where that happens. A superseded revision
+  is refused — the tip is where a code is wanted.
+- ⚠ **The merged RA has no page and needs none.** It holds no claims
+  (`merged_ra.py`: copying them in would make the over-claim guard count a
+  quantity twice) and stacks its two source bills' rows at render, so a code
+  filled on a leg appears on it. The one-way trick, not an omission.
+- ⚠ **A purchase order's extra part is matched on its DESCRIPTION, not its
+  position.** `_parse_extra_lines()` re-reads that repeater whole and its rows
+  gain and lose slots, so position is not identity there — but a row whose
+  description is unchanged is the same part, and a code already printed beside
+  that description is the one the vendor has. A row added, removed or
+  re-described is not matched and takes what was typed, because there is no
+  printed code for it to contradict.
+- ⚠ **A proforma is treated as ISSUED**, although it has no draft state. It
+  is a request for money that has gone to the customer, and
+  `invoice.create_invoice()` copies its lines — a code changed here would
+  silently disagree with one already printed on an invoice raised from it. A
+  **blank** filled here is the point: the next tax invoice off that PI takes
+  it, and **no invoice already raised does**.
+- ⚠ **The Product Inquiry prints no HSN column**, and A2 does not add one.
+  The document carries no tax block of any kind by the client's own ask
+  (`po_draft.PRINT_TAX`), and an HSN is a tax code. The field is editable on
+  it (A2) and rides into the real purchase order through `from_draft()`.
+- **The delivery challan and the work order are not here.** The challan prints
+  no HSN by design (`challan.py`: *"Part No, no HSN, no Rate and no Amount"*)
+  and a work order has no HSN field at all. Neither was asked for.
+
+Held by [tests/test_hsn_fill.py](tests/test_hsn_fill.py) (51),
+[tests/test_po_hsn_edit.py](tests/test_po_hsn_edit.py) (7, unchanged),
+`tests/test_import_directions.py` (the leaf's whitelist, 16 `FORBIDDEN` rows
+and 6 `REQUIRED`), and the escaping and entity sweeps, which carry all four
+new routes in their URL map.
+
 ### `/dc` — Delivery Challans · [challan.py](challan.py)
 
 | Route | View |
@@ -15508,6 +15650,33 @@ text is unchanged, and every reference to them was moved with them.*
     different fix (overflow wrapper, or a card layout per row) on six panels
     across four modules, and it needs its own decision. The owner works from a
     phone (§5, *The two register SCREENS*), so this is worth doing.
+
+93. 🟡 **A tax invoice raised from a BOQ fills its codes from its OWN page and
+    never from the schedule again — OPEN, by design** (29 October 2026,
+    CLIENT_CHANGES.md §0 **fifty-ninth** block, A1). `/invoice/from-boq/<id>`
+    snapshots `supply_hsn` onto each line at raise, which is the snapshot rule
+    working correctly. The consequence is that filling a blank on
+    `/boq/hsn/<id>` afterwards reaches **nothing already raised**, so an
+    operator who fills the schedule and then looks at last month's invoice
+    finds it still blank and has to fill it there too. That is the right
+    answer for a statutory document and the wrong one for somebody's
+    afternoon. What would close it is a *"this schedule now has a code for
+    this line — fill it here too?"* prompt on the document's own fill page,
+    which needs a decision about whether the prompt is ever allowed to write
+    (it must not be, silently) and is therefore not a judgement call. The
+    same holds one link along for a tax invoice and its proforma.
+
+94. 🟡 **A code filled on a line is never validated against a tariff, and
+    nothing in this application ever has — OPEN, recorded rather than
+    introduced** (29 October 2026, A1). `hsnfill.clean()` strips and caps at
+    8 characters and that is the whole of it: `spec._valid_tax_code()` checks
+    only the SHAPE, the catalogue never checked at all, and `1fdc09e`'s box
+    was free text. So `<script` is a storable "code" — escaped everywhere it
+    prints (`tests/test_hsn_fill.py` asserts both halves on the running
+    route), and wrong in a way only a human reading the invoice will notice.
+    Validating would mean shipping the tariff, and a line whose code is
+    refused is a line that cannot be billed at all. If it is wanted, the shape
+    check `spec.py` already has is the cheap half and belongs in the leaf.
 
 92. 🟡 **`conftest._fresh_store()` does not clear `ra_bills` (or `receipts`)
     — 29 October 2026, measured, OPEN.** Found while adding a test to
