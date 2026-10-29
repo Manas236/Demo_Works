@@ -4552,13 +4552,28 @@ created after that moment carries the mark.
  "project_id":   "<project uuid>",   # the JOIN; "" = LEGACY, see property 5
  "project_name": "Sify Bangalore",   # the LABEL snapshot, charge.py's shape
 
- "status": "present" | "absent",
+ "status": "present" | "absent" | "half" | "paid_leave",   # the last two: 29 Oct 2026
  "ot_hours": 2.0, "notes": "",
+ "import_batch": "<batch id>",       # ONLY on a marking written by /payroll/import
  "created_at": "…", "updated_at": "…"}
 
 # ⚠ ONLY on a marking that predates 30 August 2026, and never written again:
 {"monthly_salary": 26000.0, "rate_model": "pre_day_rate"}
 ```
+
+⚠ **HALF DAY and PAID LEAVE — 29 October 2026, CLIENT_CHANGES.md §0
+fifty-fifth block, BEYOND CC-2** (whose C5 says "0 or 1"). The client's monthly
+sheet marks 0.5 and records paid leave as a cell comment on a 1, and the
+payslip pays both. `attendance.DAY_SHARE` is the table — present 1, half 0.5,
+paid leave 1, absent 0 — and `cost_of()` multiplies the snapshotted rate by
+`share_of(status)`, so no literal enters the guarded calculation path (the AST
+guard still walks it; `tests/test_attendance_statuses.py` proves a literal
+`0.5` would be caught). Overtime is paid on `OT_STATUSES` — present and half —
+only; paid leave earns the day and no overtime. `worker_costs()`'s
+`days_present` became the share sum, which on every record written before
+29 October is the same count it always was. A marking written by the import
+carries `import_batch` and nothing else differs from the form's record;
+`import_marking()` enforces the form's rules, `conflicting_record()` first.
 
 ⚠ **A MARKING NEVER LEAVES THE OLD-MODEL SET, and an employee does.** An
 employee is a master record and re-entering the rate corrects it; a marking is

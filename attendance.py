@@ -349,7 +349,32 @@ MAX_OT_HOURS = 16.0
 
 PRESENT = "present"
 ABSENT = "absent"
-STATUSES = (PRESENT, ABSENT)
+# ⚠ **Two more day statuses, 29 October 2026 (CLIENT_CHANGES.md §0 fifty-fifth
+#   block) — BEYOND CC-2**, whose C5 says "0 or 1". The client's own monthly
+#   sheet marks a half day as 0.5 and records paid leave as a comment on a 1,
+#   and the payslip pays both, so the muster has to be able to hold them.
+HALF = "half"
+PAID_LEAVE = "paid_leave"
+STATUSES = (PRESENT, ABSENT, HALF, PAID_LEAVE)
+
+# ⚠ **What share of a day's wage each status earns.** A TABLE rather than a
+#   literal in `cost_of()`, on purpose: `tests/test_attendance.py` walks the
+#   calculation path's AST and fails on a numeric constant in a multiplication,
+#   and the share is data about a status, not a rate anybody is paid at. An
+#   unknown status earns nothing, which is the absent reading.
+DAY_SHARE = {PRESENT: 1.0, HALF: 0.5, PAID_LEAVE: 1.0, ABSENT: 0.0}
+
+# Overtime is paid on a day somebody WORKED. Paid leave earns the day and no
+# overtime; an absent day earns neither — `cost_of()`'s existing rule.
+OT_STATUSES = (PRESENT, HALF)
+
+STATUS_LABELS = {PRESENT: "Present", HALF: "Half day",
+                 PAID_LEAVE: "Paid leave", ABSENT: "Absent"}
+
+
+def share_of(status) -> float:
+    """The share of a day's wage one status earns — `DAY_SHARE`, nil if unknown."""
+    return DAY_SHARE.get(str(status or ""), 0.0)
 
 
 def records() -> dict:
@@ -448,9 +473,13 @@ def cost_of(record, multiplier) -> dict:
     if not ok:
         return {"day": None, "ot": None, "total": None,
                 "refused": True, "reason": EMP.PRE_DAY_RATE_REFUSAL}
-    present = str(record.get("status") or "") == PRESENT
-    day = wage if present else 0.0
-    ot = ot_amount(wage, record.get("ot_hours"), multiplier) if present else 0.0
+    # ⚠ A half day earns half, paid leave a whole day (29 October 2026, §0
+    #   fifty-fifth block). The share comes out of `DAY_SHARE`, never a literal
+    #   here, and overtime still needs a day somebody WORKED (`OT_STATUSES`).
+    status = str(record.get("status") or "")
+    day = round(wage * share_of(status), 2)
+    ot = (ot_amount(wage, record.get("ot_hours"), multiplier)
+          if status in OT_STATUSES else 0.0)
     return {"day": day, "ot": ot, "total": round(day + ot, 2),
             "refused": False, "reason": ""}
 
@@ -672,6 +701,160 @@ def labour_cost_of(rows) -> dict:
 
 
 # =============================================================================
+# FOR THE PAYSLIP — one person, one calendar month (29 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0's **fifty-fifth** block. `payroll.py` is the THIRD module
+# allowed to import this one, on `pnl.py`'s terms: it takes a reader and one
+# summing function and may not reach `cost_of()`, `ot_amount()`, `day_rate_of()`
+# or the multiplier. A second module able to compute a wage is a second place
+# the OT multiplier could be hardcoded — the statutory-underpayment defect CC-2
+# names. So the month is priced HERE.
+
+def month_markings(employee_id, month) -> list:
+    """Every marking of one person in one calendar month (`YYYY-MM`), by day."""
+    eid = str(employee_id or "").strip()
+    prefix = str(month or "").strip()[:7]
+    if not eid or len(prefix) != 7:
+        return []
+    return sorted((r for r in records().values()
+                   if str(r.get("employee_id") or "") == eid
+                   and str(r.get("date") or "").startswith(prefix + "-")),
+                  key=lambda r: str(r.get("date") or ""))
+
+
+def month_figures(employee_id, month) -> dict:
+    """
+    What one person's markings in one month come to, priced by `cost_of()`.
+
+    `{markings, present_days, half_days, paid_leave_days, absent_days,
+      paid_days, ot_hours, basic, ot, rates, refused, multiplier}`
+
+    * `paid_days` is the share sum — present 1, half 0.5, paid leave 1.
+    * `basic` is the day wages summed, `ot` the overtime; both come out of
+      `cost_of()` per marking, so a rate revised mid-month is paid at the rate
+      each day was SNAPSHOTTED at, never re-read from the master.
+    * `rates` is every distinct snapshotted day rate among the costed
+      markings, so a caller can say "varies" rather than print one rate that
+      does not multiply out.
+    * ⚠ A refused (old monthly-model) marking is COUNTED and contributes
+      nothing — `labour_cost_of()`'s rule — and `refused` says how many.
+    """
+    multiplier = S.ot_multiplier()
+    rows = month_markings(employee_id, month)
+    out = {"markings": len(rows), "present_days": 0, "half_days": 0,
+           "paid_leave_days": 0, "absent_days": 0, "paid_days": 0.0,
+           "ot_hours": 0.0, "basic": 0.0, "ot": 0.0, "rates": [],
+           "refused": 0, "multiplier": multiplier}
+    rates = set()
+    for r in rows:
+        status = str(r.get("status") or "")
+        if status == PRESENT:
+            out["present_days"] += 1
+        elif status == HALF:
+            out["half_days"] += 1
+        elif status == PAID_LEAVE:
+            out["paid_leave_days"] += 1
+        else:
+            out["absent_days"] += 1
+        out["paid_days"] = round(out["paid_days"] + share_of(status), 2)
+        if status in OT_STATUSES:
+            out["ot_hours"] = round(out["ot_hours"] + _num(r.get("ot_hours")), 2)
+        c = cost_of(r, multiplier)
+        if c["refused"]:
+            out["refused"] += 1
+            continue
+        rates.add(round(_num(r.get("day_rate")), 2))
+        out["basic"] = round(out["basic"] + c["day"], 2)
+        out["ot"] = round(out["ot"] + c["ot"], 2)
+    out["rates"] = sorted(rates)
+    return out
+
+
+# =============================================================================
+# FOR THE IMPORT — a marking written from the client's monthly workbook
+# =============================================================================
+
+IMPORT_BATCH_FIELD = "import_batch"
+
+
+def import_marking(person: dict, date: str, status: str, ot_hours,
+                   site_fields: dict, project_fields: dict,
+                   batch: str, notes: str = "") -> tuple:
+    """
+    `(record_id, error)` — one marking written by `payimport.py`.
+
+    ⚠ **The same record `mark_attendance()` writes, plus one key**,
+    `import_batch`, so a wrong import can be taken back out whole. Every rule
+    the form's write enforces is enforced here too, because an import is a
+    second write route and "both write routes call it" was the whole of the
+    one-employee-one-day constraint:
+
+    * the person must be active and carry a CONFIRMED day rate;
+    * the status must be one of `STATUSES` and overtime in range;
+    * ⚠ **an existing marking for that person and day is never overwritten** —
+      `conflicting_record()` refuses, and the importer reports it as skipped.
+    """
+    if not person or not person.get("id"):
+        return "", "That employee is not on the register."
+    if not person.get("active"):
+        return "", f"{person.get('name') or 'That employee'} is inactive."
+    if EMP.is_pre_day_rate(person):
+        return "", (f"{person.get('name') or 'That employee'} has no confirmed "
+                    f"day rate.")
+    day = str(date or "").strip()[:10]
+    try:
+        datetime.date.fromisoformat(day)
+    except ValueError:
+        return "", f"{day!r} is not a date."
+    if status not in STATUSES:
+        return "", f"{status!r} is not a day status."
+    hours = round(_num(ot_hours), 2)
+    if hours < 0 or hours > MAX_OT_HOURS:
+        return "", f"{hours:g} overtime hours is out of range."
+    if conflicting_record(person["id"], day):
+        return "", "already marked for that day"
+    rid = str(uuid.uuid4())
+    records()[rid] = {
+        "id":            rid,
+        "date":          day,
+        "employee_id":   person["id"],
+        "employee_name": person.get("name") or "",
+        "employee_code": person.get("code") or "",
+        "day_rate":      float(person.get("day_rate") or 0.0),
+        "site":          site_fields.get("site", ""),
+        EMP.SITE_ADDRESS_FIELD: site_fields.get(EMP.SITE_ADDRESS_FIELD, ""),
+        EMP.SITE_SOURCE_FIELD:  site_fields.get(EMP.SITE_SOURCE_FIELD, ""),
+        "project_id":    project_fields.get("project_id", ""),
+        "project_name":  project_fields.get("project_name", ""),
+        "status":        status,
+        "ot_hours":      hours,
+        "notes":         str(notes or "")[:500],
+        IMPORT_BATCH_FIELD: str(batch),
+        "created_at":    _now(),
+        "updated_at":    _now(),
+    }
+    return rid, ""
+
+
+def batch_markings(batch) -> list:
+    """Every marking one import wrote. A blank batch matches nothing."""
+    key = str(batch or "").strip()
+    if not key:
+        return []
+    return [r for r in records().values()
+            if str(r.get(IMPORT_BATCH_FIELD) or "") == key]
+
+
+def remove_batch(batch) -> int:
+    """Delete every marking one import wrote, and nothing else. Returns the count."""
+    ids = [r["id"] for r in batch_markings(batch)]
+    for rid in ids:
+        records().pop(rid, None)
+    return len(ids)
+
+
+# =============================================================================
 # SEARCH — a range of days, filtered (item B, 27 October 2026)
 # =============================================================================
 #
@@ -799,10 +982,11 @@ def worker_costs(rows) -> list:
       would overstate the person by a factor of about twenty-six. Both halves
       are reported so the page can say the total is short and by how many.
 
-    ⚠ **`days_present` is days marked PRESENT**, which is the figure a wage
-      is paid on (CC-2: *"Salary as 0 or 1 based on attendance"*).
-      `days_marked` is beside it so an absence is visible rather than merely
-      missing from a count.
+    ⚠ **`days_present` is the days PAID** — a present day counts 1, a half
+      day 0.5 and paid leave 1 (`DAY_SHARE`, 29 October 2026). Before the two
+      new statuses existed this was a count of PRESENT markings, and on every
+      record written before them it still is. `days_marked` is beside it so an
+      absence is visible rather than merely missing from a count.
     """
     multiplier = S.ot_multiplier()
     buckets = {}
@@ -820,8 +1004,9 @@ def worker_costs(rows) -> list:
             b["unmapped"] = True
         b["days_marked"] += 1
         c = cost_of(r, multiplier)
-        if str(r.get("status") or "") == PRESENT:
-            b["days_present"] += 1
+        status = str(r.get("status") or "")
+        b["days_present"] += share_of(status)
+        if status in OT_STATUSES:
             b["ot_hours"] += _num(r.get("ot_hours"))
         if c["refused"]:
             b["refused"] += 1
@@ -865,7 +1050,9 @@ def site_costs(date: str) -> list:
         if EMP.is_unmapped_site(r):
             b["unmapped"] = True
         b["people"] += 1
-        if str(r.get("status") or "") == PRESENT:
+        # ⚠ On site means PRESENT or a HALF day. Paid leave is paid and is
+        #   not on site — the money columns already carry it through `cost_of()`.
+        if str(r.get("status") or "") in OT_STATUSES:
             b["present"] += 1
             b["ot_hours"] += _num(r.get("ot_hours"))
         if c["refused"]:
@@ -943,7 +1130,7 @@ def _validate(form, except_id: str = "", record=None) -> tuple:
             f"nobody chose.")
 
     if data["status"] not in STATUSES:
-        return data, "Mark the day present or absent."
+        return data, "Mark the day present, half day, paid leave or absent."
 
     raw = data["ot_raw"]
     if raw:
@@ -1138,10 +1325,16 @@ def marking_cells(record, multiplier) -> dict:
     `settings.ot_multiplier()` rather than a figure of its own.
     """
     c = cost_of(record, multiplier)
-    present = str(record.get("status") or "") == PRESENT
-
-    badge = ('<span class="att-badge att-in">Present</span>' if present
-             else '<span class="att-badge att-out">Absent</span>')
+    status = str(record.get("status") or "")
+    present = status == PRESENT
+    # ⚠ Present and Absent render the bytes they always did; the two statuses
+    #   of 29 October 2026 reuse the "in" pill and say which they are.
+    if status in (HALF, PAID_LEAVE):
+        badge = f'<span class="att-badge att-in">{STATUS_LABELS[status]}</span>'
+    else:
+        badge = ('<span class="att-badge att-in">Present</span>' if present
+                 else '<span class="att-badge att-out">Absent</span>')
+    earns = share_of(status) > 0
     code = str(record.get("employee_code") or "").strip()
     sub = f'<span class="att-sub">{_esc(code)}</span>' if code else ""
 
@@ -1149,7 +1342,9 @@ def marking_cells(record, multiplier) -> dict:
     # An absentee carrying overtime hours is a contradiction, and it is
     # SHOWN rather than swallowed — see `cost_of()`.
     ot_cell = P.esc(f"{hours:g}")
-    if hours and not present:
+    if hours and status == PAID_LEAVE:
+        ot_cell += ' <span class="att-sub">not paid — paid leave</span>'
+    elif hours and status not in OT_STATUSES:
         ot_cell += ' <span class="att-sub">not paid — marked absent</span>'
 
     # ⚠ A refused marking shows a REASON where the money would be,
@@ -1173,7 +1368,7 @@ def marking_cells(record, multiplier) -> dict:
         "status": badge,
         "ot": ot_cell,
         "money": money,
-        "row_class": "" if present else "att-row-out",
+        "row_class": "" if earns else "att-row-out",
         "refused": bool(c["refused"]),
         "total": c["total"],
     }
@@ -1612,11 +1807,15 @@ def _form(data: dict, error: str, action: str, submit_label: str,
           <label for="status">Present or absent *</label>
           <select id="status" name="status" required>
             <option value="present"{' selected' if status == PRESENT else ''}>Present</option>
+            <option value="half"{' selected' if status == HALF else ''}>Half day</option>
+            <option value="paid_leave"{' selected' if status == PAID_LEAVE else ''}>Paid leave</option>
             <option value="absent"{' selected' if status == ABSENT else ''}>Absent</option>
           </select>
           <small class="field-hint">A present day earns the employee's
             <b>day rate</b>; an absent day earns none. That is CC-2's
-            <i>&ldquo;salary as 0 or 1 based on attendance&rdquo;</i>.</small>
+            <i>&ldquo;salary as 0 or 1 based on attendance&rdquo;</i>. A
+            <b>half day</b> earns half; <b>paid leave</b> earns the day and no
+            overtime.</small>
         </div>
         <div class="form-group">
           <label for="ot_hours">Overtime hours</label>
@@ -1811,7 +2010,7 @@ def search_attendance():
           f'<span class="reg-sub-line">{w["refused"]} not costed &mdash; day '
           f'rate not confirmed</span>' if w['refused'] else ''}{
           EMP.unmapped_site_note_html() if w['unmapped'] else ''}</td>
-        <td class="num">{w['days_present']} of {w['days_marked']}</td>
+        <td class="num">{P.esc(f"{w['days_present']:g}")} of {w['days_marked']}</td>
         <td class="num">{P.esc(f"{w['ot_hours']:g}")}</td>
         <td class="num">{rupees(w['day_cost'])}</td>
         <td class="num">{rupees(w['ot_cost'])}</td>
@@ -1843,7 +2042,7 @@ def search_attendance():
         <tbody>{body_rows}</tbody>
         <tfoot><tr>
           <td class="num"><b>All workers</b></td>
-          <td class="num"><b>{tot_present} of {tot_marked}</b></td>
+          <td class="num"><b>{P.esc(f"{tot_present:g}")} of {tot_marked}</b></td>
           <td class="num"><b>{P.esc(f"{tot_ot:g}")}</b></td>
           <td class="num"><b>{rupees(tot_day)}</b></td>
           <td class="num"><b>{rupees(tot_otc)}</b></td>
