@@ -449,6 +449,12 @@ def build() -> str:
     # ── The warning that has to come before the table ──────────────────────
     w("## ⚠ Read this before you show anyone the grid")
     w("")
+    w("⚠ **This grid is ROLES. A login may also carry its own ALLOW and BLOCK")
+    w("lists** (29 October 2026, CLIENT_CHANGES.md §0 fifty-sixth block), set")
+    w("by an Owner or a Director at `/access/<id>`, and no grid of roles can")
+    w("show them. What one person can do is that page's *What this login can")
+    w("do now*, drawn by the same resolver the gate uses.")
+    w("")
     w("**CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names "
       "six roles and states exactly one restriction. B3 describes the "
       "Owner/Admin split in five lines. That is the whole of the "

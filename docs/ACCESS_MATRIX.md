@@ -6,11 +6,17 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 91 permissions · 200 classified endpoints.**
+**7 roles · 91 permissions · 202 classified endpoints.**
 
 ---
 
 ## ⚠ Read this before you show anyone the grid
+
+⚠ **This grid is ROLES. A login may also carry its own ALLOW and BLOCK
+lists** (29 October 2026, CLIENT_CHANGES.md §0 fifty-sixth block), set
+by an Owner or a Director at `/access/<id>`, and no grid of roles can
+show them. What one person can do is that page's *What this login can
+do now*, drawn by the same resolver the gate uses.
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
@@ -436,7 +442,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `address.delete` | `address.archive_address`, `address.delete_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |
 | `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
-| `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_user`, `auth.list_users` |
+| `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_staff_access`, `auth.edit_user`, `auth.list_users`, `auth.staff_access` |
 | `admin.roles` | `auth.create_role`, `auth.edit_role`, `auth.list_roles` |
 | `admin.access_log` | `auth.access_log` |
 

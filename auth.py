@@ -1028,6 +1028,10 @@ ROUTE_PERMISSIONS = {
     # §0 fifty-fifth block). The two delete routes answer both verbs; their GET
     # confirms and destroys nothing, so the stricter permission is right for
     # both — the attendance delete's reasoning, one register along.
+    # Staff access (29 October 2026, §0 fifty-sixth block): a login's own
+    # ALLOW / BLOCK lists, under the Users page's own permission.
+    "auth.staff_access":           "admin.users",
+    "auth.edit_staff_access":      "admin.users",
     "payroll.payroll_register":    "payroll.view",
     "payroll.generate":            "payroll.edit",
     "payroll.view_slip":           "payroll.view",
@@ -1874,15 +1878,53 @@ def rename_user(user, new_username: str, actor) -> str:
 
 def permissions_of(user) -> set:
     """
-    The **union** of every role the user holds (B2, B4).
+    The **union** of every role the user holds (B2, B4) — then the login's own
+    ALLOW list added and its BLOCK list taken away (29 October 2026,
+    CLIENT_CHANGES.md §0 fifty-sixth block). Block wins over allow.
 
     Resolved from the store on each call rather than cached on the session, so
-    a role edit lands on the user's next request.
+    a role edit — or a person's list — lands on the user's next request.
+
+    ⚠ **An `admin.*` permission is never added or removed by a person's
+    list**, whatever is stored: the person page cannot mint an administrator
+    or strip one. ⚠ **An Owner's lists are ignored entirely** — the Owner tier
+    is B3's and is decided by roles alone; `/access/` never offers an Owner,
+    and this keeps a hand-written record from changing that.
     """
     if not user:
         return set()
     out = set()
     for rid in user.get("role_ids") or []:
+        role = roles().get(rid)
+        if role:
+            out.update(role.get("permissions") or [])
+    out &= set(PERMISSIONS)
+    if OWNER_PERM in out:
+        return out
+    allow = {p for p in (user.get(PERM_ALLOW_FIELD) or []) if _overridable(p)}
+    deny = {p for p in (user.get(PERM_DENY_FIELD) or []) if _overridable(p)}
+    return (out | allow) - deny
+
+
+# ── A login's own lists (29 October 2026, §0 fifty-sixth block) ────────────
+PERM_ALLOW_FIELD = "perm_allow"
+PERM_DENY_FIELD = "perm_deny"
+ACCESS_HISTORY_FIELD = "access_history"
+# The roles whose holders `/access/` never lists. "Owners are not listed" is
+# the client's; Directors too is the fifty-sixth block's reading of "his own
+# employees" — two Directors could otherwise block each other. One line.
+ACCESS_EXCLUDED_ROLES = ("role-owner", "role-director")
+
+
+def _overridable(perm: str) -> bool:
+    """A real permission that is not an administrator's."""
+    return perm in PERMISSIONS and not perm.startswith("admin.")
+
+
+def role_permissions_of(user) -> set:
+    """The roles' union alone — what a login holds before its own lists."""
+    out = set()
+    for rid in (user or {}).get("role_ids") or []:
         role = roles().get(rid)
         if role:
             out.update(role.get("permissions") or [])
@@ -2973,6 +3015,7 @@ def list_users():
         <div style="display:flex;gap:.5rem;">
           <a class="btn" href="{url_for('auth.create_user')}">+ New user</a>
           {_roles_link()}
+          <a class="btn" href="{url_for('auth.staff_access')}">Staff access</a>
           {_access_log_link()}
         </div>
       </div>
@@ -3323,6 +3366,178 @@ def activate_user(id):
 # =============================================================================
 # ROUTES — roles  (Owner only: these are what a role MEANS)
 # =============================================================================
+
+# =============================================================================
+# STAFF ACCESS — a login's own ALLOW and BLOCK lists (29 October 2026)
+# =============================================================================
+# CLIENT_CHANGES.md §0 fifty-sixth block, Manas's choice B. The client asked
+# for "a separate permissions page for the Director where the Owners are not
+# listed, so the Director handles permissions for his own employees". B3
+# stands: no ROLE changes here — the lists sit on the user.
+
+def _staff(actor) -> list:
+    """Every login `/access/` may show: not an Owner, not a Director, not you."""
+    me = (actor or {}).get("id")
+    return sorted((u for u in users().values()
+                   if u.get("id") != me
+                   and not set(u.get("role_ids") or []) & set(ACCESS_EXCLUDED_ROLES)
+                   and OWNER_PERM not in role_permissions_of(u)),
+                  key=lambda u: (not u.get("active"),
+                                 (u.get("username") or "").lower()))
+
+
+def _staff_refusal(actor, target) -> str:
+    if not target:
+        return "That login does not exist."
+    if target not in _staff(actor):
+        return ("That login is not on the staff access page — an Owner, a "
+                "Director, or yourself.")
+    return _may_administer(actor, target)
+
+
+@auth_bp.route("/access/")
+def staff_access():
+    actor = current_user()
+    names = {rid: r.get("name") for rid, r in roles().items()}
+    rows = []
+    for u in _staff(actor):
+        allow = len(u.get(PERM_ALLOW_FIELD) or [])
+        deny = len(u.get(PERM_DENY_FIELD) or [])
+        state = ('<span class="au-tag on">active</span>' if u.get("active")
+                 else '<span class="au-tag off">deactivated</span>')
+        rows.append(
+            f'<tr><td><b>{_esc(u.get("display_name") or u.get("username"))}</b>'
+            f'<br/><code>{_esc(u.get("username"))}</code></td>'
+            f'<td>{_esc(", ".join(names.get(r, r) for r in u.get("role_ids") or []))}</td>'
+            f'<td>{allow} allowed &middot; {deny} blocked</td><td>{state}</td>'
+            f'<td><a href="{url_for("auth.edit_staff_access", id=u["id"])}">'
+            f'Edit access</a></td></tr>')
+    body = f"""
+    {_alert()}
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="margin:0;">Staff access</h2>
+        <a class="btn" href="{url_for('auth.list_users')}">&#8592; Users</a>
+      </div>
+      <p style="font-size:.85rem;color:#6b7280;margin:.6rem 0 0;">
+        Each login has its roles, and on top of them its own list: permissions
+        <b>allowed</b> to this person only, and permissions <b>blocked</b> for
+        this person only. Owners and Directors are not listed. Blocking a login
+        altogether is <b>Deactivate</b> on the Users page.
+      </p>
+      <table class="auth-table">
+        <thead><tr><th>Login</th><th>Roles</th><th>Own list</th><th>State</th><th></th></tr></thead>
+        <tbody>{''.join(rows) or '<tr><td colspan="5">No staff logins.</td></tr>'}</tbody>
+      </table>
+    </div>"""
+    return _shell("Staff access", body)
+
+
+@auth_bp.route("/access/<id>", methods=["GET", "POST"])
+def edit_staff_access(id):
+    actor = current_user()
+    target = users().get(id)
+    why = _staff_refusal(actor, target)
+    if why:
+        return redirect(url_for("auth.staff_access", msg=why, type="error"))
+    held = permissions_of(actor)
+    frozen = frozen_permissions()
+    from_roles = role_permissions_of(target)
+    allow = set(target.get(PERM_ALLOW_FIELD) or [])
+    deny = set(target.get(PERM_DENY_FIELD) or [])
+    error = ""
+
+    if request.method == "POST":
+        new_allow, new_deny = set(), set()
+        for pid in PERMISSIONS:
+            if not _overridable(pid):
+                continue
+            if pid in frozen:
+                # Drawn disabled; the stored choice is carried through, as a
+                # role's hidden-module grant is by `_merge_hidden_grants()`.
+                if pid in allow:
+                    new_allow.add(pid)
+                if pid in deny:
+                    new_deny.add(pid)
+                continue
+            choice = request.form.get(f"p:{pid}", "role")
+            if choice == "allow":
+                if pid not in held:
+                    error = (f"You cannot allow {PERMISSIONS[pid][0]!r}: you do "
+                             f"not hold it yourself.")
+                    break
+                new_allow.add(pid)
+            elif choice == "block":
+                new_deny.add(pid)
+        if not error:
+            target[PERM_ALLOW_FIELD] = sorted(new_allow)
+            target[PERM_DENY_FIELD] = sorted(new_deny)
+            target.setdefault(ACCESS_HISTORY_FIELD, []).append({
+                "at": _now(), "by": (actor or {}).get("username", ""),
+                "allow": sorted(new_allow), "block": sorted(new_deny)})
+            return redirect(url_for("auth.edit_staff_access", id=id,
+                                    msg="Access saved.", type="success"))
+
+    blocks = []
+    for group, perms in _permission_groups():
+        rows = []
+        for pid, label in perms:
+            if not _overridable(pid):
+                continue
+            current = "allow" if pid in allow else "block" if pid in deny else "role"
+            off = pid in frozen
+            dis = " disabled" if off else ""
+            role_mark = "&#10003; by role" if pid in from_roles else "&mdash; not by role"
+            allow_dis = " disabled" if off or pid not in held else ""
+
+            def radio(value, text, extra=""):
+                chk = " checked" if current == value else ""
+                return (f'<label style="margin-right:.8rem;"><input type="radio" '
+                        f'name="p:{_esc(pid)}" value="{value}"{chk}{extra}/> '
+                        f'{text}</label>')
+            rows.append(
+                f'<tr><td>{_esc(label)}<br/><code>{_esc(pid)}</code>'
+                f'{" <em>&mdash; switched off</em>" if off else ""}</td>'
+                f'<td style="white-space:nowrap;">{role_mark}</td>'
+                f'<td>{radio("role", "Role decides", dis)}'
+                f'{radio("allow", "Allow", allow_dis)}'
+                f'{radio("block", "Block", dis)}</td></tr>')
+        if rows:
+            blocks.append(f'<div class="perm-group"><h4>{_esc(group)}</h4>'
+                          f'<table class="auth-table" style="table-layout:fixed;width:100%;">'
+                          f'<colgroup><col style="width:44%"/><col style="width:16%"/>'
+                          f'<col style="width:40%"/></colgroup>{"".join(rows)}</table></div>')
+
+    effective = sorted(permissions_of(target))
+    history = "".join(
+        f'<li>{_esc(h.get("at"))} &middot; {_esc(h.get("by"))} &middot; '
+        f'{len(h.get("allow") or [])} allowed, {len(h.get("block") or [])} blocked</li>'
+        for h in list(reversed(target.get(ACCESS_HISTORY_FIELD) or []))[:10])
+    err = f'<div class="alert alert-error">{_esc(error)}</div>' if error else ""
+    body = f"""
+    {err}{_alert()}
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="margin:0;">Access &mdash; {_esc(target.get("display_name") or target.get("username"))}</h2>
+        <a class="btn" href="{url_for('auth.staff_access')}">&#8592; Staff access</a>
+      </div>
+      <p style="font-size:.85rem;color:#6b7280;margin:.6rem 0 0;">
+        <b>Role decides</b> leaves it to the login's roles. <b>Allow</b> gives
+        this person a permission their roles do not; you can only allow what
+        you hold yourself. <b>Block</b> takes one away from this person only.
+        Allowing a delete does not get past the Owner-only rule on deletes.
+      </p>
+      <form method="post">
+        {''.join(blocks)}
+        <p style="margin-top:1rem;"><button class="btn" type="submit">Save</button></p>
+      </form>
+      <h3>What this login can do now</h3>
+      <p style="font-size:.85rem;">{_esc(", ".join(PERMISSIONS[p][0] for p in effective)) or "Nothing."}</p>
+      <h3>Changes</h3>
+      <ul style="font-size:.85rem;">{history or "<li>None yet.</li>"}</ul>
+    </div>"""
+    return _shell("Staff access", body)
+
 
 @auth_bp.route("/roles")
 def list_roles():

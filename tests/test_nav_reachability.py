@@ -303,6 +303,9 @@ UNLINKED_ON_PURPOSE = {
     # ⚠ Added a link on 29 August 2026 and kept OFF the launcher deliberately:
     # a diagnostic is not a register (ABOUT.md §7 gap 23). `/users` carries it.
     "auth.access_log":   "a diagnostic, linked from /users rather than the launcher",
+    # Staff access (29 October 2026, §0 fifty-sixth block): a sub-page of
+    # /users, which carries its button — the /roles precedent above.
+    "auth.staff_access": "reached from /users, its parent",
     # ── C3, 2 September 2026 ────────────────────────────────────────────────
     #
     # ⚠ **Kept OFF the nav and the launcher DELIBERATELY, and CC-2 is the

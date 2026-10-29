@@ -492,8 +492,12 @@ PAGES = {
     # here: this page is hashed as an OWNER, who may administer every account
     # and reach `/roles`, so every link the pass made conditional is still
     # drawn. A moved `main` would have meant the Owner lost something.
-    ("users",           "/users"):                     ("6f28cf4801fb6f4c", 65758,
-        {"head": "d27789290b5de232", "shell": "75cda0afbae27209", "chrome": "907015465e3197ed", "main": "645012baa0685fdd"}),
+    # ⚠ re-baselined 29 October 2026 — `main` ONLY (CLIENT_CHANGES.md §0
+    # fifty-sixth block): the Staff access button beside Roles, **+58 bytes,
+    # exactly that one line**. The old values:
+    #     ("6f28cf4801fb6f4c", 65758, {..., "main": "645012baa0685fdd"})
+    ("users",           "/users"):                     ("245cd030c38e595c", 65816,
+        {"head": "d27789290b5de232", "shell": "75cda0afbae27209", "chrome": "907015465e3197ed", "main": "7653a2d07b474892"}),
 }
 
 

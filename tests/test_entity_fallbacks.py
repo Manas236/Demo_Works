@@ -524,6 +524,9 @@ def populated(client):
             # looking at. `role-hr` is a builtin role with a small permission
             # set, so the editor renders every checkbox block quickly.
             "/users/edit/<id>":       spare_uid,
+            # Staff access (29 Oct 2026): the spare HR login is staff, so its
+            # own-list page renders — display name and username reach HTML.
+            "/access/<id>":           spare_uid,
             "/users/deactivate/<id>": spare_uid,
             "/users/activate/<id>":   spare_uid,
             "/roles/edit/<id>":       "role-hr",

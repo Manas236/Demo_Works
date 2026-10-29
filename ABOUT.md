@@ -4309,8 +4309,21 @@ silence as the project having gone.
 
 ```python
 { "id", "username", "display_name", "password_hash",
-  "role_ids", "active", "created_at", "created_by" }
+  "role_ids", "active", "created_at", "created_by",
+  # 29 October 2026 (CLIENT_CHANGES.md §0 fifty-sixth block) — optional:
+  "perm_allow": ["purchase.view"],     # this login only, on top of its roles
+  "perm_deny":  ["quotation.edit"],    # this login only; BLOCK wins over ALLOW
+  "access_history": [{"at", "by", "allow", "block"}, …] }   # append-only
 ```
+
+- ⚠ **`perm_allow` / `perm_deny` — a person's own lists.** `permissions_of()`
+  is the roles' union, plus allowed, minus blocked. **An `admin.*` permission
+  is never moved by them** and **an Owner's are ignored**, whatever is stored.
+  Written only by `/access/<id>`, which lists no Owner, no Director and not
+  the viewer, refuses an account `_may_administer()` refuses, and lets nobody
+  ALLOW what they do not hold. Allowing a delete does not pass `OWNER_ONLY`.
+  `role_permissions_of()` is the roles alone. ⚠ `docs/ACCESS_MATRIX.md` is a
+  grid of roles and cannot show these — ABOUT.md §7 gap 90.
 
 - `id` — `uuid4().hex[:12]`, server-minted.
 - `username` — stored **as entered**, compared **case-insensitively**.
@@ -12157,6 +12170,8 @@ Thirteen routes. The architecture is §2g; this is what each page does.
 | `/users/edit/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | **The USERNAME (Owner only, 27 September 2026)**, display name, roles, and **the manual password reset** — one Owner setting another's password, which is why two Owners is now the operational requirement (§7 gap 21, closed). The break-glass equivalent for when nobody can sign in at all is [tools/set_password.py](tools/set_password.py). ⚠ **`admin.users` is not enough on its own here.** The account being edited must hold nothing the editor does not — otherwise the password field is a way to *become* it. §7 gap 26. **Profile photo (26 Sep 2026): Owner only**, `action=photo_upload` / `photo_remove`; refused on POST for everyone else, not merely hidden. |
 | `/users/deactivate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | GET confirms, POST acts. **There is no delete route** — §3, User. The extra guard is what stops an Admin switching spare Owners off one at a time until only the one they can reset is left. |
 | `/users/activate/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | The reverse, and it needs the guard for the mirror reason: a dormant Owner account is a live one after one POST, and whoever held it may still know its password. |
+| `/access/` | GET | `admin.users` | **Staff access** (29 October 2026, §0 fifty-sixth block). Every login that is not an Owner, not a Director and not the viewer, with its roles and the size of its own ALLOW / BLOCK lists. Reached from the Staff access button on `/users`. |
+| `/access/<id>` | GET, POST | `admin.users` **+ `_may_administer()`** | One login's lists: per permission, *Role decides* / *Allow* / *Block*, with whether the roles grant it. Allow is offered only for what the editor holds; `admin.*` is not on the page; a switched-off permission is drawn disabled and its stored choice carried through. Every save appends to `access_history`. Shows what the login can do now. |
 | `/roles` | GET | `admin.roles` | **Owner only.** Shows each role's permission count and how many active users hold it. |
 | `/roles/create`, `/roles/edit/<id>` | GET, POST | `admin.roles` | Checkboxes over the 61-permission catalogue, grouped by module. A builtin role's **name** is fixed; its permissions are not. ⚠ **A hidden module's permissions render DISABLED and labelled *module hidden*** (11 September 2026, §2g): the box shows the stored state, posts nothing, and a save carries the stored grant through untouched — a POST can neither add nor remove one while the module is hidden. |
 | `/access-log` | GET | `admin.access_log` | The last 500 refusals — user, endpoint, permission wanted, why. §7 gap 23 on what it is not. |
@@ -15054,6 +15069,13 @@ text is unchanged, and every reference to them was moved with them.*
     import deletes exactly the markings and ledger lines it wrote; a person it
     added to the employee master stays, deliberately — a master record may
     already be referenced elsewhere. Deactivate or delete them by hand.
+
+90. 🟡 **A person's own ALLOW / BLOCK lists are invisible to
+    `docs/ACCESS_MATRIX.md` — 29 October 2026, by design, OPEN as a reading
+    hazard.** The matrix is generated from the ROLES and says so in its
+    header now; whether Ashwini can raise a proforma is answered by
+    `/access/<id>`'s *What this login can do now*, not by the grid. The same
+    holds for gap 80 (the Owner-only delete gate the grid also does not model).
 
 ## 8. Stale docs — do not trust these two files
 
