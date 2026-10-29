@@ -256,6 +256,58 @@ def loan_figures(employee_id, month) -> dict:
             "balance": round(opening - down_now, 2)}
 
 
+def advances_outstanding_for(employee_ids) -> dict:
+    """
+    `{"total", "entries", "people"}` — advances handed over to these people
+    that **no issued payslip has yet set against wages**. DERIVED, never
+    stored, exactly as `loan_balance()` is.
+
+    ⚠ **AN ADVANCE IS NOT A COST, AND THIS FIGURE IS NEVER SUBTRACTED.**
+      CLIENT_CHANGES.md §0's **fifty-eighth** block, item 2, records Manas's
+      call in those words. An advance is cash paid *ahead of* the wages; the
+      **wages** are the cost, and the P&L subtracts wages EARNED
+      (`attendance.labour_cost_of()`). Subtracting the advance as well would
+      count the same rupee twice and overstate the cost of every project that
+      pays its men in advance. So this is an **information line beside** the
+      labour row and nothing more — which is why it lives here, in the module
+      that owns `pay_entries`, and **not in `pnl.py`**: nothing `pnl.py`
+      returns is excluded from its own arithmetic, and a figure that must never
+      be added does not belong among figures that are.
+
+    **Settled means an ISSUED slip counted it.** A slip stores the ids of the
+    rows it was drawn from (`snapshot["entry_ids"]`), so an advance is
+    outstanding until one of those lists names it. A **draft** slip settles
+    nothing — it can still be refreshed or cancelled — and a **cancelled** one
+    never did. That is `live_slip()`'s own distinction, read from this side.
+
+    ⚠ **A carried advance is an advance.** `issue()` writes next month's
+      `ADVANCE` row when the advance was bigger than the wages, and that row is
+      outstanding on its own terms until the next slip sets it against
+      something. It is not double-counted: the row it came from is named by the
+      slip that carried it and so is settled.
+    """
+    want = {str(e) for e in (employee_ids or []) if str(e or "").strip()}
+    if not want:
+        return {"total": 0.0, "entries": 0, "people": 0}
+    settled = set()
+    for s in slips().values():
+        if s.get("status") != ISSUED:
+            continue
+        for eid in (s.get("snapshot") or {}).get("entry_ids") or []:
+            settled.add(str(eid))
+    total, n, people = 0.0, 0, set()
+    for e in entries().values():
+        if e.get("type") != ADVANCE:
+            continue
+        emp = str(e.get("employee_id") or "")
+        if emp not in want or str(e.get("id") or "") in settled:
+            continue
+        total = round(total + _num(e.get("amount")), 2)
+        n += 1
+        people.add(emp)
+    return {"total": total, "entries": n, "people": len(people)}
+
+
 def loan_balance(employee_id) -> float:
     """What is owed today, across every entry — derived."""
     total = 0.0

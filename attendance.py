@@ -668,6 +668,67 @@ def markings_on_no_project() -> list:
                   reverse=True)
 
 
+def off_project_labour() -> dict:
+    """
+    What the wage bill holds that is on **no live project** — the figure a
+    project page must not leave the reader to infer.
+
+    `{"total", "markings", "costed", "refused", "no_project_site",
+      "unmapped_site", "sites"}`:
+
+        markings          on no live project at all (`markings_on_no_project()`)
+        total/costed/     the same three `labour_cost_of()` reports, so the
+          refused         amount is priced HERE and by nothing else
+        no_project_site   of those, how many sit at an address-book site that
+                          carries no project — the ones `payimport.py`'s
+                          SITE → address → project mapping had nothing to map
+                          to, so no amount of tagging on the muster will place
+                          them until somebody files a project at that site
+        unmapped_site     of those, how many carry a free-text site string
+                          nothing in the book matched (`employee.is_unmapped_site()`)
+        sites             those site strings, name order, for the message
+
+    ⚠ **CLIENT_CHANGES.md §0's fifty-eighth block, item 2: never silently
+      dropped.** A project page that shows a labour total and says nothing
+      about the markings outside every project reads as a complete wage bill.
+      It is not: it is this project's share, and this is what the amber line
+      beside it is built from. The `/projects` register's untagged-cost line
+      (`pnl.untagged_cost()`, the forty-seventh block) states the same money
+      from the other end; neither is the other's substitute, because a reader
+      on a project page does not see the register.
+
+    ⚠ **The three categories OVERLAP on purpose and are never added.**
+      `markings` is the whole set; `no_project_site` and `unmapped_site` are
+      two different reasons a row is in it, and a row can be neither (its site
+      has a project and nobody tagged it). The caller states each count
+      separately — a sum of them would be a number describing nothing.
+
+    ⚠ **The wage never leaves this module.** `labour_cost_of()` prices the set,
+      which is the fifty-fifth block's rule and the forty-seventh's before it:
+      a second module able to compute a wage is a second place the OT
+      multiplier could be hardcoded.
+    """
+    rows = markings_on_no_project()
+    costed = labour_cost_of(rows)
+    live_sites = set()
+    for p in (STORE.get("projects") or {}).values():
+        aid = str(p.get("site_address_id") or "").strip()
+        if aid:
+            live_sites.add(aid)
+    no_project_site, unmapped, sites = 0, 0, set()
+    for r in rows:
+        aid = str(r.get("site_address_id") or "").strip()
+        if not aid or aid not in live_sites:
+            no_project_site += 1
+        if EMP.is_unmapped_site(r):
+            unmapped += 1
+            label = str(r.get("site") or "").strip()
+            if label:
+                sites.add(label)
+    return dict(costed, no_project_site=no_project_site,
+                unmapped_site=unmapped, sites=sorted(sites, key=str.lower))
+
+
 def labour_cost_of(rows) -> dict:
     """
     `{"total", "markings", "costed", "refused"}` — what a set of markings cost,

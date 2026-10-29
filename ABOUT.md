@@ -11786,6 +11786,56 @@ Both were defects against delivered scope (§0 gate exempt), fixed together.
   goldens (`test_page_golden.py`, `test_pnl_access.py`) were re-baselined with
   the measurement recorded beside them.
 
+#### Labour lands on the project by itself (28 October 2026, §0 **fifty-eighth** block, item 2)
+
+The Site Labour panel keeps its **two groups** — *Booked to this project* and
+*At this site, unattributed*, summed separately and never added together; that
+rule is `projectview.py`'s docstring and is untouched. What is new sits inside
+each group and under them:
+
+- **A PER-WORKER ROLLUP.** `attendance.worker_costs()` computes it — days
+  paid (`DAY_SHARE`, so a half day is 0.5 and paid leave 1), days marked, OT
+  hours, day rate, overtime and total — and `projectview._worker_rollup()`
+  renders it above the per-marking table, which keeps its rows under a *"Every
+  marking, day by day"* heading. ⚠ **The two tables are the SAME money grouped
+  two ways and their totals are equal by construction**: both are `cost_of()`
+  over the same rows. Nothing adds them, and two tables that disagreed would
+  be two wage formulas, which §0's fifty-fifth block allows exactly one of.
+  A **refused** marking (the pre-day-rate model) is counted per worker and
+  costed at nothing, `labour_cost_of()`'s rule.
+- **AN AMBER LINE FOR WHAT IS ON NO PROJECT.** `attendance.off_project_labour()`
+  — the markings on **no live project at all** (`markings_on_no_project()`,
+  which counts a dangling `project_id` as well as a blank one), priced through
+  `labour_cost_of()`, plus **why**: how many sit at a site carrying no project
+  (`payimport.py` maps SITE → address → project and had nothing to map to, so
+  tagging the muster cannot place them), how many carry a free-text site string
+  nothing in the book matched, and how many predate the day rate. ⚠ **The three
+  counts OVERLAP and are never summed** — they are reasons, not parts. ⚠ **The
+  figure is NOT added to anything on the page and the line says so.** It is
+  drawn even when the project has no markings of its own, because *"nobody has
+  been recorded as working here"* is the strongest invitation to read the wage
+  bill as nil.
+- **ADVANCES OUTSTANDING — AN INFORMATION LINE, NEVER A COST.**
+  `payroll.advances_outstanding_for()`: `ADVANCE` rows in `pay_entries` that no
+  **issued** payslip has named in its `snapshot["entry_ids"]`. A draft slip
+  settles nothing (it can still be refreshed or cancelled) and a cancelled one
+  never did. ⚠ **Manas's call, §0 fifty-eighth block: an advance is cash paid
+  AHEAD of the wages and the wages are the cost.** The P&L subtracts wages
+  **earned** and the advance is shown beside it; subtracting both counts the
+  same rupee twice and overstates every project that pays its men in advance.
+  It lives in `payroll.py` and **deliberately not in `pnl.py`** — nothing
+  `pnl.py` returns is excluded from its own arithmetic, so a figure that must
+  never be added does not belong among figures that are. `projectview.py`
+  reaches it by a **function-body** import.
+- ⚠ **The rollup's stylesheet travels INSIDE the panel**
+  (`projectview.ROLLUP_CSS`), which is `PNL_CSS`'s arrangement and is
+  load-bearing: all four roles `tests/test_pnl_access.py` pins byte-for-byte
+  against `3a14375` lack `attendance.view`, so they get the withheld message
+  and not one byte of the sheet. That file needed no re-baseline.
+- Tests: `tests/test_project_labour_oct28.py` (21). The project page's `main`
+  golden moved and nothing else did — `test_page_golden.py` carries the
+  measurement and the old value.
+
 #### The Profit & Loss panel — CC-2 C6 (8 October 2026)
 
 CLIENT_CHANGES.md §0 **forty-seventh** block. CC-2's C6 is *"planned margin

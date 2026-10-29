@@ -305,15 +305,23 @@ def _site_labour(proj) -> str:
     note = _labour_note(proj, others, loose)
 
     # ── Empty state 2: a site, and nothing marked on it ─────────────────────
+    # ⚠ The off-project line is drawn HERE TOO (28 Oct 2026). "Nobody has been
+    #   recorded as working here" is the strongest possible invitation to read
+    #   the wage bill as nil, and it is exactly the state in which markings
+    #   sitting outside every project matter most.
     if not booked and not loose:
         return (f'<p class="sl-lead">{note}</p>'
                 f'<p class="sl-empty">No attendance has been marked at this '
-                f'site. Nobody has been recorded as working here.</p>')
+                f'site. Nobody has been recorded as working here.</p>'
+                f'{_off_project_line()}')
 
     multiplier = S.ot_multiplier()
-    return (f'<p class="sl-lead">{note}</p>'
+    return (f'{ROLLUP_CSS}'
+            f'<p class="sl-lead">{note}</p>'
             f'{_labour_group(booked, multiplier, "booked")}'
-            f'{_labour_group(loose, multiplier, "loose")}')
+            f'{_advances_line(booked)}'
+            f'{_labour_group(loose, multiplier, "loose")}'
+            f'{_off_project_line()}')
 
 
 # ⚠ **The two groups render through ONE function, so they cannot drift into two
@@ -334,6 +342,193 @@ _GROUP_CAPTION = {
         'project, which nothing in the data says. Open one and pick its project '
         'to attribute it.'),
 }
+
+
+# ⚠ **THE ROLLUP'S STYLESHEET TRAVELS INSIDE THE PANEL, not in the page's
+#   `<head>`** — `PNL_CSS`'s own arrangement, and here it is load-bearing for
+#   the same reason: `tests/test_pnl_access.py` pins `/projects/view` BYTE FOR
+#   BYTE against `3a14375` for every role that may not see the figures. All
+#   four of those roles lack `attendance.view`, so `_site_labour()` returns its
+#   withheld message and never reaches this sheet. A rule in the page's
+#   `<style>` would have reached them, moved all four digests, and forced a
+#   re-baseline to add furniture nobody in that group can see.
+ROLLUP_CSS = """
+      <style>
+        /* A quieter heading than `.sl-group-head`, deliberately: the two
+           tables inside a group are the SAME money grouped two ways, and a
+           second heading as loud as the group's would read as a second
+           figure. */
+        .sl-roll { margin-bottom:1.1rem; }
+        .sl-roll-head { display:flex; justify-content:space-between;
+                        align-items:baseline; gap:1rem;
+                        font-size:.78rem; font-weight:700; color:var(--muted);
+                        text-transform:uppercase; letter-spacing:.04em;
+                        padding-bottom:.3rem; margin:1.1rem 0 .45rem;
+                        border-bottom:1px solid var(--border); }
+        .sl-roll:first-of-type .sl-roll-head { margin-top:0; }
+      </style>"""
+
+
+def _worker_rollup(rows, kind: str) -> str:
+    """
+    One group's cost **per worker**, and its total — §0's **fifty-eighth**
+    block, item 2: *"the project page shows the labour cost per worker and in
+    total."*
+
+    ⚠ **`attendance.worker_costs()` computes every figure and this renders
+      them.** That function is `site_costs()`'s shape keyed on the person
+      instead of the place, it prices each marking through `cost_of()` at
+      `settings.ot_multiplier()`, and it is the one path. **No arithmetic of
+      any kind happens in this function** — not a sum, not a round — which is
+      the same rule `_pnl_panel()` works under and the reason there is still
+      exactly one wage formula in this application (§0 fifty-fifth block).
+
+    ⚠ **IT IS THE SAME MONEY AS THE ROWS BELOW IT, GROUPED — NEVER MORE.**
+      The per-marking table and this table add up to the same total, because
+      both are `cost_of()` over the same `rows`. Two tables whose totals
+      disagreed would be two wage formulas; two tables summed together would be
+      double the wage bill. Nothing adds them, and the group's own total is
+      printed once, here, with the per-marking table's `_total_row()` beneath
+      it saying the same figure.
+
+    ⚠ **A REFUSED MARKING IS COUNTED AND NOT COSTED**, per worker as well as
+      per group — `labour_cost_of()`'s and `site_costs()`'s rule. A person
+      whose days all predate the day-rate correction shows their days and no
+      money, and the shortfall line under the table says how many.
+    """
+    buckets = AT.worker_costs(rows)
+    if not buckets:
+        return ""
+    body = ""
+    for b in buckets:
+        # ⚠ A day count is not money and is not escaped by `_amt`; a NAME is
+        #   operator-typed and reaches HTML here (ABOUT.md §9).
+        short = ""
+        if b["refused"]:
+            short = (f'<div style="font-size:.72rem;color:#8A5A00;">'
+                     f'{b["refused"]} not costed</div>')
+        unmapped = ""
+        if b["unmapped"]:
+            unmapped = ('<div style="font-size:.72rem;color:#8A5A00;">'
+                        'site not in the address book</div>')
+        code = (f' <span style="color:var(--muted);font-size:.78rem;">'
+                f'{P.esc(b["code"])}</span>' if b["code"] else "")
+        body += f"""
+        <tr>
+          <td>{P.esc(b['employee'])}{code}{short}{unmapped}</td>
+          <td class="num">{b['days_present']:g}</td>
+          <td class="num">{b['days_marked']}</td>
+          <td class="num">{b['ot_hours']:g}</td>
+          <td class="num">{_amt(b['day_cost'])}</td>
+          <td class="num">{_amt(b['ot_cost'])}</td>
+          <td class="num">{_amt(b['total'])}</td>
+        </tr>"""
+    caption = ("What each worker on this project cost" if kind == "booked" else
+               "What each worker at this site cost, unattributed")
+    return f"""
+        <div class="sl-roll">
+          <div class="sl-roll-head">{caption}
+            <span class="sl-group-count">{_pnl_n(len(buckets), "worker")}</span>
+          </div>
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Worker</th>
+                <th class="num">Days paid</th>
+                <th class="num">Days marked</th>
+                <th class="num">OT hours</th>
+                <th class="num">Day rate</th>
+                <th class="num">Overtime</th>
+                <th class="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>{body}</tbody>
+          </table>
+        </div>"""
+
+
+def _off_project_line() -> str:
+    """
+    The amber line: markings the wage bill holds that are on **no project** —
+    §0 fifty-eighth block, item 2, *"never silently dropped"*.
+
+    ⚠ **It sits on a PROJECT page and reports a figure that is NOT this
+      project's, which is the point.** A labour total with nothing beside it
+      reads as the wage bill; it is one project's share of it. The reader of
+      this page does not see the `/projects` register, where the forty-seventh
+      block's untagged-cost line says the same thing from the other end.
+
+    ⚠ **Nothing here is added to anything on this page**, and the wording says
+      so. The three counts `off_project_labour()` returns overlap (see its
+      docstring) and are stated separately, never summed.
+
+    ⚠ **The money is withheld without `attendance.view`** — the panel's own
+      wall, checked by the caller — and this function is only reached from
+      inside it.
+    """
+    off = AT.off_project_labour()
+    if not off["markings"]:
+        return ""
+    n = off["markings"]
+    bits = [f'<b>{_pnl_n(n, "attendance marking")} '
+            f'{"is" if n == 1 else "are"} booked to no project at all</b>, '
+            f'costing {_amt(off["total"])}. '
+            f'{"It is" if n == 1 else "They are"} in no project&rsquo;s labour '
+            f'figure, including this one.']
+    if off["no_project_site"]:
+        m = off["no_project_site"]
+        bits.append(f'{_pnl_n(m, "of them sits", "of them sit")} at a site that '
+                    f'carries no project, so tagging the muster cannot place '
+                    f'{"it" if m == 1 else "them"} until a project is filed at '
+                    f'that site.')
+    if off["unmapped_site"]:
+        m = off["unmapped_site"]
+        refs = ", ".join(f'&ldquo;{P.esc(s)}&rdquo;' for s in off["sites"])
+        bits.append(f'{_pnl_n(m, "carries", "carry")} a site string nothing in '
+                    f'the address book matched{" — " + refs if refs else ""}. '
+                    f'Nothing has been guessed at.')
+    if off["refused"]:
+        m = off["refused"]
+        bits.append(f'{_pnl_n(m, "predates", "predate")} the day-rate '
+                    f'correction and {"is" if m == 1 else "are"} not costed, so '
+                    f'the amount above is short by '
+                    f'{"it" if m == 1 else "them"}.')
+    return (f'<div class="sl-ambig"><span class="sl-ambig-icon">&#9888;</span>'
+            f'<span>{" ".join(bits)} <b>This figure is not added to anything on '
+            f'this page.</b></span></div>')
+
+
+def _advances_line(rows) -> str:
+    """
+    The advances information line — §0 fifty-eighth block, item 2.
+
+    ⚠ **AN ADVANCE IS NOT A COST AND IS NEVER SUBTRACTED.** Manas's call,
+      recorded in that block in those words: an advance is cash paid *ahead of*
+      the wages and the **wages** are the cost. The P&L subtracts wages EARNED;
+      this sits beside it and says so on the face of it. The arithmetic is
+      `payroll.advances_outstanding_for()`, which lives in the module that owns
+      `pay_entries` and deliberately **not** in `pnl.py` — nothing `pnl.py`
+      returns is excluded from its own totals, and a figure that must never be
+      added does not belong among figures that are.
+
+    ⚠ **Reached by a FUNCTION-BODY import.** `payroll.py` is a page module
+      above this one in the graph; a module-level arrow from here would be the
+      wrong direction. `project._untagged_line()` is the house pattern.
+    """
+    import payroll as PAY
+    ids = {str(r.get("employee_id") or "") for r in rows}
+    adv = PAY.advances_outstanding_for(ids)
+    if not adv["entries"]:
+        return ""
+    return (f'<p class="sl-group-note" style="margin-top:.8rem;">'
+            f'<b>Advances outstanding: {_amt(adv["total"])}</b> &mdash; '
+            f'{_pnl_n(adv["entries"], "payment")} to '
+            f'{_pnl_n(adv["people"], "worker")} on this project that no issued '
+            f'payslip has yet set against wages. <b>An advance is cash paid '
+            f'ahead of the wages, not a cost of its own</b>, so it is '
+            f'<b>not</b> subtracted anywhere: the cost is the wage above, '
+            f'earned. Shown here because it is money already out of the '
+            f'door.</p>')
 
 
 def _labour_group(rows, multiplier, kind: str) -> str:
@@ -399,12 +594,18 @@ def _labour_group(rows, multiplier, kind: str) -> str:
 
     body += _total_row(6, _sum_cell(vals))
 
+    # ⚠ The per-worker rollup goes FIRST and the per-marking table stays
+    #   beneath it, both over the same `rows` and both through
+    #   `attendance.py`'s own arithmetic — the same money grouped two ways,
+    #   never two figures and never added together (`_worker_rollup()`).
     return f"""
       <div class="sl-group">
         <div class="sl-group-head">{title}
           <span class="sl-group-count">{len(rows)} marking{"" if len(rows) == 1 else "s"}</span>
         </div>
         <p class="sl-group-note">{blurb}</p>
+        {_worker_rollup(rows, kind)}
+        <div class="sl-roll-head">Every marking, day by day</div>
         <table class="data">
           <thead>
             <tr>

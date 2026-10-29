@@ -411,8 +411,27 @@ PAGES = {
     #       ("project page", …): ("ed03e4a8109be779", 83331,
     #        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209",
     #         "chrome": "b03da1368479ad8b", "main": "ebeb42c9b7836fc1"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("b40cbe634515dfca", 85531,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "56a6540cddadb9c8"}),
+    # ⚠ **RE-BASELINED 29 October 2026 — CLIENT_CHANGES.md §0's fifty-eighth
+    #   block, item 2** (labour on the project automatically). `main` ONLY:
+    #   the Site Labour panel gains a **per-worker rollup** table per group
+    #   (`projectview._worker_rollup()`, every figure out of
+    #   `attendance.worker_costs()`), a *"Every marking, day by day"* heading
+    #   over the table that was already there, the **advances outstanding**
+    #   information line and the **amber off-project** line. **+2,197 bytes.**
+    #
+    #   Measured before the baseline was touched, by reverting `projectview.py`,
+    #   `attendance.py` and `payroll.py` and re-running this one test: `main`
+    #   came back `56a6540cddadb9c8` **exactly**, and `head` / `shell` /
+    #   `chrome` never moved at either end. The rollup's stylesheet travels
+    #   INSIDE the panel (`projectview.ROLLUP_CSS`, `PNL_CSS`'s arrangement),
+    #   so all four non-`attendance.view` roles in `tests/test_pnl_access.py`
+    #   are still BYTE-IDENTICAL to `3a14375` and that file needed no
+    #   re-baseline at all. The old value:
+    #       ("project page", …): ("b40cbe634515dfca", 85531,
+    #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "b51ad113e721dcbe", "main": "56a6540cddadb9c8"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("743a34c2b98c0499", 87728,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "80ecaec1f7e9225b"}),
     ("employees",       "/employee/"):                 ("ef174191c4b15546", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "a1e6c63a6d4c6ac2", "chrome": "73071add0b4a2df7", "main": "14f4d8921e680fc4"}),
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth
