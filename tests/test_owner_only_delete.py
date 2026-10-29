@@ -75,6 +75,12 @@ def test_owner_only_covers_exactly_the_true_destroy_routes():
         "charge.delete_charge",
         "employee.delete_employee",
         "attendance.delete_attendance",
+        # 29 October 2026 (CLIENT_CHANGES.md §0 fifty-fifth block): a pay entry
+        # and an imported month sit behind the HR wall with the marking and
+        # the charge, so they take the marking's tier. Added to the pin, not
+        # derived — the pin is the point.
+        "payroll.delete_entry",
+        "payimport.delete_import",
         "project.delete_project",
         "spec.delete_spec",
         "product.delete_product",

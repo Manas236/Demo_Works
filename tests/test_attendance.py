@@ -819,7 +819,16 @@ def test_only_projectview_imports_the_attendance_module():
     the block that put them there, and what `pnl.py` may take is held by
     `test_the_pnl_takes_readers_and_one_sum_and_never_the_wage_arithmetic`.
     """
-    permitted = {"projectview", "pnl"}   # and nothing else, ever, without a block
+    # ⚠ **REWRITTEN 29 October 2026 — the allowlist is FOUR.** CLIENT_CHANGES.md
+    # §0's fifty-fifth block builds the payslip: `payroll.py` reads one
+    # person's month through `month_figures()` and `payimport.py` writes the
+    # client's workbook through `import_marking()` and prices its preview
+    # through `labour_cost_of()`. Both are held to `pnl.py`'s rule by
+    # `test_payroll_and_payimport_take_readers_and_never_the_wage_arithmetic`
+    # below. The previous line, verbatim:
+    #
+    #     permitted = {"projectview", "pnl"}   # and nothing else, ever, without a block
+    permitted = {"projectview", "pnl", "payroll", "payimport"}   # and nothing else, ever, without a block
     offenders = []
     for path in REPO.glob("*.py"):
         if path.name in ("attendance.py", "app.py"):
@@ -837,11 +846,12 @@ def test_only_projectview_imports_the_attendance_module():
 
     assert set(offenders) <= permitted, (
         f"{sorted(set(offenders) - permitted)} import attendance.py. Exactly "
-        f"two modules may — projectview.py (the FIFTH override block of "
-        f"30 August 2026, the Site Labour section) and pnl.py (the "
-        f"forty-seventh block of 8 October 2026, C6's labour row) — and a "
-        f"labour figure reaching any OTHER module is a third place a wage "
-        f"could be computed.")
+        f"four modules may — projectview.py (the FIFTH override block of "
+        f"30 August 2026, the Site Labour section), pnl.py (the "
+        f"forty-seventh block of 8 October 2026, C6's labour row), and "
+        f"payroll.py / payimport.py (the fifty-fifth block of 29 October "
+        f"2026, the payslip) — and a labour figure reaching any OTHER module "
+        f"is another place a wage could be computed.")
     assert set(offenders) == permitted, (
         f"{sorted(permitted - set(offenders))} no longer imports attendance.py. "
         f"If its section was removed, narrow this allowlist and restore the "
@@ -921,6 +931,33 @@ def test_the_pnl_takes_readers_and_one_sum_and_never_the_wage_arithmetic():
         assert not hits, (
             f"pnl.py reaches for {banned!r} — the wage arithmetic and the "
             f"collection stay in attendance.py: {hits}")
+
+
+def test_payroll_and_payimport_take_readers_and_never_the_wage_arithmetic():
+    """
+    ⚠ **The third and fourth consumers, held to `pnl.py`'s rule** (the
+    payslip, 29 October 2026, §0 fifty-fifth block). The slip's Basic and OT
+    come out of `month_figures()`, which prices each marking with `cost_of()`
+    at the setting; the import's preview figure comes out of
+    `labour_cost_of()`. Neither module may reach the arithmetic itself.
+    """
+    wanted = {"payroll.py": ("month_figures", "employees_marked_in"),
+              "payimport.py": ("labour_cost_of", "import_marking")}
+    for name, accessors in wanted.items():
+        src = (REPO / name).read_text(encoding="utf8")
+        for accessor in accessors:
+            assert f"AT.{accessor}(" in src, (
+                f"{name} must consume attendance.{accessor}()")
+        for banned in ("cost_of(", "ot_amount", "day_rate_of", "site_costs",
+                       "STANDARD_HOURS_PER_DAY", "ot_multiplier",
+                       "STORE[\"attendance\"]", "STORE.get(\"attendance\")",
+                       "AT.records("):
+            hits = [ln for ln in src.splitlines()
+                    if banned in ln and "labour_cost_of" not in ln
+                    and not ln.lstrip().startswith(("#", "`"))]
+            assert not hits, (
+                f"{name} reaches for {banned!r} — the wage arithmetic and the "
+                f"collection stay in attendance.py: {hits}")
 
 
 def test_labour_cost_of_is_cost_of_summed_with_the_setting(client):

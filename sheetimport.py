@@ -352,9 +352,14 @@ class _SheetTooBig(Exception):
 class _Collector:
     """Accumulates one sheet's non-empty cells, refusing past the limits."""
 
-    def __init__(self):
+    def __init__(self, max_cols: int = None):
         self.cells = {}
         self.cols = set()
+        # ⚠ The 40-column budget is a SCHEDULE's. The monthly attendance sheet
+        #   (29 October 2026) is three columns a day for 31 days plus a dozen
+        #   more, so its importer asks for a wider grid; nobody else does, and
+        #   the default is byte-for-byte the old behaviour.
+        self.max_cols = max_cols or MAX_GRID_COLS
 
     def put(self, r: int, c: int, value, kind: str) -> None:
         row = self.cells.get(r)
@@ -366,12 +371,12 @@ class _Collector:
         row[c] = (value, kind)
         if c not in self.cols:
             self.cols.add(c)
-            if len(self.cols) > MAX_GRID_COLS:
+            if len(self.cols) > self.max_cols:
                 raise _SheetTooBig(
-                    f"more than {MAX_GRID_COLS} columns with something in them")
+                    f"more than {self.max_cols} columns with something in them")
 
 
-def _read_xlsx(data: bytes) -> list:
+def _read_xlsx(data: bytes, max_cols: int = None) -> list:
     """[(name, visibility, cells_or_refusal)] for every worksheet."""
     _check_xlsx_container(data)
     try:
@@ -401,7 +406,7 @@ def _read_xlsx(data: bytes) -> list:
             name = str(ws_v.title)
             vis = str(getattr(ws_v, "sheet_state", "visible") or "visible")
             try:
-                out.append((name, vis, _xlsx_cells(ws_v, ws_f)))
+                out.append((name, vis, _xlsx_cells(ws_v, ws_f, max_cols)))
             except _SheetTooBig as exc:
                 out.append((name, vis, str(exc)))
     except Exception as exc:
@@ -415,13 +420,13 @@ def _read_xlsx(data: bytes) -> list:
     return out
 
 
-def _xlsx_cells(ws_v, ws_f) -> dict:
+def _xlsx_cells(ws_v, ws_f, max_cols: int = None) -> dict:
     """One worksheet, read from the two parses in lockstep: values from the
     data-only parse, and "is this a formula" from the other. openpyxl cannot
     give both from one parse."""
     ws_v.reset_dimensions()
     ws_f.reset_dimensions()
-    col = _Collector()
+    col = _Collector(max_cols)
     f_rows = ws_f.iter_rows()
     for r, row_v in enumerate(ws_v.iter_rows(), start=1):
         row_f = next(f_rows, ())
@@ -457,7 +462,7 @@ def _xlsx_cells(ws_v, ws_f) -> dict:
     return col
 
 
-def _read_xls(data: bytes) -> list:
+def _read_xls(data: bytes, max_cols: int = None) -> list:
     """[(name, visibility, cells_or_refusal)] for every sheet of an .xls."""
     if _VBA_OLE_NAME in data:
         raise Refused(MACRO_REFUSAL.replace("(.xlsm)", "(a VBA project)"))
@@ -478,7 +483,7 @@ def _read_xls(data: bytes) -> list:
             sh = book.sheet_by_index(i)
             vis = vis_name.get(getattr(sh, "visibility", 0), "visible")
             try:
-                out.append((str(sh.name), vis, _xls_cells(book, sh, xlrd)))
+                out.append((str(sh.name), vis, _xls_cells(book, sh, xlrd, max_cols)))
             except _SheetTooBig as exc:
                 out.append((str(sh.name), vis, str(exc)))
             book.unload_sheet(i)
@@ -492,10 +497,10 @@ def _read_xls(data: bytes) -> list:
     return out
 
 
-def _xls_cells(book, sh, xlrd):
+def _xls_cells(book, sh, xlrd, max_cols: int = None):
     if sh.nrows > MAX_SCAN_ROWS:
         raise _SheetTooBig(f"it runs past row {MAX_SCAN_ROWS:,}")
-    col = _Collector()
+    col = _Collector(max_cols)
     for r in range(sh.nrows):
         n = sh.row_len(r)
         if n > MAX_SCAN_COLS:
@@ -578,7 +583,7 @@ def _grid_of(col: _Collector) -> dict:
     return grid
 
 
-def read(data: bytes, filename: str = "") -> dict:
+def read(data: bytes, filename: str = "", max_cols: int = None) -> dict:
     """
     Read an uploaded workbook into the staged shape, or raise `Refused`.
 
@@ -603,8 +608,55 @@ def read(data: bytes, filename: str = "") -> dict:
     fmt = sniff_format(data)
     if fmt == "xlsx" and str(filename or "").lower().endswith(".xlsm"):
         raise Refused(MACRO_REFUSAL)
-    raw = _read_xlsx(data) if fmt == "xlsx" else _read_xls(data)
+    raw = (_read_xlsx(data, max_cols) if fmt == "xlsx"
+           else _read_xls(data, max_cols))
     return _assemble(fmt, raw)
+
+
+def comments(data: bytes, sheet_index: int = 0) -> dict:
+    """
+    `{(row, col0): text}` — the CELL COMMENTS of one worksheet of an .xlsx,
+    with the original 1-based row and 0-based column `read()`'s grid uses.
+
+    Added 29 October 2026 for the attendance import (CLIENT_CHANGES.md §0
+    fifty-fifth block): the client records paid leave as a comment on a 1, and
+    `read()` cannot see one — openpyxl's read-only mode, which `read()` uses
+    for its size discipline, does not load comments. So this is a second,
+    NARROW parse of the same bytes, kept here because this is the one module
+    allowed to read a workbook. The same container check and the same
+    defusedxml refusal apply. An .xls, or anything unreadable, has no comments
+    to give and returns `{}` — never raises, because a missing comment only
+    means a paid-leave day reads as present, and the preview shows the day.
+    """
+    if not data:
+        return {}
+    try:
+        if sniff_format(data) != "xlsx":
+            return {}
+        _check_xlsx_container(data)
+        import openpyxl
+        import openpyxl.xml
+        if not getattr(openpyxl.xml, "DEFUSEDXML", False):
+            return {}
+        wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True,
+                                    keep_links=False)
+    except Exception:                                  # noqa: BLE001
+        return {}
+    out = {}
+    try:
+        ws = wb.worksheets[sheet_index]
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.comment is not None and cell.comment.text:
+                    out[(cell.row, cell.column - 1)] = str(cell.comment.text)
+    except Exception:                                  # noqa: BLE001
+        return {}
+    finally:
+        try:
+            wb.close()
+        except Exception:                              # noqa: BLE001
+            pass
+    return out
 
 
 def from_rows(sheets: list, fmt: str = "xlsx") -> dict:

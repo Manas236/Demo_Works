@@ -345,6 +345,18 @@ UNLINKED_ON_PURPOSE = {
     "attendance.search_attendance": "a second reading of the muster's own "
                                     "collection; the Search button on "
                                     "/attendance/ is its entry point",
+    # ── The payslip, 29 October 2026 (§0 fifty-fifth block) ─────────────────
+    #
+    # Off the rail and the launcher for the search page's reason: the muster
+    # (`/attendance/`) carries a Payslips button, and the payslip register
+    # carries the other three. A rail entry would move the head of every
+    # pinned page and nothing on any sheet; if the owner asks for one, add it
+    # and re-baseline.
+    "payroll.payroll_register": "the Payslips button on /attendance/ is its "
+                                "entry point",
+    "payroll.list_entries":     "the pay ledger, linked from /payroll/",
+    "payroll.print_month":      "a print run of the month, linked from /payroll/",
+    "payimport.upload":         "the attendance import, linked from /payroll/",
     # ── Import BOQ from Excel, 29 September 2026 ────────────────────────────
     #
     # A way of FILLING IN /boq/create, not a register: it ends on that form and

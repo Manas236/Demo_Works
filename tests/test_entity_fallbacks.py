@@ -383,6 +383,32 @@ def populated(client):
         "created_at": "2026-08-29T12:00:00Z", "updated_at": "2026-08-29T12:00:00Z",
     }
 
+    # The payslip, the pay ledger and the attendance import (29 Oct 2026, §0
+    # fifty-fifth block). Every free-text field on all three reaches HTML —
+    # the entry's note, the slip's snapshotted name / code / designation, the
+    # import's file name, sheet names and sites — so their id-taking routes
+    # join the sweep rather than the SKIP list.
+    import payroll as PAY
+    STORE.setdefault("pay_entries", {})["pe-1"] = {
+        "id": "pe-1", "employee_id": "emp-1", "employee_name": "Test Employee",
+        "date": "2026-08-29", "type": PAY.ADVANCE, "amount": 500.0,
+        "note": "Test advance", "source": PAY.SOURCE_MANUAL,
+        "created_at": "2026-08-29 12:00", "updated_at": "2026-08-29 12:00"}
+    slip, _ = PAY.create_draft("emp-1", "2026-08")
+    psid = slip["id"]
+    STORE.setdefault("pay_imports", {})["pi-1"] = {
+        "id": "pi-1", "status": "staged", "filename": "Test Sheet.xlsx",
+        "month": "2026-08", "month_guess": "2026-08", "days": 31,
+        "uploaded_at": "2026-08-29 12:00", "uploaded_by": "Test",
+        "problems": [], "sites": ["Test Site"],
+        "rows": [{"line": 3, "name": "Test Employee", "designation": "Fitter",
+                  "site": "Test Site", "problems": [],
+                  "days": [{"day": 1, "status": "present", "ot": 1.0,
+                            "note": "Test note"}],
+                  "money": {"rate": 1200.0, "advance": 100.0, "travel": None,
+                            "loan": None, "balance_loan": None,
+                            "actual": 1250.0}}]}
+
     # A second user for the /users/* confirmations to act on. Deliberately not
     # the logged-in Owner: deactivating the only Owner is refused, and the
     # refusal page is not the markup this sweep is checking.
@@ -550,6 +576,13 @@ def populated(client):
             "/employee/view/<id>":   "emp-1",
             "/attendance/delete/<id>": "att-1",
             "/attendance/edit/<id>":   "att-1",
+            "/payroll/slip/<id>":          psid,
+            "/payroll/slip/<id>/cancel":   psid,
+            "/payroll/slip/print/<id>":    psid,
+            "/payroll/entries/edit/<id>":  "pe-1",
+            "/payroll/entries/delete/<id>": "pe-1",
+            "/payroll/import/preview/<id>": "pi-1",
+            "/payroll/import/delete/<id>":  "pi-1",
             "/client/edit-party/<id>": bid2,
             "/approval/approve/invoice/<id>":  iid,
             "/approval/reject/invoice/<id>":   iid,
@@ -670,6 +703,9 @@ def populated(client):
     # seeds an employee, and a leaked fixture row reads exactly like a seeder.
     STORE.setdefault("employees", {}).clear()
     STORE.setdefault("attendance", {}).clear()
+    STORE.setdefault("pay_entries", {}).clear()
+    STORE.setdefault("payslips", {}).clear()
+    STORE.setdefault("pay_imports", {}).clear()
     STORE.setdefault("boq_imports", {}).clear()
     STORE.setdefault("import_layouts", {}).clear()
     STORE.setdefault("work_orders", {}).clear()

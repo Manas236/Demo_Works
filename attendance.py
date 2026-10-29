@@ -768,7 +768,21 @@ def month_figures(employee_id, month) -> dict:
         out["basic"] = round(out["basic"] + c["day"], 2)
         out["ot"] = round(out["ot"] + c["ot"], 2)
     out["rates"] = sorted(rates)
+    # One hour of overtime at the one rate the month was paid at — what the
+    # client's slip prints as "OT Rates". `None` when the rate varied, because
+    # one figure would not multiply out to the overtime paid.
+    out["ot_rate"] = (ot_amount(out["rates"][0], 1, multiplier)
+                      if len(out["rates"]) == 1 else None)
     return out
+
+
+def employees_marked_in(month) -> set:
+    """The employee ids with at least one marking in one calendar month."""
+    prefix = str(month or "").strip()[:7]
+    if len(prefix) != 7:
+        return set()
+    return {str(r.get("employee_id") or "") for r in records().values()
+            if str(r.get("date") or "").startswith(prefix + "-")} - {""}
 
 
 # =============================================================================
@@ -1710,6 +1724,7 @@ def list_attendance():
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('attendance.mark_attendance', date=date)}" class="btn">+ Mark a day</a>
       <a href="{url_for('attendance.search_attendance')}" class="btn btn-ghost">Search</a>
+      <a href="{url_for('payroll.payroll_register')}" class="btn btn-ghost">Payslips</a>
       <a href="{url_for('employee.list_employees')}" class="btn btn-ghost">Employees</a>
     </div>
   </div>

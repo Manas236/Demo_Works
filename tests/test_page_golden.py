@@ -394,8 +394,16 @@ PAGES = {
     #       ("772b3d71abb8f8ee", 72731,
     #        {"head": "f7e83482d5632c42", "shell": "75cda0afbae27209",
     #         "chrome": "864f7a2ba55bb64a", "main": "bb8159e0b0291642"})
-    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("aaa704c1ef16122e", 73237,
-        {"head": "8fb0c3cb6ad47c05", "shell": "75cda0afbae27209", "chrome": "864f7a2ba55bb64a", "main": "4fd344e6ce33374a"}),
+    # ⚠ **RE-BASELINED 29 October 2026 — `main` ONLY** (CLIENT_CHANGES.md §0
+    #   fifty-fifth block, the payslip). The muster gained one link, Payslips,
+    #   between Search and Employees: **+61 bytes, exactly that one line**, and
+    #   `head`, `shell` and `chrome` did not move — no rail entry, so no other
+    #   page and no printed document moved. The old values:
+    #       ("aaa704c1ef16122e", 73237,
+    #        {"head": "8fb0c3cb6ad47c05", "shell": "75cda0afbae27209",
+    #         "chrome": "864f7a2ba55bb64a", "main": "4fd344e6ce33374a"})
+    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("4a7fcd42ceca4c19", 73298,
+        {"head": "8fb0c3cb6ad47c05", "shell": "75cda0afbae27209", "chrome": "864f7a2ba55bb64a", "main": "99e031f5f5f6af8e"}),
     ("charges",         "/charge/"):                   ("52eec3cf3cd7c8cd", 66001,
         {"head": "575d38b1b9bde174", "shell": "75cda0afbae27209", "chrome": "19250b6392869c12", "main": "daf605a8f367bb3e"}),
     ("address book",    "/address/"):                  ("def4ca415fbc0f49", 75650,

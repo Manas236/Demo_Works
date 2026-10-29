@@ -491,6 +491,16 @@ PERMISSIONS = {
     "attendance.create":     ("Mark attendance for a day",                "Employee costs"),
     "attendance.edit":       ("Correct an attendance record",             "Employee costs"),
     "attendance.delete":     ("Remove an attendance record",              "Employee costs"),
+    # ── The payslip and the attendance import (29 October 2026,
+    # CLIENT_CHANGES.md §0 fifty-fifth block — CHARGED new scope). Granted
+    # exactly where `attendance.*` is — Owner, Director, HR — because a payslip
+    # is that information in its plainest form (B4). `payroll.delete` removes a
+    # ledger entry or takes an import out, and both are in `OWNER_ONLY`.
+    "payroll.view":          ("View payslips and the pay ledger",         "Employee costs"),
+    "payroll.edit":          ("Draft payslips and keep the pay ledger",   "Employee costs"),
+    "payroll.issue":         ("Issue or cancel a payslip",                "Employee costs"),
+    "payroll.import":        ("Import the monthly attendance workbook",   "Employee costs"),
+    "payroll.delete":        ("Delete a pay entry or take an import out", "Employee costs"),
 
     "project.view":          ("View projects",                            "Projects"),
     "project.create":        ("Create a project",                         "Projects"),
@@ -1014,6 +1024,28 @@ ROUTE_PERMISSIONS = {
     "attendance.edit_attendance":  "attendance.edit",
     "attendance.delete_attendance": "attendance.delete",
 
+    # ── Payslips, the pay ledger and the attendance import (29 October 2026,
+    # §0 fifty-fifth block). The two delete routes answer both verbs; their GET
+    # confirms and destroys nothing, so the stricter permission is right for
+    # both — the attendance delete's reasoning, one register along.
+    "payroll.payroll_register":    "payroll.view",
+    "payroll.generate":            "payroll.edit",
+    "payroll.view_slip":           "payroll.view",
+    "payroll.save_extras":         "payroll.edit",
+    "payroll.refresh_slip":        "payroll.edit",
+    "payroll.issue_slip":          "payroll.issue",
+    "payroll.cancel_slip":         "payroll.issue",
+    "payroll.print_slip":          "payroll.view",
+    "payroll.print_month":         "payroll.view",
+    "payroll.list_entries":        "payroll.view",
+    "payroll.add_entry":           "payroll.edit",
+    "payroll.edit_entry":          "payroll.edit",
+    "payroll.delete_entry":        "payroll.delete",
+    "payimport.upload":            "payroll.import",
+    "payimport.preview":           "payroll.import",
+    "payimport.commit_import":     "payroll.import",
+    "payimport.delete_import":     "payroll.delete",
+
     # ── Approvals (B6) ───────────────────────────────────────────────────────
     # ⚠ **Eight endpoints, not one.** A single `/approval/approve/<doc_key>/<id>`
     # would need four different permissions on one endpoint, which this registry
@@ -1186,6 +1218,11 @@ OWNER_ONLY: set = {
     "charge.delete_charge",
     "employee.delete_employee",
     "attendance.delete_attendance",
+    # 29 October 2026 (§0 fifty-fifth block): a pay entry and an imported
+    # month sit behind the HR wall with the marking and the charge. ⚠ Only the
+    # Owner can take a wrong import out — reversible in one line.
+    "payroll.delete_entry",
+    "payimport.delete_import",
     "project.delete_project",
     "spec.delete_spec",
     "product.delete_product",
@@ -1313,6 +1350,10 @@ BUILTIN_ROLES = {
             # C5, on `employee.*`'s terms — see the catalogue note.
             "attendance.view", "attendance.create", "attendance.edit",
             "attendance.delete",
+            # The payslip (29 October 2026, §0 fifty-fifth block), on
+            # `attendance.*`'s terms.
+            "payroll.view", "payroll.edit", "payroll.issue", "payroll.import",
+            "payroll.delete",
             "project.delete", "spec.delete", "product.create", "product.delete",
             "address.delete", "settings.edit",
             # C6 (8 October 2026, the §0 forty-seventh block). Owner and
@@ -1391,7 +1432,12 @@ BUILTIN_ROLES = {
          # register, and attendance is recorded daily by whoever holds the
          # people data.
          "attendance.view", "attendance.create", "attendance.edit",
-         "attendance.delete"],
+         "attendance.delete",
+         # The payslip (29 October 2026, §0 fifty-fifth block): HR prepares it
+         # — the client's slip is signed "Prepared By" — on `attendance.*`'s
+         # terms.
+         "payroll.view", "payroll.edit", "payroll.issue", "payroll.import",
+         "payroll.delete"],
     ),
     "sales-manager": (
         "Sales Manager",

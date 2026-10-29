@@ -4751,6 +4751,77 @@ rewritten pin in
 
 ---
 
+### Pay entry  (`pay_entries`, the payslip, 29 October 2026)
+
+```python
+{"id": uuid, "employee_id": uuid, "employee_name": "PUSHKAR MISHRA",  # snapshot
+ "date": "2026-09-30",
+ "type": "advance" | "travel" | "loan_given" | "loan_deduction" | "opening_loan",
+ "amount": 10000.0,                  # always positive; the type says which way
+ "note": "", "source": "manual" | "import:<batch id>" | "carry:<payslip id>",
+ "created_at": "…", "created_by": "…", "updated_at": "…"}
+```
+
+CLIENT_CHANGES.md §0 **fifty-fifth** block — CHARGED new scope. ⚠ **No balance
+is stored on anything.** `payroll.loan_figures(employee, month)` derives
+*opening* (opening + given up to the month's end, less deductions before it),
+*deduction* (the month's) and *balance* (the difference, signed — a deduction
+larger than the loan goes negative and is shown amber, never blocked: the
+receipts ledger's overpayment rule). ⚠ **A `carry:` entry belongs to its
+slip**: issuing a slip whose advance exceeds its wages writes one dated the 1st
+of the next month; only cancelling that slip removes it, and the ledger pages
+refuse to edit or delete it. An `import:` entry comes back out with its import.
+
+### Payslip  (`payslips`)
+
+```python
+{"id": uuid, "employee_id": uuid, "month": "2026-09",
+ "status": "Draft" | "Issued" | "Cancelled",
+ "other_allowance": 0.0, "statutory": {"mlwf": 0, "pf": 0, "esic": 0, "pt": 0},
+ "snapshot": {employee_name, employee_code, designation, rates, present_days,
+              half_days, paid_leave_days, absent_days, paid_days, ot_hours,
+              ot_rate, multiplier, markings, refused, entry_ids,
+              basic, ot, travel, other_allowance, gross, advance,
+              loan_opening, loan_deduction, loan_balance, mlwf, pf, esic, pt,
+              total_deduction, net_raw, round_off, payable, carry},
+ "carry_entry_id": "", "issued_at", "issued_by", "cancel_reason", …}
+```
+
+⚠ **One live (Draft or Issued) slip per employee per month.** ⚠ **The snapshot
+is the document** — the print reads nothing else (CLIENT_CHANGES.md §1.2). A
+draft re-snapshots on Refresh and on saving its typed figures; an issued slip
+never does, and `/payroll/slip/<id>` shows an amber band with both nets when
+the muster or the ledger has moved under it. ⚠ **Basic and OT are
+`attendance.month_figures()`'s**, priced day by day at each day's SNAPSHOTTED
+rate, so `rates` can hold more than one figure and the slip then prints
+*varies* rather than a rate that does not multiply out. Net is
+`gross − total_deduction`, rounded to the rupee **half up** (`Decimal`,
+`ROUND_HALF_UP`) — deliberately not `round()`, which is gap 84's defect; a
+negative net pays 0 and stores `carry`. The four statutory figures are TYPED
+by HR and DEDUCTED; none is computed.
+
+### Attendance workbook import  (`pay_imports`)
+
+```python
+{"id": uuid,                         # ⚠ ALSO the batch id on everything it writes
+ "status": "staged" | "committed" | "removed",
+ "filename": "ATTENDANCE DATA.xlsx", "month": "2026-09", "month_guess": "2026-09",
+ "days": 30, "sites": ["OFFICE", "BANGALORE", …], "problems": [],
+ "rows": [{"line": 8, "name": "PUSHKAR MISHRA", "designation": "SUPERVISOR",
+           "site": "BANGALORE", "problems": [],
+           "days": [{"day": 1, "status": "present", "ot": 0.0, "note": ""}, …],
+           "money": {"rate", "advance", "travel", "loan", "balance_loan",
+                     "actual"}}],
+ "summary": {…},                     # what the commit wrote, once committed
+ "uploaded_at", "uploaded_by", "committed_at", "removed_at", …}
+```
+
+⚠ **The file is not here** — only what was read from it, through
+`sheetimport.py`. Every marking it writes carries `import_batch` and every
+ledger line `source: "import:<id>"`, which is what lets `remove()` take a
+wrong import back out whole and nothing else. ⚠ Staged rows are not purged
+(ABOUT.md §7 gap 88).
+
 ### Approval fields  (CC-2 **B6** / **B7**, 29 August 2026)
 
 Not a collection of its own. These fields ride on the **four approvable
@@ -11510,6 +11581,72 @@ Held by [tests/test_attendance.py](tests/test_attendance.py),
 
 ---
 
+### `/payroll` — Payslips, the pay ledger and the attendance import · [payroll.py](payroll.py) · [payimport.py](payimport.py) · 29 October 2026
+
+| Route | View |
+|---|---|
+| `GET /payroll/?month=` | `payroll_register` — one month: everybody with a marking, a ledger line or a slip; a slip's figures, or live ones where there is no slip yet. Defaults to LAST month |
+| `POST /payroll/generate?month=` | `generate` — a draft for everyone on the month who has no live slip |
+| `GET /payroll/slip/<id>` | `view_slip` — the sheet, the typed figures on a draft, Refresh / Issue / Cancel, the divergence band |
+| `POST /payroll/slip/<id>/extras` · `/refresh` · `/issue` | `save_extras`, `refresh_slip`, `issue_slip` |
+| `GET,POST /payroll/slip/<id>/cancel` | `cancel_slip` — GET asks for the reason |
+| `GET /payroll/slip/print/<id>` · `GET /payroll/print-month?month=` | `print_slip`, `print_month` — print-only, no rail, `PRINT_EDGE_STYLES` last |
+| `GET /payroll/entries` · `POST /payroll/entries/add` | `list_entries`, `add_entry` — the ledger, filtered by person and month; the loan owed today, derived |
+| `GET,POST /payroll/entries/edit/<id>` · `/delete/<id>` | `edit_entry`, `delete_entry` — delete is **Owner-only** |
+| `GET,POST /payroll/import/` | `payimport.upload` |
+| `GET /payroll/import/preview/<id>` · `POST /payroll/import/commit/<id>` | `preview` (writes nothing), `commit_import` |
+| `GET,POST /payroll/import/delete/<id>` | `delete_import` — takes an import out whole; **Owner-only** |
+
+CLIENT_CHANGES.md §0 **fifty-fifth** block — ⚠ **CHARGED new scope, price not
+yet agreed.** Reached from the **Payslips** button on `/attendance/`; off the
+rail and the launcher for `/attendance/search`'s reason.
+
+**The slip is the client's own** (`Salary Slip Format.xlsx`): earnings left —
+Basic, Other Allowance, Paid Days, Rate/Day, OT Hours, OT Rate, OT Payment,
+Travelling Expenses, Gross — deductions right — Loan, Loan Deduction, Loan
+Balance, Salary Advance, MLWF, PF, ESIC, PT, Total Deduction — then Actual
+Salary with its round-off, in words, and Prepared By / Received By for wet
+ink. On the shared sheet: `docsheet.sheet_open()`'s defaults, so its
+letterhead is the tax invoice's byte for byte. No signature or stamp — the 26
+October list does not include it. ⚠ **Two of their slip's bugs are fixed, not
+copied**: the four statutory rows were outside their Total Deduction formula,
+and their loan cells pointed at the wrong columns.
+
+⚠ **`attendance.py` is still not payroll** and its NOT_PAYROLL line stands:
+the muster records days and prices them; this module turns a month of that
+into a payslip. The wage comes across only through `month_figures()` (and, for
+the import's preview figure, `labour_cost_of()`); `payroll.py` and
+`payimport.py` are the third and fourth modules allowed to import
+`attendance.py`, held to `pnl.py`'s rule by
+`tests/test_attendance.py::test_payroll_and_payimport_take_readers_and_never_the_wage_arithmetic`.
+
+**The import** reads the client's monthly sheet through `sheetimport.py` (the
+one module allowed to read a workbook — its 40-column schedule budget is
+widened for this caller only, `read(…, max_cols=)`, and `sheetimport.comments()`
+was added because the read-only parse cannot see a cell comment, which is
+where they record paid leave). ⚠ **Every column is found by its HEADER**: the
+September file they sent has 30 days and their real October master, which
+their payslip links to, has 31, so everything after the days moves three
+columns. ⚠ **Blank is not 0**; 0.5 is a half day; a 1 carrying a "paid leave"
+comment is paid leave; anything else is a problem on the preview, never a
+guess. ⚠ **Names match EXACTLY** (trim, collapse spaces, case) — the sheet has
+"GUDDU" and "GUDDU KUMAR" on two sites. ⚠ **Each distinct SITE is mapped once,
+on the preview, to an address-book site — and to a project where the site
+carries more than one**, `attendance.resolve_project()`'s rule. ⚠ **A day
+already marked in the app is never overwritten.** The money columns: a blank
+rate is filled, a different one is offered unticked; ADV, EXTRA EXP and LOAN
+become ledger lines dated the month's last day; BALANCE LOAN seeds an
+`opening_loan` dated its 1st only where the person has no loan line yet, and
+is otherwise compared and reported. The preview sets the app's net beside the
+sheet's cached ACTUAL SALARY: on the client's September sheet the two agree on
+**all 37 rows that carry one**, to the paisa.
+
+Held by [tests/test_payroll.py](tests/test_payroll.py),
+[tests/test_payimport.py](tests/test_payimport.py) and
+[tests/test_attendance_statuses.py](tests/test_attendance_statuses.py).
+
+---
+
 ### `/projects` — Projects, the project page, and the Profit & Loss · [project.py](project.py) · [projectview.py](projectview.py) · [pnl.py](pnl.py) · **CC-2 C6**
 
 *(This page had no §5 entry until 8 October 2026; its rules lived in §2, §3
@@ -14874,6 +15011,39 @@ text is unchanged, and every reference to them was moved with them.*
     format over a figure already rounded to 2 dp by the arithmetic above it, so
     it changes nothing that is stored or filed — but it is the same bias in
     the same place twice, and anybody fixing the first should look at it.
+
+85. 🟠 **Only the OWNER can delete a pay entry or take a wrong import out — 29
+    October 2026, a tier chosen in the fifty-fifth block, OPEN for the client.**
+    Both routes went into `auth.OWNER_ONLY` beside `attendance.delete_attendance`
+    and `charge.delete_charge`, the records behind the HR wall. On the client's
+    box the only Owner is Manas, so HR and the two Directors can correct an
+    entry but cannot remove one, and cannot undo an import. One line each in
+    `auth.OWNER_ONLY` (and `tests/test_owner_only_delete.py`'s pin) moves them.
+
+86. 🟠 **The import has only ever read the SEPTEMBER file — 29 October 2026,
+    OPEN.** Their payslip links to an October tab of a different workbook
+    (`HR MASTER FOLDER/ATTENDANCES/ATTENDANCE SHEET.xlsx`), 31 days wide and
+    reaching columns the September file does not have. The importer finds
+    every column by its heading and accepts 28–31 days, and a synthetic 31-day
+    sheet is tested — but the real October master has not been seen.
+
+87. 🟡 **Opening loans are the client's figures, unconfirmed.** The first
+    import of a person writes their BALANCE LOAN as an `opening_loan`, and from
+    then on the ledger is the truth. The largest on the September sheet is
+    ₹84,409, and three rows (Manjesh, Rahul Kumar, Bablu Kumar) deduct ₹2,000
+    with no balance at all, which the ledger shows as −₹2,000. HR should
+    confirm these before the first real import.
+
+88. 🟡 **Staged imports are never purged.** A `pay_imports` row that was
+    uploaded and never committed stays, with its rows; so does a committed or
+    removed one, as the record of what was imported. `boq_imports`' 24-hour
+    purge was not copied, because a committed row is the batch's only history.
+    Small (one sheet of ~40 rows), but it grows by one per upload.
+
+89. 🟡 **Taking an import out keeps the employees it CREATED.** Removing an
+    import deletes exactly the markings and ledger lines it wrote; a person it
+    added to the employee master stays, deliberately — a master record may
+    already be referenced elsewhere. Deactivate or delete them by hand.
 
 ## 8. Stale docs — do not trust these two files
 

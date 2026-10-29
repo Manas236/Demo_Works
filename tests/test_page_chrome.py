@@ -46,6 +46,11 @@ NO_CHROME = {
     "/po/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/dc/print/<id>":  "print-only: the document alone, /boq/print's shape",
     "/boq/print/<id>": "print-only: the document alone",
+    # Every issued payslip of a month, one per page (29 October 2026, §0
+    # fifty-fifth block). The single slip's print route takes an id and is
+    # outside this sweep; `tests/test_payroll.py` holds that neither renders
+    # the rail.
+    "/payroll/print-month": "print-only: every issued slip, the documents alone",
     # The two pages reached while logged OUT. `_nav()` links to Projects and
     # Settings and carries the settings dot and the persistence strip — every
     # one of which is either a refusal or a leak to somebody with no session, so

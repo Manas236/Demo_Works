@@ -64,6 +64,8 @@ from projectview import projectview_bp # UI for Project Detail
 from charge import charge_bp             # Employee & Misc Charges Ledger
 from employee import employee_bp         # Employee master: details and salary
 from attendance import attendance_bp     # Attendance + site-wise labour cost (C5)
+from payroll import payroll_bp           # Payslips + the pay ledger (29 Oct 2026)
+from payimport import payimport_bp       # The monthly attendance workbook import
 from approval import approval_bp         # Approval ladder + creator guard (B6/B7)
 from attachment import attachment_bp     # File attachments on a charge / receipt
                                  # (CC-2 B8). Bottom-of-graph like approval.py:
@@ -224,6 +226,8 @@ app.register_blueprint(attendance_bp)         # Mounted at /attendance — impor
                                               #   employee_bp's module for the
                                               #   master and settings for the OT
                                               #   multiplier; nothing imports it
+app.register_blueprint(payroll_bp)            # Mounted at /payroll — the payslip, §0 fifty-fifth block
+app.register_blueprint(payimport_bp)          # Mounted at /payroll/import
 app.register_blueprint(approval_bp)           # Mounted at /approval — B6's ladder.
                                               #   Eight endpoints minted from
                                               #   approval.DOCUMENTS; imports no

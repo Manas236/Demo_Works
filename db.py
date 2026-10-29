@@ -78,6 +78,8 @@ COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "
                "merged_ras",
                "projects",
                "charges", "employees", "attendance", "attachments",
+               # The payslip (29 Oct 2026, CLIENT_CHANGES.md §0 fifty-fifth block).
+               "pay_entries", "payslips", "pay_imports",
                "boq_imports", "wo_imports", "import_layouts",
                "doc_imports", "doc_import_layouts",
                "addresses", "gst_cache", "settings", "users", "roles")
@@ -267,6 +269,9 @@ LABELS = {
     "charges":    "employee and misc charges",
     "employees":  "employee records",
     "attendance": "attendance and labour cost",
+    "pay_entries": "advances, travel and loans",
+    "payslips":   "payslips",
+    "pay_imports": "attendance workbook imports",
     "attachments": "attached documents",
     "boq_imports": "Excel imports in progress",
     "wo_imports": "work-order Excel imports in progress",

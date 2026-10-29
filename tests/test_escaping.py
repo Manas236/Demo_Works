@@ -273,6 +273,11 @@ POISONED_COLLECTIONS = (
     # Import from Excel on every other document (18 Oct 2026) — the same
     # call one importer along: `doc_import_layouts` is a hash and a map.
     "doc_imports",
+    # The payslip, the pay ledger and the attendance import (29 Oct 2026,
+    # §0 fifty-fifth block). A slip's snapshot carries the employee's name,
+    # code and designation onto the printed sheet; an entry's note and an
+    # import's file, rows and sites reach their pages.
+    "pay_entries", "payslips", "pay_imports",
 )
 
 # ⚠ Collections that are still poisoned, but whose **count** may legitimately be
@@ -333,6 +338,23 @@ POISON_COUNT_NOT_GUARANTEED = {"settings"}
 # path. If a path vanished, do NOT delete the line until you have established
 # the sink it covered is still escaped — that deletion is the regression.
 POISONED_FIELDS = {
+    # 29 Oct 2026 (§0 fifty-fifth block). `employee_id`, `month` and `source`
+    # are poisoned too — they are strings the sweep cannot tell from text —
+    # and the pages that print them (`month_label()` falls back to the raw
+    # value) escape them, which is the point.
+    "pay_entries": (
+        "created_at", "employee_id", "employee_name", "note", "source",
+        "updated_at",
+    ),
+    "payslips": (
+        "created_at", "employee_id", "month", "snapshot/designation",
+        "snapshot/employee_code", "snapshot/employee_name", "updated_at",
+    ),
+    "pay_imports": (
+        "filename", "month", "month_guess", "rows[]/days[]/note",
+        "rows[]/designation", "rows[]/name", "rows[]/site", "uploaded_at",
+        "uploaded_by",
+    ),
     "products": (
         "description", "name", "part_no", "unit",
     ),

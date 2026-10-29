@@ -138,7 +138,12 @@ def test_every_reference_collection_has_a_seeder(client):
                      # `wo_imports` (5 Oct 2026, fix pass) for `boq_imports`'
                      # reason: a trace of somebody uploading THEIR OWN sheet.
                      "wo_imports",
-                     "doc_imports", "doc_import_layouts"}
+                     "doc_imports", "doc_import_layouts",
+                     # The payslip (29 Oct 2026, §0 fifty-fifth block). A seeded
+                     # pay entry is an advance or a loan nobody gave; a seeded
+                     # slip is pay nobody earned; a seeded import is an upload
+                     # nobody made — `attendance`'s reason, three times over.
+                     "pay_entries", "payslips", "pay_imports"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:
