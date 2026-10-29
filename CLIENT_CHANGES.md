@@ -5478,6 +5478,60 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 29 October 2026, by Manas Gawde — A BIGGER SF MARK ON EVERY PRINTED DOCUMENT, AND A DIRECTOR'S PER-PERSON ACCESS PAGE · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **fifty-sixth** occasion,
+> written directly on `antigravity-dev` like the fifty-fifth. The unpushed
+> office-PC pass rule stated there applies here too.
+>
+> **What prompted it:** the 28 October 2026 meeting with Yogesh Bankar (the
+> logo, and "a separate permissions page for the Director where the Owners are
+> not listed, so the Director handles permissions for his own employees"), and
+> the 27 October call ("his own control over granting / blocking access").
+>
+> **Commercial status: NO CHARGE**, on the 28 October list Manas recorded as
+> free.
+>
+> #### What is IN this pass
+>
+> 1. **The SF mark 1.5× on the letterhead banner.** Manas's choice between
+>    the mark alone and the whole banner: the mark alone, redrawn from
+>    `assets/logo.png` into the white the old one left. **The banner's size
+>    does not change**, so the 130 mm width chosen on 21 October — a page-count
+>    decision — stands, and no document gains a page. Every print golden's
+>    letterhead moves and nothing else; that is a declared re-baseline.
+> 2. **Per-person access (Manas's choice B over editing the staff roles).** A
+>    login may carry its own ALLOW and BLOCK lists on top of its roles:
+>    effective permissions = the roles' union, plus the allowed, minus the
+>    blocked. A page, `/access/`, under the existing `admin.users`, lists the
+>    staff logins and edits those two lists.
+>
+> #### The rules of the per-person lists, each declared
+>
+> - **Nobody on the page may be an Owner or a Director**, and the viewer is
+>   never on it. "Owners are not listed" is the client's; leaving Directors off
+>   too is this pass's reading of "his own employees" — two Directors could
+>   otherwise block each other. One constant, reversible.
+> - **A Director may ALLOW only what he holds himself**, and **never an
+>   `admin.*` permission** — the person page cannot mint an administrator.
+>   BLOCK may take any non-admin permission. A hidden module's permissions
+>   are shown disabled, as on `/roles/edit`.
+> - ⚠ **Allowing a delete does not get past `auth.OWNER_ONLY`.** The Owner
+>   gate is checked on top of the permission and is untouched.
+> - ⚠ **CC-2 B3 is NOT overridden.** "A Director cannot alter role
+>   definitions" still holds: `/roles` stays Owner-only and no role changes.
+>   The lists sit on the USER.
+> - Every change is appended to the login's own `access_history` — who, when,
+>   what was allowed and blocked — and never edited.
+> - ⚠ **`docs/ACCESS_MATRIX.md` is a grid of ROLES and cannot show a person's
+>   list.** It says so in its header, and `/access/<id>` shows a login's
+>   effective permissions from the same resolver the gate uses.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
