@@ -5532,6 +5532,52 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 29 October 2026, by Manas Gawde — THE SF MARK 1.5x ON SCREEN · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **fifty-seventh** occasion,
+> written directly on `antigravity-dev` like the fifty-fifth and the
+> fifty-sixth. The unpushed office-PC pass rule stated in the fifty-fifth
+> applies here too.
+>
+> **What prompted it:** the client (Samruddhi Fire) found the logo small
+> "wherever the logo shows up". The fifty-sixth block's item 1 answered that
+> for PAPER only: the SF mark inside the printed letterhead banner was made
+> 1.5× (`ff7e956`). The screen was not touched by it.
+>
+> **Commercial status: NO CHARGE**, the same 28 October list as the
+> fifty-sixth block.
+>
+> #### What is IN this pass
+>
+> 1. **Every on-screen SF roundel, 1.5×.** The rail's brand mark (28 → 42 px),
+>    the top bar's mark beside the wordmark (26 → 39 px), the login and
+>    first-run setup card (42 → 63 px) and the Market News page's bar
+>    (26 → 39 px) — each `branding.logo_img()` call and the CSS rule that sizes
+>    it, together.
+> 2. **The public landing page's header mark, 1.5×** (`deploy/landing/index.html`,
+>    44 → 66 px, and 36 → 54 px under its 400 px breakpoint). The file in git
+>    does not change the live page: the production copy at
+>    `/var/www/samruddhi-landing/` is a separate file that the next deploy
+>    copies over, as DEPLOY.md says.
+>
+> #### What is NOT in it
+>
+> - **No printed document moves.** The banner was the fifty-sixth block and
+>   stays as `ff7e956` left it; `branding.letterhead_top()`'s text fallback
+>   (`logo_img(56, doc=True)`) is print-only and is not touched. Every print
+>   golden must hold byte-for-byte; one that moves stops the pass.
+> - **No new artwork.** The screen roundel is still `assets/logo-64.png`,
+>   inlined on every page; a larger source would add weight to every page and
+>   is a separate decision.
+> - Every screen golden's `chrome` block moves (the rail and top bar draw the
+>   mark) and every page's `shell` block moves (the two CSS rules). That is a
+>   declared re-baseline, proved by reverting the size numbers alone.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
