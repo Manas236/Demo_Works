@@ -368,8 +368,17 @@ PAGES = {
     #       ("dashboard", "/"): ("4a9da9c12ffb2724", 107435,
     #        {"head": "6dc069f834093b21", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "6167869fb277a647", "main": "c7511bccc57b6167"})
-    ("dashboard",       "/"):                          ("eea710973601aeb5", 108004,
-        {"head": "cbce33bfb1cb901f", "shell": "a1e6c63a6d4c6ac2", "chrome": "6167869fb277a647", "main": "b5c4975fcffe0cbd"}),
+    # ⚠ **RE-BASELINED AGAIN, same day — §0 fifty-eighth block, item 5** (the
+    #   pictures). `head` AND `main` again: `head` carries `DASH_STYLES`,
+    #   which gains the `.pp-mini*` and `.pp-margin` rules; `main` gains the
+    #   compact per-project money row (two bars and the margin in words).
+    #   `shell` and `chrome` unmoved. **+1,447 bytes.** The value before
+    #   item 5:
+    #       ("dashboard", "/"): ("eea710973601aeb5", 108004,
+    #        {"head": "cbce33bfb1cb901f", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "6167869fb277a647", "main": "b5c4975fcffe0cbd"})
+    ("dashboard",       "/"):                          ("0f2414f4f3d8a0e2", 109451,
+        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "6167869fb277a647", "main": "15307fb77fe15f5e"}),
     ("quotations",      "/quotation/"):                ("693c1f033c5472df", 70833,
         {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "9d5163415990a990", "main": "7ec3c661ae9cc372"}),
     ("proformas",       "/proforma/"):                 ("ec746a1c49227b83", 76141,
@@ -507,8 +516,24 @@ PAGES = {
     #     rather than the test re-baselined: the heading is back to
     #     `<h3>Cash <span>GST included</span></h3>`, exactly as the
     #     forty-seventh block left it. That is the 33 bytes.
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("e296b70a116cbce6", 91222,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "4966a1cb8a5c0421"}),
+    # ⚠ **RE-BASELINED AGAIN, same day — §0 fifty-eighth block, item 5** (the
+    #   pictures). `main` ONLY: the P&L panel gains the *Where the money went*
+    #   heading, the **money waterfall** and the **progress spider** as inline
+    #   SVG, each with its own plain-text table. **+10,576 bytes**, which is
+    #   mostly the two tables and the SVG geometry.
+    #
+    #   `head` / `shell` / `chrome` unmoved, because the chart stylesheet
+    #   travels INSIDE the panel (`pnl_chart.CHART_CSS`, `PNL_CSS`'s
+    #   arrangement) — which is also why all eight rows of
+    #   `tests/test_pnl_access.py` are untouched by this item: none of those
+    #   four roles holds `project.pnl`. Measured by reverting `pnl.py`,
+    #   `pnl_chart.py`, `projectview.py` and `dashboard.py`: every old value
+    #   came back exactly. The value before item 5:
+    #       ("project page", …): ("e296b70a116cbce6", 91222,
+    #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "b51ad113e721dcbe", "main": "4966a1cb8a5c0421"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("db5530bdd8ec811e", 101798,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "b286567eadd6ef10"}),
     ("employees",       "/employee/"):                 ("ef174191c4b15546", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "a1e6c63a6d4c6ac2", "chrome": "73071add0b4a2df7", "main": "14f4d8921e680fc4"}),
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth

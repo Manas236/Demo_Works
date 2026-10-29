@@ -648,6 +648,20 @@ def can_see_pnl() -> bool:
     return has_perm("project.pnl")
 
 
+def can_see_wages() -> bool:
+    """May the signed-in reader see wage figures (CC-2 **B4**)?
+
+    `attendance.view` — Owner, Director and HR by default. Spec-traced to B4:
+    *"HR information is restricted from Sales, Purchase and Accounts."* ⚠ It
+    is asked through a predicate here for `can_see_pnl()`'s reason: this is
+    the one list, and `dashboard.py` may name no permission id in its own code
+    (`tests/test_nav_visibility.py`). The dashboard's per-project margin asks
+    it so a reader who may not see wages gets a figure that excludes site
+    labour **and is told so** — `projectview._pnl_panel()`'s own arrangement.
+    """
+    return has_perm("attendance.view")
+
+
 # ── Hidden blueprints — a module switched OFF for everybody ──────────────────
 #
 # A blueprint named here is refused by `_gate()` for **everyone, an Owner

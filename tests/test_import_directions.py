@@ -909,7 +909,32 @@ FORBIDDEN = [
     ("purchase",   "pnl", "any", "pnl.py imports purchase.py"),
     ("workorder",  "pnl", "any", "pnl.py imports workorder.py"),
     ("merged_ra",  "pnl", "any", "pnl.py imports merged_ra.py"),
-    ("dashboard",  "pnl", "any", "the dashboard carries counts, never a margin"),
+    # ⚠ **NARROWED 29 October 2026 from `"any"` to `"module"` —
+    #   CLIENT_CHANGES.md §0's fifty-eighth block, item 5, which authorises a
+    #   margin on the dashboard BY NAME.** The row was written when the
+    #   forty-seventh block confined every P&L figure to the project page's own
+    #   panel, and its reason — *"the dashboard carries counts, never a
+    #   margin"* — was true of the product, not of the import graph. The client
+    #   asked for one compact row per project with its margin on it, so that
+    #   reason no longer holds and the row says what still does.
+    #
+    #   What is still refused is a **module-level** arrow, and that is a real
+    #   constraint rather than a formality: `pnl.py` imports `boq`, `ra`,
+    #   `purchase`, `workorder`, `merged_ra` and `attendance`, and **every one
+    #   of those imports `dashboard.py`** for `BASE_STYLES`. A module-level
+    #   `dashboard -> pnl` is therefore a cycle at boot. `_progress_html()`
+    #   reaches it inside the function body, which is exactly how
+    #   `project.py -> pnl.py` has been pinned since 8 October and how
+    #   `dashboard.py` already reaches `product` and `address`.
+    #
+    #   The old row, verbatim:
+    #       ("dashboard",  "pnl", "any", "the dashboard carries counts, never a margin"),
+    ("dashboard",  "pnl", "module", "pnl.py imports boq, ra, purchase, "
+                                    "workorder, merged_ra and attendance, and "
+                                    "every one of those imports dashboard.py — "
+                                    "a module-level arrow is a cycle at boot. "
+                                    "_progress_html() reaches it in its "
+                                    "function body (§0 fifty-eighth block)"),
     # ⚠ project.py MAY reach pnl.py — inside `_untagged_line()` only. pnl.py
     #   imports boq, ra and purchase, and project.py is held to a leaf (every
     #   `("project", …)` row above): a module-level arrow would hang the whole
@@ -943,6 +968,25 @@ FORBIDDEN = [
     ("lineimage", "attachment", "module", "attachment imports approval, and "
                                           "through it the auth layer; root() "
                                           "reaches it in its function body"),
+
+    # ── pnl_chart.py — the P&L's two pictures (28 October 2026) ─────────────
+    # CLIENT_CHANGES.md §0, fifty-eighth block, item 5. A LEAF: it imports
+    # `branding` (the validated palette), `pipeline` (esc) and `quotation`
+    # (`_inr`, the one Indian money format) and nothing else. It is handed the
+    # dicts `pnl.py` returns and turns numbers into coordinates, so there is
+    # still exactly one place in this application where money is worked out.
+    *[("pnl_chart", mod, "any", "it is handed FINISHED figures and draws them; "
+                                "no arithmetic and nothing about a project is "
+                                "this leaf's to know")
+      for mod in ("pnl", "projectview", "project", "dashboard", "boq", "ra",
+                  "purchase", "attendance", "workorder", "merged_ra",
+                  "measurement", "auth", "store", "flask")],
+    # …and only the two pages that draw them import it.
+    *[(mod, "pnl_chart", "any", "only /projects/view and the dashboard draw "
+                                "these; a document module that knew about them "
+                                "would be one that could print a margin")
+      for mod in ("pnl", "boq", "ra", "purchase", "proforma", "invoice",
+                  "docsheet", "chrome", "project")],
 
     # ── projtag.py — filing a LOOSE document by hand (28 October 2026) ──────
     # CLIENT_CHANGES.md §0, fifty-eighth block, item 3. `projectview.py`
@@ -1057,6 +1101,13 @@ REQUIRED = [
     ("approval", "chrome", "BASE_STYLES and _nav for _decision_page(), at module "
                            "level, for the same reason"),
 
+    # 28 Oct 2026 (§0 fifty-eighth block, item 5) — the progress spider's
+    # *installation measured* axis. `approved_qty_by_line()` is the SAME
+    # answer `ra.overclaims()` caps the installation claim with, so the spoke
+    # and the guard cannot disagree about what counts as measured. Acyclic:
+    # `measurement.py` does not reach `pnl.py` at import time.
+    ("pnl", "measurement", "the approved measured quantity — the same figure "
+                           "ra.overclaims() uses as the installation ceiling"),
     ("ra", "boq",      "the schedule a claim is measured against, plus "
                        "_line_id / _item_no / _num — and _line_id is the key a "
                        "claim is matched on"),

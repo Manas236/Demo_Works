@@ -105,6 +105,7 @@ import attendance as AT
 import boq as BQ
 import merged_ra as MRA
 import purchase as PU
+import measurement as MS
 import ra as RA
 import workorder as WO
 from quotation import _inr
@@ -467,6 +468,172 @@ def po_coverage(project_id) -> dict:
     return {"lines": n, "covered": len(covered),
             "pct": (_paise(len(covered) / n * 100.0) if n else None),
             "orders": orders, "unmatched": unmatched}
+
+
+def progress_of(project_id, pnl: dict = None) -> list:
+    """
+    The five 0-100% axes the progress spider is drawn from — §0's
+    **fifty-eighth** block, item 5. `[{key, label, pct, note, numer, denom,
+    unit}, …]`, always five, always in this order.
+
+    | axis | numerator | denominator |
+    |---|---|---|
+    | supply dispatched | quantity on delivery challans, per `line_id` | the tip's **supply** quantity on priced lines |
+    | installation measured | `measurement.approved_qty_by_line()` | the tip's **installation** quantity on priced lines |
+    | billed | RA bills issued + tax invoices, taxable | planned revenue (the tip, at the net rate) |
+    | collected | received against the issued bills | billed **including GST** |
+    | cost covered by a PO | lines with a committed order | priced lines on the tip |
+
+    ⚠ **EVERY AXIS IS A RATIO OF TWO FIGURES OF THE SAME KIND**, which is the
+      only thing that makes five axes on one 0-100% scale readable at all. In
+      particular *collected* is cash against **GST-inclusive** billing, not
+      against the taxable value — a percentage taken across that boundary is
+      ABOUT.md §7 gap 31 wearing a different hat, and it would read about 15%
+      low for ever.
+
+    ⚠ **`pct` is `None`, never 0, when the denominator is nil or absent** —
+      this module's rule throughout. *"Nothing has been dispatched"* and
+      *"there is no supply on this schedule"* are different statements, and a
+      0% spoke claims the first while meaning the second. The spider draws no
+      spoke for a `None` and the table beside it prints the reason.
+
+    ⚠ **Clamped at 100 for the DRAWING only** (`pnl_chart.py` does that);
+      `pct` itself is not clamped, so an over-dispatch or an over-collection
+      is readable as one in the table rather than being silently flattened.
+
+    `pnl` is an already-computed `project_pnl()` so the page does not run the
+    whole thing twice.
+    """
+    pid = str(project_id or "").strip()
+    r = pnl if pnl is not None else project_pnl(pid)
+    tips, _elsewhere = tips_of(pid)
+
+    # ── The tip's quantities, per track, on priced lines only ──────────────
+    chain = set()
+    sup_qty = ins_qty = 0.0
+    want = {}
+    for tip in tips:
+        bid = str(tip.get("id") or "")
+        chain |= set(RA.revision_chain(bid))
+        for li in (tip.get("line_items") or []):
+            if not isinstance(li, dict) or li.get("is_header"):
+                continue
+            qty = _line_figure(li.get("total_qty"))
+            lid = BQ._line_id(li.get("line_id"))
+            if qty is None or not lid:
+                continue
+            if (BQ.net_rate(li, "supply") or 0.0) > 0:
+                sup_qty += qty
+                want[lid] = want.get(lid, 0.0) + qty
+            if (BQ.net_rate(li, "install") or 0.0) > 0:
+                ins_qty += qty
+
+    # ── Dispatched: the challans on this chain. `STORE` read DIRECTLY and
+    #   `challan.py` is NOT imported — the one-way trick `ra.py` already uses
+    #   for exactly this collection and for exactly this reason.
+    sent = 0.0
+    for dc in (STORE.get("delivery_challans") or {}).values():
+        if str(dc.get("boq_id") or "") not in chain:
+            continue
+        for it in dc.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            lid = BQ._line_id(it.get("line_id"))
+            if lid in want:
+                sent += float(BQ._num(it.get("qty"), 0.0))
+
+    # ── Measured: `measurement.py`'s own answer, which is also the ceiling
+    #   `ra.overclaims()` uses, so the spoke and the guard cannot disagree
+    #   about what counts. An unapproved sheet counts toward neither.
+    measured = 0.0
+    for bid in {str(tip.get("id") or "") for tip in tips}:
+        got = MS.approved_qty_by_line(bid, chain=set(RA.revision_chain(bid)))
+        measured += sum(float(v or 0.0) for v in (got or {}).values())
+
+    billed = r["to_date"]["billed"]
+    planned = r["planned"]["revenue"]
+    cash, cov = r["cash"], r["coverage"]
+
+    # ⚠ `short` is the name the SPIDER draws and `label` is the name the table
+    #   prints. Measured 29 October 2026 in headless Chromium at 390 px: the
+    #   full names on the chart pushed the page 156 px into a horizontal
+    #   scrollbar, because a radar's left and right labels run outward from
+    #   the rim. The chart is a glance and the table is the record, so the
+    #   chart gets the short word and nothing is lost — the full name, both
+    #   figures and the reason are all in the table underneath it.
+    def _axis(key, label, short, numer, denom, unit, why):
+        pct = (_paise(numer / denom * 100.0)
+               if denom not in (None, 0) and numer is not None else None)
+        return {"key": key, "label": label, "short": short, "pct": pct,
+                "numer": numer, "denom": denom, "unit": unit,
+                "note": "" if pct is not None else why}
+
+    return [
+        _axis("dispatched", "Supply dispatched", "Dispatched",
+              sent, sup_qty or None, "qty",
+              "no priced supply quantity on the latest revision"),
+        _axis("measured", "Installation measured", "Measured",
+              measured, ins_qty or None, "qty",
+              "no priced installation quantity on the latest revision"),
+        _axis("billed", "Billed", "Billed", billed, planned or None, "money",
+              "no planned revenue to bill against"),
+        _axis("collected", "Collected", "Collected", cash["received"],
+              cash["billed"] or None, "money",
+              "nothing billed including GST to collect against"),
+        _axis("bought", "Cost covered by a PO", "Bought", cov["covered"],
+              cov["lines"] or None, "lines",
+              "no priced BOQ lines to buy against"),
+    ]
+
+
+def waterfall_of(pnl: dict) -> dict:
+    """
+    The money waterfall's steps — §0's **fifty-eighth** block, item 5.
+    `{"start", "steps", "result", "planned_revenue", "planned_margin"}`.
+
+    ⚠ **IT STARTS AT WHAT WAS BILLED, NOT AT THE BOQ VALUE, AND THAT IS A
+      DELIBERATE DEPARTURE FROM THE CLIENT'S OWN WORDING.** The ask was *"BOQ
+      value, then each cost head stepping down, ending at margin"*. A bar
+      chart that begins at the **planned** revenue and subtracts the
+      **actual** cost heads ends at a figure that is neither the planned
+      margin nor the margin to date — it is planned revenue less actual cost,
+      which is precisely the estimate-and-actual blend this application
+      refuses everywhere else (ABOUT.md §7 gap 31's sibling, and the
+      forty-seventh block's *"a difference, never a blend"*).
+
+      So the waterfall is **all actual**: billed to date, less each cost head
+      as it stands, ending at the margin to date — every bar the same kind of
+      number. **The BOQ value and the planned margin are carried as labelled
+      REFERENCE marks** (`planned_revenue`, `planned_margin`), drawn as rules
+      across the chart rather than as bars in it, so the client sees the
+      schedule's value on the picture without any bar being a blend of two
+      worlds. The table underneath names all of it.
+
+    ⚠ **The result is `pnl.py`'s own `margin`, not a sum of these steps.**
+      Re-adding the bars would be a second arithmetic path to a figure that
+      already exists, and rounding would make the two disagree by a paisa
+      sooner or later.
+    """
+    td = pnl["to_date"]
+    steps = [
+        ("po", "Purchase orders", td["po"]["amount"]),
+        ("po_exempt", "PO charges outside the tax base",
+         td["po_exempt"]["amount"] if td["po_exempt"]["count"] else None),
+        ("wo", "Work orders", td["wo"]["amount"]),
+        ("charges", "Charges", td["charges"]["amount"]),
+        ("labour", "Site labour",
+         None if td["labour"]["withheld"] else td["labour"]["total"]),
+    ]
+    return {
+        "start": ("Billed to date", td["billed"]),
+        # A head with no figure at all is dropped; a head that is genuinely nil
+        # is KEPT at 0, because "we have bought nothing" is a fact worth a row.
+        "steps": [(k, lbl, v) for k, lbl, v in steps if v is not None],
+        "result": ("Margin to date", td["margin"]),
+        "planned_revenue": pnl["planned"]["revenue"],
+        "planned_margin": pnl["planned"]["margin"],
+        "labour_withheld": td["labour"]["withheld"],
+    }
 
 
 def project_pnl(project_id, include_labour: bool = True) -> dict:

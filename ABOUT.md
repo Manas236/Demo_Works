@@ -1405,6 +1405,16 @@ the trail and every refusal — see §3 *Attach a LOOSE document by hand* and §
 and `proforma.py` are being edited on an unpushed line, and because one
 definition of the write cannot drift the way four can.
 
+### 2m. `pnl_chart.py` — the P&L's two pictures (28 October 2026)
+
+A **leaf** added on 28 October 2026 (§0 **fifty-eighth** block, item 5). It
+imports `math`, `branding` (the validated palette), `pipeline` (`esc`) and
+`quotation` (`_inr`) — and **no module that knows a project, `pnl.py`
+included**: every figure arrives computed as the dicts `pnl.py` returns, and
+this module turns numbers into coordinates. That is what keeps exactly one
+place in this application where money is worked out. `projectview.py` and
+`dashboard.py` are its only importers. See §5 `/projects`.
+
 ### 2k. `chrome.py` — the app shell, and why it is the fourth leaf (14 September 2026)
 
 `BASE_STYLES`, `ICONS`, `USER_CHIP_STYLES`, `PINNED_PAGES`, `_user_chip()`,
@@ -12001,6 +12011,55 @@ a *comment*.)
 
 Tests: `tests/test_pnl_oct28.py` (32). `docs/ACCESS_MATRIX.md` regenerated.
 
+#### The two pictures — `pnl_chart.py` (28 October 2026, §0 **fifty-eighth** block, item 5)
+
+*"I want to see where the money went."* Server-rendered **inline SVG**, in a
+new leaf: a **money waterfall** and a **progress spider**, side by side under a
+*Where the money went* heading inside the P&L panel.
+
+- ⚠ **Screen only.** `/projects/view` has no print route and does not gain
+  one; no printed document changes and every print golden holds.
+- ⚠ **No JS, no CDN, no chart library.** The SVG is a Python f-string with its
+  geometry already computed — what this application does with HTML. Hover is
+  a native `<title>` per mark, which needs no script; every bar and spoke is
+  **direct-labelled** as well.
+- ⚠ **A PLAIN-TEXT TABLE SITS UNDER EVERY CHART, ALWAYS.** Not a fallback: a
+  failed render, a screen reader, forced colours and a print stylesheet all
+  leave the picture out and the figures must not go with it.
+- **The waterfall** — `pnl.waterfall_of()`. ⚠ **It starts at BILLED, not at
+  the BOQ value, which is a deliberate departure from the client's own
+  wording.** A chart that begins at **planned** revenue and subtracts
+  **actual** cost ends at a figure that is neither margin — the
+  estimate-and-actual blend this application refuses everywhere. The BOQ value
+  and the planned margin are **labelled reference rules** instead. The closing
+  bar is `pnl.py`'s own margin, never a re-sum of the bars. A **negative is
+  drawn below the axis** and carries its sign in its label, so the sign is
+  never colour alone.
+- **The spider** — `pnl.progress_of()`, five axes, each a percentage of its
+  own denominator: supply dispatched (challan qty / the tip's supply qty),
+  installation measured (`measurement.approved_qty_by_line()`, the **same**
+  answer `ra.overclaims()` caps with), billed (/ planned revenue), collected
+  (received / billed **including GST** — across that boundary it is gap 31
+  again), and cost covered by a PO. ⚠ **An axis with no denominator draws no
+  point** and the table says why; the drawn radius is clamped at 100% and the
+  printed figure is not.
+- **The palette is `branding.CHART_*` and nothing is minted.** Cost heads are
+  the **sequential** `CHART_NAVY` ramp; the result is a **status** colour.
+  ⚠ The categorical validator FAILS on that set and is the wrong test — the
+  checks that apply were run on 29 October 2026 and pass: the ramp is
+  monotone, adjacent ΔL ≥ 0.06, light end 2.09:1, single hue; `CHART_WON` is
+  3.35:1 and `CHART_LOST` 4.80:1 on white. `CHART_WARN` is 1.83:1 and is
+  **not** used as a fill. Grid, rings, zero line and connector are four named
+  recessive-chrome constants in `pnl_chart.py`; the drawing code holds no hex.
+- **The dashboard** gains one compact row per project — two bars (billed,
+  spent) and the margin in words, gated by `project.pnl` and reached through
+  `auth.can_see_pnl()` / `auth.can_see_wages()`. A mini waterfall would be
+  unreadable at that size and would need its own table on the busiest page.
+- Measured in headless Chromium at **1280 px and 390 px**: nothing this pass
+  added overflows at either width. The page does overflow at 390 px for
+  reasons that predate it — §7 **gap 91**.
+- Tests: `tests/test_pnl_charts_oct28.py` (30).
+
 #### The register's line — cost tagged to no project
 
 Under the `/projects` table, for a holder of `project.pnl`: *"Cost not tagged
@@ -15320,6 +15379,29 @@ text is unchanged, and every reference to them was moved with them.*
     header now; whether Ashwini can raise a proforma is answered by
     `/access/<id>`'s *What this login can do now*, not by the grid. The same
     holds for gap 80 (the Owner-only delete gate the grid also does not model).
+
+91. 🟡 **`/projects/view/<id>` overflows horizontally on a phone, and it is
+    NOT the charts — 29 October 2026, measured, OPEN.** Found while checking
+    the §0 fifty-eighth block's two new pictures in headless Chromium at
+    390 px, which is the only reason this is recorded at all: nothing on this
+    page had ever been opened at phone width before. **156 px of horizontal
+    scroll**, from six panels that each lay out wider than the viewport:
+
+    - the **P&L's Planned table** (5 columns, 505 px — the forty-seventh
+      block's, 8 October 2026);
+    - the **BOQ panel's** *Attach Existing* and *Detach* controls (the
+      `min-width` selects from 9 September 2026);
+    - the **BOQ**, **Raised from these BOQs**, **Work orders** and
+      **Expenses & Charges** tables (`table.data`, 368–415 px).
+
+    ⚠ **The two charts, their two tables and the dashboard's per-project row
+    contribute ZERO**, measured element by element at 1280 px and 390 px; and
+    the *Attach document* panel added by item 3 of the same block was fixed in
+    it rather than left. Everything above predates that pass and was
+    deliberately **not** widened into: a `table.data` that scrolls is a
+    different fix (overflow wrapper, or a card layout per row) on six panels
+    across four modules, and it needs its own decision. The owner works from a
+    phone (§5, *The two register SCREENS*), so this is worth doing.
 
 ## 8. Stale docs — do not trust these two files
 

@@ -386,6 +386,21 @@ DASH_STYLES = """
             text-decoration:none; border:1px solid #c7d2fe;
             border-radius:999px; padding:.05rem .4rem; }
   .pp-pnl:hover { background:#eef2ff; }
+  /* The compact per-project money row (28 October 2026). `min-width:0` on the
+     track is what keeps it off a horizontal scrollbar at 390px. */
+  .pp-mini { margin-top:.5rem; padding-top:.5rem;
+             border-top:1px dashed var(--border); }
+  .pp-mini-row { display:flex; align-items:center; gap:.5rem;
+                 font-size:.72rem; color:#666; margin-bottom:.25rem; }
+  .pp-mini-row span { flex:0 0 3.1rem; }
+  .pp-mini-row .meter { flex:1 1 auto; min-width:0; margin:0; }
+  .pp-mini-row b { flex:0 0 auto; font-variant-numeric:tabular-nums;
+                   color:var(--navy); }
+  .pp-margin { margin-top:.35rem; font-size:.74rem; color:#666;
+               display:flex; justify-content:space-between; gap:.5rem; }
+  .pp-margin b { font-variant-numeric:tabular-nums; }
+  .pp-up b { color:#0CA30C; }
+  .pp-down b { color:#D03B3B; }
   /* Per-project progress. The bar is `.meter`, reused verbatim from the
      win-rate tile — same track, same fill, same 5px height. The row is padded
      and pulled back by the same .55rem as `.rq-row`, which leaves the text
@@ -1807,6 +1822,12 @@ def _progress_html(m) -> str:
     #   that predicate. Asked ONCE, outside the loop: resolving a user's roles
     #   is not free and this panel draws up to PROGRESS_LIMIT rows.
     can_pnl = auth.can_see_pnl()
+    # ⚠ B4's wall, asked here as the panel asks it: a reader who may not see
+    #   wages gets a margin that excludes site labour and is told so, which
+    #   is `_pnl_panel()`'s own arrangement. Through the predicate and never
+    #   by naming the id — `test_the_dashboard_names_no_permission_id_
+    #   anywhere_in_its_code`, the same rule `can_see_pnl()` is asked under.
+    can_wages = auth.can_see_wages()
 
     out = ""
     for r in rows[:PROGRESS_LIMIT]:
@@ -1847,6 +1868,52 @@ def _progress_html(m) -> str:
                         f' title="Planned against actual, billed against '
                         f'collected">&#8377; P&amp;L</a>')
 
+        # ── ONE COMPACT ROW PER PROJECT (28 October 2026) ──────────────────
+        #
+        # §0's fifty-eighth block, item 5, which authorises a margin figure
+        # HERE by name — the forty-seventh block had confined every figure to
+        # the project page's own panel.
+        #
+        # ⚠ **A MINI BAR PAIR AND A FIGURE, NOT A SECOND WATERFALL.** At this
+        #   size a five-bar waterfall is unreadable and would need its own
+        #   table beside it on the densest panel of the busiest page. Two
+        #   bars — billed, and spent against it — plus the margin in words is
+        #   the same story at the size the space allows, and the P&L pill
+        #   beside it goes to the real chart. The figures are **text**, so
+        #   nothing here is colour-alone.
+        #
+        # ⚠ **`pnl.py` IS REACHED IN THE FUNCTION BODY and never at module
+        #   level.** `pnl.py` imports boq, ra, purchase, workorder,
+        #   merged_ra and attendance, every one of which imports this module
+        #   for `BASE_STYLES` — a module-level arrow would be a cycle at boot.
+        #   `tests/test_import_directions.py` pins it at `"module"` scope, the
+        #   same way `project.py -> pnl.py` has been pinned since 8 October.
+        mini = ""
+        if r["pid"] and can_pnl:
+            import pnl as PNL
+            pr = PNL.project_pnl(r["pid"], include_labour=can_wages)
+            billed = pr["to_date"]["billed"] or 0.0
+            spent = pr["to_date"]["actual"] or 0.0
+            margin = pr["to_date"]["margin"]
+            top = max(billed, spent)
+            b_pct = (billed / top * 100.0) if top else 0.0
+            s_pct = (spent / top * 100.0) if top else 0.0
+            tone = "pp-up" if (margin or 0.0) >= 0 else "pp-down"
+            wages = "" if can_wages else " (excl. labour)"
+            mini = f"""
+            <div class="pp-mini">
+              <div class="pp-mini-bars">
+                <div class="pp-mini-row"><span>Billed</span>
+                  <div class="meter"><i style="width:{min(b_pct, 100.0):.1f}%;background:{B.CHART_NAVY[2]}"></i></div>
+                  <b>{compact(billed)}</b></div>
+                <div class="pp-mini-row"><span>Spent</span>
+                  <div class="meter"><i style="width:{min(s_pct, 100.0):.1f}%;background:{B.CHART_NAVY[4]}"></i></div>
+                  <b>{compact(spent)}</b></div>
+              </div>
+              <div class="pp-margin {tone}">Margin to date{wages}
+                <b>{rupees(margin)}</b></div>
+            </div>"""
+
         out += f"""
           <div class="pp-row">
             <div class="pp-hd">
@@ -1854,7 +1921,7 @@ def _progress_html(m) -> str:
               <span class="pp-fig">{rupees(r['claimed'])} of {rupees(r['approved'])}</span>
             </div>
             {bar}
-            <div class="pp-note">{note}</div>
+            <div class="pp-note">{note}</div>{mini}
           </div>"""
 
     extra = len(rows) - PROGRESS_LIMIT

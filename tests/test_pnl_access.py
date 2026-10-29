@@ -97,7 +97,20 @@ BEFORE = {
     #   `test_only_owner_and_director_see_the_panel` below still holds.
     #   The old value:
     #       ("operation-head", PROJECT_PAGE): ("62d3055badec47a3", 73998),
-    ("operation-head",   PROJECT_PAGE): ("a371184c00c7be5b", 76351),
+    #
+    #   ⚠ **AND AGAIN, same day — §0 fifty-eighth block, item 5**, for a
+    #     reason that is not about the P&L at all. **+180 bytes**, still this
+    #     one row of the eight. Measuring the pages in headless Chromium at
+    #     390 px found that the *Attach document* panel's two `<select>`s
+    #     carried `min-width:260px`, which ran the page ~56 px into a
+    #     horizontal scrollbar on a phone. They now wrap and shrink
+    #     (`flex`/`min-width:0`/`max-width`), which is 180 bytes of inline
+    #     style — and Operation Head is the one role here that holds
+    #     `project.edit` and therefore sees that panel at all. The other three
+    #     rows are untouched by it, as they were by the panel itself.
+    #     The value before item 5:
+    #       ("operation-head", PROJECT_PAGE): ("a371184c00c7be5b", 76351),
+    ("operation-head",   PROJECT_PAGE): ("06f972a3a467b58f", 76531),
     ("operation-head",   REGISTER):     ("fccc00dd8367f34e", 46214),
     ("sales-manager",    PROJECT_PAGE): ("dec7a61b388ce6c7", 72862),
     ("sales-manager",    REGISTER):     ("08984bbd0406f98a", 45563),

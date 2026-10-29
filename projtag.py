@@ -369,10 +369,19 @@ def picker_html(project_id: str, form_action: str) -> str:
     a_groups = _groups(cand)
     d_groups = _groups(held)
 
+    # ⚠ **`min-width` on the select is what put this panel into a horizontal
+    #   scrollbar at 390 px.** Measured in headless Chromium: the select at
+    #   260 px plus the button plus the panel's padding ran ~56 px past a
+    #   390 px viewport. `flex-wrap` plus `max-width` and `min-width:0` lets
+    #   the row break and the select shrink instead; at 1280 px it is
+    #   unchanged. (The `table.data` panels above it overflow at 390 px too
+    #   and that is NOT this pass's — ABOUT.md §7, recorded separately.)
+    _sel = ("flex:1 1 200px;min-width:0;max-width:260px;")
+    _row = "display:flex;gap:.5rem;flex-wrap:wrap;max-width:100%;"
     attach_ctl = (
-        f'<form method="POST" action="{form_action}" style="display:flex;gap:.5rem;">'
+        f'<form method="POST" action="{form_action}" style="{_row}">'
         f'<input type="hidden" name="action" value="attach_doc">'
-        f'<select name="doc" class="form-control" style="min-width:260px;" required>'
+        f'<select name="doc" class="form-control" style="{_sel}" required>'
         f'<option value="">-- Select an untagged document --</option>'
         f'{a_groups}</select>'
         f'<button type="submit" class="btn btn-ghost">Attach</button></form>'
@@ -382,9 +391,9 @@ def picker_html(project_id: str, form_action: str) -> str:
         'or follows a schedule. Nothing is waiting to be attached.</p>')
 
     detach_ctl = (
-        f'<form method="POST" action="{form_action}" style="display:flex;gap:.5rem;">'
+        f'<form method="POST" action="{form_action}" style="{_row}">'
         f'<input type="hidden" name="action" value="detach_doc">'
-        f'<select name="doc" class="form-control" style="min-width:260px;" required>'
+        f'<select name="doc" class="form-control" style="{_sel}" required>'
         f'<option value="">-- Select a document filed by hand --</option>'
         f'{d_groups}</select>'
         f'<button type="submit" class="btn btn-ghost">Detach</button></form>'
@@ -407,11 +416,11 @@ def picker_html(project_id: str, form_action: str) -> str:
         Every attach and detach is written on the document&rsquo;s own trail.
       </p>
       <div style="background:var(--surface); padding:1rem; border-radius:6px; display:flex; flex-wrap:wrap; gap:1.5rem; align-items:flex-end;">
-        <div>
+        <div style="flex:1 1 260px; min-width:0;">
           <p style="margin:0 0 0.5rem 0; font-weight:600; font-size:0.9rem;">File under this project</p>
           {attach_ctl}
         </div>
-        <div style="border-left:1px solid var(--border); padding-left:1.5rem;">
+        <div style="flex:1 1 260px; min-width:0; border-left:1px solid var(--border); padding-left:1.5rem;">
           <p style="margin:0 0 0.5rem 0; font-weight:600; font-size:0.9rem;">Remove a hand-filed document</p>
           {detach_ctl}
         </div>

@@ -82,6 +82,10 @@ import pnl as PNL
 # the write, the trail and every refusal live in that leaf; `purchase.py`,
 # `proforma.py`, `workorder.py` and `charge.py` are all untouched by it.
 import projtag as PT
+# 28 Oct 2026 (§0 fifty-eighth block, item 5) — the P&L's two pictures. A LEAF:
+# every figure arrives computed from `pnl.py` and that module turns numbers
+# into coordinates, so there is still exactly one place money is worked out.
+import pnl_chart as PC
 
 projectview_bp = Blueprint("projectview", __name__, url_prefix="/projects")
 
@@ -977,6 +981,29 @@ def _pnl_panel(proj) -> str:
             f'project page read on its own otherwise looks like the whole '
             f'picture. Tag each record to its project to move it onto one.</div>')
 
+    # ── THE TWO PICTURES (28 October 2026) ─────────────────────────────────
+    #
+    # §0's fifty-eighth block, item 5: *"I want to see where the money went."*
+    # Server-rendered inline SVG, no JS and no CDN — the money waterfall and
+    # the progress spider, **each with a plain-text table of the same numbers
+    # underneath it**, which is not a fallback but the thing a screen reader,
+    # a forced-colours mode and a failed render are all left with.
+    #
+    # ⚠ **SCREEN ONLY.** This page has no print route and does not gain one
+    #   here; no printed document changes and every print golden holds.
+    #
+    # ⚠ **No arithmetic on this side of the call.** `pnl.waterfall_of()` and
+    #   `pnl.progress_of()` hand over finished figures and `pnl_chart.py`
+    #   turns them into coordinates. The waterfall deliberately starts at
+    #   BILLED and carries the BOQ value as a labelled reference rule rather
+    #   than as its first bar — see `pnl.waterfall_of()`'s docstring: a bar
+    #   chart from planned revenue down through actual cost ends at a figure
+    #   that is neither margin, which is the blend this app refuses.
+    charts_html = (f'{PC.CHART_CSS}<div class="pnl-figs">'
+                   f'{PC.waterfall_html(PNL.waterfall_of(r))}'
+                   f'{PC.spider_html(PNL.progress_of(proj.get("id"), r))}'
+                   f'</div>')
+
     # ── 3. CASH — GST included ──────────────────────────────────────────────
     cash_notes = ['Receipts are recorded against RA bills only. Outstanding is '
                   'only as correct as the write-offs recorded against them make '
@@ -1029,6 +1056,8 @@ def _pnl_panel(proj) -> str:
       {variance_html}
       {mv_html}
       {untagged_html}
+      <h3>Where the money went <span>screen only &middot; the same figures in words under each picture</span></h3>
+      {charts_html}
       <h3>Cash <span>GST included</span></h3>
       {cash_html}
     </div>"""
