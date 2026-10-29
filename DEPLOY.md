@@ -1226,7 +1226,7 @@ anything in §8 ships (`tools/seed_users.py:22-23`).
 - [ ] nginx `client_max_body_size 8m`, and a 4 MB PDF uploads successfully
 - [ ] TLS live; 3306 not reachable from outside the box
 - [ ] First Owner created; `/setup` no longer reachable
-- [ ] **`tools/reconcile_role_permissions.py --write` run — §9.4a.** Mandatory on any deploy carrying a new permission; without it the permission reaches **no live role, the Owner included**, and the symptom is silence. 27 Oct 2026: `docnum.override`
+- [ ] **`tools/reconcile_role_permissions.py --write` run — §9.4a.** Mandatory on any deploy carrying a new permission; without it the permission reaches **no live role, the Owner included**, and the symptom is silence. 27 Oct 2026: `docnum.override`. 29 Oct 2026: the five **`payroll.*`** permissions (`payroll.view`, `.edit`, `.issue`, `.import`, `.delete` — Owner, Director and HR; §0 fifty-fifth block). ⚠ **The §0 fifty-sixth, fifty-seventh and fifty-eighth blocks minted NONE** — staff access runs under the existing `admin.users`, and the project pass's one new endpoint (`/raboth/create`) under the existing `ra.create`; `project.pnl` already existed and only gained `dashboard.index` in its `PANEL_PERMISSIONS` tuple, which grants nothing new. The outstanding list for the next deploy is [docs/PENDING_DEPLOY.md](docs/PENDING_DEPLOY.md) §2.
 - [ ] **`/settings` fully populated with the client's real GSTIN, PAN and bank details — §6.3**
 - [ ] **One document of each type printed and the letterhead read by a human** — no `27AAAAA0000A1Z5`, no `SPECIMEN BANK LTD.`
 - [ ] **`.env` contains `SAMRUDDHI_DEMO_DATA=false`** — §6, §9.3. (It is the code's default too; set it explicitly so nothing about this box is implicit.)

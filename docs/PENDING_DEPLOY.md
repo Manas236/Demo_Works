@@ -1,0 +1,270 @@
+# PENDING_DEPLOY — everything production has not got yet
+
+> **This file is the INPUT to one consolidated production deploy.** It is not a
+> plan and not a decision: it is the list of what is on `antigravity-dev` and
+> not on the box, grouped by feature, with every step production needs beside
+> the feature that needs it.
+>
+> **It does not replace [DEPLOY.md](../DEPLOY.md).** That file owns how the box
+> is built and what the go-live checklist is; this one owns *what is
+> outstanding right now*. Where a step here has a §, it is DEPLOY.md's.
+>
+> ⚠ **Nothing below has been run.** This was written on a cloud checkout with
+> **no MySQL**, no production credentials and no access to the box. Every
+> figure is measured on that checkout; every instruction is to be carried out
+> by a human on the server.
+
+---
+
+## 0. Where production is, and where this line is
+
+| | |
+|---|---|
+| **Production is at** | `3d4692c` — *"Bring prod-only edits from samruddhi-prod (00122b9) into repo"*, 24 October 2026 |
+| **This line is at** | `976010d` (see §1) |
+| **Commits outstanding** | **24** |
+| **§0 blocks outstanding** | fifty-third, fifty-fourth, fifty-fifth, fifty-sixth, fifty-seventh, **fifty-eighth** |
+| **Suite on this checkout** | **4,920 passed · 20 skipped · 0 failed** (CPython 3.13.17, `.venv` from `requirements.txt` + `pytest==9.1.1`, **client workbooks absent**) |
+
+⚠ **The suite total depends on the environment** — ABOUT.md §1 owns the table.
+20 skipped here is the no-workbooks configuration. On the production box the
+total will differ and that is expected; what matters is **0 failed**.
+
+---
+
+## 1. The 24 commits, oldest first
+
+| # | SHA | What |
+|---|---|---|
+| 1 | `c35b710` | Preloaded signature and company stamp on every signed print (§0 **53rd**, change 1) |
+| 2 | `02f1e10` | Make column on the purchase order and the draft PO (§0 53rd, change 2) |
+| 3 | `c6a385a` | No browser header or footer on a printed document (§0 53rd, change 3) |
+| 4 | `5132ee3` | §0 **fifty-fourth** block — the 27 October call |
+| 5 | `8904422` | A document number typed by hand, forward only (§0 54th, item A) |
+| 6 | `2ce5d6f` | A search on the attendance pages (§0 54th, item B) |
+| 7 | `0341841` | Audits C and D — the rounding finding recorded (ABOUT.md §7 gap 84). **Docs only** |
+| 8 | `1fdc09e` | HSN editable on an issued purchase order's lines (`/purchase/edit`) |
+| 9 | `a6ab6c4` | Project page: documents follow their BOQ, revisions no longer stacked |
+| 10 | `9b94016` | §0 **fifty-fifth** block — the payslip and the attendance import |
+| 11 | `078e1e3` | Attendance: half day and paid leave; the payslip's month reader |
+| 12 | `de9d757` | The payslip, the pay ledger and the attendance workbook import |
+| 13 | `f99c705` | §0 **fifty-sixth** block — a bigger SF mark, a Director's access page |
+| 14 | `ff7e956` | The SF mark 1.5× on the letterhead banner (§0 56th, item 1) |
+| 15 | `93c09e7` | Staff access: a login's own ALLOW and BLOCK lists (§0 56th, item 2) |
+| 16 | `90162b9` | §0 **fifty-seventh** block — the SF mark 1.5× on screen |
+| 17 | `c62f96a` | The SF mark 1.5× on screen |
+| 18 | `702a98e` | §0 **fifty-eighth** block — the project page becomes the job's own page |
+| 19 | `19dc55d` | A BOQ makes its own project (§0 58th, item 1) |
+| 20 | `7f2fd07` | Labour lands on the project by itself (§0 58th, item 2) |
+| 21 | `7308d26` | Attach a loose document to a project by hand (§0 58th, item 3) |
+| 22 | `456c980` | The project P&L, one click away (§0 58th, item 4) |
+| 23 | `e793dfa` | The waterfall and the progress spider (§0 58th, item 5) |
+| 24 | `976010d` | RA · Supply & Installation in one POST; C1's prerequisite off (§0 58th, item 6) |
+
+---
+
+## 2. THE ONE STEP THAT IS MANDATORY AND SILENT IF MISSED
+
+```bash
+sudo -u samruddhi .venv/bin/python tools/backup_db.py --label pre-reconcile
+sudo -u samruddhi .venv/bin/python tools/reconcile_role_permissions.py          # report first
+sudo -u samruddhi .venv/bin/python tools/reconcile_role_permissions.py --write  # then grant
+```
+
+⚠ **`auth.ensure_builtin_roles()` never rewrites an existing role's permission
+list**, and that is correct. The cost is that **a permission minted in a later
+pass reaches no live role, the Owner included** — and `auth._gate()` has no
+Owner bypass, so the page it guards is unreachable by everybody and **the
+symptom is silence**. This has shipped three times already (B6, C4/C5, C2).
+
+**Six permissions were minted since production:**
+
+| permission | from | granted to, by default |
+|---|---|---|
+| `payroll.view` | `de9d757` (§0 55th) | Owner, Director, HR |
+| `payroll.edit` | `de9d757` | Owner, Director, HR |
+| `payroll.issue` | `de9d757` | Owner, Director, HR |
+| `payroll.import` | `de9d757` | Owner, Director, HR |
+| `payroll.delete` | `de9d757` | Owner, Director, HR *(Owner-only on 2 routes)* |
+| `docnum.override` | `8904422` (§0 54th, item A) | Owner, Director — a **panel** permission |
+
+⚠ **The §0 fifty-eighth block minted NONE.** Its one new endpoint,
+`/raboth/create`, is classified under the **existing** `ra.create`; the P&L's
+`project.pnl` already existed (8 October 2026) and only gained `dashboard.index`
+in its `PANEL_PERMISSIONS` tuple, which grants nothing new. `project.edit`
+gates the new *Attach document* control and already existed. **So the reconcile
+above is for the payroll pass and `docnum.override`, and nothing in the most
+recent block depends on it.**
+
+⚠ **Granting a permission is a decision about who may do what.** The tool
+refuses to take it silently: run it **without** `--write` first, read the
+report, and only then write. See `tools/reconcile_role_permissions.py`'s header
+and DEPLOY.md §9.4a.
+
+---
+
+## 3. Requirements — nothing changed
+
+```
+git diff 3d4692c..HEAD -- requirements.txt    # empty
+```
+
+No dependency was added, removed or re-pinned in any of the 24 commits. **No
+`pip install` step is needed.** `openpyxl` and `xlrd`, which the attendance
+workbook import reads, were already runtime pins from 29 September 2026.
+
+---
+
+## 4. Migrations — ONE tool, NOT run, `--dry-run` first
+
+| tool | from | status |
+|---|---|---|
+| `tools/backfill_marking_projects.py` | pre-dates production | **unchanged** by these commits |
+
+⚠ **The 24 commits ship NO new migration, and that is by design.** Every data
+shape they add is written forward only and absent means something definite:
+
+- `number_override` (§0 54th) — absent means *minted by the counter*
+- `rate_model` / the two new muster statuses (§0 55th) — a record without them
+  reads exactly as it did
+- `created_from: "boq"` (§0 58th item 1) — **provenance only, nothing branches
+  on it**; absent means *made by hand*
+- `project_trail` (§0 58th item 3) — absent means *never moved by hand*
+- `raised_as_both` (§0 58th item 6) — absent means *raised on its own*, and the
+  set rules never touch such a record
+
+**Nothing is backfilled and nothing needs to be.** If a later pass ever does
+need one, it ships as an idempotent tool with `--dry-run` and is run by a human
+after a backup, which is this repo's standing rule.
+
+⚠ **No database backup was taken before any of this work** because there is no
+MySQL on the machine it was built on and none was possible. The backup in §2 is
+the first one in this sequence and must be real.
+
+---
+
+## 5. Feature by feature — what the box needs beside the code
+
+### 5.1 Signature and company stamp on every signed print — `c35b710` (§0 53rd)
+
+**Needs a human with the artwork, at `/settings`, as an OWNER.**
+
+- [ ] Sign in as an **Owner** (a Director is refused with a 403 and is not even
+      shown the control) and open `/settings`
+- [ ] **Signature & Stamp** section → upload the director's signature
+- [ ] → upload the round company stamp
+- [ ] Print one document of each type and read the foot: both must sit above
+      *Authorised Signatory*
+
+Storage is `SIGNATURE_IMAGE` / `STAMP_IMAGE` on the company settings record as
+PNG data URIs, re-encoded from the pixels alone (no metadata), 600 px long
+side. **No route and no permission** — nothing to reconcile.
+
+⚠ **Until these are uploaded every signed document prints exactly as it does
+today.** The feature is inert, not broken; there is nothing to roll back if the
+client is not ready.
+
+### 5.2 Starting numbers for the hand-typed document number — `8904422` (§0 54th A)
+
+- [ ] Ask the client which series their paper book is actually running
+- [ ] `/settings` → set the floors. **Leaving every box blank is the correct
+      answer unless they say otherwise** (DEPLOY.md §9.7)
+- [ ] Reconcile `docnum.override` — see §2
+
+### 5.3 The payslip and the attendance import — `de9d757` (§0 55th) — **CHARGED**
+
+- [ ] Reconcile the five `payroll.*` permissions — **see §2, mandatory**
+- [ ] Confirm with HR the **opening loan balances** the first import will write
+      (ABOUT.md §7 gap 87: the largest on the September sheet is ₹84,409, and
+      three rows deduct ₹2,000 against no balance, which shows as −₹2,000)
+- [ ] ⚠ The client's workbooks are **not** in git — they carry staff names and
+      wages. The importer reads whatever is uploaded; nothing needs installing
+
+### 5.4 The SF mark 1.5× — `ff7e956`, `c62f96a` (§0 56th/57th)
+
+- [ ] **Copy the landing page**, which is where the only out-of-git copy lives:
+
+```bash
+sudo cp deploy/landing/index.html /var/www/samruddhi-landing/index.html
+```
+
+⚠ **`deploy/landing/index.html` in git is not the live page** — nginx serves
+`/var/www/samruddhi-landing/`, a separate file, and a `git pull` does not touch
+it. No nginx reload is needed for a content change. Back up the live file
+first. If the logo changed, copy `assets/logo-mark-256.png` into the directory
+nginx serves for `/_landing/` as well; **it did not change in these commits.**
+
+### 5.5 Staff access, a login's own ALLOW/BLOCK lists — `93c09e7` (§0 56th item 2)
+
+- [ ] Nothing to configure. Two new endpoints under the **existing**
+      `admin.users`; no permission minted
+- [ ] ⚠ Tell whoever reads `docs/ACCESS_MATRIX.md` that **it is a grid of ROLES
+      and cannot show a person's list** (ABOUT.md §7 gap 90). *"Can Ashwini
+      raise a proforma?"* is answered by `/access/<id>`, not by the grid
+
+### 5.6 The project page becomes the job's own page — §0 **fifty-eighth**
+
+- [ ] Nothing to configure, no permission minted, no migration
+- [ ] ⚠ **Tell the client what changed about raising a claim**, because this is
+      the one behaviour change an operator will notice:
+      **a delivery challan and a measurement sheet are no longer required
+      before an RA bill.** The claim still cannot exceed the approved
+      quantity, and **where an approved measurement sheet exists the
+      installation claim is still capped at the measured quantity** — the form
+      says which cap applies on every claim
+- [ ] ⚠ Tell them the **project picker on `/boq/create` now defaults to
+      "New project from this BOQ"**. Existing behaviour is still there (an
+      existing project, or none) and a revision never makes a project
+- [ ] Watch the first few BOQs: a job spelled two ways is **one** project
+      (`pipeline.norm_name()`), and a project made this way has **no site**
+      until somebody links one on *Edit Project*. **Site labour needs that
+      link** — it is the join key
+
+---
+
+## 6. What a human must look at after the deploy
+
+- [ ] **`python -m pytest -q` on the server, green.** The suite no longer reads
+      the checkout's `.env` (25 September 2026), so it is a usable post-deploy
+      check there
+- [ ] **One document of each type printed and read by a human.** ⚠ **FOUR of
+      the 24 commits DO move printed documents** — `02f1e10` (the **Make**
+      column on the purchase order and the draft PO), `c6a385a` (no browser
+      header or footer), `ff7e956` (the SF mark 1.5× inside the letterhead
+      banner) and `c62f96a`. Each re-baselined `tests/test_print_golden.py`
+      with its own measurement, and that is exactly why a human reads one:
+      a golden proves a document did not change **by accident**, not that the
+      change was right.
+      ⚠ **The §0 fifty-eighth block moves NO print golden at all** —
+      `git diff 702a98e..HEAD -- tests/test_print_golden.py` is empty, and
+      `/projects/view` has no print route to leak the new charts onto. The
+      signature and stamp block appears only once §5.1 is done
+- [ ] `/projects/view/<id>` opened by an **Owner** — the P&L's two new charts
+      draw as inline SVG with a plain-text table under each. ⚠ **They were
+      checked in headless Chromium at 1280 px and 390 px and add no horizontal
+      overflow; the page does overflow at 390 px for reasons that predate this
+      work** (ABOUT.md §7 **gap 91**, six panels across four modules). The owner
+      works from a phone, so expect him to notice it
+- [ ] `/ra/` opened — a Supply & Installation set raised at `/raboth/create`
+      reads as a header row with its two legs indented under it
+- [ ] The red persistence strip is **absent** (DEPLOY.md §11)
+
+---
+
+## 7. What is deliberately NOT in this deploy
+
+- **Approvals stay switched off** (`approval.LADDER_ON = False`) and the
+  **product catalogue stays hidden** (`auth.HIDDEN_BLUEPRINTS`). Neither was
+  touched. The client is to be reminded of both at go-live (DEPLOY.md §12)
+- **No `/templates`, no `/static`, no CDN and no JavaScript chart library** were
+  introduced. The two new charts are server-rendered inline SVG
+- **No print route was added to `/projects/view`**, so nothing about the P&L or
+  its charts can reach paper
+- **`docs/ACCESS_MATRIX.md` was regenerated** in the same commits that changed a
+  permission, a role or a route classification, which
+  `tests/test_access_matrix_doc.py` enforces. Nothing to do on the box
+
+---
+
+*Written 29 October 2026 on a cloud checkout with no MySQL and no access to
+production. Every step above is for a human on the server.*
