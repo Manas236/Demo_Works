@@ -6157,6 +6157,21 @@ red `.db-down` strip sits in the same sticky stack **above** the bar and
 works exactly as it did. §2k has the registry; the paragraphs below are the
 history of the bar it replaced and are kept as such.
 
+⚠ **The SF mark's on-screen sizes (29 October 2026, CLIENT_CHANGES.md §0
+fifty-seventh block — 1.5×, the client found the logo small everywhere):**
+the rail head's mark is `B.logo_img(42)` with `.rail-brand img` at 42px
+(was 28), beside the 34px collapse button in the 56px head; the top bar's
+mark is `B.logo_img(39)` with `.topbar .nav-brand img` at 39px (was 26),
+inside the 56px bar with no change to its height; the login / first-run card
+(`auth._standalone()`) is `B.logo_img(63)` with `.auth-brand img` at 63px
+(was 42); Market News (`extractor.py`) is `B.logo_img(39)` (was 26) in its
+60px bar. Each `logo_img()` call and its CSS rule move together — the call
+writes the size on the element and the rule says it again. All four still
+draw `LOGO_URI`, the 64px PNG, so the rail's 42px mark is drawn from a
+64px source and a 2× screen upsamples it; a larger source is a separate
+decision (it is inlined on every page). Every screen golden's `shell` and
+`chrome` blocks moved by +0 bytes; no print golden moved.
+
 ~~`NAV_ITEMS` is **Projects · Measurements · Employees · Settings**, and the nav
 is deliberately **not** the launcher — fifteen registers live on the module
 strip below, and what belongs in a bar drawn on every page is what somebody
@@ -12235,6 +12250,9 @@ somebody out.
 `SAMPLE_ARTICLES`. The "+ Add to Quotation" button is a pure CSS toggle — it
 does nothing. This page is a visual demo, not a feature. It uses
 `B.RED_ON_DARK` variants because the print reds go muddy on near-black.
+Its bar's mark is `B.logo_img(39)` (26 before 29 October 2026). At phone
+width the bar's wordmark and the "Return to System Dashboard" link wrap onto
+two lines; they did at 26px too, so the mark did not cause it.
 
 ---
 
@@ -12403,7 +12421,9 @@ status trio passes the lightness band, chroma floor, CVD separation (worst
 adjacent pair ΔE 20.3 under protanopia) and 3:1 contrast on the light surface.
 **If you change a hex here, re-run the validator** — don't eyeball it.
 
-Artwork is inlined via `_data_uri()`. `LOGO_URI` (64px, nav) and `LOGO_DOC_URI`
+Artwork is inlined via `_data_uri()`. `LOGO_URI` (64px, nav — drawn at 42px
+in the rail, 39px in the top bar and on Market News, 63px on the login card
+since 29 October 2026, §5's rail paragraph) and `LOGO_DOC_URI`
 (256px, ~~letterhead~~ the text letterhead's roundel — **`letterhead_top()`'s
 fallback only** since 21 October 2026; `LETTERHEAD_URI` is the banner) are
 separate on purpose; the favicon is a 32px PNG rather

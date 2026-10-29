@@ -59,15 +59,32 @@ WITHOUT_PNL = ("operation-head", "sales-manager", "purchase-manager", "accountan
 #       sales-manager    ("2a423f8d5b5d3c89", 71147)
 #       purchase-manager ("3a3ef2d13f8b372f", 70085)
 #       accountant       ("712012bebccff293", 70955)
+#
+# ⚠ **ALL EIGHT rows RE-BASELINED 29 October 2026, +0 bytes**, for the SF mark
+#   1.5x on screen (CLIENT_CHANGES.md §0 fifty-seventh block). Every role's
+#   page renders the shell, whose rail mark went 28 -> 42 px and top-bar mark
+#   26 -> 39 px. It adds no P&L content. Measured before these literals were
+#   changed: for each of the eight pages, the new render with ONLY those four
+#   size strings put back hashed to the value this file pinned, exactly — so
+#   the claim this test makes (no P&L byte reaches a role without
+#   `project.pnl`) is unchanged. The values before this re-baseline:
+#       operation-head   PROJECT_PAGE ("e5cbf6b0b1d27247", 73998)
+#       operation-head   REGISTER     ("dc998c9637141b9d", 46214)
+#       sales-manager    PROJECT_PAGE ("4b27365a64e87f88", 72862)
+#       sales-manager    REGISTER     ("e099a2f75ec7d4e4", 45563)
+#       purchase-manager PROJECT_PAGE ("81af0892cbed53d8", 71261)
+#       purchase-manager REGISTER     ("b87ee99b425ba029", 44501)
+#       accountant       PROJECT_PAGE ("b50006d2a63f996b", 72670)
+#       accountant       REGISTER     ("af54c7d7988a0bec", 45371)
 BEFORE = {
-    ("operation-head",   PROJECT_PAGE): ("e5cbf6b0b1d27247", 73998),
-    ("operation-head",   REGISTER):     ("dc998c9637141b9d", 46214),
-    ("sales-manager",    PROJECT_PAGE): ("4b27365a64e87f88", 72862),
-    ("sales-manager",    REGISTER):     ("e099a2f75ec7d4e4", 45563),
-    ("purchase-manager", PROJECT_PAGE): ("81af0892cbed53d8", 71261),
-    ("purchase-manager", REGISTER):     ("b87ee99b425ba029", 44501),
-    ("accountant",       PROJECT_PAGE): ("b50006d2a63f996b", 72670),
-    ("accountant",       REGISTER):     ("af54c7d7988a0bec", 45371),
+    ("operation-head",   PROJECT_PAGE): ("62d3055badec47a3", 73998),
+    ("operation-head",   REGISTER):     ("fccc00dd8367f34e", 46214),
+    ("sales-manager",    PROJECT_PAGE): ("dec7a61b388ce6c7", 72862),
+    ("sales-manager",    REGISTER):     ("08984bbd0406f98a", 45563),
+    ("purchase-manager", PROJECT_PAGE): ("ff159d5f83bf3ee1", 71261),
+    ("purchase-manager", REGISTER):     ("58dd63e96bdac24a", 44501),
+    ("accountant",       PROJECT_PAGE): ("a2e883a8f8577cc8", 72670),
+    ("accountant",       REGISTER):     ("59e574c848893a81", 45371),
 }
 
 

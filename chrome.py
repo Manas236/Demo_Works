@@ -886,7 +886,7 @@ CHROME_STYLES = """
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
   }
   .rail-brand { display: inline-flex; align-items: center; margin-left: auto; }
-  .rail-brand img { width: 28px; height: 28px; border-radius: 7px; display: block; }
+  .rail-brand img { width: 42px; height: 42px; border-radius: 7px; display: block; }
 
   .rail-scroll {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
@@ -956,7 +956,7 @@ CHROME_STYLES = """
   .tb-toggle { display: none; background: transparent; color: var(--ink-muted); }
   .tb-toggle:hover { background: var(--ground); color: var(--ink); }
   .topbar .nav-brand { font-size: .95rem; flex-shrink: 0; }
-  .topbar .nav-brand img { width: 26px; height: 26px; }
+  .topbar .nav-brand img { width: 39px; height: 39px; }
   .tb-div { width: 1px; height: 26px; background: #E4E0EC; flex-shrink: 0; }
   .tb-title { min-width: 0; }
   .tb-name {
@@ -1111,7 +1111,7 @@ def _rail() -> str:
   <div class="rail-hd">
     <button class="rail-toggle" type="button" onclick="railToggle()"
             aria-label="Collapse or expand the navigation" title="Collapse / expand">{ICONS['collapse']}</button>
-    <a class="rail-brand" href="{url_for('dashboard.index')}" title="Dashboard">{B.logo_img(28)}</a>
+    <a class="rail-brand" href="{url_for('dashboard.index')}" title="Dashboard">{B.logo_img(42)}</a>
   </div>
   <div class="rail-scroll">
     {body}
@@ -1190,7 +1190,7 @@ def _topbar() -> str:
     <button class="tb-toggle" type="button" onclick="railToggle()"
             aria-label="Open the navigation" title="Menu">{ICONS['menu']}</button>
     <a href="{url_for('dashboard.index')}" class="nav-brand">
-      {B.logo_img(26)}
+      {B.logo_img(39)}
       <span class="nb-word">{B.name_html("nb-fire")}</span>
     </a>
     <span class="tb-div"></span>

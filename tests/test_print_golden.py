@@ -1182,9 +1182,19 @@ GOLD_PICK_BOQ = "gold-pick"
 #     76ba5972ff18f235 / a57b4602a006fa6f / f1bae1908e487e97 again. `head`
 #     did not move — the box is styled on the element, so `PICKER_CSS` (spliced
 #     into `PO_STYLES`) is untouched.
-PICK_WHOLE = "4c531e683060cc1f"
+# was 4c531e683060cc1f / 82756, head 2fc16fd060a023cf, before 29 Oct 2026 —
+#     the SF mark 1.5x ON SCREEN (CLIENT_CHANGES.md §0 fifty-seventh block).
+#     ⚠ **`head` ALONE moved, +0 bytes, and it is the app shell, not paper**:
+#     this form renders the rail and the top bar, whose marks went 28 -> 42 px
+#     and 26 -> 39 px (two `logo_img()` calls and the two CSS rules that size
+#     them). MEASURED: the new page with only those four strings put back
+#     hashes to 4c531e683060cc1f / 82756 and to every old block digest again.
+#     The picker's eight blocks are byte-identical, and **not one printed
+#     document in this file moved** (they render no shell).
+PICK_WHOLE = "cc3d3280b73f3e0e"
 PICK_LEN = 82756
-PICK_BLOCKS = {"head":    "2fc16fd060a023cf",   # was b07f3fb758299248,
+PICK_BLOCKS = {"head":    "68af1da58d9e51a7",   # was 2fc16fd060a023cf,
+                                                # was b07f3fb758299248,
                                                 # was af77ecc07bfca6ff,
                                                 # was 8bf28275fa127606,
                                                 # was 2bf1b714db890d61,

@@ -171,7 +171,18 @@ def switch_on(fixed_world):
 #       OFF_WHOLE = "b467ca97ab34d077"
 #       OFF_LEN = 87068
 #       OFF_BLOCKS = {"head": "a7fcb956a04f035f", …}
-OFF_WHOLE = "aa63e2c1d26261f6"
+#
+# ⚠ **RE-BASELINED 29 October 2026 — the `head` block ALONE, +0 bytes**, for
+#   the SF mark 1.5x on screen (CLIENT_CHANGES.md §0 fifty-seventh block). The
+#   shell in `head` draws the rail's mark at 42 px (was 28) and the top bar's
+#   at 39 px (was 26). Measured before these literals changed: the new page
+#   with ONLY those four size strings put back hashes to the old values
+#   exactly, whole and block for block; the nine picker blocks did not move
+#   and `quotation.py` was not edited. The old values, verbatim:
+#       OFF_WHOLE = "aa63e2c1d26261f6"
+#       OFF_LEN = 112366
+#       OFF_BLOCKS = {"head": "7dbd9ab6dadddd9d", …}
+OFF_WHOLE = "e4cb2e20405b19ef"
 OFF_LEN = 112366
 
 # The page split on its structural markers, so a failure names which part
@@ -188,7 +199,8 @@ OFF_MARKERS = [
     ("demo",     "function fillDemoData()"),
     ("guard",    "/* ═══ FORM GUARD"),
 ]
-OFF_BLOCKS = {"head":     "7dbd9ab6dadddd9d",   # was a7fcb956a04f035f
+OFF_BLOCKS = {"head":     "13dad10c90f1fb7d",   # was 7dbd9ab6dadddd9d,
+                                                # was a7fcb956a04f035f
               "form":     "370e5e115dc4c883",
               "items":    "374b85b7f0fd495d",
               "tax":      "ddb32a58ad86df59",

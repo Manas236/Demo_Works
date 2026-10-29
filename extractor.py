@@ -362,7 +362,7 @@ def index():
     <body>
       <nav>
         <div class="nav-left">
-          {B.logo_img(26)}
+          {B.logo_img(39)}
           <span class="nav-brand">{B.COMPANY_NAME}</span>
           <div class="nav-divider"></div>
           <span class="nav-title">Market News</span>

@@ -2259,7 +2259,7 @@ AUTH_STANDALONE_STYLES = """
     padding: 2rem 1.75rem;
   }
   .auth-brand { text-align: center; margin-bottom: 1.5rem; }
-  .auth-brand img { height: 42px; }
+  .auth-brand img { height: 63px; }
   .auth-brand h1 { font-size: 1.15rem; margin: .75rem 0 .25rem; }
   .auth-brand p { margin: 0; font-size: .8rem; color: #6b7280; }
   .auth-card label {
@@ -2384,7 +2384,7 @@ def _standalone(title: str, body: str, foot: str | None = None) -> str:
 <body>
   <div class="auth-card">
     <div class="auth-brand">
-      {B.logo_img(42)}
+      {B.logo_img(63)}
       <h1>{_esc(B.COMPANY_NAME)}</h1>
       <p>{_esc(B.APP_SUBTITLE)}</p>
       {tagline}
