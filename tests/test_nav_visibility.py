@@ -29,6 +29,14 @@ the same argument
 `test_access_control_adversarial.py::test_each_role_gets_exactly_the_admin_access_it_should`
 makes for its six administration URLs. If the client changes what a role means,
 these tables are supposed to fail and be re-read by a person.
+
+⚠ **The buy side's second register is labelled "Product Inquiries" from
+  29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth** block, B1) — it was
+  "Draft Purchase Orders". **Display only**: the endpoint is still
+  `po_draft.list_pos`, the permission is still `po.view`, and the row in
+  `BY_LABEL` below maps the new label to the same endpoint, so what this file
+  asserts about REACHABILITY is unchanged. Every live expectation here was
+  updated; the "was …" comments are left exactly as they were.
 """
 
 import ast
@@ -110,7 +118,7 @@ _FULL_RAIL = [
     "Quotations", "Proforma Invoices", "Tax Invoices",
     "Projects", "Bills of Quantities", "Running Account Bills", "Receipts",
     "Delivery Challans", "Measurement Sheets",
-    "Purchase Orders", "Draft Purchase Orders", "Expenses &amp; Charges",
+    "Purchase Orders", "Product Inquiries", "Expenses &amp; Charges",
     "Attendance",
     "Spec Library", "Client Register", "Employees", "Address Book",
     "Market News", "Users &amp; Access",
@@ -123,7 +131,7 @@ EXPECTED_NAV = {
         "Dashboard",
         "Projects", "Bills of Quantities", "Running Account Bills", "Receipts",
         "Delivery Challans", "Measurement Sheets",
-        "Purchase Orders", "Draft Purchase Orders", "Expenses &amp; Charges",
+        "Purchase Orders", "Product Inquiries", "Expenses &amp; Charges",
         "Spec Library", "Client Register", "Address Book"],
     "hr": [
         "Dashboard",
@@ -138,7 +146,7 @@ EXPECTED_NAV = {
     "purchase-manager": [
         "Dashboard",
         "Projects", "Bills of Quantities", "Delivery Challans",
-        "Purchase Orders", "Draft Purchase Orders",
+        "Purchase Orders", "Product Inquiries",
         "Spec Library", "Address Book"],
     "accountant": [
         "Dashboard",
@@ -182,7 +190,7 @@ ALL_CARDS = [
     #   records": a day's wages and overtime is money going out, a register of
     #   who works here is a master record. ABOUT.md §9's own rule — decide the
     #   pipeline first — is what splits them.
-    "Purchase Orders", "Draft Purchase Orders", "Expenses &amp; Charges",
+    "Purchase Orders", "Product Inquiries", "Expenses &amp; Charges",
     "Attendance",
     "Product Catalogue", "Spec Library", "Client Register", "Employees",
     "Address Book",
@@ -206,7 +214,7 @@ EXPECTED_CARDS = {
         "Projects", "Bills of Quantities", "Running Account Bills",
         "Receipts",
         "Delivery Challans", "Measurement Sheets",
-        "Purchase Orders", "Draft Purchase Orders",
+        "Purchase Orders", "Product Inquiries",
         # was "Employee & Misc Charges" — see the note on ALL_CARDS above
         # ⚠ No "Attendance": Operation Head holds no `attendance.*`, on the
         #   same reversible derivation that withholds `employee.*`. It DOES
@@ -262,7 +270,7 @@ EXPECTED_CARDS = {
     "purchase-manager": [
         "Work Orders",           # 5 Oct 2026 — holds purchase.view
         "Projects", "Bills of Quantities", "Delivery Challans",
-        "Purchase Orders", "Draft Purchase Orders", "Product Catalogue",
+        "Purchase Orders", "Product Inquiries", "Product Catalogue",
         "Spec Library", "Address Book"],
     # ⚠ Gains "Receipts" (holds `receipt.view`) and NOT "Employees" — B4 keeps
     #   HR information from Accounts, and that one IS spec-traced. The old
@@ -311,7 +319,7 @@ CARD_ENDPOINT = {
     "Delivery Challans":          "challan.list_dcs",
     "Measurement Sheets":         "measurement.list_ms",
     "Purchase Orders":            "purchase.list_purchases",
-    "Draft Purchase Orders":      "po_draft.list_pos",
+    "Product Inquiries":      "po_draft.list_pos",
     "Attendance":                 "attendance.list_attendance",
     # was "Employee & Misc Charges" — see the note on ALL_CARDS above
     "Expenses &amp; Charges":     "charge.list_charges",

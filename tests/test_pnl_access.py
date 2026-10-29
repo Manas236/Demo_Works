@@ -110,12 +110,32 @@ BEFORE = {
     #     rows are untouched by it, as they were by the panel itself.
     #     The value before item 5:
     #       ("operation-head", PROJECT_PAGE): ("a371184c00c7be5b", 76351),
-    ("operation-head",   PROJECT_PAGE): ("06f972a3a467b58f", 76531),
-    ("operation-head",   REGISTER):     ("fccc00dd8367f34e", 46214),
+    # ⚠ **FOUR of the eight rows RE-BASELINED 29 October 2026, −8 bytes
+    #   each** — the Draft PO is DISPLAYED as "Product Inquiry"
+    #   (CLIENT_CHANGES.md §0 **fifty-ninth** block, B1). The shell's rail link
+    #   and top-bar name read `chrome.REGISTERS`' label, and "Draft Purchase
+    #   Orders" (21 characters) became "Product Inquiries" (17), twice.
+    #
+    #   ⚠ **It is the FOUR that hold `po.view` and no other**, which is the
+    #   measurement rather than the claim: Operation Head and Purchase Manager
+    #   hold it, so their rail draws the entry and their page moved by exactly
+    #   −8; **Sales Manager and Accountant do not hold it, draw no entry, and
+    #   their four rows are byte-identical.** A rename that had leaked
+    #   anywhere else would have moved all eight.
+    #
+    #   ⚠ **Not a P&L leak and the file's rule is intact.** No figure moved,
+    #   no panel appeared, and `test_only_owner_and_director_see_the_panel`
+    #   below still holds. The values before this re-baseline:
+    #       operation-head   PROJECT_PAGE ("06f972a3a467b58f", 76531)
+    #       operation-head   REGISTER     ("fccc00dd8367f34e", 46214)
+    #       purchase-manager PROJECT_PAGE ("ff159d5f83bf3ee1", 71261)
+    #       purchase-manager REGISTER     ("58dd63e96bdac24a", 44501)
+    ("operation-head",   PROJECT_PAGE): ("54508dd6ff3714a7", 76523),
+    ("operation-head",   REGISTER):     ("7bda1fbac3e36586", 46206),
     ("sales-manager",    PROJECT_PAGE): ("dec7a61b388ce6c7", 72862),
     ("sales-manager",    REGISTER):     ("08984bbd0406f98a", 45563),
-    ("purchase-manager", PROJECT_PAGE): ("ff159d5f83bf3ee1", 71261),
-    ("purchase-manager", REGISTER):     ("58dd63e96bdac24a", 44501),
+    ("purchase-manager", PROJECT_PAGE): ("d20c8996abc040bd", 71253),
+    ("purchase-manager", REGISTER):     ("83da2b727d30e013", 44493),
     ("accountant",       PROJECT_PAGE): ("a2e883a8f8577cc8", 72670),
     ("accountant",       REGISTER):     ("59e574c848893a81", 45371),
 }

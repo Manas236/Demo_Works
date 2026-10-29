@@ -673,7 +673,12 @@ def test_the_panel_shows_every_row_to_the_paisa(project, client):
     assert "1 marking predates the day-rate correction" in text
     for left_out in ("1 draft RA bill", "1 cancelled RA bill", "1 cancelled tax invoice",
                      "1 purchase order still in Draft", "1 cancelled purchase order",
-                     "1 draft purchase order sent out for pricing",
+                     # ⚠ "product inquiry" from 29 October 2026 (§0
+                     #   fifty-ninth block, B1). Was "1 draft purchase order
+                     #   sent out for pricing". The RULE is unchanged and is
+                     #   what this line is about: an inquiry is an INTENT and
+                     #   never a cost.
+                     "1 product inquiry sent out for pricing",
                      "1 work order not yet issued"):
         assert left_out in text, left_out
     assert "this reflects timing" in text

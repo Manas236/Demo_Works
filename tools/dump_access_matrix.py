@@ -257,7 +257,10 @@ ROLE_NOTES = {
         "can": "Run the work. Write and revise schedules, raise measurement "
                "sheets and approve them, raise and issue RA bills, cancel "
                "them, print everything, raise delivery challans and draft "
-               "purchase orders, convert those into real purchase orders, and "
+               # ⚠ "product inquiries" from 29 October 2026 (§0 fifty-ninth
+               # block, B1). Prose only; the generator reads the same
+               # permissions it always did.
+               "product inquiries, convert those into real purchase orders, and "
                "record wages and site expenses against a project.",
         "cannot": "Touch the sell chain — no quotations, proforma invoices or "
                   "tax invoices. Record or edit money received. Administer "
@@ -323,7 +326,9 @@ ROLE_NOTES = {
     },
     "purchase-manager": {
         "can": "The whole buy side: raise purchase orders and update their "
-               "status, write and price draft POs, and raise and print delivery "
+               # ⚠ "product inquiries" from 29 October 2026 (§0 fifty-ninth
+               # block, B1). Prose only.
+               "status, write product inquiries, and raise and print delivery "
                "challans. They can read schedules and the specification "
                "library, and keep the address book current. (They hold "
                "`product.view` too, but the catalogue is hidden — see the "

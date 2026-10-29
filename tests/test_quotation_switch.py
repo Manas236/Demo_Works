@@ -182,8 +182,24 @@ def switch_on(fixed_world):
 #       OFF_WHOLE = "aa63e2c1d26261f6"
 #       OFF_LEN = 112366
 #       OFF_BLOCKS = {"head": "7dbd9ab6dadddd9d", …}
-OFF_WHOLE = "e4cb2e20405b19ef"
-OFF_LEN = 112366
+# ⚠ **RE-BASELINED 29 October 2026 — the `head` block ALONE, −8 bytes** — the
+#   Draft PO is DISPLAYED as "Product Inquiry" (CLIENT_CHANGES.md §0
+#   **fifty-ninth** block, B1). `/quotation/view` and `/quotation/create` are
+#   the two document pages that still call `_nav()` (because `quotation.py` is
+#   frozen), so the shell in `head` carries the rail link's title and the top
+#   bar's name, and "Draft Purchase Orders" (21 characters) became "Product
+#   Inquiries" (17), twice: **−8, which is exactly the whole delta.**
+#
+#   ⚠ **The nine blocks that ARE the product picker did not move** — `form`,
+#   `items`, `tax`, `script`, `picker`, `render`, `mutation`, `demo`, `guard`
+#   are byte-identical, which is the claim this file makes, and
+#   **`quotation.py` was not edited** (the chip test holds that). The old
+#   values, verbatim:
+#       OFF_WHOLE = "e4cb2e20405b19ef"
+#       OFF_LEN = 112366
+#       OFF_BLOCKS = {"head": "13dad10c90f1fb7d", …}
+OFF_WHOLE = "370525c790eca816"
+OFF_LEN = 112358
 
 # The page split on its structural markers, so a failure names which part
 # moved: the chrome, the item section, the picker's script, or the demo fill.
@@ -199,7 +215,8 @@ OFF_MARKERS = [
     ("demo",     "function fillDemoData()"),
     ("guard",    "/* ═══ FORM GUARD"),
 ]
-OFF_BLOCKS = {"head":     "13dad10c90f1fb7d",   # was 7dbd9ab6dadddd9d,
+OFF_BLOCKS = {"head":     "c42c641c4bc67c6c",   # was 13dad10c90f1fb7d (§0 59th B1),
+                                                # was 7dbd9ab6dadddd9d,
                                                 # was a7fcb956a04f035f
               "form":     "370e5e115dc4c883",
               "items":    "374b85b7f0fd495d",

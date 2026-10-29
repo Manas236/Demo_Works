@@ -3322,7 +3322,8 @@ def view_boq(id: str):
         groups = "".join((
             _group("Purchase",
                    _raise("po_draft.create_po",
-                          url_for("po_draft.create_po", boq=id), "Draft PO"),
+                          url_for("po_draft.create_po", boq=id),
+                          "Product Inquiry"),
                    _raise("purchase.from_boq",
                           url_for("purchase.from_boq", boq_id=id), "Raise Purchase Order")),
             _group("Site",

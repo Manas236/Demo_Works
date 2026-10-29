@@ -1,6 +1,12 @@
 """
-po_draft.py — Draft Purchase Order from a BOQ
-=============================================
+po_draft.py — Product Inquiry (the draft purchase order) from a BOQ
+===================================================================
+⚠ **The document is CALLED a "Product Inquiry" on screen and on paper from
+  29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth** block, B1) — the
+  name it has always deserved, since it carries no rates and no GST and
+  exists to be priced. **The rename is DISPLAY ONLY**: this module, the
+  blueprint, `STORE["purchase_orders"]`, every `/po/` URL, every stored
+  field and the `SF/DPO` series are all unchanged. See THE NAME below.
 Blueprint  : po_draft_bp
 Mounted at : /po  (registered in app.py)
 
@@ -9,7 +15,7 @@ them to price the material a schedule needs.
 
 Routes
 ------
-  GET       /po/              — register of draft POs
+  GET       /po/              — register of product inquiries
   GET,POST  /po/create?boq=   — pick the lines, pick the vendor, raise the draft
   GET       /po/view/<id>     — the document, with the action bar
   GET       /po/print/<id>    — the document alone, ready for Ctrl+P
@@ -99,6 +105,44 @@ po_draft_bp = Blueprint("po_draft", __name__, url_prefix="/po")
 # than an absence so that the rule is findable: the client asked for NO GST, and
 # a zero-rated block would still be a block — it would print "IGST @ 0%" on a
 # document that has no business mentioning tax at all.
+# =============================================================================
+# THE NAME ON SCREEN AND ON PAPER — "Product Inquiry" (29 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0 **fifty-ninth** block, B1, from the 28 October 2026
+# meeting with Yogesh Bankar: the Draft PO is called a **Product Inquiry**,
+# which is what it has always been — a request for a supplier's prices, with
+# no rates and no GST on it.
+#
+# ⚠ **DISPLAY ONLY, and that is the whole of the ruling.** Nothing stored and
+#   nothing addressable changed:
+#
+#   * the module is still `po_draft.py` and the blueprint still `po_draft`;
+#   * the collection is still `STORE["purchase_orders"]`;
+#   * every URL is still under `/po/`, so no bookmark and no link breaks —
+#     including `purchase.from_draft()`'s, which this module may not import
+#     and reaches by `url_for` only;
+#   * every stored field keeps its name — `converted_po_ids`, `boq_ref`,
+#     `vendor_source`, `ref`;
+#   * the number series is still `SF/DPO/0001` and `po_draft_series` at
+#     `/settings`. **The PREFIX is a client-editable field** and renaming it
+#     is their decision on their own paper book, not ours (§7 gap 15's rule).
+#
+#   A rename that moved any of those would be a data migration wearing a
+#   label's clothes. `tests/test_product_inquiry_name.py` asserts each one.
+#
+# ⚠ **The PRINTED TITLE moves**, which is an intended print change and the
+#   one golden this block re-baselines.
+DOC_NAME = "Product Inquiry"
+DOC_NAME_LOWER = "product inquiry"
+DOC_NAME_PLURAL = "Product Inquiries"
+DOC_NAME_PLURAL_LOWER = "product inquiries"
+DOC_TITLE = "PRODUCT INQUIRY"
+
+# What the document's own number is labelled on the sheet. The VALUE is
+# untouched — still `SF/DPO/0001`.
+DOC_NO_LABEL = "Inquiry No."
+
 PRINT_TAX = False
 
 # Nor any rate. The supplier fills these in. See the module docstring.
@@ -470,7 +514,7 @@ def _validate(form, boq: dict) -> tuple:
         "po_json":      form.get("po_json") or "",
     }
     if not data["date"]:
-        return data, "A draft PO needs a date."
+        return data, f"A {DOC_NAME_LOWER} needs a date."
 
     vendor, err = vendor_from(form)
     if err:
@@ -879,7 +923,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title("Draft PO" if not editing else "Edit Draft PO")}</title>
+  <title>{B.page_title(DOC_NAME if not editing else "Edit " + DOC_NAME)}</title>
   {B.HEAD_ICON}
   {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}{cascade.CASCADE_STYLES}{EDIT_STYLES if editing else ""}
 </head>
@@ -887,9 +931,9 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 {_nav()}
 <main>
   <div class="page-top">
-    <h1>{"Edit Draft" if editing else "Draft"} <span>Purchase Order</span></h1>
+    <h1>{"Edit " if editing else ""}Product <span>Inquiry</span></h1>
     <div style="display:flex;gap:.7rem;">{import_btn}
-      <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All Draft POs</a>
+      <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All {DOC_NAME_PLURAL}</a>
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">&#8592; {boq_ref}</a>
     </div>
   </div>
@@ -936,12 +980,12 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     {picker}{items_html}
 
     <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.4rem;">
-      <button type="submit" class="btn">{"Save changes" if editing else "Raise draft PO"}</button>
+      <button type="submit" class="btn">{"Save changes" if editing else "Raise " + DOC_NAME_LOWER}</button>
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
 
-  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · draft purchase order</p></footer>
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · {DOC_NAME_LOWER}</p></footer>
 </main>
 </body></html>""")
 
@@ -1010,7 +1054,7 @@ def _document_html(po: dict) -> str:
         </tr>"""
 
     meta_col_1 = (
-        DS._meta("Draft PO No.", P.esc(po.get("ref"))) +
+        DS._meta(DOC_NO_LABEL, P.esc(po.get("ref"))) +
         DS._meta("Against BOQ",  P.esc(po.get("boq_ref"))) +
         DS._meta("Project",      P.esc(po.get("project_name"))) +
         DS._meta("Your GSTIN",   P.esc(po.get("vendor_gstin")))
@@ -1033,7 +1077,7 @@ def _document_html(po: dict) -> str:
 {DS.sheet_open(show_web=False)}
 
   <div class="doc-box">
-    <div class="doc-title">DRAFT PURCHASE ORDER</div>
+    <div class="doc-title">{DOC_TITLE}</div>
     <div class="doc-sub-po">For pricing &mdash; rates to be filled in by the supplier</div>
 
 {DS.party_block("To (Supplier)", DS.name_block(po.get("to")),
@@ -1046,7 +1090,7 @@ def _document_html(po: dict) -> str:
 
   <div class="po-ask">
     <b>This is a request for your rates, not a priced order.</b> Please quote
-    against each line, return the priced copy, and quote our draft PO number on
+    against each line, return the priced copy, and quote our inquiry number on
     your quotation. No taxes are stated on this document; show them separately
     on your offer.
   </div>
@@ -1092,7 +1136,7 @@ def list_pos():
 
     if not rows:
         rows = ('<tr><td colspan="7" style="text-align:center;color:var(--muted);'
-                'padding:2rem;">No draft purchase orders yet. Raise one from a '
+                f'padding:2rem;">No {DOC_NAME_PLURAL_LOWER} yet. Raise one from a '
                 'bill of quantities.</td></tr>')
 
     series = SET.po_series()
@@ -1100,7 +1144,7 @@ def list_pos():
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title("Draft Purchase Orders")}</title>
+  <title>{B.page_title(DOC_NAME_PLURAL)}</title>
   {B.HEAD_ICON}
   {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}
 </head>
@@ -1108,7 +1152,7 @@ def list_pos():
 {_nav()}
 <main>
   <div class="page-top">
-    <h1>Draft <span>Purchase Orders</span></h1>
+    <h1>Product <span>Inquiries</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Bills of Quantities</a>
     </div>
@@ -1135,7 +1179,7 @@ def list_pos():
     </table>
   </div>
 
-  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · draft purchase orders ·
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · {DOC_NAME_PLURAL_LOWER} ·
     series {P.esc(series['prefix'])}</p></footer>
 </main>
 </body></html>""")
@@ -1241,7 +1285,7 @@ def create_po(imported: dict = None):
         "company_branch": "", "auth_signatory": "",
     }
     return redirect(url_for("po_draft.view_po", id=pid,
-                            msg="Draft purchase order raised.", type="success"))
+                            msg=f"{DOC_NAME} raised.", type="success"))
 
 
 @po_draft_bp.route("/view/<id>")
@@ -1249,7 +1293,7 @@ def view_po(id: str):
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
-                                msg="That draft PO no longer exists.", type="error"))
+                                msg=f"That {DOC_NAME_LOWER} no longer exists.", type="error"))
 
     # ── Where the priced copy goes next ───────────────────────────────────
     #
@@ -1301,7 +1345,7 @@ def view_po(id: str):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title(str(po.get('ref')) + " Draft PO")}</title>
+  <title>{B.page_title(str(po.get('ref')) + " " + DOC_NAME)}</title>
   {B.HEAD_ICON}
   {DS.SHEET_STYLES}{PO_DOC_STYLES}
 </head>
@@ -1311,10 +1355,10 @@ def view_po(id: str):
 
 <div class="screen-acts">
   <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.3px;">
-    Draft PO <span style="color:var(--brand);">{P.esc(po.get('ref'))}</span>
+    {DOC_NAME} <span style="color:var(--brand);">{P.esc(po.get('ref'))}</span>
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All Draft POs</a>
+    <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All {DOC_NAME_PLURAL}</a>
     <a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(po.get('boq_ref'))}</a>
     {convert_html}
     {edit_btn}{pics_btn}
@@ -1331,7 +1375,7 @@ def view_po(id: str):
 </div>
 
 <footer style="margin-top:1.75rem;">
-  <p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · draft purchase order</p>
+  <p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · {DOC_NAME_LOWER}</p>
 </footer>
 </main>
 </body></html>""")
@@ -1343,7 +1387,7 @@ def print_po(id: str):
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
-                                msg="That draft PO no longer exists.", type="error"))
+                                msg=f"That {DOC_NAME_LOWER} no longer exists.", type="error"))
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1403,7 +1447,7 @@ def edit_po(id: str):
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
-                                msg="That draft PO no longer exists.", type="error"))
+                                msg=f"That {DOC_NAME_LOWER} no longer exists.", type="error"))
 
     # ⚠ **BOTH methods, and the POST writes nothing.** The GET redirects so a
     #   bookmarked form cannot be filled in and submitted; the POST refuses
@@ -1448,7 +1492,7 @@ def edit_po(id: str):
     po.update(data["vendor"])
     # `ref` is deliberately untouched. An edit never reissues the number.
     return redirect(url_for("po_draft.view_po", id=id,
-                            msg="Draft purchase order updated.", type="success"))
+                            msg=f"{DOC_NAME} updated.", type="success"))
 
 
 def _picture_entries(po: dict) -> list:
@@ -1477,7 +1521,7 @@ def pictures(id: str):
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
-                                msg="That draft PO no longer exists.", type="error"))
+                                msg=f"That {DOC_NAME_LOWER} no longer exists.", type="error"))
 
     here = url_for("po_draft.pictures", id=id)
     if request.method == "POST":
@@ -1499,7 +1543,7 @@ def pictures(id: str):
   <div class="page-top">
     <h1>Pictures &middot; <span>{P.esc(po.get('ref'))}</span></h1>
     <div style="display:flex;gap:.7rem;">
-      <a href="{url_for('po_draft.view_po', id=id)}" class="btn btn-ghost">&#8592; Back to the draft PO</a>
+      <a href="{url_for('po_draft.view_po', id=id)}" class="btn btn-ghost">&#8592; Back to the {DOC_NAME_LOWER}</a>
     </div>
   </div>
 
@@ -1517,7 +1561,7 @@ def pictures(id: str):
     {LI.rows_html(_picture_entries(po), here, editable=True)}
   </div>
 
-  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · draft purchase order</p></footer>
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · {DOC_NAME_LOWER}</p></footer>
 </main>
 </body></html>""")
 
@@ -1552,7 +1596,7 @@ def delete_po(id: str):
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
-                                msg="That draft PO no longer exists.", type="error"))
+                                msg=f"That {DOC_NAME_LOWER} no longer exists.", type="error"))
 
     report = cascade.impact_of("purchase_orders", id)
 
@@ -1561,7 +1605,7 @@ def delete_po(id: str):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title("Delete Draft PO")}</title>
+  <title>{B.page_title("Delete " + DOC_NAME)}</title>
   {B.HEAD_ICON}
   {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}
 </head>
@@ -1570,7 +1614,7 @@ def delete_po(id: str):
 <main>
   <div class="page-top"><h1>Delete <span>{P.esc(po.get('ref'))}</span></h1></div>
   <div class="card" style="border:1px solid var(--border);border-radius:10px;padding:1.2rem;">
-    <p>Delete draft purchase order <b>{P.esc(po.get('ref'))}</b> to
+    <p>Delete {DOC_NAME_LOWER} <b>{P.esc(po.get('ref'))}</b> to
        <b>{P.esc(po.get('vendor_name')) or 'an unnamed supplier'}</b>, raised
        against {P.esc(po.get('boq_ref'))}?</p>
     <p style="font-size:.85rem;color:var(--muted);">
@@ -1586,7 +1630,7 @@ def delete_po(id: str):
       <a href="{url_for('po_draft.view_po', id=id)}" class="btn btn-ghost">Cancel</a>
     </form>
   </div>
-  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · draft purchase order</p></footer>
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · {DOC_NAME_LOWER}</p></footer>
 </main>
 </body></html>""")
 
@@ -1597,6 +1641,6 @@ def delete_po(id: str):
              f"{'' if len(destroyed) == 1 else 's'} went with it."
              if destroyed else "")
     return redirect(url_for("boq.view_boq", id=boq_id,
-                            msg=(f"Draft PO {ref} deleted.{extra} "
+                            msg=(f"{DOC_NAME} {ref} deleted.{extra} "
                                  f"Its number is not reissued."),
                             type="success"))

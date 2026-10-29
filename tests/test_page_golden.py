@@ -326,6 +326,59 @@ PAGES = {
     #       spec library:    ("f4df328387214170", 98711, {..., "chrome": "ac89f317bbc5800e"})
     #       tax invoices:    ("36c5d2c1be5c3e01", 84618, {..., "chrome": "e3e943b1df420c01"})
     #       users:           ("245cd030c38e595c", 65816, {..., "chrome": "907015465e3197ed"})
+    # ⚠ **RE-BASELINED 29 October 2026 — the Draft PO is DISPLAYED as
+    #   "Product Inquiry"** (CLIENT_CHANGES.md §0 **fifty-ninth** block, B1,
+    #   from the 28 October 2026 meeting with Yogesh Bankar). **DISPLAY ONLY**:
+    #   the module, the blueprint, `STORE["purchase_orders"]`, every `/po/`
+    #   URL, every stored field and the `SF/DPO` series are untouched, and
+    #   `tests/test_product_inquiry_name.py` asserts each one.
+    #
+    #   `chrome` moves on **all 22 pages** — the rail's link title and the top
+    #   bar's name both read `chrome.REGISTERS`' label, and "Draft Purchase
+    #   Orders" (21 characters) became "Product Inquiries" (17), which is
+    #   **exactly the −8 bytes** 18 of the pages show. `shell` is
+    #   byte-identical everywhere: no stylesheet moved. Four pages move a
+    #   second block, and each is a place that prints the words:
+    #     - **draft POs** — `head` (its `<title>`) and `main` (the `<h1>`, the
+    #       register intro, the empty-register note and the footer): −24
+    #     - **dashboard** — `main` (the card title): −12
+    #     - **project page** — `main` (the P&L's *not counted, on purpose*
+    #       sentence): −13
+    #     - **settings** — `main` (the series section's heading, its three
+    #       hints and the hand-typed-number paragraph's list): **+7**
+    #
+    #   **MEASURED, and proved by stripping.** 19 of the 22 pages recover the
+    #   old digest EXACTLY when the six display constants
+    #   (`po_draft.DOC_NAME` and friends), `chrome.REGISTERS`' label and the
+    #   cascade edge's label are put back. The other three — draft POs,
+    #   settings and the project page — also carry literals in `settings.py`
+    #   and `projectview.py`, which cannot be monkeypatched, so they were
+    #   proved the stronger way instead: each page was rendered at the commit
+    #   before this one and diffed line by line against the page rendered
+    #   after, and **every differing line is one of the renamed words and
+    #   nothing else**. Same for `/po/print`. The old values:
+    #       dashboard        ("0f2414f4f3d8a0e2", 109451)
+    #       quotations       ("693c1f033c5472df", 70833)
+    #       proformas        ("ec746a1c49227b83", 76141)
+    #       tax invoices     ("e4e38336b84380e3", 84618)
+    #       purchase orders  ("69f80a29bac0b502", 80408)
+    #       spec library     ("6bf18e783e3a8ebe", 98711)
+    #       BOQs             ("eb30f84b389b3d32", 87604)
+    #       RA bills         ("47cf13aac2d2928f", 94831)
+    #       merged RAs       ("f034b133e1645c9e", 87366)
+    #       receipts         ("edb0a742f1f537b0", 87073)
+    #       clients          ("da5879a14c5ec7e3", 72469)
+    #       draft POs        ("9c22981be354f8db", 71208)
+    #       challans         ("167062c7a3ada7b5", 76341)
+    #       measurements     ("2d3ea7a519866828", 68945)
+    #       projects         ("ea3228a536b47668", 50331)
+    #       project page     ("db5530bdd8ec811e", 101798)
+    #       employees        ("ef174191c4b15546", 66359)
+    #       attendance       ("a480fef039a56a85", 73298)
+    #       charges          ("0b4fe777d631ee90", 66001)
+    #       address book     ("670d91c5c30aff7f", 75650)
+    #       settings         ("9e64b879895952e9", 85011)
+    #       users            ("21aa86c59889282b", 65816)
     # (name, url): (whole sha, byte length, {block: sha})
     # ⚠ **RE-BASELINED 5 October 2026 — `main` ONLY**, for the Work Orders
     #   card (CLIENT_CHANGES.md §0 forty-first block). The brief allowed a nav
@@ -377,44 +430,44 @@ PAGES = {
     #       ("dashboard", "/"): ("eea710973601aeb5", 108004,
     #        {"head": "cbce33bfb1cb901f", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "6167869fb277a647", "main": "b5c4975fcffe0cbd"})
-    ("dashboard",       "/"):                          ("0f2414f4f3d8a0e2", 109451,
-        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "6167869fb277a647", "main": "15307fb77fe15f5e"}),
-    ("quotations",      "/quotation/"):                ("693c1f033c5472df", 70833,
-        {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "9d5163415990a990", "main": "7ec3c661ae9cc372"}),
-    ("proformas",       "/proforma/"):                 ("ec746a1c49227b83", 76141,
-        {"head": "d4b0cd305b9e7989", "shell": "a1e6c63a6d4c6ac2", "chrome": "b12ef65079b700fe", "main": "99ac6790fecd3140"}),
+    ("dashboard",       "/"):                          ("4ff0bc6a35ae7c9c", 109439,
+        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "9aed9013889622db"}),   # §0 59th B1: moved=['chrome', 'main'], -12 bytes
+    ("quotations",      "/quotation/"):                ("f7af9a508c3c8d73", 70825,
+        {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "428580664f0626bf", "main": "7ec3c661ae9cc372"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("proformas",       "/proforma/"):                 ("63cd759d813dd250", 76133,
+        {"head": "d4b0cd305b9e7989", "shell": "a1e6c63a6d4c6ac2", "chrome": "5acba1eef816bda5", "main": "99ac6790fecd3140"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # was 838b42d5894c49c6 / 83043 / head 28aee5e42e857421 before the
     # 23 Sep 2026 cancellation overprint. ⚠ `head` ALONE moved (+1,575 bytes of
     # `.lc-*` rules in INVOICE_STYLES, which every page in this module loads);
     # `shell`, `chrome` and `main` are byte-identical, so the register itself
     # did not change at all.
-    ("tax invoices",    "/invoice/"):                  ("e4e38336b84380e3", 84618,
-        {"head": "38e9d0952e08347f", "shell": "a1e6c63a6d4c6ac2", "chrome": "b53600baf0178a95", "main": "9acd0372dd4402aa"}),
-    ("purchase orders", "/purchase/"):                 ("69f80a29bac0b502", 80408,
-        {"head": "cc38af98aba1744b", "shell": "a1e6c63a6d4c6ac2", "chrome": "1ef183adeea43a77", "main": "80dfa73ee439cc3e"}),
-    ("spec library",    "/spec/"):                     ("6bf18e783e3a8ebe", 98711,
-        {"head": "f41ca0306fa77e16", "shell": "a1e6c63a6d4c6ac2", "chrome": "0e56b89c2df73930", "main": "ffab9c68d1fb9d41"}),
-    ("BOQs",            "/boq/"):                      ("eb30f84b389b3d32", 87604,
-        {"head": "6e81206dea905371", "shell": "a1e6c63a6d4c6ac2", "chrome": "518bd67d778ba47c", "main": "413eaba106b25ef1"}),
-    ("RA bills",        "/ra/"):                       ("47cf13aac2d2928f", 94831,
-        {"head": "32281e51b669ef68", "shell": "a1e6c63a6d4c6ac2", "chrome": "fd76f4750607dc2f", "main": "148536cc5ea624cc"}),
-    ("merged RAs",      "/merged/"):                   ("f034b133e1645c9e", 87366,
-        {"head": "7ceab0cd4d0e91dd", "shell": "a1e6c63a6d4c6ac2", "chrome": "67938f1ebd0a3108", "main": "16cffd227809676f"}),
+    ("tax invoices",    "/invoice/"):                  ("9f6b93d1af5d2e00", 84610,
+        {"head": "38e9d0952e08347f", "shell": "a1e6c63a6d4c6ac2", "chrome": "a49882780cc9c0b6", "main": "9acd0372dd4402aa"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("purchase orders", "/purchase/"):                 ("16273b65971f90e7", 80400,
+        {"head": "cc38af98aba1744b", "shell": "a1e6c63a6d4c6ac2", "chrome": "2902f3faeda11014", "main": "80dfa73ee439cc3e"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("spec library",    "/spec/"):                     ("2637c77b17ec0750", 98703,
+        {"head": "f41ca0306fa77e16", "shell": "a1e6c63a6d4c6ac2", "chrome": "da9e01d1dfe05971", "main": "ffab9c68d1fb9d41"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("BOQs",            "/boq/"):                      ("8b41201c541f4845", 87596,
+        {"head": "6e81206dea905371", "shell": "a1e6c63a6d4c6ac2", "chrome": "2e443224a6988db5", "main": "413eaba106b25ef1"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("RA bills",        "/ra/"):                       ("cb29b67ab8a2b186", 94823,
+        {"head": "32281e51b669ef68", "shell": "a1e6c63a6d4c6ac2", "chrome": "25a322f519fd2099", "main": "148536cc5ea624cc"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("merged RAs",      "/merged/"):                   ("6bd0d2bd3060e239", 87358,
+        {"head": "7ceab0cd4d0e91dd", "shell": "a1e6c63a6d4c6ac2", "chrome": "7453600ea49c28f7", "main": "16cffd227809676f"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # was 0507f0420f7839fd / 86611 / head 2cc6952bbfa08148 before the
     # 23 Sep 2026 delete rollout. ⚠ `head` ALONE moved (+462 bytes of
     # `cascade.CASCADE_STYLES`, loaded by receipt.py's shared `_shell()` so the
     # delete confirmation can draw its impact block); `shell`, `chrome` and
     # `main` are byte-identical, so the register itself did not change.
-    ("receipts",        "/receipt/"):                  ("edb0a742f1f537b0", 87073,
-        {"head": "037647b5208da4ad", "shell": "a1e6c63a6d4c6ac2", "chrome": "bfd5b1d4653c2fed", "main": "3fe4fb4699344259"}),
-    ("clients",         "/client/"):                   ("da5879a14c5ec7e3", 72469,
-        {"head": "a63bc41e9602defd", "shell": "a1e6c63a6d4c6ac2", "chrome": "4d092ddfaab9d7ce", "main": "9e3d19393d21eae4"}),
-    ("draft POs",       "/po/"):                       ("9c22981be354f8db", 71208,
-        {"head": "6a649d567a7b3d0b", "shell": "a1e6c63a6d4c6ac2", "chrome": "6ea60f930a3e538b", "main": "82ba49a010dd9872"}),
-    ("challans",        "/dc/"):                       ("167062c7a3ada7b5", 76341,
-        {"head": "660a40e2abebd6f2", "shell": "a1e6c63a6d4c6ac2", "chrome": "25c9e8fd93e70f0a", "main": "30651a1c7dcacad9"}),
-    ("measurements",    "/measurement/"):              ("2d3ea7a519866828", 68945,
-        {"head": "eb56381f8be8ac28", "shell": "a1e6c63a6d4c6ac2", "chrome": "a66b6d449b27ee59", "main": "357bd0902a7b8770"}),
+    ("receipts",        "/receipt/"):                  ("06b5c733afd46012", 87065,
+        {"head": "037647b5208da4ad", "shell": "a1e6c63a6d4c6ac2", "chrome": "3c4364586ec6edbd", "main": "3fe4fb4699344259"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("clients",         "/client/"):                   ("ed4f6c2d2ebc5e98", 72461,
+        {"head": "a63bc41e9602defd", "shell": "a1e6c63a6d4c6ac2", "chrome": "8c53e352bfe5210d", "main": "9e3d19393d21eae4"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("draft POs",       "/po/"):                       ("07d4bf3b733404f1", 71184,
+        {"head": "f3767f03a7591b25", "shell": "a1e6c63a6d4c6ac2", "chrome": "2188f23e97ff0ab1", "main": "119a675a8e3c251c"}),   # §0 59th B1: moved=['head', 'chrome', 'main'], -24 bytes
+    ("challans",        "/dc/"):                       ("e6c7cbc444975fe1", 76333,
+        {"head": "660a40e2abebd6f2", "shell": "a1e6c63a6d4c6ac2", "chrome": "1d76c188613d8d80", "main": "30651a1c7dcacad9"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("measurements",    "/measurement/"):              ("51790393288c46cd", 68937,
+        {"head": "eb56381f8be8ac28", "shell": "a1e6c63a6d4c6ac2", "chrome": "263eda7ebc35c9f7", "main": "357bd0902a7b8770"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # ⚠ **RE-BASELINED 8 October 2026 — `main` ONLY, and for the OWNER ONLY**,
     #   for CC-2 C6 (CLIENT_CHANGES.md §0 forty-seventh block). This file signs
     #   in as `gold-owner`, who holds `project.pnl`; the register gains the
@@ -438,8 +491,8 @@ PAGES = {
     #       ("projects", "/projects/"): ("8e8cf8516aaff984", 50009,
     #        {"head": "35ced4411e03de2e", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "f2fdcc9f984ceb87", "main": "e7babe8cdc1b11fc"})
-    ("projects",        "/projects/"):                 ("ea3228a536b47668", 50331,
-        {"head": "35ced4411e03de2e", "shell": "a1e6c63a6d4c6ac2", "chrome": "f2fdcc9f984ceb87", "main": "38cbe6c5d1fe77aa"}),
+    ("projects",        "/projects/"):                 ("81b5c6cbec35c339", 50323,
+        {"head": "35ced4411e03de2e", "shell": "a1e6c63a6d4c6ac2", "chrome": "684a3790917ca917", "main": "38cbe6c5d1fe77aa"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # ⚠ **RE-BASELINED 28 October 2026 — `main` ONLY** (the Yogesh meeting's
     #   project-page bugs: documents raised from a BOQ now follow it onto its
     #   project, and only a chain's latest revision is totalled). `main` gains
@@ -532,10 +585,10 @@ PAGES = {
     #       ("project page", …): ("e296b70a116cbce6", 91222,
     #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "b51ad113e721dcbe", "main": "4966a1cb8a5c0421"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("db5530bdd8ec811e", 101798,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "b286567eadd6ef10"}),
-    ("employees",       "/employee/"):                 ("ef174191c4b15546", 66359,
-        {"head": "6419ee6d0d3ea045", "shell": "a1e6c63a6d4c6ac2", "chrome": "73071add0b4a2df7", "main": "14f4d8921e680fc4"}),
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("41138146f3c01040", 101785,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "b619482943b36e59"}),   # §0 59th B1: moved=['chrome', 'main'], -13 bytes
+    ("employees",       "/employee/"):                 ("1ce969cb703fab59", 66351,
+        {"head": "6419ee6d0d3ea045", "shell": "a1e6c63a6d4c6ac2", "chrome": "5f85e9f89efcd51e", "main": "14f4d8921e680fc4"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth
     #   block, item B** (the attendance search). The only golden this pass
     #   moves, and `head` and `main` only: `main` gains the **Search** button
@@ -560,12 +613,12 @@ PAGES = {
     #       ("aaa704c1ef16122e", 73237,
     #        {"head": "8fb0c3cb6ad47c05", "shell": "75cda0afbae27209",
     #         "chrome": "864f7a2ba55bb64a", "main": "4fd344e6ce33374a"})
-    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("a480fef039a56a85", 73298,
-        {"head": "8fb0c3cb6ad47c05", "shell": "a1e6c63a6d4c6ac2", "chrome": "43cbf00fb947b16c", "main": "99e031f5f5f6af8e"}),
-    ("charges",         "/charge/"):                   ("0b4fe777d631ee90", 66001,
-        {"head": "575d38b1b9bde174", "shell": "a1e6c63a6d4c6ac2", "chrome": "7e9bf3f7e34b2ca2", "main": "daf605a8f367bb3e"}),
-    ("address book",    "/address/"):                  ("670d91c5c30aff7f", 75650,
-        {"head": "0a1c0d68158bc7e5", "shell": "a1e6c63a6d4c6ac2", "chrome": "f7dcf5ecee91e1cd", "main": "7e67e775827dc7af"}),
+    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("fb37e3de3ebd00c1", 73290,
+        {"head": "8fb0c3cb6ad47c05", "shell": "a1e6c63a6d4c6ac2", "chrome": "5840edff333df8f9", "main": "99e031f5f5f6af8e"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("charges",         "/charge/"):                   ("b01e155b64ccb441", 65993,
+        {"head": "575d38b1b9bde174", "shell": "a1e6c63a6d4c6ac2", "chrome": "ecd8e5237db40965", "main": "daf605a8f367bb3e"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    ("address book",    "/address/"):                  ("334040ac7348c58e", 75642,
+        {"head": "0a1c0d68158bc7e5", "shell": "a1e6c63a6d4c6ac2", "chrome": "595eb9470c1c25e1", "main": "7e67e775827dc7af"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # ⚠ **RE-BASELINED 25 September 2026 — `main` ONLY, and it is the ONE
     #   golden this application's go-live hardening was always going to move.**
     #   ABOUT.md §7 gap 36 is closed by adding a **Starting Numbers** section to
@@ -642,8 +695,8 @@ PAGES = {
     #       ("6fb1e35f5488db36", 82052,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "56df0925a4c75aa4"})
-    ("settings",        "/settings/"):                 ("9e64b879895952e9", 85011,
-        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "50dac469583b06b1", "main": "1d689a32192b71b7"}),
+    ("settings",        "/settings/"):                 ("f8f0d0cb199640ad", 85018,
+        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "96a34b1da10ef362"}),   # §0 59th B1: moved=['chrome', 'main'], +7 bytes
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters
@@ -654,8 +707,8 @@ PAGES = {
     # fifty-sixth block): the Staff access button beside Roles, **+58 bytes,
     # exactly that one line**. The old values:
     #     ("6f28cf4801fb6f4c", 65758, {..., "main": "645012baa0685fdd"})
-    ("users",           "/users"):                     ("21aa86c59889282b", 65816,
-        {"head": "d27789290b5de232", "shell": "a1e6c63a6d4c6ac2", "chrome": "f1080d327e8b9731", "main": "7653a2d07b474892"}),
+    ("users",           "/users"):                     ("8a8146643ebfa716", 65808,
+        {"head": "d27789290b5de232", "shell": "a1e6c63a6d4c6ac2", "chrome": "f7619f738bb44694", "main": "7653a2d07b474892"}),   # §0 59th B1: moved=['chrome'], -8 bytes
 }
 
 

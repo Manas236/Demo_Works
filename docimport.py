@@ -933,10 +933,14 @@ class ChallanKind(BoqLineKind):
 
 class DraftPOKind(BoqLineKind):
     key = "dpo"
-    title = "a draft purchase order"
-    noun = "draft purchase order"
+    # ⚠ The three WORDS are the client's from 29 October 2026 (§0
+    #   fifty-ninth block, B1). `key = "dpo"` is NOT one of them: it is in
+    #   the URL `/import/dpo` and in `doc_import_layouts`, so changing it
+    #   would break a saved layout and a bookmark.
+    title = "a product inquiry"
+    noun = "product inquiry"
     endpoint = "po_draft.create_po"
-    save_label = "Raise draft PO"
+    save_label = "Raise product inquiry"
     qty_label = "Order qty"
     qty_about = ("How much of the line the supplier is asked to price. A word or a "
                  "sum written as text is left out for you to type.")

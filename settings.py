@@ -594,13 +594,13 @@ def _validate_po_series(form) -> tuple:
     data = {"prefix":  (form.get("po_prefix") or "").strip(),
             "next_no": (form.get("po_next_no") or "").strip()}
     if data["prefix"] and len(data["prefix"]) > 32:
-        return data, "Draft PO prefix: keep it under 32 characters."
+        return data, "Product inquiry prefix: keep it under 32 characters."
     raw = data["next_no"]
     if raw:
         if not raw.isdigit():
-            return data, "Draft PO next number: digits only."
+            return data, "Product inquiry next number: digits only."
         if int(raw) < 1:
-            return data, "Draft PO next number: must be 1 or more."
+            return data, "Product inquiry next number: must be 1 or more."
     return data, ""
 
 
@@ -1110,7 +1110,7 @@ def _marks_section() -> str:
         <p class="fld-hint" style="margin:-.5rem 0 1rem;">
           Printed above <b>Authorised Signatory</b>, the stamp overlapping the
           signature, on every tax invoice (RA bills and the merged RA
-          included), proforma invoice, quotation, purchase order, draft PO,
+          included), proforma invoice, quotation, purchase order, product inquiry,
           work order, delivery challan (our side only &mdash; the receiver's
           box stays blank) and measurement sheet, drafts included. The BOQ
           does not carry them. Leave both empty and every document prints
@@ -1323,14 +1323,14 @@ def edit_settings():
         </div>
 
         <div class="form-section">
-          <div class="section-title">Draft Purchase Order Series</div>
+          <div class="section-title">Product Inquiry Series</div>
           <p class="fld-hint" style="margin:-.5rem 0 1rem;">
             <b>One running series across all suppliers and all sites</b>, so it
             can continue the numbers already kept on paper. Set the next number
             to whatever comes after the last one in the book. It is
             deliberately <b>not</b> reset each financial year and is
             deliberately <b>not</b> per project &mdash; unlike the RA bill
-            number, which is that project's own sequence. A deleted draft PO
+            number, which is that project's own sequence. A deleted inquiry
             does not release its number.
           </p>
           <div class="fg2">
@@ -1348,7 +1348,7 @@ def edit_settings():
                      inputmode="numeric"
                      value="{P.esc(po_values.get('next_no', ''))}"
                      placeholder="{P.esc(PO_SERIES_DEFAULTS['next_no'])}"/>
-              <div class="fld-hint">Advances on every draft PO raised.</div>
+              <div class="fld-hint">Advances on every product inquiry raised.</div>
             </div>
           </div>
         </div>
@@ -1356,7 +1356,7 @@ def edit_settings():
         <div class="form-section">
           <div class="section-title">Delivery Challan Series</div>
           <p class="fld-hint" style="margin:-.5rem 0 1rem;">
-            <b>One running series across all sites</b>, like the draft PO and
+            <b>One running series across all sites</b>, like the product inquiry and
             unlike the RA bill number. The prefix is <b>blank by default</b>,
             because the challan book it continues numbers in bare integers
             &mdash; challan <b>54</b>, not <b>SF/DC/0054</b>. Set the next

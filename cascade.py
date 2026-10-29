@@ -82,7 +82,9 @@ CASCADE_GRAPH: dict[str, list[Edge]] = {
         Edge("ra_bills", ("boq_id",), "RA Bill"),
         Edge("delivery_challans", ("boq_id",), "Delivery Challan"),
         Edge("measurements", ("boq_id",), "Measurement Sheet"),
-        Edge("purchase_orders", ("boq_id",), "Draft Purchase Order"),
+        # The LABEL only (29 Oct 2026, §0 fifty-ninth block, B1); the
+        # collection key `purchase_orders` is untouched.
+        Edge("purchase_orders", ("boq_id",), "Product Inquiry"),
         Edge("purchases", ("boq_id",), "Purchase Order"),
         # A proforma or tax invoice raised FROM the schedule (22 October 2026).
         # The tax invoice is the hard stop, reached directly here or through

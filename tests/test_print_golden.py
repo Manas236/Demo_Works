@@ -1201,7 +1201,15 @@ GOLD_PICK_BOQ = "gold-pick"
 #     hashes to 4c531e683060cc1f / 82756 and to every old block digest again.
 #     The picker's eight blocks are byte-identical, and **not one printed
 #     document in this file moved** (they render no shell).
-PICK_WHOLE = "cc3d3280b73f3e0e"
+# ⚠ **RE-BASELINED 29 October 2026 — "Product Inquiry" on the create form**
+#   (CLIENT_CHANGES.md §0 **fifty-ninth** block, B1). **+0 BYTES**, which is
+#   the tell: `head` carries the page's `<title>` ("Draft PO" -> "Product
+#   Inquiry", +7) and `js` carries the submit button ("Raise draft PO" ->
+#   "Raise product inquiry", +7) and the footer ("draft purchase order" ->
+#   "product inquiry", −14). The picker's own blocks — `intro`, `vendor`,
+#   `details`, `lines`, `tools`, `rows`, `payload` — are byte-identical, so
+#   the grid this golden exists to pin did not move at all.
+PICK_WHOLE = "848964109c809bae"   # was cc3d3280b73f3e0e (§0 59th B1)
 PICK_LEN = 82756
 PICK_BLOCKS = {"head":    "68af1da58d9e51a7",   # was 2fc16fd060a023cf,
                                                 # was b07f3fb758299248,
@@ -1216,7 +1224,7 @@ PICK_BLOCKS = {"head":    "68af1da58d9e51a7",   # was 2fc16fd060a023cf,
                "tools":   "bbf296057d6fb154",   # was 76ba5972ff18f235 (Make)
                "rows":    "9987f464a6ef64cd",   # was a57b4602a006fa6f (Make)
                "payload": "0b433e5e3f3e5705",
-               "js":      "8bbde42b5e5f5415"}   # was f1bae1908e487e97 (Make)
+               "js":      "f86b9c1063249df0"}   # was 8bbde42b5e5f5415 (§0 59th B1)   # was f1bae1908e487e97 (Make)
 
 
 def test_the_boq_line_picker_is_unchanged(client, golden_picker):
@@ -1873,13 +1881,34 @@ BOQ_BLOCKS = {"head":       "9769db14ee792650",   # was c945d7ee01ba87eb (page e
 #     colspan back from 7 to 6, and the page hashes to 6d1c275ab3b648fd / 84867
 #     again, whole.
 # was 2e548fe24d08ee18 / 85129 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-DPO_WHOLE, DPO_LEN = "53356b3b9344c477", 88310   # was 2de6d544c3fa7fa1 / 86082 (SF mark 1.5x, 29 Oct 2026)
+# ⚠ **RE-BASELINED 29 October 2026 — the document is titled PRODUCT INQUIRY**
+#   (CLIENT_CHANGES.md §0 **fifty-ninth** block, B1). An INTENDED print change
+#   and the only printed document this block moves. Three blocks, and each one
+#   is a word:
+#     `doc-box`  "DRAFT PURCHASE ORDER"  ->  "PRODUCT INQUIRY"
+#     `party`    the meta label "Draft PO No."  ->  "Inquiry No."
+#                ⚠ the VALUE is untouched — still `SF/DPO/0007`
+#     `items`    the request band's "quote our draft PO number on your
+#                quotation"  ->  "quote our inquiry number"
+#   −7 bytes in total. `head`, `letterhead`, `foot-strip` and `signature` are
+#   byte-identical, so the sheet's layout did not move at all.
+#   **Proved by rendering this document at the commit before this one and
+#   diffing it line by line: all three differing lines are the renamed words.**
+DPO_WHOLE, DPO_LEN = "7db94ce29815380c", 88303   # was 53356b3b9344c477 / 88310
+                                 #   (§0 59th B1), was 2de6d544c3fa7fa1 /
+                                 #   86082 (SF mark 1.5x, 29 Oct 2026)
 DPO_BLOCKS = {"head":       "551ebbc23caf028e",   # was 9c5d3f7bb956b98a (page edge)
               "letterhead": "c4a45f66ecc72034",   # was cb317962a23773f0 (SF mark 1.5x, 29 Oct 2026), was 2800166c693cc2f1
               "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
-              "doc-box":    "9370df26fb1e5084",
-              "party":      "9d89e73813bb61f7",
-              "items":      "c4bb425068b2815e",   # was bb3a316d1cd1b2cc (Make)
+              # ⚠ The three blocks §0 59th B1 moved, each one a word:
+              "doc-box":    "eeefd89c87b05cda",   # was 9370df26fb1e5084
+                                                  #   (§0 59th B1: the title)
+              "party":      "2c37eaefbddf2766",   # was 9d89e73813bb61f7
+                                                  #   (§0 59th B1: "Inquiry No.")
+              "items":      "d2ae25878ccfea78",   # was c4bb425068b2815e
+                                                  #   (§0 59th B1: "our inquiry
+                                                  #   number"), was
+                                                  #   bb3a316d1cd1b2cc (Make)
               "signature":  "66c13b84cc80040d"}
 
 # The merged sheet writes its party block straight into the page frame with no
@@ -1968,7 +1997,10 @@ def test_the_three_newly_pinned_goldens_are_hashing_real_documents(
     assert "Mohali Rates" not in boq, "the print must not carry the rate basis"
 
     dpo = client.get(f"/po/print/{GOLD_DPO}").get_data(as_text=True)
-    assert "DRAFT PURCHASE ORDER" in dpo and "SF/DPO/0007" in dpo
+    # ⚠ The title is the client's word from 29 October 2026 (§0 fifty-ninth
+    #   block, B1). The NUMBER is deliberately still `SF/DPO/0007`: the
+    #   rename is DISPLAY ONLY and the series did not move.
+    assert "PRODUCT INQUIRY" in dpo and "SF/DPO/0007" in dpo
     assert "Vishwakarma" in dpo, "the supplier block rendered nothing"
     assert "80 mm dia" in dpo, "the picked lines rendered nothing"
 

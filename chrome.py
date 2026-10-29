@@ -695,7 +695,10 @@ REGISTERS = (
     _reg("buy", "purchase", "Purchase Orders", "purchase",
          "purchase.list_purchases", _n("purchases"), "raised",
          "purchase.create_purchase", "New purchase order"),
-    _reg("buy", "po_draft", "Draft Purchase Orders", "draft",
+    # ⚠ The LABEL is the client's word from 29 October 2026 (§0 fifty-ninth
+    #   block, B1); the blueprint key, the endpoint and the collection are
+    #   untouched, which is what keeps every URL and every permission alive.
+    _reg("buy", "po_draft", "Product Inquiries", "draft",
          "po_draft.list_pos", _n("purchase_orders"), "raised"),
     _reg("buy", "charge", "Expenses &amp; Charges", "charge",
          "charge.list_charges", _n("charges"), "entries",

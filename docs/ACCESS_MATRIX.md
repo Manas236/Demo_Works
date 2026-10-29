@@ -111,11 +111,11 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Update a purchase order's status<br/>`purchase.edit` | · | · | · |  |  | · |  |
 | Delete a purchase order<br/>`purchase.delete` | · | · |  |  |  |  |  |
 | Approve or reject a purchase order ⊗ *switched off*<br/>`purchase.approve` | ⊗ | ⊗ | ⊗ |  |  |  |  |
-| View draft purchase orders<br/>`po.view` | · | · | · |  |  | · |  |
-| Raise a draft purchase order<br/>`po.create` | · | · | · |  |  | · |  |
-| Edit a draft purchase order<br/>`po.edit` | · | · | · |  |  | · |  |
-| Delete a draft purchase order<br/>`po.delete` | · | · | · |  |  | · |  |
-| Print a draft purchase order<br/>`po.print` | · | · | · |  |  | · |  |
+| View product inquiries<br/>`po.view` | · | · | · |  |  | · |  |
+| Raise a product inquiry<br/>`po.create` | · | · | · |  |  | · |  |
+| Edit a product inquiry<br/>`po.edit` | · | · | · |  |  | · |  |
+| Delete a product inquiry<br/>`po.delete` | · | · | · |  |  | · |  |
+| Print a product inquiry<br/>`po.print` | · | · | · |  |  | · |  |
 
 ### Dispatch
 
@@ -296,7 +296,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 *49 of 91 permissions.*
 
-**What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft purchase orders, convert those into real purchase orders, and record wages and site expenses against a project.
+**What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft product inquiries, convert those into real purchase orders, and record wages and site expenses against a project.
 
 **What they explicitly cannot do.** Touch the sell chain — no quotations, proforma invoices or tax invoices. Record or edit money received. Administer users or roles. Delete a charge once it is recorded, or change the company identity. See a project's profit and loss — margin is commercially sensitive, and it is Owner and Director only by default.
 
@@ -320,7 +320,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 *20 of 91 permissions.*
 
-**What they can do.** The whole buy side: raise purchase orders and update their status, write and price draft POs, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
+**What they can do.** The whole buy side: raise purchase orders and update their status, write product inquiries, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
 
 **What they explicitly cannot do.** **See the wages ledger** — B4's stated restriction again. They cannot touch the sell chain, RA bills or money received, delete a delivery challan once raised, or administer users. They read a project page but not its profit and loss.
 

@@ -191,7 +191,11 @@ def test_the_confirmation_names_what_it_is_about_to_destroy(chain):
     html = chain.get("/boq/delete/b1").get_data(as_text=True)
     assert "6 other records" in html
     for label in ("RA Bill", "Receipt", "Delivery Challan",
-                  "Measurement Sheet", "Draft Purchase Order", "Purchase Order"):
+                  # ⚠ "Product Inquiry" from 29 October 2026 (§0 fifty-ninth
+                  #   block, B1) — the cascade EDGE's label. The collection key
+                  #   `purchase_orders` and the edge itself are untouched. Was
+                  #   "Draft Purchase Order".
+                  "Measurement Sheet", "Product Inquiry", "Purchase Order"):
         assert label in html, f"the confirmation page does not mention {label}"
 
 

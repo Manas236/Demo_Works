@@ -10705,7 +10705,56 @@ chips, the save button is absent, and the **POST** is what refuses.
 
 ---
 
-### `/po` — Draft Purchase Orders · [po_draft.py](po_draft.py)
+### `/po` — Product Inquiries (the draft purchase order) · [po_draft.py](po_draft.py)
+
+#### The NAME — "Product Inquiry" (29 October 2026)
+
+CLIENT_CHANGES.md §0 **fifty-ninth** block, B1, from the 28 October 2026
+meeting with Yogesh Bankar. The document is **called a Product Inquiry** on
+screen and on paper, which is what it has always been: it carries no rates and
+no GST and exists to be priced.
+
+⚠ **DISPLAY ONLY, and nothing stored or addressable moved.** The constants are
+`po_draft.DOC_NAME`, `DOC_NAME_PLURAL`, `DOC_TITLE` and `DOC_NO_LABEL`, read
+by every page in that module; `chrome.REGISTERS`' label, the five `po.*`
+permission **descriptions**, the cascade edge's label, `/settings`' section
+heading, the BOQ raise-bar chip, `docimport`'s three words and
+`projectview`'s "not counted, on purpose" sentence carry the literal.
+
+What did **not** change, each asserted in
+[tests/test_product_inquiry_name.py](tests/test_product_inquiry_name.py):
+
+| | still |
+|---|---|
+| module / blueprint | `po_draft.py`, `po_draft` |
+| collection | `STORE["purchase_orders"]`, and in `db.COLLECTIONS` |
+| URLs | every one under `/po/` — no bookmark and no link breaks |
+| endpoints | the same seven names, so `auth.ROUTE_PERMISSIONS` and twelve `url_for` calls still resolve |
+| **permission IDs** | `po.view`, `po.create`, `po.edit`, `po.delete`, `po.print` |
+| stored fields | `ref`, `boq_ref`, `converted_po_ids`, `vendor_source`, `items` … |
+| the series | `SF/DPO/0001`, record `po_draft_series` |
+| the import kind | `/import/dpo`, key `dpo` |
+
+⚠ **The permission IDS are the load-bearing row.** A renamed permission id
+reaches **no live role** — `auth.ensure_builtin_roles()` never rewrites an
+existing role's list — so the page it guards becomes unreachable by
+everybody, an Owner included, and the symptom is silence
+(`docs/PENDING_DEPLOY.md` §2). Only the five descriptions moved, so **nothing
+needs reconciling on the box for this item.**
+
+⚠ **The `SF/DPO` PREFIX is the client's own number on their own paper book**
+and is an editable field at `/settings`. Renaming it is their decision, not
+ours (§7 gap 15's rule), and this pass did not take it.
+
+⚠ **The printed title moves** — `DRAFT PURCHASE ORDER` → `PRODUCT INQUIRY`,
+with `Draft PO No.` → `Inquiry No.` beside the **unchanged** number and "quote
+our inquiry number" in the request band. That is an intended print change and
+it moved the `/po/print` golden by −7 bytes in three blocks, each one a word;
+`head`, `letterhead`, `foot-strip` and `signature` are byte-identical.
+`chrome` moved on all 22 page goldens (−8 bytes: the label is four characters
+shorter, twice) and `main` on four of them. Every digest was re-baselined with
+its own measurement and the old values beside it.
+
 
 #### `/po/delete/<id>` — cascades into the order it was converted into
 

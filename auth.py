@@ -408,11 +408,16 @@ PERMISSIONS = {
     "purchase.edit":         ("Update a purchase order's status",         "Buy side"),
     "purchase.delete":       ("Delete a purchase order",                  "Buy side"),
     "purchase.approve":      ("Approve or reject a purchase order",       "Buy side"),
-    "po.view":               ("View draft purchase orders",               "Buy side"),
-    "po.create":             ("Raise a draft purchase order",             "Buy side"),
-    "po.edit":               ("Edit a draft purchase order",              "Buy side"),
-    "po.delete":             ("Delete a draft purchase order",            "Buy side"),
-    "po.print":              ("Print a draft purchase order",             "Buy side"),
+    # ⚠ The five DESCRIPTIONS are the client's word from 29 October 2026
+    #   (§0 fifty-ninth block, B1). **The five permission IDS are
+    #   untouched** — `po.*`, exactly as they were — so no role's grant
+    #   list moves, no live role needs reconciling and the only thing that
+    #   changes is the text on `/roles` and in `docs/ACCESS_MATRIX.md`.
+    "po.view":               ("View product inquiries",                   "Buy side"),
+    "po.create":             ("Raise a product inquiry",                  "Buy side"),
+    "po.edit":               ("Edit a product inquiry",                   "Buy side"),
+    "po.delete":             ("Delete a product inquiry",                 "Buy side"),
+    "po.print":              ("Print a product inquiry",                  "Buy side"),
 
     # C2 — the measurement sheet (29 August 2026, fifth override block). It
     # sits in the BOQ chain group beside the schedule it is raised from and the

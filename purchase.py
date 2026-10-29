@@ -3277,7 +3277,7 @@ def from_draft(draft_id: str):
     draft = drafts.get(draft_id)
     if not draft:
         return redirect(url_for("po_draft.list_pos",
-                                msg="That draft PO no longer exists.", type="error"))
+                                msg="That product inquiry no longer exists.", type="error"))
 
     # The BOQ may legitimately be gone; the draft is a snapshot and still
     # converts. Its rates then have no base to fall back on, which is stated on
@@ -3372,7 +3372,7 @@ def from_draft(draft_id: str):
                     **({"make": make} if make else {}),
                 })
             if not error and not any(not r["is_header"] for r in items):
-                error = "This draft PO has no lines to order."
+                error = "This product inquiry has no lines to order."
 
         # The two repeaters, after the draft's own lines — `from_boq()`'s
         # order, which is `create_purchase()`'s.
@@ -3462,7 +3462,7 @@ def from_draft(draft_id: str):
           <span style="text-align:right;">Qty</span>
           <span style="text-align:right;">Rate (&#8377;)</span>
         </div>
-        {lines_html or '<p style="font-size:.85rem;color:var(--muted);">This draft PO carries no lines.</p>'}
+        {lines_html or '<p style="font-size:.85rem;color:var(--muted);">This product inquiry carries no lines.</p>'}
       </div>"""
 
     # ── The amber band, on a second conversion ────────────────────────────
@@ -4701,7 +4701,7 @@ def view_purchase(id: str):
         else:
             up_chips += f'<span class="po-chip">{label} &middot; schedule</span>'
     if po.get("draft_ref") or po.get("draft_id"):
-        label = P.esc(po.get("draft_ref")) or "draft PO"
+        label = P.esc(po.get("draft_ref")) or "product inquiry"
         if po.get("draft_id") in (STORE.get("purchase_orders") or {}):
             up_chips += (f'<a class="po-chip" href="'
                          f'{url_for("po_draft.view_po", id=po["draft_id"])}">'
