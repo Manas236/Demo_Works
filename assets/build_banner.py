@@ -62,7 +62,16 @@ NAME_INK = "#FF0000"     # the workbooks' own cell colour, FFFF0000
 TAG_INK = "#215967"      # see the docstring
 
 W, H = 2400, 330
-ROUNDEL_AT, ROUNDEL_PX = (148, 38), 200
+# ⚠ 29 October 2026 (CLIENT_CHANGES.md §0 fifty-sixth block): the client
+#   found the SF mark too small. It was (148, 38) at 200 px; it is now 1.5×,
+#   centred on the banner's height in the white the old mark left, so the
+#   banner's SIZE did not change — the 130 mm / page-count decision in
+#   `branding.letterhead_top()` is untouched. The committed PNG was produced by
+#   compositing logo.png at these exact figures onto the previous banner,
+#   because the Algerian font is not on a Linux box; the crop is unchanged
+#   (the name still sets the top and left), so a run of this builder on
+#   Windows should reproduce it to the pixel — check before committing one.
+ROUNDEL_AT, ROUNDEL_PX = (140, 36), 300
 TEXT_AXIS = 1262         # x of the shared centre line of name and tagline
 NAME_PT, NAME_TOP = 206, 62
 TAG_PT, TAG_TOP = 58, 268

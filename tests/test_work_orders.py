@@ -567,9 +567,9 @@ def golden_wo(client, pinned_identity):
 #   measurement are above GOLD_TI in tests/test_print_golden.py). With
 #   `docsheet.PRINT_EDGE_STYLES` removed the page is ("a31cfd6c6e00798b",
 #   86435) again, byte for byte. Was head "52d2340373bfc69c".
-WO_WHOLE = "bb26f9f19bd52b0c"
-WO_LEN = 87388
-WO_BLOCKS = {"head": "460eb8178e965b34", "letterhead": "cb317962a23773f0",
+WO_WHOLE = "c74b7c91cb7e7aae"   # was bb26f9f19bd52b0c (SF mark 1.5x, 29 Oct 2026)
+WO_LEN = 89616   # was 87388 (SF mark 1.5x, 29 Oct 2026)
+WO_BLOCKS = {"head": "460eb8178e965b34", "letterhead": "c4a45f66ecc72034",
              "foot-strip": "3e5d06b5f8519396", "doc-box": "a501572dc0470479",
              "party": "c1c123f5c20956ad", "items": "8ca1a53b005eba46",
              "signature": "66c13b84cc80040d"}
@@ -1779,8 +1779,8 @@ def golden_wo_pass3(client, pinned_identity):
 #   digest it replaces. Were ("ab01a068bbca186d", 88125) and
 #   ("a7b63dc911f11fb2", 86962).
 WO_PASS3_GOLDENS = {
-    GOLD_WO_LABOUR: ("c54772d3dd430c4e", 89078),
-    GOLD_WO_BOTH: ("ca730e7b8c8113f7", 87915),
+    GOLD_WO_LABOUR: ("d028b781ba324c82", 91306),   # was c54772d3dd430c4e / 89078 (SF mark 1.5x, 29 Oct 2026)
+    GOLD_WO_BOTH: ("80d569bae6bc559f", 90143),   # was ca730e7b8c8113f7 / 87915 (SF mark 1.5x, 29 Oct 2026)
 }
 
 

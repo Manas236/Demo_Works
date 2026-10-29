@@ -12314,6 +12314,16 @@ that never saved one reads the new default with no write at all.
 
 ### The letterhead banner — `letterhead_top()` (21 October 2026)
 
+⚠ **29 October 2026 — the SF mark is 1.5× (CLIENT_CHANGES.md §0 fifty-sixth
+block).** The client found it too small. It was redrawn from `assets/logo.png`
+at 300 px into the white the old 200 px mark left, centred on the banner's
+height; the banner is still 1928 × 274 px and still drawn 130 mm wide, so no
+document gained a page. `assets/build_banner.py` carries the new figures,
+`ROUNDEL_AT, ROUNDEL_PX = (140, 36), 300`; the committed PNG was composited on
+Linux because the Algerian font is Windows-only, and a Windows rebuild should
+reproduce it — check before committing one. Every print golden's letterhead
+moved by +2,228 bytes per copy and nothing else (tests/test_print_golden.py).
+
 Every printed letterhead opens with **one picture**, the client's own banner:
 the SF roundel at the left, **SAMRUDDHI FIRE** in red Algerian and the tagline
 under it. `branding.letterhead_top()` draws it and **all three places that
