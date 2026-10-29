@@ -1771,18 +1771,58 @@ def test_measurement_may_import_settings_because_it_now_OWNS_a_settings_record()
        already take the same arrow for the same kind of record.
     """
     # 1 — the cycle, walked rather than asserted from memory.
+    #
+    # ⚠ **REWRITTEN 29 October 2026 (§0 fifty-eighth block, item 1), and the
+    #   old walk is kept verbatim below rather than deleted.** It walked EVERY
+    #   import, function-body ones included, and a function-body import cannot
+    #   be a cycle at boot — which is the only thing this assertion is about,
+    #   in its own words: *"a real cycle and the ban must be restored"*. This
+    #   file's own `imports_of(top_level_only=True)` exists for exactly that
+    #   distinction and its docstring says so.
+    #
+    #   What tripped it: `boq.create_boq()` gained a function-body
+    #   `import project` (item 1 — the project makes itself from the schedule),
+    #   which completed the path
+    #       settings -> quotation -> dashboard -> boq -> project -> pnl -> ra
+    #       -> measurement
+    #   in which `project -> pnl` is ALREADY a function-body import that
+    #   `FORBIDDEN` pins at `"module"` scope, and `boq -> project` is the new
+    #   one. Neither runs at import time, nothing about the boot order moved,
+    #   and `import app` succeeds — which assertion 1b below now proves
+    #   instead of inferring.
+    #
+    #   The old assertion, verbatim:
+    #       seen, stack = set(), ["settings"]
+    #       while stack:
+    #           mod = stack.pop()
+    #           if mod in seen:
+    #               continue
+    #           seen.add(mod)
+    #           for dep in imports_of(mod):
+    #               if (REPO / f"{dep}.py").exists():
+    #                   stack.append(dep)
+    #       assert "measurement" not in seen, (
+    #           "settings.py now reaches measurement.py, so measurement -> settings is "
+    #           "a real cycle and the ban must be restored")
     seen, stack = set(), ["settings"]
     while stack:
         mod = stack.pop()
         if mod in seen:
             continue
         seen.add(mod)
-        for dep in imports_of(mod):
+        for dep in imports_of(mod, top_level_only=True):
             if (REPO / f"{dep}.py").exists():
                 stack.append(dep)
     assert "measurement" not in seen, (
-        "settings.py now reaches measurement.py, so measurement -> settings is "
-        "a real cycle and the ban must be restored")
+        "settings.py now reaches measurement.py AT IMPORT TIME, so "
+        "measurement -> settings is a real cycle and the ban must be restored")
+
+    # 1b — and the boot itself, which is what assertion 1 is a proxy for. A
+    # walk over module-level imports is a model of the boot; this is the boot.
+    # If any arrow anywhere ever becomes a real cycle, this line raises
+    # ImportError and names it, whatever the model says.
+    import importlib
+    importlib.import_module("app")
 
     # 2 — measurement owns a /settings record, which is why it reads one.
     import settings as ST

@@ -5641,7 +5641,22 @@ def create_boq(imported: dict = None):
       `action` on the form — rendered at `/boq/import/<token>/form`, a form
       with no action would post back there instead of here. The POST path
       below never sees `imported` and is unchanged.
+
+    ⚠ **ONE function-body `import project` and TWO one-line calls into it** —
+      §0's fifty-eighth block, item 1, 28 October 2026. The whole of *"the
+      project makes itself from this schedule"* lives in `project.py`; this
+      file holds the call sites and no rule, marked CALL SITE 1 OF 2 (the
+      picker) and CALL SITE 2 OF 2 (what the POST stores). The touch is
+      deliberately this small because `boq.py` is also being edited on an
+      unpushed office-PC line and has to merge by hand.
+
+      The import is in the body rather than at module level for
+      `project._untagged_line()`'s reason from the other side: `project.py` is
+      a LEAF and the graph is kept shallow on purpose
+      (`tests/test_import_directions.py`). It is bound once, here, because
+      CALL SITE 2 runs on the POST before CALL SITE 1 renders.
     """
+    import project as _PJ
     ensure_demo_specs()
 
     error = ""
@@ -5763,8 +5778,16 @@ def create_boq(imported: dict = None):
                 # changing it on one revision and not another would split a
                 # chain across two P&Ls.  Nothing in this pass makes the
                 # field mandatory: existing BOQs carry "" until backfilled.
-                "project_id": (prev.get("project_id", "") if prev else
-                               (form.get("project_id") or "").strip()),
+                # ⚠ **CALL SITE 2 OF 2 (§0 fifty-eighth block, item 1).**
+                #   The three answers — a revision takes its CHAIN ROOT's
+                #   project and ignores the form, the sentinel makes or finds
+                #   one by name, anything else is the id a person picked — all
+                #   live in `project.project_id_for_boq()`. A revision still
+                #   never gets its own, which is why it can never make a
+                #   second project. The old expression, verbatim:
+                #       (prev.get("project_id", "") if prev else
+                #        (form.get("project_id") or "").strip())
+                "project_id": _PJ.project_id_for_boq(form, prev),
 
                 "project_name":  (form.get("project_name") or "").strip(),
                 "site_location": (form.get("site_location") or "").strip(),
@@ -5989,16 +6012,25 @@ def create_boq(imported: dict = None):
     # required field and an unattached BOQ stays a valid record. The detach and
     # attach controls on `/projects/view/<id>` are how one is corrected later,
     # because there is no `/boq/edit` route in this application.
+    #
+    # ⚠ **28 October 2026 (§0 fifty-eighth block, item 1): the control, its
+    #   options and its DEFAULT are `project.py`'s, and this is CALL SITE 1 OF
+    #   2 in this file.** The picker now leads with *New project from this
+    #   BOQ* and defaults to it, because the field sitting on *None* is why
+    #   every schedule on the client's box was filed nowhere. Both old options
+    #   are still offered, in the same order, after it.
+    #
+    #   The paragraph above is now partly superseded and is kept as the record
+    #   of why this control exists at all: project data is still read straight
+    #   out of `STORE["projects"]` — by `project.py`, which is a LEAF and does
+    #   that itself. The import is in the function body, which is
+    #   `_untagged_line()`'s shape from the other side and keeps this file's
+    #   touch to one import and two one-line calls, deliberately small because
+    #   `boq.py` is also being edited on an unpushed line. The import is at
+    #   the top of this function; see its docstring.
     _proj_cur = ((request.form.get("project_id") if request.method == "POST"
                   else prefill.get("project_id")) or "").strip()
-    _p_opts = ['<option value="">&#8212; None: not filed under a project &#8212;</option>']
-    for _pid, _p in sorted((STORE.get("projects") or {}).items(),
-                           key=lambda kv: str(kv[1].get("name", "")).lower()):
-        _p_sel = " selected" if _pid == _proj_cur else ""
-        _p_opts.append(f'<option value="{P.esc(_pid)}"{_p_sel}>'
-                       f'{P.esc(_p.get("name"))}</option>')
-    project_html = ('<select id="project_id" name="project_id">'
-                    + "".join(_p_opts) + "</select>")
+    project_html = _PJ.boq_project_options(_proj_cur)
 
     # A refused revision names every line it would have dropped and the bills
     # that claimed them. `revision_blocker_message()` writes each one in words

@@ -4015,8 +4015,64 @@ Held by [tests/test_address_guards.py](tests/test_address_guards.py).
   # ── The site is an ADDRESS-BOOK LINK from 30 August 2026 (fourth pass) ──
   "site_address_id": "<addr uuid>",     # the JOIN; "" on a legacy record
   "site_address":    "Banglore, Karnataka",  # the LABEL SNAPSHOT
+
+  # ── Where the record came from — 28 October 2026 ───────────────────────
+  "created_from": "boq",                # PROVENANCE only; absent = by hand
 }
 ```
+
+#### A BOQ MAKES ITS OWN PROJECT (28 October 2026, §0 **fifty-eighth** block)
+
+The client's report from the 28 October Yogesh meeting: *"when I write a BoQ
+the project should get made."* `/boq/create`'s *File under project* picker now
+leads with **New project from this BOQ** and **defaults to it**; an existing
+project and *None* are both still offered, after it, unchanged. On a client box
+where nobody had opened a project by hand this is the difference between every
+schedule being filed nowhere and the P&L having something to stand on.
+
+- **All of the logic is in `project.py`** — `NEW_FROM_BOQ` (the sentinel),
+  `boq_project_options()`, `project_id_for_boq()`, `ensure_from_boq()`,
+  `chain_root_id()` and `project_of_chain()`. **`boq.py` holds ONE
+  function-body `import project` and TWO one-line calls** and no rule of its
+  own, marked *CALL SITE 1 OF 2* (the picker) and *CALL SITE 2 OF 2* (what the
+  POST stores). The touch is that small deliberately: `boq.py` is also being
+  edited on an unpushed office-PC line and has to merge by hand.
+- **The arrow `boq.py ──► project.py` is function-body**, so `project.py` is
+  still the leaf §2 describes and nothing about the boot order moved. It
+  completes the all-imports path `settings → quotation → dashboard → boq →
+  project → pnl → ra → measurement`, which is why
+  `test_measurement_may_import_settings_because_it_now_OWNS_a_settings_record`
+  was rewritten to walk **module-level** imports — the only kind that can be a
+  cycle at boot — plus an `import app` that proves the boot itself. The old
+  walk is kept verbatim in a comment above it.
+- **ONE JOB HOWEVER IT IS SPELLED.** `pipeline.norm_name()` is the test, the
+  same comparison `/projects/create` refuses a near-duplicate with, so the
+  screen and this path cannot disagree. *"Sify Bangalore"* and *"sify
+  BANGALORE"* are one project. ⚠ An **existing** project is reused and
+  **never edited** — its client, site and notes are somebody's decisions.
+- ⚠ **A REVISION NEVER MAKES A PROJECT.** It takes its chain's project and the
+  picker is ignored, whatever it posted. That was already `boq.py`'s rule and
+  it is **tightened**, from the immediate predecessor to the chain **ROOT**
+  (`project_of_chain()`, which falls back to the record's own tag when the root
+  carries none) — the one reading that cannot put two members of one chain on
+  two projects. Attach and detach on `/projects/view` stay the only way to move
+  a chain, because they move the **whole** chain and a revision would move one
+  member. `chain_root_id()` walks `supersedes` through `STORE["boqs"]` directly
+  (the one-way trick, `boq.py` is not imported) and is **guarded against a
+  cycle in the data**: nothing validates that `supersedes` is acyclic.
+- ⚠ **A project made this way has NO SITE, and that is not an omission.** A
+  BOQ's `site_location` is free text somebody typed and a project's site is an
+  address-book **join key**; guessing one from the other is the fuzzy match
+  this repo refuses everywhere. Both keys are written blank, so
+  `is_legacy_site()` reads False — a blank site and a legacy string have
+  different fixes and different messages — and `/projects/view` already says
+  *"This project has no site linked"* with a link to Edit. **Site labour needs
+  that link**, so the page asks for it rather than inventing one.
+- `created_from: "boq"` is **provenance and never a rule**: nothing branches
+  on it. A project made on the form carries no key at all, and absent means
+  *made by hand*. Nothing is backfilled.
+- `tests/test_boq_makes_project.py` (18). `tests/test_boq_project_link.py`'s
+  attach / detach rules are untouched.
 
 ⚠ **`site_address` was FREE TEXT until 30 August 2026 and both fields now
 exist**, which is the shape and not a duplication:

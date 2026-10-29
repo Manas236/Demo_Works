@@ -753,3 +753,205 @@ def delete_project(id: str):
     """
     return _page(html)
 """project.py"""
+
+
+# =============================================================================
+# THE PROJECT MAKES ITSELF FROM THE SCHEDULE  (28 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0's **fifty-eighth** block, item 1. The client's report
+# from the 28 October Yogesh meeting: *"when I write a BoQ the project should
+# get made, I should not have to open it first."*
+#
+# ⚠ **ALL OF THE LOGIC LIVES HERE, and `boq.py` holds exactly one import and
+#   two one-line calls.** `boq.py` is being edited on an unpushed office-PC
+#   line as well, so the touch there is kept to the smallest thing that can be
+#   merged by hand; everything that could need changing again is in this file.
+#   The two call sites are the picker's option list and the `project_id` the
+#   POST stores, and neither carries a rule of its own.
+#
+# ⚠ **The arrow is `boq.py ──► project.py`, inside the function body.**
+#   `project.py` stays the leaf it is — it imports nothing new — and the
+#   reverse arrow is still refused by `tests/test_import_directions.py`. A
+#   module-level import would be acyclic today and is deliberately not used:
+#   `_untagged_line()`'s two function-body imports are the house pattern for
+#   reaching upward out of this file, and this is the same shape.
+#
+# ⚠ **ONE JOB HOWEVER IT IS SPELLED.** `norm_name()` is the comparison, and it
+#   is the same one `create_project()` refuses a near-duplicate with, so the
+#   screen and this path cannot disagree about what "already exists" means.
+#   Without it, *"Sify Bangalore"* typed on Monday and *"sify  bangalore"*
+#   typed on Friday would be two projects holding half a job each, and no
+#   figure on either page would be the job's.
+
+NEW_FROM_BOQ = "__new_from_boq__"
+
+
+def chain_root_id(boq_id: str) -> str:
+    """
+    The id of the ROOT of this BOQ's revision chain — the original schedule, the
+    one with no `supersedes` — or `""` when the id names nothing.
+
+    ⚠ **`STORE["boqs"]` is read directly and `boq.py` is NOT imported.** This
+    module is a leaf (`tests/test_import_directions.py` holds every arrow out
+    of it) and `boq._ancestor_ids()` is exactly the walk below; the one-way
+    trick is what `references_of()` already does for charges and markings.
+
+    ⚠ **Guarded against a cycle in the data.** `supersedes` is written by a
+    form and nothing validates that the chain is acyclic, so a hand-edited
+    pair pointing at each other would spin here forever. The seen-set stops at
+    the first repeat and returns what it has, which is the honest answer: the
+    oldest record this walk could reach.
+    """
+    boqs = STORE.get("boqs") or {}
+    cur = str(boq_id or "")
+    if cur not in boqs:
+        return ""
+    seen = {cur}
+    while True:
+        prev = str((boqs.get(cur) or {}).get("supersedes") or "")
+        if not prev or prev not in boqs or prev in seen:
+            return cur
+        seen.add(prev)
+        cur = prev
+
+
+def project_of_chain(boq_id: str) -> str:
+    """
+    The project the whole chain is filed under, read from its ROOT.
+
+    ⚠ **The ROOT, not the immediate predecessor.** Attach and detach walk the
+    whole chain, so every member normally carries the same id and the two
+    readings agree. They diverge on a hand-edited record — the split-chain
+    state `projectview.py`'s detach branch exists to prevent — and there the
+    root is the answer that cannot make a SECOND project out of a revision,
+    which is what the fifty-eighth block forbids by name.
+
+    Falls back to the record's own `project_id` when the root carries none, so
+    a chain attached only at its tip is not reported as unattached.
+    """
+    boqs = STORE.get("boqs") or {}
+    root = chain_root_id(boq_id)
+    pid = str((boqs.get(root) or {}).get("project_id") or "").strip()
+    if pid:
+        return pid
+    return str((boqs.get(str(boq_id or "")) or {}).get("project_id") or "").strip()
+
+
+def ensure_from_boq(project_name, client="", site_location="") -> tuple:
+    """
+    `(project_id, created)` — the project this schedule belongs to, making one
+    only if no project of that name exists yet.
+
+    `created` is True only when a record was written, so the caller can say so
+    in one message rather than guessing from the id.
+
+    ⚠ **An EXISTING project is reused and never edited.** Its client, its site
+    and its notes are somebody's decisions; a BOQ naming the same job does not
+    get to overwrite them, and a second project of the same name would split
+    every figure on both pages. `norm_name()` is the test — see the block note
+    above.
+
+    ⚠ **The site is left BLANK on a project made this way, deliberately.** A
+    BOQ's `site_location` is free text somebody typed ("Bangalore, Karnataka")
+    and a project's site is an address-book JOIN KEY (`_site_from()`'s rule,
+    and the whole reason the free-text field was retired on 30 August 2026).
+    Guessing the address from the string is exactly the fuzzy match this repo
+    refuses everywhere else, so the new project is `is_legacy_site()`-clean:
+    no id and no label, and `/projects/view` already says *"This project has
+    no site linked"* with a link to Edit. Site labour needs that link, so the
+    page tells the operator to make it rather than inventing one.
+    """
+    name = " ".join(str(project_name or "").split())
+    if not name:
+        return "", False
+    norm = P.norm_name(name)
+    pid, existing = _project_by_norm(norm)
+    if existing:
+        return str(pid), False
+    pid = str(uuid.uuid4())
+    now = _now()
+    STORE.setdefault("projects", {})[pid] = {
+        "id":        pid,
+        "name":      name,
+        "norm_name": norm,
+        "client":    " ".join(str(client or "").split()),
+        # Both site keys, blank — see the docstring. Written rather than
+        # omitted so the record has the same shape as one made on the form and
+        # `is_legacy_site()` reads it correctly.
+        SITE_ADDRESS_ID_FIELD: "",
+        "site_address": "",
+        "notes":      "",
+        # ⚠ The one new field, and it is a PROVENANCE marker, never a rule.
+        #   Nothing branches on it: it says on the register and the project
+        #   page where the record came from, which matters when somebody is
+        #   looking at a project they did not open by hand. A project made on
+        #   the form has no key at all, and absent means "made by hand".
+        "created_from": "boq",
+        "created_at": now,
+        "updated_at": now,
+    }
+    return pid, True
+
+
+def boq_project_options(selected: str = "", default_new: bool = True) -> str:
+    """
+    The `<select name="project_id">` for `/boq/create` — **call site 1 of 2 in
+    `boq.py`**.
+
+    ⚠ **"New project from this BOQ" is the DEFAULT, and that is the whole of
+    item 1's visible change.** The client's complaint was that the field sat
+    on *None* and nobody touched it, so every schedule was filed nowhere; the
+    forty-seventh block's P&L then had nothing to stand on. The old options
+    are both still here and in the same order after it — an existing project,
+    or none — so nothing that could be chosen before has been taken away.
+
+    `default_new` is False once something has been chosen (a re-rendered POST,
+    or `?project_id=` from the project page's *Raise new BOQ* button), so a
+    rejected form does not quietly reset the operator's pick to "new".
+    """
+    cur = str(selected or "").strip()
+    new_sel = " selected" if (default_new and not cur) or cur == NEW_FROM_BOQ else ""
+    opts = [f'<option value="{NEW_FROM_BOQ}"{new_sel}>'
+            f'&#43; New project from this BOQ</option>',
+            f'<option value=""{" selected" if cur == "" and not new_sel else ""}>'
+            f'&#8212; None: not filed under a project &#8212;</option>']
+    for pid, proj in sorted((STORE.get("projects") or {}).items(),
+                            key=lambda kv: str(kv[1].get("name", "")).lower()):
+        sel = " selected" if pid == cur else ""
+        opts.append(f'<option value="{P.esc(pid)}"{sel}>'
+                    f'{P.esc(proj.get("name"))}</option>')
+    return '<select id="project_id" name="project_id">' + "".join(opts) + "</select>"
+
+
+def project_id_for_boq(form, prev) -> str:
+    """
+    The `project_id` a schedule being saved should carry — **call site 2 of 2
+    in `boq.py`**, and the only place the sentinel above is resolved.
+
+    Three answers, in this order:
+
+    1. **A REVISION takes its chain's project and the form is ignored.** That
+       was already `boq.py`'s rule and it is not relaxed — it is tightened,
+       from the immediate predecessor to the chain ROOT (`project_of_chain()`).
+       ⚠ **A revision therefore never makes a project**, whatever the picker
+       posted, which is the fifty-eighth block's *"it never creates a second
+       project"*.
+    2. **The sentinel** — *New project from this BOQ* — makes one, or finds the
+       one that is already there under that name (`ensure_from_boq()`).
+    3. **Anything else** is the id a person picked, or `""`. Unchanged.
+
+    ⚠ **It takes `form`, not a name.** The project's name is the BOQ's
+    `project_name` and its client is the BOQ's `account_name`, which is the
+    block's wording; reading them here keeps `boq.py`'s call site to one line
+    with no mapping in it to get wrong.
+    """
+    if prev:
+        return project_of_chain(str(prev.get("id") or ""))
+    choice = (form.get("project_id") or "").strip()
+    if choice != NEW_FROM_BOQ:
+        return choice
+    pid, _created = ensure_from_boq(
+        form.get("project_name"), form.get("account_name"),
+        form.get("site_location"))
+    return pid
