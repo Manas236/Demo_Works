@@ -10687,7 +10687,7 @@ it cannot live in `cascade.py`.
 | `GET,POST /po/create?boq=<id>` | `create_po` — the **line picker**, then the vendor |
 | `GET /po/view/<id>` | `view_po` — the document with its action bar |
 | `GET /po/print/<id>` | `print_po` — the document alone |
-| `GET,POST /po/edit/<id>` | `edit_po` — vendor, date and notes only, never the lines |
+| `GET,POST /po/edit/<id>` | `edit_po` — **every field and every line, until it is converted** (29 Oct 2026); refused on the POST as well as hidden once it is |
 | `GET,POST /po/pictures/<id>` | `pictures` — a picture beside each line, `po.edit` (21 Oct 2026) — §5 *Pictures* |
 | `GET,POST /po/delete/<id>` | `delete_po` — GET confirms, POST deletes |
 
@@ -10794,21 +10794,88 @@ the address book is edited underneath it.
 ⚠ **Still not a vendor master** — §7 gap B6. No payment terms, no lead time, no
 GSTIN validation at the point of purchase.
 
-#### What edit may touch
+#### What edit may touch — EVERYTHING, until it is converted (29 October 2026)
 
-Vendor, date, delivery address and notes. **Not the lines.** An issued draft PO
-is a document a supplier is pricing, and moving the lines under it is how a
-dispute starts — `purchase.update_purchase()` makes the same call about an
-issued order's commercial content. Ordering different lines means raising
-another draft PO, which is cheap and leaves a trail.
+CLIENT_CHANGES.md §0 **fifty-ninth** block, A2. Vendor, date, delivery
+address, notes and terms; and per line the **description, item number, unit,
+quantity, pieces, make and HSN**, with lines **added and removed** freely and
+a **specification row** addable (carrying the clause and no quantity). The
+form is one positional repeater — `it_line_id`, `it_kind`, `it_item_no`,
+`it_desc`, `it_unit`, `it_qty`, `it_pcs`, `it_make`, `it_hsn`, `it_image` —
+read by index off parallel `getlist()`s, so a header in between can never
+shift a value onto the wrong line.
 
-⚠ **Except each line's Make** (26 October 2026, §0 fifty-third block, change
-2): a *Make, per line* section, one box per non-header line, keyed by the
-row's index in `items` (`item_make_<n>`) so a header in between cannot shift a
-make onto the wrong line. It names the brand the supplier is asked to price
-and changes no line, quantity or reference. A blank box removes the key. A
-real PO converted from the draft earlier keeps the make it was raised with —
-the snapshot rule.
+⚠ **LOCKED once it has been converted into a purchase order, and refused on
+the POST as well as hidden on the GET.** `po_draft.is_locked()` is asked
+twice and the POST writes nothing when it answers True: a form that is merely
+not drawn is not a lock, which is ABOUT.md §2g's rule about controls read the
+other way round. The view page's Edit control is greyed with the reason
+printed on it (`ra.py`'s `_gated()` idiom), because the owner works from a
+phone and a phone has no hover.
+
+⚠ **It is NOT a stored flag.** `converted_po_ids` already answers the
+question, and a second flag beside a list that answers the same question is
+how the two start disagreeing. **An order deleted afterwards lifts the lock**,
+which is correct: there is no longer an order whose provenance this document
+is.
+
+⚠ **No rate box, and that is A2's one recorded conflict with its own brief.**
+A2 named "rate" among the editable fields. `PRINT_RATES` is False and this
+module's docstring says nothing on this document may read a buy rate from
+anywhere — the supplier fills the rates in, which is what the document is for,
+and B1 renames it *Product Inquiry*. Manas's answer, with the conflict put to
+him: **no rate box; the printed Rate column stays empty.**
+`tests/test_po_full_edit.py` pins both halves, so a later pass has to take the
+decision again rather than drift into it.
+
+⚠ **A POST with no `it_rows` marker leaves every line exactly as it is.** That
+is a tab opened before the editor existed, and it is `purchase._reprice()`'s
+rule for a stale form. It is a **marker on the form** rather than "are any
+`it_*` boxes posted?", because an operator who deletes every row posts no
+`it_*` box at all — and that is *"I emptied it"*, which is **refused**, not
+*"I never saw the editor"*. A hidden box outside the repeater is the only
+thing that can tell them apart.
+
+⚠ **A hand-added line is on no BOQ, and that is allowed.** This document is a
+request for a supplier's prices, not a claim measured against a schedule:
+nothing about a draft PO is capped by the BOQ, `purchase.from_draft()` reads
+`_boq_lines_by_id()` only for a rate prefill and tolerates a miss, and the
+added row gets a freshly **minted** `line_id` — which is what the Pictures
+page addresses it by and what `from_draft()` matches a posted quantity on. A
+posted `line_id` is kept only when it is the minted shape **and already on
+this draft**, so a crafted POST cannot point a row at another document's line
+or make two rows share one id.
+
+⚠ **A quantity is 0 when blank here, NOT absent.** The *as it is* rule (§0
+forty-fifth block) is about a schedule the client wrote; a purchase order's
+Qty column prints through `_fmt_qty()`, which has no absent state, and a
+supplier asked to price a blank quantity is being asked nothing. **Text typed
+into the box is refused**, naming the line, and the typed text comes back in
+it.
+
+**What this replaced**, so the narrowing it reverses is findable: until this
+pass the route edited the vendor, the date, the delivery address and the
+notes, plus each line's *make* (26 October 2026, §0 fifty-third block, change
+2, `item_make_<n>`) — and nothing else, because *"an issued draft PO is a
+document a supplier is pricing, and moving the lines under it is how a dispute
+starts"*. That reasoning was right about a **converted** draft and too strong
+about an unconverted one, which has gone to nobody. The lock is where it now
+lives. `tests/test_po_make.py::test_make_is_edited_on_the_draft_po_edit_form`
+was rewritten for the new field names with its old body kept verbatim.
+
+#### HSN on this document (29 October 2026)
+
+**Stored, editable, and printed nowhere.** `create_po()` snapshots the
+schedule's `supply_hsn` onto each line at raise — absent when the BOQ line has
+none, so no empty key is written — and the editor above changes it. The sheet
+prints **no HSN column**: a request for quotation carries no tax block of any
+kind (`PRINT_TAX`) and an HSN is a tax code.
+
+⚠ **`purchase.from_draft()` reads the DRAFT's own code first and the
+schedule's second.** The draft is the more recent answer and the one the
+supplier was actually asked about, and it is the **only** answer for a line
+somebody added by hand, which is on no BOQ at all. The expression it replaced
+was `str(src.get("supply_hsn") or "")`.
 
 ---
 
@@ -15650,6 +15717,24 @@ text is unchanged, and every reference to them was moved with them.*
     different fix (overflow wrapper, or a card layout per row) on six panels
     across four modules, and it needs its own decision. The owner works from a
     phone (§5, *The two register SCREENS*), so this is worth doing.
+
+95. 🟡 **`tests/test_po_draft.py` and `tests/test_boq_to_po.py` cannot be run
+    in that order — a PRE-EXISTING isolation defect, found 29 October 2026,
+    NOT caused by this pass and NOT fixed in it.** `python -m pytest -q
+    tests/test_po_draft.py tests/test_boq_to_po.py` fails
+    `test_converting_the_same_draft_twice_is_accepted_with_an_amber_band`:
+    `test_po_draft.py::test_the_address_book_vendor_is_snapshotted_onto_the_po`
+    renames a demo address to `RENAMED VENDOR LTD` in place, and
+    `conftest._fresh_store()` does not re-seed `addresses` behind it (the
+    `_seeded` guard has already been set), so the next file sees the rename.
+    **The alphabetical order the full suite uses is the other way round**, so
+    `python -m pytest -q` is green and has always been; the failure appears
+    only when the two are named on the command line in that order. Verified
+    against `83d4ef5` with this pass stashed: identical failure. Same family
+    as gap 92 (`_fresh_store()` not clearing `ra_bills`) and the fix is the
+    same shape — re-seed, or copy the record before mutating it — but it is a
+    conftest change with a blast radius across the whole suite and it needs
+    its own pass rather than riding on this one.
 
 93. 🟡 **A tax invoice raised from a BOQ fills its codes from its OWN page and
     never from the schedule again — OPEN, by design** (29 October 2026,

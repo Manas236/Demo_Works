@@ -3344,11 +3344,21 @@ def from_draft(draft_id: str):
                 make = str(posted_make[lid] if lid in posted_make
                            else row.get("make") or "").strip()[:BP.MAKE_MAX]
                 src = _boq_lines_by_id(boq).get(lid) or {}
+                # ⚠ **The DRAFT's own code first, the schedule's second**
+                #   (29 October 2026, §0 fifty-ninth block, A2). The draft
+                #   snapshots the schedule's HSN at create and it is editable
+                #   on the draft from the same pass, so the draft is the more
+                #   recent answer and the one the supplier was asked about. It
+                #   is also the ONLY answer for a line somebody ADDED to the
+                #   draft by hand, which is on no BOQ at all. The expression
+                #   it replaces, verbatim:
+                #       "hsn": str(src.get("supply_hsn") or ""),
                 items.append({
                     "type": "item", "is_header": False, "line_id": lid,
                     "name": str(row.get("description") or ""),
                     "part_no": str(row.get("item_no") or ""),
-                    "hsn": str(src.get("supply_hsn") or ""),
+                    "hsn": (str(row.get("hsn") or "").strip()
+                            or str(src.get("supply_hsn") or "")),
                     "qty": float(qty), "unit": str(row.get("unit") or ""),
                     "price": float(rate),
                     "total": round(float(rate) * float(qty), 2),

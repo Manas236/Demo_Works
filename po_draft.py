@@ -13,7 +13,7 @@ Routes
   GET,POST  /po/create?boq=   — pick the lines, pick the vendor, raise the draft
   GET       /po/view/<id>     — the document, with the action bar
   GET       /po/print/<id>    — the document alone, ready for Ctrl+P
-  GET,POST  /po/edit/<id>     — vendor, date, notes, and each line's make
+  GET,POST  /po/edit/<id>     — EVERY field and EVERY line, until converted
   GET,POST  /po/pictures/<id> — a picture beside each line (21 Oct 2026)
   GET,POST  /po/delete/<id>   — GET confirms, POST deletes
 
@@ -79,6 +79,7 @@ import boqpick as BP
 import branding as B
 import cascade
 import docsheet as DS
+import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import settings as SET
@@ -174,6 +175,187 @@ def converted_pos(po: dict) -> list:
             if pid in purchases]
     rows.sort(key=lambda kv: str(kv[1].get("ref") or ""))
     return rows
+
+
+# =============================================================================
+# THE LOCK — a converted draft is a historical record (29 October 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0 **fifty-ninth** block, A2: *"every field and every line
+# is editable while the Draft PO is unconverted. Locked once converted to a
+# real PO: refuse on POST as well as hiding the form."*
+#
+# ⚠ **The second half is the load-bearing one.** A form that is merely not
+#   drawn is not a lock — ABOUT.md §2g's rule about controls, read the other
+#   way round. `edit_po()` asks this on the GET *and* on the POST, and the
+#   POST path writes nothing when it answers True.
+
+LOCK_REASON = ("This request for quotation has already been converted into a "
+               "purchase order, so its lines and its vendor are the record of "
+               "what that order was raised from and cannot be changed. Raise "
+               "another one instead &mdash; it is cheap and it leaves a trail.")
+
+
+def is_locked(po: dict) -> bool:
+    """
+    Has this draft been converted into a real purchase order?
+
+    **That is the whole of the lock, and it is deliberately not a status
+    field.** `converted_po_ids` is already the record of it (written by
+    `purchase.from_draft()`), and a second stored flag beside a list that
+    answers the same question is how the two start disagreeing. An order
+    deleted afterwards drops out of `converted_pos()` and the draft becomes
+    editable again, which is correct: there is no longer an order whose
+    provenance this document is.
+    """
+    return bool(converted_pos(po))
+
+
+# ── Caps. Each is an existing one, named here rather than re-chosen. ────────
+DESC_MAX = 1500          # `boq._clean_lines()`'s own cap on a description
+ITEM_NO_MAX = 32         # the BOQ form's
+UNIT_MAX = 30            # `purchase._parse_extra_lines()`'s
+PCS_MAX = 16             # `create_po()`'s, from the picker
+
+
+def parse_items(form, po: dict) -> tuple:
+    """
+    `(items, error)` for the full line editor — **and nothing is returned until
+    every row has been read**, so a bad fourth row does not leave the first
+    three half-applied. `purchase._parse_extra_lines()`'s contract.
+
+    `items` is **`None`** when the POST carried none of the line boxes at all:
+    a stale tab, which leaves the lines as they are rather than emptying the
+    document. `[]` is impossible — an editor emptied by hand is refused.
+
+    The repeater is **positional**, like the extra parts and unlike the create
+    picker: this form can gain and lose rows, so there is no stable list to
+    diff against and what arrives IS the new list. Every box is read by index
+    off parallel `getlist()`s, so a header row in between can never shift a
+    value onto the wrong line.
+
+    `it_line_id` is carried as a hidden box and **kept only when it is the
+    minted shape and already on this draft**. A row the operator added has a
+    blank one and gets a freshly minted id, because `line_id` is what the
+    Pictures page addresses a row by and what `purchase.from_draft()` matches
+    a posted quantity on — a row with no id would be unreachable from both.
+
+    ⚠ **A hand-added line is NOT on the BOQ, and that is allowed.** This
+      document is a request for a supplier's prices, not a claim measured
+      against a schedule: `from_draft()` reads `_boq_lines_by_id()` only for a
+      rate prefill and tolerates a miss, and no over-claim guard looks at a
+      draft PO. The BOQ link on the record stays what it was.
+
+    ⚠ **No rate box, and that is A2's one recorded conflict with its own
+      brief.** `PRINT_RATES` is False and the module docstring says nothing on
+      this document may read a buy rate from anywhere; the supplier fills the
+      rates in. Manas's answer, with the conflict named: no rate box, and the
+      printed Rate column stays empty.
+    """
+    # ⚠ **A POST with no `it_rows` marker leaves every line exactly as it
+    #   is**, and returns `None` rather than an empty list to say so. That is
+    #   a tab opened before the editor existed, and it is
+    #   `purchase._reprice()`'s own rule for a stale form, which exists
+    #   precisely because the alternative is a save that silently empties a
+    #   document.
+    #
+    #   ⚠ **It is a MARKER on the form and not "are any `it_*` boxes
+    #     posted?"**, because those two questions have different answers in
+    #     the one case that matters: an operator who deletes every row posts
+    #     no `it_*` box at all, and that is "I emptied it" — refused below —
+    #     not "I never saw the editor". A hidden box outside the repeater is
+    #     the only thing that can tell them apart.
+    if "it_rows" not in form:
+        return None, ""
+
+    lids = form.getlist("it_line_id")
+    kinds = form.getlist("it_kind")
+    item_nos = form.getlist("it_item_no")
+    descs = form.getlist("it_desc")
+    units = form.getlist("it_unit")
+    qtys = form.getlist("it_qty")
+    pcses = form.getlist("it_pcs")
+    makes = form.getlist("it_make")
+    hsns = form.getlist("it_hsn")
+    # The row's picture id, hidden on every row — `purchase.py`'s
+    # `extra_image` precedent, and for its reason: this repeater is re-read
+    # whole and the lists are read by position, so a picture must ride on its
+    # own row or it lands on the wrong part.
+    images = form.getlist("it_image")
+
+    n_rows = max(len(lids), len(kinds), len(item_nos), len(descs), len(units),
+                 len(qtys), len(pcses), len(makes), len(hsns))
+
+    known = {BQ._line_id(r.get("line_id")) for r in (po.get("items") or [])}
+    known.discard("")
+    used = set()
+
+    def _at(seq, i):
+        return str(seq[i] if i < len(seq) else "").strip()
+
+    out = []
+    for i in range(n_rows):
+        desc = _at(descs, i)[:DESC_MAX]
+        item_no = _at(item_nos, i)[:ITEM_NO_MAX]
+        unit = _at(units, i)[:UNIT_MAX]
+        qty_raw = _at(qtys, i)
+        pcs = _at(pcses, i)[:PCS_MAX]
+        make = _at(makes, i)[:BP.MAKE_MAX]
+        hsn = HF.clean(_at(hsns, i))
+        header = _at(kinds, i) == "header"
+
+        # A row nobody typed anything into is a row that was deleted, or a
+        # spare slot. Not an error, and not a line.
+        if not (desc or item_no or unit or qty_raw or pcs or make or hsn):
+            continue
+
+        if not desc:
+            return [], (f"Line {i + 1} has figures but no description. Say "
+                        f"what the supplier is being asked to price.")
+
+        qty = 0.0
+        if not header:
+            value, bad = BQ.typed_num(qty_raw)
+            if bad:
+                return [], (f"The quantity for '{desc[:60]}' is not a number. "
+                            f"Nothing was saved.")
+            if value is not None and value < 0:
+                return [], f"The quantity for '{desc[:60]}' cannot be negative."
+            # ⚠ A BLANK quantity is 0 here, NOT absent — this is not a BOQ.
+            #   The "as it is" rule (§0 forty-fifth block) is about a schedule
+            #   the client wrote; a purchase order's quantity column prints
+            #   through `_fmt_qty()`, which has no absent state, and a supplier
+            #   asked to price a blank quantity is being asked nothing.
+            qty = float(value or 0.0)
+
+        lid = BQ._line_id(_at(lids, i))
+        if not lid or lid not in known or lid in used:
+            lid = BQ._new_line_id()
+        used.add(lid)
+
+        row = {"line_id": lid, "is_header": header,
+               "item_no": item_no, "description": desc,
+               "unit": "" if header else unit,
+               "qty": 0.0 if header else qty,
+               "pcs": "" if header else pcs}
+        # Absent when blank, which is the shape `picked_lines()` writes — a
+        # line nobody gave a make or a code carries no empty key.
+        if make and not header:
+            row["make"] = make
+        if hsn and not header:
+            row["hsn"] = hsn
+        iid = LI.valid_id(_at(images, i))
+        if iid and not header and LI.exists(iid):
+            row[LI.KEY] = iid
+        out.append(row)
+
+    if not any(not r["is_header"] for r in out):
+        return [], ("There is nothing on this document to price. Add at least "
+                    "one line, or cancel.")
+    if len(out) > MAX_PO_LINES:
+        return [], (f"{len(out)} lines; the limit is {MAX_PO_LINES}. Raise "
+                    f"more than one order.")
+    return out, ""
 
 
 def draft_pos_of_boq(boq_id: str) -> list:
@@ -333,6 +515,46 @@ PO_STYLES = "\n<style>\n" + BP.PICKER_CSS + """
 </style>
 """
 
+# The full line editor (29 October 2026, §0 fifty-ninth block, A2). Its own
+# constant rather than a block inside PO_STYLES, because `/po/create` loads
+# PO_STYLES and is pinned by a golden in `tests/test_print_golden.py` — the
+# picker form must stay byte-for-byte what it is.
+EDIT_STYLES = """
+<style>
+  .ed-wrap { overflow-x:auto; }
+  .ed-table { width:100%; border-collapse:collapse; font-size:.84rem; min-width:860px; }
+  .ed-table th { text-align:left; font-size:.68rem; text-transform:uppercase;
+                 letter-spacing:.04em; color:var(--muted); padding:.4rem .4rem;
+                 border-bottom:1px solid var(--border, #e5e7eb); white-space:nowrap; }
+  .ed-table td { padding:.35rem .4rem; border-bottom:1px solid var(--border, #e5e7eb);
+                 vertical-align:middle; }
+  .ed-table input[type=text] { width:100%; box-sizing:border-box; font-size:.84rem; }
+  .ed-table textarea { width:100%; box-sizing:border-box; font-size:.84rem;
+                       min-height:2.4rem; resize:vertical; }
+  .ed-no    { width:4.5rem; }
+  .ed-unit  { width:5rem; }
+  .ed-qty   { width:5rem; text-align:right; }
+  .ed-pcs   { width:4.5rem; text-align:right; }
+  .ed-make  { width:8rem; }
+  .ed-hsn   { width:6rem; font-family:ui-monospace,monospace; }
+  .ed-act   { width:2.2rem; text-align:center; }
+  .ed-row.is-head { background:#f8fafc; }
+  .ed-row.is-head td { color:#334155; }
+  .ed-head-tag { font-size:.64rem; text-transform:uppercase; letter-spacing:.06em;
+                 color:var(--muted); }
+  .ed-del { border:0; background:transparent; color:#b91c1c; cursor:pointer;
+            font-size:1rem; line-height:1; padding:.1rem .3rem; }
+  .ed-bar { display:flex; gap:.6rem; flex-wrap:wrap; margin:.8rem 0 0; }
+  .ed-lock { border:1px solid #fecaca; background:#fef2f2; color:#7f1d1d;
+             border-radius:8px; padding:.7rem .9rem; margin:0 0 1.1rem;
+             font-size:.86rem; line-height:1.55; }
+  @media (max-width:760px) {
+    .ed-table { min-width:760px; }
+  }
+</style>
+"""
+
+
 PO_DOC_STYLES = """
 <style>
   /* Layered after the shared sheet, introducing no new font, type size or
@@ -394,6 +616,168 @@ def _vendor_block_form(data: dict) -> str:
       </div>"""
 
 
+def _posted_rows(form) -> list:
+    """
+    The rows exactly as they were POSTED, for a refused save to re-render.
+
+    **Unvalidated on purpose.** `parse_items()` refuses; this hands the typed
+    text straight back so the operator sees their own work and the box that is
+    wrong, rather than an empty form. `purchase._parse_extra_lines()`'s
+    rejected-POST contract, and `address._validate()`'s before it.
+    """
+    lids = form.getlist("it_line_id")
+    kinds = form.getlist("it_kind")
+    item_nos = form.getlist("it_item_no")
+    descs = form.getlist("it_desc")
+    units = form.getlist("it_unit")
+    qtys = form.getlist("it_qty")
+    pcses = form.getlist("it_pcs")
+    makes = form.getlist("it_make")
+    hsns = form.getlist("it_hsn")
+    images = form.getlist("it_image")
+    n_rows = max(len(lids), len(kinds), len(descs))
+
+    def _at(seq, i):
+        return str(seq[i] if i < len(seq) else "")
+
+    out = []
+    for i in range(n_rows):
+        header = _at(kinds, i).strip() == "header"
+        row = {"line_id": _at(lids, i).strip(), "is_header": header,
+               "item_no": _at(item_nos, i), "description": _at(descs, i),
+               "unit": _at(units, i), "pcs": _at(pcses, i),
+               "make": _at(makes, i), "hsn": _at(hsns, i)}
+        # `qty` goes back as the TYPED STRING, not a float: "12x" has to come
+        # back as "12x" beside the message that says it is not a number.
+        row["qty"] = _at(qtys, i)
+        iid = LI.valid_id(_at(images, i).strip())
+        if iid:
+            row[LI.KEY] = iid
+        out.append(row)
+    return out
+
+
+def _item_row_html(row: dict = None, n: int = 0) -> str:
+    """
+    One row of the full line editor. `row` is None for a blank row the
+    operator added, and `{"is_header": True}` for a blank specification row.
+
+    Every box is named without an index: the repeater is read positionally off
+    parallel `getlist()`s (`parse_items()`), which is the only shape that
+    survives a row being deleted in the middle. The hidden `it_kind` is what
+    carries "this is a specification row" through a POST — a checkbox would
+    not, because an unticked checkbox posts nothing at all and the lists would
+    then be of different lengths.
+    """
+    row = row or {}
+    header = bool(row.get("is_header"))
+    # ⚠ `qty` is a FLOAT off a stored row and a TYPED STRING off a refused
+    #   POST (`_posted_rows()`), and both have to render. A string goes back
+    #   verbatim so "12x" is handed back beside the message that says it is
+    #   not a number; a float goes through `_fmt_qty()`, which drops a
+    #   trailing `.0`.
+    qty = row.get("qty")
+    if header or qty in (None, ""):
+        qty_txt = ""
+    elif isinstance(qty, str):
+        qty_txt = qty
+    else:
+        qty_txt = BQ._fmt_qty(float(qty))
+    cls = "ed-row is-head" if header else "ed-row"
+    hidden = (f'<input type="hidden" name="it_line_id" value="{P.esc(row.get("line_id") or "")}"/>'
+              f'<input type="hidden" name="it_kind" value="{"header" if header else "item"}"/>'
+              f'<input type="hidden" name="it_image" value="{P.esc(LI.image_of(row))}"/>')
+    if header:
+        # A specification row carries the clause and nothing else — DOMAIN.md
+        # §2.2, the same shape `boqpick.picked_lines()` writes. The four boxes
+        # it has no business carrying are posted BLANK rather than omitted, so
+        # every list stays the same length.
+        return f"""
+          <tr class="{cls}">
+            <td><input type="text" name="it_item_no" value="{P.esc(row.get("item_no") or "")}"
+                       maxlength="{ITEM_NO_MAX}" aria-label="Item number"/>{hidden}</td>
+            <td><textarea name="it_desc" maxlength="{DESC_MAX}"
+                          aria-label="Specification">{P.esc(row.get("description") or "")}</textarea>
+                <div class="ed-head-tag">specification &mdash; no quantity</div></td>
+            <td><input type="hidden" name="it_make" value=""/>&mdash;</td>
+            <td><input type="hidden" name="it_hsn" value=""/>&mdash;</td>
+            <td><input type="hidden" name="it_unit" value=""/>&mdash;</td>
+            <td><input type="hidden" name="it_qty" value=""/>&mdash;</td>
+            <td><input type="hidden" name="it_pcs" value=""/>&mdash;</td>
+            <td class="ed-act"><button type="button" class="ed-del"
+                 onclick="edDel(this)" aria-label="Remove this row">&#10007;</button></td>
+          </tr>"""
+    return f"""
+          <tr class="{cls}">
+            <td><input type="text" name="it_item_no" value="{P.esc(row.get("item_no") or "")}"
+                       maxlength="{ITEM_NO_MAX}" aria-label="Item number"/>{hidden}</td>
+            <td><textarea name="it_desc" maxlength="{DESC_MAX}"
+                          aria-label="Description">{P.esc(row.get("description") or "")}</textarea></td>
+            <td><input type="text" name="it_make" value="{P.esc(row.get("make") or "")}"
+                       maxlength="{BP.MAKE_MAX}" placeholder="Make" aria-label="Make"/></td>
+            <td><input type="text" name="it_hsn" value="{P.esc(row.get("hsn") or "")}"
+                       maxlength="{HF.HSN_MAX}" placeholder="HSN" aria-label="HSN"/></td>
+            <td><input type="text" name="it_unit" value="{P.esc(row.get("unit") or "")}"
+                       maxlength="{UNIT_MAX}" placeholder="Nos" aria-label="Unit"/></td>
+            <td><input type="text" name="it_qty" value="{P.esc(qty_txt)}"
+                       aria-label="Quantity" style="text-align:right;"/></td>
+            <td><input type="text" name="it_pcs" value="{P.esc(row.get("pcs") or "")}"
+                       maxlength="{PCS_MAX}" aria-label="Pieces" style="text-align:right;"/></td>
+            <td class="ed-act"><button type="button" class="ed-del"
+                 onclick="edDel(this)" aria-label="Remove this line">&#10007;</button></td>
+          </tr>"""
+
+
+def _item_rows_html(rows: list) -> str:
+    return "".join(_item_row_html(r, n) for n, r in enumerate(rows or []))
+
+
+# The two blank rows the Add buttons clone, as HTML the page already holds, so
+# a row added in the browser is byte-for-byte a row the server would have
+# rendered. ⚠ **Doubled braces**: this is interpolated into an f-string.
+EDIT_SCRIPT = """
+<script>
+/* The full line editor's two buttons (29 October 2026, §0 fifty-ninth block,
+   A2). Add and remove only — every box is an ordinary form field read
+   positionally on the server, so a browser with JavaScript off can still
+   edit, reorder nothing and save: it simply cannot add or delete a row.
+   `purchase.py`'s repeaters make the same trade. */
+var ED_ITEM = __ED_ITEM__;
+var ED_HEAD = __ED_HEAD__;
+
+function edAdd(header) {
+  var body = document.getElementById('ed-body');
+  if (!body) { return; }
+  var tmp = document.createElement('tbody');
+  tmp.innerHTML = header ? ED_HEAD : ED_ITEM;
+  var tr = tmp.querySelector('tr');
+  if (tr) {
+    body.appendChild(tr);
+    var first = tr.querySelector('textarea, input[type=text]');
+    if (first) { first.focus(); }
+  }
+}
+
+function edDel(btn) {
+  var tr = btn.closest('tr');
+  if (!tr) { return; }
+  /* Removed outright rather than hidden: the server reads what is POSTED, and
+     a hidden row still posts. That is the opposite of the claim grid's
+     "a folded row is hidden, never removed" — there, folding is a view of a
+     fixed list; here, the list IS what the form says it is. */
+  tr.parentNode.removeChild(tr);
+}
+</script>
+"""
+
+
+def _edit_script() -> str:
+    """`EDIT_SCRIPT` with the two blank rows spliced in as JSON."""
+    return (EDIT_SCRIPT
+            .replace("__ED_ITEM__", P.json_for_script(_item_row_html(None)))
+            .replace("__ED_HEAD__", P.json_for_script(_item_row_html({"is_header": True}))))
+
+
 def _entry_form(boq: dict, data: dict, error: str = "",
                 po: dict = None, banner_html: str = "") -> str:
     """
@@ -442,38 +826,54 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             with_make=True,
             make_of=data.get("_make"))
 
-    # Make, per line, on EDIT (26 October 2026). The lines stay a snapshot —
-    # nothing else on them is editable here — but the brand a supplier is asked
-    # to price is the one detail that is commonly settled after the draft is
-    # raised. Keyed by the row's index in `items`, so a header in between can
-    # never shift a make onto the wrong line.
-    makes_html = ""
+    # ── The FULL line editor on EDIT (29 October 2026, §0 fifty-ninth block,
+    #    A2). It replaced a *Make, per line* section that was the only
+    #    per-line control this form had (26 October 2026, the fifty-third
+    #    block, change 2) — every field on every line is editable now, and
+    #    lines can be added and removed, while the draft is unconverted.
+    #    ⚠ The repeater is POSITIONAL (`parse_items()` says why), so each row
+    #      carries its own `line_id`, its own picture id and its own kind as
+    #      hidden boxes. A header in between cannot shift a value onto the
+    #      wrong line.
+    items_html = ""
     if editing:
-        typed = data.get("_makes") or {}
-        cells = ""
-        for n, row in enumerate(po.get("items") or []):
-            if row.get("is_header"):
-                continue
-            val = typed.get(n, row.get("make") or "")
-            desc = " ".join(str(row.get("description") or "").split())[:90]
-            cells += f"""
-        <div class="form-group">
-          <label for="item_make_{n}">{P.esc(row.get("item_no") or "")} &middot; {P.esc(desc)}</label>
-          <input type="text" id="item_make_{n}" name="item_make_{n}"
-                 value="{P.esc(val)}" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
-        </div>"""
-        if cells:
-            makes_html = f"""
+        rows_src = data.get("_items")
+        if rows_src is None:
+            rows_src = list(po.get("items") or [])
+        items_html = f"""
     <div class="form-section">
-      <div class="section-title">Make, per line</div>
+      <div class="section-title">Lines</div>
       <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
-        The brand you want on each line &mdash; it prints in its own column
-        beside the description. Leave a box blank for no make. The lines
-        themselves are not editable here.
+        Every line is editable while this request has not been converted into a
+        purchase order. Add a line, remove one, change a description, a
+        quantity, a unit, the pieces, the brand or the HSN. <b>Rates are
+        deliberately not here</b> &mdash; the supplier fills those in, which is
+        what this document is for. A <b>specification</b> row carries the clause
+        the sizes under it are described by and takes no quantity.
       </p>
-      <div class="fg2">{cells}
+      <input type="hidden" name="it_rows" value="1"/>
+      <div class="ed-wrap">
+      <table class="ed-table">
+        <thead><tr>
+          <th class="ed-no">Item No</th>
+          <th>Description</th>
+          <th class="ed-make">Make</th>
+          <th class="ed-hsn">HSN</th>
+          <th class="ed-unit">Unit</th>
+          <th class="ed-qty">Qty</th>
+          <th class="ed-pcs">Pcs</th>
+          <th class="ed-act"></th>
+        </tr></thead>
+        <tbody id="ed-body">{_item_rows_html(rows_src)}
+        </tbody>
+      </table>
       </div>
-    </div>"""
+      <div class="ed-bar">
+        <button type="button" class="btn btn-ghost" onclick="edAdd(false)">+ Add a line</button>
+        <button type="button" class="btn btn-ghost" onclick="edAdd(true)">+ Add a specification row</button>
+      </div>
+    </div>
+    {_edit_script()}"""
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -481,7 +881,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Draft PO" if not editing else "Edit Draft PO")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}{cascade.CASCADE_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}{cascade.CASCADE_STYLES}{EDIT_STYLES if editing else ""}
 </head>
 <body>
 {_nav()}
@@ -533,7 +933,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
       </div>
     </div>
 
-    {picker}{makes_html}
+    {picker}{items_html}
 
     <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.4rem;">
       <button type="submit" class="btn">{"Save changes" if editing else "Raise draft PO"}</button>
@@ -802,9 +1202,22 @@ def create_po(imported: dict = None):
                   if isinstance(r, dict)}
     except (ValueError, TypeError):
         pcs_of = {}
+    # ⚠ **And the schedule's own HSN** (29 October 2026, §0 fifty-ninth block,
+    #   A2/A1). Snapshotted at create like every other field, so the code the
+    #   supplier is asked about is the one the schedule carried that day and
+    #   `purchase.from_draft()` can take it from here rather than re-reading a
+    #   BOQ that may have moved or gone. Absent when the BOQ line has none, so
+    #   a row carries no empty key — `picked_lines()`'s shape.
+    #   It prints nowhere on this document: a request for quotation carries no
+    #   tax block at all (`PRINT_TAX`), and an HSN is a tax code.
+    hsn_of = {BQ._line_id(li.get("line_id")): str(li.get("supply_hsn") or "").strip()
+              for li in (boq.get("line_items") or [])}
     for row in items:
         if not row.get("is_header"):
             row["pcs"] = pcs_of.get(row["line_id"], "")
+            code = hsn_of.get(row["line_id"], "")
+            if code:
+                row["hsn"] = code
 
     pid = new_id()
     STORE.setdefault("purchase_orders", {})[pid] = {
@@ -866,6 +1279,19 @@ def view_po(id: str):
     # Pictures (21 October 2026) — drawn only for a role the gate lets
     # through. The newline lives inside the string.
     import auth as _AUTH
+    # Edit (29 October 2026, §0 fifty-ninth block, A2) — present with its
+    # refusal printed on it rather than hidden, which is `ra.py`'s `_gated()`
+    # rule: a control that vanishes teaches nothing about why it went. The
+    # route refuses a typed URL on its own, on both methods; this is
+    # presentation.
+    if is_locked(po):
+        edit_btn = ('<span class="btn btn-ghost" style="opacity:.55;'
+                    'cursor:not-allowed;" title="Already converted into a '
+                    'purchase order, so its lines and vendor are fixed.">'
+                    'Edit</span>')
+    else:
+        edit_btn = (f'<a href="{url_for("po_draft.edit_po", id=id)}" '
+                    f'class="btn btn-ghost">Edit</a>')
     pics_btn = ""
     if _AUTH.can_reach("po_draft.pictures"):
         pics_btn = (f'\n    <a href="{url_for("po_draft.pictures", id=id)}" '
@@ -891,7 +1317,7 @@ def view_po(id: str):
     <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All Draft POs</a>
     <a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(po.get('boq_ref'))}</a>
     {convert_html}
-    <a href="{url_for('po_draft.edit_po', id=id)}" class="btn btn-ghost">Edit</a>{pics_btn}
+    {edit_btn}{pics_btn}
     <a href="{url_for('po_draft.delete_po', id=id)}" class="btn btn-ghost">Delete</a>
     <a href="{url_for('po_draft.print_po', id=id)}" class="btn">&#128438;&nbsp;Print</a>
   </div>
@@ -941,20 +1367,53 @@ def print_po(id: str):
 @po_draft_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_po(id: str):
     """
-    Vendor, date, delivery address and notes — and each line's **make**
-    (26 October 2026). **Not the lines.**
+    **Every field and every line, while this draft is UNCONVERTED**
+    (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A2).
 
-    An issued draft PO is a document a supplier is pricing, and moving the lines
-    under it is how a dispute starts — `purchase.update_purchase()` makes the
-    same call about an issued order's commercial content. Ordering different
-    lines means raising another draft PO, which is cheap and leaves a trail.
-    The make is the one per-line detail that is open here: it names the brand
-    the supplier is asked to price, and it changes no line, quantity or ref.
+    Vendor, date, delivery address, notes and terms; and per line the
+    description, item number, unit, quantity, pieces, make and HSN, with lines
+    added and removed freely. A specification row can be added too, carrying
+    the clause and no quantity.
+
+    ⚠ **LOCKED once it has been converted into a purchase order, and refused
+      on the POST as well as hidden on the GET.** `is_locked()` is asked twice
+      and the POST path writes nothing when it answers True — a form that is
+      merely not drawn is not a lock. A document a real order was raised from
+      is the record of what that order was raised from.
+
+    ⚠ **No rate box.** `PRINT_RATES` is False and nothing on this document may
+      read a buy rate from anywhere (the module docstring); the supplier fills
+      the rates in. A2's brief named "rate" among the editable fields and
+      Manas's answer, with the conflict put to him, was: no rate box, and the
+      printed Rate column stays empty. Recorded in the §0 block.
+
+    ⚠ **`ref` is deliberately untouched** and an edit never reissues the
+      number — the fifty-fourth block's carve-out stands, and so does the
+      global counter's "a number is never released".
+
+    **What this replaced**, so the narrowing it reverses is findable: until
+    this pass the route edited the vendor, the date, the delivery address and
+    the notes, plus each line's *make* (26 October 2026, the fifty-third
+    block, change 2) — and nothing else, because *"an issued draft PO is a
+    document a supplier is pricing, and moving the lines under it is how a
+    dispute starts"*. That reasoning was right about a **converted** draft and
+    too strong about an unconverted one, which has gone to nobody yet. The
+    lock above is where it now lives.
     """
     po = (STORE.get("purchase_orders") or {}).get(id)
     if not po:
         return redirect(url_for("po_draft.list_pos",
                                 msg="That draft PO no longer exists.", type="error"))
+
+    # ⚠ **BOTH methods, and the POST writes nothing.** The GET redirects so a
+    #   bookmarked form cannot be filled in and submitted; the POST refuses
+    #   before `_validate()` is even called, so no value is read off a form
+    #   that may not change this document.
+    if is_locked(po):
+        return redirect(url_for("po_draft.view_po", id=id,
+                                msg=P.esc(LOCK_REASON).replace("&mdash;", "—"),
+                                type="error"))
+
     boq = (STORE.get("boqs") or {}).get(po.get("boq_id", "")) or {
         "id": po.get("boq_id", ""), "ref": po.get("boq_ref", ""),
         "project_name": po.get("project_name", ""),
@@ -972,27 +1431,21 @@ def edit_po(id: str):
         }, po=po)
 
     data, error = _validate(request.form, boq)
-    # Only a box the form drew is read, by the row's own index; a POST from a
-    # tab opened before the boxes existed leaves every make as it is.
-    makes = {}
-    for n, row in enumerate(po.get("items") or []):
-        key = f"item_make_{n}"
-        if not row.get("is_header") and key in request.form:
-            makes[n] = (request.form.get(key) or "").strip()[:BP.MAKE_MAX]
+    items, line_error = (None, "") if error else parse_items(request.form, po)
+    error = error or line_error
     if error:
-        data["_makes"] = makes
+        # Hand the operator back exactly what they typed, rows and all — a
+        # browser cannot refill a form and a refused save must not lose work.
+        data["_items"] = _posted_rows(request.form)
         return _entry_form(boq, data, error, po=po)
 
     po["date"] = data["date"]
     po["notes"] = data["notes"]
     po["delivery_to"] = data["delivery_to"]
+    # `None` is a stale tab (`parse_items()`), and leaves the lines alone.
+    if items is not None:
+        po["items"] = items
     po.update(data["vendor"])
-    for n, make in makes.items():
-        # Absent when blank — the line shape `picked_lines()` writes.
-        if make:
-            po["items"][n]["make"] = make
-        else:
-            po["items"][n].pop("make", None)
     # `ref` is deliberately untouched. An edit never reissues the number.
     return redirect(url_for("po_draft.view_po", id=id,
                             msg="Draft purchase order updated.", type="success"))

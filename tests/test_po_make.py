@@ -343,19 +343,69 @@ def test_the_draft_po_create_form_carries_the_make_box(client, shop):
 
 
 def test_make_is_edited_on_the_draft_po_edit_form(client, shop):
+    """
+    ⚠ **REWRITTEN 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth**
+    block, A2). The *Make, per line* section this test was written for has
+    been replaced by the FULL line editor: the box is now `it_make` in a
+    positional repeater beside `it_desc`, `it_unit`, `it_qty`, `it_pcs` and
+    `it_hsn`, rather than `item_make_<n>` keyed by the row's index.
+
+    **What the test asserts has not changed at all** — the make opens at the
+    draft's own value, a typed make is stored, and a cleared box removes the
+    key. Only the field names moved. The body it replaces, in full and
+    verbatim:
+
+        n = next(i for i, x in enumerate(d["items"]) if not x.get("is_header"))
+        page = client.get(f"/po/edit/{d['id']}").get_data(as_text=True)
+        assert f'name="item_make_{n}"' in page and 'value="SANT"' in page
+        r = client.post(f"/po/edit/{d['id']}", data={
+            "date": "2026-10-26", "vendor_id": VENDOR_ID, "notes": "", "delivery_to": "",
+            f"item_make_{n}": "Kirloskar"})
+        assert r.status_code == 302, r.get_data(as_text=True)[:800]
+        assert d["items"][n]["make"] == "Kirloskar"
+        # Cleared, the key goes.
+        client.post(f"/po/edit/{d['id']}", data={
+            "date": "2026-10-26", "vendor_id": VENDOR_ID, f"item_make_{n}": ""})
+        assert "make" not in d["items"][n]
+    """
+    import po_draft as PD
     d, li = _draft(client, shop)
     n = next(i for i, x in enumerate(d["items"]) if not x.get("is_header"))
     page = client.get(f"/po/edit/{d['id']}").get_data(as_text=True)
-    assert f'name="item_make_{n}"' in page and 'value="SANT"' in page
-    r = client.post(f"/po/edit/{d['id']}", data={
-        "date": "2026-10-26", "vendor_id": VENDOR_ID, "notes": "", "delivery_to": "",
-        f"item_make_{n}": "Kirloskar"})
+    assert 'name="it_make"' in page and 'value="SANT"' in page
+
+    def _rows(make):
+        """The whole repeater, as the editor posts it."""
+        body = {"date": "2026-10-26", "vendor_id": VENDOR_ID,
+                "notes": "", "delivery_to": "",
+                # The marker that says the editor was drawn; without it the
+                # POST is a stale tab and the lines are left alone.
+                "it_rows": "1",
+                "it_line_id": [], "it_kind": [], "it_item_no": [],
+                "it_desc": [], "it_unit": [], "it_qty": [], "it_pcs": [],
+                "it_make": [], "it_hsn": [], "it_image": []}
+        for i, row in enumerate(d["items"]):
+            head = bool(row.get("is_header"))
+            body["it_line_id"].append(row.get("line_id") or "")
+            body["it_kind"].append("header" if head else "item")
+            body["it_item_no"].append(row.get("item_no") or "")
+            body["it_desc"].append(row.get("description") or "")
+            body["it_unit"].append("" if head else (row.get("unit") or ""))
+            body["it_qty"].append("" if head else str(row.get("qty") or ""))
+            body["it_pcs"].append("" if head else (row.get("pcs") or ""))
+            body["it_make"].append("" if head else
+                                   (make if i == n else (row.get("make") or "")))
+            body["it_hsn"].append("" if head else (row.get("hsn") or ""))
+            body["it_image"].append(row.get("image") or "")
+        return body
+
+    r = client.post(f"/po/edit/{d['id']}", data=_rows("Kirloskar"))
     assert r.status_code == 302, r.get_data(as_text=True)[:800]
     assert d["items"][n]["make"] == "Kirloskar"
     # Cleared, the key goes.
-    client.post(f"/po/edit/{d['id']}", data={
-        "date": "2026-10-26", "vendor_id": VENDOR_ID, f"item_make_{n}": ""})
+    assert client.post(f"/po/edit/{d['id']}", data=_rows("")).status_code == 302
     assert "make" not in d["items"][n]
+    assert PD.is_locked(d) is False
 
 
 def test_make_survives_converting_a_draft_to_a_po(client, shop):
