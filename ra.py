@@ -1198,15 +1198,35 @@ def overclaims(boq_id: str, leg: str, claims: list,
     much has been claimed, and the only thing that moved is the number it is
     compared against.
 
-    ⚠ **A project with NO approved measurement keeps the BOQ ceiling, and that
-    is the whole of the grandfather rule at the arithmetic level.** Requiring a
-    measurement here would break every live installation bill raised before this
-    module existed — the same shape of problem as `created_by`, and it gets the
-    same treatment. The exception **cannot grow**, because
-    `/ra/create?leg=installation` refuses a BOQ with no approved measurement
-    (`_c1_refusal()`), so an empty answer from `MS.approved_qty_by_line()` can
-    only describe a project that already existed. `tests/test_measurement_pin.py`
-    is what pins that, and it is the point of the rule.
+    ⚠ **A project with NO approved measurement keeps the BOQ ceiling.** This
+    arithmetic is **unchanged** and has never changed; what changed on 28
+    October 2026 is what it describes.
+
+    Originally it was a grandfather rule, and this paragraph read, verbatim:
+
+        A project with NO approved measurement keeps the BOQ ceiling, and that
+        is the whole of the grandfather rule at the arithmetic level. Requiring
+        a measurement here would break every live installation bill raised
+        before this module existed — the same shape of problem as `created_by`,
+        and it gets the same treatment. The exception **cannot grow**, because
+        `/ra/create?leg=installation` refuses a BOQ with no approved
+        measurement (`_c1_refusal()`), so an empty answer from
+        `MS.approved_qty_by_line()` can only describe a project that already
+        existed. `tests/test_measurement_pin.py` is what pins that, and it is
+        the point of the rule.
+
+    ⚠ **That last argument is now false and the behaviour is deliberate rather
+    than residual.** `C1_PREREQUISITE` is False (§0's fifty-eighth block, item
+    6), so a BOQ with no sheet opens the installation form — and an empty
+    answer from `MS.approved_qty_by_line()` now describes a project nobody has
+    measured **yet**, which is the ordinary case the client asked for. The
+    claim is still guarded, by the **approved BOQ quantity**, cumulatively
+    across the chain; what is gone is the ORDERING requirement and nothing
+    else. ⚠ **The moment one approved sheet exists on the chain, the ceiling
+    becomes the measured quantity for every line** — the rule below, untouched
+    — so a project does not drift between the two. `tests/test_measurement_pin.py`
+    still pins the sheet's cap, and `tests/test_ra_no_prereq_oct28.py` pins
+    both halves of the switch.
 
     ⚠ **Once ONE approved measurement exists on a chain, every line's ceiling
     comes from it** — including a line the sheet did not measure, whose ceiling
@@ -1919,9 +1939,97 @@ def challan_exists(boq_id: str) -> bool:
                for dc in (STORE.get("delivery_challans") or {}).values())
 
 
+# ⚠ **THE C1 PREREQUISITE IS SWITCHED OFF IN CODE — 28 October 2026**
+#   (CLIENT_CHANGES.md §0, the **fifty-eighth** block, item 6). The client's
+#   report from the Yogesh meeting: a claim should be one click from the
+#   schedule and should not be held up waiting for a delivery challan or a
+#   measurement sheet to exist first.
+#
+# ⚠ **A SWITCH, NOT A DELETION — `approval.LADDER_ON`'s shape**, which this
+#   repo already uses for exactly this kind of decision. The gate, its two
+#   messages and `challan_exists()` all stay; re-arming the rule is this one
+#   line, with no revert spread across the module and the tests.
+#
+# ⚠ **ONLY THE PREREQUISITE IS RELAXED. THE MEASUREMENT CAP STILL BINDS**, and
+#   that is the whole of what this change is and is not:
+#
+#       with an approved sheet on the chain → `overclaims()` caps the
+#           installation claim at the MEASURED quantity, exactly as before
+#       with none                           → it caps at the BOQ quantity
+#
+#   The second line is `overclaims()`'s `measured == {}` path, and **it is not
+#   touched by one character**. What changes is that it is now reachable on a
+#   new project instead of describing only an old one.
+#
+# ⚠ **SO THE PARAGRAPH `overclaims()` CARRIED ABOUT THAT PATH IS NOW FALSE AND
+#   HAS BEEN REWRITTEN.** It said the exception *"cannot grow, because
+#   `/ra/create?leg=installation` refuses a BOQ with no approved
+#   measurement"*. That refusal is this flag, and with it off the no-sheet
+#   ceiling is the DESIGNED behaviour for a project nobody has measured yet,
+#   not a legacy exception. It is the BOQ — the approved schedule — so nothing
+#   is unguarded; what is gone is the ORDERING requirement, which is what the
+#   client asked for. `tests/test_measurement_pin.py` still pins that a sheet
+#   caps, and `tests/test_c1_order_of_working.py` runs the whole gate with the
+#   flag ON, the way the approval tests run the ladder on.
+C1_PREREQUISITE = False
+
+
+def c1_prerequisite_on() -> bool:
+    """Is the C1 ordering gate armed? Read through here and nowhere else —
+    `approval.ladder_on()`'s arrangement, so a test can turn it on and every
+    reader agrees."""
+    return bool(C1_PREREQUISITE)
+
+
+def cap_note_html(boq_id: str, leg: str) -> str:
+    """
+    **WHICH CEILING THIS CLAIM IS MEASURED AGAINST** — one line above the
+    grid, on create and on edit. §0's **fifty-eighth** block, item 6: *"show
+    which cap applies on the form."*
+
+    It exists because the C1 prerequisite is off (`C1_PREREQUISITE`). While a
+    measurement sheet was a precondition, the installation ceiling was always
+    the measured quantity and there was nothing to tell anybody. Now the form
+    opens either way, and the same grid is guarded by **two different
+    numbers** depending on a record that is not on this page. An operator
+    typing into it is owed the answer before the refusal, not after it.
+
+    ⚠ **It REPORTS and never decides.** The ceiling is `overclaims()`'s, read
+    through the same `MS.approved_qty_by_line()` call with the same chain, so
+    this line and the guard cannot say different things. Nothing here is a
+    second rule, and nothing reads this function back.
+    """
+    chain = set(revision_chain(boq_id))
+    if leg == "installation":
+        measured = MS.approved_qty_by_line(boq_id, chain=chain) or {}
+        if measured:
+            return ('<div class="form-hint" style="margin:.6rem 0;">'
+                    '&#9432;&nbsp;<b>This claim is capped at the MEASURED '
+                    'quantity.</b> An approved measurement sheet exists on '
+                    'this schedule, so the approved measurement is the source '
+                    'of installation quantity (CC-2 C2) &mdash; a line the '
+                    'sheet did not measure cannot be claimed at all.</div>')
+        return ('<div class="form-hint" style="margin:.6rem 0;">'
+                '&#9432;&nbsp;<b>This claim is capped at the BOQ quantity.</b> '
+                'No approved measurement sheet exists on this schedule yet. '
+                'Raise one and the cap becomes the measured quantity instead, '
+                'for every line.</div>')
+    return ('<div class="form-hint" style="margin:.6rem 0;">'
+            '&#9432;&nbsp;<b>This claim is capped at the BOQ quantity</b>, '
+            'cumulatively across every bill on this schedule. Delivery '
+            'challans do not cap a supply claim &mdash; if you raise the bill '
+            'from ticked challans, their dispatched quantity caps it as '
+            'well.</div>')
+
+
 def _c1_refusal(boq_id: str, leg: str):
     """
     The C1 gate, or None. A redirect carrying the reason and the way forward.
+
+    ⚠ **Returns None for everything while `C1_PREREQUISITE` is False** — see
+    the block above. Everything below is the rule as it stands for the day it
+    is switched back on, and is not dead: `tests/test_c1_order_of_working.py`
+    exercises every line of it.
 
     A redirect rather than a 403, for `approval._refusal()`'s two reasons: it is
     the house shape for a per-record business rule, and `auth._gate()` refuses
@@ -1936,6 +2044,8 @@ def _c1_refusal(boq_id: str, leg: str):
     raised afterwards has to have the step before it. Widening this to let an
     old project carry on is how the exception would grow.
     """
+    if not c1_prerequisite_on():
+        return None
     if leg == "installation":
         # The same chain `overclaims()` measures against — see the note there.
         if not MS.has_approved_measurement(boq_id,
@@ -3438,7 +3548,8 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
                 action: str, ra_no: int, back_url: str, date_val: str,
                 notes_val: str, submit_label: str, frozen_note: str = "",
                 source_html: str = "", hidden_html: str = "",
-                tail_html: str = "", top_html: str = "") -> str:
+                tail_html: str = "", top_html: str = "",
+                cap_html: str = "") -> str:
     """
     The claim grid, shared by create and edit — one form, two entry points.
 
@@ -3454,6 +3565,12 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
 
     `top_html` (18 October 2026) is the *Import from Excel* button beside Back
     on the create form — spliced the same way, and "" on edit.
+
+    `cap_html` (28 October 2026, §0 fifty-eighth block, item 6) is
+    `cap_note_html()`'s one line saying WHICH ceiling guards this grid —
+    spliced with no whitespace of its own, so `""` leaves this function
+    emitting exactly the bytes it emitted before. Both entry points pass it:
+    the question *"what am I capped at?"* is the same on create and on edit.
     """
     heading = f"RA{int(ra_no or 0)}"
     back = f'<a href="{back_url}" class="btn btn-ghost">&#8592; Back</a>'
@@ -3464,7 +3581,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
     <h1>{heading}</h1>
     {back}
   </div>
-  {_alert(error)}
+  {_alert(error)}{cap_html}
   {frozen_note}
   {_boq_facts(boq, leg, ra_no)}
   {_dup_band(boq)}{source_html}
@@ -3527,6 +3644,195 @@ def _posted(raw_lines: list) -> dict:
         if lid:
             out[lid] = r
     return out
+
+
+# ⚠ **The "mint no statutory serial" sentinel** (28 October 2026, §0's
+#   fifty-eighth block, item 6). Passed by `raboth.py` for both legs of a
+#   Supply & Installation set: only the merged document carries a tax invoice
+#   number. A value no operator can type, so a typed serial cannot collide
+#   with it.
+NO_TAX_INVOICE = "\x00no-tax-invoice"
+
+# ⚠ **The mark that makes three documents ONE SET** (28 October 2026, §0's
+#   fifty-eighth block, item 6). Stamped by `raboth.py` on both legs and on
+#   the merged record; read here and by `merged_ra.cancel_merged()`, which is
+#   why it is declared in THIS module rather than in `raboth.py`: it is a
+#   field on an RA bill, and `ra.py` and `merged_ra.py` must not import
+#   `raboth.py` — that module imports both of them.
+#
+# ⚠ **A bill without it was raised on its own and is never touched by the set
+#   rules. Nothing is backfilled.**
+RAISED_AS_BOTH = "raised_as_both"
+
+
+def set_of(doc) -> str:
+    """The Supply & Installation set this record belongs to, or `""`."""
+    return str((doc or {}).get(RAISED_AS_BOTH) or "")
+
+
+def legs_of_set(set_id: str) -> list:
+    """`[(id, bill), …]` — the two RA bills of one set, supply first."""
+    sid = str(set_id or "")
+    if not sid:
+        return []
+    rows = [(rid, b) for rid, b in (STORE.get("ra_bills") or {}).items()
+            if set_of(b) == sid]
+    rows.sort(key=lambda kv: 0 if str(kv[1].get("leg") or "") == "supply" else 1)
+    return rows
+
+
+def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
+               notes_val: str = "", tax_invoice_ref: str = "",
+               po_ref: str = "", po_date: str = "", tax_type: str = "cgst_sgst",
+               cgst_rate: float = 9.0, sgst_rate: float = 9.0,
+               igst_rate: float = 18.0) -> dict:
+    """
+    **THE ONE PLACE AN RA BILL RECORD IS BUILT.** Returns the dict; writes
+    nothing.
+
+    ⚠ **EXTRACTED VERBATIM from `create_ra()`'s write block on 28 October
+    2026** (§0's **fifty-eighth** block, item 6) so that the *Supply &
+    Installation* route can raise two legs through this exact code instead of
+    describing the record a second time. The body below is that block,
+    unchanged except that `rid` is handed in rather than minted here and the
+    record is returned rather than assigned into `STORE`. Every comment in it
+    is the original's and every rule it states still holds.
+
+    ⚠ **A SECOND WRITE PATH FOR AN RA BILL IS THE DEFECT THIS AVOIDS.** Two
+    places building this record is two places for the tax block, the frozen
+    previous balance and the statutory serial to drift — and the drift would
+    only show on a document the client is already holding.
+
+    ⚠ **`tax_invoice_ref` is minted only when it is left blank**, which is the
+    original rule (*"a typed value still wins"*). The atomic two-leg route
+    passes a sentinel of its own so that **no leg mints one at all**: a merged
+    RA carries the single statutory serial and three serials over one billing
+    is exactly what Rule 46 exists to prevent. See `NO_TAX_INVOICE`.
+
+    ⚠ **It reads `STORE` for `next_ra_no()`, `next_ref()` and
+    `previous_balance()`**, so two bills built in one request must be WRITTEN
+    between the two calls or they take the same number. `raboth.py` does
+    exactly that, after validating both.
+    """
+    # `boq_id` was the route's own local; it is the schedule's id and is read
+    # off the record here so the builder takes one argument fewer and the two
+    # can never be handed a BOQ and somebody else's id.
+    boq_id = str(boq.get("id") or "")
+    tax_info = compute_tax_totals(claims, [], tax_type=tax_type,
+                                  cgst_rate=cgst_rate, sgst_rate=sgst_rate,
+                                  igst_rate=igst_rate)
+
+    # THE SNAPSHOT. What earlier bills of this project still owe is
+    # frozen onto this bill HERE, at the moment it is created, and is
+    # never recomputed afterwards — not on edit, and above all not at
+    # print time.
+    #
+    # This is the exact defect class that already shipped once in this
+    # module: `print_ra()` was a loop over the live `boq["line_items"]`,
+    # so revising the schedule silently rewrote a document the client
+    # had already been sent. A previous-balance recomputed from live
+    # receipts is the same bug with a different source — entering a
+    # receipt against RA1 in October would rewrite the balance printed
+    # on RA2 in August. A printed document is driven by its own stored
+    # rows, full stop (CLIENT_CHANGES.md §1.2).
+    this_ra_no = next_ra_no(boq_id)
+    prev_balance, prev_balance_refs = previous_balance(boq_id, this_ra_no)
+
+    # THE STATUTORY SERIAL, minted here and nowhere else.
+    #
+    # ⚠ **MINTED AT CREATION, NEVER AT PRINT.** C3 mints the merged
+    #   document's serial at creation for the same reason: a print route
+    #   that writes is a print route that changes a document by being
+    #   looked at, and the number would then depend on who opened it
+    #   first. `print_ra()` reads this field and does not compute one.
+    #
+    # ⚠ **A TYPED VALUE STILL WINS.** The field stays typeable — the
+    #   operator may be transcribing a serial from a book the client
+    #   keeps — and minting only fills it when it is left blank, which
+    #   is the case DOMAIN.md §4.2 names and the only one that was
+    #   falling back to `ra_no`.
+    # ⚠ **`NO_TAX_INVOICE` — the one value that means "mint NOTHING".** A
+    #   blank still mints, which is the original rule and the ordinary case;
+    #   this sentinel is how `raboth.py` raises a leg that must carry no
+    #   statutory serial at all, because the merged document over it carries
+    #   the only one. Three serials over one billing is what Rule 46 exists to
+    #   prevent, and GSTR-1 would report the two legs as phantom invoices.
+    #   It is stored as "" — the record carries no number, which is the truth
+    #   about it — so nothing downstream needs to know the sentinel exists.
+    if tax_invoice_ref == NO_TAX_INVOICE:
+        tax_invoice_ref = ""
+    else:
+        tax_invoice_ref = tax_invoice_ref or next_tax_invoice_ref(date_val)
+
+    rec = {
+        "id": rid,
+        "ref": next_ref(date_val),
+        "fy": P.fy_of(date_val),
+        "date": date_val,
+        "tax_invoice_ref": tax_invoice_ref,
+        "tax_invoice_date": date_val,
+        "po_ref": po_ref,
+        "po_date": po_date,
+        "boq_id": boq_id,
+        "boq_ref": boq.get("ref", ""),
+        "boq_rev_no": int(boq.get("rev_no") or 0),
+        "ra_no": this_ra_no,
+        "leg": leg,
+        "project_name": boq.get("project_name", ""),
+        "site_location": boq.get("site_location", ""),
+        "account_name": boq.get("account_name", ""),
+        "contact_person": boq.get("contact_person", ""),
+        "to": boq.get("to", ""),
+        "bill_gstin": boq.get("bill_gstin", ""),
+        "claims": claims,
+        "claim_subtotal": tax_info["claim_subtotal"],
+        "deductions": tax_info["deductions"],
+        "deduction_total": tax_info["deduction_total"],
+        "net_payable": tax_info["net_payable"],
+        "tax_type": tax_info["tax_type"],
+        "cgst_rate": tax_info["cgst_rate"],
+        "sgst_rate": tax_info["sgst_rate"],
+        "igst_rate": tax_info["igst_rate"],
+        "cgst_amount": tax_info["cgst_amount"],
+        "sgst_amount": tax_info["sgst_amount"],
+        "igst_amount": tax_info["igst_amount"],
+        "tax_amount": tax_info["tax_amount"],
+        # The rate-wise breakdown, frozen with the rest of the bill.
+        # Stored rather than re-derived at print time for the same
+        # reason `cgst_amount` is: the document must not depend on the
+        # BOQ's GST rates never being edited. A bill written before this
+        # field simply has no key, renders exactly as it always did, and
+        # is never backfilled — see ABOUT.md §7 gap 14.
+        "tax_slabs": tax_info["tax_slabs"],
+        "rounding_off": tax_info["rounding_off"],
+        "grand_total": tax_info["grand_total"],
+        # The carried balance, frozen above. It is a MEMO on this
+        # document and nothing more: it is deliberately absent from
+        # `claim_subtotal`, from every tax figure, from `net_payable`
+        # and from `grand_total`, and it is invisible to the over-claim
+        # guard because it is not a quantity on a line.
+        #
+        # ⚠ ASSUMPTION, NOT CONFIRMED BY THE CLIENT: an unpaid amount is
+        #   NOT re-billed as a claim row on the next RA bill. It is
+        #   stated on the face of the bill and left there. If they come
+        #   back and say the arrears should be re-claimed, this is the
+        #   field that changes and the change is not cosmetic — a
+        #   re-billed arrear would enter `claim_subtotal`, be taxed a
+        #   second time on a value already taxed once, and inflate the
+        #   cumulative claim against the approved schedule until the
+        #   over-claim block refused a bill for the wrong reason.
+        #   CLIENT_CHANGES.md item 8 and §3 carry the open question.
+        "prev_balance": prev_balance,
+        "prev_balance_refs": prev_balance_refs,
+        # A new bill is a DRAFT. It is editable, deletable and prints
+        # with a DRAFT marker until somebody deliberately issues it at
+        # `/ra/issue/<id>` — the lock comes down there, not here.
+        "status": "draft",
+        "issued_on": "", "cancelled_on": "", "cancel_reason": "",
+        "notes": notes_val,
+        "company_branch": "", "auth_signatory": "",
+    }
+    return rec
 
 
 def _validate(raw: str, boq: dict, leg: str, prev: dict,
@@ -3630,7 +3936,22 @@ def list_ras():
         rows.append((rid, b))
 
     # Sort so bills for the same BOQ read in ra_no order
-    rows.sort(key=lambda kv: (str(kv[1].get("boq_id") or ""), int(kv[1].get("ra_no") or 0)))
+    # ⚠ A SET's two legs must be ADJACENT and supply first, or the merged
+    #   header row would sit above the wrong bill. Within one schedule the
+    #   set sorts at its lowest `ra_no` and its legs keep their order; every
+    #   other bill sorts exactly as it did.
+    def _order(kv):
+        rid, b = kv
+        sid = set_of(b)
+        if sid:
+            legs = legs_of_set(sid)
+            first = min((int(x.get("ra_no") or 0) for _i, x in legs),
+                        default=int(b.get("ra_no") or 0))
+            return (str(b.get("boq_id") or ""), first,
+                    0 if str(b.get("leg") or "") == "supply" else 1)
+        return (str(b.get("boq_id") or ""), int(b.get("ra_no") or 0), 0)
+
+    rows.sort(key=_order)
 
     # **Cancelled bills are excluded from both tiles.** A withdrawn claim is not
     # a smaller claim, so it contributes nothing rather than contributing its
@@ -3675,9 +3996,47 @@ def list_ras():
                 f"&#8377;&nbsp;{float(b.get('net_payable') or 0.0):,.2f}"
             out_cell = "&mdash;" if void else f"&#8377;&nbsp;{outstanding_of(b):,.2f}"
 
+            # ── A SET RAISED AS ONE READS AS ONE ROW (28 October 2026) ──
+            #
+            # §0's fifty-eighth block, item 6: *"the register shows the
+            # combined bill as one row, legs collapsed under it."* The legs
+            # are still their own records and still their own rows — what
+            # changes is that the SUPPLY leg's row carries the merged tax
+            # invoice above it and the installation leg's row is indented
+            # under it, so the three read as the one billing they are.
+            #
+            # ⚠ **Nothing is hidden and no figure moves.** A row that vanished
+            # would make this register's two tiles impossible to reconcile
+            # against the table under them, which is the rule the cancelled
+            # bills already follow one column along. `merged_ra.py` is NOT
+            # imported — `STORE["merged_ras"]` is read directly, the one-way
+            # trick this module already uses for it in `_live_merge_holding()`.
+            set_id = set_of(b)
+            set_html = ""
+            indent = ""
+            if set_id:
+                leg_is_supply = str(b.get("leg") or "") == "supply"
+                if leg_is_supply:
+                    m = next((x for x in (STORE.get("merged_ras") or {}).values()
+                              if set_of(x) == set_id), None)
+                    if m is not None:
+                        m_void = str(m.get("status") or "live").lower() == "cancelled"
+                        set_html = (
+                            f'<tr{" style=\"opacity:.6;\"" if m_void else ""}>'
+                            f'<td class="td-ref" colspan="9">'
+                            f'<a href="{url_for("merged_ra.view_merged", id=m.get("id"))}">'
+                            f'<b>&#9660; {_esc(m.get("tax_invoice_ref"))}</b></a> '
+                            f'<span style="font-size:.75rem;color:var(--muted);">'
+                            f'Supply &amp; Installation, raised as one &middot; '
+                            f'the two legs below are this one billing and carry '
+                            f'no invoice number of their own'
+                            f'{" &middot; cancelled" if m_void else ""}</span>'
+                            f'</td></tr>')
+                indent = ' style="padding-left:1.6rem;"'
+            table_rows_html += set_html
             table_rows_html += f"""
             <tr{' style="opacity:.6;"' if void else ''}>
-              <td class="td-ref"><a href="{view_url}">RA{_esc(b.get('ra_no'))}</a> <span style="font-size:0.75rem;color:var(--muted);">({_esc(b.get('ref'))})</span></td>
+              <td class="td-ref"{indent}><a href="{view_url}">RA{_esc(b.get('ra_no'))}</a> <span style="font-size:0.75rem;color:var(--muted);">({_esc(b.get('ref'))})</span></td>
               <td><span class="fh-sec">{_esc(b.get('leg'))}</span></td>
               <td class="td-muted">{_esc(b.get('date'))}</td>
               <td><a href="{boq_link}">{_esc(b.get('boq_ref'))}</a></td>
@@ -4158,109 +4517,15 @@ def create_ra(imported: dict = None):
 
         if not error:
             rid = new_id()
-            tax_info = compute_tax_totals(claims, [], tax_type=tax_type,
-                                          cgst_rate=cgst_rate, sgst_rate=sgst_rate,
-                                          igst_rate=igst_rate)
-
-            # THE SNAPSHOT. What earlier bills of this project still owe is
-            # frozen onto this bill HERE, at the moment it is created, and is
-            # never recomputed afterwards — not on edit, and above all not at
-            # print time.
-            #
-            # This is the exact defect class that already shipped once in this
-            # module: `print_ra()` was a loop over the live `boq["line_items"]`,
-            # so revising the schedule silently rewrote a document the client
-            # had already been sent. A previous-balance recomputed from live
-            # receipts is the same bug with a different source — entering a
-            # receipt against RA1 in October would rewrite the balance printed
-            # on RA2 in August. A printed document is driven by its own stored
-            # rows, full stop (CLIENT_CHANGES.md §1.2).
-            this_ra_no = next_ra_no(boq_id)
-            prev_balance, prev_balance_refs = previous_balance(boq_id, this_ra_no)
-
-            # THE STATUTORY SERIAL, minted here and nowhere else.
-            #
-            # ⚠ **MINTED AT CREATION, NEVER AT PRINT.** C3 mints the merged
-            #   document's serial at creation for the same reason: a print route
-            #   that writes is a print route that changes a document by being
-            #   looked at, and the number would then depend on who opened it
-            #   first. `print_ra()` reads this field and does not compute one.
-            #
-            # ⚠ **A TYPED VALUE STILL WINS.** The field stays typeable — the
-            #   operator may be transcribing a serial from a book the client
-            #   keeps — and minting only fills it when it is left blank, which
-            #   is the case DOMAIN.md §4.2 names and the only one that was
-            #   falling back to `ra_no`.
-            tax_invoice_ref = tax_invoice_ref or next_tax_invoice_ref(date_val)
-
-            STORE["ra_bills"][rid] = {
-                "id": rid,
-                "ref": next_ref(date_val),
-                "fy": P.fy_of(date_val),
-                "date": date_val,
-                "tax_invoice_ref": tax_invoice_ref,
-                "tax_invoice_date": date_val,
-                "po_ref": po_ref,
-                "po_date": po_date,
-                "boq_id": boq_id,
-                "boq_ref": boq.get("ref", ""),
-                "boq_rev_no": int(boq.get("rev_no") or 0),
-                "ra_no": this_ra_no,
-                "leg": leg,
-                "project_name": boq.get("project_name", ""),
-                "site_location": boq.get("site_location", ""),
-                "account_name": boq.get("account_name", ""),
-                "contact_person": boq.get("contact_person", ""),
-                "to": boq.get("to", ""),
-                "bill_gstin": boq.get("bill_gstin", ""),
-                "claims": claims,
-                "claim_subtotal": tax_info["claim_subtotal"],
-                "deductions": tax_info["deductions"],
-                "deduction_total": tax_info["deduction_total"],
-                "net_payable": tax_info["net_payable"],
-                "tax_type": tax_info["tax_type"],
-                "cgst_rate": tax_info["cgst_rate"],
-                "sgst_rate": tax_info["sgst_rate"],
-                "igst_rate": tax_info["igst_rate"],
-                "cgst_amount": tax_info["cgst_amount"],
-                "sgst_amount": tax_info["sgst_amount"],
-                "igst_amount": tax_info["igst_amount"],
-                "tax_amount": tax_info["tax_amount"],
-                # The rate-wise breakdown, frozen with the rest of the bill.
-                # Stored rather than re-derived at print time for the same
-                # reason `cgst_amount` is: the document must not depend on the
-                # BOQ's GST rates never being edited. A bill written before this
-                # field simply has no key, renders exactly as it always did, and
-                # is never backfilled — see ABOUT.md §7 gap 14.
-                "tax_slabs": tax_info["tax_slabs"],
-                "rounding_off": tax_info["rounding_off"],
-                "grand_total": tax_info["grand_total"],
-                # The carried balance, frozen above. It is a MEMO on this
-                # document and nothing more: it is deliberately absent from
-                # `claim_subtotal`, from every tax figure, from `net_payable`
-                # and from `grand_total`, and it is invisible to the over-claim
-                # guard because it is not a quantity on a line.
-                #
-                # ⚠ ASSUMPTION, NOT CONFIRMED BY THE CLIENT: an unpaid amount is
-                #   NOT re-billed as a claim row on the next RA bill. It is
-                #   stated on the face of the bill and left there. If they come
-                #   back and say the arrears should be re-claimed, this is the
-                #   field that changes and the change is not cosmetic — a
-                #   re-billed arrear would enter `claim_subtotal`, be taxed a
-                #   second time on a value already taxed once, and inflate the
-                #   cumulative claim against the approved schedule until the
-                #   over-claim block refused a bill for the wrong reason.
-                #   CLIENT_CHANGES.md item 8 and §3 carry the open question.
-                "prev_balance": prev_balance,
-                "prev_balance_refs": prev_balance_refs,
-                # A new bill is a DRAFT. It is editable, deletable and prints
-                # with a DRAFT marker until somebody deliberately issues it at
-                # `/ra/issue/<id>` — the lock comes down there, not here.
-                "status": "draft",
-                "issued_on": "", "cancelled_on": "", "cancel_reason": "",
-                "notes": notes_val,
-                "company_branch": "", "auth_signatory": "",
-            }
+            # ⚠ The record is built by `build_bill()` — the ONE place an RA
+            #   bill is described (28 October 2026). This block used to be
+            #   inline here; it moved so the two-leg route could raise its
+            #   legs through the same code rather than a second copy of it.
+            STORE["ra_bills"][rid] = build_bill(
+                rid, boq, leg, claims, date_val, notes_val,
+                tax_invoice_ref=tax_invoice_ref, po_ref=po_ref,
+                po_date=po_date, tax_type=tax_type, cgst_rate=cgst_rate,
+                sgst_rate=sgst_rate, igst_rate=igst_rate)
             # 4 Oct 2026 — WHERE THE BILL WAS RAISED FROM, written ONCE, here,
             # and never by `edit_ra()`. Only on a bill raised from challans or
             # from the measurement: a manual bill carries NEITHER key, and
@@ -4301,7 +4566,7 @@ def create_ra(imported: dict = None):
         date_val=date_val, notes_val=notes_val,
         submit_label="Save RA bill",
         source_html=source_html, hidden_html=hidden_html, tail_html=tail_html,
-        top_html=top_html)
+        top_html=top_html, cap_html=cap_note_html(boq_id, leg))
 
 
 @ra_bp.route("/edit/<id>", methods=["GET", "POST"])
@@ -4436,7 +4701,8 @@ def edit_ra(id: str):
         back_url=url_for("ra.view_ra", id=id),
         date_val=date_val, notes_val=notes_val,
         submit_label="Save changes",
-        source_html=source_html, tail_html=tail_html)
+        source_html=source_html, tail_html=tail_html,
+        cap_html=cap_note_html(boq_id, leg))
 
 
 @ra_bp.route("/view/<id>")

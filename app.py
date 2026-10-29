@@ -37,6 +37,8 @@ from docimport import docimport_bp  # Import from Excel on every OTHER document
 from ra import ra_bp             # RA bills: progressive claims against a BOQ
                                   # revision. Headed TAX INVOICE per DOMAIN.md §4.
 from receipt import receipt_bp   # Receipts: money RECEIVED against an RA bill.
+from raboth import raboth_bp     # RA · Supply & Installation raised in one
+                                # POST, atomically (§0 fifty-eighth block).
 from merged_ra import merged_bp  # CC-2 C3: one issued supply bill + one
                                  # issued installation bill, stacked onto one
                                  # sheet under ONE minted tax invoice number.
@@ -197,6 +199,12 @@ app.register_blueprint(receipt_bp)            # Mounted at /receipt — REQUIRED
                                               # url_for("receipt.new_receipt")
                                               # on every bill and 500s without it.
 app.register_blueprint(merged_bp)             # Mounted at /merged — CC-2 C3.
+app.register_blueprint(raboth_bp)            # Mounted at /raboth — RA · Supply
+                                             # & Installation in ONE POST,
+                                             # atomically (§0 fifty-eighth
+                                             # block, item 6). It imports ra
+                                             # and merged_ra; neither imports
+                                             # it back.
                                               #   Must come after ra_bp: it
                                               #   imports ra.py for the chain,
                                               #   the status predicates and the

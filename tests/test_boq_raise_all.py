@@ -55,7 +55,21 @@ from conftest import chain_ready
 
 @pytest.fixture()
 def sched(client):
-    """The seeded 97-line Sify schedule; its id."""
+    """
+    The seeded 97-line Sify schedule; its id.
+
+    ⚠ **`ra_bills` and `merged_ras` are cleared per test, because
+    `conftest._fresh_store()` does NOT clear `ra_bills`** — measured 29
+    October 2026. Every test here that plants a bill used fixed ids
+    (`s1`, `i1`), so one test's bills overwrote the previous one's and the
+    file happened to pass in its original order; adding a test that plants
+    bills in a new position made the next test read two bills where it
+    expects one. The ordering was load-bearing and nothing said so. This is
+    the file's own fixture only — `_fresh_store()` is shared and is a wider
+    decision (ABOUT.md §7, the test-isolation note).
+    """
+    STORE.setdefault("ra_bills", {}).clear()
+    STORE.setdefault("merged_ras", {}).clear()
     client.get("/boq/")
     client.get("/settings/")
     return DD.BOQ_META["id"]
@@ -135,57 +149,158 @@ def test_a_branch_with_an_ampersand_is_escaped_once(client, sched):
 
 # ═══ 2. THE THREE RA TYPES ON THE BOQ ═══════════════════════════════════════
 
+# ⚠ **THE FOUR TESTS BELOW WERE REWRITTEN ON 29 OCTOBER 2026** —
+#   CLIENT_CHANGES.md §0's **fifty-eighth** block, item 6. Two things moved
+#   under them and both are the point of that item:
+#
+#   1. the **C1 prerequisite is switched off** (`ra.C1_PREREQUISITE`), so a
+#      supply or installation claim no longer waits for a challan or a sheet;
+#   2. **RA · Supply & Installation now RAISES both legs** at
+#      `/raboth/create` instead of only merging two that already exist.
+#
+#   So all three chips are LIVE on a fresh schedule, and greying one would be
+#   the converse of this bar's own rule: a control is greyed only where it
+#   could produce nothing but a refusal, and these now produce a form. Each
+#   old assertion is kept verbatim in its test rather than deleted.
+#
+#   ⚠ **`/merged/create` is NOT gone and is still reached from the RA
+#   register.** It is what merges two bills that already exist, which is a
+#   different job from raising three documents as one; `test_the_merge_page_
+#   still_pairs_two_existing_bills` below holds it.
+
 def test_all_three_ra_types_are_drawn_on_a_fresh_schedule(client, sched):
+    """
+    The old assertions, verbatim:
+        assert html.count('class="btn btn-ghost rb-off"') == 3
+    """
     html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
-    for label in ("RA &middot; Supply</span>", "RA &middot; Installation</span>",
-                  "RA &middot; Supply &amp; Installation</span>"):
-        assert label in html, f"{label} is not drawn"
-    assert html.count('class="btn btn-ghost rb-off"') == 3
+    for label in ("RA &middot; Supply</a>", "RA &middot; Installation</a>",
+                  "RA &middot; Supply &amp; Installation</a>"):
+        assert label in html, f"{label} is not drawn as a link"
+    assert 'class="btn btn-ghost rb-off"' not in html, (
+        "no RA chip is greyed any more — all three open a form")
 
 
-def test_a_greyed_type_has_no_link_and_says_why(client, sched):
-    html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
-    assert "/ra/create?boq=" not in html
-    assert "/merged/create?boq=" not in html
-    hint = html[html.index('class="rb-hint"'):]
-    assert "Raise a delivery challan first" in hint
-    assert "Raise a measurement sheet first" in hint
-    assert "Needs an issued RA · Supply and an issued RA · Installation" in hint
+def test_a_fresh_schedule_offers_all_three_and_ADVISES_rather_than_refusing(
+        client, sched):
+    """
+    ⚠ The old name was `test_a_greyed_type_has_no_link_and_says_why` and its
+    assertions were, verbatim:
 
+        assert "/ra/create?boq=" not in html
+        assert "/merged/create?boq=" not in html
+        hint = html[html.index('class="rb-hint"'):]
+        assert "Raise a delivery challan first" in hint
+        assert "Raise a measurement sheet first" in hint
+        assert "Needs an issued RA · Supply and an issued RA · Installation" in hint
 
-def test_supply_and_installation_link_once_their_steps_exist(client, sched):
-    chain_ready(sched)
+    What it was FOR survives and is what this checks: the bar must still SAY
+    what is missing. It now says it as advice beside a working link instead of
+    as the reason a chip is dead, and it names the ceiling that applies in its
+    place — which is the honest thing to put in front of somebody once the
+    order is a recommendation.
+    """
     html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
     assert f"/ra/create?boq={sched}&leg=supply" in html
     assert f"/ra/create?boq={sched}&leg=installation" in html
-    assert "/merged/create?boq=" not in html, "nothing is issued yet to merge"
-    assert html.count('class="btn btn-ghost rb-off"') == 1
+    assert f"/raboth/create?boq={sched}" in html
+    hint = html[html.index('class="rb-hint"'):]
+    assert "no delivery challan on this schedule yet" in hint
+    assert "no approved measurement sheet yet" in hint
+    assert "capped at the BOQ quantity" in hint
 
 
-def test_supply_and_installation_both_is_the_merged_ra(client, sched):
+def test_supply_and_installation_link_WITHOUT_their_steps(client, sched):
+    """
+    ⚠ The old name was `test_supply_and_installation_link_once_their_steps_
+    exist` — *once* is what changed. Its assertions, verbatim:
+
+        chain_ready(sched)
+        html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
+        assert f"/ra/create?boq={sched}&leg=supply" in html
+        assert f"/ra/create?boq={sched}&leg=installation" in html
+        assert "/merged/create?boq=" not in html, "nothing is issued yet to merge"
+        assert html.count('class="btn btn-ghost rb-off"') == 1
+
+    Both halves are checked here, before and after the steps land, because
+    "it links either way" is the claim and one state cannot demonstrate it.
+    """
+    before = client.get(f"/boq/view/{sched}").get_data(as_text=True)
     chain_ready(sched)
-    _issued_bill(sched, "s1", "supply")
-    _issued_bill(sched, "i1", "installation")
+    after = client.get(f"/boq/view/{sched}").get_data(as_text=True)
+    for html in (before, after):
+        assert f"/ra/create?boq={sched}&leg=supply" in html
+        assert f"/ra/create?boq={sched}&leg=installation" in html
+        assert 'class="btn btn-ghost rb-off"' not in html
+    # …and the advice goes away once the steps are there.
+    assert "no delivery challan on this schedule yet" in before
+    assert 'class="rb-hint"' not in after
+
+
+def test_supply_and_installation_BOTH_raises_all_three(client, sched):
+    """
+    ⚠ The old name was `test_supply_and_installation_both_is_the_merged_ra`
+    and it asserted the chip opened `/merged/create` once two bills were
+    already issued. Verbatim:
+
+        chain_ready(sched)
+        _issued_bill(sched, "s1", "supply")
+        _issued_bill(sched, "i1", "installation")
+        html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
+        assert f'href="/merged/create?boq={sched}"' in html
+        assert 'class="btn btn-ghost rb-off"' not in html
+        page = client.get(f"/merged/create?boq={sched}").get_data(as_text=True)
+        assert "SF/RA/26-27/s1" in page and "SF/RA/26-27/i1" in page
+        assert f'href="/boq/view/{sched}"' in page, "no way back to the schedule"
+
+    It now opens `/raboth/create`, which RAISES both legs and the merged
+    invoice in one POST — on a fresh schedule, with nothing issued.
+    `tests/test_ra_both_oct28.py` owns that route's behaviour; this holds the
+    chip and the way back.
+    """
     html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
-    assert f'href="/merged/create?boq={sched}"' in html
-    assert 'class="btn btn-ghost rb-off"' not in html
-    page = client.get(f"/merged/create?boq={sched}").get_data(as_text=True)
-    assert "SF/RA/26-27/s1" in page and "SF/RA/26-27/i1" in page
+    assert f'href="/raboth/create?boq={sched}"' in html
+    page = client.get(f"/raboth/create?boq={sched}").get_data(as_text=True)
+    assert "Supply &amp; Installation" in page
     assert f'href="/boq/view/{sched}"' in page, "no way back to the schedule"
 
 
-@pytest.mark.parametrize("status", ["draft", "cancelled"])
-def test_a_draft_or_cancelled_bill_does_not_open_the_merge(client, sched, status):
+def test_the_merge_page_still_pairs_two_existing_bills(client, sched):
+    """`/merged/create` is NOT gone: merging two bills that already exist is a
+    different job from raising three documents as one, and the RA register is
+    where it is reached from."""
+    chain_ready(sched)
     _issued_bill(sched, "s1", "supply")
-    _issued_bill(sched, "i1", "installation", status=status)
-    html = client.get(f"/boq/view/{sched}").get_data(as_text=True)
-    assert "/merged/create?boq=" not in html
+    _issued_bill(sched, "i1", "installation")
+    page = client.get(f"/merged/create?boq={sched}").get_data(as_text=True)
+    assert "SF/RA/26-27/s1" in page and "SF/RA/26-27/i1" in page
 
 
 def test_a_greyed_chip_is_not_the_gate(client, sched):
-    """The typed URL is still refused by `ra._c1_refusal()` — B5's rule."""
+    """
+    ⚠ **REWRITTEN 29 October 2026 — §0's fifty-eighth block, item 6, switched
+    the C1 prerequisite off** (`ra.C1_PREREQUISITE`), so a supply claim with
+    no challan on the chain is no longer refused: it opens and is capped at
+    the BOQ quantity. The old assertion is kept verbatim rather than deleted.
+
+        (docstring) The typed URL is still refused by `ra._c1_refusal()` — B5's rule.
+        r = client.get(f"/ra/create?boq={sched}&leg=supply", follow_redirects=False)
+        assert r.status_code in (302, 303)
+
+    ⚠ **B5's rule itself is NOT weakened and is what this now checks.** The
+    point of the original was that a greyed chip is presentation and the GATE
+    is the route — never the other way round. With the prerequisite off there
+    is no business refusal to demonstrate, so the test demonstrates the
+    permission gate instead: the route is still classified, and a reader
+    without `ra.create` is still refused at the typed URL whatever the page
+    drew. `tests/test_c1_order_of_working.py` holds the C1 refusal itself,
+    under the `c1_prerequisite_on` fixture.
+    """
+    import auth
+    assert auth.ROUTE_PERMISSIONS.get("ra.create_ra") == "ra.create"
     r = client.get(f"/ra/create?boq={sched}&leg=supply", follow_redirects=False)
-    assert r.status_code in (302, 303)
+    assert r.status_code == 200, "the prerequisite is off; the form opens"
+    assert "capped at the BOQ quantity" in r.get_data(as_text=True)
 
 
 # ═══ 3. PROFORMA AND TAX INVOICE ON THE BOQ ═════════════════════════════════

@@ -3219,17 +3219,43 @@ def view_boq(id: str):
     if is_tip:
         why_dc = "Raise a delivery challan first — supply is claimed against material that has gone out."
         why_ms = "Raise a measurement sheet first — installation is claimed against work measured."
-        why_pair = ("Needs an issued RA · Supply and an issued RA · Installation "
+        # ⚠ **RA · Supply & Installation now RAISES both legs** (28 October
+        #   2026, §0's fifty-eighth block, item 6), instead of only merging
+        #   two that already exist. `/raboth/create` writes the supply leg,
+        #   the installation leg and the merged tax invoice in ONE POST,
+        #   atomically — so the chip is never greyed for want of two issued
+        #   bills, and `why_pair` is kept only for the case where this
+        #   schedule already HAS a live merge on both legs, which
+        #   `/merged/create` still owns.
+        why_pair = ("Needs an issued RA &middot; Supply and an issued RA &middot; Installation "
                     "first — this one invoice stacks the two.")
+        # ⚠ **ALL THREE RA CHIPS ARE LIVE FROM 28 OCTOBER 2026** (§0's
+        #   fifty-eighth block, item 6). The C1 PREREQUISITE is switched off
+        #   (`ra.C1_PREREQUISITE`), so a claim no longer waits for a delivery
+        #   challan or a measurement sheet to exist — and **greying a chip the
+        #   gate would now admit is the converse of this bar's own rule**: a
+        #   control is hidden or greyed only where it could produce nothing
+        #   but a refusal, and here it would produce a form.
+        #
+        #   `_has_dc` / `_has_ms` are still read, and are still what the hint
+        #   below is written from: the step is no longer REQUIRED but it is
+        #   still the better order, and the bar says so instead of refusing.
+        #   Re-arming `ra.C1_PREREQUISITE` is one line there and this bar then
+        #   wants its `live=` arguments back — they are kept in the hint
+        #   wording so nothing has to be reinvented.
         ra_sup = _raise("ra.create_ra",
                         url_for("ra.create_ra", boq=id, leg="supply"),
-                        "RA &middot; Supply", _has_dc, why_dc)
+                        "RA &middot; Supply")
         ra_ins = _raise("ra.create_ra",
                         url_for("ra.create_ra", boq=id, leg="installation"),
-                        "RA &middot; Installation", _has_ms, why_ms)
-        ra_both = _raise("merged_ra.create_merged",
-                         url_for("merged_ra.create_merged", boq=id),
-                         "RA &middot; Supply &amp; Installation", _has_pair, why_pair)
+                        "RA &middot; Installation")
+        # ⚠ **ONE call site, and the endpoint it asks `can_reach()` about is
+        #   the route it links to.** `raboth.create_both` is classified
+        #   `ra.create`, the same permission the two single-leg chips need, so
+        #   nobody is offered a control the gate would refuse.
+        ra_both = _raise("raboth.create_both",
+                         url_for("raboth.create_both", boq=id),
+                         "RA &middot; Supply &amp; Installation")
         groups = "".join((
             _group("Purchase",
                    _raise("po_draft.create_po",
@@ -3250,18 +3276,25 @@ def view_boq(id: str):
         ))
         # The reasons are printed, not only put in a tooltip: the owner works
         # from a phone, and a phone has no hover.
-        hints = [w for c, w in ((ra_sup, why_dc), (ra_ins, why_ms), (ra_both, why_pair))
-                 if c and "rb-off" in c]
+        # ⚠ **The hint is now ADVICE, not a list of refusals** (28 October
+        #   2026). It names the step that is missing and says the claim can be
+        #   raised anyway and against what — which is the honest thing to put
+        #   in front of somebody now that the order is a recommendation. A
+        #   greyed chip would say the same thing by refusing, and the client
+        #   asked for it not to.
+        advice = []
+        if not _has_dc:
+            advice.append("RA &middot; Supply: no delivery challan on this "
+                          "schedule yet &mdash; the claim can still be raised "
+                          "and is capped at the BOQ quantity")
+        if not _has_ms:
+            advice.append("RA &middot; Installation: no approved measurement "
+                          "sheet yet &mdash; the claim can still be raised and "
+                          "is capped at the BOQ quantity until there is one")
         hint_html = ""
-        if hints:
+        if advice:
             hint_html = ('<div class="rb-hint">&#9432;&nbsp;'
-                         + " &middot; ".join(
-                             f"{lbl}: {P.esc(w)}" for lbl, w in
-                             (("RA &middot; Supply", why_dc),
-                              ("RA &middot; Installation", why_ms),
-                              ("RA &middot; Supply &amp; Installation", why_pair))
-                             if w in hints)
-                         + "</div>")
+                         + " &middot; ".join(advice) + "</div>")
         if groups:
             raise_html = f'\n<div class="raise-bar">{groups}{hint_html}</div>\n'
 

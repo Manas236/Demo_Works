@@ -522,3 +522,38 @@ def ladder_on():
         yield
     finally:
         approval.LADDER_ON = saved
+
+
+@pytest.fixture()
+def c1_prerequisite_on():
+    """
+    Arm CC-2 **C1**'s ordering gate for one test, and put it back afterwards.
+
+    The gate is switched OFF on the shipped configuration (28 October 2026,
+    CLIENT_CHANGES.md §0 **fifty-eighth** block, item 6 — `ra.C1_PREREQUISITE`):
+    the client asked that a claim be one click from the schedule and not be
+    held up waiting for a delivery challan or a measurement sheet to exist
+    first.
+
+    ⚠ **This is `ladder_on`'s arrangement, one rule along, and for its
+    reason.** `tests/test_c1_order_of_working.py` is the file that PROVES the
+    gate, so it runs under this fixture and keeps proving it for the day it
+    returns, rather than being rewritten into OFF checks that prove nothing
+    about it. `tests/test_ra_no_prereq_oct28.py` covers the OFF state — which
+    is the shipped one — on its own, including the half that still binds:
+    the measurement CAP, which this switch does not touch.
+
+    Applied module-wide with
+    `pytestmark = pytest.mark.usefixtures("c1_prerequisite_on")`.
+
+    The module attribute is rebound rather than mutated because it is a bool;
+    every reader goes through `ra.c1_prerequisite_on()`, which reads it fresh.
+    """
+    import ra
+
+    saved = ra.C1_PREREQUISITE
+    ra.C1_PREREQUISITE = True
+    try:
+        yield
+    finally:
+        ra.C1_PREREQUISITE = saved

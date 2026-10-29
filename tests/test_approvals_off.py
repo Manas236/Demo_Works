@@ -556,25 +556,76 @@ def test_a_rejected_sheet_still_counts_for_nothing(client, seeded):
 
 
 def test_c1_is_satisfied_by_a_saved_sheet_and_still_refuses_with_none(client, seeded):
-    r = client.get(f"/ra/create?boq={seeded}&leg=installation", follow_redirects=False)
-    assert r.status_code in (302, 303), "C1 opened the installation form with no sheet"
-    assert "Raise a measurement sheet" in _where(r)
-    assert "approved" not in _where(r), "the refusal tells the operator to get an approval nobody can give"
+    """
+    ⚠ **REWRITTEN 29 October 2026 — CLIENT_CHANGES.md §0's fifty-eighth block,
+    item 6, switched the C1 PREREQUISITE off** (`ra.C1_PREREQUISITE`), so the
+    installation form now opens with no sheet and caps at the BOQ quantity
+    instead of refusing. The first half of this test asserted the refusal and
+    cannot stand; the old assertions are kept verbatim below rather than
+    deleted.
+
+    What this file is FOR is unchanged and is still proved by the second half:
+    with the approval ladder OFF, a merely **saved** sheet counts — nobody can
+    approve one — and the form opens on it. The gate itself, for the day it is
+    armed again, is `tests/test_c1_order_of_working.py` under the
+    `c1_prerequisite_on` fixture.
+
+    The old assertions, verbatim:
+        r = client.get(f"/ra/create?boq={seeded}&leg=installation", follow_redirects=False)
+        assert r.status_code in (302, 303), "C1 opened the installation form with no sheet"
+        assert "Raise a measurement sheet" in _where(r)
+        assert "approved" not in _where(r), "the refusal tells the operator to get an approval nobody can give"
+    """
+    # With the prerequisite off, no sheet is no longer a refusal — and the
+    # form SAYS which ceiling guards it, which is the new obligation.
+    r = client.get(f"/ra/create?boq={seeded}&leg=installation")
+    assert r.status_code == 200, "the prerequisite is off; the form must open"
+    html = r.get_data(as_text=True)
+    assert "capped at the BOQ quantity" in html
+    assert "No approved measurement sheet exists on this schedule yet" in html
+
     li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
     raise_sheet(client, seeded, [(li["line_id"], 2)])
     r = client.get(f"/ra/create?boq={seeded}&leg=installation")
     assert r.status_code == 200 and "ra_json" in r.get_data(as_text=True)
+    # …and with the ladder OFF a merely SAVED sheet counts, so the ceiling has
+    # moved to the measured quantity and the form says THAT instead.
+    assert "capped at the MEASURED quantity" in r.get_data(as_text=True)
 
 
 def test_the_boq_page_offers_the_installation_claim_on_a_saved_sheet(client, seeded):
+    """
+    ⚠ **REWRITTEN 29 October 2026 — §0's fifty-eighth block, item 6.** The
+    raise bar no longer encodes C1: every RA chip is a live link whether or
+    not its step has landed, because the prerequisite is off
+    (`ra.C1_PREREQUISITE`). The old assertions, verbatim:
+
+        chain_ready(seeded, legs=("supply",))
+        html = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
+        assert "leg=installation" not in html
+        li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
+        raise_sheet(client, seeded, [(li["line_id"], 2)])
+        html = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
+        assert "leg=installation" in html
+
+    What this FILE is for survives and is what this now checks: with the
+    approval ladder OFF, a merely **saved** sheet counts — nobody can approve
+    one — so the installation CEILING moves to the measured quantity, and the
+    form says so. That is the ladder-off behaviour; the chip is no longer the
+    place it shows.
+    """
     from conftest import chain_ready
     chain_ready(seeded, legs=("supply",))
     html = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
-    assert "leg=installation" not in html
+    assert "leg=installation" in html, "every RA chip is a live link now"
+    form = client.get(f"/ra/create?boq={seeded}&leg=installation").get_data(as_text=True)
+    assert "capped at the BOQ quantity" in form, "no sheet yet"
+
     li = next(x for x in priced(seeded) if x["total_qty"] >= 4)
     raise_sheet(client, seeded, [(li["line_id"], 2)])
-    html = client.get(f"/boq/view/{seeded}").get_data(as_text=True)
-    assert "leg=installation" in html
+    form = client.get(f"/ra/create?boq={seeded}&leg=installation").get_data(as_text=True)
+    assert "capped at the MEASURED quantity" in form, (
+        "with the ladder off a SAVED sheet counts and the ceiling moves")
 
 
 def test_a_saved_sheet_a_claim_rests_on_cannot_be_deleted(client, seeded):

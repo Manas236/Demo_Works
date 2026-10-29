@@ -140,7 +140,10 @@ def test_every_screen_page_carries_the_shared_nav(populated, client):
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
            "/po/create": f"?boq={populated['boq']}",
            "/dc/create": f"?boq={populated['boq']}",
-           "/measurement/create": f"?boq={populated['boq']}"}
+           "/measurement/create": f"?boq={populated['boq']}",
+           # 28 Oct 2026 (§0 fifty-eighth block, item 6) — RA · Supply &
+           # Installation, raised from a schedule like the four above it.
+           "/raboth/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         r = client.get(url)
@@ -195,7 +198,10 @@ def test_every_page_layers_its_css_after_the_shared_stylesheet(populated, client
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
            "/po/create": f"?boq={populated['boq']}",
            "/dc/create": f"?boq={populated['boq']}",
-           "/measurement/create": f"?boq={populated['boq']}"}
+           "/measurement/create": f"?boq={populated['boq']}",
+           # 28 Oct 2026 (§0 fifty-eighth block, item 6) — RA · Supply &
+           # Installation, raised from a schedule like the four above it.
+           "/raboth/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         html = client.get(url).get_data(as_text=True)
@@ -318,7 +324,10 @@ def test_no_page_uses_a_browser_confirm_dialog(populated, client):
     ids = {"/ra/create": f"?boq={populated['boq']}&leg=supply",
            "/po/create": f"?boq={populated['boq']}",
            "/dc/create": f"?boq={populated['boq']}",
-           "/measurement/create": f"?boq={populated['boq']}"}
+           "/measurement/create": f"?boq={populated['boq']}",
+           # 28 Oct 2026 (§0 fifty-eighth block, item 6) — RA · Supply &
+           # Installation, raised from a schedule like the four above it.
+           "/raboth/create": f"?boq={populated['boq']}"}
 
     for url in _screen_urls(app_module, ids):
         html = client.get(url).get_data(as_text=True)

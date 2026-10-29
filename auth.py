@@ -1127,6 +1127,12 @@ ROUTE_PERMISSIONS = {
     "approval.reject_measurement":  "measurement.approve",
 
     # ── Projects ─────────────────────────────────────────────────────────────
+    # ⚠ **Both legs AND the merged tax invoice, in one POST** (28 October
+    #   2026, §0 fifty-eighth block, item 6). It needs `ra.create` — it raises
+    #   two RA bills — and nothing more: `merged_ra.create_merged` is
+    #   classified `ra.create` too, so this route grants no access its two
+    #   halves do not already grant on their own.
+    "raboth.create_both":         "ra.create",
     "project.list_projects":      "project.view",
     "projectview.view_project":   "project.view",
     "project.create_project":     "project.create",

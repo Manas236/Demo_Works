@@ -1031,7 +1031,61 @@ def cancel_merged(id: str):
         return redirect(url_for("merged_ra.view_merged", id=id, msg=why, type="error"))
 
     if request.method == "POST":
-        apply_cancel(doc, (request.form.get("reason") or "").strip())
+        reason = (request.form.get("reason") or "").strip()
+        # ── A SET RAISED AS ONE IS CANCELLED AS ONE (28 October 2026) ──────
+        #
+        # §0's fifty-eighth block, item 6. Three documents raised by one
+        # action at `/raboth/create` are withdrawn by one action too:
+        # **cancelling the merged document cancels both legs as well.**
+        #
+        # ⚠ **This is NOT the rule for an assembled merge and must not
+        #   become one.** Cancelling a merge somebody built from two bills
+        #   that already existed RELEASES those bills — they go back to
+        #   standing on their own, with their receipts and their numbers
+        #   intact, which is CC-2 C3's own wording. For a set, releasing is
+        #   wrong: the legs would go on claiming quantity against the
+        #   schedule with no invoice over them, and the next claim would be
+        #   refused for an over-claim nobody made.
+        #
+        # ⚠ **`ra.RAISED_AS_BOTH` is read off the record; `raboth.py` is NOT
+        #   imported.** That module imports this one, so the arrow runs one
+        #   way — the same one-way trick `ra.py` uses on `STORE["merged_ras"]`
+        #   one document back.
+        #
+        # ⚠ **The merged record is cancelled FIRST**, because `ra.can_cancel()`
+        #   refuses a bill inside a LIVE merge (C3's invariant, enforced in
+        #   `ra.py`). The order is that invariant working, not a way round it.
+        #   A leg with receipts against it still refuses, and the set is left
+        #   exactly as it was.
+        sid = RA.set_of(doc)
+        if sid:
+            legs = RA.legs_of_set(sid)
+            for _rid, b in legs:
+                if RA.is_cancelled(b):
+                    continue
+                ok, why = RA.can_cancel(b)
+                if not ok and "merged document" not in why:
+                    return redirect(url_for(
+                        "merged_ra.view_merged", id=id, type="error",
+                        msg=(f"RA{int(b.get('ra_no') or 0)} cannot be "
+                             f"cancelled, so this set cannot be withdrawn as "
+                             f"one. {why}")))
+            apply_cancel(doc, reason)
+            n = 1
+            for _rid, b in legs:
+                if RA.is_cancelled(b):
+                    continue
+                RA.apply_cancel(b, (f"Raised as one Supply & Installation bill "
+                                    f"with {doc.get('tax_invoice_ref')}, which "
+                                    f"was cancelled. {reason}").strip())
+                n += 1
+            return redirect(url_for(
+                "merged_ra.view_merged", id=id, type="success",
+                msg=(f"{doc.get('tax_invoice_ref')} cancelled, and with it "
+                     f"both bills it was raised with \u2014 {n} documents "
+                     f"withdrawn. Everything they claimed is free again.")))
+
+        apply_cancel(doc, reason)
         return redirect(url_for("merged_ra.view_merged", id=id,
                                 msg=(f"{doc.get('tax_invoice_ref')} cancelled. "
                                      f"Both bills are released."),
@@ -1046,10 +1100,17 @@ def cancel_merged(id: str):
           stays spent &mdash; it has been quoted in somebody else's ledger, and a
           second document bearing it would be indistinguishable from the first.
           <br/><br/>
-          RA{_esc(doc.get('supply_ra_no'))} and RA{_esc(doc.get('installation_ra_no'))}
-          are <b>released</b> and may be merged again. Neither bill is otherwise
-          touched: their receipts, their status and their own numbers are
-          unchanged.
+          {(f"RA{_esc(doc.get('supply_ra_no'))} and "
+            f"RA{_esc(doc.get('installation_ra_no'))} were raised <b>with</b> "
+            f"this invoice, by one action, so they are <b>cancelled with it</b> "
+            f"&mdash; three documents withdrawn together. Everything they "
+            f"claimed against the schedule is free again, and their own "
+            f"numbers stay spent.")
+           if RA.set_of(doc) else
+           (f"RA{_esc(doc.get('supply_ra_no'))} and "
+            f"RA{_esc(doc.get('installation_ra_no'))} are <b>released</b> and "
+            f"may be merged again. Neither bill is otherwise touched: their "
+            f"receipts, their status and their own numbers are unchanged.")}
         </div>
       </div>
       <form method="POST" action="{url_for('merged_ra.cancel_merged', id=id)}">

@@ -263,9 +263,39 @@ def test_a_superseded_schedule_is_refused(client):
 
 
 def test_the_ra_import_is_refused_where_the_claim_would_be(client):
+    """
+    ⚠ **REWRITTEN 29 October 2026 — §0's fifty-eighth block, item 6.** The C1
+    prerequisite is off (`ra.C1_PREREQUISITE`), so a supply claim with no
+    challan is no longer refused and neither is the import that feeds it. The
+    old assertion, verbatim:
+
+        r = client.get(f"/import/ra?boq={SIFY}&leg=supply")
+        assert r.status_code == 302, "no challan on the chain — C1 refuses supply"
+
+    ⚠ **The INVARIANT is what matters and it still holds: the import is
+    refused exactly where the CLAIM would be**, never on a rule of its own.
+    That is what this now checks, from both sides — with the prerequisite off
+    both open, and with it armed both refuse. A drift between them is the
+    defect this test exists to catch, and it is now caught in either state.
+    """
     sify(client)
-    r = client.get(f"/import/ra?boq={SIFY}&leg=supply")
-    assert r.status_code == 302, "no challan on the chain — C1 refuses supply"
+    import ra
+
+    # OFF — the shipped state. Neither is refused.
+    assert ra.c1_prerequisite_on() is False
+    assert client.get(f"/ra/create?boq={SIFY}&leg=supply").status_code == 200
+    assert client.get(f"/import/ra?boq={SIFY}&leg=supply").status_code == 200
+
+    # ARMED — both are, and for the same reason.
+    saved = ra.C1_PREREQUISITE
+    ra.C1_PREREQUISITE = True
+    try:
+        assert client.get(f"/ra/create?boq={SIFY}&leg=supply",
+                          follow_redirects=False).status_code == 302
+        assert client.get(f"/import/ra?boq={SIFY}&leg=supply").status_code == 302, (
+            "the import must be refused exactly where the claim is")
+    finally:
+        ra.C1_PREREQUISITE = saved
 
 
 def test_the_quotation_import_is_blocked_while_the_picker_reads_the_catalogue(

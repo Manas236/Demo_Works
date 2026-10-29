@@ -1405,6 +1405,15 @@ the trail and every refusal — see §3 *Attach a LOOSE document by hand* and §
 and `proforma.py` are being edited on an unpushed line, and because one
 definition of the write cannot drift the way four can.
 
+### 2n. `raboth.py` — three documents, one POST (28 October 2026)
+
+Blueprint at `/raboth`, added under §0's **fifty-eighth** block, item 6. It
+imports `ra`, `merged_ra`, `boq`, `approval`, `auth`, `chrome`, `pipeline`,
+`store`, `branding` and `quotation`; **nothing imports it back**, and
+`ra.py` and `merged_ra.py` must not, or the two one-way arrows it depends on
+become cycles. That is why `ra.RAISED_AS_BOTH` (the set mark) lives in
+`ra.py` — `merged_ra.cancel_merged()` reads it. See §5 `/ra`.
+
 ### 2m. `pnl_chart.py` — the P&L's two pictures (28 October 2026)
 
 A **leaf** added on 28 October 2026 (§0 **fifty-eighth** block, item 5). It
@@ -10262,6 +10271,103 @@ escaped it — there is a test.
 
 ---
 
+#### RA · Supply & Installation in ONE POST — [raboth.py](raboth.py) (28 October 2026, §0 **fifty-eighth** block, item 6)
+
+The client's ask: *"RA especially all 3 types — Supply, Installation, and then
+Supply and Installation both."* The first two were one click; **Both** meant
+raising a supply bill, issuing it, raising an installation bill, issuing that,
+and only then opening `/merged/create` — five steps and three screens.
+`/raboth/create` (`ra.create`, the same permission its two halves need) does it
+in one POST. The *RA · Supply & Installation* chip on `/boq/view` points here.
+
+    1. VALIDATE BOTH LEGS, before writing anything at all
+    2. write the supply leg and ISSUE it
+    3. write the installation leg and ISSUE it
+    4. `merged_ra.create()` over the two
+
+- ⚠ **ATOMIC, and step 1 is what makes it so.** *"If either leg fails the
+  over-claim guard, nothing is written and the refusal names the line."* Both
+  legs go through `ra._validate()` — the same `overclaims()` — **before the
+  first record exists**, which is sound because the two legs are separate keys
+  in `approved_by_line()` and `claimed_by_line()`. A failure after that (a
+  merge refusal) **rolls back** (`raboth._rollback()`): `STORE` is one dict and
+  there is no transaction, so atomic here means nothing half-written survives
+  the request.
+- ⚠ **NEITHER LEG CARRIES A TAX INVOICE NUMBER.** `ra.build_bill()` mints one
+  into a blank `tax_invoice_ref`; this route passes **`ra.NO_TAX_INVOICE`** so
+  that neither mints anything, and only the merged RA carries a statutory
+  serial (`MI`). Three serials over one billing is what Rule 46 exists to
+  prevent and GSTR-1 would see two phantom invoices. A leg raised this way
+  therefore cannot print as a tax invoice alone.
+- ⚠ **The guard, the `ra_no` series and the leg model are UNTOUCHED.** Each leg
+  takes the next `ra_no` on its chain, keeps its own `ref`, status and claim
+  rows, and is an ordinary RA bill everywhere. CC-2 C3's invariants hold: the
+  merged record still holds no claims and its totals are still the sum of the
+  legs' stored totals.
+- **The legs are ISSUED**, because `merged_ra.can_merge()` refuses a draft and
+  that rule is not relaxed. The form says so above the button.
+- ⚠ **BOTH legs must claim something.** That falls out of `clean_claims()`
+  rather than being invented here, and the refusal points at
+  RA · Supply / RA · Installation — a claim on one side is what those are for.
+- **`ra.RAISED_AS_BOTH`** marks the three as one set, and lives in **`ra.py`**
+  because `merged_ra.py` reads it and neither may import `raboth.py`.
+  ⚠ **Cancelling the merged document cancels all three** and frees what they
+  claimed — `merged_ra.cancel_merged()`, which reads the mark off the record.
+  An **assembled** merge still only RELEASES its legs, which is CC-2 C3's
+  wording; a leg with receipts refuses and nothing is written. The merged
+  record is cancelled **first**, because `ra.can_cancel()` refuses a bill
+  inside a live merge.
+- **The register collapses a set** into a header row carrying the invoice, with
+  the two legs indented under it. Nothing is hidden and no figure moves.
+- ⚠ **`ra.build_bill()` was EXTRACTED VERBATIM from `create_ra()`'s write
+  block** so there is still exactly ONE place an RA bill record is built. Two
+  places would be two places for the tax block, the frozen previous balance
+  and the serial to drift.
+- ⚠ **The form has NO JavaScript**, and that is a declared trade. `/ra/create`'s
+  grid is `ra._RA_JS`, 136 lines keyed on `q_<line_id>` ids — two of those
+  collide on every id, and making it prefix-aware rewrites a shared asset two
+  live pages render. So this page posts plain fields. **The guard is not
+  weakened**; what is lost is the live preview, and in its place the grid shows
+  approved / claimed / balance per line and `ra.cap_note_html()` above it.
+- Tests: `tests/test_ra_both_oct28.py` (31).
+
+#### CC-2 C1's prerequisite is SWITCHED OFF (28 October 2026, same block)
+
+`ra.C1_PREREQUISITE = False`, read through `ra.c1_prerequisite_on()` and
+nothing else — `approval.LADDER_ON`'s shape, which this repo already uses for
+this kind of decision. A claim no longer waits for a delivery challan or an
+approved measurement sheet to exist. **A switch, not a deletion:** the gate,
+its two messages and `challan_exists()` all stay, and re-arming is one line.
+
+⚠ **ONLY THE PREREQUISITE IS RELAXED. THE MEASUREMENT CAP STILL BINDS:**
+
+| on the chain | the installation ceiling |
+|---|---|
+| an approved sheet | the **MEASURED** quantity (`ra.overclaims()`), exactly as before — and a line the sheet did not measure cannot be claimed at all |
+| none | the **BOQ** quantity — `overclaims()`'s `measured == {}` path, **unchanged by one character** |
+
+⚠ **What changed about that path is what it DESCRIBES.** It was a grandfather
+rule whose safety argument was *"the exception cannot grow, because
+`/ra/create?leg=installation` refuses a BOQ with no approved measurement"* —
+that refusal is this switch. With it off, an empty answer describes a project
+nobody has measured **yet**, which is the ordinary case the client asked for.
+The claim is still guarded, by the approved schedule, cumulatively. The old
+paragraph is kept verbatim in `overclaims()`'s docstring.
+
+- **The form says which cap applies** — `ra.cap_note_html()`, on create and on
+  edit. It REPORTS and never decides: it reads the same
+  `MS.approved_qty_by_line()` call with the same chain as the guard.
+- **`/boq/view`'s bar ADVISES instead of greying.** All three RA chips are live
+  links; the bar names the missing step and the ceiling that applies in its
+  place. ⚠ **In the ARMED state that is a real loss** — a live chip into a
+  refusal — and it is declared rather than engineered around: `boq.py` may not
+  import `ra.py` (§2b) and so cannot read the switch. If C1 is ever armed
+  again, the work is to move the switch somewhere the bar can read it and give
+  `_raise()` its `live=` arguments back; the wording is kept in `boq.py`.
+- **`tests/test_c1_order_of_working.py` still proves the whole gate**, under
+  the new `conftest.c1_prerequisite_on` fixture — `ladder_on`'s arrangement.
+  The OFF state is `tests/test_ra_both_oct28.py`.
+
 ### `/receipt` — Receipts · [receipt.py](receipt.py)
 
 #### The delete confirmation names the files it takes (23 September 2026)
@@ -15402,6 +15508,20 @@ text is unchanged, and every reference to them was moved with them.*
     different fix (overflow wrapper, or a card layout per row) on six panels
     across four modules, and it needs its own decision. The owner works from a
     phone (§5, *The two register SCREENS*), so this is worth doing.
+
+92. 🟡 **`conftest._fresh_store()` does not clear `ra_bills` (or `receipts`)
+    — 29 October 2026, measured, OPEN.** Found while adding a test to
+    `tests/test_boq_raise_all.py`: bills leak between tests, and that file's
+    tests happened to pass only because each planted its bills under the same
+    fixed ids (`s1`, `i1`) so one overwrote the next. Adding a test that
+    planted bills in a new position made the following test read two bills
+    where it expects one; running `test_boq_raise_all.py` and
+    `test_doc_import.py` adjacently fails in **either order**, and did so
+    before this pass as well. The ordering was load-bearing and nothing said
+    so. Fixed **in that one file's own fixture**; `_fresh_store()` itself was
+    deliberately NOT changed — it is shared by every test file and adding a
+    collection to it could unmask any test that quietly depends on a leak,
+    which is its own pass with its own measurement.
 
 ## 8. Stale docs — do not trust these two files
 

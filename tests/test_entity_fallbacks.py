@@ -1029,7 +1029,11 @@ def _urls(populated):
             if rule.rule == "/ra/create":
                 urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}&leg=supply")
             elif rule.rule in ("/po/create", "/dc/create",
-                               "/measurement/create"):
+                               "/measurement/create",
+                               # 28 Oct 2026 (§0 fifty-eighth block, item 6) —
+                               # RA · Supply & Installation, raised from a
+                               # schedule exactly as the three above it are.
+                               "/raboth/create"):
                 urls.append(rule.rule + f"?boq={DD.BOQ_META['id']}")
             else:
                 urls.append(rule.rule)
