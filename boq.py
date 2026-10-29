@@ -271,6 +271,68 @@ def _next_ref(datestr: str) -> str:
                     SER.next_seq("BOQ", fy), cap=_REF_CAP)
 
 
+# The one pattern the importer writes, and the ONLY one read back
+# (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A3). It is
+# `boqimport._with_make()`'s own output, which is `"Make: <value>"` as a
+# `;`-separated segment of the remark, and it is the same regex the line
+# editor's `makeOf()` already runs in the browser (`BOQ_DOC_SCRIPT`) — ported
+# here character for character rather than re-derived, so the server and the
+# editor cannot disagree about what a make is.
+#
+# ⚠ **The anchor is load-bearing.** `(?:^|;)` means a segment must START with
+#   `Make:` for its value to be one. "Make: Jindal" is a make; "pipe to be
+#   supplied, Make: as approved" is NOT — it is prose that happens to contain
+#   the word, and reading it would be the guess §7 gap 81 refused to take.
+#   `;` is the separator `_with_make()` and `_with_note()` both join on, so
+#   the anchor is exactly as wide as what the importer writes.
+_MAKE_IN_REMARK = re.compile(r"(?:^|;)\s*Make:\s*([^;\n]+)", re.IGNORECASE)
+
+
+def make_from_remark(remark) -> str:
+    """
+    The brand(s) the BOQ importer wrote into a line's remark, or `""`.
+
+    **ABOUT.md §7 gap 81, closed by instruction** (29 October 2026). A BOQ line
+    has no make FIELD and this pass does not add one — the fifty-third block
+    was right that a remark is free text. What changed is that Manas took the
+    decision the gap was waiting for: read the importer's **own explicit
+    pattern** and nothing wider.
+
+    Several makes are joined with ` / ` and never dropped, which is `makeOf()`'s
+    rule: the client's own sheets carry a line priced on two brands.
+
+    ⚠ **Never guesses.** No match is `""`, and `""` means *leave the box
+      blank* — not "no make", which is the same thing here but for a different
+      reason, and not a value anything writes to a record. The parse is only
+      ever a **prefill into a form box the operator can see and clear**; what
+      is saved is what the form posted (`boqpick.picked_lines(with_make=True)`).
+    """
+    out = []
+    for m in _MAKE_IN_REMARK.finditer(str(remark or "")):
+        v = " ".join(m.group(1).split())
+        if v and v not in out:
+            out.append(v)
+    return " / ".join(out)
+
+
+def make_prefill(lines) -> dict:
+    """
+    `{line_id: make}` for every non-header line whose remark carries one.
+
+    A line with no make is **absent**, not `""`, so a caller can tell "the
+    schedule knows a brand" from "the operator cleared the box" — which is
+    exactly the distinction a rejected POST depends on.
+    """
+    out = {}
+    for li in lines or []:
+        if li.get("is_header"):
+            continue
+        make = make_from_remark(li.get("remark"))
+        if make:
+            out[_line_id(li.get("line_id"))] = make
+    return out
+
+
 def _item_no(raw) -> str:
     """
     An item number, as a STRING — 4.1 stays "4.1" and never becomes 4.0999….

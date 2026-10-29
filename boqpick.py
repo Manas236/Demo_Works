@@ -309,10 +309,27 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
 
         make_cell = ""
         if with_make:
-            make_val = P.esc(str((make_of or {}).get(lid) or "")[:MAKE_MAX])
+            # ⚠ **PRESENCE, not truthiness** (29 October 2026, §0 fifty-ninth
+            #   block, A3). `make_of` arrives from a rejected POST carrying an
+            #   entry for every line the operator touched, **including `""`
+            #   for one they deliberately CLEARED** — re-prefilling that from
+            #   the schedule would put the box back after somebody emptied it.
+            #   A line with no entry at all has not been typed in, and the
+            #   schedule's own remark is the prefill.
+            if lid in (make_of or {}):
+                make_val = P.esc(str((make_of or {}).get(lid) or "")[:MAKE_MAX])
+                pre = ""
+            else:
+                # The importer's own "Make: Jindal", read by `boq.py`'s one
+                # pattern and nothing wider — §7 gap 81, closed by
+                # instruction. No match is a blank box.
+                make_val = P.esc(BQ.make_from_remark(li.get("remark"))[:MAKE_MAX])
+                pre = (' data-prefill="1" title="Prefilled from this line&#39;s'
+                       ' import remark on the schedule &mdash; edit or clear it"'
+                       if make_val else "")
             make_cell = (f"""
           <td class="pk-make"><input type="text" id="m_{lid}" value="{make_val}"
-              maxlength="{MAKE_MAX}" aria-label="Make" style="{_MAKE_INPUT_STYLE}"/></td>""")
+              maxlength="{MAKE_MAX}" aria-label="Make" style="{_MAKE_INPUT_STYLE}"{pre}/></td>""")
 
         out.append(f"""
         <tr class="pk-row{cls}" id="row_{lid}"{hide}>

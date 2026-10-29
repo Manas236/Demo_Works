@@ -1109,8 +1109,14 @@ is `docsheet.letterhead()`'s `show_web` precedent:
 - **`with_make`** (26 October 2026, CLIENT_CHANGES.md §0 fifty-third block,
   change 2) — the draft PO's and the real PO's: a free-text **Make** box per
   line right after the description, posted as `make` and kept on the line only
-  when non-blank (`MAKE_MAX` = 60, the one cap every Make path uses). It opens
-  blank: no BOQ line has a make to prefill from (§7 gap 81). Styled **on the
+  when non-blank (`MAKE_MAX` = 60, the one cap every Make path uses). ⚠ **It
+  PREFILLS from the line's import remark from 29 October 2026** (§0
+  **fifty-ninth** block, A3, §7 gap 81 closed) — `boq.make_from_remark()`,
+  the importer's own `"Make: Jindal"` and nothing wider, with
+  `data-prefill="1"` on a box that was filled that way. **Presence, not
+  truthiness:** a line with an entry in `make_of` (a rejected POST) uses it
+  even when it is `""`, so a cleared box is never re-prefilled. A line the
+  remark says nothing about still opens blank. Styled **on the
   element**, so `PICKER_CSS` did not move; the challan does not ask for it.
   `/po/create`'s picker golden moved by exactly the column — declared in
   `tests/test_print_golden.py`.
@@ -2665,8 +2671,11 @@ record to freeze a copy of, because the decision to buy is ours.
   from anywhere. Written by every path that writes a line — `/purchase/create`
   (`line_make` / `extra_make`), `/purchase/edit/<id>`, `/purchase/from-boq`
   (the picker's `make`), `/purchase/from-draft` (`dl_make`, opened at the
-  draft line's own) and Import from Excel — and **never prefilled**: no BOQ
-  line and no spec variant has a make field (§7 gap 81). The **draft PO**'s
+  draft line's own) and Import from Excel. **Never prefilled from a FIELD** —
+  no BOQ line and no spec variant has one and none was added — but ⚠ **from
+  29 October 2026 the two BOQ pickers prefill from the line's import
+  REMARK** (§0 **fifty-ninth** block, A3; §7 gap 81 closed), through
+  `boq.make_from_remark()`. The **draft PO**'s
   `items` rows carry the same key, under the same rules. Absent on every line
   written before 26 Oct 2026, which prints an empty cell.
 - **Reprice trail (A1, 28 Aug 2026):** `reprice_log[]`, each entry
@@ -15515,7 +15524,7 @@ text is unchanged, and every reference to them was moved with them.*
 
     ⚠ *Recorded as gap 67 on `prod/delete-narrowing-21oct` (`c89c173`), live on prod from 21 Oct 2026; renumbered at the merge of 24 Oct 2026, where origin's own gap 67 held the number.*
 
-81. 🟡 **A purchase order's Make is never prefilled from the BOQ, though an
+81. ~~🟡 **A purchase order's Make is never prefilled from the BOQ, though an
     imported BOQ often KNOWS it — OPEN, by instruction** (26 October 2026,
     CLIENT_CHANGES.md §0 fifty-third block, change 2). The brief said: prefill
     from a make/brand **field** on the BOQ line or the spec variant if one
@@ -15527,7 +15536,42 @@ text is unchanged, and every reference to them was moved with them.*
     `(?:^|;)\s*Make:` regex). A remark is free text, not a field, so the
     picker does **not** read it and every Make box opens blank — tested. Reading
     it would be one function over the remark, with the risk that a hand-typed
-    remark containing "Make:" is taken as one; that is a decision, not a fix.
+    remark containing "Make:" is taken as one; that is a decision, not a fix.~~
+
+    ✅ **CLOSED 29 October 2026 — the decision was taken** (CLIENT_CHANGES.md
+    §0 **fifty-ninth** block, A3). `boq.make_from_remark()` reads
+    `boqimport._with_make()`'s **own** output and nothing wider, and both
+    pickers prefill from it (`boqpick.grid_html`, so `/purchase/from-boq` and
+    `/po/create` at once). It is the entry above's "one function over the
+    remark", with the risk it names answered rather than accepted:
+
+    * **the pattern is `(?:^|;)\s*Make:\s*([^;\n]+)`, ported from the
+      editor's `makeOf()` character for character** — one pattern, two
+      readers, so the prefill and the strip above the line cannot disagree;
+    * ⚠ **the `(?:^|;)` anchor is what refuses prose.** A segment must START
+      with `Make:`. `"Make: Jindal"` is a make; `"pipe to be supplied, Make:
+      as approved"` is **not**, and that is the exact hand-typed case the
+      entry above was worried about;
+    * **it is a FORM PREFILL and never a record.** No make field was added to
+      a BOQ line or a spec variant — the premise test still stands and still
+      passes — nothing is written to the schedule, and what is saved is what
+      the operator's form posted. A prefilled box carries
+      `data-prefill="1"` and says where the value came from in its `title`;
+    * **a cleared box is not re-prefilled on a rejected POST** (presence, not
+      truthiness, in `boqpick.py`), because putting the value back after
+      somebody removed it is the opposite of editable.
+
+    **Measured, not assumed** (29 October 2026, on this checkout):
+    `boqimport._with_make()`'s output over nine client-shaped brand strings ×
+    three remark shapes — **27 of 27 read, 100%**; nine pieces of prose
+    containing the word, eight of them matching `/make/i` — **0 read, no
+    false positive**; the seeded 97-line demo BOQ — 12 lines carry a remark,
+    **none contains the word**, so 0 read, which is correct: that schedule was
+    never imported from a sheet with a Make column.
+    ⚠ **The client's own workbooks are NOT in this checkout** (they are
+    gitignored — `fixtures/README.md`), so the hit rate on their real sheets
+    is **unmeasured**. The round trip is pinned against `_with_make()` itself
+    rather than against a literal, so it fails the day the writer changes.
 
 82. 🟡 **A printed document carries NO page numbers — LOST, by design, OPEN**
     (26 October 2026, CLIENT_CHANGES.md §0 fifty-third block, change 3). The

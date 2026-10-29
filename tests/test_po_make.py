@@ -11,9 +11,14 @@ Make is the brand of an item — "SANT" on a butterfly valve. The rules:
   builds a PO line: from the BOQ, converting a draft, and Import from Excel —
   whose column pickers offer it;
 * printed as a column **immediately right of "Description"**, narrow;
-* **not prefilled**: neither a BOQ line nor a specification-library variant has
-  a make field, so every Make box opens blank (a BOQ remark reading
-  "Make: Jindal" is NOT read — it is not a field);
+* **not prefilled from a FIELD**: neither a BOQ line nor a
+  specification-library variant has a make field, and this pass added none.
+  ⚠ **From 29 October 2026 (§0 fifty-ninth block, A3) it IS prefilled from
+  the import REMARK** — `"Make: Jindal"`, the importer's own explicit
+  pattern, through `boq.make_from_remark()`, which closes ABOUT.md §7 gap 81
+  by instruction. The two tests below that asserted "always blank" are
+  rewritten with their old assertions kept verbatim; the premise test — that
+  no line and no variant has a make FIELD — is unchanged and still stands;
 * an order written before this — no `make` key anywhere — still prints, with an
   empty cell under the column, which is never hidden.
 
@@ -291,12 +296,36 @@ def test_make_survives_po_from_boq(client, shop):
 
 
 def test_the_from_boq_picker_opens_every_make_blank_even_with_a_make_in_the_remark(client, shop):
+    """
+    ⚠ **REVERSED 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth**
+    block, A3). This test was the pin on ABOUT.md §7 gap 81, which was OPEN
+    **by instruction**: the fifty-third block said prefill from a make
+    *field*, neither the BOQ line nor the spec variant has one, and reading
+    the importer's `"Make: Jindal"` out of the remark *"would be one function
+    over the remark ... that is a decision, not a fix"*.
+
+    **Manas took that decision**, and the picker now prefills from the
+    importer's own explicit pattern (`boq.make_from_remark()`) and nothing
+    wider. The assertions this replaces, in full and verbatim:
+
+        assert f'id="m_{li["line_id"]}" value=""' in html
+        assert 'value="Jindal"' not in html
+
+    They are not weakened: the opposite claim is asserted positively below,
+    the blank case is asserted beside it, and the *"never guesses"* half
+    (prose that merely contains the word is not a make) is pinned by its own
+    tests in `tests/test_po_make_prefill.py`. The test keeps its old NAME,
+    now contradicted by its body, because renaming it would hide the reversal.
+    """
     li = shop["lines"][0]
+    other = shop["lines"][1]
     li["remark"] = "Make: Jindal"
+    other["remark"] = "an ordinary internal note"
     html = client.get(f"/purchase/from-boq/{shop['boq']}").get_data(as_text=True)
-    assert f'id="m_{li["line_id"]}" value=""' in html
-    assert 'value="Jindal"' not in html
+    assert f'id="m_{li["line_id"]}" value="Jindal"' in html
+    assert 'data-prefill="1"' in html, "a prefilled box says so"
     assert '<th class="pk-make" style="width:120px;">Make</th>' in html
+    assert f'id="m_{other["line_id"]}" value=""' in html
 
 
 def test_a_rejected_from_boq_keeps_the_typed_make(client, shop):
