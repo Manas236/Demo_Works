@@ -5739,6 +5739,264 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 29 October 2026, by Manas Gawde — TWO LISTS IN ONE PASS: THE 26 OCTOBER RULINGS REBUILT FROM NOTHING (HSN FILL-BLANKS-ONLY, FULL PRODUCT-INQUIRY EDITING, MAKE OFF THE BOQ REMARK, THE SIGNED SHEET DROPS ITS COMPUTER-GENERATED LINE) AND THE 28 OCTOBER LEFTOVERS THAT WERE WAITING ON THEM (THE DRAFT PO BECOMES "PRODUCT INQUIRY", NAMED REUSABLE PICTURES, A UNITS DROPDOWN WITH ITS UQC, AND A BOQ REVISION NUMBERED OFF ITS ROOT) · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The fifty-eighth block and every block
+> before it stand exactly as recorded, and none has been edited, reformatted or
+> re-scoped. This is the **fifty-ninth** occasion, written directly on
+> `antigravity-dev` like the fifty-fifth through the fifty-eighth.
+>
+> #### ⚠ THE OFFICE-PC PASS THIS BLOCK WAS WAITING FOR DOES NOT EXIST
+>
+> The fifty-fourth block (27 October) left the draft PO out of the hand-typed
+> document number because *"`po_draft.py` is being edited by the unpushed
+> office-PC pass (HSN / Draft PO editing)"*. The fifty-fifth, fifty-sixth,
+> fifty-seventh and fifty-eighth each repeated the rule that when that line
+> met this one, **origin's number would stand and the office block would
+> move**. ABOUT.md §7 gaps 83 and 84 each carry a note that their number may
+> move at that merge.
+>
+> **There is no such pass.** Manas confirmed on 29 October 2026 that the
+> office-PC work was lost and never pushed. Part A below is therefore **built
+> fresh on this line**, not merged, and the four documents that were holding a
+> place open for it are released:
+>
+> * **no block number moves.** This is the fifty-ninth and nothing before it
+>   is renumbered;
+> * **gaps 83 and 84 keep the numbers they have.** Their "this number may move
+>   at a merge" notes are now spent and say so;
+> * **the one thing 1fdc09e DID land is reused, not rebuilt.** That commit
+>   (28 October 2026, already on this line) made HSN editable on an issued
+>   purchase order's item lines and wrote the rule down as
+>   `purchase.hsn_editable()`. **A1 below generalises that one predicate; it
+>   does not write a second one.**
+>
+> **What prompted the two lists:** Part A is **Manas's own rulings of 26
+> October 2026**, taken alongside the three asks the fifty-third block covers
+> and built on the machine whose work was lost. Part B is the remainder of the
+> **28 October 2026 meeting with Yogesh Bankar**, relayed by Manas — the items
+> that were deferred because each of them lands in a file Part A was expected
+> to be rewriting.
+>
+> **Commercial status: NO CHARGE, on Manas's instruction** — the same standing
+> as the fifty-third, fifty-sixth, fifty-seventh and fifty-eighth blocks. It
+> is **not** a §0 no-charge *exemption*: §0 exempts defect and reachability
+> fixes against scope already sold under MG/SF/2026-01, and nothing below is
+> one. No CC-2 item changes state and no Phase 3 bar moves.
+>
+> ---
+>
+> ### PART A — the 26 October 2026 rulings, rebuilt
+>
+> #### A1 — HSN is editable, and the rule is FILL BLANKS ONLY
+>
+> **What was asked for:** an HSN can be added or corrected on a BOQ line, on a
+> Specification Library entry, on every **draft** document that has lines, and
+> on an **issued tax invoice** — the ordinary one, an RA bill's tax invoice and
+> a tax invoice raised straight from a BOQ. The rule is the same everywhere and
+> it is the one 1fdc09e already wrote down: **any HSN while the document is a
+> draft; once it is issued only a BLANK HSN may be filled.** A printed HSN is
+> never overwritten, the server refuses a changed value and writes nothing, and
+> **every fill on an issued document goes on that document's own trail — who,
+> when, which line, what value.** A Specification Library HSN fills blanks on
+> lines raised *later* and never reaches a document already written.
+>
+> **One shared predicate**, so the box a page draws and the refusal the POST
+> gives can never disagree. `purchase.hsn_editable()` becomes the general rule
+> in the new leaf `hsnfill.py` and `purchase.py` reads it from there; the
+> predicate's answer for a purchase order is unchanged, which is what keeps
+> `tests/test_po_hsn_edit.py` green with its assertions as they stand.
+>
+> **A blank HSN prints a DASH, not the amber chip** — and this is an
+> **intended print change**, the only one in Part A besides A4. ⚠ `B.field()`'s
+> amber *add HSN* chip is for a statutory detail the company has not filled in
+> at `/settings`; a line's missing HSN is now fillable on the document itself,
+> so the chip was telling a customer about a box the reader can no longer reach
+> from where the chip is drawn. **On screen, and never on paper, a small note
+> names the lines that have none** and links to where they are filled.
+>
+> #### A2 — the Product Inquiry is fully editable until it is converted
+>
+> **What was asked for:** every field and every line of an unconverted draft
+> PO is editable — add a line, remove a line, quantity, make, HSN, unit,
+> description, vendor, dates, terms. **Locked once it has been converted into
+> a real purchase order**, and locked on the POST as well as hidden on the GET:
+> a form that is merely not drawn is not a lock.
+>
+> ⚠ **RATE IS THE ONE FIELD ON THAT LIST THAT IS NOT BUILT, and the conflict
+> is recorded rather than resolved quietly.** `po_draft.py` has carried
+> `PRINT_RATES = False` since it was written: the rates on this document are
+> **blank by design** because the supplier fills them in, and its docstring
+> says *"nothing on it may read a buy rate from anywhere"* — there is a test
+> for that, and the BOQ's own `supply_rate` is what it is protecting the
+> document from. B1 below renames the document **Product Inquiry**, which is
+> what it has always been. Manas's answer, put to him with the conflict named:
+> **no rate box; the printed Rate column stays empty.** Every other field on
+> the list is editable.
+>
+> **The number keeps its existing rules** — one global series, FY-less, and a
+> number is never released (`po_draft.next_ref()`, the fifty-fourth block's
+> own carve-out). An edit never reissues one.
+>
+> #### A3 — Make prefills from the BOQ line
+>
+> **What was asked for:** on the real purchase order and on the Product
+> Inquiry, the per-line **Make** prefills from the BOQ line, parsed out of the
+> remark the Excel import writes. Parse **only a clear explicit pattern that
+> is actually in the import code and in the fixtures** — otherwise leave the
+> box blank. **Never guess.**
+>
+> **This closes ABOUT.md §7 gap 81, which was OPEN BY INSTRUCTION.** The
+> fifty-third block's change 2 said in terms: prefill from a make **field** on
+> the BOQ line or the spec variant, and neither has one, so every Make box
+> opens blank — *"Reading it would be one function over the remark, with the
+> risk that a hand-typed remark containing 'Make:' is taken as one; that is a
+> decision, not a fix."* **This block is that decision.** The pattern read is
+> `boqimport._with_make()`'s own output and nothing wider; a prefilled box is
+> marked as a prefill on the form and is editable, so a wrong read costs a
+> keystroke and never a document.
+>
+> #### A4 — a signed sheet stops saying it is not signed
+>
+> **What was asked for:** where a signature or a stamp has been set at
+> `/settings`, **"This is a Computer Generated Document, no signature
+> required" is hidden** on every document that prints them.
+>
+> **An intended print change, and the fifty-third block's own fourth
+> judgement call is reversed by name.** That block recorded *"'This is a
+> Computer Generated Document, no signature required' still prints under the
+> documents that carried it"* — which put a sentence saying the sheet is
+> unsigned directly under a signature and a company stamp. One place:
+> `docsheet.sig_block()`, which already knows whether the art is there.
+>
+> ⚠ **With neither mark set, every document still prints byte-for-byte what it
+> prints today**, which is what keeps every pinned golden still: the goldens
+> are captured against a store with no marks. **The joint measurement sheet
+> keeps its signature and stamp** — it never passed
+> `computer_generated=True`, so it never carried the line and loses nothing.
+>
+> ---
+>
+> ### PART B — the 28 October 2026 leftovers
+>
+> #### B1 — the Draft PO is called "Product Inquiry"
+>
+> **DISPLAY ONLY, and that is the whole of the ruling.** Labels, headings,
+> navigation, the **printed title**, the register and the dashboard card. The
+> module name, the collection key `purchase_orders`, every URL under `/po/`
+> and every stored field name are **unchanged**, so no data moves, no link
+> breaks and no bookmark dies. ABOUT.md says so in terms.
+>
+> ⚠ **The printed title moves** — `DRAFT PURCHASE ORDER` becomes
+> `PRODUCT INQUIRY`. That is an intended print change and the `/po/print`
+> golden moves with it.
+>
+> #### B2 — named, reusable pictures on the Product Inquiry and the real PO
+>
+> **What was asked for:** pictures addable from the create form, optional;
+> **each picture has a NAME, printed under it**; pictures kept in a **library
+> keyed to the item** — the spec id where there is one, otherwise the
+> normalised description — so the next document for the same item **offers
+> that picture preselected**.
+>
+> **Built on the existing feature, not beside it.** `lineimage.py` (the
+> fiftieth block's leaf) already content-addresses a picture by the sha256 of
+> its own bytes and writes it under `attachment.root()`. The library is a
+> **name and an item key over those same ids** — no second store, no base64 on
+> a record. §3 *Line pictures* is unchanged; the library is its own collection.
+>
+> ⚠ **THE CREATE FORM OFFERS THE LIBRARY, IT DOES NOT CARRY FILE BOXES — and
+> the fifty-third-block reasoning it respects is quoted rather than
+> rediscovered.** The forty-ninth block's first judgement call recorded that
+> pictures live on each document's own Pictures page *"not as a file box on
+> the create and reprice forms"*, because **nginx refuses a request over 8 MB
+> with its OWN 413 page** (DEPLOY.md) and a phone photo is 3–5 MB, so a form
+> carrying several file boxes fails on the second picture with nothing of ours
+> on screen — and a browser cannot refill a file box, so every refused save
+> would empty them all. Manas's answer, put to him with that named: the create
+> form gets a **per-line dropdown of the named pictures already in the library
+> for that item, preselected to the one last used** — no file bytes in the
+> POST, so the limit is never approached, and *"the next document for the same
+> item offers that picture preselected"* is satisfied exactly. **New uploads,
+> with their name, happen on the Pictures page**, which is what registers one
+> into the library.
+>
+> #### B3 — a units dropdown, with the GST UQC behind it
+>
+> **What was asked for:** every line-item form gets a dropdown — **Nos
+> (default)**, Mtrs, Kg, Set, Lot, Sq Ft, Sq M — with **custom units addable
+> at `/settings`**. Each unit stores a **display label and its GST UQC code**:
+> `NOS`, `MTR`, `KGS`, `SET`, `SQF`, `SQM`, and **Lot and every custom unit
+> map to `OTH`**. **Existing free-text units stay exactly as they are.** A
+> `--dry-run` cleanup tool maps the old strings (`nos`, `Nos.`, `mtr`,
+> `Mtrs`…) onto the new units and **is not run.**
+>
+> ⚠ **The list lives in a LEAF, `units.py`, and not in `settings.py`** — for
+> the reason `series.py` exists: **`boq.py` may not import `settings.py`**
+> (`tests/test_import_directions.py` refuses the arrow), and the BOQ's own
+> line editor is the most important form the dropdown has to reach. The leaf
+> imports `store` and reads `STORE["settings"]` directly; `settings.py` owns
+> the page that edits the record, the leaf owns the rule.
+>
+> ⚠ **`quotation.py` and `product.py` are FROZEN (INTRODUCTION.md §7) and are
+> NOT edited, so their unit fields do not get the dropdown.** The catalogue is
+> hidden from everybody anyway (`auth.HIDDEN_BLUEPRINTS`). This is recorded
+> rather than worked around: a sixth narrow unfreeze needs its own §0 block
+> naming the function, and a units dropdown is not a security fix.
+>
+> #### B4 — a BOQ revision is numbered off its root
+>
+> **What was asked for:** a new revision is numbered `<root ref>/1`, `/2` —
+> `SF/BOQ/26-27/0019/1` — and **no longer takes the next number in the
+> series**. **Printed BOQs, and anything citing the BOQ, show the root ref
+> without the suffix; screens show the suffix.** **Existing revisions keep
+> their numbers and no history is renumbered.** Stored refs stay unique.
+> **Duplicate-BOQ detection and the supersedes logic are unaffected, and tests
+> prove both.**
+>
+> ⚠ **This is the other half of the 28 October finding the fifty-eighth block
+> named.** `a6ab6c4` fixed revisions being *added together* on the project
+> page; this fixes them *consuming a fresh series number each time*, which is
+> what made a chain of three revisions look like three separate schedules in
+> the client's own book.
+>
+> ⚠ **A revision raised before this pass is a CLOSED HISTORICAL SET.** Its ref
+> is a series number and stays one; it is never rewritten, and the root-ref
+> display reads such a ref through unchanged, suffix-less, because it has no
+> suffix to strip.
+>
+> ---
+>
+> #### What is NOT in this pass
+>
+> - **No rate on the Product Inquiry** — A2 above, Manas's answer with the
+>   conflict named.
+> - **No hand-typed number for the Product Inquiry.** The fifty-fourth block
+>   left it out only because this pass was expected to be rewriting
+>   `po_draft.py`; **the reason it stays out is now its own**, and it is
+>   `next_ref()`'s stored global counter, which the fifty-fourth block's
+>   forward-only validator has no scan to check against. It needs the client's
+>   answer about their paper book, which is gap 15's rule.
+> - **No change to `_hsn_cell()`'s rule for a statutory identity field.**
+>   `B.field()` keeps the amber chip everywhere else it is used; only the HSN
+>   cell stops using it.
+> - **No second HSN predicate.** A1 generalises the one 1fdc09e wrote.
+> - **No renumbering of any existing document**, BOQ revisions included.
+> - **No change to the over-claim guard, the measurement ceiling, the `ra_no`
+>   series, the leg model or the merged RA's series.**
+> - **No `/templates`, no `/static`, no CDN and no new dependency.**
+> - **`quotation.py` and `product.py` are NOT edited** and no sixth unfreeze
+>   is opened.
+> - **No MySQL, and no migration run.** There is no database on the machine
+>   this pass was built on, so nothing was migrated and **no backup was taken
+>   because none was possible.** B3's unit cleanup ships as an idempotent tool
+>   with `--dry-run` and **is not run.**
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
