@@ -11960,6 +11960,47 @@ order are listed under *"Not counted, on purpose"*. A bill raised under an
 rounded once to the paisa, half up (`boq.round_half_up()`); every difference
 taken between two rounded totals.
 
+#### Extended 28 October 2026 — §0 **fifty-eighth** block, item 4
+
+Three rows added to the panel and a link added in two places. ⚠ **The three
+sections and their order are UNCHANGED** — PLANNED and TO DATE are
+tax-exclusive and CASH (which is where *received* and *outstanding* live) says
+GST is included. ⚠ **The client's own list put COLLECTED next to BILLED, and
+that was deliberately NOT done**: billed is a taxable value and collected is
+GST-inclusive, so putting them side by side is exactly ABOUT.md §7 gap 31,
+which the forty-seventh block closed. The two are one section apart and each
+heading says which it is.
+
+| row | source and rule |
+|---|---|
+| **planned margin against actual** | `to_date["margin_variance"]` = margin to date − planned margin, a difference between two rounded totals. ⚠ A **second** difference beside *estimate against actual*, never a replacement: that one answers *"are we spending what we said?"*, this one *"is the job earning what we said?"*. `None`, never 0, when no schedule is attached. The panel labels it **timing as much as result** — the margin to date counts only what has been billed and only what has been spent. |
+| **coverage** | `pnl.po_coverage()` — *"N of M priced BOQ lines has / have a committed purchase order"*, with the percentage and the order count. ⚠ **This is why a low cost must not be read as a profit**, and it is printed with the margin rather than as a footnote. Lines come from each chain's **TIP** (`tips_of()`, the same population `plan_of()`'s `priced` counts); orders are **committed** only (`COMMITTED_PO_STATUSES`, the same tuple the cost row reads, so the two cannot disagree). Matching is on **`line_id`** and nothing else. An **extra part** carries no `line_id` by design (`purchase.py`), so it covers nothing and lands in `unmatched`; a line a revision removed lands there too, because the plan is the tip. ⚠ **Nothing is derived from coverage** — it is a count of lines. |
+| **cost tagged to no project** | `pnl.untagged_cost()`, the **same** function the `/projects` register's line uses. It was on the register only, and a reader who opens a project from the dashboard never sees the register — so this project's cost read as the whole company's. ⚠ **It is NOT this project's money**: nothing on the page adds it, `to_date["actual"]` is untouched by it, and the band says so in those words. |
+
+**One click (`project.pnl`, the existing permission):** a **P&L** button per
+row on `/projects` (`project._pnl_link()`) and a pill per project row on the
+dashboard (`dashboard._progress_html()`), both to `/projects/view/<id>#pnl`.
+Both are gated on `project.pnl` **and** on `can_reach("projectview.view_project")`
+— a link that could only produce a refusal is not drawn. The **Unassigned**
+dashboard row has no project and gets no link. ⚠ **The panel is NOT a route
+of its own and must not become one**: a URL for it could be linked, bookmarked
+and shared past the permission that gates it.
+
+⚠ **`dashboard.index` joined `project.pnl`'s `PANEL_PERMISSIONS` tuple**, and
+the dashboard asks **`auth.can_see_pnl()`** rather than naming the id:
+`test_the_dashboard_names_no_permission_id_anywhere_in_its_code` forbids a
+permission literal in that file (a card that names one is a second list beside
+the registry). A panel is not an endpoint, so `can_reach()` has no answer for
+it — the id stays in `auth.py` inside a named predicate. That made
+`test_access_control.py`'s *"the serving module consults it by name"*
+assertion impossible to satisfy both ways, so it was **rewritten** to accept a
+predicate in `auth.py` **and to read the module's AST** rather than its text,
+proving the predicate really wraps that one permission; the old assertion is
+kept verbatim in a comment. (Measured: the text version of it was satisfied by
+a *comment*.)
+
+Tests: `tests/test_pnl_oct28.py` (32). `docs/ACCESS_MATRIX.md` regenerated.
+
 #### The register's line — cost tagged to no project
 
 Under the `/projects` table, for a holder of `project.pnl`: *"Cost not tagged

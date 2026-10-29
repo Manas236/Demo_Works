@@ -379,6 +379,13 @@ DASH_STYLES = """
   .act-kind.ak-boq { color: var(--navy); border-color: var(--navy); }
   .act-kind.ak-ra  { color: var(--c-won); border-color: var(--c-won); }
 
+  /* The P&L link on a project row (28 October 2026). Quiet on purpose: it
+     sits beside the project's name and must not compete with it. */
+  .pp-pnl { margin-left:.5rem; font-size:.72rem; font-weight:700;
+            letter-spacing:.02em; color:#1d4ed8; white-space:nowrap;
+            text-decoration:none; border:1px solid #c7d2fe;
+            border-radius:999px; padding:.05rem .4rem; }
+  .pp-pnl:hover { background:#eef2ff; }
   /* Per-project progress. The bar is `.meter`, reused verbatim from the
      win-rate tile — same track, same fill, same 5px height. The row is padded
      and pulled back by the same .55rem as `.rq-row`, which leaves the text
@@ -1791,6 +1798,15 @@ def _progress_html(m) -> str:
         return '<div class="none">No schedules on any project yet.</div>'
 
     can_open = auth.can_reach("projectview.view_project")
+    # ⚠ **Asked through `auth.can_see_pnl()` and NEVER by naming the
+    #   permission id here.** `test_the_dashboard_names_no_permission_id_
+    #   anywhere_in_its_code` refuses a literal in this file, because a card
+    #   that names one is a second list beside `ROUTE_PERMISSIONS` and the two
+    #   can disagree with nothing failing. A panel is not an endpoint, so
+    #   `can_reach()` has no answer for it; the id stays in `auth.py` inside
+    #   that predicate. Asked ONCE, outside the loop: resolving a user's roles
+    #   is not free and this panel draws up to PROGRESS_LIMIT rows.
+    can_pnl = auth.can_see_pnl()
 
     out = ""
     for r in rows[:PROGRESS_LIMIT]:
@@ -1813,11 +1829,28 @@ def _progress_html(m) -> str:
         if r["pid"] and can_open:
             href  = url_for("projectview.view_project", id=r["pid"])
             label = f'<a href="{href}">{label}</a>'
+        # ── ONE CLICK TO THE P&L (28 October 2026) ─────────────────────────
+        # §0's fifty-eighth block, item 4: the client asked for the profit and
+        # loss to be one click from wherever the job is being looked at, and
+        # the dashboard is where it is looked at first.
+        #
+        # ⚠ **Gated on `project.pnl` AND on being able to open the page**, the
+        #   same pair `project._pnl_link()` checks on the register — a link
+        #   that could only produce a refusal, or that names a panel the
+        #   reader may not see, is not drawn. `""` otherwise, so the row is
+        #   byte-for-byte what it was for everybody else. ⚠ The **Unassigned**
+        #   row has no `pid` and gets no link: there is no project to open.
+        pnl_link = ""
+        if r["pid"] and can_open and can_pnl:
+            pnl_link = (f'<a class="pp-pnl" href="'
+                        f'{url_for("projectview.view_project", id=r["pid"])}#pnl"'
+                        f' title="Planned against actual, billed against '
+                        f'collected">&#8377; P&amp;L</a>')
 
         out += f"""
           <div class="pp-row">
             <div class="pp-hd">
-              <span class="pp-name">{label}</span>
+              <span class="pp-name">{label}{pnl_link}</span>
               <span class="pp-fig">{rupees(r['claimed'])} of {rupees(r['approved'])}</span>
             </div>
             {bar}

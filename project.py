@@ -383,6 +383,34 @@ PROJECT_FORM_STYLES = """
 """
 
 
+def _pnl_link(project_id: str) -> str:
+    """
+    The **P&L** button on a register row — one click to the panel, §0's
+    **fifty-eighth** block, item 4.
+
+    `""` for a reader without `project.pnl`, so for them the register is
+    byte-for-byte what it was — `_untagged_line()`'s rule on the same page,
+    and the import is function-body for the same reason (see the module
+    docstring). It is a plain `#pnl` fragment on the project page: the panel
+    is not a route of its own and must not become one, because then the P&L
+    would have a URL that could be linked, bookmarked and shared past the
+    permission that gates the panel.
+
+    ⚠ **It is also gated on being able to OPEN the page** — a button that
+      could only produce a refusal is not drawn (the owner's rule, 22
+      September 2026). Presentation, not the gate: `/projects/view/<id>` is in
+      `ROUTE_PERMISSIONS` and refuses a typed URL on its own.
+    """
+    import auth
+    if not (auth.has_perm("project.pnl")
+            and auth.can_reach("projectview.view_project")):
+        return ""
+    href = url_for("projectview.view_project", id=project_id)
+    return (f'\n            <a href="{href}#pnl" class="btn btn-sm btn-ghost" '
+            f'title="Planned against actual, billed against collected">'
+            f'&#8377; P&amp;L</a>')
+
+
 def _untagged_line() -> str:
     """
     The *"Cost not tagged to any project"* line under the register — CC-2 C6,
@@ -425,7 +453,7 @@ def list_projects():
           <td>{P.esc(p.get('client') or '') or '&mdash;'}</td>
           <td>{P.esc(p.get('site_address') or '') or '&mdash;'}</td>
           <td>{n_boqs}</td>
-          <td class="td-acts">
+          <td class="td-acts">{_pnl_link(pid)}
             <a href="{url_for('project.edit_project', id=pid)}" class="btn btn-sm">Edit</a>
             <a href="{url_for('project.delete_project', id=pid)}" class="btn btn-sm btn-ghost">Delete</a>
           </td>

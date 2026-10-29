@@ -428,7 +428,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `project.create` | `project.create_project` |
 | `project.edit` | `project.edit_project` |
 | `project.delete` | `project.delete_project` |
-| `project.pnl` | part of `projectview.view_project`, `project.list_projects` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
+| `project.pnl` | part of `projectview.view_project`, `project.list_projects`, `dashboard.index` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
 | `spec.view` | `spec.list_specs`, `spec.view_spec` |
 | `spec.create` | `docimport.apply_spec`, `docimport.preview_spec`, `docimport.upload_spec`, `spec.add_spec` |
 | `spec.edit` | `spec.edit_spec`, `spec.picture` |

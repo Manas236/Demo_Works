@@ -340,8 +340,36 @@ PAGES = {
     #       ("5e225e0820d80885", 106453,
     #        {"head": "6dc069f834093b21", "shell": "75cda0afbae27209",
     #         "chrome": "5c161e609be944c8", "main": "2b2035d29d7ba0bd"})
-    ("dashboard",       "/"):                          ("4a9da9c12ffb2724", 107435,
-        {"head": "6dc069f834093b21", "shell": "a1e6c63a6d4c6ac2", "chrome": "6167869fb277a647", "main": "c7511bccc57b6167"}),
+    # ⚠ **RE-BASELINED 29 October 2026 — CLIENT_CHANGES.md §0's fifty-eighth
+    #   block, item 4** (the profit and loss, one click away). THREE pages
+    #   move and no others. Measured before any baseline was touched, by
+    #   reverting `pnl.py`, `projectview.py`, `project.py` and `dashboard.py`
+    #   and re-running this file plus `tests/test_pnl_access.py`: **all 42
+    #   assertions came back green on the old values**, so nothing below moved
+    #   for any other reason.
+    #
+    #   - **dashboard** — `head` AND `main`. `head` carries `DASH_STYLES`,
+    #     which gains the `.pp-pnl` rules (the P&L pill on a project row);
+    #     `main` gains the pill itself, one per project the reader may open.
+    #     `shell` and `chrome` unmoved. **+569 bytes.**
+    #   - **projects** — `main` only: a **P&L** button per register row
+    #     (`project._pnl_link()`). `head` / `shell` / `chrome` unmoved.
+    #     **+322 bytes.**
+    #   - **project page** — `main` only: the panel gains *Planned margin
+    #     against actual* with the **coverage** sentence, and the **cost
+    #     tagged to no project** band. `head` / `shell` / `chrome` unmoved.
+    #     **+1,014 bytes.**
+    #
+    #   Every one of the three is gated on `project.pnl`, which is why
+    #   `tests/test_pnl_access.py` needed **no** re-baseline for this item:
+    #   all four of its roles lack that permission and all eight of its rows
+    #   are byte-identical.
+    #   The old value:
+    #       ("dashboard", "/"): ("4a9da9c12ffb2724", 107435,
+    #        {"head": "6dc069f834093b21", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "6167869fb277a647", "main": "c7511bccc57b6167"})
+    ("dashboard",       "/"):                          ("eea710973601aeb5", 108004,
+        {"head": "cbce33bfb1cb901f", "shell": "a1e6c63a6d4c6ac2", "chrome": "6167869fb277a647", "main": "b5c4975fcffe0cbd"}),
     ("quotations",      "/quotation/"):                ("693c1f033c5472df", 70833,
         {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "9d5163415990a990", "main": "7ec3c661ae9cc372"}),
     ("proformas",       "/proforma/"):                 ("ec746a1c49227b83", 76141,
@@ -395,8 +423,14 @@ PAGES = {
     #       ("project page", …): ("74f683d1a779159f", 76963,
     #        {"head": "0565b7d2103f190b", "shell": "75cda0afbae27209",
     #         "chrome": "b03da1368479ad8b", "main": "85908eff05b3e868"})
-    ("projects",        "/projects/"):                 ("8e8cf8516aaff984", 50009,
-        {"head": "35ced4411e03de2e", "shell": "a1e6c63a6d4c6ac2", "chrome": "f2fdcc9f984ceb87", "main": "e7babe8cdc1b11fc"}),
+    # ⚠ **RE-BASELINED 29 October 2026 — §0 fifty-eighth block, item 4.**
+    #   `main` only: a **P&L** button per row. See the dashboard row above for
+    #   the measurement that covers all three pages. The old value:
+    #       ("projects", "/projects/"): ("8e8cf8516aaff984", 50009,
+    #        {"head": "35ced4411e03de2e", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "f2fdcc9f984ceb87", "main": "e7babe8cdc1b11fc"})
+    ("projects",        "/projects/"):                 ("ea3228a536b47668", 50331,
+        {"head": "35ced4411e03de2e", "shell": "a1e6c63a6d4c6ac2", "chrome": "f2fdcc9f984ceb87", "main": "38cbe6c5d1fe77aa"}),
     # ⚠ **RE-BASELINED 28 October 2026 — `main` ONLY** (the Yogesh meeting's
     #   project-page bugs: documents raised from a BOQ now follow it onto its
     #   project, and only a chain's latest revision is totalled). `main` gains
@@ -443,8 +477,38 @@ PAGES = {
     #       ("project page", …): ("743a34c2b98c0499", 87728,
     #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "b51ad113e721dcbe", "main": "80ecaec1f7e9225b"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("994d761e70c27a65", 90081,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "a2c311e0f0026245"}),
+    # ⚠ **RE-BASELINED 29 October 2026 — §0 fifty-eighth block, item 4**, the
+    #   third time this row moves today. `main` only: *Planned margin against
+    #   actual* with the coverage sentence, and the cost-tagged-to-no-project
+    #   band. See the dashboard row above for the measurement. The value
+    #   before item 4:
+    #       ("project page", …): ("994d761e70c27a65", 90081,
+    #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "b51ad113e721dcbe", "main": "a2c311e0f0026245"})
+    #
+    #   ⚠ **CORRECTED, same pass: `main` is `eccbe9476dd92798`, not
+    #     `96c7f5605c3519b0`.** The first value was measured while
+    #     `pnl.po_coverage()` read `tip["boq_id"]` — but `tips_of()` returns
+    #     the BOQ RECORDS, which carry `id` — so it silently reported **0 of
+    #     0** and the golden world's panel printed *"no BOQ lines to say how
+    #     much of this job has been bought"*. Writing
+    #     `tests/test_pnl_oct28.py` found it. The 160-byte difference between
+    #     the two is the real coverage sentence, which is what the item is
+    #     for. The wrong value is recorded here rather than quietly dropped:
+    #     a golden captured from a broken render is the one mistake this file
+    #     cannot catch by itself.
+    #
+    #   ⚠ **AND CORRECTED ONCE MORE, 33 bytes smaller:
+    #     `main` is `4966a1cb8a5c0421`.** This item had also reworded the Cash
+    #     heading to *"received and still owed · GST included"*, which bought
+    #     nothing and broke `tests/test_pnl.py::test_the_tax_exclusive_and_tax
+    #     _inclusive_sections_never_mix`, a test that pins that heading
+    #     verbatim for ABOUT.md §7 gap 31's reason. The reword was **reverted**
+    #     rather than the test re-baselined: the heading is back to
+    #     `<h3>Cash <span>GST included</span></h3>`, exactly as the
+    #     forty-seventh block left it. That is the 33 bytes.
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("e296b70a116cbce6", 91222,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "b51ad113e721dcbe", "main": "4966a1cb8a5c0421"}),
     ("employees",       "/employee/"):                 ("ef174191c4b15546", 66359,
         {"head": "6419ee6d0d3ea045", "shell": "a1e6c63a6d4c6ac2", "chrome": "73071add0b4a2df7", "main": "14f4d8921e680fc4"}),
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth

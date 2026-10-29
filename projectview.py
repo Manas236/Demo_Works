@@ -894,6 +894,89 @@ def _pnl_panel(proj) -> str:
                ' <span class="pnl-note">The estimate covers every priced line.</span>')
             + '</div>')
 
+    # ── PLANNED MARGIN AGAINST ACTUAL, AND COVERAGE (28 October 2026) ──────
+    #
+    # §0's fifty-eighth block, item 4. A SECOND difference beside the cost
+    # variance above and never a replacement for it: that one answers *"are we
+    # spending what we said?"*, this one *"is the job earning what we said?"*,
+    # which is the question the client asked.
+    #
+    # ⚠ **COVERAGE IS PRINTED WITH IT AND NOT AS A FOOTNOTE.** The actual
+    #   margin is billed-so-far less spent-so-far, so early in a job it is
+    #   large and flattering for no commercial reason at all: almost nothing
+    #   has been bought yet. *"N of M BOQ lines have a purchase order"* is the
+    #   sentence that says which it is. It is a count of lines and nothing is
+    #   derived from it.
+    cov = r["coverage"]
+    if cov["lines"]:
+        cover_txt = (f'<b>{cov["covered"]} of '
+                     f'{_pnl_n(cov["lines"], "priced BOQ line")} '
+                     f'{"has" if cov["covered"] == 1 else "have"} a committed '
+                     f'purchase order</b>'
+                     + (f' ({cov["pct"]:.2f}%)' if cov["pct"] is not None else '')
+                     + f', across {_pnl_n(cov["orders"], "order")}.')
+        if cov["covered"] < cov["lines"]:
+            cover_txt += (' The rest has not been bought yet, so the cost '
+                          'above is not what this job will finally cost and a '
+                          'healthy margin here may simply be a job nobody has '
+                          'started buying for.')
+        if cov["unmatched"]:
+            cover_txt += (f' {_pnl_n(cov["unmatched"], "order line")} '
+                          f'{"matches" if cov["unmatched"] == 1 else "match"} '
+                          f'no priced line on the latest revision &mdash; an '
+                          f'extra part carries no line id by design, and a line '
+                          f'a revision removed is no longer in the count above.')
+    else:
+        cover_txt = ('No schedule is attached, so there are no BOQ lines to '
+                     'say how much of this job has been bought.')
+
+    if todate["margin_variance"] is None:
+        mv_html = ('<div class="pnl-variance"><b>Planned margin against '
+                   'actual.</b> No schedule is attached, so there is no '
+                   'planned margin to set the margin to date against.'
+                   f' <span class="pnl-note">{cover_txt}</span></div>')
+    else:
+        mv = todate["margin_variance"]
+        mv_html = (
+            f'<div class="pnl-variance"><b>Planned margin against actual.</b> '
+            f'Planned {_pnl_rs(plan["margin"])} &middot; to date'
+            f'{" (excluding site labour)" if lab["withheld"] else ""} '
+            f'{_pnl_rs(todate["margin"])} &middot; '
+            f'{"ahead of the plan by" if mv >= 0 else "behind the plan by"} '
+            f'<b>{_pnl_rs(abs(mv))}</b>. <b>This is timing as much as result</b> '
+            f'&mdash; the margin to date counts only what has been billed and '
+            f'only what has been spent, and the two rarely move together.'
+            f' <span class="pnl-note">{cover_txt}</span></div>')
+
+    # ── COST ON NO PROJECT — on the project's own page (28 October 2026) ────
+    #
+    # ⚠ **It was on the `/projects` register ONLY, and a reader who opens a
+    #   project from the dashboard never sees the register** — so this
+    #   project's actual cost read as the whole of the company's. The same
+    #   `pnl.untagged_cost()` the register's line uses, so the two cannot
+    #   disagree. ⚠ **It is NOT this project's money**: nothing on this page
+    #   adds it to anything, and the line says so in those words.
+    unt = r["untagged"]
+    untagged_html = ""
+    if unt["total"]:
+        extra = []
+        if unt.get("dangling"):
+            n = unt["dangling"]
+            extra.append(f'{_pnl_n(n, "of those records names", "of those records name")} '
+                         f'a project that no longer exists.')
+        if unt["labour"]["withheld"]:
+            extra.append('Site labour is not in it &mdash; it needs the '
+                         '<b>View attendance</b> permission.')
+        untagged_html = (
+            f'<div class="pnl-warn"><b>Cost tagged to no project at all: '
+            f'{_pnl_rs(unt["total"])}</b> &mdash; tax-exclusive, across every '
+            f'project in the system: committed purchase orders, issued work '
+            f'orders, charges and site labour that nobody filed. '
+            f'{" ".join(extra)} <b>It is not this project&rsquo;s cost and '
+            f'nothing above includes it</b> &mdash; it is shown here because a '
+            f'project page read on its own otherwise looks like the whole '
+            f'picture. Tag each record to its project to move it onto one.</div>')
+
     # ── 3. CASH — GST included ──────────────────────────────────────────────
     cash_notes = ['Receipts are recorded against RA bills only. Outstanding is '
                   'only as correct as the write-offs recorded against them make '
@@ -944,6 +1027,8 @@ def _pnl_panel(proj) -> str:
       <table class="pnl-rows">{rows_html}</table>
       {"".join(f'<p class="pnl-note">{n}</p>' for n in notes)}
       {variance_html}
+      {mv_html}
+      {untagged_html}
       <h3>Cash <span>GST included</span></h3>
       {cash_html}
     </div>"""

@@ -395,6 +395,80 @@ def _po_taxable(po: dict):
     return tv
 
 
+def po_coverage(project_id) -> dict:
+    """
+    *"N of M BOQ lines have a purchase order"* — §0's **fifty-eighth** block,
+    item 4. `{"lines", "covered", "pct", "orders", "unmatched"}`, or
+    `lines = 0` when no schedule is attached.
+
+    ⚠ **THIS IS WHY A LOW COST MUST NOT BE READ AS A PROFIT.** The margin to
+    date is *billed less spent*, and early in a job almost nothing has been
+    bought: the panel shows a handsome margin that is really a project nobody
+    has started buying for. Coverage is the sentence that says which it is.
+    It is **not** a correction to any figure and nothing is derived from it —
+    it is a count of lines, printed beside the money.
+
+    **What counts as covered:** a priced line on the **tip** revision of a
+    chain (`tips_of()`, the same population `plan_of()`'s `priced` counts)
+    whose `line_id` appears on an item of a **committed** purchase order on
+    this project. ⚠ **Committed, the same `COMMITTED_PO_STATUSES` the cost row
+    uses** — a Draft order has been promised to nobody, so a line it names is
+    not bought. One rule, read from one tuple, so the cost and the coverage
+    cannot disagree about what an order is.
+
+    ⚠ **Matching is on `line_id` and nothing else**, `purchase.py`'s own rule:
+    *"`line_id` is the key and `item_no` is a label."* An **extra part** on a
+    purchase order deliberately carries **no** `line_id` (`purchase.py`, and a
+    test holds it), so it covers no line and is counted in `unmatched`
+    instead — never silently dropped, and never given an id.
+
+    ⚠ **A line revised away is not covered by an order that named it.**
+    `line_id`s are read off the tip only, so an order against Rev 0 covering a
+    line Rev 1 deleted contributes to `unmatched`. That is the honest answer:
+    the plan is the tip and the tip has no such line.
+    """
+    pid = str(project_id or "").strip()
+    # ⚠ `tips_of()` returns the BOQ RECORDS themselves, not `plan_of()`'s
+    #   dicts — so the lines are read straight off each one. (`plan_of()`'s
+    #   result carries `boq_id`; a tip carries `id`. Reading the wrong key
+    #   here gave a silent coverage of 0 of 0, which is what the first run of
+    #   `tests/test_pnl_oct28.py` measured.)
+    tips, _elsewhere = tips_of(pid)
+    wanted = set()
+    for tip in tips:
+        for li in (tip.get("line_items") or []):
+            if not isinstance(li, dict) or li.get("is_header"):
+                continue
+            if not any((BQ.net_rate(li, tr) or 0.0) > 0 for tr in TRACKS):
+                continue
+            lid = BQ._line_id(li.get("line_id"))
+            if lid:
+                wanted.add(lid)
+
+    covered, orders, unmatched = set(), 0, 0
+    for po in (STORE.get("purchases") or {}).values():
+        if not pid or project_of(po) != pid:
+            continue
+        status = str(po.get("status") or "") or PU.DEFAULT_STATUS
+        if status not in COMMITTED_PO_STATUSES:
+            continue
+        orders += 1
+        for it in po.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            lid = BQ._line_id(it.get("line_id"))
+            if not lid:
+                unmatched += 1          # an extra part: no id, by design
+            elif lid in wanted:
+                covered.add(lid)
+            else:
+                unmatched += 1          # named a line this tip does not have
+    n = len(wanted)
+    return {"lines": n, "covered": len(covered),
+            "pct": (_paise(len(covered) / n * 100.0) if n else None),
+            "orders": orders, "unmatched": unmatched}
+
+
 def project_pnl(project_id, include_labour: bool = True) -> dict:
     """
     Everything the Profit & Loss panel shows for one project, in three sections
@@ -604,7 +678,33 @@ def project_pnl(project_id, include_labour: bool = True) -> dict:
             # labelled as one; the two figures are never blended.
             "variance": (_paise(planned["cost"] - actual)
                          if planned["cost"] is not None else None),
+            # ⚠ **PLANNED MARGIN AGAINST ACTUAL MARGIN — §0's fifty-eighth
+            #   block, item 4, and a SECOND difference beside the one above,
+            #   never a replacement for it.** The cost variance answers *"are
+            #   we spending what we said?"*; this answers *"is the job earning
+            #   what we said?"*, which is the question the client asked. Both
+            #   are differences between two rounded totals and neither blends
+            #   an estimate into an actual.
+            #
+            # ⚠ It is **timing-sensitive and the panel says so**: the actual
+            #   margin is billed-so-far less spent-so-far, so on a job that
+            #   has billed little and bought much this is large and negative
+            #   for no commercial reason at all. `coverage` is printed beside
+            #   it precisely so that cannot be misread.
+            "margin_variance": (_paise(_paise(billed - actual) - planned["margin"])
+                                if planned["margin"] is not None else None),
         },
+        # *"N of M BOQ lines have a purchase order"* — so a low cost is not
+        # read as a profit. A count of lines; nothing is derived from it.
+        "coverage": po_coverage(pid),
+        # ⚠ **THE COST ON NO PROJECT, ON THE PROJECT'S OWN PAGE** (§0
+        #   fifty-eighth block, item 4). It was on the `/projects` register
+        #   only, and a reader who opens a project straight from the dashboard
+        #   never saw the register — so this project's actual cost read as the
+        #   whole of the company's. The SAME function the register's line
+        #   uses, so the two cannot disagree, and it is NOT this project's
+        #   money: nothing adds it to anything here, and the panel says so.
+        "untagged": untagged_cost(include_labour=include_labour),
         "excluded": {
             "ra_draft": ra_draft, "ra_cancelled": ra_cancelled,
             "ti_cancelled": ti_cancelled,

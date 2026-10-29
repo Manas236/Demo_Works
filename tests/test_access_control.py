@@ -26,6 +26,7 @@ Three properties, and they fail for different reasons:
   any session would fail it.
 """
 
+import ast
 import pathlib
 import re
 
@@ -127,6 +128,66 @@ def test_every_registry_permission_is_a_real_permission():
     assert not bogus, f"registry entries name unknown permissions: {bogus}"
 
 
+def _calls_in(src: str) -> set:
+    """
+    Every call in a module, as `(first string argument or None, function
+    name)` — so `has_perm("x.y")` is `("x.y", "has_perm")` and
+    `auth.can_see_pnl()` is `(None, "can_see_pnl")`.
+
+    ⚠ **From the AST, deliberately.** The text equivalent of this is
+    satisfied by a comment, which is not a consultation of anything.
+    `auth.f()` and a bare `f()` are the same call for this purpose: what
+    matters is that the function runs, not how it was imported.
+    """
+    out = set()
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = (fn.attr if isinstance(fn, ast.Attribute)
+                else fn.id if isinstance(fn, ast.Name) else "")
+        if not name:
+            continue
+        first = None
+        if node.args and isinstance(node.args[0], ast.Constant) \
+                and isinstance(node.args[0].value, str):
+            first = node.args[0].value
+        out.add((first, name))
+        out.add((None, name))
+    return out
+
+
+def _auth_predicates_for(perm: str) -> list:
+    """
+    Every zero-argument function in `auth.py` whose whole body is
+    `return has_perm("<perm>")`.
+
+    Read from the AST and not by regex: a docstring or a comment that mentions
+    the id proves nothing, and the point of the check is that the predicate
+    really wraps THIS permission and nothing else. A predicate with any other
+    statement in it is not matched — a module must not be let through by a
+    function that merely happens to mention the id.
+    """
+    tree = ast.parse((REPO / "auth.py").read_text(encoding="utf8"))
+    out = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or node.args.args:
+            continue
+        body = [s for s in node.body
+                if not (isinstance(s, ast.Expr)
+                        and isinstance(s.value, ast.Constant)
+                        and isinstance(s.value.value, str))]
+        if len(body) != 1 or not isinstance(body[0], ast.Return):
+            continue
+        call = body[0].value
+        if (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                and call.func.id == "has_perm" and len(call.args) == 1
+                and isinstance(call.args[0], ast.Constant)
+                and call.args[0].value == perm):
+            out.append(node.name)
+    return out
+
+
 def test_every_catalogue_permission_gates_something():
     """
     And no dead permissions. A checkbox in the role editor that grants access to
@@ -196,9 +257,43 @@ def test_every_catalogue_permission_gates_something():
                 f"permission-gated endpoint")
             module = endpoint.split(".", 1)[0]
             src = (REPO / f"{module}.py").read_text(encoding="utf8")
-            assert f'has_perm("{perm}")' in src, (
-                f"{module}.py serves {endpoint} and never consults {perm} by "
-                f"name — the checkbox would grant nothing there")
+            # ⚠ **REWRITTEN 29 October 2026 (§0 fifty-eighth block, item 4),
+            #   and the old assertion is kept verbatim below.** It required
+            #   the literal `has_perm("<perm>")` in the serving module, and
+            #   `dashboard.py` cannot carry it:
+            #   `test_nav_visibility.py::test_the_dashboard_names_no_permission
+            #   _id_anywhere_in_its_code` **forbids** a permission id written
+            #   as a string anywhere in that file, because a card that names
+            #   one is a second list beside `ROUTE_PERMISSIONS`. The two
+            #   assertions became mutually exclusive the moment the P&L
+            #   reached the dashboard.
+            #
+            #   What this assertion is FOR is unchanged and is still proved:
+            #   *the serving module really consults this permission, so the
+            #   checkbox is not a lie.* A module may now do it through a
+            #   **named predicate in `auth.py`** instead — and the predicate
+            #   is read and proved to wrap THIS permission, so the chain is
+            #   verified end to end rather than assumed. Nothing is excused by
+            #   name: a module that consults neither still fails.
+            #
+            #   The old assertion, verbatim:
+            #       assert f'has_perm("{perm}")' in src, (
+            #           f"{module}.py serves {endpoint} and never consults {perm} by "
+            #           f"name — the checkbox would grant nothing there")
+            # ⚠ **BOTH halves read the module's AST, not its text.** A
+            #   substring check is satisfied by a COMMENT — measured: with
+            #   `can_pnl = True` in `dashboard.py` and a comment above it
+            #   naming `auth.can_see_pnl()`, the text version of this
+            #   assertion passed. A comment is not a consultation.
+            calls = _calls_in(src)
+            direct = (perm, "has_perm") in calls
+            via = [fn for fn in _auth_predicates_for(perm)
+                   if (None, fn) in calls]
+            assert direct or via, (
+                f"{module}.py serves {endpoint} and never consults {perm} — "
+                f"not as has_perm('{perm}') and not through a predicate in "
+                f"auth.py that returns has_perm('{perm}'). The checkbox "
+                f"would grant nothing there")
 
 
 # ── 2. Anonymous callers are refused everywhere that is not public ─────────

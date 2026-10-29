@@ -602,7 +602,12 @@ AUTHENTICATED = "__authenticated__"  # any logged-in user, no permission needed
 #   because the module serving each one consults it by name. A checkbox that
 #   grants nothing is still refused; this one grants a panel and a line.
 PANEL_PERMISSIONS = {
-    "project.pnl": ("projectview.view_project", "project.list_projects"),
+    # ⚠ `dashboard.index` added 28 October 2026 (§0 fifty-eighth block, item
+    #   4): the P&L is one click from the dashboard, which draws a per-project
+    #   link and a margin figure under this same permission. Asked through
+    #   `can_see_pnl()` below, never by naming the id in `dashboard.py`.
+    "project.pnl": ("projectview.view_project", "project.list_projects",
+                    "dashboard.index"),
     # 27 October 2026 — the eight create routes whose number field it unlocks.
     # ⚠ `purchase.edit_purchase_rates` is on the list because the PURCHASE
     #   ORDER is the one of the four with a genuine unissued state (`Draft`),
@@ -615,6 +620,33 @@ PANEL_PERMISSIONS = {
                         "purchase.from_draft", "purchase.edit_purchase_rates",
                         "challan.create_dc"),
 }
+
+# ⚠ **A PANEL PERMISSION IS ASKED THROUGH ITS OWN PREDICATE, and that is not
+#   cosmetic.** `tests/test_nav_visibility.py::test_the_dashboard_names_no_
+#   permission_id_anywhere_in_its_code` refuses a permission id written as a
+#   literal anywhere in `dashboard.py`, because a card that names one is a
+#   second list beside this registry and the two can disagree with nothing
+#   failing. Every nav entry and card therefore asks `can_reach(<endpoint>)`.
+#
+#   A **panel** cannot: it is not an endpoint, so `can_reach()` has no answer
+#   for it (that is the whole reason `PANEL_PERMISSIONS` above exists). So the
+#   id stays in THIS file, inside a named predicate, and the dashboard asks the
+#   predicate. One list, still — and the next panel on the dashboard gets a
+#   predicate here rather than a literal there.
+#
+#   28 October 2026, §0 fifty-eighth block, item 4: the P&L is one click from
+#   the dashboard, so `dashboard.index` joined `project.pnl`'s endpoint tuple
+#   above and this is how the row that draws the link asks about it.
+
+def can_see_pnl() -> bool:
+    """May the signed-in reader see a project's Profit & Loss (CC-2 **C6**)?
+
+    The one question `dashboard.py` and anything else outside `projectview.py`
+    asks about that panel. Owner and Director by default — see
+    `PANEL_PERMISSIONS` and `BUILTIN_ROLES`.
+    """
+    return has_perm("project.pnl")
+
 
 # ── Hidden blueprints — a module switched OFF for everybody ──────────────────
 #
