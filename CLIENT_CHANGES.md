@@ -5370,6 +5370,114 @@ one automatic.
 > take, infer, or extend.
 
 
+> ### ⚠ AUTHORISATION — 29 October 2026, by Manas Gawde — THE PAYSLIP AND THE ATTENDANCE IMPORT · CHARGED NEW SCOPE, PRICE NOT YET AGREED · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The fifty-fourth block and every block
+> before it stand exactly as recorded. This is the **fifty-fifth** occasion.
+> It is written **directly on `antigravity-dev`**, on Manas's instruction for
+> this cloud session, so it is origin's number. ⚠ **An unpushed office-PC pass
+> (HSN / Draft PO editing) may also have written a "fifty-fifth" block; when
+> that line meets this one, origin's number stands and the office block moves**
+> — the rule the 24 and 27 October blocks already state.
+>
+> **What prompted it:** the 28 October 2026 meeting with Yogesh Bankar named
+> the payslip as the **first priority** and asked for attendance to be
+> importable. The client sent both formats on **29 October 2026**: their
+> monthly attendance workbook (`ATTENDANCE DATA.xlsx`, September 2026) and
+> their payslip (`Salary Slip Format.xlsx`). Neither file is committed —
+> both carry staff names and wages.
+>
+> **Commercial status: CHARGED — NEW SCOPE.** Manas told the client so on the
+> 27 and 28 October calls. **The price is not yet agreed**, and this pass is
+> built ahead of an agreed price at Manas's direction. It is not a §0
+> no-charge exemption and must not be cited as one.
+>
+> #### What is IN this pass
+>
+> 1. **Two more day statuses on the muster (C5): HALF DAY and PAID LEAVE.**
+>    The client's sheet marks 1, 0.5 or 0 per day, and records paid leave as a
+>    cell comment ("GANPATI PAID LEAVE") on a 1. A half day earns half the day
+>    rate; paid leave earns a full day and no overtime; overtime is paid on a
+>    present or a half day only. ⚠ **Beyond CC-2**: C5's bullets say 0 or 1.
+>    Recorded in PROGRESS.md §4c's sense — nobody may cite it as CC-2 work.
+>    The arithmetic stays in `attendance.py`: a share-of-a-day table, no new
+>    literal in the calculation path, the OT multiplier still the setting.
+> 2. **A pay ledger** (`pay_entries`): advances, travel, loans given, loan
+>    deductions and an opening loan balance, dated, per employee. ⚠ **The loan
+>    balance is DERIVED by summing and never stored**, `ra.claimed_by_line()`'s
+>    rule and the receipts ledger's. A deduction larger than the balance
+>    **warns and never blocks**, as an overpayment on a receipt does.
+> 3. **A monthly payslip** (`payslips`), one per employee per month, Draft →
+>    Issued → Cancelled. It **snapshots** every figure at create and prints
+>    from its own rows only (§1.2). The wage comes from `attendance.py`'s one
+>    wage path — `payroll.py` is the **third** module allowed to import it and
+>    may not reach `cost_of()`, `ot_amount()` or `day_rate_of()`.
+>    Printed on the shared sheet (`docsheet.py`), in the client's own layout:
+>    earnings left, deductions right, net, in words, Prepared By / Received By.
+> 4. **Import the client's monthly attendance workbook**: upload → a preview
+>    that changes nothing → commit. Every record carries the import's batch id
+>    and a month imported once is refused until that import is removed.
+>
+> #### Manas's rulings, 29 October 2026 (asked and answered, not inferred)
+>
+> - **Advance bigger than the wages:** the slip pays ₹0 and the shortfall is
+>   **carried** — issuing the slip writes an advance dated the 1st of the next
+>   month. Cancelling the slip removes it, and is refused once the next
+>   month's slip is issued.
+> - **The import brings the money columns too**: the day rate fills a BLANK
+>   rate only (a difference is shown, never applied unticked); ADV, EXTRA EXP
+>   and LOAN become that month's ledger entries; BALANCE LOAN seeds an opening
+>   loan only for somebody with no loan entries yet.
+> - **Day rate only.** No monthly-salary mode — the 30 August correction stands.
+> - **Net pay is rounded to the nearest rupee, half UP**, with a Round Off
+>   line, and the amount in words is the rounded figure. ⚠ This is the
+>   payslip's own rule and changes nothing on any other document — gap 84
+>   (the RA's half-to-even) is untouched and still needs the client.
+>
+> #### Decisions taken in this pass, each declared
+>
+> - **Their slip's two bugs are FIXED, not copied.** PF / ESIC / PT / MLWF are
+>   missing from their Total Deduction formula, and their loan cells point at
+>   the wrong columns. Here Loan = owed before this month, Loan Deduction = this
+>   month, Loan Balance = the first minus the second; and a statutory figure
+>   typed on a draft slip IS deducted. ⚠ **None of the four is COMPUTED** —
+>   HR types them; MG/SF/2026-02 §5 leaves statutory matters with the client
+>   and that is unchanged.
+> - **Overtime pays at `settings.ot_multiplier()`**, not a literal 1×. The
+>   client's figure is the setting's default, so their slip reproduces exactly.
+> - **No new employee code.** The master's existing optional `code` is printed;
+>   two people with one short name ("GUDDU" / "GUDDU KUMAR") are kept apart by
+>   the import's own matching, which is exact and never fuzzy.
+> - **Three destroy routes go in `auth.OWNER_ONLY`**: deleting a pay entry,
+>   removing an import, and — by the same reasoning — nothing else. They sit
+>   with `attendance.delete_attendance` and `charge.delete_charge`, the records
+>   behind the HR wall. ⚠ This means only the Owner (Manas) can remove a wrong
+>   import on the client box today; a Director cannot. Reversible in one line,
+>   and named in the report so the client's answer can move it.
+> - **Five permissions, granted exactly where `attendance.*` is**: Owner,
+>   Director, HR (B4's wall). `payroll.view`, `payroll.edit`, `payroll.issue`,
+>   `payroll.import`, `payroll.delete`.
+> - **No nav entry.** Payroll is reached from the muster (`/attendance/`), as
+>   the search page is, so no print golden moves.
+>
+> #### What is NOT in this pass
+>
+> 1. ⚠ **The client's real October master is not in hand.** Their payslip
+>    links to `HR MASTER FOLDER/ATTENDANCES/ATTENDANCE SHEET.xlsx`, tab
+>    *October*, 31 days and more columns than the file they sent. The importer
+>    finds every column by its header text and accepts 28–31 days for that
+>    reason; it has only been run on the September sheet.
+> 2. ⚠ **Opening loan balances are the client's figures and are unconfirmed**
+>    (the largest is ₹84,409). Three rows deduct a loan with no balance at all.
+>    Questions for HR, not decisions for this pass.
+> 3. No bank file, no PF/ESIC return, no statutory register, no minimum-wage
+>    check. Payslip only.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
