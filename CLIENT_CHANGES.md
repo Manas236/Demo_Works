@@ -5578,6 +5578,167 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 28 October 2026, by Manas Gawde, relaying Yogesh Bankar — THE PROJECT PAGE BECOMES THE JOB'S OWN PAGE: IT CREATES ITSELF FROM THE BOQ, TAKES ITS LABOUR AND ITS LOOSE DOCUMENTS, SHOWS ITS PROFIT WITH PICTURES, AND THE RA SET IS ONE CLICK · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The fifty-seventh block and every block
+> before it stand exactly as recorded. This is the **fifty-eighth** occasion,
+> written directly on `antigravity-dev` like the fifty-fifth, the fifty-sixth
+> and the fifty-seventh. The unpushed office-PC pass rule stated in the
+> fifty-fifth applies here too: origin's number stands and an office block
+> carrying the same number moves.
+>
+> **What prompted it:** the **28 October 2026 meeting with Yogesh Bankar**,
+> relayed by Manas Gawde. Two of that meeting's findings were already answered
+> as defects against delivered scope and needed no block — documents raised
+> from a BOQ not appearing on its project, and BOQ revisions being added
+> together (`a6ab6c4`, 28 October 2026). **This block covers the rest of that
+> list**, which is new behaviour rather than a defect and therefore needs
+> recording:
+>
+> 1. the project should **make itself** when a BOQ is written, instead of
+>    being opened by hand first and picked afterwards;
+> 2. the **labour** marked at a site should land on that site's project
+>    without anybody tagging it;
+> 3. a purchase order, proforma, work order or charge that was **never raised
+>    from a BOQ** should be attachable to a project by hand;
+> 4. the **profit and loss** should be one click from wherever the job is
+>    being looked at;
+> 5. it should be **drawn**, not only tabulated — *"I want to see where the
+>    money went"*;
+> 6. an **RA bill should be one click from the schedule**, for supply, for
+>    installation, or for both at once, and should not be held up waiting for
+>    a delivery challan or a measurement sheet to exist first.
+>
+> **Commercial status: NO CHARGE**, the same 28 October list as the
+> fifty-sixth and fifty-seventh blocks. It is not a §0 no-charge *exemption*
+> either — §0 exempts defect and reachability fixes against scope already sold
+> under MG/SF/2026-01, and items 1 to 6 above are neither. Manas's decision is
+> that they go in at no charge; that is a commercial decision he is entitled
+> to take and this is the record of it, not a precedent.
+>
+> #### MARGIN AND PROFIT ON THE PROJECT PAGE AND THE DASHBOARD — AUTHORISED BY NAME
+>
+> ⚠ **`projectview.py`'s prohibition is amended by this block, and this is the
+> sign-off it asks for.** The §0 **forty-seventh** block (8 October 2026)
+> lifted it *"for one panel and for no other"* — the Profit & Loss panel. The
+> client has now asked for the same figures **drawn** on that page and
+> **summarised on the dashboard**, so the lift is widened by exactly that much
+> and no further:
+>
+> - the Profit & Loss panel may carry **charts of its own figures** (a
+>   waterfall of the money and a progress spider), because a picture of a
+>   number the panel already prints is the same disclosure, not a new one;
+> - the **dashboard** may carry **one compact row per project** showing that
+>   project's margin, gated by the same `project.pnl` permission;
+> - **every other panel on `/projects/view` stays under the prohibition word
+>   for word.** No revenue total, no cost total, no margin, no profit, no net
+>   and no balance anywhere but the P&L panel, and `_sum_cell()` still adds one
+>   panel's own column and never two.
+>
+> ⚠ **Nothing printed gains a margin.** The project page has no print route
+> and is not to get one in this pass; the charts are **screen only** and no
+> printed document moves.
+>
+> #### What is IN this pass
+>
+> 1. **The project makes itself from the schedule.** `/boq/create`'s *File
+>    under project* picker defaults to **New project from this BOQ** — name
+>    taken from the BOQ's project name, client from the account name, and the
+>    normalised name stored so the same job spelled two ways is **one**
+>    project and not two. Picking an existing project, or none, still works
+>    exactly as before. ⚠ **A revision never makes a second project**: it
+>    lands on its chain **root's** project, and attaching or moving one
+>    revision moves the whole chain, which is what attach and detach have
+>    always done.
+> 2. **Labour lands on the project by itself.** The project page shows what
+>    each worker cost and what they cost in total — day rate and overtime,
+>    through `attendance.cost_of()` and nothing else, ever. ⚠ **Markings whose
+>    site maps to no project are COUNTED and named on an amber line**, never
+>    dropped: a wage bill that is quietly short is worse than one that says
+>    how short it is.
+>    ⚠ **An ADVANCE IS NOT A COST.** It is cash handed over ahead of the
+>    wages, and the wages are the cost. The P&L subtracts **wages earned** and
+>    an advance outstanding is shown as an **information line beside** it,
+>    never subtracted a second time. Manas's call, recorded here because
+>    getting it the other way round would overstate every project that pays
+>    its men in advance.
+> 3. **A loose document can be filed by hand.** *Attach document* on the
+>    project page offers the purchase orders, proformas, work orders and
+>    charges that are **on no project**, and detaches them again. ⚠ **A
+>    document that derives its project from a BOQ is REFUSED, and the refusal
+>    says why** — it follows its schedule (`pnl.project_of()`, the §0
+>    forty-seventh and the 28 October defect fix), and a hand tag that
+>    disagreed with its BOQ would be a second answer to a question that has
+>    one. A tax invoice still inherits through its proforma **at read time**
+>    and nothing is written on it. Every attach and detach is written on the
+>    document's own trail — who, when, from which project, to which.
+> 4. **The profit and loss is one click.** A **P&L** link per project on the
+>    dashboard and on the `/projects` register, straight to the panel, gated
+>    by the existing `project.pnl`. The panel itself gains: money
+>    **collected** and **outstanding**, the **cost tagged to no project**
+>    shown on the page rather than only under the register, the **actual
+>    margin** against the **planned** one, and a **coverage** line — *"n of m
+>    BOQ lines have a purchase order"* — so a project that has simply not
+>    bought anything yet is never read as a profitable one.
+> 5. **It is drawn.** A **waterfall** from the BOQ value down through each
+>    cost head to the margin, with a negative drawn below the axis, and a
+>    **progress spider** on five 0–100% axes: supply dispatched, installation
+>    measured, billed, collected and cost covered by a purchase order. ⚠
+>    **Each chart carries a plain-text table of the same numbers underneath
+>    it**, because an SVG that fails to draw must not take the figures with
+>    it, and a reader using a screen reader is owed the numbers and not a
+>    picture.
+> 6. **The RA set is one click from the schedule, and the proof document is no
+>    longer a prerequisite.**
+>    - *Raise RA* on `/boq/view` offers **Supply**, **Installation** and
+>      **Both**. **Both** writes the supply leg, the installation leg and the
+>      merged RA over them in **one POST, atomically**: if either leg would
+>      breach the over-claim guard, **nothing at all is written** and the
+>      refusal names the line.
+>    - ⚠ **Legs raised that way carry NO tax invoice number of their own and
+>      cannot print as a tax invoice alone. Only the merged RA carries one.**
+>      Rule 46 and GSTR-1 must never see a phantom invoice, and three serials
+>      over one billing is exactly that. The guard, the `ra_no` series and the
+>      two-leg model are **untouched**.
+>    - The RA register shows the combined bill as **one row with its legs
+>      collapsed under it**, and cancelling it cancels all three and releases
+>      whatever they consumed.
+>    - **A delivery challan or a measurement sheet is no longer required
+>      before a claim.** ⚠ **Only the PREREQUISITE REFUSAL is relaxed
+>      (`ra._c1_refusal()`). The measurement CAP still binds exactly as it
+>      does today:** where an approved measurement sheet exists on the chain,
+>      `ra.overclaims()` caps the installation claim at the **measured**
+>      quantity; where none exists it caps at the **BOQ** quantity, which is
+>      the grandfather path that already exists and is **not touched**. Supply
+>      still caps at the BOQ quantity, cumulatively, and unbilled challans are
+>      offered as an **optional prefill**. **The form says which cap applies.**
+>
+> #### What is NOT in it
+>
+> - **No change to the over-claim guard, the `ra_no` series, the leg model,
+>   the merged RA's own series or the measurement ceiling.** Item 6 above adds
+>   a way to reach them, not a second set of rules.
+> - **No second wage formula.** Every figure of labour anywhere in this pass
+>   comes through `attendance.cost_of()` / `labour_cost_of()`, which is the
+>   fifty-fifth block's rule and this block does not relax it.
+> - **No stored margin, no stored total, no stored cumulative quantity and no
+>   stored loan balance.** Everything in items 4 and 5 is derived when the page
+>   opens, as `pnl.py` has been since the forty-seventh block.
+> - **A draft PO / product inquiry is still an INTENT and never a cost**, and
+>   only a real `purchase.py` order counts.
+> - **No estimate blended with an actual.** The two are set beside each other
+>   and the difference is named; neither is folded into the other.
+> - **No print golden moves**, and no printed document changes in any way.
+> - **No MySQL, and no migration run.** There is no database on the machine
+>   this pass was built on, so nothing was migrated and **no backup was
+>   taken because none was possible**. Anything that would need existing rows
+>   rewritten ships as an idempotent tool with `--dry-run` and is **not run**.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
