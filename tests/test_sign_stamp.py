@@ -40,7 +40,8 @@ from conftest import EXE_BYTES, PDF_BYTES  # noqa: E402
 from store import STORE  # noqa: E402
 from test_print_golden import (  # noqa: E402,F401
     GOLD_DC, GOLD_DPO, GOLD_MERGED, GOLD_PI, GOLD_PO, GOLD_Q, GOLD_TI,
-    golden, golden_dc, golden_dpo, golden_merged, golden_ra, pinned_identity)
+    golden, golden_dc, golden_dpo, golden_merged, golden_ms, golden_ra,
+    pinned_identity)
 from test_work_orders import GOLD_WO, golden_wo  # noqa: E402,F401
 
 
@@ -432,3 +433,190 @@ def test_a_cancelled_tax_invoice_keeps_its_overprint_on_top(client, golden, mark
     assert "z-index:2" in html[html.index(".lc-mark"):html.index(".lc-mark") + 400]
     art = html[html.index('class="sig-art"'):html.index('class="sig-name"')]
     assert "z-index" not in art
+
+
+# ══ 6. A SIGNED sheet stops saying it is unsigned ══════════════════════════
+#
+# 29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A4 — an
+# INTENDED print change, and it reverses the fifty-third block's own fourth
+# judgement call by name: *"'This is a Computer Generated Document, no
+# signature required' still prints under the documents that carried it"*,
+# which put a sentence saying the sheet is unsigned directly under a signature
+# and a company stamp.
+
+NOTE = '<div class="sig-note">This is a Computer Generated Document, no signature required</div>'
+
+
+@pytest.mark.parametrize("name,url,copies", DOCS, ids=DOC_IDS)
+def test_the_computer_generated_line_is_gone_once_a_mark_is_set(
+        client, every_doc, marks, name, url, copies):
+    html = client.get(url).get_data(as_text=True)
+    assert NOTE not in html, f"{name} still says it needs no signature"
+    assert 'class="sig-note"' not in html, name
+    # And the marks really are on it, so this is not passing on a blank page.
+    assert html.count('class="sig-art"') == copies, name
+
+
+# ⚠ **Only SIX of the nine documents ever carried the line**, and the set is
+#   derived from the call sites rather than listed, so a document that starts
+#   or stops passing `computer_generated=True` moves this table with it. The
+#   tax invoice, the RA bill, the challan and the joint measurement sheet
+#   never passed it and therefore have nothing to lose here.
+def _modules_that_ask_for_the_line() -> set:
+    import ast
+    import pathlib as _pl
+    out = set()
+    for f in _pl.Path(DS.__file__).parent.glob("*.py"):
+        src = f.read_text(encoding="utf8")
+        if "computer_generated=True" in src and f.stem != "docsheet":
+            out.add(f.stem)
+    return out
+
+
+CARRIES_THE_LINE = {"proforma", "quotation", "purchase", "po_draft",
+                    "workorder", "merged_ra"}
+WITH_LINE = [d for d in DOCS if d[0] in (
+    "proforma", "quotation", "purchase order", "draft PO", "work order",
+    "merged RA")]
+WITH_LINE_IDS = [d[0] for d in WITH_LINE]
+
+
+def test_the_set_of_documents_that_carry_the_line_is_the_one_under_test():
+    """
+    Derived from the call sites, so a seventh document that starts printing
+    the line fails here until it is added to the table above and to the two
+    parametrised tests that read it.
+    """
+    assert _modules_that_ask_for_the_line() == CARRIES_THE_LINE
+
+
+@pytest.mark.parametrize("name,url,copies", WITH_LINE, ids=WITH_LINE_IDS)
+def test_the_line_is_still_there_with_neither_mark_set(
+        client, every_doc, pinned_identity, clean_marks, name, url, copies):
+    """
+    ⚠ The other half, and the one that keeps every pinned golden still: the
+    goldens are captured against a store with no marks, so the line must come
+    back byte-for-byte when they are removed.
+    """
+    html = client.get(url).get_data(as_text=True)
+    assert html.count(NOTE) == copies, name
+    assert 'class="sig-art"' not in html, name
+
+
+@pytest.mark.parametrize("name,url,copies", DOCS, ids=DOC_IDS)
+def test_a_document_that_never_carried_the_line_is_unaffected(
+        client, every_doc, pinned_identity, clean_marks, name, url, copies):
+    """
+    The tax invoice, the RA bill, the challan — none of them ever printed the
+    line, so A4 must not have added one to any of them in either state.
+    """
+    if name in WITH_LINE_IDS:
+        pytest.skip("this document does carry the line")
+    assert NOTE not in client.get(url).get_data(as_text=True), name
+
+
+def test_removing_the_marks_brings_the_line_back(client, every_doc, marks):
+    """
+    The whole point of leaving `computer_generated` at every call site: it
+    still says *"this document type would otherwise print the line"*, so the
+    line returns the moment an Owner clears the marks at `/settings`.
+    """
+    # ⚠ The merged RA, not the tax invoice: the ordinary TI has never passed
+    #   `computer_generated=True` and has no line to bring back.
+    url = f"/merged/print/{GOLD_MERGED}"
+    assert NOTE not in client.get(url).get_data(as_text=True)
+    assert _post(client, "signature_remove").status_code == 302
+    assert NOTE not in client.get(url).get_data(as_text=True), (
+        "the stamp alone is still a mark")
+    assert _post(client, "stamp_remove").status_code == 302
+    assert client.get(url).get_data(as_text=True).count(NOTE) == 3
+
+
+def test_one_mark_alone_is_enough_to_hide_it(client, every_doc, pinned_identity,
+                                             clean_marks):
+    url = f"/proforma/view/{GOLD_PI}"
+    assert NOTE in client.get(url).get_data(as_text=True)
+    assert _post(client, "stamp_upload", _stamp_png()).status_code == 302
+    html = client.get(url).get_data(as_text=True)
+    assert NOTE not in html and 'class="sig-art"' in html
+
+
+def test_the_panel_itself_decides_and_not_the_caller():
+    """
+    ⚠ `_sig_art()` is the one thing that knows whether this sheet is signed,
+    and the note reads the SAME value — so a document cannot print a mark and
+    the line at once however it is called. Asserted on the function rather
+    than through a page, because that is where the coupling lives.
+    """
+    saved = (B.SIGNATURE_IMAGE, B.STAMP_IMAGE)
+    try:
+        B.SIGNATURE_IMAGE = B.STAMP_IMAGE = ""
+        assert DS._sig_art() == ""
+        assert NOTE in DS.sig_block("ACME", "Signer", computer_generated=True)
+        B.SIGNATURE_IMAGE = "data:image/png;base64,iVBORw0KGgo="
+        out = DS.sig_block("ACME", "Signer", computer_generated=True)
+        assert DS._sig_art() != ""
+        assert NOTE not in out and 'class="sig-art"' in out
+        # And a document that never asked for the line never gets one either.
+        assert 'class="sig-note"' not in DS.sig_block("ACME", "Signer")
+    finally:
+        B.SIGNATURE_IMAGE, B.STAMP_IMAGE = saved
+
+
+def test_the_joint_measurement_sheet_keeps_its_two_party_signature_block(
+        client, golden_ms, marks):
+    """
+    ⚠ **A4's brief asked to "verify the joint measurement sheet keeps sign +
+    stamp", and the premise is WRONG on this code — MEASURED, not assumed.**
+
+    The **joint** sheet does not draw `docsheet.sig_block()` at all. It has
+    its own two-party `.jm-sign` block, and that is the twenty-third §0
+    block's whole point: the document is called *joint* because it is
+    **countersigned by the main contractor's site engineer**, in ink, in the
+    field. So it never carried the preloaded marks and never carried the
+    "Computer Generated Document" line either, and A4 changes nothing about
+    it.
+
+    What A4 had to be checked for here is the opposite claim: that it did not
+    *break* the block. It does not.
+
+    The fifty-third block's third judgement call — *"the merged RA and the
+    measurement sheet too, which were not named"* — means the **flat**
+    (non-joint) measurement sheet, which does draw `sig_block()` and does
+    carry the marks. That is the test below.
+    """
+    import pathlib as _pl
+    from test_print_golden import GOLD_MS
+    import measurement as MS
+    assert MS.is_joint(STORE["measurements"][GOLD_MS])
+    src = _pl.Path(MS.__file__).read_text(encoding="utf8")
+    assert "computer_generated=True" not in src, (
+        "no measurement sheet has ever printed the line and none must start")
+
+    html = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+    assert 'class="jm-sign"' in html, "the joint sheet lost its sign-off block"
+    assert 'class="sig-block"' not in html, (
+        "the joint sheet must not start drawing the shared panel")
+    assert 'class="sig-art"' not in html
+    assert NOTE not in html
+
+
+def test_the_FLAT_measurement_sheet_carries_the_marks_and_never_the_line(
+        client, golden_ms, marks):
+    """
+    The sheet the fifty-third block's third judgement call actually means.
+    Built from the joint golden's record with its grid model flipped, so the
+    only difference under test is which document half renders.
+    """
+    from test_print_golden import GOLD_MS
+    import measurement as MS
+    flat = dict(STORE["measurements"][GOLD_MS])
+    flat["id"] = "sign-flat-ms"
+    flat["grid_model"] = "flat"
+    STORE["measurements"]["sign-flat-ms"] = flat
+    assert not MS.is_joint(flat)
+    html = client.get("/measurement/print/sign-flat-ms").get_data(as_text=True)
+    assert 'class="sig-block"' in html
+    assert 'class="sig-art"' in html, "the flat sheet lost its signature"
+    assert 'class="sig-sign"' in html and 'class="sig-stamp"' in html
+    assert NOTE not in html, "it has never carried the line"

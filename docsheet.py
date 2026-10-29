@@ -999,6 +999,13 @@ def sig_block(branch: str = "", signatory: str = "",
     art takes the 15 mm gap the name line kept for a wet signature (plus 4 mm
     of the panel's top margin), so the name closes up to sit under it and the
     panel stays the height it was.
+
+    ⚠ **`computer_generated` is IGNORED once a mark is set** (29 October 2026,
+    §0 **fifty-ninth** block, A4). A sheet carrying a signature and a stamp
+    may not also carry *"no signature required"*. The caller still passes it
+    and still means it: it says *"this document type would otherwise print the
+    line"*, and it is what makes the line come back if the marks are ever
+    removed at `/settings`.
     """
     # `branch` and `signatory` arrive escaped from the caller (the docstring
     # above says so, and every caller does it), so only the fallbacks are
@@ -1006,13 +1013,30 @@ def sig_block(branch: str = "", signatory: str = "",
     # user text; `COMPANY_NAME` deliberately is not (branding.py §1c).
     comp = branch or B.COMPANY_NAME
     who = signatory or P.esc(B.COMPANY_SIGNATORY)
+    art = _sig_art()
+    # ⚠ **A SIGNED sheet stops saying it is unsigned** (29 October 2026,
+    #   CLIENT_CHANGES.md §0 **fifty-ninth** block, A4) — an INTENDED print
+    #   change, and it reverses the fifty-third block's own fourth judgement
+    #   call by name. That block recorded *"'This is a Computer Generated
+    #   Document, no signature required' still prints under the documents that
+    #   carried it"*, which put a sentence saying the sheet is unsigned
+    #   directly under a signature and a company stamp. Manas's answer: hide
+    #   it wherever a mark is set.
+    #
+    #   `art` is the one thing that knows (`_sig_art()` returns "" with
+    #   neither mark set), so the two cannot disagree about whether this sheet
+    #   is signed — the same reason `hsnfill.editable()` is one predicate.
+    #   **With neither mark set this emits exactly the bytes it always did**,
+    #   which is what keeps every pinned golden still: they are captured
+    #   against a store with no marks. The line it replaced, verbatim:
+    #       note = ('\n  <div class="sig-note">This is a Computer Generated '
+    #               'Document, no signature required</div>') if computer_generated else ""
     note = ('\n  <div class="sig-note">This is a Computer Generated Document, '
-            'no signature required</div>') if computer_generated else ""
+            'no signature required</div>') if (computer_generated and not art) else ""
     left = left_html if left_html is not None else f"""<div class="sig-kv">
       <span>GSTIN</span><span>: <b>{B.field(B.COMPANY_GSTIN, "GSTIN")}</b></span>
       <span>PAN No.</span><span>: <b>{B.field(B.COMPANY_PAN, "PAN")}</b></span>
     </div>"""
-    art = _sig_art()
     # `.sig-name`'s 15 mm top margin IS the wet-signature gap; with the art in
     # it the name closes up beneath, and the panel gives 4 mm of its 6 mm top
     # margin to the 19 mm band — net height unchanged (`_sig_art()`). Absent

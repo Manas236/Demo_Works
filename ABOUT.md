@@ -987,9 +987,41 @@ is **every** printed document but the BOQ:
   side's, and the panel's left cell is `left_html`.
 - **The CANCELLED / DRAFT watermark still prints over everything** —
   `.lc-mark` is `z-index:2` and the stamp takes no z-index of its own.
-- *"This is a Computer Generated Document, no signature required"* still
+- ~~*"This is a Computer Generated Document, no signature required"* still
   prints under the documents that carried it. It is still true; nobody asked
-  for it to go.
+  for it to go.~~
+
+  ⚠ **REVERSED 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth** block,
+  A4), and it is an **intended print change**. A sentence saying the sheet is
+  unsigned sat directly under a signature and a company stamp. `sig_block()`
+  now suppresses it whenever `_sig_art()` is non-empty — **the same value the
+  art itself is drawn from**, so a document cannot print a mark and the line
+  at once however it is called. `computer_generated` is still passed at every
+  call site and still means *"this document type would otherwise print the
+  line"*: it is what brings the line back the moment an Owner clears the
+  marks at `/settings`.
+
+  ⚠ **With neither mark set, every document prints byte-for-byte what it
+  printed before**, which is what keeps every pinned golden still — they are
+  captured against a store with no marks, and none moved.
+
+  **Only SIX of the nine signed documents ever carried the line**, and
+  `tests/test_sign_stamp.py` derives the set from the call sites rather than
+  listing it: the proforma, the quotation, the purchase order, the draft PO /
+  product inquiry, the work order and the merged RA. The **ordinary tax
+  invoice, the RA bill, the delivery challan and both measurement sheets
+  never passed `computer_generated=True`** and have nothing to lose.
+
+  ⚠ **A4's brief asked to verify that "the joint measurement sheet keeps sign
+  + stamp", and that premise is WRONG on this code — measured, not assumed.**
+  The **joint** sheet does not draw `sig_block()` at all: it has its own
+  two-party `.jm-sign` block, which is the twenty-third §0 block's whole
+  point — the document is called *joint* because the main contractor's site
+  engineer countersigns it in ink, in the field. It never carried the
+  preloaded marks and never carried the line. The **flat** (non-joint)
+  measurement sheet is the one the fifty-third block's third judgement call
+  meant, it does draw `sig_block()`, and it does carry the marks. Both are
+  pinned.
 
 #### The page edge — no browser header or footer on paper (26 October 2026)
 
