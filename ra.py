@@ -5362,7 +5362,12 @@ def print_ra(id: str):
         _meta("Tax Invoice No.",     _esc(tax_inv_ref)) +
         _meta("RA Bill No.",         f"RA{_esc(bill.get('ra_no'))} "
                                      f"({_esc(bill.get('leg'))})") +
-        _meta("Against BOQ",         f"{_esc(bill.get('boq_ref'))} "
+        # ⚠ **The BOQ's ROOT number** (29 Oct 2026, §0 fifty-ninth block, B4) —
+        #   the client's book has one number per schedule. Which revision this
+        #   bill is measured against is the `(Rev N)` beside it, which is the
+        #   stored `boq_rev_no` and is untouched: **the suffix is a display of
+        #   the same fact and printing both would say it twice.**
+        _meta("Against BOQ",         f"{_esc(P.root_ref(bill.get('boq_ref')))} "
                                      f"(Rev {_esc(bill.get('boq_rev_no'))})") +
         _meta("Buyer's PO / WO No.", po_ref_disp) +
         _meta("Buyer's GSTIN",       buyer_gstin_disp)

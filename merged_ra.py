@@ -932,7 +932,8 @@ def print_merged(id: str):
         _meta("Tax Invoice No.", _esc(doc.get("tax_invoice_ref"))) +
         _meta("Covers", f"RA{_esc(doc.get('supply_ra_no'))} (supply) + "
                         f"RA{_esc(doc.get('installation_ra_no'))} (installation)") +
-        _meta("Against BOQ", _esc(doc.get("boq_ref")) or "&mdash;") +
+        # The BOQ's ROOT number (29 Oct 2026, §0 fifty-ninth block, B4).
+        _meta("Against BOQ", _esc(P.root_ref(doc.get("boq_ref"))) or "&mdash;") +
         _meta("Project", _esc(doc.get("project_name")) or "&mdash;") +
         _meta("Buyer's GSTIN", _esc(doc.get("bill_gstin")) or "&mdash;")
     )

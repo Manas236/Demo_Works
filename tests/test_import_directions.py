@@ -664,6 +664,13 @@ FORBIDDEN = [
                                      "prefix and the Rule 46(b) cap are "
                                      "pipeline.fy_ref()'s and stay with the "
                                      "minter"),
+    # ⚠ **Still refused on 29 October 2026, and the cost is recorded**
+    #   (§0 fifty-ninth block, B4). `Series.segments` expresses the same fact
+    #   `pipeline.root_ref()` expresses — that a BOQ revision's last segment
+    #   is a suffix and not an ordinal — as a SEGMENT COUNT rather than by
+    #   borrowing the pattern, because this arrow stays forbidden. Two
+    #   statements of one fact, which is the price of the leaf, and
+    #   `tests/test_boq_revision_numbers.py` holds them in step.
     ("series", "pipeline",    "any", "same — the leaf does no formatting at all"),
     ("series", "dashboard",   "any", "it renders nothing"),
     ("series", "chrome",      "any", "same"),

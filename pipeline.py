@@ -23,6 +23,7 @@ separate pipeline and do not belong in this module.
 """
 
 import html
+import re
 import json
 from datetime import date, datetime
 
@@ -239,6 +240,46 @@ def fy_ref(prefix: str, series: str, fy: str, seq: int, cap: int = 16) -> str:
     prefix = (prefix or "").strip()
     ref = f"{prefix}/{series}/{fy}/{seq:04d}" if prefix else f"{series}/{fy}/{seq:04d}"
     return ref if len(ref) <= cap else f"{series}/{fy}/{seq:04d}"
+
+
+# The revision suffix a BOQ revision's number carries from 29 October 2026
+# (CLIENT_CHANGES.md §0 **fifty-ninth** block, B4): `SF/BOQ/26-27/0019/1`.
+#
+# ⚠ **The pattern is deliberately narrow.** It strips a trailing `/<digits>`
+#   ONLY when what is left still ends in the `/<4-or-more digits>` tail
+#   `fy_ref()` writes. So `SF/BOQ/26-27/0019/1` loses its `/1` and
+#   `SF/BOQ/26-27/0019` loses nothing — and neither does any other number in
+#   this application, none of which has a second numeric segment.
+_REV_SUFFIX = re.compile(r"^(.*/\d{4,})/(\d+)$")
+
+
+def root_ref(ref) -> str:
+    """
+    A BOQ number without its revision suffix — `SF/BOQ/26-27/0019/1` ->
+    `SF/BOQ/26-27/0019`. Anything else comes back unchanged.
+
+    **The client's own book has one number per schedule**, and a revision is
+    the same schedule priced again — so **the printed sheet and every document
+    citing it show the root** (B4), while every SCREEN shows the suffix,
+    because on screen the question is *which revision am I looking at*.
+
+    It lives here, beside `fy_ref()` which builds the number, so the stripper
+    and the builder cannot disagree about the shape. `pipeline.py` imports
+    nothing from the app, so every document module can reach it — which
+    matters, because eight of them print a BOQ ref.
+
+    ⚠ **A revision raised BEFORE 29 October 2026 has no suffix to strip** and
+      comes back unchanged. Those numbers are a closed historical set and are
+      never rewritten; this function reads them correctly by doing nothing.
+    """
+    m = _REV_SUFFIX.match(str(ref or "").strip())
+    return m.group(1) if m else str(ref or "").strip()
+
+
+def rev_suffix(ref) -> str:
+    """The suffix alone — `"1"` for `.../0019/1`, `""` for a root."""
+    m = _REV_SUFFIX.match(str(ref or "").strip())
+    return m.group(2) if m else ""
 
 
 def esc(v) -> str:

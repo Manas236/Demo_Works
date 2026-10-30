@@ -2906,7 +2906,47 @@ Written in one literal in `boq.create_boq()`. **Entered from scratch**, like a
 purchase order and unlike every other sell-side document — there is no upstream
 record to freeze a copy of, because the schedule is the source.
 
-- **Identity:** `id`, `ref` (`SF/BOQ/26-27/0001`), `fy`, `date`, `rev_no`
+- **Identity:** `id`, `ref`, `fy`, `date`, `rev_no`
+
+  ⚠ **An ORIGINAL is `SF/BOQ/26-27/0001`; a REVISION is `<root ref>/1`,
+  `/2`** — 29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, B4.
+  A revision **no longer spends a series number**, which is what made a chain
+  of three revisions look like three separate schedules in the client's own
+  book. `boq._revision_ref()` mints it off the **chain root** (so revising a
+  revision still numbers off the original) and takes the **smallest positive
+  suffix no BOQ already uses** — scanned over every record, so a revision
+  deleted out of the middle does not hand its number back and a hand-written
+  ref cannot be collided with.
+
+  ⚠ **PAPER shows the root; every SCREEN shows the suffix.**
+  `pipeline.root_ref()` is the one stripper, beside `fy_ref()` which builds
+  the number, and the eight print sites that show a BOQ ref all call it:
+  the BOQ's own sheet, the proforma, the tax invoice, the product inquiry,
+  the merged RA, both measurement sheets and the RA bill. The register, the
+  view pages, the action bars and the `<title>` keep the suffix — on screen
+  the question is *which revision am I looking at*. The RA bill prints
+  `(Rev N)` beside the root, from the stored `boq_rev_no`, which is the same
+  fact and is untouched.
+
+  ⚠ **The STORED `boq_ref` on a child document keeps the suffix.** It is what
+  the schedule was *called* when the document was raised (§1.2); the strip is
+  a render-time display. A migration that rewrote it would lose which
+  revision a bill was measured against — and there is no migration.
+
+  ⚠ **A revision raised BEFORE 29 October 2026 carries a plain series number
+  and is NEVER rewritten.** It is a closed historical set, `root_ref()` reads
+  it correctly by doing nothing, and the next revision on that chain takes
+  `/1` — because the suffix counts the numbers **in use**, not the revisions
+  in the chain.
+
+  ⚠ **`series.py`'s scan skips a revision's number**, and it had to: the last
+  segment of `SF/BOQ/26-27/0001/2` is `2`, and read as an ordinal it makes
+  the next **original** skip numbers. The test is the **shape** — an FY-scoped
+  number is `[prefix/]SERIES/fy/NNNN`, so a ref with a segment after the
+  ordinal is a revision of one and contributes nothing. It is a segment count
+  and deliberately **not** `pipeline.root_ref()`'s pattern, because
+  `series.py` may not import `pipeline` (§2 and
+  `tests/test_import_directions.py`).
 - **The project:** `project_id`, `project_name`, `site_location`
 
   ⚠ **`project_id` is the JOIN and `project_name` is FREE TEXT typed on the
@@ -8923,6 +8963,28 @@ not.
 **Prev / Next count from the field the user is ON** (`CUR`, `{i, f}` or the
 form element), not from a position in a list that shrinks as fields are
 answered: answering the field and pressing Next used to skip the one after it.
+
+#### Numbering a revision (29 October 2026 — §0 fifty-ninth block, B4)
+
+`SF/BOQ/26-27/0019` revised is **`SF/BOQ/26-27/0019/1`**, then `/2`. §3
+*Bill of Quantities* has the full rule; the short version, because it is the
+half an operator sees:
+
+| | |
+|---|---|
+| the printed schedule, and every document citing it | the **root** — `SF/BOQ/26-27/0019` |
+| the register, the view page, the action bar, the browser tab | the **suffix** — `SF/BOQ/26-27/0019/1` |
+| which revision it is, on paper | the sheet's own **Revision** row, and the RA bill's `(Rev N)` |
+
+⚠ **This is the other half of the 28 October finding.** `a6ab6c4` stopped the
+project page **adding** a chain's revisions together; this stops each one
+**spending a series number**. Together they are why a chain of three
+revisions now reads as one schedule priced three times, which is what it is.
+
+⚠ **No print golden moved, and that is measured rather than lucky**: every
+pinned record is an **original**, so `pipeline.root_ref()` returns its ref
+unchanged. `tests/test_boq_revision_numbers.py` asserts that, so a later pass
+that pins a revision has to re-measure deliberately.
 
 ### `/boq/import` — Import BOQ from Excel · [boqimport.py](boqimport.py) · [sheetimport.py](sheetimport.py)
 

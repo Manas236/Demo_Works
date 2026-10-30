@@ -1682,7 +1682,8 @@ def view_invoice(id: str):
         _meta("Tax Invoice No.",      P.esc(ti.get("ref"))) +
         ("" if no_pi else
          _meta("Against Proforma",    P.esc(ti.get("proforma_ref")))) +
-        (_meta("Against BOQ",         P.esc(boq_ref)) if boq_ref else "") +
+        # The BOQ's ROOT number (29 Oct 2026, §0 fifty-ninth block, B4).
+        (_meta("Against BOQ",         P.esc(P.root_ref(boq_ref))) if boq_ref else "") +
         _meta("Buyer's PO No.",       P.esc(ti.get("po_number"))) +
         _meta("Buyer's GSTIN",        P.esc(ti.get("bill_gstin"))) +
         _meta("Mode/Term of Payment", P.esc(ti.get("payment_terms")))

@@ -340,6 +340,63 @@ def make_prefill(lines) -> dict:
     return out
 
 
+def chain_root(boq_id: str) -> dict:
+    """
+    The record at the ROOT of this id's revision chain — the one with no
+    `supersedes` — or `{}`.
+
+    Walks `supersedes` back with a visited set, exactly as `revision_chain()`
+    does and for its reason: a cycle is unreachable through any route that
+    exists, and a loop here would hang a page.
+    """
+    boqs = STORE.get("boqs") or {}
+    cur, seen = str(boq_id or ""), set()
+    while cur and cur in boqs and cur not in seen:
+        seen.add(cur)
+        prev = str(boqs[cur].get("supersedes") or "")
+        if not prev or prev not in boqs:
+            return boqs[cur]
+        cur = prev
+    return boqs.get(cur) or {}
+
+
+def _revision_ref(prev_id: str) -> str:
+    """
+    A revision's number: **`<root ref>/1`, `/2`, …** — 29 October 2026,
+    CLIENT_CHANGES.md §0 **fifty-ninth** block, B4.
+
+    **It no longer takes the next number in the series**, which is what made
+    a chain of three revisions look like three separate schedules in the
+    client's own book. `SF/BOQ/26-27/0019` revised is
+    `SF/BOQ/26-27/0019/1`, then `/2`.
+
+    The root is the chain's root, not the record being superseded — so
+    revising a revision still numbers off the original. The suffix is **the
+    smallest positive integer no BOQ already uses**, scanned over every
+    record rather than counted off the chain, so:
+
+    * a revision deleted out of the middle does **not** hand its number back
+      to the next one (the series' own rule, one level down);
+    * a chain that already holds a revision raised BEFORE this pass — whose
+      ref is a plain series number — gets `/1` next, because nothing is using
+      it. Those older refs are a **closed historical set** and are never
+      rewritten.
+
+    ⚠ **Falls back to the series** when the root has no usable ref at all,
+      which is a record written by hand or by a test. A revision with no
+      number is worse than a revision numbered the old way.
+    """
+    root = chain_root(prev_id)
+    base = P.root_ref(root.get("ref"))
+    if not base:
+        return ""
+    used = {str(b.get("ref") or "") for b in (STORE.get("boqs") or {}).values()}
+    n = 1
+    while f"{base}/{n}" in used:
+        n += 1
+    return f"{base}/{n}"
+
+
 def _item_no(raw) -> str:
     """
     An item number, as a STRING — 4.1 stays "4.1" and never becomes 4.0999….
@@ -2882,7 +2939,12 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
         # largely does not (ABOUT.md §7.7), and importing a helper does not
         # import its discipline. Every value handed to it here is user input
         # heading for a printed document, so it is escaped at the call site.
-        _meta("BOQ No.",       P.esc(boq.get("ref"))) +
+        # ⚠ **The ROOT number, never the revision suffix** (29 Oct 2026, §0
+        #   fifty-ninth block, B4). The client's own book has one number per
+        #   schedule; which revision it is, is the `Revision` row below and
+        #   every screen. `/boq/view` draws this same sheet, and the suffix
+        #   is in its heading and its action bar.
+        _meta("BOQ No.",       P.esc(P.root_ref(boq.get("ref")))) +
         _meta("Project",       P.esc(boq.get("project_name"))) +
         _meta("Site",          P.esc(boq.get("site_location"))) +
         _meta("Payment Terms", P.esc(boq.get("payment_terms")))
@@ -5920,9 +5982,19 @@ def create_boq(imported: dict = None):
             datestr = (form.get("date") or "").strip()
             bid     = str(uuid.uuid4())
 
+            # ⚠ **A REVISION IS NUMBERED OFF ITS CHAIN ROOT from 29 October
+            #   2026** (CLIENT_CHANGES.md §0 **fifty-ninth** block, B4):
+            #   `<root ref>/1`, `/2`. It no longer spends a series number,
+            #   which is what made a chain of three revisions look like three
+            #   separate schedules in the client's book. An ORIGINAL is
+            #   unchanged — `_next_ref()`, FY-scoped, max+1 with its floor.
+            #   The fallback is deliberate: if the root carries no usable ref
+            #   (a hand-written record), the series is better than nothing.
+            ref = (_revision_ref(prev_id) if prev_id else "") or _next_ref(datestr)
+
             boq = {
                 "id":   bid,
-                "ref":  _next_ref(datestr),
+                "ref":  ref,
                 "fy":   P.fy_of(datestr),
                 "date": datestr,
                 "rev_no": int(_num(form.get("rev_no"), 0)),

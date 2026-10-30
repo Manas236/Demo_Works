@@ -1934,7 +1934,8 @@ def _joint_document_html(ms: dict, for_print: bool = False) -> str:
     sheet_cell = (
         DS._meta("Measurement No.", P.esc(ms.get("ref")))
         + DS._meta("Date", P.esc(ms.get("date")))
-        + DS._meta("Against BOQ", P.esc(ms.get("boq_ref")))
+        # The BOQ's ROOT number (29 Oct 2026, §0 fifty-ninth block, B4).
+        + DS._meta("Against BOQ", P.esc(P.root_ref(ms.get("boq_ref"))))
         + DS._meta("Project", P.esc(ms.get("project_name"))))
 
     # ── The two-party sign-off. THE REASON THE DOCUMENT IS CALLED *JOINT*.
@@ -2090,7 +2091,8 @@ def _legacy_document_html(ms: dict) -> str:
     sheet_cell = (
         DS._meta("Measurement No.", P.esc(ms.get("ref")))
         + DS._meta("Date", P.esc(ms.get("date")))
-        + DS._meta("Against BOQ", P.esc(ms.get("boq_ref"))))
+        # The BOQ's ROOT number (29 Oct 2026, §0 fifty-ninth block, B4).
+        + DS._meta("Against BOQ", P.esc(P.root_ref(ms.get("boq_ref")))))
     people_cell = (
         DS._meta("Location", P.esc(ms.get("location")))
         + DS._meta("Measured by", P.esc(ms.get("measured_by")))

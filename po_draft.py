@@ -1077,7 +1077,8 @@ def _document_html(po: dict) -> str:
 
     meta_col_1 = (
         DS._meta(DOC_NO_LABEL, P.esc(po.get("ref"))) +
-        DS._meta("Against BOQ",  P.esc(po.get("boq_ref"))) +
+        # The BOQ's ROOT number (29 Oct 2026, §0 fifty-ninth block, B4).
+        DS._meta("Against BOQ",  P.esc(P.root_ref(po.get("boq_ref")))) +
         DS._meta("Project",      P.esc(po.get("project_name"))) +
         DS._meta("Your GSTIN",   P.esc(po.get("vendor_gstin")))
     )

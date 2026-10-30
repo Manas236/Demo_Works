@@ -141,6 +141,19 @@ class Series:
 
     # ⚠ Ported VERBATIM from each minter — see the header. Changing one of
     #   these changes what a statutory number is, not how it is displayed.
+    @property
+    def segments(self) -> int:
+        """
+        How many `/`-separated segments a number in this series has.
+
+        `SF/BOQ/26-27/0001` is four; `BOQ/26-27/0001` (the capped form, with
+        the company prefix dropped) is three. **The larger is the ceiling**,
+        because a ref with MORE segments than the longest legal form is not
+        one of this series' numbers at all — see `current_max()`.
+        """
+        return 4
+
+
     def current_max(self, scope: str) -> int:
         """The highest number already issued in this scope. 0 when none."""
         highest = 0
@@ -152,6 +165,25 @@ class Series:
                 if rec.get("fy") != scope:
                     continue
                 tail = raw.rpartition("/")[2]
+                # ⚠ **A BOQ REVISION'S NUMBER IS NOT A NUMBER IN THIS SERIES**
+                #   (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth**
+                #   block, B4). From that date a revision is
+                #   `SF/BOQ/26-27/0019/1`, and the last segment of that is the
+                #   revision suffix, not an ordinal: read as one it makes the
+                #   next ORIGINAL skip numbers — `0001`, `0001/1`, `0001/2`
+                #   scanned naively gives a max of 2 and a next of 0003.
+                #
+                #   The test is the SHAPE and not a regex: an FY-scoped number
+                #   is `[prefix/]SERIES/fy/NNNN`, so a ref with a segment
+                #   AFTER the ordinal is a revision of one and contributes
+                #   nothing. `pipeline.root_ref()` is the same fact stated for
+                #   display; it is deliberately not imported, because this
+                #   leaf may not reach `pipeline` (the arrow is refused in
+                #   `tests/test_import_directions.py`, and the leaf does no
+                #   formatting) — so the rule is expressed here as a segment
+                #   count rather than borrowed as a pattern.
+                if len(raw.split("/")) > self.segments:
+                    continue
             elif self.mode == SERIES_PREFIX:
                 # ra.next_tax_invoice_ref()'s own test, unchanged: the number
                 # must be in THIS series, whatever the record's `fy` key says.

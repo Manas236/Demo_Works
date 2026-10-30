@@ -1859,7 +1859,8 @@ def view_proforma(id: str):
     from_boq = bool(pi.get("boq_ref")) and not pi.get("quotation_ref")
     meta_col_1 = (
         _meta("Proforma Invoice No.",  P.esc(pi.get("ref"))) +
-        (_meta("Against BOQ",          P.esc(pi.get("boq_ref"))) if from_boq else
+        # The BOQ's ROOT number (29 Oct 2026, §0 fifty-ninth block, B4).
+        (_meta("Against BOQ",          P.esc(P.root_ref(pi.get("boq_ref")))) if from_boq else
          _meta("Against Quotation",    P.esc(pi.get("quotation_ref")))) +
         _meta("Buyer's PO No.",        P.esc(pi.get("po_number"))) +
         _meta("Mode/Term of Payment",  P.esc(pi.get("payment_terms"))) +
