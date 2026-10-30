@@ -49,7 +49,7 @@ import branding as B
 import pipeline as P
 from store import STORE
 
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from boq import BOQ_STYLES, boq_identity, _to_block
 from ra import (bills_of, is_issued, is_cancelled, is_adjustment,
@@ -374,13 +374,15 @@ def list_clients():
             <span class="cl-val{out_cls}">{_inr(abs(out))}</span></div>
         </div>
         {OUTSTANDING_CAVEAT}
+        <div class="tbl-fit">
         <table class="cl-table">
           <thead><tr>
-            <th>BOQ</th><th>Date</th><th>Project</th><th>Site</th>
-            <th class="num">Schedule value</th><th></th>
+            <th>BOQ</th><th class="nowrap">Date</th><th>Project</th><th>Site</th>
+            <th class="num">Schedule value</th><th class="acts"></th>
           </tr></thead>
           <tbody>{rows}</tbody>
         </table>
+        </div>
       </div>"""
 
     if not groups:
@@ -394,7 +396,7 @@ def list_clients():
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Client Register")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{CLIENT_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{CLIENT_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}

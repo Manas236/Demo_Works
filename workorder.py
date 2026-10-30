@@ -64,7 +64,7 @@ import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import settings as SET
 import sheetimport as SI
 from address import has_options, picker_options, format_address_lines
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _fmt_qty, _inr
 from store import STORE
 
@@ -969,7 +969,7 @@ def _shell(title: str, body: str, extra_styles: str = "") -> str:
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{extra_styles}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{extra_styles}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -1754,7 +1754,7 @@ def list_wos():
           <td>{status_badge(w)}</td>
           <td style="text-align:right;">{n}</td>
           <td class="td-total" style="text-align:right;">{_inr(totals_of(w)["total"])}</td>
-          <td><a class="btn-view" href="{url_for('workorder.view_wo', id=wid)}">Open</a></td>
+          <td class="acts"><a class="btn-view" href="{url_for('workorder.view_wo', id=wid)}">Open</a></td>
         </tr>"""
 
     acts = ""
@@ -1766,11 +1766,11 @@ def list_wos():
                  f'Import from Excel</a>')
 
     table = (f"""
-  <div class="table-wrap"><table>
+  <div class="table-wrap tbl-fit"><table>
     <thead><tr>
-      <th>WO No.</th><th>Date</th><th>Contractor</th><th>Project</th>
-      <th>Status</th><th style="text-align:right;">Lines</th>
-      <th style="text-align:right;">Value (incl. GST)</th><th></th>
+      <th>WO No.</th><th class="nowrap">Date</th><th>Contractor</th><th>Project</th>
+      <th class="shrink">Status</th><th class="num" style="text-align:right;">Lines</th>
+      <th class="num" style="text-align:right;">Value (incl. GST)</th><th class="acts"></th>
     </tr></thead>
     <tbody>{rows}
     </tbody>

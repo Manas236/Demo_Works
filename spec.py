@@ -60,7 +60,7 @@ import demo_data as DD
 import lineimage as LI   # the clause's picture — the leaf (21 Oct 2026)
 import pipeline as P
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 spec_bp = Blueprint("spec", __name__, url_prefix="/spec")
@@ -917,16 +917,16 @@ def list_specs():
               <td>{vcount}</td>
               <td class="td-muted">{rate_txt}</td>
               <td class="td-muted td-tax">{P.esc(s.get('supply_hsn') or '') or '&mdash;'} / {P.esc(s.get('install_sac') or '') or '&mdash;'}</td>
-              <td class="td-acts">
+              <td class="td-acts acts">
                 <a href="{url_for('spec.view_spec', id=sid)}" class="btn-view">&#128269; View</a>
                 <a href="{url_for('spec.edit_spec', id=sid)}" class="btn-view">&#9998; Edit</a>
               </td>
             </tr>"""
         table = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>Code</th><th>Title</th><th>Category</th><th>Variants</th>
-            <th>Supply Base Rate</th><th>HSN / SAC</th><th></th>
+            <th>Code</th><th>Title</th><th>Category</th><th class="shrink">Variants</th>
+            <th class="num">Supply Base Rate</th><th class="shrink nowrap">HSN / SAC</th><th class="acts"></th>
           </tr></thead>
           <tbody>{body}</tbody>
         </table></div>"""
@@ -954,7 +954,7 @@ def list_specs():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Specification Library")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{SPEC_STYLES}</head>
+    {BASE_STYLES}{SPEC_STYLES}{TABLE_FIT_STYLES}</head>
     <body>{_nav()}
     <main>
       {alert_html}

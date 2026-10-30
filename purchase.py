@@ -90,7 +90,7 @@ import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 # The seeded prefill list for extra (non-BOQ) purchase-order lines. A flat
@@ -2159,15 +2159,15 @@ def list_purchases():
                    deliberately on the LIST rather than on /purchase/view/<id>:
                    that route renders the A4 sheet itself and is pinned
                    byte-for-byte by tests/test_print_golden.py. -->
-              <td>{approval.cell("purchase", po)}</td>
-              <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
+              <td class="shrink">{approval.cell("purchase", po)}</td>
+              <td class="acts"><a href="{view_url}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>PO No.</th><th>Date</th><th>Vendor</th>
-            <th class="col-h">For Job</th><th class="col-h">Wanted By</th>
-            <th>Status</th><th>Order Value</th><th>Approval</th><th></th>
+            <th>PO No.</th><th class="nowrap">Date</th><th>Vendor</th>
+            <th class="col-h">For Job</th><th class="col-h nowrap">Wanted By</th>
+            <th class="shrink">Status</th><th class="num">Order Value</th><th class="shrink">Approval</th><th class="acts"></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""
@@ -2190,7 +2190,7 @@ def list_purchases():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Purchase Orders")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{TABLE_FIT_STYLES}</head>
     <body>{_nav()}
     <main>
       {_alert(request.args.get("msg"), request.args.get("type", "success"))}

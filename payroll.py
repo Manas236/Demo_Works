@@ -92,7 +92,7 @@ import branding as B
 import docsheet as DS
 import employee as EMP
 import pipeline as P
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from store import STORE
 
@@ -574,7 +574,7 @@ def _shell(title: str, body: str, extra_styles: str = "") -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{PAYROLL_CSS}{extra_styles}
+  {BASE_STYLES}{QUOTATION_STYLES}{PAYROLL_CSS}{extra_styles}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -645,7 +645,7 @@ def payroll_register():
         <td>{link}</td>
       </tr>""")
     table = (f"""
-  <div class="pay-card">
+  <div class="pay-card tbl-fit">
     <table class="pay-tbl">
       <tr><th>Employee</th><th class="num">Paid days</th><th class="num">OT hrs</th>
           <th class="num">Gross</th><th class="num">Deductions</th>
@@ -1113,7 +1113,7 @@ def list_entries():
     <button class="btn btn-ghost">Filter</button>
   </form>
   {balance}
-  <div class="pay-card"><table class="pay-tbl">
+  <div class="pay-card tbl-fit"><table class="pay-tbl">
     <tr><th>Date</th><th>Employee</th><th>What</th><th class="num">Amount</th>
         <th>Note</th><th></th></tr>
     {''.join(trs) or '<tr><td colspan="6">No entries.</td></tr>'}

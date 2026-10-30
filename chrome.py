@@ -417,6 +417,147 @@ USER_CHIP_STYLES = """
 </style>
 """
 
+
+# ── The register table fit ────────────────────────────────────────────────────
+#
+# Its own constant, emitted into the `<head>` of a **register page only**, and
+# deliberately NOT folded into `BASE_STYLES` — `USER_CHIP_STYLES` above gives
+# the reason in full: `BASE_STYLES` is the block five print goldens hash, and a
+# screen-only table rule added there moves all five for a change that never
+# reaches paper.
+#
+# ⚠ **THE ROOT CAUSE, which is one rule block and not a per-page accident.**
+# `quotation.QUOTATION_STYLES` is loaded by nearly every screen page in this
+# app, and it styles tables through BARE ELEMENT selectors:
+#
+#     table { width:100%; border-collapse:collapse; font-size:.88rem; }
+#     th    { padding:.8rem 1.1rem; ... }
+#     td    { padding:.9rem 1.1rem; ... }
+#     .table-wrap { ... overflow:hidden; ... }
+#
+# Those paddings are right for the five- and six-column register they were
+# written for and are **2.2rem of horizontal padding per column** on every
+# other one. On `/charges` — eleven columns — that is some 380px of padding
+# alone, so the table's min-content width exceeds the card and the last column
+# leaves the card's right edge. `.table-wrap` then **clips** rather than
+# scrolls (`overflow:hidden`, for its rounded corners), and the registers that
+# predate it — `/charges`, `/employee/`, `/client/`, `/projects/`,
+# `/measurement/`, `/users` — sit in a bare `.form-section` with no wrapper at
+# all, which is the version the owner reported.
+#
+# ⚠ **`quotation.py` is FROZEN** (INTRODUCTION.md §7;
+# `tests/test_nav_user_chip.py` diffs it per line against `eff0034`), so those
+# rules cannot be edited where they live. This constant is loaded AFTER
+# `QUOTATION_STYLES` in every head that takes it and overrides them from the
+# cascade instead — `.tbl-fit td` is (0,1,1) against a bare `td` at (0,0,1),
+# so it wins on specificity as well as order. **That ordering is the contract:
+# this constant goes LAST in the head.**
+#
+# ⚠ **WHAT THIS FIXES, and why it was not already fixed.** On 30 August 2026
+# the owner opened `/attendance/` and `/dc/` — the only two pages in this
+# application that had then been rendered to a human eye — and
+# `dashboard.py`'s own register stylesheet answered what he reported — the
+# `.reg-scroll`, `.reg-acts` and `.reg-ref` rules in it are this same remedy.
+# That sheet was scoped to those two pages on purpose (ABOUT.md: restyling a
+# page nobody has opened is how a pass ships a regression). On 30 October 2026 the owner opened the OTHERS and reported
+# the same mishap on `/charges`: an eleven-column table wider than its card,
+# the Edit/Delete pair stacked outside the row, `2026-` / `10-28` on two lines
+# and an empty Approval column holding width. **The remedy already existed and
+# nineteen registers never got it.** This is that remedy, and nothing else.
+#
+# ⚠ **It is NOT that sheet and must not become it.** That one restyles
+# — padding, colour, uppercase headers, hover — and would move every register's
+# page golden by a large margin for a change the owner did not ask for.
+# `tests/test_registers.py::test_the_other_registers_are_recorded_as_inconsistent`
+# also asserts that each of its fifteen named modules does **not** mention
+# it, so migrating one silently turns that test red. This
+# constant carries **no colour, no padding and no font** — only fit, scroll,
+# wrap and nowrap — so the two can coexist and that list stays true.
+#
+# ⚠ **SCREEN ONLY, twice over.** Every rule is inside `@media screen`, and
+# every selector is a class no printed sheet uses (`docsheet.py` builds the
+# printed `<head>` and never loads this constant). The first guard is what
+# keeps a register's *own* browser print-out unchanged as well.
+#
+# The generic rules deliberately need no per-cell markup: `td:has(> .btn)` is
+# any actions cell, so a register gets the compact side-by-side pair from the
+# wrapper alone. The explicit classes are for the cells only the page knows —
+# a date, a long description, a column that is empty while the ladder is off.
+
+TABLE_FIT_STYLES = """
+<style>
+@media screen {
+  /* The card is the boundary. If the table cannot fit, IT scrolls — never the
+     page, which is what put the actions column off the right edge. */
+  /* `overflow-y` is pinned to visible-equivalent on purpose: `.table-wrap`
+     already carries `overflow:hidden` for its rounded corners and this class
+     is added to that same div on the pages that have one, so the x axis has
+     to be re-opened without opening the y. */
+  .tbl-fit {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tbl-fit > table { width: 100%; }
+
+  /* ⚠ THE RULE THAT ACTUALLY MAKES IT FIT. `QUOTATION_STYLES` gives every
+     cell 1.1rem of padding on each side — 2.2rem per column, which is most of
+     why an eleven-column register cannot fit its card. Compact INSIDE a fit
+     table only, so the five-column registers those paddings were written for
+     are untouched. */
+  .tbl-fit th, .tbl-fit td { padding: .5rem .6rem; }
+
+  /* An actions cell hugs its content and never wraps, so the buttons stay side
+     by side inside the row. `:has(> .btn)` finds one without the page naming
+     it; `.acts` is the explicit form for a cell whose buttons sit in a span. */
+  .tbl-fit td:has(> .btn), .tbl-fit td:has(> .btn-view),
+  .tbl-fit td.acts, .tbl-fit th.acts {
+    width: 1%;
+    white-space: nowrap;
+  }
+  /* Whatever the row's controls are called — `.btn`, `.btn-ghost` and
+     `.btn-view` are all in use across the registers — they sit in a row with
+     a gap, never stacked. */
+  .tbl-fit td.acts > a + a,
+  .tbl-fit td:has(> .btn) > .btn + .btn,
+  .tbl-fit td:has(> .btn-view) > a + a { margin-left: .3rem; }
+  .tbl-fit td.acts > a, .tbl-fit td.acts > .btn { display: inline-flex; }
+
+  /* The two chunky `.btn` of a row are the single biggest contributor to the
+     table's minimum width — `BASE_STYLES` gives every button 1.4rem of side
+     padding, which is right for a page's primary action and far too much for
+     a repeated row control. Compact INSIDE a fit table and nowhere else. */
+  .tbl-fit td .btn {
+    padding: .3rem .6rem;
+    font-size: .78rem;
+    border-radius: 6px;
+    gap: .25rem;
+  }
+
+  /* A date, a reference and a figure read as one token or not at all. */
+  .tbl-fit .nowrap, .tbl-fit td.num, .tbl-fit th.num { white-space: nowrap; }
+
+  /* Long free text wraps inside its own cell instead of widening the table.
+     `anywhere` rather than `break-word` so a 60-character filename with no
+     space in it also gives way. */
+  .tbl-fit td.wrapcell {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* A column that carries nothing must not claim a share of the width. The
+     Approval column is the live case: `approval.cell()` returns "" for every
+     undecided record while the ladder is off, so the header alone was holding
+     a column open. This makes it ask for its header and no more. */
+  .tbl-fit th.shrink, .tbl-fit td.shrink {
+    width: 1%;
+    white-space: nowrap;
+  }
+}
+</style>
+"""
+
 # The endpoints whose exact response bytes `tests/test_print_golden.py` hashes.
 #
 # ⚠ **This is not a list of print routes.** `/invoice/view`, `/proforma/view`

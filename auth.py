@@ -58,7 +58,7 @@ from store import STORE
 # `_user_chip()` only), so the hatch is no longer needed here. The whitelist
 # in `tests/test_import_directions.py::test_auth_imports_nothing_that_prints`
 # names `chrome` as the fourth module this file may reach for.
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -2485,7 +2485,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{AUTH_ADMIN_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{AUTH_ADMIN_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -3095,10 +3095,12 @@ def list_users():
         Users are never deleted, only deactivated &mdash; every record they
         created still names them.
       </p>
+      <div class="tbl-fit">
       <table class="auth-table">
-        <thead><tr><th>User</th><th>Roles</th><th>State</th><th>Created</th><th></th></tr></thead>
+        <thead><tr><th>User</th><th>Roles</th><th class="shrink">State</th><th class="nowrap">Created</th><th class="acts"></th></tr></thead>
         <tbody>{''.join(rows) or empty}</tbody>
       </table>
+      </div>
     </div>"""
     return _shell("Users", body)
 
@@ -3346,10 +3348,12 @@ def _username_history(user) -> str:
       <details style="margin:1.2rem 0 0;">
         <summary style="cursor:pointer;font-size:.85rem;">Previous logins
           &mdash; {len(entries)}</summary>
+        <div class="tbl-fit">
         <table class="auth-table">
-          <thead><tr><th>Was</th><th>Became</th><th>When</th><th>Changed by</th></tr></thead>
+          <thead><tr><th>Was</th><th>Became</th><th class="nowrap">When</th><th>Changed by</th></tr></thead>
           <tbody>{''.join(rows)}</tbody>
         </table>
+        </div>
       </details>"""
 
 
@@ -3497,10 +3501,12 @@ def staff_access():
         this person only. Owners and Directors are not listed. Blocking a login
         altogether is <b>Deactivate</b> on the Users page.
       </p>
+      <div class="tbl-fit">
       <table class="auth-table">
-        <thead><tr><th>Login</th><th>Roles</th><th>Own list</th><th>State</th><th></th></tr></thead>
+        <thead><tr><th>Login</th><th>Roles</th><th>Own list</th><th class="shrink">State</th><th class="acts"></th></tr></thead>
         <tbody>{''.join(rows) or '<tr><td colspan="5">No staff logins.</td></tr>'}</tbody>
       </table>
+      </div>
     </div>"""
     return _shell("Staff access", body)
 
@@ -3644,10 +3650,12 @@ def list_roles():
         can do is the union. Editing a role takes effect on the next click, not
         the next sign-in.
       </p>
+      <div class="tbl-fit">
       <table class="auth-table">
-        <thead><tr><th>Role</th><th>Permissions</th><th>Active holders</th><th></th></tr></thead>
+        <thead><tr><th>Role</th><th class="wrapcell">Permissions</th><th class="shrink">Active holders</th><th class="acts"></th></tr></thead>
         <tbody>{''.join(rows)}</tbody>
       </table>
+      </div>
     </div>"""
     return _shell("Roles", body)
 
@@ -3881,10 +3889,12 @@ def access_log():
         cleared by a restart &mdash; this is a diagnostic, not an audit trail.
         The same lines are written to the server log, which does survive.
       </p>
+      <div class="tbl-fit">
       <table class="auth-table log-tbl">
-        <thead><tr><th>When</th><th>User</th><th>Request</th>
+        <thead><tr><th class="nowrap">When</th><th>User</th><th class="wrapcell">Request</th>
                    <th>Permission wanted</th><th>Why</th></tr></thead>
         <tbody>{rows or empty}</tbody>
       </table>
+      </div>
     </div>"""
     return _shell("Refused access", body)

@@ -105,7 +105,7 @@ import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import ra as RA
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr, _meta
 from store import STORE
 
@@ -583,7 +583,7 @@ def _shell(title: str, body: str) -> str:
 <head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-{BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{MERGED_STYLES}</head>
+{BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{MERGED_STYLES}{TABLE_FIT_STYLES}</head>
 <body>{_nav()}
 <main>{body}</main>
 </body></html>""")
@@ -626,8 +626,8 @@ def list_merged():
           <td class="td-num" style="font-weight:600;">{gt}</td>
           <td class="td-num">{out}</td>
           <td>{status_badge(m)}</td>
-          <td>{approval.cell("merged_ra", m)}</td>
-          <td>
+          <td class="shrink">{approval.cell("merged_ra", m)}</td>
+          <td class="acts">
             <a href="{url_for('merged_ra.view_merged', id=m.get('id'))}" class="btn-view">&#128269; View</a>
             <a href="{url_for('merged_ra.print_merged', id=m.get('id'))}" class="btn-view"
                style="margin-left:.3rem;">&#128438; Print</a>
@@ -636,12 +636,12 @@ def list_merged():
 
     if rows:
         table = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>Tax Invoice No.</th><th>Date</th><th>Project</th><th>Legs</th>
-            <th style="text-align:right;">Grand Total</th>
-            <th style="text-align:right;">Outstanding</th>
-            <th>Status</th><th>Approval</th><th></th>
+            <th>Tax Invoice No.</th><th class="nowrap">Date</th><th>Project</th><th class="shrink">Legs</th>
+            <th class="num" style="text-align:right;">Grand Total</th>
+            <th class="num" style="text-align:right;">Outstanding</th>
+            <th class="shrink">Status</th><th class="shrink">Approval</th><th class="acts"></th>
           </tr></thead>
           <tbody>{body_rows}</tbody>
         </table></div>"""

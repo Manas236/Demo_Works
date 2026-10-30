@@ -78,7 +78,7 @@ import branding as B
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import ra as RA
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 # The form widgets, so a receipt form looks like every other form in the app
@@ -329,7 +329,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{attachment.ATTACHMENT_STYLES}{cascade.CASCADE_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{BQ.BOQ_STYLES}{RA.RA_STYLES}{attachment.ATTACHMENT_STYLES}{cascade.CASCADE_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -541,7 +541,7 @@ def list_receipts():
         pos_html = f"""
   <div class="form-section">
     <div class="section-title">&#128202; Position by bill</div>
-    <div class="cl-wrap"><table class="claims">
+    <div class="cl-wrap tbl-fit"><table class="claims">
       <thead><tr><th>Bill</th><th>Leg</th><th>Date</th>
         <th style="text-align:right;">Billed</th>
         <th style="text-align:right;">Received</th>
@@ -569,7 +569,7 @@ def list_receipts():
   {pos_html}
   <div class="form-section">
     <div class="section-title">&#128179; Payments received</div>
-    <div class="cl-wrap"><table class="claims">
+    <div class="cl-wrap tbl-fit"><table class="claims">
       <thead><tr><th>Receipt</th><th>Date</th><th>Project</th><th>Bill</th>
         <th>Mode</th><th>Instrument</th>
         <th style="text-align:right;">Amount</th>
@@ -622,7 +622,7 @@ def new_receipt():
   {_flash()}
   <div class="form-section">
     <div class="section-title">&#128203; Which bill was this paid against?</div>
-    <div class="cl-wrap"><table class="claims">
+    <div class="cl-wrap tbl-fit"><table class="claims">
       <thead><tr><th>Bill</th><th>Reference</th><th>Project</th>
         <th style="text-align:right;">Billed</th>
         <th style="text-align:right;">Outstanding</th><th></th></tr></thead>

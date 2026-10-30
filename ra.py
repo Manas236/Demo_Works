@@ -73,7 +73,7 @@ import series as SER   # the document-number FLOOR and the one scan per series (
 # this module and `challan.py` import, because neither may import the other
 # (CLIENT_CHANGES.md §0, fortieth block, ruling C). See `dcbill.py`.
 import dcbill as DCB
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 # The form's widgets and page furniture, exactly as boq.py takes them, so the
@@ -4045,18 +4045,18 @@ def list_ras():
               <td class="td-num">{out_cell}</td>
               <td>{status_badge(b)}{(" " + MS.pre_measurement_chip(b)) if MS.is_pre_measurement(b) else ""}</td>
               <td>{latest_badge}</td>
-              <td>
+              <td class="acts">
                 <a href="{view_url}" class="btn-view">&#128269; View</a>
                 <a href="{print_url}" class="btn-view" style="margin-left:0.3rem;">&#128438; Print</a>
               </td>
             </tr>"""
 
         table_html = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>RA Bill</th><th>Leg</th><th>Date</th><th>BOQ Ref</th>
-            <th style="text-align:right;">Claimed Net</th><th style="text-align:right;">Outstanding</th>
-            <th>Status</th><th>Latest?</th><th></th>
+            <th>RA Bill</th><th class="shrink">Leg</th><th class="nowrap">Date</th><th class="nowrap">BOQ Ref</th>
+            <th class="num" style="text-align:right;">Claimed Net</th><th class="num" style="text-align:right;">Outstanding</th>
+            <th class="shrink">Status</th><th class="shrink">Latest?</th><th class="acts"></th>
           </tr></thead>
           <tbody>{table_rows_html}</tbody>
         </table></div>"""
@@ -4082,7 +4082,7 @@ def list_ras():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Running Account Bills")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BQ.BOQ_STYLES}{RA_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BQ.BOQ_STYLES}{RA_STYLES}{TABLE_FIT_STYLES}</head>
     <body>{_nav()}
     <main>
       {alert_html}

@@ -91,7 +91,7 @@ import pipeline as P
 import settings as SET
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import picker_options, format_address_lines
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from store import STORE
 
@@ -1169,7 +1169,7 @@ def list_pos():
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(DOC_NAME_PLURAL)}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PO_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -1190,13 +1190,13 @@ def list_pos():
     <a href="{url_for('settings.edit_settings')}">Settings</a>.
   </p>
 
-  <div class="pk-wrap">
+  <div class="pk-wrap tbl-fit">
     <table class="pk-table">
       <thead><tr>
-        <th>PO No.</th><th>Date</th><th>Supplier</th>
-        <th>Against BOQ</th><th>Project</th>
-        <th style="text-align:right;">Lines</th>
-        <th>Converted &rarr;</th>
+        <th>PO No.</th><th class="nowrap">Date</th><th>Supplier</th>
+        <th class="nowrap">Against BOQ</th><th>Project</th>
+        <th class="num" style="text-align:right;">Lines</th>
+        <th class="shrink">Converted &rarr;</th>
       </tr></thead>
       <tbody>{rows}</tbody>
     </table>

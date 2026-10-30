@@ -130,14 +130,38 @@ BEFORE = {
     #       operation-head   REGISTER     ("fccc00dd8367f34e", 46214)
     #       purchase-manager PROJECT_PAGE ("ff159d5f83bf3ee1", 71261)
     #       purchase-manager REGISTER     ("58dd63e96bdac24a", 44501)
+    # ⚠ **RE-BASELINED 30 October 2026 — the register table fit.** THE FOUR
+    #   `REGISTER` ROWS ONLY; all four `PROJECT_PAGE` rows are byte-identical.
+    #   The owner reported that a list page's table runs out of its card
+    #   (/charges was the example), and `chrome.TABLE_FIT_STYLES` is the
+    #   screen-only answer: `project.py`'s register gained the constant in its
+    #   `<head>` and a `.tbl-fit` wrapper plus two class attributes on its
+    #   table. **+3,092 bytes, and EXACTLY +3,092 on every one of the four** —
+    #   3,019 of constant, 45 of wrapper markup and 28 of class attributes,
+    #   which accounts for the delta to the byte.
+    #
+    #   ⚠ **That uniformity IS the measurement that says this is not a leak.**
+    #   A panel or a figure reaching a reader it should not would move the four
+    #   rows by DIFFERENT amounts, and would move `PROJECT_PAGE` too. These
+    #   four moved identically and the project page did not move at all.
+    #   `test_only_owner_and_director_see_the_panel` below still holds.
+    #
+    #   Proved rather than asserted: every pinned page was rendered before and
+    #   after, and once CSS, class attributes, `<div>` tags and whitespace are
+    #   removed the two are character-identical — no text, no number, no link
+    #   and no table cell changed. The values before this re-baseline:
+    #       operation-head   REGISTER ("7bda1fbac3e36586", 46206)
+    #       sales-manager    REGISTER ("08984bbd0406f98a", 45563)
+    #       purchase-manager REGISTER ("83da2b727d30e013", 44493)
+    #       accountant       REGISTER ("59e574c848893a81", 45371)
     ("operation-head",   PROJECT_PAGE): ("54508dd6ff3714a7", 76523),
-    ("operation-head",   REGISTER):     ("7bda1fbac3e36586", 46206),
+    ("operation-head",   REGISTER):     ("67a7c541893469a3", 49298),
     ("sales-manager",    PROJECT_PAGE): ("dec7a61b388ce6c7", 72862),
-    ("sales-manager",    REGISTER):     ("08984bbd0406f98a", 45563),
+    ("sales-manager",    REGISTER):     ("8df1db3b8bfb4385", 48655),
     ("purchase-manager", PROJECT_PAGE): ("d20c8996abc040bd", 71253),
-    ("purchase-manager", REGISTER):     ("83da2b727d30e013", 44493),
+    ("purchase-manager", REGISTER):     ("31ae1a372d6d69ce", 47585),
     ("accountant",       PROJECT_PAGE): ("a2e883a8f8577cc8", 72670),
-    ("accountant",       REGISTER):     ("59e574c848893a81", 45371),
+    ("accountant",       REGISTER):     ("bdce6869dde6d41f", 48463),
 }
 
 

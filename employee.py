@@ -137,7 +137,7 @@ import address as AD
 import branding as B
 import pipeline as P
 from store import STORE
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from dashboard import rupees
 from quotation import QUOTATION_STYLES
 
@@ -714,7 +714,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{EMPLOYEE_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{EMPLOYEE_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -862,13 +862,15 @@ def list_employees():
   {unmapped_band}
 
   <div class="form-section">
+    <div class="tbl-fit">
     <table class="emp-table">
       <thead><tr>
-        <th>Name</th><th>Designation</th><th>Site</th><th>Joined</th>
-        <th class="emp-amt">Day rate</th><th>Status</th><th></th>
+        <th>Name</th><th>Designation</th><th>Site</th><th class="nowrap">Joined</th>
+        <th class="emp-amt num">Day rate</th><th class="shrink">Status</th><th class="acts"></th>
       </tr></thead>
       <tbody>{body or empty}</tbody>
     </table>
+    </div>
   </div>
 """)
 

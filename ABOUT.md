@@ -417,7 +417,7 @@ Consequences you must respect when editing:
 | [branding.py](branding.py) | 302 | Company identity, bank details, colour palette, chart palette, logo data URIs. From 21 October 2026 also **`letterhead_top()`** — the client's own banner at the top of every printed letterhead, called by all three places that draw one (§6). |
 | [docsheet.py](docsheet.py) | 537 | **The printed A4 sheet, shared by every document that prints.** Letterhead, party block, items-table shell, totals rows, amount-in-words, bank block, signature block, and the stylesheet stack. Owns **both** column vocabularies — `SELL_COLUMNS` and the nine-wide `BUY_COLUMNS` (§2f-A1). From 30 September 2026 also the **statutory copies** (`COPIES_DC`, `COPIES_TAX_INVOICE`, `copies()`) and the **landscape variant** of the frame (`LANDSCAPE_*`). From 5 October 2026 also **`LIFECYCLE_CSS`** — the DRAFT / CANCELLED overprint, moved out of `ra.RA_DOC_STYLES` byte-for-byte so the work order can share it (§2d). A **leaf** — see §2d. |
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. From 18 October 2026 `grid_html(pcs_of=…)` prefills the draft PO's Pcs box (Import from Excel); None emits the bytes it always did. |
-| [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. |
+| [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. ⚠ Also **`TABLE_FIT_STYLES`** from 30 October 2026 — the screen-only register table fit, its own constant beside `USER_CHIP_STYLES` and for the same reason: it is **not** in `BASE_STYLES`, which five print goldens hash. |
 | [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
 | [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
 | [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
@@ -12715,6 +12715,55 @@ also render inside pages a golden pins.
 `tests/test_registers.py::test_the_other_registers_are_recorded_as_inconsistent`
 carries the list and goes red the moment one is migrated without the list being
 updated, so the next pass takes them deliberately.
+
+#### ✅ 30 October 2026 — the FIT half of that remedy reached all of them
+
+⚠ **The owner opened the other registers and reported the same mishap**, with
+`/charges` as the example: an eleven-column table wider than its white card,
+the Edit/Delete pair stacked outside the row, `2026-` / `10-28` broken across
+two lines, and an empty Approval column holding width (`approval.cell()`
+returns `""` for every undecided record while the ladder is off, so the header
+alone was holding a column open).
+
+**The cause is shared and it is not in any of those fifteen modules.**
+`quotation.QUOTATION_STYLES`, which nearly every screen page loads, styles
+tables through **bare element selectors**:
+
+```css
+table { width:100%; border-collapse:collapse; font-size:.88rem; }
+th    { padding:.8rem 1.1rem; ... }
+td    { padding:.9rem 1.1rem; ... }
+.table-wrap { ... overflow:hidden; ... }
+```
+
+Those paddings are **2.2rem per column** — some 380px on an eleven-column
+register, which is most of why it cannot fit — and `.table-wrap` **clips**
+rather than scrolling. The registers predating that wrapper (`/charges`,
+`/employee/`, `/client/`, `/projects/`, `/measurement/`, `/users`) sit in a bare
+`.form-section` with no wrapper at all, which is the version he saw.
+
+⚠ **`quotation.py` is frozen**, so the rules cannot be edited where they live.
+`chrome.TABLE_FIT_STYLES` is loaded **last in the head** of a register page and
+overrides them from the cascade (`.tbl-fit td` is (0,1,1) against a bare `td` at
+(0,0,1)). It carries **no colour, no padding beyond the compaction, and no
+font** — only fit, scroll, wrap and nowrap — so it is **not** the register
+restyle above and the fifteen-module list stays true: the test scans for the
+literal `REGISTER_STYLES`, which this constant and its comments never mention.
+
+**Seventeen registers took it** across sixteen modules — `boq`, `charge`,
+`client`, `employee`, `invoice`, `measurement`, `merged_ra`, `payroll`,
+`po_draft`, `proforma`, `project`, `purchase`, `ra`, `receipt`, `spec`,
+`workorder` and `auth`'s four admin tables. ⚠ **`quotation.py` and
+`product.py` were NOT touched** — both frozen, and the catalogue is hidden from
+everybody anyway, so `/quotation/`'s register still overflows and that is
+recorded rather than fixed.
+
+⚠ **No print golden moved** — every rule is inside `@media screen`, the classes
+are ones no printed sheet uses, and `docsheet.py` (which builds every printed
+`<head>`) never loads the constant. Fifteen PAGE goldens moved, `head` and
+`main` only, with `shell` and `chrome` byte-identical; re-baselined in
+`tests/test_page_golden.py` with the measurement, and four `REGISTER` rows in
+`tests/test_pnl_access.py` by exactly +3,092 each.
 
 ---
 

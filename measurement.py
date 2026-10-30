@@ -118,7 +118,7 @@ import branding as B
 import docsheet as DS
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 # ⚠ **`QUOTATION_STYLES` is read through `docsheet`, not imported from
@@ -2174,7 +2174,7 @@ def list_ms():
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title("Measurement Sheets")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -2197,13 +2197,15 @@ def list_ms():
     an installation claim cannot be raised until one exists.
   </div>
 
+  <div class="tbl-fit">
   <table class="tbl">
     <thead><tr>
-      <th>Ref</th><th>Date</th><th>Project</th><th>BOQ</th>
-      <th style="text-align:right;">Lines</th><th>Approval</th>
+      <th>Ref</th><th class="nowrap">Date</th><th>Project</th><th class="nowrap">BOQ</th>
+      <th class="num" style="text-align:right;">Lines</th><th class="shrink">Approval</th>
     </tr></thead>
     <tbody>{body}</tbody>
   </table>
+  </div>
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · measurement sheets</p></footer>
 </main>

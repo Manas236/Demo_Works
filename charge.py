@@ -36,7 +36,7 @@ import attachment
 import branding as B
 import pipeline as P
 from store import STORE
-from chrome import BASE_STYLES, ICONS, _nav
+from chrome import BASE_STYLES, ICONS, TABLE_FIT_STYLES, _nav
 from dashboard import rupees
 from quotation import QUOTATION_STYLES
 
@@ -105,7 +105,7 @@ def _shell(title: str, body: str) -> str:
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(title)}</title>{B.HEAD_ICON}
-  {BASE_STYLES}{QUOTATION_STYLES}{CHARGE_STYLES}{attachment.ATTACHMENT_STYLES}
+  {BASE_STYLES}{QUOTATION_STYLES}{CHARGE_STYLES}{attachment.ATTACHMENT_STYLES}{TABLE_FIT_STYLES}
 </head>
 <body>
 {_nav()}
@@ -168,23 +168,23 @@ def list_charges():
     
     body = "".join(
         f'<tr>'
-        f'<td>{_esc(r.get("date"))}</td>'
+        f'<td class="nowrap">{_esc(r.get("date"))}</td>'
         f'<td class="cl-desc">{_esc(r.get("person"))}</td>'
         f'<td class="cl-desc">{_esc(r.get("head"))}</td>'
-        f'<td>{_esc(r.get("description"))}</td>'
+        f'<td class="wrapcell">{_esc(r.get("description"))}</td>'
         f'<td class="cl-desc">{_esc(r.get("project_name")) or "General"}</td>'
-        f'<td class="cl-amt">{rupees(r.get("taxable_amount", 0.0))}</td>'
-        f'<td class="cl-amt">{rupees(r.get("gst_amount", 0.0))}</td>'
-        f'<td class="cl-amt">{rupees(r.get("taxable_amount", 0.0) + r.get("gst_amount", 0.0))}</td>'
+        f'<td class="cl-amt num">{rupees(r.get("taxable_amount", 0.0))}</td>'
+        f'<td class="cl-amt num">{rupees(r.get("gst_amount", 0.0))}</td>'
+        f'<td class="cl-amt num">{rupees(r.get("taxable_amount", 0.0) + r.get("gst_amount", 0.0))}</td>'
         # B8 — the supporting document, reachable from the register. A charge
         # raised before 2 September 2026 has none and says so rather than
         # rendering an empty cell that reads like a missing file.
-        f'<td>{_doc_cell(r.get("id"))}</td>'
+        f'<td class="shrink">{_doc_cell(r.get("id"))}</td>'
         # B6 — the approval state, the ladder actions, and the "creator
         # unknown" chip for a record that predates the approval system. Screen
         # only; no charge is printed anywhere and nothing here reaches paper.
-        f'<td>{approval.cell("charge", r)}</td>'
-        f'<td><a class="btn btn-ghost" href="{url_for("charge.edit_charge", id=r.get("id"))}">Edit</a> '
+        f'<td class="shrink">{approval.cell("charge", r)}</td>'
+        f'<td class="acts"><a class="btn btn-ghost" href="{url_for("charge.edit_charge", id=r.get("id"))}">Edit</a> '
         f'<a class="btn btn-ghost" href="{url_for("charge.delete_charge", id=r.get("id"))}">Delete</a></td>'
         f'</tr>'
         for r in rows
@@ -227,33 +227,35 @@ def list_charges():
   </div>
   
   <div class="form-section">
+    <div class="tbl-fit">
     <table class="ledger-table">
       <thead><tr>
-        <th>Date</th>
+        <th class="nowrap">Date</th>
         <th>Person</th>
         <th>Head</th>
         <th>Description</th>
         <th>Project</th>
-        <th class="cl-amt">Taxable</th>
-        <th class="cl-amt">GST</th>
-        <th class="cl-amt">Gross</th>
-        <th>Document</th>
-        <th>Approval</th>
-        <th></th>
+        <th class="cl-amt num">Taxable</th>
+        <th class="cl-amt num">GST</th>
+        <th class="cl-amt num">Gross</th>
+        <th class="shrink">Document</th>
+        <th class="shrink">Approval</th>
+        <th class="acts"></th>
       </tr></thead>
       <tbody>{body or empty}</tbody>
       <tfoot>
         <tr class="summary-row">
             <td colspan="5" style="text-align:right;">Total:</td>
-            <td class="cl-amt">{rupees(total_taxable)}</td>
-            <td class="cl-amt">{rupees(total_gst)}</td>
-            <td class="cl-amt">{rupees(total_gross)}</td>
+            <td class="cl-amt num">{rupees(total_taxable)}</td>
+            <td class="cl-amt num">{rupees(total_gst)}</td>
+            <td class="cl-amt num">{rupees(total_gross)}</td>
             <td></td>
             <td></td>
             <td></td>
         </tr>
       </tfoot>
     </table>
+    </div>
   </div>
     """)
 

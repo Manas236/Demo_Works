@@ -72,7 +72,7 @@ import series as SER   # the document-number FLOOR and the one scan per series (
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 # The document's own formatters — see the module docstring. The A4 sheet
@@ -743,15 +743,15 @@ def list_invoices():
                    deliberately on the LIST rather than on /invoice/view/<id>:
                    that route renders the Rule 46 A4 sheet itself and is pinned
                    byte-for-byte by tests/test_print_golden.py. -->
-              <td>{approval.cell("invoice", ti)}</td>
-              <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
+              <td class="shrink">{approval.cell("invoice", ti)}</td>
+              <td class="acts"><a href="{view_url}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>Invoice No.</th><th>Date</th><th>Customer</th>
+            <th>Invoice No.</th><th class="nowrap">Date</th><th>Customer</th>
             <th class="col-h">From PI</th><th class="col-h">Place of Supply</th>
-            <th>Invoice Value</th><th>Status</th><th>Approval</th><th></th>
+            <th class="num">Invoice Value</th><th class="shrink">Status</th><th class="shrink">Approval</th><th class="acts"></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""
@@ -772,7 +772,7 @@ def list_invoices():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Tax Invoices")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{INVOICE_STYLES}{TABLE_FIT_STYLES}</head>
     <body>{_nav()}
     <main>
       {_alert(request.args.get("msg"), request.args.get("type", "success"))}

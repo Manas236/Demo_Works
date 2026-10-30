@@ -83,7 +83,7 @@ import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import units as _UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import INDIAN_STATES, picker_options, picker_payload
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
 from store import STORE
 
@@ -2791,14 +2791,14 @@ def list_boqs():
               <td class="td-muted col-h">&#8377;&nbsp;{sup:,.0f}</td>
               <td class="td-muted col-h">&#8377;&nbsp;{ins:,.0f}</td>
               <td style="font-weight:700;color:var(--brand);">&#8377;&nbsp;{tot:,.0f}{skip}</td>
-              <td><a href="{url_for('boq.view_boq', id=bid)}" class="btn-view">&#128269; View</a></td>
+              <td class="acts"><a href="{url_for('boq.view_boq', id=bid)}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>BOQ No.</th><th>Date</th><th>Project</th><th>Customer</th>
-            <th class="col-h">Size</th><th class="col-h">Supply</th>
-            <th class="col-h">Installation</th><th>Total</th><th></th>
+            <th>BOQ No.</th><th class="nowrap">Date</th><th>Project</th><th>Customer</th>
+            <th class="col-h">Size</th><th class="col-h num">Supply</th>
+            <th class="col-h num">Installation</th><th class="num">Total</th><th class="acts"></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""
@@ -2825,7 +2825,7 @@ def list_boqs():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Bills of Quantities")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{TABLE_FIT_STYLES}
     <style>
       /* Nine columns squeeze the register, and a reference, a date or a
          button that breaks mid-value reads as broken. Text columns may wrap;

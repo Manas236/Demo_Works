@@ -108,7 +108,7 @@ import branding as B
 import pipeline as P
 from store import STORE
 
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 
 project_bp = Blueprint("project", __name__, url_prefix="/projects")
 
@@ -482,7 +482,7 @@ def list_projects():
                         color:#666; }}
         .td-acts {{ white-space:nowrap; }}
         .btn-sm {{ font-size:.8rem; padding:.25rem .55rem; }}
-      </style>
+      </style>{TABLE_FIT_STYLES}
     </head>
     <body>
       {_nav()}
@@ -493,16 +493,18 @@ def list_projects():
           <a href="{url_for('project.create_project')}" class="btn">+ New Project</a>
         </div>
 
+        <div class="tbl-fit">
         <table class="proj-tbl">
           <thead>
             <tr>
-              <th>Project</th><th>Client</th><th>Site</th><th>BOQs</th><th></th>
+              <th>Project</th><th>Client</th><th>Site</th><th class="shrink">BOQs</th><th class="acts"></th>
             </tr>
           </thead>
           <tbody>
             {rows if rows else '<tr><td colspan="5" style="text-align:center; color:#999; padding:2rem;">No projects yet.</td></tr>'}
           </tbody>
-        </table>{_untagged_line()}
+        </table>
+        </div>{_untagged_line()}
       </main>
     </body>
     </html>

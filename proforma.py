@@ -59,7 +59,7 @@ import series as SER   # the document-number FLOOR and the one scan per series (
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
-from chrome import BASE_STYLES, _nav
+from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
 # The document's own formatters and stylesheet — see the module docstring.
@@ -960,14 +960,14 @@ def list_proformas():
               <td class="col-h">{badge}</td>
               <td class="td-muted">&#8377;&nbsp;{float(pi.get('grand_total') or 0):,.0f}</td>
               <td class="td-total">&#8377;&nbsp;{float(pi.get('amount_due') or 0):,.0f}</td>
-              <td><a href="{view_url}" class="btn-view">&#128269; View</a></td>
+              <td class="acts"><a href="{view_url}" class="btn-view">&#128269; View</a></td>
             </tr>"""
         table_html = f"""
-        <div class="table-wrap"><table>
+        <div class="table-wrap tbl-fit"><table>
           <thead><tr>
-            <th>PI No.</th><th>Date</th><th>Customer</th>
+            <th>PI No.</th><th class="nowrap">Date</th><th>Customer</th>
             <th class="col-h">From Quotation</th><th class="col-h">Ask</th>
-            <th>Invoice Value</th><th>Payable Now</th><th></th>
+            <th class="num">Invoice Value</th><th class="num">Payable Now</th><th class="acts"></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table></div>"""
@@ -987,7 +987,7 @@ def list_proformas():
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Proforma Invoices")}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}</head>
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{TABLE_FIT_STYLES}</head>
     <body>{_nav()}
     <main>
       {_alert(request.args.get("msg"), request.args.get("type", "success"))}
