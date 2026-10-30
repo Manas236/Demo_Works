@@ -968,6 +968,19 @@ FORBIDDEN = [
     ("lineimage", "attachment", "module", "attachment imports approval, and "
                                           "through it the auth layer; root() "
                                           "reaches it in its function body"),
+    # ⚠ **`boqpick` reaches `lineimage` INSIDE A FUNCTION BODY** from
+    #   29 October 2026 (§0 fifty-ninth block, B2) — the item's picture
+    #   select on the two BOQ pickers. A LEAF importing a LEAF: both sit at
+    #   the bottom of the graph, so the arrow closes no cycle. It is taken in
+    #   the body all the same, so a checkout without Pillow still renders
+    #   every picker (`lineimage` pulls Pillow in only inside `save()`), and
+    #   it is listed here so the arrow is a decision rather than an omission.
+    ("boqpick", "lineimage", "module", "the item's picture select; a leaf "
+                                       "importing a leaf, in the function "
+                                       "body so a box without Pillow still "
+                                       "renders the picker"),
+    ("lineimage", "boqpick",   "any", "the leaf is reached BY the picker; "
+                                      "importing it back is a cycle"),
 
     # ── hsnfill.py — the ONE HSN rule (29 October 2026) ─────────────────────
     # CLIENT_CHANGES.md §0, fifty-ninth block, A1. EIGHT modules import it —
@@ -1582,6 +1595,11 @@ def test_lineimage_is_a_leaf():
     ours = {m.stem for m in REPO.glob("*.py")} - {"lineimage"}
     assert imports_of("lineimage", top_level_only=True) & ours == {"photo", "pipeline", "store"}
     assert imports_of("lineimage") & ours == {"photo", "pipeline", "store", "attachment"}
+    # ⚠ Unchanged by B2 (29 October 2026): the named-picture library reads
+    #   `STORE["line_image_library"]` and `STORE["specs"]` DIRECTLY, which is
+    #   the one-way trick this leaf has always used — it did not grow an
+    #   import of `spec.py` to find a clause's code.
+    assert "spec" not in imports_of("lineimage")
     assert "PIL" not in imports_of("lineimage", top_level_only=True)
     assert "flask" not in imports_of("lineimage")
 

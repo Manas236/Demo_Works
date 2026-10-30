@@ -269,6 +269,13 @@ def _fresh_store():
     # for the same reasons, one importer along.
     STORE.setdefault("doc_imports", {}).clear()
     STORE.setdefault("doc_import_layouts", {}).clear()
+    # The named-picture library (29 Oct 2026, §0 fifty-ninth block, B2). A row
+    # planted by one test would offer the next test's create form a picture
+    # whose FILE is gone — `_attachment_store` below gives every test its own
+    # directory — and `lineimage.grid_has_offers()` would then draw a Picture
+    # column on a picker that is pinned byte-for-byte. `attachments`' reason
+    # exactly, one collection along.
+    STORE.setdefault("line_image_library", {}).clear()
     # GSTIN auto-fill (29 Sep 2026). A cached lookup planted by one test would
     # fill the next test's form with no CAPTCHA and gate its save on a status
     # it never asked about. The RAM-only portal sessions and the per-user rate

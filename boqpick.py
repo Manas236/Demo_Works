@@ -85,6 +85,30 @@ import pipeline as P
 MAKE_MAX = 60
 
 # The Make box's look, on the element: `.pk-in input`'s rule, left-aligned.
+# The picture select's look, on the element — `_MAKE_INPUT_STYLE`'s reason:
+# `PICKER_CSS` is hashed by `/po/create`'s pinned golden and a rule added to it
+# would move that digest for every schedule, with or without a picture.
+_IMG_SELECT_STYLE = ("max-width:140px;padding:.24rem .3rem;"
+                     "border:1px solid var(--border);border-radius:5px;"
+                     "font-size:.78rem;background:#fff;")
+
+
+def _LI():
+    """
+    `lineimage`, imported in the function body.
+
+    ⚠ **A LEAF importing a LEAF, and it is named rather than assumed.** Both
+      modules sit at the bottom of the graph — `lineimage` imports `photo`,
+      `pipeline` and `store`, and this one imports `boq` and `pipeline` — so
+      the arrow closes no cycle. It is taken in a function body all the same,
+      so that a checkout without Pillow still renders every picker: the
+      picture column is the only thing that needs it, and `lineimage` pulls
+      Pillow in only inside `save()`.
+    """
+    import lineimage
+    return lineimage
+
+
 _MAKE_INPUT_STYLE = ("width:100%;padding:.28rem .4rem;border:1px solid var(--border);"
                      "border-radius:6px;font:inherit;")
 
@@ -198,7 +222,8 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
               with_pcs: bool = False, qty_aria: str = "Quantity",
               with_rate: bool = False, rate_of: dict = None,
               rate_aria: str = "Rate", pcs_of: dict = None,
-              with_make: bool = False, make_of: dict = None) -> str:
+              with_make: bool = False, make_of: dict = None,
+              with_image: bool = False, image_of: dict = None) -> str:
     """
     One row per BOQ line, every box ticked unless a rejected POST says otherwise.
 
@@ -250,15 +275,23 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
     # The header row's colspan covers every column after Item. Computed rather
     # than written down, so a flag cannot silently leave a row one cell short —
     # `boq.py`'s rule about spans derived from `n_supply_cols` (ABOUT.md §5).
+    # ⚠ **The picture column is drawn only where the library can offer
+    #   something** (29 Oct 2026, §0 fifty-ninth block, B2) —
+    #   `lineimage.sheet_has_images()`'s rule one form along. On a schedule
+    #   whose items are in nobody's library this picker is byte-for-byte what
+    #   it was, which is what keeps `/po/create`'s pinned golden still.
+    with_image = bool(with_image) and _LI().grid_has_offers(
+        boq.get("line_items") or [])
     span = str(4 + (1 if with_pcs else 0) + (1 if with_rate else 0)
-               + (1 if with_make else 0))
+               + (1 if with_make else 0) + (1 if with_image else 0))
     out = []
 
     for li in boq.get("line_items") or []:
         lid = BQ._line_id(li.get("line_id"))
         if not lid:
             continue
-        item = P.esc(BQ._item_no(li.get("item_no")))
+        item_raw = BQ._item_no(li.get("item_no"))
+        item = P.esc(item_raw)
         raw_desc = str(li.get("description") or "")
 
         if li.get("is_header"):
@@ -331,13 +364,33 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
           <td class="pk-make"><input type="text" id="m_{lid}" value="{make_val}"
               maxlength="{MAKE_MAX}" aria-label="Make" style="{_MAKE_INPUT_STYLE}"{pre}/></td>""")
 
+        # ── The item's PICTURE, from the library (29 October 2026, §0
+        #    fifty-ninth block, B2). A `<select>` and never a file box: see
+        #    `lineimage.select_html()` for the measured reason. Drawn only
+        #    where the item has something to offer, so a schedule whose items
+        #    are not in the library renders byte-for-byte what it did — which
+        #    is what keeps `/po/create`'s pinned golden still.
+        img_cell = ""
+        if with_image:
+            picked = (image_of or {}).get(lid)
+            probe = {"part_no": item_raw, "description": raw_desc}
+            if picked is not None:
+                probe = dict(probe)
+                probe[_LI().KEY] = _LI().valid_id(picked)
+                _LI().name_on(probe, _LI().library_name_of(probe, picked))
+            sel = _LI().select_html(probe, f"img_{lid}", "Picture",
+                                    style=_IMG_SELECT_STYLE,
+                                    el_id=f"img_{lid}")
+            img_cell = f'\n          <td class="pk-img">{sel}</td>' if sel else (
+                '\n          <td class="pk-img"></td>')
+
         out.append(f"""
         <tr class="pk-row{cls}" id="row_{lid}"{hide}>
           <td class="pk-tick"><input type="checkbox" id="c_{lid}"{ticked}
               onchange="tick('{lid}')" aria-label="Include this line"/></td>
           <td class="pk-no">{item}</td>
           <td class="pk-desc"><span class="pk-clamp" title="{P.esc(raw_desc)}">
-              {P.esc(" ".join(raw_desc.split()))}</span></td>{make_cell}
+              {P.esc(" ".join(raw_desc.split()))}</span></td>{make_cell}{img_cell}
           <td class="pk-unit">{P.esc(li.get("unit") or "")}</td>
           <td class="pk-avail">{avail_txt}</td>
           <td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
@@ -428,7 +481,7 @@ function saveJSON() {
     var lid = LINE_IDS[i], c = el('c_' + lid);
     if (!c || !c.checked) continue;
     lines.push({line_id: lid,
-                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD____RATE_FIELD____MAKE_FIELD__});
+                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD____RATE_FIELD____MAKE_FIELD____IMAGE_FIELD__});
   }
   el('__PAYLOAD_ID__').value = JSON.stringify({lines: lines});
   return true;
@@ -447,15 +500,23 @@ _RATE_FIELD = """,
 _MAKE_FIELD = """,
                 make: (el('m_' + lid) || {}).value || ''"""
 
+# The item's picture, chosen from the library (29 Oct 2026, §0 fifty-ninth
+# block, B2). A `<select>`'s value, so the payload carries an ID and never
+# bytes — `lineimage.select_html()` has the measured reason.
+_IMAGE_FIELD = """,
+                image: (el('img_' + lid) || {}).value || ''"""
+
 
 def js(payload_id: str, doc_word: str, with_pcs: bool = False,
-       with_rate: bool = False, with_make: bool = False) -> str:
+       with_rate: bool = False, with_make: bool = False,
+       with_image: bool = False) -> str:
     """The fold, the ticks and the payload builder, wired to one form."""
     return (_JS_TEMPLATE
             .replace("__DOC_WORD__", doc_word)
             .replace("__PCS_FIELD__", _PCS_FIELD if with_pcs else "")
             .replace("__RATE_FIELD__", _RATE_FIELD if with_rate else "")
             .replace("__MAKE_FIELD__", _MAKE_FIELD if with_make else "")
+            .replace("__IMAGE_FIELD__", _IMAGE_FIELD if with_image else "")
             .replace("__PAYLOAD_ID__", payload_id))
 
 
@@ -466,7 +527,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               with_rate: bool = False, rate_of: dict = None,
               rate_label: str = "Rate", rate_aria: str = "Rate",
               pcs_of: dict = None, with_make: bool = False,
-              make_of: dict = None) -> str:
+              make_of: dict = None, with_image: bool = False,
+              image_of: dict = None) -> str:
     """
     The whole grid as one form section — tools bar, table, refusal band, and
     the script that drives them.
@@ -482,6 +544,13 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
                  if with_rate else "")
     make_head = ('\n              <th class="pk-make" style="width:120px;">Make</th>'
                  if with_make else "")
+    # The item's picture, from the library (29 Oct 2026, §0 fifty-ninth block,
+    # B2). Styled on the element, `pk-make`'s reason: `PICKER_CSS` is hashed
+    # by `/po/create`'s pinned golden.
+    with_image = bool(with_image) and _LI().grid_has_offers(
+        boq.get("line_items") or [])
+    img_head = ('\n              <th class="pk-img" style="width:150px;">Picture</th>'
+                if with_image else "")
     return f"""
       <div class="form-section">
         <div class="section-title">{title}</div>
@@ -499,14 +568,15 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
             <thead><tr>
               <th class="pk-tick"></th>
               <th class="pk-no">Item</th>
-              <th class="pk-desc">Description</th>{make_head}
+              <th class="pk-desc">Description</th>{make_head}{img_head}
               <th class="pk-unit">Unit</th>
               <th class="pk-avail">{avail_label}</th>
               <th class="pk-in">{qty_label}</th>{pcs_head}{rate_head}
             </tr></thead>
             <tbody>{rows_html(boq, chosen, qty_of, with_pcs, qty_aria,
                               with_rate, rate_of, rate_aria, pcs_of,
-                              with_make, make_of)}</tbody>
+                              with_make, make_of, with_image,
+                              image_of)}</tbody>
           </table>
         </div>
         <div class="alert alert-error pk-none" id="pk-none">
@@ -517,7 +587,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
         var LINE_IDS = {BQ._json_for_script(line_ids(boq))};
         var FAMILIES = {BQ._json_for_script(families(boq))};
       </script>
-      {js(payload_id, doc_word, with_pcs, with_rate, with_make)}"""
+      {js(payload_id, doc_word, with_pcs, with_rate, with_make, with_image)}"""
 
 
 # =============================================================================
@@ -526,7 +596,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
 
 def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
                  max_lines: int = None, with_pcs: bool = False,
-                 with_rate: bool = False, with_make: bool = False) -> tuple:
+                 with_rate: bool = False, with_make: bool = False,
+                 with_image: bool = False) -> tuple:
     """
     Returns `(items, error)` — the BOQ lines that were **ticked**, snapshotted.
 
@@ -574,7 +645,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             by_lid[lid] = li
 
     # Which ids the operator actually ticked.
-    picked, qty_of, rate_of, make_of = [], {}, {}, {}
+    picked, qty_of, rate_of, make_of, img_of = [], {}, {}, {}, {}
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -585,6 +656,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
         qty_of[lid] = row.get("qty")
         rate_of[lid] = row.get("rate")
         make_of[lid] = row.get("make")
+        img_of[lid] = row.get("image")
 
     if not picked:
         return [], empty_msg
@@ -657,5 +729,14 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             make = str(make_of.get(lid) or "").strip()[:MAKE_MAX]
             if make:
                 row["make"] = make
+        if with_image:
+            # ⚠ **The library decides what is allowed, not the POST**
+            #   (29 October 2026, §0 fifty-ninth block, B2). `apply_choice()`
+            #   refuses an id that is not the minted shape, has no file on
+            #   disk, or is not in THIS item's library — so a crafted payload
+            #   cannot attach an arbitrary stored picture to a line. The NAME
+            #   is snapshotted with it; nothing is written for a line with no
+            #   picture.
+            _LI().apply_choice(row, img_of.get(lid), row)
         items.append(row)
     return items, ""

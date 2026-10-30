@@ -5695,6 +5695,67 @@ Five properties this shape exists to guarantee:
 
 ---
 
+### The picture LIBRARY, and the name on the line  (`line_image_library`, 29 October 2026 — CLIENT_CHANGES.md §0 fifty-ninth block, B2)
+
+**One new collection and one new optional key on a line.** The BYTES are
+unchanged: still one content-addressed JPEG under
+`attachment.root()/line-images/`, named by its own sha256, exactly as §3 *Line
+pictures* has described since 21 October 2026.
+
+```python
+# STORE["line_image_library"][<uuid hex>]
+{"id":   "<uuid hex>",
+ "image": "<64 hex>",          # the sha256 `lineimage.save()` minted
+ "item_key": "spec:<spec id>",  # or "desc:<normalised description>"
+ "name":  "SANT body",          # <= NAME_MAX (60); "" is allowed
+ "seq":   7,                    # monotonic, for ORDERING — see below
+ "at":    "2026-10-29 17:04",
+ "by":    "<username>"}
+```
+
+```python
+# on a PI / PO / draft-PO line, beside `image`
+image_name: "SANT body"        # ABSENT = no caption; never written empty
+```
+
+Six properties:
+
+1. **The library is what a FORM OFFERS; the SHEET reads the LINE.** The name
+   is **snapshotted onto the line** at the moment a picture is set, so a
+   printed order prints the name it was raised with and renaming the library
+   row next month moves no document already sent — CLIENT_CHANGES.md §1.2,
+   and `tests/test_line_image_library.py` measures it both ways.
+2. **The item key is EXACT, never fuzzy** — `po_parts.py`'s lesson (§2h) for
+   the third time. `spec:<id>` on an exact clause-code match (codes are
+   unique, `spec._validate()`); otherwise `desc:<pipeline.norm_name(...)>`,
+   which is casefolded and whitespace-collapsed and **nothing else**. No
+   casefold on the code, no prefix match. A line with neither is offered
+   nothing.
+3. **A row must point at a file that is there.** `register()` refuses an id
+   with nothing behind it, because `library_for()` drops one at read and a row
+   whose only effect is to be discarded is not a row.
+4. **Idempotent on (item key, image id).** The ids are content-addressed, so
+   "the same picture" is a fact: uploading it twice for one item renames the
+   row it already has. The same picture on **two** items is two rows, which is
+   right — they are two items' pictures.
+5. ⚠ **`seq` exists because `at` is to the minute and cannot order two rows
+   written in the same one** — which is every row a test writes and every row
+   an operator writes with the Pictures page open. *"Offers the newest"* has
+   to be a fact and not a coincidence of dict order.
+6. **`image_name` absent means no caption**, and nothing writes an empty key.
+   Every line written before 29 October 2026 reads that way and prints the
+   cell it always printed.
+
+⚠ **Transactional, not seeded** (`tests/test_hardening.py`): every row names a
+JPEG somebody uploaded, under a name somebody typed, for an item on their own
+schedule. `conftest._fresh_store()` clears it per test, because
+`_attachment_store` gives each test its own directory and a row left behind
+would offer the next test's picker a picture whose file is gone — and
+`grid_has_offers()` would then draw a Picture column on a form pinned
+byte-for-byte.
+
+---
+
 ### The HSN/SAC code, and the trail of every fill  (29 October 2026 — CLIENT_CHANGES.md §0 fifty-ninth block)
 
 **No new collection, and no new code field.** Every HSN/SAC this pass touches
@@ -11284,6 +11345,63 @@ printed to PDF in headless Chrome on A4 and with `@page{size:auto}` injected
 Held by [tests/test_line_pictures.py](tests/test_line_pictures.py) (44), the
 escaping and entity sweeps (the three Pictures pages are in their URL map), and
 `tests/test_import_directions.py` (the leaf's whitelist and 14 rows).
+
+#### Named, reusable pictures (29 October 2026 — §0 fifty-ninth block, B2)
+
+The 28 October ask: pictures **addable from the create form**, optional; each
+with a **NAME, printed under it**; kept in a **library keyed to the item**, so
+the next document for the same item **offers it preselected**. On the Product
+Inquiry and the real purchase order. §3 *The picture LIBRARY* has the shape.
+
+| Where | Control |
+|---|---|
+| `/po/create`, `/purchase/from-boq` | a per-line **`<select>`** of the item's named pictures, preselected (`boqpick.grid_html(with_image=True)`) |
+| `/purchase/from-draft` | the same select, opening at the **draft's own** picture — what the supplier priced |
+| `/po/edit/<id>` | the same select, in the full line editor (A2) |
+| the four **Pictures** pages | a **Name** box beside the upload, plus a *Use* select over the item's library |
+
+⚠ **THE CREATE FORM OFFERS THE LIBRARY; IT DOES NOT CARRY FILE BOXES.** The
+§0 **forty-ninth** block's first judgement call is respected rather than
+rediscovered: nginx refuses a request over 8 MB with its **own** 413 page
+(DEPLOY.md) and a phone photo is 3–5 MB, so a form carrying several file boxes
+fails on the second picture with nothing of ours on screen — and a browser
+cannot refill a file box, so every refused save empties them all. A
+`<select>` carries no bytes at all. **New pictures are uploaded on the
+document's own Pictures page**, which is what registers one into the library.
+Put to Manas with that named; the §0 block is his answer.
+
+⚠ **The column appears only when a picture does, on the form as well as the
+sheet.** `lineimage.grid_has_offers()` is `sheet_has_images()`'s rule one form
+along: on a schedule whose items are in nobody's library the picker renders
+**byte-for-byte** what it rendered before B2 — no column, no header, no cell.
+That is what keeps `/po/create`'s pinned golden still, and why **no print
+golden and no page golden moved for B2 at all**.
+
+⚠ **The library decides what may be attached, never the POST.**
+`lineimage.apply_choice()` refuses an id that is not the minted shape, has no
+file on disk, or is in neither **this item's** library nor already on the
+stored line — so a crafted payload cannot hang an arbitrary stored picture on
+a line. Every save path goes through it: `boqpick.picked_lines(with_image=)`,
+`po_draft.parse_items()`, `purchase.from_draft()` and the Pictures pages.
+
+**The judgement calls — the agent's, not Manas's:**
+
+- **The extra-parts repeater keeps its hidden `extra_image` and its Pictures
+  page**, unchanged from 21 October. An extra part's item key is
+  `desc:<its description>` and that description is **typed in the same row,
+  live**: a server-rendered select would offer the pictures of whatever the
+  description said when the page loaded, and go on offering them after it
+  changed. The row's picture is still set where it always was.
+- **A header row is offered nothing**, as it carries no picture (DOMAIN.md
+  §2.2) and the hidden box keeps the positional lists aligned.
+- **Removing a picture from a line keeps the library row.** The row is the
+  **item's** picture, not that line's; §7 gap 76 (nothing counts references)
+  is unchanged and the file is still never deleted.
+- **A blank name is allowed.** The picture is still a picture; it prints
+  without a caption, which is byte-for-byte what a pre-B2 line prints.
+
+Held by [tests/test_line_image_library.py](tests/test_line_image_library.py)
+(40) and the escaping sweep.
 
 ### HSN / SAC — fill a blank code · [hsnfill.py](hsnfill.py) · `/boq/hsn` · `/proforma/hsn` · `/invoice/hsn` · `/ra/hsn`
 

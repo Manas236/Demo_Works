@@ -143,7 +143,15 @@ def test_every_reference_collection_has_a_seeder(client):
                      # pay entry is an advance or a loan nobody gave; a seeded
                      # slip is pay nobody earned; a seeded import is an upload
                      # nobody made — `attendance`'s reason, three times over.
-                     "pay_entries", "payslips", "pay_imports"}
+                     "pay_entries", "payslips", "pay_imports",
+                     # `line_image_library` (29 Oct 2026, §0 fifty-ninth
+                     # block, B2) is transactional: every row names a JPEG
+                     # somebody UPLOADED, under a name somebody TYPED, for an
+                     # item on their own schedule. A seeded row would point at
+                     # a file that is not on disk, which `library_for()` then
+                     # has to drop — a seeder whose output is discarded on
+                     # read is not a seeder. `attachments`' reason exactly.
+                     "line_image_library"}
     assert seeded | transactional == set(db.COLLECTIONS)
 
     for coll in seeded:

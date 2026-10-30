@@ -82,6 +82,10 @@ COLLECTIONS = ("products", "quotations", "proformas", "invoices", "purchases", "
                "pay_entries", "payslips", "pay_imports",
                "boq_imports", "wo_imports", "import_layouts",
                "doc_imports", "doc_import_layouts",
+               # One named picture offered for one item (29 Oct 2026, §0
+               # fifty-ninth block, B2). Metadata only — the JPEG is on
+               # disk under attachment.root(), as it has been since 21 Oct.
+               "line_image_library",
                "addresses", "gst_cache", "settings", "users", "roles")
 
 # Seed flags (_seeded / _addr_seeded) are deliberately NOT persisted. Both

@@ -1569,9 +1569,15 @@ def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
             "total":     round(rate * qty, 2),
             "depth":     0,
             # The make typed in the picker (26 Oct 2026). A BOQ line has no
-            # make of its own to prefill from, so it opens blank; absent when
-            # left blank.
+            # make FIELD of its own, so it opens at whatever the import remark
+            # says and nothing otherwise (29 Oct 2026, §0 fifty-ninth block,
+            # A3); absent when left blank.
             **({"make": row["make"]} if row.get("make") else {}),
+            # The picture chosen from the item's library (29 Oct 2026, §0
+            # fifty-ninth block, B2), with its NAME. `picked_lines()` has
+            # already validated the choice against this item's own library;
+            # `carry()` writes no key at all on a line without one.
+            **LI.carry(row),
         })
 
     if not any(not r["is_header"] for r in items):
@@ -1992,7 +1998,12 @@ MAKE_FORM_STYLES = """
   .xl-head, .xl-row {
     grid-template-columns:1fr 110px 100px 80px 80px 110px 70px 110px 34px;
   }
-  .dl-head, .dl-row { grid-template-columns:74px 1fr 110px 70px 96px 112px; }
+  /* ⚠ 7 tracks from 29 Oct 2026 (§0 fifty-ninth block, B2): the item's
+     picture, chosen from its library. A hidden box draws no cell, so a row
+     that offers nothing still fills six — which is why the track is sized to
+     collapse (`minmax(0,auto)`) rather than reserved. */
+  .dl-head, .dl-row { grid-template-columns:74px 1fr 110px minmax(0,auto) 70px 96px 112px; }
+  .dl-row select[name="dl_image"] { max-width:140px; }
   .dl-row input[name="dl_make"] { text-align:left; }
   @media (max-width:640px){
     .line-row, .line-head { grid-template-columns:1fr 70px 110px; }
@@ -3105,7 +3116,7 @@ def from_boq(boq_id: str):
     f = request.form
     data = _form_values(f, is_post)
     error = ""
-    chosen = qty_of = rate_of = make_of = None
+    chosen = qty_of = rate_of = make_of = image_of = None
 
     if is_post:
         vendor_fields, error = _vendor_from(f)
@@ -3116,7 +3127,7 @@ def from_boq(boq_id: str):
 
         picked, line_err = ([], "") if error else BP.picked_lines(
             f.get("po_json") or "", boq, with_pcs=False, with_rate=True,
-            with_make=True, max_lines=BQ.MAX_LINES,
+            with_make=True, with_image=True, max_lines=BQ.MAX_LINES,
             empty_msg=("No lines are ticked. A purchase order with nothing on "
                        "it is not a document — tick at least one line, or cancel."),
             cap_msg="Raise more than one order.")
@@ -3158,7 +3169,8 @@ def from_boq(boq_id: str):
                                     type="success"))
 
         # Hand the operator back exactly what they ticked and typed.
-        chosen, qty_of, rate_of, make_of = _replay_picked(f.get("po_json") or "")
+        (chosen, qty_of, rate_of, make_of,
+         image_of) = _replay_picked(f.get("po_json") or "")
 
     extra_section, charge_section = _upstream_repeaters(f, is_post)
 
@@ -3193,7 +3205,10 @@ def from_boq(boq_id: str):
         rate_label="Rate (&#8377;)",
         rate_aria="Rate",
         with_make=True,
-        make_of=make_of)
+        make_of=make_of,
+        # The item's picture, from the library (29 Oct 2026, §0 fifty-ninth
+        # block, B2) — a select over `lineimage`'s own store, never a file box.
+        with_image=True, image_of=image_of)
 
     back_html = (f'<a href="{url_for("boq.view_boq", id=boq_id)}" '
                  f'class="btn btn-ghost">&#8592; {boq_ref}</a>')
@@ -3231,12 +3246,14 @@ def _upstream_repeaters(f, is_post: bool) -> tuple:
 
 def _replay_picked(raw: str) -> tuple:
     """
-    `(chosen, qty_of, rate_of, make_of)` off a rejected POST, so nothing typed
-    is lost.
+    `(chosen, qty_of, rate_of, make_of, image_of)` off a rejected POST, so
+    nothing typed is lost.
 
     `po_draft.create_po()`'s arrangement, with the rate column added — and the
-    make (26 October 2026). A form that throws the operator's ticks away on a
-    validation failure is worse than no validation on a 97-line schedule.
+    make (26 October 2026) and the picture chosen from the item's library
+    (29 October 2026, §0 fifty-ninth block, B2). A form that throws the
+    operator's ticks away on a validation failure is worse than no validation
+    on a 97-line schedule.
     """
     import json
     try:
@@ -3248,6 +3265,8 @@ def _replay_picked(raw: str) -> tuple:
             {BQ._line_id(r.get("line_id")): r.get("qty") for r in rows},
             {BQ._line_id(r.get("line_id")): r.get("rate") for r in rows},
             {BQ._line_id(r.get("line_id")): str(r.get("make") or "")[:BP.MAKE_MAX]
+             for r in rows},
+            {BQ._line_id(r.get("line_id")): str(r.get("image") or "")
              for r in rows})
 
 
@@ -3304,13 +3323,15 @@ def from_draft(draft_id: str):
                         delivery_to=draft.get("delivery_to") or "",
                         notes=draft.get("notes") or "")
     error = ""
-    posted_qty, posted_rate, posted_make = {}, {}, {}
+    posted_qty, posted_rate, posted_make, posted_image = {}, {}, {}, {}
 
     if is_post:
         posted_qty = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_qty")))
         posted_rate = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_rate")))
         # The make (26 Oct 2026), opened at the draft line's own and editable.
         posted_make = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_make")))
+        # The picture chosen from the item's library (29 Oct 2026, B2).
+        posted_image = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_image")))
 
         vendor_fields, error = _vendor_from(f)
         if not data["date"]:
@@ -3366,11 +3387,19 @@ def from_draft(draft_id: str):
                     # The draft line's picture, when it has one (21 Oct 2026):
                     # the supplier priced the part in the picture, so the
                     # order placed on them shows the same one. No key at all
-                    # on a line without one.
+                    # on a line without one. ⚠ **Its NAME travels with it**
+                    # (29 Oct 2026, §0 fifty-ninth block, B2) — the new
+                    # document is its own snapshot and prints the name it was
+                    # raised with. A different picture chosen on this form is
+                    # applied just below, validated against the draft's line.
                     **LI.carry(row),
                     # The make, the same way (26 Oct 2026).
                     **({"make": make} if make else {}),
                 })
+                if lid in posted_image:
+                    # ⚠ Validated against the DRAFT's row, so the only
+                    #   pictures this form can attach are that item's own.
+                    LI.apply_choice(items[-1], posted_image[lid], row)
             if not error and not any(not r["is_header"] for r in items):
                 error = "This product inquiry has no lines to order."
 
@@ -3429,12 +3458,27 @@ def from_draft(draft_id: str):
         make_v = posted_make.get(raw_lid)
         if make_v is None:
             make_v = str(row.get("make") or "")
+        # ⚠ **The item's picture, from the library** (29 October 2026, §0
+        #   fifty-ninth block, B2). A select over `lineimage`'s own store —
+        #   never a file box, for the measured reason in `select_html()`. It
+        #   opens at the DRAFT line's own picture, which is what the supplier
+        #   priced; `""` when the item has nothing to offer and the line
+        #   carries nothing, so an order off a draft with no pictures renders
+        #   byte-for-byte what it did.
+        probe = dict(row)
+        if raw_lid in posted_image:
+            LI.apply_choice(probe, posted_image[raw_lid], row)
+        img_sel = LI.select_html(probe, "dl_image", "Picture",
+                                 style="max-width:140px;font-size:.78rem;")
+        img_cell = img_sel or ('<input type="hidden" name="dl_image" '
+                               f'value="{P.esc(LI.image_of(row))}"/>')
         lines_html += f"""
         <div class="dl-row">
           <span class="dl-no">{P.esc(row.get("item_no") or "")}</span>
           <span class="dl-desc">{P.esc(" ".join(str(row.get("description") or "").split())[:180])}</span>
           <input type="text" name="dl_make" value="{P.esc(make_v)}"
                  maxlength="{BP.MAKE_MAX}" placeholder="Make" aria-label="Make"/>
+          {img_cell}
           <span class="dl-unit">{P.esc(row.get("unit") or "")}</span>
           <input type="hidden" name="dl_line_id" value="{lid}"/>
           <input type="text" inputmode="decimal" name="dl_qty" value="{P.esc(qty_v)}"

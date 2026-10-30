@@ -72,6 +72,7 @@ import uuid
 
 import photo
 import pipeline as P
+from datetime import datetime
 from store import STORE
 
 
@@ -89,6 +90,10 @@ QUALITY = 82
 # A re-encoded 360 px JPEG is far below this. A file on disk past it is not one
 # `save()` wrote, and is never inlined into a page.
 MAX_STORED_BYTES = 256 * 1024
+
+def _now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
 
 ID_RE = re.compile(r"^[0-9a-f]{64}$")
 JPEG_MAGIC = b"\xff\xd8\xff"
@@ -201,6 +206,252 @@ def src_of(image_id) -> str:
 
 
 # =============================================================================
+# THE LIBRARY — a NAME and an ITEM, over the ids this module already stores
+# =============================================================================
+#
+# 29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, B2, from the
+# 28 October meeting with Yogesh Bankar:
+#
+#     pictures addable from the create form, optional; each picture has a
+#     NAME, printed under it; pictures kept in a library keyed to the item —
+#     the spec id where there is one, otherwise the normalised description —
+#     so the next document for the same item offers that picture preselected.
+#
+# **No second store.** The bytes are still one content-addressed JPEG under
+# `attachment.root() / SUBDIR`, named by its own sha256, exactly as above. A
+# library row is a **name and an item key over one of those ids**, in its own
+# collection — CLIENT_CHANGES.md §1.3's rule: one item accumulates several
+# pictures over a project's life, so it is not a list on anything.
+#
+# ⚠ **THE NAME IS ALSO SNAPSHOTTED ONTO THE LINE, and that is deliberate.**
+#   A printed document reads its own rows and nothing else (§1.2), so the
+#   name under the picture on a sent purchase order must not move when
+#   somebody renames the library entry next month. The line carries
+#   `image_name` beside `image`; the library is what the *form* offers, never
+#   what the *sheet* reads. `name_on()` is the one writer of the pair and
+#   `cell()` the one reader.
+#
+# ⚠ **The item key is EXACT, never fuzzy** — `po_parts.py`'s lesson (ABOUT.md
+#   §2h) for the third time. A spec clause's code matched exactly gives
+#   `spec:<id>`; everything else falls back to `desc:<normalised
+#   description>`, which is `pipeline.norm_name()` — casefolded and
+#   whitespace-collapsed and nothing else. Two lines that read the same offer
+#   each other's pictures; two that do not, do not.
+
+COLLECTION = "line_image_library"
+
+NAME_MAX = 60     # the Make column's cap, which is the same kind of label
+NAME_KEY = "image_name"
+
+
+def _rows() -> dict:
+    return STORE.setdefault(COLLECTION, {})
+
+
+def item_key_of(line) -> str:
+    """
+    What this line is, for the purpose of offering it a picture.
+
+    `spec:<spec id>` when the line's `part_no` is EXACTLY a specification
+    clause's code — the same match `library_image_for()` makes, and codes are
+    unique (`spec._validate()`). Otherwise `desc:<normalised description>`.
+    `""` for a line with neither, which is offered nothing.
+    """
+    line = line or {}
+    code = str(line.get("part_no") or "").strip()
+    if code:
+        for sid, s in (STORE.get("specs") or {}).items():
+            if str(s.get("code") or "").strip() == code:
+                return f"spec:{sid}"
+    desc = P.norm_name(line.get("description") or line.get("name") or "")
+    return f"desc:{desc}" if desc else ""
+
+
+def register(image_id: str, name: str, item_key: str, who: str = "") -> str:
+    """
+    Put one picture in the library under a name, and return its row id.
+
+    **Idempotent on (item key, image id).** Uploading the same picture twice
+    for the same item renames the row it already has rather than growing a
+    second one — the ids are content-addressed, so "the same picture" is a
+    fact and not a guess.
+    """
+    iid = valid_id(image_id)
+    key = str(item_key or "").strip()
+    # ⚠ **A row must point at a file that is actually there.** `library_for()`
+    #   drops one that does not, so storing it would be a row whose only
+    #   effect is to be discarded on every read — and a row that outlives the
+    #   file it names is how an id with nothing behind it gets offered.
+    if not (iid and key and exists(iid)):
+        return ""
+    label = " ".join(str(name or "").split())[:NAME_MAX]
+    rows = _rows()
+    for rid, r in rows.items():
+        if r.get("image") == iid and r.get("item_key") == key:
+            if label:
+                r["name"] = label
+            r["at"] = _now()
+            r["seq"] = _next_seq(rows)
+            return rid
+    rid = uuid.uuid4().hex
+    rows[rid] = {"id": rid, "image": iid, "item_key": key, "name": label,
+                 "at": _now(), "seq": _next_seq(rows),
+                 "by": str(who or "").strip() or "unknown"}
+    return rid
+
+
+def _next_seq(rows: dict) -> int:
+    """
+    A monotonic sequence over the library, for ORDERING.
+
+    ⚠ **`at` is to the minute and cannot order two rows written in the same
+      one** — which is every row a test writes, and every row an operator
+      writes while they have the Pictures page open. "Newest first" has to be
+      a fact and not a coincidence of dict order.
+    """
+    return 1 + max((int(r.get("seq") or 0) for r in rows.values()), default=0)
+
+
+def library_for(line) -> list:
+    """
+    `[(image_id, name)]` for this line's item, newest first — what a form
+    offers. A row whose file is missing offers nothing, which is
+    `library_image_for()`'s own rule.
+    """
+    key = item_key_of(line)
+    if not key:
+        return []
+    out = []
+    for r in sorted(_rows().values(),
+                    key=lambda r: (int(r.get("seq") or 0), str(r.get("at") or "")),
+                    reverse=True):
+        if r.get("item_key") != key:
+            continue
+        iid = valid_id(r.get("image"))
+        if iid and exists(iid) and iid not in {i for i, _n in out}:
+            out.append((iid, str(r.get("name") or "")))
+    return out
+
+
+def grid_has_offers(lines) -> bool:
+    """
+    Does the library hold anything for ANY of these lines, or does any of them
+    already carry a picture?  **Decides whether a picker draws the column at
+    all** — `sheet_has_images()`'s own rule one form along: *the column
+    appears only when a picture does.*
+
+    ⚠ **This is what keeps `/po/create`'s pinned golden still.** On a
+    schedule whose items are in nobody's library the picker renders
+    byte-for-byte what it rendered before B2 — no column, no header, no cell.
+    The operator adds the first picture for an item on the document's own
+    Pictures page, which is what the §0 block says.
+    """
+    for li in lines or []:
+        if li.get("is_header"):
+            continue
+        if image_of(li) or library_for(li):
+            return True
+    return False
+
+
+def library_name_of(line, image_id) -> str:
+    """The library's name for this picture on this item, or ""."""
+    iid = valid_id(image_id)
+    for i, n in library_for(line):
+        if i == iid:
+            return n
+    return ""
+
+
+def preselected(line):
+    """
+    `(image_id, name)` a form should open at, or `("", "")`.
+
+    **The line's own picture first**, because somebody chose it; otherwise the
+    item's most recent library entry, which is the *"offers that picture
+    preselected"* half of B2.
+    """
+    own = image_of(line)
+    if own:
+        return own, name_of(line) or library_name_of(line, own)
+    offers = library_for(line)
+    return offers[0] if offers else ("", "")
+
+
+def select_html(line, field: str, aria: str = "Picture",
+                style: str = "", el_id: str = "") -> str:
+    """
+    One `<select>` of the library for this line's item — the control a create
+    form carries.
+
+    ⚠ **A SELECT AND NOT A FILE BOX, and the reason is measured rather than
+      stylistic.** The §0 forty-ninth block recorded it: nginx refuses a
+      request over 8 MB with its OWN 413 page (DEPLOY.md) and a phone photo
+      is 3–5 MB, so a form carrying several file boxes fails on the second
+      picture with nothing of ours on screen — and a browser cannot refill a
+      file box, so every refused save would empty them all. A select carries
+      no bytes at all. **New pictures are uploaded on the document's own
+      Pictures page**, which is what registers one into the library.
+
+    `""` when the item has nothing to offer AND the line carries nothing, so
+    a document whose items are not in the library renders byte-for-byte what
+    it did.
+    """
+    offers = library_for(line)
+    own = image_of(line)
+    if not offers and not own:
+        return ""
+    sel, _n = preselected(line)
+    opts = ['<option value="">&mdash; no picture &mdash;</option>']
+    seen = set()
+    for iid, name in offers:
+        seen.add(iid)
+        mark = " selected" if iid == sel else ""
+        label = name or f"picture {iid[:8]}"
+        opts.append(f'<option value="{iid}"{mark}>{P.esc(label)}</option>')
+    if own and own not in seen:
+        # A picture set on this line that is not in the library — one uploaded
+        # before B2, or on another item. Offered so an edit does not drop it.
+        label = name_of(line) or f"this line's picture ({own[:8]})"
+        opts.append(f'<option value="{own}" selected>{P.esc(label)}</option>')
+    st = f' style="{style}"' if style else ""
+    # `el_id` is for a grid whose payload builder reads the control by id
+    # rather than posting the form field (`boqpick.js()`); the `name` is kept
+    # either way, so a form that DOES post works unchanged.
+    eid = f' id="{P.esc(el_id)}"' if el_id else ""
+    return (f'<select name="{P.esc(field)}"{eid} aria-label="{P.esc(aria)}"{st}>'
+            + "".join(opts) + "</select>")
+
+
+def apply_choice(line: dict, posted, allowed_line: dict = None) -> bool:
+    """
+    Put the posted library choice on `line`, with its NAME snapshotted.
+    Returns True when something changed.
+
+    `""` removes the picture. An id that is not the minted shape, has no file,
+    or is neither on the line already nor in `allowed_line`'s library is
+    **ignored** — a crafted POST cannot attach an arbitrary file.
+    """
+    allowed_line = allowed_line if allowed_line is not None else line
+    iid = valid_id(str(posted or "").strip())
+    was = image_of(line), name_of(line)
+    if not iid:
+        if str(posted or "").strip() == "" and image_of(line):
+            clear_image(line)
+            line.pop(NAME_KEY, None)
+            return True
+        return False
+    if not exists(iid):
+        return False
+    ok = {i for i, _n in library_for(allowed_line)} | {image_of(allowed_line)}
+    if iid not in ok:
+        return False
+    set_image(line, iid)
+    name_on(line, library_name_of(allowed_line, iid))
+    return (image_of(line), name_of(line)) != was
+
+
+# =============================================================================
 # THE LINE
 # =============================================================================
 
@@ -220,15 +471,36 @@ def clear_image(line: dict) -> None:
     line.pop(KEY, None)
 
 
+def name_of(line) -> str:
+    """The picture's NAME as this line snapshotted it, or "". §1.2's rule."""
+    return " ".join(str((line or {}).get(NAME_KEY) or "").split())[:NAME_MAX]
+
+
+def name_on(line: dict, name: str) -> None:
+    """Snapshot the name beside the id. Absent when blank — no empty key."""
+    label = " ".join(str(name or "").split())[:NAME_MAX]
+    if label:
+        line[NAME_KEY] = label
+    else:
+        line.pop(NAME_KEY, None)
+
+
 def carry(src: dict) -> dict:
     """
-    `{"image": id}` when `src` carries a picture, otherwise `{}` — for a
-    route that builds a new line out of an upstream one (a draft PO's row
-    becoming a purchase order's) and must keep the picture without writing an
-    empty key onto every line that never had one.
+    `{"image": id}` — and `image_name` with it — when `src` carries a picture,
+    otherwise `{}`: for a route that builds a new line out of an upstream one
+    (a draft PO's row becoming a purchase order's) and must keep the picture
+    without writing an empty key onto every line that never had one.
+
+    ⚠ **The NAME travels with the id** (29 October 2026, §0 fifty-ninth block,
+      B2), because the new document is its own snapshot and must print the
+      name it was raised with — not whatever the library says next month.
     """
     iid = image_of(src)
-    return {KEY: iid} if iid else {}
+    if not iid:
+        return {}
+    name = name_of(src)
+    return {KEY: iid, **({NAME_KEY: name} if name else {})}
 
 
 def library_image_for(code) -> str:
@@ -297,6 +569,12 @@ SHEET_CSS = """<style>
   .quotation-doc .c-img     { width:20mm; text-align:center; vertical-align:middle; padding:1mm; }
   .quotation-doc .c-img img { display:block; margin:0 auto; max-width:18mm; max-height:18mm;
                               width:auto; height:auto; object-fit:contain; }
+  /* The picture's NAME, under it (29 Oct 2026, §0 fifty-ninth block, B2).
+     Emitted only on a line that HAS a name, so a document raised before B2
+     prints the cell it always printed. */
+  .quotation-doc .c-img-n { font-size:5.4pt; line-height:1.15; text-align:center;
+                            margin-top:.5mm; overflow-wrap:anywhere;
+                            color:var(--doc-soft, #475569); }
   @media screen and (max-width:760px) {
     .quotation-doc .c-img img { max-width:56px; max-height:56px; }
   }
@@ -319,10 +597,24 @@ def with_column(columns) -> tuple:
 
 
 def cell(line) -> str:
-    """One Image cell. A line with no picture gets an empty cell, not a gap."""
+    """
+    One Image cell. A line with no picture gets an empty cell, not a gap.
+
+    ⚠ **The NAME prints under the picture** (29 October 2026, §0 fifty-ninth
+      block, B2) — read from the LINE's own `image_name`, never from the
+      library, because a printed document reads its own rows (§1.2). A line
+      with a picture and no name prints exactly what it printed before, which
+      is what keeps every document raised before B2 still.
+    """
     src = src_of(image_of(line))
-    img = f'<img src="{src}" alt=""/>' if src else ""
-    return f'<td class="c-img">{img}</td>'
+    if not src:
+        return f'<td class="c-img">{EMPTY_INNER}</td>'
+    name = name_of(line)
+    cap = f'<div class="c-img-n">{P.esc(name)}</div>' if name else ""
+    return f'<td class="c-img"><img src="{src}" alt="{P.esc(name)}"/>{cap}</td>'
+
+
+EMPTY_INNER = ""
 
 
 EMPTY_CELL = '<td class="c-img"></td>'
@@ -355,6 +647,11 @@ PAGE_CSS = """<style>
   .pic-acts form { display:flex; gap:.4rem; align-items:center; margin:0; }
   .pic-acts input[type=file] { max-width:220px; font-size:.78rem; }
   .pic-src { font-size:.72rem; color:var(--muted); margin-top:.25rem; }
+  /* The picture's NAME (29 Oct 2026, §0 fifty-ninth block, B2). */
+  .pic-nm { font-size:.68rem; color:var(--muted); text-align:center;
+            margin-top:.2rem; overflow-wrap:anywhere; }
+  .pic-name { max-width:11rem; font-size:.78rem; }
+  .pic-acts select { max-width:13rem; font-size:.78rem; }
   .pic-lib { margin:0 0 1rem; }
   @media (max-width:620px) {
     .pic-table thead { display:none; }
@@ -384,7 +681,9 @@ def rows_html(entries: list, action: str, editable: bool) -> str:
         iid = image_of(line)
         src = src_of(iid)
         if src:
-            thumb = f'<img src="{src}" alt=""/>'
+            nm = name_of(line)
+            thumb = (f'<img src="{src}" alt="{P.esc(nm)}"/>'
+                     + (f'<div class="pic-nm">{P.esc(nm)}</div>' if nm else ""))
         elif iid:
             thumb = '<span class="pic-none">file missing &mdash; upload again</span>'
         else:
@@ -396,12 +695,29 @@ def rows_html(entries: list, action: str, editable: bool) -> str:
             fp = fingerprint(e["description"])
             hidden = (f'<input type="hidden" name="line" value="{P.esc(e["key"])}"/>'
                       f'<input type="hidden" name="fp" value="{fp}"/>')
+            # ⚠ **The NAME box rides with the upload** (29 October 2026, §0
+            #   fifty-ninth block, B2). One request still carries one file, so
+            #   the 8 MB limit is nowhere near — it carries one short string
+            #   as well. A blank name is allowed: the picture is still a
+            #   picture, it just prints without a caption.
             acts = (f'<form method="POST" action="{action}" enctype="multipart/form-data">'
                     f'{hidden}<input type="hidden" name="action" value="upload"/>'
+                    f'<input type="text" name="picture_name" maxlength="{NAME_MAX}" '
+                    f'placeholder="Name (optional)" class="pic-name" '
+                    f'aria-label="Name for line {P.esc(e["sno"])}\'s picture"/>'
                     f'<input type="file" name="picture" accept="{ACCEPT}" required '
                     f'aria-label="Picture for line {P.esc(e["sno"])}"/>'
                     f'<button type="submit" class="btn btn-ghost">'
                     f'{"Replace" if iid else "Upload"}</button></form>')
+            # And the library for this item, where it has anything to offer —
+            # the same control the create forms carry, so a picture uploaded
+            # once is reusable on the next document for the same item.
+            offers = library_for(line)
+            if offers or iid:
+                acts += (f'<form method="POST" action="{action}">'
+                         f'{hidden}<input type="hidden" name="action" value="choose"/>'
+                         f'{select_html(line, "picture_id", "Picture from the library")}'
+                         f'<button type="submit" class="btn btn-ghost">Use</button></form>')
             if iid:
                 acts += (f'<form method="POST" action="{action}">'
                          f'{hidden}<input type="hidden" name="action" value="remove"/>'
@@ -424,7 +740,7 @@ def rows_html(entries: list, action: str, editable: bool) -> str:
     </table>"""
 
 
-def apply_post(form, files, entries: list) -> tuple:
+def apply_post(form, files, entries: list, who: str = "") -> tuple:
     """
     `(message, error)` for one Pictures POST. Exactly one of the two is "".
 
@@ -446,11 +762,30 @@ def apply_post(form, files, entries: list) -> tuple:
         if not image_of(e["line"]):
             return "", f"{label.capitalize()} has no picture to remove."
         clear_image(e["line"])
+        # The NAME goes with the picture; the LIBRARY row stays, because it
+        # is the item's picture and not this line's.
+        e["line"].pop(NAME_KEY, None)
         return f"Picture removed from {label}.", ""
     if action == "upload":
         image_id, error = save(files.get("picture") if files else None)
         if error:
             return "", error
+        # ⚠ **Registered in the library AND snapshotted onto the line**
+        #   (29 October 2026, §0 fifty-ninth block, B2). The library is what
+        #   the next document for this item offers; the snapshot is what this
+        #   document prints (§1.2).
+        name = str((form.get("picture_name") if form else "") or "")
+        register(image_id, name, item_key_of(e["line"]), who)
         set_image(e["line"], image_id)
+        name_on(e["line"], name)
         return f"Picture saved on {label}.", ""
+    if action == "choose":
+        posted = str(form.get("picture_id") or "")
+        if not apply_choice(e["line"], posted, e["line"]):
+            return "", ("That picture is not in this item's library. Nothing "
+                        "was changed." if posted.strip()
+                        else f"{label.capitalize()} has no picture to remove.")
+        if image_of(e["line"]):
+            return f"Picture set on {label}.", ""
+        return f"Picture removed from {label}.", ""
     return "", "Nothing was changed."

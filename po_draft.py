@@ -388,9 +388,16 @@ def parse_items(form, po: dict) -> tuple:
             row["make"] = make
         if hsn and not header:
             row["hsn"] = hsn
-        iid = LI.valid_id(_at(images, i))
-        if iid and not header and LI.exists(iid):
-            row[LI.KEY] = iid
+        # ⚠ **The library decides what is allowed, not the POST**
+        #   (29 October 2026, §0 fifty-ninth block, B2). `apply_choice()`
+        #   refuses an id that is not the minted shape, has no file on disk,
+        #   or is in neither this item's library nor already on the stored
+        #   line — so a crafted payload cannot attach an arbitrary stored
+        #   picture. The NAME is snapshotted with it (§1.2).
+        if not header:
+            stored_row = next((r for r in (po.get("items") or [])
+                               if BQ._line_id(r.get("line_id")) == lid), None)
+            LI.apply_choice(row, _at(images, i), stored_row or row)
         out.append(row)
 
     if not any(not r["is_header"] for r in out):
@@ -492,7 +499,8 @@ def picked_lines(raw: str, boq: dict) -> tuple:
     it is typed on the form and blank is normal.
     """
     return BP.picked_lines(
-        raw, boq, with_pcs=True, with_make=True, max_lines=MAX_PO_LINES,
+        raw, boq, with_pcs=True, with_make=True, with_image=True,
+        max_lines=MAX_PO_LINES,
         empty_msg=("No lines are ticked. A purchase order with nothing on it "
                    "is not a document — tick at least one line, or cancel."),
         cap_msg="Raise more than one order.")
@@ -728,9 +736,19 @@ def _item_row_html(row: dict = None, n: int = 0) -> str:
     else:
         qty_txt = BQ._fmt_qty(float(qty))
     cls = "ed-row is-head" if header else "ed-row"
+    # ⚠ **The picture is a SELECT over the item's library where there is one,
+    #   and a hidden box otherwise** (29 October 2026, §0 fifty-ninth block,
+    #   B2). `select_html()` returns "" when the item has nothing to offer and
+    #   the line carries nothing, which is when the hidden box keeps the
+    #   positional lists the same length. Either way the field is `it_image`
+    #   and `parse_items()` reads one thing.
+    pic = "" if header else LI.select_html(
+        row, "it_image", "Picture", style="max-width:150px;font-size:.8rem;")
+    if not pic:
+        pic = f'<input type="hidden" name="it_image" value="{P.esc(LI.image_of(row))}"/>'
     hidden = (f'<input type="hidden" name="it_line_id" value="{P.esc(row.get("line_id") or "")}"/>'
               f'<input type="hidden" name="it_kind" value="{"header" if header else "item"}"/>'
-              f'<input type="hidden" name="it_image" value="{P.esc(LI.image_of(row))}"/>')
+              f'{pic}')
     if header:
         # A specification row carries the clause and nothing else — DOMAIN.md
         # §2.2, the same shape `boqpick.picked_lines()` writes. The four boxes
@@ -868,7 +886,11 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             with_pcs=True,
             pcs_of=data.get("_pcs"),
             with_make=True,
-            make_of=data.get("_make"))
+            make_of=data.get("_make"),
+            # The item's picture, from the library (29 Oct 2026, §0
+            # fifty-ninth block, B2). A select, never a file box.
+            with_image=True,
+            image_of=data.get("_image"))
 
     # ── The FULL line editor on EDIT (29 October 2026, §0 fifty-ninth block,
     #    A2). It replaced a *Make, per line* section that was the only
@@ -1237,6 +1259,9 @@ def create_po(imported: dict = None):
         # And the typed Make (26 Oct 2026), for the same reason.
         data["_make"] = {BQ._line_id(r.get("line_id")): str(r.get("make") or "")[:BP.MAKE_MAX]
                          for r in posted if isinstance(r, dict)}
+        # And the chosen picture (29 Oct 2026, B2), for the same reason.
+        data["_image"] = {BQ._line_id(r.get("line_id")): str(r.get("image") or "")
+                          for r in posted if isinstance(r, dict)}
         return _entry_form(boq, data, error)
 
     # Carry the typed Pcs across. It is not on the BOQ and never will be.
