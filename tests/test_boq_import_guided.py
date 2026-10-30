@@ -45,6 +45,12 @@ import boqimport               # noqa: E402
 import sheetimport as SI       # noqa: E402
 from store import STORE        # noqa: E402
 
+import units as _UNITS_MOD   # the shared unit list (29 Oct 2026, §0 59th B3)
+# Stubbed with the REAL list, so the editor under Node offers exactly
+# what production offers rather than a list invented here.
+_UNIT_JSON = json.dumps(_UNITS_MOD.payload())
+
+
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node not installed")
 
@@ -761,6 +767,8 @@ def test_python_and_js_agree_on_what_meets_a_need():
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = (js.replace("BOQ_BOOT", json.dumps({"sections": sections, "lines": []}))
             .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
+    # The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3).
+    js = js.replace("BOQ_UNITS", _UNIT_JSON)
     stub = ("var STUB = {}; ['bulk-spec','bulk-section','line-editor','sec-editor','boq_json']"
             ".forEach(function(k){ STUB[k] = {value:'', innerHTML:''}; });\n"
             "var document = { getElementById: function(id) { return STUB[id] || null; } };\n")
@@ -813,6 +821,8 @@ def _node(boot: dict, script: str, guide=None):
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = (js.replace("BOQ_BOOT", json.dumps(boot))
             .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
+    # The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3).
+    js = js.replace("BOQ_UNITS", _UNIT_JSON)
     pre = _DOM + ("var BOQ_GUIDE = " + json.dumps(guide) + ";\n" if guide else "")
     out = subprocess.run([NODE], input=pre + js + "\n" + script, capture_output=True,
                          text=True, timeout=30, encoding="utf8")

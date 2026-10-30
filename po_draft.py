@@ -89,6 +89,7 @@ import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import settings as SET
+import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import picker_options, format_address_lines
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
@@ -779,8 +780,7 @@ def _item_row_html(row: dict = None, n: int = 0) -> str:
                        maxlength="{BP.MAKE_MAX}" placeholder="Make" aria-label="Make"/></td>
             <td><input type="text" name="it_hsn" value="{P.esc(row.get("hsn") or "")}"
                        maxlength="{HF.HSN_MAX}" placeholder="HSN" aria-label="HSN"/></td>
-            <td><input type="text" name="it_unit" value="{P.esc(row.get("unit") or "")}"
-                       maxlength="{UNIT_MAX}" placeholder="Nos" aria-label="Unit"/></td>
+            <td>{UN.select_html("it_unit", row.get("unit") or "", blank="Unit")}</td>
             <td><input type="text" name="it_qty" value="{P.esc(qty_txt)}"
                        aria-label="Quantity" style="text-align:right;"/></td>
             <td><input type="text" name="it_pcs" value="{P.esc(row.get("pcs") or "")}"

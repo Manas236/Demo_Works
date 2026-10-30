@@ -43,6 +43,12 @@ import sheetimport as SI
 import workorder as W
 from store import STORE
 
+import units as _UNITS_MOD   # the shared unit list (29 Oct 2026, §0 59th B3)
+# Stubbed with the REAL list, so the editor under Node offers exactly
+# what production offers rather than a list invented here.
+_UNIT_JSON = json.dumps(_UNITS_MOD.payload())
+
+
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node not installed")
 
@@ -470,6 +476,8 @@ def test_the_hint_never_asks_for_an_escalation_that_was_not_typed():
                               supply_escalation_pct="15", supply_rate="120", _open=True))
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = js.replace("BOQ_BOOT", json.dumps(boot)).replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}")
+    # The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3).
+    js = js.replace("BOQ_UNITS", _UNIT_JSON)
     script = ("var S = {}; var _g = document.getElementById;"
               "document.getElementById = function (id) { return STUB[id] || S[id] || (S[id] = new Elem(id)); };"
               "MODEL.sections[0]._open = true; renderLines(); hint(0); hint(1);"
@@ -618,6 +626,8 @@ def test_the_editor_prices_a_line_exactly_as_the_server_does():
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = js.replace("BOQ_BOOT", json.dumps({"sections": [], "lines": []}))
     js = js.replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}")
+    # The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3).
+    js = js.replace("BOQ_UNITS", _UNIT_JSON)
     stub = ("var STUB = {}; ['bulk-spec','bulk-section','line-editor','sec-editor','boq_json']"
             ".forEach(function(k){ STUB[k] = {value:'', innerHTML:''}; });\n"
             "var document = { getElementById: function(id) { return STUB[id] || null; } };\n")
@@ -639,6 +649,8 @@ def test_the_editor_writes_the_net_rate_and_amount_under_the_discount():
                               _open=True))
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = js.replace("BOQ_BOOT", json.dumps(boot)).replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}")
+    # The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3).
+    js = js.replace("BOQ_UNITS", _UNIT_JSON)
     script = ("var S = {}; document.getElementById = function (id) { return STUB[id] || S[id] || (S[id] = new Elem(id)); };"
               "MODEL.sections[0]._open = true; renderLines(); netHint(0);"
               "var t = sectionTotals('A');"

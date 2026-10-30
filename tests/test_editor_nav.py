@@ -21,6 +21,12 @@ import tempfile
 
 import pytest
 
+import units as _UNITS_MOD   # the shared unit list (29 Oct 2026, §0 59th B3)
+# Stubbed with the REAL list, so the editor under Node offers exactly
+# what production offers rather than a list invented here.
+_UNIT_JSON = json.dumps(_UNITS_MOD.payload())
+
+
 pytestmark = pytest.mark.skipif(shutil.which("node") is None,
                                 reason="node not installed")
 
@@ -129,6 +135,8 @@ def _session(script: str, boot=None):
         "sections": [{"code": "A", "title": "Sprinklers", "areas": ["L0"]}],
         "lines": []}))
     js = js.replace("BOQ_ADDR", "{}")
+    # The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3).
+    js = js.replace("BOQ_UNITS", _UNIT_JSON)
 
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
                                      encoding="utf8") as fh:

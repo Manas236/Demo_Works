@@ -45,6 +45,12 @@ import ra
 import sheetimport as SI
 from store import STORE
 
+import units as _UNITS_MOD   # the shared unit list (29 Oct 2026, §0 59th B3)
+# Stubbed with the REAL list, so the editor under Node offers exactly
+# what production offers rather than a list invented here.
+_UNIT_JSON = json.dumps(_UNITS_MOD.payload())
+
+
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node not installed")
 
@@ -722,7 +728,9 @@ def test_no_unit_rate_is_no_net_rate():
 def _js(boot=None):
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     return (js.replace("BOQ_BOOT", json.dumps(boot or {"sections": [], "lines": []}))
-              .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
+              .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}")
+            # The shared unit list (29 Oct 2026, §0 59th B3).
+            .replace("BOQ_UNITS", _UNIT_JSON))
 
 
 _STUB = ("var STUB = {}; ['bulk-spec','bulk-section','line-editor','sec-editor','boq_json',"

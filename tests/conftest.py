@@ -276,6 +276,12 @@ def _fresh_store():
     # column on a picker that is pinned byte-for-byte. `attachments`' reason
     # exactly, one collection along.
     STORE.setdefault("line_image_library", {}).clear()
+    # The custom unit list (29 Oct 2026, §0 fifty-ninth block, B3). ⚠ It lives
+    # in `STORE["settings"]` under its own key, so clearing the collection
+    # would take the company identity with it — this pops the one record. A
+    # custom unit left behind would appear in the next test's dropdown on
+    # every line-item form, and `/settings/` is pinned byte-for-byte.
+    (STORE.get("settings") or {}).pop("unit_list", None)
     # GSTIN auto-fill (29 Sep 2026). A cached lookup planted by one test would
     # fill the next test's form with no CAPTCHA and gate its save on a status
     # it never asked about. The RAM-only portal sessions and the per-user rate

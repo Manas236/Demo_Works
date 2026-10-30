@@ -695,8 +695,19 @@ PAGES = {
     #       ("6fb1e35f5488db36", 82052,
     #        {"head": "ce8721ccb87d2120", "shell": "75cda0afbae27209",
     #         "chrome": "d107029c10eb2dec", "main": "56df0925a4c75aa4"})
-    ("settings",        "/settings/"):                 ("f8f0d0cb199640ad", 85018,
-        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "96a34b1da10ef362"}),   # §0 59th B1: moved=['chrome', 'main'], +7 bytes
+    # ⚠ **RE-BASELINED AGAIN 29 October 2026 — `main` ONLY, +1,523 bytes** —
+    #   the **Units of Measure** section (CLIENT_CHANGES.md §0 **fifty-ninth**
+    #   block, B3): the seven built-in units named in the hint, the custom-unit
+    #   textarea and its `name|UQC` explanation. `head`, `shell` and `chrome`
+    #   are byte-identical, so no stylesheet and no shell byte moved — the
+    #   section is markup and nothing else. **It is the only page this item
+    #   moves**: every other form that gained the dropdown is unpinned.
+    #   The value before B3:
+    #       ("settings", "/settings/"): ("f8f0d0cb199640ad", 85018,
+    #        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "932b769fd94b56af", "main": "96a34b1da10ef362"})
+    ("settings",        "/settings/"):                 ("510db93db42692db", 86541,
+        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "dcd932dfd8ac277d"}),   # §0 59th B3: moved=['main'], +1523 bytes
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

@@ -36,6 +36,12 @@ import boqimport               # noqa: E402
 import sheetimport as SI       # noqa: E402
 from store import STORE        # noqa: E402
 
+import units as _UNITS_MOD   # the shared unit list (29 Oct 2026, §0 59th B3)
+# Stubbed with the REAL list, so the editor under Node offers exactly
+# what production offers rather than a list invented here.
+_UNIT_JSON = json.dumps(_UNITS_MOD.payload())
+
+
 REPO = __import__("pathlib").Path(__file__).resolve().parent.parent
 
 HEAD = ["Sr. No.", "Description", "Qty", "Unit", "Supply Rate", "Supply Amount"]
@@ -1105,7 +1111,9 @@ def _node(boot: dict, script: str):
     STDIN — no temporary file is written."""
     js = boq._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = (js.replace("BOQ_BOOT", json.dumps(boot))
-            .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
+            .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}")
+            # The shared unit list (29 Oct 2026, §0 59th B3).
+            .replace("BOQ_UNITS", _UNIT_JSON))
     stub = ("var STUB = {}; ['bulk-spec','bulk-section','line-editor','sec-editor',"
             "'boq_json','import-block','dup-warn','zeroqty-hint','jump-bar']"
             ".forEach(function(k){ STUB[k] = {value:'', innerHTML:''}; });\n"

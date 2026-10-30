@@ -1021,6 +1021,28 @@ FORBIDDEN = [
                                     "owns it, which is what stops the rule "
                                     "learning which document it is on"),
 
+    # ── units.py — the unit list and its GST UQC is a LEAF (29 Oct 2026) ────
+    # CLIENT_CHANGES.md §0, fifty-ninth block, B3. `series.py`'s constraint
+    # exactly, one list along: **`boq.py` may not import `settings.py`** and
+    # the BOQ's own line editor is the most important form the dropdown has to
+    # reach. So the RULE lives here, reading `STORE["settings"]` directly,
+    # and `settings.py` owns only the page that edits the record.
+    ("units", "settings",  "any", "the arrow that forced the leaf to exist — "
+                                  "boq.py may not import settings.py, so a "
+                                  "leaf boq.py imports may not either"),
+    ("units", "boq",       "any", "the leaf answers what a unit IS; it knows "
+                                  "nothing about a schedule"),
+    ("units", "branding",  "any", "the nav's amber dot means a document will "
+                                  "print a chip; a unit list is not a "
+                                  "statutory identity field"),
+    ("units", "chrome",    "any", "it renders one control, never a page"),
+    ("units", "flask",     "any", "it owns no route"),
+    *[("units", mod, "any", "it is imported BY this form module; the leaf "
+                            "answers what a unit is and nothing about the "
+                            "document the unit is on")
+      for mod in ("spec", "purchase", "po_draft", "workorder", "quotation",
+                  "product", "measurement", "challan")],
+
     # ── pnl_chart.py — the P&L's two pictures (28 October 2026) ─────────────
     # CLIENT_CHANGES.md §0, fifty-eighth block, item 5. A LEAF: it imports
     # `branding` (the validated palette), `pipeline` (esc) and `quotation`
@@ -1465,6 +1487,18 @@ REQUIRED = [
     # same predicate rather than writing a second one, which is the whole
     # point of the leaf. `purchase.py` is on the list because `1fdc09e`'s
     # `hsn_editable()` now delegates to it.
+    # 29 Oct 2026 — the five form modules that offer the shared unit list
+    # (§0 fifty-ninth block, B3). ⚠ `boq.py` is on the list and is the reason
+    # the leaf exists: it may not import `settings.py`.
+    *[(mod, "units", "the shared unit dropdown — one list, so two forms "
+                     "cannot offer different units for the same line")
+      for mod in ("boq", "spec", "purchase", "po_draft", "workorder",
+                  "settings")],
+    ("units", "store", "STORE['settings'] for the custom list — read DIRECTLY, "
+                       "which is the whole reason it can be a leaf"),
+    ("units", "pipeline", "esc and norm_name: the label match is "
+                          "casefold-and-collapse and nothing wider"),
+
     *[(mod, "hsnfill", "the fill-blanks-only predicate, the printed dash and "
                        "the screen-only missing-code note — one rule, read by "
                        "the form and by the refusal")
@@ -1602,6 +1636,24 @@ def test_lineimage_is_a_leaf():
     assert "spec" not in imports_of("lineimage")
     assert "PIL" not in imports_of("lineimage", top_level_only=True)
     assert "flask" not in imports_of("lineimage")
+
+
+def test_units_is_a_leaf():
+    """
+    The unit list and its GST UQC (29 October 2026), held as a WHITELIST.
+
+    It reaches `pipeline` (`esc`, `norm_name`) and `store` and **nothing else
+    of ours**, at any level. ⚠ **`settings` is the forbidden arrow and the
+    reason the leaf exists**: `boq.py` may not import `settings.py`, and the
+    BOQ's line editor is the most important form the dropdown has to reach.
+    `series.py`'s constraint, one list along.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"units"}
+    assert imports_of("units", top_level_only=True) & ours == {"pipeline", "store"}
+    assert imports_of("units") & ours == {"pipeline", "store"}
+    assert "flask" not in imports_of("units")
+    assert "settings" not in imports_of("units")
+    assert "branding" not in imports_of("units")
 
 
 def test_hsnfill_is_a_leaf():

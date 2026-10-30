@@ -45,6 +45,7 @@ from datetime import date as _date
 from flask import Blueprint, request, redirect, url_for
 
 import branding as B
+import units as UN   # the unit list's RULE — the leaf (29 Oct 2026)
 import photo            # the upload's validation, shared (26 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOORS (25 Sep 2026)
@@ -936,6 +937,69 @@ def _validate_measurement_columns(raw: str) -> tuple:
     return out, ""
 
 
+# =============================================================================
+# THE UNIT LIST — the client's own words, and the GST code behind each
+# =============================================================================
+#
+# 29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, B3. ⚠ **The
+# RULE lives in the leaf `units.py`, not here** — `boq.py` may not import this
+# module (`tests/test_import_directions.py` refuses the arrow) and the BOQ's
+# line editor is the most important form the dropdown has to reach. This file
+# owns the FORM: the box, the validator and the refusal. `series.py`'s
+# arrangement exactly, one list along.
+#
+# The wire format is one unit per line, `label|UQC`. A line with no `|` takes
+# `OTH`, which is what the client said a unit the portal does not know is.
+
+def unit_list_text(rows: list = None) -> str:
+    """The custom units as the textarea shows them, `label|UQC`."""
+    return "\n".join(f"{label}|{uqc}"
+                      for label, uqc in (rows if rows is not None else UN.custom()))
+
+
+def _validate_unit_list(raw: str) -> tuple:
+    """
+    `(rows, error)` — parsed, de-duplicated by label, order preserved.
+
+    ⚠ **A blank box means NO CUSTOM UNITS, and that is the normal state** —
+      the opposite of `_validate_charge_heads()`' and
+      `_validate_measurement_columns()`' rule, where a blank box restores the
+      seeded list. The difference is deliberate: there, an empty list would
+      leave a form with no options at all; here, the seven built-in units are
+      always offered whatever this box says, so an empty box is a complete and
+      likely answer rather than a cleared field.
+
+    ⚠ **A label that is already one of the seven is REFUSED**, naming it.
+      Letting "Mtrs|NOS" through would file metres as numbers on a return.
+      `units.pairs()` refuses it a second time, so the rule holds even against
+      a row written straight into MySQL.
+    """
+    rows, seen = [], set()
+    builtin = {P.norm_name(l) for l, _u in UN.DEFAULTS}
+    for n, line in enumerate(str(raw or "").split("\n"), start=1):
+        line = line.strip()
+        if not line:
+            continue
+        label, _sep, uqc = line.partition("|")
+        label = " ".join(label.split())[:UN.LABEL_MAX]
+        uqc = uqc.strip().upper()[:UN.UQC_MAX]
+        if not label:
+            return [], f"Line {n}: every unit needs a name."
+        key = P.norm_name(label)
+        if key in builtin:
+            return [], (f"Line {n}: {label!r} is already a built-in unit and is "
+                        f"always offered. Remove the line.")
+        if key in seen:
+            return [], f"Line {n}: the unit {label!r} is listed twice."
+        if uqc and not uqc.isalpha():
+            return [], (f"Line {n}: the UQC for {label!r} must be letters "
+                        f"&mdash; it is the GST portal's code, like "
+                        f"{UN.UQC_OTHER}.")
+        seen.add(key)
+        rows.append((label, uqc or UN.UQC_OTHER))
+    return rows, ""
+
+
 def _validate_charge_heads(raw: str) -> tuple:
     """Returns (heads_list, error)"""
     if not raw.strip():
@@ -1167,10 +1231,11 @@ def edit_settings():
         ch_data, ch_error = _validate_charge_heads(request.form.get("charge_heads", ""))
         mc_data, mc_error = _validate_measurement_columns(
             request.form.get("measurement_columns", ""))
+        un_data, un_error = _validate_unit_list(request.form.get("unit_list", ""))
         lb_data, lb_error = _validate_labour(request.form)
         sf_data, sf_error = _validate_series_floors(request.form)
         error = (error or po_error or dc_error or wo_error or ch_error
-                 or lb_error or mc_error or sf_error)
+                 or lb_error or mc_error or sf_error or un_error)
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
@@ -1179,6 +1244,7 @@ def edit_settings():
             save_series_floors(sf_data)
             save_charge_heads(ch_data)
             save_measurement_columns(mc_data)
+            UN.save_custom(un_data)
             save_labour_settings(lb_data["ot_multiplier"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
@@ -1198,6 +1264,12 @@ def edit_settings():
         ch_values = "\n".join(ch_data)
         mc_values = (measurement_columns_text(mc_data) if mc_data
                      else request.form.get("measurement_columns", ""))
+        # What the operator typed, kept in the box — verbatim, always.
+        # ⚠ **Not `unit_list_text(un_data)`**: a blank box is a complete
+        #   answer here (`_validate_unit_list()`), so `un_data` is legitimately
+        #   `[]` and re-rendering from it would empty the box on a refusal
+        #   caused by some OTHER field. `address._validate()`'s contract.
+        un_values = request.form.get("unit_list", "")
         lb_values = lb_data
         # What the operator typed, kept in the boxes — address._validate()'s
         # contract. `series_floor_rows()` is re-read either way, because the
@@ -1211,6 +1283,7 @@ def edit_settings():
         wo_values = dict(wo_series(), default_terms=wo_default_terms())
         ch_values = "\n".join(charge_heads())
         mc_values = measurement_columns_text()
+        un_values = unit_list_text()
         lb_values = labour_settings()
         sf_values = {s.key: (str(f) if f else "")
                      for s, _sc, f, _mx, _nx in series_floor_rows()}
@@ -1511,6 +1584,33 @@ def edit_settings():
             <label for="measurement_columns">Columns (key|label|group|unit)</label>
             <textarea id="measurement_columns" name="measurement_columns"
                       rows="13">{P.esc(mc_values)}</textarea>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Units of Measure</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            Every line-item form offers these in a dropdown, with
+            <b>{P.esc(UN.DEFAULT_LABEL)}</b> first:
+            <b>{P.esc(" &middot; ".join(UN.labels()))}</b>.
+            The first seven are built in and always offered; add your own below,
+            one per line as <code>name|UQC</code>. The <b>UQC</b> is the GST
+            portal's three-letter code &mdash; <code>NOS</code>,
+            <code>MTR</code>, <code>KGS</code>, <code>SET</code>,
+            <code>SQF</code>, <code>SQM</code> &mdash; and anything the portal
+            does not know is <code>{P.esc(UN.UQC_OTHER)}</code>, which is what
+            <b>Lot</b> and every custom unit are filed as. Leave the code off
+            and it is <code>{P.esc(UN.UQC_OTHER)}</code>.
+            <br/>
+            <b>A unit already on a document is never rewritten.</b> A line that
+            says <code>Lump Sum</code> goes on saying it, and the dropdown
+            keeps it as an option on that line. An <b>empty box is the normal
+            answer</b> &mdash; the seven are offered either way.
+          </p>
+          <div class="form-group">
+            <label for="unit_list">Your own units (name|UQC)</label>
+            <textarea id="unit_list" name="unit_list" rows="5"
+                      placeholder="Running Mtr|MTR">{P.esc(un_values)}</textarea>
           </div>
         </div>
 

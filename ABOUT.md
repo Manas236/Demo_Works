@@ -452,6 +452,7 @@ Consequences you must respect when editing:
 | [dcbill.py](dcbill.py) | 106 | **"Is this delivery challan billed, and by which RA bill?" — ONE predicate, and a LEAF** (4 October 2026, CLIENT_CHANGES.md §0 fortieth block, ruling C). A challan is billed when a **non-cancelled** RA bill lists it in `source_dc_ids`; `billed_by()` answers for one, `billing_index()` is the same walk for a register. **Derived, never stored** — cancelling or deleting the bill frees the challan with no write to it. Imports `store` and **nothing else** (a whitelist test). ⚠ It exists because `ra.py` (the picker on `/ra/create` and the POST refusal) and `challan.py` (the *Billed in* mark) both need the answer and may not import each other; the one-way STORE read from each side would have been two copies of one predicate — §7 gap 16b's failure. `bill_is_live()` tests the raw status and is held equal to `ra.is_cancelled()` over every status value, `approval.can_print()`'s arrangement. See §5 `/ra` *Raised from challans or from the measurement*. |
 | [lineimage.py](lineimage.py) | 456 | **A picture beside a document line — a LEAF** (21 October 2026, CLIENT_CHANGES.md §0 forty-ninth block). Re-encodes an upload through `photo.load()` (the profile photo's validation, shared) into a JPEG no larger than 360 px, and writes it **once** as a file under `attachment.root()/line-images/`, **named by the sha256 of its own bytes** — so an id IS its content and referencing it is as good as a copy for the snapshot rule. A line carries only `image: <id>`; `src_of()` is the one reader and inlines the file as a `data:` URI at render, refusing anything whose bytes no longer hash to its name. Owns the library default (`library_image_for()` — a clause's picture by EXACT code), the Image column (`sheet_has_images()`, `with_column()`, `cell()`, `SHEET_CSS` — drawn only on a sheet that has a picture) and the shared half of every Pictures page (`rows_html()`, `apply_post()` — one upload per request, a fingerprint per line). Imports `photo`, `pipeline` and `store` at module level; `attachment` inside `root()` and Pillow inside `save()` only. §3 *Line pictures*, §5 *Pictures*. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
+| [units.py](units.py) | 265 | **The unit of measure, and the GST UQC behind it — a LEAF** (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, B3). Seven built-in units, **`Nos` first and `DEFAULT_LABEL`** — Nos/NOS, Mtrs/MTR, Kg/KGS, Set/SET, **Lot/OTH**, Sq Ft/SQF, Sq M/SQM — plus whatever an Owner added at `/settings`, which is its own record (`unit_list`) and **never a branding override**. ⚠ **A unit is a PAIR**: a label is what the client writes on a document, a UQC is what the GST portal accepts in GSTR-1, and they are different vocabularies. `uqc_of()` matches on `pipeline.norm_name()` — casefold and collapse, **nothing wider** — and answers `OTH` for anything it does not know, which is what a custom unit is by the client's own instruction. `select_html()` / `options_html()` draw the control and **keep a value the list does not offer as a selected `— as written` option**, which is the whole of *existing free-text units stay as they are*; `payload()` hands the same list to the BOQ editor's JavaScript with the UQC riding along. ⚠ **A custom entry can never shadow one of the seven** — `pairs()` refuses it and so does `/settings`, so the rule holds against a row written straight into MySQL. **Imports `pipeline` and `store` and nothing else of ours**: `boq.py` may not import `settings.py`, which is why this is a leaf — `series.py`'s constraint, one list along. §5 `/settings`, §7 gap 96. |
 | [hsnfill.py](hsnfill.py) | 330 | **The HSN/SAC rule — a LEAF** (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A1). One predicate, `editable(is_draft, current)`: **any code while the document is a draft; from issued onward only a BLANK one may be filled.** `1fdc09e` built that rule for the purchase order's item lines and `purchase.hsn_editable()` now delegates here rather than keeping a copy — the answer for a purchase order is unchanged (`tests/test_po_hsn_edit.py`). Also owns `print_cell()` — the ONE printed HSN cell in the application, **an em-dash when blank**, which is what replaced `branding.field()`'s amber chip; `screen_note()`, the **screen-only** note naming the lines with none; `clean()` and `HSN_MAX` (8, re-exported by `purchase.py`); the shared half of every fill page (`rows_html()`, `apply_post()` — staged, so a refused value writes nothing at all, with a per-line fingerprint); and the one trail field `hsn_trail`. ⚠ **Imports `pipeline` and NOTHING else of ours, at any level** — not `branding` (that is where the chip lives) and **not `store`**: it reads no collection, so the rule cannot learn which document it is on. Eight modules import it. §3 *The HSN/SAC code*, §5 *HSN / SAC*. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -12976,6 +12977,57 @@ either is a rebrand, not a setting.
 
 ---
 
+#### Units of Measure (29 October 2026 — §0 fifty-ninth block, B3)
+
+The 28 October ask: **every line-item form gets a dropdown** — Nos (default),
+Mtrs, Kg, Set, Lot, Sq Ft, Sq M — **with custom units addable here**. Each unit
+stores a **display label and its GST UQC code**; Lot and every custom unit are
+`OTH`. **Existing free-text units stay as they are.**
+
+The box is one unit per line, `label|UQC`; a line with no `|` takes `OTH`.
+⚠ **An empty box means NO CUSTOM UNITS and is the normal answer** — the
+opposite of the charge heads' and the measurement columns' rule, where a blank
+box restores the seeded list. The difference is deliberate: there an empty list
+leaves a form with no options at all, and here the seven are offered whatever
+this box says. A label that is already one of the seven is **refused, naming
+it**, because letting `Mtrs|NOS` through would file metres as numbers.
+
+⚠ **The RULE lives in the leaf `units.py`, not in `settings.py`** — `boq.py`
+may not import this module and the BOQ's own line editor is the most important
+form the dropdown has to reach. `series.py`'s arrangement exactly.
+
+**Where the dropdown is**, and where it deliberately is not:
+
+| form | field |
+|---|---|
+| `/boq/create` (and `?revise=`) | the line editor's **Unit**, and *Unit for all N sizes*, built in the browser from `units.payload()` |
+| `/spec/add`, `/spec/edit` | each variant's unit — it was already a `<select>`, over this module's own `UNITS`; it is the shared list now |
+| `/purchase/create`, `/purchase/edit`, `/purchase/from-boq`, `/purchase/from-draft` | each **extra part**'s unit |
+| `/po/edit` | each line's unit, in A2's full editor |
+| `/wo/create`, `/wo/edit` | each work-order line's unit |
+
+⚠ **`quotation.py` and `product.py` are FROZEN (INTRODUCTION.md §7) and were
+NOT edited, so their unit fields do not get the dropdown.** A sixth narrow
+unfreeze needs its own §0 block naming the function, and a units dropdown is
+not a security fix. The catalogue is hidden from everybody anyway
+(`auth.HIDDEN_BLUEPRINTS`). `tests/test_units.py` asserts the absence of the
+import from both files, so a quiet widening fails.
+
+⚠ **An item line picked off a BOQ takes the schedule's unit and has no box** —
+on `/po/create`, `/purchase/from-boq`, `/dc/create` and `/measurement/create`.
+That is the snapshot rule, not an omission: the unit a claim is measured in is
+the schedule's, and a box there would be a second answer to a question the BOQ
+has already answered. The unit is edited on the BOQ, or on the document's own
+editor where it has one.
+
+**Nothing already stored is rewritten.** The cleanup is a tool —
+`tools/clean_units.py`, idempotent, **dry run by default, and NOT RUN** (§0's
+fifty-ninth block says so). It maps `Nos.`, `nos`, `mtr`, `Mtrs.`, `Kgs.`,
+`sqft`, `Sq.Mtrs` and the rest of a hand-written table, **leaves and prints
+anything it cannot point at**, and does **not touch a document that has been
+SENT** without `--include-issued`. ⚠ `Lump Sum` and `Job` → `Lot` is the one
+judgement in that table and the dry run prints it under its own heading.
+
 ### `/login`, `/users`, `/roles` — Identity & Access · [auth.py](auth.py)
 
 Thirteen routes. The architecture is §2g; this is what each page does.
@@ -15960,6 +16012,35 @@ text is unchanged, and every reference to them was moved with them.*
     different fix (overflow wrapper, or a card layout per row) on six panels
     across four modules, and it needs its own decision. The owner works from a
     phone (§5, *The two register SCREENS*), so this is worth doing.
+
+96. 🟡 **NOTHING FILES A RETURN, so the UQC is stored and read by nothing —
+    OPEN, by design** (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth**
+    block, B3). `units.uqc_of()` answers the GST portal's code for every unit
+    and **no document prints one and no export reads one**, because this
+    application has no GSTR-1 export and is not going to grow one in a label
+    pass. The code is stored so that the day somebody builds that export it
+    does not have to guess, and so that a custom unit's answer is **recorded
+    as `OTH` by decision** rather than invented then. What is open is the
+    consequence: a wrong UQC is invisible today and will be invisible until
+    the first return is filed from this data, which is the worst moment to
+    find it. 📌 **What it would take**: the export, or — cheaper and worth
+    more — printing the UQC beside the unit on the one document a GST officer
+    reads, the tax invoice. That moves a print golden and needs the client's
+    answer about whether they want it on the face of the invoice, so it is
+    gap 15's rule and not a judgement call.
+
+97. 🟡 **A BOQ line's unit is still the ONLY unit on the BOQ chain, and the
+    dropdown did not change that — OPEN, surfaced not fixed** (29 October
+    2026, B3). A delivery challan, a measurement sheet, an RA claim, a product
+    inquiry and a purchase order raised from a schedule all **snapshot** the
+    BOQ line's unit and draw no box for it, which is correct (§1.2) and is
+    why those four forms are not in B3's table. The consequence is that a unit
+    typed wrong on a BOQ reaches every document raised from it, and the only
+    way to correct it is a **revision** — the same shape as §7 gap 93's HSN
+    problem one field along, and with the same answer available: a fill-only
+    page. It was not built here because B3 asked for a dropdown and nothing
+    else, and because a unit is not a statutory code: a wrong one is visible
+    on the face of every document that carries it.
 
 95. 🟡 **`tests/test_po_draft.py` and `tests/test_boq_to_po.py` cannot be run
     in that order — a PRE-EXISTING isolation defect, found 29 October 2026,

@@ -59,6 +59,7 @@ import branding as B
 import demo_data as DD
 import lineimage as LI   # the clause's picture — the leaf (21 Oct 2026)
 import pipeline as P
+import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -79,6 +80,13 @@ DEFAULT_GST_RATE = 18.0
 
 # Units a BOQ line is actually measured in. Shorter than the catalogue's list
 # because a schedule of work measures length, count, weight and lump sums.
+#
+# ⚠ **NO LONGER WHAT THE FORM OFFERS** (29 October 2026, CLIENT_CHANGES.md §0
+#   **fifty-ninth** block, B3): the dropdown is `units.py`'s shared list. This
+#   stays because it is the record of what the client's own sheets carry —
+#   `Nos.`, `Mtrs.`, `Kgs.`, `Lump Sum`, `Job`, `Sq.Mtrs`, `Ltrs` — and
+#   `tools/clean_units.py` reads it to know which legacy strings to offer a
+#   mapping for. Nothing here is rewritten on any record.
 UNITS = ["Nos", "Nos.", "Mtrs", "Mtrs.", "Kgs.", "Set", "Lot", "Lump Sum",
          "Sq.Mtrs", "Ltrs", "Job"]
 
@@ -615,10 +623,6 @@ def _opts(name, options, current, placeholder: str = "") -> str:
 
 def _variant_row(v: dict = None) -> str:
     v = v or {}
-    unit_opts = ""
-    for u in UNITS:
-        sel = " selected" if u == (v.get("unit") or "") else ""
-        unit_opts += f'<option{sel}>{P.esc(u)}</option>'
 
     def val(key):
         """
@@ -641,7 +645,14 @@ def _variant_row(v: dict = None) -> str:
         f'<input type="text" name="var_label" value="{val("label")}" placeholder="150mm dia ISI"/>'
         f'<input type="text" name="var_dimension" value="{val("dimension")}" placeholder="150"/>'
         f'<input type="text" name="var_dim_unit" value="{val("dim_unit")}" placeholder="mm"/>'
-        f'<select name="var_unit"><option value=""></option>{unit_opts}</select>'
+        # ⚠ **The shared unit list from 29 October 2026** (CLIENT_CHANGES.md §0
+        #   **fifty-ninth** block, B3) — `units.py`, the leaf, so this form and
+        #   the BOQ's line editor offer the same seven plus whatever an Owner
+        #   added at `/settings`. It replaced this module's own `UNITS` list,
+        #   which is kept below for `tools/clean_units.py` to read. A clause
+        #   already saying `Lump Sum` keeps it as a selected option.
+        + UN.select_html("var_unit", v.get("unit") or "", blank="")
+        + ''
         f'<input type="text" name="var_supply" value="{val("default_supply_base_rate")}" placeholder="1760"/>'
         f'<input type="text" name="var_install" value="{val("default_install_base_rate")}" placeholder="1200"/>'
         '<button type="button" class="btn-del" onclick="delVariantRow(this)">&#10007;</button>'

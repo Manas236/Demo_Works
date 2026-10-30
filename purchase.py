@@ -86,6 +86,7 @@ import cascade
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
+import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
@@ -1130,8 +1131,7 @@ def _extra_row_html(desc="", unit="", qty="", rate="", disc="", hsn="",
                  maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="text" name="extra_hsn" value="{P.esc(hsn)}"
                  maxlength="8" placeholder="HSN" inputmode="numeric"/>
-          <input type="text" name="extra_unit" value="{P.esc(unit)}"
-                 maxlength="30" placeholder="Unit"/>
+          {UN.select_html("extra_unit", unit, blank="Unit")}
           <input type="number" name="extra_qty" value="{P.esc(qty)}"
                  min="0" step="any" placeholder="Qty" oninput="recalc()"/>
           <input type="number" name="extra_rate" value="{P.esc(rate)}"

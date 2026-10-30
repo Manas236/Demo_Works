@@ -51,6 +51,12 @@ import ra
 from store import STORE
 from test_ra_record import boq_line, claim, make_bill, make_boq
 
+import units as _UNITS_MOD   # the shared unit list (29 Oct 2026, §0 59th B3)
+# Stubbed with the REAL list, so the editor under Node offers exactly
+# what production offers rather than a list invented here.
+_UNIT_JSON = json.dumps(_UNITS_MOD.payload())
+
+
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node not installed")
 
@@ -214,7 +220,9 @@ function out(x) { console.log(JSON.stringify(x)); }
 def _node(boot: dict, script: str, guide=None):
     js = BQ._BOQ_JS.replace("<script>", "").replace("</script>", "")
     js = (js.replace("BOQ_BOOT", json.dumps(boot))
-            .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}"))
+            .replace("BOQ_SPECS", "{}").replace("BOQ_ADDR", "{}")
+            # The shared unit list (29 Oct 2026, §0 59th B3).
+            .replace("BOQ_UNITS", _UNIT_JSON))
     pre = _DOM + ("var BOQ_GUIDE = " + json.dumps(guide) + ";\n" if guide else "")
     res = subprocess.run([NODE], input=pre + js + "\n" + _AFTER + "\n" + script,
                          capture_output=True, text=True, timeout=40, encoding="utf8")
@@ -882,7 +890,21 @@ def test_a_blank_imported_unit_is_a_soft_outline_outside_the_needs_count():
       out({c7: cardOf(7), n: needList().length, fn: typeof unitsBlank});
     """)
     assert "unit-soft" not in got["c7"]
-    assert re.search(r'<label>Unit</label><input type="text" value="" placeholder="unit"', got["c7"])
+    # ⚠ **REWRITTEN 29 October 2026** (CLIENT_CHANGES.md §0 **fifty-ninth**
+    # block, B3): the unit is a DROPDOWN now, over `units.py`'s shared list,
+    # so there is no placeholder to assert. **What this test is about — that a
+    # blank unit carries no outline and no entry in the needs count — is
+    # unchanged and is both other assertions.** The line it replaces,
+    # verbatim:
+    #
+    #     assert re.search(r'<label>Unit</label><input type="text" value="" placeholder="unit"', got["c7"])
+    #
+    # It is not weakened: the control is still asserted present, still
+    # asserted to carry no value, and the "as written" escape hatch is
+    # asserted ABSENT — a blank unit has nothing to keep.
+    assert '<label>Unit</label><select aria-label="Unit"' in got["c7"]
+    assert "as written" not in got["c7"]
+    assert '<option value="Nos">Nos</option>' in got["c7"]
     assert got["n"] == 0 and got["fn"] == "undefined"
 
 
@@ -895,8 +917,16 @@ def test_unit_for_all_sizes_fills_only_the_blank_ones():
       var n = applyKidUnit(4);
       out({band: band, n: n, units: MODEL.lines.map(function (L) { return L.unit; })});
     """)
+    # ⚠ **REWRITTEN 29 October 2026** (§0 **fifty-ninth** block, B3) — the
+    # band's box is a dropdown now. The assertion this test exists for is the
+    # next three lines: Apply fills only the blank ones. The line it replaces,
+    # verbatim:
+    #
+    #     assert re.search(r'<label>Unit for all <span id="kun4">2</span> sizes</label>'
+    #                      r'<input type="text" value="" placeholder="unit"', got["band"])
     assert re.search(r'<label>Unit for all <span id="kun4">2</span> sizes</label>'
-                     r'<input type="text" value="" placeholder="unit"', got["band"])
+                     r'<select aria-label="Unit for all sizes under this item"',
+                     got["band"])
     assert "Apply</button>" in got["band"]
     assert got["n"] == 1
     # C 3.a was blank and is filled; C 3.b's typed "Nos" is kept; A's children —
@@ -1015,11 +1045,25 @@ def test_an_imported_lines_blank_boxes_say_what_goes_in_them_in_words():
                                 "Installation base rate", "Installation escalation %",
                                 "Installation unit rate")] == [
         "rate", "esc %", "rate", "rate", "esc %", "rate"]
-    assert re.search(r'<label>Unit</label><input type="text" value="" placeholder="unit"', c)
+    # ⚠ **REWRITTEN 29 October 2026** (§0 **fifty-ninth** block, B3) — the
+    # unit is a dropdown and has no placeholder. The six RATE placeholders
+    # this test is about are asserted above and are untouched. The line it
+    # replaces, verbatim:
+    #
+    #     assert re.search(r'<label>Unit</label><input type="text" value="" placeholder="unit"', c)
+    assert '<label>Unit</label><select aria-label="Unit"' in c
     # The typed form keeps its examples.
     p = got["plain"]
     assert [_ph(p, a) for a in ("Supply base rate", "Supply escalation %", "Supply unit rate",
                                 "Installation unit rate")] == ["1760  or  -", "15", "2024", "1200"]
-    assert re.search(r'<label>Unit</label><input type="text" value="" placeholder="Mtrs"', p)
+    # ⚠ **REWRITTEN 29 October 2026** (§0 **fifty-ninth** block, B3). The
+    # typed form's unit is a dropdown too, and a dropdown has no example to
+    # show — the seven options ARE the examples, which is what B3 asked for.
+    # The four rate placeholders above are untouched and are what this test
+    # is about. The line it replaces, verbatim:
+    #
+    #     assert re.search(r'<label>Unit</label><input type="text" value="" placeholder="Mtrs"', p)
+    assert '<label>Unit</label><select aria-label="Unit"' in p
+    assert '<option value="Mtrs">Mtrs</option>' in p
 
 

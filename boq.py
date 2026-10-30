@@ -81,6 +81,7 @@ import demo_data as DD
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import units as _UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import INDIAN_STATES, picker_options, picker_payload
 from chrome import BASE_STYLES, _nav
 from spec import ensure_demo_specs, spec_by_code, variant_of, _valid_tax_code
@@ -208,6 +209,12 @@ MAX_JSON_BYTES = 300_000
 # workbooks actually use.
 _SECTION_CODES = ["A", "B", "C", "D", "E", "F", "G", "H"]
 
+# ⚠ **NO LONGER WHAT THE EDITOR OFFERS** (29 October 2026, CLIENT_CHANGES.md
+#   §0 **fifty-ninth** block, B3): the dropdown is `units.py`'s shared list,
+#   handed to the editor as `BOQ_UNITS`. This stays because it is the record of
+#   what the client's own sheets carry, and `tools/clean_units.py` reads it to
+#   know which legacy strings to offer a mapping for. **Nothing here is
+#   rewritten on any record.**
 _UNITS = ["Nos", "Nos.", "Mtrs", "Mtrs.", "Kgs.", "Set", "Lot", "Lump Sum",
           "Sq.Mtrs", "Ltrs", "Job"]
 
@@ -3828,6 +3835,10 @@ _BOQ_JS = """
 var MODEL = BOQ_BOOT;
 var SPECS = BOQ_SPECS;
 var ADDR_BOOK = BOQ_ADDR;
+/* The shared unit list (29 Oct 2026, §0 fifty-ninth block, B3) — `units.py`,
+   the leaf, so the dropdown here and every server-rendered form offer the
+   same seven plus whatever an Owner added at /settings. */
+var UNIT_LIST = BOQ_UNITS;
 /* The guided fix (30 September 2026) — {imported, refused}, set by the page in
    a script block of its own. Absent (a test harness, an old page) is {}. */
 var GUIDE = (typeof BOQ_GUIDE !== 'undefined' && BOQ_GUIDE) || {};
@@ -4188,6 +4199,48 @@ function fld(i, key, label, val, ph, cls, icls) {
   return '<div class="form-group ' + (cls || '') + needWrap(i, key) + '"><label>' + label + '</label>'
     + '<input type="text" value="' + esc(val) + '" placeholder="' + esc(ph || '') + '"'
     + ' oninput="setLine(' + i + ',&quot;' + key + '&quot;,this.value)"' + na + '/></div>';
+}
+
+/* ── The UNIT DROPDOWN (29 October 2026, §0 fifty-ninth block, B3) ───────
+   The seven shared units plus whatever an Owner added at /settings, handed
+   across in UNIT_LIST by `units.payload()` — one list, so this editor and
+   every server-rendered form offer the same thing.
+
+   ⚠ **A unit already on a line is KEPT as an option, marked "as written".**
+     Every unit on every existing BOQ was typed into a free-text box, and the
+     client's own sheets say `Nos.`, `Mtrs.`, `Kgs.`, `Lump Sum`, `Job`,
+     `Sq.Mtrs` and `Ltrs` — none of them one of the seven. Opening such a line
+     and saving it writes the same string back. That is B3's own rule:
+     *existing free-text units stay as they are.*
+
+   The UQC rides in UNIT_LIST and is deliberately not shown: it is the GST
+   portal's code, not the client's word, and no document prints one. */
+function unitOpts(cur) {
+  var c = normU(cur), h = '<option value=""></option>', known = false;
+  for (var i = 0; i < UNIT_LIST.length; i++) {
+    var lab = UNIT_LIST[i].label;
+    if (normU(lab) === c) { known = true; }
+    h += '<option value="' + esc(lab) + '"'
+      +  (normU(lab) === c ? ' selected' : '') + '>' + esc(lab) + '</option>';
+  }
+  if (cur && !known) {
+    h += '<option value="' + esc(cur) + '" selected>' + esc(cur)
+      +  ' \u2014 as written</option>';
+  }
+  return h;
+}
+
+function normU(s) {
+  return String(s == null ? '' : s).replace(/\\s+/g, ' ').trim().toLowerCase();
+}
+
+/* The unit field, as a dropdown. `fld()`'s wrapper, its own control. */
+function unitFld(i, label, val, cls) {
+  return '<div class="form-group ' + (cls || '') + needWrap(i, 'unit') + '">'
+    + '<label>' + label + '</label>'
+    + '<select aria-label="Unit"'
+    + ' onchange="setLine(' + i + ',&quot;unit&quot;,this.value)"'
+    + needAttr(i, 'unit') + '>' + unitOpts(val) + '</select></div>';
 }
 
 /* A rate-table cell: a bare input whose visible label is the column head above
@@ -4648,7 +4701,7 @@ function lineBody(i, L) {
   }
   /* A blank unit is a blank unit (A3): no outline. The soft amber ring an
      imported line used to get here was a mark on a blank, and is gone. */
-  h += fld(i, 'unit', 'Unit', L.unit, imp ? 'unit' : 'Mtrs', 'lc-area');
+  h += unitFld(i, 'Unit', L.unit, 'lc-area');
   if (!areas.length) {
     h += '<span class="lc-none">This section declares no areas '
       +  '&#8212; the total stands alone.</span>';
@@ -5038,10 +5091,9 @@ function kidUnitBand(i, L) {
   return '<div class="lc-kidunit">'
     +   '<div class="form-group"><label>Unit for all <span id="kun' + i + '">' + kids.length
     +     '</span> sizes</label>'
-    +     '<input type="text" value="' + esc(L._kidunit || '') + '" placeholder="' + (imp ? 'unit' : 'Mtrs') + '"'
-    +      ' aria-label="Unit for all sizes under this item"'
-    +      ' oninput="setKidUnit(' + i + ',this.value)"'
-    +      ' onkeydown="if(event.key===&quot;Enter&quot;){applyKidUnit(' + i + ');return false;}"/></div>'
+    +     '<select aria-label="Unit for all sizes under this item"'
+    +      ' onchange="setKidUnit(' + i + ',this.value)">'
+    +      unitOpts(L._kidunit || '') + '</select></div>'
     +   '<button type="button" class="jb-btn" onclick="applyKidUnit(' + i + ')">Apply</button>'
     +   '<span class="lc-kidunit-note">' + (blank
           ? 'fills the ' + blank + ' with no unit &#8212; a unit already typed is kept'
@@ -6183,7 +6235,8 @@ def create_boq(imported: dict = None):
           .replace("<script>", "<script>\n" + guide_js, 1)
           .replace("BOQ_BOOT", _json_for_script(boot))
           .replace("BOQ_SPECS", _spec_catalog_json())
-          .replace("BOQ_ADDR", _json_for_script(picker_payload())))
+          .replace("BOQ_ADDR", _json_for_script(picker_payload()))
+          .replace("BOQ_UNITS", _json_for_script(_UN.payload())))
 
     today = _date.today().isoformat()
 

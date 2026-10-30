@@ -60,6 +60,7 @@ import branding as B
 import docsheet as DS
 import importstage as IS   # the staging mechanism the BOQ importer uses (5 Oct 2026)
 import pipeline as P
+import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import settings as SET
 import sheetimport as SI
 from address import has_options, picker_options, format_address_lines
@@ -1109,7 +1110,7 @@ def _row_html(r: dict, shown=("material_rate", "labour_rate")) -> str:
             <input type="hidden" name="ln_sec" value="0"/></td>
           <td class="c-item">{_cell("ln_item", r.get("item_no", ""), need, "item_no", aria="Item number")}</td>
           <td>{_cell("ln_desc", r.get("description", ""), need, "description", textarea=True, aria="Description")}{chips}</td>
-          <td class="c-unit">{_cell("ln_unit", r.get("unit", ""), need, "unit", aria="Unit")}</td>
+          <td class="c-unit">{UN.select_html("ln_unit", r.get("unit", ""), blank="Unit", cls="wo-in")}</td>
           <td class="c-num">{_cell("ln_qty", r.get("qty", ""), need, "qty", num, aria="Quantity")}</td>{rates}
           <td><button type="button" class="wo-del" title="Delete this line" aria-label="Delete this line">&#10005;</button></td>
         </tr>"""
