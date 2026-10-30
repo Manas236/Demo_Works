@@ -21,14 +21,21 @@
 | | |
 |---|---|
 | **Production is at** | `3d4692c` — *"Bring prod-only edits from samruddhi-prod (00122b9) into repo"*, 24 October 2026 |
-| **This line is at** | `976010d` (see §1) |
-| **Commits outstanding** | **24** |
-| **§0 blocks outstanding** | fifty-third, fifty-fourth, fifty-fifth, fifty-sixth, fifty-seventh, **fifty-eighth** |
-| **Suite on this checkout** | **4,920 passed · 20 skipped · 0 failed** (CPython 3.13.17, `.venv` from `requirements.txt` + `pytest==9.1.1`, **client workbooks absent**) |
+| **This line is at** | `1eb36ca` (see §1) |
+| **Commits outstanding** | **34** |
+| **§0 blocks outstanding** | fifty-third, fifty-fourth, fifty-fifth, fifty-sixth, fifty-seventh, fifty-eighth, **fifty-ninth** |
+| **Suite on this checkout** | **5,280 passed · 26 skipped · 0 failed** (CPython 3.13.17, dependencies from `requirements.txt` + `pytest==9.1.1`, **client workbooks absent**) |
 
 ⚠ **The suite total depends on the environment** — ABOUT.md §1 owns the table.
-20 skipped here is the no-workbooks configuration. On the production box the
-total will differ and that is expected; what matters is **0 failed**.
+26 skipped here is the no-workbooks configuration (it was 20 before the §0
+fifty-ninth block; the six new skips are `tests/test_sign_stamp.py`'s
+nine-document sweep skipping the three documents that never carried the
+"Computer Generated Document" line). On the production box the total will
+differ and that is expected; what matters is **0 failed**.
+
+⚠ **The measured baseline this line started from was 4,920 / 20 at
+`83d4ef5`**, and it was re-measured on this checkout rather than quoted. The
+fifty-ninth block added **+360 passed and +6 skipped**.
 
 ---
 
@@ -60,6 +67,27 @@ total will differ and that is expected; what matters is **0 failed**.
 | 22 | `456c980` | The project P&L, one click away (§0 58th, item 4) |
 | 23 | `e793dfa` | The waterfall and the progress spider (§0 58th, item 5) |
 | 24 | `976010d` | RA · Supply & Installation in one POST; C1's prerequisite off (§0 58th, item 6) |
+| 25 | `83d4ef5` | `docs/PENDING_DEPLOY.md` — this file's first version. **Docs only** |
+| 26 | `2ffabf8` | §0 **fifty-ninth** block — the 26 October rulings rebuilt, and the 28 October leftovers. **Docs only** |
+| 27 | `17b2aba` | HSN editable everywhere, fill blanks only, one predicate (§0 59th, **A1**) |
+| 28 | `b0e4809` | The Product Inquiry is fully editable until converted (§0 59th, **A2**) |
+| 29 | `d08ed3a` | Make prefills off the BOQ import remark — §7 gap 81 closed (§0 59th, **A3**) |
+| 30 | `a22b26d` | A signed sheet stops saying it needs no signature (§0 59th, **A4**) |
+| 31 | `66759ef` | The Draft PO is displayed as **Product Inquiry** (§0 59th, **B1**) |
+| 32 | `3eded00` | Named, reusable pictures on the inquiry and the real PO (§0 59th, **B2**) |
+| 33 | `6ea528a` | A units dropdown with its GST UQC (§0 59th, **B3**) |
+| 34 | `1eb36ca` | A BOQ revision numbered off its root (§0 59th, **B4**) |
+
+⚠ **The office-PC pass four of these blocks were holding a place open for does
+NOT exist.** The fifty-fourth block left the draft PO out of the hand-typed
+number because *"`po_draft.py` is being edited by the unpushed office-PC pass
+(HSN / Draft PO editing)"*, and the fifty-fifth through fifty-eighth each
+repeated that origin's block number would stand at the merge. Manas confirmed
+on 29 October 2026 that the work was lost and never pushed. **There is nothing
+to merge, no block number moves, and ABOUT.md §7 gaps 83 and 84 keep their
+numbers** — their "this may move at a merge" notes are spent and now say so.
+`1fdc09e` (#8 above) is the one piece of that pass that did land, and A1
+generalises its predicate rather than rebuilding it.
 
 ---
 
@@ -92,9 +120,24 @@ symptom is silence**. This has shipped three times already (B6, C4/C5, C2).
 `/raboth/create`, is classified under the **existing** `ra.create`; the P&L's
 `project.pnl` already existed (8 October 2026) and only gained `dashboard.index`
 in its `PANEL_PERMISSIONS` tuple, which grants nothing new. `project.edit`
-gates the new *Attach document* control and already existed. **So the reconcile
-above is for the payroll pass and `docnum.override`, and nothing in the most
-recent block depends on it.**
+gates the new *Attach document* control and already existed.
+
+⚠ **The §0 FIFTY-NINTH block minted NONE either.** Its four new endpoints —
+`/boq/hsn/<id>`, `/proforma/hsn/<id>`, `/invoice/hsn/<id>` and
+`/ra/hsn/<id>` — are classified under the **existing** `boq.create`,
+`proforma.create`, `invoice.create` and `ra.edit`, so none of them grants
+access a reader did not already have. `docs/ACCESS_MATRIX.md` moved **203 →
+207 endpoints with 91 permissions unchanged**.
+
+⚠ **B1 renamed the five `po.*` permission DESCRIPTIONS and NOT their IDS**,
+which is the whole reason it needs no reconcile. A renamed id would have
+reached no live role — `ensure_builtin_roles()` never rewrites an existing
+role's list — and the page it guards would be unreachable by everybody, an
+Owner included, with silence as the symptom. `tests/test_product_inquiry_name.py`
+asserts each of the five ids.
+
+**So the reconcile above is for the payroll pass and `docnum.override`, and
+nothing in the two most recent blocks depends on it.**
 
 ⚠ **Granting a permission is a decision about who may do what.** The tool
 refuses to take it silently: run it **without** `--write` first, read the
@@ -109,9 +152,15 @@ and DEPLOY.md §9.4a.
 git diff 3d4692c..HEAD -- requirements.txt    # empty
 ```
 
-No dependency was added, removed or re-pinned in any of the 24 commits. **No
+No dependency was added, removed or re-pinned in any of the 34 commits. **No
 `pip install` step is needed.** `openpyxl` and `xlrd`, which the attendance
 workbook import reads, were already runtime pins from 29 September 2026.
+
+⚠ **The §0 fifty-ninth block added no dependency either.** The named-picture
+library (B2) re-uses `lineimage.py`'s existing Pillow re-encode, which is
+imported **inside `save()`** — so a box without Pillow still boots, still
+renders every picker, and says the upload is unavailable, exactly as it has
+since 21 October 2026.
 
 ---
 
@@ -120,8 +169,9 @@ workbook import reads, were already runtime pins from 29 September 2026.
 | tool | from | status |
 |---|---|---|
 | `tools/backfill_marking_projects.py` | pre-dates production | **unchanged** by these commits |
+| `tools/clean_units.py` | `6ea528a` (§0 59th, **B3**) | ⚠ **NEW, and NOT RUN.** Dry run by default |
 
-⚠ **The 24 commits ship NO new migration, and that is by design.** Every data
+⚠ **The 34 commits ship NO new migration, and that is by design.** Every data
 shape they add is written forward only and absent means something definite:
 
 - `number_override` (§0 54th) — absent means *minted by the counter*
@@ -133,9 +183,51 @@ shape they add is written forward only and absent means something definite:
 - `raised_as_both` (§0 58th item 6) — absent means *raised on its own*, and the
   set rules never touch such a record
 
+And from the **fifty-ninth** block:
+
+- `hsn_trail` (A1) — absent means *no code was ever filled by hand*
+- `hsn` on a product-inquiry line (A2) — absent means *the schedule had none*
+- `image_name` on a PI / PO / inquiry line (B2) — absent means *no caption*,
+  and such a line prints the Image cell it always printed
+- `line_image_library` (B2) — a **new collection**, empty on arrival. ⚠ Add the
+  key to nothing by hand: `db.COLLECTIONS` carries it and **the table is
+  created automatically on next start** (ABOUT.md §4)
+- `unit_list` (B3) — a `STORE["settings"]` record; **absent means no custom
+  units, which is the normal and likely state**
+- a BOQ revision's `/1` suffix (B4) — ⚠ **forward only. Every revision already
+  on the box keeps its series number**, is never rewritten, and reads
+  correctly: `pipeline.root_ref()` leaves a ref with no suffix alone
+
 **Nothing is backfilled and nothing needs to be.** If a later pass ever does
 need one, it ships as an idempotent tool with `--dry-run` and is run by a human
 after a backup, which is this repo's standing rule.
+
+### 4.1 `tools/clean_units.py` — NEW, and deliberately NOT RUN
+
+B3's own ask. The seven shared units are offered everywhere from this deploy,
+and **every unit already on a record is left exactly as it is** — a line that
+says `Lump Sum` goes on saying it and the dropdown keeps it as an option on
+that line. This tool is the separate, human-run cleanup.
+
+```bash
+sudo -u samruddhi .venv/bin/python tools/backup_db.py --label pre-unit-clean
+sudo -u samruddhi .venv/bin/python tools/clean_units.py                 # dry run
+sudo -u samruddhi .venv/bin/python tools/clean_units.py --write         # BOQs + specs
+```
+
+- [ ] ⚠ **Read the dry run before `--write`.** It prints three things that
+      matter: the rows it would change, the **judgement rows** (`Lump Sum` and
+      `Job` → `Lot`, which is the one judgement in its table), and **every
+      string it cannot point at**, which it leaves alone and names
+- [ ] ⚠ **It does NOT touch a document that has been SENT** — a proforma, a
+      tax invoice, an RA bill, a purchase order, a product inquiry, a challan
+      or a work order — without `--include-issued`. Each of those is a
+      snapshot of what was sent; changing a unit on one changes a document the
+      customer already has. **Do not pass that flag without asking the client**
+- [ ] It is idempotent: a second dry run should report every row as `exact`
+
+⚠ **It has never been run anywhere**, including on this checkout, which has no
+MySQL. The figures it would print are unknown.
 
 ⚠ **No database backup was taken before any of this work** because there is no
 MySQL on the machine it was built on and none was possible. The backup in §2 is
@@ -222,23 +314,73 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
 
 ---
 
+### 5.7 The §0 **fifty-ninth** block — HSN, the Product Inquiry, pictures, units, revision numbers
+
+- [ ] **Nothing to configure, no permission to reconcile, no migration to
+      run.** The one tool it ships (§4.1) is a separate decision
+- [ ] ⚠ **Tell the client the Draft PO is now called a PRODUCT INQUIRY** (B1).
+      It is a label change only — every `/po/` link, every bookmark, every
+      stored field and the `SF/DPO` series are untouched — but it is on the
+      printed title, so it is the change an operator notices first
+- [ ] ⚠ **Ask the client whether they want the `SF/DPO` PREFIX changed too.**
+      It is their own number on their own paper book and is an editable field
+      at `/settings`; this pass deliberately did not touch it
+- [ ] ⚠ **Tell them what a BOQ revision is numbered now** (B4):
+      `SF/BOQ/26-27/0019/1`, not the next number in the series. **Every
+      revision already on the box keeps its number** and none is renumbered.
+      The printed schedule and every document citing it show the **root**
+      (`…/0019`) with the revision on its own row; the registers and the view
+      pages show the suffix
+- [ ] ⚠ **Watch the first revision raised after the deploy.** The series
+      scan was taught to skip a revision suffix (`series.Series.segments`),
+      because the last segment of `…/0001/2` read as an ordinal pushed the
+      next **original** forward. Confirm the next new BOQ takes the number the
+      client expects
+- [ ] **The units dropdown is on from this deploy** (B3) — Nos, Mtrs, Kg, Set,
+      Lot, Sq Ft, Sq M. ⚠ **Ask the client which of their own units to add**
+      at `/settings` → *Units of Measure*, one per line as `name|UQC`. `Ltrs`,
+      `Lump Sum`, `Job` and `Sq.Mtrs` are on their existing sheets and are
+      **not** among the seven; leaving the box empty is a complete answer and
+      every existing line keeps its own wording either way
+- [ ] ⚠ **Tell whoever fills in HSN codes that there are now five places to
+      do it** (A1): `/boq/hsn/<id>`, `/proforma/hsn/<id>`, `/invoice/hsn/<id>`,
+      `/ra/hsn/<id>` and the purchase order's reprice form. **Only a BLANK code
+      can be filled once a document is issued**; a printed one is read-only and
+      a changed post is refused with nothing written. Every fill is recorded on
+      the document
+- [ ] **Pictures gained names** (B2). The first picture for an item is uploaded
+      on a document's own **Pictures** page, with a name; after that the create
+      forms for the same item offer it preselected. ⚠ **No new upload path and
+      no new limit** — one file per request, as since 21 October 2026
+
 ## 6. What a human must look at after the deploy
 
 - [ ] **`python -m pytest -q` on the server, green.** The suite no longer reads
       the checkout's `.env` (25 September 2026), so it is a usable post-deploy
       check there
-- [ ] **One document of each type printed and read by a human.** ⚠ **FOUR of
-      the 24 commits DO move printed documents** — `02f1e10` (the **Make**
-      column on the purchase order and the draft PO), `c6a385a` (no browser
-      header or footer), `ff7e956` (the SF mark 1.5× inside the letterhead
-      banner) and `c62f96a`. Each re-baselined `tests/test_print_golden.py`
-      with its own measurement, and that is exactly why a human reads one:
-      a golden proves a document did not change **by accident**, not that the
-      change was right.
+- [ ] **One document of each type printed and read by a human.** ⚠ **SEVEN of
+      the 34 commits DO move printed documents.** Each re-baselined
+      `tests/test_print_golden.py` with its own measurement, and that is
+      exactly why a human reads one: a golden proves a document did not change
+      **by accident**, not that the change was right.
+
+      | commit | what moved on paper |
+      |---|---|
+      | `02f1e10` | the **Make** column on the purchase order and the draft PO |
+      | `c6a385a` | no browser header or footer (`@page margin:0`) |
+      | `ff7e956`, `c62f96a` | the SF mark 1.5× inside the letterhead banner |
+      | `17b2aba` (**A1**) | a blank **HSN prints an em-dash**, not the amber *add HSN* chip — on the tax invoice, the proforma, the purchase order, the RA bill and the merged RA |
+      | `a22b26d` (**A4**) | **"This is a Computer Generated Document" is gone** from a sheet that carries a signature or a stamp. ⚠ **Inert until §5.1 is done** — with neither mark set every document prints byte-for-byte what it did |
+      | `66759ef` (**B1**) | the product inquiry's title is **PRODUCT INQUIRY**, its meta label is **Inquiry No.** (the number is unchanged) and it asks for *our inquiry number* on the quotation |
+
       ⚠ **The §0 fifty-eighth block moves NO print golden at all** —
-      `git diff 702a98e..HEAD -- tests/test_print_golden.py` is empty, and
-      `/projects/view` has no print route to leak the new charts onto. The
-      signature and stamp block appears only once §5.1 is done
+      `git diff 702a98e..83d4ef5 -- tests/test_print_golden.py` is empty, and
+      `/projects/view` has no print route to leak the new charts onto.
+      ⚠ **Nor do A2, A3, B2, B3 or B4.** For B2 and B4 that is measured
+      rather than lucky and each has a test saying why: the picture column is
+      drawn only where the library can offer something, and every pinned
+      record is a BOQ **original**, so the revision-suffix strip is a no-op on
+      all of them
 - [ ] `/projects/view/<id>` opened by an **Owner** — the P&L's two new charts
       draw as inline SVG with a plain-text table under each. ⚠ **They were
       checked in headless Chromium at 1280 px and 390 px and add no horizontal
@@ -248,6 +390,15 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
 - [ ] `/ra/` opened — a Supply & Installation set raised at `/raboth/create`
       reads as a header row with its two legs indented under it
 - [ ] The red persistence strip is **absent** (DEPLOY.md §11)
+- [ ] **`/po/` opened** — it is headed *Product Inquiries*, the rail says the
+      same, and the register's rows still link to `/po/view/<id>`
+- [ ] **One product inquiry edited** — every field and every line is editable;
+      **convert it, then try to edit it again** and confirm the control is
+      greyed with its reason and that a typed `/po/edit/<id>` is refused
+- [ ] **One BOQ revised** — the new record is `<root>/1` on the register and
+      the **root** on the printed sheet, with `Revision 1` on its own row
+- [ ] **`/settings` opened** — *Units of Measure* is there, under *Joint
+      Measurement Sheet — columns*
 
 ---
 
@@ -257,7 +408,16 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
   **product catalogue stays hidden** (`auth.HIDDEN_BLUEPRINTS`). Neither was
   touched. The client is to be reminded of both at go-live (DEPLOY.md §12)
 - **No `/templates`, no `/static`, no CDN and no JavaScript chart library** were
-  introduced. The two new charts are server-rendered inline SVG
+  introduced. The two new charts are server-rendered inline SVG, and the
+  fifty-ninth block's one new control is a `<select>`
+- **`tools/clean_units.py` is NOT run** by this deploy (§4.1). The units
+  dropdown works with every legacy string left exactly as it is
+- **No rate on the Product Inquiry**, although A2's brief listed one: the
+  document's rates are blank by design and the supplier fills them in. Manas's
+  decision, recorded in the §0 fifty-ninth block
+- **`quotation.py` and `product.py` were not edited** and no sixth narrow
+  unfreeze was opened. Their unit fields therefore do not get B3's dropdown;
+  the catalogue is hidden from everybody anyway
 - **No print route was added to `/projects/view`**, so nothing about the P&L or
   its charts can reach paper
 - **`docs/ACCESS_MATRIX.md` was regenerated** in the same commits that changed a
@@ -266,5 +426,8 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
 
 ---
 
-*Written 29 October 2026 on a cloud checkout with no MySQL and no access to
-production. Every step above is for a human on the server.*
+*Written 29 October 2026 and extended 30 October 2026 for the §0 **fifty-ninth**
+block, on a cloud checkout with no MySQL and no access to production. Every
+step above is for a human on the server. ⚠ **No database backup was taken
+before any of this work because none was possible**; the backup in §2 is the
+first one in this sequence and must be real.*
