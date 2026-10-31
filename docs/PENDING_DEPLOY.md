@@ -16,22 +16,22 @@
 
 ---
 
-> ### ⚠ 31 OCTOBER 2026 — A HOTFIX WENT AHEAD OF THIS LIST
+> ### ⚠ 31 OCTOBER 2026 — THIS FILE'S "PRODUCTION IS AT" IS STALE
 >
-> The PO item dropdown was empty on prod and the client hit it on a call
-> (CLIENT_CHANGES.md §0 **sixtieth** block). It was fixed on the branch
-> **`hotfix/po-item-picker`**, cut from **`c6a385a`** — so prod can take it
-> **without** the 34 commits below and their role reconcile — and that branch
-> was **merged into `antigravity-dev`**, so this list's consolidated deploy
-> still fast-forwards from wherever prod lands.
+> **Measured on the box on 31 October 2026 (read-only gate run): production
+> was NOT at `3d4692c`.** A full deploy ran on 30 October (`0341841` →
+> `cf47a81`), so every commit listed below is already on the box, and the
+> 30 October suite run there was **5,175 passed · 131 skipped · 0 failed**.
+> On top of `cf47a81` the box carries **`a121953`, committed locally and never
+> pushed** (a CSS fix for 17 register pages, in the checkout but not yet
+> served at the time of the check).
 >
-> **When the hotfix is deployed, prod is at the hotfix tip, not `3d4692c`.**
-> Read §0's "Production is at" with that in mind: the hotfix carries
-> `c35b710`, `02f1e10` and `c6a385a` (rows 1–3 below) with it, so those three
-> are then already on the box, and their steps (sign / stamp upload at
-> `/settings`) are already done or doable. Every other row, and §2's reconcile,
-> is still outstanding. The hotfix needs no migration, no requirement and no
-> reconcile.
+> The PO item dropdown hotfix (CLIENT_CHANGES.md §0 **sixtieth** block) was
+> first cut as `hotfix/po-item-picker` off `c6a385a` on the stale belief above;
+> that branch is now **unused**. It reaches prod as `antigravity-dev`
+> (`fc5f4ed` merged at `da66ae0`), merged on the box into `a121953` — a merge,
+> not a fast-forward, because of that local commit. **Until `a121953` and the
+> box's merge commit are pushed back to GitHub, the box is ahead of origin.**
 
 ## 0. Where production is, and where this line is
 
