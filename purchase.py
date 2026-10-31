@@ -739,7 +739,9 @@ def _line_total(rate: float, qty: float, disc_pct: float) -> float:
     find. `discount_pct == 0` reproduces `round(rate * qty, 2)` exactly, which
     is what every line written before A2 carries.
     """
-    return round(rate * qty * (1.0 - (disc_pct or 0.0) / 100.0), 2)
+    # ⚠ To the paisa HALF UP (31 Oct 2026, Part B) — `roundoff.paise()`, not
+    #   `round()`, which rounds the binary float half to even.
+    return RO.paise(rate * qty * (1.0 - (disc_pct or 0.0) / 100.0))
 
 
 # =============================================================================
@@ -1589,7 +1591,7 @@ def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
             "qty":       qty,
             "unit":      str(row.get("unit") or ""),
             "price":     rate,
-            "total":     round(rate * qty, 2),
+            "total":     RO.paise(rate * qty),
             "depth":     0,
             # The make typed in the picker (26 Oct 2026). A BOQ line has no
             # make FIELD of its own, so it opens at whatever the import remark
@@ -1618,7 +1620,8 @@ def _round_off_of(taxable_value: float, tax_info: dict, charges: list,
 
 
 def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
-               charges: list = None, extra_lines: list = None) -> tuple:
+               charges: list = None, extra_lines: list = None,
+               round_on: bool = True) -> tuple:
     """
     `(subtotal, taxable_value, tax_info, grand_total, total_qty)` for a set of
     PO lines, their extra free-text lines and their A3 charge lines.
@@ -1659,14 +1662,19 @@ def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
                      + extra_lines_total(extra_lines), 2)
     ch_taxable, ch_exempt = charge_totals(charges)
     taxable_value = round(subtotal + ch_taxable, 2)
-    tax_info = _tax_lines(taxable_value, tax_type,
-                          cgst_rate=cgst, sgst_rate=cgst, igst_rate=igst)
+    # ⚠ Every tax head to the paisa (31 Oct 2026, Part B): `_tax_lines()` is
+    #   the frozen quotation's and returns the raw products.
+    tax_info = RO.paise_tax(_tax_lines(taxable_value, tax_type,
+                                       cgst_rate=cgst, sgst_rate=cgst,
+                                       igst_rate=igst))
     # ⚠ **Rounded to the whole rupee, HALF UP** (31 October 2026, §0
     #   sixty-second block — the client: "₹11,419.80 must print as 11,420").
     #   `roundoff.rupee()`, never `round()`, which sends .50 to the even rupee.
     #   The difference is `_round_off_of()`, stored on the order as `round_off`.
-    grand = RO.rupee(taxable_value + float(tax_info.get("total") or 0.0)
-                     + ch_exempt)
+    #   From the same date, later: only when the order's own "Round off to
+    #   nearest rupee" tick is on (`round_on`, stored as `round_off_on`).
+    grand, _ro = RO.apply(taxable_value + float(tax_info.get("total") or 0.0)
+                          + ch_exempt, round_on)
     # Extra lines are quantities of goods, so they count toward the order's
     # total quantity for the same reason they count toward its value.
     total_qty = round(sum(float(r.get("qty") or 0.0) for r in items)
@@ -2334,9 +2342,10 @@ def create_purchase(imported: dict = None):
             # The extra free-text lines enter through the same single door, and
             # this route deliberately keeps no private copy of that sum either.
             # SGST always mirrors CGST, exactly as the quotation form forces it.
+            round_on = RO.form_choice(f, legacy=True)
             (subtotal, taxable_value, tax_info,
              grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
-                                            charges, extra_lines)
+                                            charges, extra_lines, round_on)
 
             # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth
             #   block, item A point 9.
@@ -2390,6 +2399,7 @@ def create_purchase(imported: dict = None):
                 "grand_total": grand,
                 # The rupee round-off (31 Oct 2026); its own printed row.
                 "round_off":   _round_off_of(taxable_value, tax_info, charges, grand),
+                RO.FIELD:      round_on,
                 "total_qty":  total_qty,
 
                 # ── Where and when we want it ─────────────────────────────
@@ -2692,6 +2702,7 @@ def create_purchase(imported: dict = None):
                      min="0" step="any" oninput="recalc()"/>
             </div>
           </div>
+          {RO.checkbox_html(RO.form_choice(f, legacy=True) if request.method == "POST" else True)}
         </div>
 
         <div class="form-section">
@@ -2912,6 +2923,8 @@ def _form_values(f, is_post: bool, **defaults) -> dict:
         # every other field here (27 October 2026). Blank on a GET, which is
         # what makes `_number_control()` fall back to the prefill.
         "doc_no_seq":       v("doc_no_seq"),
+        # "Round off to nearest rupee" (31 Oct 2026) — ticked by default.
+        RO.FIELD:           (RO.form_choice(f, legacy=True) if is_post else True),
     }
 
 
@@ -3031,6 +3044,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
                      value="{P.esc(data['igst_rate'])}" min="0" step="any"/>
             </div>
           </div>
+          {RO.checkbox_html(bool(data.get(RO.FIELD, True)))}
         </div>
 
         <div class="form-section">
@@ -3130,9 +3144,10 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
     # records written before the keys existed.
     charges = list(charges or [])
     extra_lines = list(extra_lines or [])
+    round_on = bool(data.get(RO.FIELD, True))
     (subtotal, taxable_value, tax_info,
      grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
-                                    charges, extra_lines)
+                                    charges, extra_lines, round_on)
 
     pid = str(uuid.uuid4())
     po = {
@@ -3163,6 +3178,7 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
         "tax_info":    tax_info,
         "grand_total": grand,
         "round_off":   _round_off_of(taxable_value, tax_info, charges, grand),
+        RO.FIELD:      round_on,
         "total_qty":   total_qty,
 
         "delivery_date":    data["delivery_date"],
@@ -3493,7 +3509,7 @@ def from_draft(draft_id: str):
                             or str(src.get("supply_hsn") or "")),
                     "qty": float(qty), "unit": str(row.get("unit") or ""),
                     "price": float(rate),
-                    "total": round(float(rate) * float(qty), 2),
+                    "total": RO.paise(float(rate) * float(qty)),
                     "depth": 0,
                     # The draft line's picture, when it has one (21 Oct 2026):
                     # the supplier priced the part in the picture, so the
@@ -3767,6 +3783,27 @@ def update_purchase(id: str):
 # on a BOQ-derived order — which is the key the whole `/purchase/from-boq`
 # arrangement turns on (see `_po_lines_from_picked`). Lines stay exactly as
 # they were ordered; only what we agreed to pay for them moves.
+
+
+def _edit_project_field(po: dict) -> str:
+    """
+    The project picker on `/purchase/edit` (31 Oct 2026, C4) — for an order
+    raised from scratch. An order raised from a BOQ follows its schedule's
+    project and is NOT filed by hand, so it gets a sentence instead of a box.
+    """
+    if po.get("boq_id"):
+        return (f'<p class="field-hint">Project: follows schedule '
+                f'{P.esc(po.get("boq_ref")) or "(no ref)"} &mdash; attach or '
+                f'detach the BOQ on its project page to move it.</p>')
+    cur = str(po.get("project_id") or "")
+    opts = '<option value="">&#8212; none &#8212;</option>'
+    for proj_id, proj in sorted((STORE.get("projects") or {}).items(),
+                                key=lambda kv: str(kv[1].get("name", "")).lower()):
+        sel = " selected" if proj_id == cur else ""
+        opts += f'<option value="{P.esc(proj_id)}"{sel}>{P.esc(proj.get("name"))}</option>'
+    return (f'<div class="form-group"><label for="project_id">Project '
+            f'<span style="font-weight:500;text-transform:none;">(optional)</span>'
+            f'</label><select id="project_id" name="project_id">{opts}</select></div>')
 
 
 def can_edit_rates(po: dict) -> tuple:
@@ -4065,18 +4102,24 @@ def _reprice(po: dict, form) -> str:
     po["extra_lines"] = extra_lines
 
     tax_info = po.get("tax_info") or {}
+    # The tick (31 Oct 2026): what the reprice form posted, else the order's
+    # own stored choice — a legacy order (no `round_off_on`) rounded, so
+    # legacy reads True, which is what `_totals_of()` did before the tick.
+    round_on = RO.form_choice(form, legacy=RO.is_on(po, True))
     (subtotal, taxable_value, new_tax,
      grand, total_qty) = _totals_of(
         po.get("line_items") or [],
         po.get("tax_type", "exempt"),
         float(tax_info.get("cgst_rate") or 0.0),
         float(tax_info.get("igst_rate") or 0.0),
-        charges, extra_lines)
+        charges, extra_lines, round_on)
     po["subtotal"]      = subtotal
     po["taxable_value"] = taxable_value
     po["tax_info"]      = new_tax
     po["grand_total"]   = grand
     po["round_off"]     = _round_off_of(taxable_value, new_tax, charges, grand)
+    if RO.FIELD in po or form.get(RO.MARK) is not None:
+        po[RO.FIELD] = round_on
     po["total_qty"]     = total_qty
     return ""
 
@@ -4163,7 +4206,27 @@ def edit_purchase_rates(id: str):
         seq_now, num_err = DN.validate(
             DN.PO, po.get("fy") or P.fy_of(po.get("date")),
             request.form.get("doc_no_seq"), default_seq, may_number)
-        error = num_err or _reprice(po, request.form)
+        _np = (request.form.get("project_id") or "").strip()
+        proj_err = ("That project no longer exists. Pick another, or none."
+                    if _np and _np not in (STORE.get("projects") or {})
+                    and not po.get("boq_id") else "")
+        error = num_err or proj_err or _reprice(po, request.form)
+        # The project, on EDIT too (31 Oct 2026, §0 sixty-third block, C4) —
+        # an order raised from scratch only; one raised from a BOQ follows its
+        # schedule and is never filed by hand. The same two fields
+        # `create_purchase()` writes, and a line on the order's own trail.
+        # ⚠ NOT through `projtag.py`: `tests/test_import_directions.py` keeps
+        #   every document module from importing it, and this is the create
+        #   form's own field on the edit form, not a hand-filing from the
+        #   project page.
+        if not error and "project_id" in request.form and not po.get("boq_id"):
+            new_pid = (request.form.get("project_id") or "").strip()
+            old_pid = str(po.get("project_id") or "").strip()
+            if new_pid != old_pid:
+                po["project_id"] = new_pid
+                po["project_name"] = _project_name_of(new_pid)
+                _log(po, (f"Filed under project {P.esc(po['project_name'])}."
+                          if new_pid else "Removed from its project."))
         if not error and seq_now != default_seq:
             ref_now = _ref_for(po.get("date"), seq_now)
             po["ref"] = ref_now
@@ -4383,6 +4446,8 @@ def edit_purchase_rates(id: str):
             <span>Order Value as it stands
               <b>&#8377; {float(po.get('grand_total') or 0.0):,.0f}</b></span>
           </div>
+          {RO.checkbox_html(RO.form_choice(request.form, legacy=RO.is_on(po, True)) if request.method == "POST" else RO.is_on(po, True))}
+          {_edit_project_field(po)}
         </div>
 
         {extra_section}

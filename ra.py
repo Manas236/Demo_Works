@@ -1375,6 +1375,12 @@ def bill_totals(claims: list, deductions: list) -> tuple:
     return subtotal, rows, total, round(subtotal - total, 2)
 
 
+def _RO():
+    """`roundoff`, the leaf (31 Oct 2026)."""
+    import roundoff
+    return roundoff
+
+
 def compute_rounding_off(unrounded_total: float) -> tuple:
     """
     (rounding_off, rounded_grand_total)
@@ -1511,7 +1517,7 @@ def tax_slabs(claims: list, tax_type: str = "cgst_sgst", cgst_rate: float = 9.0,
 
 def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgst",
                        cgst_rate: float = 9.0, sgst_rate: float = 9.0,
-                       igst_rate: float = 18.0) -> dict:
+                       igst_rate: float = 18.0, round_on: bool = True) -> dict:
     """
     claim_subtotal, deductions, net_payable, tax, rounding_off and grand_total.
 
@@ -1578,7 +1584,12 @@ def compute_tax_totals(claims: list, deductions: list, tax_type: str = "cgst_sgs
     tax_amount = round(cgst_amount + sgst_amount + igst_amount, 2)
 
     raw_total = net_payable + tax_amount
-    rounding_off, grand_total = compute_rounding_off(raw_total)
+    if round_on:
+        rounding_off, grand_total = compute_rounding_off(raw_total)
+    else:
+        # The bill's "Round off to nearest rupee" tick is OFF (31 Oct 2026):
+        # the exact two-decimal figure, and a round-off of 0.
+        rounding_off, grand_total = 0.0, _RO().paise(raw_total)
 
     # The document-level rates keep their existing meaning: what the tax line on
     # the sheet is labelled with. On a single-slab bill that is the slab, so a
@@ -1658,7 +1669,8 @@ def build_claim(boq_line: dict, qty, rate, prev_qty: float,
         "prev_qty":      float(prev_qty or 0.0),
         "qty":           q,
         "rate":          r,
-        "amount":        round(q * r, 2),
+        # To the paisa HALF UP when computed (31 Oct 2026, Part B).
+        "amount":        _RO().paise(q * r),
         "balance_qty":   round(approved_qty - float(prev_qty or 0.0) - q, 6),
         "rate_varies":   rate_varies(r, approved_rate),
     }
@@ -2778,6 +2790,28 @@ def can_cancel(bill: dict) -> tuple:
     return True, ""
 
 
+def set_merge_of(bill: dict):
+    """
+    The LIVE merged tax invoice of the Supply + Installation SET this bill is
+    a leg of, or `None` (31 Oct 2026, Part D).
+
+    A set is three documents raised by one action at `/raboth/create` and
+    stamped with one `RAISED_AS_BOTH` id. ⚠ **A leg of a set is never
+    cancelled alone**: `/ra/cancel/<leg>` sends the operator to the merged
+    document's own cancel, which withdraws all three with one reason — and a
+    POST to cancel the leg alone is refused there by `can_cancel()` (the live
+    merge holds it), so there is no path that cancels one leg of a pair.
+    A merge ASSEMBLED by hand carries no set id and is not this.
+    """
+    sid = set_of(bill)
+    if not sid:
+        return None
+    held = _live_merge_holding(str((bill or {}).get("id") or ""))
+    if held is not None and set_of(held) == sid:
+        return held
+    return None
+
+
 def can_receipt(bill: dict) -> tuple:
     """
     (allowed, reason) — may money be recorded against this bill?
@@ -3554,7 +3588,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
                 notes_val: str, submit_label: str, frozen_note: str = "",
                 source_html: str = "", hidden_html: str = "",
                 tail_html: str = "", top_html: str = "",
-                cap_html: str = "") -> str:
+                cap_html: str = "", round_on: bool = True) -> str:
     """
     The claim grid, shared by create and edit — one form, two entry points.
 
@@ -3631,6 +3665,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
     <div class="form-section">
       <div class="form-group"><label for="notes">Notes</label>
         <textarea id="notes" name="notes" rows="2">{_esc(notes_val)}</textarea></div>
+      {_RO().checkbox_html(round_on, "On the bill's grand total, which is the tax invoice's.")}
     </div>
     <button type="submit" class="btn">{submit_label}</button>
   </form>
@@ -3690,7 +3725,7 @@ def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
                notes_val: str = "", tax_invoice_ref: str = "",
                po_ref: str = "", po_date: str = "", tax_type: str = "cgst_sgst",
                cgst_rate: float = 9.0, sgst_rate: float = 9.0,
-               igst_rate: float = 18.0) -> dict:
+               igst_rate: float = 18.0, round_on: bool = True) -> dict:
     """
     **THE ONE PLACE AN RA BILL RECORD IS BUILT.** Returns the dict; writes
     nothing.
@@ -3725,7 +3760,7 @@ def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
     boq_id = str(boq.get("id") or "")
     tax_info = compute_tax_totals(claims, [], tax_type=tax_type,
                                   cgst_rate=cgst_rate, sgst_rate=sgst_rate,
-                                  igst_rate=igst_rate)
+                                  igst_rate=igst_rate, round_on=round_on)
 
     # THE SNAPSHOT. What earlier bills of this project still owe is
     # frozen onto this bill HERE, at the moment it is created, and is
@@ -3811,6 +3846,8 @@ def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
         "tax_slabs": tax_info["tax_slabs"],
         "rounding_off": tax_info["rounding_off"],
         "grand_total": tax_info["grand_total"],
+        # The bill's "Round off to nearest rupee" tick (31 Oct 2026).
+        "round_off_on": bool(round_on),
         # The carried balance, frozen above. It is a MEMO on this
         # document and nothing more: it is deliberately absent from
         # `claim_subtotal`, from every tax figure, from `net_payable`
@@ -4224,6 +4261,19 @@ def cancel_ra(id: str):
         return redirect(url_for("ra.list_ras",
                                 msg="That RA bill no longer exists.", type="error"))
 
+    # ⚠ A LEG OF A SUPPLY + INSTALLATION SET IS CANCELLED WITH ITS SET, never
+    #   alone (31 Oct 2026, Part D): both legs and the merged tax invoice, one
+    #   required reason, on the merged document's own cancel page. Nothing
+    #   is written here, on either verb — a POST is sent there too.
+    held = set_merge_of(bill)
+    if held is not None:
+        return redirect(url_for(
+            "merged_ra.cancel_merged", id=held.get("id"), type="error",
+            msg=(f"RA{int(bill.get('ra_no') or 0)} was raised as one Supply "
+                 f"& Installation bill with {held.get('tax_invoice_ref')}, so "
+                 f"it is cancelled with it: both bills and the tax invoice, "
+                 f"together. One leg cannot be cancelled alone.")))
+
     allowed, why = can_cancel(bill)
     if not allowed:
         return redirect(url_for("ra.view_ra", id=id, msg=why, type="error"))
@@ -4530,7 +4580,8 @@ def create_ra(imported: dict = None):
                 rid, boq, leg, claims, date_val, notes_val,
                 tax_invoice_ref=tax_invoice_ref, po_ref=po_ref,
                 po_date=po_date, tax_type=tax_type, cgst_rate=cgst_rate,
-                sgst_rate=sgst_rate, igst_rate=igst_rate)
+                sgst_rate=sgst_rate, igst_rate=igst_rate,
+                round_on=_RO().form_choice(request.form, legacy=True))
             # 4 Oct 2026 — WHERE THE BILL WAS RAISED FROM, written ONCE, here,
             # and never by `edit_ra()`. Only on a bill raised from challans or
             # from the measurement: a manual bill carries NEITHER key, and
@@ -4563,6 +4614,16 @@ def create_ra(imported: dict = None):
     # `tests/test_doc_import.py` holds the two equal.
     top_html = (f'<a href="{url_for("docimport.upload_ra", boq=boq_id, leg=leg)}" '
                 f'class="btn btn-ghost">&#128229; Import from Excel</a>')
+    # ⚠ The one-click "Supply + Installation together" toggle (31 Oct 2026,
+    #   Part D). `/raboth/create` carries `ra.create`, this route's own
+    #   permission (`auth.ROUTE_PERMISSIONS`), so it is drawn unconditionally
+    #   like the import button. It is a LINK, not a mode of this form: both
+    #   legs and one merged tax invoice are raised by `raboth.py`, whose
+    #   validate-both-then-write order this form cannot reproduce.
+    #   `url_for` takes a STRING endpoint, so no import arrow is drawn.
+    top_html += (f' <a href="{url_for("raboth.create_both", boq=boq_id)}" '
+                 f'class="btn btn-ghost ra-both-toggle">&#8644; Supply + '
+                 f'Installation together</a>')
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),
@@ -4571,7 +4632,9 @@ def create_ra(imported: dict = None):
         date_val=date_val, notes_val=notes_val,
         submit_label="Save RA bill",
         source_html=source_html, hidden_html=hidden_html, tail_html=tail_html,
-        top_html=top_html, cap_html=cap_note_html(boq_id, leg))
+        top_html=top_html, cap_html=cap_note_html(boq_id, leg),
+        round_on=_RO().form_choice(request.form, legacy=True)
+        if request.method == "POST" else True)
 
 
 @ra_bp.route("/edit/<id>", methods=["GET", "POST"])
@@ -4664,9 +4727,16 @@ def edit_ra(id: str):
             sgst_rate = float(BQ._num(request.form.get("sgst_rate"), bill.get("sgst_rate", 9.0)))
             igst_rate = float(BQ._num(request.form.get("igst_rate"), bill.get("igst_rate", 18.0)))
 
+            # The tick (31 Oct 2026): what the edit form posted, else the
+            # bill's stored choice; a bill without one rounded (legacy True).
+            round_on = _RO().form_choice(request.form,
+                                         legacy=_RO().is_on(bill, True))
             tax_info = compute_tax_totals(claims, bill.get("deductions") or [],
                                           tax_type=tax_type, cgst_rate=cgst_rate,
-                                          sgst_rate=sgst_rate, igst_rate=igst_rate)
+                                          sgst_rate=sgst_rate, igst_rate=igst_rate,
+                                          round_on=round_on)
+            if "round_off_on" in bill or request.form.get(_RO().MARK) is not None:
+                bill["round_off_on"] = round_on
             bill["claims"] = claims
             bill["claim_subtotal"] = tax_info["claim_subtotal"]
             bill["deductions"] = tax_info["deductions"]
@@ -4707,7 +4777,9 @@ def edit_ra(id: str):
         date_val=date_val, notes_val=notes_val,
         submit_label="Save changes",
         source_html=source_html, tail_html=tail_html,
-        cap_html=cap_note_html(boq_id, leg))
+        cap_html=cap_note_html(boq_id, leg),
+        round_on=_RO().form_choice(request.form, legacy=_RO().is_on(bill, True))
+        if request.method == "POST" else _RO().is_on(bill, True))
 
 
 @ra_bp.route("/view/<id>")
@@ -4791,6 +4863,10 @@ def view_ra(id: str):
     edit_btn = _gated("Edit claim", "ra.edit_ra", can_ed, edit_why)
     issue_btn = _gated("&#10003; Issue", "ra.issue_ra", iss_allowed, iss_why)
     cancel_btn = _gated("&#10007; Cancel", "ra.cancel_ra", can_allowed, can_why)
+    if set_merge_of(bill) is not None:
+        # A leg of a set: the control names what it really does (Part D).
+        cancel_btn = (f'<a class="btn btn-ghost" href="{url_for("ra.cancel_ra", id=id)}">'
+                      f'&#10007; Cancel both legs &amp; the tax invoice</a>')
     print_btn = f'<a class="btn" href="{url_for("ra.print_ra", id=id)}" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Tax Invoice</a>'
     # HSN / SAC (29 October 2026, §0 fifty-ninth block, A1). `_gated()`'s own
     # rule: present with its refusal on it rather than hidden. A cancelled

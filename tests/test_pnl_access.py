@@ -159,8 +159,23 @@ BEFORE = {
     ("sales-manager",    PROJECT_PAGE): ("dec7a61b388ce6c7", 72862),
     ("sales-manager",    REGISTER):     ("8df1db3b8bfb4385", 48655),
     ("purchase-manager", PROJECT_PAGE): ("d20c8996abc040bd", 71253),
+    # ⚠ The four REGISTER rows carry the TABLE-FIT re-baseline of 30 October
+    #   2026 (a121953, "a list page's table stays inside its card"): every
+    #   register gained the same +3092 bytes, and no project page moved. That
+    #   change and the sixty-third block below are ORTHOGONAL — verified
+    #   three-way against 09a028b: 4 rows moved on the table-fit side, 1 on the
+    #   sixty-third-block side, NONE on both.
     ("purchase-manager", REGISTER):     ("31ae1a372d6d69ce", 47585),
-    ("accountant",       PROJECT_PAGE): ("a2e883a8f8577cc8", 72670),
+    # ⚠ **RE-BASELINED 31 October 2026 — the ACCOUNTANT's project page ONLY,
+    #   +271 bytes** (CLIENT_CHANGES.md §0 sixty-third block, C2): the
+    #   *Raised from these BOQs* panel now lists the RECEIPTS against the RA
+    #   bills raised from the project's schedules, resolved through `ra_id`
+    #   at read time. Of the four roles only the accountant may open a receipt
+    #   (`auth.can_reach("receipt.edit_receipt")`), so only this row moved.
+    #   Measured before the literal changed: with the receipt rows suppressed
+    #   the page hashed to the old value exactly — no P&L byte reached it.
+    #   The value before: ("a2e883a8f8577cc8", 72670)
+    ("accountant",       PROJECT_PAGE): ("3ec8cfcea84c1333", 72941),
     ("accountant",       REGISTER):     ("bdce6869dde6d41f", 48463),
 }
 

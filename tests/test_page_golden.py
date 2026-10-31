@@ -468,8 +468,14 @@ PAGES = {
     #       ("dashboard", "/"): ("eea710973601aeb5", 108004,
     #        {"head": "cbce33bfb1cb901f", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "6167869fb277a647", "main": "b5c4975fcffe0cbd"})
-    ("dashboard",       "/"):                          ("4ff0bc6a35ae7c9c", 109439,
-        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "9aed9013889622db"}),   # §0 59th B1: moved=['chrome', 'main'], -12 bytes
+    # ⚠ **RE-BASELINED 31 October 2026 — `main` ONLY, +371 bytes**
+    #   (CLIENT_CHANGES.md §0 sixty-third block, C5/C7): each project tile
+    #   gains its *Running position* line with *billed N% of the contract
+    #   value*, and the Unattributed cost line is drawn under the tiles for a
+    #   `project.pnl` reader. `head`/`shell`/`chrome` unmoved. The old row:
+    #       ("4ff0bc6a35ae7c9c", 109439, {..., "main": "9aed9013889622db"})
+    ("dashboard",       "/"):                          ("855698a7b62a425d", 109810,
+        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "3e9d91230374421e"}),   # §0 59th B1: moved=['chrome', 'main'], -12 bytes
     ("quotations",      "/quotation/"):                ("f7af9a508c3c8d73", 70825,
         {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "428580664f0626bf", "main": "7ec3c661ae9cc372"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     ("proformas",       "/proforma/"):                 ("be95d64b9f9caa5d", 79225,
@@ -623,8 +629,22 @@ PAGES = {
     #       ("project page", …): ("e296b70a116cbce6", 91222,
     #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "b51ad113e721dcbe", "main": "4966a1cb8a5c0421"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("41138146f3c01040", 101785,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "b619482943b36e59"}),   # §0 59th B1: moved=['chrome', 'main'], -13 bytes
+    # ⚠ **RE-BASELINED 31 October 2026 — `main` ONLY, +885 bytes**
+    #   (CLIENT_CHANGES.md §0 sixty-third block): the RECEIPTS in *Raised from
+    #   these BOQs* (C2); the coverage count beside *Spent to date* and *the
+    #   running position, billed less spent* beside *Margin to date* (C5); the
+    #   spider's six axes — BOQ and procurement in, *bought* out, its caption
+    #   "five measures" now "six" (C7). No print route; no printed document
+    #   moved. The old row:
+    #       ("41138146f3c01040", 101785, {..., "main": "b619482943b36e59"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("3ea2483e86bf9a24", 102670,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "78a814da4ebe21aa"}),   # §0 59th B1: moved=['chrome', 'main'], -13 bytes
+    # ⚠ `employees` keeps the TABLE-FIT baseline of 30 October 2026 (a121953):
+    #   the sixty-third block did not move this row, the table fit did
+    #   (+3103 bytes, moved=['head', 'main']). Verified three-way against
+    #   09a028b: of the 17 rows in this table 15 moved on the table-fit side
+    #   and 2 (dashboard, project page) on the sixty-third-block side — NONE
+    #   on both, so each row has exactly one live baseline.
     ("employees",       "/employee/"):                 ("d7508089bf4495e2", 69454,
         {"head": "2935842182bb629b", "shell": "a1e6c63a6d4c6ac2", "chrome": "5f85e9f89efcd51e", "main": "fffd120cf79d9096"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3103 bytes
     # ⚠ **RE-BASELINED 27 October 2026 — CLIENT_CHANGES.md §0's fifty-fourth

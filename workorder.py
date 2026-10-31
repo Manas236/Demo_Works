@@ -313,6 +313,18 @@ def _sum_lines(lines) -> tuple:
     return round(mat, 2), round(lab, 2)
 
 
+def _roundoff_mod():
+    """`roundoff`, the leaf."""
+    import roundoff
+    return roundoff
+
+
+def _rounds(wo: dict) -> bool:
+    """Does this work order round to the rupee — its tick, else its legacy
+    `rounds_to_rupee` (31 Oct 2026). `totals_of()` reads the same rule."""
+    return _roundoff_mod().is_on(wo, legacy=bool((wo or {}).get("rounds_to_rupee")))
+
+
 def _round_off_row(delta: float, one: bool) -> str:
     """The printed "Round off" row — the signed figure in the last column."""
     import roundoff as RO
@@ -348,8 +360,15 @@ def totals_of(wo: dict) -> dict:
     #   only on a work order raised from that date — it carries
     #   `rounds_to_rupee`. These figures are DERIVED, so rounding an older one
     #   would change the total printed on a work order already issued.
-    if (wo or {}).get("rounds_to_rupee"):
-        import roundoff as RO
+    #
+    # ⚠ From later the same day the tick is `round_off_on`, the model every
+    #   money document shares, and `rounds_to_rupee` is READ AS ITS LEGACY:
+    #   a work order carrying `round_off_on` follows it; one without follows
+    #   `rounds_to_rupee` exactly as before. So a work order saved before the
+    #   tick — rounded (raised today, `rounds_to_rupee: True`) or not (older,
+    #   no key) — derives the very figures it derived yesterday.
+    import roundoff as RO
+    if RO.is_on(wo, legacy=bool((wo or {}).get("rounds_to_rupee"))):
         total, round_off = RO.split(grand + gst)
     return {"material": mat, "labour": lab, "grand": grand,
             "gst_rate": rate, "gst": gst, "total": total, "round_off": round_off}
@@ -1297,6 +1316,7 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
           <input type="text" id="gst_rate" name="gst_rate" inputmode="decimal"
                  value="{P.esc('' if data.get('gst_rate') is None else data.get('gst_rate'))}"/>
         </div>
+        {_roundoff_mod().checkbox_html(bool(data.get("round_off_on", True)))}
         <div class="form-group span2">
           <label for="notes">Notes / scope</label>
           <textarea id="notes" name="notes" rows="3">{P.esc(data.get('notes', ''))}</textarea>
@@ -1364,6 +1384,10 @@ def _form_data(form) -> dict:
         "gst_rate": (None if "gst_rate" not in form
                      else str(form.get("gst_rate") or "").strip()[:12]),
         "site": (form.get("site") or "").strip()[:MAX_SITE_CHARS],
+        # "Round off to nearest rupee" (31 Oct 2026) — ticked by default; a
+        # POST from no form offering it (a bare POST, an import) reads ticked,
+        # which is what a new work order did from the §0 sixty-second block.
+        "round_off_on": _roundoff_mod().form_choice(form, legacy=True),
         "terms": "\n".join(t.strip() for t in str(form.get("terms") or "")
                            .replace("\r\n", "\n").split("\n")
                            if t.strip())[:MAX_TERMS_CHARS],
@@ -1691,6 +1715,20 @@ def document_html(wo: dict) -> str:
 # THE PROJECT PAGE'S PANEL — rendered cells, never arithmetic across panels
 # =============================================================================
 
+def _project_of(wo: dict) -> str:
+    """
+    The project this work order is on — its BOQ's, when it carries a `boq_id`
+    that resolves, else its own tag (31 Oct 2026, C2). `pnl.project_of()`'s
+    rule; `STORE["boqs"]` is read directly because `pnl.py` imports this
+    module (the one-way trick). No work order written to date carries a
+    `boq_id`, so this is the tag for every existing record.
+    """
+    boq = (STORE.get("boqs") or {}).get(str((wo or {}).get("boq_id") or ""))
+    if boq is not None:
+        return str(boq.get("project_id") or "").strip()
+    return str((wo or {}).get("project_id") or "").strip()
+
+
 def project_panel_html(project_id: str) -> str:
     """
     The Work Orders panel on `/projects/view/<id>` (ruling H) — **listed only**.
@@ -1704,7 +1742,7 @@ def project_panel_html(project_id: str) -> str:
     order renders `/projects/view` byte-for-byte as it did.
     """
     wos = sorted((w for w in _wos().values()
-                  if str(w.get("project_id") or "") == str(project_id or "")
+                  if _project_of(w) == str(project_id or "")
                   and project_id),
                  key=lambda w: (str(w.get("date") or ""), str(w.get("ref") or "")),
                  reverse=True)
@@ -1830,7 +1868,8 @@ def new_wo_defaults() -> dict:
     from the work order's own settings record (R7).
     """
     return {"date": _date.today().isoformat(), "tracks": "both",
-            "gst_rate": "18", "terms": SET.wo_default_terms()}
+            "gst_rate": "18", "terms": SET.wo_default_terms(),
+            "round_off_on": True}
 
 
 def _retrack(data: dict, rows: list, wo: dict = None) -> str:
@@ -1880,8 +1919,10 @@ def create_wo():
         "site": data["site"],
         "terms": data["terms"],
         "lines": lines,
-        # The rupee round-off applies to this order (31 Oct 2026).
-        "rounds_to_rupee": True,
+        # The rupee round-off (31 Oct 2026): the operator's tick, stored as
+        # `round_off_on`. `rounds_to_rupee` is no longer written — it is the
+        # legacy key `totals_of()` falls back to on an order without the tick.
+        "round_off_on": data["round_off_on"],
         "created_at": now,
         "created_by": _uid(),
         "updated_at": now,
@@ -1916,6 +1957,7 @@ def edit_wo(id: str):
             # box opens at 0 and a resave keeps it that way.
             "gst_rate": num_text(wo.get("gst_rate")) or "0",
             "site": wo.get("site", ""), "terms": wo.get("terms", ""),
+            "round_off_on": _rounds(wo),
         }, rows_of(wo), wo=wo)
 
     if request.form.get("act") == "retrack":
@@ -1923,6 +1965,8 @@ def edit_wo(id: str):
 
     keep = frozenset(str(l.get("line_id") or "") for l in wo.get("lines") or [])
     data, rows, lines, error, problems = _validate(request.form, keep)
+    data["round_off_on"] = _roundoff_mod().form_choice(request.form,
+                                                       legacy=_rounds(wo))
     if error or problems:
         return _form_page(data, _mark(rows, problems), wo=wo, error=error,
                           problems=problems)
@@ -1937,6 +1981,10 @@ def edit_wo(id: str):
     wo["site"] = data["site"]
     wo["terms"] = data["terms"]
     wo["lines"] = lines
+    # The tick may be flipped while DRAFT — `can_edit()` above is the lock.
+    # A draft saved before the tick existed and re-posted by a form without
+    # it keeps what it derived (`form_choice`'s legacy is its own reading).
+    wo["round_off_on"] = data["round_off_on"]
     wo["updated_at"] = _now()
     # `ref` is deliberately untouched. An edit never reissues the number.
     return redirect(url_for("workorder.view_wo", id=id,

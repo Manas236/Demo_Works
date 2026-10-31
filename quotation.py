@@ -1239,6 +1239,7 @@ def create_quotation(imported: dict = None):
         products = STORE["products"]
     error    = None
     form     = request.form
+    import roundoff as _RO   # the round-off tick (31 Oct 2026, round-off only)
 
     # ── POST ───────────────────────────────────────────────────────────
     if request.method == "POST":
@@ -1360,11 +1361,27 @@ def create_quotation(imported: dict = None):
                                   igst_rate, _fmt_qty) or None
 
         if not error:
-            subtotal    = sum(r["total"] for r in line_items)
-            tax_info    = _tax_lines(subtotal, tax_type,
+            # ⚠ THE ROUND-OFF, AND THE FIGURES IT IS TAKEN FROM (31 Oct 2026 —
+            #   CLIENT_CHANGES.md §0, "Manas, 31 Oct 2026: round-off on all
+            #   documents, nothing left behind"; the FOURTH narrow unfreeze of
+            #   this function, round-off only). The quotation gains the
+            #   "Round off to nearest rupee" tick every money document has,
+            #   stored as `round_off_on` with `round_off`. A rupee rounding
+            #   is only honest over the PRINTED figures, so each line, the
+            #   subtotal and each tax head are taken to the paisa first — the
+            #   raw `qty × rate` and `_tax_lines()` products are not printed
+            #   and a round-off over them would not foot on the sheet. A POST
+            #   from no form offering the tick reads UNTICKED: a quotation
+            #   was never rounded before today.
+            round_on    = _RO.form_choice(request.form, legacy=False)
+            for r in line_items:
+                r["total"] = _RO.paise(r["total"])
+            subtotal    = _RO.paise(sum(r["total"] for r in line_items))
+            tax_info    = _RO.paise_tax(_tax_lines(subtotal, tax_type,
                                      cgst_rate=cgst_rate, sgst_rate=sgst_rate,
-                                     igst_rate=igst_rate, vat_rate=vat_rate)
-            grand_total = subtotal + tax_info["total"]
+                                     igst_rate=igst_rate, vat_rate=vat_rate))
+            grand_total, round_off = _RO.apply(subtotal + tax_info["total"],
+                                               round_on)
             total_qty   = sum(r["qty"] for r in line_items if r["depth"] == 0)
 
             to_parts = [account_name]
@@ -1407,6 +1424,7 @@ def create_quotation(imported: dict = None):
                 "igst_rate": igst_rate, "vat_rate": vat_rate,
                 "tax_info": tax_info,
                 "subtotal": subtotal, "grand_total": grand_total, "total_qty": total_qty,
+                "round_off": round_off, "round_off_on": round_on,
                 "selections": sel_data, "line_items": line_items,
                 "to": to_display,
             }
@@ -2108,6 +2126,8 @@ function addComp(pidx) {
   <input type="hidden" name="tax_igst" id="hid_igst" value="{init_igst}"/>
   <input type="hidden" name="tax_vat"  id="hid_vat"  value="{init_vat}"/>
 
+  {roundoff_tick}
+
   <div class="tax-options">
     <label class="tax-opt">
       <input type="radio" name="tax_type" value="cgst_sgst" id="tr_cgst"
@@ -2535,6 +2555,11 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         sel_ship_state      = _sel_opts("ship_state",      _STATES_IN,     "Maharashtra",                        _fv("ship_state",   "Maharashtra")),
         # the eight seams — see `pieces` above
         **pieces,
+        # The round-off tick (31 Oct 2026, round-off only) — ticked by
+        # default; a refused POST carries back what was posted.
+        roundoff_tick       = _RO.checkbox_html(
+            _RO.form_choice(request.form, legacy=False)
+            if request.method == "POST" else True),
     )
     return _page(html)              # NOT render_template_string — see _page()
 
@@ -2898,6 +2923,18 @@ def view_quotation(id: str):
               <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
               <td class="c-total">{_inr(tamt)}</td>
             </tr>"""
+
+    # The round-off row (31 Oct 2026, round-off only) — printed ONLY when the
+    # quotation stored a non-zero `round_off`, so every quotation saved before
+    # the tick prints byte-for-byte as it did.
+    if abs(float(q.get("round_off") or 0.0)) >= 0.005:
+        import roundoff as _RO
+        table_rows += f"""
+        <tr class="row-sum">
+          <td colspan="4" class="sum-lbl">Round off</td>
+          <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
+          <td class="c-total">{_RO.label(q["round_off"])}</td>
+        </tr>"""
 
     # Closing row
     table_rows += f"""

@@ -323,6 +323,12 @@ def loan_balance(employee_id) -> float:
 # THE SLIP'S ARITHMETIC — sums and the rupee, nothing else
 # =============================================================================
 
+def _RO():
+    """`roundoff`, the leaf (31 Oct 2026)."""
+    import roundoff
+    return roundoff
+
+
 def rupee_half_up(value) -> int:
     """The nearest rupee, HALF UP — 12118.50 → 12119, never banker's rounding."""
     return int(Decimal(str(round(float(value), 2))).quantize(
@@ -330,7 +336,8 @@ def rupee_half_up(value) -> int:
 
 
 def compute(figures: dict, month_rows: list, loan: dict,
-            other_allowance=0.0, statutory: dict = None) -> dict:
+            other_allowance=0.0, statutory: dict = None,
+            round_on: bool = True) -> dict:
     """
     Every figure on the slip, from the month's wage figures (attendance), the
     month's ledger rows and the derived loan. Pure: reads nothing else.
@@ -347,9 +354,14 @@ def compute(figures: dict, month_rows: list, loan: dict,
     net_raw = round(gross - total_ded, 2)
     if net_raw < 0:
         payable, round_off, carry = 0, 0.0, round(-net_raw, 2)
-    else:
+    elif round_on:
         payable = rupee_half_up(net_raw)
         round_off, carry = round(payable - net_raw, 2), 0.0
+    else:
+        # The slip's "Round off to nearest rupee" tick is OFF (31 Oct 2026):
+        # net pay to the paisa, no round-off. The negative-net carry-forward
+        # above is the same whichever way the tick is.
+        payable, round_off, carry = _RO().paise(net_raw), 0.0, 0.0
     out = {"basic": basic, "ot": ot, "travel": travel, "other_allowance": other,
            "gross": gross, "advance": advance,
            "loan_opening": loan["opening"], "loan_deduction": loan["deduction"],
@@ -366,7 +378,7 @@ def _carried_from(slip_id) -> list:
 
 
 def snapshot(employee_id, month, other_allowance=0.0, statutory=None,
-             own_slip_id: str = "") -> dict:
+             own_slip_id: str = "", round_on: bool = True) -> dict:
     """
     Everything a slip stores, drawn live. ⚠ The slip's OWN carried entry (it
     sits in the next month) is never in this month's rows, so a refresh cannot
@@ -378,7 +390,7 @@ def snapshot(employee_id, month, other_allowance=0.0, statutory=None,
             if not own_slip_id
             or str(e.get("source") or "") != CARRY_PREFIX + own_slip_id]
     loan = loan_figures(employee_id, month)
-    money = compute(fig, rows, loan, other_allowance, statutory)
+    money = compute(fig, rows, loan, other_allowance, statutory, round_on)
     rates = fig["rates"]
     snap = {
         "employee_name": str(person.get("name") or ""),
@@ -420,6 +432,9 @@ def create_draft(employee_id, month) -> tuple:
     rec = {"id": sid, "employee_id": employee_id, "month": month,
            "status": DRAFT, "other_allowance": 0.0,
            "statutory": {k: 0.0 for k, _ in STATUTORY},
+           # "Round off to nearest rupee" (31 Oct 2026) — ticked on a new
+           # draft; flipped on the draft's own "Typed on the draft" form.
+           "round_off_on": True,
            "snapshot": snapshot(employee_id, month, own_slip_id=sid),
            "carry_entry_id": "", "created_at": _now(),
            "created_by": _user_name(), "updated_at": _now()}
@@ -432,7 +447,9 @@ def refresh(slip: dict) -> str:
         return "Only a draft is refreshed — an issued slip never moves."
     slip["snapshot"] = snapshot(slip["employee_id"], slip["month"],
                                 slip.get("other_allowance"),
-                                slip.get("statutory"), own_slip_id=slip["id"])
+                                slip.get("statutory"), own_slip_id=slip["id"],
+                                # A slip without the tick rounded (legacy).
+                                round_on=_RO().is_on(slip, True))
     slip["updated_at"] = _now()
     return ""
 
@@ -864,6 +881,7 @@ def view_slip(id):
     </div>
     <small class="field-hint">PF, ESIC, PT and MLWF are typed by HR and are
       <b>not computed</b> by this software. A figure typed here is deducted.</small>
+    {_RO().checkbox_html(_RO().is_on(slip, True), "On the net pay. A shortfall is carried to next month either way.")}
     <div><button class="btn">Save</button></div>
   </form>"""
 
@@ -902,6 +920,8 @@ def save_extras(id):
         vals[key] = v
     slip["other_allowance"] = vals.pop("other_allowance")
     slip["statutory"] = vals
+    if request.form.get(_RO().MARK) is not None:
+        slip["round_off_on"] = _RO().form_choice(request.form, legacy=True)
     refresh(slip)
     return redirect(url_for("payroll.view_slip", id=id, msg="Saved.",
                             type="success"))

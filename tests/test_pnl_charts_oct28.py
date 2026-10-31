@@ -261,10 +261,19 @@ def test_the_charges_outside_the_tax_base_row_only_appears_when_it_exists(world)
 # THE SPIDER
 # =============================================================================
 
-def test_there_are_exactly_five_axes_in_a_fixed_order(world):
+def test_there_are_exactly_six_axes_in_a_fixed_order(world):
+    """
+    ⚠ AMENDED 31 October 2026 (CLIENT_CHANGES.md §0 sixty-third block, C7),
+    declared: Manas's axis list is BOQ, procurement, dispatch, measurement,
+    billed, collected. Still an EXACT list in a FIXED order — no weaker. The
+    old assertion, verbatim:
+        assert [a["key"] for a in PNL.progress_of(PID)] == [
+            "dispatched", "measured", "billed", "collected", "bought"]
+    The *bought* count of lines is still on the panel, as the coverage line.
+    """
     _boq()
     assert [a["key"] for a in PNL.progress_of(PID)] == [
-        "dispatched", "measured", "billed", "collected", "bought"]
+        "boq", "procurement", "dispatched", "measured", "billed", "collected"]
 
 
 def test_every_axis_is_a_ratio_of_two_figures_of_the_same_kind(world):

@@ -80,6 +80,7 @@ import cascade
 import demo_data as DD
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
+import roundoff as RO  # the paisa and the rupee round-off tick, the leaf (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import units as _UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import INDIAN_STATES, picker_options, picker_payload
@@ -688,6 +689,32 @@ def amount_of(qty, net):
     if qty is None or net is None:
         return None
     return float(net) * float(qty)
+
+
+def _paise_or_none(amount):
+    """A line amount to the paisa, HALF UP — `None` (no amount, A4) stays
+    `None` (31 Oct 2026, Part B)."""
+    return None if amount is None else RO.paise(amount)
+
+
+def grand_of(boq: dict) -> tuple:
+    """
+    `(total, round_off, grand)` — the schedule's TOTAL BASIC VALUE, and, on a
+    BOQ whose "Round off to nearest rupee" tick is on, the whole-rupee grand
+    total and the signed difference (31 Oct 2026, Part A — the GRAND TOTAL
+    only; no line, section or leg is rounded).
+
+    ⚠ **Derived from the lines, like every BOQ total** (§3, property 7) — the
+    stored `round_off` is the record of what the save computed, and this is
+    what the sheet prints, so the printed sheet cannot contradict its lines.
+    ⚠ **A BOQ without `round_off_on` was never rounded and is not now**:
+    `round_off` 0 and `grand == total`, and the print draws no row.
+    """
+    _sup, _ins, total = boq_totals(boq)
+    if not RO.is_on(boq, legacy=False):
+        return total, 0.0, total
+    grand, ro = RO.apply(total, True)
+    return total, ro, grand
 
 
 def lines_without_cost(boq: dict) -> int:
@@ -2627,7 +2654,12 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             "supply_rate":           s_rate,
             # quantity × the NET rate (R3) when both are present, else absent
             # (A4) — with no discount the net rate IS `supply_rate`, unrounded.
-            "supply_amount":         amount_of(total_qty, net_of(s_rate, s_disc)),
+            # ⚠ To the PAISA, HALF UP, when computed (31 Oct 2026, Part B) —
+            #   12.345 × 100.07 is 1,235.36415 and a portal refuses a third
+            #   decimal. The section and grand totals sum these stored
+            #   figures, so the sheet foots to the paisa. Records saved before
+            #   are not rewritten.
+            "supply_amount":         _paise_or_none(amount_of(total_qty, net_of(s_rate, s_disc))),
             "supply_hsn":            hsn,
             # GST is not a figure the client's sheet gives (the importer never
             # reads it): a blank box still takes the house default, as it
@@ -2637,7 +2669,7 @@ def _clean_lines(raw_lines: list, sections: list, payload_bytes: int = 0) -> tup
             "install_base_rate":      i_base,
             "install_escalation_pct": i_pct,
             "install_rate":           i_rate,
-            "install_amount":         amount_of(total_qty, net_of(i_rate, i_disc)),
+            "install_amount":         _paise_or_none(amount_of(total_qty, net_of(i_rate, i_disc))),
             "install_sac":            sac,
             "install_gst_rate":       DEFAULT_GST_RATE if i_gst is None else i_gst,
         }
@@ -3014,6 +3046,25 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
         tax_note = ('<div class="boq-taxnote">GST EXTRA AS APPLICABLE. '
                     'Taxes fall due on the Running Account bill raised against this schedule.</div>')
 
+    # The round-off (31 Oct 2026) — two rows, ONLY on a BOQ whose tick is on
+    # and whose total is not already whole. Every BOQ saved before draws
+    # exactly the sheet it drew.
+    _t, ro, rounded = grand_of(boq)
+    round_rows, words_total = "", total
+    if abs(ro) >= 0.005:
+        words_total = rounded
+        round_rows = f"""
+        <tr>
+          <td class="bg-lbl">ROUND OFF</td>
+          <td class="bg-tag"></td><td class="bg-amt"></td>
+          <td class="bg-tag"></td><td class="bg-amt">{RO.label(ro)}</td>
+        </tr>
+        <tr>
+          <td class="bg-lbl">GRAND TOTAL</td>
+          <td class="bg-tag"></td><td class="bg-amt"></td>
+          <td class="bg-tag"></td><td class="bg-amt">{_inr(rounded)}</td>
+        </tr>"""
+
     grand_html = f"""
     <div class="boq-grand">
       <table>
@@ -3026,9 +3077,9 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
           <td class="bg-lbl">TOTAL BASIC VALUE</td>
           <td class="bg-tag"></td><td class="bg-amt"></td>
           <td class="bg-tag"></td><td class="bg-amt">{_inr(total)}</td>
-        </tr>
+        </tr>{round_rows}
       </table>
-      <div class="boq-words">{_amount_in_words(total)}</div>
+      <div class="boq-words">{_amount_in_words(words_total)}</div>
       {tax_note}{grand_skip}
     </div>"""
 
@@ -6168,6 +6219,11 @@ def create_boq(imported: dict = None):
             boq["supply_subtotal"]  = sup
             boq["install_subtotal"] = ins
             boq["subtotal"]         = tot
+            # "Round off to nearest rupee" (31 Oct 2026) — the GRAND total
+            # only. A POST from no form offering the tick (an import, a test)
+            # reads unticked: a BOQ was never rounded before today.
+            boq[RO.FIELD] = RO.form_choice(form, legacy=False)
+            _t, boq["round_off"], _g = grand_of(boq)
 
             STORE["boqs"][bid] = boq
             # Every saved BOQ's items join the Specification library (31 Oct
@@ -6665,6 +6721,8 @@ def create_boq(imported: dict = None):
           <input type="text" id="auth_signatory" name="auth_signatory" value="{_v('auth_signatory')}"
                  placeholder="{P.esc(B.COMPANY_SIGNATORY)}"/>
         </div>
+        {RO.checkbox_html(RO.form_choice(request.form, legacy=False) if request.method == "POST" else True,
+                          "The grand total only &mdash; no line, section or leg is rounded.")}
       </div>
     </div>
 

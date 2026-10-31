@@ -198,8 +198,17 @@ def switch_on(fixed_world):
 #       OFF_WHOLE = "e4cb2e20405b19ef"
 #       OFF_LEN = 112366
 #       OFF_BLOCKS = {"head": "13dad10c90f1fb7d", …}
-OFF_WHOLE = "370525c790eca816"
-OFF_LEN = 112358
+# ⚠ **RE-BASELINED 31 October 2026 — the `tax` block ALONE, +274 bytes** —
+#   the "Round off to nearest rupee" tick (CLIENT_CHANGES.md §0, "Manas, 31
+#   Oct 2026: round-off on all documents, nothing left behind" — the fourth
+#   narrow unfreeze of `create_quotation()`, round-off only). +274 is exactly
+#   `roundoff.checkbox_html(True)` (270 bytes), its two-space indent and the
+#   two newlines after it. The other nine blocks did not move. The old values, verbatim:
+#       OFF_WHOLE = "370525c790eca816"
+#       OFF_LEN = 112358
+#       OFF_BLOCKS = {..., "tax": "ddb32a58ad86df59", ...}
+OFF_WHOLE = "ccd0dd9aedc6e40b"
+OFF_LEN = 112632
 
 # The page split on its structural markers, so a failure names which part
 # moved: the chrome, the item section, the picker's script, or the demo fill.
@@ -220,7 +229,7 @@ OFF_BLOCKS = {"head":     "c42c641c4bc67c6c",   # was 13dad10c90f1fb7d (§0 59th
                                                 # was a7fcb956a04f035f
               "form":     "370e5e115dc4c883",
               "items":    "374b85b7f0fd495d",
-              "tax":      "ddb32a58ad86df59",
+              "tax":      "b6c14acf48fa9677",
               "script":   "03c7686e45d02118",
               "picker":   "2a8f31b81350107f",
               "render":   "3c15e438559e9795",

@@ -702,6 +702,86 @@ def _pnl_n(n: int, one: str, many: str = "") -> str:
     return f"{n} {one if n == 1 else (many or one + 's')}"
 
 
+# The collections whose documents may carry BOTH a `boq_id` and a hand
+# `project_id`, and the word each is called by on this page.
+_TAGGED_KINDS = (("proformas", "Proforma", ""), ("invoices", "Tax invoice", "invoice"),
+                 ("purchases", "Purchase order", ""), ("work_orders", "Work order", ""),
+                 ("purchase_orders", "Product inquiry", ""))
+
+# Every collection a document raised FROM a BOQ lives in — for the
+# "raised under revision N" band.
+_RAISED_KINDS = (("ra_bills", "RA bill"), ("delivery_challans", "Delivery challan"),
+                 ("measurements", "Measurement sheet"), ("proformas", "Proforma"),
+                 ("invoices", "Tax invoice"), ("purchases", "Purchase order"),
+                 ("purchase_orders", "Product inquiry"), ("work_orders", "Work order"))
+
+
+def _inheritance_bands(project_id: str) -> str:
+    """
+    The two amber bands of §0's sixty-third block (31 October 2026) —
+    `ra.party_drift()`'s band shape (`.pm-drift`), like the site band above:
+
+    * **C2** — a document whose OWN `project_id` disagrees with the project of
+      the BOQ it was raised from (`pnl.project_conflict()`). It is shown under
+      its BOQ's project, as `pnl.project_of()` has answered since 28 October,
+      and this band names BOTH projects on both pages. ⚠ Never silently
+      picked: nothing is written to the document.
+    * **C3** — a document raised under a BOQ revision that has since been
+      superseded (`pnl.raised_under_earlier()`). Its money still counts — it
+      is real — and the band names the revision it was raised under and the
+      one the plan now reads.
+
+    `""` when there is nothing to say, so a project with neither renders as it
+    did. Lists only: no figure here, so `projectview.py`'s prohibition holds.
+    """
+    pid = str(project_id or "")
+    projects = STORE.get("projects") or {}
+    boq_ids = {str(b.get("id") or "") for b in (STORE.get("boqs") or {}).values()
+               if str(b.get("project_id") or "") == pid}
+
+    def _pname(x):
+        return P.esc((projects.get(x) or {}).get("name") or "(a project that no longer exists)")
+
+    conflicts = []
+    for coll, word, kind in _TAGGED_KINDS:
+        for d in (STORE.get(coll) or {}).values():
+            got = PNL.project_conflict(d, kind)
+            if got and pid in got:
+                own, follows = got
+                conflicts.append(
+                    f'<b>{word} {P.esc(d.get("ref")) or "(no number)"}</b> is tagged '
+                    f'to <b>{_pname(own)}</b>, but the BOQ it was raised from, '
+                    f'{P.esc(d.get("boq_ref")) or "(no ref)"}, is filed under '
+                    f'<b>{_pname(follows)}</b>')
+    earlier = []
+    for coll, word in _RAISED_KINDS:
+        for d in (STORE.get(coll) or {}).values():
+            if str(d.get("boq_id") or "") not in boq_ids:
+                continue
+            got = PNL.raised_under_earlier(d)
+            if got:
+                rev, tip = got
+                earlier.append(
+                    f'<b>{word} {P.esc(d.get("ref")) or "(no number)"}</b> was raised '
+                    f'under revision {rev}; the schedule now reads '
+                    f'{P.esc(tip.get("ref")) or "(no ref)"} Rev '
+                    f'{int(tip.get("rev_no") or 0)}, dated '
+                    f'{P.esc(tip.get("date")) or "—"}')
+    out = ""
+    if conflicts:
+        out += (f'<div class="pm-drift"><span class="pm-drift-icon">&#9888;</span>'
+                f'<span>{"; ".join(conflicts)}. It is shown under its BOQ&rsquo;s '
+                f'project and <b>neither tag has been changed</b> &mdash; '
+                f'decide which is right and correct the document or move the '
+                f'BOQ.</span></div>')
+    if earlier:
+        out += (f'<div class="pm-drift"><span class="pm-drift-icon">&#9888;</span>'
+                f'<span>{"; ".join(earlier)}. Each still counts at its own '
+                f'figures &mdash; it is real money &mdash; and is '
+                f'<b>not</b> restated against the later revision.</span></div>')
+    return out
+
+
 def _pnl_panel(proj) -> str:
     """
     The Profit & Loss panel — CC-2 **C6**, CLIENT_CHANGES.md §0 forty-seventh
@@ -786,6 +866,13 @@ def _pnl_panel(proj) -> str:
         labour_row = (f'<tr><th>Site labour &mdash; booked to this project, day '
                       f'rate and overtime <span>({_pnl_n(lab["markings"], "marking")})'
                       f'</span></th><td>{_amt(lab["total"])}</td></tr>')
+    # Coverage BESIDE the actual cost (31 Oct 2026, C5) — the same count the
+    # sentence under the variance prints, so a low cost reads as unbought.
+    _cov = r["coverage"]
+    cov_span = (f' <span>({_cov["covered"]} of '
+                f'{_pnl_n(_cov["lines"], "BOQ line")} '
+                f'{"has" if _cov["covered"] == 1 else "have"} a PO)</span>'
+                if _cov["lines"] else "")
     exempt_row = ""
     if todate["po_exempt"]["count"]:
         exempt_row = (f'<tr><th>Purchase orders &mdash; charges outside the tax '
@@ -814,12 +901,20 @@ def _pnl_panel(proj) -> str:
         f'<span>({_pnl_n(todate["charges"]["count"], "charge")})</span></th>'
         f'<td>{_amt(todate["charges"]["amount"])}</td></tr>'
         f'{labour_row}'
-        f'<tr class="pnl-sum"><th>Spent to date{no_lab}</th>'
+        f'<tr class="pnl-sum"><th>Spent to date{no_lab}{cov_span}</th>'
         f'<td>{_amt(todate["actual"])}</td></tr>'
-        f'<tr class="pnl-result"><th>Margin to date{no_lab}</th>'
+        f'<tr class="pnl-result"><th>Margin to date{no_lab} <span>&mdash; '
+        f'the running position, billed less spent</span></th>'
         f'<td>{_amt(todate["margin"])}</td></tr>')
 
-    notes = [('<b>Billed so far, less spent so far.</b> Part-way through a '
+    notes = []
+    # Before any bill, the running position IS the cost, as a negative
+    # (31 Oct 2026, C5 — the client expects the minus the moment a PO issues).
+    if not (todate["ra"]["count"] or todate["ti"]["count"]) and todate["actual"]:
+        notes.append('<b>No bill raised yet: cost so far.</b> The running '
+                     'position above is the cost to date, as a negative, '
+                     'until the first bill is raised.')
+    notes += [('<b>Billed so far, less spent so far.</b> Part-way through a '
               'project this reflects timing &mdash; material bought before it '
               'is billed, labour paid before it is claimed &mdash; and is not '
               'the result the project will finish on.')]
@@ -1302,6 +1397,21 @@ def view_project(id: str):
     _raised_add("challan.view_dc", lambda i: url_for("challan.view_dc", id=i), "Delivery challan", "delivery_challans", "ref")
     _raised_add("measurement.view_ms", lambda i: url_for("measurement.view_ms", id=i), "Measurement sheet", "measurements", "ref")
     _raised_add("po_draft.view_po", lambda i: url_for("po_draft.view_po", id=i), "Product inquiry", "purchase_orders", "ref")
+    # Receipts (31 Oct 2026, C2) — money received against an RA bill raised
+    # from one of these BOQs. A receipt carries no `boq_id` of its own; it is
+    # resolved at read time through its bill (`ra_id`), and nothing is
+    # copied onto it.
+    if auth.can_reach("receipt.edit_receipt"):
+        _bills = STORE.get("ra_bills") or {}
+        for rcid, rc in (STORE.get("receipts") or {}).items():
+            bill = _bills.get(str(rc.get("ra_id") or "")) or {}
+            if str(bill.get("boq_id") or "") not in _proj_boq_ids:
+                continue
+            _raised.append((str(rc.get("date") or ""), "Receipt",
+                            str(rc.get("ref") or ""), str(rc.get("date") or ""),
+                            f'against {str(bill.get("ref") or "")}',
+                            _amt(_total_of(rc, "amount")),
+                            url_for("receipt.edit_receipt", id=rc.get("id") or rcid)))
     _raised.sort(key=lambda r: (r[0], r[2]), reverse=True)
 
     raised_html = ""
@@ -1617,7 +1727,7 @@ def view_project(id: str):
     </div>
     
     {_alert(msg, msg_type)}
-    {site_band}
+    {site_band}{_inheritance_bands(id)}
 
     <div class="proj-meta">
       <div class="pm-item">

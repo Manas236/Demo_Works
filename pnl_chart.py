@@ -8,7 +8,7 @@ went*, not only to read it.
 Two figures, and a **plain-text table under each one**:
 
     waterfall_html()   money   — billed to date, less each cost head, to margin
-    spider_html()      progress — five axes, every one 0-100%
+    spider_html()      progress — six axes, every one 0-100%
 
 ⚠ **SCREEN ONLY, AND THERE IS NO PRINT ROUTE TO LEAK ONTO.** `/projects/view`
 has never had one and this pass does not give it one. No printed document
@@ -306,11 +306,11 @@ def waterfall_html(wf: dict) -> str:
 
 def spider_html(axes: list) -> str:
     """
-    `pnl.progress_of()`'s five axes as a radar, plus its table.
+    `pnl.progress_of()`'s six axes as a radar, plus its table.
 
     ⚠ **A RADAR IS ONLY HONEST WHEN EVERY AXIS SHARES A SCALE, and these do**:
-    all five are a percentage of their own denominator, 0 at the centre and
-    100% at the rim. That is the one case the form is right for; five axes of
+    all six are a percentage of their own denominator, 0 at the centre and
+    100% at the rim. That is the one case the form is right for; six axes of
     different units on one radar is the anti-pattern.
 
     ⚠ **AN AXIS WITH NO DENOMINATOR DRAWS NO POINT.** It is not plotted at 0:
@@ -406,10 +406,10 @@ def spider_html(axes: list) -> str:
       <figure class="pnl-fig">
         <svg viewBox="0 0 {S_W} {S_H}" class="pnl-svg pnl-svg-sq" role="img"
              preserveAspectRatio="xMidYMid meet"
-             aria-label="Progress on five axes, each a percentage of its own total. The same figures are in the table below.">
+             aria-label="Progress on six axes, each a percentage of its own total. The same figures are in the table below.">
           {grid}{shape}{marks}{labels}
         </svg>
-        <figcaption>How far along &mdash; five measures, each as a percentage of
+        <figcaption>How far along &mdash; six measures, each as a percentage of
           its own total, 0 at the centre and 100% at the rim. An axis with
           nothing to measure against draws no point; the table says which and
           why.</figcaption>

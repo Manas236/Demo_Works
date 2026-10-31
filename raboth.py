@@ -87,6 +87,7 @@ import branding as B
 import merged_ra as MRA
 import pipeline as P
 import ra as RA
+import roundoff as RO
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES
 from store import STORE
@@ -194,7 +195,8 @@ def _rollback(written_ids: list) -> None:
 
 
 def create_set(boq: dict, supply_claims: list, install_claims: list,
-               date_val: str, notes_val: str = "", **fields) -> tuple:
+               date_val: str, notes_val: str = "", round_on: bool = True,
+               **fields) -> tuple:
     """
     `(merged, error)` — write both legs and the merged document, atomically.
 
@@ -210,8 +212,15 @@ def create_set(boq: dict, supply_claims: list, install_claims: list,
             rid = RA.new_id()
             # ⚠ `NO_TAX_INVOICE` — neither leg mints a statutory serial. Only
             #   the merged document carries one. See the module docstring.
+            # ⚠ `round_on=False` on EACH LEG (31 Oct 2026, Part A): a set is
+            #   ONE billing and is rounded ONCE, on the merged tax invoice's
+            #   total, never per leg. A leg raised here never prints as a tax
+            #   invoice (it carries no serial), so its exact two-decimal total
+            #   is the honest one, and two legs each rounded would put up to
+            #   two rupees of round-off on one invoice.
             rec = RA.build_bill(rid, boq, leg, claims, date_val, notes_val,
-                                tax_invoice_ref=RA.NO_TAX_INVOICE, **fields)
+                                tax_invoice_ref=RA.NO_TAX_INVOICE,
+                                round_on=False, **fields)
             rec[BOTH_KEY] = sid
             STORE.setdefault("ra_bills", {})[rid] = rec
             approval.stamp_creator(rec)
@@ -228,6 +237,18 @@ def create_set(boq: dict, supply_claims: list, install_claims: list,
             _rollback(written)
             return None, err
         merged[BOTH_KEY] = sid
+        # ⚠ ROUNDED ONCE, here, on the merged total (31 Oct 2026, Part A) —
+        #   the set's "Round off to nearest rupee" tick. `merged_ra.create()`
+        #   summed the two legs' exact totals (its rule, untouched); the one
+        #   rounding is applied on top and stored as the merged document's
+        #   own `rounding_off`, so `grand_total == sum of the legs' totals +
+        #   rounding_off` to the paisa. A merge ASSEMBLED by hand from two
+        #   bills that already existed is not touched — it carries no tick.
+        legs_total = round(float(merged.get("grand_total") or 0.0), 2)
+        grand, ro = RO.apply(legs_total, round_on)
+        merged["grand_total"] = grand
+        merged["rounding_off"] = RO.paise(float(merged.get("rounding_off") or 0.0) + ro)
+        merged[RO.FIELD] = bool(round_on)
         return merged, ""
     except Exception:
         # ⚠ A refusal is returned; an unexpected failure must not leave two
@@ -401,6 +422,7 @@ def create_both():
             merged, err = create_set(
                 boq, claims["supply"], claims["installation"],
                 date_val, notes_val,
+                round_on=RO.form_choice(request.form, legacy=True),
                 po_ref=(request.form.get("po_ref") or "").strip(),
                 po_date=(request.form.get("po_date") or "").strip(),
                 tax_type=(request.form.get("tax_type") or "cgst_sgst").strip(),
@@ -458,6 +480,8 @@ def _form(boq, prev, entered, error, date_val, notes_val) -> str:
         <div class="form-group span2"><label for="notes">Notes</label>
           <input type="text" id="notes" name="notes" value="{P.esc(notes_val)}"/></div>
       </div>
+      {RO.checkbox_html(RO.form_choice(request.form, legacy=True) if request.method == "POST" else True,
+                        "Once, on the merged tax invoice's total &mdash; never on each leg.")}
     </div>
     <div class="form-section">
       <div class="section-title">&#128230; Supply</div>

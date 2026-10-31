@@ -542,7 +542,8 @@ def boq_line_items(picked: list, boq: dict, leg: str) -> tuple:
                 "qty": qty,
                 "unit": str(row.get("unit") or ""),
                 "price": rate,
-                "total": round(qty * rate, 2),
+                # To the paisa HALF UP when computed (31 Oct 2026, Part B).
+                "total": _RO().paise(qty * rate),
                 "depth": 0,
             })
             priced += 1
@@ -564,7 +565,7 @@ def _RO():
     return roundoff
 
 
-def boq_figures(items: list, tax_type: str) -> tuple:
+def boq_figures(items: list, tax_type: str, round_on: bool = True) -> tuple:
     """
     `(subtotal, tax_info, grand_total, total_qty)` for BOQ-raised lines.
 
@@ -610,8 +611,10 @@ def boq_figures(items: list, tax_type: str) -> tuple:
     # The rupee round-off (31 Oct 2026, §0 sixty-second block), HALF UP —
     # `roundoff.rupee()`. A PI and a TI raised from a BOQ both come through
     # here; the difference is stored on each as `round_off` and printed.
+    #   From the same date, later: only when the document's "Round off to
+    #   nearest rupee" tick is on (`round_on`, stored as `round_off_on`).
     import roundoff as RO
-    grand = RO.rupee(subtotal + tax_info["total"])
+    grand, _ro = RO.apply(subtotal + tax_info["total"], round_on)
     return subtotal, tax_info, grand, total_qty
 
 
@@ -1091,6 +1094,25 @@ def create_proforma(qid: str):
             error = error or num_err
 
         if not error:
+            # ── The money, to the paisa (31 Oct 2026, Part B) ──────────────
+            # A quotation's line totals and tax heads are the raw products
+            # (`quotation._tax_lines()` is frozen), so the PI's copy is taken
+            # to the paisa: each line, the subtotal as their sum, each tax
+            # head, and the round-off from those — the printed figures.
+            RO_ = _RO()
+            pi_lines = [dict(r) for r in q.get("line_items", [])]
+            for r in pi_lines:
+                if isinstance(r.get("total"), (int, float)) and not isinstance(r.get("total"), bool):
+                    r["total"] = RO_.paise(r["total"])
+            if q.get("line_items"):
+                pi_sub = RO_.paise(sum(float(r.get("total") or 0.0)
+                                       for r in pi_lines))
+            else:
+                pi_sub = RO_.paise(q.get("subtotal") or q.get("grand_total") or 0.0)
+            pi_tax = RO_.paise_tax(dict(q.get("tax_info") or {"total": 0.0}))
+            round_on = RO_.form_choice(f, legacy=True)
+            pi_grand, pi_ro = RO_.apply(pi_sub + float(pi_tax.get("total") or 0.0),
+                                        round_on)
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
@@ -1122,21 +1144,24 @@ def create_proforma(qid: str):
                 # dict(row) per line: a shallow copy is enough because every
                 # value in a line_item is a scalar, and it guarantees a later
                 # edit to the quotation cannot reach an issued invoice.
-                "line_items": [dict(r) for r in q.get("line_items", [])],
-                "subtotal":   float(q.get("subtotal") or q.get("grand_total") or 0.0),
+                "line_items": pi_lines,
+                "subtotal":   pi_sub,
                 "tax_type":   q.get("tax_type", "exempt"),
-                "tax_info":   dict(q.get("tax_info") or {"total": 0.0}),
+                "tax_info":   pi_tax,
                 # The order value to the whole rupee, HALF UP (31 Oct 2026);
-                # the quotation keeps its own figure.
-                "grand_total": _RO().rupee(grand),
-                "round_off":   _RO().split(grand)[1],
+                # the quotation keeps its own figure. From later that day only
+                # when the tick is on, and from the PAISE figures this PI
+                # prints, so the sheet foots to the paisa (Part B).
+                "grand_total": pi_grand,
+                "round_off":   pi_ro,
+                _RO().FIELD:   round_on,
                 "total_qty":   q.get("total_qty", 0),
 
                 # ── The invoice's own fields ──────────────────────────────
                 "po_number":     (f.get("po_number") or "").strip(),
                 "po_date":       (f.get("po_date") or "").strip(),
                 "advance_pct":   pct,
-                "amount_due":    _RO().rupee(due),
+                "amount_due":    _RO().apply(pi_grand * pct / 100.0, round_on)[0],
                 "project_id":    (f.get("project_id") or "").strip(),
 
                 # ── The running position, frozen at issue ─────────────────
@@ -1148,7 +1173,8 @@ def create_proforma(qid: str):
                 # - this one`, and a later PI cannot reach back into it.
                 "prior_invoiced": invoiced,
                 "prior_refs":     list(pri_refs),
-                "balance_due":    round(_RO().rupee(grand) - invoiced - _RO().rupee(due), 2),
+                "balance_due":    round(pi_grand - invoiced
+                                        - _RO().apply(pi_grand * pct / 100.0, round_on)[0], 2),
                 "payment_terms": (f.get("payment_terms") or "").strip(),
                 "delivery_terms": (f.get("delivery_terms") or "").strip(),
                 "delivery_date": (f.get("delivery_date") or "").strip(),
@@ -1428,6 +1454,7 @@ def create_proforma(qid: str):
             <div class="adv-out">{adv_help}</div>
           </div>
           {confirm_html}
+          {_RO().checkbox_html(_RO().form_choice(f, legacy=True) if request.method == "POST" else True)}
         </div>
 
         <div class="form-section">
@@ -1558,8 +1585,10 @@ def from_boq(boq_id: str):
             error = error or num_err
 
         if not error:
-            subtotal, tax_info, grand, total_qty = boq_figures(items, head)
-            due = _RO().rupee(grand * pct / 100.0)
+            round_on = _RO().form_choice(f, legacy=True)
+            subtotal, tax_info, grand, total_qty = boq_figures(items, head,
+                                                               round_on)
+            due = _RO().apply(grand * pct / 100.0, round_on)[0]
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
@@ -1587,6 +1616,7 @@ def from_boq(boq_id: str):
                 "tax_info":    tax_info,
                 "grand_total": grand,
                 "round_off":   round(grand - subtotal - float(tax_info.get("total") or 0.0), 2),
+                _RO().FIELD:   round_on,
                 "total_qty":   total_qty,
 
                 "po_number":     (f.get("po_number") or "").strip(),
@@ -1728,6 +1758,7 @@ def from_boq(boq_id: str):
               below; 30 asks for a 30% advance on them and shows the balance as
               payable before dispatch.</div>
           </div>
+          {_RO().checkbox_html(_RO().form_choice(f, legacy=True) if is_post else True)}
         </div>
 
         <div class="form-section">
