@@ -1381,7 +1381,11 @@ def compute_rounding_off(unrounded_total: float) -> tuple:
 
     Rounds unrounded_total to nearest whole rupee. Delta is stored as rounding_off.
     """
-    grand = float(round(unrounded_total))
+    # HALF UP (31 Oct 2026, §0 sixty-second block): `round()` sent .50 to the
+    # even rupee, so a bill ending in exactly 50 paise rounded DOWN half the
+    # time. `roundoff.rupee()` is the one rule every document now shares.
+    import roundoff as RO
+    grand = RO.rupee(unrounded_total)
     rounding = round(grand - unrounded_total, 2)
     return rounding, grand
 

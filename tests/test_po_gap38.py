@@ -394,13 +394,19 @@ def test_from_boq_with_nothing_ticked_is_still_refused(client):
 # ══ 5. No figure on an existing PO moves ════════════════════════════════════
 
 def test_totals_of_reproduces_a_stored_order_with_both_kinds_of_line():
+    """
+    ⚠ **AMENDED 31 October 2026** (CLIENT_CHANGES.md §0 sixty-second block):
+    the order value is now rounded to the whole rupee, HALF UP — 2395.40 →
+    2395, 35.40 → 35. Subtotal, taxable value and quantity are unchanged, and
+    an order stored before that date keeps the grand total it stored.
+    """
     items = [{"type": "item", "name": "x", "part_no": "x", "hsn": "", "qty": 2.0,
               "unit": "Nos", "price": 1000.0, "discount_pct": 0.0, "total": 2000.0, "depth": 0}]
     extras = [{"type": "extra", "description": "y", "unit": "Nos", "qty": 3.0,
                "rate": 10.0, "discount_pct": 0.0, "total": 30.0, "rate_is_assumed": False}]
     sub, taxable, tax, grand, qty = PU._totals_of(items, "cgst_sgst", 9.0, 0.0, [], extras)
-    assert (sub, taxable, grand, qty) == (2030.0, 2030.0, 2395.4, 5.0)
+    assert (sub, taxable, grand, qty) == (2030.0, 2030.0, 2395.0, 5.0)
     sub, taxable, tax, grand, qty = PU._totals_of([], "cgst_sgst", 9.0, 0.0, [], extras)
-    assert (sub, taxable, grand, qty) == (30.0, 30.0, 35.4, 3.0)
+    assert (sub, taxable, grand, qty) == (30.0, 30.0, 35.0, 3.0)
     sub, taxable, tax, grand, qty = PU._totals_of(items, "cgst_sgst", 9.0, 0.0, [], [])
     assert (sub, taxable, grand, qty) == (2000.0, 2000.0, 2360.0, 2.0)

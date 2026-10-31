@@ -7587,6 +7587,24 @@ on an existing PO moves: `_totals_of()` is unchanged and the pinned golden did
 not move. `tests/test_po_gap38.py` (28), most of it parametrised over both
 switch states.
 
+#### The rupee round-off, and Resume after Back (31 October 2026)
+
+CLIENT_CHANGES.md §0 sixty-second block. **Every PO's Order Value is rounded to
+the whole rupee, HALF UP** — `roundoff.rupee()`, never `round()` — inside
+`_totals_of()`, and the difference is stored as `round_off` (`_round_off_of()`)
+and printed as a "Round off" row only when present and non-zero, so an order
+saved before that date prints as it did. The same leaf rounds the Proforma
+(`proforma.boq_figures()` and the quotation path), the Tax Invoice (both
+paths), new Work Orders (`rounds_to_rupee`) and the RA bill
+(`ra.compute_rounding_off()`, previously `round()`). The quotation is not
+rounded: its print is frozen.
+
+**The create form saves itself in the browser** (`formdraft.py`): on return it
+offers *Resume your unsaved purchase order?* / Discard. Resume POSTs the saved
+fields with `_resume=1`, and `create_purchase()` treats that POST as a REDRAW —
+no validation, no save, no number spent. Per browser, per device; files are not
+kept; cleared on a real submit and by Discard. `tests/test_roundoff_and_drafts.py`.
+
 #### The item picker — Specification library + BOQ items (31 October 2026)
 
 ⚠ **The hidden state above offered the placeholder ALONE, and that empty

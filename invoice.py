@@ -816,7 +816,11 @@ def create_invoice(pid: str):
 
     f     = request.form
     error = ""
-    grand = float(pi.get("grand_total") or 0.0)
+    # To the whole rupee, HALF UP (31 Oct 2026, §0 sixty-second block). A PI
+    # raised since then is already whole; an older one is rounded here, and
+    # the difference is stored on the tax invoice as `round_off`.
+    import roundoff as RO
+    grand = RO.rupee(float(pi.get("grand_total") or 0.0))
     may_number = _may_set_number()
     # The ordinal actually saved. Set on the POST branch and read at the write;
     # on a GET it is the series' own next number and nothing has been typed.
@@ -890,6 +894,8 @@ def create_invoice(pid: str):
                 "tax_type":    pi.get("tax_type", "exempt"),
                 "tax_info":    dict(pi.get("tax_info") or {"total": 0.0}),
                 "grand_total": grand,
+                "round_off":   round(grand - float(pi.get("subtotal") or grand)
+                                     - float((pi.get("tax_info") or {}).get("total") or 0.0), 2),
                 "total_qty":   pi.get("total_qty", 0),
 
                 # ── Statutory fields this document is the first to carry ──
@@ -1334,6 +1340,7 @@ def from_boq(boq_id: str):
                 "tax_type":    head,
                 "tax_info":    tax_info,
                 "grand_total": grand,
+                "round_off":   round(grand - subtotal - float(tax_info.get("total") or 0.0), 2),
                 "total_qty":   total_qty,
 
                 "place_of_supply": pos,
@@ -1667,6 +1674,12 @@ def view_invoice(id: str):
             r = tax_info.get(rate_keys.get(tname, ""), 0)
             rate_label = f" @ {r:g}%" if r else ""
             table_rows += DS.sum_row(f"{tname}{rate_label}", _inr(tamt), indent=12)
+
+    # The rupee round-off (31 Oct 2026) — only on an invoice that stored one,
+    # so every tax invoice issued before then prints byte-for-byte as it did.
+    if abs(float(ti.get("round_off") or 0.0)) >= 0.005:
+        import roundoff as RO
+        table_rows += DS.sum_row("Round off", RO.label(ti["round_off"]))
 
     table_rows += DS.total_row("Invoice Value" if has_tax else "Total",
                                _fmt_qty(total_qty), _inr(grand))
