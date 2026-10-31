@@ -72,6 +72,7 @@ import series as SER   # the document-number FLOOR and the one scan per series (
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
+import roundoff as RO  # the rupee round-off tick and the paisa (31 Oct 2026)
 from chrome import BASE_STYLES, _nav
 from store import STORE
 
@@ -819,8 +820,24 @@ def create_invoice(pid: str):
     # To the whole rupee, HALF UP (31 Oct 2026, §0 sixty-second block). A PI
     # raised since then is already whole; an older one is rounded here, and
     # the difference is stored on the tax invoice as `round_off`.
-    import roundoff as RO
-    grand = RO.rupee(float(pi.get("grand_total") or 0.0))
+    # ⚠ From later the same day: the TI's own "Round off to nearest rupee"
+    #   tick, which OPENS at the proforma's choice (`round_off_on`; a PI
+    #   without one rounded, so legacy is True) and may be changed on this
+    #   form. A TI has no draft — it is issued when saved — so once saved the
+    #   choice is frozen with the rest of it.
+    #   And to the PAISA (Part B): the copy's lines, subtotal and tax heads
+    #   are two-decimal figures and the round-off is taken from them.
+    round_on = RO.form_choice(f, legacy=RO.is_on(pi, True))
+    ti_lines = [dict(r) for r in pi.get("line_items", [])]
+    for r in ti_lines:
+        if isinstance(r.get("total"), (int, float)) and not isinstance(r.get("total"), bool):
+            r["total"] = RO.paise(r["total"])
+    if pi.get("line_items"):
+        ti_sub = RO.paise(sum(float(r.get("total") or 0.0) for r in ti_lines))
+    else:
+        ti_sub = RO.paise(pi.get("subtotal") or pi.get("grand_total") or 0.0)
+    ti_tax = RO.paise_tax(dict(pi.get("tax_info") or {"total": 0.0}))
+    grand, ti_ro = RO.apply(ti_sub + float(ti_tax.get("total") or 0.0), round_on)
     may_number = _may_set_number()
     # The ordinal actually saved. Set on the POST branch and read at the write;
     # on a GET it is the series' own next number and nothing has been typed.
@@ -889,13 +906,13 @@ def create_invoice(pid: str):
                 # dict(row) per line, same as the PI: a shallow copy is enough
                 # because every value in a line_item is a scalar, and it means a
                 # later edit upstream cannot reach an issued tax invoice.
-                "line_items":  [dict(r) for r in pi.get("line_items", [])],
-                "subtotal":    float(pi.get("subtotal") or grand),
+                "line_items":  ti_lines,
+                "subtotal":    ti_sub,
                 "tax_type":    pi.get("tax_type", "exempt"),
-                "tax_info":    dict(pi.get("tax_info") or {"total": 0.0}),
+                "tax_info":    ti_tax,
                 "grand_total": grand,
-                "round_off":   round(grand - float(pi.get("subtotal") or grand)
-                                     - float((pi.get("tax_info") or {}).get("total") or 0.0), 2),
+                "round_off":   ti_ro,
+                RO.FIELD:      round_on,
                 "total_qty":   pi.get("total_qty", 0),
 
                 # ── Statutory fields this document is the first to carry ──
@@ -1173,6 +1190,7 @@ def create_invoice(pid: str):
               Invoice value <b>&#8377;&nbsp;{grand:,.0f}</b>
             </div>
           </div>
+          {RO.checkbox_html(round_on, "Opens at " + P.esc(pi.get("ref")) + "&rsquo;s own choice. Once the tax invoice is saved it is issued, and the choice is frozen with it.")}
         </div>
 
         <div class="form-section">
@@ -1294,7 +1312,9 @@ def from_boq(boq_id: str):
         error = error or item_err
 
         if not error:
-            subtotal, tax_info, grand, total_qty = boq_figures(items, head)
+            round_on = RO.form_choice(f, legacy=True)
+            subtotal, tax_info, grand, total_qty = boq_figures(items, head,
+                                                               round_on)
             if adv > grand:
                 error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
                          f"value (₹{grand:,.2f}).")
@@ -1341,6 +1361,7 @@ def from_boq(boq_id: str):
                 "tax_info":    tax_info,
                 "grand_total": grand,
                 "round_off":   round(grand - subtotal - float(tax_info.get("total") or 0.0), 2),
+                RO.FIELD:      round_on,
                 "total_qty":   total_qty,
 
                 "place_of_supply": pos,
@@ -1544,6 +1565,7 @@ def from_boq(boq_id: str):
               of what was supplied.
             </div>
           </div>
+          {RO.checkbox_html(RO.form_choice(f, legacy=True) if is_post else True)}
         </div>
 
         <div class="form-section">
