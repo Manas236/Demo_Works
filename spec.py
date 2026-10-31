@@ -51,6 +51,7 @@ and `demo_data`, none of which import anything from the app. `boq.py` imports
 **this** module; this module must never import `boq.py`.
 """
 
+import re
 import uuid
 
 from flask import Blueprint, redirect, request, url_for
@@ -177,6 +178,239 @@ def variant_of(spec: dict, label: str):
         if v.get("label") == label:
             return v
     return variants[0] if len(variants) == 1 else None
+
+
+# =============================================================================
+# LEARNING FROM A BOQ — every saved BOQ's items join the library (31 Oct 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0 sixty-first block. Yogesh, on the 31 October call:
+# whatever goes into a BOQ should be in the Specification library, so it can be
+# picked on a purchase order or a quotation later. Manas's rulings: ON EVERY
+# BOQ SAVE, automatically (this replaces the 1 October "review and tick" idea,
+# which was never built), plus a one-time backfill of the BOQs already on the
+# box (`tools/backfill_spec_from_boqs.py`).
+#
+# `boq.library_payload()` turns a BOQ into CLAUSES — a specification header and
+# the sizes under it, or one stand-alone line — because only `boq.py` knows the
+# parent rule. This module owns the collection and does the writing. The arrow
+# is boq → spec, as it always was; spec.py still never imports boq.py.
+#
+# ⚠ **ADD-ONLY, and never a correction.** A clause already in the library (its
+#   `spec_text` matches, case and whitespace folded) is REUSED: a size it lacks
+#   is appended, and a rate fills ONLY where the library has none (the 1 October
+#   rule). Nothing the library already holds — a title, a code, a category, an
+#   HSN, a rate someone typed — is ever changed by a BOQ.
+# ⚠ **EXACT-TEXT matching only, nothing fuzzy.** "150 NB" and "150mm dia" are
+#   two sizes; MS and GI are two clauses. The structured library (material,
+#   NB vs OD, thickness as real fields) is a separate free pass, not built.
+# ⚠ **Installation-only lines are not learned** — labour, not a thing anybody
+#   buys or quotes as goods (the same rule as `buypick.py`).
+# ⚠ **A learned clause is ordinary data afterwards.** It is editable and
+#   deletable at /spec like any other; `created_from: "boq"` and the BOQ ref it
+#   came from are provenance only, and nothing branches on them.
+
+LEARNED_CODE_PREFIX = "BOQ-"
+LEARNED_TITLE_CHARS = 80
+
+# The scope-of-work words a BOQ clause opens with — "Supply, Fabrication,
+# Installtion, Testing & comissioning of …", the client's spelling slips
+# included. Stripped from a learned clause's TITLE (and from the PO picker's
+# labels, which import this) — never from the clause text itself.
+_LEAD_IN = re.compile(
+    r"^(?:(?:supply(?:ing)?|providing|fabrication|fabricating|err?ection|"
+    r"install(?:ation|tion|ing)?|testing|test|"
+    r"co?m+is+ion(?:ing)?|commissioning|fixing|laying|and|of|the)"
+    r"[\s,&/.]*)+", re.I)
+
+# A category for a learned clause, by keyword, first match wins. Only the
+# picker's GROUPING — every one is editable at /spec. Anything unmatched is
+# "Other", which is what the form defaults to anyway.
+_CATEGORY_WORDS = (
+    ("Sprinklers", ("sprinkler",)),
+    ("Hydrant",    ("hydrant", "hose", "branch pipe", "fire brigade", "landing valve")),
+    ("Valves",     ("valve",)),
+    ("Pumps",      ("pump", "jockey", "motor")),
+    ("Panels",     ("panel", "starter", "control")),
+    ("Civil",      ("excavat", "rcc", "pedestal", "trench", "civil", "masonry",
+                    "concrete", "plaster")),
+    ("Piping",     ("pipe", "piping", "flange", "elbow", "tee", "reducer",
+                    "coupling", "fitting")),
+)
+
+
+def strip_lead_in(text: str) -> str:
+    """`text` without the scope-of-work lead-in, unless that would leave nothing."""
+    m = _LEAD_IN.match(text or "")
+    if not m or len(m.group(0).split()) < 2:
+        return text
+    rest = text[m.end():].strip()
+    return (rest[:1].upper() + rest[1:]) if rest else text
+
+
+def _fold(text) -> str:
+    return " ".join(str(text or "").split()).lower()
+
+
+def _cut_words(text: str, limit: int) -> str:
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    head = t[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return (head or t[:limit]) + "…"
+
+
+def _learned_title(spec_text: str) -> str:
+    first = str(spec_text or "").strip().split("\n", 1)[0]
+    return _cut_words(strip_lead_in(" ".join(first.split())), LEARNED_TITLE_CHARS)
+
+
+def _learned_category(spec_text: str) -> str:
+    t = _fold(spec_text)
+    for cat, words in _CATEGORY_WORDS:
+        if any(w in t for w in words):
+            return cat
+    return DEFAULT_CATEGORY
+
+
+def _next_learned_code() -> str:
+    used = {str(s.get("code") or "") for s in STORE["specs"].values()}
+    n = 1
+    while f"{LEARNED_CODE_PREFIX}{n:04d}" in used:
+        n += 1
+    return f"{LEARNED_CODE_PREFIX}{n:04d}"
+
+
+def _rate_or_none(v):
+    if v is None or str(v).strip() == "":
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f >= 0 else None
+
+
+def learn_from_clauses(clauses: list, *, boq_ref: str = "", write: bool = True) -> dict:
+    """
+    Add a BOQ's clauses to the library. `clauses` is `boq.library_payload()`:
+
+        [{"spec_text", "supply_hsn", "install_sac", "supply_gst_rate",
+          "install_gst_rate", "variants": [{"label", "unit", "s_base", "i_base"}]}]
+
+    Returns a report — `{"new_specs", "new_variants", "rates_filled",
+    "unchanged", "added": [(code, title, label)]}` — and, with `write=False`,
+    changes nothing (the backfill tool's dry run).
+    """
+    ensure_demo_specs()
+    by_text = {}
+    for sid, s in STORE["specs"].items():
+        by_text.setdefault(_fold(s.get("spec_text")), sid)
+
+    report = {"new_specs": 0, "new_variants": 0, "rates_filled": 0,
+              "unchanged": 0, "added": []}
+    pending_codes = set()
+
+    for c in clauses or []:
+        text = str(c.get("spec_text") or "").strip()
+        variants = [v for v in (c.get("variants") or []) if isinstance(v, dict)]
+        if not text or not variants:
+            continue
+        key = _fold(text)
+        sid = by_text.get(key)
+
+        if sid is None:
+            code = _next_learned_code()
+            while code in pending_codes:
+                n = int(code[len(LEARNED_CODE_PREFIX):]) + 1
+                code = f"{LEARNED_CODE_PREFIX}{n:04d}"
+            pending_codes.add(code)
+            sized = len(variants) > 1 or any(str(v.get("label") or "").strip()
+                                             for v in variants)
+            seen, clean = set(), []
+            for v in variants:
+                label = " ".join(str(v.get("label") or "").split()) if sized else ""
+                unit = " ".join(str(v.get("unit") or "").split())
+                vkey = (_fold(label), _fold(unit))
+                if vkey in seen or (sized and not label):
+                    continue
+                seen.add(vkey)
+                clean.append({"label": label, "dimension": None, "dim_unit": "",
+                              "unit": unit,
+                              "default_supply_base_rate": _rate_or_none(v.get("s_base")),
+                              "default_install_base_rate": _rate_or_none(v.get("i_base"))})
+                if not sized:
+                    break
+            if not clean:
+                continue
+            hsn = str(c.get("supply_hsn") or "").strip()
+            sac = str(c.get("install_sac") or "").strip()
+            record = {
+                "code":       code,
+                "title":      _learned_title(text) or code,
+                "spec_text":  text,
+                "category":   _learned_category(text),
+                # Only a well-formed code is carried; a malformed one would make
+                # the clause refuse its own edit form.
+                "supply_hsn": hsn if _valid_tax_code(hsn) else "",
+                "install_sac": sac if _valid_tax_code(sac) else "",
+                "supply_gst_rate":  _num(c.get("supply_gst_rate"), DEFAULT_GST_RATE),
+                "install_gst_rate": _num(c.get("install_gst_rate"), DEFAULT_GST_RATE),
+                "variants":   clean,
+                "created_from": "boq",
+                "learned_from_boq_ref": str(boq_ref or ""),
+            }
+            report["new_specs"] += 1
+            for v in clean:
+                report["added"].append((code, record["title"], v["label"]))
+            if write:
+                new_id = create_record(record)
+                by_text[key] = new_id
+            else:
+                by_text[key] = f"(new:{code})"
+            continue
+
+        # ── An existing clause: append missing sizes, fill blank rates ──────
+        spec = STORE["specs"].get(sid)
+        if spec is None:                       # a dry run's own new clause
+            continue
+        existing = spec.get("variants") or []
+        unsized = len(existing) == 1 and not str(existing[0].get("label") or "").strip()
+        index = {(_fold(v.get("label")), _fold(v.get("unit"))): v for v in existing}
+        changed = False
+        for v in variants:
+            label = " ".join(str(v.get("label") or "").split())
+            unit = " ".join(str(v.get("unit") or "").split())
+            s_base, i_base = _rate_or_none(v.get("s_base")), _rate_or_none(v.get("i_base"))
+            hit = index.get((_fold(label), _fold(unit)))
+            if hit is None and unsized and not label:
+                hit = existing[0]
+            if hit is not None:
+                for k, r in (("default_supply_base_rate", s_base),
+                             ("default_install_base_rate", i_base)):
+                    if hit.get(k) is None and r is not None:
+                        report["rates_filled"] += 1
+                        changed = True
+                        if write:
+                            hit[k] = r
+                continue
+            # ⚠ A size is never appended to an UNSIZED clause, and an unlabelled
+            #   line is never appended as a size: both would put a blank label
+            #   into a list a dropdown has to tell apart (`_validate()`'s rule).
+            if unsized or not label:
+                continue
+            new_v = {"label": label, "dimension": None, "dim_unit": "", "unit": unit,
+                     "default_supply_base_rate": s_base,
+                     "default_install_base_rate": i_base}
+            index[(_fold(label), _fold(unit))] = new_v
+            report["new_variants"] += 1
+            report["added"].append((spec.get("code", ""), spec.get("title", ""), label))
+            changed = True
+            if write:
+                spec.setdefault("variants", []).append(new_v)
+        if not changed:
+            report["unchanged"] += 1
+    return report
 
 
 def rate_range(spec: dict) -> tuple:

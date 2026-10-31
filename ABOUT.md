@@ -8138,6 +8138,35 @@ Held by [tests/test_po_extra_lines.py](tests/test_po_extra_lines.py).
 | `GET,POST /spec/add` | `add_spec` |
 | `GET,POST /spec/edit/<id>` | `edit_spec` |
 | `GET,POST /spec/delete/<id>` | `delete_spec` — GET confirms, POST deletes |
+
+#### Learning from every saved BOQ (31 October 2026)
+
+CLIENT_CHANGES.md §0 sixty-first block. `/boq/create` calls
+`boq.learn_into_library()` **after** the save: `boq.library_payload()` turns
+the BOQ into clauses (a specification header and its sizes → one clause with
+variants; a stand-alone line → a one-size clause; installation-only lines,
+which are labour, left out) and `spec.learn_from_clauses()` writes them.
+
+- ⚠ **ADD-ONLY.** A clause whose `spec_text` already exists (case and
+  whitespace folded) is REUSED; a size it lacks is appended; a rate fills only
+  where the library has none. A title, code, category, HSN or typed rate is
+  never changed by a BOQ. A size is never appended to an UNSIZED clause.
+- ⚠ **EXACT text, nothing fuzzy** — 150 NB / 150mm dia, MS / GI, two
+  thicknesses stay apart. The structured library is a separate, unbuilt pass.
+- **Rates are BASE rates** (the cost basis), never the escalated or discounted
+  selling rate.
+- A new clause gets code `BOQ-0001…`, a title from the clause's first line with
+  the scope-of-work lead-in stripped (`spec.strip_lead_in()`, which
+  `buypick.py`'s labels also use), a keyword-guessed category, and provenance
+  `created_from: "boq"` / `learned_from_boq_ref`. Nothing branches on those.
+- **Never blocks the BOQ:** a failure is caught and printed; the save message
+  says how many items were added.
+- The BOQs saved before this date: `tools/backfill_spec_from_boqs.py` —
+  dry run by default, which runs the real write on a copy and restores it, so
+  its counts are exactly `--write`'s; current revisions only; idempotent.
+  ⚠ On production, stop the service before `--write`.
+
+`tests/test_spec_learn.py`.
 | `POST /spec/picture/<id>` | `picture` — the clause's picture, the library default for a PI line, `spec.edit` (21 Oct 2026) — §5 *Pictures* |
 
 **Read the Specification entry in §3 before editing this file**, and do not

@@ -6051,6 +6051,48 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 31 October 2026, by Manas Gawde — EVERY SAVED BOQ'S ITEMS JOIN THE SPECIFICATION LIBRARY, AND A ONE-TIME BACKFILL OF THE BOQS ALREADY ON THE BOX · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The sixtieth block stands exactly as
+> recorded. This is the **sixty-first** occasion.
+>
+> **What prompted it:** a second call with Yogesh on 31 October, after the
+> sixtieth block went live. He wants whatever is in a BOQ to be in the
+> Specification library, so it can be picked anywhere the library is offered.
+> Manas agreed on the call.
+>
+> **What was decided (Manas):**
+>
+> 1. **On every BOQ save, automatically.** This SUPERSEDES the 1 October
+>    "review and tick" ruling — which was never built, so nothing is undone —
+>    and the sixtieth block's decision 3 ("nothing is written into the
+>    library"). The PO's BOQ items group stays as it is.
+> 2. **A one-time backfill of the BOQs already on the box**, dry run first,
+>    then a write he approves: `tools/backfill_spec_from_boqs.py`.
+> 3. **Which lines are left out** was left to the agent (he did not want to
+>    decide it). **The agent's call, declared:** the same rule the PO picker
+>    already applies — installation-only lines (labour) are not learned;
+>    everything else is, lump-sum and civil lines included. A learned clause is
+>    ordinary library data and deletable at /spec.
+>
+> **What was built:** `boq.library_payload()` (a header and its sizes → one
+> clause with variants; a stand-alone line → a one-size clause; BASE rates
+> only) into `spec.learn_from_clauses()` (add-only: a clause already there is
+> reused, a missing size appended, a rate filled only where the library has
+> none; exact text only, nothing fuzzy; code `BOQ-0001…`, a title with the
+> scope-of-work lead-in stripped, a category guessed from keywords, provenance
+> `created_from: "boq"`). Called from `/boq/create` after the save, which can
+> never be blocked by it, and the save message says how many items it added.
+>
+> **Not built, and still a separate free pass:** the structured library
+> (material, NB vs OD, thickness as real fields, deduplicated on them). Until
+> then two BOQs that word the same item differently make two library entries.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

@@ -909,6 +909,93 @@ def parent_index(lines: list) -> list:
     return out
 
 
+def library_payload(boq: dict) -> list:
+    """
+    A BOQ as CLAUSES for the Specification library — `spec.learn_from_clauses()`
+    (31 October 2026, CLIENT_CHANGES.md §0 sixty-first block).
+
+    One clause per specification header, carrying the sizes under it
+    (`header_of()`, THE parent rule), and one clause per stand-alone line. A
+    header with nothing learnable under it is skipped — a clause is not a thing
+    anybody buys. ⚠ **Installation-only lines are left out** (a positive
+    installation rate and no supply rate is labour), the rule `buypick.py`
+    applies to the purchase order. Rates are the line's BASE rates — the cost
+    basis (§3) — never its escalated selling rate.
+    """
+    lines = [li for li in (boq.get("line_items") or []) if isinstance(li, dict)]
+    parents = header_of(lines)
+
+    def _learnable(li):
+        if li.get("is_header"):
+            return False
+        sup, ins = net_rate(li, "supply"), net_rate(li, "install")
+        if (sup is None or sup <= 0) and (ins is not None and ins > 0):
+            return False
+        return bool(" ".join(str(li.get("description") or "").split()))
+
+    def _variant(li, label):
+        return {"label": label, "unit": str(li.get("unit") or ""),
+                "s_base": li.get("supply_base_rate"),
+                "i_base": li.get("install_base_rate")}
+
+    def _tax(li):
+        return {"supply_hsn": str(li.get("supply_hsn") or ""),
+                "install_sac": str(li.get("install_sac") or ""),
+                "supply_gst_rate": li.get("supply_gst_rate"),
+                "install_gst_rate": li.get("install_gst_rate")}
+
+    families: dict = {}
+    order = []
+    for i, li in enumerate(lines):
+        if li.get("is_header"):
+            families.setdefault(i, [])
+            order.append(("h", i))
+        elif i in parents:
+            families.setdefault(parents[i], []).append(i)
+        else:
+            order.append(("s", i))
+
+    clauses = []
+    for kind, i in order:
+        if kind == "h":
+            kids = [k for k in families.get(i, []) if _learnable(lines[k])]
+            if not kids:
+                continue
+            first = lines[kids[0]]
+            clauses.append({
+                "spec_text": str(lines[i].get("description") or "").strip(),
+                **_tax(first),
+                "variants": [_variant(lines[k], " ".join(str(lines[k].get("description")
+                                                             or "").split()))
+                             for k in kids],
+            })
+        else:
+            li = lines[i]
+            if not _learnable(li):
+                continue
+            clauses.append({
+                "spec_text": str(li.get("description") or "").strip(),
+                **_tax(li),
+                "variants": [_variant(li, "")],
+            })
+    return clauses
+
+
+def learn_into_library(boq: dict) -> dict:
+    """
+    Add a just-saved BOQ's items to the Specification library. ⚠ **Never
+    blocks the BOQ**: any failure here is caught and reported, and the BOQ the
+    user just saved stands exactly as saved.
+    """
+    from spec import learn_from_clauses
+    try:
+        return learn_from_clauses(library_payload(boq), boq_ref=str(boq.get("ref") or ""))
+    except Exception as exc:                      # pragma: no cover — defensive
+        print(f"  !! BOQ {boq.get('ref')}: library learning failed — "
+              f"{type(exc).__name__}: {exc}")
+        return {}
+
+
 def header_of(lines: list) -> dict:
     """
     `{child index: header index}` — every line whose parent, by the rule above,
@@ -6071,8 +6158,15 @@ def create_boq(imported: dict = None):
             boq["subtotal"]         = tot
 
             STORE["boqs"][bid] = boq
+            # Every saved BOQ's items join the Specification library (31 Oct
+            # 2026, §0 sixty-first block) — add-only, after the save, and never
+            # able to block it.
+            learned = learn_into_library(boq)
+            n_new = len(learned.get("added") or [])     # sizes, new clauses' included
+            note = (f" {n_new} new item{'' if n_new == 1 else 's'} added to the "
+                    f"Spec library." if n_new else "")
             return redirect(url_for("boq.view_boq", id=bid,
-                                    msg=f"BOQ {boq['ref']} created.", type="success"))
+                                    msg=f"BOQ {boq['ref']} created.{note}", type="success"))
 
         # Rejected: re-render with what the user actually typed, exactly as the
         # quotation form does. The editor boots from the posted JSON, so no
