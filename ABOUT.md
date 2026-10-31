@@ -5735,6 +5735,23 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
 
 ---
 
+### The edit-after-issue log  (`edit_log`, 31 October 2026 — CLIENT_CHANGES.md §0 sixty-fourth block)
+
+**Not a collection.** A list on a document record, written by `editlog.record()`
+only when an edit after issue actually changed something — so a record never
+edited carries no key and reads exactly as before:
+
+```python
+edit_log: [{"at": "2026-10-31 14:05:11", "by": "<user id>",   # the ID — gap 41
+            "field": "Customer GSTIN", "before": "27AAA…", "after": "27AAB…"}]
+```
+
+Lines are logged per position (`Line 3`: before text → after text), added and
+removed lines included. `editlog.band()` draws the amber screen-only band; the
+print never carries it. Written on: the proforma (Part 1).
+
+---
+
 ### Line pictures  (`image`, 21 October 2026 — CLIENT_CHANGES.md §0 forty-ninth block)
 
 **Not a collection.** One optional key, on five shapes, holding the id of a
@@ -6989,6 +7006,37 @@ needed no new CSS. ⚠ **Never build a coverage ratio out of that pair.**
 ---
 
 ### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
+
+#### Editing an issued proforma — 31 October 2026 (§0 sixty-fourth block, Part 1)
+
+`GET,POST /proforma/edit/<id>` (`proforma.edit_proforma`, under the EXISTING
+`proforma.create` — the tier its Pictures and HSN pages already use; no
+permission minted). **Every field**: the number (forward only — `docnum.validate()`
+with the record's OWN ordinal as the default, so keeping it is always
+accepted), date, customer PO no./date, project, advance %, the party and
+ship-to block, every term, the note, the tax head (CGST+SGST / IGST / VAT /
+none), the round-off tick, and the lines through the shared leaf
+**`lineedit.py`** — add, remove, reorder, headings, and per line description,
+part no, **make**, HSN, qty, unit, rate, **discount %** and **GST %**.
+
+* **Figures are recomputed** to the paisa: `qty × rate × (1 − disc/100)` per
+  line, taxed per GST slab (`lineedit.tax_figures()` — `boq_figures()`'s rule
+  extended to VAT and exempt), then the rupee round-off if ticked. The
+  payment box follows; `prior_invoiced` / `prior_refs` stay as stored.
+* **Keys the form does not edit** (`line_id`, `leg`, `image`, `depth`, …)
+  are copied from the STORED row the posted `_k` names, never from the post.
+* **Make and discount print under the description** only on a line that
+  carries one (`lineedit.print_note()`), so no sheet saved before moves.
+* ⚠ **A tax invoice raised from it is NOT changed.** `proforma.ti_divergence()`
+  compares what the TI copied verbatim (number, party, lines, subtotal, tax)
+  and both `/proforma/view` and `/invoice/view` draw an amber band naming each
+  difference — `ra.party_drift()`'s wording. It answers nothing for a PI that
+  was never edited, so no existing page moved.
+* **Every change is logged** on the record (`edit_log`, `editlog.py`) and the
+  band *Edited after issue on <date> by <user>* sits above `.doc-outer` with
+  its own print rule — screen only.
+* The screen action bar gained **Edit**: the proforma print golden moved by
+  that one `<a>` (+81 bytes), declared in the test file.
 
 
 #### The document number, typed by hand — 27 October 2026

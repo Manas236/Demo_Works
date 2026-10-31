@@ -621,6 +621,7 @@ PANEL_PERMISSIONS = {
     #   and never again — see docnum.py and ABOUT.md §5.
     "docnum.override": ("invoice.create_invoice", "invoice.from_boq",
                         "proforma.create_proforma", "proforma.from_boq",
+                        "proforma.edit_proforma",
                         "purchase.create_purchase", "purchase.from_boq",
                         "purchase.from_draft", "purchase.edit_purchase_rates",
                         "challan.create_dc"),
@@ -938,6 +939,8 @@ ROUTE_PERMISSIONS = {
     # block). The same document in the same series, so the same permission
     # as raising it from a quotation / a proforma — none was minted.
     "proforma.from_boq":          "proforma.create",
+    # 31 Oct 2026, §0 sixty-fourth block — correct an issued proforma.
+    "proforma.edit_proforma":     "proforma.create",
     "invoice.list_invoices":      "invoice.view",
     "invoice.view_invoice":       "invoice.view",
     "invoice.create_invoice":     "invoice.create",

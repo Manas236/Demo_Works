@@ -93,6 +93,7 @@ from quotation import (
 # is how the three start contradicting each other.
 from quotation import _DISPATCH, _PAY_TERMS, _STATES_IN
 from proforma import PROFORMA_STYLES, _sel_keep
+import proforma as _PF   # the PI's edit divergence band (31 Oct 2026)
 
 # A tax invoice raised FROM a BOQ (22 October 2026) is built by the same
 # helpers as a PI raised from one — the leg, the clause headings, the per-slab
@@ -1933,6 +1934,15 @@ def view_invoice(id: str):
     elif live:
         hsn_note = HF.screen_note(hsn_entries, "", "tax invoice")
 
+    # ── The proforma edited after this invoice was raised (31 Oct 2026,
+    # §0 sixty-fourth block) — `proforma.ti_divergence()`, which answers
+    # nothing for a proforma never edited, so every page that existed before
+    # is byte-for-byte what it was. Above `.doc-outer`: screen only.
+    pi_src = STORE["proformas"].get(str(ti.get("proforma_id") or "")) or {}
+    edit_bands = (_PF.divergence_band(_PF.ti_divergence(pi_src, ti), "proforma",
+                                      "tax invoice", ti.get("ref"))
+                  if pi_src else "")
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -1957,7 +1967,7 @@ def view_invoice(id: str):
 </div>
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-{hsn_note}
+{hsn_note}{edit_bands}
 <div class="doc-outer">
 {sheets_html}
 </div>

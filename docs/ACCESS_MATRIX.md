@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 91 permissions · 207 classified endpoints.**
+**7 roles · 91 permissions · 208 classified endpoints.**
 
 ---
 
@@ -385,7 +385,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `quotation.edit` | `quotation.update_quotation` |
 | `quotation.delete` | `quotation.delete_quotation` |
 | `proforma.view` | `proforma.list_proformas`, `proforma.view_proforma` |
-| `proforma.create` | `proforma.create_proforma`, `proforma.fill_hsn`, `proforma.from_boq`, `proforma.pictures` |
+| `proforma.create` | `proforma.create_proforma`, `proforma.edit_proforma`, `proforma.fill_hsn`, `proforma.from_boq`, `proforma.pictures` |
 | `proforma.delete` | `proforma.delete_proforma` |
 | `invoice.view` | `invoice.list_invoices`, `invoice.view_invoice` |
 | `invoice.create` | `invoice.create_invoice`, `invoice.fill_hsn`, `invoice.from_boq` |
@@ -441,7 +441,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `address.edit` | `address.edit_address`, `address.gst_captcha_edit`, `address.gst_lookup_edit` |
 | `address.delete` | `address.archive_address`, `address.delete_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |
-| `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
+| `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `proforma.edit_proforma`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
 | `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_staff_access`, `auth.edit_user`, `auth.list_users`, `auth.staff_access` |
 | `admin.roles` | `auth.create_role`, `auth.edit_role`, `auth.list_roles` |
 | `admin.access_log` | `auth.access_log` |

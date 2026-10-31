@@ -629,6 +629,8 @@ def populated(client):
             # the Pictures rows above are pointed at a Draft order.
             "/boq/hsn/<id>":           bid,
             "/proforma/hsn/<id>":      pid,
+            # 31 Oct 2026, §0 sixty-fourth block — the PI's edit form.
+            "/proforma/edit/<id>":     pid,
             "/invoice/hsn/<id>":       iid,
             "/ra/hsn/<id>":            rid,
             # The two BOQ-side create forms. Both render a populated page: the

@@ -799,10 +799,12 @@ GOLD_PI = "gold-pi"
 # was dded298848fde613 / 95165 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was a7cbb6c59b153765 / 96225 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-PI_WHOLE = "bd2c396381b313b2"   # was f6642309ef59b171 (§0 59th A1, 29 Oct 2026),
+PI_WHOLE = "37de47a535e3f354"   # was bd2c396381b313b2 (§0 64th, 31 Oct 2026: the
+                                #   SCREEN action bar gained "Edit" — +81 bytes,
+                                #   one <a>; nothing on paper moved), was f6642309ef59b171 (§0 59th A1, 29 Oct 2026),
                                 #   was bf009adade1b81ca (SF mark 1.5x)
-PI_LEN = 101849   # was 99406 (§0 59th A1, 29 Oct 2026), was 97178 (SF mark 1.5x)
-PI_BLOCKS = {"head":       "0721e2b8c58c88bb",   # was aa1c5df88915a319 (§0 59th A1),   # was f947cd7d3d6700f5 (page edge),
+PI_LEN = 101930   # was 101849 (§0 64th, the Edit button), was 99406 (§0 59th A1, 29 Oct 2026), was 97178 (SF mark 1.5x)
+PI_BLOCKS = {"head":       "3a9bb162da8740a8",   # was 0721e2b8c58c88bb (§0 64th, Edit button), was aa1c5df88915a319 (§0 59th A1),   # was f947cd7d3d6700f5 (page edge),
                                                   # was 8d0355644f96b13c,
                                                   # was fb2abee257b52d86,
                                                   # was 0250890a6d6e2f6b,
@@ -811,7 +813,10 @@ PI_BLOCKS = {"head":       "0721e2b8c58c88bb",   # was aa1c5df88915a319 (§0 59t
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "77fa68a83f706064",
              "party":      "9427bbb3e9495dd8",
-             "items":      "ee2126dae594bc30",
+             # was ee2126dae594bc30 — §0 64th: a diff of the render before
+             #   and after shows exactly ONE added line, the screen-only Edit
+             #   <a>; this cut's digest moved with it. Nothing printed moved.
+             "items":      "d92b6e3c4181442c",
              "signature":  "964248284443ca1b"}
 
 # Recaptured after `/ra/print` was rebuilt on the shared A4 sheet. The previous

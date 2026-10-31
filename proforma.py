@@ -58,6 +58,8 @@ import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
+import editlog as EL     # the edit-after-issue log — the leaf (31 Oct 2026)
+import lineedit as LE    # the shared editable line table — the leaf (31 Oct 2026)
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
@@ -1808,6 +1810,313 @@ def from_boq(boq_id: str):
     return _page(template)
 
 
+# =============================================================================
+# EDIT — every field of an issued proforma (31 October 2026, §0 sixty-fourth)
+# =============================================================================
+#
+# Manas, 28 Oct 2026 (the all-documents ask), ruled 31 Oct 2026: a proforma is
+# corrected IN PLACE — party, addresses, dates, terms, the lines (added,
+# removed, reordered; description, part no, make, HSN, qty, unit, rate,
+# discount, GST), the round-off tick and the number (forward only, through
+# `docnum.validate()` with the record's OWN ordinal as the default, so leaving
+# it alone is always accepted).
+#
+# ⚠ **A tax invoice already raised from it is NOT changed.** The TI carries its
+#   own copy, frozen at save; an edit here can only make the two disagree, and
+#   `ti_divergence()` is what says so, in an amber band on BOTH pages —
+#   `ra.party_drift()`'s shape and wording: report, never reconcile.
+# ⚠ **`prior_invoiced` / `prior_refs` stay as stored.** They are what earlier
+#   PIs had asked for when this one was issued; an edit restates this
+#   document's own figures, not the deal's history. The balance is recomputed
+#   from them.
+# ⚠ Every change is written on the record by `editlog.record()` and shown in
+#   the screen-only band. The print carries no band.
+
+PARTY_FIELDS = (("account_name", "Customer"), ("contact_person", "Contact person"),
+                ("to", "Billing address"), ("bill_gstin", "Customer GSTIN"),
+                ("ship_same", "Ship to same as billing"),
+                ("ship_acct_name", "Ship-to name"), ("ship_addr", "Ship-to address"),
+                ("ship_city", "Ship-to city"), ("ship_state", "Ship-to State"),
+                ("ship_pin", "Ship-to PIN"), ("ship_phone", "Ship-to phone"),
+                ("ship_gstin", "Ship-to GSTIN"))
+
+EDIT_FIELDS = (("ref", "Proforma No."), ("date", "Invoice date"),
+               ("po_number", "Customer PO No."), ("po_date", "Customer PO date"),
+               ("project_id", "Project"), ("advance_pct", "Advance %"),
+               ("payment_terms", "Payment terms"), ("delivery_terms", "Terms of delivery"),
+               ("delivery_date", "Delivery date"), ("dispatch_through", "Dispatch through"),
+               ("incoterms", "Incoterms"), ("validity_days", "Validity (days)"),
+               ("notes", "Note"), ("tax_type", "Tax head"),
+               ("round_off_on", "Round off to nearest rupee"),
+               ("subtotal", "Subtotal"), ("grand_total", "Invoice value"),
+               ) + PARTY_FIELDS
+
+TAX_HEADS = (("cgst_sgst", "CGST + SGST (intra-State)"), ("igst", "IGST (inter-State)"),
+             ("vat", "VAT"), ("exempt", "No tax"))
+
+
+def party_form_html(v: dict) -> str:
+    """The customer and ship-to boxes — shared by the PI and the TI edit forms."""
+    def box(name, label, kind="text"):
+        return (f'<div class="form-group"><label for="{name}">{label}</label>'
+                f'<input type="{kind}" id="{name}" name="{name}" value="{P.esc(v.get(name))}"/></div>')
+    same = " checked" if v.get("ship_same") else ""
+    return f"""
+        <div class="form-section">
+          <div class="section-title">Customer</div>
+          <div class="fg2">
+            {box("account_name", "Customer name")}
+            {box("contact_person", "Contact person")}
+            <div class="form-group span2">
+              <label for="to">Billing address (first line is the name printed)</label>
+              <textarea id="to" name="to" rows="4">{P.esc(v.get("to"))}</textarea>
+            </div>
+            {box("bill_gstin", "Customer GSTIN")}
+          </div>
+          <label style="display:flex;gap:.4rem;align-items:center;margin:.6rem 0;">
+            <input type="checkbox" name="ship_same" value="1"{same}/> Ship to the billing address
+          </label>
+          <div class="fg3">
+            {box("ship_acct_name", "Ship-to name")}
+            {box("ship_addr", "Ship-to address")}
+            {box("ship_city", "City")}
+            {box("ship_state", "State")}
+            {box("ship_pin", "PIN")}
+            {box("ship_phone", "Phone")}
+            {box("ship_gstin", "Ship-to GSTIN")}
+          </div>
+        </div>"""
+
+
+def party_from_form(f) -> dict:
+    out = {k: (f.get(k) or "").strip() for k, _l in PARTY_FIELDS if k != "ship_same"}
+    out["to"] = (f.get("to") or "").replace("\r\n", "\n").strip()
+    out["ship_same"] = "1" if f.get("ship_same") else ""
+    return out
+
+
+def ti_divergence(pi: dict, ti: dict) -> list:
+    """
+    `[(label, on_the_proforma, on_the_tax_invoice), …]` — where a proforma
+    EDITED after a tax invoice was raised from it now disagrees with that
+    invoice's copy. Empty for a proforma never edited (so no page that existed
+    before this pass moves), and empty when they still agree.
+
+    Compares only what the TI copied verbatim from the PI: the number, the
+    party, the lines and the pre-round-off figures. The TI's own fields (its PO
+    box, its round-off tick) are its own and are never drift.
+    """
+    if not pi.get(EL.FIELD):
+        return []
+    out = []
+    if str(pi.get("ref") or "") != str(ti.get("proforma_ref") or ""):
+        out.append(("Proforma No.", str(pi.get("ref") or ""), str(ti.get("proforma_ref") or "")))
+    for key, label in PARTY_FIELDS:
+        was, now = str(pi.get(key) or "").strip(), str(ti.get(key) or "").strip()
+        if was != now:
+            out.append((label, was, now))
+    pl = [EL.line_text(r) for r in pi.get("line_items") or []]
+    tl = [EL.line_text(r) for r in ti.get("line_items") or []]
+    if pl != tl:
+        out.append(("Lines", f"{sum(1 for r in pi.get('line_items') or [] if not r.get('is_header'))} lines",
+                    f"{sum(1 for r in ti.get('line_items') or [] if not r.get('is_header'))} lines"))
+    for key, label in (("subtotal", "Subtotal"),):
+        a, b = float(pi.get(key) or 0.0), float(ti.get(key) or 0.0)
+        if abs(a - b) >= 0.005:
+            out.append((label, f"{a:,.2f}", f"{b:,.2f}"))
+    a = float((pi.get("tax_info") or {}).get("total") or 0.0)
+    b = float((ti.get("tax_info") or {}).get("total") or 0.0)
+    if abs(a - b) >= 0.005:
+        out.append(("Tax", f"{a:,.2f}", f"{b:,.2f}"))
+    return out
+
+
+def divergence_band(rows: list, this: str, other: str, other_ref: str) -> str:
+    """The amber band — `ra.party_drift()`'s wording. Screen only."""
+    if not rows:
+        return ""
+    pairs = "; ".join(f"{P.esc(l)} &mdash; on the {this} <b>{P.esc(a) or '(blank)'}</b>, "
+                      f"on the {other} <b>{P.esc(b) or '(blank)'}</b>" for l, a, b in rows)
+    return (f'<div class="form-hint el-drift" style="margin:0 0 1rem;padding:.75rem 1rem;'
+            f'border:1px solid #f2d994;border-left:4px solid #d97706;border-radius:6px;'
+            f'background:#fff8e5;color:#7a4b00;font-size:.88rem;">'
+            f'<span class="fh-icon">&#9888;</span> <span><b>The proforma was edited after '
+            f'tax invoice {P.esc(other_ref)} '
+            f'was raised from it.</b> {pairs}. The tax invoice carries its own copy, frozen '
+            f'at save, and is deliberately <b>not</b> restated &mdash; a document already '
+            f'sent says what it said.</span></div>'
+            f'<style>@media print {{ .el-drift {{ display:none !important; }} }}</style>')
+
+
+def _pi_seq(pi: dict) -> int:
+    return DN.ordinal_of(pi.get("ref"))
+
+
+@proforma_bp.route("/edit/<id>", methods=["GET", "POST"])
+def edit_proforma(id: str):
+    """Correct an issued proforma — every field. See EDIT above."""
+    pi = STORE["proformas"].get(id)
+    if not pi:
+        return redirect(url_for("proforma.list_proformas",
+                                msg="Proforma invoice not found.", type="error"))
+    f = request.form
+    is_post = request.method == "POST"
+    error = ""
+    may_number = _may_set_number()
+    own_seq = _pi_seq(pi)
+    default_gst = LE.uniform_gst(pi.get("tax_type", "exempt"), pi.get("tax_info") or {})
+    stored_lines = list(pi.get("line_items") or [])
+    head_keys = ("date", "po_number", "po_date", "project_id", "payment_terms",
+                 "delivery_terms", "delivery_date", "dispatch_through", "incoterms",
+                 "validity_days", "notes")
+
+    if is_post:
+        v = {k: (f.get(k) or "").strip() for k in head_keys}
+        pct = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
+        tax_type = (f.get("tax_type") or "").strip()
+        if tax_type not in dict(TAX_HEADS):
+            tax_type = "exempt"
+        if not v["date"]:
+            error = "Invoice date is required."
+        elif pct < 0:
+            error = "Advance % must be a number, e.g. 30."
+        elif not (0 < pct <= 100):
+            error = "Advance % must be greater than 0 and no more than 100."
+        elif v["validity_days"] and not v["validity_days"].isdigit():
+            error = "Validity must be a whole number of days."
+        lines = []
+        if not error:
+            lines, error = LE.parse(f.get(LE.FIELD), stored_lines, default_gst=default_gst)
+        seq_used = own_seq
+        if not error:
+            seq_used, num_err = DN.validate(DN.PI, "", f.get("doc_no_seq"), own_seq, may_number)
+            error = error or num_err
+        if not error:
+            before = dict(pi)
+            before_lines = [dict(r) for r in stored_lines]
+            round_on = _RO().form_choice(f, legacy=_RO().is_on(pi, True))
+            subtotal, tax_info, grand, ro, total_qty = LE.tax_figures(lines, tax_type, round_on)
+            due = _RO().apply(grand * pct / 100.0, round_on)[0]
+            prior = float(pi.get("prior_invoiced") or 0.0)
+            old_ref = str(pi.get("ref") or "")
+            pi.update(v)
+            pi.update(party_from_form(f))
+            pi.update({
+                "ref": _ref_for(seq_used) if seq_used != own_seq else old_ref,
+                "line_items": lines, "subtotal": subtotal, "tax_type": tax_type,
+                "tax_info": tax_info, "grand_total": grand, "round_off": ro,
+                _RO().FIELD: round_on, "total_qty": total_qty,
+                "advance_pct": pct, "amount_due": due,
+                "balance_due": round(grand - prior - due, 2),
+            })
+            changes = EL.diff(before, pi, EDIT_FIELDS) + EL.line_diff(before_lines, lines, default_gst)
+            EL.record(pi, changes, _actor_id())
+            if seq_used != own_seq:
+                DN.note_used(DN.PI, "", seq_used)
+                DN.record_override(pi, old_ref, pi["ref"], _actor_id())
+            n = len(changes)
+            return redirect(url_for("proforma.view_proforma", id=id,
+                                    msg=(f"Proforma invoice {pi['ref']} updated — {n} change"
+                                         f"{'' if n == 1 else 's'} logged." if n else
+                                         "Nothing changed."),
+                                    type="success"))
+        rows = LE.posted_rows(f.get(LE.FIELD))
+        vals = dict(v, advance_pct=(f.get("advance_pct") or "").strip(), tax_type=tax_type,
+                    **party_from_form(f))
+        round_shown = _RO().form_choice(f, legacy=_RO().is_on(pi, True))
+    else:
+        rows = LE.rows_for_form(stored_lines, default_gst)
+        vals = {k: str(pi.get(k) or "") for k in head_keys}
+        vals.update({k: pi.get(k, "") for k, _l in PARTY_FIELDS})
+        vals["advance_pct"] = f"{float(pi.get('advance_pct') or 100.0):g}"
+        vals["tax_type"] = pi.get("tax_type", "exempt")
+        round_shown = _RO().is_on(pi, True)
+
+    p_opts = '<option value="">&#8212; none &#8212;</option>'
+    for proj_id, proj in sorted((STORE.get("projects") or {}).items(),
+                                key=lambda kv: str(kv[1].get("name", "")).lower()):
+        sel = " selected" if proj_id == vals.get("project_id") else ""
+        p_opts += f'<option value="{P.esc(proj_id)}"{sel}>{P.esc(proj.get("name"))}</option>'
+    tax_opts = "".join(f'<option value="{k}"{" selected" if k == vals.get("tax_type") else ""}>{lbl}</option>'
+                       for k, lbl in TAX_HEADS)
+    number_html = DN.number_field(DN.PI, str(pi.get("ref") or _ref_for(own_seq)),
+                                  may_override=may_number,
+                                  typed=(f.get("doc_no_seq") or "") if is_post else "")
+    raised = [t for t in STORE["invoices"].values() if t.get("proforma_id") == id]
+    ti_note = ""
+    if raised:
+        refs = ", ".join(P.esc(t.get("ref")) for t in raised)
+        ti_note = (f'<div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>'
+                   f'<span>Tax invoice{"s" if len(raised) != 1 else ""} <b>{refs}</b> '
+                   f'{"were" if len(raised) != 1 else "was"} raised from this proforma. Saving here '
+                   f'does <b>not</b> change {"them" if len(raised) != 1 else "it"}; both pages will '
+                   f'show where they now differ.</span></div>')
+    view_url = url_for("proforma.view_proforma", id=id)
+    form_action = url_for("proforma.edit_proforma", id=id)
+
+    def box(name, label, kind="text", extra=""):
+        return (f'<div class="form-group"><label for="{name}">{label}</label>'
+                f'<input type="{kind}" id="{name}" name="{name}" value="{P.esc(vals.get(name))}"{extra}/></div>')
+
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Edit " + str(pi.get("ref")))}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{DN.NUMBER_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Edit <span>{P.esc(pi.get("ref"))}</span></h1>
+        <a href="{view_url}" class="btn btn-ghost">&#8592; Back to the proforma</a>
+      </div>
+      {_alert(error, "error")}
+      {ti_note}
+      <form method="POST" action="{form_action}">
+        <div class="form-section">
+          <div class="section-title">Invoice</div>
+          <div class="fg3">
+            <div class="form-group"><label for="doc_no_seq">Proforma No.</label>{number_html}</div>
+            {box("date", "Invoice Date *", "date", " required")}
+            {box("po_number", "Customer PO No.")}
+            {box("po_date", "Customer PO Date", "date")}
+            <div class="form-group"><label for="project_id">Project</label>
+              <select id="project_id" name="project_id">{p_opts}</select></div>
+            {box("advance_pct", "Advance % *", "number", ' min="0.01" max="100" step="any" required')}
+          </div>
+        </div>
+        {party_form_html(vals)}
+        <div class="form-section">
+          <div class="section-title">Terms</div>
+          <div class="fg2">
+            <div class="form-group"><label for="payment_terms">Payment Terms</label>
+              {_sel_keep("payment_terms", _PAY_TERMS, vals.get("payment_terms", ""))}</div>
+            <div class="form-group"><label for="delivery_terms">Terms of Delivery</label>
+              {_sel_keep("delivery_terms", _DEL_TERMS, vals.get("delivery_terms", ""))}</div>
+            {box("delivery_date", "Delivery Date", "date")}
+            <div class="form-group"><label for="dispatch_through">Dispatch Through</label>
+              {_sel_keep("dispatch_through", _DISPATCH, vals.get("dispatch_through", ""))}</div>
+            <div class="form-group"><label for="incoterms">Incoterms</label>
+              {_sel_keep("incoterms", _INCOTERMS, vals.get("incoterms", ""))}</div>
+            {box("validity_days", "PI Validity (days)", "number", ' min="0" step="1"')}
+            <div class="form-group span2"><label for="notes">Note on the invoice</label>
+              <input type="text" id="notes" name="notes" value="{P.esc(vals.get("notes"))}"/></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="section-title">Lines</div>
+          <div class="form-group" style="max-width:280px;"><label for="tax_type">Tax head</label>
+            <select id="tax_type" name="tax_type">{tax_opts}</select></div>
+          {LE.editor_html(rows, form_selector='form[action$="' + form_action + '"]')}
+          {_RO().checkbox_html(round_shown)}
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn">Save changes</button>
+          <a href="{view_url}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </main></body></html>"""
+    return _page(template)
+
+
 @proforma_bp.route("/view/<id>")
 def view_proforma(id: str):
     """
@@ -1850,7 +2159,7 @@ def view_proforma(id: str):
         <tr class="{row_cls}">
           <td class="c-sno">{sno}</td>
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>{img_td}
-          <td class="c-desc {indent}">{P.esc(row.get('name'))}</td>
+          <td class="c-desc {indent}">{P.esc(row.get('name'))}{LE.print_note(row)}</td>
           <td class="c-hsn">{HF.print_cell(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
@@ -2120,6 +2429,19 @@ def view_proforma(id: str):
     elif _AUTH.can_reach("proforma.view_proforma"):
         hsn_note = HF.screen_note(hsn_entries, "", "proforma invoice")
 
+    # ── Edit (31 October 2026, §0 sixty-fourth block) — the button for
+    # whoever the gate admits; the log band and the TI-divergence band only
+    # on a proforma that has been edited, so every page that existed before
+    # renders byte-for-byte as it did. Both bands sit above `.doc-outer`:
+    # screen only.
+    edit_btn = ""
+    if _AUTH.can_reach("proforma.edit_proforma"):
+        edit_btn = (f'\n    <a href="{url_for("proforma.edit_proforma", id=id)}" '
+                    f'class="btn btn-ghost">&#9998;&nbsp;Edit</a>')
+    edit_bands = EL.band(pi, "proforma invoice") + "".join(
+        divergence_band(ti_divergence(pi, t), "proforma", "tax invoice", t.get("ref"))
+        for _i, t in raised)
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -2138,14 +2460,14 @@ def view_proforma(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {back_q}
     <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">All Proformas</a>
-    {raise_ti}{del_pi}{pics_btn}{hsn_btn}
+    {raise_ti}{edit_btn}{del_pi}{pics_btn}{hsn_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
 {ti_strip}
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-{hsn_note}
+{hsn_note}{edit_bands}
 <div class="doc-outer">
 <div class="quotation-doc">
 
