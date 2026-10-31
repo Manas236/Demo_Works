@@ -962,8 +962,43 @@ def outstanding_of(bill: dict) -> float:
     # **Less what was received AND less what was written off** (A5). A short
     # allowance the contractor has agreed is not money we are still owed, and
     # leaving it here is what left 10,000 sitting in outstanding forever.
-    gross = float(bill.get("grand_total") or 0.0)
+    gross = float(bill.get("grand_total") or 0.0) + set_round_off(bill)
     return round(gross - received_against(rid) - written_off_against(rid), 2)
+
+
+def set_round_off(bill: dict) -> float:
+    """
+    The whole-rupee round-off of the LIVE merged set this bill is the SUPPLY
+    leg of — 0.0 for every other bill (ABOUT.md §7 gap 99, closed 31 October
+    2026, §0 sixty-fourth block, Part 6).
+
+    A Supply + Installation set is rounded ONCE, on the merged tax invoice
+    (`raboth.py`); the legs keep their exact totals. The customer pays the
+    rounded figure, so measured against the legs alone a fully paid set read
+    up to ₹0.50 over or under. The difference is carried on the supply leg
+    here — once, never split — so the set's outstanding is measured against
+    the merged invoice's ROUNDED total and a fully paid set reads 0.00, on
+    `merged_ra.balance()`, on the receipts register and in the previous
+    balance carried onto the next bill alike.
+
+    Read from `STORE["merged_ras"]` directly: `merged_ra.py` imports this
+    module, never the reverse. A cancelled merge rounds nothing. A set with
+    no round-off (every merge assembled before 31 October 2026, and every
+    unticked one) has `grand_total == sum of the legs` and answers 0.0, so
+    nothing it touched moves.
+    """
+    rid = str((bill or {}).get("id") or "")
+    if not rid:
+        return 0.0
+    for doc in (STORE.get("merged_ras") or {}).values():
+        if str(doc.get("supply_ra_id") or "") != rid:
+            continue
+        if str(doc.get("status") or "").strip().lower() == "cancelled":
+            continue
+        other = (STORE.get("ra_bills") or {}).get(str(doc.get("installation_ra_id") or "")) or {}
+        legs = float(bill.get("grand_total") or 0.0) + float(other.get("grand_total") or 0.0)
+        return round(float(doc.get("grand_total") or 0.0) - legs, 2)
+    return 0.0
 
 
 def previous_balance(boq_id: str, before_ra_no: int,

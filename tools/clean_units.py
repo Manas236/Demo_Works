@@ -80,8 +80,9 @@ import units as UN        # noqa: E402
 # `sheetimport.py` reads them. Matched through `pipeline.norm_name()`, so case
 # and internal spacing do not need their own rows.
 #
-# ⚠ **`Lump Sum` and `Job` map to `Lot`**, which is the one judgement in this
-#   table and is flagged as such in the report: both mean "one undivided
+# ⚠ **`Lump Sum` and `Job` map to `Lot`**, which was the one judgement in this
+#   table (`LS` / `Lump Sum` DECIDED by Manas on 31 Oct 2026 — see JUDGEMENT
+#   below) and is flagged as such in the report: both mean "one undivided
 #   amount of work", which is what the client's `Lot` is, and all three file as
 #   `OTH`. If that is wrong it is wrong in a way a human reading the dry run
 #   can see, which is why it is printed under its own heading.
@@ -94,6 +95,7 @@ ALIASES = {
     "mtrs.": "Mtrs", "mtr": "Mtrs", "mtr.": "Mtrs", "mtrs": "Mtrs",
     "meter": "Mtrs", "meters": "Mtrs", "metre": "Mtrs", "metres": "Mtrs",
     "m": "Mtrs", "rmt": "Mtrs", "r.mt": "Mtrs", "running mtr": "Mtrs",
+    "rmt.": "Mtrs",   # 31 Oct 2026, §0 sixty-fourth block, Part 6
     # → Kg
     "kg": "Kg", "kgs": "Kg", "kgs.": "Kg", "kg.": "Kg",
     "kilogram": "Kg", "kilograms": "Kg",
@@ -109,10 +111,19 @@ ALIASES = {
     # → Lot  ⚠ the one judgement — see the note above
     "lot": "Lot", "lots": "Lot", "lump sum": "Lot", "lumpsum": "Lot",
     "l.s.": "Lot", "ls": "Lot", "job": "Lot", "jobs": "Lot",
+    "lot.": "Lot",    # 31 Oct 2026, §0 sixty-fourth block, Part 6
 }
 
 # The judgement rows, named so the dry run can print them apart.
-JUDGEMENT = {"lump sum", "lumpsum", "l.s.", "ls", "job", "jobs"}
+#
+# ⚠ **`ls` and `lump sum` LEFT this set on 31 October 2026** — Manas, 31 Oct
+#   2026 (§0 sixty-fourth block, Part 6): "LS" and "Lump Sum" → Lot is
+#   DECIDED, so they are ordinary aliases now and the dry run no longer
+#   prints them under the judgement heading. Only those two keys, exactly as
+#   ruled: their spelling variants `lumpsum` and `l.s.`, and `job` / `jobs`,
+#   are still judgement rows until somebody rules on them too.
+DECIDED = {"lump sum", "ls"}
+JUDGEMENT = {"lumpsum", "l.s.", "job", "jobs"}
 
 # ── Where a unit lives. `(collection, how to walk it)` ────────────────────
 #
@@ -228,8 +239,9 @@ def main() -> int:
         print(f"  {k:<10} {counts[k]:>6}")
 
     if judged:
-        print("\n⚠ JUDGEMENT ROWS — read these before --write. 'Lump Sum' and")
-        print("  'Job' are being read as 'Lot'; all three file as OTH.")
+        print("\n⚠ JUDGEMENT ROWS — read these before --write. 'Job', 'Lumpsum'")
+        print("  and 'L.S.' are being read as 'Lot'; all file as OTH. ('LS' and")
+        print("  'Lump Sum' -> Lot were decided by Manas on 31 Oct 2026.)")
         for coll, ref, n, cur, new in judged:
             print(f"    {coll:<18} {ref:<22} line {n:<4} {cur!r} -> {new!r}")
 

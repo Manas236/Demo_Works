@@ -2910,6 +2910,12 @@ Six properties this shape exists to guarantee:
    `/spec/picture/<id>`, and `edit_spec()`'s `s.update(data)` leaves it alone
    because `_validate()` never produces the key. §3 *Line pictures*.
 
+**`created_at` on a specification** (31 October 2026, §0 sixty-fourth block,
+Part 6): `spec.create_record()` — the add form, Import from Excel and the BOQ →
+library join all go through it — stamps `"YYYY-MM-DD HH:MM:SS"`. Absent on
+every spec saved before, never backfilled; the seeded library carries none;
+an edit updates in place and keeps it. Rendered nowhere yet.
+
 ### Bill of Quantities
 
 Written in one literal in `boq.create_boq()`. **Entered from scratch**, like a
@@ -16479,8 +16485,23 @@ text is unchanged, and every reference to them was moved with them.*
     lines by a paisa. Snapshot immutability: they are **not rewritten**.
     `python tools/scan_paise.py` lists them by type and number; the remedy, if
     a customer portal refuses one, is a fresh document.
+    *31 Oct 2026 (§0 sixty-fourth block, Part 6):* the scan now reads EVERY
+    collection that holds money — the product inquiry, specs, measurement
+    sheets, challans, pay entries, employees and the product catalogue
+    joined it, and rates (`supply_rate`, `day_rate`, …) count as money.
+    `tests/test_scan_paise_coverage.py` fails on any new collection until it
+    is classified as scanned or as holding no money. Still read-only.
 
-99. 🟡 **A merged RA set's receipts are recorded against its UNROUNDED legs —
+99. ✅ **CLOSED 31 October 2026 (§0 sixty-fourth block, Part 6).**
+    `ra.set_round_off()` carries the live merged set's whole-rupee round-off
+    on its SUPPLY leg, once, inside `ra.outstanding_of()` — so the set's
+    outstanding is measured against the merged tax invoice's ROUNDED total
+    and a fully paid set reads 0.00 on `merged_ra.balance()`, on the receipts
+    register and in the previous balance carried onto the next bill. A
+    cancelled merge, and every merge with no round-off (grand = sum of legs),
+    answers 0.0, so nothing they touched moved. Pinned at the .50 boundary by
+    `tests/test_gap99_set_outstanding.py` (3 of 5 fail without the fix).
+    *As it was opened:* **A merged RA set's receipts are recorded against its UNROUNDED legs —
     OPEN, surfaced** (§0 sixty-third block, Part A). The set is rounded once,
     on the merged tax invoice; the legs carry their exact totals. A customer
     paying the whole-rupee invoice leaves up to ₹0.50 over or under across the

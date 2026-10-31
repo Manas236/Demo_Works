@@ -505,3 +505,19 @@ def test_the_dashboard_reaches_pnl_in_the_function_body_only(world):
             top.add(node.module.split(".")[0])
     assert "pnl" not in top, "dashboard.py imports pnl at module level"
     assert "import pnl" in src, "…and never reaches it at all"
+
+
+def test_the_boq_axis_reads_boq_priced_on_the_chart_and_the_table(world):
+    """
+    §0 sixty-fourth block, Part 6 (31 Oct 2026): the chart's short name and
+    the table's label are both "BOQ priced". The definition is unchanged —
+    lines carrying a quantity and a rate, of all lines.
+    """
+    import pnl_chart as PC
+    _boq()
+    axes = PNL.progress_of(PID)
+    boq = [a for a in axes if a["key"] == "boq"][0]
+    assert boq["label"] == "BOQ priced" and boq["short"] == "BOQ priced"
+    html = PC.spider_html(axes)
+    assert html.count("BOQ priced") >= 2      # the spoke label and the table row
+    assert "BOQ written" not in html

@@ -475,14 +475,32 @@ def test_the_tool_leaves_a_blank_and_an_exact_match_alone():
 
 def test_the_tools_judgement_rows_are_flagged_apart():
     """
-    `Lump Sum` and `Job` → `Lot` is the one judgement in the table, and the
-    dry run prints it under its own heading so a human sees it.
+    `Job` (and the spellings `lumpsum` / `L.S.`) → `Lot` is the judgement in
+    the table, and the dry run prints it under its own heading so a human
+    sees it.
+
+    ⚠ **Amended 31 October 2026 to Manas's ruling** (§0 sixty-fourth block,
+      Part 6): "LS" and "Lump Sum" → Lot is DECIDED, so those two are now
+      plain aliases — asserted below, not dropped. Every other judgement row
+      is still asserted as one.
     """
     m = _tool()
-    for raw in ("Lump Sum", "lumpsum", "Job", "L.S."):
+    for raw in ("lumpsum", "Job", "L.S."):
         new, why = m._target(raw)
         assert new == "Lot" and why == "judgement", raw
+    for raw in ("Lump Sum", "LS", "ls"):
+        new, why = m._target(raw)
+        assert new == "Lot" and why == "alias", raw
     assert m.JUDGEMENT <= set(m.ALIASES)
+    assert m.DECIDED <= set(m.ALIASES) and not (m.DECIDED & m.JUDGEMENT)
+
+
+def test_the_two_aliases_added_31_october():
+    """`rmt.` → Mtrs and `lot.` → Lot (§0 sixty-fourth block, Part 6)."""
+    m = _tool()
+    assert m._target("rmt.") == ("Mtrs", "alias")
+    assert m._target("RMT.") == ("Mtrs", "alias")
+    assert m._target("lot.") == ("Lot", "alias")
 
 
 def test_the_tool_respells_a_case_difference_without_the_alias_table():

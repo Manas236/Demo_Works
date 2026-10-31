@@ -637,8 +637,13 @@ PAGES = {
     #   "five measures" now "six" (C7). No print route; no printed document
     #   moved. The old row:
     #       ("41138146f3c01040", 101785, {..., "main": "b619482943b36e59"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("3ea2483e86bf9a24", 102670,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "78a814da4ebe21aa"}),   # §0 59th B1: moved=['chrome', 'main'], -13 bytes
+    # ⚠ **RE-BASELINED 31 October 2026 — `main` ONLY, +5 bytes**
+    #   (CLIENT_CHANGES.md §0 sixty-fourth block, Part 6): the spider's BOQ
+    #   axis reads "BOQ priced" on the chart (was "BOQ") and in the table (was
+    #   "BOQ written"); the definition is unchanged. The old row:
+    #       ("3ea2483e86bf9a24", 102670, {..., "main": "78a814da4ebe21aa"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("3c30f74a42d43a00", 102675,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "efe2a586396e7110"}),   # §0 59th B1: moved=['chrome', 'main'], -13 bytes
     # ⚠ `employees` keeps the TABLE-FIT baseline of 30 October 2026 (a121953):
     #   the sixty-third block did not move this row, the table fit did
     #   (+3103 bytes, moved=['head', 'main']). Verified three-way against

@@ -43,6 +43,15 @@ MONEY_KEYS = frozenset({
     "CGST", "SGST", "IGST", "VAT", "taxable", "taxable_amount",
     "advance_received", "prior_invoiced", "price", "written_off",
     "material", "labour", "gst", "carry", "basic", "ot", "prev_balance",
+    # 31 Oct 2026, §0 sixty-fourth block, Part 6 — the RATES and the other
+    # money every collection below stores. A percentage key (`gst_rate`,
+    # `cgst_rate`, `discount_pct`, …) is deliberately NOT here.
+    "rate", "supply_rate", "install_rate", "supply_base_rate",
+    "install_base_rate", "default_supply_base_rate",
+    "default_install_base_rate", "material_rate", "labour_rate",
+    "approved_rate", "day_rate", "ot_rate", "monthly_salary", "net",
+    "net_pay", "gross_pay", "deductions", "advance", "loan", "travel",
+    "write_off",
 })
 
 # (collection, the label printed, the field that is its number)
@@ -58,6 +67,16 @@ COLLECTIONS = (
     ("receipts",    "Receipt",          "ref"),
     ("charges",     "Charge",           "ref"),
     ("payslips",    "Payslip",          "id"),
+    # 31 Oct 2026, §0 sixty-fourth block, Part 6 — EVERY collection that
+    # holds money. `tests/test_scan_paise_coverage.py` fails when a
+    # collection with a money key is missing from this tuple.
+    ("purchase_orders",   "Product Inquiry",   "ref"),
+    ("specs",             "Specification",     "code"),
+    ("measurements",      "Measurement Sheet", "ref"),
+    ("delivery_challans", "Delivery Challan",  "ref"),
+    ("pay_entries",       "Pay Entry",         "id"),
+    ("employees",         "Employee",          "name"),
+    ("products",          "Product",           "part_no"),
 )
 
 

@@ -51,6 +51,7 @@ and `demo_data`, none of which import anything from the app. `boq.py` imports
 **this** module; this module must never import `boq.py`.
 """
 
+import datetime
 import re
 import uuid
 
@@ -1412,6 +1413,12 @@ def create_record(data: dict) -> str:
     """
     sid = str(uuid.uuid4())
     STORE["specs"][sid] = {"id": sid, **data}
+    # 31 Oct 2026, §0 sixty-fourth block, Part 6 — when the clause was made.
+    # Written on create ONLY: a spec saved before this date carries no key and
+    # is never backfilled, the seeded library is not "created" by anybody, and
+    # `edit_spec()` updates in place so it never drops it.
+    STORE["specs"][sid]["created_at"] = (
+        datetime.datetime.now().replace(microsecond=0).isoformat(" "))
     return sid
 
 

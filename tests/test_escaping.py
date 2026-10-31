@@ -359,7 +359,7 @@ POISONED_FIELDS = {
         "description", "name", "part_no", "unit",
     ),
     "specs": (
-        "category", "code", "install_sac", "spec_text", "title",
+        "category", "code", "created_at", "install_sac", "spec_text", "title",
         "variants[]/dim_unit", "variants[]/dimension", "variants[]/label",
         "variants[]/unit",
     ),

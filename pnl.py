@@ -621,7 +621,11 @@ def progress_of(project_id, pnl: dict = None) -> list:
     #   sentence beside the cost. *BOQ* is how much of the schedule is
     #   written: lines carrying a quantity and a rate, of all its lines.
     return [
-        _axis("boq", "BOQ written", "BOQ", boq_ready, boq_lines or None,
+        # 31 Oct 2026, §0 sixty-fourth block, Part 6: chart AND table read
+        #   "BOQ priced" — the definition is unchanged (lines with a quantity
+        #   and a rate, of all lines); only the words moved, because "written"
+        #   read as "typed in", which a line with no rate also is.
+        _axis("boq", "BOQ priced", "BOQ priced", boq_ready, boq_lines or None,
               "lines", "no line on the latest revision"),
         _axis("procurement", "Procurement (PO value of planned cost)",
               "Procured", r["to_date"]["po"]["amount"],

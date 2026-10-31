@@ -431,3 +431,18 @@ def test_create_page_no_longer_offers_the_sales_catalogue(seeded, client):
     html = client.get("/boq/create").get_data(as_text=True)
     assert "fill from spec library" in html
     assert "fill from catalogue" not in html
+
+
+def test_a_new_spec_carries_created_at_and_an_old_one_is_not_backfilled(seeded, client):
+    """§0 sixty-fourth block, Part 6 (31 Oct 2026): `created_at` on create only."""
+    old_ids = set(STORE["specs"])
+    r = client.post("/spec/add", data=FORM)
+    assert r.status_code == 302
+    new = [s for sid, s in STORE["specs"].items() if sid not in old_ids]
+    assert len(new) == 1 and len(new[0]["created_at"]) == 19
+    assert all("created_at" not in STORE["specs"][sid] for sid in old_ids)
+    # An edit keeps it.
+    sid = new[0]["id"]
+    stamp = new[0]["created_at"]
+    client.post(f"/spec/edit/{sid}", data=dict(FORM, spec_text="changed text here"))
+    assert STORE["specs"][sid]["created_at"] == stamp
