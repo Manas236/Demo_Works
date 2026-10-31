@@ -456,3 +456,51 @@ def test_the_reprice_form_keeps_a_picks_reference(client, hidden):
     line = po["line_items"][0]
     assert line["price"] == 12.0 and line["total"] == 24.0
     assert line["src_line_id"] == L("l1")
+
+
+# ══ 7. The label fits the screen (31 Oct 2026, after the first prod look) ════
+# A native dropdown sizes its popup to its longest option; at 150 characters
+# Chrome pushed it off the left edge and cut off what the item IS.
+
+def test_a_child_label_is_size_first_and_short(client):
+    lines = [_line("h", "Supply, Fabrication, Installtion, Testing of Heavy, 'C' class "
+                        "Mild Steel pipes as per IS 1239 with roll grooved joints",
+                   header=True, item_no="4"),
+             _line("c", "50mm dia ISI", unit="Mtrs.", s_base=1.0, item_no="4.1")]
+    lines[1]["parent_item_no"] = "4"
+    _boq("b1", "B-1", "2026-10-01", lines)
+    e = BYP.boq_entries()[0]
+    assert e["label"].startswith("50mm dia ISI · Heavy, 'C' class Mild Steel")
+    assert e["label"].endswith("(Mtrs.)")
+    assert len(e["label"]) <= BYP.OPTION_CHARS + len(" (Mtrs.)")
+    # the stored name is never cut by the label rule
+    assert e["name"].startswith("Supply, Fabrication, Installtion")
+
+
+def test_the_scope_of_work_lead_in_is_stripped_from_the_label_only(client):
+    _boq("b1", "B-1", "2026-10-01", [_line(
+        "l1", "Supply Installation testing & comissioning of Pendent Type Sprinkler",
+        s_base=1.0)])
+    e = BYP.boq_entries()[0]
+    assert e["label"].startswith("Pendent Type Sprinkler")
+    assert e["name"].startswith("Supply Installation testing")
+
+
+def test_every_label_fits(client, hidden):
+    _seed()
+    BQ.ensure_demo_boq()
+    for e in BYP.boq_entries() + BYP.spec_entries():
+        bare = e["label"].rsplit(" (", 1)[0] if e["label"].endswith(")") else e["label"]
+        assert len(bare) <= BYP.OPTION_CHARS + 1, e["label"]
+
+
+def test_the_full_name_is_the_tooltip_and_the_search_text(client, hidden):
+    _seed()
+    _boq("b1", "B-1", "2026-10-01", [_line(
+        "l1", "Supply of " + "very long words " * 12 + "Mild Steel tail", s_base=1.0)])
+    html = PU._product_options()
+    opt = html.split(f'value="{V("b1", "l1")}"', 1)[1].split("</option>", 1)[0]
+    assert 'title="Supply of very long words' in opt
+    assert "mild steel tail" in opt.split('data-s="', 1)[1].split('"', 1)[0]
+    assert "Mild Steel tail" not in opt.split(">", 1)[1]      # cut from the label
+    assert "getAttribute('data-s')" in BYP.FIND_JS

@@ -116,8 +116,14 @@ BOQ_GROUP = "BOQ items"
 
 # How much of a specification clause a child line's name carries.
 CLAUSE_CHARS = 160
-# How much of the name an <option> shows. The stored name is not cut by this.
-OPTION_CHARS = 150
+# How much an <option> SHOWS (31 Oct 2026, after the first screen): the size
+# first, then a short cut of the clause, never more than OPTION_CHARS before
+# the unit. A native dropdown sizes its popup to the longest option, and at
+# 150 characters Chrome pushed it off the left edge of the window, cutting off
+# exactly the part that says what the item is. The FULL name is the option's
+# tooltip and what the search box matches; the stored name is never cut.
+OPTION_CHARS = 70
+OPTION_CLAUSE_CHARS = 40
 
 # The library's own category order — specpick.CATEGORY_ORDER, restated rather
 # than imported so this leaf does not depend on the quotation's picker.
@@ -155,6 +161,43 @@ def _cut(text, limit: int) -> str:
         return t
     head = t[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-")
     return (head or t[:limit]) + "…"
+
+
+# The scope-of-work words a BOQ clause opens with — "Supply, Fabrication,
+# Installtion, Testing & comissioning of …" — spelling slips included, because
+# the client's own sheets carry them. Stripped from the dropdown's LABEL only
+# (they are the same on every line and push the item off the end); the stored
+# name, the tooltip and the search text keep every word.
+_LEAD_IN = re.compile(
+    r"^(?:(?:supply(?:ing)?|providing|fabrication|fabricating|err?ection|"
+    r"install(?:ation|tion|ing)?|testing|test|"
+    r"co?m+is+ion(?:ing)?|commissioning|fixing|laying|and|of|the)"
+    r"[\s,&/.]*)+", re.I)
+
+
+def _strip_lead_in(text: str) -> str:
+    """`text` without the scope-of-work lead-in, unless that would leave nothing."""
+    m = _LEAD_IN.match(text or "")
+    if not m or len(m.group(0).split()) < 2:
+        return text
+    rest = text[m.end():].strip()
+    return (rest[:1].upper() + rest[1:]) if rest else text
+
+
+def _option_label(own: str, context: str = "", unit: str = "") -> str:
+    """
+    What the dropdown shows: `<own text> · <context, cut short> (<unit>)` —
+    the distinguishing part (a size, a variant) FIRST, so a list of sizes of
+    one clause reads down its left edge.
+    """
+    own = _strip_lead_in(" ".join(str(own or "").split()))
+    context = _strip_lead_in(" ".join(str(context or "").split()))
+    if own and context:
+        text = f"{own} · {_cut(context, OPTION_CLAUSE_CHARS)}"
+    else:
+        text = own or context
+    text = _cut(text, OPTION_CHARS)
+    return text + (f" ({unit})" if unit else "")
 
 
 def _num_or_none(v):
@@ -195,13 +238,15 @@ def spec_entries() -> list:
                 name = _spec_name(s, v)
                 unit = str(v.get("unit") or "")
                 code = str(s.get("code") or "")
-                label = (f"{code} · {name}" if code else name)
-                if unit:
-                    label += f" ({unit})"
+                title = str(s.get("title") or "")
+                vlabel = str(v.get("label") or "")
+                label = (_option_label(vlabel, title, unit) if vlabel.strip()
+                         else _option_label(title, "", unit))
                 out.append({
                     "value": f"{SPEC_PREFIX}{sid}:{vidx}",
                     "label": label,
                     "name":  name,
+                    "find":  " ".join(x for x in (name, code, unit) if x),
                     "rate":  _num_or_none(v.get("default_supply_base_rate")),
                     "make":  "",
                 })
@@ -242,20 +287,25 @@ def _is_install_only(BQ, li: dict) -> bool:
     return (sup is None or sup <= 0) and (ins is not None and ins > 0)
 
 
-def boq_line_name(lines: list, idx: int, header_of: dict = None) -> str:
-    """
-    The name a BOQ line carries on a purchase order: its own description, and
-    — for a child of a specification header — the clause's first line first.
-    """
+def _line_parts(lines: list, idx: int, header_of: dict = None) -> tuple:
+    """`(clause, own)` — the parent clause's first line (cut) and the line's own text."""
     BQ = _BQ()
     li = lines[idx]
     own = " ".join(str(li.get("description") or "").split())
     parents = header_of if header_of is not None else BQ.header_of(lines)
     h = parents.get(idx)
     if h is None:
-        return own
+        return "", own
     clause = str(lines[h].get("description") or "").strip().split("\n", 1)[0]
-    clause = _cut(clause, CLAUSE_CHARS)
+    return _cut(clause, CLAUSE_CHARS), own
+
+
+def boq_line_name(lines: list, idx: int, header_of: dict = None) -> str:
+    """
+    The name a BOQ line carries on a purchase order: its own description, and
+    — for a child of a specification header — the clause's first line first.
+    """
+    clause, own = _line_parts(lines, idx, header_of)
     if not clause:
         return own
     return f"{clause} — {own}" if own else clause
@@ -296,11 +346,14 @@ def boq_entries() -> list:
                 if not e["make"] and make:
                     e["make"] = make
                 continue
-            label = _cut(name, OPTION_CHARS) + (f" ({unit})" if unit else "")
+            clause, own = _line_parts(lines, i, parents)
+            label = (_option_label(own, clause, unit) if clause and own
+                     else _option_label(name, "", unit))
             e = {
                 "value":   f"{BOQ_PREFIX}{bid}:{lid}",
                 "label":   label,
                 "name":    name,
+                "find":    " ".join(x for x in (name, unit) if x),
                 "rate":    rate,
                 "make":    make,
                 "unit":    unit,
@@ -321,8 +374,12 @@ def _group_html(label: str, entries: list, selected: str) -> str:
     out = f'<optgroup label="{P.esc(label)}">'
     for e in entries:
         sel = " selected" if e["value"] == selected else ""
-        out += (f'<option value="{P.esc(e["value"])}"{sel}>'
-                f'{P.esc(e["label"])}</option>')
+        # `title` is the full name, shown on hover; `data-s` is what the
+        # search box matches, so a word cut off the label is still found.
+        full = e.get("name") or e["label"]
+        find = (e.get("find") or full).lower()
+        out += (f'<option value="{P.esc(e["value"])}"{sel} title="{P.esc(full)}" '
+                f'data-s="{P.esc(find)}">{P.esc(e["label"])}</option>')
     return out + "</optgroup>"
 
 
@@ -371,7 +428,7 @@ function findItem(inp) {
   for (var i = 0; i < opts.length; i++) {
     var o = opts[i];
     if (!o.value) { o.hidden = false; continue; }
-    var t = o.textContent.toLowerCase();
+    var t = (o.getAttribute('data-s') || o.textContent).toLowerCase();
     var ok = words.every(function (w) { return t.indexOf(w) !== -1; });
     o.hidden = !ok;
   }
