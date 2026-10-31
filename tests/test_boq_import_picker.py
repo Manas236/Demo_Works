@@ -726,14 +726,27 @@ def test_the_purchase_prefill_stays_on_the_supply_base_rate(client):
 
 
 def test_the_spec_library_never_sees_a_discount(client):
-    """No code path writes a BOQ line's rate into the library — the library
-    only ever SUGGESTS a base rate into an empty box. Saving a discounted BOQ
-    leaves every spec exactly as it was."""
+    """
+    ⚠ **AMENDED 31 October 2026** (CLIENT_CHANGES.md §0 sixty-first block).
+    Until then NO code path wrote a BOQ into the library, and this test pinned
+    the whole library unchanged by a save. From that date every saved BOQ's
+    items join the library (`spec.learn_from_clauses()`), so what is pinned now
+    is the half that still matters: the library NEVER sees a discount — no
+    discount field, and no discounted or selling rate. Every clause that was
+    already there is untouched, exactly as before.
+    """
     client.get("/boq/")
-    before = json.dumps(STORE["specs"], sort_keys=True, default=str)
+    before = json.loads(json.dumps(STORE["specs"], sort_keys=True, default=str))
     rec = save_model(client, one_section(a_line(supply_rate="2024", supply_disc_pct="10")))
     assert isinstance(rec, dict)
-    assert json.dumps(STORE["specs"], sort_keys=True, default=str) == before
+    after = json.loads(json.dumps(STORE["specs"], sort_keys=True, default=str))
+    for sid, old in before.items():
+        assert after[sid] == old
+    for sid in set(after) - set(before):
+        blob = json.dumps(after[sid])
+        assert "disc" not in blob
+        for v in after[sid]["variants"]:
+            assert v["default_supply_base_rate"] in (None, 1600.0)  # never 2024 or 1821.6
 
 
 # ═══ G. The import reads a discount, and checks it ═══════════════════════════

@@ -102,7 +102,6 @@ the library without that edge. This module never imports `purchase`,
 `quotation`, `product`, `auth`, `flask` or anything that prints.
 """
 
-import re
 
 import pipeline as P
 from store import STORE
@@ -163,25 +162,15 @@ def _cut(text, limit: int) -> str:
     return (head or t[:limit]) + "…"
 
 
-# The scope-of-work words a BOQ clause opens with — "Supply, Fabrication,
-# Installtion, Testing & comissioning of …" — spelling slips included, because
-# the client's own sheets carry them. Stripped from the dropdown's LABEL only
-# (they are the same on every line and push the item off the end); the stored
-# name, the tooltip and the search text keep every word.
-_LEAD_IN = re.compile(
-    r"^(?:(?:supply(?:ing)?|providing|fabrication|fabricating|err?ection|"
-    r"install(?:ation|tion|ing)?|testing|test|"
-    r"co?m+is+ion(?:ing)?|commissioning|fixing|laying|and|of|the)"
-    r"[\s,&/.]*)+", re.I)
-
-
 def _strip_lead_in(text: str) -> str:
-    """`text` without the scope-of-work lead-in, unless that would leave nothing."""
-    m = _LEAD_IN.match(text or "")
-    if not m or len(m.group(0).split()) < 2:
-        return text
-    rest = text[m.end():].strip()
-    return (rest[:1].upper() + rest[1:]) if rest else text
+    """
+    `spec.strip_lead_in()` — THE scope-of-work lead-in rule ("Supply,
+    Fabrication, Installtion, Testing of …"), written once beside the library
+    that learns clause titles with it (31 Oct 2026). Imported in the function
+    body, this leaf's rule for `spec`.
+    """
+    from spec import strip_lead_in
+    return strip_lead_in(text)
 
 
 def _option_label(own: str, context: str = "", unit: str = "") -> str:
