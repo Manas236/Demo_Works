@@ -419,11 +419,12 @@ Consequences you must respect when editing:
 | [boqpick.py](boqpick.py) | 577 | **The BOQ line picker, shared by every document raised from a schedule.** Checkbox rows, the family fold, the tools bar and the POST parser. A **leaf** — see §2e. From 18 October 2026 `grid_html(pcs_of=…)` prefills the draft PO's Pcs box (Import from Excel); None emits the bytes it always did. |
 | [chrome.py](chrome.py) | 1219 | **The app shell every screen page renders** (14 September 2026) — `BASE_STYLES`, `ICONS`, the signed-in user chip, the persistence-failure strip and `_nav()`, lifted out of `dashboard.py` **verbatim** and measured byte-identical across the move by `tests/test_page_golden.py`. A **leaf** held to `docsheet.py`'s standard — see §2k. ⚠ Also **`TABLE_FIT_STYLES`** from 30 October 2026 — the screen-only register table fit, its own constant beside `USER_CHIP_STYLES` and for the same reason: it is **not** in `BASE_STYLES`, which five print goldens hash. |
 | [dashboard.py](dashboard.py) | 2493 | Operations dashboard + `REGISTER_STYLES` + the screen money helpers + the 413 page. ~~**+ `BASE_STYLES` and `_nav()` that every other module imports**~~ — moved to `chrome.py` on 14 September 2026; this module imports them back and **re-exports `BASE_STYLES` and `_nav`** for the two frozen files and the printed sheet. |
-| [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`); `/purchase/create`'s item rows still do (§7 gap 38). |
+| [product.py](product.py) | 1464 | Product catalogue + assemblies (BOM). Owns `hsn`, the source of every HSN downstream. ⚠ **HIDDEN FROM EVERYBODY, an Owner included, since 11 September 2026** — `auth.HIDDEN_BLUEPRINTS = {"product"}`, a toggle, not a deletion (§2g). The owner is not sure the twelve seeded items have anything to do with the client. **The module was not edited and stays fully frozen**; its permissions, its registry rows and every role's grants are untouched, and un-hiding is one line. A new quotation no longer reads it (see `quotation.py`), and neither does `/purchase/create` while it is hidden — that page offers the Specification library instead (`buypick.py`, §7 gap 38). |
 | [quotation.py](quotation.py) | 3023 | Quotation form + printed document. The big one. ⚠ **The picker FOLLOWS THE CATALOGUE SWITCH from 12 September 2026** (CLIENT_CHANGES.md §0, twenty-eighth block): while `"product"` is in `auth.HIDDEN_BLUEPRINTS` it reads the SPEC LIBRARY through the leaf `specpick.py`; with the switch emptied it is the product picker **exactly as it stood at `1d7725a`, byte for byte** — `tests/test_quotation_switch.py` holds a golden captured from that commit's own code. The switch is read through `auth.blueprint_hidden()` inside the three narrowly-unfrozen functions (`_product_catalog_json()`, `_process_selections()`, `create_quotation()`) and nowhere else; the page is ONE template with eight seams the two pickers fill. `view_quotation()` keeps only its 29 August unfreeze; everything else in the file is still frozen, and `tests/test_nav_user_chip.py` holds the diff to those four functions. The printed document, the PI and the TI are untouched. §5 `/quotation`. |
 | [series.py](series.py) | 339 | **The document-number FLOOR, and the one scan per series** (25 September 2026, §7 gap 36). Holds `SERIES` — nine numbered series, what each scans and how each reads its highest issued number — plus the floors record and the rule `next = max(existing max in the scope + 1, floor)`. A **fifth leaf**, and the strictest one in the repository: it imports `store` and **nothing else**, not even `pipeline` or `branding`, because it answers an ORDINAL and the prefix, the series segment and Rule 46(b)'s cap stay with the minter. ⚠ It exists because **`boq.py` may not import `settings.py`** — a floor reachable from some minters and not others is not a floor. ⚠ `series -> invoice` and `series -> ra` are both refused: `ra.py` may never import `invoice.py`, and a leaf that imported either would defeat that through the basement. ⚠ **No lock.** The minters stay unguarded scan-max-then-plus-one and `--threads 1` is still load-bearing. |
 | [docnum.py](docnum.py) | 511 | **The MANUAL document number, forward only — a LEAF** (27 October 2026, CLIENT_CHANGES.md §0 fifty-fourth block, item A). Holds the rule *accepted ⟺ entered > the highest ordinal EVER used in this scope, or entered == the prefilled default*, the **high-water ledger** that makes "ever" outlive a deleted record (`STORE["settings"]["document_number_highwater"]`, raised by `note_used()` on every save), the cross-collection tax-invoice scan, and `number_field()` — the one control all four create forms render, prefix and FY as un-postable text, only the tail typeable. ⚠ **It exists because `ra.py` may never import `invoice.py`**: a TI number can be in `invoices.ref`, `ra_bills.tax_invoice_ref` or `merged_ras.tax_invoice_ref`, and a check written inside either module would defeat that prohibition through the basement — `docsheet.py`'s and `series.py`'s argument, a third time. Imports `store` and `pipeline` and nothing else from the app; **not `auth`** — the four document modules answer the permission themselves and pass the boolean in. ⚠ **It does not feed the AUTOMATIC minter**: `series.next_seq()` is untouched and every automatic number is what it always was, which is why no golden moved (§7 gap 83). ⚠ **No lock**, exactly as `series.py`. |
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
+| [buypick.py](buypick.py) | 459 | **The purchase order's item picker** (31 October 2026, CLIENT_CHANGES.md §0 sixtieth block) — the Specification library (while the catalogue is hidden) and the BOQ items (always) as `<optgroup>`s on `/purchase/create`'s rows, the cost-rate and make prefills, the search box script, and `resolve()`, which re-reads a pick's identity at POST. A **leaf**: `store` + `pipeline` at module level, `spec` and `boq` in function bodies only. §5 `/purchase`, *The item picker*; §7 gap 38. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
@@ -515,6 +516,12 @@ app.py
  ├─ purchase.py ───────────────┤  imports dashboard, branding, store, pipeline, quotation, address,
  │                             │  docsheet, boq, boqpick — the last two are §2f
  │                             │  — and po_parts, the seeded prefill table
+ │                             │  — and buypick (31 Oct 2026), the item rows'
+ │                             │  library + BOQ items: NEVER spec directly
+ ├─ buypick.py ────────────────┤  imports store, pipeline — and spec, boq INSIDE
+ │                             │  function bodies only. NEVER purchase (it is
+ │                             │  reached BY it), auth (purchase.py reads the
+ │                             │  switch), quotation, specpick, product or flask.
  ├─ spec.py ───────────────────┤  imports dashboard, branding, store, pipeline, demo_data
  ├─ boq.py ────────────────────┤  imports dashboard, branding, store, pipeline, quotation, address, spec, demo_data
  │                             │  — and NEVER boqimport (29 Sep 2026): the Import
@@ -1708,7 +1715,7 @@ What it does and does not touch:
 | `hidden_permissions()` | **derived from the registry**, never listed — a permission whose routes are split across a hidden and a visible blueprint stays live |
 | the gate's order | hidden beats `PUBLIC`; a **stranger** still gets the ordinary login bounce rather than a page naming what is installed; a signed-in user is refused before their permissions are consulted, and the refusal is logged as `blueprint hidden` |
 | `docs/ACCESS_MATRIX.md` | marks a hidden grant `⊘` rather than `·` / `§`, so the grid never presents a grant nobody can use as a live one |
-| the other surfaces | `dashboard._metrics()` counts no catalogue item while hidden; the card was already dropped by `can_reach()`. ⚠ `/purchase/create`'s item rows deliberately still read the catalogue — §7 gap 38 |
+| the other surfaces | `dashboard._metrics()` counts no catalogue item while hidden; the card was already dropped by `can_reach()`. ⚠ `/purchase/create`'s item rows offer the Specification library in the catalogue's place (31 Oct 2026, `buypick.py`) — §7 gap 38 |
 | `product.py` | **not edited.** Fully frozen, and the pass that hid it asserts so from both sides |
 
 The existing product-page tests run under `tests/conftest.py::catalogue_unhidden`,
@@ -2396,8 +2403,10 @@ STORE = {
 (`auth.HIDDEN_BLUEPRINTS`, §2g). The record shape below is unchanged and every
 stored product is untouched; what changed is that no page reaches it, no
 quotation is written from it, and `dashboard._metrics()` counts none of it.
-`/purchase/create` still reads it for its item rows (§7 gap 38), and every
-document already carrying catalogue lines keeps them — they are snapshots.
+`/purchase/create` read it for its item rows until 12 September 2026, and
+from 31 October 2026 offers the Specification library in its place (§7 gap 38,
+§5 `/purchase`); every document already carrying catalogue lines keeps them —
+they are snapshots.
 
 - `assembly` = has children (a BOM). `support` = a sub-component not sold
   alone. `standalone` = sold on its own. Only the badge and the picker treat
@@ -7577,6 +7586,61 @@ with its extra-parts breakout, the project page, the register — and no figure
 on an existing PO moves: `_totals_of()` is unchanged and the pinned golden did
 not move. `tests/test_po_gap38.py` (28), most of it parametrised over both
 switch states.
+
+#### The item picker — Specification library + BOQ items (31 October 2026)
+
+⚠ **The hidden state above offered the placeholder ALONE, and that empty
+dropdown is what the client hit on 31 October 2026** (CLIENT_CHANGES.md §0
+sixtieth block, a no-charge hotfix; §7 gap 38 re-opened and re-closed). The
+row now offers, in one dropdown, as `<optgroup>`s:
+
+| | catalogue ON | catalogue HIDDEN (shipped) |
+|---|---|---|
+| the catalogue | every product, byte-for-byte as before | — |
+| **Specification library** | — | every clause × every size |
+| **BOQ items** | every material line on every current BOQ | the same |
+
+The leaf **`buypick.py`** builds both; `purchase.py` reads the switch and tells
+it which. A pick is a value in the row's existing `line_product_id` —
+`spec:<spec id>:<variant index>` or `boq:<boq id>:<line id>` — so the three
+kinds share one row, one rate box and one POST path, and the reprice form
+(positional, never reads a product id) needed nothing.
+
+- **Identity is re-read at POST** (`buypick.resolve()`): name, HSN, unit. A
+  gone spec or size, a gone or header or installation-only BOQ line, or a BOQ
+  REVISED since the page opened refuses the POST naming it. Like the rest of
+  `_parse_lines()` it never reads the switch.
+- **The line is a snapshot.** It carries `source` and `src_*` reference keys —
+  ⚠ **never `line_id`**, which on a PO line means *ordered against that
+  schedule line* (the from-BOQ path; `pnl.coverage_of()` keys on it). A
+  manual order that borrowed a line's text must not count as coverage of a
+  schedule it was not raised against, and it sets no `boq_id` / `project_id`
+  on the order. A BOQ pick carries **no part number** — `item_no` is a label
+  inside that schedule. A catalogue line's shape is unchanged.
+- **The rate is a COST, suggested into an empty box only**: a spec's
+  `default_supply_base_rate`, a BOQ line's `supply_base_rate` from the newest
+  current BOQ that has one; ABSENT (blank box) when none has — never the
+  selling rate, never 0. Every writer of the spec field was traced on
+  31 October 2026 (the seed from the client's *Supply Base Rate* column, and
+  the spec form's box of that name); nothing writes a selling rate into it. A
+  BOQ line's make from its import remark fills an empty Make box.
+- **What a BOQ offers:** tips of revision chains only (`boq.superseded_ids()`);
+  no headers; a child named `<clause's first line, ≤160 chars> — <its own
+  text>` via `boq.header_of()`; no installation-only lines (labour); a line
+  with no rates at all IS offered. ⚠ **Deduplicated on EXACT text** — name
+  and unit, case and whitespace folded, NO punctuation stripped, nothing
+  fuzzy — so 1.5 mm / 15 mm, Dia / NB, MS / GI and two thicknesses stay
+  apart. A structured library that can tell them apart is a separate, free,
+  unbuilt pass (§0 sixtieth block, decision 4).
+- **The page:** a search box above each row (every typed word must appear;
+  never posted, never bound to `recalc()`), and the full option list written
+  ONCE in `<template id="item-opts">`, copied into each empty row by
+  `fillOptions()` — written into every row, the client's live BOQs put the
+  page past half a megabyte. A row returning from a refused POST is written in
+  full server-side so its choice survives.
+
+`tests/test_po_buypick.py`; two `tests/test_po_gap38.py` tests rewritten, each
+saying so.
 
 `?quotation_id=<id>` pre-selects the job, which is how the quotation's **Raise
 PO** button works. It is a query param rather than a path segment on purpose: a
@@ -15200,7 +15264,17 @@ B7. **A draft PO carries no total, and that is deliberate.** Its rates are blank
     2026 with an installation row keeps it — it is a snapshot — and prints as
     it did; none exists on the live database.)*
 
-38. ✅ ~~🟠 **`/purchase/create` still offers the hidden catalogue's items in its
+38. ✅ **RE-OPENED AND RE-CLOSED 31 October 2026 — the close below left the
+    hidden state with an EMPTY item dropdown.** Nothing replaced the catalogue
+    rows, so a from-scratch order could be written only as extra parts, and
+    the client hit it on a call (CLIENT_CHANGES.md §0 sixtieth block, a
+    no-charge hotfix). The rows now offer the Specification library in the
+    catalogue's place and the BOQ items either way, through the leaf
+    `buypick.py` — §5 `/purchase`, *The item picker*;
+    `tests/test_po_buypick.py`. The validity rule below is kept: a pick never
+    reads the switch. The 12 September close follows, unchanged:
+
+    ~~🟠 **`/purchase/create` still offers the hidden catalogue's items in its
     rows — OPEN, reported 11 September 2026 rather than switched off.**~~
     **CLOSED 12 September 2026, in the two steps the finding prescribed and in
     that order** (change 3 of the twenty-eighth §0 block): an order of extra

@@ -121,6 +121,10 @@ import po_parts as PP
 # the project is reached through `STORE["projects"]` and `url_for`.
 import boq as BQ
 import boqpick as BP
+# The item rows' Specification library and BOQ items groups (31 Oct 2026,
+# CLIENT_CHANGES.md §0 sixtieth block, ABOUT.md §7 gap 38 re-closed). A leaf:
+# it is how the buy side reads the library without a `purchase → spec` edge.
+import buypick as BYP
 
 # The shared A4 document toolkit — the sheet, not the sales chain. The sheet
 # itself is now `docsheet.py`, which the tax invoice renders through as well:
@@ -491,7 +495,20 @@ def _parse_lines(form) -> tuple:
         pid = (pid or "").strip()
         if not pid:
             continue
-        p = products.get(pid)
+        # A Specification library or BOQ item (31 October 2026, §0 sixtieth
+        # block) — its identity re-read from the source NOW, never from the
+        # browser, and kept on the line as a snapshot. A catalogue product
+        # otherwise, exactly as before. Neither branch reads the switch.
+        if BYP.is_pick(pid):
+            ident, pick_err = BYP.resolve(pid)
+            if pick_err:
+                return [], pick_err
+            p = {"name": ident.pop("name"), "part_no": ident.pop("part_no"),
+                 "hsn": ident.pop("hsn"), "unit": ident.pop("unit")}
+            src = ident
+        else:
+            p = products.get(pid)
+            src = {}
         if not p:
             return [], "One or more selected items no longer exist in the catalogue."
         try:
@@ -528,6 +545,10 @@ def _parse_lines(form) -> tuple:
             # Snapshotted with the line; absent when blank — `LI.carry()`'s
             # rule, so a line nobody gave a make carries no empty key.
             **({"make": make} if make else {}),
+            # Where a library or BOQ pick came from — a REFERENCE, never read
+            # back to print. `src_*`, deliberately not `line_id` (buypick.py).
+            # Absent on a catalogue line, so its shape is byte-for-byte as it was.
+            **src,
         })
 
     return items, ""
@@ -1650,33 +1671,39 @@ def _catalogue_hidden() -> bool:
     return auth.blueprint_hidden("product")
 
 
-def _product_options(selected: str = "") -> str:
+def _product_options(selected: str = "", *, spec: list = None,
+                     boq: list = None) -> str:
     """
-    Catalogue <option> list for a line row — or the placeholder alone while
-    the catalogue is hidden.
+    The <option> list for one line row: the placeholder, then EITHER the
+    catalogue (switched on) OR the Specification library (switched off), then
+    the BOQ items either way.
 
     Includes **support** items prominently — a pump casing or a base frame is
     exactly the sort of thing that is bought rather than sold on its own, so
     the type that the sell-side picker treats as a sub-component is a
     first-class choice here.
 
-    ⚠ **Reads `auth.HIDDEN_BLUEPRINTS` from 12 September 2026** (ABOUT.md §7
-    gap 38, closed). While the catalogue is hidden no row is offered — the
-    control carries its placeholder and nothing else — because this was the
-    one place in the application where catalogue items were still visible.
-    The extra free-text lines are how a from-scratch order is written then,
-    and `create_purchase()` accepts an order of those alone.
+    ⚠ **Reads `auth.HIDDEN_BLUEPRINTS`** through `_catalogue_hidden()`. Hidden
+      → no catalogue row (12 September 2026, gap 38) and, from 31 October
+      2026, the Specification library in its place — the quotation's own
+      arrangement. Until that date the hidden state offered the placeholder
+      ALONE, which left a from-scratch order writable only as extra parts and
+      is the empty dropdown the client hit (§0 sixtieth block). The catalogue
+      rows themselves are byte-for-byte what they were.
+
+    `spec` / `boq` are `buypick`'s already-built entry lists, so the create
+    form builds them once for all its rows rather than once per row.
     """
     opts = '<option value="">&#8212; select item &#8212;</option>'
-    if _catalogue_hidden():
-        return opts
-    for pid, p in sorted(STORE["products"].items(),
-                         key=lambda kv: (kv[1].get("name") or "").lower()):
-        sel  = " selected" if pid == selected else ""
-        kind = (p.get("type") or "standalone")[:3].upper()
-        opts += (f'<option value="{P.esc(pid)}"{sel}>'
-                 f'[{kind}] {P.esc(p.get("name"))} ({P.esc(p.get("part_no"))})</option>')
-    return opts
+    hidden = _catalogue_hidden()
+    if not hidden:
+        for pid, p in sorted(STORE["products"].items(),
+                             key=lambda kv: (kv[1].get("name") or "").lower()):
+            sel  = " selected" if pid == selected else ""
+            kind = (p.get("type") or "standalone")[:3].upper()
+            opts += (f'<option value="{P.esc(pid)}"{sel}>'
+                     f'[{kind}] {P.esc(p.get("name"))} ({P.esc(p.get("part_no"))})</option>')
+    return opts + BYP.groups_html(selected, with_spec=hidden, spec=spec, boq=boq)
 
 
 # =============================================================================
@@ -2235,6 +2262,7 @@ def create_purchase(imported: dict = None):
     """
     from product import ensure_demo_products
     ensure_demo_products()
+    BYP.ensure_seeded()
 
     f     = request.form
     error = ""
@@ -2431,11 +2459,41 @@ def create_purchase(imported: dict = None):
     while len(rows_data) < DEFAULT_LINE_ROWS:
         rows_data.append(("", "", "", "", ""))
 
+    # The two buypick sources, built ONCE for every row on the page (31 Oct
+    # 2026). The library only while the catalogue is hidden; the BOQ items
+    # either way.
+    hidden = _catalogue_hidden()
+    spec_entries = BYP.spec_entries() if hidden else []
+    boq_entries = BYP.boq_entries()
+
+    # ⚠ **The full option list is written ONCE**, in `<template id="item-opts">`,
+    #   and copied into each empty row's dropdown by `fillOptions()` on load and
+    #   on + Add item. Written into every row, the client's live BOQs put the
+    #   page past half a megabyte. A row that comes back from a refused POST
+    #   with an item chosen is written in full server-side, so its choice is
+    #   never lost to a script.
+    all_options = _product_options("", spec=spec_entries, boq=boq_entries)
+    placeholder_only = '<option value="">&#8212; select item &#8212;</option>'
+
+    def _pick_cell(sel: str = "") -> str:
+        # The search box has no `name`, so it is never posted. Styled on the
+        # element: PURCHASE_STYLES is also the printed order's stylesheet and
+        # a rule added there would move the pinned PO print golden.
+        opts = (_product_options(sel, spec=spec_entries, boq=boq_entries)
+                if sel else placeholder_only)
+        return (f'<div style="display:flex;flex-direction:column;gap:.3rem;min-width:0;">'
+                f'<input type="search" class="pick-find" oninput="findItem(this)" '
+                f'placeholder="{BYP.FIND_PLACEHOLDER}" aria-label="Search items" '
+                f'autocomplete="off" style="font-size:.8rem;padding:.3rem .5rem;"/>'
+                f'<select name="line_product_id" onchange="fillRate(this)">'
+                f'{opts}</select>'
+                f'</div>')
+
     lines_html = ""
     for sel, qty, rate, disc, make in rows_data:
         lines_html += f"""
         <div class="line-row">
-          <select name="line_product_id" onchange="fillRate(this)">{_product_options(sel)}</select>
+          {_pick_cell(sel)}
           <input type="text" name="line_make" value="{P.esc(make)}" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="number" name="line_qty" value="{P.esc(qty)}" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" value="{P.esc(rate)}" min="0" step="0.01" placeholder="Rate"/>
@@ -2450,20 +2508,28 @@ def create_purchase(imported: dict = None):
     # is never overwritten once the user has typed something. While the
     # catalogue is hidden the map is empty, for the reason `_product_options()`
     # offers no row: nothing on this page may draw a catalogue item (gap 38).
-    catalog_rates = "{" + ",".join(
-        f'"{pid}":{float(p.get("base_price") or 0):.2f}'
-        for pid, p in ({} if _catalogue_hidden() else STORE["products"]).items()
-    ) + "}"
+    #
+    # From 31 October 2026 the map also carries the library and BOQ picks'
+    # COST rates (buypick.py says why each is a cost), keyed by the pick's
+    # value, and a second map carries a BOQ line's make. Through
+    # `json_for_script()`, never hand-built: a key is now text from a record.
+    rate_map = ({} if hidden else
+                {pid: round(float(p.get("base_price") or 0), 2)
+                 for pid, p in STORE["products"].items()})
+    pick_rates, pick_makes = BYP.prefill_maps(with_spec=hidden,
+                                              spec=spec_entries, boq=boq_entries)
+    rate_map.update(pick_rates)
+    catalog_rates = P.json_for_script(rate_map)
+    catalog_makes = P.json_for_script(pick_makes)
 
-    # The item editor says so on its face while the catalogue is hidden — a
-    # picker with one placeholder option and no explanation reads as a broken
-    # form, and the way to write the order (the extra parts below) has to be
-    # named rather than discovered.
-    items_note = ("" if not _catalogue_hidden() else
+    # The item editor says so on its face while the catalogue is hidden — where
+    # the items now come from, and that anything else is an extra part.
+    items_note = ("" if not hidden else
                   '<p style="font-size:.82rem;color:var(--muted);margin:-.3rem 0 .6rem;">'
-                  'The product catalogue is switched off, so no catalogue item can be '
-                  'picked here. Write the order as <strong>extra parts</strong> below '
-                  '&mdash; an order of extra parts alone is a complete order.</p>')
+                  'The product catalogue is switched off. Pick items from the '
+                  '<strong>Specification library</strong> or your <strong>BOQ items</strong> '
+                  '&mdash; type in the search box above a row to find one. Anything '
+                  'in neither goes in as <strong>extra parts</strong> below.</p>')
 
     q_opts = '<option value="">&#8212; none / stock purchase &#8212;</option>'
     for qid_, q_ in sorted(STORE["quotations"].items(),
@@ -2650,7 +2716,7 @@ def create_purchase(imported: dict = None):
 
       <template id="line-tpl">
         <div class="line-row">
-          <select name="line_product_id" onchange="fillRate(this)">{_product_options()}</select>
+          {_pick_cell()}
           <input type="text" name="line_make" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="number" name="line_qty" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" min="0" step="0.01" placeholder="Rate"/>
@@ -2661,25 +2727,46 @@ def create_purchase(imported: dict = None):
         </div>
       </template>
 
+      <template id="item-opts">{all_options}</template>
+
       {_po_form_script_html()}
+      {BYP.FIND_JS}
 
       <script>
         var RATES = {catalog_rates};
+        var MAKES = {catalog_makes};
+
+        /* Copy the one full option list into a row's dropdown that has only
+           its placeholder. A row already carrying a choice is left alone. */
+        function fillOptions(sel) {{
+          var src = document.getElementById('item-opts');
+          if (!src || !sel || sel.options.length > 1) return;
+          sel.innerHTML = src.innerHTML;
+        }}
+        document.querySelectorAll('#lines select[name="line_product_id"]').forEach(fillOptions);
 
         function addLine() {{
           var tpl = document.getElementById('line-tpl');
-          document.getElementById('lines').appendChild(tpl.content.cloneNode(true));
+          var frag = tpl.content.cloneNode(true);
+          frag.querySelectorAll('select[name="line_product_id"]').forEach(fillOptions);
+          document.getElementById('lines').appendChild(frag);
           bind();
         }}
 
         /* Suggest the catalogue price, never impose it: base_price is what we
            SELL at, and what a vendor charges us is a different number. Only an
-           empty rate box is filled, so a typed figure is never overwritten. */
+           empty rate box is filled, so a typed figure is never overwritten.
+           A library or BOQ pick suggests its COST rate the same way, and a BOQ
+           line's make fills an empty Make box. */
         function fillRate(sel) {{
           var row = sel.closest('.line-row');
           var rate = row.querySelector('input[name="line_rate"]');
           if (rate && !rate.value && RATES[sel.value] !== undefined) {{
-            rate.value = RATES[sel.value].toFixed(2);
+            rate.value = Number(RATES[sel.value]).toFixed(2);
+          }}
+          var make = row.querySelector('input[name="line_make"]');
+          if (make && !make.value && MAKES[sel.value] !== undefined) {{
+            make.value = MAKES[sel.value];
           }}
           recalc();
         }}
@@ -2734,7 +2821,9 @@ def create_purchase(imported: dict = None):
            inline oninput (recalc, or xlFill on the description), so a row added
            by cloning the template is live the moment it lands. */
         function bind() {{
-          document.querySelectorAll('#lines input').forEach(function (el) {{
+          /* The item search box keeps its own handler — findItem() — and is
+             not a money field, so it is never bound to recalc(). */
+          document.querySelectorAll('#lines input:not(.pick-find)').forEach(function (el) {{
             el.oninput = recalc;
           }});
         }}

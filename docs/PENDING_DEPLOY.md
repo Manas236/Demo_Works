@@ -16,6 +16,23 @@
 
 ---
 
+> ### ⚠ 31 OCTOBER 2026 — THIS FILE'S "PRODUCTION IS AT" IS STALE
+>
+> **Measured on the box on 31 October 2026 (read-only gate run): production
+> was NOT at `3d4692c`.** A full deploy ran on 30 October (`0341841` →
+> `cf47a81`), so every commit listed below is already on the box, and the
+> 30 October suite run there was **5,175 passed · 131 skipped · 0 failed**.
+> On top of `cf47a81` the box carries **`a121953`, committed locally and never
+> pushed** (a CSS fix for 17 register pages, in the checkout but not yet
+> served at the time of the check).
+>
+> The PO item dropdown hotfix (CLIENT_CHANGES.md §0 **sixtieth** block) was
+> first cut as `hotfix/po-item-picker` off `c6a385a` on the stale belief above;
+> that branch is now **unused**. It reaches prod as `antigravity-dev`
+> (`fc5f4ed` merged at `da66ae0`), merged on the box into `a121953` — a merge,
+> not a fast-forward, because of that local commit. **Until `a121953` and the
+> box's merge commit are pushed back to GitHub, the box is ahead of origin.**
+
 ## 0. Where production is, and where this line is
 
 | | |
