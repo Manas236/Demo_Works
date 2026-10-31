@@ -219,6 +219,45 @@ def project_of(rec, kind: str = "") -> str:
     return _pid(rec)
 
 
+def project_conflict(rec, kind: str = ""):
+    """
+    `(own, follows)` when a document's OWN `project_id` names one project and
+    the BOQ it was raised from is filed under ANOTHER — else `None`
+    (31 Oct 2026, §0 sixty-third block, C2).
+
+    ⚠ **Surfaced, never resolved.** `project_of()` already answers which page
+    the document is on (its BOQ's), and that answer is not changed: this is
+    the amber band's question, *"do the two copies disagree?"*, and the band
+    names both. Nothing is written to the document. A blank own tag is no
+    disagreement — it is the ordinary case for a document raised before its
+    BOQ was filed.
+    """
+    own = _pid(rec)
+    follows = project_of(rec, kind)
+    if own and follows and own != follows:
+        return own, follows
+    return None
+
+
+def raised_under_earlier(rec):
+    """
+    `(rev_no, tip)` when a document was raised against a BOQ revision that has
+    since been superseded — else `None` (31 Oct 2026, C3). The document's own
+    figures still count: it is real money. The band says which revision it was
+    raised under and which one the plan now reads.
+    """
+    boqs = STORE.get("boqs") or {}
+    on = str((rec or {}).get("boq_id") or "")
+    if on not in boqs:
+        return None
+    tip_id = RA.latest_revision(on)
+    if not tip_id or tip_id == on:
+        return None
+    rev = rec.get("boq_rev_no")
+    rev = int(rev if rev is not None else (boqs.get(on) or {}).get("rev_no") or 0)
+    return rev, boqs.get(tip_id) or {}
+
+
 def _project_boq_ids(project_id: str) -> set:
     """Every BOQ id filed under this project — every revision, because an RA
     bill is raised against a SPECIFIC revision. A blank id matches nothing."""
@@ -512,6 +551,7 @@ def progress_of(project_id, pnl: dict = None) -> list:
     chain = set()
     sup_qty = ins_qty = 0.0
     want = {}
+    boq_lines = boq_ready = 0
     for tip in tips:
         bid = str(tip.get("id") or "")
         chain |= set(RA.revision_chain(bid))
@@ -520,6 +560,11 @@ def progress_of(project_id, pnl: dict = None) -> list:
                 continue
             qty = _line_figure(li.get("total_qty"))
             lid = BQ._line_id(li.get("line_id"))
+            # The BOQ axis (31 Oct 2026): how much of the schedule is written
+            # — a line with a quantity AND a rate on at least one track.
+            boq_lines += 1
+            if qty is not None and any(BQ.net_rate(li, t) is not None for t in TRACKS):
+                boq_ready += 1
             if qty is None or not lid:
                 continue
             if (BQ.net_rate(li, "supply") or 0.0) > 0:
@@ -552,7 +597,7 @@ def progress_of(project_id, pnl: dict = None) -> list:
 
     billed = r["to_date"]["billed"]
     planned = r["planned"]["revenue"]
-    cash, cov = r["cash"], r["coverage"]
+    cash = r["cash"]
 
     # ⚠ `short` is the name the SPIDER draws and `label` is the name the table
     #   prints. Measured 29 October 2026 in headless Chromium at 390 px: the
@@ -568,7 +613,20 @@ def progress_of(project_id, pnl: dict = None) -> list:
                 "numer": numer, "denom": denom, "unit": unit,
                 "note": "" if pct is not None else why}
 
+    # ⚠ THE AXES, FROM 31 OCTOBER 2026 (§0 sixty-third block, C7): BOQ,
+    #   procurement, dispatch, measurement, billed, collected — Manas's list.
+    #   *Procurement* is committed PO VALUE against the PLANNED cost (both
+    #   tax-exclusive, money against money) and replaces the old *bought*
+    #   axis (a count of lines), which stays on the panel as the coverage
+    #   sentence beside the cost. *BOQ* is how much of the schedule is
+    #   written: lines carrying a quantity and a rate, of all its lines.
     return [
+        _axis("boq", "BOQ written", "BOQ", boq_ready, boq_lines or None,
+              "lines", "no line on the latest revision"),
+        _axis("procurement", "Procurement (PO value of planned cost)",
+              "Procured", r["to_date"]["po"]["amount"],
+              r["planned"]["cost"] or None, "money",
+              "no planned cost (base rates) to buy against"),
         _axis("dispatched", "Supply dispatched", "Dispatched",
               sent, sup_qty or None, "qty",
               "no priced supply quantity on the latest revision"),
@@ -580,9 +638,6 @@ def progress_of(project_id, pnl: dict = None) -> list:
         _axis("collected", "Collected", "Collected", cash["received"],
               cash["billed"] or None, "money",
               "nothing billed including GST to collect against"),
-        _axis("bought", "Cost covered by a PO", "Bought", cov["covered"],
-              cov["lines"] or None, "lines",
-              "no priced BOQ lines to buy against"),
     ]
 
 
@@ -771,7 +826,12 @@ def project_pnl(project_id, include_labour: bool = True) -> dict:
     # ── Actual cost — work orders, its OWN row (ABOUT.md §7 gap 55) ─────────
     wo_amount, wo_count, wo_draft, wo_cancelled = 0.0, 0, 0, 0
     for wo in (STORE.get("work_orders") or {}).values():
-        if not pid or _pid(wo) != pid:
+        # ⚠ `project_of()`, not `_pid()` (31 Oct 2026, C2): a work order that
+        #   carries a `boq_id` follows its BOQ's project like every document
+        #   raised from a schedule. No work order written to date carries one
+        #   (`workorder.py` stores no BOQ link), so every existing figure is
+        #   unchanged; one that does is never on two pages at once.
+        if not pid or project_of(wo) != pid:
             continue
         status = WO.status_of(wo)
         if status == "issued":
@@ -936,7 +996,7 @@ def untagged_cost(include_labour: bool = True) -> dict:
 
     wo_amount, wo_count = 0.0, 0
     for wo in (STORE.get("work_orders") or {}).values():
-        if WO.status_of(wo) != "issued" or not _untagged(wo):
+        if WO.status_of(wo) != "issued" or project_of(wo) in live:
             continue
         wo_amount += WO.totals_of(wo)["grand"]
         wo_count += 1

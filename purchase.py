@@ -3785,6 +3785,27 @@ def update_purchase(id: str):
 # they were ordered; only what we agreed to pay for them moves.
 
 
+def _edit_project_field(po: dict) -> str:
+    """
+    The project picker on `/purchase/edit` (31 Oct 2026, C4) — for an order
+    raised from scratch. An order raised from a BOQ follows its schedule's
+    project and is NOT filed by hand, so it gets a sentence instead of a box.
+    """
+    if po.get("boq_id"):
+        return (f'<p class="field-hint">Project: follows schedule '
+                f'{P.esc(po.get("boq_ref")) or "(no ref)"} &mdash; attach or '
+                f'detach the BOQ on its project page to move it.</p>')
+    cur = str(po.get("project_id") or "")
+    opts = '<option value="">&#8212; none &#8212;</option>'
+    for proj_id, proj in sorted((STORE.get("projects") or {}).items(),
+                                key=lambda kv: str(kv[1].get("name", "")).lower()):
+        sel = " selected" if proj_id == cur else ""
+        opts += f'<option value="{P.esc(proj_id)}"{sel}>{P.esc(proj.get("name"))}</option>'
+    return (f'<div class="form-group"><label for="project_id">Project '
+            f'<span style="font-weight:500;text-transform:none;">(optional)</span>'
+            f'</label><select id="project_id" name="project_id">{opts}</select></div>')
+
+
 def can_edit_rates(po: dict) -> tuple:
     """
     `(allowed, reason)` for editing the commercial content of an order.
@@ -4185,7 +4206,27 @@ def edit_purchase_rates(id: str):
         seq_now, num_err = DN.validate(
             DN.PO, po.get("fy") or P.fy_of(po.get("date")),
             request.form.get("doc_no_seq"), default_seq, may_number)
-        error = num_err or _reprice(po, request.form)
+        _np = (request.form.get("project_id") or "").strip()
+        proj_err = ("That project no longer exists. Pick another, or none."
+                    if _np and _np not in (STORE.get("projects") or {})
+                    and not po.get("boq_id") else "")
+        error = num_err or proj_err or _reprice(po, request.form)
+        # The project, on EDIT too (31 Oct 2026, §0 sixty-third block, C4) —
+        # an order raised from scratch only; one raised from a BOQ follows its
+        # schedule and is never filed by hand. The same two fields
+        # `create_purchase()` writes, and a line on the order's own trail.
+        # ⚠ NOT through `projtag.py`: `tests/test_import_directions.py` keeps
+        #   every document module from importing it, and this is the create
+        #   form's own field on the edit form, not a hand-filing from the
+        #   project page.
+        if not error and "project_id" in request.form and not po.get("boq_id"):
+            new_pid = (request.form.get("project_id") or "").strip()
+            old_pid = str(po.get("project_id") or "").strip()
+            if new_pid != old_pid:
+                po["project_id"] = new_pid
+                po["project_name"] = _project_name_of(new_pid)
+                _log(po, (f"Filed under project {P.esc(po['project_name'])}."
+                          if new_pid else "Removed from its project."))
         if not error and seq_now != default_seq:
             ref_now = _ref_for(po.get("date"), seq_now)
             po["ref"] = ref_now
@@ -4406,6 +4447,7 @@ def edit_purchase_rates(id: str):
               <b>&#8377; {float(po.get('grand_total') or 0.0):,.0f}</b></span>
           </div>
           {RO.checkbox_html(RO.form_choice(request.form, legacy=RO.is_on(po, True)) if request.method == "POST" else RO.is_on(po, True))}
+          {_edit_project_field(po)}
         </div>
 
         {extra_section}

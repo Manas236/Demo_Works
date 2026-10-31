@@ -1715,6 +1715,20 @@ def document_html(wo: dict) -> str:
 # THE PROJECT PAGE'S PANEL — rendered cells, never arithmetic across panels
 # =============================================================================
 
+def _project_of(wo: dict) -> str:
+    """
+    The project this work order is on — its BOQ's, when it carries a `boq_id`
+    that resolves, else its own tag (31 Oct 2026, C2). `pnl.project_of()`'s
+    rule; `STORE["boqs"]` is read directly because `pnl.py` imports this
+    module (the one-way trick). No work order written to date carries a
+    `boq_id`, so this is the tag for every existing record.
+    """
+    boq = (STORE.get("boqs") or {}).get(str((wo or {}).get("boq_id") or ""))
+    if boq is not None:
+        return str(boq.get("project_id") or "").strip()
+    return str((wo or {}).get("project_id") or "").strip()
+
+
 def project_panel_html(project_id: str) -> str:
     """
     The Work Orders panel on `/projects/view/<id>` (ruling H) — **listed only**.
@@ -1728,7 +1742,7 @@ def project_panel_html(project_id: str) -> str:
     order renders `/projects/view` byte-for-byte as it did.
     """
     wos = sorted((w for w in _wos().values()
-                  if str(w.get("project_id") or "") == str(project_id or "")
+                  if _project_of(w) == str(project_id or "")
                   and project_id),
                  key=lambda w: (str(w.get("date") or ""), str(w.get("ref") or "")),
                  reverse=True)

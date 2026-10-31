@@ -136,7 +136,16 @@ BEFORE = {
     ("sales-manager",    REGISTER):     ("08984bbd0406f98a", 45563),
     ("purchase-manager", PROJECT_PAGE): ("d20c8996abc040bd", 71253),
     ("purchase-manager", REGISTER):     ("83da2b727d30e013", 44493),
-    ("accountant",       PROJECT_PAGE): ("a2e883a8f8577cc8", 72670),
+    # ⚠ **RE-BASELINED 31 October 2026 — the ACCOUNTANT's project page ONLY,
+    #   +271 bytes** (CLIENT_CHANGES.md §0 sixty-third block, C2): the
+    #   *Raised from these BOQs* panel now lists the RECEIPTS against the RA
+    #   bills raised from the project's schedules, resolved through `ra_id`
+    #   at read time. Of the four roles only the accountant may open a receipt
+    #   (`auth.can_reach("receipt.edit_receipt")`), so only this row moved.
+    #   Measured before the literal changed: with the receipt rows suppressed
+    #   the page hashed to the old value exactly — no P&L byte reached it.
+    #   The value before: ("a2e883a8f8577cc8", 72670)
+    ("accountant",       PROJECT_PAGE): ("3ec8cfcea84c1333", 72941),
     ("accountant",       REGISTER):     ("59e574c848893a81", 45371),
 }
 

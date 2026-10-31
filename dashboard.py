@@ -1900,6 +1900,15 @@ def _progress_html(m) -> str:
             s_pct = (spent / top * 100.0) if top else 0.0
             tone = "pp-up" if (margin or 0.0) >= 0 else "pp-down"
             wages = "" if can_wages else " (excl. labour)"
+            # ⚠ Billed % OF THE CONTRACT VALUE (31 Oct 2026, C7) — both
+            #   tax-exclusive, the tip revision's selling value. No contract
+            #   value is no percentage, never 0 %.
+            contract = pr["planned"]["revenue"]
+            billed_pct = (f"{billed / contract * 100.0:.1f}%" if contract
+                          else "&mdash;")
+            note_nb = (" &mdash; no bill raised yet: cost so far"
+                       if not (pr["to_date"]["ra"]["count"] or pr["to_date"]["ti"]["count"])
+                       and spent else "")
             mini = f"""
             <div class="pp-mini">
               <div class="pp-mini-bars">
@@ -1912,6 +1921,8 @@ def _progress_html(m) -> str:
               </div>
               <div class="pp-margin {tone}">Margin to date{wages}
                 <b>{rupees(margin)}</b></div>
+              <div class="pp-note">Running position: billed less spent{note_nb}
+                &middot; billed <b>{billed_pct}</b> of the contract value</div>
             </div>"""
 
         out += f"""
@@ -1923,6 +1934,23 @@ def _progress_html(m) -> str:
             {bar}
             <div class="pp-note">{note}</div>{mini}
           </div>"""
+
+    # ── UNATTRIBUTED COST (31 Oct 2026, §0 sixty-third block, C5) ──────────
+    # Purchase orders, work orders, charges (and site labour, for a reader
+    # who may see wages) tagged to NO live project — the same
+    # `pnl.untagged_cost()` the register and the project page read, so
+    # untagged cost never vanishes from the one page everybody opens. Gated
+    # like the tiles: `project.pnl`.
+    if rows and can_pnl:
+        import pnl as PNL
+        unt = PNL.untagged_cost(include_labour=can_wages)
+        if unt.get("total"):
+            out += (f'<div class="pp-note" style="margin-top:.5rem;">'
+                    f'<b>Unattributed cost: {rupees(unt["total"])}</b> &mdash; '
+                    f'tax-exclusive cost tagged to no project (purchase '
+                    f'orders, work orders, charges'
+                    f'{", site labour" if not unt["labour"]["withheld"] else ""}'
+                    f'). It is on no project above.</div>')
 
     extra = len(rows) - PROGRESS_LIMIT
     if extra > 0 and auth.can_reach("project.list_projects"):
