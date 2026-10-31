@@ -6133,6 +6133,98 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 31 October 2026, by Manas Gawde — THE ROUND-OFF BECOMES A TICK ON EVERY MONEY DOCUMENT, NO AMOUNT CARRIES A THIRD DECIMAL, THE PROJECT PAGE'S PHASE 4 GAPS, AND THE RA SET RAISED AND CANCELLED AS ONE · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **sixty-third** occasion,
+> written directly on `antigravity-dev`.
+>
+> **What prompted it:** the round-off shipped that morning (sixty-second
+> block) rounded every document unconditionally; the client wants it the
+> operator's choice per document. Separately, the client's customer portal
+> rejected a bill because an amount on it carried **three decimals**. And the
+> 28 October Phase 4 list was audited against what the fifty-eighth block had
+> built.
+>
+> #### ⚠ `quotation.py` — A FOURTH NARROW UNFREEZE, ROUND-OFF ONLY
+>
+> **Manas, 31 Oct 2026: round-off on all documents, nothing left behind.**
+> This is the override that lets the quotation carry the tick. It covers
+> exactly: the tick on `/quotation/create`, `round_off_on` and `round_off` on
+> the record, the paise figures the round-off is taken from (each line, the
+> subtotal and each tax head — a rupee rounding is only honest over the
+> printed figures), and a *Round off* row in `view_quotation()`'s print only
+> when a non-zero `round_off` is stored. Every edit sits inside
+> `create_quotation()` and `view_quotation()`, already named by
+> `tests/test_nav_user_chip.py`; `quotation._tax_lines()` and every other
+> function are untouched. The OFF-state form golden
+> (`tests/test_quotation_switch.py`) moved in its `tax` block by +274 bytes —
+> the checkbox — and was re-baselined, declared.
+>
+> #### What is IN this pass
+>
+> - **A — the tick.** *Round off to nearest rupee*, ticked by default, on the
+>   create and edit forms of the quotation, BOQ (grand total only), PO
+>   (create, from-BOQ, from-inquiry, reprice), proforma (both paths), tax
+>   invoice (both paths; from a PI it opens at the PI's choice), work order,
+>   RA bill and payslip (net pay); stored as `round_off_on`. None on the DC,
+>   the measurement sheet or the product inquiry. Unticked is the exact
+>   two-decimal figure and a round-off of 0. **A record without the field
+>   behaves exactly as it did**; the work order's `rounds_to_rupee` is read as
+>   its legacy, so no saved work order moves. An RA Supply + Installation set
+>   is rounded ONCE, on the merged tax invoice. Issued / locked documents
+>   follow their existing lock rule.
+> - **B — the paisa.** Every line amount to the paisa HALF UP when computed;
+>   subtotal = sum of the stored lines; tax heads to the paisa. A sweep test
+>   over every money create path; `tools/scan_paise.py`, **read-only**, lists
+>   older records with a third decimal. **Existing records are not
+>   rewritten.** `OVERCLAIM_TOLERANCE` unchanged.
+> - **C — projects.** Receipts and BOQ-linked work orders on the project by
+>   read-time inheritance; an amber band when a document's own tag disagrees
+>   with its BOQ's project; an amber *raised under revision N* flag on every
+>   document raised under a superseded revision; the PO edit form's project
+>   picker; *No bill raised yet: cost so far*; the running position; coverage
+>   beside the cost; the dashboard's *Unattributed cost* line and billed %;
+>   the spider's axes changed to BOQ, procurement, dispatch, measurement,
+>   billed, collected.
+> - **D — RA.** The one-click *Supply + Installation together* link on
+>   `/ra/create`; a leg of a set is never cancelled alone — both legs and the
+>   merged tax invoice go together, with one required reason; the invoice
+>   keeps its number under the CANCELLED overprint.
+>
+> #### The agent's own calls, declared
+>
+> 1. A POST from no form offering the tick reads as the document's LEGACY
+>    behaviour (quotation and BOQ unrounded, the rest rounded), never as
+>    unticked — a hidden marker tells the two apart.
+> 2. A new work order writes `round_off_on` and no longer writes
+>    `rounds_to_rupee`.
+> 3. The PO's existing lock (repricable in any status but Cancelled) is the
+>    tick's lock too.
+> 4. The payslip's tick is on the draft's own form; `/payroll/generate` (a
+>    month-wide batch) makes every draft ticked.
+> 5. The legs of a set carry their exact totals; receipts against them can
+>    leave up to ₹0.50 across the two (ABOUT.md §7 gap 99).
+> 6. **C1 not extended:** an explicit *None* on `/boq/create`, and a revision
+>    of a chain on no project, still file nowhere, because three existing
+>    tests pin that and the standing rule forbids weakening a test (gap 100).
+>    The default already reuses-by-name or creates.
+> 7. **The Cash section stays GST-inclusive** (gap 102); **the waterfall stays
+>    billed-first with the contract value as its reference rule** (gap 103).
+> 8. The spider's *BOQ* axis is *lines carrying a quantity and a rate, of all
+>    lines*; the old *bought* axis (a count of lines) left the spider and stays
+>    on the panel as the coverage line. The pinned axis list in
+>    `tests/test_pnl_charts_oct28.py` was amended to the new exact list.
+> 9. **C6:** payroll carries no project link; labour reaches a project
+>    through the muster's site → address → project join, which already
+>    exists and is the P&L's labour row (gap 101). No field was added.
+> 10. No MySQL is reachable in the session this was built in: **no backup was
+>     taken because none was possible**, and nothing was migrated.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

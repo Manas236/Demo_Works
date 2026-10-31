@@ -454,6 +454,7 @@ Consequences you must respect when editing:
 | [lineimage.py](lineimage.py) | 456 | **A picture beside a document line — a LEAF** (21 October 2026, CLIENT_CHANGES.md §0 forty-ninth block). Re-encodes an upload through `photo.load()` (the profile photo's validation, shared) into a JPEG no larger than 360 px, and writes it **once** as a file under `attachment.root()/line-images/`, **named by the sha256 of its own bytes** — so an id IS its content and referencing it is as good as a copy for the snapshot rule. A line carries only `image: <id>`; `src_of()` is the one reader and inlines the file as a `data:` URI at render, refusing anything whose bytes no longer hash to its name. Owns the library default (`library_image_for()` — a clause's picture by EXACT code), the Image column (`sheet_has_images()`, `with_column()`, `cell()`, `SHEET_CSS` — drawn only on a sheet that has a picture) and the shared half of every Pictures page (`rows_html()`, `apply_post()` — one upload per request, a fingerprint per line). Imports `photo`, `pipeline` and `store` at module level; `attachment` inside `root()` and Pillow inside `save()` only. §3 *Line pictures*, §5 *Pictures*. |
 | [demo_data.py](demo_data.py) | 2795 | **Data only, imports nothing.** The 56 seeded specs and the 97-line demo BOQ, generated from the client's own workbook. |
 | [units.py](units.py) | 265 | **The unit of measure, and the GST UQC behind it — a LEAF** (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, B3). Seven built-in units, **`Nos` first and `DEFAULT_LABEL`** — Nos/NOS, Mtrs/MTR, Kg/KGS, Set/SET, **Lot/OTH**, Sq Ft/SQF, Sq M/SQM — plus whatever an Owner added at `/settings`, which is its own record (`unit_list`) and **never a branding override**. ⚠ **A unit is a PAIR**: a label is what the client writes on a document, a UQC is what the GST portal accepts in GSTR-1, and they are different vocabularies. `uqc_of()` matches on `pipeline.norm_name()` — casefold and collapse, **nothing wider** — and answers `OTH` for anything it does not know, which is what a custom unit is by the client's own instruction. `select_html()` / `options_html()` draw the control and **keep a value the list does not offer as a selected `— as written` option**, which is the whole of *existing free-text units stay as they are*; `payload()` hands the same list to the BOQ editor's JavaScript with the UQC riding along. ⚠ **A custom entry can never shadow one of the seven** — `pairs()` refuses it and so does `/settings`, so the rule holds against a row written straight into MySQL. **Imports `pipeline` and `store` and nothing else of ours**: `boq.py` may not import `settings.py`, which is why this is a leaf — `series.py`'s constraint, one list along. §5 `/settings`, §7 gap 96. |
+| [roundoff.py](roundoff.py) | 145 | **The rupee round-off, the paisa, and the per-document tick — a LEAF** (31 October 2026, CLIENT_CHANGES.md §0 **sixty-second** and **sixty-third** blocks). `rupee()` (HALF UP, never `round()`), `split()`, `label()`; from the sixty-third block also `paise()` (HALF UP to two decimals — every line amount is taken to the paisa WHEN COMPUTED, before it is summed), `paise_tax()` (each tax head to the paisa, `total` their sum, `*_rate` keys untouched), `apply(exact, on)`, and the tick: `FIELD = "round_off_on"`, `MARK` (the hidden marker that tells *unticked* from *a POST from no form offering the tick*), `form_choice(form, legacy)`, `is_on(rec, legacy)`, `checkbox_html()`. ⚠ **A record without `round_off_on` is LEGACY** and answers with the caller's `legacy` — what that document did before the tick. Imports `decimal` and nothing else (`tests/test_roundoff_and_drafts.py` holds it). §3 *The round-off tick*. |
 | [hsnfill.py](hsnfill.py) | 330 | **The HSN/SAC rule — a LEAF** (29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A1). One predicate, `editable(is_draft, current)`: **any code while the document is a draft; from issued onward only a BLANK one may be filled.** `1fdc09e` built that rule for the purchase order's item lines and `purchase.hsn_editable()` now delegates here rather than keeping a copy — the answer for a purchase order is unchanged (`tests/test_po_hsn_edit.py`). Also owns `print_cell()` — the ONE printed HSN cell in the application, **an em-dash when blank**, which is what replaced `branding.field()`'s amber chip; `screen_note()`, the **screen-only** note naming the lines with none; `clean()` and `HSN_MAX` (8, re-exported by `purchase.py`); the shared half of every fill page (`rows_html()`, `apply_post()` — staged, so a refused value writes nothing at all, with a per-line fingerprint); and the one trail field `hsn_trail`. ⚠ **Imports `pipeline` and NOTHING else of ours, at any level** — not `branding` (that is where the chip lives) and **not `store`**: it reads no collection, so the rule cannot learn which document it is on. Eight modules import it. §3 *The HSN/SAC code*, §5 *HSN / SAC*. |
 | [po_parts.py](po_parts.py) | 639 | **Data only, imports nothing.** The 73-part seeded **prefill** list for extra purchase-order lines, plus `CLIENT_LINES` — the client's own 78 strings, which are the **only** thing an alias may be (§2h). ⚠ **Every rate in it is an ASSUMED PLACEHOLDER, not a quoted price.** Not a collection, not a document, not editable through the UI, not a vocabulary — a typeahead prefill and nothing else. See §2h and §5 `/purchase`. |
 | `tools/gen_demo_data.py` | 304 | The generator that emits `demo_data.py`. Not imported by the app. **Regenerate, don't hand-edit.** |
@@ -4230,6 +4231,36 @@ free-text fallback and this deliberately does not; the tie-breaker is the join
 key. Only `address.SITE_TYPES` addresses are offered, and that is enforced on
 the **POST** and not only in the option list.
 
+#### Phase 4 on the project page (31 October 2026, §0 sixty-third block)
+
+Still **no stored figure and no copied link** — every item below is read time:
+
+- **C2 inheritance.** Receipts are listed under *Raised from these BOQs*,
+  through their RA bill's `boq_id`; a work order carrying a `boq_id` follows
+  its BOQ (`pnl.project_of()`, and `workorder._project_of()` for its own
+  panel — none written to date carries one). `pnl.project_conflict()` finds a
+  document whose own `project_id` disagrees with its BOQ's project; the
+  amber `.pm-drift` band (`projectview._inheritance_bands()`) names BOTH, on
+  both projects' pages, and nothing is rewritten.
+- **C3 revisions.** Contract value is the tip of each chain (unchanged);
+  `pnl.raised_under_earlier()` flags every document raised under a superseded
+  revision — RA, DC, MS, PI, TI, PO, inquiry, WO — naming the tip revision and
+  its date. Its money still counts.
+- **C4.** `/purchase/edit` carries the project picker for an order raised from
+  scratch; one raised from a BOQ follows it and gets a sentence instead.
+  (`purchase.py` may not import `projtag.py`, so the edit writes the same two
+  fields the create does.) A proforma has no edit route; *Attach document*
+  on the project page covers it.
+- **C5.** *No bill raised yet: cost so far* before the first bill; *the
+  running position, billed less spent* beside *Margin to date*; coverage
+  (*N of M BOQ lines have a PO*) beside *Spent to date*; the dashboard shows
+  an **Unattributed cost** line and each tile's **billed % of the contract
+  value**. Billed counts an RA bill and a tax invoice carrying its number
+  once, and a merged set at its legs (`tests/test_project_phase4.py`).
+- **C7.** The spider's axes are BOQ (lines with a quantity and a rate, of all
+  lines), procurement (committed PO value of planned cost), dispatch,
+  measurement, billed, collected. The waterfall is unchanged — §7 gap 103.
+
 #### The project P&L adds NO field to any record (CC-2 C6, 8 October 2026)
 
 ⚠ **Nothing is stored — not on the project, not on a BOQ, not on any
@@ -5093,6 +5124,17 @@ no record created after the pinned moment lacks a creator, and that nothing but
 the migration ever writes the mark.
 
 ### Merged RA  (CC-2 **C3**, 2 September 2026)
+
+⚠ **A SET raised at `/raboth/create` is rounded ONCE and cancelled as ONE**
+(31 October 2026, §0 sixty-third block, Parts A and D). Its legs are built
+unrounded (`round_on=False`) and the merged record carries the single
+`rounding_off`; `grand_total == sum of the legs' totals + rounding_off`. A leg
+is never cancelled alone: `/ra/cancel/<leg>` (either verb) redirects to
+`/merged/cancel/<merged>` and writes nothing (`ra.set_merge_of()`), and the set
+cancel there requires one reason, written on all three. The merged tax invoice
+keeps its number under the CANCELLED overprint and the serial is not reissued.
+An ASSEMBLED merge (no set mark) keeps every old rule. `/ra/create` carries the
+one-click *Supply + Installation together* link.
 
 A **separate document type**, the same relationship as Draft PO → PO. RA-Supply
 and RA-Installation go on being raised separately and each keeps its own
@@ -7604,6 +7646,46 @@ offers *Resume your unsaved purchase order?* / Discard. Resume POSTs the saved
 fields with `_resume=1`, and `create_purchase()` treats that POST as a REDRAW —
 no validation, no save, no number spent. Per browser, per device; files are not
 kept; cleared on a real submit and by Discard. `tests/test_roundoff_and_drafts.py`.
+
+#### The round-off TICK, and the paisa (31 October 2026, later — §0 sixty-third block)
+
+**"Round off to nearest rupee" is a checkbox on every money document's create
+AND edit form, TICKED BY DEFAULT**, stored on the record as `round_off_on`
+(bool) — `roundoff.py` above. Ticked is the sixty-second block's behaviour
+(whole rupee, HALF UP, `round_off` stored, a "Round off" print row when
+non-zero); unticked is the exact two-decimal figure, `round_off` 0, no row.
+
+| Document | Forms carrying the tick | Legacy (no `round_off_on`) | Lock |
+|---|---|---|---|
+| Quotation | `/quotation/create` (no edit route exists) | not rounded | — |
+| BOQ | `/boq/create` (and a revision, which is a create) — **grand total only**: `boq.grand_of()`, two print rows `ROUND OFF` / `GRAND TOTAL` | not rounded | a saved BOQ is never edited |
+| Purchase Order | create, from-BOQ, from-inquiry, `/purchase/edit` (reprice) | rounded | any status but Cancelled (`can_edit_rates()`) |
+| Proforma | from quotation, from BOQ (no edit route exists) | rounded | — |
+| Tax Invoice | from PI — **opens at the PI's choice** — and from BOQ | rounded | issued when saved, so frozen |
+| Work Order | create, edit | **`rounds_to_rupee`** is read as the legacy: a WO with it rounds, one without does not | draft only (`can_edit()`) |
+| RA bill | create, edit | rounded | draft only |
+| RA Supply + Installation set | `/raboth/create` — the legs are built `round_on=False` and the merged tax invoice is rounded **once** (`rounding_off` on the merged record) | — | — |
+| Payslip | the draft's *Typed on the draft* form (net pay) | rounded | draft only; the negative-net carry is unchanged either way |
+
+None on the delivery challan, the measurement sheet or the product inquiry —
+they carry no money total.
+
+⚠ **An unchecked box posts NOTHING**, so each form also posts `roundoff.MARK`;
+a POST without it (a test, an import, an older tab) is the document's legacy
+behaviour, never "unticked". ⚠ **A new Work Order no longer writes
+`rounds_to_rupee`**; `workorder.totals_of()` follows `round_off_on` when
+present and falls back to `rounds_to_rupee`, so no saved WO moves.
+
+**The paisa (Part B).** The client's customer portal rejected a bill with three
+decimals. From this pass a line amount is taken to the paisa HALF UP when it is
+computed — BOQ `supply_amount`/`install_amount` at save, PO line totals and tax
+heads, the quotation's lines/subtotal/tax heads (inside the authorised
+round-off change), the PI's and TI's copies of their source's figures, RA claim
+amounts — so the subtotal is the sum of the stored lines and the printed total
+is lines + tax + round off to the paisa. `tests/test_paise_sweep.py` drives every
+money create path; **`tools/scan_paise.py`** (READ-ONLY, no write mode) lists
+older records that still carry a third decimal. Existing records are not
+rewritten.
 
 #### The item picker — Specification library + BOQ items (31 October 2026)
 
@@ -16291,6 +16373,64 @@ text is unchanged, and every reference to them was moved with them.*
     deliberately NOT changed — it is shared by every test file and adding a
     collection to it could unmask any test that quietly depends on a leak,
     which is its own pass with its own measurement.
+
+98. 🟡 **Records saved before 31 October 2026 may still carry a THIRD decimal
+    — OPEN, by design** (§0 sixty-third block, Part B). BOQ line amounts,
+    quotation lines and tax heads, and PO tax heads were stored raw; the print
+    formats them to two places, so the sheet shows two decimals but the stored
+    figures, and a total re-derived from them, can differ from the printed
+    lines by a paisa. Snapshot immutability: they are **not rewritten**.
+    `python tools/scan_paise.py` lists them by type and number; the remedy, if
+    a customer portal refuses one, is a fresh document.
+
+99. 🟡 **A merged RA set's receipts are recorded against its UNROUNDED legs —
+    OPEN, surfaced** (§0 sixty-third block, Part A). The set is rounded once,
+    on the merged tax invoice; the legs carry their exact totals. A customer
+    paying the whole-rupee invoice leaves up to ₹0.50 over or under across the
+    two legs' `outstanding_of()`, which is signed and so reads as a credit or
+    a residue. Record the difference as a write-off on a leg if it matters.
+
+100. 🟡 **An explicit "None: not filed under a project" on `/boq/create`, and
+    a revision of a chain on no project, still file the BOQ NOWHERE — OPEN,
+    a decision to take** (§0 sixty-third block, C1). The brief asked that any
+    BOQ saved with no project be attached by name or given one. The default
+    (*New project from this BOQ*) already does exactly that — reuse by
+    `pipeline.norm_name()`, else create — but three tests
+    (`test_choosing_none_still_files_the_schedule_nowhere`,
+    `test_a_revision_of_an_unattached_chain_stays_unattached`,
+    `test_posting_no_project_stores_an_unattached_boq`) pin the explicit
+    choice as meaning what it says, and the standing rule forbids weakening a
+    test. Removing the option is a one-line change in `project.py` once Manas
+    rules that the tests should be inverted.
+
+101. 🟡 **Payroll carries NO project link — labour reaches a project only
+    through the MUSTER** (§0 sixty-third block, C6). A payslip snapshots an
+    employee's month and has no project or site field. A marking does: its
+    `site_address_id` joins the address book, and a project's site is that
+    same address, so `attendance.markings_for_project()` rolls the day-rate
+    and overtime cost up per project and the P&L's *Site labour* row is it.
+    Charges with head Wages/Labour are counted in the *Charges* row. **What a
+    payslip would need to roll up on its own:** a per-slip `project_id` (or a
+    per-day site split, which the markings already are) — not added: deriving
+    wages from markings is the fifty-fifth block's one-formula rule, and a
+    second link would be a second answer.
+
+102. 🟡 **The P&L's Cash section stays GST-INCLUSIVE although the brief asked
+    for every figure on taxable value** (§0 sixty-third block, C5). Receipts
+    are cash and include GST; *outstanding = billed − collected* is only
+    true if both sides are the same kind of number, which is ABOUT.md §7 gap
+    31. Planned and To date are tax-exclusive as asked; Cash reads billed
+    including GST against received. Not changed, declared.
+
+103. 🟡 **The waterfall still starts at BILLED and draws the contract value as
+    a labelled reference rule, not a bar** (§0 sixty-third block, C7). The
+    brief listed *contract value, billed, each cost bucket, running position*
+    — every one of those is on the chart; the contract value is the dashed
+    "BOQ value (planned)" mark rather than a first bar because a bar walk from
+    a planned figure down through actual costs ends at a blend (the
+    fifty-eighth block's ruling, pinned by
+    `test_THE_WATERFALL_NEVER_BLENDS_AN_ESTIMATE_WITH_AN_ACTUAL`). The spider
+    WAS changed to Manas's six axes.
 
 ## 8. Stale docs — do not trust these two files
 

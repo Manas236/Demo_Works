@@ -440,3 +440,33 @@ def test_an_unticked_set_is_exact(client, sched):
     m, legs = _both(client, sched, **{RO.MARK: "1"})
     assert m["rounding_off"] == 0.0
     assert m["grand_total"] == round(sum(b["grand_total"] for b in legs), 2)
+
+
+# ══ 11. The statutory copy labels survive the tick ══════════════════════════
+
+TI_LABELS = ("ORIGINAL FOR RECIPIENT", "DUPLICATE FOR TRANSPORTER",
+             "TRIPLICATE FOR SUPPLIER")
+
+
+@pytest.mark.parametrize("tick", [{RO.MARK: "1"}, {RO.MARK: "1", RO.FIELD: "1"}])
+def test_copy_labels_survive_on_a_new_tax_invoice_and_ra_bill(client, sched, tick):
+    r = client.post(f"/invoice/from-boq/{sched}", data={
+        "date": "2026-10-31", "place_of_supply": "Karnataka",
+        "advance_received": "0", "leg": "supply", "tax_type": "cgst_sgst",
+        "ti_json": _lines(sched, 2), **tick})
+    assert r.status_code == 302
+    ti = list(STORE["invoices"].values())[-1]
+    html = client.get(f"/invoice/view/{ti['id']}").get_data(as_text=True)
+    assert all(lbl in html for lbl in TI_LABELS), "a TI copy label was lost"
+    from conftest import chain_ready
+    chain_ready(sched)
+    lines = [li for li in STORE["boqs"][sched]["line_items"]
+             if not li.get("is_header") and float(li.get("supply_rate") or 0) > 0][:1]
+    r = client.post(f"/ra/create?boq={sched}&leg=supply", data={
+        "date": "2026-10-31",
+        "ra_json": json.dumps({"lines": [{"line_id": lines[0]["line_id"], "qty": "1"}]}),
+        **tick})
+    assert r.status_code == 302, r.get_data(as_text=True)[:400]
+    bill = list(STORE["ra_bills"].values())[-1]
+    html = client.get(f"/ra/print/{bill['id']}").get_data(as_text=True)
+    assert all(lbl in html for lbl in TI_LABELS), "an RA tax-invoice copy label was lost"

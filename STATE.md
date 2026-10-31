@@ -10,6 +10,26 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
+**Latest, 31 October 2026 — CLIENT_CHANGES.md §0 sixty-third block, on
+`antigravity-dev`, NOT DEPLOYED** (deploy is a separate run). Four parts in
+logical commits: **A** the *Round off to nearest rupee* tick on every money
+document (`round_off_on`; legacy records unchanged; `quotation.py`'s fourth
+narrow unfreeze, round-off only); **B** paise integrity — every line amount to
+the paisa when computed, a sweep test over every money create path, and the
+read-only `tools/scan_paise.py`; **C** the Phase 4 project gaps (receipts and
+BOQ-linked work orders inherited at read time, the disagreement and
+older-revision amber bands, the PO edit project picker, the running position,
+coverage beside cost, unattributed cost and billed % on the dashboard, the
+spider's six axes); **D** *Supply + Installation together* from `/ra/create`
+and a set cancelled only as one. **Measured, Linux, CPython 3.13.18,
+openpyxl 3.1.5 present, client workbooks absent: 5,385 passed / 26 skipped at
+`09a028b` → 5,486 passed / 26 skipped / 0 failed.** No MySQL in the session,
+so no backup and no migration. **Open, from this pass:** ABOUT.md §7 gaps
+98–103 — older records with a third decimal (scan, never rewritten), the
+set-leg receipt residue, C1's explicit *None* (pinned by tests, Manas's call),
+payroll has no project link (labour comes from the muster), Cash stays
+GST-inclusive, the waterfall stays billed-first.
+
 **As of:** branch `antigravity-dev`, 24 October 2026 — **ALL THREE LINES ARE
 MERGED AND DEPLOYED.** The office and laptop lines (already joined on
 `origin/antigravity-dev` at `4db95ca`) and the production box's own
