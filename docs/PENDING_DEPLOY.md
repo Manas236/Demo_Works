@@ -16,6 +16,23 @@
 
 ---
 
+> ### ⚠ 31 OCTOBER 2026 — A HOTFIX WENT AHEAD OF THIS LIST
+>
+> The PO item dropdown was empty on prod and the client hit it on a call
+> (CLIENT_CHANGES.md §0 **sixtieth** block). It was fixed on the branch
+> **`hotfix/po-item-picker`**, cut from **`c6a385a`** — so prod can take it
+> **without** the 34 commits below and their role reconcile — and that branch
+> was **merged into `antigravity-dev`**, so this list's consolidated deploy
+> still fast-forwards from wherever prod lands.
+>
+> **When the hotfix is deployed, prod is at the hotfix tip, not `3d4692c`.**
+> Read §0's "Production is at" with that in mind: the hotfix carries
+> `c35b710`, `02f1e10` and `c6a385a` (rows 1–3 below) with it, so those three
+> are then already on the box, and their steps (sign / stamp upload at
+> `/settings`) are already done or doable. Every other row, and §2's reconcile,
+> is still outstanding. The hotfix needs no migration, no requirement and no
+> reconcile.
+
 ## 0. Where production is, and where this line is
 
 | | |

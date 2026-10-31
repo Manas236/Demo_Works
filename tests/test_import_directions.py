@@ -566,6 +566,33 @@ FORBIDDEN = [
                                         "only — the arrangement create_quotation() "
                                         "always had for its seeder, so the graph in "
                                         "ABOUT.md §2 gains no edge for one call"),
+    ("specpick", "buypick",   "any", "the quotation's picker and the purchase "
+                                     "order's are two leaves; neither reads the other"),
+
+    # ── buypick.py — the purchase order's item picker (31 Oct 2026) ─────────
+    #
+    # The Specification library and the BOQ items on `/purchase/create`'s rows
+    # (CLIENT_CHANGES.md §0 sixtieth block, ABOUT.md §7 gap 38). `purchase.py`
+    # may not import `spec.py` at all; this leaf is how the buy side reads the
+    # library without that edge, and it reaches `spec` and `boq` inside
+    # function bodies only. It never reads the catalogue switch — purchase.py
+    # does, and tells it which group to draw.
+    ("buypick", "purchase",  "any", "the leaf is reached BY purchase.py; importing "
+                                    "back would be a cycle"),
+    ("buypick", "quotation", "any", "the sell chain's picker is specpick.py's"),
+    ("buypick", "specpick",  "any", "same — two leaves, no shared code"),
+    ("buypick", "product",   "any", "the library is the alternative to the catalogue"),
+    ("buypick", "auth",      "any", "the SWITCH is read by purchase.py, not here"),
+    ("buypick", "flask",     "any", "it builds HTML strings and owns no route"),
+    ("buypick", "docsheet",  "any", "a form is not a printed sheet"),
+    ("buypick", "proforma",  "any", "the buy side never touches a sell-side document"),
+    ("buypick", "invoice",   "any", "same"),
+    ("buypick", "po_draft",  "any", "the draft PO has its own picker, boqpick.py"),
+    ("buypick", "spec",      "module", "spec.py is imported inside ensure_seeded() only"),
+    ("buypick", "boq",       "module", "boq.py is imported inside function bodies only, "
+                                       "so the leaf's module graph stays store + pipeline"),
+    ("boq",     "buypick",   "any", "a BOQ does not link to a purchase order"),
+    ("spec",    "buypick",   "any", "the library knows nothing about who reads it"),
 
     # ── chrome.py — the app shell is a LEAF (14 September 2026) ─────────────
     #
@@ -1419,6 +1446,12 @@ REQUIRED = [
     ("specpick", "pipeline", "esc and json_for_script — the embed goes through the "
                              "shared helper, never a bare json.dumps (ABOUT.md §7.9e)"),
 
+    ("purchase", "buypick",  "the item rows' Specification library and BOQ items "
+                             "(31 Oct 2026) — the library without a purchase → spec edge"),
+    ("buypick",  "store",    "STORE['specs'] and STORE['boqs'] — a pick is re-read "
+                             "from them at POST"),
+    ("buypick",  "pipeline", "esc — every option's text is escaped at the site"),
+
     ("boqimport", "sheetimport", "the reader — bytes in, plain dicts out"),
     ("boqimport", "boq",         "create_boq(imported=…), MAX_LINES and MAX_JSON_BYTES: "
                                  "the prefilled form IS the ordinary one"),
@@ -1622,6 +1655,18 @@ def test_po_parts_imports_nothing_at_all():
       towards becoming one.
     """
     assert imports_of("po_parts") == set()
+
+
+def test_buypick_is_a_leaf():
+    """
+    The purchase order's item picker (31 October 2026), held as a WHITELIST:
+    `store` and `pipeline` at module level and nothing else of ours; `spec`
+    (the seeder) and `boq` (the parent rule, the revision set, the net rate,
+    the make in a remark) inside function bodies only.
+    """
+    ours = {m.stem for m in REPO.glob("*.py")} - {"buypick"}
+    assert imports_of("buypick", top_level_only=True) & ours == {"pipeline", "store"}
+    assert imports_of("buypick") & ours == {"pipeline", "store", "spec", "boq"}
 
 
 def test_lineimage_is_a_leaf():
