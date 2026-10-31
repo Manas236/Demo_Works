@@ -34,9 +34,19 @@ What it does NOT do (honest limits)
 * Browser storage can be unavailable (a private window, blocked site data):
   every read and write is wrapped, and the form then behaves exactly as before.
 
-Wired into: `/purchase/create` (31 Oct 2026). The other create forms take the
-same two pieces — `script(...)` in the page, `is_resume()` in the route — in
-the next pass.
+Wired into: `/purchase/create` (31 Oct 2026), and from the same day (§0
+sixty-fourth block, Part 4) the nineteen other create forms — `/boq/create`,
+`/dc/create`, `/measurement/create`, `/po/create`, `/ra/create`,
+`/raboth/create`, `/proforma/from/<qid>`, `/proforma/from-boq/<id>`,
+`/invoice/from/<pid>`, `/invoice/from-boq/<id>`, `/purchase/from-boq/<id>`,
+`/purchase/from-draft/<id>`, `/wo/create`, `/receipt/new`, `/charge/new`,
+`/employee/new`, `/address/add`, `/spec/add` and `/projects/create`.
+`tests/test_formdraft_everywhere.py` holds every one: the script is on the
+page, a Resume redraws, saves nothing and spends no number.
+
+NOT wired, deliberately: `/quotation/create` (`quotation.py` is frozen and this
+pass's unfreeze covers its EDIT route only), `/merged/create` (two dropdowns —
+nothing typed to lose), and the admin forms `/users/create` and `/roles/create`.
 
 A LEAF: imports nothing of the app.
 """

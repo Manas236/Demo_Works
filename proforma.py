@@ -55,6 +55,7 @@ import branding as B
 import cascade
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
@@ -1055,7 +1056,9 @@ def create_proforma(qid: str):
     rem_pct            = _remaining_pct(grand, invoiced)
     needs_confirm      = False
 
-    if request.method == "POST":
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # nothing is checked, nothing is saved, no number is spent.
+    if request.method == "POST" and not FD.is_resume(f):
         pi_date  = (f.get("date") or "").strip()
         pct      = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
         validity = (f.get("validity_days") or "").strip()
@@ -1505,6 +1508,7 @@ def create_proforma(qid: str):
           <a href="{q_view}" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
+      {FD.script('form[action$="/proforma/from/' + qid + '"]', "proforma invoice", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
     </main></body></html>"""
@@ -1556,8 +1560,10 @@ def from_boq(boq_id: str):
     chosen = qty_of = None
     may_number = _may_set_number()
     seq_used = default_seq = 0
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    resuming = is_post and FD.is_resume(f)
 
-    if is_post:
+    if is_post and not resuming:
         pi_date  = (f.get("date") or "").strip()
         pct      = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
         validity = (f.get("validity_days") or "").strip()
@@ -1650,6 +1656,8 @@ def from_boq(boq_id: str):
                                         f"against {boq.get('ref') or 'the schedule'}.",
                                     type="success"))
 
+        chosen, qty_of = boq_replay(f.get("pi_json") or "")
+    if resuming:
         chosen, qty_of = boq_replay(f.get("pi_json") or "")
 
     def _v(name: str, fallback: str = "") -> str:
@@ -1804,6 +1812,7 @@ def from_boq(boq_id: str):
           <a href="{back}" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
+      {FD.script('form[action*="/proforma/from-boq/"]', "proforma invoice", resumed=resuming)}
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · proforma invoice</p></footer>
     </main></body></html>"""

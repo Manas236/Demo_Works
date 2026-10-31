@@ -59,6 +59,7 @@ from markupsafe import escape
 import branding as B
 import gst_lookup                           # GSTIN check + portal lookup — a leaf
 import pipeline as P                        # json_for_script, for the GST config
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 from chrome import BASE_STYLES, _nav
 from product import PRODUCT_STYLES          # reuse form / table / alert styling
 from store import STORE
@@ -1695,7 +1696,8 @@ def _render_form(data: dict, *, heading: str, action_url: str,
                  submit_label: str, error: str | None,
                  refs: list | None = None, type_locked: bool = False,
                  form_kind: str = "add", address_id: str = "",
-                 previous_gstin: str = "", ack_checked: bool = False) -> str:
+                 previous_gstin: str = "", ack_checked: bool = False,
+                 draft: str = "") -> str:
     """Render the add/edit page. `data` holds the current field values."""
     list_url   = url_for("address.list_addresses")
     gst_html   = _gst_widget(data, _gst_urls(form_kind, address_id),
@@ -1856,7 +1858,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
               <button type="submit" class="btn">{_e(submit_label)}</button>
               <a href="{list_url}" class="btn btn-ghost">Cancel</a>
             </div>
-          </form>
+          </form>{draft}
         </div>
 
         <footer>
@@ -2023,8 +2025,12 @@ def add_address():
 
     data  = {"type": "office", "country": "India"}
     error = None
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    resuming = request.method == "POST" and FD.is_resume(request.form)
+    if resuming:
+        data, _ignored = _validate(request.form)
 
-    if request.method == "POST":
+    if request.method == "POST" and not resuming:
         data, error = _validate(request.form)
         if not error:
             error = _gst_status_error(data, request.form)
@@ -2044,6 +2050,7 @@ def add_address():
         error=error,
         form_kind="add",
         ack_checked=bool(request.form.get("gst_ack")),
+        draft=FD.script('form[action$="/address/add"]', "address", resumed=resuming),
     )
 
 

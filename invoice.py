@@ -68,6 +68,7 @@ import approval
 import branding as B
 import cascade
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import docsheet as DS
@@ -844,7 +845,9 @@ def create_invoice(pid: str):
     # on a GET it is the series' own next number and nothing has been typed.
     seq_used = 0
 
-    if request.method == "POST":
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # nothing is checked, nothing is saved, no statutory number is spent.
+    if request.method == "POST" and not FD.is_resume(f):
         ti_date = (f.get("date") or "").strip()
         pos     = (f.get("place_of_supply") or "").strip()
         adv     = _money(f.get("advance_received"), 0.0)
@@ -1238,6 +1241,7 @@ def create_invoice(pid: str):
           <a href="{pi_view}" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
+      {FD.script('form[action$="/invoice/from/' + pid + '"]', "tax invoice", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · tax invoice</p></footer>
     </main></body></html>"""
@@ -1288,8 +1292,10 @@ def from_boq(boq_id: str):
     chosen = qty_of = None
     may_number = _may_set_number()
     seq_used = 0
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    resuming = is_post and FD.is_resume(f)
 
-    if is_post:
+    if is_post and not resuming:
         ti_date = (f.get("date") or "").strip()
         pos     = (f.get("place_of_supply") or "").strip()
         adv     = _money(f.get("advance_received"), 0.0)
@@ -1395,6 +1401,8 @@ def from_boq(boq_id: str):
                                         f"{boq.get('ref') or 'the schedule'}.",
                                     type="success"))
 
+        chosen, qty_of = boq_replay(f.get("ti_json") or "")
+    if resuming:
         chosen, qty_of = boq_replay(f.get("ti_json") or "")
 
     def _v(name: str, fallback: str = "") -> str:
@@ -1608,6 +1616,7 @@ def from_boq(boq_id: str):
           <a href="{back}" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
+      {FD.script('form[action*="/invoice/from-boq/"]', "tax invoice", resumed=resuming)}
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · tax invoice</p></footer>
     </main></body></html>"""

@@ -61,6 +61,7 @@ import branding as B
 import demo_data as DD
 import lineimage as LI   # the clause's picture — the leaf (21 Oct 2026)
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
@@ -1046,6 +1047,7 @@ def _render_form(data: dict, error: str, mode: str, spec_id: str = "") -> str:
       </div>
     </div>
   </form>
+  {"" if is_edit else FD.script('form[action$="/spec/add"]', "specification", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · specification library</p></footer>
 </main>
@@ -1428,6 +1430,9 @@ def add_spec():
 
     if request.method == "POST":
         data, error = _validate(request.form)
+        # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+        if FD.is_resume(request.form):
+            return _render_form(data, "", "add")
         if error:
             return _render_form(data, error, "add")
 

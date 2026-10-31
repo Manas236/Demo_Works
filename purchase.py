@@ -3084,6 +3084,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
           {back_html}
         </div>
       </form>
+      {FD.script('form[action="' + action + '"]', "purchase order", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
       {_po_form_script_html()}
 
@@ -3244,8 +3245,10 @@ def from_boq(boq_id: str):
     data = _form_values(f, is_post)
     error = ""
     chosen = qty_of = rate_of = make_of = image_of = None
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    resuming = is_post and FD.is_resume(f)
 
-    if is_post:
+    if is_post and not resuming:
         vendor_fields, error = _vendor_from(f)
         if not data["date"]:
             error = "Purchase order date is required."
@@ -3296,6 +3299,9 @@ def from_boq(boq_id: str):
                                     type="success"))
 
         # Hand the operator back exactly what they ticked and typed.
+        (chosen, qty_of, rate_of, make_of,
+         image_of) = _replay_picked(f.get("po_json") or "")
+    if resuming:
         (chosen, qty_of, rate_of, make_of,
          image_of) = _replay_picked(f.get("po_json") or "")
 
@@ -3459,6 +3465,10 @@ def from_draft(draft_id: str):
         posted_make = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_make")))
         # The picture chosen from the item's library (29 Oct 2026, B2).
         posted_image = dict(zip(f.getlist("dl_line_id"), f.getlist("dl_image")))
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # the posted lines above are kept, nothing below runs.
+    resuming = is_post and FD.is_resume(f)
+    if is_post and not resuming:
 
         vendor_fields, error = _vendor_from(f)
         if not data["date"]:

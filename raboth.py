@@ -86,6 +86,7 @@ import boq as BQ
 import branding as B
 import merged_ra as MRA
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import ra as RA
 import roundoff as RO
 from chrome import BASE_STYLES, _nav
@@ -418,7 +419,11 @@ def create_both():
                          f"instead.")
             claims[leg] = got
 
-        if not error:
+        # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only
+        # REDRAWS: both legs' typed quantities are in `entered` above.
+        if FD.is_resume(request.form):
+            error = ""
+        elif not error:
             merged, err = create_set(
                 boq, claims["supply"], claims["installation"],
                 date_val, notes_val,
@@ -496,5 +501,6 @@ def _form(boq, prev, entered, error, date_val, notes_val) -> str:
       <a href="{url_for('boq.view_boq', id=boq_id)}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+  {FD.script('form[action*="/raboth/create"]', "RA supply + installation set", resumed=request.method == "POST" and FD.is_resume(request.form))}
 </main>
 </body></html>"""

@@ -60,6 +60,7 @@ import branding as B
 import docsheet as DS
 import importstage as IS   # the staging mechanism the BOQ importer uses (5 Oct 2026)
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import settings as SET
 import sheetimport as SI
@@ -1359,6 +1360,7 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
       <a href="{url_for('workorder.view_wo', id=wo['id']) if editing else url_for('workorder.list_wos')}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+{"" if editing else FD.script('form[action$="/wo/create"]', "work order", resumed=request.method == "POST" and FD.is_resume(request.form))}
 {WO_FORM_JS}"""
     return _shell("Edit Work Order" if editing else "New Work Order", body,
                   WO_FORM_STYLES)
@@ -1896,6 +1898,10 @@ def create_wo():
         return _retrack(_form_data(request.form), posted_rows(request.form))
 
     data, rows, lines, error, problems = _validate(request.form)
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # no refusal is drawn, nothing is saved and no number is spent.
+    if FD.is_resume(request.form):
+        return _form_page(data, rows)
     if error or problems:
         return _form_page(data, _mark(rows, problems), error=error,
                           problems=problems)

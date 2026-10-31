@@ -68,6 +68,7 @@ import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 # level in `tests/test_import_directions.py`.
 import measurement as MS
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 # "Is this challan billed, and by which bill?" — ONE predicate, in a leaf both
 # this module and `challan.py` import, because neither may import the other
@@ -4595,6 +4596,11 @@ def create_ra(imported: dict = None):
         # refused, and the message names the bill that holds it.
         if dc_problems:
             claims, error = [], " ".join(dc_problems)
+        # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+        # the typed quantities come back through `entered`, no refusal is
+        # shown and nothing is saved.
+        if FD.is_resume(request.form):
+            error = "__resume__"
 
         tax_invoice_ref = (request.form.get("tax_invoice_ref") or "").strip()
         def_po_ref, def_po_date = previous_bill_po_defaults(boq_id)
@@ -4641,6 +4647,8 @@ def create_ra(imported: dict = None):
             approval.stamp_creator(STORE["ra_bills"][rid])
             return redirect(url_for("ra.view_ra", id=rid,
                                     msg=msg, type="success"))
+        if error == "__resume__":
+            error = ""
 
     ra_no = next_ra_no(boq_id)
     # Import from Excel (18 October 2026) — claim quantities off the client's
@@ -4666,7 +4674,10 @@ def create_ra(imported: dict = None):
         back_url=url_for("boq.view_boq", id=boq_id),
         date_val=date_val, notes_val=notes_val,
         submit_label="Save RA bill",
-        source_html=source_html, hidden_html=hidden_html, tail_html=tail_html,
+        source_html=source_html, hidden_html=hidden_html,
+        tail_html=tail_html + FD.script(
+            'form[action*="/ra/create"]', "RA bill",
+            resumed=request.method == "POST" and FD.is_resume(request.form)),
         top_html=top_html, cap_html=cap_note_html(boq_id, leg),
         round_on=_RO().form_choice(request.form, legacy=True)
         if request.method == "POST" else True)

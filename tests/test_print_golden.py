@@ -1214,9 +1214,14 @@ GOLD_PICK_BOQ = "gold-pick"
 #   "product inquiry", −14). The picker's own blocks — `intro`, `vendor`,
 #   `details`, `lines`, `tools`, `rows`, `payload` — are byte-identical, so
 #   the grid this golden exists to pin did not move at all.
-PICK_WHOLE = "848964109c809bae"   # was cc3d3280b73f3e0e (§0 59th B1)
-PICK_LEN = 82756
-PICK_BLOCKS = {"head":    "68af1da58d9e51a7",   # was 2fc16fd060a023cf,
+# ⚠ **RE-BASELINED 31 October 2026 — Resume after Back** (§0 sixty-fourth
+#   block, Part 4): the create form gained `formdraft.script()` after its
+#   `</form>`. A diff of the render before and after is 81 ADDED lines — that
+#   script — and nothing removed or changed; `head`'s digest moved with the
+#   block cut. The picker's own seven blocks are byte-identical.
+PICK_WHOLE = "62c80012381412e0"   # was 848964109c809bae (§0 64th, Resume), was cc3d3280b73f3e0e (§0 59th B1)
+PICK_LEN = 86489                  # was 82756 (§0 64th, Resume)
+PICK_BLOCKS = {"head":    "7c5d2bf9720e4cd8",   # was 68af1da58d9e51a7 (§0 64th), was 2fc16fd060a023cf,
                                                 # was b07f3fb758299248,
                                                 # was af77ecc07bfca6ff,
                                                 # was 8bf28275fa127606,
@@ -1229,7 +1234,7 @@ PICK_BLOCKS = {"head":    "68af1da58d9e51a7",   # was 2fc16fd060a023cf,
                "tools":   "bbf296057d6fb154",   # was 76ba5972ff18f235 (Make)
                "rows":    "9987f464a6ef64cd",   # was a57b4602a006fa6f (Make)
                "payload": "0b433e5e3f3e5705",
-               "js":      "f86b9c1063249df0"}   # was 8bbde42b5e5f5415 (§0 59th B1)   # was f1bae1908e487e97 (Make)
+               "js":      "a22d28750cbdb86b"}   # was f86b9c1063249df0 (§0 64th, Resume), was 8bbde42b5e5f5415 (§0 59th B1)   # was f1bae1908e487e97 (Make)
 
 
 def test_the_boq_line_picker_is_unchanged(client, golden_picker):

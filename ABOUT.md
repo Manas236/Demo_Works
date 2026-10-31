@@ -5741,6 +5741,22 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
 
 ---
 
+### Resume after Back on every create form  (31 October 2026 — §0 sixty-fourth block, Part 4)
+
+**Not a field.** `formdraft.py` (the leaf) is now on twenty create forms —
+`/purchase/create` and the nineteen its docstring lists. Each route asks
+`formdraft.is_resume(request.form)` and, on a Resume, **redraws from the posted
+form exactly as a refused save does, with no refusal drawn**: nothing is
+validated into an error, nothing is saved, and no number is spent (every
+counter and the document-number ledger is past the redraw). Pinned by
+`tests/test_formdraft_everywhere.py`, whose control posts the same defaults
+without `_resume` and must draw something different — proved by removing the
+guard from three routes (3 red). Not on `/quotation/create` (frozen),
+`/merged/create` (two dropdowns) or the admin forms. The `/po/create` form
+golden moved by the script alone (81 added lines).
+
+---
+
 ### The edit-after-issue log  (`edit_log`, 31 October 2026 — CLIENT_CHANGES.md §0 sixty-fourth block)
 
 **Not a collection.** A list on a document record, written by `editlog.record()`

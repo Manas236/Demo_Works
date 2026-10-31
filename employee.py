@@ -136,6 +136,7 @@ from flask import Blueprint, redirect, request, url_for
 import address as AD
 import branding as B
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 from store import STORE
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from dashboard import rupees
@@ -877,7 +878,7 @@ def list_employees():
 
 def _form(data: dict, error: str, action: str, submit_label: str,
           heading: str, back: str, stale: dict = None,
-          stale_site: dict = None, import_url: str = "") -> str:
+          stale_site: dict = None, import_url: str = "", draft: str = "") -> str:
     """
     The create and edit forms, which are one form with two labels.
 
@@ -986,7 +987,7 @@ def _form(data: dict, error: str, action: str, submit_label: str,
       <button type="submit" class="btn">{_esc(submit_label)}</button>
       <a href="{back}" class="btn btn-ghost">Cancel</a>
     </div>
-  </form>
+  </form>{draft}
 """)
 
 
@@ -997,8 +998,12 @@ def new_employee():
     # default lives here, in the form, because an unchecked box posts nothing.
     data = {"date_joined": _today(), "active": True}
     error = ""
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    resuming = request.method == "POST" and FD.is_resume(request.form)
+    if resuming:
+        data, _ignored = _validate(request.form)
 
-    if request.method == "POST":
+    if request.method == "POST" and not resuming:
         data, error = _validate(request.form)
         if not error:
             eid = create_record(data)
@@ -1012,7 +1017,9 @@ def new_employee():
     return _form(data, error, action=url_for("employee.new_employee"),
                  submit_label="Add employee", heading="New <span>Employee</span>",
                  back=url_for("employee.list_employees"),
-                 import_url=url_for("docimport.upload_employee"))
+                 import_url=url_for("docimport.upload_employee"),
+                 draft=FD.script('form[action$="/employee/new"]', "employee",
+                                 resumed=resuming))
 
 
 def create_record(data: dict) -> str:

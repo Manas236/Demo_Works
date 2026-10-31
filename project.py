@@ -106,6 +106,7 @@ from flask import Blueprint, redirect, request, url_for
 import address as AD
 import branding as B
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 from store import STORE
 
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
@@ -519,7 +520,8 @@ def create_project():
     """Create a new project."""
     error = ""
 
-    if request.method == "POST":
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    if request.method == "POST" and not FD.is_resume(request.form):
         name = (request.form.get("name") or "").strip()
         if not name:
             error = "A project needs a name."
@@ -605,6 +607,7 @@ def create_project():
             <a href="{url_for('project.list_projects')}" class="btn btn-ghost">Cancel</a>
           </div>
         </form>
+        {FD.script('main form[method="POST"]', "project", resumed=request.method == "POST" and FD.is_resume(request.form))}
       </main>
     </body>
     </html>

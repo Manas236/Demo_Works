@@ -117,6 +117,7 @@ import boqpick as BP
 import branding as B
 import docsheet as DS
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
@@ -1375,6 +1376,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+  {"" if editing else FD.script('form[action*="/measurement/create"]', "measurement sheet", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · measurement sheet</p></footer>
 </main>
@@ -2252,15 +2254,20 @@ def create_ms(imported: dict = None):
     data, error = _validate(request.form)
     items, line_error = ([], "") if error else picked_lines(data["ms_json"], boq)
     error = error or line_error
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # nothing is enforced, nothing is saved.
+    resuming = FD.is_resume(request.form)
+    if resuming:
+        error = ""
 
     breaches = []
-    if not error:
+    if not error and not resuming:
         # GUARD 1. A hard block — `BLOCK_OVER_MEASUREMENT`.
         breaches = overmeasures(boq_id, items)
         if breaches:
             error = ""      # the band says it in full; a second line would repeat
 
-    if error or breaches:
+    if error or breaches or resuming:
         # Hand the operator back exactly what they ticked and typed.
         try:
             posted = (json.loads(data["ms_json"] or "{}").get("lines") or [])

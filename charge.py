@@ -35,6 +35,7 @@ import approval
 import attachment
 import branding as B
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 from store import STORE
 from chrome import BASE_STYLES, ICONS, TABLE_FIT_STYLES, _nav
 from dashboard import rupees
@@ -285,7 +286,8 @@ def _attachment_warning(charge_id: str) -> str:
             f'will be deleted with it.</div>')
 
 
-def _form(data: dict, error: str, action: str, submit_label: str) -> str:
+def _form(data: dict, error: str, action: str, submit_label: str,
+          draft: str = "") -> str:
     proj_options = '<option value="">General (No Project)</option>'
     for pid, p in sorted(STORE.get("projects", {}).items(), key=lambda kv: kv[1].get("name", "")):
         sel = " selected" if pid == data.get("project_id") else ""
@@ -349,7 +351,7 @@ def _form(data: dict, error: str, action: str, submit_label: str) -> str:
       <button type="submit" class="btn">{_esc(submit_label)}</button>
       <a href="{url_for('charge.list_charges')}" class="btn btn-ghost">Cancel</a>
     </div>
-  </form>
+  </form>{draft}
     """)
 
 @charge_bp.route("/new", methods=["GET", "POST"])
@@ -358,8 +360,13 @@ def new_charge():
     today = datetime.date.today().isoformat()
     data = {"date": today}
     error = ""
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # nothing is checked, nothing is saved.
+    resuming = request.method == "POST" and FD.is_resume(request.form)
+    if resuming:
+        data, _ignored = _validate(request.form)
     
-    if request.method == "POST":
+    if request.method == "POST" and not resuming:
         data, error = _validate(request.form)
 
         # ── B8. THE ATTACHMENT IS COMPULSORY ON A CHARGE ────────────────────
@@ -424,7 +431,8 @@ def new_charge():
 
             return redirect(url_for("charge.list_charges", msg="Charge saved.", type="success"))
             
-    return _form(data, error, action=url_for("charge.new_charge"), submit_label="Save Charge")
+    return _form(data, error, action=url_for("charge.new_charge"), submit_label="Save Charge",
+                 draft=FD.script('form[action$="/charge/new"]', "charge", resumed=resuming))
 
 @charge_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_charge(id: str):

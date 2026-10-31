@@ -80,6 +80,7 @@ import cascade
 import demo_data as DD
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import roundoff as RO  # the paisa and the rupee round-off tick, the leaf (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import units as _UN   # the shared unit list — the leaf (29 Oct 2026)
@@ -6044,7 +6045,10 @@ def create_boq(imported: dict = None):
     blockers: list = []
     form_needs: list = []
 
-    if request.method == "POST":
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # the page below re-reads the posted form exactly as a refused save does;
+    # nothing is checked, nothing is saved, no number is spent.
+    if request.method == "POST" and not FD.is_resume(request.form):
         form = request.form
 
         # Validation, in order — nothing is written to STORE until every one
@@ -6731,6 +6735,7 @@ def create_boq(imported: dict = None):
       <button type="submit" class="btn">Create BOQ</button>
     </div>
   </form>
+  {FD.script('form[onsubmit="return saveJSON()"]', "bill of quantities", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE}</p></footer>
 </main>

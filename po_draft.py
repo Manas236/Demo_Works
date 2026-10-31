@@ -88,6 +88,7 @@ import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import settings as SET
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import picker_options, format_address_lines
@@ -1006,6 +1007,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+  {"" if editing else FD.script('form[action*="/po/create"]', DOC_NAME_LOWER, resumed=request.method == "POST" and FD.is_resume(request.form))}
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · {DOC_NAME_LOWER}</p></footer>
 </main>
@@ -1243,7 +1245,9 @@ def create_po(imported: dict = None):
     data, error = _validate(request.form, boq)
     items, line_error = ([], "") if error else picked_lines(data["po_json"], boq)
     error = error or line_error
-    if error:
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
+    resuming = FD.is_resume(request.form)
+    if error or resuming:
         # Hand the operator back exactly what they ticked and typed.
         try:
             posted = (json.loads(data["po_json"] or "{}").get("lines") or [])
@@ -1263,7 +1267,7 @@ def create_po(imported: dict = None):
         # And the chosen picture (29 Oct 2026, B2), for the same reason.
         data["_image"] = {BQ._line_id(r.get("line_id")): str(r.get("image") or "")
                           for r in posted if isinstance(r, dict)}
-        return _entry_form(boq, data, error)
+        return _entry_form(boq, data, "" if resuming else error)
 
     # Carry the typed Pcs across. It is not on the BOQ and never will be.
     try:

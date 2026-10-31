@@ -76,6 +76,7 @@ import cascade
 import boq as BQ
 import branding as B
 import pipeline as P
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import ra as RA
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
@@ -397,7 +398,8 @@ def _bill_facts(bill: dict, exclude_id: str = None) -> str:
 
 
 def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
-          submit_label: str, exclude_id: str = None, extra_note: str = "") -> str:
+          submit_label: str, exclude_id: str = None, extra_note: str = "",
+          draft: str = "") -> str:
     """The receipt form, shared by add and edit — one form, two entry points."""
     heading = f"Payment against RA{int(bill.get('ra_no') or 0)}"
     return _shell(heading, f"""
@@ -475,7 +477,7 @@ def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
       <button type="submit" class="btn">{_esc(submit_label)}</button>
       <a href="{back_url}" class="btn btn-ghost">Cancel</a>
     </div>
-  </form>""")
+  </form>{draft}""")
 
 
 # =============================================================================
@@ -636,7 +638,12 @@ def new_receipt():
             "write_off_raw": ""}
     error = ""
 
-    if request.method == "POST":
+    # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
+    # the typed values come back, nothing is checked, nothing is saved.
+    resuming = request.method == "POST" and FD.is_resume(request.form)
+    if resuming:
+        data, _ignored = _validate(request.form, bill)
+    if request.method == "POST" and not resuming:
         data, error = _validate(request.form, bill)
 
         # ── B8, OPTIONAL on a receipt. See the form section for CC-2's own
@@ -692,7 +699,9 @@ def new_receipt():
     return _form(bill, data, error,
                  action=url_for("receipt.new_receipt", ra=ra_id),
                  back_url=url_for("ra.view_ra", id=ra_id),
-                 submit_label="Record payment")
+                 submit_label="Record payment",
+                 draft=FD.script('form[action*="/receipt/new"]', "receipt",
+                                 resumed=resuming))
 
 
 @receipt_bp.route("/edit/<id>", methods=["GET", "POST"])

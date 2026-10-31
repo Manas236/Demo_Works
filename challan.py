@@ -109,6 +109,7 @@ import branding as B
 # untouched — and without a second copy of the predicate beside `ra.py`'s.
 import dcbill as DCB
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import docsheet as DS
 import pipeline as P
 import settings as SET
@@ -731,6 +732,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
       <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+  {"" if editing else FD.script('form[action*="/dc/create"]', "delivery challan", resumed=request.method == "POST" and FD.is_resume(request.form))}
 
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · delivery challan</p></footer>
 </main>
@@ -1128,8 +1130,12 @@ def create_dc(imported: dict = None):
     seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
                                     default_seq, may_number)
     error = error or num_err
+    # A Resume of an unsaved draft (formdraft.py, §0 sixty-fourth block, Part
+    # 4) REDRAWS from what was typed: nothing above is enforced, nothing below
+    # is saved, and no number is spent (`_spend_ref()` is past this return).
+    resuming = FD.is_resume(request.form)
 
-    if error:
+    if error or resuming:
         # Hand the operator back exactly what they ticked and typed.
         try:
             posted = (json.loads(data["dc_json"] or "{}").get("lines") or [])
@@ -1139,7 +1145,7 @@ def create_dc(imported: dict = None):
                            if isinstance(r, dict)}
         data["_qty"] = {BQ._line_id(r.get("line_id")): r.get("qty")
                         for r in posted if isinstance(r, dict)}
-        return _entry_form(boq, data, error)
+        return _entry_form(boq, data, "" if resuming else error)
 
     cid = new_id()
     default_ref = SET.dc_ref_of(SET.dc_series())

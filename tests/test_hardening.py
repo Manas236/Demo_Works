@@ -314,8 +314,13 @@ def test_script_close_in_a_clause_cannot_break_out(seeded, client):
     assert "</script><script>alert(1)" not in html
     # One block is the page's own, the other is the shell's collapse-state
     # script that `chrome._nav()` emits on every screen page (14 Sep 2026).
+    # ⚠ And, from 31 October 2026 (§0 sixty-fourth block, Part 4), the
+    #   Resume-after-Back script `formdraft.script()` adds to the create form —
+    #   counted from the leaf itself, so this stays an EXACT count.
     import chrome
-    expected = 1 + chrome.CHROME_SCRIPT.count("<script>")
+    import formdraft
+    expected = (1 + chrome.CHROME_SCRIPT.count("<script>")
+                + formdraft.script("form", "x").count("<script>"))
     assert html.count("<script>") == html.count("</script>") == expected
 
 
