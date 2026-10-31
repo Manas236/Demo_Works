@@ -20,6 +20,12 @@ halves, in this order, and the order is the point:
    switch: hidden → no catalogue rows. This was the one place in the
    application where catalogue items were still visible.
 
+   ⚠ **31 October 2026 (§0 sixtieth block): hidden → the SPECIFICATION
+   LIBRARY in the catalogue's place**, and the BOQ items either way —
+   `buypick.py`. Until then the hidden state offered the placeholder alone,
+   and that empty dropdown is what the client hit. Two tests below were
+   rewritten for it, each saying so; `tests/test_po_buypick.py` holds the rest.
+
 And every reader of a PO's lines copes with zero catalogue lines: create,
 view / print (one route), edit, `job_cost()`, the quotation deal panel's
 Committed figure, the project page and the register.
@@ -202,9 +208,20 @@ def test_the_extra_line_refusals_still_come_first(client, switch):
 
 # ══ 3. The item rows follow the switch ══════════════════════════════════════
 
-def test_product_options_offers_no_row_while_hidden(client):
+def test_product_options_offers_the_library_not_the_catalogue_while_hidden(client):
+    """
+    ⚠ **REWRITTEN 31 October 2026** (CLIENT_CHANGES.md §0 sixtieth block) —
+    was `test_product_options_offers_no_row_while_hidden`, which pinned the
+    hidden state to the placeholder ALONE. That empty dropdown is the defect
+    the client hit on the 31 October call. What still holds, unchanged: no
+    catalogue row while hidden, every catalogue row while shown. What is new:
+    the Specification library in the catalogue's place while hidden, and
+    never while shown. (The BOQ items group is `tests/test_po_buypick.py`'s.)
+    """
     import auth
+    import buypick as BYP
     _seed()
+    BYP.ensure_seeded()
     saved = set(auth.HIDDEN_BLUEPRINTS)
     try:
         auth.HIDDEN_BLUEPRINTS.clear(); auth.HIDDEN_BLUEPRINTS.add("product")
@@ -213,13 +230,28 @@ def test_product_options_offers_no_row_while_hidden(client):
         shown = PU._product_options()
     finally:
         auth.HIDDEN_BLUEPRINTS.clear(); auth.HIDDEN_BLUEPRINTS.update(saved)
-    assert hidden == '<option value="">&#8212; select item &#8212;</option>'
-    assert hidden.count("<option") == 1
-    assert shown.count("<option") == 1 + len(STORE["products"])
+    n_variants = sum(len(s.get("variants") or []) for s in STORE["specs"].values())
+    assert n_variants > 0
     assert PRODUCT_PID in shown and PRODUCT_PID not in hidden
+    for pid in STORE["products"]:
+        assert pid not in hidden
+    assert 'optgroup label="Specification library"' in hidden
+    assert hidden.count('value="spec:') == n_variants
+    assert 'optgroup label="Specification library"' not in shown
+    assert 'value="spec:' not in shown
+    # nothing else on the shown side moved: the placeholder and every product
+    assert shown.count("<option") == 1 + len(STORE["products"]) + shown.count('value="boq:')
 
 
 def test_the_create_page_draws_no_catalogue_row_or_rate_while_hidden(client):
+    """
+    ⚠ **AMENDED 31 October 2026** (§0 sixtieth block). The catalogue half is
+    unchanged: no product id, name or rate anywhere on the hidden page. The
+    two assertions that pinned the empty state — `var RATES = {};` and a note
+    saying only extra parts could be written — are replaced by the library
+    being offered, its COST rates in the map, and the note naming the library,
+    the BOQ items and the extra parts.
+    """
     import auth
     _seed()
     saved = set(auth.HIDDEN_BLUEPRINTS)
@@ -235,13 +267,15 @@ def test_the_create_page_draws_no_catalogue_row_or_rate_while_hidden(client):
     for pid, p in STORE["products"].items():
         assert pid not in hidden, f"{p['name']} is still offered while hidden"
         assert p["name"] not in hidden
-    assert "var RATES = {};" in hidden
+    assert 'value="spec:' in hidden
+    assert '"spec:' in hidden.split("var RATES = ", 1)[1].split(";", 1)[0]
     assert "The product catalogue is switched off" in hidden
+    assert "Specification library" in hidden
     assert "extra parts" in hidden
 
     assert PRODUCT_PID in shown
-    assert "var RATES = {};" not in shown
     assert f'"{PRODUCT_PID}":' in shown
+    assert 'value="spec:' not in shown
     assert "The product catalogue is switched off" not in shown
 
 

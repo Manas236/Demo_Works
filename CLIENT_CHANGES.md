@@ -5269,6 +5269,65 @@ one automatic.
 > take, infer, or extend.
 
 
+> ### ⚠ AUTHORISATION — 31 October 2026, by Manas Gawde — THE PURCHASE ORDER'S EMPTY ITEM DROPDOWN: THE SPECIFICATION LIBRARY AND THE BOQ ITEMS ON `/purchase/create` · CLIENT-BLOCKING DEFECT · HOTFIX · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The fifty-ninth block and every block
+> before it stand exactly as recorded. This is the **sixtieth** occasion.
+>
+> ⚠ **On the hotfix branch `hotfix/po-item-picker` (off `c6a385a`) the
+> fifty-fourth to fifty-ninth blocks are not present yet** — they are on
+> `antigravity-dev`, waiting for the consolidated deploy. This block keeps the
+> number it holds there; nothing is renumbered when the two lines meet.
+>
+> **What happened.** On a call on 31 October 2026 the client (Yogesh) raised a
+> purchase order on prod and found *Items ordered → Select item* EMPTY. That is
+> the twenty-eighth block's change 3 working as written: the catalogue was
+> hidden on 12 September and `/purchase/create`'s rows were emptied with it
+> (ABOUT.md §7 gap 38), but nothing replaced them — the quotation got the
+> Specification library, the purchase order got only the extra free-text
+> parts. **It is a defect in OUR 11–12 September design, not a client ask**,
+> which is why it is no charge.
+>
+> **What the client asked for, on the call:** the dropdown filled from the
+> **Specification library** and from **the BOQs**, as two separate options;
+> whatever is added to a BOQ to appear there permanently; and the library to
+> tell MS / GI / seamless pipe, Dia vs NB and wall thickness apart.
+>
+> **What was decided (Manas, 31 October 2026):**
+>
+> 1. **Spec picker + free text.** The library in the catalogue's place while it
+>    is hidden; the extra parts stay as the way to write anything in neither.
+> 2. **The rate prefills from the SUPPLY BASE RATE, editable** — the cost
+>    basis, the same rule as the PO raised from a BOQ.
+> 3. **The BOQ items are READ DIRECTLY from the current BOQs.** Nothing is
+>    written into the library: **the 1 October review-and-tick rule stands**
+>    (a BOQ item reaches the library only when someone ticks it).
+> 4. **A structured library — material, NB vs OD, thickness as real fields,
+>    deduplicated on them — is a separate pass, FREE, and NOT built here.**
+>    Until it exists the BOQ items are deduplicated on EXACT text only, and
+>    deliberately never merge Dia with NB (150 NB is 168.3 mm OD).
+> 5. **Hotfix to prod now**, not held for the consolidated deploy.
+>
+> **How it ships — a judgement call by the agent, declared, not Manas's
+> ruling:** built on the branch `hotfix/po-item-picker` off `c6a385a`, so prod
+> can fast-forward to it WITHOUT the 34 outstanding commits in
+> `docs/PENDING_DEPLOY.md` (and their role reconcile), then MERGED into
+> `antigravity-dev` so the next consolidated deploy still fast-forwards. If
+> prod is at `3d4692c` the three fifty-third-block commits ride along; Manas
+> had already chosen to deploy those on 27 October.
+>
+> **What was built:** the leaf `buypick.py` (ABOUT.md §5 `/purchase`, *The
+> item picker*). The catalogue rows, the extra parts, the PO raised from a BOQ
+> or converted from a Product Inquiry, the reprice form, every print and every
+> stored figure are unchanged. A picked line is a SNAPSHOT carrying `src_*`
+> reference keys — never `line_id`, so it never counts as PO coverage of a
+> schedule it was not raised against.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
