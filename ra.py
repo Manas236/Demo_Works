@@ -2790,6 +2790,28 @@ def can_cancel(bill: dict) -> tuple:
     return True, ""
 
 
+def set_merge_of(bill: dict):
+    """
+    The LIVE merged tax invoice of the Supply + Installation SET this bill is
+    a leg of, or `None` (31 Oct 2026, Part D).
+
+    A set is three documents raised by one action at `/raboth/create` and
+    stamped with one `RAISED_AS_BOTH` id. ⚠ **A leg of a set is never
+    cancelled alone**: `/ra/cancel/<leg>` sends the operator to the merged
+    document's own cancel, which withdraws all three with one reason — and a
+    POST to cancel the leg alone is refused there by `can_cancel()` (the live
+    merge holds it), so there is no path that cancels one leg of a pair.
+    A merge ASSEMBLED by hand carries no set id and is not this.
+    """
+    sid = set_of(bill)
+    if not sid:
+        return None
+    held = _live_merge_holding(str((bill or {}).get("id") or ""))
+    if held is not None and set_of(held) == sid:
+        return held
+    return None
+
+
 def can_receipt(bill: dict) -> tuple:
     """
     (allowed, reason) — may money be recorded against this bill?
@@ -4239,6 +4261,19 @@ def cancel_ra(id: str):
         return redirect(url_for("ra.list_ras",
                                 msg="That RA bill no longer exists.", type="error"))
 
+    # ⚠ A LEG OF A SUPPLY + INSTALLATION SET IS CANCELLED WITH ITS SET, never
+    #   alone (31 Oct 2026, Part D): both legs and the merged tax invoice, one
+    #   required reason, on the merged document's own cancel page. Nothing
+    #   is written here, on either verb — a POST is sent there too.
+    held = set_merge_of(bill)
+    if held is not None:
+        return redirect(url_for(
+            "merged_ra.cancel_merged", id=held.get("id"), type="error",
+            msg=(f"RA{int(bill.get('ra_no') or 0)} was raised as one Supply "
+                 f"& Installation bill with {held.get('tax_invoice_ref')}, so "
+                 f"it is cancelled with it: both bills and the tax invoice, "
+                 f"together. One leg cannot be cancelled alone.")))
+
     allowed, why = can_cancel(bill)
     if not allowed:
         return redirect(url_for("ra.view_ra", id=id, msg=why, type="error"))
@@ -4579,6 +4614,16 @@ def create_ra(imported: dict = None):
     # `tests/test_doc_import.py` holds the two equal.
     top_html = (f'<a href="{url_for("docimport.upload_ra", boq=boq_id, leg=leg)}" '
                 f'class="btn btn-ghost">&#128229; Import from Excel</a>')
+    # ⚠ The one-click "Supply + Installation together" toggle (31 Oct 2026,
+    #   Part D). `/raboth/create` carries `ra.create`, this route's own
+    #   permission (`auth.ROUTE_PERMISSIONS`), so it is drawn unconditionally
+    #   like the import button. It is a LINK, not a mode of this form: both
+    #   legs and one merged tax invoice are raised by `raboth.py`, whose
+    #   validate-both-then-write order this form cannot reproduce.
+    #   `url_for` takes a STRING endpoint, so no import arrow is drawn.
+    top_html += (f' <a href="{url_for("raboth.create_both", boq=boq_id)}" '
+                 f'class="btn btn-ghost ra-both-toggle">&#8644; Supply + '
+                 f'Installation together</a>')
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),
@@ -4818,6 +4863,10 @@ def view_ra(id: str):
     edit_btn = _gated("Edit claim", "ra.edit_ra", can_ed, edit_why)
     issue_btn = _gated("&#10003; Issue", "ra.issue_ra", iss_allowed, iss_why)
     cancel_btn = _gated("&#10007; Cancel", "ra.cancel_ra", can_allowed, can_why)
+    if set_merge_of(bill) is not None:
+        # A leg of a set: the control names what it really does (Part D).
+        cancel_btn = (f'<a class="btn btn-ghost" href="{url_for("ra.cancel_ra", id=id)}">'
+                      f'&#10007; Cancel both legs &amp; the tax invoice</a>')
     print_btn = f'<a class="btn" href="{url_for("ra.print_ra", id=id)}" style="background:#0284c7;color:#fff;border:none;">&#128438; Print / Tax Invoice</a>'
     # HSN / SAC (29 October 2026, §0 fifty-ninth block, A1). `_gated()`'s own
     # rule: present with its refusal on it rather than hidden. A cancelled

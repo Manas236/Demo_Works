@@ -1060,6 +1060,16 @@ def cancel_merged(id: str):
         #   A leg with receipts against it still refuses, and the set is left
         #   exactly as it was.
         sid = RA.set_of(doc)
+        if sid and not reason:
+            # ⚠ ONE REQUIRED REASON for a set (31 Oct 2026, Part D): three
+            #   documents and a statutory serial go at once, and the reason is
+            #   written on all three. An assembled merge keeps its old rule.
+            return redirect(url_for(
+                "merged_ra.cancel_merged", id=id, type="error",
+                msg=("Say why this bill is being withdrawn. Both RA bills and "
+                     "the tax invoice are cancelled together, their numbers "
+                     "stay spent, and the reason is the only thing that will "
+                     "explain the gap later.")))
         if sid:
             legs = RA.legs_of_set(sid)
             for _rid, b in legs:
@@ -1095,6 +1105,7 @@ def cancel_merged(id: str):
 
     return _shell("Cancel merged document", f"""
       <div class="page-top"><h1>Cancel <span>{_esc(doc.get('tax_invoice_ref'))}</span></h1></div>
+      {_flash()}
       <div class="del-box">
         <h2>&#9888; The number is not reused</h2>
         <div class="del-line">
