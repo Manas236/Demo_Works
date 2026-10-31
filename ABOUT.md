@@ -7632,6 +7632,14 @@ kinds share one row, one rate box and one POST path, and the reprice form
   fuzzy — so 1.5 mm / 15 mm, Dia / NB, MS / GI and two thicknesses stay
   apart. A structured library that can tell them apart is a separate, free,
   unbuilt pass (§0 sixtieth block, decision 4).
+- **The label is SHORT, the size first** (31 October 2026, after the first
+  look on prod): `<own text> · <clause, ≤40 chars> (<unit>)`, never more than
+  `buypick.OPTION_CHARS` (70) before the unit, with the scope-of-work lead-in
+  ("Supply, Fabrication, Installtion, Testing of…", spelling slips included)
+  stripped. ⚠ A native dropdown sizes its popup to its longest option: at 150
+  characters Chrome pushed it off the left edge and cut off what the item is.
+  The FULL name is each option's `title` (hover) and its `data-s`, which is
+  what the search box matches; the stored name is never cut.
 - **The page:** a search box above each row (every typed word must appear;
   never posted, never bound to `recalc()`), and the full option list written
   ONCE in `<template id="item-opts">`, copied into each empty row by
