@@ -111,6 +111,8 @@ def _only_po():
 #   taxable_value = 10,540 + 250 (loading, taxable)   = 10,790.00
 #   tax           = 10,790 x 18%                      =  1,942.20
 #   grand_total   = 10,790 + 1,942.20 + 60 (exempt)   = 12,792.20
+#   → 12,792 to the whole rupee, HALF UP, round off -0.20 (AMENDED 31 Oct 2026,
+#     CLIENT_CHANGES.md §0 sixty-second block; the figures above it are unchanged)
 ADDITIONS = {
     "extra_desc": ["150mm flange", "", ""], "extra_unit": ["Nos", "", ""],
     "extra_qty": ["4", "", ""], "extra_rate": ["150", "", ""],
@@ -174,7 +176,7 @@ def test_from_boq_stores_the_extra_part_and_both_charges(shop, client):
     assert po["subtotal"] == 10540.0
     assert po["taxable_value"] == 10790.0
     assert round(po["tax_info"]["CGST"], 2) == round(po["tax_info"]["SGST"], 2) == 971.1
-    assert po["grand_total"] == 12792.2
+    assert po["grand_total"] == 12792.0 and po["round_off"] == -0.2   # §0 62nd, rounded
     assert po["total_qty"] == 14.0, "extra parts are goods and count toward quantity"
     # The upstream links are untouched by the additions.
     assert po["boq_id"] == shop["boq"]
@@ -194,7 +196,7 @@ def test_from_draft_stores_the_extra_part_and_both_charges(shop, client):
     assert [c["label"] for c in po["charges"]] == ["Loading & Unloading", "Octroi"]
     assert po["subtotal"] == 10540.0
     assert po["taxable_value"] == 10790.0
-    assert po["grand_total"] == 12792.2
+    assert po["grand_total"] == 12792.0 and po["round_off"] == -0.2   # §0 62nd, rounded
     assert po["draft_id"] == did
     assert STORE["purchase_orders"][did]["converted_po_ids"] == [po["id"]]
 
@@ -219,7 +221,7 @@ def test_both_reach_the_printed_order(shop, client):
     assert "150mm flange" in html
     assert "Loading &amp; Unloading" in html
     assert "Octroi (no tax)" in html, "an exempt charge prints as such"
-    assert "12,792.20" in html
+    assert "12,792.00" in html and "Round off" in html   # §0 62nd, rounded
 
 
 # ══ 3. Nothing typed is lost on a rejected POST, and nothing is written ═════

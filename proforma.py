@@ -558,6 +558,12 @@ def boq_line_items(picked: list, boq: dict, leg: str) -> tuple:
     return out, ""
 
 
+def _RO():
+    """`roundoff`, the leaf — the one rupee round-off rule (31 Oct 2026)."""
+    import roundoff
+    return roundoff
+
+
 def boq_figures(items: list, tax_type: str) -> tuple:
     """
     `(subtotal, tax_info, grand_total, total_qty)` for BOQ-raised lines.
@@ -601,7 +607,11 @@ def boq_figures(items: list, tax_type: str) -> tuple:
             tax_info["cgst_rate"] = rate / 2
             tax_info["sgst_rate"] = rate / 2
     tax_info["total"] = round(total, 2)
-    grand = round(subtotal + tax_info["total"], 2)
+    # The rupee round-off (31 Oct 2026, §0 sixty-second block), HALF UP —
+    # `roundoff.rupee()`. A PI and a TI raised from a BOQ both come through
+    # here; the difference is stored on each as `round_off` and printed.
+    import roundoff as RO
+    grand = RO.rupee(subtotal + tax_info["total"])
     return subtotal, tax_info, grand, total_qty
 
 
@@ -1116,14 +1126,17 @@ def create_proforma(qid: str):
                 "subtotal":   float(q.get("subtotal") or q.get("grand_total") or 0.0),
                 "tax_type":   q.get("tax_type", "exempt"),
                 "tax_info":   dict(q.get("tax_info") or {"total": 0.0}),
-                "grand_total": grand,
+                # The order value to the whole rupee, HALF UP (31 Oct 2026);
+                # the quotation keeps its own figure.
+                "grand_total": _RO().rupee(grand),
+                "round_off":   _RO().split(grand)[1],
                 "total_qty":   q.get("total_qty", 0),
 
                 # ── The invoice's own fields ──────────────────────────────
                 "po_number":     (f.get("po_number") or "").strip(),
                 "po_date":       (f.get("po_date") or "").strip(),
                 "advance_pct":   pct,
-                "amount_due":    due,
+                "amount_due":    _RO().rupee(due),
                 "project_id":    (f.get("project_id") or "").strip(),
 
                 # ── The running position, frozen at issue ─────────────────
@@ -1135,7 +1148,7 @@ def create_proforma(qid: str):
                 # - this one`, and a later PI cannot reach back into it.
                 "prior_invoiced": invoiced,
                 "prior_refs":     list(pri_refs),
-                "balance_due":    round(grand - invoiced - due, 2),
+                "balance_due":    round(_RO().rupee(grand) - invoiced - _RO().rupee(due), 2),
                 "payment_terms": (f.get("payment_terms") or "").strip(),
                 "delivery_terms": (f.get("delivery_terms") or "").strip(),
                 "delivery_date": (f.get("delivery_date") or "").strip(),
@@ -1546,7 +1559,7 @@ def from_boq(boq_id: str):
 
         if not error:
             subtotal, tax_info, grand, total_qty = boq_figures(items, head)
-            due = round(grand * pct / 100.0, 2)
+            due = _RO().rupee(grand * pct / 100.0)
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
@@ -1573,6 +1586,7 @@ def from_boq(boq_id: str):
                 "tax_type":    head,
                 "tax_info":    tax_info,
                 "grand_total": grand,
+                "round_off":   round(grand - subtotal - float(tax_info.get("total") or 0.0), 2),
                 "total_qty":   total_qty,
 
                 "po_number":     (f.get("po_number") or "").strip(),
@@ -1843,6 +1857,16 @@ def view_proforma(id: str):
               <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
               <td class="c-total">{_inr(tamt)}</td>
             </tr>"""
+
+    # The rupee round-off (31 Oct 2026) — only on a PI that stored one, so
+    # every PI saved before then prints byte-for-byte as it did.
+    if abs(float(pi.get("round_off") or 0.0)) >= 0.005:
+        table_rows += f"""
+    <tr class="row-sum">
+      <td colspan="{span}" class="sum-lbl">Round off</td>
+      <td class="c-qty"></td><td class="c-unit"></td><td class="c-price"></td>
+      <td class="c-total">{_RO().label(pi["round_off"])}</td>
+    </tr>"""
 
     table_rows += f"""
     <tr class="row-total row-sum">

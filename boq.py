@@ -909,6 +909,10 @@ def parent_index(lines: list) -> list:
     return out
 
 
+_LUMP_UNITS = {"ls", "lumpsum", "lot", "lots", "job", "jobs"}
+_PCT_CHARGE = re.compile(r"@\s*\d+(?:\.\d+)?\s*%")
+
+
 def library_payload(boq: dict) -> list:
     """
     A BOQ as CLAUSES for the Specification library — `spec.learn_from_clauses()`
@@ -931,7 +935,15 @@ def library_payload(boq: dict) -> list:
         sup, ins = net_rate(li, "supply"), net_rate(li, "install")
         if (sup is None or sup <= 0) and (ins is not None and ins > 0):
             return False
-        return bool(" ".join(str(li.get("description") or "").split()))
+        desc = " ".join(str(li.get("description") or "").split())
+        # ⚠ Lump-sum scopes and percentage charges are not things to pick
+        #   (31 Oct 2026, from the first prod dry run): a unit of LS / Lot /
+        #   Job ("Design in BIM", "Fire NOC", "as per DBR"), or a line that
+        #   charges "@ 20%" of a schedule's own total. Not learned.
+        unit = re.sub(r"[\s.]", "", str(li.get("unit") or "")).lower()
+        if unit in _LUMP_UNITS or _PCT_CHARGE.search(desc):
+            return False
+        return bool(desc)
 
     def _variant(li, label):
         return {"label": label, "unit": str(li.get("unit") or ""),

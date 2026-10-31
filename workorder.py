@@ -313,6 +313,20 @@ def _sum_lines(lines) -> tuple:
     return round(mat, 2), round(lab, 2)
 
 
+def _round_off_row(delta: float, one: bool) -> str:
+    """The printed "Round off" row — the signed figure in the last column."""
+    import roundoff as RO
+    blanks = ('<td class="c-price"></td>' if one else
+              '<td class="c-price"></td>\n          <td class="c-total"></td>\n'
+              '          <td class="c-price"></td>')
+    return f"""
+        <tr class="row-sum">
+          <td colspan="4" class="sum-lbl">Round off</td>
+          {blanks}
+          <td class="c-total">{RO.label(delta)}</td>
+        </tr>"""
+
+
 def totals_of(wo: dict) -> dict:
     """
     The work order's figures, every one derived and none stored:
@@ -329,8 +343,16 @@ def totals_of(wo: dict) -> dict:
     grand = round(mat + lab, 2)
     rate = gst_rate_of(wo)
     gst = round(grand * rate / 100.0, 2) if rate > 0 else 0.0
+    total, round_off = round(grand + gst, 2), 0.0
+    # ⚠ The rupee round-off (31 Oct 2026, §0 sixty-second block), HALF UP,
+    #   only on a work order raised from that date — it carries
+    #   `rounds_to_rupee`. These figures are DERIVED, so rounding an older one
+    #   would change the total printed on a work order already issued.
+    if (wo or {}).get("rounds_to_rupee"):
+        import roundoff as RO
+        total, round_off = RO.split(grand + gst)
     return {"material": mat, "labour": lab, "grand": grand,
-            "gst_rate": rate, "gst": gst, "total": round(grand + gst, 2)}
+            "gst_rate": rate, "gst": gst, "total": total, "round_off": round_off}
 
 
 def section_groups(wo: dict) -> list:
@@ -1589,10 +1611,16 @@ def document_html(wo: dict) -> str:
           <td class="c-price"></td>
           <td class="c-total">{_inr(t["grand"])}</td>
         </tr>"""
+    ro = float(t.get("round_off") or 0.0)
     if gst:
         # R5 — derived, never stored: round(pre-tax x rate / 100, 2).
         rows += last_row(f"GST @ {t['gst_rate']:g}%", t["gst"], False)
+        if abs(ro) >= 0.005:
+            rows += _round_off_row(ro, one)
         rows += last_row("Total (incl. GST)", t["total"], True)
+    elif abs(ro) >= 0.005:
+        rows += _round_off_row(ro, one)
+        rows += last_row("Total (rounded)", t["total"], True)
 
     meta_col_1 = (
         DS._meta("Work Order No.", P.esc(wo.get("ref"))) +
@@ -1852,6 +1880,8 @@ def create_wo():
         "site": data["site"],
         "terms": data["terms"],
         "lines": lines,
+        # The rupee round-off applies to this order (31 Oct 2026).
+        "rounds_to_rupee": True,
         "created_at": now,
         "created_by": _uid(),
         "updated_at": now,

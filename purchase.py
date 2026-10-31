@@ -125,6 +125,8 @@ import boqpick as BP
 # CLIENT_CHANGES.md §0 sixtieth block, ABOUT.md §7 gap 38 re-closed). A leaf:
 # it is how the buy side reads the library without a `purchase → spec` edge.
 import buypick as BYP
+import roundoff as RO   # the one rupee round-off rule, HALF UP (31 Oct 2026)
+import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 
 # The shared A4 document toolkit — the sheet, not the sales chain. The sheet
 # itself is now `docsheet.py`, which the tax invoice renders through as well:
@@ -1606,6 +1608,15 @@ def _po_lines_from_picked(picked: list, boq: dict) -> tuple:
     return items, ""
 
 
+def _round_off_of(taxable_value: float, tax_info: dict, charges: list,
+                  grand: float) -> float:
+    """The signed round-off on an order — `grand` less what it rounds from."""
+    _ch_taxable, ch_exempt = charge_totals(charges)
+    exact = round(float(taxable_value or 0.0) + float((tax_info or {}).get("total") or 0.0)
+                  + ch_exempt, 2)
+    return round(float(grand or 0.0) - exact, 2)
+
+
 def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
                charges: list = None, extra_lines: list = None) -> tuple:
     """
@@ -1650,8 +1661,12 @@ def _totals_of(items: list, tax_type: str, cgst: float, igst: float,
     taxable_value = round(subtotal + ch_taxable, 2)
     tax_info = _tax_lines(taxable_value, tax_type,
                           cgst_rate=cgst, sgst_rate=cgst, igst_rate=igst)
-    grand = round(taxable_value + float(tax_info.get("total") or 0.0)
-                  + ch_exempt, 2)
+    # ⚠ **Rounded to the whole rupee, HALF UP** (31 October 2026, §0
+    #   sixty-second block — the client: "₹11,419.80 must print as 11,420").
+    #   `roundoff.rupee()`, never `round()`, which sends .50 to the even rupee.
+    #   The difference is `_round_off_of()`, stored on the order as `round_off`.
+    grand = RO.rupee(taxable_value + float(tax_info.get("total") or 0.0)
+                     + ch_exempt)
     # Extra lines are quantities of goods, so they count toward the order's
     # total quantity for the same reason they count toward its value.
     total_qty = round(sum(float(r.get("qty") or 0.0) for r in items)
@@ -2268,8 +2283,11 @@ def create_purchase(imported: dict = None):
     error = ""
     may_number = _may_set_number()
     seq_used = default_seq = 0
+    # A Resume of an unsaved draft (31 Oct 2026, formdraft.py) is a POST that
+    # only REDRAWS the form from what was typed — it never validates or saves.
+    resuming = request.method == "POST" and FD.is_resume(f)
 
-    if request.method == "POST":
+    if request.method == "POST" and not resuming:
         po_date   = (f.get("date") or "").strip()
         qid       = (f.get("quotation_id") or "").strip()
         status    = (f.get("status") or DEFAULT_STATUS).strip()
@@ -2370,6 +2388,8 @@ def create_purchase(imported: dict = None):
                 "tax_type":   tax_type,
                 "tax_info":   tax_info,
                 "grand_total": grand,
+                # The rupee round-off (31 Oct 2026); its own printed row.
+                "round_off":   _round_off_of(taxable_value, tax_info, charges, grand),
                 "total_qty":  total_qty,
 
                 # ── Where and when we want it ─────────────────────────────
@@ -2731,6 +2751,7 @@ def create_purchase(imported: dict = None):
 
       {_po_form_script_html()}
       {BYP.FIND_JS}
+      {FD.script('form[action$="/purchase/create"]', "purchase order", resumed=resuming)}
 
       <script>
         var RATES = {catalog_rates};
@@ -3141,6 +3162,7 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
         "tax_type":    tax_type,
         "tax_info":    tax_info,
         "grand_total": grand,
+        "round_off":   _round_off_of(taxable_value, tax_info, charges, grand),
         "total_qty":   total_qty,
 
         "delivery_date":    data["delivery_date"],
@@ -4054,6 +4076,7 @@ def _reprice(po: dict, form) -> str:
     po["taxable_value"] = taxable_value
     po["tax_info"]      = new_tax
     po["grand_total"]   = grand
+    po["round_off"]     = _round_off_of(taxable_value, new_tax, charges, grand)
     po["total_qty"]     = total_qty
     return ""
 
@@ -4725,6 +4748,12 @@ def view_purchase(id: str):
         table_rows += DS.sum_row(f"{P.esc(c.get('label'))} (no tax)",
                                  _inr(c.get("amount") or 0),
                                  indent=12, blanks=_SUM_BLANKS, span=span)
+
+    # The rupee round-off (31 Oct 2026). Only on an order that stored one, so
+    # every order saved before then prints byte-for-byte as it did.
+    if abs(float(po.get("round_off") or 0.0)) >= 0.005:
+        table_rows += DS.sum_row("Round off", RO.label(po["round_off"]),
+                                 blanks=_SUM_BLANKS, span=span)
 
     table_rows += DS.total_row("Order Value", _fmt_qty(total_qty), _inr(grand),
                                blanks=_TOTAL_BLANKS, span=span)

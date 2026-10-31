@@ -40,6 +40,8 @@ import json
 
 import pytest
 
+import roundoff as RO
+
 import approval
 import boq as BQ
 import branding as B
@@ -389,7 +391,12 @@ def test_a_supply_proforma_carries_the_supply_rate_and_hsn(client, sched):
     assert pi["subtotal"] == sub
     assert pi["tax_info"]["cgst_rate"] == 9.0
     assert pi["tax_info"]["total"] == round(2 * round(sub * 0.09, 2), 2)
-    assert pi["grand_total"] == round(sub + pi["tax_info"]["total"], 2)
+    # AMENDED 31 Oct 2026 (CLIENT_CHANGES.md §0 sixty-second block): the
+    # invoice value is rounded to the whole rupee, HALF UP, and the difference
+    # is stored as `round_off`.
+    exact = round(sub + pi["tax_info"]["total"], 2)
+    assert pi["grand_total"] == RO.rupee(exact)
+    assert pi["round_off"] == round(RO.rupee(exact) - exact, 2)
     assert pi["amount_due"] == pi["grand_total"] and pi["balance_due"] == 0.0
 
 

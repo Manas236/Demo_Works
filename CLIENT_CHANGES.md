@@ -6093,6 +6093,46 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 31 October 2026, by Manas Gawde — THE RUPEE ROUND-OFF ON EVERY MONEY DOCUMENT, AN UNSAVED FORM SURVIVES "BACK", AND THE LIBRARY SKIPS LUMP-SUM LINES · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **sixty-second** occasion.
+>
+> **What prompted it:** a third call on 31 October. A PO showed ₹11,419.80 —
+> the final amount must be a whole rupee, **.50 and above up, below .50 down**
+> (Yogesh had also asked for a "round-off fix" on 27 October). And: "I added
+> three line items, pressed Back, and had to make it all again."
+>
+> **What was decided (Manas):**
+>
+> 1. **Round-off on all money documents**, HALF UP, with a printed "Round off"
+>    row. Built on the PO (create, from-BOQ, from-inquiry, reprice), the
+>    Proforma (both paths), the Tax Invoice (both paths) and the Work Order;
+>    the RA bill's existing rounding fixed from `round()` (which sends .50 to
+>    the EVEN rupee) to half up. One rule: the leaf `roundoff.py`.
+>    ⚠ **The QUOTATION is not rounded** — its print lives in the frozen part of
+>    `quotation.py` (an agent's call, declared); the PI and TI raised from it
+>    are. ⚠ **Nothing already saved moves:** a document prints a round-off row
+>    only if it stored `round_off`; a work order (whose totals are derived)
+>    rounds only if it carries `rounds_to_rupee`, set from today.
+> 2. **Unsaved-form recovery on every create form**, as a BROWSER autosave with
+>    "Resume your unsaved …?" and Discard — no server drafts. The leaf
+>    `formdraft.py`; Resume POSTs the saved fields back with `_resume=1` and the
+>    route only REDRAWS (never validates, saves or spends a number).
+>    ⚠ **Built on `/purchase/create` only in this pass** — an agent's call,
+>    declared, for speed: each other form plugs in with the same two lines in
+>    the next pass. Per browser and per device; files are not kept.
+> 3. **One prod run** for the deploy and the library backfill write.
+>
+> **The agent's own call, declared:** the library learner (§0 sixty-first)
+> now also skips a line whose unit is LS / Lot / Job, or which charges
+> "@ N%" of a total — the first prod dry run showed BIM design, Fire NOC,
+> sealant "as per DBR" and a "20% fittings & transport" footer going in.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
