@@ -10,7 +10,27 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**Latest, 31 October 2026 — CLIENT_CHANGES.md §0 sixty-third block, on
+**Latest, 31 October 2026 (later) — CLIENT_CHANGES.md §0 sixty-fourth block,
+on `antigravity-dev`, NOT DEPLOYED** (deploy is a separate run; base `cb64e93`
+= prod). Commits by part: **1** the proforma edit (every field, lines, number
+forward only, the TI-divergence band; leaves `lineedit.py` and `editlog.py`);
+**6** small fixes (gap 99 closed, unit aliases + LS / Lump Sum decided, the
+paise scan over every money collection, spec `created_at`, "BOQ priced");
+**4** Resume after Back on nineteen more create forms; **2** edit after issue
+(standalone TI with the number locked, RA-bill and merged TI text only, the
+DC's edit logged) and the quotation edit (`quotation.py`'s fifth narrow
+unfreeze); **5** Excel extra lines on the proforma (create, both paths, and
+edit); **3** typed numbers forward only on the receipt, measurement sheet,
+work order, product inquiry and the RA number per BOQ. **Measured, Linux,
+CPython 3.13.18, openpyxl 3.1.5 present, client workbooks absent, serial run:
+5,486 passed / 26 skipped at `cb64e93` → 5,583 passed / 26 skipped / 0
+failed** (+97, every one a new test; none deleted or skipped). No MySQL in the session, so no backup and no migration.
+**Open, from this pass:** ABOUT.md §7 gaps 104–108 — the typed number not yet
+on the quotation / BOQ root / merged TI / any edit route, no in-place BOQ edit,
+no after-issue edit on an issued PO or WO, the RA-number ledger not read by
+the automatic minter, an approved TI stays locked.
+
+*Previously:* **Latest, 31 October 2026 — CLIENT_CHANGES.md §0 sixty-third block, on
 `antigravity-dev`, NOT DEPLOYED** (deploy is a separate run). Four parts in
 logical commits: **A** the *Round off to nearest rupee* tick on every money
 document (`round_off_on`; legacy records unchanged; `quotation.py`'s fourth

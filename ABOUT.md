@@ -16661,6 +16661,43 @@ text is unchanged, and every reference to them was moved with them.*
     `test_THE_WATERFALL_NEVER_BLENDS_AN_ESTIMATE_WITH_AN_ACTUAL`). The spider
     WAS changed to Manas's six axes.
 
+104. 🟡 **The typed document number is NOT on every numbered document yet —
+    OPEN** (§0 sixty-fourth block, Part 3). Built on create for the receipt,
+    the measurement sheet, the work order, the product inquiry and the RA
+    number (plus the existing TI / PI / PO / DC). **Not built:** the
+    **quotation** — its `_next_ref()` is `len+1` and frozen, so a typed
+    forward number would be re-issued by the automatic minter later (§7.5);
+    it needs that minter unfrozen first. The **BOQ root on create** (the scan
+    is ready — `docnum.root_ordinal_of()` — the form is not wired). The
+    **merged TI** (`merged_ra.create()` / `raboth.create_set()` mint it
+    inside; they need a typed-number parameter). And typing a number on
+    **EDIT** for any of the new kinds.
+
+105. 🟡 **A BOQ has no in-place edit route yet — OPEN** (§0 sixty-fourth block,
+    Part 2). A BOQ is still corrected by a REVISION through `/boq/create
+    ?revise=`, with `revision_blockers()` and the over-claim guard exactly as
+    they were. The brief's in-place edit (lines / sections / party, a
+    claimed line neither deletable nor reducible below its claim) was not
+    built in this pass; it would reuse `revision_blockers()` rather than
+    restate it.
+
+106. 🟡 **Edit after issue is logged on the TI, the RA / merged TI text, the
+    DC, the PI and the quotation — NOT on an issued PO or WO — OPEN** (§0
+    sixty-fourth block, Part 2). The PO's reprice keeps its own trail
+    (`purchase._record_reprice()`) and carries no amber band; the work order
+    is still editable only while a draft. Neither was extended.
+
+107. 🟡 **The RA-number ledger is raised on every RA create, but the AUTOMATIC
+    minter does not read it — OPEN, gap 83's shape** (§0 sixty-fourth block,
+    Part 3). Deleting the latest draft bill still lets `next_ra_no()` hand
+    its number out again, as it always did; the ledger only stops a TYPED
+    number reusing it. The prefill is always accepted, for gap 83's reason.
+
+108. 🟡 **An invoice APPROVED before the ladder was switched off cannot be
+    edited after issue** (§0 sixty-fourth block, Part 2). `invoice.can_edit()`
+    goes through `approval.can_modify()`, which never overturns a decision
+    taken. By design; recorded so it is not mistaken for a defect.
+
 ## 8. Stale docs — do not trust these two files
 
 Both are leftover scratch files. **Neither is imported by anything**

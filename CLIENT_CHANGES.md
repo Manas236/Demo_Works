@@ -6225,6 +6225,113 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 31 October 2026, by Manas Gawde — EVERY DOCUMENT EDITABLE (THE 28 OCTOBER ASK), AN ISSUED TAX INVOICE EDITABLE WITH ITS NUMBER LOCKED, TYPED NUMBERS ON MORE DOCUMENTS, RESUME AFTER BACK ON EVERY CREATE FORM, EXCEL LINES ON THE PROFORMA · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **sixty-fourth** occasion,
+> written directly on `antigravity-dev` (base `cb64e93` = prod).
+>
+> #### ⚠ `quotation.py` — A FIFTH NARROW UNFREEZE, THE EDIT ROUTE ONLY
+>
+> **Manas, 31 Oct 2026: quotation editable (28 Oct all-documents ask).** It
+> covers exactly one new function, `edit_quotation()` (its route and its form;
+> every import in its body), plus the lines in `view_quotation()` that draw
+> its Edit button, the edit-after-issue band and the make / discount note
+> under a description. `_tax_lines()`, `create_quotation()` and every other
+> function are untouched; `tests/test_nav_user_chip.py` names the function.
+>
+> #### The rulings, as given
+>
+> 1. **Proforma: edit every field** — party, addresses, dates, terms, lines
+>    (add / remove / reorder; description, HSN, make, qty, unit, rate,
+>    discount, GST), the round-off tick, the number (forward only). A PI with a
+>    TI raised from it stays editable; **the TI is not changed** and an amber
+>    band on both pages names the divergence (`ra.party_drift()`'s shape).
+> 2. **Issued tax invoice: editable, number locked.** A standalone TI (from a
+>    PI or a BOQ): every field but the number. A TI generated from an RA bill
+>    or a merged set: **text fields only** — quantity, rate and amount follow
+>    the RA bill, and the form says so. Every edit after issue is logged (who,
+>    when, field, before → after) with a screen-only amber band; **the print
+>    carries no band**. The same log + band on the DC.
+> 3. **Typed numbers on more documents**, forward only, refused at or below
+>    the highest used in the series; the RA number per BOQ, above that BOQ's
+>    highest.
+> 4. **Resume after Back on every create form** — redraw only: no
+>    validation, no save, no number spent.
+> 5. **Excel lines on the proforma** — **this NARROWS the earlier "PI is
+>    copied, never typed" exclusion, per Manas's 28 Oct agreement with the
+>    client**: on PI create (both paths) and PI edit, bulk supporting material
+>    comes in through the existing column picker as EXTRA lines; the lines
+>    copied from the BOQ or quotation are untouched.
+> 6. **Small fixes:** gap 99 (a fully paid merged set reads 0.00); unit
+>    aliases `rmt.` → Mtrs, `lot.` → Lot, and **"LS" and "Lump Sum" → Lot
+>    accepted as decided (Manas, 31 Oct)**; the paise scan reads every money
+>    collection; specs get `created_at` on create; the spider reads "BOQ
+>    priced".
+>
+> #### What was built, and what was NOT
+>
+> **Built:** rulings 1, 2 (TI standalone, RA and merged TI text, DC log), 4
+> (nineteen forms), 5, 6; ruling 3 for the receipt, the measurement sheet, the
+> work order, the product inquiry and the RA number; the quotation edit.
+> **NOT built in this pass** (ABOUT.md §7 gaps 104–106): the typed number on
+> the quotation (its frozen `len+1` minter would re-issue a forward number),
+> on the BOQ root and on the merged TI, and on any EDIT route; an in-place BOQ
+> edit route (a BOQ is still corrected by revision, guards unchanged);
+> after-issue editing of an issued PO or WO; editing a DC's lines; full
+> (non-text) editing of an issued RA bill. Receipt, measurement sheet, draft
+> RA bill and unconverted product inquiry already had full edits and are as
+> they were.
+>
+> #### The agent's own calls, declared
+>
+> 1. Every new edit route sits under the document's EXISTING create (or, for
+>    RA / merged, `ra.edit`) permission — no permission minted. The quotation
+>    edit is under `quotation.create`, not `quotation.edit` (the deal-fields
+>    update).
+> 2. A PI / TI edit taxes per GST slab (`lineedit.tax_figures()`); a line
+>    without its own rate is shown and saved at the document's single rate,
+>    and that alone is not logged as a change. A quotation keeps ONE tax.
+> 3. Make and discount print under the description, only on a line carrying
+>    one — so no saved sheet moves.
+> 4. The PI's `prior_invoiced` / `prior_refs` stay as stored on edit.
+> 5. A TI's date may move only inside its number's financial year; same for
+>    the RA and merged TI dates.
+> 6. A TI **approved** before the ladder was switched off stays locked
+>    (`approval.can_modify()`), gap 108.
+> 7. The PI edit is logged too (it is a sent document) though the brief named
+>    the log for statutory documents.
+> 8. Excel extras on a quotation-path PI make the copied lines carry the
+>    quotation's one rate as `gst_rate` (values untouched) so the PI can be
+>    taxed per slab; with no extras nothing changes.
+> 9. Gap 99 is closed by carrying the set's round-off on the SUPPLY leg's
+>    outstanding, once.
+> 10. `clean_units`: only `ls` and `lump sum` left the judgement set;
+>     `lumpsum`, `l.s.`, `job`, `jobs` are still judgement rows. Dry run only;
+>     `--write` was not run anywhere.
+> 11. Resume was NOT wired on `/quotation/create` (frozen), `/merged/create`
+>     (two dropdowns) or the admin forms; the nineteen are listed in
+>     `formdraft.py`.
+> 12. Tests amended to the rulings, each with its old assertion kept
+>     verbatim: `test_units` (LS / Lump Sum decided), `test_docnum` (a TI now
+>     has an edit route — the number-immutability claim asserted harder),
+>     `test_approval_b7` (the invoice write-route list gains `edit_invoice`,
+>     asserted to go through `can_modify()`), `test_hardening` (an exact
+>     script count, now including the Resume script), `test_import_directions`
+>     (measurement's auth hosts: two more named, still exact),
+>     `test_pnl_charts_oct28` gained a test; none weakened.
+> 13. **Goldens moved, all screen-only or form-only, none on paper:** the PI
+>     view (+81 bytes, the Edit button); the `/po/create` form (the Resume
+>     script, then the number field); the project page (+5 bytes, "BOQ
+>     priced").
+> 14. No MySQL is reachable in the session this was built in: **no backup was
+>     taken because none was possible**, and nothing was migrated. No deploy
+>     step needs a migration; every new field is written only on a new save.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
