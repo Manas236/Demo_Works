@@ -5776,6 +5776,29 @@ invoice text, the delivery challan and the quotation (Part 2).
 
 ---
 
+#### Extended to the rest of the numbered set — 31 October 2026 (§0 sixty-fourth block, Part 3)
+
+| document | kind | scope | typeable on |
+|---|---|---|---|
+| Receipt | `RCPT` | per FY | `/receipt/new` |
+| Measurement sheet | `MS` | per FY | `/measurement/create` |
+| Work order | `WO` | whole series; its `/settings` counter counts as used | `/wo/create` |
+| Product inquiry | `DPO` | whole series; its `/settings` counter counts as used | `/po/create` |
+| RA bill — the **RA number** (`ra_no`, "RA5") | `RA_NO` | **per BOQ chain**, ledger filed under the chain's root id | `/ra/create` |
+| BOQ | `BOQ` | per FY — scan only (`root_ordinal_of()` reads the ROOT ordinal, so `…/0019/3` counts as 19, never 3) | — |
+
+Same rule everywhere: blank or the prefill is always accepted; a changed number
+needs `docnum.override` and must be strictly above the highest ever used; the
+refusal names it; on save the series moves past it (`_spend_ref(typed_n)` for
+the two counters). **RA:** after a typed RA5 the automatic next is RA6 —
+unique and increasing per BOQ (`tests/test_ra_number_override.py`); the
+over-claim guard reads no `ra_no` and is unaffected. ⚠ **Not done** — see §7
+gap 104: the quotation (its `len+1` minter is frozen and would re-issue a
+forward number), the BOQ root on create, the merged TI, and typing a number on
+EDIT for any of these.
+
+---
+
 ### Line pictures  (`image`, 21 October 2026 — CLIENT_CHANGES.md §0 forty-ninth block)
 
 **Not a collection.** One optional key, on five shapes, holding the id of a

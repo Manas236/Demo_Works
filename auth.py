@@ -622,6 +622,10 @@ PANEL_PERMISSIONS = {
     "docnum.override": ("invoice.create_invoice", "invoice.from_boq",
                         "proforma.create_proforma", "proforma.from_boq",
                         "proforma.edit_proforma",
+                        # 31 Oct 2026, §0 sixty-fourth block, Part 3.
+                        "ra.create_ra", "receipt.new_receipt",
+                        "measurement.create_ms", "workorder.create_wo",
+                        "po_draft.create_po",
                         "purchase.create_purchase", "purchase.from_boq",
                         "purchase.from_draft", "purchase.edit_purchase_rates",
                         "challan.create_dc"),

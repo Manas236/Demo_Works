@@ -1219,15 +1219,19 @@ GOLD_PICK_BOQ = "gold-pick"
 #   `</form>`. A diff of the render before and after is 81 ADDED lines — that
 #   script — and nothing removed or changed; `head`'s digest moved with the
 #   block cut. The picker's own seven blocks are byte-identical.
-PICK_WHOLE = "62c80012381412e0"   # was 848964109c809bae (§0 64th, Resume), was cc3d3280b73f3e0e (§0 59th B1)
-PICK_LEN = 86489                  # was 82756 (§0 64th, Resume)
+# ⚠ **AND AGAIN, same pass — the number field** (§0 sixty-fourth block,
+#   Part 3): the product inquiry's create form gained its "No." field (the
+#   docnum control and its stylesheet) at the top of the form. `intro` ONLY,
+#   +1,100 bytes; the picker's own blocks are byte-identical.
+PICK_WHOLE = "180ea2bc312f66a8"   # was 62c80012381412e0 (§0 64th, number field), was 848964109c809bae (§0 64th, Resume), was cc3d3280b73f3e0e (§0 59th B1)
+PICK_LEN = 87589                  # was 86489 (§0 64th, number field), was 82756 (§0 64th, Resume)
 PICK_BLOCKS = {"head":    "7c5d2bf9720e4cd8",   # was 68af1da58d9e51a7 (§0 64th), was 2fc16fd060a023cf,
                                                 # was b07f3fb758299248,
                                                 # was af77ecc07bfca6ff,
                                                 # was 8bf28275fa127606,
                                                 # was 2bf1b714db890d61,
                                                 # was 04f4809335b2c9e8
-               "intro":   "5558f09cc783266e",
+               "intro":   "5e93d57690baa4ae",   # was 5558f09cc783266e (§0 64th, number field)
                "vendor":  "715e7c6cd4634448",
                "details": "53b096aa21f5264c",
                "lines":   "10ed04f5fad93d1e",

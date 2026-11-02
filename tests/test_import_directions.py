@@ -1623,9 +1623,19 @@ def test_measurement_reaches_auth_only_inside_its_raise_ra_button():
                 if (isinstance(sub, ast.ImportFrom) and sub.module
                         and sub.module.split(".")[0] == "auth"):
                     hosts.add(node.name)
-    assert hosts == {"_raise_ra_btn"}, (
-        f"measurement.py reaches auth from {sorted(hosts)}; the one permitted "
-        f"host is _raise_ra_btn()")
+    # ⚠ **EXTENDED 31 October 2026** (CLIENT_CHANGES.md §0 sixty-fourth block,
+    #   Part 3 — the measurement sheet's number typed by hand, forward only):
+    #   two more NAMED hosts, `_may_set_number()` (asks `docnum.override`, the
+    #   question every other numbered module asks the same way) and
+    #   `_actor_id()` (the id on the override trail). Still an EXACT set; a
+    #   fourth host still fails. The assertion it replaces, verbatim:
+    #
+    #       assert hosts == {"_raise_ra_btn"}, (
+    #           f"measurement.py reaches auth from {sorted(hosts)}; the one permitted "
+    #           f"host is _raise_ra_btn()")
+    assert hosts == {"_raise_ra_btn", "_may_set_number", "_actor_id"}, (
+        f"measurement.py reaches auth from {sorted(hosts)}; the permitted "
+        f"hosts are _raise_ra_btn(), _may_set_number() and _actor_id()")
 
 
 def test_demo_data_imports_nothing_at_all():

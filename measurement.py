@@ -119,6 +119,7 @@ import docsheet as DS
 import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
 
@@ -315,6 +316,32 @@ def records() -> dict:
 # =============================================================================
 # NUMBERING
 # =============================================================================
+
+def _ref_for(fy: str, seq: int) -> str:
+    """One sheet number for one ordinal — `next_ref()`'s spelling."""
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, int(seq), cap=_REF_CAP)
+
+
+def _may_set_number() -> bool:
+    import auth
+    return auth.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    import auth
+    return str((auth.current_user() or {}).get("id") or "")
+
+
+def _number_html(datestr: str, typed) -> str:
+    """The Sheet No. field, prefilled with the series' next number."""
+    fy = P.fy_of(datestr or _date.today().isoformat())
+    return (DN.NUMBER_STYLES +
+            '<div class="form-group" style="max-width:22rem;"><label for="doc_no_seq">'
+            'Sheet No.</label>'
+            + DN.number_field(DN.MS, _ref_for(fy, SER.next_seq("MS", fy)),
+                              may_override=_may_set_number(), typed=typed or "")
+            + "</div>")
+
 
 def next_ref(datestr: str = "") -> str:
     """
@@ -1329,6 +1356,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   </div>
 
   <form method="POST" action="{action}" onsubmit="return saveJSON() &amp;&amp; collectGrid();">
+  {"" if editing else _number_html(data.get("date") or "", data.get("doc_no_seq") or "")}
     <input type="hidden" name="ms_json" id="ms_json" value=""/>
 
     <div class="form-section">
@@ -2291,12 +2319,23 @@ def create_ms(imported: dict = None):
         data["_chosen"] = None
         return _entry_form(boq, data, grid_error)
 
+    # The sheet number, typed forward only (31 Oct 2026, §0 sixty-fourth
+    # block, Part 3) — in the SAVE path, past every other refusal.
+    fy = P.fy_of(data["date"] or _date.today().isoformat())
+    default_seq = SER.next_seq("MS", fy)
+    seq_used, num_err = DN.validate(DN.MS, fy, request.form.get("doc_no_seq"),
+                                    default_seq, _may_set_number())
+    if num_err:
+        data["doc_no_seq"] = request.form.get("doc_no_seq") or ""
+        data["_chosen"] = None
+        return _entry_form(boq, data, num_err)
+
     site_label, site_source = _site_from_boq(boq)
 
     mid = new_id()
     record = {
         "id": mid,
-        "ref": next_ref(data["date"]),
+        "ref": _ref_for(fy, seq_used),
         "fy": P.fy_of(data["date"]),
         "date": data["date"],
         # ── The joint model, marked EXPLICITLY. `is_legacy_grid()` reads the
@@ -2335,6 +2374,9 @@ def create_ms(imported: dict = None):
     # B6 — the creator, captured at the write site. See approval.py.
     approval.stamp_creator(record)
     records()[mid] = record
+    DN.note_used(DN.MS, fy, seq_used)
+    DN.record_override(record, _ref_for(fy, default_seq), record["ref"],
+                       _actor_id())
     return redirect(url_for("measurement.view_ms", id=mid,
                             msg="Measurement raised. It has to be approved "
                                 "before an installation claim can use it.",

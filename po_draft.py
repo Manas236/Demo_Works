@@ -90,6 +90,7 @@ import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
 import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import settings as SET
+import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import picker_options, format_address_lines
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
@@ -187,12 +188,38 @@ def next_ref() -> str:
     return f"{series['prefix']}/{int(series['next_no'] or 1):04d}"
 
 
-def _spend_ref() -> str:
-    """Take the next number and advance the counter. Call once, at save."""
+def _spend_ref(typed_n: int = 0) -> str:
+    """
+    Take the next number and advance the counter. Call once, at save.
+
+    `typed_n` (31 Oct 2026, §0 sixty-fourth block, Part 3) is a number
+    `docnum.validate()` accepted; the counter moves to `typed_n + 1`.
+    """
     series = SET.po_series()
-    ref = f"{series['prefix']}/{int(series['next_no'] or 1):04d}"
-    SET.save_po_series(series["prefix"], int(series["next_no"] or 1) + 1)
+    n = int(typed_n or 0) or int(series["next_no"] or 1)
+    ref = f"{series['prefix']}/{n:04d}"
+    SET.save_po_series(series["prefix"], n + 1)
     return ref
+
+
+def _may_set_number() -> bool:
+    import auth
+    return auth.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    import auth
+    return str((auth.current_user() or {}).get("id") or "")
+
+
+def _number_html(typed) -> str:
+    """The number field, prefilled with the series' next number."""
+    return (DN.NUMBER_STYLES +
+            '<div class="form-group" style="max-width:22rem;margin-bottom:1rem;">'
+            f'<label for="doc_no_seq">{DOC_NAME} No.</label>'
+            + DN.number_field(DN.DPO, next_ref(), may_override=_may_set_number(),
+                              typed=typed or "")
+            + "</div>")
 
 
 def converted_pos(po: dict) -> list:
@@ -973,6 +1000,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   </div>
 
   <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not editing else "true"};">
+  {"" if editing else _number_html(data.get("doc_no_seq") or "")}
     <input type="hidden" name="po_json" id="po_json" value=""/>
 
     <div class="form-section">
@@ -1247,6 +1275,15 @@ def create_po(imported: dict = None):
     error = error or line_error
     # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
     resuming = FD.is_resume(request.form)
+    # The number, typed forward only (31 Oct 2026, §0 sixty-fourth block,
+    # Part 3) — the counter moves only on the save below.
+    data["doc_no_seq"] = (request.form.get("doc_no_seq") or "").strip()
+    default_n = int(SET.po_series()["next_no"] or 1)
+    typed_n = default_n
+    if not error and not resuming:
+        typed_n, num_err = DN.validate(DN.DPO, "", data["doc_no_seq"], default_n,
+                                       _may_set_number())
+        error = error or num_err
     if error or resuming:
         # Hand the operator back exactly what they ticked and typed.
         try:
@@ -1294,9 +1331,10 @@ def create_po(imported: dict = None):
                 row["hsn"] = code
 
     pid = new_id()
+    default_ref = next_ref()
     STORE.setdefault("purchase_orders", {})[pid] = {
         "id": pid,
-        "ref": _spend_ref(),
+        "ref": _spend_ref(typed_n),
         "date": data["date"],
         # The BOQ this came from — a specific revision, exactly as an RA bill
         # names one. Both refs are STORED, not looked up, so the document still
@@ -1314,6 +1352,8 @@ def create_po(imported: dict = None):
         "items": items,
         "company_branch": "", "auth_signatory": "",
     }
+    DN.record_override(STORE["purchase_orders"][pid], default_ref,
+                       STORE["purchase_orders"][pid]["ref"], _actor_id())
     return redirect(url_for("po_draft.view_po", id=pid,
                             msg=f"{DOC_NAME} raised.", type="success"))
 

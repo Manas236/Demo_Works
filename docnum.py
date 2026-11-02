@@ -135,6 +135,18 @@ TI = "TI"   # tax invoice — from a proforma AND from a BOQ
 PI = "PI"   # proforma invoice
 PO = "PO"   # purchase order (we are the buyer)
 DC = "DC"   # delivery challan
+# 31 Oct 2026, §0 sixty-fourth block, Part 3 — the rest of the numbered set.
+RCPT = "RCPT"   # receipt
+MS = "MS"       # measurement sheet
+BOQ = "BOQ"     # bill of quantities — the ROOT number only; a revision's /N
+                #   suffix is boq._revision_ref()'s and is never read here
+WO = "WO"       # work order — a /settings counter, like the challan
+DPO = "DPO"     # product inquiry (draft PO) — a /settings counter
+RA_NO = "RA_NO"  # the RA number (RA5) — scoped PER BOQ CHAIN, see ra_no_*()
+
+# The two other stored counters, read directly for DC_SERIES_RECORD's reason.
+WO_SERIES_RECORD = "work_order_series"
+DPO_SERIES_RECORD = "po_draft_series"
 
 # Every place a TAX INVOICE number can be in the store. See the header.
 TI_SOURCES = (
@@ -154,7 +166,15 @@ KINDS = {
     PI: ("Proforma invoice", False, (("proformas", "ref"),)),
     PO: ("Purchase order", True,  (("purchases", "ref"),)),
     DC: ("Delivery challan", False, (("delivery_challans", "ref"),)),
+    RCPT: ("Receipt", True, (("receipts", "ref"),)),
+    MS: ("Measurement sheet", True, (("measurements", "ref"),)),
+    BOQ: ("Bill of quantities", True, (("boqs", "ref"),)),
+    WO: ("Work order", False, (("work_orders", "ref"),)),
+    DPO: ("Product inquiry", False, (("purchase_orders", "ref"),)),
 }
+
+# Which stored counter, if any, already encodes "highest ever used + 1".
+COUNTERS = {DC: DC_SERIES_RECORD, WO: WO_SERIES_RECORD, DPO: DPO_SERIES_RECORD}
 
 
 # ── reading a stored number ────────────────────────────────────────────────
@@ -164,6 +184,9 @@ def ordinal_of(raw) -> int:
     The numeric tail of a stored document number, or 0 when there is none.
 
     `SF/TI/26-27/0007` → 7 · `PI-0007` → 7 · `54` → 54 · `` → 0.
+
+    ⚠ A BOQ REVISION, `SF/BOQ/26-27/0019/1`, is read through
+      `root_ordinal_of()` instead — its tail is the revision suffix.
 
     Both separators are tried because the four series genuinely use both:
     the FY-scoped ones split on `/`, the proforma on `-`, and the challan with
@@ -177,6 +200,21 @@ def ordinal_of(raw) -> int:
     tail = text.rpartition("/")[2]
     tail = tail.rpartition("-")[2]
     return int(tail) if tail.isdigit() else 0
+
+
+def root_ordinal_of(raw) -> int:
+    """
+    The ordinal right AFTER the financial-year segment — `SF/BOQ/26-27/0019`
+    and its revision `SF/BOQ/26-27/0019/1` both give 19. A string with no year
+    segment falls back to `ordinal_of()`. (31 Oct 2026, Part 3.)
+    """
+    parts = str(raw or "").strip().split("/")
+    for i, bit in enumerate(parts[:-1]):
+        b = bit.strip()
+        if len(b) == 5 and b[2] == "-" and b[:2].isdigit() and b[3:].isdigit():
+            nxt = parts[i + 1].strip()
+            return int(nxt) if nxt.isdigit() else 0
+    return ordinal_of(raw)
 
 
 def fy_of_ref(raw, fallback: str = "") -> str:
@@ -217,7 +255,7 @@ def highwater() -> dict:
     saved = (STORE.get("settings") or {}).get(HIGHWATER_RECORD) or {}
     out = {}
     for kind, scopes in saved.items():
-        if kind not in KINDS or not isinstance(scopes, dict):
+        if (kind not in KINDS and kind != RA_NO) or not isinstance(scopes, dict):
             continue
         clean = {}
         for scope, value in scopes.items():
@@ -280,7 +318,8 @@ def scanned_max(kind: str, fy: str) -> int:
                 continue
             if fy_scoped and fy_of_ref(raw, rec.get("fy")) != want:
                 continue
-            highest = max(highest, ordinal_of(raw))
+            highest = max(highest, root_ordinal_of(raw) if kind == BOQ
+                          else ordinal_of(raw))
     return highest
 
 
@@ -295,9 +334,9 @@ def stored_counter(kind: str) -> int:
     `next_no` of 55 means 54 has gone out. The other three have no counter and
     answer 0.
     """
-    if kind != DC:
+    if kind not in COUNTERS:
         return 0
-    saved = (STORE.get("settings") or {}).get(DC_SERIES_RECORD) or {}
+    saved = (STORE.get("settings") or {}).get(COUNTERS[kind]) or {}
     try:
         nxt = int(str(saved.get("next_no") or "1").strip() or "1")
     except (TypeError, ValueError):
@@ -383,6 +422,85 @@ def validate(kind: str, fy: str, typed, default_n: int,
             f"A number only ever goes forward, so type {highest + 1:04d} or "
             f"more.")
     return entered, ""
+
+
+# ── the RA number, per BOQ chain (31 Oct 2026, §0 sixty-fourth block, Part 3)
+#
+# `ra_no` is that job's own RA sequence (RA1, RA2, …), scoped to the BOQ's
+# REVISION CHAIN (`ra.next_ra_no()`), never to a year. A typed RA number is
+# accepted only when strictly above the highest the chain has EVER used — the
+# bills that still exist (cancelled ones included; `ra.py` passes that figure
+# in, this leaf may not import it) and the ledger, filed under the chain's root
+# id so a deleted bill's number stays spent. The automatic minter is max+1 over
+# the chain, so after RA10 is typed the next automatic bill is RA11: unique and
+# increasing either way. The over-claim guard does not read `ra_no` at all —
+# `claimed_by_line()` sums every bill in the chain — so nothing a typed number
+# does can move it.
+
+def ra_no_highest(chain_key: str, existing_max: int) -> int:
+    """The highest RA number this chain has ever used."""
+    ledger = int(highwater().get(RA_NO, {}).get(str(chain_key or ""), 0) or 0)
+    return max(int(existing_max or 0), ledger)
+
+
+def validate_ra_no(chain_key: str, existing_max: int, typed, default_n: int,
+                   may_override: bool) -> tuple:
+    """`(ra_no, error)` — `validate()`'s four checks, in the chain's scope."""
+    text = str(typed if typed is not None else "").strip()
+    default_n = int(default_n or 0)
+    if not text:
+        return default_n, ""
+    if not text.isdigit():
+        return default_n, "RA number: digits only — type the number and nothing else."
+    entered = int(text)
+    if entered == default_n:
+        return entered, ""
+    if not may_override:
+        return default_n, (f"RA number: you do not have permission to set a document "
+                           f"number by hand, so it stays at RA{default_n}.")
+    highest = ra_no_highest(chain_key, existing_max)
+    if entered <= highest:
+        return entered, (f"RA number RA{entered} is not available — the highest already "
+                         f"used on this schedule is RA{highest}. A number only ever goes "
+                         f"forward, so type {highest + 1} or more.")
+    return entered, ""
+
+
+def note_ra_no(chain_key: str, n) -> None:
+    """Raise the chain's ledger to `n` — only ever raises."""
+    try:
+        value = int(n)
+    except (TypeError, ValueError):
+        return
+    key = str(chain_key or "")
+    if value <= 0 or not key:
+        return
+    settings = STORE.setdefault("settings", {})
+    record = dict(settings.get(HIGHWATER_RECORD) or {})
+    scopes = dict(record.get(RA_NO) or {})
+    if value > int(scopes.get(key, 0) or 0):
+        scopes[key] = value
+        record[RA_NO] = scopes
+        settings[HIGHWATER_RECORD] = record
+
+
+def ra_no_field(default_n: int, *, may_override: bool, typed: str = "",
+                field: str = "ra_no_typed") -> str:
+    """The RA number box — `RA` as text, the number typeable when permitted."""
+    value = str(typed or "").strip() or str(int(default_n or 0))
+    ro = "" if may_override else " readonly"
+    hint = ("Only forward: above the highest RA number this schedule has used."
+            if may_override else
+            "Set automatically. Changing it needs the "
+            "&ldquo;set a document number by hand&rdquo; permission.")
+    return f"""
+  <div class="dnum-row">
+    <span class="dnum-fixed">RA</span>
+    <input type="text" id="{P.esc(field)}" name="{P.esc(field)}"
+           class="dnum-seq" value="{P.esc(value)}" inputmode="numeric"
+           autocomplete="off"{ro}/>
+  </div>
+  <div class="dnum-note">{hint}</div>"""
 
 
 # ── the override trail ─────────────────────────────────────────────────────

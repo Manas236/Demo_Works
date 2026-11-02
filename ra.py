@@ -69,6 +69,7 @@ import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import measurement as MS
 import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
+import docnum as DN    # the typed RA number, forward only per BOQ chain (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 # "Is this challan billed, and by which bill?" — ONE predicate, in a leaf both
 # this module and `challan.py` import, because neither may import the other
@@ -3549,6 +3550,17 @@ def _deductions_block(bill: dict = None) -> str:
 # ROUTES
 # =============================================================================
 
+def _chain_key(boq_id: str) -> str:
+    """The id the RA-number ledger files a chain under — its root BOQ's."""
+    return str(BQ.chain_root(boq_id).get("id") or boq_id or "")
+
+
+def _ra_may_set_number() -> bool:
+    """May this user type a document number? (`docnum.override`)"""
+    import auth
+    return auth.has_perm("docnum.override")
+
+
 def _ra_auth():
     """`auth`, reached in a function body as this module always reaches it."""
     import auth
@@ -3773,9 +3785,14 @@ def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
                notes_val: str = "", tax_invoice_ref: str = "",
                po_ref: str = "", po_date: str = "", tax_type: str = "cgst_sgst",
                cgst_rate: float = 9.0, sgst_rate: float = 9.0,
-               igst_rate: float = 18.0, round_on: bool = True) -> dict:
+               igst_rate: float = 18.0, round_on: bool = True,
+               ra_no: int = 0) -> dict:
     """
-    **THE ONE PLACE AN RA BILL RECORD IS BUILT.** Returns the dict; writes
+    **THE ONE PLACE AN RA BILL RECORD IS BUILT.**
+
+    `ra_no` (31 Oct 2026, §0 sixty-fourth block, Part 3) is a number the
+    operator TYPED and `docnum.validate_ra_no()` already accepted; 0 means the
+    automatic `next_ra_no()`, which is every caller but `/ra/create`. Returns the dict; writes
     nothing.
 
     ⚠ **EXTRACTED VERBATIM from `create_ra()`'s write block on 28 October
@@ -3823,7 +3840,7 @@ def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
     # receipt against RA1 in October would rewrite the balance printed
     # on RA2 in August. A printed document is driven by its own stored
     # rows, full stop (CLIENT_CHANGES.md §1.2).
-    this_ra_no = next_ra_no(boq_id)
+    this_ra_no = int(ra_no or 0) or next_ra_no(boq_id)
     prev_balance, prev_balance_refs = previous_balance(boq_id, this_ra_no)
 
     # THE STATUTORY SERIAL, minted here and nowhere else.
@@ -4613,6 +4630,15 @@ def create_ra(imported: dict = None):
         # shown and nothing is saved.
         if FD.is_resume(request.form):
             error = "__resume__"
+        # The RA number, typed forward only (31 Oct 2026, §0 sixty-fourth
+        # block, Part 3) — checked in the SAVE path, never on a GET.
+        typed_ra_no = next_ra_no(boq_id)
+        if not error:
+            typed_ra_no, ra_no_err = DN.validate_ra_no(
+                _chain_key(boq_id), next_ra_no(boq_id) - 1,
+                request.form.get("ra_no_typed"), next_ra_no(boq_id),
+                _ra_may_set_number())
+            error = error or ra_no_err
 
         tax_invoice_ref = (request.form.get("tax_invoice_ref") or "").strip()
         def_po_ref, def_po_date = previous_bill_po_defaults(boq_id)
@@ -4634,7 +4660,9 @@ def create_ra(imported: dict = None):
                 tax_invoice_ref=tax_invoice_ref, po_ref=po_ref,
                 po_date=po_date, tax_type=tax_type, cgst_rate=cgst_rate,
                 sgst_rate=sgst_rate, igst_rate=igst_rate,
-                round_on=_RO().form_choice(request.form, legacy=True))
+                round_on=_RO().form_choice(request.form, legacy=True),
+                ra_no=typed_ra_no)
+            DN.note_ra_no(_chain_key(boq_id), typed_ra_no)
             # 4 Oct 2026 — WHERE THE BILL WAS RAISED FROM, written ONCE, here,
             # and never by `edit_ra()`. Only on a bill raised from challans or
             # from the measurement: a manual bill carries NEITHER key, and
@@ -4679,6 +4707,13 @@ def create_ra(imported: dict = None):
     top_html += (f' <a href="{url_for("raboth.create_both", boq=boq_id)}" '
                  f'class="btn btn-ghost ra-both-toggle">&#8644; Supply + '
                  f'Installation together</a>')
+    hidden_html += (
+        '<div class="form-group" style="max-width:16rem;margin:.6rem 0;">'
+        '<label for="ra_no_typed">RA No.</label>'
+        + DN.ra_no_field(ra_no, may_override=_ra_may_set_number(),
+                         typed=(request.form.get("ra_no_typed") or "")
+                         if request.method == "POST" else "")
+        + "</div>")
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),

@@ -78,6 +78,7 @@ import branding as B
 import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
 import ra as RA
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
@@ -190,6 +191,32 @@ def next_ref(datestr: str) -> str:
     fy = P.fy_of(datestr)
     return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy,
                     SER.next_seq("RCPT", fy), cap=_REF_CAP)
+
+
+def _ref_for(fy: str, seq: int) -> str:
+    """One receipt number for one ordinal — the spelling `next_ref()` uses."""
+    return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, fy, int(seq), cap=_REF_CAP)
+
+
+def _may_set_number() -> bool:
+    import auth
+    return auth.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    import auth
+    return str((auth.current_user() or {}).get("id") or "")
+
+
+def _number_html(datestr: str, typed) -> str:
+    """The Receipt No. field, prefilled with the series' next number."""
+    fy = P.fy_of(datestr)
+    return (DN.NUMBER_STYLES +
+            '<div class="form-group" style="max-width:22rem;"><label for="doc_no_seq">'
+            'Receipt No.</label>'
+            + DN.number_field(DN.RCPT, _ref_for(fy, SER.next_seq("RCPT", fy)),
+                              may_override=_may_set_number(), typed=typed or "")
+            + "</div>")
 
 
 def receipts_of_boq(boq_id: str) -> list:
@@ -399,7 +426,7 @@ def _bill_facts(bill: dict, exclude_id: str = None) -> str:
 
 def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
           submit_label: str, exclude_id: str = None, extra_note: str = "",
-          draft: str = "") -> str:
+          draft: str = "", number_html: str = "") -> str:
     """The receipt form, shared by add and edit — one form, two entry points."""
     heading = f"Payment against RA{int(bill.get('ra_no') or 0)}"
     return _shell(heading, f"""
@@ -415,6 +442,7 @@ def _form(bill: dict, data: dict, error: str, action: str, back_url: str,
   <form method="POST" action="{action}" enctype="multipart/form-data">
     <div class="form-section">
       <div class="section-title">&#128176; What arrived</div>
+      {number_html}
       <div class="fg2">
         <div class="form-group"><label for="date">Date received</label>
           <input type="date" id="date" name="date" value="{_esc(data.get("date"))}"/></div>
@@ -656,11 +684,20 @@ def new_receipt():
             ok, why, _m, _sz = attachment.validate(upload)
             if not ok:
                 error = why
+        # The receipt number, typed forward only (31 Oct 2026, §0 sixty-fourth
+        # block, Part 3) — in the SAVE path, never on a GET.
+        fy = P.fy_of(data["date"])
+        default_seq = SER.next_seq("RCPT", fy)
+        seq_used = default_seq
+        if not error:
+            seq_used, num_err = DN.validate(DN.RCPT, fy, request.form.get("doc_no_seq"),
+                                            default_seq, _may_set_number())
+            error = error or num_err
         if not error:
             rid = new_id()
             STORE["receipts"][rid] = {
                 "id": rid,
-                "ref": next_ref(data["date"]),
+                "ref": _ref_for(fy, seq_used),
                 "fy": P.fy_of(data["date"]),
                 "date": data["date"],
                 # Every one of these is a SNAPSHOT, stored rather than looked
@@ -684,6 +721,9 @@ def new_receipt():
                 "instrument_date": data["instrument_date"],
                 "notes": data["notes"],
             }
+            DN.note_used(DN.RCPT, fy, seq_used)
+            DN.record_override(STORE["receipts"][rid], _ref_for(fy, default_seq),
+                               STORE["receipts"][rid]["ref"], _actor_id())
             # NOTHING is written to the RA bill here. Not its `prev_balance`,
             # not any later bill's. That is the contract this module exists to
             # keep — see the module docstring.
@@ -701,7 +741,10 @@ def new_receipt():
                  back_url=url_for("ra.view_ra", id=ra_id),
                  submit_label="Record payment",
                  draft=FD.script('form[action*="/receipt/new"]', "receipt",
-                                 resumed=resuming))
+                                 resumed=resuming),
+                 number_html=_number_html(data.get("date") or today,
+                                          request.form.get("doc_no_seq")
+                                          if request.method == "POST" else ""))
 
 
 @receipt_bp.route("/edit/<id>", methods=["GET", "POST"])

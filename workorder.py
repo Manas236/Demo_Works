@@ -63,6 +63,7 @@ import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import settings as SET
+import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
 import sheetimport as SI
 from address import has_options, picker_options, format_address_lines
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
@@ -435,12 +436,36 @@ def _free_ref(series: dict) -> tuple:
         n += 1
 
 
-def _spend_ref() -> str:
-    """Take the next number and advance the counter. Call once, at save."""
+def _spend_ref(typed_n: int = 0) -> str:
+    """
+    Take the next number and advance the counter. Call once, at save.
+
+    `typed_n` (31 Oct 2026, §0 sixty-fourth block, Part 3) is a number
+    `docnum.validate()` accepted — strictly above every number ever used — and
+    the counter moves to `typed_n + 1`, so a skipped number is never issued.
+    """
     series = SET.wo_series()
     ref, n = _free_ref(series)
+    if typed_n and int(typed_n) != n:
+        n = int(typed_n)
+        ref = SET.wo_ref_of({"prefix": series.get("prefix"), "next_no": n})
     SET.save_wo_series(series["prefix"], n + 1)
     return ref
+
+
+def _may_set_number() -> bool:
+    import auth
+    return auth.has_perm("docnum.override")
+
+
+def _number_html(typed) -> str:
+    """The Work Order No. field, prefilled with the series' next number."""
+    return (DN.NUMBER_STYLES +
+            '<div class="form-section"><div class="form-group" style="max-width:22rem;">'
+            '<label for="doc_no_seq">Work Order No.</label>'
+            + DN.number_field(DN.WO, next_ref(), may_override=_may_set_number(),
+                              typed=typed or "")
+            + "</div></div>")
 
 
 # =============================================================================
@@ -1278,6 +1303,7 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
   </div>
 
   <form method="POST" action="{action}" id="wo-form">
+    {"" if editing else _number_html(data.get("doc_no_seq") or "")}
     <div class="form-section">
       <div class="section-title">Rates on this work order</div>
       <div class="wo-tracks">
@@ -1902,15 +1928,25 @@ def create_wo():
     # no refusal is drawn, nothing is saved and no number is spent.
     if FD.is_resume(request.form):
         return _form_page(data, rows)
+    # The number, typed forward only (31 Oct 2026, §0 sixty-fourth block,
+    # Part 3) — checked past every other refusal, and the counter moves only
+    # on the save below.
+    data["doc_no_seq"] = (request.form.get("doc_no_seq") or "").strip()
+    default_n = _free_ref(SET.wo_series())[1]
+    if not error and not problems:
+        typed_n, num_err = DN.validate(DN.WO, "", data["doc_no_seq"], default_n,
+                                       _may_set_number())
+        error = num_err
     if error or problems:
         return _form_page(data, _mark(rows, problems), error=error,
                           problems=problems)
 
     wid = str(uuid.uuid4())
     now = _now()
+    default_ref = _free_ref(SET.wo_series())[0]
     _wos()[wid] = {
         "id": wid,
-        "ref": _spend_ref(),
+        "ref": _spend_ref(typed_n),
         "date": data["date"],
         "status": "draft",
         # Whichever contractor path was used, snapshotted (ruling G).
@@ -1933,6 +1969,7 @@ def create_wo():
         "created_by": _uid(),
         "updated_at": now,
     }
+    DN.record_override(_wos()[wid], default_ref, _wos()[wid]["ref"], _uid())
     return redirect(url_for("workorder.view_wo", id=wid,
                             msg="Work order raised as a draft.", type="success"))
 
