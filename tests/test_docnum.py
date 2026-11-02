@@ -509,12 +509,29 @@ def test_a_tax_invoice_number_is_immutable_once_raised(store, pi):
     ⚠ **A tax invoice has NO unissued state** — `invoice.py` gives it no
     draft, and its only later status is `cancelled`. So the number is settable
     at create and never again, and there is no route that offers it.
+
+    ⚠ **AMENDED 31 October 2026** (CLIENT_CHANGES.md §0 sixty-fourth block,
+      Part 2 — Manas's ruling: an issued tax invoice is EDITABLE, NUMBER
+      LOCKED). The view now offers `/invoice/edit`, so the old last line
+      (`assert "/invoice/edit" not in html`) is replaced by what the ruling
+      actually protects, asserted harder than before: the edit form draws no
+      number box, and a forged `doc_no_seq` on its POST moves nothing.
     """
     _ti_post(store, doc_no_seq="50")
     tid = next(iter(STORE["invoices"]))
     html = store.get(f"/invoice/view/{tid}").get_data(as_text=True)
     assert 'name="doc_no_seq"' not in html
-    assert "/invoice/edit" not in html
+    form = store.get(f"/invoice/edit/{tid}").get_data(as_text=True)
+    assert 'name="doc_no_seq"' not in form
+    ti = STORE["invoices"][tid]
+    ref = ti["ref"]
+    import lineedit as LE
+    store.post(f"/invoice/edit/{tid}", data={
+        "doc_no_seq": "99", "date": ti["date"],
+        "place_of_supply": ti["place_of_supply"], "advance_received": "0",
+        "tax_type": ti.get("tax_type", "exempt"), "to": ti.get("to", ""),
+        LE.FIELD: json.dumps(LE.rows_for_form(ti["line_items"], 18.0))})
+    assert STORE["invoices"][tid]["ref"] == ref
 
 
 # ── the proforma and the purchase order ────────────────────────────────────

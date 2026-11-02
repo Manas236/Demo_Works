@@ -721,8 +721,21 @@ def test_the_tax_invoice_has_no_edit_route_to_gate():
     #   move, so there is nothing for the ladder to protect — and an approved
     #   invoice whose line is missing an HSN is exactly the one Rule 46(g)
     #   needs filled.
+    # ⚠ **EXTENDED 31 October 2026** (CLIENT_CHANGES.md §0 **sixty-fourth**
+    #   block, Part 2 — Manas's ruling: an issued standalone tax invoice is
+    #   editable, number locked) for `invoice.edit_invoice`. It MODIFIES an
+    #   approvable document, so — exactly as this test has always demanded of
+    #   such a route — it goes through `approval.can_modify()` (via
+    #   `invoice.can_edit()`), asserted on the source below. The list it
+    #   replaces, in full and verbatim:
+    #
+    #       assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice",
+    #                                 "invoice.fill_hsn", "invoice.from_boq"], (
+    #
+    #   A SIXTH write route still fails here.
     assert invoice_writes == ["invoice.cancel_invoice", "invoice.create_invoice",
-                              "invoice.fill_hsn", "invoice.from_boq"], (
+                              "invoice.edit_invoice", "invoice.fill_hsn",
+                              "invoice.from_boq"], (
         f"invoice.py has grown a write route beyond its two creation paths, "
         f"cancellation and the HSN fill: {invoice_writes}. It is an approvable "
         f"document, so the new route needs approval.can_modify() and a line in "
@@ -741,6 +754,10 @@ def test_the_tax_invoice_has_no_edit_route_to_gate():
         assert forbidden not in _fill_src, (
             f"fill_hsn() mentions {forbidden} — it may write a tax code and "
             f"nothing else, which is why it needs no approval gate.")
+    # The edit route is gated by the ladder, through the one predicate the
+    # view's button also asks.
+    assert "can_edit(ti)" in inspect.getsource(invoice.edit_invoice)
+    assert 'approval.can_modify("invoice", ti)' in inspect.getsource(invoice.can_edit)
     for fn in (invoice.create_invoice, invoice.from_boq):
         assert "approval.stamp_creator(ti)" in inspect.getsource(fn), (
             f"{fn.__name__}() creates a tax invoice without stamping its "

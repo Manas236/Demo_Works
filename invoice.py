@@ -1623,6 +1623,193 @@ def from_boq(boq_id: str):
     return _page(template)
 
 
+# =============================================================================
+# EDIT AFTER ISSUE — a standalone tax invoice (31 Oct 2026, §0 sixty-fourth)
+# =============================================================================
+#
+# Manas's ruling, 31 October 2026: an ISSUED tax invoice raised from a proforma
+# or from a BOQ is editable — **every field except the number**. The number is
+# a GST serial and is locked: the field is drawn as text and nothing on the
+# POST is read for it. Because the serial carries its financial year, the
+# date may move only WITHIN that year (a date in another year would print a
+# number from the wrong series).
+#
+# ⚠ Every change is logged on the record (`editlog.record()`: who, when,
+#   field, before → after) and the amber band *Edited after issue on <date> by
+#   <user>* is drawn on `/invoice/view` above `.doc-outer` — screen only, the
+#   print carries no band.
+# ⚠ **A cancelled invoice is locked** — its lines are the record of what was
+#   cancelled. An APPROVED one is locked by `approval.can_modify()` as every
+#   other approvable document is.
+# ⚠ A tax invoice generated from an RA bill or a merged RA set is not here:
+#   it lives on the bill / the set and is edited (text fields only) there.
+
+TI_EDIT_FIELDS = (
+    ("date", "Invoice date"), ("place_of_supply", "Place of supply"),
+    ("reverse_charge", "Reverse charge"), ("po_number", "Customer PO No."),
+    ("po_date", "Customer PO date"), ("dispatch_through", "Dispatch through"),
+    ("dispatch_doc_no", "Dispatch document no."), ("vehicle_no", "Vehicle no."),
+    ("eway_bill_no", "E-way bill no."), ("payment_terms", "Payment terms"),
+    ("notes", "Note"), ("advance_received", "Advance received"),
+    ("tax_type", "Tax head"), ("round_off_on", "Round off to nearest rupee"),
+    ("subtotal", "Subtotal"), ("grand_total", "Invoice value"),
+) + _PF.PARTY_FIELDS
+
+
+def can_edit(ti: dict) -> tuple:
+    """`(allowed, why)` — the one answer the button and the route both ask."""
+    if str(ti.get("status") or "") == "cancelled":
+        return False, ("A cancelled tax invoice cannot be edited — it is the "
+                       "record of what was cancelled.")
+    return approval.can_modify("invoice", ti)
+
+
+@invoice_bp.route("/edit/<id>", methods=["GET", "POST"])
+def edit_invoice(id: str):
+    """Correct an issued standalone tax invoice. See EDIT AFTER ISSUE above."""
+    ti = STORE["invoices"].get(id)
+    if not ti:
+        return redirect(url_for("invoice.list_invoices",
+                                msg="Tax invoice not found.", type="error"))
+    allowed, why = can_edit(ti)
+    if not allowed:
+        return redirect(url_for("invoice.view_invoice", id=id, msg=why, type="error"))
+    f = request.form
+    is_post = request.method == "POST"
+    error = ""
+    default_gst = _PF.LE.uniform_gst(ti.get("tax_type", "exempt"), ti.get("tax_info") or {})
+    stored = list(ti.get("line_items") or [])
+    head_keys = ("date", "place_of_supply", "po_number", "po_date", "dispatch_through",
+                 "dispatch_doc_no", "vehicle_no", "eway_bill_no", "payment_terms", "notes")
+    if is_post:
+        v = {k: (f.get(k) or "").strip() for k in head_keys}
+        v["vehicle_no"] = v["vehicle_no"].upper()
+        tax_type = (f.get("tax_type") or "").strip()
+        if tax_type not in dict(_PF.TAX_HEADS):
+            tax_type = "exempt"
+        adv = _money(f.get("advance_received"), 0.0)
+        if not v["date"]:
+            error = "Invoice date is required."
+        elif ti.get("fy") and _fy_of(v["date"]) != ti.get("fy"):
+            error = (f"The invoice number {P.esc(ti.get('ref'))} belongs to financial "
+                     f"year {P.esc(ti.get('fy'))}, and the number cannot change — so "
+                     f"the date has to stay inside that year.")
+        elif v["place_of_supply"] not in GST_STATE_CODES:
+            error = "Place of supply is required — pick a GST State from the list."
+        elif adv < 0:
+            error = "Advance received must be a number, e.g. 125000."
+        lines = []
+        if not error:
+            lines, error = _PF.LE.parse(f.get(_PF.LE.FIELD), stored, default_gst=default_gst)
+        if not error:
+            round_on = RO.form_choice(f, legacy=RO.is_on(ti, True))
+            subtotal, tax_info, grand, ro, total_qty = _PF.LE.tax_figures(lines, tax_type, round_on)
+            if adv > grand:
+                error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
+                         f"value (₹{grand:,.2f}).")
+        if not error:
+            before, before_lines = dict(ti), [dict(r) for r in stored]
+            ti.update(v)
+            ti.update(_PF.party_from_form(f))
+            ti.update({
+                "pos_code": GST_STATE_CODES[v["place_of_supply"]],
+                "reverse_charge": f.get("reverse_charge") == "1",
+                "line_items": lines, "subtotal": subtotal, "tax_type": tax_type,
+                "tax_info": tax_info, "grand_total": grand, "round_off": ro,
+                RO.FIELD: round_on, "total_qty": total_qty,
+                "advance_received": adv, "net_payable": round(grand - adv, 2),
+            })
+            changes = (_PF.EL.diff(before, ti, TI_EDIT_FIELDS)
+                       + _PF.EL.line_diff(before_lines, lines, default_gst))
+            _PF.EL.record(ti, changes, _actor_id())
+            n = len(changes)
+            return redirect(url_for("invoice.view_invoice", id=id,
+                                    msg=(f"Tax invoice {ti['ref']} updated — {n} change"
+                                         f"{'' if n == 1 else 's'} logged." if n else
+                                         "Nothing changed."), type="success"))
+        rows = _PF.LE.posted_rows(f.get(_PF.LE.FIELD))
+        vals = dict(v, tax_type=tax_type, advance_received=(f.get("advance_received") or ""),
+                    reverse_charge=f.get("reverse_charge") == "1", **_PF.party_from_form(f))
+        round_shown = RO.form_choice(f, legacy=RO.is_on(ti, True))
+    else:
+        rows = _PF.LE.rows_for_form(stored, default_gst)
+        vals = {k: str(ti.get(k) or "") for k in head_keys}
+        vals.update({k: ti.get(k, "") for k, _l in _PF.PARTY_FIELDS})
+        vals["tax_type"] = ti.get("tax_type", "exempt")
+        vals["advance_received"] = f"{float(ti.get('advance_received') or 0.0):.2f}"
+        vals["reverse_charge"] = bool(ti.get("reverse_charge"))
+        round_shown = RO.is_on(ti, True)
+
+    def box(name, label, kind="text", extra=""):
+        return (f'<div class="form-group"><label for="{name}">{label}</label>'
+                f'<input type="{kind}" id="{name}" name="{name}" value="{P.esc(vals.get(name))}"{extra}/></div>')
+    tax_opts = "".join(f'<option value="{k}"{" selected" if k == vals.get("tax_type") else ""}>{lbl}</option>'
+                       for k, lbl in _PF.TAX_HEADS)
+    view_url = url_for("invoice.view_invoice", id=id)
+    action = url_for("invoice.edit_invoice", id=id)
+    rc = " checked" if vals.get("reverse_charge") else ""
+    template = f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("Edit " + str(ti.get("ref")))}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>Edit <span>{P.esc(ti.get("ref"))}</span></h1>
+        <a href="{view_url}" class="btn btn-ghost">&#8592; Back to the tax invoice</a>
+      </div>
+      {_alert(error, "error")}
+      <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
+        <span>This invoice has been issued. Every change you save is <b>logged</b> on it
+        (who, when, before &rarr; after) and shown on screen; the printed copy carries
+        no mark. The number <b>{P.esc(ti.get("ref"))}</b> cannot be changed.</span></div>
+      <form method="POST" action="{action}">
+        <div class="form-section">
+          <div class="section-title">Invoice</div>
+          <div class="fg3">
+            <div class="form-group"><label>Invoice No.</label>
+              <div class="dnum-fixed" style="padding:.45rem 0;">{P.esc(ti.get("ref"))} &mdash; locked</div></div>
+            {box("date", "Invoice Date *", "date", " required")}
+            <div class="form-group"><label for="place_of_supply">Place of Supply *</label>
+              {_sel_keep("place_of_supply", _POS_STATES, vals.get("place_of_supply", ""))}</div>
+            {box("po_number", "Customer PO No.")}
+            {box("po_date", "Customer PO Date", "date")}
+            {box("advance_received", "Advance received (&#8377;)", "text", ' inputmode="decimal"')}
+          </div>
+          <label style="display:flex;gap:.4rem;align-items:center;margin:.6rem 0;">
+            <input type="checkbox" name="reverse_charge" value="1"{rc}/> Tax payable on reverse charge
+          </label>
+        </div>
+        {_PF.party_form_html(vals)}
+        <div class="form-section">
+          <div class="section-title">Movement and terms</div>
+          <div class="fg3">
+            <div class="form-group"><label for="dispatch_through">Dispatch Through</label>
+              {_sel_keep("dispatch_through", _DISPATCH, vals.get("dispatch_through", ""))}</div>
+            {box("dispatch_doc_no", "Dispatch Doc No.")}
+            {box("vehicle_no", "Vehicle No.")}
+            {box("eway_bill_no", "E-way Bill No.")}
+            <div class="form-group"><label for="payment_terms">Payment Terms</label>
+              {_sel_keep("payment_terms", _PAY_TERMS, vals.get("payment_terms", ""))}</div>
+            {box("notes", "Note on the invoice")}
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="section-title">Lines</div>
+          <div class="form-group" style="max-width:280px;"><label for="tax_type">Tax head</label>
+            <select id="tax_type" name="tax_type">{tax_opts}</select></div>
+          {_PF.LE.editor_html(rows, form_selector='form[action$="' + action + '"]')}
+          {RO.checkbox_html(round_shown)}
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn">Save changes</button>
+          <a href="{view_url}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </main></body></html>"""
+    return _page(template)
+
+
 @invoice_bp.route("/view/<id>")
 def view_invoice(id: str):
     """
@@ -1670,7 +1857,7 @@ def view_invoice(id: str):
         <tr class="{row_cls}">
           <td class="c-sno">{sno}</td>
           <td class="c-partno">{P.esc(row.get('part_no'))}</td>
-          <td class="c-desc {indent}">{P.esc(row.get('name'))}</td>
+          <td class="c-desc {indent}">{P.esc(row.get('name'))}{_PF.LE.print_note(row)}</td>
           <td class="c-hsn">{_hsn_cell(row.get('hsn'))}</td>
           <td class="c-qty">{_fmt_qty(float(row.get('qty') or 0))}</td>
           <td class="c-unit">{P.esc(row.get('unit'))}</td>
@@ -1951,6 +2138,13 @@ def view_invoice(id: str):
     edit_bands = (_PF.divergence_band(_PF.ti_divergence(pi_src, ti), "proforma",
                                       "tax invoice", ti.get("ref"))
                   if pi_src else "")
+    edit_bands = _PF.EL.band(ti, "tax invoice") + edit_bands
+    # The Edit button — for whoever the gate admits, on an invoice that may
+    # still be edited. The newline lives inside the string.
+    edit_btn = ""
+    if can_edit(ti)[0] and _AUTH.can_reach("invoice.edit_invoice"):
+        edit_btn = (f'\n    <a href="{url_for("invoice.edit_invoice", id=id)}" '
+                    f'class="btn btn-ghost">&#9998;&nbsp;Edit</a>')
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1970,7 +2164,7 @@ def view_invoice(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;">
     {copy_switch}
     {back_pi}
-    <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>{hsn_btn}{cancel_btn}
+    <a href="{url_for("invoice.list_invoices")}" class="btn btn-ghost">All Tax Invoices</a>{edit_btn}{hsn_btn}{cancel_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>

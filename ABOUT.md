@@ -5770,7 +5770,9 @@ edit_log: [{"at": "2026-10-31 14:05:11", "by": "<user id>",   # the ID — gap 4
 
 Lines are logged per position (`Line 3`: before text → after text), added and
 removed lines included. `editlog.band()` draws the amber screen-only band; the
-print never carries it. Written on: the proforma (Part 1).
+print never carries it. Written on: the proforma (Part 1); the standalone
+tax invoice, an issued RA bill's tax invoice text, a merged set's tax
+invoice text and the delivery challan (Part 2).
 
 ---
 
@@ -7315,6 +7317,36 @@ for the same reason `.pi-chip` lives in `QUOTATION_STYLES`.
 ---
 
 ### `/invoice` — Tax Invoices · [invoice.py](invoice.py)
+
+#### Edit after issue — 31 October 2026 (§0 sixty-fourth block, Part 2)
+
+Manas's ruling: an issued tax invoice is **editable, number locked**.
+
+* **Standalone TI** (from a PI or a BOQ) — `GET,POST /invoice/edit/<id>`
+  (`invoice.edit_invoice`, EXISTING `invoice.create`): every field but the
+  number — date (**inside the number's financial year only**, the serial
+  carries it), place of supply (`pos_code` follows), reverse charge, party
+  and ship-to, PO no./date, dispatch fields, payment terms, note, advance,
+  tax head, the lines through `lineedit.py`, the round-off tick. Figures and
+  `net_payable` are recomputed. `invoice.can_edit()` — the one predicate the
+  button and the route ask — refuses a **cancelled** invoice and anything
+  `approval.can_modify()` refuses, so an invoice **approved** before the
+  ladder was switched off stays locked (the print golden's TI is one: it
+  gained no button and did not move).
+* **TI generated from an RA bill** — `GET,POST /ra/edit-text/<id>`
+  (`ra.edit_text`, EXISTING `ra.edit`), an ISSUED live bill only: party,
+  address, GSTIN, project, site, PO no./date, bill date and tax-invoice date
+  (inside the FY), note. Quantity / rate / amount follow the bill and are not
+  on the form; HSN/SAC is linked to `/ra/hsn/<id>`. Editing the party makes
+  `party_drift()` report the disagreement with the BOQ — its job.
+* **Merged TI** — `GET,POST /merged/edit/<id>` (`merged_ra.edit_text`,
+  EXISTING `ra.edit`), live sets only, the same text fields
+  (`editlog.text_fields_html()` / `apply_text()` — one builder for both).
+* **Delivery challan** — the existing `/dc/edit` now logs every change.
+
+Every change is written to `edit_log` and the amber band *Edited after issue
+on <date> by <user>* is drawn on the view page above `.doc-outer`; **no
+print route draws it**.
 
 
 #### The document number, typed by hand — 27 October 2026

@@ -160,3 +160,51 @@ def band(rec: dict, word: str = "document") -> str:
             f'<table><thead><tr><th>When</th><th>Who</th><th>Field</th><th>Before</th>'
             f'<th>After</th></tr></thead><tbody>{rows}</tbody></table>'
             f'</details></div>')
+
+
+# ── Text-only edit after issue (31 Oct 2026, §0 sixty-fourth block, Part 2) ──
+#
+# The tax invoice generated from an RA bill, and the one a merged RA set
+# carries, may be corrected after issue in their TEXT fields only — the
+# party, the addresses, the PO no./date, the dates and the note. Quantity,
+# rate and amount follow the RA bill and are never on this form. One builder
+# and one apply step so the two documents cannot drift apart.
+
+MULTILINE = frozenset({"to", "notes"})
+DATE_FIELDS = frozenset({"date", "po_date", "tax_invoice_date"})
+
+
+def text_fields_html(fields, vals: dict) -> str:
+    """The boxes for `(key, label)` fields — a textarea for an address or a note."""
+    out = []
+    for key, label in fields:
+        if key in MULTILINE:
+            out.append(f'<div class="form-group" style="grid-column:1/-1;">'
+                       f'<label for="{key}">{P.esc(label)}</label>'
+                       f'<textarea id="{key}" name="{key}" rows="3">{P.esc(vals.get(key))}'
+                       f'</textarea></div>')
+        else:
+            kind = "date" if key in DATE_FIELDS else "text"
+            out.append(f'<div class="form-group"><label for="{key}">{P.esc(label)}</label>'
+                       f'<input type="{kind}" id="{key}" name="{key}" '
+                       f'value="{P.esc(vals.get(key))}"/></div>')
+    return ('<div style="display:grid;grid-template-columns:repeat(auto-fill,'
+            'minmax(15rem,1fr));gap:.8rem;">' + "".join(out) + "</div>")
+
+
+def posted_text(form, fields) -> dict:
+    """The posted values for `fields`, trimmed; an address keeps its lines."""
+    out = {}
+    for key, _label in fields:
+        raw = str((form or {}).get(key) or "")
+        out[key] = raw.replace("\r\n", "\n").strip()
+    return out
+
+
+def apply_text(rec: dict, new: dict, fields, actor_id: str) -> int:
+    """Write the changed text fields onto `rec` and log each. Returns the count."""
+    changes = diff(rec, new, fields)
+    for key, _label in fields:
+        if _text(rec.get(key)) != _text(new.get(key)):
+            rec[key] = new.get(key, "")
+    return record(rec, changes, actor_id)

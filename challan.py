@@ -109,6 +109,7 @@ import branding as B
 # untouched — and without a second copy of the predicate beside `ra.py`'s.
 import dcbill as DCB
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
+import editlog as EL   # the edit-after-issue log — the leaf (31 Oct 2026)
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import docsheet as DS
 import pipeline as P
@@ -1221,7 +1222,7 @@ def view_dc(id: str):
 </div>
 
 {_flash()}{_billed_html(held)}
-{_over_dispatch_band(dc)}
+{_over_dispatch_band(dc)}{EL.band(dc, "delivery challan")}
 
 <div class="doc-outer">
 {_document_html(dc)}
@@ -1275,6 +1276,14 @@ def print_dc(id: str):
 </body></html>""")
 
 
+# The fields `edit_dc()` writes, as the edit log names them (31 Oct 2026).
+DC_EDIT_FIELDS = (("date", "Challan date"), ("dispatch_mode", "Dispatch mode"),
+                  ("dispatch_to", "Dispatch to"), ("po_no", "PO No."),
+                  ("po_date", "PO date"), ("notes", "Note"),
+                  ("consignee_name", "Consignee"), ("consignee_addr", "Consignee address"),
+                  ("consignee_phone", "Consignee phone"), ("consignee_id", "Consignee (address book)"))
+
+
 @challan_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_dc(id: str):
     """
@@ -1313,10 +1322,18 @@ def edit_dc(id: str):
     if error:
         return _entry_form(boq, data, error, dc=dc)
 
+    # 31 Oct 2026, §0 sixty-fourth block, Part 2 — a challan is a SENT
+    # document: every change is logged on it (`editlog`, who / when / field /
+    # before → after) and `/dc/view` draws the screen-only band. `/dc/print`
+    # carries none.
+    import auth as _AUTH
+    before = dict(dc)
     for key in ("date", "dispatch_mode", "dispatch_to", "po_no", "po_date",
                 "notes"):
         dc[key] = data[key]
     dc.update(data["consignee"])
+    EL.record(dc, EL.diff(before, dc, DC_EDIT_FIELDS),
+              str((_AUTH.current_user() or {}).get("id") or ""))
     # `ref` and `items` are deliberately untouched. An edit never reissues the
     # number and never moves what went out.
     return redirect(url_for("challan.view_dc", id=id,

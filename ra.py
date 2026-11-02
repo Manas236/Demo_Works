@@ -3549,6 +3549,18 @@ def _deductions_block(bill: dict = None) -> str:
 # ROUTES
 # =============================================================================
 
+def _ra_auth():
+    """`auth`, reached in a function body as this module always reaches it."""
+    import auth
+    return auth
+
+
+def _ra_editlog():
+    """`editlog`, the leaf (31 Oct 2026)."""
+    import editlog
+    return editlog
+
+
 def _shell(title: str, body: str) -> str:
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -4683,6 +4695,92 @@ def create_ra(imported: dict = None):
         if request.method == "POST" else True)
 
 
+# =============================================================================
+# THE TAX INVOICE ON AN ISSUED BILL — text fields only (31 Oct 2026, §0 64th)
+# =============================================================================
+#
+# Manas's ruling, 31 October 2026: the tax invoice an RA bill generates may be
+# corrected after issue in its TEXT fields — the party, the addresses, the PO
+# no. and date, the dates and the note. **Quantity, rate and amount follow the
+# RA bill and are not on this form** (they are the claim, and an issued claim
+# is locked by `can_edit()`); the HSN/SAC codes have their own page,
+# `/ra/hsn/<id>`, linked from here. The invoice NUMBER is locked. Each change
+# is logged on the bill (`editlog`) and the screen-only band is drawn on
+# `/ra/view`; `/ra/print` carries no band.
+#
+# ⚠ Editing the party here makes the bill disagree with its BOQ, and
+#   `party_drift()` then says so on `/ra/view` — exactly its job.
+
+TEXT_FIELDS = (("account_name", "Customer"), ("contact_person", "Contact person"),
+               ("to", "Billing address"), ("bill_gstin", "Customer GSTIN"),
+               ("project_name", "Project"), ("site_location", "Site"),
+               ("po_ref", "Customer PO No."), ("po_date", "Customer PO date"),
+               ("date", "Bill date"), ("tax_invoice_date", "Tax invoice date"),
+               ("notes", "Note"))
+
+
+def can_edit_text(bill: dict) -> tuple:
+    """`(allowed, why)` — only an ISSUED, live bill; a draft has its full edit."""
+    if not bill:
+        return False, "That RA bill no longer exists."
+    if is_cancelled(bill):
+        return False, cancelled_reason(bill)
+    if not is_issued(bill):
+        return False, "A draft bill is corrected through Edit claim."
+    return True, ""
+
+
+@ra_bp.route("/edit-text/<id>", methods=["GET", "POST"])
+def edit_text(id: str):
+    """Correct the text of an issued bill's tax invoice. See above."""
+    import editlog as EL
+    import auth as _AUTH
+    bill = STORE["ra_bills"].get(id)
+    allowed, why = can_edit_text(bill)
+    if not allowed:
+        return redirect(url_for("ra.view_ra", id=id, msg=why, type="error")
+                        if bill else url_for("ra.create_ra", msg=why, type="error"))
+    error = ""
+    vals = {k: str(bill.get(k) or "") for k, _l in TEXT_FIELDS}
+    if request.method == "POST":
+        vals = EL.posted_text(request.form, TEXT_FIELDS)
+        fy = P.fy_of(bill.get("date") or "")
+        for key in ("date", "tax_invoice_date"):
+            if vals[key] and fy and P.fy_of(vals[key]) != fy:
+                error = (f"The tax invoice number belongs to financial year {_esc(fy)} "
+                         f"and cannot change, so its dates stay inside that year.")
+        if not vals["date"]:
+            error = error or "The bill date is required."
+        if not error:
+            n = EL.apply_text(bill, vals, TEXT_FIELDS,
+                              str((_AUTH.current_user() or {}).get("id") or ""))
+            return redirect(url_for("ra.view_ra", id=id, type="success",
+                                    msg=(f"Invoice details updated — {n} change"
+                                         f"{'' if n == 1 else 's'} logged." if n
+                                         else "Nothing changed.")))
+    err_html = (f'<div class="alert alert-error">&#10007; {error}</div>' if error else "")
+    ref = _esc(bill.get("tax_invoice_ref") or bill.get("ref"))
+    return _shell(f"Edit RA{bill.get('ra_no')} invoice details", f"""
+  <div class="page-top">
+    <h1>RA{_esc(bill.get('ra_no'))} <span>&middot; tax invoice details</span></h1>
+    <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">&#8592; Back to the bill</a>
+  </div>
+  {err_html}
+  <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
+    <span>This bill has been issued. Only the <b>text</b> of its tax invoice
+    <b>{ref}</b> can be corrected here &mdash; quantity, rate and amount follow
+    the RA bill and cannot change. The number is locked. Every change is
+    <b>logged</b> and shown on screen; the printed copy carries no mark.
+    HSN/SAC codes: <a href="{url_for('ra.fill_hsn', id=id)}">HSN / SAC page</a>.</span></div>
+  <form method="POST" action="{url_for('ra.edit_text', id=id)}">
+    {EL.text_fields_html(TEXT_FIELDS, vals)}
+    <div style="display:flex;gap:.7rem;margin-top:1.2rem;">
+      <button type="submit" class="btn">Save changes</button>
+      <a href="{url_for('ra.view_ra', id=id)}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>""")
+
+
 @ra_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_ra(id: str):
     """
@@ -4907,6 +5005,13 @@ def view_ra(id: str):
 
     del_btn = _gated("Delete", "ra.delete_ra", del_allowed, del_why)
     edit_btn = _gated("Edit claim", "ra.edit_ra", can_ed, edit_why)
+    # 31 Oct 2026, §0 sixty-fourth block, Part 2 — the issued bill's tax
+    # invoice text. Drawn ONLY on an issued, live bill (so a draft's page and
+    # a cancelled one's are byte-for-byte as they were), and only for a
+    # reader the gate admits. Beside it, the edit-after-issue band.
+    if can_edit_text(bill)[0] and _ra_auth().can_reach("ra.edit_text"):
+        edit_btn += (f'<a class="btn btn-ghost" href="{url_for("ra.edit_text", id=id)}">'
+                     f'&#9998; Invoice details</a>')
     issue_btn = _gated("&#10003; Issue", "ra.issue_ra", iss_allowed, iss_why)
     cancel_btn = _gated("&#10007; Cancel", "ra.cancel_ra", can_allowed, can_why)
     if set_merge_of(bill) is not None:
@@ -5032,7 +5137,7 @@ def view_ra(id: str):
     </div>
   </div>
   {_flash()}
-  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}
+  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}{_ra_editlog().band(bill, "tax invoice")}
   {cancelled_html}
   {lock_html}
   {rate_note}

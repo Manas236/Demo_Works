@@ -887,6 +887,9 @@ ROUTE_PERMISSIONS = {
     # issued (29 Oct 2026, §0 fifty-ninth block, A1). `ra.edit` already means
     # "change what a bill says"; no permission minted.
     "ra.fill_hsn":                "ra.edit",
+    # 31 Oct 2026, §0 sixty-fourth block, Part 2 — an issued bill's tax
+    # invoice, text fields only; every change logged.
+    "ra.edit_text":               "ra.edit",
     "ra.issue_ra":                "ra.issue",
     "ra.cancel_ra":               "ra.cancel",
     "ra.print_ra":                "ra.print",
@@ -910,6 +913,9 @@ ROUTE_PERMISSIONS = {
     "merged_ra.create_merged":       "ra.create",
     "merged_ra.print_merged":        "ra.print",
     "merged_ra.cancel_merged":       "ra.cancel",
+    # 31 Oct 2026, §0 sixty-fourth block, Part 2 — the merged tax invoice's
+    # text after issue, under the bill's own edit permission.
+    "merged_ra.edit_text":           "ra.edit",
 
     # ── Money in ─────────────────────────────────────────────────────────────
     "receipt.list_receipts":      "receipt.view",
@@ -953,6 +959,9 @@ ROUTE_PERMISSIONS = {
     # block, A1). `invoice.create` — a cancelled invoice is refused in the
     # view, not by a second permission. No permission minted.
     "invoice.fill_hsn":           "invoice.create",
+    # 31 Oct 2026, §0 sixty-fourth block, Part 2 — correct an issued
+    # standalone tax invoice; number locked, every change logged.
+    "invoice.edit_invoice":       "invoice.create",
 
     # ── Buy side ─────────────────────────────────────────────────────────────
     "purchase.list_purchases":    "purchase.view",

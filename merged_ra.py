@@ -776,6 +776,70 @@ def create_merged():
         own.</span></div>""")
 
 
+# =============================================================================
+# EDIT AFTER ISSUE — the merged tax invoice's TEXT (31 Oct 2026, §0 64th)
+# =============================================================================
+#
+# Manas's ruling, 31 October 2026: the tax invoice a merged set carries is
+# corrected in its text only — party, addresses, project / site, the date and
+# the note. Quantities, rates and amounts are the two legs' and follow them;
+# the number is locked. Every change is logged (`editlog`) and the band is on
+# `/merged/view` only — `/merged/print` carries none. A cancelled set is
+# locked.
+
+TEXT_FIELDS = (("account_name", "Customer"), ("contact_person", "Contact person"),
+               ("to", "Billing address"), ("bill_gstin", "Customer GSTIN"),
+               ("project_name", "Project"), ("site_location", "Site"),
+               ("date", "Tax invoice date"), ("notes", "Note"))
+
+
+@merged_bp.route("/edit/<id>", methods=["GET", "POST"])
+def edit_text(id: str):
+    import auth as _AUTH
+    import editlog as EL
+    doc = records().get(id)
+    if not doc:
+        return redirect(url_for("merged_ra.list_merged",
+                                msg="That merged document no longer exists.", type="error"))
+    if not is_live(doc):
+        return redirect(url_for("merged_ra.view_merged", id=id, type="error",
+                                msg="A cancelled tax invoice cannot be edited."))
+    error = ""
+    vals = {k: str(doc.get(k) or "") for k, _l in TEXT_FIELDS}
+    if request.method == "POST":
+        vals = EL.posted_text(request.form, TEXT_FIELDS)
+        if not vals["date"]:
+            error = "The tax invoice date is required."
+        elif doc.get("fy") and P.fy_of(vals["date"]) != doc.get("fy"):
+            error = (f"The number {_esc(doc.get('tax_invoice_ref'))} belongs to financial "
+                     f"year {_esc(doc.get('fy'))} and cannot change, so the date stays "
+                     f"inside that year.")
+        if not error:
+            n = EL.apply_text(doc, vals, TEXT_FIELDS,
+                              str((_AUTH.current_user() or {}).get("id") or ""))
+            return redirect(url_for("merged_ra.view_merged", id=id, type="success",
+                                    msg=(f"Tax invoice details updated — {n} change"
+                                         f"{'' if n == 1 else 's'} logged." if n
+                                         else "Nothing changed.")))
+    return _shell(f"Edit {doc.get('tax_invoice_ref')}", f"""
+      {_alert(error) if error else ""}
+      <div class="page-top">
+        <h1>{_esc(doc.get('tax_invoice_ref'))} <span>&middot; text only</span></h1>
+        <a href="{url_for('merged_ra.view_merged', id=id)}" class="btn btn-ghost">&#8592; Back</a>
+      </div>
+      <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
+        <span>Quantity, rate and amount follow the two RA bills and cannot change
+        here; the number is locked. Every change is <b>logged</b> and shown on
+        screen; the printed copy carries no mark.</span></div>
+      <form method="POST" action="{url_for('merged_ra.edit_text', id=id)}">
+        {EL.text_fields_html(TEXT_FIELDS, vals)}
+        <div style="display:flex;gap:.7rem;margin-top:1.2rem;">
+          <button type="submit" class="btn">Save changes</button>
+          <a href="{url_for('merged_ra.view_merged', id=id)}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>""")
+
+
 @merged_bp.route("/view/<id>")
 def view_merged(id: str):
     doc = records().get(id)
@@ -812,6 +876,14 @@ def view_merged(id: str):
     if is_live(doc):
         cancel_bit = (f'<a href="{url_for("merged_ra.cancel_merged", id=id)}" '
                       f'class="btn btn-ghost">Cancel document</a>')
+    # 31 Oct 2026, §0 sixty-fourth block, Part 2 — text-only edit after
+    # issue, and its screen-only band. A live set only.
+    import auth as _AUTH
+    import editlog as _EL
+    edit_bit = ""
+    if is_live(doc) and _AUTH.can_reach("merged_ra.edit_text"):
+        edit_bit = (f'<a href="{url_for("merged_ra.edit_text", id=id)}" '
+                    f'class="btn btn-ghost">&#9998; Edit details</a>')
 
     return _shell(f"Merged {doc.get('tax_invoice_ref')}", f"""
       {_flash()}
@@ -821,9 +893,10 @@ def view_merged(id: str):
         <div style="display:flex;gap:.7rem;">
           <a href="{url_for('merged_ra.list_merged')}" class="btn btn-ghost">&#8592; Register</a>
           <a href="{url_for('merged_ra.print_merged', id=id)}" class="btn">&#128438; Print</a>
-          {cancel_bit}
+          {edit_bit}{cancel_bit}
         </div>
       </div>
+      {_EL.band(doc, "tax invoice")}
       {approval.panel("merged_ra", doc)}
       <div class="form-section">
         <div class="section-title">&#128279; The two bills this covers</div>
