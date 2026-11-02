@@ -7048,6 +7048,29 @@ needed no new CSS. ⚠ **Never build a coverage ratio out of that pair.**
 
 ### `/proforma` — Proforma Invoices · [proforma.py](proforma.py)
 
+#### Add lines from Excel — 31 October 2026 (§0 sixty-fourth block, Part 5)
+
+⚠ **This NARROWS the earlier "a PI is copied, never typed" exclusion**, per
+Manas's 28 October agreement with the client: bulk supporting material the
+schedule never carries (flanges, elbows, gaskets, nut-bolts) comes in from a
+sheet through the existing column picker, as `docimport.ProformaKind`
+(`/import/proforma`, EXISTING `proforma.create`). **Not a standalone PI** — it
+lands on one of three forms, through an `imported=` seam Flask never passes:
+
+| context | lands on | how the rows arrive |
+|---|---|---|
+| `?pi=<id>` | `proforma.edit_proforma()` | appended to the editable line table |
+| `?qid=<id>` | `proforma.create_proforma()` | a read-only list + hidden `extra_json` |
+| `?boq=<id>` | `proforma.from_boq()` | the same |
+
+The lines copied from the quotation or the BOQ are **untouched**; imported
+rows are appended after them and marked `source: "excel"`. With extras, the
+document is taxed per slab over all its lines (`lineedit.tax_figures()`), and
+a quotation-path PI's copied lines gain only the quotation's one rate as
+`gst_rate`; with none, both create paths are byte-for-byte what they were.
+Nothing is saved until the form's own Save; text in a numeric cell is left
+blank, never 0.
+
 #### Editing an issued proforma — 31 October 2026 (§0 sixty-fourth block, Part 1)
 
 `GET,POST /proforma/edit/<id>` (`proforma.edit_proforma`, under the EXISTING

@@ -1227,6 +1227,10 @@ ROUTE_PERMISSIONS = {
     #   — `approval.py`'s arrangement — because this registry maps one
     #   endpoint to one permission. `tests/test_doc_import.py` asserts every
     #   row here equals the permission of the create endpoint its kind names.
+    # 31 Oct 2026, §0 sixty-fourth block, Part 5 — extra lines on a proforma.
+    "docimport.upload_proforma":     "proforma.create",
+    "docimport.preview_proforma":    "proforma.create",
+    "docimport.apply_proforma":      "proforma.create",
     "docimport.upload_purchase":     "purchase.create",
     "docimport.preview_purchase":    "purchase.create",
     "docimport.apply_purchase":      "purchase.create",

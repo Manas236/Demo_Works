@@ -1427,9 +1427,133 @@ def _plain(msg: str) -> str:
     return str(msg or "").replace("&quot;", "\"")
 
 
+# ── Proforma invoice — EXTRA lines (31 October 2026, §0 sixty-fourth block, Part 5)
+#
+# ⚠ **This NARROWS the earlier "a PI is copied, never typed" exclusion**, per
+#   Manas's 28 October agreement with the client: the bulk supporting
+#   material a schedule never carries — flanges, elbows, gaskets, nut-bolts —
+#   comes in from a sheet as EXTRA lines. It is not a standalone PI: the kind
+#   lands on a proforma's EDIT form (`?pi=`) or on one of its two CREATE forms
+#   (`?qid=` from a quotation, `?boq=` from a schedule), and **the lines copied
+#   from the quotation or the BOQ are untouched** — imported rows are appended
+#   after them, each marked `source: "excel"`. Nothing is saved until that
+#   form's own Save.
+
+class ProformaKind(Kind):
+    key = "proforma"
+    title = "extra lines for a proforma invoice"
+    noun = "proforma invoice"
+    endpoint = "proforma.edit_proforma"     # its permission: proforma.create
+    save_label = "Save"
+    max_rows = 300
+
+    def context(self, args):
+        for arg, coll, label in (("pi", "proformas", "proforma invoice"),
+                                 ("qid", "quotations", "quotation"),
+                                 ("boq", "boqs", "bill of quantities")):
+            val = str(args.get(arg) or "").strip()
+            if val:
+                if val not in (STORE.get(coll) or {}):
+                    return {}, f"That {label} no longer exists.", None
+                if arg == "boq" and val in BQ.superseded_ids():
+                    return {}, ("That schedule has been superseded. Raise the "
+                                "proforma against the current revision."), None
+                return {arg: val}, "", None
+        return {}, "", None
+
+    def back_url(self, ctx):
+        if ctx.get("pi"):
+            return url_for("proforma.edit_proforma", id=ctx["pi"])
+        if ctx.get("qid"):
+            return url_for("proforma.create_proforma", qid=ctx["qid"])
+        if ctx.get("boq"):
+            return url_for("proforma.from_boq", boq_id=ctx["boq"])
+        return url_for("proforma.list_proformas")
+
+    def schema(self, ctx):
+        return {"targets": [
+            SI.target("description", "Description", required=True,
+                      about="What the line is — a flange, an elbow, a gasket. A row "
+                            "with figures and no description is left out.",
+                      kw=r"descr|particular|\bitems?\b|material|\bname\b|specification",
+                      avoid=r"\bsr\b|s\.?\s?no|serial|\bcode\b|hsn|\bqty|quantit|\brate|price|amount|\bunits?\b|disc|gst"),
+            SI.target("part_no", "Part / item no", kw=r"\bpart\b|\bcode\b|item\s*no"),
+            SI.target("make", "Make", kw=_MAKE_KW),
+            SI.target("hsn", "HSN", kw=r"\bhsn\b|\bsac\b"),
+            SI.target("unit", "Unit", kw=r"\bunits?\b|\buom\b|u\.o\.m",
+                      avoid=r"rate|price|cost|amount"),
+            SI.target("qty", "Quantity", required=True,
+                      about="How many. A word or a sum written as text is left blank "
+                            "for you to fill — never turned into 0.",
+                      kw=r"\bqty\b|quantit|\bqnty\b|\bnos?\b\.?$", avoid=r"rate|amount|price"),
+            SI.target("rate", "Rate (₹)", kw=r"\brate\b|price|\bcost\b",
+                      avoid=r"amount|total|disc|gst"),
+            SI.target("discount", "Discount %", kw=r"disc"),
+            SI.target("gst", "GST %", kw=r"\bgst\b|\btax\b"),
+        ]}
+
+    def intro_html(self, ctx):
+        return ("<p class=\"imp-note\">Each row becomes one <b>extra line</b> on the "
+                "proforma invoice, after the lines copied from its quotation or "
+                "schedule &mdash; which are not changed. A blank rate or GST % stays "
+                "blank for you to fill.</p>")
+
+    def build(self, rows, rec):
+        items, notes = [], []
+        for r in rows:
+            c, n = r["cells"], r["row"]
+            desc, why = _t(c, "description")
+            if why or not desc:
+                notes.append(_note(n, "No description — left out.", "red"))
+                continue
+            vals = {}
+            for key in ("qty", "rate", "discount", "gst"):
+                if key not in c:
+                    vals[key] = None
+                    continue
+                v, k = c[key]
+                num, why = SI.cell_number(v, k, percent=key in ("discount", "gst"))
+                if why:
+                    notes.append(_note(n, f"{key.title()}: {why} — left blank."))
+                    num = None
+                elif num is not None and num < 0:
+                    notes.append(_note(n, f"A negative {key} — left blank."))
+                    num = None
+                vals[key] = num
+            if vals["qty"] is None:
+                notes.append(_note(n, "No quantity — left blank for you to fill."))
+            hsn, _w = _t(c, "hsn", SI.cell_code)
+            part, _w = _t(c, "part_no")
+            unit, _w = _t(c, "unit")
+            items.append({"row": n, "name": desc[:300], "part_no": part[:60],
+                          "make": _make_of(c, n, notes), "hsn": hsn[:8],
+                          "unit": unit[:30], "qty": BI.num_text(vals["qty"]),
+                          "price": BI.num_text(vals["rate"]),
+                          "discount_pct": BI.num_text(vals["discount"]),
+                          "gst_rate": BI.num_text(vals["gst"]), "is_header": False})
+        return {"items": items, "notes": notes,
+                "stats": [(len(items), "line" if len(items) == 1 else "lines")]}
+
+    def apply(self, token, rec, built):
+        import proforma as PF
+        ctx = rec.get("ctx") or {}
+        rows = [{k: v for k, v in it.items() if k != "row"} for it in built["items"]]
+        imported = {"rows": rows, "banner_html": _banner(self, rec, built)}
+        if ctx.get("pi"):
+            return PF.edit_proforma(ctx["pi"], imported=imported)
+        if ctx.get("qid"):
+            return PF.create_proforma(ctx["qid"], imported=imported)
+        if ctx.get("boq"):
+            return PF.from_boq(ctx["boq"], imported=imported)
+        return redirect(url_for("proforma.list_proformas", type="error",
+                                msg="Open Add lines from Excel from a proforma, "
+                                    "a quotation or a schedule."))
+
+
 KINDS = {k.key: k for k in (PurchaseKind(), QuotationKind(), MeasurementKind(),
                             ChallanKind(), DraftPOKind(), RAKind(),
-                            AddressKind(), SpecKind(), EmployeeKind())}
+                            AddressKind(), SpecKind(), EmployeeKind(),
+                            ProformaKind())}
 
 
 # =============================================================================

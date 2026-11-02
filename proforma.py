@@ -1026,7 +1026,7 @@ def list_proformas():
 
 
 @proforma_bp.route("/from/<qid>", methods=["GET", "POST"])
-def create_proforma(qid: str):
+def create_proforma(qid: str, imported: dict = None):
     """
     Raise a proforma invoice from a quotation.
 
@@ -1090,6 +1090,15 @@ def create_proforma(qid: str):
                      f"&#8377;&nbsp;{invoiced:,.0f}. "
                      f"Tick the box below to raise it anyway.")
 
+        # Extra lines imported from a sheet (31 Oct 2026, §0 sixty-fourth
+        # block, Part 5) — refused by shape before any number is reserved.
+        extras = []
+        if not error and f.get(LE.EXTRA_FIELD):
+            extras, error = LE.parse(
+                f.get(LE.EXTRA_FIELD), [], min_lines=0,
+                default_gst=LE.uniform_gst(q.get("tax_type", "exempt"),
+                                           q.get("tax_info") or {}))
+
         # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth block,
         #   item A point 9.
         if not error:
@@ -1118,6 +1127,20 @@ def create_proforma(qid: str):
             round_on = RO_.form_choice(f, legacy=True)
             pi_grand, pi_ro = RO_.apply(pi_sub + float(pi_tax.get("total") or 0.0),
                                         round_on)
+            pi_qty = q.get("total_qty", 0)
+            if extras:
+                # ⚠ The copied lines keep every value they had; each gains only
+                #   the quotation's one rate as `gst_rate`, so the document can
+                #   be taxed per slab with the extra lines beside them.
+                one = LE.uniform_gst(q.get("tax_type", "exempt"), q.get("tax_info") or {})
+                for r in pi_lines:
+                    if not r.get("is_header") and r.get("gst_rate") in (None, ""):
+                        r["gst_rate"] = one
+                pi_lines = pi_lines + extras
+                pi_sub, pi_tax, pi_grand, pi_ro, _q = LE.tax_figures(
+                    pi_lines, q.get("tax_type", "exempt"), round_on)
+                pi_qty = float(q.get("total_qty") or 0) + sum(
+                    float(r.get("qty") or 0) for r in extras)
             pid = str(uuid.uuid4())
             pi = {
                 "id":  pid,
@@ -1160,7 +1183,7 @@ def create_proforma(qid: str):
                 "grand_total": pi_grand,
                 "round_off":   pi_ro,
                 _RO().FIELD:   round_on,
-                "total_qty":   q.get("total_qty", 0),
+                "total_qty":   pi_qty,
 
                 # ── The invoice's own fields ──────────────────────────────
                 "po_number":     (f.get("po_number") or "").strip(),
@@ -1388,6 +1411,19 @@ def create_proforma(qid: str):
 
     q_view = url_for("quotation.view_quotation", id=qid)
 
+    # Extra lines from a sheet (31 Oct 2026, §0 sixty-fourth block, Part 5):
+    # what the import brought, or what a refused POST carried back. The
+    # section draws only for a reader the import gate admits, or when there
+    # are rows, so it is the button and nothing else on an ordinary form.
+    import auth as _AUTH
+    extra_rows = (LE.imported_rows((imported or {}).get("rows")) if imported
+                  else LE.posted_rows(f.get(LE.EXTRA_FIELD)) if request.method == "POST"
+                  else [])
+    import_url = (url_for("docimport.upload_proforma", qid=qid)
+                  if _AUTH.can_reach("docimport.upload_proforma") else "")
+    extras_html = LE.extras_html(extra_rows, import_url)
+    import_banner = (imported or {}).get("banner_html") or ""
+
     _default_seq, pi_number_html = _number_control(
         f.get("doc_no_seq") if request.method == "POST" else "", may_number)
 
@@ -1405,7 +1441,7 @@ def create_proforma(qid: str):
         </div>
       </div>
 
-      {_alert(error, "error")}
+      {_alert(error, "error")}{import_banner}
 
       <div class="src-note">
         From quotation <b>{P.esc(q.get('ref'))}</b> dated {P.esc(q.get('date'))}
@@ -1502,6 +1538,7 @@ def create_proforma(qid: str):
           <div class="section-title">Items being invoiced &mdash; frozen at issue</div>
           {frozen_html}
         </div>
+        {extras_html}
 
         <div class="form-actions">
           <button type="submit" class="btn">Raise Proforma Invoice</button>
@@ -1516,7 +1553,7 @@ def create_proforma(qid: str):
 
 
 @proforma_bp.route("/from-boq/<boq_id>", methods=["GET", "POST"])
-def from_boq(boq_id: str):
+def from_boq(boq_id: str, imported: dict = None):
     """
     Raise a proforma invoice FROM a bill of quantities (22 October 2026).
 
@@ -1585,6 +1622,13 @@ def from_boq(boq_id: str):
         error = error or line_err
         items, item_err = ([], "") if error else boq_line_items(picked, boq, leg)
         error = error or item_err
+        # Extra lines imported from a sheet (31 Oct 2026, §0 sixty-fourth
+        # block, Part 5): appended AFTER the schedule's lines, which are not
+        # touched, and taxed with them per slab — `boq_figures()`'s own rule.
+        extras = []
+        if not error and f.get(LE.EXTRA_FIELD):
+            extras, error = LE.parse(f.get(LE.EXTRA_FIELD), [], min_lines=0,
+                                     default_gst=_BOQ_DEFAULT_GST)
 
         if not error:
             default_seq = SER.next_seq("PI", "")
@@ -1596,6 +1640,10 @@ def from_boq(boq_id: str):
             round_on = _RO().form_choice(f, legacy=True)
             subtotal, tax_info, grand, total_qty = boq_figures(items, head,
                                                                round_on)
+            if extras:
+                items = items + extras
+                subtotal, tax_info, grand, _ro, total_qty = LE.tax_figures(
+                    items, head, round_on)
             due = _RO().apply(grand * pct / 100.0, round_on)[0]
             pid = str(uuid.uuid4())
             pi = {
@@ -1696,6 +1744,14 @@ def from_boq(boq_id: str):
     proj = (STORE.get("projects") or {}).get(boq_project_id(boq)) or {}
     proj_bit = (f' &middot; project <b>{P.esc(proj.get("name"))}</b>' if proj else "")
     back = url_for("boq.view_boq", id=boq_id)
+    # Extra lines from a sheet (31 Oct 2026, §0 sixty-fourth block, Part 5).
+    import auth as _AUTH
+    extra_rows = (LE.imported_rows((imported or {}).get("rows")) if imported
+                  else LE.posted_rows(f.get(LE.EXTRA_FIELD)) if is_post else [])
+    import_url = (url_for("docimport.upload_proforma", boq=boq_id)
+                  if _AUTH.can_reach("docimport.upload_proforma") else "")
+    extras_html = LE.extras_html(extra_rows, import_url)
+    import_banner = (imported or {}).get("banner_html") or ""
 
     _default_seq, pi_number_html = _number_control(
         f.get("doc_no_seq") if is_post else "", may_number)
@@ -1714,7 +1770,7 @@ def from_boq(boq_id: str):
         </div>
       </div>
 
-      {_alert(error, "error")}
+      {_alert(error, "error")}{import_banner}
 
       <div class="src-note">
         From bill of quantities <b>{P.esc(boq.get('ref'))}</b>
@@ -1807,6 +1863,7 @@ def from_boq(boq_id: str):
           </div>
         </div>
 {boq_grid(boq, chosen, qty_of, "pi_json", "proforma invoice")}
+        {extras_html}
         <div class="form-actions">
           <button type="submit" class="btn">Raise Proforma Invoice</button>
           <a href="{back}" class="btn btn-ghost">Cancel</a>
@@ -1962,8 +2019,15 @@ def _pi_seq(pi: dict) -> int:
 
 
 @proforma_bp.route("/edit/<id>", methods=["GET", "POST"])
-def edit_proforma(id: str):
-    """Correct an issued proforma — every field. See EDIT above."""
+def edit_proforma(id: str, imported: dict = None):
+    """
+    Correct an issued proforma — every field. See EDIT above.
+
+    `imported` (31 Oct 2026, Part 5) is Import from Excel's seam, exactly as
+    the six create routes' is: Flask never passes it and the POST never reads
+    it. The sheet's rows are APPENDED to the editor as new lines (no `_k`,
+    marked `source: "excel"`); nothing is saved until Save.
+    """
     pi = STORE["proformas"].get(id)
     if not pi:
         return redirect(url_for("proforma.list_proformas",
@@ -2035,6 +2099,8 @@ def edit_proforma(id: str):
         round_shown = _RO().form_choice(f, legacy=_RO().is_on(pi, True))
     else:
         rows = LE.rows_for_form(stored_lines, default_gst)
+        if imported:
+            rows += LE.imported_rows(imported.get("rows"))
         vals = {k: str(pi.get(k) or "") for k in head_keys}
         vals.update({k: pi.get(k, "") for k, _l in PARTY_FIELDS})
         vals["advance_pct"] = f"{float(pi.get('advance_pct') or 100.0):g}"
@@ -2062,6 +2128,11 @@ def edit_proforma(id: str):
                    f'show where they now differ.</span></div>')
     view_url = url_for("proforma.view_proforma", id=id)
     form_action = url_for("proforma.edit_proforma", id=id)
+    import auth as _AUTH
+    xl_btn = (f'<div class="le-bar"><a class="btn btn-ghost" '
+              f'href="{url_for("docimport.upload_proforma", pi=id)}">&#128229; Add lines '
+              f'from Excel</a></div>'
+              if _AUTH.can_reach("docimport.upload_proforma") else "")
 
     def box(name, label, kind="text", extra=""):
         return (f'<div class="form-group"><label for="{name}">{label}</label>'
@@ -2077,7 +2148,7 @@ def edit_proforma(id: str):
         <h1>Edit <span>{P.esc(pi.get("ref"))}</span></h1>
         <a href="{view_url}" class="btn btn-ghost">&#8592; Back to the proforma</a>
       </div>
-      {_alert(error, "error")}
+      {_alert(error, "error")}{(imported or {}).get("banner_html") or ""}
       {ti_note}
       <form method="POST" action="{form_action}">
         <div class="form-section">
@@ -2115,6 +2186,7 @@ def edit_proforma(id: str):
           <div class="form-group" style="max-width:280px;"><label for="tax_type">Tax head</label>
             <select id="tax_type" name="tax_type">{tax_opts}</select></div>
           {LE.editor_html(rows, form_selector='form[action$="' + form_action + '"]')}
+          {xl_btn}
           {_RO().checkbox_html(round_shown)}
         </div>
         <div class="form-actions">

@@ -39,6 +39,8 @@ import pipeline as P
 import roundoff as RO
 
 FIELD = "lines_json"
+EXTRA_FIELD = "extra_json"     # a create form's imported extra lines (Part 5)
+SOURCE_EXCEL = "excel"         # `source` on a line that came in from a sheet
 
 # What the form edits. Everything else on a stored row is carried from it.
 EDITED = ("name", "part_no", "make", "hsn", "qty", "unit", "price",
@@ -113,6 +115,10 @@ def posted_rows(raw: str) -> list:
         k = r.get("_k")
         if isinstance(k, int) and not isinstance(k, bool) and k >= 0:
             row["_k"] = k
+        # A row that came in from a sheet (Part 5) keeps its one mark — the
+        # only value accepted is the literal, so nothing else rides along.
+        if r.get("source") == SOURCE_EXCEL:
+            row["source"] = SOURCE_EXCEL
         out.append(row)
     return out
 
@@ -182,6 +188,8 @@ def parse(raw: str, stored: list, *, default_gst: float = 0.0,
         })
         base.setdefault("type", "item")
         base.setdefault("depth", 0)
+        if not isinstance(k, int) and r.get("source") == SOURCE_EXCEL:
+            base["source"] = SOURCE_EXCEL
         make = r.get("make", "").strip()
         if make:
             base["make"] = make
@@ -358,3 +366,51 @@ def editor_html(rows: list, *, gst: bool = True, field: str = FIELD,
   <button type="button" class="btn btn-ghost" id="le-add-head">+ Add heading</button>
 </div>
 {script}"""
+
+
+# ── Imported extra lines (31 Oct 2026, §0 sixty-fourth block, Part 5) ────────
+
+def imported_rows(rows) -> list:
+    """Rows a sheet produced, as editor rows: strings, no `_k`, marked excel."""
+    out = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        row = {k: str(r.get(k) if r.get(k) is not None else "") for k in EDITED
+               if k != "is_header"}
+        row["is_header"] = False
+        row["source"] = SOURCE_EXCEL
+        out.append(row)
+    return out
+
+
+def extras_html(rows: list, import_url: str = "") -> str:
+    """
+    A create form's extra lines: a read-only list and the hidden field that
+    carries them to the save. "" when there are none and no import link —
+    so a create form nobody imported onto renders exactly as it did.
+    """
+    link = (f'<a class="btn btn-ghost" href="{P.esc(import_url)}">&#128229; Add lines '
+            f'from Excel</a>' if import_url else "")
+    if not rows:
+        return (f'<div class="le-bar" style="margin:.4rem 0 1rem;">{link}</div>'
+                if link else "")
+    body = "".join(
+        f'<tr><td>{P.esc(r.get("name"))}</td><td>{P.esc(r.get("make"))}</td>'
+        f'<td>{P.esc(r.get("hsn"))}</td><td style="text-align:right;">{P.esc(r.get("qty"))}</td>'
+        f'<td>{P.esc(r.get("unit"))}</td><td style="text-align:right;">{P.esc(r.get("price"))}</td>'
+        f'<td style="text-align:right;">{P.esc(r.get("discount_pct"))}</td>'
+        f'<td style="text-align:right;">{P.esc(r.get("gst_rate"))}</td></tr>' for r in rows)
+    return f"""{EDITOR_CSS}
+<div class="form-section">
+  <div class="section-title">Extra lines from Excel &mdash; added after the copied lines</div>
+  <div class="le-wrap"><table class="le-table">
+    <thead><tr><th>Description</th><th>Make</th><th>HSN</th><th>Qty</th><th>Unit</th>
+      <th>Rate</th><th>Disc %</th><th>GST %</th></tr></thead>
+    <tbody>{body}</tbody></table></div>
+  <p class="frozen-hint">These come in as extra lines; the lines copied above are not
+    changed. A blank GST % is taxed at the document's rate. To change one, raise the
+    proforma and use <b>Edit</b>.</p>
+  <input type="hidden" name="{EXTRA_FIELD}" value="{P.esc(json.dumps(rows))}"/>
+  <div class="le-bar">{link}</div>
+</div>"""

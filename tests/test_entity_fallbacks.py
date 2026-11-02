@@ -500,9 +500,13 @@ def populated(client):
                         ["FIX-IMP", "Fixture clause", "Fixture text", "25 mm"]],
         "employee":    [["Name", "Emp Code", "Day rate"], ["Fixture person", "FX-1", 900],
                         ["Fixture dup", "FX-1", 900]],
+        # 31 Oct 2026, §0 sixty-fourth block, Part 5 — extra lines on the PI.
+        "proforma":    [["Description", "Make", "Qty", "Unit", "Rate", "GST %"],
+                        ["Flange 50 NB", "Fixture make", 4, "Nos", 120, 18]],
     }
     _doc_ctx = {"measurement": {"boq_id": bid}, "challan": {"boq_id": bid},
-                "dpo": {"boq_id": bid}, "ra": {"boq_id": bid, "leg": "supply"}}
+                "dpo": {"boq_id": bid}, "ra": {"boq_id": bid, "leg": "supply"},
+                "proforma": {"pi": pid}}
     doc_tokens = {}
     for _k, _rows in _doc_rows.items():
         _t = docimport.stage(docimport.KINDS[_k],

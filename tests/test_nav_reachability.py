@@ -418,6 +418,10 @@ UNLINKED_ON_PURPOSE = {
                                     "Spec form's Import button",
     "docimport.upload_employee":    "many employees at once, linked from the New "
                                     "Employee form's Import button",
+    # 31 Oct 2026, §0 sixty-fourth block, Part 5.
+    "docimport.upload_proforma":    "extra lines on a proforma, linked from the "
+                                    "proforma's Edit form and its two create forms' "
+                                    "Add lines from Excel button",
 }
 
 
