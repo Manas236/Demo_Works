@@ -16716,7 +16716,16 @@ text is unchanged, and every reference to them was moved with them.*
     inside; they need a typed-number parameter). And typing a number on
     **EDIT** for any of the new kinds.
 
-105. 🟡 **A BOQ has no in-place edit route yet — OPEN** (§0 sixty-fourth block,
+105. ✅ **CLOSED 2 November 2026** (§0 block of that date, Part 2). `GET,POST
+    /boq/edit/<id>` (`boq.edit_boq`, EXISTING `boq.create`) is `/boq/create`'s
+    form prefilled (`_edit_prefill()`) and saved onto the record: sections,
+    lines, sub-items, every rate column (base, escalation, discount), party,
+    project, terms, the round-off tick and the ROOT's number (forward only;
+    its revisions' `<root>/N` follow). Lock 2: `revision_blockers()` refuses
+    deleting a line claimed on the chain, and `claimed_qty_by_line()` (live
+    bills, the whole chain via `chain_ids()`) refuses cutting its quantity
+    below the claim. Every edit logged with the screen-only band on
+    `/boq/view`. The revision flow is unchanged. *As it was opened:* **A BOQ has no in-place edit route yet — OPEN** (§0 sixty-fourth block,
     Part 2). A BOQ is still corrected by a REVISION through `/boq/create
     ?revise=`, with `revision_blockers()` and the over-claim guard exactly as
     they were. The brief's in-place edit (lines / sections / party, a

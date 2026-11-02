@@ -642,6 +642,9 @@ def populated(client):
             "/ra/edit-text/<id>":      paid_rid,   # an ISSUED bill — a draft redirects
             "/merged/edit/<id>":       mgid,
             "/quotation/edit/<id>":    qid,
+            # 2 Nov 2026 — the BOQ's in-place edit (the create form prefilled
+            # with every line, so the payload reaches it through all of them).
+            "/boq/edit/<id>":          bid,
             # The two BOQ-side create forms. Both render a populated page: the
             # first the whole 97-line picker with a rate box per line, the
             # second the draft's own rows — and `_a_draft_po` deliberately

@@ -3377,6 +3377,12 @@ def view_boq(id: str):
     else:
         revise_btn = (f'<a href="{url_for("boq.create_boq", revise=id)}" '
                       f'class="btn btn-ghost">&#8635;&nbsp;Revise</a>')
+    # The in-place EDIT (2 Nov 2026, Part 2) — beside Revise, on every BOQ, for
+    # whoever the registry lets reach it. Presentation, not the gate.
+    import auth as _AUTH_E
+    if _AUTH_E.can_reach("boq.edit_boq"):
+        revise_btn = (f'<a href="{url_for("boq.edit_boq", id=id)}" '
+                      f'class="btn btn-ghost">&#9998;&nbsp;Edit</a>' + revise_btn)
 
     # ── Start an RA bill against this BOQ ────────────────────────────────
     # A LINK and nothing else. `/ra/create` already builds the whole prefilled
@@ -3709,7 +3715,7 @@ def view_boq(id: str):
   </div>
 </div>
 {raise_html}
-{alert_html}
+{alert_html}{_editlog_band(boq)}
 {panel_html}
 {unpriced_html}
 {hsn_note}
@@ -6020,8 +6026,126 @@ startNeeds();
 """
 
 
+# =============================================================================
+# IN-PLACE EDIT — 2 November 2026 (CLIENT_CHANGES.md §0 block of that date,
+# Part 2; ABOUT.md §7 gap 105 closed)
+# =============================================================================
+#
+# `/boq/edit/<id>` is `/boq/create`'s own form, prefilled from the record and
+# saved ONTO it: sections, lines and sub-items (add / remove / move / every
+# column, base / escalation / discount included), the party, the project, the
+# terms, the round-off tick and the ROOT's number (forward only). A revision
+# is still made through `?revise=`, with `revision_blockers()` and the
+# over-claim guard exactly as they were.
+#
+# ⚠ **Lock 2, and nothing else.** A line claimed on any RA bill of the chain
+#   cannot be DELETED (`revision_blockers()`, reused rather than restated) and
+#   its quantity cannot go BELOW what the live bills claim on it
+#   (`claimed_qty_by_line()`). Everything else is editable in place.
+# ⚠ Every in-place edit is logged (`editlog`, a BOQ is a sent schedule — the
+#   proforma's precedent) with the screen-only band on `/boq/view`; the print
+#   carries none.
+
+BOQ_EDIT_FIELDS = (("ref", "BOQ No."), ("date", "Date"), ("project_name", "Project name"),
+                   ("site_location", "Site"), ("account_name", "Customer"),
+                   ("contact_person", "Contact person"), ("to", "Billing address"),
+                   ("bill_gstin", "Customer GSTIN"), ("ship_acct_name", "Ship-to name"),
+                   ("ship_addr", "Ship-to address"), ("ship_city", "Ship-to city"),
+                   ("ship_pin", "Ship-to PIN"), ("rate_basis_label", "Rate basis"),
+                   ("payment_terms", "Payment terms"), ("delivery_terms", "Terms of delivery"),
+                   ("notes", "Note"), ("project_id", "Project"),
+                   ("round_off_on", "Round off to nearest rupee"),
+                   ("subtotal", "Subtotal"))
+
+
+def chain_ids(boq_id: str) -> set:
+    """Every BOQ id in this id's revision chain — root, ancestors AND descendants."""
+    root = str((chain_root(boq_id) or {}).get("id") or boq_id or "")
+    out = set()
+    for bid in (STORE.get("boqs") or {}):
+        if str((chain_root(bid) or {}).get("id") or "") == root:
+            out.add(bid)
+    return out
+
+
+def claimed_qty_by_line(boq_id: str) -> dict:
+    """
+    `{line_id: qty}` claimed on every LIVE (not cancelled) RA bill of this
+    BOQ's whole chain — lock 2's floor. Read straight off `STORE["ra_bills"]`
+    because boq.py may never import ra.py (ABOUT.md §2b), the same one-way
+    trick `claims_against_chain()` uses.
+    """
+    ids = chain_ids(boq_id)
+    out: dict = {}
+    for bill in (STORE.get("ra_bills") or {}).values():
+        if str(bill.get("boq_id") or "") not in ids:
+            continue
+        if str(bill.get("status") or "").strip().lower() == "cancelled":
+            continue
+        for c in bill.get("claims") or []:
+            lid = _line_id(c.get("line_id"))
+            q = float(_num(c.get("qty"), 0.0))
+            if lid and q > 0:
+                out[lid] = out.get(lid, 0.0) + q
+    return out
+
+
+def _editlog_band(boq: dict) -> str:
+    """The screen-only edit band on `/boq/view`, or "" (2 Nov 2026)."""
+    import editlog as _EL
+    return _EL.band(boq, "bill of quantities")
+
+
+def _boq_log_lines(lines: list) -> list:
+    """A BOQ's lines in `editlog.line_text()`'s shape — words, qty, both rates."""
+    out = []
+    for li in lines or []:
+        rates = " / ".join(f"{k.split('_')[0]} {li.get(k):g}" for k in ("supply_rate", "install_rate")
+                           if isinstance(li.get(k), (int, float)))
+        out.append({"is_header": bool(li.get("is_header")),
+                    "name": f"{li.get('item_no') or ''} {li.get('description') or ''}".strip(),
+                    "qty": li.get("total_qty"), "unit": li.get("unit"),
+                    "price": rates, "total": ""})
+    return out
+
+
+def _edit_prefill(boq: dict) -> tuple:
+    """`(boot, prefill)` for the edit form — `_form_payload_from()` plus what an
+    edit has to show that a revision does not (the date, the ship-to block,
+    the billing address as stored)."""
+    boot, prefill = _form_payload_from(boq)
+    acct = str(boq.get("account_name") or "")
+    to_lines = [l for l in str(boq.get("to") or "").split("\n")]
+    if to_lines and to_lines[0].strip() == acct.strip():
+        to_lines = to_lines[1:]
+    to_lines = [l for l in to_lines if not l.startswith("GSTIN: ")]
+    prefill.update({
+        "date": boq.get("date", ""), "rev_no": str(int(_num(boq.get("rev_no"), 0))),
+        "supersedes": boq.get("supersedes", ""),
+        "bill_addr": "\n".join(to_lines), "bill_city": "", "bill_state": "",
+        "bill_pin": "",
+        "ship_same": "1" if boq.get("ship_same") else "",
+        "ship_acct_name": boq.get("ship_acct_name", ""),
+        "ship_addr": boq.get("ship_addr", ""), "ship_city": boq.get("ship_city", ""),
+        "ship_pin": boq.get("ship_pin", ""),
+        "company_branch": boq.get("company_branch", ""),
+        "auth_signatory": boq.get("auth_signatory", ""),
+        "project_id": boq.get("project_id", ""),
+    })
+    return boot, prefill
+
+
+@boq_bp.route("/edit/<id>", methods=["GET", "POST"])
+def edit_boq(id: str):
+    """The in-place edit — see the section note above."""
+    boq = (STORE.get("boqs") or {}).get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
+    return create_boq(editing=boq)
+
+
 @boq_bp.route("/create", methods=["GET", "POST"])
-def create_boq(imported: dict = None):
+def create_boq(imported: dict = None, editing: dict = None):
     """
     ⚠ `imported` is the ONE seam Import BOQ from Excel uses (29 September
       2026). Flask never passes it — `/boq/create` has no URL variables — so a
@@ -6060,7 +6184,114 @@ def create_boq(imported: dict = None):
     # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS:
     # the page below re-reads the posted form exactly as a refused save does;
     # nothing is checked, nothing is saved, no number is spent.
-    if request.method == "POST" and not FD.is_resume(request.form):
+    if request.method == "POST" and not FD.is_resume(request.form) and editing is not None:
+        form = request.form
+        err_idx = -1
+        raw_json = form.get("boq_json", "")
+        raw_sections, raw_lines, error = _parse_payload(raw_json)
+        if not error and not (form.get("date") or "").strip():
+            error = "The BOQ needs a date."
+        if not error and not (form.get("project_name") or "").strip():
+            error = "The BOQ needs a project name."
+        if not error:
+            sections, error = _clean_sections(raw_sections)
+        if not error:
+            lines, error, err_idx = _clean_lines(
+                raw_lines, sections, len(raw_json.encode("utf-8")))
+        # LOCK 2 — a claimed line is not deleted, and its quantity does not go
+        # below what the live bills claim on it.
+        if not error:
+            blockers = revision_blockers(editing.get("line_items") or [], lines,
+                                         claims_against_chain(editing["id"]))
+            if blockers:
+                error = ("This edit removes lines that have already been "
+                         "claimed against.")
+        if not error:
+            floor = claimed_qty_by_line(editing["id"])
+            for li in lines:
+                lid = _line_id(li.get("line_id"))
+                if lid in floor and not li.get("is_header"):
+                    q = li.get("total_qty")
+                    if q is None or float(q) + 1e-9 < floor[lid]:
+                        error = (f"Item {P.esc(_item_no(li.get('item_no')))} has "
+                                 f"{floor[lid]:g} already claimed on RA bills, so its "
+                                 f"quantity cannot go below {floor[lid]:g} (it is "
+                                 f"{'blank' if q is None else f'{float(q):g}'} here).")
+                        break
+        # The ROOT's number, forward only; a revision's is its root's.
+        _new_ref = str(editing.get("ref") or "")
+        if not error and not editing.get("supersedes"):
+            import docnum as _DN
+            _own_n = _DN.root_ordinal_of(_new_ref)
+            _fy = _DN.fy_of_ref(_new_ref, editing.get("fy"))
+            _n, error = _DN.validate(_DN.BOQ, _fy, form.get("doc_no_seq"), _own_n,
+                                     _may_set_number())
+            if not error and _n != _own_n:
+                _new_ref = P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, _fy, _n, cap=_REF_CAP)
+        if not error:
+            import editlog as _EL
+            before = {k: v for k, v in editing.items() if k != _EL.FIELD}
+            before_lines = [dict(li) for li in editing.get("line_items") or []]
+            prev_rec = STORE["boqs"].get(str(editing.get("supersedes") or ""))
+            new_pid = _PJ.project_id_for_boq(form, prev_rec)
+            editing.update({
+                "date": (form.get("date") or "").strip(),
+                "project_id": new_pid,
+                "project_name": (form.get("project_name") or "").strip(),
+                "site_location": (form.get("site_location") or "").strip(),
+                "account_name": (form.get("account_name") or "").strip(),
+                "contact_person": (form.get("contact_person") or "").strip(),
+                "to": _to_block(form),
+                "bill_gstin": (form.get("bill_gstin") or "").strip(),
+                "ship_same": bool(form.get("ship_same")),
+                "ship_acct_name": (form.get("ship_acct_name") or "").strip(),
+                "ship_addr": (form.get("ship_addr") or "").strip(),
+                "ship_city": (form.get("ship_city") or "").strip(),
+                "ship_state": (form.get("ship_state") or "").strip(),
+                "ship_pin": (form.get("ship_pin") or "").strip(),
+                "rate_basis_label": (form.get("rate_basis_label") or "").strip() or DEFAULT_RATE_BASIS,
+                "sections": sections, "line_items": lines,
+                "payment_terms": (form.get("payment_terms") or "").strip(),
+                "delivery_terms": (form.get("delivery_terms") or "").strip(),
+                "notes": (form.get("notes") or "").strip(),
+                "company_branch": (form.get("company_branch") or "").strip(),
+                "auth_signatory": (form.get("auth_signatory") or "").strip(),
+                BLANK_MODEL_KEY: BLANK_MODEL,
+            })
+            sup, ins, tot = boq_totals(editing)
+            editing["supply_subtotal"], editing["install_subtotal"] = sup, ins
+            editing["subtotal"] = tot
+            editing[RO.FIELD] = RO.form_choice(form, legacy=RO.is_on(editing, False))
+            _t, editing["round_off"], _g = grand_of(editing)
+            if _new_ref != str(before.get("ref") or ""):
+                # The root renumbered: every revision of it follows (`<root>/N`).
+                old_ref = str(before.get("ref") or "")
+                editing["ref"] = _new_ref
+                _DN.note_used(_DN.BOQ, _fy, _n)
+                _DN.record_override(editing, old_ref, _new_ref, _actor_id())
+                for b in (STORE.get("boqs") or {}).values():
+                    r_ = str(b.get("ref") or "")
+                    if b is not editing and r_.startswith(old_ref + "/"):
+                        b["ref"] = _new_ref + r_[len(old_ref):]
+            changes = (_EL.diff(before, editing, BOQ_EDIT_FIELDS)
+                       + _EL.line_diff(_boq_log_lines(before_lines),
+                                       _boq_log_lines(editing["line_items"])))
+            _EL.record(editing, changes, _actor_id())
+            learn_into_library(editing)
+            n = len(changes)
+            return redirect(url_for("boq.view_boq", id=editing["id"], type="success",
+                                    msg=(f"BOQ {editing['ref']} updated — {n} change"
+                                         f"{'' if n == 1 else 's'} logged." if n
+                                         else "Nothing changed.")))
+        sections = raw_sections if isinstance(raw_sections, list) else []
+        lines = raw_lines if isinstance(raw_lines, list) else []
+        if 0 <= err_idx < len(lines) and isinstance(lines[err_idx], dict):
+            lines[err_idx]["_open"] = True
+        annotate_needs(lines, sections, with_errors=True)
+        form_needs = [k for k in ("date", "project_name")
+                      if not (form.get(k) or "").strip()]
+
+    if request.method == "POST" and not FD.is_resume(request.form) and editing is None:
         form = request.form
 
         # Validation, in order — nothing is written to STORE until every one
@@ -6365,10 +6596,15 @@ def create_boq(imported: dict = None):
     if request.method == "GET" and request.args.get("project_id"):
         prefill["project_id"] = request.args.get("project_id")
 
+    # The in-place edit (2 Nov 2026): the record itself, as the editor.
+    if editing is not None and request.method == "GET":
+        boot, prefill = _edit_prefill(editing)
+
     # Import from Excel (29 September 2026). Last, so it wins over anything a
     # query string asked for; the banner is already escaped by boqimport.py.
     import_banner = ""
-    form_action = ""
+    form_action = (f' action="{url_for("boq.edit_boq", id=editing["id"])}"'
+                   if editing is not None else "")
     if imported is not None and request.method == "GET":
         boot = imported["boot"]
         prefill = dict(imported.get("prefill") or {})
@@ -6428,6 +6664,14 @@ def create_boq(imported: dict = None):
             f' &middot; {P.esc(_cb.get("account_name"))}</option>')
     supersedes_html = ('<select id="supersedes" name="supersedes">'
                        + "".join(_opts) + "</select>")
+    if editing is not None:
+        # An in-place edit never changes what a record supersedes.
+        _sup = STORE["boqs"].get(str(editing.get("supersedes") or "")) or {}
+        supersedes_html = (f'<input type="hidden" name="supersedes" '
+                           f'value="{P.esc(editing.get("supersedes") or "")}"/>'
+                           f'<div class="readonly-field">'
+                           f'{P.esc(_sup.get("ref")) or "Original schedule"}</div>')
+        _chosen = str(editing.get("supersedes") or "")
 
     # ── The ROOT number (2 Nov 2026, Part 4) — on an original only. A
     #    revision is numbered off its root (`<root>/N`) and never retyped, so
@@ -6440,7 +6684,9 @@ def create_boq(imported: dict = None):
             or str(_date.today())
         _root_number_html = (
             f'{_DN.NUMBER_STYLES}<div class="form-group"><label for="doc_no_seq">BOQ No.</label>'
-            + _DN.number_field(_DN.BOQ, _next_ref(_today), may_override=_may_set_number(),
+            + _DN.number_field(_DN.BOQ, (editing.get("ref") if editing is not None
+                                         else _next_ref(_today)),
+                               may_override=_may_set_number(),
                                typed=(request.form.get("doc_no_seq")
                                       if request.method == "POST" else ""))
             + '<small class="field-hint">A revision keeps its root\'s number '
@@ -6537,7 +6783,7 @@ def create_boq(imported: dict = None):
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{B.page_title("Create BOQ")}</title>{B.HEAD_ICON}
+  <title>{B.page_title("Edit " + str(editing.get("ref")) if editing is not None else "Create BOQ")}</title>{B.HEAD_ICON}
   {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_IMPORT_STYLES}
 </head>
 <body>
@@ -6545,7 +6791,7 @@ def create_boq(imported: dict = None):
 <main>
   {alert_html}
   <div class="page-top">
-    <h1>Create <span>BOQ</span></h1>
+    <h1>{"Edit" if editing is not None else "Create"} <span>{P.esc(editing.get("ref")) if editing is not None else "BOQ"}</span></h1>
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">&#8592; All BOQs</a>
       <a href="{url_for('boqimport.upload')}" class="btn btn-ghost">
@@ -6781,14 +7027,14 @@ def create_boq(imported: dict = None):
           <input type="text" id="auth_signatory" name="auth_signatory" value="{_v('auth_signatory')}"
                  placeholder="{P.esc(B.COMPANY_SIGNATORY)}"/>
         </div>
-        {RO.checkbox_html(RO.form_choice(request.form, legacy=False) if request.method == "POST" else True,
+        {RO.checkbox_html(RO.form_choice(request.form, legacy=False) if request.method == "POST" else (RO.is_on(editing, False) if editing is not None else True),
                           "The grand total only &mdash; no line, section or leg is rounded.")}
       </div>
     </div>
 
     <div style="display:flex;gap:.8rem;justify-content:flex-end;margin-bottom:2rem;">
       <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Cancel</a>
-      <button type="submit" class="btn">Create BOQ</button>
+      <button type="submit" class="btn">{"Save changes" if editing is not None else "Create BOQ"}</button>
     </div>
   </form>
   {FD.script('form[onsubmit="return saveJSON()"]', "bill of quantities", resumed=request.method == "POST" and FD.is_resume(request.form))}

@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 92 permissions · 215 classified endpoints.**
+**7 roles · 92 permissions · 216 classified endpoints.**
 
 ---
 
@@ -358,7 +358,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `dashboard.view` | `dashboard.index` |
 | `extractor.view` | `extractor.index` |
 | `boq.view` | `boq.list_boqs`, `boq.view_boq` |
-| `boq.create` | `boq.create_boq`, `boq.fill_hsn`, `boqimport.form`, `boqimport.preview`, `boqimport.upload` |
+| `boq.create` | `boq.create_boq`, `boq.edit_boq`, `boq.fill_hsn`, `boqimport.form`, `boqimport.preview`, `boqimport.upload` |
 | `boq.delete` | `boq.delete_boq` |
 | `boq.print` | `boq.print_boq` |
 | `measurement.view` | `measurement.list_ms`, `measurement.view_ms` |

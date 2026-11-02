@@ -869,6 +869,10 @@ ROUTE_PERMISSIONS = {
     "boq.list_boqs":              "boq.view",
     "boq.view_boq":               "boq.view",
     "boq.create_boq":             "boq.create",
+    # The in-place edit (2 Nov 2026, §0 block of that date, Part 2) — the
+    # create form saved onto the record, under the create permission (the
+    # pattern every other edit route here follows).
+    "boq.edit_boq":               "boq.create",
     # The largest blast radius in the app — a BOQ is the root of the whole
     # execution chain. Classified once, as `boq.delete`: the GET renders a
     # confirmation naming every dependent record and destroys nothing, the

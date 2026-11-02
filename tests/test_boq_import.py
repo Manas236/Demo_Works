@@ -1084,7 +1084,13 @@ def test_every_import_route_carries_the_boq_create_permission():
     #   `boq.create` still fails here. The row it replaces, verbatim:
     #       assert ("| `boq.create` | `boq.create_boq`, `boqimport.form`, "
     #               "`boqimport.preview`, `boqimport.upload` |") in doc
-    assert ("| `boq.create` | `boq.create_boq`, `boq.fill_hsn`, "
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 2):
+    #   the row gained `boq.edit_boq`, the in-place edit, classified under this
+    #   SAME permission (the create form saved onto the record). Still the
+    #   exact generated row. The row it replaces, verbatim:
+    #       assert ("| `boq.create` | `boq.create_boq`, `boq.fill_hsn`, "
+    #               "`boqimport.form`, `boqimport.preview`, `boqimport.upload` |") in doc
+    assert ("| `boq.create` | `boq.create_boq`, `boq.edit_boq`, `boq.fill_hsn`, "
             "`boqimport.form`, `boqimport.preview`, `boqimport.upload` |") in doc
 
 
