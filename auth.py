@@ -402,6 +402,14 @@ PERMISSIONS = {
     #   `cascade.py`'s hard stop, which refuses to cascade past one.
     "invoice.cancel":        ("Cancel a tax invoice",                     "Quotation chain"),
     "invoice.approve":       ("Approve or reject a tax invoice",          "Quotation chain"),
+    # 2 November 2026 (CLIENT_CHANGES.md §0 block of that date, Part 3 —
+    # Manas's ruling): correcting a tax invoice AFTER it has been issued — the
+    # standalone one (`/invoice/edit`), an RA bill's (`/ra/edit-text`) and a
+    # merged set's (`/merged/edit`). Owner + Director by default; nobody else
+    # until an Owner ticks it at /roles/edit/<id>. A tax invoice has no draft,
+    # so every edit of one is an edit after issue; an RA bill's DRAFT stays
+    # under `ra.edit`.
+    "invoice.edit_issued":   ("Edit issued invoice",                      "Quotation chain"),
 
     "purchase.view":         ("View purchase orders",                     "Buy side"),
     "purchase.create":       ("Raise a purchase order",                   "Buy side"),
@@ -893,7 +901,7 @@ ROUTE_PERMISSIONS = {
     "ra.fill_hsn":                "ra.edit",
     # 31 Oct 2026, §0 sixty-fourth block, Part 2 — an issued bill's tax
     # invoice, text fields only; every change logged.
-    "ra.edit_text":               "ra.edit",
+    "ra.edit_text":               "invoice.edit_issued",   # was ra.edit until 2 Nov 2026 (Part 3)
     "ra.issue_ra":                "ra.issue",
     "ra.cancel_ra":               "ra.cancel",
     "ra.print_ra":                "ra.print",
@@ -919,7 +927,7 @@ ROUTE_PERMISSIONS = {
     "merged_ra.cancel_merged":       "ra.cancel",
     # 31 Oct 2026, §0 sixty-fourth block, Part 2 — the merged tax invoice's
     # text after issue, under the bill's own edit permission.
-    "merged_ra.edit_text":           "ra.edit",
+    "merged_ra.edit_text":           "invoice.edit_issued",   # was ra.edit until 2 Nov 2026 (Part 3)
 
     # ── Money in ─────────────────────────────────────────────────────────────
     "receipt.list_receipts":      "receipt.view",
@@ -969,7 +977,7 @@ ROUTE_PERMISSIONS = {
     "invoice.fill_hsn":           "invoice.create",
     # 31 Oct 2026, §0 sixty-fourth block, Part 2 — correct an issued
     # standalone tax invoice; number locked, every change logged.
-    "invoice.edit_invoice":       "invoice.create",
+    "invoice.edit_invoice":       "invoice.edit_issued",   # was invoice.create until 2 Nov 2026 (Part 3)
 
     # ── Buy side ─────────────────────────────────────────────────────────────
     "purchase.list_purchases":    "purchase.view",
@@ -1489,6 +1497,10 @@ BUILTIN_ROLES = {
             # it anywhere else at /roles/edit/<id> with a checkbox, no code
             # change and no re-login.
             "docnum.override",
+            # 2 November 2026 (Part 3, Manas's ruling): an issued tax invoice
+            # is corrected by Owner + Director by default and nobody else
+            # until ticked — admin tier, `docnum.override`'s precedent.
+            "invoice.edit_issued",
             "admin.users", "admin.access_log",
         ])),
     ),

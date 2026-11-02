@@ -122,7 +122,7 @@ pass reaches no live role, the Owner included** — and `auth._gate()` has no
 Owner bypass, so the page it guards is unreachable by everybody and **the
 symptom is silence**. This has shipped three times already (B6, C4/C5, C2).
 
-**Six permissions were minted since production:**
+**Seven permissions were minted since production:**
 
 | permission | from | granted to, by default |
 |---|---|---|
@@ -132,6 +132,7 @@ symptom is silence**. This has shipped three times already (B6, C4/C5, C2).
 | `payroll.import` | `de9d757` | Owner, Director, HR |
 | `payroll.delete` | `de9d757` | Owner, Director, HR *(Owner-only on 2 routes)* |
 | `docnum.override` | `8904422` (§0 54th, item A) | Owner, Director — a **panel** permission |
+| `invoice.edit_issued` | 2 Nov 2026 block, Part 3 | Owner, Director — *Edit issued invoice*; gates `/invoice/edit`, `/ra/edit-text`, `/merged/edit` (each was `invoice.create` / `ra.edit` before). **Without the reconcile no live role holds it and an issued invoice is editable by NOBODY, the Owner included.** |
 
 ⚠ **The §0 fifty-eighth block minted NONE.** Its one new endpoint,
 `/raboth/create`, is classified under the **existing** `ra.create`; the P&L's
@@ -153,7 +154,7 @@ role's list — and the page it guards would be unreachable by everybody, an
 Owner included, with silence as the symptom. `tests/test_product_inquiry_name.py`
 asserts each of the five ids.
 
-**So the reconcile above is for the payroll pass and `docnum.override`, and
+**So the reconcile above is for the payroll pass, `docnum.override` and (2 Nov 2026) `invoice.edit_issued`, and
 nothing in the two most recent blocks depends on it.**
 
 ⚠ **Granting a permission is a decision about who may do what.** The tool

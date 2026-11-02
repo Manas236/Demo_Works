@@ -7385,6 +7385,16 @@ for the same reason `.pi-chip` lives in `QUOTATION_STYLES`.
 
 Manas's ruling: an issued tax invoice is **editable, number locked**.
 
+⚠ **Its own permission from 2 November 2026** (§0 block of that date, Part 3,
+Manas's ruling): **`invoice.edit_issued` — "Edit issued invoice"** gates all
+three routes below (`invoice.edit_invoice`, `ra.edit_text`,
+`merged_ra.edit_text`), replacing `invoice.create` / `ra.edit` there. Owner +
+Director by default, a tick on `/roles/edit/<id>`; nobody else until ticked
+(`tests/test_invoice_edit_issued_permission.py` — `purchase@`'s role is refused
+even holding `invoice.create`). A tax invoice has no draft, so every edit of one
+is an edit after issue; an RA bill's DRAFT stays under `ra.edit`. **Deploy:**
+`tools/reconcile_role_permissions.py --write`, or no live role holds it.
+
 * **Standalone TI** (from a PI or a BOQ) — `GET,POST /invoice/edit/<id>`
   (`invoice.edit_invoice`, EXISTING `invoice.create`): every field but the
   number — date (**inside the number's financial year only**, the serial
