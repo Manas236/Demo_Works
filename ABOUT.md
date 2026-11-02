@@ -16671,7 +16671,18 @@ text is unchanged, and every reference to them was moved with them.*
     `test_THE_WATERFALL_NEVER_BLENDS_AN_ESTIMATE_WITH_AN_ACTUAL`). The spider
     WAS changed to Manas's six axes.
 
-104. 🟡 **The typed document number is NOT on every numbered document yet —
+104. ✅ **CLOSED for the quotation, the BOQ root and the merged TI on 2 November
+    2026** (§0 block of that date, Part 4). The quotation's minter is now
+    `docnum.highest_used(QT) + 1` (kind `QT`, the scan AND the ledger — the
+    SIXTH narrow unfreeze of `quotation.py`: `_next_ref`, `create_quotation`,
+    `edit_quotation`), so neither a deletion nor a typed-ahead number is ever
+    reissued; the number is typeable on `/quotation/create` (library mode —
+    the catalogue mode keeps its `1d7725a` golden) and on `/quotation/edit`.
+    The BOQ ROOT is typeable on `/boq/create` (an original only; a revision
+    keeps `<root>/N`). The merged TI is typeable on `/merged/create` and
+    `/raboth/create` (`merged_ra.typed_number()`, TI scope) and locked after
+    (lock 5). Typed numbers on the remaining EDIT routes: see the 2 Nov block
+    and docs/EDIT_PARITY.md. *As it was opened:* **The typed document number is NOT on every numbered document yet —
     OPEN** (§0 sixty-fourth block, Part 3). Built on create for the receipt,
     the measurement sheet, the work order, the product inquiry and the RA
     number (plus the existing TI / PI / PO / DC). **Not built:** the

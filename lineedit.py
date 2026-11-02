@@ -294,9 +294,28 @@ EDITOR_CSS = """
 """
 
 
+def source_entry(value: str, group: str, label: str, row: dict) -> dict:
+    """
+    One line the editor can ADD from a source (2 Nov 2026, the full-edit
+    pass): the Specification library, the parent document's own lines, a
+    BOQ. `row` is the editor row it becomes — strings, no `_k` — so a pick
+    lands as a NEW line the operator can still change in every column.
+    """
+    clean = {k: str(row.get(k) if row.get(k) is not None else "") for k in EDITED
+             if k != "is_header"}
+    clean["is_header"] = False
+    return {"value": str(value), "group": str(group), "label": str(label), "row": clean}
+
+
 def editor_html(rows: list, *, gst: bool = True, field: str = FIELD,
-                form_selector: str = "form") -> str:
-    """The table, its buttons, and the script that posts it as one field."""
+                form_selector: str = "form", sources: list = None) -> str:
+    """
+    The table, its buttons, and the script that posts it as one field.
+
+    `sources` (2 Nov 2026) — `source_entry()` dicts — adds a searchable
+    dropdown and an *Add picked line* button above *+ Add line*. None (every
+    caller before that date) draws exactly what it drew.
+    """
     cols = [c for c in COLUMNS if gst or c[0] != "gst_rate"]
     head = "".join(f"<th>{lbl}</th>" for _k, lbl in cols)
     sel = form_selector.replace("\\", "\\\\").replace("'", "\\'")
@@ -349,19 +368,54 @@ def editor_html(rows: list, *, gst: bool = True, field: str = FIELD,
   document.getElementById('le-add-head').addEventListener('click', function () {
     ROWS.push({name:'', part_no:'', is_header:true}); draw();
   });
+  var pick = document.getElementById('le-src');
+  var SRC = %(src)s;
+  if (pick) {
+    document.getElementById('le-add-src').addEventListener('click', function () {
+      var e = SRC[pick.value];
+      if (!e) return;
+      var r = {}; for (var k in e.row) { r[k] = e.row[k]; }
+      ROWS.push(r); pick.value = ''; draw();
+    });
+    var find = document.getElementById('le-find');
+    if (find) find.addEventListener('input', function () {
+      var w = find.value.toLowerCase().split(/\\s+/).filter(function (x) { return x; });
+      Array.prototype.forEach.call(pick.querySelectorAll('option'), function (o) {
+        if (!o.value) return;
+        var t = o.textContent.toLowerCase();
+        o.hidden = !w.every(function (x) { return t.indexOf(x) !== -1; });
+      });
+    });
+  }
   var form = document.querySelector('%(sel)s');
   if (form) form.addEventListener('submit', function () { out.value = JSON.stringify(ROWS); });
   draw();
 })();
 </script>""" % {"rows": P.json_for_script(rows), "cols": P.json_for_script([k for k, _ in cols]),
-                "field_js": P.json_for_script(field), "sel": sel}
+                "field_js": P.json_for_script(field), "sel": sel,
+                "src": P.json_for_script({e["value"]: e for e in (sources or [])})}
+    src_bar = ""
+    if sources:
+        groups: dict = {}
+        for e in sources:
+            groups.setdefault(e["group"], []).append(e)
+        opts = '<option value="">&#8212; pick a line to add &#8212;</option>' + "".join(
+            f'<optgroup label="{P.esc(g)}">' + "".join(
+                f'<option value="{P.esc(e["value"])}">{P.esc(e["label"])}</option>'
+                for e in es) + "</optgroup>" for g, es in groups.items())
+        src_bar = (f'<div class="le-bar"><input type="search" id="le-find" '
+                   f'placeholder="Search, e.g. GI 50" aria-label="Search lines to add" '
+                   f'autocomplete="off"/><select id="le-src" aria-label="Line to add" '
+                   f'style="max-width:32rem;">{opts}</select>'
+                   f'<button type="button" class="btn btn-ghost" id="le-add-src">'
+                   f'+ Add picked line</button></div>')
     return f"""{EDITOR_CSS}
 <div class="le-wrap"><table class="le-table">
   <thead><tr>{head}<th></th></tr></thead>
   <tbody id="le-body"></tbody>
 </table></div>
 <input type="hidden" id="{P.esc(field)}" name="{P.esc(field)}" value="{P.esc(json.dumps(rows))}"/>
-<div class="le-bar">
+{src_bar}<div class="le-bar">
   <button type="button" class="btn btn-ghost" id="le-add">+ Add line</button>
   <button type="button" class="btn btn-ghost" id="le-add-head">+ Add heading</button>
 </div>

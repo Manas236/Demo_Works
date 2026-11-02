@@ -282,6 +282,13 @@ def _fresh_store():
     # custom unit left behind would appear in the next test's dropdown on
     # every line-item form, and `/settings/` is pinned byte-for-byte.
     (STORE.get("settings") or {}).pop("unit_list", None)
+    # The document-number LEDGER (`docnum.HIGHWATER_RECORD`, 27 Oct 2026) is a
+    # settings record too, and from 2 Nov 2026 the QUOTATION's automatic
+    # minter reads it (highest used + 1). The collections it describes are
+    # cleared per test above, so a ledger entry left behind would describe a
+    # record that no longer exists and number the next test's first
+    # quotation QT-0005. Popped for `unit_list`'s reason, one record along.
+    (STORE.get("settings") or {}).pop("document_number_highwater", None)
     # GSTIN auto-fill (29 Sep 2026). A cached lookup planted by one test would
     # fill the next test's form with no CAPTCHA and gate its save on a status
     # it never asked about. The RAM-only portal sessions and the per-user rate

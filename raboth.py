@@ -197,7 +197,7 @@ def _rollback(written_ids: list) -> None:
 
 def create_set(boq: dict, supply_claims: list, install_claims: list,
                date_val: str, notes_val: str = "", round_on: bool = True,
-               **fields) -> tuple:
+               ti_seq: int = None, **fields) -> tuple:
     """
     `(merged, error)` — write both legs and the merged document, atomically.
 
@@ -233,7 +233,7 @@ def create_set(boq: dict, supply_claims: list, install_claims: list,
 
         merged, err = MRA.create(
             bills["supply"], bills["installation"],
-            notes="Raised as one Supply & Installation bill.")
+            notes="Raised as one Supply & Installation bill.", seq=ti_seq)
         if err:
             _rollback(written)
             return None, err
@@ -424,6 +424,10 @@ def create_both():
         if FD.is_resume(request.form):
             error = ""
         elif not error:
+            # The merged TI's number, typed (2 Nov 2026, Part 4) — validated
+            # BEFORE anything is written; refused, nothing is saved.
+            _ti_seq, error, _d = MRA.typed_number(request.form, MRA._now_date())
+        if not error and not FD.is_resume(request.form):
             merged, err = create_set(
                 boq, claims["supply"], claims["installation"],
                 date_val, notes_val,
@@ -433,7 +437,8 @@ def create_both():
                 tax_type=(request.form.get("tax_type") or "cgst_sgst").strip(),
                 cgst_rate=float(BQ._num(request.form.get("cgst_rate"), 9.0)),
                 sgst_rate=float(BQ._num(request.form.get("sgst_rate"), 9.0)),
-                igst_rate=float(BQ._num(request.form.get("igst_rate"), 18.0)))
+                igst_rate=float(BQ._num(request.form.get("igst_rate"), 18.0)),
+                ti_seq=_ti_seq)
             if err:
                 error = err
             else:
@@ -484,6 +489,7 @@ def _form(boq, prev, entered, error, date_val, notes_val) -> str:
           <input type="date" id="date" name="date" value="{P.esc(date_val)}"/></div>
         <div class="form-group span2"><label for="notes">Notes</label>
           <input type="text" id="notes" name="notes" value="{P.esc(notes_val)}"/></div>
+        {MRA.number_field_html(MRA._now_date(), request.form.get("doc_no_seq") or "")}
       </div>
       {RO.checkbox_html(RO.form_choice(request.form, legacy=True) if request.method == "POST" else True,
                         "Once, on the merged tax invoice's total &mdash; never on each leg.")}

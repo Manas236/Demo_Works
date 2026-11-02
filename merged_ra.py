@@ -458,17 +458,58 @@ def tax_slabs(doc) -> list:
 # CREATE / CANCEL
 # =============================================================================
 
-def create(supply_bill, install_bill, notes: str = "") -> tuple:
-    """`(doc, error)` — mint the merged document, or refuse and say why."""
+# ── The TYPED number (2 November 2026, CLIENT_CHANGES.md §0 block of that
+#    date, Part 4 — §7 gap 104 closed for the merged TI) ─────────────────────
+#
+# On CREATE only. Once raised, the merged tax invoice's number is locked like
+# every tax invoice's (lock 5) — its edit form is text only. Forward only,
+# through `docnum.validate()` with the TAX INVOICE scope, which scans every
+# place a TI number can be (`invoices`, `ra_bills.tax_invoice_ref`,
+# `merged_ras.tax_invoice_ref`) on the ordinal — the strictest reading, the
+# one a statutory serial typed by hand gets everywhere else.
+
+def typed_number(form, datestr: str) -> tuple:
+    """`(seq, error, default_seq)` for the merged TI's number box on a form."""
+    import auth as _AUTH
+    import docnum as _DN
+    fy = P.fy_of(datestr)
+    default_n = SER.next_seq("MI", fy)
+    seq, err = _DN.validate(_DN.TI, fy, (form or {}).get("doc_no_seq"), default_n,
+                            _AUTH.has_perm("docnum.override"))
+    return seq, err, default_n
+
+
+def number_field_html(datestr: str, typed: str = "") -> str:
+    """The merged TI's number box (with its styles), for a create form."""
+    import auth as _AUTH
+    import docnum as _DN
+    return (_DN.NUMBER_STYLES
+            + '<div class="form-group"><label for="doc_no_seq">Tax Invoice No.</label>'
+            + _DN.number_field(_DN.TI, next_tax_invoice_ref(datestr),
+                               may_override=_AUTH.has_perm("docnum.override"),
+                               typed=typed, skip_note=True)
+            + "</div>")
+
+
+def create(supply_bill, install_bill, notes: str = "", seq: int = None) -> tuple:
+    """
+    `(doc, error)` — mint the merged document, or refuse and say why.
+
+    `seq` (2 Nov 2026) is a number the caller has ALREADY validated with
+    `typed_number()`; None mints the next in the `MI` series as before.
+    """
     allowed, why = can_merge(supply_bill, install_bill)
     if not allowed:
         return None, why
 
     mid = str(uuid.uuid4())
     date = _now_date()
+    default_ref = next_tax_invoice_ref(date)
+    ref = (P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, P.fy_of(date), int(seq),
+                    cap=_REF_CAP) if seq else default_ref)
     doc = {
         "id": mid,
-        "tax_invoice_ref": next_tax_invoice_ref(date),
+        "tax_invoice_ref": ref,
         "fy": P.fy_of(date),
         "date": date,
 
@@ -498,6 +539,12 @@ def create(supply_bill, install_bill, notes: str = "") -> tuple:
     }
     doc.update(_sum_totals(supply_bill, install_bill))
     records()[mid] = doc
+    if seq:
+        import auth as _AUTH
+        import docnum as _DN
+        _DN.note_used(_DN.TI, doc["fy"], int(seq))
+        _DN.record_override(doc, default_ref, ref,
+                            str((_AUTH.current_user() or {}).get("id") or ""))
     # B6 — the creator, captured at the write site, because the rule that a
     # person may not approve their own record needs it recorded at the one
     # moment there is one.
@@ -708,7 +755,11 @@ def create_merged():
         bills = STORE.get("ra_bills") or {}
         s = bills.get((request.form.get("supply_ra_id") or "").strip())
         i = bills.get((request.form.get("installation_ra_id") or "").strip())
-        doc, error = create(s, i, notes=(request.form.get("notes") or "").strip())
+        seq, error, _dflt = typed_number(request.form, _now_date())
+        doc = None
+        if not error:
+            doc, error = create(s, i, notes=(request.form.get("notes") or "").strip(),
+                                seq=seq)
         if doc:
             return redirect(url_for("merged_ra.view_merged", id=doc["id"],
                                     msg=f"Merged document {doc['tax_invoice_ref']} raised.",
@@ -743,6 +794,7 @@ def create_merged():
             </div>
             <div class="form-group"><label>Notes</label>
               <input type="text" name="notes" value="{_esc(request.form.get('notes'))}"/></div>
+            {number_field_html(_now_date(), request.form.get("doc_no_seq") or "")}
             <button type="submit" class="btn">Raise merged document</button>"""
 
     # Opened from a BOQ's *RA · Supply & Installation* (22 October 2026): the

@@ -237,7 +237,19 @@ def _build_tnc(q: dict) -> list:
 # =============================================================================
 
 def _next_ref() -> str:
-    n = len(STORE["quotations"]) + 1
+    # ⚠ **HIGHEST USED + 1, not a record count** (2 November 2026 — the SIXTH
+    #   narrow unfreeze of this file, "Manas, 2 Nov 2026: full editing on all
+    #   documents, quotation numbering + Resume", CLIENT_CHANGES.md §0 block
+    #   of that date, Part 4). `len + 1` re-issued a number the moment one
+    #   quotation was deleted, and would re-issue a TYPED-AHEAD number the day
+    #   the count caught up with it. `docnum.highest_used()` reads the scan AND
+    #   the ledger, so neither a deletion nor a typed number can ever bring a
+    #   used number round again. On a store with no gaps it answers exactly
+    #   what `len + 1` did. The body it replaced, verbatim:
+    #       n = len(STORE["quotations"]) + 1
+    #       return f"QT-{n:04d}"
+    import docnum as _DN
+    n = _DN.highest_used(_DN.QT, "") + 1
     return f"QT-{n:04d}"
 
 
@@ -1241,8 +1253,14 @@ def create_quotation(imported: dict = None):
     form     = request.form
     import roundoff as _RO   # the round-off tick (31 Oct 2026, round-off only)
 
+    # Resume after Back (2 Nov 2026, Part 4 — the sixth unfreeze): a POST
+    # carrying `_resume` only REDRAWS the form from what was posted, exactly
+    # as a refused save does — nothing validated, saved or numbered.
+    import formdraft as _FD
+    _resuming = request.method == "POST" and _FD.is_resume(form)
+
     # ── POST ───────────────────────────────────────────────────────────
-    if request.method == "POST":
+    if request.method == "POST" and not _resuming:
         qtn_date         = form.get("qtn_date",        str(_date.today()))
         rate_contract    = form.get("rate_contract", "") == "1"
         qtn_type         = form.get("qtn_type",       "").strip()
@@ -1396,9 +1414,20 @@ def create_quotation(imported: dict = None):
             if bill_gstin:  to_parts.append(f"GSTIN: {bill_gstin}")
             to_display = "\n".join(to_parts)
 
+            # ⚠ The typed number (2 Nov 2026, Part 4 — the sixth unfreeze):
+            #   forward only, through `docnum.validate()` — blank or the
+            #   prefill always accepted, a changed one needs
+            #   `docnum.override` and must beat the highest ever used.
+            import docnum as _DN
+            _default_n = _DN.highest_used(_DN.QT, "") + 1
+            _seq, _num_err = _DN.validate(_DN.QT, "", form.get("doc_no_seq"),
+                                          _default_n, auth.has_perm("docnum.override"))
+        if not error and _num_err:
+            error = _num_err
+        if not error:
             qid = str(uuid.uuid4())
             STORE["quotations"][qid] = {
-                "id": qid, "ref": _next_ref(),
+                "id": qid, "ref": f"QT-{_seq:04d}",
                 "date": qtn_date, "rate_contract": rate_contract,
                 "qtn_type": qtn_type, "validity_days": validity_days,
                 "buyer_ref": buyer_ref, "other_ref": other_ref,
@@ -1433,6 +1462,10 @@ def create_quotation(imported: dict = None):
             # existed, so old and new records behave identically.
             P.ensure_fields(STORE["quotations"][qid])
             P.log_event(STORE["quotations"][qid], "Quotation created.")
+            _DN.note_used(_DN.QT, "", _seq)
+            _DN.record_override(STORE["quotations"][qid], f"QT-{_default_n:04d}",
+                                f"QT-{_seq:04d}",
+                                str((auth.current_user() or {}).get("id") or ""))
             return redirect(url_for("quotation.view_quotation", id=qid))
 
     # ── GET / re-render with error ─────────────────────────────────────
@@ -1868,7 +1901,7 @@ function addComp(pidx) {
   <div class="fg4" style="margin-bottom:.85rem;">
     <div class="form-group">
       <label>Qtn No.</label>
-      <div class="readonly-field">{next_ref}&nbsp;<span style="font-size:.72rem;color:#888;">auto</span></div>
+      {qtn_number_html}
     </div>
     <div class="form-group">
       <label for="qtn_date">Qtn. Date *</label>
@@ -2481,6 +2514,7 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
 </script>
 </body></html>"""
 
+    import docnum as _DNF
     # Map Python values into the template placeholders (no JS braces touched)
     html = page.format(
         base_styles         = BASE_STYLES,
@@ -2496,7 +2530,16 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         form_action         = form_action,
         catalog_json        = catalog_json,
         prev_sel            = prev_selections,   # goes into <script> tag, NOT an HTML attribute
-        next_ref            = _next_ref(),
+        # The number (2 Nov 2026, Part 4): typeable, forward only.
+        # ⚠ The LIBRARY mode only — the shipped configuration. With the
+        #   catalogue switched on, the box is the `1d7725a` read-only one, so
+        #   that mode's pinned golden stays byte-identical
+        #   (`tests/test_quotation_switch.py`).
+        qtn_number_html     = (_DNF.number_field(
+            _DNF.QT, _next_ref(), may_override=auth.has_perm("docnum.override"),
+            typed=(form.get("doc_no_seq") if request.method == "POST" else ""))
+            if from_library else
+            f'<div class="readonly-field">{_next_ref()}&nbsp;<span style="font-size:.72rem;color:#888;">auto</span></div>'),
         today               = today_str,
         vdays               = _fv("validity_days", "10"),
         buyer_ref           = _fv("buyer_ref"),
@@ -2561,6 +2604,20 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
             _RO.form_choice(request.form, legacy=False)
             if request.method == "POST" else True),
     )
+    # Resume after Back (2 Nov 2026, Part 4) and the number field's styles.
+    # The hidden selections are written on every click and keystroke, before
+    # the draft script's own (debounced) save reads the form.
+    # ⚠ The LIBRARY mode only (the catalogue mode's golden is pinned), and
+    #   right after the form rather than at the foot — the page's own last
+    #   <script> is the picker, and tests run it alone.
+    if from_library:
+        html = html.replace("</form>", "</form>" + (
+            _DNF.NUMBER_STYLES
+            + "<script>(function(){var f=document.getElementById('qf');if(!f)return;"
+              "function s(){try{saveJSON();}catch(e){}}"
+              "f.addEventListener('click',s,true);f.addEventListener('input',s,true);"
+              "f.addEventListener('change',s,true);})();</script>"
+            + _FD.script("#qf", "quotation", resumed=_resuming)), 1)
     return _page(html)              # NOT render_template_string — see _page()
 
 
@@ -3222,7 +3279,7 @@ def delete_quotation(id: str):
 
 
 @quotation_bp.route("/edit/<id>", methods=["GET", "POST"])
-def edit_quotation(id: str):
+def edit_quotation(id: str, imported: dict = None):
     """
     Edit a quotation — every field (31 October 2026).
 
@@ -3249,6 +3306,7 @@ def edit_quotation(id: str):
     """
     import editlog as _EL
     import lineedit as _LE
+    import docnum as _DN       # the number, forward only (2 Nov 2026, Part 4)
     import roundoff as _ROF
     import auth as _AUTH
 
@@ -3314,6 +3372,14 @@ def edit_quotation(id: str):
         lines = []
         if not error:
             lines, error = _LE.parse(f.get(_LE.FIELD), stored, gst=False)
+        # The number on EDIT (2 Nov 2026, Part 4 — the sixth unfreeze),
+        # forward only: its own number always passes; a new one must beat
+        # the highest ever used.
+        own_n = _DN.ordinal_of(q.get("ref"))
+        seq_now = own_n
+        if not error:
+            seq_now, error = _DN.validate(_DN.QT, "", f.get("doc_no_seq"), own_n,
+                                          _AUTH.has_perm("docnum.override"))
         if not error:
             round_on = _ROF.form_choice(f, legacy=bool(q.get("round_off_on")))
             subtotal = _ROF.paise(sum(float(r.get("total") or 0.0) for r in lines
@@ -3331,6 +3397,12 @@ def edit_quotation(id: str):
             if vals["bill_phone"]:  to_parts.append(f"Phone: {vals['bill_phone']}")
             if vals["bill_gstin"]:  to_parts.append(f"GSTIN: {vals['bill_gstin']}")
             before, before_lines = dict(q), [dict(r) for r in stored]
+            if seq_now != own_n:
+                ref_now = f"QT-{seq_now:04d}"
+                _DN.note_used(_DN.QT, "", seq_now)
+                _DN.record_override(q, str(q.get("ref") or ""), ref_now,
+                                    str((_AUTH.current_user() or {}).get("id") or ""))
+                q["ref"] = ref_now
             q.update(vals)
             q.update(rates)
             q.update({"tax_type": tax_type, "tax_info": tax_info, "subtotal": subtotal,
@@ -3339,7 +3411,8 @@ def edit_quotation(id: str):
                       "total_qty": sum(float(r.get("qty") or 0) for r in lines
                                        if not r.get("is_header") and not r.get("depth")),
                       "to": "\n".join(to_parts)})
-            changes = _EL.diff(before, q, fields) + _EL.line_diff(before_lines, lines)
+            changes = (_EL.diff(before, q, (("ref", "Quotation No."),) + tuple(fields))
+                       + _EL.line_diff(before_lines, lines))
             _EL.record(q, changes, str((_AUTH.current_user() or {}).get("id") or ""))
             if changes:
                 P.log_event(q, f"Quotation edited — {len(changes)} change"
@@ -3355,6 +3428,16 @@ def edit_quotation(id: str):
         round_shown = _ROF.form_choice(f, legacy=bool(q.get("round_off_on")))
     else:
         rows = _LE.rows_for_form(stored, 0.0)
+        if imported:
+            # Import from Excel onto THIS quotation (2 Nov 2026): the sheet's
+            # library picks become NEW lines after the stored ones, named and
+            # priced by `_process_selections()` exactly as on create.
+            _new, _ierr, _g = _process_selections(imported.get("selections") or [])
+            for r in _LE.rows_for_form(_new or [], 0.0):
+                r.pop("_k", None)
+                r["source"] = _LE.SOURCE_EXCEL
+                rows.append(r)
+            error = error or (_ierr or "")
         shown = {k: str(q.get(k) or "") for k in text_keys}
         shown["ship_same"] = q.get("ship_same") or ""
         shown["tax_type"] = q.get("tax_type") or "exempt"
@@ -3384,16 +3467,47 @@ def edit_quotation(id: str):
     action = url_for("quotation.edit_quotation", id=id)
     view_url = url_for("quotation.view_quotation", id=id)
     err_html = f'<div class="alert alert-error">&#10007; {error}</div>' if error else ""
+    if imported:
+        err_html = (imported.get("banner_html") or "") + err_html
     same = " checked" if shown.get("ship_same") else ""
+    number_html = _DN.number_field(_DN.QT, str(q.get("ref") or ""),
+                                   may_override=_AUTH.has_perm("docnum.override"),
+                                   typed=(f.get("doc_no_seq") if request.method == "POST" else ""))
+    # The address book, as on create: picking an entry fills the Bill To or
+    # Ship To boxes (2 Nov 2026). Typing stays free text.
+    book_js = P.json_for_script(picker_payload())
+    book_opts = picker_options("— fill from address book —")
+    import_url = url_for("docimport.upload_quotation", q=id)
+    # Every library size as a line to ADD — named and priced exactly as
+    # `_process_selections()` names and prices a pick on create ("Supply of
+    # <title> — <label>", the code as part no, the supply HSN, the variant's
+    # unit and default supply rate; blank, never 0, with none). Supply only.
+    sources = []
+    for _sid, _sp in sorted((STORE.get("specs") or {}).items(),
+                            key=lambda kv: (kv[1].get("code") or "").lower()):
+        _t = (_sp.get("title") or "").strip()
+        for _vi, _v in enumerate(_sp.get("variants") or []):
+            _lb = (_v.get("label") or "").strip()
+            _rt = _v.get("default_supply_base_rate")
+            sources.append(_LE.source_entry(
+                f"spec:{_sid}:{_vi}", "Specification library",
+                f"{_sp.get('code', '')} · {_t}" + (f" — {_lb}" if _lb else ""),
+                {"name": "Supply of " + _t + (" — " + _lb if _lb else ""),
+                 "part_no": _sp.get("code", ""), "hsn": _sp.get("supply_hsn", ""),
+                 "unit": _v.get("unit", ""), "qty": "",
+                 "price": "" if _rt in (None, "") else f"{float(_rt):g}"}))
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>{B.page_title("Edit " + str(q.get("ref")))}</title>{B.HEAD_ICON}
-{BASE_STYLES}{QUOTATION_STYLES}</head>
+{BASE_STYLES}{QUOTATION_STYLES}{_DN.NUMBER_STYLES}</head>
 <body>{_nav()}
 <main>
   <div class="page-top">
     <h1>Edit <span>{P.esc(q.get("ref"))}</span></h1>
-    <a href="{view_url}" class="btn btn-ghost">&#8592; Back to the quotation</a>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{import_url}" class="btn btn-ghost">&#128229;&nbsp;Add lines from Excel</a>
+      <a href="{view_url}" class="btn btn-ghost">&#8592; Back to the quotation</a>
+    </div>
   </div>
   {err_html}
   <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
@@ -3403,6 +3517,7 @@ def edit_quotation(id: str):
   <form method="POST" action="{action}">
     <div class="form-section"><div class="section-title">Quotation</div>
       <div class="fg3">
+        <div class="form-group"><label for="doc_no_seq">Qtn No.</label>{number_html}</div>
         {box("date", "date")}{box("validity_days")}{box("amend_no")}
         {box("buyer_ref")}{box("other_ref")}{box("delivery_date", "date")}
       </div></div>
@@ -3412,6 +3527,8 @@ def edit_quotation(id: str):
         {pick("dispatch_through", _DISPATCH)}{pick("incoterms", _INCOTERMS)}
       </div></div>
     <div class="form-section"><div class="section-title">Bill to</div>
+      <div class="form-group" style="max-width:26rem;"><label for="bill_book">From the address book</label>
+        <select id="bill_book" onchange="qeFill('bill', this)">{book_opts}</select></div>
       <div class="fg3">
         {box("account_name")}{box("contact_person")}{box("bill_addr")}
         {box("bill_city")}{pick("bill_state", _STATES_IN)}{box("bill_pin")}
@@ -3420,6 +3537,8 @@ def edit_quotation(id: str):
     <div class="form-section"><div class="section-title">Ship to</div>
       <label style="display:flex;gap:.4rem;align-items:center;margin:.3rem 0 .6rem;">
         <input type="checkbox" name="ship_same" value="1"{same}/> Same as the billing address</label>
+      <div class="form-group" style="max-width:26rem;"><label for="ship_book">From the address book</label>
+        <select id="ship_book" onchange="qeFill('ship', this)">{book_opts}</select></div>
       <div class="fg3">
         {box("ship_acct_name")}{box("ship_addr")}{box("ship_city")}
         {pick("ship_state", _STATES_IN)}{box("ship_pin")}{box("ship_country")}
@@ -3431,7 +3550,8 @@ def edit_quotation(id: str):
           <select id="tax_type" name="tax_type">{tax_opts}</select></div>
         {box("cgst_rate")}{box("sgst_rate")}{box("igst_rate")}{box("vat_rate")}
       </div>
-      {_LE.editor_html(rows, gst=False, form_selector='form[action$="' + action + '"]')}
+      {_LE.editor_html(rows, gst=False, form_selector='form[action$="' + action + '"]',
+                       sources=sources)}
       {_ROF.checkbox_html(round_shown)}
     </div>
     <div class="form-actions">
@@ -3439,4 +3559,17 @@ def edit_quotation(id: str):
       <a href="{view_url}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
+  <script>
+  var QE_BOOK = {book_js};
+  function qeFill(kind, sel) {{
+    var a = QE_BOOK[sel.value]; if (!a) return;
+    function set(id, v) {{ var el = document.getElementById(id); if (el && v) el.value = v; }}
+    set(kind + '_addr', [a.line1, a.line2, a.landmark].filter(Boolean).join(', '));
+    set(kind + '_city', a.city); set(kind + '_pin', a.pincode);
+    set(kind + '_phone', a.phone); set(kind + '_gstin', a.gstin);
+    set(kind + '_state', a.state); set(kind + '_country', a.country || 'India');
+    if (kind === 'bill') {{ set('account_name', a.company); set('contact_person', a.contact_name); }}
+    else {{ set('ship_acct_name', a.company); set('ship_email', a.email); }}
+  }}
+  </script>
 </main></body></html>""")

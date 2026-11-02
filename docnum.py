@@ -142,6 +142,8 @@ BOQ = "BOQ"     # bill of quantities — the ROOT number only; a revision's /N
                 #   suffix is boq._revision_ref()'s and is never read here
 WO = "WO"       # work order — a /settings counter, like the challan
 DPO = "DPO"     # product inquiry (draft PO) — a /settings counter
+QT = "QT"       # quotation (2 Nov 2026) — one running series, QT-0001; the
+                #   minter is `quotation._next_ref()`, which reads THIS ledger
 RA_NO = "RA_NO"  # the RA number (RA5) — scoped PER BOQ CHAIN, see ra_no_*()
 
 # The two other stored counters, read directly for DC_SERIES_RECORD's reason.
@@ -171,6 +173,7 @@ KINDS = {
     BOQ: ("Bill of quantities", True, (("boqs", "ref"),)),
     WO: ("Work order", False, (("work_orders", "ref"),)),
     DPO: ("Product inquiry", False, (("purchase_orders", "ref"),)),
+    QT: ("Quotation", False, (("quotations", "ref"),)),
 }
 
 # Which stored counter, if any, already encodes "highest ever used + 1".

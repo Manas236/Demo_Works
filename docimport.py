@@ -408,7 +408,20 @@ class QuotationKind(Kind):
                         "moment, and a sheet carries no catalogue product. Import "
                         "works while the picker reads the specification library."), None
         SPK.ensure_seeded()
+        # Onto an existing quotation's EDIT form too (2 Nov 2026, the
+        # full-edit pass): `?q=<id>` appends the sheet's picks after its
+        # stored lines; nothing is saved until that form's Save.
+        val = str(args.get("q") or "").strip()
+        if val:
+            if val not in (STORE.get("quotations") or {}):
+                return {}, "That quotation no longer exists.", None
+            return {"q": val}, "", None
         return {}, "", None
+
+    def back_url(self, ctx):
+        if ctx.get("q"):
+            return url_for("quotation.edit_quotation", id=ctx["q"])
+        return url_for(self.endpoint)
 
     def schema(self, ctx):
         return {"targets": [
@@ -596,8 +609,11 @@ class QuotationKind(Kind):
     </div>"""
 
     def apply(self, token, rec, built):
-        return Q.create_quotation(imported={
-            "selections": built["items"], "banner_html": _banner(self, rec, built)})
+        imported = {"selections": built["items"], "banner_html": _banner(self, rec, built)}
+        qid = (rec.get("ctx") or {}).get("q")
+        if qid:
+            return Q.edit_quotation(qid, imported=imported)
+        return Q.create_quotation(imported=imported)
 
 
 # ── Measurement sheet — the joint grid ───────────────────────────────────────

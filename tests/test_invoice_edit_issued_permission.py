@@ -48,11 +48,13 @@ def test_the_three_after_issue_routes_are_gated_by_it():
         assert auth.ROUTE_PERMISSIONS[ep] == "invoice.edit_issued", ep
 
 
-def test_purchase_role_cannot_edit_an_issued_invoice_by_default(client, ti):
+def test_purchase_role_cannot_edit_an_issued_invoice_by_default(client, ti, monkeypatch):
     role = STORE["roles"]["role-purchase-manager"]
     assert "invoice.edit_issued" not in role["permissions"]
     # Even with the right to RAISE one and to see them, the edit is refused.
-    role["permissions"] = sorted(set(role["permissions"]) | {"invoice.view", "invoice.create"})
+    # (`monkeypatch` puts the stored role back: roles outlive a test.)
+    monkeypatch.setitem(role, "permissions",
+                        sorted(set(role["permissions"]) | {"invoice.view", "invoice.create"}))
     purchase = _user("purchase@", ["role-purchase-manager"])
     _as(client, purchase)
     assert client.get("/invoice/edit/te1").status_code in (302, 403)
@@ -78,8 +80,9 @@ def test_it_is_a_tick_on_the_directors_permissions_page(client, ti):
          page[page.index('value="invoice.edit_issued"'):][:80])
 
 
-def test_an_owner_can_tick_it_onto_another_role(client, ti):
-    STORE["roles"]["role-sales-manager"]["permissions"].append("invoice.edit_issued")
+def test_an_owner_can_tick_it_onto_another_role(client, ti, monkeypatch):
+    role = STORE["roles"]["role-sales-manager"]
+    monkeypatch.setitem(role, "permissions", role["permissions"] + ["invoice.edit_issued"])
     _as(client, _user("sales@", ["role-sales-manager"]))
     r = client.post("/invoice/edit/te1", data=_form(ti, notes="Sales fix"))
     assert r.status_code == 302, r.get_data(as_text=True)[:600]

@@ -257,6 +257,18 @@ def is_as_is(boq: dict) -> bool:
 # HELPERS — identity and numbers
 # =============================================================================
 
+def _may_set_number() -> bool:
+    """May this user type a document number? (2 Nov 2026 — `purchase.py`'s.)"""
+    import auth as _AUTH
+    return _AUTH.has_perm("docnum.override")
+
+
+def _actor_id() -> str:
+    """The id of whoever is saving — never their display name (gap 41)."""
+    import auth as _AUTH
+    return str((_AUTH.current_user() or {}).get("id") or "")
+
+
 def _next_ref(datestr: str) -> str:
     """
     Next BOQ number — 'SF/BOQ/26-27/0001'.
@@ -6145,6 +6157,26 @@ def create_boq(imported: dict = None):
             #   The fallback is deliberate: if the root carries no usable ref
             #   (a hand-written record), the series is better than nothing.
             ref = (_revision_ref(prev_id) if prev_id else "") or _next_ref(datestr)
+            # ⚠ **The ROOT number is typeable on an original from 2 November
+            #   2026** (CLIENT_CHANGES.md §0 block of that date, Part 4; §7 gap
+            #   104 closed for the BOQ root). Forward only, through
+            #   `docnum.validate()` over `root_ordinal_of()` — so a revision's
+            #   `/N` never counts as a root. A revision is never retyped: its
+            #   number IS its root's.
+            _typed_n = _default_n = 0
+            if not prev_id:
+                import docnum as _DN
+                _fy = P.fy_of(datestr)
+                _default_n = SER.next_seq("BOQ", _fy)
+                _typed_n, _num_err = _DN.validate(
+                    _DN.BOQ, _fy, form.get("doc_no_seq"), _default_n, _may_set_number())
+                if _num_err:
+                    error = _num_err
+                else:
+                    ref = P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, _fy, _typed_n,
+                                   cap=_REF_CAP)
+
+        if not error:
 
             boq = {
                 "id":   bid,
@@ -6230,6 +6262,12 @@ def create_boq(imported: dict = None):
             _t, boq["round_off"], _g = grand_of(boq)
 
             STORE["boqs"][bid] = boq
+            if _typed_n:
+                # The ledger and the trail of a hand-typed root (2 Nov 2026).
+                _DN.note_used(_DN.BOQ, _fy, _typed_n)
+                _DN.record_override(boq, P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, _fy,
+                                                  _default_n, cap=_REF_CAP),
+                                    boq["ref"], _actor_id())
             # Every saved BOQ's items join the Specification library (31 Oct
             # 2026, §0 sixty-first block) — add-only, after the save, and never
             # able to block it.
@@ -6391,6 +6429,23 @@ def create_boq(imported: dict = None):
     supersedes_html = ('<select id="supersedes" name="supersedes">'
                        + "".join(_opts) + "</select>")
 
+    # ── The ROOT number (2 Nov 2026, Part 4) — on an original only. A
+    #    revision is numbered off its root (`<root>/N`) and never retyped, so
+    #    the box is not drawn while the form is a revision. Its own styles
+    #    ride inside the string, so a form without the box is unchanged.
+    _root_number_html = ""
+    if not _chosen:
+        import docnum as _DN
+        _today = (request.form.get("date") if request.method == "POST" else "") \
+            or str(_date.today())
+        _root_number_html = (
+            f'{_DN.NUMBER_STYLES}<div class="form-group"><label for="doc_no_seq">BOQ No.</label>'
+            + _DN.number_field(_DN.BOQ, _next_ref(_today), may_override=_may_set_number(),
+                               typed=(request.form.get("doc_no_seq")
+                                      if request.method == "POST" else ""))
+            + '<small class="field-hint">A revision keeps its root\'s number '
+              'and adds /1, /2.</small></div>')
+
     # ── The project selector ───────────────────────────────────────────────
     #
     # ⚠ **THIS CONTROL IS THE OTHER HALF OF A LINK THAT WAS ONLY EVER HALF
@@ -6515,6 +6570,7 @@ def create_boq(imported: dict = None):
           <label for="date">Date</label>
           <input type="date" id="date" name="date" value="{_v('date', today)}"{_fmark('date')} required/>
         </div>
+{_root_number_html}
         <div class="form-group">
           <label for="rev_no">Revision No.</label>
           <input type="text" id="rev_no" name="rev_no" value="{_v('rev_no', '0')}" placeholder="0"/>

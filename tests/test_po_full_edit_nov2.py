@@ -20,6 +20,8 @@ import json
 
 import pytest
 
+import pipeline as P
+
 import conftest
 import docimport as DI
 import purchase as PU
@@ -157,7 +159,8 @@ def test_a_full_edit_from_every_source_prints(client, shop):
     html = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
     for needle in ("Renamed second line", "Kirloskar", "84137010", "From the BOQ",
                    "From the library", "Free text line", "Extra gasket",
-                   "Changed note", "New site store", STORE["addresses"][OTHER_VENDOR].get("company") or ""):
+                   "Changed note", "New site store",
+                   P.esc(STORE["addresses"][OTHER_VENDOR].get("company") or "")):
         assert needle in html, needle
     doc = html[html.index('<div class="doc-outer">'):]
     assert doc.index("Renamed second line") < doc.index("From the BOQ") \

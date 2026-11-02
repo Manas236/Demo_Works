@@ -44,9 +44,14 @@ sixty-fourth block, Part 4) the nineteen other create forms — `/boq/create`,
 `tests/test_formdraft_everywhere.py` holds every one: the script is on the
 page, a Resume redraws, saves nothing and spends no number.
 
-NOT wired, deliberately: `/quotation/create` (`quotation.py` is frozen and this
-pass's unfreeze covers its EDIT route only), `/merged/create` (two dropdowns —
-nothing typed to lose), and the admin forms `/users/create` and `/roles/create`.
+From 2 November 2026 also `/quotation/create` (the SIXTH narrow unfreeze of
+`quotation.py`, §0 block of that date, Part 4) — in the library mode, the
+shipped configuration; with the catalogue switched on the page stays the
+pinned `1d7725a` bytes. Its picks live in a hidden field the page writes on
+every click and keystroke, so the saved draft carries them.
+
+NOT wired, deliberately: `/merged/create` (two dropdowns — nothing typed to
+lose), and the admin forms `/users/create` and `/roles/create`.
 
 A LEAF: imports nothing of the app.
 """

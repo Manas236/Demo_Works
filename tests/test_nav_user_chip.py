@@ -237,6 +237,14 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
                                    #   ("Manas, 31 Oct 2026: quotation editable (28 Oct
                                    #   all-documents ask)", §0 sixty-fourth block),
                                    #   plus view_quotation()'s Edit button and band
+                                   # 2 Nov 2026 — the typed number, the address
+                                   #   book, the library and Excel as line
+                                   #   sources (SIXTH unfreeze, below)
+        "_next_ref",               # 2 Nov 2026 — SIXTH unfreeze ("Manas, 2 Nov 2026:
+                                   #   full editing on all documents, quotation
+                                   #   numbering + Resume"): highest used + 1, not a
+                                   #   record count. create_quotation() gains the
+                                   #   typed number and Resume after Back.
     }
     src = (REPO / "quotation.py").read_text(encoding="utf8")
     # ⚠ The span starts at the first DECORATOR, not at `def`. `ast` reports
