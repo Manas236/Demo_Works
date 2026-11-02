@@ -561,7 +561,12 @@ def test_a_DRAFT_purchase_order_number_is_editable_and_an_ISSUED_one_is_not(stor
     ⚠ **The PO is the one of the four with a genuine unissued state.**
     `PO_STATUSES` defines `Draft` as "written, not yet sent to the vendor".
     """
-    for status, drawn in (("Draft", True), ("Issued", False)):
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 1): the number is typeable on EVERY edit
+    #   route, forward only — so an Issued order draws the field too (only a
+    #   Cancelled one is locked, and it has no edit form). The old loop,
+    #   verbatim:
+    #       for status, drawn in (("Draft", True), ("Issued", False)):
+    for status, drawn in (("Draft", True), ("Issued", True)):
         pid = f"po-{status}"
         STORE["purchases"][pid] = {
             "id": pid, "ref": f"SF/PO/26-27/000{1 if drawn else 2}",

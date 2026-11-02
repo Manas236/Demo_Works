@@ -332,7 +332,13 @@ def test_a_specification_header_gets_no_rate_box_and_keeps_its_zeroes(client):
     # a selector string is not a rate box. (It read `html.count('name="line_rate"')
     # == 1` before, when the reprice form had no live amount preview.)
     assert html.count('<input type="number" name="line_rate"') == 1
-    assert "Wet riser" not in html, "a header must not appear as a priced row"
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 1): the full edit form draws the heading
+    #   as a HEADING row — its text editable, no rate box (the count above is
+    #   unchanged and is what proves it is not priced). The old assertion,
+    #   verbatim:
+    #       assert "Wet riser" not in html, "a header must not appear as a priced row"
+    assert 'class="line-row ed-hdr"' in html and "Wet riser" in html
+    assert html.index("Wet riser") < html.index('<input type="number" name="line_rate"')
 
     assert client.post(f"/purchase/edit/{po['id']}",
                        data={"line_rate": "900",
@@ -379,7 +385,10 @@ def test_the_reprice_button_is_offered_on_every_live_order_and_not_on_a_cancelle
         else:
             assert f"/purchase/edit/{po['id']}" in page, \
                 f"{status} was not offered a Reprice button"
-            assert ">Reprice</a>" in page
+            # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 1): the button is the full edit
+            #   form's now and reads "Edit". The old assertion, verbatim:
+            #       assert ">Reprice</a>" in page
+            assert "&#9998;&nbsp;Edit</a>" in page
 
 
 def test_the_reprice_is_written_onto_the_order_history(client):

@@ -627,10 +627,15 @@ def test_an_issued_orders_extra_part_keeps_its_printed_code(client):
             "extra_desc": ["Gasket set"], "extra_unit": ["Nos"],
             "extra_qty": ["2"], "extra_rate": ["50"], "extra_discount": [""],
             "extra_hsn": ["99999999"]}
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 1): "HSN editable at every status" — the
+    #   purchase order's extra part takes a new code after issue. The old
+    #   assertions, verbatim:
+    #       assert r.status_code == 200
+    #       assert "already printed as 40169390" in r.get_data(as_text=True)
+    #       assert po["extra_lines"][0]["hsn"] == "40169390"
     r = client.post(f"/purchase/edit/{ids['oid']}", data=form)
-    assert r.status_code == 200
-    assert "already printed as 40169390" in r.get_data(as_text=True)
-    assert po["extra_lines"][0]["hsn"] == "40169390"
+    assert r.status_code == 302, r.get_data(as_text=True)[:800]
+    assert po["extra_lines"][0]["hsn"] == "99999999"
 
 
 def test_an_issued_orders_extra_part_fills_a_blank(client):

@@ -3970,7 +3970,13 @@ def hsn_editable(po: dict, row: dict, field: str = "hsn") -> bool:
               return True
           return not str(row.get("hsn") or "").strip()
     """
-    return HF.editable(is_draft(po), (row or {}).get(field))
+    # ⚠ **2 November 2026 (§0 block of that date, Part 1): "HSN editable at
+    #   every status."** A live order's HSN is now editable whatever its
+    #   status, so this answers True for every order `can_edit_rates()`
+    #   admits — the Draft-only rule above is reversed for the purchase
+    #   order by ruling. The body it replaced, verbatim:
+    #       return HF.editable(is_draft(po), (row or {}).get(field))
+    return can_edit_rates(po or {})[0]
 
 
 def _extra_hsn_refusal(po: dict, posted: list) -> str:
@@ -3983,7 +3989,8 @@ def _extra_hsn_refusal(po: dict, posted: list) -> str:
     that carried a printed code and still carries the same description may not
     have that code changed; everything else is free.
     """
-    if is_draft(po):
+    if is_draft(po) or hsn_editable(po, {}):
+        # Every live order's HSN is editable from 2 Nov 2026 (`hsn_editable()`).
         return ""
     printed = {}
     for row in extra_lines_of(po):
@@ -4134,21 +4141,438 @@ def _reprice(po: dict, form) -> str:
     return ""
 
 
+# =============================================================================
+# FULL EDIT — the purchase order's edit form IS its create form (2 Nov 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0, the 2 November 2026 block ("Manas, 2 Nov 2026: full
+# editing on all documents, quotation numbering + Resume"), Part 1. Until this
+# date `/purchase/edit/<id>` was a REPRICE screen — rates, discounts, make and
+# HSN on the stored rows, plus the extra parts — and the vendor, the dates, the
+# terms, the quantities and the lines themselves could not be changed. The
+# client asked (28 Oct) for every column of every document. This is that, for
+# the purchase order:
+#
+# * **Every header field the create form has** — vendor (the address book, the
+#   create form's only path), vendor's ref, date, wanted-by, the job, the
+#   project (an order raised from scratch; a BOQ order follows its schedule),
+#   payment / delivery terms, dispatch, Incoterms, deliver-to, the note, the
+#   tax head and its rates, the round-off tick and the number (forward only).
+# * **Every line column** — description, part no, make, HSN (the full eight
+#   digits), qty, unit, rate, discount — and lines added, removed and moved.
+# * **Lines added from every source any PO create path offers** — the order's
+#   own BOQ (`boqpick`'s line, carrying `line_id`, with the quantity still to
+#   order beside it), the BOQ items and the Specification library (`buypick`'s
+#   picks, carrying `src_*` references only), free text, and — as on create —
+#   extra parts and Import from Excel.
+#
+# **Locked only when Cancelled** (lock 4: a PO tracks no received quantity per
+# line, so nothing else locks). Every rate movement on a line that existed is
+# still written to `reprice_log`, which prints under the order (saved prints
+# depend on it); every other change after the order left Draft goes to the
+# screen-only `edit_log` (`editlog.py`) and the amber band on `/purchase/view`.
+#
+# ⚠ **The old reprice POST shape still works.** A POST without `line_k` — a tab
+#   opened before this date, or a test written against the reprice screen —
+#   goes through `_reprice()` exactly as it did. The full editor always posts
+#   `line_k`, one per row.
+
+PO_EDIT_FIELDS = (
+    ("date", "PO date"), ("vendor_name", "Vendor"), ("vendor_gstin", "Vendor GSTIN"),
+    ("to", "Vendor address"), ("vendor_ref", "Vendor's ref"),
+    ("delivery_date", "Wanted by"), ("quotation_ref", "For job"),
+    ("project_name", "Project"), ("payment_terms", "Payment terms"),
+    ("delivery_terms", "Terms of delivery"), ("dispatch_through", "Dispatch through"),
+    ("incoterms", "Incoterms"), ("delivery_to", "Deliver to"), ("notes", "Note"),
+    ("tax_type", "Tax type"), ("ref", "Purchase order no."),
+    ("grand_total", "Order value"))
+
+OWN_PREFIX = "own:"     # a line of THIS order's own BOQ — ordered against it
+LINE_PART_MAX = 60
+LINE_UNIT_MAX = 30
+LINE_NAME_MAX = 1500
+
+
+def ordered_by_line(exclude_po_id: str = "") -> dict:
+    """
+    `{line_id: qty}` ordered on every LIVE purchase order (any status but
+    Cancelled), optionally leaving one order out. A line's `line_id` means
+    *ordered against that schedule line* (buypick's docstring), so this is the
+    PO coverage of a schedule — `pnl.coverage_of()`'s key.
+    """
+    out: dict = {}
+    for pid, po in (STORE.get("purchases") or {}).items():
+        if pid == exclude_po_id or (po.get("status") or DEFAULT_STATUS) == "Cancelled":
+            continue
+        for r in po.get("line_items") or []:
+            lid = BQ._line_id(r.get("line_id"))
+            if lid and not r.get("is_header"):
+                out[lid] = out.get(lid, 0.0) + float(r.get("qty") or 0.0)
+    return out
+
+
+def _edit_sources(po: dict) -> list:
+    """
+    Every line the edit form can ADD, as `[{value, group, label, name, part_no,
+    hsn, unit, rate, make, remaining, lid}]`. The order's own BOQ first (with
+    the quantity still to order), then the BOQ items and the library.
+    """
+    out = []
+    ordered = ordered_by_line()
+    boq = (STORE.get("boqs") or {}).get(str(po.get("boq_id") or ""))
+    if boq:
+        lines = boq.get("line_items") or []
+        parents = BQ.header_of(lines)
+        for i, li in enumerate(lines):
+            lid = BQ._line_id(li.get("line_id"))
+            if not lid or li.get("is_header"):
+                continue
+            qty = li.get("total_qty")
+            rem = (None if qty is None
+                   else round(float(qty) - ordered.get(lid, 0.0), 4))
+            name = BYP.boq_line_name(lines, i, parents)
+            base = li.get("supply_base_rate")
+            out.append({
+                "value": f"{OWN_PREFIX}{lid}", "lid": lid,
+                "group": f"BOQ {boq.get('ref') or ''} — this order's schedule",
+                "label": (f"{BQ._item_no(li.get('item_no'))} · "
+                          f"{' '.join(str(li.get('description') or '').split())[:90]}"
+                          + (f" — {rem:g} {li.get('unit') or ''} left to order"
+                             if rem is not None else "")),
+                "name": str(li.get("description") or ""),
+                "find": name,
+                "part_no": BQ._item_no(li.get("item_no")),
+                "hsn": str(li.get("supply_hsn") or ""),
+                "unit": str(li.get("unit") or ""),
+                "rate": None if base is None else round(float(base), 2),
+                "make": BQ.make_from_remark(li.get("remark")),
+                "remaining": rem,
+            })
+    else:
+        for e in BYP.boq_entries():
+            lid = e["value"].rsplit(":", 1)[-1]
+            bid = e["value"][len(BYP.BOQ_PREFIX):].rsplit(":", 1)[0]
+            src = next((li for li in ((STORE.get("boqs") or {}).get(bid) or {})
+                        .get("line_items") or []
+                        if BQ._line_id(li.get("line_id")) == lid), {})
+            qty = src.get("total_qty")
+            rem = (None if qty is None
+                   else round(float(qty) - ordered.get(lid, 0.0), 4))
+            out.append({"value": e["value"], "lid": "",
+                        "group": "BOQ items",
+                        "label": e["label"] + (f" — {rem:g} left to order on {e['boq_ref']}"
+                                               if rem is not None else ""),
+                        "name": e["name"], "find": e.get("find") or e["name"],
+                        "part_no": "", "hsn": str(src.get("supply_hsn") or ""),
+                        "unit": e.get("unit") or "", "rate": e["rate"],
+                        "make": e["make"], "remaining": rem})
+    for e in BYP.spec_entries():
+        ident, _err = BYP.resolve(e["value"])
+        ident = ident or {}
+        out.append({"value": e["value"], "lid": "", "group": BYP.SPEC_GROUP,
+                    "label": e["label"], "name": e["name"],
+                    "find": e.get("find") or e["name"],
+                    "part_no": str(ident.get("part_no") or ""),
+                    "hsn": str(ident.get("hsn") or ""),
+                    "unit": str(ident.get("unit") or ""), "rate": e["rate"],
+                    "make": "", "remaining": None})
+    return out
+
+
+def _edit_row_html(*, k="", pick="", hdr=False, lid="", name="", part="",
+                   make="", hsn="", qty="", unit="", rate="", disc="",
+                   amount="") -> str:
+    """
+    One row of the full editor. Every row posts every list (`line_k`,
+    `line_pick`, `line_hdr`, `line_name`, …) so the lists stay aligned by
+    position; a specification heading posts its money boxes as hidden blanks.
+    """
+    hidden = (f'<input type="hidden" name="line_k" value="{P.esc(k)}"/>'
+              f'<input type="hidden" name="line_pick" value="{P.esc(pick)}"/>'
+              f'<input type="hidden" name="line_hdr" value="{"1" if hdr else ""}"/>')
+    acts = ('<span class="ed-acts">'
+            '<button type="button" class="btn-remove-line" title="Move up" '
+            'onclick="edMove(this,-1)">&#8593;</button>'
+            '<button type="button" class="btn-remove-line" title="Move down" '
+            'onclick="edMove(this,1)">&#8595;</button>'
+            '<button type="button" class="btn-remove-line" title="Remove this line" '
+            'onclick="this.closest(\'.line-row\').remove(); recalc();">&#215;</button>'
+            '</span>')
+    if hdr:
+        return f"""
+        <div class="line-row ed-hdr" data-lid="{P.esc(lid)}">
+          <span class="ed-item">{hidden}
+            <input type="text" name="line_name" value="{P.esc(name)}"
+                   maxlength="{LINE_NAME_MAX}" placeholder="Specification heading"/>
+            <input type="text" name="line_part" value="{P.esc(part)}"
+                   maxlength="{LINE_PART_MAX}" placeholder="Item no"/></span>
+          <input type="hidden" name="line_make" value=""/>
+          <input type="hidden" name="line_hsn" value=""/>
+          <input type="hidden" name="line_qty" value=""/>
+          <input type="hidden" name="line_unit" value=""/>
+          <input type="hidden" name="line_rate" value=""/>
+          <input type="hidden" name="line_discount" value=""/>
+          <span class="ed-note">heading &middot; no quantity</span>
+          {acts}
+        </div>"""
+    return f"""
+        <div class="line-row" data-qty="{P.esc(qty)}">
+          <span class="ed-item">{hidden}
+            <input type="text" name="line_name" value="{P.esc(name)}" data-lid="{P.esc(lid)}"
+                   maxlength="{LINE_NAME_MAX}" placeholder="Description"/>
+            <input type="text" name="line_part" value="{P.esc(part)}"
+                   maxlength="{LINE_PART_MAX}" placeholder="Part / item no"/></span>
+          <input type="text" name="line_make" value="{P.esc(make)}"
+                 maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
+          <input type="text" name="line_hsn" value="{P.esc(hsn)}"
+                 maxlength="{HSN_MAX}" placeholder="HSN" inputmode="numeric"/>
+          <input type="text" name="line_qty" value="{P.esc(qty)}" inputmode="decimal"
+                 placeholder="Qty" oninput="recalc()"/>
+          <input type="text" name="line_unit" value="{P.esc(unit)}"
+                 maxlength="{LINE_UNIT_MAX}" placeholder="Unit"/>
+          <input type="number" name="line_rate" value="{P.esc(rate)}"
+                 min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
+          <input type="number" name="line_discount" value="{P.esc(disc)}"
+                 min="0" max="100" step="any" placeholder="0" oninput="recalc()"/>
+          <span class="ln-amt">{amount or "&#8212;"}</span>
+          {acts}
+        </div>"""
+
+
+def _qty_text(v) -> str:
+    try:
+        return f"{float(v):g}"
+    except (TypeError, ValueError):
+        return str(v or "")
+
+
+def _stored_edit_rows(po: dict) -> str:
+    out = ""
+    for k, row in enumerate(po.get("line_items") or []):
+        lid = BQ._line_id(row.get("line_id")) or ""
+        if row.get("is_header"):
+            out += _edit_row_html(k=str(k), hdr=True, lid=lid,
+                                  name=str(row.get("name") or ""),
+                                  part=str(row.get("part_no") or ""))
+            continue
+        out += _edit_row_html(
+            k=str(k), lid=lid, name=str(row.get("name") or ""),
+            part=str(row.get("part_no") or ""), make=str(row.get("make") or ""),
+            hsn=str(row.get("hsn") or ""), qty=_qty_text(row.get("qty")),
+            unit=str(row.get("unit") or ""),
+            rate=f"{float(row.get('price') or 0.0):.2f}",
+            disc=(f"{float(row.get('discount_pct') or 0.0):g}"
+                  if row.get("discount_pct") else ""),
+            amount=_inr(row.get("total") or 0))
+    return out
+
+
+def _posted_edit_rows(form) -> str:
+    g = form.getlist
+    k, pick, hdr = g("line_k"), g("line_pick"), g("line_hdr")
+    cols = {c: g(c) for c in ("line_name", "line_part", "line_make", "line_hsn",
+                              "line_qty", "line_unit", "line_rate", "line_discount")}
+
+    def at(seq, n):
+        return seq[n] if n < len(seq) else ""
+    out = ""
+    for n in range(len(k)):
+        pk = at(pick, n)
+        lid = pk[len(OWN_PREFIX):] if pk.startswith(OWN_PREFIX) else ""
+        out += _edit_row_html(
+            k=at(k, n), pick=pk, hdr=bool(at(hdr, n)), lid=lid,
+            name=at(cols["line_name"], n), part=at(cols["line_part"], n),
+            make=at(cols["line_make"], n), hsn=at(cols["line_hsn"], n),
+            qty=at(cols["line_qty"], n), unit=at(cols["line_unit"], n),
+            rate=at(cols["line_rate"], n), disc=at(cols["line_discount"], n))
+    return out
+
+
+def parse_edit_lines(form, po: dict) -> tuple:
+    """
+    `(line_items, error)` — the full editor's rows as the order's lines.
+
+    * A row with `line_k` naming a stored line starts from THAT line, so the
+      keys this form never shows (`line_id`, `src_*`, a picture, `depth`) are
+      carried from the record and can never be forged by the browser.
+    * A new row with `line_pick` is resolved on the server: `own:<line_id>`
+      must be a material line of THIS order's BOQ (and carries `line_id` —
+      ordered against it); `spec:` / `boq:` go through `buypick.resolve()` and
+      carry `src_*` only. The browser's text is the line's text: every column
+      is editable.
+    * A schedule line may appear on an order ONCE — a second row for it is
+      refused, naming the line, because the quantity is the place to change.
+    """
+    g = form.getlist
+    ks, picks, hdrs = g("line_k"), g("line_pick"), g("line_hdr")
+    names, parts, makes = g("line_name"), g("line_part"), g("line_make")
+    hsns, qtys, units = g("line_hsn"), g("line_qty"), g("line_unit")
+    rates, discs = g("line_rate"), g("line_discount")
+    stored = list(po.get("line_items") or [])
+    boq = (STORE.get("boqs") or {}).get(str(po.get("boq_id") or "")) or {}
+    boq_lines = {BQ._line_id(li.get("line_id")): li
+                 for li in boq.get("line_items") or [] if li.get("line_id")}
+
+    def at(seq, n):
+        return str(seq[n] if n < len(seq) else "").strip()
+
+    items, seen_lid = [], {}
+    for n in range(len(ks)):
+        raw_k = at(ks, n)
+        base = {}
+        if raw_k.isdigit() and int(raw_k) < len(stored):
+            base = dict(stored[int(raw_k)])
+        else:
+            pick = at(picks, n)
+            if pick.startswith(OWN_PREFIX):
+                lid = BQ._line_id(pick[len(OWN_PREFIX):])
+                li = boq_lines.get(lid)
+                if not li or li.get("is_header"):
+                    return [], (f"Line {n + 1}: that line is not on BOQ "
+                                f"{P.esc(po.get('boq_ref') or '')} any more. "
+                                f"Remove it and pick again.")
+                base = {"line_id": lid}
+            elif pick:
+                ident, err = BYP.resolve(pick)
+                if err:
+                    return [], f"Line {n + 1}: {P.esc(err)}"
+                for key in ("name", "part_no", "hsn", "unit"):
+                    ident.pop(key, None)
+                base = dict(ident)
+        name = at(names, n)
+        if at(hdrs, n) == "1":
+            if not name:
+                continue
+            base.update({"type": "item", "is_header": True, "name": name[:LINE_NAME_MAX],
+                         "part_no": at(parts, n)[:LINE_PART_MAX], "hsn": "",
+                         "qty": 0.0, "unit": "", "price": 0.0, "total": 0.0,
+                         "depth": 0})
+            for key in ("make", "discount_pct"):
+                base.pop(key, None)
+            items.append(base)
+            continue
+        if not name:
+            if not any(at(c, n) for c in (qtys, rates, makes, hsns, parts)):
+                continue      # an untouched blank row is not a mistake
+            return [], f"Line {n + 1} has figures but no description."
+        label = P.esc(name[:60])
+        try:
+            qty = float(at(qtys, n).replace(",", "") or "x")
+        except ValueError:
+            return [], (f"Line {n + 1} ({label}): the quantity must be a number "
+                        f"greater than zero.")
+        if qty <= 0:
+            return [], f"Line {n + 1} ({label}): the quantity must be greater than zero."
+        try:
+            rate = P.parse_money(at(rates, n)) if at(rates, n) else 0.0
+            float(at(rates, n).replace(",", "") or "0")
+        except ValueError:
+            return [], f"Line {n + 1} ({label}): the rate must be a number."
+        if rate < 0:
+            return [], f"Line {n + 1} ({label}): the rate cannot be negative."
+        disc, disc_err = _parse_discount(at(discs, n), name)
+        if disc_err:
+            return [], disc_err
+        hsn = at(hsns, n)
+        if len(hsn) > HSN_MAX:
+            return [], (f"Line {n + 1} ({label}): an HSN is at most {HSN_MAX} "
+                        f"characters.")
+        lid = BQ._line_id(base.get("line_id"))
+        if lid:
+            if lid in seen_lid:
+                return [], (f"Line {n + 1} ({label}) is the same BOQ line as line "
+                            f"{seen_lid[lid]} — it is already on this order. "
+                            f"Change the quantity on line {seen_lid[lid]} instead "
+                            f"of adding it twice.")
+            seen_lid[lid] = n + 1
+        make = at(makes, n)[:BP.MAKE_MAX]
+        # `is_header: False` is the from-BOQ shape and absent is the create
+        # form's; a line keeps whichever it had, and a new schedule line takes
+        # the from-BOQ one.
+        if "is_header" in base or lid:
+            base["is_header"] = False
+        base.update({
+            "type": "item",
+            "name": name[:LINE_NAME_MAX], "part_no": at(parts, n)[:LINE_PART_MAX],
+            "hsn": hsn, "qty": qty, "unit": at(units, n)[:LINE_UNIT_MAX],
+            "price": rate, "discount_pct": disc,
+            "total": _line_total(rate, qty, disc), "depth": 0,
+        })
+        if make:
+            base["make"] = make
+        else:
+            base.pop("make", None)
+        items.append(base)
+    return items, ""
+
+
+def _record_reprice_by_k(po: dict, before: dict, form, note: str) -> list:
+    """
+    `_record_reprice()` keyed on the STORED POSITION a row came from (`line_k`)
+    rather than on its place in the list — lines can now be added, removed and
+    moved, so "the third row" is no longer the same line before and after.
+    A line removed or added is not a reprice; it goes on the edit log.
+    """
+    moved = []
+    saved = list(po.get("line_items") or [])
+    origin = po.pop("_k_origin", [])
+    for row, k in zip(saved, origin):
+        if k is None or row.get("is_header") or k not in before:
+            continue
+        name, part_no, old_rate, old_disc = before[k]
+        new_rate = round(float(row.get("price") or 0.0), 2)
+        new_disc = round(float(row.get("discount_pct") or 0.0), 4)
+        if (round(old_rate, 2), round(old_disc, 4)) == (new_rate, new_disc):
+            continue
+        moved.append({"name": name, "part_no": part_no,
+                      "rate_from": round(old_rate, 2), "rate_to": new_rate,
+                      "disc_from": round(old_disc, 4), "disc_to": new_disc})
+    if moved:
+        po.setdefault("reprice_log", []).append({
+            "at": _now(), "by": _repricer(),
+            "status": po.get("status") or DEFAULT_STATUS,
+            "note": note, "lines": moved})
+    return moved
+
+
+def _k_origin(form, items: list) -> list:
+    """
+    For each saved line, the stored index it started from (or None) — the
+    posted rows in order with the ones `parse_edit_lines()` dropped (an empty
+    heading, an untouched blank row) left out by the same tests.
+    """
+    g = form.getlist
+    ks, names = g("line_k"), g("line_name")
+
+    def at(seq, n):
+        return str(seq[n] if n < len(seq) else "").strip()
+    out = []
+    for n in range(len(ks)):
+        if not at(names, n):
+            continue
+        k = at(ks, n)
+        out.append(int(k) if k.isdigit() else None)
+    return out[:len(items)]
+
+
 @purchase_bp.route("/edit/<id>", methods=["GET", "POST"])
-def edit_purchase_rates(id: str):
+def edit_purchase_rates(id: str, imported: dict = None):
     """
-    Reprice a live purchase order — CLIENT_CHANGES-2.md A1.
+    Edit a purchase order — every field and every line (2 November 2026; see
+    the FULL EDIT section above). The endpoint keeps its old name because the
+    route registry, the document-number grant and every link name it; it is no
+    longer only a reprice.
 
-    Gated by `can_edit_rates()` on both verbs. Checking only on POST would leave
-    a form that renders happily and refuses on submit; checking only on GET
-    would leave the POST open to anyone who kept the URL.
-
-    **Any status but `Cancelled`**, from 28 August 2026 — see the section note
-    above for why the Draft-only narrowing was lifted rather than kept. Every
-    reprice that moves a figure is recorded by `_record_reprice()` before the
-    redirect, and the record is what makes the unlock safe rather than the
-    restriction that used to stand in its place.
+    Gated by `can_edit_rates()` (Cancelled is locked — lock 4) and
+    `approval.can_modify()` (an APPROVED order is a decision taken) on both
+    verbs. `imported` is Import from Excel's seam (CLAUDE.md, the six create
+    routes' rule, extended here): the sheet's rows arrive as the extra-parts
+    repeater's posted shape and are appended after the order's own extra
+    parts; Flask never passes it and the POST never reads it.
     """
+    import auth as _AUTH
+    import editlog as EL
+
     po = STORE["purchases"].get(id)
     if not po:
         return redirect(url_for("purchase.list_purchases",
@@ -4158,230 +4582,216 @@ def edit_purchase_rates(id: str):
     if not allowed:
         return redirect(url_for("purchase.view_purchase", id=id,
                                 msg=why, type="error"))
-
-    # B7 (ours — see approval.can_modify), layered on `can_edit_rates()` rather
-    # than replacing it. A1 unlocked repricing on an issued order deliberately;
-    # this refuses it on an APPROVED one, which is a different question. What
-    # this route changes is what the company has agreed to PAY a vendor, so it
-    # is exactly the figure an approval is an approval OF.
-    #
-    # ⚠ `/purchase/<id>/update` is deliberately NOT gated: it moves the order
-    #   along its status lifecycle and changes no figure, and locking a receipt
-    #   of goods behind an approval ladder would stop the storekeeper recording
-    #   a delivery that has physically happened.
     may, why_not = approval.can_modify("purchase", po)
     if not may:
         return redirect(url_for("purchase.view_purchase", id=id,
                                 msg=why_not, type="error"))
 
+    f = request.form
     error = ""
+    status_now = po.get("status") or DEFAULT_STATUS
+    # The number on EDIT, forward only, at every status but Cancelled (the
+    # 2 November definition — an edit route types a number too). After the
+    # order left Draft the change is on the edit log like any other.
+    may_number = _may_set_number()
+    full = request.method == "POST" and "line_k" in f
 
-    # ⚠ **THE PURCHASE ORDER IS THE ONE OF THE FOUR WITH A GENUINE UNISSUED
-    #   STATE, so it is the one whose number stays typeable after create**
-    #   (CLIENT_CHANGES.md §0's fifty-fourth block, item A point 2). The tax
-    #   invoice has no draft — its only later state is `cancelled`; the
-    #   proforma has no status field at all; and `challan.edit_dc()` says in
-    #   terms that `ref` is "deliberately untouched — an edit never reissues
-    #   the number". The PO has `Draft`, which `PO_STATUSES` defines as
-    #   "written, not yet sent to the vendor", and a number that has not gone
-    #   to a vendor is still ours.
-    #
-    # ⚠ **This is layered ON TOP of this route's own rule, not mixed into
-    #   it.** A1 deliberately unlocked REPRICING on an Issued order and that
-    #   is unchanged; the NUMBER is a different question with a different
-    #   answer, and once the order is Issued it is immutable here.
-    number_editable = (po.get("status") or DEFAULT_STATUS) == "Draft"
-    may_number = number_editable and _may_set_number()
+    if request.method == "POST" and not full:
+        return _legacy_reprice_post(po, id, may_number)
 
-    if request.method == "POST":
-        before = float(po.get("grand_total") or 0.0)
-        # Captured BEFORE `_reprice()` writes, because it mutates the rows in
-        # place and there is no second copy to diff against afterwards.
-        was = [(str(r.get("name") or ""), str(r.get("part_no") or ""),
-                float(r.get("price") or 0.0), float(r.get("discount_pct") or 0.0))
-               for _i, r in _priced_rows(po)]
-        # The extra lines are compared whole rather than per-line, because they
-        # are not positional: a row can be added or removed here, so "which one
-        # moved" is not a question with an answer. What matters for the message
-        # is only whether the list is the one that went in.
-        extra_was = extra_lines_of(po)
-        make_was = [str(r.get("make") or "") for _i, r in _priced_rows(po)]
-        hsn_was = [str(r.get("hsn") or "") for _i, r in _priced_rows(po)]
-
-        # ⚠ The number is read and checked BEFORE `_reprice()` writes, so a
-        #   refused number leaves the order's figures exactly as they were.
-        #   `_reprice()` mutates the rows in place and there is no undo.
+    if full:
+        before = {k: v for k, v in po.items() if k != EL.FIELD}
+        before_lines = [dict(r) for r in po.get("line_items") or []]
+        before_k = {k: (str(r.get("name") or ""), str(r.get("part_no") or ""),
+                        float(r.get("price") or 0.0), float(r.get("discount_pct") or 0.0))
+                    for k, r in enumerate(po.get("line_items") or [])
+                    if not r.get("is_header")}
         ref_was = str(po.get("ref") or "")
-        default_seq = DN.ordinal_of(ref_was)
-        seq_now, num_err = DN.validate(
-            DN.PO, po.get("fy") or P.fy_of(po.get("date")),
-            request.form.get("doc_no_seq"), default_seq, may_number)
-        _np = (request.form.get("project_id") or "").strip()
-        proj_err = ("That project no longer exists. Pick another, or none."
-                    if _np and _np not in (STORE.get("projects") or {})
-                    and not po.get("boq_id") else "")
-        error = num_err or proj_err or _reprice(po, request.form)
-        # The project, on EDIT too (31 Oct 2026, §0 sixty-third block, C4) —
-        # an order raised from scratch only; one raised from a BOQ follows its
-        # schedule and is never filed by hand. The same two fields
-        # `create_purchase()` writes, and a line on the order's own trail.
-        # ⚠ NOT through `projtag.py`: `tests/test_import_directions.py` keeps
-        #   every document module from importing it, and this is the create
-        #   form's own field on the edit form, not a hand-filing from the
-        #   project page.
-        if not error and "project_id" in request.form and not po.get("boq_id"):
-            new_pid = (request.form.get("project_id") or "").strip()
-            old_pid = str(po.get("project_id") or "").strip()
-            if new_pid != old_pid:
-                po["project_id"] = new_pid
-                po["project_name"] = _project_name_of(new_pid)
-                _log(po, (f"Filed under project {P.esc(po['project_name'])}."
-                          if new_pid else "Removed from its project."))
-        if not error and seq_now != default_seq:
-            ref_now = _ref_for(po.get("date"), seq_now)
-            po["ref"] = ref_now
-            DN.note_used(DN.PO, po.get("fy") or P.fy_of(po.get("date")),
-                         seq_now)
-            DN.record_override(po, ref_was, ref_now, _actor_id())
-            _log(po, f"Purchase order number changed by hand from "
-                     f"{P.esc(ref_was)} to {P.esc(ref_now)}.")
+
+        po_date = (f.get("date") or "").strip()
+        vendor_fields, vendor_err = _vendor_from(f)
+        qid = (f.get("quotation_id") or "").strip()
+        tax_type = (f.get("tax_type") or po.get("tax_type") or "exempt").strip()
+        cgst = P.parse_money(f.get("cgst_rate"))
+        igst = P.parse_money(f.get("igst_rate"))
+        items, line_err = parse_edit_lines(f, po)
+        charges, charge_err = _parse_charges(f)
+        extra_lines, extra_err = _parse_extra_lines(f)
+        _np = (f.get("project_id") or "").strip()
+
+        if not po_date:
+            error = "Purchase order date is required."
+        elif vendor_err:
+            error = vendor_err
+        elif tax_type not in ("cgst_sgst", "igst", "exempt"):
+            error = "Invalid tax type."
+        elif qid and qid not in STORE["quotations"]:
+            error = "That quotation no longer exists. Leave the job blank for a stock order."
+        elif _np and _np not in (STORE.get("projects") or {}) and not po.get("boq_id"):
+            error = "That project no longer exists. Pick another, or none."
+        elif line_err:
+            error = line_err
+        elif extra_err:
+            error = extra_err
+        elif charge_err:
+            error = charge_err
+        elif not any(not r.get("is_header") for r in items) and not extra_lines:
+            error = NO_LINES_ERROR
+
+        fy_now = P.fy_of(po_date) if po_date else (po.get("fy") or "")
+        own_seq = DN.ordinal_of(ref_was)
+        seq_now = own_seq
         if not error:
-            after = float(po.get("grand_total") or 0.0)
-            note  = (request.form.get("note") or "").strip()
-            moved = _record_reprice(po, was, note)
-            extra_moved = extra_lines_of(po) != extra_was
-            # A make is not a rate, so it never enters `reprice_log`; a save
-            # that changed only makes still goes on the order's own trail.
-            makes_moved = sum(1 for a, (_i, r) in zip(make_was, _priced_rows(po))
-                              if a != str(r.get("make") or ""))
-            hsns_moved = sum(1 for a, (_i, r) in zip(hsn_was, _priced_rows(po))
-                             if a != str(r.get("hsn") or ""))
-            # The order's own trail gets one line; the per-line detail lives in
-            # `reprice_log` and prints under the document. Two records of one
-            # event, and neither restates the other.
+            # A date moved into another financial year keeps its number only
+            # if the series there allows it — the same forward-only rule.
+            same_fy = fy_now == (po.get("fy") or P.fy_of(po.get("date")))
+            default_seq = own_seq if same_fy else SER.next_seq("PO", fy_now)
+            seq_now, num_err = DN.validate(DN.PO, fy_now, f.get("doc_no_seq"),
+                                           default_seq, may_number)
+            error = num_err
+
+        if not error:
+            origin = _k_origin(f, items)
+            po.update({"date": po_date, "fy": fy_now, **vendor_fields})
+            q = STORE["quotations"].get(qid) or {}
+            po["quotation_id"] = qid
+            po["quotation_ref"] = q.get("ref", "")
+            if not po.get("boq_id") and "project_id" in f:
+                po["project_id"] = _np
+                po["project_name"] = _project_name_of(_np)
+            for key in ("delivery_date", "payment_terms", "delivery_terms",
+                        "dispatch_through", "incoterms", "delivery_to", "notes"):
+                if key in f:
+                    po[key] = (f.get(key) or "").strip()
+            po["line_items"] = items
+            po["charges"] = charges
+            po["extra_lines"] = extra_lines
+            po["tax_type"] = tax_type
+            round_on = RO.form_choice(f, legacy=RO.is_on(po, True))
+            (subtotal, taxable_value, tax_info,
+             grand, total_qty) = _totals_of(items, tax_type, cgst, igst,
+                                            charges, extra_lines, round_on)
+            po["subtotal"] = subtotal
+            po["taxable_value"] = taxable_value
+            po["tax_info"] = tax_info
+            po["grand_total"] = grand
+            po["round_off"] = _round_off_of(taxable_value, tax_info, charges, grand)
+            if RO.FIELD in po or f.get(RO.MARK) is not None:
+                po[RO.FIELD] = round_on
+            po["total_qty"] = total_qty
+            if seq_now != own_seq or fy_now != (before.get("fy") or ""):
+                ref_now = _ref_for(po_date, seq_now)
+                if ref_now != ref_was:
+                    po["ref"] = ref_now
+                    DN.note_used(DN.PO, fy_now, seq_now)
+                    DN.record_override(po, ref_was, ref_now, _actor_id())
+                    _log(po, f"Purchase order number changed from "
+                             f"{P.esc(ref_was)} to {P.esc(ref_now)}.")
+
+            note = (f.get("note") or "").strip()
+            po["_k_origin"] = origin
+            moved = _record_reprice_by_k(po, before_k, f, note)
+            changes = (EL.diff(before, po, PO_EDIT_FIELDS)
+                       + EL.line_diff(before_lines, po.get("line_items") or [])
+                       + EL.line_diff([dict(r, name=r.get("description"), price=r.get("rate"))
+                                       for r in before.get("extra_lines") or []],
+                                      [dict(r, name=r.get("description"), price=r.get("rate"))
+                                       for r in extra_lines]))
+            charge_was = [(c.get("label"), c.get("amount")) for c in before.get("charges") or []]
+            if charge_was != [(c.get("label"), c.get("amount")) for c in charges]:
+                changes.append(("Charges", "; ".join(f"{a}: {b}" for a, b in charge_was),
+                                "; ".join(f"{c.get('label')}: {c.get('amount')}"
+                                          for c in charges)))
+            if not changes and not moved:
+                return redirect(url_for("purchase.view_purchase", id=id,
+                                        msg="Nothing changed, so nothing was recorded.",
+                                        type="success"))
+            # Draft edits are not logged (the 2 Nov definition); once the
+            # order has gone out every change is, with the band on screen.
+            if status_now != "Draft":
+                EL.record(po, changes,
+                          str((_AUTH.current_user() or {}).get("id") or ""))
+            n = len(changes)
+            _log(po, note or (f"Order edited: {n} change{'' if n == 1 else 's'}"
+                              f" &middot; value &#8377;{float(before.get('grand_total') or 0):,.0f}"
+                              f" &#8594; &#8377;{grand:,.0f}."))
+            msg = "Purchase order updated."
             if moved:
-                n = len(moved)
-                _log(po, note or (f"Repriced {n} line{'' if n == 1 else 's'}: "
-                                  f"order value &#8377;{before:,.0f} "
-                                  f"&#8594; &#8377;{after:,.0f}."))
-                msg = f"Rates updated on {n} line{'' if n == 1 else 's'}."
-                if extra_moved:
-                    msg += " Extra parts updated."
-                if makes_moved:
-                    msg += " Make updated."
-            elif makes_moved and not extra_moved:
-                k = makes_moved
-                _log(po, note or f"Make updated on {k} line{'' if k == 1 else 's'}.")
-                msg = f"Make updated on {k} line{'' if k == 1 else 's'}."
-            elif extra_moved:
-                # `reprice_log` records rate movements on ITEM lines and is
-                # rendered as such, so an extra-line edit does not fake an entry
-                # in it. It still goes on the order's own status trail, because
-                # "nothing changed" would be a lie about a save that happened.
-                _log(po, note or (f"Extra parts updated: order value "
-                                  f"&#8377;{before:,.0f} "
-                                  f"&#8594; &#8377;{after:,.0f}."))
-                msg = "Extra parts updated."
-                if makes_moved:
-                    msg += " Make updated."
-            else:
-                msg = "Nothing changed, so nothing was recorded."
-            if hsns_moved:
-                # An HSN is not a rate either, so it goes on the order's own
-                # trail and never into `reprice_log` — the make's precedent.
-                k = hsns_moved
-                hsn_msg = f"HSN updated on {k} line{'' if k == 1 else 's'}."
-                _log(po, hsn_msg)
-                # ⚠ **And the leaf's own trail, which carries the per-line
-                #   detail the order's history line does not** (§0
-                #   fifty-ninth block, A1: *"who, when, line, value"*). Two
-                #   records of one event; `status_history` keeps the sentence
-                #   1fdc09e wrote and `tests/test_po_hsn_edit.py` asserts.
-                for a, (_i, r) in zip(hsn_was, _priced_rows(po)):
-                    now = str(r.get("hsn") or "")
-                    if a != now:
-                        HF._log(po, HF.entry("", r.get("part_no") or "",
-                                             str(r.get("name") or ""),
-                                             str(r.get("name") or ""), r),
-                                now, _actor_id())
-                msg = (hsn_msg if msg.startswith("Nothing changed")
-                       else f"{msg} {hsn_msg}")
+                msg += (f" Rates updated on {len(moved)} "
+                        f"line{'' if len(moved) == 1 else 's'}.")
+            if q:
+                P.log_event(q, f"Purchase order {po['ref']} edited.")
             return redirect(url_for("purchase.view_purchase", id=id,
                                     msg=msg, type="success"))
 
-    # ── The rows ──────────────────────────────────────────────────────────
-    #
-    # Seven cells, which is exactly what `.line-row` lays out for the create
-    # form: item, make, qty, rate, discount, amount, spacer. Reusing that grid
-    # rather than declaring a new one is not tidiness — `PURCHASE_STYLES` is
-    # loaded by `/purchase/view`, whose bytes are pinned, so a rule added for
-    # this page would move a printed document that did not change. The Make
-    # track (26 Oct 2026) is `MAKE_FORM_STYLES`', for that reason.
-    posted_rates = request.form.getlist("line_rate")    if request.method == "POST" else []
-    posted_discs = request.form.getlist("line_discount") if request.method == "POST" else []
-    posted_makes = request.form.getlist("line_make")     if request.method == "POST" else []
-    posted_hsns  = request.form.getlist("line_hsn")      if request.method == "POST" else []
+    return _edit_form_page(po, id, error=error, may_number=may_number,
+                           imported=imported)
 
-    # The same widget the create form draws, so the two cannot describe one
-    # field two ways. A rejected POST comes back with what was typed.
-    if request.method == "POST":
-        charge_section = _charge_section_html(
-            charges_of(po), request.form.getlist("charge_label"),
-            request.form.getlist("charge_amount"), request.form)
-        extra_section = _extra_section_html(extra_lines_of(po),
-                                            posted=request.form)
-    else:
-        charge_section = _charge_section_html(charges_of(po))
-        extra_section = _extra_section_html(extra_lines_of(po))
 
-    rows_html = ""
-    for n, (_idx, row) in enumerate(_priced_rows(po)):
-        rate = posted_rates[n] if n < len(posted_rates) else f"{float(row.get('price') or 0.0):.2f}"
-        disc = posted_discs[n] if n < len(posted_discs) else (
-            f"{float(row.get('discount_pct') or 0.0):g}" if row.get("discount_pct") else "")
-        make = posted_makes[n] if n < len(posted_makes) else str(row.get("make") or "")
-        hsn = posted_hsns[n] if n < len(posted_hsns) else str(row.get("hsn") or "")
-        hsn_ro = "" if hsn_editable(po, row) else (
-            ' readonly title="Already printed on an order that is no longer '
-            'a Draft, so it stays as it is."')
-        # `data-qty` is what `recalc()` multiplies by: the quantity is not
-        # editable here, so it is not in an input, and the visible "10 Nos" is
-        # a label rather than a number. The Amount cell opens on the stored
-        # total and follows the rate and discount boxes from the first
-        # keystroke — the server recomputes it on POST regardless.
-        rows_html += f"""
-        <div class="line-row" data-qty="{float(row.get('qty') or 0.0):g}">
-          <span>{P.esc(row.get('name'))}
-            <span class="bn-sub">{P.esc(row.get('part_no'))}</span></span>
-          <input type="text" name="line_make" value="{P.esc(make)}"
-                 maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
-          <input type="text" name="line_hsn" value="{P.esc(hsn)}"
-                 maxlength="{HSN_MAX}" placeholder="HSN"{hsn_ro}/>
-          <span>{_fmt_qty(float(row.get('qty') or 0.0))} {P.esc(row.get('unit'))}</span>
-          <input type="number" name="line_rate" value="{P.esc(rate)}"
-                 min="0" step="0.01" placeholder="Rate" oninput="recalc()"/>
-          <input type="number" name="line_discount" value="{P.esc(disc)}"
-                 min="0" max="100" step="any" placeholder="0" oninput="recalc()"/>
-          <span class="ln-amt">{_inr(row.get('total') or 0)}</span>
-          <span></span>
-        </div>"""
-
-    # A Draft has not gone anywhere; an Issued order has. The same form serves
-    # both from 28 August 2026, and it says which one this is rather than
-    # asserting the Draft case at an operator who is looking at an Issued order.
+def _edit_form_page(po: dict, id: str, *, error: str = "", may_number: bool,
+                    imported: dict = None) -> str:
+    """The full edit form: the create form's sections, prefilled from `po`."""
+    f = request.form
+    is_post = request.method == "POST"
     status_now = po.get("status") or DEFAULT_STATUS
-    if status_now == "Draft":
-        sent_note = (f"This order is a <b>Draft</b> &mdash; it has not been "
-                     f"sent to {P.esc(_vendor_of(po))} yet, so what we agree "
-                     f"to pay is still ours to change.")
-    else:
-        sent_note = (f"This order is <b>{P.esc(status_now)}</b> and "
-                     f"{P.esc(_vendor_of(po))} has been sent it. Repricing it "
-                     f"is allowed and is how a rate that went out wrong gets "
-                     f"corrected &mdash; but the vendor is holding the figures "
-                     f"you are about to change, so tell them.")
+
+    def _v(name, stored):
+        return (f.get(name) or "").strip() if is_post else str(stored or "")
 
     tax_info = po.get("tax_info") or {}
+    v_date = _v("date", po.get("date"))
+    v_vendor = _v("vendor_id", po.get("vendor_id"))
+    v_qid = _v("quotation_id", po.get("quotation_id"))
+    v_tax = _v("tax_type", po.get("tax_type") or "exempt")
+    v_cgst = _v("cgst_rate", f"{float(tax_info.get('cgst_rate') or 9):g}")
+    v_igst = _v("igst_rate", f"{float(tax_info.get('igst_rate') or 18):g}")
+
+    if is_post:
+        rows_html = _posted_edit_rows(f)
+        charge_section = _charge_section_html(
+            charges_of(po), f.getlist("charge_label"), f.getlist("charge_amount"), f)
+        extra_section = _extra_section_html(extra_lines_of(po), posted=f)
+    else:
+        rows_html = _stored_edit_rows(po)
+        charge_section = _charge_section_html(charges_of(po))
+        if imported:
+            # The order's own extra parts, then the sheet's rows after them.
+            from werkzeug.datastructures import MultiDict
+            md = MultiDict()
+            for r in extra_lines_of(po):
+                md.add("extra_desc", r.get("description") or "")
+                md.add("extra_unit", r.get("unit") or "")
+                md.add("extra_qty", _qty_text(r.get("qty")))
+                md.add("extra_rate", "" if r.get("rate_is_assumed")
+                       else f"{float(r.get('rate') or 0):.2f}")
+                md.add("extra_discount", f"{float(r.get('discount_pct') or 0):g}"
+                       if r.get("discount_pct") else "")
+                md.add("extra_hsn", r.get("hsn") or "")
+                md.add("extra_make", r.get("make") or "")
+                md.add("extra_image", LI.valid_id(r.get("image")))
+            src = imported.get("extra")
+            for key in ("extra_desc", "extra_unit", "extra_qty", "extra_rate",
+                        "extra_discount", "extra_hsn", "extra_make"):
+                for val in src.getlist(key):
+                    md.add(key, val)
+            for _ in src.getlist("extra_desc"):
+                md.add("extra_image", "")
+            extra_section = _extra_section_html([], posted=md)
+        else:
+            extra_section = _extra_section_html(extra_lines_of(po))
+    banner_html = (imported or {}).get("banner_html") or ""
+
+    if status_now == "Draft":
+        sent_note = (f"This order is a <b>Draft</b> &mdash; it has not been "
+                     f"sent to {P.esc(_vendor_of(po))} yet, so every field and "
+                     f"every line is still ours to change.")
+    else:
+        sent_note = (f"This order is <b>{P.esc(status_now)}</b> and "
+                     f"{P.esc(_vendor_of(po))} has been sent it. Every field "
+                     f"and every line can still be corrected &mdash; but the "
+                     f"vendor is holding the figures you are about to change, "
+                     f"so tell them.")
+
     tax_note = "no tax on this order"
     if po.get("tax_type") == "cgst_sgst":
         tax_note = (f"CGST {float(tax_info.get('cgst_rate') or 0):g}% + "
@@ -4389,80 +4799,174 @@ def edit_purchase_rates(id: str):
     elif po.get("tax_type") == "igst":
         tax_note = f"IGST {float(tax_info.get('igst_rate') or 0):g}%"
 
-    # The number section is drawn ONLY while the order is a Draft. An Issued
-    # order's number is immutable, and a read-only box on a page is a worse
-    # way of saying so than not drawing it: the sentence beside the status
-    # already says the vendor is holding this document.
-    number_section = ""
-    if number_editable:
-        number_section = f"""
-        <div class="form-section">
-          <div class="section-title">Order number</div>
-          <div class="fg3">
-            <div class="form-group">
-              <label for="doc_no_seq">Purchase Order No.</label>
-              {DN.number_field(DN.PO, str(po.get("ref") or ""),
-                               may_override=may_number,
-                               typed=(request.form.get("doc_no_seq")
-                                      if request.method == "POST" else ""))}
-              <small class="field-hint">This order is still a Draft, so its
-                number is ours to change. Once it is Issued the number is
-                fixed.</small>
-            </div>
-          </div>
-        </div>"""
+    sources = _edit_sources(po)
+    groups: dict = {}
+    for e in sources:
+        groups.setdefault(e["group"], []).append(e)
+    src_opts = '<option value="">&#8212; pick an item to add &#8212;</option>'
+    for gname, entries in groups.items():
+        src_opts += f'<optgroup label="{P.esc(gname)}">'
+        for e in entries:
+            src_opts += (f'<option value="{P.esc(e["value"])}" '
+                         f'data-s="{P.esc(str(e.get("find") or e["label"]).lower())}" '
+                         f'title="{P.esc(e["name"])}">{P.esc(e["label"])}</option>')
+        src_opts += "</optgroup>"
+    src_map = P.json_for_script({e["value"]: {
+        "name": e["name"], "part_no": e["part_no"], "hsn": e["hsn"],
+        "unit": e["unit"], "rate": e["rate"], "make": e["make"],
+        "remaining": e["remaining"], "lid": e["lid"]} for e in sources})
+
+    q_opts = '<option value="">&#8212; none / stock purchase &#8212;</option>'
+    for qid_, q_ in sorted(STORE["quotations"].items(),
+                           key=lambda kv: kv[1].get("ref", ""), reverse=True):
+        sel = " selected" if qid_ == v_qid else ""
+        q_opts += (f'<option value="{P.esc(qid_)}"{sel}>{P.esc(q_.get("ref"))} '
+                   f'&middot; {P.esc(q_.get("account_name") or "unnamed")}</option>')
+
+    number_html = DN.number_field(DN.PO, str(po.get("ref") or ""),
+                                  may_override=may_number,
+                                  typed=(f.get("doc_no_seq") if is_post else ""))
+    round_box = RO.checkbox_html(RO.form_choice(f, legacy=RO.is_on(po, True))
+                                 if is_post else RO.is_on(po, True))
+    import_link = url_for("docimport.upload_purchase", po=id)
 
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-    <title>{B.page_title("Reprice " + str(po.get('ref')))}</title>{B.HEAD_ICON}
-    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}{REPRICE_HSN_STYLES}{DN.NUMBER_STYLES}</head>
+    <title>{B.page_title("Edit " + str(po.get('ref')))}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PURCHASE_STYLES}{MAKE_FORM_STYLES}{REPRICE_HSN_STYLES}{EDIT_FORM_STYLES}{DN.NUMBER_STYLES}</head>
     <body>{_nav()}
     <main>
       <div class="page-top">
-        <h1>Reprice <span>{P.esc(po.get('ref'))}</span></h1>
-        <a href="{url_for("purchase.view_purchase", id=id)}" class="btn btn-ghost">&#8592; Back to the order</a>
+        <h1>Edit <span>{P.esc(po.get('ref'))}</span></h1>
+        <div style="display:flex;gap:.7rem;">
+          <a href="{import_link}" class="btn btn-ghost">&#128229; Import parts from Excel</a>
+          <a href="{url_for("purchase.view_purchase", id=id)}" class="btn btn-ghost">&#8592; Back to the order</a>
+        </div>
       </div>
 
-      {_alert(error, "error")}
+      {_alert(error, "error")}{banner_html}
 
       <div class="buy-note">
         {sent_note}
-        <div class="bn-sub">Rates, discounts, the <b>make</b> and the
-          <b>HSN</b> on the <b>items</b> (any HSN while the order is a Draft,
-          only a blank one after that) &mdash; their quantities, the lines themselves and the
-          vendor are not editable here, and the tax stays as raised
-          ({P.esc(tax_note)}).
-          <b>Every change is recorded</b> &mdash; who, when, and the old rate
-          against the new one on each item line that moves &mdash; and it prints
-          under the order.
-          <br/><b>Extra parts below are fully editable</b>, descriptions and
-          quantities included: an item row is a snapshot of something upstream,
-          and an extra part has no upstream to disagree with. Changing one goes
-          on the order's history rather than into the rate-change table, which
-          lists movements on item lines.</div>
+        <div class="bn-sub">The vendor, the dates, the terms, the tax and
+          <b>every line</b> &mdash; description, part no, make, the full
+          eight-digit <b>HSN</b>, quantity, unit, rate and discount; add a line
+          from the BOQ, the Specification library or as free text; remove one;
+          move one. <b>Every change is recorded</b>: a rate that moves on a
+          line prints in the rate-change table under the order, and once the
+          order has left Draft every other change is logged on screen
+          (who, when, before &rarr; after). The printed order carries no mark.</div>
       </div>
 
       <form method="POST" action="{url_for("purchase.edit_purchase_rates", id=id)}">
-        {number_section}
+        <div class="form-section">
+          <div class="section-title">Order</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="doc_no_seq">Purchase Order No.</label>
+              {number_html}
+            </div>
+            <div class="form-group">
+              <label for="date">PO Date *</label>
+              <input type="date" id="date" name="date" value="{P.esc(v_date)}" required/>
+            </div>
+            {_vendor_field(v_vendor)}
+            <div class="form-group">
+              <label for="quotation_id">For Job <span style="font-weight:500;text-transform:none;">(optional)</span></label>
+              <select id="quotation_id" name="quotation_id">{q_opts}</select>
+            </div>
+            <div class="form-group">
+              <label for="vendor_ref">Vendor's Offer / Quote Ref</label>
+              <input type="text" id="vendor_ref" name="vendor_ref" value="{P.esc(_v('vendor_ref', po.get('vendor_ref')))}"/>
+            </div>
+            <div class="form-group">
+              <label for="delivery_date">Wanted By</label>
+              <input type="date" id="delivery_date" name="delivery_date" value="{P.esc(_v('delivery_date', po.get('delivery_date')))}"/>
+            </div>
+          </div>
+          {_edit_project_field(po)}
+        </div>
+
         <div class="form-section rp-hsn">
           <div class="section-title">What we pay</div>
+          <div class="po-ed">
           <div class="line-head">
-            <span>Item</span><span>Make</span><span>HSN</span><span>Qty</span><span>Rate (&#8377;)</span>
+            <span>Item</span><span>Make</span><span>HSN</span><span>Qty</span><span>Unit</span><span>Rate (&#8377;)</span>
             <span>Disc %</span>
             <span style="text-align:right;">Amount</span><span></span>
           </div>
-          {rows_html}
+          <div id="lines">{rows_html}</div>
+          </div>
+          <div class="ed-add">
+            <input type="search" id="ed-find" oninput="edFind(this)" autocomplete="off"
+                   placeholder="{BYP.FIND_PLACEHOLDER}" aria-label="Search items to add"/>
+            <select id="ed-src" aria-label="Item to add">{src_opts}</select>
+            <button type="button" class="btn btn-ghost" onclick="edAddPick()">+ Add picked item</button>
+            <button type="button" class="btn btn-ghost" onclick="edAddBlank()">+ Add free-text line</button>
+          </div>
           <div class="po-total-strip">
             <span>Order Value as it stands
               <b>&#8377; {float(po.get('grand_total') or 0.0):,.0f}</b></span>
           </div>
-          {RO.checkbox_html(RO.form_choice(request.form, legacy=RO.is_on(po, True)) if request.method == "POST" else RO.is_on(po, True))}
-          {_edit_project_field(po)}
         </div>
 
         {extra_section}
 
         {charge_section}
+
+        <div class="form-section">
+          <div class="section-title">Tax the vendor will charge us</div>
+          <div class="fg3">
+            <div class="form-group">
+              <label for="tax_type">Tax Type</label>
+              <select id="tax_type" name="tax_type">
+                <option value="cgst_sgst"{" selected" if v_tax == "cgst_sgst" else ""}>CGST + SGST (intra-state)</option>
+                <option value="igst"{" selected" if v_tax == "igst" else ""}>IGST (inter-state)</option>
+                <option value="exempt"{" selected" if v_tax == "exempt" else ""}>Exempt / Nil</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="cgst_rate">CGST % <span style="font-weight:500;text-transform:none;">(SGST matches)</span></label>
+              <input type="number" id="cgst_rate" name="cgst_rate" value="{P.esc(v_cgst)}" min="0" step="any"/>
+            </div>
+            <div class="form-group">
+              <label for="igst_rate">IGST %</label>
+              <input type="number" id="igst_rate" name="igst_rate" value="{P.esc(v_igst)}" min="0" step="any"/>
+            </div>
+          </div>
+          <p class="field-hint">As raised: {P.esc(tax_note)}.</p>
+          {round_box}
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Terms &amp; delivery</div>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="payment_terms">Payment Terms</label>
+              {_sel_opts("payment_terms", _PAY_TERMS, po.get("payment_terms") or _PAY_TERMS[0], _v("payment_terms", po.get("payment_terms")))}
+            </div>
+            <div class="form-group">
+              <label for="delivery_terms">Terms of Delivery</label>
+              {_sel_opts("delivery_terms", _DEL_TERMS, po.get("delivery_terms") or _DEL_TERMS[0], _v("delivery_terms", po.get("delivery_terms")))}
+            </div>
+            <div class="form-group">
+              <label for="dispatch_through">Dispatch Through</label>
+              {_sel_opts("dispatch_through", _DISPATCH, po.get("dispatch_through") or _DISPATCH[0], _v("dispatch_through", po.get("dispatch_through")))}
+            </div>
+            <div class="form-group">
+              <label for="incoterms">Incoterms</label>
+              {_sel_opts("incoterms", _INCOTERMS, po.get("incoterms") or _INCOTERMS[0], _v("incoterms", po.get("incoterms")))}
+            </div>
+            <div class="form-group span2">
+              <label for="delivery_to">Deliver To</label>
+              <textarea id="delivery_to" name="delivery_to" rows="3">{P.esc(_v("delivery_to", po.get("delivery_to")))}</textarea>
+            </div>
+            <div class="form-group span2">
+              <label for="notes">Note on the order</label>
+              <input type="text" id="notes" name="notes" value="{P.esc(_v("notes", po.get("notes")))}"/>
+            </div>
+          </div>
+        </div>
 
         <div class="form-section">
           <div class="section-title">Why</div>
@@ -4476,7 +4980,7 @@ def edit_purchase_rates(id: str):
         </div>
 
         <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1.2rem;">
-          <button type="submit" class="btn">Save rates</button>
+          <button type="submit" class="btn">Save changes</button>
           <a href="{url_for("purchase.view_purchase", id=id)}" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
@@ -4484,23 +4988,79 @@ def edit_purchase_rates(id: str):
       {_po_form_script_html()}
 
       <script>
-        /* The Amount column follows the boxes on every row — the item rows
-           through `data-qty`, the extra parts through xlAmounts() — in
-           _line_total()'s shape. The Order Value strip above is the STORED
-           figure, "as it stands", and is deliberately not previewed: what this
-           form saves is decided by the server, and the strip says what the
-           order is worth now rather than what it might be worth after.
+        var EDSRC = {src_map};
+        /* The blank row, as a string rather than a <template>: a template's
+           inputs would be counted as rows by anything reading the page. */
+        var ED_TPL = {P.json_for_script(_edit_row_html(k=""))};
 
-           ⚠ Until 14 September 2026 the hook below was an EMPTY STUB, there
-             only so the shared widgets could call it without a ReferenceError
-             — which left every Amount cell on this form reading "—" against a
-             row carrying a quantity and a rate. Both blocks sit AFTER the form
-             for the same reason the create form's do: the hook runs once at
-             load, and the rows have to exist by then. */
+        function edRow(el) {{ return el.closest('.line-row'); }}
+        function edMove(btn, dir) {{
+          var row = edRow(btn), box = document.getElementById('lines');
+          if (dir < 0 && row.previousElementSibling) {{
+            box.insertBefore(row, row.previousElementSibling);
+          }} else if (dir > 0 && row.nextElementSibling) {{
+            box.insertBefore(row.nextElementSibling, row);
+          }}
+        }}
+        function edNewRow() {{
+          var box = document.getElementById('lines');
+          box.insertAdjacentHTML('beforeend', ED_TPL);
+          return box.lastElementChild;
+        }}
+        function edAddBlank() {{
+          var row = edNewRow();
+          row.querySelector('input[name="line_name"]').focus();
+          recalc();
+        }}
+        /* A schedule line goes on an order ONCE. Picking one that is already
+           here does not add it: it points at the row's quantity instead (the
+           server refuses a second row for it as well). */
+        function edAddPick() {{
+          var sel = document.getElementById('ed-src');
+          var v = sel.value, e = EDSRC[v];
+          if (!v || !e) return;
+          if (e.lid) {{
+            var have = document.querySelector('#lines input[name="line_name"][data-lid="' + e.lid + '"]');
+            if (have) {{
+              var q = edRow(have).querySelector('input[name="line_qty"]');
+              alert('That BOQ line is already on this order. Change its quantity on its row instead.');
+              if (q) {{ q.focus(); q.select(); }}
+              return;
+            }}
+          }}
+          var row = edNewRow();
+          row.querySelector('input[name="line_pick"]').value = v;
+          var nm = row.querySelector('input[name="line_name"]');
+          nm.value = e.name || ''; nm.setAttribute('data-lid', e.lid || '');
+          row.querySelector('input[name="line_part"]').value = e.part_no || '';
+          row.querySelector('input[name="line_hsn"]').value = e.hsn || '';
+          row.querySelector('input[name="line_unit"]').value = e.unit || '';
+          row.querySelector('input[name="line_make"]').value = e.make || '';
+          if (e.rate !== null && e.rate !== undefined) {{
+            row.querySelector('input[name="line_rate"]').value = Number(e.rate).toFixed(2);
+          }}
+          if (e.remaining !== null && e.remaining !== undefined && e.remaining > 0) {{
+            row.querySelector('input[name="line_qty"]').value = e.remaining;
+          }}
+          sel.value = '';
+          recalc();
+        }}
+        function edFind(inp) {{
+          var words = inp.value.toLowerCase().split(/\\s+/).filter(function (w) {{ return w; }});
+          var sel = document.getElementById('ed-src');
+          sel.querySelectorAll('option').forEach(function (o) {{
+            if (!o.value) return;
+            var t = (o.getAttribute('data-s') || o.textContent).toLowerCase();
+            o.hidden = !words.every(function (w) {{ return t.indexOf(w) !== -1; }});
+          }});
+        }}
         function recalc() {{
-          document.querySelectorAll('.line-row[data-qty]').forEach(function (row) {{
-            var q = parseFloat(row.dataset.qty) || 0;
-            var r = parseFloat(row.querySelector('input[name="line_rate"]').value) || 0;
+          document.querySelectorAll('#lines .line-row').forEach(function (row) {{
+            var qEl = row.querySelector('input[name="line_qty"]');
+            var rEl = row.querySelector('input[name="line_rate"]');
+            if (!qEl || !rEl || qEl.type === 'hidden') return;
+            var q = parseFloat(qEl.value) || 0;
+            var r = parseFloat(rEl.value) || 0;
             var dEl = row.querySelector('input[name="line_discount"]');
             showAmt(row.querySelector('.ln-amt'),
                     lineAmt(q, r, dEl ? (parseFloat(dEl.value) || 0) : 0));
@@ -4513,6 +5073,126 @@ def edit_purchase_rates(id: str):
       <footer><p>{B.COMPANY_NAME} &middot; {B.APP_SUBTITLE} &middot; purchase order</p></footer>
     </main></body></html>"""
     return _page(template)
+
+
+# The full editor's item grid (2 Nov 2026): nine tracks — the item (its
+# description over its part no), make, an HSN track wide enough for all EIGHT
+# digits (the reprice form's 90px track cut the last two off), qty, unit,
+# rate, discount, amount, and the move/remove buttons. Scoped to `.po-ed`,
+# which only `/purchase/edit` draws, so every printed page is byte-identical.
+EDIT_FORM_STYLES = """
+<style>
+  .rp-hsn .po-ed .line-row, .rp-hsn .po-ed .line-head {
+    grid-template-columns:minmax(14rem,1fr) 110px 11ch 80px 80px 110px 70px 110px 92px;
+  }
+  .po-ed input[name="line_hsn"], .xl-row input[name="extra_hsn"] {
+    font-family:'SFMono-Regular',Consolas,monospace; min-width:10ch;
+  }
+  .xl-head, .xl-row {
+    grid-template-columns:1fr 110px 11ch 80px 80px 110px 70px 110px 34px;
+  }
+  .po-ed .ed-item { display:flex; flex-direction:column; gap:.25rem; min-width:0; }
+  .po-ed .ed-acts { display:flex; gap:.15rem; }
+  .po-ed .ed-hdr { background:#f5f7fa; }
+  .po-ed .ed-note { font-size:.75rem; color:var(--muted); grid-column:span 7; }
+  .ed-add { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.6rem 0; }
+  .ed-add select { max-width:34rem; }
+  @media (max-width:640px){
+    .rp-hsn .po-ed .line-row, .rp-hsn .po-ed .line-head { grid-template-columns:1fr 70px 110px; }
+  }
+</style>
+"""
+
+
+def _legacy_reprice_post(po: dict, id: str, may_number: bool):
+    """
+    The reprice screen's own POST, kept for a tab opened before 2 November
+    2026 (it posts no `line_k`). Exactly the body `edit_purchase_rates()` had:
+    rates, discounts, makes, HSNs, extra parts, charges, the tick, the
+    project and — while a Draft — the number.
+    """
+    number_editable = (po.get("status") or DEFAULT_STATUS) == "Draft"
+    may_number = number_editable and may_number
+    before = float(po.get("grand_total") or 0.0)
+    was = [(str(r.get("name") or ""), str(r.get("part_no") or ""),
+            float(r.get("price") or 0.0), float(r.get("discount_pct") or 0.0))
+           for _i, r in _priced_rows(po)]
+    extra_was = extra_lines_of(po)
+    make_was = [str(r.get("make") or "") for _i, r in _priced_rows(po)]
+    hsn_was = [str(r.get("hsn") or "") for _i, r in _priced_rows(po)]
+    ref_was = str(po.get("ref") or "")
+    default_seq = DN.ordinal_of(ref_was)
+    seq_now, num_err = DN.validate(
+        DN.PO, po.get("fy") or P.fy_of(po.get("date")),
+        request.form.get("doc_no_seq"), default_seq, may_number)
+    _np = (request.form.get("project_id") or "").strip()
+    proj_err = ("That project no longer exists. Pick another, or none."
+                if _np and _np not in (STORE.get("projects") or {})
+                and not po.get("boq_id") else "")
+    error = num_err or proj_err or _reprice(po, request.form)
+    if not error and "project_id" in request.form and not po.get("boq_id"):
+        new_pid = (request.form.get("project_id") or "").strip()
+        old_pid = str(po.get("project_id") or "").strip()
+        if new_pid != old_pid:
+            po["project_id"] = new_pid
+            po["project_name"] = _project_name_of(new_pid)
+            _log(po, (f"Filed under project {P.esc(po['project_name'])}."
+                      if new_pid else "Removed from its project."))
+    if not error and seq_now != default_seq:
+        ref_now = _ref_for(po.get("date"), seq_now)
+        po["ref"] = ref_now
+        DN.note_used(DN.PO, po.get("fy") or P.fy_of(po.get("date")), seq_now)
+        DN.record_override(po, ref_was, ref_now, _actor_id())
+        _log(po, f"Purchase order number changed by hand from "
+                 f"{P.esc(ref_was)} to {P.esc(ref_now)}.")
+    if error:
+        return _edit_form_page(po, id, error=error, may_number=_may_set_number())
+    after = float(po.get("grand_total") or 0.0)
+    note = (request.form.get("note") or "").strip()
+    moved = _record_reprice(po, was, note)
+    extra_moved = extra_lines_of(po) != extra_was
+    makes_moved = sum(1 for a, (_i, r) in zip(make_was, _priced_rows(po))
+                      if a != str(r.get("make") or ""))
+    hsns_moved = sum(1 for a, (_i, r) in zip(hsn_was, _priced_rows(po))
+                     if a != str(r.get("hsn") or ""))
+    if moved:
+        n = len(moved)
+        _log(po, note or (f"Repriced {n} line{'' if n == 1 else 's'}: "
+                          f"order value &#8377;{before:,.0f} "
+                          f"&#8594; &#8377;{after:,.0f}."))
+        msg = f"Rates updated on {n} line{'' if n == 1 else 's'}."
+        if extra_moved:
+            msg += " Extra parts updated."
+        if makes_moved:
+            msg += " Make updated."
+    elif makes_moved and not extra_moved:
+        k = makes_moved
+        _log(po, note or f"Make updated on {k} line{'' if k == 1 else 's'}.")
+        msg = f"Make updated on {k} line{'' if k == 1 else 's'}."
+    elif extra_moved:
+        _log(po, note or (f"Extra parts updated: order value "
+                          f"&#8377;{before:,.0f} "
+                          f"&#8594; &#8377;{after:,.0f}."))
+        msg = "Extra parts updated."
+        if makes_moved:
+            msg += " Make updated."
+    else:
+        msg = "Nothing changed, so nothing was recorded."
+    if hsns_moved:
+        k = hsns_moved
+        hsn_msg = f"HSN updated on {k} line{'' if k == 1 else 's'}."
+        _log(po, hsn_msg)
+        for a, (_i, r) in zip(hsn_was, _priced_rows(po)):
+            now = str(r.get("hsn") or "")
+            if a != now:
+                HF._log(po, HF.entry("", r.get("part_no") or "",
+                                     str(r.get("name") or ""),
+                                     str(r.get("name") or ""), r),
+                        now, _actor_id())
+        msg = (hsn_msg if msg.startswith("Nothing changed")
+               else f"{msg} {hsn_msg}")
+    return redirect(url_for("purchase.view_purchase", id=id,
+                            msg=msg, type="success"))
 
 
 def pictures_allowed(po: dict) -> tuple:
@@ -4992,7 +5672,7 @@ def view_purchase(id: str):
         # The newline and indent live INSIDE the string, so a Cancelled order
         # renders the action bar byte-for-byte as it always did.
         reprice_btn = (f'\n    <a href="{url_for("purchase.edit_purchase_rates", id=id)}" '
-                       f'class="btn btn-ghost">Reprice</a>')
+                       f'class="btn btn-ghost">&#9998;&nbsp;Edit</a>')
 
     # ── Delete ───────────────────────────────────────────────────────────
     # The same two conditions the route itself applies, read here so the bar
@@ -5002,6 +5682,7 @@ def view_purchase(id: str):
     # The newline and indent live INSIDE the string, so an order nobody may
     # delete renders the action bar byte-for-byte as it always did.
     import auth as _AUTH
+    import editlog as _EL   # the screen-only edit-after-issue band (2 Nov 2026)
     del_po = ""
     if approval.can_modify("purchase", po)[0] and _AUTH.can_reach("purchase.delete_purchase"):
         del_po = (f'\n    <a href="{url_for("purchase.delete_purchase", id=id)}" '
@@ -5088,7 +5769,7 @@ def view_purchase(id: str):
 </div>
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-{hsn_note}{panel}
+{_EL.band(po, "purchase order")}{hsn_note}{panel}
 
 <div class="doc-outer">
 <div class="quotation-doc">

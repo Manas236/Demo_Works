@@ -52,8 +52,12 @@ def test_an_issued_order_fills_a_blank_hsn(client, shop):
     rows[1]["hsn"] = "84818030"
     _set_status(po, "Issued")
     page = client.get(f"/purchase/edit/{po['id']}").get_data(as_text=True)
-    # The printed one is read-only, the blank one is not.
-    assert page.count("readonly title=\"Already printed") == 1
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 1): "HSN editable at every status". Neither
+    #   box is read-only any more. The old assertion, verbatim:
+    #       # The printed one is read-only, the blank one is not.
+    #       assert page.count("readonly title=\"Already printed") == 1
+    assert page.count("readonly title=\"Already printed") == 0
+    assert page.count('<input type="text" name="line_hsn"') == 2
     r = client.post(f"/purchase/edit/{po['id']}", data=_reprice_form(
         rows, line_hsn=["73072900", "84818030"]))
     assert r.status_code == 302, r.get_data(as_text=True)[:800]
@@ -65,12 +69,20 @@ def test_an_issued_order_refuses_to_overwrite_a_printed_hsn(client, shop):
     rows[0]["hsn"] = "84818030"
     _set_status(po, "Issued")
     before = [r.get("price") for r in rows]
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 1): "HSN editable at every status" — a
+    #   printed HSN on an Issued order is now OVERWRITTEN, and the change goes
+    #   on the order's trail. The old assertions, verbatim:
+    #       assert r.status_code == 200
+    #       assert "already printed as 84818030" in r.get_data(as_text=True)
+    #       assert rows[0]["hsn"] == "84818030"
+    #       assert [r.get("price") for r in rows] == before, "nothing written on a refusal"
     r = client.post(f"/purchase/edit/{po['id']}", data=_reprice_form(
         rows, line_rate=["999.00", "999.00"], line_hsn=["11111111", ""]))
-    assert r.status_code == 200
-    assert "already printed as 84818030" in r.get_data(as_text=True)
-    assert rows[0]["hsn"] == "84818030"
-    assert [r.get("price") for r in rows] == before, "nothing written on a refusal"
+    assert r.status_code == 302, r.get_data(as_text=True)[:800]
+    assert rows[0]["hsn"] == "11111111"
+    assert [r.get("price") for r in rows] == [999.0, 999.0] != before
+    assert any("HSN updated" in str(h.get("note", ""))
+               for h in po.get("status_history") or [])
 
 
 def test_a_stale_form_without_hsn_boxes_keeps_every_hsn(client, shop):

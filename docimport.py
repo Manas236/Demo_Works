@@ -296,6 +296,26 @@ class PurchaseKind(Kind):
             SI.target("discount", "Discount %", kw=r"disc"),
         ]}
 
+    # On a purchase order's EDIT form too (2 Nov 2026, §0 block of that date,
+    # Part 1): `?po=<id>` lands the rows after that order's own extra parts,
+    # through `purchase.edit_purchase_rates(imported=)` — the create seam's
+    # shape. Nothing is saved until the edit form's own Save.
+    def context(self, args):
+        val = str(args.get("po") or "").strip()
+        if val:
+            po = (STORE.get("purchases") or {}).get(val)
+            if not po:
+                return {}, "That purchase order no longer exists.", None
+            if not PU.can_edit_rates(po)[0]:
+                return {}, PU.can_edit_rates(po)[1], None
+            return {"po": val}, "", None
+        return {}, "", None
+
+    def back_url(self, ctx):
+        if ctx.get("po"):
+            return url_for("purchase.edit_purchase_rates", id=ctx["po"])
+        return url_for(self.endpoint)
+
     def intro_html(self, ctx):
         return ("<p class=\"imp-note\">Each row becomes one <b>extra part</b> on a new "
                 "purchase order &mdash; free text, not a catalogue. A blank rate stays "
@@ -365,8 +385,11 @@ class PurchaseKind(Kind):
             md.add("extra_discount", it["discount"])
             md.add("extra_hsn", it["hsn"])
             md.add("extra_make", it.get("make", ""))
-        return PU.create_purchase(imported={
-            "extra": md, "banner_html": _banner(self, rec, built)})
+        imported = {"extra": md, "banner_html": _banner(self, rec, built)}
+        po_id = (rec.get("ctx") or {}).get("po")
+        if po_id:
+            return PU.edit_purchase_rates(po_id, imported=imported)
+        return PU.create_purchase(imported=imported)
 
 
 # ── Quotation — spec-library picks ───────────────────────────────────────────

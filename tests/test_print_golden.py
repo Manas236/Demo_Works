@@ -761,10 +761,20 @@ TI_BLOCKS = {"head":       "7175047fae9ddfae",   # was 6715688604fc56b4 (§0 59t
 #     766ed2f54d4455f1 / 98978 again, whole. `head` did not move: the column's
 #     width rides inside the items block, not in `PURCHASE_STYLES`.
 # was bb87f899701ea744 / 99240 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-PO_WHOLE, PO_LEN = "249b2e228c4df02c", 104761   # was 576cc3e7a9ddba40 / 102421
+# was 249b2e228c4df02c / 104761 before 2 Nov 2026 — the FULL-EDIT pass
+#     (CLIENT_CHANGES.md §0, 2 Nov 2026 block, Part 1), declared. ⚠ **`head`
+#     ALONE moved, +10 bytes, and it is SCREEN ONLY:** the action bar's
+#     "Reprice" button now reads "&#9998;&nbsp;Edit", because `/purchase/edit`
+#     is the full edit form. MEASURED by rendering this golden on 5a060e7 and
+#     on the change and diffing: that one line is the whole difference. The
+#     edit-after-issue band is "" for an order never edited after issue, so it
+#     adds nothing here. `items` below was re-measured at the same time: the
+#     base itself renders efbfbd2531459c06 (the stored d6563a7e3202057d was
+#     already stale, unseen because blocks are read only when the whole moves).
+PO_WHOLE, PO_LEN = "ef8ad4babd4ecbde", 104771   # was 249b2e228c4df02c / 104761, was 576cc3e7a9ddba40 / 102421
                                 #   (§0 59th A1, 29 Oct 2026), was ae90e14f6bb98530 /
                                 #   100193 (SF mark 1.5x)
-PO_BLOCKS = {"head":       "6a1a651b90ded6e8",   # was d5dcf006e5a8f876 (§0 59th A1),   # was bf2fc2b883a29ca6 (page edge),
+PO_BLOCKS = {"head":       "f2506d2ff61a54c6",   # was 6a1a651b90ded6e8 (Edit button, 2 Nov 2026), was d5dcf006e5a8f876 (§0 59th A1),   # was bf2fc2b883a29ca6 (page edge),
                                                  # was b0183c538998f277,
                                                  # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,
@@ -777,7 +787,7 @@ PO_BLOCKS = {"head":       "6a1a651b90ded6e8",   # was d5dcf006e5a8f876 (§0 59t
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "ffe286e7afd8c90b",
              "party":      "307d35714073c084",
-             "items":      "d6563a7e3202057d",   # was 5e17a6d93410823c (Make),
+             "items":      "efbfbd2531459c06",   # measured on 5a060e7 (2 Nov 2026), was d6563a7e3202057d (stale), was 5e17a6d93410823c (Make),
                                                  # was fd759d99cf4b162a
              "signature":  "5717ca48143d8b6e"}
 
