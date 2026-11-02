@@ -161,13 +161,21 @@ def is_draft(wo) -> bool:
 
 
 def can_edit(wo) -> tuple:
-    """(allowed, reason) — edit and line add/delete are for a DRAFT only."""
+    """
+    (allowed, reason) — edit and line add/delete/move.
+
+    ⚠ **Any status but Cancelled from 2 November 2026** (CLIENT_CHANGES.md §0
+      block of that date, Part 2): an ISSUED work order is fully editable too,
+      every change after issue logged on the record (`editlog`) with the
+      screen-only band on `/wo/view`; the print carries none. The refusal it
+      replaced, verbatim:
+          if st == "issued":
+              return False, (f"{wo.get('ref')} has been issued and cannot be edited. "
+                             f"Cancel it and raise a new work order instead.")
+    """
     if not wo:
         return False, "That work order no longer exists."
     st = status_of(wo)
-    if st == "issued":
-        return False, (f"{wo.get('ref')} has been issued and cannot be edited. "
-                       f"Cancel it and raise a new work order instead.")
     if st == "cancelled":
         return False, f"{wo.get('ref')} is cancelled and cannot be edited."
     return True, ""
@@ -458,12 +466,15 @@ def _may_set_number() -> bool:
     return auth.has_perm("docnum.override")
 
 
-def _number_html(typed) -> str:
-    """The Work Order No. field, prefilled with the series' next number."""
+def _number_html(typed, ref: str = "") -> str:
+    """
+    The Work Order No. field, prefilled with the series' next number — or, on
+    EDIT (2 Nov 2026, Part 4), with the work order's own number: forward only.
+    """
     return (DN.NUMBER_STYLES +
             '<div class="form-section"><div class="form-group" style="max-width:22rem;">'
             '<label for="doc_no_seq">Work Order No.</label>'
-            + DN.number_field(DN.WO, next_ref(), may_override=_may_set_number(),
+            + DN.number_field(DN.WO, ref or next_ref(), may_override=_may_set_number(),
                               typed=typed or "")
             + "</div></div>")
 
@@ -857,6 +868,8 @@ WO_FORM_STYLES = "\n<style>\n" + """\
     margin-bottom:.2rem; }
   .wo-del { background:none; border:1px solid var(--border); border-radius:6px;
     color:#b91c1c; cursor:pointer; padding:.25rem .5rem; font-size:.8rem; }
+  .wo-mv { background:none; border:1px solid var(--border); border-radius:6px;
+    cursor:pointer; padding:.25rem .4rem; font-size:.8rem; margin-right:.15rem; }
   .wo-tools { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap;
     margin:.7rem 0 0; }
   .wo-needbar { display:flex; gap:.7rem; align-items:center; flex-wrap:wrap;
@@ -974,6 +987,18 @@ WO_FORM_JS = """
   }
   window.woAdd = function () { addFrom(tpl); };
   window.woAddHeading = function () { if (htpl) addFrom(htpl); };
+  /* Move a line up or down (2 Nov 2026) — the posted lists follow the rows. */
+  body.addEventListener('click', function (e) {
+    var m = e.target.closest ? e.target.closest('.wo-mv') : null;
+    if (!m) return;
+    var tr = m.closest('tr');
+    if (m.getAttribute('data-d') === '-1' && tr.previousElementSibling) {
+      body.insertBefore(tr, tr.previousElementSibling);
+    } else if (m.getAttribute('data-d') === '1' && tr.nextElementSibling) {
+      body.insertBefore(tr.nextElementSibling, tr);
+    }
+    renumber(); recalc();
+  });
   body.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.wo-del') : null;
     if (!b) return;
@@ -1162,7 +1187,7 @@ def _row_html(r: dict, shown=("material_rate", "labour_rate")) -> str:
             <input type="hidden" name="ln_qty" value=""/>{hidden_rates}</td>
           <td class="c-item">{_cell("ln_item", r.get("item_no", ""), need, "item_no", aria="Heading item number")}</td>
           <td colspan="{3 + 2 * len(shown)}"><span class="wo-hd-tag">Heading &mdash; no quantity or rate</span><label class="wo-sec"><input type="checkbox" class="wo-sec-box"{" checked" if sec else ""}/> Section (subtotal)</label>{_cell("ln_desc", r.get("description", ""), need, "description", textarea=True, aria="Heading")}{chips}</td>
-          <td><button type="button" class="wo-del" title="Delete this heading" aria-label="Delete this heading">&#10005;</button></td>
+          <td><button type="button" class="wo-mv" data-d="-1" title="Move up" aria-label="Move up">&#8593;</button><button type="button" class="wo-mv" data-d="1" title="Move down" aria-label="Move down">&#8595;</button><button type="button" class="wo-del" title="Delete this heading" aria-label="Delete this heading">&#10005;</button></td>
         </tr>"""
     rates = ""
     for f in shown:
@@ -1179,7 +1204,7 @@ def _row_html(r: dict, shown=("material_rate", "labour_rate")) -> str:
           <td>{_cell("ln_desc", r.get("description", ""), need, "description", textarea=True, aria="Description")}{chips}</td>
           <td class="c-unit">{UN.select_html("ln_unit", r.get("unit", ""), blank="Unit", cls="wo-in")}</td>
           <td class="c-num">{_cell("ln_qty", r.get("qty", ""), need, "qty", num, aria="Quantity")}</td>{rates}
-          <td><button type="button" class="wo-del" title="Delete this line" aria-label="Delete this line">&#10005;</button></td>
+          <td><button type="button" class="wo-mv" data-d="-1" title="Move up" aria-label="Move up">&#8593;</button><button type="button" class="wo-mv" data-d="1" title="Move down" aria-label="Move down">&#8595;</button><button type="button" class="wo-del" title="Delete this line" aria-label="Delete this line">&#10005;</button></td>
         </tr>"""
 
 
@@ -1272,9 +1297,10 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
     rate_words = (" and ".join(f"a <b>{_RATE_WORD[f].lower()} rate</b>"
                                for f in TRACK_RATES[tracks]))
     imp = ""
-    if not editing and _can("workorder.import_wo"):
-        imp = (f'<a href="{url_for("workorder.import_wo")}" class="btn btn-ghost">'
-               f'Import lines from Excel</a>')
+    if _can("workorder.import_wo"):
+        # On EDIT too (2 Nov 2026): the sheet's lines land AFTER the order's own.
+        imp = (f'<a href="{url_for("workorder.import_wo", **({"wo": wo["id"]} if editing else {}))}" '
+               f'class="btn btn-ghost">Import lines from Excel</a>')
     number = P.esc(wo.get("ref")) if editing else P.esc(next_ref())
 
     body = f"""
@@ -1303,7 +1329,7 @@ def _form_page(data: dict, rows: list, *, wo: dict = None, error: str = "",
   </div>
 
   <form method="POST" action="{action}" id="wo-form">
-    {"" if editing else _number_html(data.get("doc_no_seq") or "")}
+    {_number_html(data.get("doc_no_seq") or "", wo.get("ref") if editing else "")}
     <div class="form-section">
       <div class="section-title">Rates on this work order</div>
       <div class="wo-tracks">
@@ -2014,6 +2040,15 @@ def edit_wo(id: str):
         return _form_page(data, _mark(rows, problems), wo=wo, error=error,
                           problems=problems)
 
+    # The number on EDIT, forward only (2 Nov 2026, Part 4).
+    own_n = DN.ordinal_of(wo.get("ref"))
+    typed_n, num_err = DN.validate(DN.WO, "", (request.form.get("doc_no_seq") or "").strip(),
+                                   own_n, _may_set_number())
+    if num_err:
+        data["doc_no_seq"] = (request.form.get("doc_no_seq") or "").strip()
+        return _form_page(data, rows, wo=wo, error=num_err)
+    before = dict(wo)
+    before_lines = [dict(li) for li in wo.get("lines") or []]
     wo["date"] = data["date"]
     wo.update(data["contractor"])
     wo["project_id"] = data["project_id"]
@@ -2029,9 +2064,47 @@ def edit_wo(id: str):
     # it keeps what it derived (`form_choice`'s legacy is its own reading).
     wo["round_off_on"] = data["round_off_on"]
     wo["updated_at"] = _now()
-    # `ref` is deliberately untouched. An edit never reissues the number.
+    if typed_n != own_n:
+        ref_was = str(wo.get("ref") or "")
+        wo["ref"] = _spend_ref(typed_n)
+        DN.record_override(wo, ref_was, wo["ref"], _uid())
+    # After ISSUE every change is logged (2 Nov 2026, Part 2); a draft's are
+    # not. `editlog` states the lines per position, added and removed included.
+    if status_of(wo) != "draft":
+        import editlog as _EL
+        _EL.record(wo, _EL.diff(before, wo, WO_EDIT_FIELDS)
+                   + _EL.line_diff(_log_lines(before_lines), _log_lines(wo.get("lines") or [])),
+                   _uid())
     return redirect(url_for("workorder.view_wo", id=id,
                             msg="Work order updated.", type="success"))
+
+
+def _editlog_band(wo: dict) -> str:
+    """The screen-only edit-after-issue band, or "" (2 Nov 2026)."""
+    import editlog as _EL
+    return _EL.band(wo, "work order")
+
+
+# What the edit-after-issue log names on a work order (2 Nov 2026).
+WO_EDIT_FIELDS = (("ref", "Work Order No."), ("date", "Date"),
+                  ("contractor_name", "Contractor"), ("contractor_gstin", "Contractor GSTIN"),
+                  ("to", "Contractor address"), ("project_name", "Project"),
+                  ("site", "Site"), ("terms", "Terms & conditions"), ("notes", "Note"),
+                  ("tracks", "Rates carried"), ("gst_rate", "GST %"),
+                  ("round_off_on", "Round off to nearest rupee"))
+
+
+def _log_lines(lines: list) -> list:
+    """A work order's lines in `editlog.line_text()`'s shape."""
+    out = []
+    for li in lines or []:
+        rates = " / ".join(f"{k} {li.get(k)}" for k in ("material_rate", "labour_rate")
+                           if li.get(k) not in (None, ""))
+        out.append({"is_header": bool(li.get("is_header")),
+                    "name": f"{li.get('item_no') or ''} {li.get('description') or ''}".strip(),
+                    "qty": li.get("qty"), "unit": li.get("unit"), "price": rates,
+                    "total": ""})
+    return out
 
 
 @workorder_bp.route("/view/<id>")
@@ -2057,11 +2130,11 @@ def view_wo(id: str):
 
     if st == "draft":
         state = ("A draft: its lines may still change. Issue it to send it to "
-                 "the contractor; after that it can only be cancelled.")
+                 "the contractor; it stays editable after that, every change logged.")
     elif st == "issued":
         state = (f"Issued{' on ' + P.esc(wo.get('issued_on')) if wo.get('issued_on') else ''}. "
-                 f"It cannot be edited &mdash; to change it, cancel it and raise "
-                 f"a new work order.")
+                 f"Every field can still be corrected &mdash; each change is "
+                 f"logged here, and the printed copy carries no mark.")
     else:
         state = (f"Cancelled{' on ' + P.esc(wo.get('cancelled_on')) if wo.get('cancelled_on') else ''}"
                  f"{' &mdash; ' + P.esc(wo.get('cancel_reason')) if wo.get('cancel_reason') else ''}. "
@@ -2099,7 +2172,7 @@ def view_wo(id: str):
   </div>
 </div>
 
-{_flash()}
+{_flash()}{_editlog_band(wo)}
 <div class="wo-panel"><span class="wo-st">{_BADGE[st][0]}</span> &middot; {state}
   {f'<div style="margin-top:.4rem;">{project}</div>' if project else ''}</div>
 
@@ -2878,7 +2951,7 @@ def _upload_page(error: str = "") -> str:
     A sheet with only one rate column fills that rate and leaves the other
     blank and marked: a blank rate is never taken as 0.
   </div>
-  <form method="POST" action="{url_for('workorder.import_wo')}" enctype="multipart/form-data">
+  <form method="POST" action="{url_for('workorder.import_wo', **({"wo": request.args.get("wo")} if request.args.get("wo") else {}))}" enctype="multipart/form-data">
     <div class="form-section">
       <div class="form-group">
         <label for="workbook">Excel file</label>
@@ -3086,6 +3159,11 @@ def import_wo():
     except SI.Refused as exc:
         return _upload_page(exc.message)
     token = stage(wb, filename, _uid())
+    # Onto an existing work order's EDIT form (2 Nov 2026, Part 2): the rows
+    # land after its own lines. Only a work order that may be edited.
+    wo_id = (request.args.get("wo") or "").strip()
+    if wo_id and can_edit(_get(wo_id))[0]:
+        staged()[token]["wo"] = wo_id
     return redirect(url_for("workorder.import_preview", token=token))
 
 
@@ -3178,4 +3256,22 @@ def import_preview(token: str):
       <li>{n_need} field{"" if n_need == 1 else "s"} marked in red must be answered before the save.</li>
     </ul>
   </div>"""
+    wo = _get(str(rec.get("wo") or "")) if rec.get("wo") else None
+    if wo and can_edit(wo)[0]:
+        # The EDIT form, the work order's own lines first (2 Nov 2026).
+        typed = wo.get("contractor_source") == "typed"
+        to_lines = str(wo.get("to") or "").split("\n")
+        data = {
+            "date": wo.get("date", ""), "project_id": wo.get("project_id", ""),
+            "notes": wo.get("notes", ""),
+            "contractor_id": wo.get("contractor_id", "") if not typed else "",
+            "contractor_name": wo.get("contractor_name", "") if typed else "",
+            "contractor_gstin": wo.get("contractor_gstin", "") if typed else "",
+            "contractor_phone": wo.get("contractor_phone", "") if typed else "",
+            "contractor_addr": "\n".join(to_lines[1:]) if typed else "",
+            "tracks": tracks_of(wo),
+            "gst_rate": num_text(wo.get("gst_rate")) or "0",
+            "site": wo.get("site", ""), "terms": wo.get("terms", ""),
+            "round_off_on": _rounds(wo)}
+        return _form_page(data, rows_of(wo) + rows, wo=wo, banner=banner)
     return _form_page(dict(new_wo_defaults(), tracks=tracks), rows, banner=banner)

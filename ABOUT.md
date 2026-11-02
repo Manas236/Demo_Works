@@ -11471,6 +11471,18 @@ was `str(src.get("supply_hsn") or "")`.
 
 ### `/wo` — Work Orders · [workorder.py](workorder.py) · **BUY SIDE** (5 October 2026)
 
+⚠ **Full edit from 2 November 2026** (CLIENT_CHANGES.md §0 block of that date,
+Part 2): `/wo/edit/<id>` opens at **every status but Cancelled** (`can_edit()`;
+an issued order is no longer refused). Every header field, the rates, GST %,
+site and T&C, and every line — added (free text, headings, **Excel onto the
+edit form**: `/wo/import?wo=<id>` carries the id through the staging row and
+renders the EDIT form with the order's own lines first), removed and **moved**
+(↑/↓ on each row). The number is typeable on edit, forward only
+(`_spend_ref()` moves the series past it). After issue every change goes to
+`edit_log` (`WO_EDIT_FIELDS` + per-line, `_log_lines()`) with the screen-only
+band on `/wo/view`; `/wo/print` carries none; a Draft edit is not logged.
+Delete stays Draft-only (a destroy, not an edit).
+
 | Route | View |
 |---|---|
 | `GET /wo/` | `list_wos` — register, newest first, each WO's derived value |
@@ -11929,6 +11941,16 @@ and 6 `REQUIRED`), and the escaping and entity sweeps, which carry all four
 new routes in their URL map.
 
 ### `/dc` — Delivery Challans · [challan.py](challan.py)
+
+⚠ **Lines on edit from 2 November 2026** (§0 block of that date, Part 2, lock
+3): `/dc/edit/<id>` draws the create form's picker prefilled with the
+challan's own lines, and Excel lands on it too (`/import/challan?dc=<id>`) —
+**unless the challan is billed on a live RA bill** (`dcbill.billed_by()`),
+whose lines are locked on the form AND on the POST; every other field stays
+editable. The number is typeable on edit, forward only (`_spend_ref()`).
+Every change is on `edit_log` with the screen-only band; `/dc/print` and its
+Original / Duplicate / Triplicate labels are unchanged. A POST without
+`dc_json` (a pre-2-Nov tab) leaves the lines alone.
 
 | Route | View |
 |---|---|

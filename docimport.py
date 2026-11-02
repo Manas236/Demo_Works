@@ -958,16 +958,37 @@ class ChallanKind(BoqLineKind):
                  "written as text is left out for you to type — never turned into 0.")
     qty_prefer = r"dispatch|despatch|this|sent|supplied"
 
+    # Onto an UNBILLED challan's edit form too (2 Nov 2026, Part 2): `?dc=`
+    # names it, and the schedule is the challan's own. A billed challan's
+    # lines are locked (lock 3) and is refused here as its form refuses it.
+    def context(self, args):
+        dc_id = str(args.get("dc") or "").strip()
+        if dc_id:
+            import dcbill as _DCB
+            dc = (STORE.get("delivery_challans") or {}).get(dc_id)
+            if not dc:
+                return {}, "That challan no longer exists.", None
+            if _DCB.billed_by(dc_id):
+                return {}, ("That challan is billed on an RA bill, so its lines "
+                            "are locked."), None
+            return {"boq_id": str(dc.get("boq_id") or ""), "dc": dc_id}, "", None
+        return super().context(args)
+
     def back_url(self, ctx):
+        if ctx.get("dc"):
+            return url_for("challan.edit_dc", id=ctx["dc"])
         return url_for("challan.create_dc", boq=ctx.get("boq_id")) if ctx.get("boq_id") \
             else url_for("challan.list_dcs")
 
     def apply(self, token, rec, built):
-        return DC.create_dc(imported={
+        imported = {
             "boq_id": rec["ctx"]["boq_id"],
             "chosen": {it["lid"] for it in built["items"]},
             "qty": {it["lid"]: it["qty"] for it in built["items"]},
-            "banner_html": _banner(self, rec, built)})
+            "banner_html": _banner(self, rec, built)}
+        if rec["ctx"].get("dc"):
+            return DC.edit_dc(rec["ctx"]["dc"], imported=imported)
+        return DC.create_dc(imported=imported)
 
 
 class DraftPOKind(BoqLineKind):

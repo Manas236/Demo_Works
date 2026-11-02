@@ -584,7 +584,7 @@ def _consignee_block_form(data: dict) -> str:
 
 
 def _entry_form(boq: dict, data: dict, error: str = "",
-                dc: dict = None, banner_html: str = "") -> str:
+                dc: dict = None, banner_html: str = "", held=None) -> str:
     """
     The create form: the line picker, the consignee, and the dispatch fields.
 
@@ -603,8 +603,14 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     # unconditionally: `docimport.upload_challan` carries `dc.create`, the
     # very permission this form is classified under, so whoever sees the form
     # can follow the button — `tests/test_doc_import.py` holds the two equal.
-    import_btn = ("" if editing else
-                  f'\n      <a href="{url_for("docimport.upload_challan", boq=boq.get("id"))}" '
+    # ⚠ **LINES ON EDIT from 2 November 2026** (CLIENT_CHANGES.md §0 block of
+    #   that date, Part 2): the edit form is the create form — the picker
+    #   prefilled with what the challan carries — UNLESS the challan is
+    #   already billed on an RA bill (`held`), which is lock 3: its lines are
+    #   the billed record. Excel imports onto the edit form too.
+    lines_locked = editing and bool(held)
+    import_btn = ("" if lines_locked else
+                  f'\n      <a href="{url_for("docimport.upload_challan", boq=boq.get("id"), **({"dc": dc["id"]} if editing else {}))}" '
                   f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     action = (url_for("challan.edit_dc", id=dc["id"]) if editing
               else url_for("challan.create_dc", boq=boq.get("id")))
@@ -617,10 +623,18 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     #   §0's fifty-fourth block, item A point 2 — a challan has no unissued
     #   state to be editable in.
     if editing:
+        # The number on EDIT (2 Nov 2026, Part 4): forward only — the challan
+        # keeps its own number unless a higher one is typed; a number is never
+        # reissued (the counter moves past it).
         dc_number_html = (
-            f'This challan is numbered <b>{P.esc(dc.get("ref"))}</b>. An edit '
-            f'never reissues a challan number — the paper has gone out with '
-            f'the goods.')
+            f'<label for="doc_no_seq" style="display:block;font-size:.78rem;'
+            f'text-transform:uppercase;letter-spacing:.04em;color:var(--muted);'
+            f'margin-bottom:.3rem;">Challan No.</label>'
+            + DN.number_field(DN.DC, str(dc.get("ref") or ""),
+                              may_override=_may_set_number(),
+                              typed=data.get("doc_no_seq", ""))
+            + '<div class="dnum-note">Forward only &mdash; a number already '
+              'used is never issued again.</div>')
     else:
         _default_seq, control = _number_control(data.get("doc_no_seq", ""),
                                                 _may_set_number())
@@ -632,7 +646,13 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             f'<a href="{url_for("settings.edit_settings")}">Settings</a>.</div>')
 
     picker = ""
-    if not editing:
+    if lines_locked:
+        bill = held[1] if isinstance(held, tuple) and len(held) > 1 else {}
+        picker = (f'<div class="form-section"><div class="section-title">Lines</div>'
+                  f'<p class="field-hint">These lines are <b>locked</b>: this challan is '
+                  f'billed on RA{P.esc(bill.get("ra_no") or "")} and its lines are the '
+                  f'billed record (lock 3). Every other field stays editable.</p></div>')
+    elif not lines_locked:
         picker = BP.grid_html(
             boq,
             title="Lines going out",
@@ -681,7 +701,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     {dc_number_html}
   </div>
 
-  <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not editing else "true"};">
+  <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not lines_locked else "true"};">
     <input type="hidden" name="dc_json" id="dc_json" value=""/>
 
     <div class="form-section">
@@ -1285,15 +1305,23 @@ DC_EDIT_FIELDS = (("date", "Challan date"), ("dispatch_mode", "Dispatch mode"),
 
 
 @challan_bp.route("/edit/<id>", methods=["GET", "POST"])
-def edit_dc(id: str):
+def edit_dc(id: str, imported: dict = None):
     """
-    Consignee and dispatch fields. **Not the lines.**
+    Every field — and, from 2 November 2026, the LINES and the NUMBER.
 
-    A challan is signed for on arrival, and the lines on it are what left the
-    yard. Editing them behind a signature is how a dispute starts — `/po/edit`
-    makes the same call and `purchase.update_purchase()` made it first. Moving
-    different material means raising another challan, which is cheap and leaves
-    a trail.
+    ⚠ **Lines (CLIENT_CHANGES.md §0 block of 2 Nov 2026, Part 2, lock 3).** An
+      UNBILLED challan's lines are edited on the same picker the create form
+      draws — tick, untick, change a quantity — and Excel lands on it too
+      (`imported`, the create seam's shape; Flask never passes it). A challan
+      already billed on a live RA bill (`dcbill.billed_by()`, the ONE billed
+      predicate) has its lines LOCKED, refused on the POST as well as hidden:
+      they are what the bill claimed. *Until this date the lines were never
+      editable: "a challan is signed for on arrival … moving the lines under a
+      signed receipt is how a dispute starts."* Manas's ruling replaces that
+      with lock 3; every change after issue is on the edit log.
+    ⚠ **The number, forward only** (Part 4): its own number always passes; a
+      higher one typed spends the series up to it (`_spend_ref()`), so no
+      number is ever issued twice.
     """
     dc = (STORE.get("delivery_challans") or {}).get(id)
     if not dc:
@@ -1304,9 +1332,10 @@ def edit_dc(id: str):
         "project_name": dc.get("project_name", ""),
         "account_name": dc.get("account_name", ""), "line_items": [],
     }
+    held = DCB.billed_by(id)
 
-    if request.method == "GET":
-        return _entry_form(boq, {
+    def _current():
+        return {
             "date": dc.get("date", ""),
             "dispatch_mode": dc.get("dispatch_mode", ""),
             "dispatch_to": dc.get("dispatch_to", ""),
@@ -1316,11 +1345,42 @@ def edit_dc(id: str):
             "consignee_name": dc.get("consignee_name", ""),
             "consignee_addr": dc.get("consignee_addr", ""),
             "consignee_phone": dc.get("consignee_phone", ""),
-        }, dc=dc)
+            "_chosen": {BQ._line_id(r.get("line_id")) for r in dc.get("items") or []
+                        if not r.get("is_header")},
+            "_qty": {BQ._line_id(r.get("line_id")): r.get("qty")
+                     for r in dc.get("items") or [] if not r.get("is_header")},
+        }
+
+    if request.method == "GET":
+        data = _current()
+        if imported:
+            data["_chosen"] = set(imported.get("chosen") or ())
+            data["_qty"] = dict(imported.get("qty") or {})
+        return _entry_form(boq, data, dc=dc, held=held,
+                           banner_html=(imported or {}).get("banner_html") or "")
 
     data, error = _validate(request.form)
+    items = None
+    if not error and data["dc_json"] and not held:
+        items, error = picked_lines(data["dc_json"], boq)
+    own_seq = DN.ordinal_of(dc.get("ref"))
+    seq_now = own_seq
+    if not error:
+        seq_now, error = DN.validate(DN.DC, "", data["doc_no_seq"], own_seq,
+                                     _may_set_number())
     if error:
-        return _entry_form(boq, data, error, dc=dc)
+        try:
+            posted = (json.loads(data["dc_json"] or "{}").get("lines") or [])
+        except (ValueError, TypeError):
+            posted = []
+        if posted:
+            data["_chosen"] = {BQ._line_id(r.get("line_id")) for r in posted
+                               if isinstance(r, dict)}
+            data["_qty"] = {BQ._line_id(r.get("line_id")): r.get("qty")
+                            for r in posted if isinstance(r, dict)}
+        else:
+            data.update({k: v for k, v in _current().items() if k.startswith("_")})
+        return _entry_form(boq, data, error, dc=dc, held=held)
 
     # 31 Oct 2026, §0 sixty-fourth block, Part 2 — a challan is a SENT
     # document: every change is logged on it (`editlog`, who / when / field /
@@ -1328,16 +1388,31 @@ def edit_dc(id: str):
     # carries none.
     import auth as _AUTH
     before = dict(dc)
+    before_items = [dict(r) for r in dc.get("items") or []]
     for key in ("date", "dispatch_mode", "dispatch_to", "po_no", "po_date",
                 "notes"):
         dc[key] = data[key]
     dc.update(data["consignee"])
-    EL.record(dc, EL.diff(before, dc, DC_EDIT_FIELDS),
-              str((_AUTH.current_user() or {}).get("id") or ""))
-    # `ref` and `items` are deliberately untouched. An edit never reissues the
-    # number and never moves what went out.
-    return redirect(url_for("challan.view_dc", id=id,
-                            msg="Delivery challan updated.", type="success"))
+    changes = EL.diff(before, dc, DC_EDIT_FIELDS)
+    if items is not None:
+        dc["items"] = items
+        changes += EL.line_diff([dict(r, name=r.get("description"), price="")
+                                 for r in before_items],
+                                [dict(r, name=r.get("description"), price="")
+                                 for r in items])
+    if seq_now != own_seq:
+        ref_was = str(dc.get("ref") or "")
+        dc["ref"] = _spend_ref(seq_now)
+        DN.record_override(dc, ref_was, dc["ref"], _actor_id())
+        changes.append(("Challan No.", ref_was, dc["ref"]))
+    EL.record(dc, changes, str((_AUTH.current_user() or {}).get("id") or ""))
+    msg = "Delivery challan updated."
+    over = over_dispatched(dc) if items is not None else []
+    if over:
+        msg += (f" {len(over)} line{'' if len(over) == 1 else 's'} now exceed"
+                f"{'s' if len(over) == 1 else ''} the schedule — see the note "
+                f"on the challan.")
+    return redirect(url_for("challan.view_dc", id=id, msg=msg, type="success"))
 
 
 @challan_bp.route("/delete/<id>", methods=["GET", "POST"])

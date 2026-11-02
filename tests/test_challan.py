@@ -652,11 +652,23 @@ def test_edit_cannot_change_the_lines(client, boq_tip):
         "dc_json": _payload(("bbbbbbbbbbbb", 99), ("dddddddddddd", 99))})
     assert r.status_code == 302
 
-    assert STORE["delivery_challans"][cid]["items"] == before, \
-        "the lines moved under a challan somebody has already signed for"
-
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 2,
+    #   lock 3): an UNBILLED challan's lines are editable on the create form's
+    #   picker; only a challan billed on an RA bill keeps its lines locked
+    #   (`tests/test_dc_full_edit_nov2.py` holds that half). The old
+    #   assertions, verbatim:
+    #       assert STORE["delivery_challans"][cid]["items"] == before, \
+    #           "the lines moved under a challan somebody has already signed for"
+    #
+    #       html = client.get(f"/dc/edit/{cid}").get_data(as_text=True)
+    #       assert 'id="c_bbbbbbbbbbbb"' not in html, "the edit form renders the picker"
+    after = STORE["delivery_challans"][cid]["items"]
+    assert after != before
+    assert {r["line_id"] for r in after if not r.get("is_header")} == {
+        "bbbbbbbbbbbb", "dddddddddddd"}
+    assert STORE["delivery_challans"][cid]["edit_log"], "the change is logged"
     html = client.get(f"/dc/edit/{cid}").get_data(as_text=True)
-    assert 'id="c_bbbbbbbbbbbb"' not in html, "the edit form renders the picker"
+    assert 'id="c_bbbbbbbbbbbb"' in html, "the edit form renders the picker"
 
 
 def test_an_edit_never_reissues_the_number(client, boq_tip):

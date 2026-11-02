@@ -274,12 +274,18 @@ def test_issue_locks_the_work_order(client):
     html = client.get(f"/wo/print/{wid}").get_data(as_text=True)
     assert "lc-mark" not in html.split("</style>")[-1]     # prints clean
 
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date, Part 2):
+    #   an ISSUED work order is editable — only Cancelled locks — and every
+    #   change after issue is logged (`tests/test_wo_full_edit_nov2.py`). Issue
+    #   still locks DELETE and a second issue, asserted below unchanged. The
+    #   old edit assertions, verbatim:
+    #       for method in ("get", "post"):
+    #           r = getattr(client, method)(f"/wo/edit/{wid}",
+    #                                       data={"date": "2026-12-12", "contractor_name": "X",
+    #                                             **_lines(("9", "Z", "m", "1", "1", "1"))})
+    #           assert r.status_code == 302 and "cannot+be+edited" in r.headers["Location"]
+    assert client.get(f"/wo/edit/{wid}").status_code == 200
     snapshot = repr(wo)
-    for method in ("get", "post"):
-        r = getattr(client, method)(f"/wo/edit/{wid}",
-                                    data={"date": "2026-12-12", "contractor_name": "X",
-                                          **_lines(("9", "Z", "m", "1", "1", "1"))})
-        assert r.status_code == 302 and "cannot+be+edited" in r.headers["Location"]
     for method in ("get", "post"):
         r = getattr(client, method)(f"/wo/delete/{wid}")
         assert r.status_code == 302 and "cannot+be+deleted" in r.headers["Location"]
@@ -326,7 +332,10 @@ def test_an_unrecognised_status_reads_as_issued_and_locks():
     for st in (None, "", "submitted", "DRAFTX"):
         wo = {"ref": "SF/WO/0009", "status": st}
         assert W.status_of(wo) == "issued"
-        assert not W.can_edit(wo)[0] and not W.can_delete(wo)[0]
+        # ⚠ AMENDED 2 Nov 2026 (Part 2): an issued work order is editable now;
+        #   it still cannot be deleted. The old assertion, verbatim:
+        #       assert not W.can_edit(wo)[0] and not W.can_delete(wo)[0]
+        assert W.can_edit(wo)[0] and not W.can_delete(wo)[0]
         assert W.can_cancel(wo)[0]
     assert W.status_of({"status": " Draft "}) == "draft"
 
