@@ -5772,7 +5772,7 @@ Lines are logged per position (`Line 3`: before text → after text), added and
 removed lines included. `editlog.band()` draws the amber screen-only band; the
 print never carries it. Written on: the proforma (Part 1); the standalone
 tax invoice, an issued RA bill's tax invoice text, a merged set's tax
-invoice text and the delivery challan (Part 2).
+invoice text, the delivery challan and the quotation (Part 2).
 
 ---
 
@@ -6698,6 +6698,23 @@ which `can_delete_product` may block. This is the most-requested obvious gap.
 ---
 
 ### `/quotation` — Quotations · [quotation.py](quotation.py)
+
+#### `/quotation/edit/<id>` — the fifth narrow unfreeze (31 October 2026, §0 sixty-fourth block)
+
+"Manas, 31 Oct 2026: quotation editable (28 Oct all-documents ask)." The
+unfreeze is ONE new function, `edit_quotation()` (every import in its body),
+plus the lines in `view_quotation()` that draw its **Edit** button, the
+edit-after-issue band and `lineedit.print_note()` under a description;
+`tests/test_nav_user_chip.py`'s `UNFROZEN_QUOTATION_FUNCTIONS` names it. Under
+`quotation.create` (the content is authored at that tier; `quotation.edit` is
+the deal-fields update). Every field: dates, references, terms, billing and
+ship-to (`to` is re-composed exactly as `create_quotation()` composes it), the
+tax head and its rates, the round-off tick and the lines (add / remove /
+reorder, description, part no, make, HSN, qty, unit, rate, discount). **No
+per-line GST** — a quotation carries ONE tax and `_tax_lines()` (untouched)
+computes it. A proforma already raised keeps its own copy. Every change is
+logged and pipeline-logged; the band is screen only. The quotation NUMBER is
+not typeable (Part 3 not done for the quotation — see §7 gap 104).
 
 #### `/quotation/delete/<id>` — 23 September 2026 · ⚠ THIRD NARROW UNFREEZE
 

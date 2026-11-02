@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 91 permissions · 211 classified endpoints.**
+**7 roles · 91 permissions · 212 classified endpoints.**
 
 ---
 
@@ -381,7 +381,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `client.view` | `client.list_clients` |
 | `client.edit` | `client.edit_party` |
 | `quotation.view` | `quotation.list_quotations`, `quotation.view_quotation` |
-| `quotation.create` | `docimport.apply_quotation`, `docimport.preview_quotation`, `docimport.upload_quotation`, `quotation.create_quotation` |
+| `quotation.create` | `docimport.apply_quotation`, `docimport.preview_quotation`, `docimport.upload_quotation`, `quotation.create_quotation`, `quotation.edit_quotation` |
 | `quotation.edit` | `quotation.update_quotation` |
 | `quotation.delete` | `quotation.delete_quotation` |
 | `proforma.view` | `proforma.list_proformas`, `proforma.view_proforma` |

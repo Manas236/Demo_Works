@@ -931,6 +931,10 @@ ROUTE_PERMISSIONS = {
     "quotation.create_quotation": "quotation.create",
     "quotation.update_quotation": "quotation.edit",
     "quotation.delete_quotation": "quotation.delete",
+    # 31 Oct 2026, §0 sixty-fourth block — edit the quotation's CONTENT. Under
+    # `quotation.create` (the tier that writes one), not `quotation.edit`,
+    # which is the deal-fields update and was never a document edit.
+    "quotation.edit_quotation":   "quotation.create",
     "proforma.list_proformas":    "proforma.view",
     "proforma.view_proforma":     "proforma.view",
     "proforma.create_proforma":   "proforma.create",

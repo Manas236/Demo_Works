@@ -233,6 +233,10 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
         "_process_selections",     # 11 Sep 2026 — a pick becomes a line
         "create_quotation",        # 11 Sep 2026 — the picker and its POST
         "delete_quotation",        # 23 Sep 2026 — the delete route (THIRD unfreeze)
+        "edit_quotation",          # 31 Oct 2026 — the edit route and its form ONLY
+                                   #   ("Manas, 31 Oct 2026: quotation editable (28 Oct
+                                   #   all-documents ask)", §0 sixty-fourth block),
+                                   #   plus view_quotation()'s Edit button and band
     }
     src = (REPO / "quotation.py").read_text(encoding="utf8")
     # ⚠ The span starts at the first DECORATOR, not at `def`. `ast` reports

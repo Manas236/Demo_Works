@@ -2637,6 +2637,12 @@ def view_quotation(id: str):
                  f'class="btn btn-ghost" '
                  f'style="color:#b91c1c;border-color:#fecaca;">'
                  f'&#128465;&nbsp;Delete</a>')
+    # 31 Oct 2026, §0 sixty-fourth block — Edit, and the edit-after-issue band.
+    import editlog as _EL
+    import lineedit as _LEQ   # make / discount under a description, only when present
+    if _AUTH.can_reach("quotation.edit_quotation"):
+        del_q = (f'\n    <a href="{url_for("quotation.edit_quotation", id=id)}" '
+                 f'class="btn btn-ghost">&#9998;&nbsp;Edit</a>') + del_q
     pi_rows = sorted(
         ((p_id, p) for p_id, p in STORE["proformas"].items()
          if p.get("quotation_id") == id),
@@ -2879,7 +2885,7 @@ def view_quotation(id: str):
         <tr class="{row_cls}">
           <td class="c-sno">{sno}</td>
           <td class="c-partno">{P.esc(row['part_no'])}</td>
-          <td class="c-desc {indent}">{P.esc(row['name'])}</td>
+          <td class="c-desc {indent}">{P.esc(row['name'])}{_LEQ.print_note(row)}</td>
           <td class="c-hsn">{P.esc(hsn)}</td>
           <td class="c-qty">{_fmt_qty(row['qty'])}</td>
           <td class="c-unit">{P.esc(row['unit'])}</td>
@@ -3033,7 +3039,7 @@ def view_quotation(id: str):
   </div>
 </div>
 
-{alert_html}
+{alert_html}{_EL.band(q, "quotation")}
 {deal_panel_html}
 
 <div class="doc-outer">
@@ -3213,3 +3219,224 @@ def delete_quotation(id: str):
   <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · quotation</p></footer>
 </main>
 </body></html>""")
+
+
+@quotation_bp.route("/edit/<id>", methods=["GET", "POST"])
+def edit_quotation(id: str):
+    """
+    Edit a quotation — every field (31 October 2026).
+
+    ⚠ **THIS FUNCTION IS THE WHOLE OF THE 31 OCTOBER 2026 UNFREEZE** —
+    "Manas, 31 Oct 2026: quotation editable (28 Oct all-documents ask)",
+    CLIENT_CHANGES.md §0 sixty-fourth block. It covers this one new route and
+    its form, plus the lines inside `view_quotation()` that draw its button and
+    the edit-after-issue band. Nothing at module scope moved: every import is
+    in this function's body, as `delete_quotation()`'s are.
+
+    What it edits: the dates and references, the terms, the party (billing and
+    ship-to, `to` re-composed exactly as `create_quotation()` composes it), the
+    tax head and its rates, the round-off tick, and the lines through the
+    shared leaf `lineedit.py` — add, remove, reorder, description, part no,
+    make, HSN, qty, unit, rate, discount. **No per-line GST here**: a quotation
+    carries ONE tax (the library guard's rule at create), so the tax is the head
+    and rates above the lines and is computed by `_tax_lines()`, which is not
+    touched. The proformas already raised from it keep their own copies.
+
+    Every change is logged on the record (`editlog`) and the screen-only band
+    is drawn on `/quotation/view`; the print carries none. `selections` (the
+    create form's picker state) is left as stored — nothing reads it but the
+    create form's own redraw.
+    """
+    import editlog as _EL
+    import lineedit as _LE
+    import roundoff as _ROF
+    import auth as _AUTH
+
+    q = STORE["quotations"].get(id)
+    if not q:
+        return redirect(url_for("quotation.list_quotations",
+                                msg="Quotation not found.", type="error"))
+    text_keys = ("date", "validity_days", "buyer_ref", "other_ref", "delivery_date",
+                 "incoterms", "payment_terms", "delivery_terms", "dispatch_through",
+                 "amend_no", "account_name", "contact_person", "bill_addr",
+                 "bill_country", "bill_state", "bill_city", "bill_pin", "bill_phone",
+                 "bill_gstin", "ship_acct_name", "ship_addr", "ship_country",
+                 "ship_state", "ship_city", "ship_pin", "ship_phone", "ship_email",
+                 "ship_gstin")
+    labels = {"date": "Quotation date", "validity_days": "Validity (days)",
+              "buyer_ref": "Buyer's reference", "other_ref": "Other reference",
+              "delivery_date": "Delivery date", "incoterms": "Incoterms",
+              "payment_terms": "Payment terms", "delivery_terms": "Terms of delivery",
+              "dispatch_through": "Dispatch through", "amend_no": "Amendment no.",
+              "account_name": "Customer", "contact_person": "Contact person",
+              "bill_addr": "Billing address", "bill_country": "Billing country",
+              "bill_state": "Billing State", "bill_city": "Billing city",
+              "bill_pin": "Billing PIN", "bill_phone": "Billing phone",
+              "bill_gstin": "Customer GSTIN", "ship_same": "Ship to billing address",
+              "ship_acct_name": "Ship-to name", "ship_addr": "Ship-to address",
+              "ship_country": "Ship-to country", "ship_state": "Ship-to State",
+              "ship_city": "Ship-to city", "ship_pin": "Ship-to PIN",
+              "ship_phone": "Ship-to phone", "ship_email": "Ship-to e-mail",
+              "ship_gstin": "Ship-to GSTIN", "tax_type": "Tax head",
+              "cgst_rate": "CGST %", "sgst_rate": "SGST %", "igst_rate": "IGST %",
+              "vat_rate": "VAT %", "round_off_on": "Round off to nearest rupee",
+              "subtotal": "Subtotal", "grand_total": "Grand total"}
+    fields = [(k, labels[k]) for k in text_keys] + [
+        (k, labels[k]) for k in ("ship_same", "tax_type", "cgst_rate", "sgst_rate",
+                                 "igst_rate", "vat_rate", "round_off_on", "subtotal",
+                                 "grand_total")]
+    f = request.form
+    error = ""
+    stored = list(q.get("line_items") or [])
+
+    def _rate(name):
+        txt = (f.get(name) or "").strip().replace("%", "")
+        if not txt:
+            return 0.0
+        return float(txt)
+
+    if request.method == "POST":
+        vals = {k: (f.get(k) or "").replace("\r\n", "\n").strip() for k in text_keys}
+        vals["ship_same"] = "1" if f.get("ship_same") else ""
+        tax_type = (f.get("tax_type") or "exempt").strip()
+        if tax_type not in ("cgst_sgst", "igst", "vat", "exempt"):
+            tax_type = "exempt"
+        rates = {}
+        try:
+            for k in ("cgst_rate", "sgst_rate", "igst_rate", "vat_rate"):
+                rates[k] = _rate(k)
+        except ValueError:
+            error = "A tax rate must be a number, e.g. 9."
+        if not error and not vals["date"]:
+            error = "Quotation date is required."
+        if not error and not vals["account_name"]:
+            error = "Customer name is required."
+        lines = []
+        if not error:
+            lines, error = _LE.parse(f.get(_LE.FIELD), stored, gst=False)
+        if not error:
+            round_on = _ROF.form_choice(f, legacy=bool(q.get("round_off_on")))
+            subtotal = _ROF.paise(sum(float(r.get("total") or 0.0) for r in lines
+                                      if not r.get("is_header")))
+            tax_info = _ROF.paise_tax(_tax_lines(subtotal, tax_type, **rates))
+            grand_total, round_off = _ROF.apply(subtotal + tax_info["total"], round_on)
+            to_parts = [vals["account_name"]]
+            if vals["contact_person"]: to_parts.append(f"Attn: {vals['contact_person']}")
+            if vals["bill_addr"]:      to_parts.append(vals["bill_addr"])
+            city_line = ", ".join(filter(None, [vals["bill_city"], vals["bill_state"]]))
+            if city_line or vals["bill_pin"]:
+                to_parts.append(f"{city_line} – {vals['bill_pin']}".strip(" –"))
+            if vals["bill_country"] and vals["bill_country"] != "India":
+                to_parts.append(vals["bill_country"])
+            if vals["bill_phone"]:  to_parts.append(f"Phone: {vals['bill_phone']}")
+            if vals["bill_gstin"]:  to_parts.append(f"GSTIN: {vals['bill_gstin']}")
+            before, before_lines = dict(q), [dict(r) for r in stored]
+            q.update(vals)
+            q.update(rates)
+            q.update({"tax_type": tax_type, "tax_info": tax_info, "subtotal": subtotal,
+                      "grand_total": grand_total, "round_off": round_off,
+                      "round_off_on": round_on, "line_items": lines,
+                      "total_qty": sum(float(r.get("qty") or 0) for r in lines
+                                       if not r.get("is_header") and not r.get("depth")),
+                      "to": "\n".join(to_parts)})
+            changes = _EL.diff(before, q, fields) + _EL.line_diff(before_lines, lines)
+            _EL.record(q, changes, str((_AUTH.current_user() or {}).get("id") or ""))
+            if changes:
+                P.log_event(q, f"Quotation edited — {len(changes)} change"
+                               f"{'' if len(changes) == 1 else 's'}.")
+            return redirect(url_for("quotation.view_quotation", id=id, type="success",
+                                    msg=(f"Quotation {q['ref']} updated — {len(changes)} "
+                                         f"change{'' if len(changes) == 1 else 's'} logged."
+                                         if changes else "Nothing changed.")))
+        rows = _LE.posted_rows(f.get(_LE.FIELD))
+        shown = dict(vals, tax_type=tax_type,
+                     **{k: (f.get(k) or "") for k in ("cgst_rate", "sgst_rate",
+                                                      "igst_rate", "vat_rate")})
+        round_shown = _ROF.form_choice(f, legacy=bool(q.get("round_off_on")))
+    else:
+        rows = _LE.rows_for_form(stored, 0.0)
+        shown = {k: str(q.get(k) or "") for k in text_keys}
+        shown["ship_same"] = q.get("ship_same") or ""
+        shown["tax_type"] = q.get("tax_type") or "exempt"
+        for k in ("cgst_rate", "sgst_rate", "igst_rate", "vat_rate"):
+            v = q.get(k)
+            shown[k] = "" if v in (None, "") else f"{float(v):g}"
+        round_shown = bool(q.get("round_off_on"))
+
+    def box(name, kind="text"):
+        return (f'<div class="form-group"><label for="{name}">{P.esc(labels[name])}</label>'
+                f'<input type="{kind}" id="{name}" name="{name}" '
+                f'value="{P.esc(shown.get(name))}"/></div>')
+
+    def pick(name, options):
+        cur = shown.get(name) or ""
+        opts = list(options)
+        if cur and cur not in opts:
+            opts.insert(0, cur)
+        body = "".join(f'<option value="{P.esc(o)}"{" selected" if o == cur else ""}>'
+                       f'{P.esc(o)}</option>' for o in [""] + opts)
+        return (f'<div class="form-group"><label for="{name}">{P.esc(labels[name])}</label>'
+                f'<select id="{name}" name="{name}">{body}</select></div>')
+
+    heads = (("cgst_sgst", "CGST + SGST"), ("igst", "IGST"), ("vat", "VAT"), ("exempt", "No tax"))
+    tax_opts = "".join(f'<option value="{k}"{" selected" if k == shown.get("tax_type") else ""}>'
+                       f'{lbl}</option>' for k, lbl in heads)
+    action = url_for("quotation.edit_quotation", id=id)
+    view_url = url_for("quotation.view_quotation", id=id)
+    err_html = f'<div class="alert alert-error">&#10007; {error}</div>' if error else ""
+    same = " checked" if shown.get("ship_same") else ""
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>{B.page_title("Edit " + str(q.get("ref")))}</title>{B.HEAD_ICON}
+{BASE_STYLES}{QUOTATION_STYLES}</head>
+<body>{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Edit <span>{P.esc(q.get("ref"))}</span></h1>
+    <a href="{view_url}" class="btn btn-ghost">&#8592; Back to the quotation</a>
+  </div>
+  {err_html}
+  <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
+    <span>Every change is <b>logged</b> on this quotation and shown on screen; the
+    printed copy carries no mark. Proforma invoices already raised from it keep
+    their own copies and do not change.</span></div>
+  <form method="POST" action="{action}">
+    <div class="form-section"><div class="section-title">Quotation</div>
+      <div class="fg3">
+        {box("date", "date")}{box("validity_days")}{box("amend_no")}
+        {box("buyer_ref")}{box("other_ref")}{box("delivery_date", "date")}
+      </div></div>
+    <div class="form-section"><div class="section-title">Terms</div>
+      <div class="fg2">
+        {pick("payment_terms", _PAY_TERMS)}{pick("delivery_terms", _DEL_TERMS)}
+        {pick("dispatch_through", _DISPATCH)}{pick("incoterms", _INCOTERMS)}
+      </div></div>
+    <div class="form-section"><div class="section-title">Bill to</div>
+      <div class="fg3">
+        {box("account_name")}{box("contact_person")}{box("bill_addr")}
+        {box("bill_city")}{pick("bill_state", _STATES_IN)}{box("bill_pin")}
+        {box("bill_country")}{box("bill_phone")}{box("bill_gstin")}
+      </div></div>
+    <div class="form-section"><div class="section-title">Ship to</div>
+      <label style="display:flex;gap:.4rem;align-items:center;margin:.3rem 0 .6rem;">
+        <input type="checkbox" name="ship_same" value="1"{same}/> Same as the billing address</label>
+      <div class="fg3">
+        {box("ship_acct_name")}{box("ship_addr")}{box("ship_city")}
+        {pick("ship_state", _STATES_IN)}{box("ship_pin")}{box("ship_country")}
+        {box("ship_phone")}{box("ship_email")}{box("ship_gstin")}
+      </div></div>
+    <div class="form-section"><div class="section-title">Tax and lines</div>
+      <div class="fg3">
+        <div class="form-group"><label for="tax_type">Tax head</label>
+          <select id="tax_type" name="tax_type">{tax_opts}</select></div>
+        {box("cgst_rate")}{box("sgst_rate")}{box("igst_rate")}{box("vat_rate")}
+      </div>
+      {_LE.editor_html(rows, gst=False, form_selector='form[action$="' + action + '"]')}
+      {_ROF.checkbox_html(round_shown)}
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn">Save changes</button>
+      <a href="{view_url}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</main></body></html>""")
