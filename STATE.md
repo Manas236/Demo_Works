@@ -10,7 +10,24 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**Latest, 31 October 2026 (later) — CLIENT_CHANGES.md §0 sixty-fourth block,
+**Latest, 2 November 2026 — CLIENT_CHANGES.md §0 sixty-fifth block ("Manas,
+2 Nov 2026: full editing on all documents, quotation numbering + Resume"), on
+`antigravity-dev`, NOT DEPLOYED** (base `5a060e7` = prod). Commits by part:
+`dfc0207` the baseline parity table; `2eceb6e` **1** PO full edit (replaces the
+reprice screen; 8-digit HSN; the description-glue cause); `41f8ecd` **3**
+`invoice.edit_issued`; `d4ae741` **4** quotation numbering (highest used + 1),
+typed numbers on quotation / BOQ root / merged TI, Resume on
+`/quotation/create`; `27d5b9c` **2** DC lines (lock 3) and WO full edit;
+`c036916` **2** BOQ in-place edit (lock 2); `84a3acc` **2** the sweep (product
+inquiry unlocked, numbers on every edit route, PI/TI parent-line sources).
+**Measured, Linux, CPython 3.13.18, openpyxl present, workbooks absent, serial
+run: 5,583 passed / 26 skipped at `5a060e7` → 5,640 passed / 26 skipped / 0
+failed.** Final table: [docs/EDIT_PARITY.md](docs/EDIT_PARITY.md). **Deploy
+needs:** `tools/reconcile_role_permissions.py --write` (the new permission).
+No MySQL in the session, so no backup and no migration; no migration needed.
+**Open from this pass:** ABOUT.md §7 gaps 109–111.
+
+*Previously:* **Latest, 31 October 2026 (later) — CLIENT_CHANGES.md §0 sixty-fourth block,
 on `antigravity-dev`, NOT DEPLOYED** (deploy is a separate run; base `cb64e93`
 = prod). Commits by part: **1** the proforma edit (every field, lines, number
 forward only, the TI-divergence band; leaves `lineedit.py` and `editlog.py`);

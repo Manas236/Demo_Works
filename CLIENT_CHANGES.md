@@ -6332,6 +6332,111 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 2 November 2026, by Manas Gawde — FULL EDITING ON EVERY DOCUMENT (THE 28 OCTOBER ASK, CLOSED), FIVE LEDGER LOCKS AND NO OTHERS, "EDIT ISSUED INVOICE", QUOTATION NUMBERING, TYPED NUMBERS ON EVERY EDIT ROUTE, RESUME ON THE QUOTATION · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **sixty-fifth** occasion,
+> written directly on `antigravity-dev` (base `5a060e7` = prod).
+>
+> #### ⚠ `quotation.py` — A SIXTH NARROW UNFREEZE
+>
+> **Manas, 2 Nov 2026: full editing on all documents, quotation numbering +
+> Resume.** It covers exactly `_next_ref()` (highest used + 1), the typed
+> number and Resume inside `create_quotation()`, and the number, address book,
+> library and Excel sources inside `edit_quotation()`. Recorded in
+> `tests/test_nav_user_chip.py`'s unfrozen set. `product.py` untouched.
+>
+> #### The rulings, as given
+>
+> 1. **The definition of full edit**: the edit form is the create form
+>    prefilled, with the union of every create path's line sources; every
+>    header field, party, dates, terms, project, every line column,
+>    add/remove/reorder, round-off, the number (forward only). Cancelled =
+>    locked. After issue every change is logged with the amber screen-only
+>    band; the print carries none; Draft edits are not logged.
+> 2. **The only allowed locks**: (1) an issued RA bill's claim figures, and a
+>    TI generated from RA bills follows them; (2) a BOQ line claimed on a live
+>    RA bill — no delete, no qty below the claim; (3) a challan billed on an RA
+>    bill — lines locked; (4) a PO line below its received qty — not tracked
+>    per line, so nothing beyond Cancelled; (5) a TI's number once issued.
+> 3. **Part 1** — the PO's reprice screen replaced by the full edit; a BOQ line
+>    twice refused, pointing at its qty; the rate-change table kept; HSN shows
+>    eight digits and is editable at every status; find the description glue.
+> 4. **Part 2** — WO full edit with the after-issue log; BOQ in-place edit
+>    (lock 2; revision flow unchanged); DC full edit (lock 3); sweep the rest.
+> 5. **Part 3** — a new permission *Edit issued invoice*, Owner + Director by
+>    default, a tick on the role page, nobody else until ticked.
+> 6. **Part 4** — quotation numbering highest used + 1; typed numbers on the
+>    quotation, the BOQ root, the merged TI and every edit route (forward
+>    only); confirm the RA-number override; Resume on `/quotation/create`.
+>
+> #### What was found
+>
+> * **The description glue** ("100 mm pipe cladding Aluminumcladding"): a
+>   Specification-library pick stores the spec's **code** as the line's part
+>   no (`buypick.resolve()`); a code may hold no spaces (`spec._valid_code()`),
+>   so "Aluminum cladding" is typed as `Aluminumcladding`; the reprice screen
+>   drew the part no in an unstyled span right after the description. **The
+>   stored name was never glued** and stored lines are not affected — the
+>   print puts the code in its own Part No column. The new edit form gives part
+>   no its own box. Nothing rewritten.
+> * **The RA-number override already existed** per BOQ, forward only, with
+>   uniqueness/ordering and over-claim-guard tests
+>   (`tests/test_ra_number_override.py`); the draft's edit route now types it too.
+>
+> #### The agent's own calls, declared
+>
+> 1. The PO's party stays **address book only** on edit — that is what create
+>    offers (`purchase._vendor_from()`: GSTIN / ITC), and the edit form is the
+>    create form. Its STATUS stays on the lifecycle route (`/purchase/<id>/update`).
+> 2. A BOQ-raised PO's project follows its schedule on edit (unchanged rule).
+> 3. Rate moves on existing PO lines are keyed by stored position (`line_k`),
+>    so a reorder is never a reprice; added/removed lines go to `edit_log`.
+> 4. A pre-2-Nov PO reprice POST (no `line_k`) runs the old reprice verbatim,
+>    which keeps its Draft-only number; the new form types the number at every
+>    live status.
+> 5. Every BOQ in-place edit is logged (a BOQ is a sent schedule — the
+>    proforma's precedent); a root renumbered carries its revisions'
+>    `<root>/N` with it; an edited legacy BOQ is saved with
+>    `blank_model: "as_is"` (what it now holds is exactly what was typed).
+> 6. Lock 2's quantity floor counts **live** bills only (a cancelled bill
+>    frees its claim); the delete guard is `revision_blockers()` unchanged.
+> 7. **The product inquiry's "locked once converted" was removed** — it is not
+>    one of the five locks. Edits after conversion are logged with the band;
+>    the PO raised from it keeps its snapshot. Lines added from the BOQ on its
+>    edit form arrive as text (gap 111).
+> 8. **Records approved before the ladder was switched off stay locked**
+>    (measurement sheet, charge, TI — CLAUDE.md "a decision taken is never
+>    overturned"). Not one of the five, not overridden: a standing rule, gap 109.
+> 9. The quotation's typed number and Resume are drawn in the **library mode
+>    only** — the shipped configuration — so the catalogue mode keeps its
+>    pinned `1d7725a` golden byte-identical.
+> 10. The docnum ledger is reset per test in `conftest._fresh_store()` (the
+>     quotation minter now reads it; the collections it describes were
+>     already reset per test).
+> 11. Receipts and measurement sheets have no issued state; their edits are
+>     not logged (gap 109). Delete of a work order stays Draft-only.
+> 12. Tests amended to the rulings, each with its old assertion kept
+>     verbatim: `test_po_hsn_edit` (2), `test_hsn_fill` (1), `test_docnum` (1),
+>     `test_po_rate_edit` (2), `test_challan` (1), `test_work_orders` (2),
+>     `test_po_full_edit` (3), `test_boq_import` (the matrix row). None deleted,
+>     none skipped.
+> 13. **Goldens moved:** only `/purchase/view`'s `head` block, +10 bytes,
+>     SCREEN ONLY — the action bar's "Reprice" now reads "✎ Edit". Measured by
+>     rendering on `5a060e7` and on the change: that one line is the diff. Its
+>     stored `items` digest was found already stale on the base and re-measured.
+>     No printed sheet moved.
+> 14. The xdist (`-n 8`) run is order-flaky **on the base as well** (state
+>     leaks between tests); every figure here is a serial run.
+> 15. No MySQL is reachable in the session this was built in: **no backup was
+>     taken because none was possible**, and nothing was migrated. **Deploy
+>     needs `tools/reconcile_role_permissions.py --write`** for
+>     `invoice.edit_issued`, or no live role holds it.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

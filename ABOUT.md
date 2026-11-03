@@ -16733,7 +16733,11 @@ text is unchanged, and every reference to them was moved with them.*
     built in this pass; it would reuse `revision_blockers()` rather than
     restate it.
 
-106. 🟡 **Edit after issue is logged on the TI, the RA / merged TI text, the
+106. ✅ **CLOSED 2 November 2026** (§0 block of that date, Parts 1–2): an
+    issued PO (full edit, `edit_log` + band, rate moves still in
+    `reprice_log`) and an issued WO (editable, logged, band) — and the BOQ,
+    the challan's lines and a converted product inquiry besides. *As it was
+    opened:* **Edit after issue is logged on the TI, the RA / merged TI text, the
     DC, the PI and the quotation — NOT on an issued PO or WO — OPEN** (§0
     sixty-fourth block, Part 2). The PO's reprice keeps its own trail
     (`purchase._record_reprice()`) and carries no amber band; the work order
@@ -16749,6 +16753,26 @@ text is unchanged, and every reference to them was moved with them.*
     edited after issue** (§0 sixty-fourth block, Part 2). `invoice.can_edit()`
     goes through `approval.can_modify()`, which never overturns a decision
     taken. By design; recorded so it is not mistaken for a defect.
+
+109. 🟡 **The full-edit pass's declared cells** (§0 block of 2 November 2026,
+    docs/EDIT_PARITY.md "Declared, not built"). A receipt and a measurement
+    sheet carry no issued state and their edits are NOT logged; a sheet or a
+    charge APPROVED before the ladder was switched off stays locked under
+    CLAUDE.md's "a decision taken is never overturned" (gap 108's shape) —
+    neither is one of the five ledger locks and neither was overridden.
+
+110. 🟡 **Excel onto the measurement sheet's EDIT form — OPEN.** Create
+    imports the joint grid (`docimport` MeasurementKind → `create_ms(imported=)`);
+    `edit_ms()` takes no `imported` yet. Every other document whose create
+    form imports from Excel now imports onto its edit form too.
+
+111. 🟡 **A product-inquiry line added FROM THE BOQ on edit arrives as text —
+    OPEN.** `po_draft.parse_items()` re-mints any posted `line_id` not already
+    on the draft (pinned by
+    `test_a_posted_line_id_that_is_not_on_this_draft_is_re_minted`), so the
+    row carries the schedule's item no., description, HSN, unit and qty but
+    no link to the line; converting it raises a PO line on no schedule.
+    Carrying the link needs that test's rule revisited by Manas.
 
 ## 8. Stale docs — do not trust these two files
 
