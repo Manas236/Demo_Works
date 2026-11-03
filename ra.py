@@ -4897,7 +4897,22 @@ def edit_ra(id: str):
             dc_caps=dc_caps)
         entered = _posted(raw_lines)
 
+        # The RA number on EDIT, forward only (2 Nov 2026, Part 4): its own
+        # always passes; a higher one must beat the highest this chain has
+        # ever used (the bills and the ledger). The draft is the latest bill.
+        own_ra = int(bill.get("ra_no") or 0)
+        new_ra = own_ra
         if not error:
+            new_ra, error = DN.validate_ra_no(
+                _chain_key(boq_id), next_ra_no(boq_id) - 1,
+                request.form.get("ra_no_typed"), own_ra, _ra_may_set_number())
+
+        if not error:
+            if new_ra != own_ra:
+                bill["ra_no"] = new_ra
+                DN.note_ra_no(_chain_key(boq_id), new_ra)
+                DN.record_override(bill, f"RA{own_ra}", f"RA{new_ra}",
+                                   str((_ra_auth().current_user() or {}).get("id") or ""))
             tax_invoice_ref = (request.form.get("tax_invoice_ref") or bill.get("tax_invoice_ref") or "").strip()
             po_ref = (request.form.get("po_ref") if request.form.get("po_ref") is not None else bill.get("po_ref", "")).strip()
             po_date = (request.form.get("po_date") if request.form.get("po_date") is not None else bill.get("po_date", "")).strip()
@@ -4948,9 +4963,18 @@ def edit_ra(id: str):
             return redirect(url_for("ra.view_ra", id=id,
                                     msg="RA bill updated.", type="success"))
 
+    _ra_box = (
+        DN.NUMBER_STYLES
+        + '<div class="form-group" style="max-width:16rem;margin:.6rem 0;">'
+        '<label for="ra_no_typed">RA No.</label>'
+        + DN.ra_no_field(int(bill.get("ra_no") or 0), may_override=_ra_may_set_number(),
+                         typed=(request.form.get("ra_no_typed") or "")
+                         if request.method == "POST" else "")
+        + "</div>")
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.edit_ra", id=id),
+        hidden_html=_ra_box,
         ra_no=bill.get("ra_no"),
         back_url=url_for("ra.view_ra", id=id),
         date_val=date_val, notes_val=notes_val,

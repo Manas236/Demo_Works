@@ -307,6 +307,23 @@ def source_entry(value: str, group: str, label: str, row: dict) -> dict:
     return {"value": str(value), "group": str(group), "label": str(label), "row": clean}
 
 
+def parent_sources(lines: list, group: str, default_gst: float = 0.0) -> list:
+    """
+    A parent document's own lines (the quotation a PI was raised from, the PI
+    a TI was raised from, …) as `source_entry()`s — the create path's source
+    on the EDIT form (2 Nov 2026). Headings are not offered.
+    """
+    out = []
+    for k, r in enumerate(rows_for_form(lines or [], default_gst)):
+        if r.get("is_header"):
+            continue
+        r.pop("_k", None)
+        out.append(source_entry(f"p:{k}", group,
+                                f"{r.get('part_no') or ''} {r.get('name') or ''}".strip()[:110],
+                                r))
+    return out
+
+
 def editor_html(rows: list, *, gst: bool = True, field: str = FIELD,
                 form_selector: str = "form", sources: list = None) -> str:
     """

@@ -429,11 +429,18 @@ def test_a_converted_draft_is_locked_on_the_GET(client, shop):
     d = _a_draft(client, shop)
     _convert(client, shop, d)
     assert PD.is_locked(d) is True
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date): "the only
+    #   allowed locks" are five ledger locks and a converted inquiry is none of
+    #   them — it is editable, every change logged with the screen-only band,
+    #   and the purchase order raised from it keeps its own snapshot.
+    #   The old assertions, verbatim:
+    #       r = client.get(f"/po/edit/{d['id']}")
+    #       assert r.status_code == 302
+    #       assert f"/po/view/{d['id']}" in r.headers["Location"]
+    #       body = client.get(r.headers["Location"]).get_data(as_text=True)
+    #       assert "already been converted" in body
     r = client.get(f"/po/edit/{d['id']}")
-    assert r.status_code == 302
-    assert f"/po/view/{d['id']}" in r.headers["Location"]
-    body = client.get(r.headers["Location"]).get_data(as_text=True)
-    assert "already been converted" in body
+    assert r.status_code == 200
 
 
 def test_a_converted_draft_is_REFUSED_ON_THE_POST_and_nothing_is_written(client, shop):
@@ -451,13 +458,25 @@ def test_a_converted_draft_is_REFUSED_ON_THE_POST_and_nothing_is_written(client,
     was = [dict(r) for r in d["items"]]
     was_notes, was_date = d["notes"], d["date"]
 
+    order = next(v for v in STORE["purchases"].values()
+                 if v.get("draft_id") == d["id"])
+    order_lines = [dict(r) for r in order["line_items"]]
     r = client.post(f"/po/edit/{d['id']}", data=body)
     assert r.status_code == 302
     assert f"/po/view/{d['id']}" in r.headers["Location"]
-    assert d["items"] == was, "a converted draft's lines were written"
-    assert d["notes"] == was_notes and d["date"] == was_date
-    assert "SNEAKED IN" not in client.get(
-        f"/po/print/{d['id']}").get_data(as_text=True)
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date): "the only
+    #   allowed locks" are five ledger locks and a converted inquiry is none of
+    #   them — it is editable, every change logged with the screen-only band,
+    #   and the purchase order raised from it keeps its own snapshot.
+    #   The old assertions, verbatim:
+    #       assert d["items"] == was, "a converted draft's lines were written"
+    #       assert d["notes"] == was_notes and d["date"] == was_date
+    #       assert "SNEAKED IN" not in client.get(
+    #           f"/po/print/{d['id']}").get_data(as_text=True)
+    assert d["items"] != was and d["notes"] == "sneaked"
+    assert "SNEAKED IN" in client.get(f"/po/print/{d['id']}").get_data(as_text=True)
+    assert d["edit_log"], "an edit after conversion is logged"
+    assert order["line_items"] == order_lines, "the order raised from it did not move"
 
 
 def test_the_lock_lifts_if_the_order_it_names_is_deleted(client, shop):
@@ -481,8 +500,15 @@ def test_the_view_page_greys_the_edit_control_once_converted(client, shop):
     assert f'href="/po/edit/{d["id"]}"' in before
     _convert(client, shop, d)
     after = client.get(f"/po/view/{d['id']}").get_data(as_text=True)
-    assert f'href="/po/edit/{d["id"]}"' not in after
-    assert "cursor:not-allowed" in after and "Already converted" in after
+    # ⚠ AMENDED 2 Nov 2026 (CLIENT_CHANGES.md §0 block of that date): "the only
+    #   allowed locks" are five ledger locks and a converted inquiry is none of
+    #   them — it is editable, every change logged with the screen-only band,
+    #   and the purchase order raised from it keeps its own snapshot.
+    #   The old assertions, verbatim:
+    #       assert f'href="/po/edit/{d["id"]}"' not in after
+    #       assert "cursor:not-allowed" in after and "Already converted" in after
+    assert f'href="/po/edit/{d["id"]}"' in after
+    assert "cursor:not-allowed" not in after
 
 
 # ═══ 5. The number keeps its existing rules ════════════════════════════════

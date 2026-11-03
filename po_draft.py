@@ -212,12 +212,15 @@ def _actor_id() -> str:
     return str((auth.current_user() or {}).get("id") or "")
 
 
-def _number_html(typed) -> str:
-    """The number field, prefilled with the series' next number."""
+def _number_html(typed, ref: str = "") -> str:
+    """
+    The number field, prefilled with the series' next number — or, on EDIT
+    (2 Nov 2026, Part 4), with the inquiry's own number: forward only.
+    """
     return (DN.NUMBER_STYLES +
             '<div class="form-group" style="max-width:22rem;margin-bottom:1rem;">'
             f'<label for="doc_no_seq">{DOC_NAME} No.</label>'
-            + DN.number_field(DN.DPO, next_ref(), may_override=_may_set_number(),
+            + DN.number_field(DN.DPO, ref or next_ref(), may_override=_may_set_number(),
                               typed=typed or "")
             + "</div>")
 
@@ -795,7 +798,9 @@ def _item_row_html(row: dict = None, n: int = 0) -> str:
             <td><input type="hidden" name="it_unit" value=""/>&mdash;</td>
             <td><input type="hidden" name="it_qty" value=""/>&mdash;</td>
             <td><input type="hidden" name="it_pcs" value=""/>&mdash;</td>
-            <td class="ed-act"><button type="button" class="ed-del"
+            <td class="ed-act"><button type="button" class="ed-del" onclick="edMove(this,-1)"
+                 aria-label="Move up">&#8593;</button><button type="button" class="ed-del"
+                 onclick="edMove(this,1)" aria-label="Move down">&#8595;</button><button type="button" class="ed-del"
                  onclick="edDel(this)" aria-label="Remove this row">&#10007;</button></td>
           </tr>"""
     return f"""
@@ -813,7 +818,9 @@ def _item_row_html(row: dict = None, n: int = 0) -> str:
                        aria-label="Quantity" style="text-align:right;"/></td>
             <td><input type="text" name="it_pcs" value="{P.esc(row.get("pcs") or "")}"
                        maxlength="{PCS_MAX}" aria-label="Pieces" style="text-align:right;"/></td>
-            <td class="ed-act"><button type="button" class="ed-del"
+            <td class="ed-act"><button type="button" class="ed-del" onclick="edMove(this,-1)"
+                 aria-label="Move up">&#8593;</button><button type="button" class="ed-del"
+                 onclick="edMove(this,1)" aria-label="Move down">&#8595;</button><button type="button" class="ed-del"
                  onclick="edDel(this)" aria-label="Remove this line">&#10007;</button></td>
           </tr>"""
 
@@ -848,6 +855,29 @@ function edAdd(header) {
   }
 }
 
+/* Move a row (2 Nov 2026) — the lists are read by position, so the order on
+   the page IS the order saved. */
+function edMove(btn, dir) {
+  var tr = btn.closest('tr'), body = tr && tr.parentNode;
+  if (!body) { return; }
+  if (dir < 0 && tr.previousElementSibling) { body.insertBefore(tr, tr.previousElementSibling); }
+  else if (dir > 0 && tr.nextElementSibling) { body.insertBefore(tr.nextElementSibling, tr); }
+}
+
+/* Add a line copied from the schedule (2 Nov 2026) — the create form's
+   source on the edit form. The row is an ordinary editable row. */
+function edAddBoq() {
+  var sel = document.getElementById('ed-boq');
+  var row = sel && ED_BOQ[sel.value];
+  if (!row) { return; }
+  edAdd(false);
+  var tr = document.getElementById('ed-body').lastElementChild;
+  function put(n, v) { var el = tr.querySelector('[name=' + n + ']'); if (el && v) { el.value = v; } }
+  put('it_item_no', row.item_no); put('it_desc', row.description);
+  put('it_hsn', row.hsn); put('it_unit', row.unit); put('it_qty', row.qty);
+  sel.value = '';
+}
+
 function edDel(btn) {
   var tr = btn.closest('tr');
   if (!tr) { return; }
@@ -861,11 +891,43 @@ function edDel(btn) {
 """
 
 
-def _edit_script() -> str:
+def _boq_lines_for_edit(boq: dict) -> dict:
+    """`{line_id: row}` — the schedule's material lines, as editor rows."""
+    out = {}
+    for li in (boq or {}).get("line_items") or []:
+        lid = BQ._line_id(li.get("line_id"))
+        if not lid or li.get("is_header"):
+            continue
+        q = li.get("total_qty")
+        out[lid] = {"item_no": BQ._item_no(li.get("item_no")),
+                    "description": str(li.get("description") or ""),
+                    "hsn": str(li.get("supply_hsn") or ""),
+                    "unit": str(li.get("unit") or ""),
+                    "qty": "" if q is None else f"{float(q):g}"}
+    return out
+
+
+def _boq_source_html(boq: dict) -> str:
+    """The schedule's lines as a source on the edit form (2 Nov 2026)."""
+    lines = _boq_lines_for_edit(boq)
+    if not lines:
+        return ""
+    opts = "".join(f'<option value="{P.esc(lid)}">{P.esc(r["item_no"])} &middot; '
+                   f'{P.esc(" ".join(r["description"].split())[:90])}</option>'
+                   for lid, r in lines.items())
+    return (f'<select id="ed-boq" aria-label="A line from the schedule" style="max-width:28rem;">'
+            f'<option value="">&#8212; a line from {P.esc(boq.get("ref") or "the BOQ")} &#8212;</option>'
+            f'{opts}</select><button type="button" class="btn btn-ghost" '
+            f'onclick="edAddBoq()">+ Add from the BOQ</button>')
+
+
+def _edit_script(boq: dict = None) -> str:
     """`EDIT_SCRIPT` with the two blank rows spliced in as JSON."""
     return (EDIT_SCRIPT
             .replace("__ED_ITEM__", P.json_for_script(_item_row_html(None)))
-            .replace("__ED_HEAD__", P.json_for_script(_item_row_html({"is_header": True}))))
+            .replace("__ED_HEAD__", P.json_for_script(_item_row_html({"is_header": True})))
+            .replace("var ED_HEAD = ", "var ED_BOQ = "
+                     + P.json_for_script(_boq_lines_for_edit(boq or {})) + ";\nvar ED_HEAD = "))
 
 
 def _entry_form(boq: dict, data: dict, error: str = "",
@@ -965,9 +1027,10 @@ def _entry_form(boq: dict, data: dict, error: str = "",
       <div class="ed-bar">
         <button type="button" class="btn btn-ghost" onclick="edAdd(false)">+ Add a line</button>
         <button type="button" class="btn btn-ghost" onclick="edAdd(true)">+ Add a specification row</button>
+        {_boq_source_html(boq)}
       </div>
     </div>
-    {_edit_script()}"""
+    {_edit_script(boq)}"""
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1000,7 +1063,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   </div>
 
   <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not editing else "true"};">
-  {"" if editing else _number_html(data.get("doc_no_seq") or "")}
+  {_number_html(data.get("doc_no_seq") or "", po.get("ref") if editing else "")}
     <input type="hidden" name="po_json" id="po_json" value=""/>
 
     <div class="form-section">
@@ -1398,14 +1461,10 @@ def view_po(id: str):
     # rule: a control that vanishes teaches nothing about why it went. The
     # route refuses a typed URL on its own, on both methods; this is
     # presentation.
-    if is_locked(po):
-        edit_btn = ('<span class="btn btn-ghost" style="opacity:.55;'
-                    'cursor:not-allowed;" title="Already converted into a '
-                    'purchase order, so its lines and vendor are fixed.">'
-                    'Edit</span>')
-    else:
-        edit_btn = (f'<a href="{url_for("po_draft.edit_po", id=id)}" '
-                    f'class="btn btn-ghost">Edit</a>')
+    # Always offered from 2 Nov 2026 — a converted inquiry is editable too
+    # (logged); the greyed control it replaced is gone with the lock.
+    edit_btn = (f'<a href="{url_for("po_draft.edit_po", id=id)}" '
+                f'class="btn btn-ghost">Edit</a>')
     pics_btn = ""
     if _AUTH.can_reach("po_draft.pictures"):
         pics_btn = (f'\n    <a href="{url_for("po_draft.pictures", id=id)}" '
@@ -1437,7 +1496,7 @@ def view_po(id: str):
   </div>
 </div>
 
-{_flash()}
+{_flash()}{__import__("editlog").band(po, DOC_NAME_LOWER)}
 {converted_strip}
 
 <div class="doc-outer">
@@ -1523,10 +1582,16 @@ def edit_po(id: str):
     #   bookmarked form cannot be filled in and submitted; the POST refuses
     #   before `_validate()` is even called, so no value is read off a form
     #   that may not change this document.
-    if is_locked(po):
-        return redirect(url_for("po_draft.view_po", id=id,
-                                msg=P.esc(LOCK_REASON).replace("&mdash;", "—"),
-                                type="error"))
+    # ⚠ **NOT LOCKED once converted, from 2 November 2026** (CLIENT_CHANGES.md
+    #   §0 block of that date: "the only allowed locks" are five ledger locks,
+    #   and a converted inquiry is none of them). The order raised from it
+    #   holds its own snapshot and does not move; an edit after conversion is
+    #   LOGGED (`editlog`) with the screen-only band. The refusal it replaced,
+    #   verbatim:
+    #       if is_locked(po):
+    #           return redirect(url_for("po_draft.view_po", id=id,
+    #                                   msg=P.esc(LOCK_REASON).replace("&mdash;", "—"),
+    #                                   type="error"))
 
     boq = (STORE.get("boqs") or {}).get(po.get("boq_id", "")) or {
         "id": po.get("boq_id", ""), "ref": po.get("boq_ref", ""),
@@ -1547,12 +1612,20 @@ def edit_po(id: str):
     data, error = _validate(request.form, boq)
     items, line_error = (None, "") if error else parse_items(request.form, po)
     error = error or line_error
+    own_n = DN.ordinal_of(po.get("ref"))
+    typed_n = own_n
+    if not error:
+        typed_n, error = DN.validate(DN.DPO, "", (request.form.get("doc_no_seq") or "").strip(),
+                                     own_n, _may_set_number())
     if error:
         # Hand the operator back exactly what they typed, rows and all — a
         # browser cannot refill a form and a refused save must not lose work.
         data["_items"] = _posted_rows(request.form)
         return _entry_form(boq, data, error, po=po)
 
+    import editlog as _EL
+    before = dict(po)
+    before_items = [dict(r) for r in po.get("items") or []]
     po["date"] = data["date"]
     po["notes"] = data["notes"]
     po["delivery_to"] = data["delivery_to"]
@@ -1560,7 +1633,20 @@ def edit_po(id: str):
     if items is not None:
         po["items"] = items
     po.update(data["vendor"])
-    # `ref` is deliberately untouched. An edit never reissues the number.
+    if typed_n != own_n:
+        ref_was = str(po.get("ref") or "")
+        po["ref"] = _spend_ref(typed_n)
+        DN.note_used(DN.DPO, "", typed_n)
+        DN.record_override(po, ref_was, po["ref"], _actor_id())
+    if is_locked(po):
+        # Converted: a document that has gone out. Logged, with the band.
+        def _ln(rows):
+            return [dict(r, name=r.get("description"), price="") for r in rows]
+        _EL.record(po, _EL.diff(before, po, (
+            ("ref", "No."), ("date", "Date"), ("vendor_name", "Supplier"),
+            ("to", "Supplier address"), ("delivery_to", "Deliver to"),
+            ("notes", "Notes"))) + _EL.line_diff(_ln(before_items), _ln(po.get("items") or [])),
+            _actor_id())
     return redirect(url_for("po_draft.view_po", id=id,
                             msg=f"{DOC_NAME} updated.", type="success"))
 

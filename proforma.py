@@ -2018,6 +2018,31 @@ def _pi_seq(pi: dict) -> int:
     return DN.ordinal_of(pi.get("ref"))
 
 
+def _parent_sources(pi: dict, default_gst: float) -> list:
+    """
+    The lines a PI's create path copies from — its quotation's, or its BOQ's
+    (both legs, stacked) — offered on the EDIT form (2 Nov 2026, the full-edit
+    pass), so a line removed by mistake, or one the PI never took, can be
+    added back. Each lands as a new, fully editable line.
+    """
+    q = (STORE.get("quotations") or {}).get(str(pi.get("quotation_id") or ""))
+    if q:
+        return LE.parent_sources(q.get("line_items") or [],
+                                 f"Quotation {q.get('ref') or ''}", default_gst)
+    boq = (STORE.get("boqs") or {}).get(str(pi.get("boq_id") or ""))
+    if boq:
+        picked = [{"line_id": li.get("line_id"), "is_header": False,
+                   "item_no": li.get("item_no"), "description": li.get("description"),
+                   "unit": li.get("unit"), "qty": li.get("total_qty") or 0}
+                  for li in boq.get("line_items") or [] if not li.get("is_header")]
+        try:
+            lines, _err = boq_line_items(picked, boq, "both")
+        except Exception:      # a malformed schedule offers nothing, never a 500
+            lines = []
+        return LE.parent_sources(lines or [], f"BOQ {boq.get('ref') or ''}", default_gst)
+    return []
+
+
 @proforma_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_proforma(id: str, imported: dict = None):
     """
@@ -2185,7 +2210,8 @@ def edit_proforma(id: str, imported: dict = None):
           <div class="section-title">Lines</div>
           <div class="form-group" style="max-width:280px;"><label for="tax_type">Tax head</label>
             <select id="tax_type" name="tax_type">{tax_opts}</select></div>
-          {LE.editor_html(rows, form_selector='form[action$="' + form_action + '"]')}
+          {LE.editor_html(rows, form_selector='form[action$="' + form_action + '"]',
+                          sources=_parent_sources(pi, default_gst))}
           {xl_btn}
           {_RO().checkbox_html(round_shown)}
         </div>

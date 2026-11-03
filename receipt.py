@@ -208,13 +208,16 @@ def _actor_id() -> str:
     return str((auth.current_user() or {}).get("id") or "")
 
 
-def _number_html(datestr: str, typed) -> str:
-    """The Receipt No. field, prefilled with the series' next number."""
+def _number_html(datestr: str, typed, ref: str = "") -> str:
+    """
+    The Receipt No. field, prefilled with the series' next number — or, on
+    EDIT (2 Nov 2026, Part 4), with the receipt's own: forward only.
+    """
     fy = P.fy_of(datestr)
     return (DN.NUMBER_STYLES +
             '<div class="form-group" style="max-width:22rem;"><label for="doc_no_seq">'
             'Receipt No.</label>'
-            + DN.number_field(DN.RCPT, _ref_for(fy, SER.next_seq("RCPT", fy)),
+            + DN.number_field(DN.RCPT, ref or _ref_for(fy, SER.next_seq("RCPT", fy)),
                               may_override=_may_set_number(), typed=typed or "")
             + "</div>")
 
@@ -809,7 +812,20 @@ def edit_receipt(id: str):
             ok, why, _m, _sz = attachment.validate(upload)
             if not ok:
                 error = why
+        # The number on EDIT, forward only (2 Nov 2026, Part 4): its own always
+        # passes; a higher one is spent and never issued again.
+        own_n = DN.ordinal_of(rec.get("ref"))
+        _rfy = DN.fy_of_ref(rec.get("ref"), rec.get("fy"))
+        typed_n = own_n
         if not error:
+            typed_n, error = DN.validate(DN.RCPT, _rfy, request.form.get("doc_no_seq"),
+                                         own_n, _may_set_number())
+        if not error:
+            if typed_n != own_n:
+                _was = str(rec.get("ref") or "")
+                rec["ref"] = _ref_for(_rfy, typed_n)
+                DN.note_used(DN.RCPT, _rfy, typed_n)
+                DN.record_override(rec, _was, rec["ref"], _actor_id())
             rec["date"] = data["date"]
             rec["fy"] = P.fy_of(data["date"])
             rec["amount"] = data["amount"]
@@ -838,7 +854,14 @@ def edit_receipt(id: str):
     return _form(bill, data, error,
                  action=url_for("receipt.edit_receipt", id=id),
                  back_url=url_for("ra.view_ra", id=ra_id),
-                 submit_label="Save receipt", exclude_id=id, extra_note=note)
+                 submit_label="Save receipt", exclude_id=id, extra_note=note,
+                 # A receipt saved before receipts were numbered carries no
+                 # ref; it is not handed one by an edit, so no box is drawn.
+                 number_html=(_number_html(rec.get("date") or "",
+                                           request.form.get("doc_no_seq")
+                                           if request.method == "POST" else "",
+                                           ref=str(rec.get("ref") or ""))
+                              if rec.get("ref") else ""))
 
 
 @receipt_bp.route("/delete/<id>", methods=["GET", "POST"])

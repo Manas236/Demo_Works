@@ -332,13 +332,16 @@ def _actor_id() -> str:
     return str((auth.current_user() or {}).get("id") or "")
 
 
-def _number_html(datestr: str, typed) -> str:
-    """The Sheet No. field, prefilled with the series' next number."""
+def _number_html(datestr: str, typed, ref: str = "") -> str:
+    """
+    The Sheet No. field, prefilled with the series' next number — or, on EDIT
+    (2 Nov 2026, Part 4), with the sheet's own number: forward only.
+    """
     fy = P.fy_of(datestr or _date.today().isoformat())
     return (DN.NUMBER_STYLES +
             '<div class="form-group" style="max-width:22rem;"><label for="doc_no_seq">'
             'Sheet No.</label>'
-            + DN.number_field(DN.MS, _ref_for(fy, SER.next_seq("MS", fy)),
+            + DN.number_field(DN.MS, ref or _ref_for(fy, SER.next_seq("MS", fy)),
                               may_override=_may_set_number(), typed=typed or "")
             + "</div>")
 
@@ -1356,7 +1359,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   </div>
 
   <form method="POST" action="{action}" onsubmit="return saveJSON() &amp;&amp; collectGrid();">
-  {"" if editing else _number_html(data.get("date") or "", data.get("doc_no_seq") or "")}
+  {_number_html(data.get("date") or "", data.get("doc_no_seq") or "", sheet.get("ref") if editing else "")}
     <input type="hidden" name="ms_json" id="ms_json" value=""/>
 
     <div class="form-section">
@@ -2626,6 +2629,20 @@ def edit_ms(id: str):
     if grid_error:
         return _entry_form(boq, data, grid_error, sheet=ms)
 
+    # The number on EDIT, forward only (2 Nov 2026, Part 4) — scoped to the
+    # year the number carries, as on create.
+    own_n = DN.ordinal_of(ms.get("ref"))
+    _fy = DN.fy_of_ref(ms.get("ref"), ms.get("fy"))
+    typed_n, num_err = DN.validate(DN.MS, _fy, request.form.get("doc_no_seq"), own_n,
+                                   _may_set_number())
+    if num_err:
+        data["doc_no_seq"] = request.form.get("doc_no_seq") or ""
+        return _entry_form(boq, data, num_err, sheet=ms)
+    if typed_n != own_n:
+        _was = str(ms.get("ref") or "")
+        ms["ref"] = _ref_for(_fy, typed_n)
+        DN.note_used(DN.MS, _fy, typed_n)
+        DN.record_override(ms, _was, ms["ref"], _actor_id())
     ms.update({
         "date": data["date"],
         "location": data["location"],

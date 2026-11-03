@@ -1664,6 +1664,18 @@ def can_edit(ti: dict) -> tuple:
     return approval.can_modify("invoice", ti)
 
 
+def _ti_parent_sources(ti: dict, default_gst: float) -> list:
+    """
+    The lines a TI's create path copies from — its proforma's, or its BOQ's —
+    offered on the EDIT form (2 Nov 2026, the full-edit pass).
+    """
+    pi = (STORE.get("proformas") or {}).get(str(ti.get("proforma_id") or ""))
+    if pi:
+        return _PF.LE.parent_sources(pi.get("line_items") or [],
+                                     f"Proforma {pi.get('ref') or ''}", default_gst)
+    return _PF._parent_sources({"boq_id": ti.get("boq_id")}, default_gst)
+
+
 @invoice_bp.route("/edit/<id>", methods=["GET", "POST"])
 def edit_invoice(id: str):
     """Correct an issued standalone tax invoice. See EDIT AFTER ISSUE above."""
@@ -1798,7 +1810,8 @@ def edit_invoice(id: str):
           <div class="section-title">Lines</div>
           <div class="form-group" style="max-width:280px;"><label for="tax_type">Tax head</label>
             <select id="tax_type" name="tax_type">{tax_opts}</select></div>
-          {_PF.LE.editor_html(rows, form_selector='form[action$="' + action + '"]')}
+          {_PF.LE.editor_html(rows, form_selector='form[action$="' + action + '"]',
+                              sources=_ti_parent_sources(ti, default_gst))}
           {RO.checkbox_html(round_shown)}
         </div>
         <div class="form-actions">
