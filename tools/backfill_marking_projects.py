@@ -62,6 +62,16 @@ a report that went quiet the second time would hide them.
 
     python tools/backfill_marking_projects.py            # dry run — the plan
     python tools/backfill_marking_projects.py --write    # apply it
+
+⚠ **SUPERSEDED for the 5 November 2026 pass by
+`tools/backfill_labour_projects.py`** (CLIENT_CHANGES.md §0's **sixty-sixth**
+block, Manas's ruling 5), which does the same one-project-at-the-site link and
+four things this one cannot: it reports by **worker-month** (the grain
+`/attendance/unassigned` assigns at), it knows about **overhead** and excludes
+it from the backlog, it takes the **backup** itself, and it prints the
+**cost** of what is waiting. This script is kept, working and tested: neither
+writes anything the other would undo, and running both is harmless. Prefer the
+new one.
 """
 
 import argparse
