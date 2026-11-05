@@ -70,6 +70,7 @@ import sheetimport as SI
 import auth
 import employee as EMP
 import payroll as PAY
+import pipeline as P
 from store import STORE
 
 payimport_bp = Blueprint("payimport", __name__, url_prefix="/payroll/import")
@@ -340,24 +341,46 @@ def month_imported(month: str) -> dict:
     return {}
 
 
+# ⚠ **THE SITE PICKER STOPPED CARRYING THE PROJECT, 5 November 2026** —
+#   CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 2: *"Site → project is
+#   decided PER WORKER at import."* `docs/LABOUR_PL.md` §2 is the defect.
+#
+#   It used to offer one entry per **(site, project)** pair, so a site carrying
+#   two live projects could not be picked without picking one of them — for the
+#   WHOLE SHEET. Jamnagar and Jamnagar Shed share an address, and every worker
+#   on either landed on whichever one the operator chose. There was no shape in
+#   which half the rows went to the Shed.
+#
+#   Now: one entry per book site, plus **No project (overhead)** at the top,
+#   and the project is a per-worker control on the row (`proj_<i>`).
+#
+# ⚠ **The `addr|project` form is still ACCEPTED by `resolve_choice()`** and is
+#   no longer OFFERED. It is a site-level answer that overrides the per-worker
+#   pick for every row at that site, which is what a saved form or a scripted
+#   post may carry, and refusing it would turn an old URL into a lost import.
+
+# "No project (overhead)" — ruling 2's *"e.g. OFFICE"*. Not an address and not
+# a project; `attendance.OVERHEAD_CHOICE` is the one spelling.
+OVERHEAD = AT.OVERHEAD_CHOICE
+
+
 def site_choices() -> list:
     """
-    `[(value, label, address_label)]` — every book site, and each project at
-    it as its own choice, so a site carrying several projects cannot be picked
-    without picking the project (`attendance.resolve_project()`'s rule).
+    `[(value, label, address_label)]` — the sheet-site picker.
+
+    One entry per live book site (value: the address id), and **one overhead
+    entry** whose value is `OVERHEAD` and whose address label is `""`, so
+    `preselect()` can never match it by accident.
+
+    ⚠ **The project is NOT in here any more** — see the block above.
     """
-    out = []
+    out = [(OVERHEAD, "No project — overhead (office, workshop, yard)", "")]
     for a in sorted((STORE.get("addresses") or {}).values(),
                     key=lambda a: str(a.get("label") or "").lower()):
         if a.get("type") not in AD.SITE_TYPES or a.get("archived"):
             continue
         label = str(a.get("label") or "")
-        projects = AT.projects_on_site(a["id"])
-        if not projects:
-            out.append((f"{a['id']}|", label, label))
-        for p in projects:
-            out.append((f"{a['id']}|{p['id']}", f"{label} — {p.get('name')}",
-                        label))
+        out.append((str(a["id"]), label, label))
     return out
 
 
@@ -366,32 +389,106 @@ def preselect(site: str, choices: list) -> str:
     The one choice whose ADDRESS LABEL equals the sheet's SITE exactly (trimmed
     only — `employee.resolve_site()`'s rule), or "". Never a near match, and
     never when that address offers more than one choice.
+
+    ⚠ **A multi-project site now PRESELECTS, where before it could not.** The
+      pairs are gone, so an address appears once and the exact-label match is
+      unambiguous again. The decision that used to be forced here — *which* of
+      the two projects — is now asked on each worker's row, which is where
+      ruling 2 puts it.
+
+    ⚠ **The overhead entry carries an empty address label on purpose**, so a
+      sheet whose SITE column is blank cannot match it. Overhead is always a
+      deliberate pick.
     """
-    hits = [v for v, _, addr in choices if addr.strip() == site.strip()]
+    hits = [v for v, _, addr in choices
+            if addr.strip() == site.strip() and addr.strip()]
     return hits[0] if len(hits) == 1 else ""
 
 
-def resolve_choice(value: str) -> tuple:
-    """`(site_fields, project_fields, error)` for one `addr|project` value."""
-    aid, _, pid = str(value or "").partition("|")
+def resolve_choice(value: str, sheet_site: str = "") -> tuple:
+    """
+    `(site_fields, project_fields, error)` for one sheet site's pick.
+
+    | value | site | project |
+    |---|---|---|
+    | `OVERHEAD` | the sheet's own string, kept and marked **unmapped** | overhead |
+    | `<addr>` / `<addr>` + `|` | the book site | `None` where the site carries **2 or more** projects — *ask per worker*; the only one where it carries one; blank where it carries none |
+    | `<addr>` + `|overhead` | the book site | overhead |
+    | `<addr>` + `|<pid>` | the book site | that project, for every row at that site (not offered; still accepted) |
+
+    ⚠ **`project_fields is None` is the per-worker deferral and is not an
+      error.** It used to be `"several projects are at that site — choose one"`,
+      which abandoned the whole import — so the cheapest way past it was to
+      pick *a* project, which is the silent mis-attribution this module exists
+      to prevent (`docs/LABOUR_PL.md` §2, consequence 2).
+
+    ⚠ **Overhead with no book site KEEPS the sheet's string** rather than
+      clearing it. `employee.resolve_site()`'s middle row, for its reason: the
+      string is evidence of where somebody worked. It is marked `unmapped`, and
+      an overhead marking is excluded from `off_project_labour()`, so it is
+      reported nowhere as an unanswered question.
+    """
+    raw = str(value or "").strip()
+    if raw == OVERHEAD:
+        return ({"site": str(sheet_site or "").strip()[:200],
+                 EMP.SITE_ADDRESS_FIELD: "",
+                 EMP.SITE_SOURCE_FIELD: EMP.SITE_UNMAPPED},
+                AT.overhead_fields(True), "")
+
+    aid, _, pid = raw.partition("|")
     label = EMP.site_label_of(aid)
     if not label:
         return {}, {}, "choose a site from the address book"
+    site = {"site": label, EMP.SITE_ADDRESS_FIELD: aid,
+            EMP.SITE_SOURCE_FIELD: EMP.SITE_BOOK}
     candidates = {p["id"]: p for p in AT.projects_on_site(aid)}
+
+    if pid == OVERHEAD:
+        return site, AT.overhead_fields(True), ""
     if pid:
         p = candidates.get(pid)
         if not p:
             return {}, {}, "that project is not at that site"
-        proj = {"project_id": p["id"], "project_name": str(p.get("name") or "")}
-    elif len(candidates) > 1:
-        return {}, {}, "several projects are at that site — choose one"
-    elif len(candidates) == 1:
+        return site, {"project_id": p["id"],
+                      "project_name": str(p.get("name") or "")}, ""
+    if len(candidates) > 1:
+        return site, None, ""
+    if len(candidates) == 1:
         p = next(iter(candidates.values()))
-        proj = {"project_id": p["id"], "project_name": str(p.get("name") or "")}
-    else:
-        proj = {"project_id": "", "project_name": ""}
-    return ({"site": label, EMP.SITE_ADDRESS_FIELD: aid,
-             EMP.SITE_SOURCE_FIELD: EMP.SITE_BOOK}, proj, "")
+        return site, {"project_id": p["id"],
+                      "project_name": str(p.get("name") or "")}, ""
+    return site, {"project_id": "", "project_name": ""}, ""
+
+
+def resolve_row_project(value: str, site_fields: dict) -> tuple:
+    """
+    `(project_fields, error)` for one WORKER's `proj_<i>` pick, against the
+    site that row is being saved with — ruling 2's per-worker decision.
+
+    ⚠ **Checked against the row's own site**, never against the form's: a
+      project must be filed at the address the marking carries, which is
+      `attendance.resolve_project()`'s invariant and the reason this takes the
+      resolved fields rather than an index.
+
+    ⚠ **A blank is REFUSED, and that is ruling 2's last line** — *"No default →
+      must be picked before commit."* The two readings of a blank on an
+      ambiguous site are "the operator has not got to it" and "the operator
+      means none", and the second has its own choice on the control
+      (`OVERHEAD`). Guessing between them puts a day's wage on a project
+      nobody chose.
+    """
+    raw = str(value or "").strip()[:64]
+    if raw == OVERHEAD:
+        return AT.overhead_fields(True), ""
+    if not raw:
+        return {}, ("two or more projects are at that site — choose which one "
+                    "for this person, or “No project (overhead)”")
+    aid = str((site_fields or {}).get(EMP.SITE_ADDRESS_FIELD) or "").strip()
+    for p in AT.projects_on_site(aid):
+        if str(p.get("id")) == raw:
+            return {"project_id": str(p.get("id")),
+                    "project_name": str(p.get("name") or "")}, ""
+    return {}, "that project is not at that site"
 
 
 # =============================================================================
@@ -411,9 +508,13 @@ def commit(rec: dict, form) -> tuple:
         return {}, (f"{PAY.month_label(month)} was already imported. Take that "
                     f"import out first.")
 
+    # ⚠ **Two decisions now, not one** (5 November 2026, the sixty-sixth block,
+    #   ruling 2). The SITE is still answered once per distinct sheet site; the
+    #   PROJECT is answered per worker wherever that site carries two or more
+    #   of them. `pf is None` out of `resolve_choice()` is the deferral.
     mapping = {}
     for i, site in enumerate(rec["sites"]):
-        sf, pf, err = resolve_choice(form.get(f"site_{i}"))
+        sf, pf, err = resolve_choice(form.get(f"site_{i}"), site)
         if err:
             return {}, f"Site “{site}”: {err}."
         mapping[site] = (sf, pf)
@@ -429,6 +530,14 @@ def commit(rec: dict, form) -> tuple:
             summary["rows_skipped"] += 1
             continue
         sf, pf = mapping.get(row["site"], ({}, {}))
+        # ⚠ **The per-worker project, and it is refused rather than guessed.**
+        #   Only where the site deferred (`pf is None`); a site with one project
+        #   is auto-assigned and a site with none goes to the UNASSIGNED bucket,
+        #   which is ruling 2's table in order.
+        if pf is None:
+            pf, perr = resolve_row_project(form.get(f"proj_{i}"), sf)
+            if perr:
+                return {}, f"Row {row['line']} ({row['name']}): {perr}."
         sheet_rate = row["money"].get("rate")
         if choice == "new":
             data, err = EMP._validate({
@@ -606,6 +715,64 @@ def upload():
     return PAY._shell("Import attendance", body)
 
 
+def _row_project_cell(i: int, row: dict, hit: dict, month: str,
+                      site_value: str) -> str:
+    """
+    The per-worker project control for one sheet row — ruling 2's picker.
+
+    ⚠ **Drawn only where the row's site carries TWO OR MORE live projects.**
+      One project is auto-assigned, none goes to the UNASSIGNED bucket, and
+      overhead was answered at the site. A control on those rows would ask a
+      question with one answer, which is how a form teaches an operator to
+      click past it.
+
+    ⚠ **The default is that worker's project LAST MONTH** — ruling 2 — through
+      `attendance.project_last_month()`, which answers only when last month was
+      unanimous. No default leaves the control blank and `commit()` refuses,
+      which is ruling 2's last line.
+
+    ⚠ **The site this is drawn against is the PRESELECTED one.** If the
+      operator changes the site select, the `<script>` at the foot of the page
+      re-populates this control from `BY_SITE`; and whatever either of them
+      ends up showing, `resolve_row_project()` re-reads `STORE["projects"]` and
+      refuses a project that is not at the row's site. The browser decides
+      nothing.
+    """
+    if site_value == OVERHEAD:
+        return ('<span class="pay-sub">overhead</span>'
+                f'<input type="hidden" name="proj_{i}" value="{_esc(OVERHEAD)}"/>')
+    at = AT.projects_on_site(site_value) if site_value else []
+    if len(at) == 1:
+        return f'<span class="pay-sub">{_esc(at[0].get("name") or "")}</span>'
+    if not at:
+        return ('<span class="pay-sub">'
+                + ("Unassigned" if site_value else "&mdash;") + "</span>")
+
+    last = AT.project_last_month(hit["id"], month) if (hit and month) else {}
+    want = (OVERHEAD if last.get(AT.OVERHEAD_FIELD)
+            else str(last.get("project_id") or ""))
+    ids = [str(p.get("id")) for p in at]
+    if want not in ids + [OVERHEAD]:
+        want = ""
+    opts = [f'<option value=""{"" if want else " selected"}>'
+            f'&mdash; choose which project &mdash;</option>']
+    for p in at:
+        pid = str(p.get("id"))
+        opts.append(f'<option value="{_esc(pid)}"'
+                    f'{" selected" if pid == want else ""}>'
+                    f'{_esc(p.get("name") or "(unnamed)")}</option>')
+    opts.append(f'<option value="{_esc(OVERHEAD)}"'
+                f'{" selected" if want == OVERHEAD else ""}>'
+                f'No project (overhead)</option>')
+    hint = ""
+    if want and last.get("project_last_month"):
+        hint = (f'<span class="pay-sub">from '
+                f'{_esc(PAY.month_label(last["project_last_month"]))}</span>')
+    return (f'<select name="proj_{i}" data-row-project="{i}" '
+            f'data-sheet-site="{_esc(row["site"])}">{"".join(opts)}</select>'
+            f'{hint}')
+
+
 @payimport_bp.route("/preview/<id>")
 def preview(id):
     rec, back = _rec_or_back(id)
@@ -620,13 +787,33 @@ def preview(id):
     choices = site_choices()
 
     site_rows = ""
+    site_pick = {}            # sheet site -> the value the select is showing
     for i, site in enumerate(rec["sites"]):
         pick = preselect(site, choices)
+        site_pick[site] = pick
         opts = ['<option value="">— choose —</option>'] + [
             f'<option value="{_esc(v)}"{" selected" if v == pick else ""}>'
             f'{_esc(label)}</option>' for v, label, _ in choices]
-        site_rows += (f'<tr><td><b>{_esc(site)}</b></td><td><select name="site_{i}" '
-                      f'required>{"".join(opts)}</select></td></tr>')
+        # ⚠ **What the site carries is printed BESIDE the picker**, so the
+        #   operator can see before committing which rows are going to ask for
+        #   a project. A multi-project site is the one that does.
+        at = AT.projects_on_site(pick) if pick and pick != OVERHEAD else []
+        if pick == OVERHEAD:
+            note = "overhead — these days land on no project"
+        elif len(at) > 1:
+            note = (f'{len(at)} projects here: '
+                    + ", ".join(str(p.get("name") or "") for p in at)
+                    + " — each person is asked below")
+        elif len(at) == 1:
+            note = f'one project here: {at[0].get("name") or ""} — assigned'
+        elif pick:
+            note = "no project at this site — these days go to Unassigned"
+        else:
+            note = ""
+        site_rows += (f'<tr><td><b>{_esc(site)}</b></td>'
+                      f'<td><select name="site_{i}" data-sheet-site="{i}" '
+                      f'required>{"".join(opts)}</select></td>'
+                      f'<td class="pay-sub">{_esc(note)}</td></tr>')
 
     people = sorted(EMP.employees().values(),
                     key=lambda e: str(e.get("name") or "").lower())
@@ -664,6 +851,7 @@ def preview(id):
       <tr{' style="background:#fff3e0"' if diff or notes else ''}>
         <td>{_esc(row['name'])}<span class="pay-sub">{_esc(row['site'])}</span></td>
         <td><select name="emp_{i}">{''.join(opts)}</select></td>
+        <td>{_row_project_cell(i, row, hit, month, site_pick.get(row['site'], ''))}</td>
         <td class="num">{len(row['days'])} / {PAY._days(paid)}</td>
         <td class="num">{PAY._days(ot)}</td>
         <td class="num">{rate_cell}</td>
@@ -680,6 +868,14 @@ def preview(id):
         warn += (f'<div class="pay-warn">{_esc(PAY.month_label(month))} is already '
                  f'imported. Committing is refused until that import is taken out.</div>')
     problems = "".join(f"<li>{_esc(p)}</li>" for p in rec.get("problems", []))
+    # ⚠ **Through `pipeline.json_for_script()`, never `json.dumps`** — a project
+    #   named with the seven characters `</script>` would otherwise close the
+    #   block and every byte after it would be parsed as HTML (ABOUT.md §7.9e).
+    #   A project name and a sheet's SITE string are both free text.
+    projects_by_site = AT.projects_by_site_json()
+    sheet_sites = P.json_for_script(
+        {str(i): s for i, s in enumerate(rec["sites"])})
+    overhead_json = P.json_for_script(OVERHEAD)
     body = f"""
   {PAY._flash()}
   <div class="page-top"><h1>Check the import &mdash; {_esc(rec.get('filename'))}</h1>
@@ -702,14 +898,79 @@ def preview(id):
       <table class="pay-tbl">{site_rows}</table>
     </div>
     <div class="pay-card"><table class="pay-tbl">
-      <tr><th>Sheet row</th><th>Employee</th><th class="num">Marked / paid days</th>
+      <tr><th>Sheet row</th><th>Employee</th><th>Project</th>
+          <th class="num">Marked / paid days</th>
           <th class="num">OT hrs</th><th class="num">Day rate</th>
           <th class="num">Adv / travel / loan ded. / loan owed</th>
           <th class="num">App net</th><th>Notes</th></tr>
       {emp_rows}
     </table></div>
     <button class="btn">Import</button>
-  </form>"""
+  </form>
+<script>
+/* Re-populate each worker's PROJECT control when its sheet SITE changes
+   (5 November 2026, CLIENT_CHANGES.md §0's sixty-sixth block, ruling 2).
+
+   ⚠ It decides NOTHING. `resolve_choice()` and `resolve_row_project()` re-read
+     STORE["projects"] on the POST and refuse a project that is not at the
+     row's site; this only keeps the control honest while it is being used, the
+     way `attendance.py`'s project picker does on the mark form.
+
+   ⚠ It runs on `change` and NOT on load. The server rendered the correct
+     options, including the last-month default, and re-deriving them here on
+     load would make the browser the authority on a value the server decided.
+
+   ⚠ It never invents a default. A site with several projects opens blank —
+     the commit refuses and says so — because a default the operator did not
+     choose is the whole defect ruling 2 closes. */
+(function () {{
+  var BY_SITE = {projects_by_site};
+  var SHEET = {sheet_sites};
+  var OVERHEAD = {overhead_json};
+
+  function cellsFor(sheetSite) {{
+    var all = document.querySelectorAll("[data-row-project]"), out = [], i;
+    for (i = 0; i < all.length; i++) {{
+      if (all[i].getAttribute("data-sheet-site") === sheetSite) {{
+        out.push(all[i]);
+      }}
+    }}
+    return out;
+  }}
+
+  var selects = document.querySelectorAll("[data-sheet-site][name^='site_']");
+  for (var s = 0; s < selects.length; s++) {{
+    (function (sel) {{
+      sel.addEventListener("change", function () {{
+        var sheetSite = SHEET[sel.getAttribute("data-sheet-site")] || "";
+        var list = sel.value === OVERHEAD ? [] : (BY_SITE[sel.value] || []);
+        var cells = cellsFor(sheetSite), c, i;
+        for (c = 0; c < cells.length; c++) {{
+          var box = cells[c];
+          while (box.firstChild) {{ box.removeChild(box.firstChild); }}
+          var blank = document.createElement("option");
+          blank.value = "";
+          blank.textContent = "\u2014 choose which project \u2014";
+          box.appendChild(blank);
+          for (i = 0; i < list.length; i++) {{
+            var o = document.createElement("option");
+            o.value = list[i][0];
+            /* textContent, never innerHTML — a project name is free text. */
+            o.textContent = list[i][1];
+            box.appendChild(o);
+          }}
+          var oh = document.createElement("option");
+          oh.value = OVERHEAD;
+          oh.textContent = "No project (overhead)";
+          box.appendChild(oh);
+          box.value = sel.value === OVERHEAD ? OVERHEAD : "";
+          box.disabled = list.length < 2 && sel.value !== OVERHEAD;
+        }}
+      }});
+    }})(selects[s]);
+  }}
+}})();
+</script>"""
     return PAY._shell("Check the import", body)
 
 

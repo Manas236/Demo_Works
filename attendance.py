@@ -317,7 +317,8 @@ money format** (ABOUT.md §9).
 import datetime
 import uuid
 
-from flask import Blueprint, redirect, request, url_for
+from flask import (Blueprint, has_request_context, redirect,
+                   request, url_for)
 
 import branding as B
 import employee as EMP
@@ -596,6 +597,19 @@ def resolve_project(form, site_address_id) -> tuple:
     by_id = {str(p.get("id")): p for p in candidates}
 
     posted = (form.get("project_id") or "").strip()[:64]
+
+    # ⚠ **A FIFTH outcome, 5 November 2026** (CLIENT_CHANGES.md §0's
+    #   **sixty-sixth** block, ruling 2: *"plus a 'No project (overhead)'
+    #   choice"*). Overhead is an ANSWER — the office, the workshop, the yard —
+    #   and until now the only way to record it was to leave the picker blank,
+    #   which stores the same shape as a marking that predates the field. The
+    #   two were indistinguishable, so the unassigned screen had to keep asking
+    #   about days somebody had already placed. It is available at EVERY site,
+    #   including one carrying several projects, because "he was on the
+    #   Jamnagar address but in the site office" is a real day.
+    if posted == OVERHEAD_CHOICE:
+        return overhead_fields(True), ""
+
     chosen = by_id.get(posted)          # None for blank AND for "not here"
 
     if chosen is not None:
@@ -1381,6 +1395,13 @@ def import_marking(person: dict, date: str, status: str, ot_hours,
         "created_at":    _now(),
         "updated_at":    _now(),
     }
+    # ⚠ **The overhead decision is carried, and only when it was made**
+    #   (5 November 2026, the sixty-sixth block, ruling 2). A marking without
+    #   the key still means LEGACY, which is the whole distinction the field
+    #   exists to draw — writing `False` onto every import would claim that
+    #   every blank project had been considered.
+    if project_fields.get(OVERHEAD_FIELD):
+        records()[rid][OVERHEAD_FIELD] = True
     return rid, ""
 
 
@@ -1711,6 +1732,17 @@ def _validate(form, except_id: str = "", record=None) -> tuple:
     if project_error:
         return data, project_error
     data.update(project_fields)
+    # ⚠ **Normalised to a bool here so both write routes read ONE key.** It is
+    #   stored only when True and popped when False (5 November 2026, the
+    #   sixty-sixth block) — an absent key still means LEGACY, and writing
+    #   `False` onto every marking somebody edits would claim a decision for
+    #   every record that was merely re-saved.
+    # ⚠ **Read with a DEFAULT, never returned by the other four outcomes.**
+    #   `resolve_project()`'s ordinary answer is `charge.py`'s exactly two keys
+    #   and `tests/test_attendance.py` pins that set — so a blank picker and a
+    #   chosen project both arrive here with the key absent, which is False,
+    #   which is what takes an overhead mark back off on an edit.
+    data[OVERHEAD_FIELD] = bool(project_fields.get(OVERHEAD_FIELD))
 
     clash = conflicting_record(data["employee_id"], data["date"], except_id)
     if clash:
@@ -1782,6 +1814,13 @@ ATTENDANCE_STYLES = "\n<style>\n" + MARKING_CELL_CSS + """
     padding:.9rem 1.2rem; margin-bottom:1.4rem; font-size:.88rem;
   }
   .att-note b { color:var(--navy); }
+
+  /* The inline assign form on /attendance/unassigned (5 November 2026, the
+     sixty-sixth block, ruling 3). One <form> per row, so a row is its own
+     POST and a failure names that row rather than losing the page. */
+  .att-assign { display:flex; gap:.45rem; align-items:center; margin:0; }
+  .att-assign select { min-width:12rem; }
+  @media print { .att-assign { display:none !important; } }
   .att-note .an-sub { color:var(--muted); font-size:.82rem; margin-top:.25rem; }
 
   .att-card {
@@ -1982,7 +2021,8 @@ def _employee_options(selected: str) -> str:
     return "".join(out)
 
 
-def _project_options(site_address_id, selected: str) -> str:
+def _project_options(site_address_id, selected: str, employee_id: str = "",
+                     month: str = "") -> str:
     """
     The project picker's `<option>` list for one site, and the three rules are
     visible in the placeholder rather than hidden in the validator.
@@ -2009,11 +2049,24 @@ def _project_options(site_address_id, selected: str) -> str:
         placeholder = "— choose which project —"
 
     keep = str(selected or "")
-    if keep not in ids:
+    if keep != OVERHEAD_CHOICE and keep not in ids:
         # Not one of this site's projects: either the site was just changed, or
         # the marking predates the field. One candidate preselects; several do
         # not — `resolve_project()` refuses the blank and says why.
+        #
+        # ⚠ **LAST MONTH is tried before "nothing"** (5 November 2026, the
+        #   sixty-sixth block, ruling 2: *"Hand-entered attendance gets the
+        #   same project field and the same default rule"*). It answers only
+        #   where last month was unanimous for this person, and only where the
+        #   answer is still one of THIS site's projects — so the default can
+        #   never be a project somewhere else.
         keep = ids[0] if len(ids) == 1 else ""
+        if not keep and employee_id and month:
+            last = project_last_month(employee_id, month)
+            if last.get(OVERHEAD_FIELD):
+                keep = OVERHEAD_CHOICE
+            elif str(last.get("project_id") or "") in ids:
+                keep = str(last.get("project_id"))
 
     out = [f'<option value=""{"" if keep else " selected"}>'
            f'{_esc(placeholder)}</option>']
@@ -2022,7 +2075,26 @@ def _project_options(site_address_id, selected: str) -> str:
         sel = " selected" if pid == keep else ""
         out.append(f'<option value="{_esc(pid)}"{sel}>'
                    f'{_esc(p.get("name") or "(unnamed)")}</option>')
+    # ⚠ **Offered at EVERY site, a site with no project included.** "He was on
+    #   the Jamnagar address but in the site office" is a real day, and a site
+    #   with no project at all still needs the difference between *"nobody has
+    #   got to this yet"* and *"this is overhead"* — the first is what the
+    #   unassigned screen exists to clear and the second is already answered.
+    out.append(f'<option value="{_esc(OVERHEAD_CHOICE)}"'
+               f'{" selected" if keep == OVERHEAD_CHOICE else ""}>'
+               f'No project — overhead (office, workshop, yard)</option>')
     return "".join(out)
+
+
+def projects_by_site_json() -> str:
+    """
+    The public name for `_projects_by_site_json()`.
+
+    `payimport.py`'s preview needs the same site → projects map the mark form
+    does (5 November 2026, the sixty-sixth block, ruling 2), and reaching a
+    private name across a module boundary is not a pattern this app has.
+    """
+    return _projects_by_site_json()
 
 
 def _projects_by_site_json() -> str:
@@ -2250,6 +2322,28 @@ def list_attendance():
     else:
         site_panel = ""
 
+    # ⚠ **The one link to `/attendance/unassigned`** (5 November 2026, the
+    #   sixty-sixth block, ruling 3), and it is PERMISSION-FILTERED: a reader
+    #   without `labour.assign` is refused that page by the central gate, so a
+    #   button to it would read as a broken page.
+    #   The muster is that screen's parent, exactly as `/users` is `/roles`'s —
+    #   `tests/test_nav_reachability.py`'s UNLINKED_ON_PURPOSE names this link
+    #   as the reason it is off the nav. A sixth rail entry would move the
+    #   `head` digest of every pinned page; a sub-register does not need one.
+    #
+    # ⚠ **The count is on the button on purpose.** The number is the whole
+    #   point of the page, and a reader who never opens it should still be able
+    #   to see from here that there is nothing waiting.
+    unassigned_btn = ""
+    if has_request_context():
+        import auth
+        if auth.has_perm("labour.assign"):
+            waiting = len(unassigned_worker_months())
+            unassigned_btn = (
+                f'<a href="{url_for("attendance.unassigned_labour")}" '
+                f'class="btn btn-ghost">Unassigned labour'
+                f'{f" ({waiting})" if waiting else ""}</a>')
+
     return _shell("Attendance", f"""
   {_flash()}
   <div class="page-top">
@@ -2257,6 +2351,7 @@ def list_attendance():
     <div style="display:flex;gap:.7rem;">
       <a href="{url_for('attendance.mark_attendance', date=date)}" class="btn">+ Mark a day</a>
       <a href="{url_for('attendance.search_attendance')}" class="btn btn-ghost">Search</a>
+      {unassigned_btn}
       <a href="{url_for('payroll.payroll_register')}" class="btn btn-ghost">Payslips</a>
       <a href="{url_for('employee.list_employees')}" class="btn btn-ghost">Employees</a>
     </div>
@@ -2293,8 +2388,14 @@ def _form(data: dict, error: str, action: str, submit_label: str,
     # ⚠ The site is resolved ONCE and the project picker is filtered by that
     #   same value, so the two controls cannot open describing different sites.
     site_id = str(data.get("site_id") or "") or _site_of(eid)
-    project_options = _project_options(site_id, data.get("project_id"))
+    project_options = _project_options(
+        site_id, data.get("project_id"),
+        # ⚠ The MONTH, from the date being marked — not today's. Marking a day
+        #   in September defaults from August, which is the question ruling 2
+        #   asks.
+        data.get("employee_id"), str(data.get("date") or "")[:7])
     projects_by_site = _projects_by_site_json()
+    overhead_json = P.json_for_script(OVERHEAD_CHOICE)
     return f"""
   {_alert(error) if error else ''}
   <div class="page-top">
@@ -2344,7 +2445,12 @@ def _form(data: dict, error: str, action: str, submit_label: str,
           <b>several</b>, choosing is required, because picking for you would
           put this day&rsquo;s wage against a project nobody chose. Where it
           carries <b>none</b>, leave it &mdash; an office or a store belongs to
-          no project.</small>
+          no project. Where this day was <b>overhead</b> &mdash; the office,
+          the workshop, the yard &mdash; say so with
+          <b>No project (overhead)</b> rather than leaving it blank: a blank
+          means <i>nobody has got to this yet</i> and is listed on
+          <a href="{url_for('attendance.unassigned_labour')}">Unassigned
+          labour</a> until somebody does.</small>
       </div>
     </div>
 
@@ -2431,8 +2537,19 @@ def _form(data: dict, error: str, action: str, submit_label: str,
       if (list[i][0] === keep) {{ still = true; }}
     }}
 
+    /* "No project (overhead)" is at every site, exactly as the server writes
+       it (5 November 2026, the sixty-sixth block, ruling 2) — a control that
+       offered it without JS and not with it would be two forms. */
+    var oh = document.createElement("option");
+    oh.value = {overhead_json};
+    oh.textContent = "No project \u2014 overhead (office, workshop, yard)";
+    proj.appendChild(oh);
+    if (keep === oh.value) {{ still = true; }}
+
     /* One candidate preselects. Several never do — that is the decision the
-       operator is being asked for, and defaulting it is the whole defect. */
+       operator is being asked for, and defaulting it is the whole defect.
+       The LAST-MONTH default is the server's: re-deriving it here would make
+       the browser the authority on a value the server just decided. */
     proj.value = still ? keep : (list.length === 1 ? list[0][0] : "");
   }});
 }})();
@@ -2662,6 +2779,182 @@ def search_attendance():
 """)
 
 
+# =============================================================================
+# UNASSIGNED LABOUR — the screen that empties the bucket (5 November 2026)
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 3: *"Unassigned labour
+# screen: lists worker-months with unassigned or ambiguous labour, lets the
+# user (re)assign to a project, logged (who/when/before → after). New
+# permission `labour.assign`, Owner + Director by default, a tick on the role
+# page."* `docs/LABOUR_PL.md` §3 is the defect.
+#
+# ⚠ **One decision per worker-month, not per marking.** The route that existed
+#   before this was `/attendance/edit/<id>`, which is twenty-six pages for one
+#   month of one person. That page is still the right one for changing a single
+#   day; this is the one for answering the question nobody had a place to
+#   answer.
+#
+# ⚠ **It is gated on `labour.assign` and NOT on `attendance.view`**, and that
+#   is a judgement call declared in the block: the figures on it are wages, so
+#   it could have hung off the wage permission — but assigning labour moves
+#   money between projects' margins, which is a commercial act rather than an
+#   HR one. `labour.assign` is Owner + Director by default, and both already
+#   hold `attendance.view`, so no role sees a wage here that it could not see
+#   on `/attendance/`. An Owner may grant it to HR with a tick.
+
+def _month_label(month: str) -> str:
+    """
+    `'2026-10'` → `'October 2026'`.
+
+    ⚠ **`payroll.month_label()`'s twin, and it has to be.** `payroll.py`
+    imports this module, so an import back is a cycle at boot — the same
+    position this module is in with `project.py` and `payroll.py`'s own
+    collection. `tests/test_labour_assign.py` asserts the two agree on every
+    month of a year, so the twin cannot drift.
+    """
+    try:
+        return datetime.date.fromisoformat(str(month) + "-01").strftime("%B %Y")
+    except (ValueError, TypeError):
+        return str(month or "")
+
+
+def _actor_id() -> str:
+    """Who is assigning, for `editlog.record()` — "" outside a request."""
+    if not has_request_context():
+        return ""
+    import auth
+    return str((auth.current_user() or {}).get("id") or "")
+
+
+@attendance_bp.route("/unassigned")
+def unassigned_labour():
+    """
+    Every worker-month carrying labour that is on no project and was not put
+    there on purpose, with the projects each one could go to.
+    """
+    groups = unassigned_worker_months()
+    overhead = markings_overhead()
+    oh_cost = labour_split_of(overhead)
+
+    rows = ""
+    for g in groups:
+        opts = ['<option value="">— choose —</option>']
+        seen = set()
+        for pid, name, aid in g["candidates"]:
+            if pid in seen:
+                continue
+            seen.add(pid)
+            opts.append(f'<option value="{_esc(pid)}">{_esc(name)}</option>')
+        opts.append(f'<option value="{_esc(OVERHEAD_CHOICE)}">'
+                    f'No project — overhead</option>')
+        sites = ", ".join(lbl or "(no site)" for _, lbl in g["sites"]) \
+            or "no site on the marking"
+        why = []
+        if g["ambiguous"]:
+            why.append("two or more projects at that site")
+        if not seen:
+            why.append("no project is filed at that site")
+        if g["paid"]:
+            why.append("the month is PAID — the slip is waiting for a project")
+        cost = g["cost"]
+        amount = (rupees(cost["total"]) if cost["costed"]
+                  else "&mdash;")
+        rows += f"""
+      <tr>
+        <td>{_esc(g['employee_name'] or '(unnamed)')}</td>
+        <td>{_esc(_month_label(g['month']))}</td>
+        <td>{_esc(sites)}</td>
+        <td class="num">{len(g['markings'])} / {g['days']:g}</td>
+        <td class="num">{amount}</td>
+        <td>{_esc('; '.join(why))}</td>
+        <td>
+          <form method="POST" action="{url_for('attendance.assign_labour')}"
+                class="att-assign">
+            <input type="hidden" name="employee_id" value="{_esc(g['employee_id'])}"/>
+            <input type="hidden" name="month" value="{_esc(g['month'])}"/>
+            <select name="project_id" required>{''.join(opts)}</select>
+            <button class="btn btn-sm">Assign</button>
+          </form>
+        </td>
+      </tr>"""
+
+    if rows:
+        table = f"""
+  <div class="reg-card">
+    <div class="reg-head">
+      <span class="reg-title">Unassigned labour</span>
+      <span class="reg-note">One row per worker and month. Assigning writes the
+        project onto every unassigned day of that month, and logs it.</span>
+    </div>
+    <div class="reg-scroll">
+    <table class="reg-table">
+      <thead><tr>
+        <th>Employee</th><th>Month</th><th>Site</th>
+        <th class="num">Markings / paid days</th><th class="num">Cost</th>
+        <th>Why it is here</th><th class="reg-acts">Assign to</th>
+      </tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
+    </div>
+  </div>"""
+    else:
+        table = """
+  <div class="reg-card">
+    <div class="reg-empty">Nothing is unassigned. Every day of labour is on a
+      project, or recorded as overhead.</div>
+  </div>"""
+
+    oh_line = ""
+    if overhead:
+        oh_line = (
+            f'<div class="att-note"><b>Overhead: '
+            f'{len(overhead)} marking{"" if len(overhead) == 1 else "s"}, '
+            f'{rupees(oh_cost["total"])}.</b> Placed on no project on purpose '
+            f'— the office, the workshop, the yard. It is <b>not</b> on this '
+            f'list and is not asked about again; it is still counted as cost '
+            f'tagged to no project on the '
+            f'<a href="{url_for("project.list_projects")}">projects '
+            f'register</a>.</div>')
+
+    body = f"""
+  {_flash()}
+  <div class="page-top"><h1>Unassigned labour</h1>
+    <a class="btn btn-ghost" href="{url_for('attendance.list_attendance')}">
+      &#8592; Muster</a></div>
+  <div class="att-note">A day of labour that names no project is on no
+    project&rsquo;s profit and loss. It is never dropped &mdash; it waits here.
+    A row is listed because the site carries <b>several</b> projects and nobody
+    chose, because the site carries <b>none</b>, or because the marking
+    predates the project field. Choosing <b>No project (overhead)</b> takes a
+    row off this list for good.
+    <br/><b>{NOT_PAYROLL}</b></div>
+  {oh_line}
+  {table}"""
+    return _shell("Unassigned labour", body)
+
+
+@attendance_bp.route("/assign", methods=["POST"])
+def assign_labour():
+    """
+    Place one worker-month's unassigned days on one project, or on overhead.
+
+    ⚠ **POST only, and it writes through `assign_month()`** — which refuses a
+    project that is not at the marking's own site, never touches a marking that
+    already names one, and logs every write on the marking itself.
+    """
+    done, error = assign_month(request.form.get("employee_id"),
+                               request.form.get("month"),
+                               request.form.get("project_id"),
+                               _actor_id())
+    if error:
+        return redirect(url_for("attendance.unassigned_labour",
+                                msg=error, type="error"))
+    return redirect(url_for("attendance.unassigned_labour",
+                            msg=f"{done} marking{'' if done == 1 else 's'} "
+                                f"assigned.", type="success"))
+
+
 @attendance_bp.route("/mark", methods=["GET", "POST"])
 def mark_attendance():
     """Mark one person, on one site, for one day."""
@@ -2711,6 +3004,10 @@ def mark_attendance():
                 "created_at":    _now(),
                 "updated_at":    _now(),
             }
+            # ⚠ Stored only when it is True — an absent key still means LEGACY
+            #   (5 November 2026, the sixty-sixth block, ruling 2).
+            if data[OVERHEAD_FIELD]:
+                records()[rid][OVERHEAD_FIELD] = True
             return redirect(url_for("attendance.list_attendance",
                                     date=data["date"],
                                     msg="Attendance recorded.",
@@ -2782,6 +3079,15 @@ def edit_attendance(id):
                 "notes":          data["notes"],
                 "updated_at":     _now(),
             })
+            # ⚠ **Set or POPPED, never written as `False`.** Picking a project
+            #   or leaving the picker blank takes the overhead mark off; the
+            #   key going away is what returns the record to the ordinary
+            #   "no project chosen" shape rather than recording "considered and
+            #   rejected", which nothing reads and nothing could act on.
+            if data[OVERHEAD_FIELD]:
+                record[OVERHEAD_FIELD] = True
+            else:
+                record.pop(OVERHEAD_FIELD, None)
             return redirect(url_for("attendance.list_attendance",
                                     date=data["date"],
                                     msg="Attendance updated.", type="success"))

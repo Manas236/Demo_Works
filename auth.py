@@ -514,6 +514,15 @@ PERMISSIONS = {
     "payroll.issue":         ("Issue or cancel a payslip",                "Employee costs"),
     "payroll.import":        ("Import the monthly attendance workbook",   "Employee costs"),
     "payroll.delete":        ("Delete a pay entry or take an import out", "Employee costs"),
+    # ── Labour onto a project (5 November 2026, CLIENT_CHANGES.md §0's
+    # **sixty-sixth** block, ruling 3 — CHARGED new scope). ⚠ **Owner and
+    # Director by default and NOT HR**, which is the one place this diverges
+    # from `attendance.*` / `payroll.*`. The ruling says so, and the reason
+    # holds: assigning a worker-month moves money between two projects'
+    # margins, which is a commercial act. It is in the same **Employee costs**
+    # group because the figures it shows are wages, and an Owner grants it to
+    # HR at /roles/edit/<id> with a tick, no code change and no re-login.
+    "labour.assign":         ("Assign unassigned labour to a project",     "Employee costs"),
 
     "project.view":          ("View projects",                            "Projects"),
     "project.create":        ("Create a project",                         "Projects"),
@@ -1118,6 +1127,15 @@ ROUTE_PERMISSIONS = {
     # by the brief**: a role that may read one day's labour cost may read a
     # fortnight's, and the page writes nothing.
     "attendance.search_attendance": "attendance.view",
+    # Unassigned labour (5 November 2026, §0 sixty-sixth block, ruling 3).
+    # ⚠ **Both routes under `labour.assign`, the READ included.** The screen
+    # exists only to be acted on — it is a worklist, not a register — and a
+    # role that may read it and not empty it would be shown a page of
+    # questions it cannot answer. The wages on it are no more than
+    # `/attendance/` already shows, and both default holders of
+    # `labour.assign` hold `attendance.view` too.
+    "attendance.unassigned_labour": "labour.assign",
+    "attendance.assign_labour":    "labour.assign",
     "attendance.mark_attendance":  "attendance.create",
     "attendance.edit_attendance":  "attendance.edit",
     "attendance.delete_attendance": "attendance.delete",
@@ -1466,6 +1484,12 @@ BUILTIN_ROLES = {
             # `attendance.*`'s terms.
             "payroll.view", "payroll.edit", "payroll.issue", "payroll.import",
             "payroll.delete",
+            # Labour onto a project (5 November 2026, §0 sixty-sixth block,
+            # ruling 3): Owner and Director only by default. Deliberately NOT
+            # in `_OPERATIONS`, which would hand it to Operation Head — the
+            # same reasoning as `project.pnl` below, and the same remedy: an
+            # Owner grants it anywhere at /roles.
+            "labour.assign",
             "project.delete", "spec.delete", "product.create", "product.delete",
             "address.delete", "settings.edit",
             # C6 (8 October 2026, the §0 forty-seventh block). Owner and

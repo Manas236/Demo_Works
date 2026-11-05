@@ -306,6 +306,15 @@ UNLINKED_ON_PURPOSE = {
     # Staff access (29 October 2026, §0 fifty-sixth block): a sub-page of
     # /users, which carries its button — the /roles precedent above.
     "auth.staff_access": "reached from /users, its parent",
+    # Unassigned labour (5 November 2026, CLIENT_CHANGES.md §0's sixty-sixth
+    # block, ruling 3). A **worklist**, not a register: it exists to be emptied
+    # and it is empty most of the time. `/attendance/` carries the link, with
+    # the count on it, and `tests/test_labour_assign.py::
+    # test_the_muster_links_the_unassigned_screen_for_a_reader_who_may_assign`
+    # asserts it directly — so this entry is not a way of avoiding the
+    # requirement. The /roles-from-/users precedent four entries above.
+    "attendance.unassigned_labour":
+        "reached from /attendance/, its parent — a worklist, not a register",
     # ── C3, 2 September 2026 ────────────────────────────────────────────────
     #
     # ⚠ **Kept OFF the nav and the launcher DELIBERATELY, and CC-2 is the

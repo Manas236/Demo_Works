@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 92 permissions · 216 classified endpoints.**
+**7 roles · 93 permissions · 218 classified endpoints.**
 
 ---
 
@@ -20,7 +20,7 @@ do now*, drawn by the same resolver the gate uses.
 
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
-This grid has **644 cells**. **52** of them can be traced to a line of the specification. The rest — **592** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
+This grid has **651 cells**. **52** of them can be traced to a line of the specification. The rest — **599** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
 
 | mark | meaning |
 |---|---|
@@ -150,6 +150,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 | Issue or cancel a payslip<br/>`payroll.issue` | · | · |  | · |  |  |  |
 | Import the monthly attendance workbook<br/>`payroll.import` | · | · |  | · |  |  |  |
 | Delete a pay entry or take an import out<br/>`payroll.delete` | · | · |  | · |  |  |  |
+| Assign unassigned labour to a project<br/>`labour.assign` | · | · |  |  |  |  |  |
 
 ### Projects
 
@@ -191,7 +192,7 @@ Grouped the way the role editor groups them, so this page and that screen can be
 
 | Permission | Owner | Director | Operation Head | HR | Sales Manager | Purchase Manager | Accountant |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Total permissions held** | **92** | **91** | **49** | **20** | **23** | **20** | **15** |
+| **Total permissions held** | **93** | **92** | **49** | **20** | **23** | **20** | **15** |
 
 ---
 
@@ -279,7 +280,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Owner
 
-*92 of 92 permissions.*
+*93 of 93 permissions.*
 
 **What they can do.** Everything, including the one thing nobody else can do: change what a role means. An Owner ticks and unticks the boxes that define Director, HR, Sales Manager and the rest, which is effectively the power to grant themselves or anybody else any permission in the system.
 
@@ -287,7 +288,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Director
 
-*91 of 92 permissions.*
+*92 of 93 permissions.*
 
 **What they can do.** Everything operational, plus the whole of user administration: create staff accounts, deactivate someone who has left, assign any existing role whose permissions they hold themselves, reset a member of staff's password, and read the refused-access log. They can also edit the company identity and bank details at Settings, and read each project's profit and loss.
 
@@ -295,7 +296,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Operation Head
 
-*49 of 92 permissions.*
+*49 of 93 permissions.*
 
 **What they can do.** Run the work. Write and revise schedules, raise measurement sheets and approve them, raise and issue RA bills, cancel them, print everything, raise delivery challans and draft product inquiries, convert those into real purchase orders, and record wages and site expenses against a project.
 
@@ -303,7 +304,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### HR
 
-*20 of 92 permissions.*
+*20 of 93 permissions.*
 
 **What they can do.** **The employee master** — add somebody to the register, record their designation, site, joining date and monthly salary, change it, and remove a record entered by mistake. **And attendance** (C5): mark who was on which site each day, record overtime, and read the site-wise labour cost that comes out of it. Also the wages and site-expense ledger, and the address book.
 
@@ -311,7 +312,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Sales Manager
 
-*23 of 92 permissions.*
+*23 of 93 permissions.*
 
 **What they can do.** The whole sell chain: write quotations, raise proforma invoices, raise tax invoices, and keep the client register and the address book up to date. They can also write and print schedules, and read and print RA bills and measurement sheets.
 
@@ -319,7 +320,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Purchase Manager
 
-*20 of 92 permissions.*
+*20 of 93 permissions.*
 
 **What they can do.** The whole buy side: raise purchase orders and update their status, write product inquiries, and raise and print delivery challans. They can read schedules and the specification library, and keep the address book current. (They hold `product.view` too, but the catalogue is hidden — see the `⊘` mark.)
 
@@ -327,7 +328,7 @@ Written for somebody who has not read the code, and checked against the grid abo
 
 ### Accountant
 
-*15 of 92 permissions.*
+*15 of 93 permissions.*
 
 **What they can do.** Money in. Record, edit and delete receipts against RA bills, and read the client register. They can read — and print — RA bills and the measurement sheets those bills were built from, and read tax invoices, proforma invoices, purchase orders, schedules and projects.
 
@@ -426,6 +427,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `payroll.issue` | `payroll.cancel_slip`, `payroll.issue_slip` |
 | `payroll.import` | `payimport.commit_import`, `payimport.preview`, `payimport.upload` |
 | `payroll.delete` | `payimport.delete_import`, `payroll.delete_entry` |
+| `labour.assign` | `attendance.assign_labour`, `attendance.unassigned_labour` |
 | `project.view` | `project.list_projects`, `projectview.view_project` |
 | `project.create` | `project.create_project` |
 | `project.edit` | `project.edit_project` |

@@ -676,8 +676,34 @@ PAGES = {
     #       ("aaa704c1ef16122e", 73237,
     #        {"head": "8fb0c3cb6ad47c05", "shell": "75cda0afbae27209",
     #         "chrome": "864f7a2ba55bb64a", "main": "4fd344e6ce33374a"})
-    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("fb37e3de3ebd00c1", 73290,
-        {"head": "8fb0c3cb6ad47c05", "shell": "a1e6c63a6d4c6ac2", "chrome": "5840edff333df8f9", "main": "99e031f5f5f6af8e"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    # ⚠ **RE-BASELINED 5 November 2026 — `head` and `main`, +482 bytes**
+    #   (CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 3: the unassigned
+    #   labour screen). The ONLY golden this pass moves.
+    #
+    #   `main` gains **one link** in the page-top — *Unassigned labour*, with
+    #   the waiting count on it — between Search and Payslips, which is the
+    #   27 October and 29 October precedents three comments up, twice over.
+    #   `head` gains the **three lines of `.att-assign` CSS** the new page's
+    #   inline per-row form needs and that rides in the module's shared
+    #   `ATTENDANCE_STYLES`, which is the 27 October precedent exactly.
+    #
+    #   ⚠ **The link is PERMISSION-FILTERED** (`labour.assign`, Owner +
+    #   Director). This fixture's user is `role-owner`, so it is drawn here; a
+    #   reader without the permission gets this page **byte-for-byte as it was**
+    #   and `tests/test_labour_assign.py` pins that against this very digest.
+    #
+    #   Measured before the baseline was touched, by rendering this page in one
+    #   process and stripping the CSS block and the anchor back out:
+    #   **+482 bytes, 8 lines added, 0 removed**, and the stripped render
+    #   reproduced `fb37e3de3ebd00c1` / 73290 / `head` `8fb0c3cb6ad47c05` /
+    #   `main` `99e031f5f5f6af8e` exactly. `shell` and `chrome` did not move —
+    #   no rail entry was added, which is why **no other page and no printed
+    #   document moved at all**. The old values:
+    #       ("fb37e3de3ebd00c1", 73290,
+    #        {"head": "8fb0c3cb6ad47c05", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "5840edff333df8f9", "main": "99e031f5f5f6af8e"})
+    ("attendance",      f"/attendance/?date={GOLD_DATE}"): ("316f94e7414fd668", 73772,
+        {"head": "4b8bed71612763c6", "shell": "a1e6c63a6d4c6ac2", "chrome": "5840edff333df8f9", "main": "155bbaca72977d98"}),   # §0 66th ruling 3: moved=['head', 'main'], +482 bytes
     ("charges",         "/charge/"):                   ("20faf5129217e51b", 69218,
         {"head": "8d18d2cb4f314105", "shell": "a1e6c63a6d4c6ac2", "chrome": "ecd8e5237db40965", "main": "0117146916a6da27"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3225 bytes
     ("address book",    "/address/"):                  ("334040ac7348c58e", 75642,
