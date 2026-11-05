@@ -703,13 +703,27 @@ def off_project_labour() -> dict:
       has a project and nobody tagged it). The caller states each count
       separately — a sum of them would be a number describing nothing.
 
-    ⚠ **The wage never leaves this module.** `labour_cost_of()` prices the set,
+    ⚠ **OVERHEAD IS NOT IN IT, from 5 November 2026** (CLIENT_CHANGES.md §0's
+      **sixty-sixth** block, ruling 2: *"Overhead labour never lands on a
+      project and never nags"*). The set is `markings_unassigned()` — every
+      marking on no live project LESS the days somebody placed on none on
+      purpose. The office is not an unanswered question, so the amber line
+      stops asking about it; `markings_overhead()` is how a reader sees that
+      money, and `pnl.untagged_cost()` still counts it as cost tagged to no
+      project, because it is.
+
+    ⚠ **Priced by `labour_split_of()`, so an estimate that has been PAID reads
+      as the slip** (the same block, ruling 1). The three keys this function
+      has always returned keep their meanings; `estimate` and `actual` are
+      beside them.
+
+    ⚠ **The wage never leaves this module.** `labour_split_of()` prices the set,
       which is the fifty-fifth block's rule and the forty-seventh's before it:
       a second module able to compute a wage is a second place the OT
       multiplier could be hardcoded.
     """
-    rows = markings_on_no_project()
-    costed = labour_cost_of(rows)
+    rows = markings_unassigned()
+    costed = labour_split_of(rows)
     live_sites = set()
     for p in (STORE.get("projects") or {}).values():
         aid = str(p.get("site_address_id") or "").strip()
@@ -835,6 +849,464 @@ def month_figures(employee_id, month) -> dict:
     out["ot_rate"] = (ot_amount(out["rates"][0], 1, multiplier)
                       if len(out["rates"]) == 1 else None)
     return out
+
+
+# =============================================================================
+# ESTIMATE, THEN ACTUAL — what a set of markings cost the project
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0's **sixty-sixth** block, Manas's ruling 1 of 5 November
+# 2026, and `docs/LABOUR_PL.md` §4 is the defect it closes.
+#
+# ⚠ **Labour cost is an ESTIMATE until the month is PAID, and then it is the
+#   ACTUAL.** Before a worker's payslip for a month is issued, that month's
+#   labour on a project is the muster's own arithmetic — the day rate
+#   SNAPSHOTTED on each marking times `DAY_SHARE` for its status, plus
+#   overtime. Once the slip is ISSUED, it is what the client actually paid, and
+#   the estimate is replaced by it.
+#
+# ⚠ **It reads `STORE["payslips"]` DIRECTLY, and that is the documented
+#   pattern, not a shortcut.** `payroll.py` imports THIS module (it is one of
+#   the four permitted importers), so an import back is a cycle at boot — the
+#   same position this module is in with `project.py`, which it resolves the
+#   same way (`projects_on_site()`'s header: *"a marking reads
+#   STORE['projects'] directly"*, and `test_import_directions.py` refuses the
+#   arrow with that reason). One shape, two collections, no second pattern.
+#
+# ⚠ **No arithmetic leaves this module and none arrives.** The slip's earnings
+#   are a FROZEN figure the slip already holds — `payroll.snapshot()` wrote
+#   them at issue — so reading them computes no wage. The day-count rule is
+#   `share_of()`, this module's own, reused and never restated: ruling 1 says
+#   *"the payroll module's OWN day-count rule (reuse it, never a second
+#   rule)"*, and `tests/test_labour_split.py` walks the AST of the two
+#   functions below and fails on a numeric constant in a multiplication, the
+#   way `tests/test_attendance.py` does for `cost_of()`.
+
+# The three heads of a slip that are PROJECT COST. Ruling 1: *"the slip's
+# earnings (wages + OT + travel)"*.
+#
+# ⚠ **Advances, loans, loan recovery and the statutory heads are NEVER project
+#   cost, and that is ruling 1 in terms.** An advance is the same money paid
+#   earlier, a loan is a balance sheet movement, and a deduction reduces what
+#   is handed over without reducing what the day cost. A P&L row built from the
+#   slip's `payable` would fall by the whole advance in the month it was
+#   recovered and rise again next month, on a project whose labour did not
+#   move. `round_off` is excluded for the same reason it exists: it is a
+#   rounding of the payment, not a cost of the work.
+SLIP_COST_HEADS = ("basic", "ot", "travel")
+
+# A marking the operator placed on NO project ON PURPOSE — office, workshop,
+# a day in the yard. Ruling 2: *"Overhead labour never lands on a project and
+# never nags."*
+#
+# ⚠ **This is the field that finally tells the two blanks apart.** Until now an
+#   absent `project_id` meant LEGACY and *"this function does not claim to
+#   tell them apart"* (`unattributed_at_site()`'s header, still true of it).
+#   Overhead is a DECISION somebody made, recorded as one, so the unassigned
+#   screen can leave it alone and `off_project_labour()` can stop nagging about
+#   it. A marking without the field is unchanged and still means LEGACY.
+OVERHEAD_FIELD = "labour_overhead"
+
+# What the import's site picker and the mark form's project picker post for
+# "No project (overhead)". Not a project id and never stored as one.
+OVERHEAD_CHOICE = "overhead"
+
+
+def is_overhead(record) -> bool:
+    """True for a marking somebody placed on no project deliberately."""
+    return bool((record or {}).get(OVERHEAD_FIELD))
+
+
+def overhead_fields(on: bool) -> dict:
+    """
+    The project keys for an overhead marking, or for an ordinary blank one.
+
+    ⚠ **Overhead CLEARS the project**, it does not sit beside one. A day cannot
+    be both overhead and on a project, and storing the pair would make every
+    reader choose which to believe.
+    """
+    if on:
+        return {"project_id": "", "project_name": "", OVERHEAD_FIELD: True}
+    return {"project_id": "", "project_name": ""}
+
+
+def month_of(record) -> str:
+    """The `YYYY-MM` a marking falls in, or "" for one with no readable date."""
+    day = str((record or {}).get("date") or "").strip()
+    return day[:7] if len(day) >= 7 and day[4] == "-" else ""
+
+
+# `payroll.ISSUED` / `payroll.CANCELLED` by VALUE — see `issued_slip()`.
+SLIP_ISSUED = "Issued"
+SLIP_CANCELLED = "Cancelled"
+
+
+def issued_slip(employee_id, month) -> dict:
+    """
+    The ISSUED payslip for one person and month, or `{}` — read straight out of
+    `STORE["payslips"]`.
+
+    ⚠ **ISSUED and nothing else.** A Draft is a figure somebody is still
+    typing; a CANCELLED slip is a payment that did not happen. Both leave the
+    month on the estimate, which is ruling 1's last line — *"Slip cancelled →
+    that worker-month goes back to estimate"* — and it falls out of this one
+    condition rather than needing a reversal anywhere.
+
+    ⚠ **The status strings are read as text, not imported.** `payroll.ISSUED`
+    would be an import back into the module that imports this one. They are
+    `payroll.py`'s own constants and their VALUES are what the records carry;
+    `tests/test_labour_split.py` asserts the two modules still agree.
+    """
+    eid = str(employee_id or "").strip()
+    key = str(month or "").strip()[:7]
+    if not eid or len(key) != 7:
+        return {}
+    for s in (STORE.get("payslips") or {}).values():
+        if str(s.get("employee_id") or "") == eid \
+                and str(s.get("month") or "") == key \
+                and str(s.get("status") or "") == SLIP_ISSUED:
+            return s
+    return {}
+
+
+
+def slip_earnings(slip) -> float:
+    """
+    What one issued slip cost the business in WAGES — `SLIP_COST_HEADS` summed
+    off the slip's own frozen snapshot, and nothing else on it.
+
+    ⚠ **Read, never recomputed.** `payroll.snapshot()` froze these three at
+    issue and an issued slip never moves (CLIENT_CHANGES.md §1.2). Re-deriving
+    them here would be a second place the OT multiplier lives, and it would
+    also undo the freeze: a rate corrected next March would restate what
+    August cost.
+    """
+    snap = (slip or {}).get("snapshot") or {}
+    return round(sum(_num(snap.get(k)) for k in SLIP_COST_HEADS), 2)
+
+
+def paid_share(rows) -> float:
+    """
+    The day-count of a set of markings — `share_of()` summed, and ruling 1's
+    *"the payroll module's OWN day-count rule"*.
+
+    Present 1, half 0.5, paid leave 1, absent 0 — out of `DAY_SHARE`, never a
+    literal here. It is the numerator AND the denominator of the split below,
+    so a half day gets half the slip and a full day a full one.
+    """
+    return round(sum(share_of(str(r.get("status") or "")) for r in rows), 2)
+
+
+def labour_split_of(rows) -> dict:
+    """
+    `{"total", "estimate", "actual", "markings", "costed", "refused",
+       "estimate_markings", "actual_markings", "slips"}` — what a set of
+    markings cost, split into the part that is still a guess and the part that
+    has been paid.
+
+    `total` is `estimate + actual`, which is ruling 4: *"P&L totals use
+    estimate + actual."*
+
+    ⚠ **`total`, `markings`, `costed` and `refused` carry `labour_cost_of()`'s
+      meanings exactly**, so every existing reader of that dict keeps working
+      against this one. This function is the one `pnl.py` calls; the old one is
+      untouched and still prices the muster's own presentation
+      (`projectview._labour_group()`) and the import's preview.
+
+    **How a worker-month becomes ACTUAL.** The rows are grouped by
+    `(employee_id, month)` — a payslip's own grain. For each group:
+
+    | an ISSUED slip for that worker-month | what the group contributes |
+    |---|---|
+    | no | the ESTIMATE: `cost_of()` per marking, summed |
+    | yes | its share of the slip's `SLIP_COST_HEADS` |
+
+    **And the share is BY DAYS, across every project.** Ruling 1: *"If the
+    worker's days that month span several projects, split the slip earnings by
+    days per project."* The numerator is this group's `paid_share()`; the
+    denominator is `paid_share()` over the worker's **whole month** —
+    `month_markings()`, every project, overhead and unassigned days included.
+    Two projects at 13 paid days each take half the slip each; a worker with 20
+    project days and 6 office days puts 20/26 of the slip on the project and
+    6/26 nowhere.
+
+    ⚠ **The denominator is the WHOLE month and must stay so.** Over the rows
+      handed in, each project would take 100% of the slip and one month would
+      be billed twice. It is the one figure in here that cannot be computed
+      from the argument.
+
+    ⚠ **A slip with earnings and no paid day anywhere contributes NOTHING, and
+      that is deliberate.** The denominator is zero, so there is no share to
+      take; the money is on the slip and on no project. A nil denominator is
+      not an occasion to divide the money equally or to fall back on the
+      estimate — both would put a figure nobody can trace onto a project.
+
+    ⚠ **A refused marking (the closed pre-day-rate set) is counted and
+      contributes nothing TO THE ESTIMATE, and does not refuse an ACTUAL.** The
+      slip's own figure needs no day rate, and `share_of()` reads the status
+      rather than the rate — so a worker on the closed historical set whose
+      month was paid still reaches the P&L, by the slip, which is the one
+      figure about them that is not twenty-six times wrong.
+    """
+    multiplier = S.ot_multiplier()
+    groups = {}
+    for r in rows:
+        groups.setdefault((str(r.get("employee_id") or ""), month_of(r)),
+                          []).append(r)
+
+    estimate, actual = 0.0, 0.0
+    costed, refused, est_n, act_n, slips = 0, 0, 0, 0, 0
+    for (eid, month), group in groups.items():
+        slip = issued_slip(eid, month) if (eid and month) else {}
+        if slip:
+            slips += 1
+            act_n += len(group)
+            costed += len(group)
+            whole = paid_share(month_markings(eid, month))
+            if whole:
+                share = paid_share(group) / whole
+                actual = round(actual + slip_earnings(slip) * share, 2)
+            continue
+        est_n += len(group)
+        for r in group:
+            c = cost_of(r, multiplier)
+            if c["refused"]:
+                refused += 1
+                continue
+            costed += 1
+            estimate = round(estimate + c["total"], 2)
+    return {"total": round(estimate + actual, 2),
+            "estimate": round(estimate, 2), "actual": round(actual, 2),
+            "markings": len(rows), "costed": costed, "refused": refused,
+            "estimate_markings": est_n, "actual_markings": act_n,
+            "slips": slips}
+
+
+# =============================================================================
+# THE UNASSIGNED BUCKET — labour nobody has placed on a project
+# =============================================================================
+#
+# CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 2's last clause
+# (*"Site with no project: labour goes to an UNASSIGNED bucket, never silently
+# dropped"*) and ruling 3 (the screen that empties it).
+#
+# ⚠ **UNASSIGNED is not the same set as "on no live project".**
+#   `markings_on_no_project()` reads the SHAPE — a blank or dangling
+#   `project_id` — and is the register's untagged-cost set, unchanged. The
+#   unassigned bucket is that set MINUS the days somebody deliberately placed
+#   on no project (`OVERHEAD_FIELD`). Overhead is an answer; unassigned is the
+#   absence of one, and the screen that asks for answers must not keep asking
+#   for one that has been given.
+
+def markings_overhead() -> list:
+    """Every marking placed on no project ON PURPOSE, newest day first."""
+    return sorted((r for r in records().values() if is_overhead(r)),
+                  key=lambda r: (str(r.get("date") or ""),
+                                 str(r.get("employee_name") or "").lower()),
+                  reverse=True)
+
+
+def markings_unassigned() -> list:
+    """
+    Every marking on no live project that nobody has placed there on purpose —
+    `markings_on_no_project()` less the overhead days.
+
+    This is the set the unassigned screen works through, the set
+    `off_project_labour()` nags about, and the set the backfill reports.
+    """
+    return [r for r in markings_on_no_project() if not is_overhead(r)]
+
+
+def unassigned_worker_months() -> list:
+    """
+    One row per `(worker, month)` with unassigned labour, newest month first —
+    ruling 3's *"lists worker-months with unassigned or ambiguous labour"*.
+
+    Each row:
+
+        employee_id, employee_name, month        the grain
+        markings                                 the unassigned markings
+        days                                     `paid_share()` of them
+        cost                                     `labour_split_of()` of them
+        sites                                    [(address id, label)] seen
+        candidates                               the projects offered, by site
+        ambiguous                                True when a site on this row
+                                                 carries two or more projects
+        paid                                     an ISSUED slip exists
+
+    ⚠ **The grain is the worker-month, not the marking, and that is ruling 3.**
+      A month of one person is twenty-six markings and one decision. The old
+      route to this was `/attendance/edit/<id>` — twenty-six pages for that one
+      decision (`docs/LABOUR_PL.md` §3).
+
+    ⚠ **`candidates` is the union over the row's sites and is never collapsed
+      to one.** A worker-month whose days span two sites is listed once with
+      both sites' projects offered, because the operator is assigning the
+      MONTH; the per-marking rule (a project must be at that marking's own
+      site) is enforced at the write by `assign_month()`, not relaxed here.
+
+    ⚠ **A worker-month with NO candidate anywhere is still listed.** Those are
+      the rows `off_project_labour()` calls `no_project_site` — nothing to
+      assign to until somebody files a project at that address — and a screen
+      that hid them would be a screen that says the bucket is empty when it is
+      not.
+    """
+    groups = {}
+    for r in markings_unassigned():
+        eid, month = str(r.get("employee_id") or ""), month_of(r)
+        groups.setdefault((eid, month), []).append(r)
+
+    out = []
+    for (eid, month), rows in groups.items():
+        sites, candidates, seen, ambiguous = [], [], set(), False
+        for r in rows:
+            aid = str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
+            if aid and aid not in seen:
+                seen.add(aid)
+                sites.append((aid, str(r.get("site") or "")))
+                at_site = projects_on_site(aid)
+                if len(at_site) > 1:
+                    ambiguous = True
+                for p in at_site:
+                    candidates.append((str(p.get("id")),
+                                       str(p.get("name") or "(unnamed)"), aid))
+        out.append({
+            "employee_id": eid, "month": month,
+            "employee_name": str(rows[0].get("employee_name") or ""),
+            "markings": rows, "days": paid_share(rows),
+            "cost": labour_split_of(rows),
+            "sites": sites, "candidates": candidates, "ambiguous": ambiguous,
+            "paid": bool(issued_slip(eid, month)) if (eid and month) else False,
+        })
+    return sorted(out, key=lambda g: (g["month"], g["employee_name"].lower()),
+                  reverse=True)
+
+
+def project_last_month(employee_id, month) -> dict:
+    """
+    `{"project_id", "project_name"}` — the project this worker's days were
+    booked to in the month BEFORE `month`, or `{}`.
+
+    Ruling 2's default: *"each worker on that site gets a project picker on the
+    import screen, defaulting to that worker's project last month. No default
+    → must be picked before commit."*
+
+    ⚠ **Only when last month was UNANIMOUS.** A worker who split last month
+      across two projects has no single answer, and offering the one with more
+      days would be the invented default ruling 2 exists to avoid. The picker
+      then opens blank and the commit refuses until somebody chooses — which is
+      the honest prompt.
+
+    ⚠ **An overhead month is a real answer and is returned as one** (a blank
+      project with `OVERHEAD_FIELD` set), so a worker who was in the office
+      last month defaults to the office again. A month with no markings, or a
+      month whose markings carry a project that has since been deleted, returns
+      `{}`.
+    """
+    eid = str(employee_id or "").strip()
+    key = str(month or "").strip()[:7]
+    if not eid or len(key) != 7:
+        return {}
+    y, m = int(key[:4]), int(key[5:7])
+    prev = f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+    rows = month_markings(eid, prev)
+    if not rows:
+        return {}
+    live = set((STORE.get("projects") or {}).keys())
+    answers = set()
+    for r in rows:
+        if is_overhead(r):
+            answers.add(OVERHEAD_CHOICE)
+            continue
+        pid = str(r.get("project_id") or "").strip()
+        answers.add(pid if pid in live else "")
+    if len(answers) != 1:
+        return {}
+    only = answers.pop()
+    if only == OVERHEAD_CHOICE:
+        return dict(overhead_fields(True), project_last_month=prev)
+    if not only:
+        return {}
+    proj = (STORE.get("projects") or {}).get(only) or {}
+    return {"project_id": only,
+            "project_name": str(proj.get("name") or ""),
+            "project_last_month": prev}
+
+
+def assign_month(employee_id, month, choice: str, actor_id: str = "") -> tuple:
+    """
+    `(count, error)` — place every unassigned marking of one worker-month on
+    one project, or on overhead. Ruling 3's write.
+
+    `choice` is a live project id, or `OVERHEAD_CHOICE`.
+
+    ⚠ **A marking is only ever assigned to a project AT ITS OWN SITE.** The
+      screen offers the union of the row's sites (`unassigned_worker_months()`),
+      so a worker-month spanning two sites can be handed a project that belongs
+      to one of them — and the markings at the OTHER site are left, counted,
+      and reported back. Storing one would put a day's labour on a project
+      whose site it was not worked at, which is the invariant
+      `resolve_project()` row 2 exists to hold.
+
+    ⚠ **Already-assigned markings are never touched**, not even to re-snapshot
+      the name. That is `tools/backfill_marking_projects.py`'s rule and the
+      freeze contract behind it. Re-assigning a marking that already names a
+      project is `/attendance/edit/<id>`'s job, one marking at a time, where
+      the single decision belongs.
+
+    ⚠ **Every write is LOGGED through `editlog.record()`** — who, when, before
+      → after, on the marking itself — which is ruling 3 in terms. The leaf is
+      reused rather than a second trail invented beside it.
+    """
+    import editlog as EL
+
+    eid = str(employee_id or "").strip()
+    key = str(month or "").strip()[:7]
+    want = str(choice or "").strip()[:64]
+    if not eid or len(key) != 7:
+        return 0, "That is not a worker and a month."
+    if not want:
+        return 0, ("Choose a project, or “No project (overhead)” — a blank is "
+                   "what this screen exists to clear.")
+
+    overhead = want == OVERHEAD_CHOICE
+    proj = {} if overhead else ((STORE.get("projects") or {}).get(want) or {})
+    if not overhead and not proj:
+        return 0, "That project no longer exists."
+
+    rows = [r for r in month_markings(eid, key)
+            if not str(r.get("project_id") or "").strip()
+            and not is_overhead(r)]
+    if not rows:
+        return 0, "Nothing on that worker-month is unassigned."
+
+    wrong_site = 0
+    done = 0
+    for r in rows:
+        if not overhead:
+            aid = str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
+            if str(proj.get("site_address_id") or "").strip() != aid:
+                wrong_site += 1
+                continue
+        before = ("overhead" if is_overhead(r)
+                  else (str(r.get("project_name") or "") or "— unassigned —"))
+        after = "overhead" if overhead else str(proj.get("name") or "")
+        if overhead:
+            r.update(overhead_fields(True))
+        else:
+            r.update({"project_id": str(proj.get("id")),
+                      "project_name": str(proj.get("name") or "")})
+            r.pop(OVERHEAD_FIELD, None)
+        r["updated_at"] = _now()
+        EL.record(r, [(f"Project — {r.get('date')}", before, after)], actor_id)
+        done += 1
+
+    if not done:
+        return 0, (f"{wrong_site} marking{'' if wrong_site == 1 else 's'} on "
+                   f"that month {'was' if wrong_site == 1 else 'were'} worked "
+                   f"at another site, and that project is not filed there. "
+                   f"Assign them from their own site’s choice.")
+    return done, ""
 
 
 def employees_marked_in(month) -> set:

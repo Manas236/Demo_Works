@@ -609,9 +609,28 @@ def test_charges_count_at_their_taxable_amount(project):
 
 
 def test_site_labour_is_attendances_own_arithmetic_on_this_projects_markings(project):
+    """
+    ⚠ **AMENDED 5 November 2026** — CLIENT_CHANGES.md §0's **sixty-sixth**
+    block, ruling 1. `pnl.py` now takes `attendance.labour_split_of()`, which
+    returns `labour_cost_of()`'s four keys with their meanings unchanged plus
+    five that split the figure into the part that is still a guess and the part
+    that has been paid. **Not one figure in the old assertion moved** — no slip
+    is issued in this fixture, so the whole 1,250 is the estimate. The previous
+    assertion, verbatim:
+
+        assert lab == {"total": LABOUR, "markings": 3, "costed": 2,
+                       "refused": 1, "withheld": False}
+
+    It is kept below, key by key, so a change to any of those four still fails
+    here; the five new keys are asserted beside them rather than the dict being
+    loosened to a subset check.
+    """
     lab = PNL.project_pnl(PID)["to_date"]["labour"]
     assert lab == {"total": LABOUR, "markings": 3, "costed": 2, "refused": 1,
-                   "withheld": False}
+                   "withheld": False,
+                   # Nothing is paid in this fixture: all estimate, no actual.
+                   "estimate": LABOUR, "actual": 0.0,
+                   "estimate_markings": 3, "actual_markings": 0, "slips": 0}
     # M4 names no project: not this project's. Tag it, and its 800 arrives.
     STORE["attendance"]["m4"]["project_id"] = PID
     assert PNL.project_pnl(PID)["to_date"]["labour"]["total"] == LABOUR + 800.0

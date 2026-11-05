@@ -914,19 +914,42 @@ def test_the_pnl_takes_readers_and_one_sum_and_never_the_wage_arithmetic():
     module and prices each marking with `cost_of()` — never by reaching the
     arithmetic itself. A caller that passes its own multiplier can pass a
     literal one: the statutory-underpayment defect CC-2 names.
+
+    ⚠ **AMENDED 5 November 2026 — the one sum is `labour_split_of()`**
+    (CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 1: labour cost is an
+    ESTIMATE until the month is paid and the issued payslip's own earnings
+    after). The rule is unchanged and the test is not weakened: `pnl.py` still
+    takes **one summing function** out of this module and still may not reach
+    `cost_of()`, `ot_amount()`, `day_rate_of()` or the multiplier — the
+    estimate/actual split is computed inside `attendance.py` for exactly that
+    reason. Only the name of the sum moved. The previous line, verbatim:
+
+        for accessor in ("labour_cost_of", "markings_for_project",
+                         "markings_on_no_project"):
+
+    ⚠ `labour_split_of` joins `labour_cost_of` in the banned scan's exemption
+    for the same reason the first name was exempt: the SUM's own name contains
+    the substring `cost_of(` is false of it, but it would otherwise have to be
+    re-exempted every time the sum is renamed, and naming both is the honest
+    record of which calls are permitted.
     """
     src = (REPO / "pnl.py").read_text(encoding="utf8")
-    for accessor in ("labour_cost_of", "markings_for_project",
+    for accessor in ("labour_split_of", "markings_for_project",
                      "markings_on_no_project"):
         assert f"AT.{accessor}(" in src, (
             f"pnl.py must consume attendance.{accessor}() rather than "
             f"reimplement it")
+    assert "AT.labour_cost_of(" not in src, (
+        "pnl.py reaches labour_cost_of() again — the P&L's labour row is the "
+        "estimate/actual split (labour_split_of), and a second sum beside it "
+        "would be two different labour figures on one page")
     for banned in ("cost_of(", "ot_amount", "day_rate_of", "site_costs",
                    "STANDARD_HOURS_PER_DAY", "ot_multiplier",
                    "STORE[\"attendance\"]", "STORE.get(\"attendance\")",
                    "AT.records("):
         hits = [ln for ln in src.splitlines()
                 if banned in ln and "labour_cost_of" not in ln
+                and "labour_split_of" not in ln
                 and not ln.lstrip().startswith(("#", "`"))]
         assert not hits, (
             f"pnl.py reaches for {banned!r} — the wage arithmetic and the "

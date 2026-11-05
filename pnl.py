@@ -859,11 +859,23 @@ def project_pnl(project_id, include_labour: bool = True) -> dict:
         ch_count += 1
 
     # ── Actual cost — site labour, priced by attendance.py itself ───────────
+    #
+    # ⚠ **ESTIMATE, then ACTUAL** — 5 November 2026, CLIENT_CHANGES.md §0's
+    #   **sixty-sixth** block, ruling 1. `labour_split_of()` replaces a
+    #   worker-month's estimate with the issued payslip's own earnings and
+    #   splits them across the projects that month's days were worked for.
+    #   `total` is `estimate + actual`, which is ruling 4's *"P&L totals use
+    #   estimate + actual"*, so the row this feeds and every sum below it are
+    #   unchanged in shape. The arithmetic stays inside `attendance.py`: this
+    #   module takes one sum and never the wage (§0's forty-seventh block, and
+    #   `tests/test_attendance.py` holds it).
     if include_labour:
-        labour = dict(AT.labour_cost_of(AT.markings_for_project(pid)),
+        labour = dict(AT.labour_split_of(AT.markings_for_project(pid)),
                       withheld=False)
     else:
-        labour = {"total": None, "markings": 0, "costed": 0, "refused": 0,
+        labour = {"total": None, "estimate": None, "actual": None,
+                  "markings": 0, "costed": 0, "refused": 0,
+                  "estimate_markings": 0, "actual_markings": 0, "slips": 0,
                   "withheld": True}
 
     billed = _paise(ra_amount + ti_amount)
@@ -1018,12 +1030,21 @@ def untagged_cost(include_labour: bool = True) -> dict:
         ch_amount += taxable
         ch_count += 1
 
+    # ⚠ **`markings_on_no_project()`, overhead INCLUDED** (5 November 2026,
+    #   the sixty-sixth block). This line is *"cost not tagged to any
+    #   project"*, and an office day is exactly that — it is cost, and it is on
+    #   no project. What changed next door is the NAG: `off_project_labour()`
+    #   stopped asking about overhead, because the question has been answered.
+    #   This register counts the money either way, which is the whole point of
+    #   the line (§7 gap B5: untagged cost cannot vanish).
     if include_labour:
         rows = AT.markings_on_no_project()
-        labour = dict(AT.labour_cost_of(rows), withheld=False)
+        labour = dict(AT.labour_split_of(rows), withheld=False)
         dangling += sum(1 for r in rows if _dangling(r))
     else:
-        labour = {"total": None, "markings": 0, "costed": 0, "refused": 0,
+        labour = {"total": None, "estimate": None, "actual": None,
+                  "markings": 0, "costed": 0, "refused": 0,
+                  "estimate_markings": 0, "actual_markings": 0, "slips": 0,
                   "withheld": True}
 
     return {
