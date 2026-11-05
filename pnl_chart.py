@@ -264,8 +264,21 @@ def waterfall_html(wf: dict) -> str:
     rows = (f'<tr><th>{P.esc(start_label)}</th><td>{_rs(start_val)}</td>'
             f'<td>billed to date, tax-exclusive</td></tr>')
     for _key, label, amount in wf["steps"]:
+        # ⚠ **The labour bar says which part of it has been PAID** (5 November
+        #   2026, CLIENT_CHANGES.md §0's sixty-sixth block, ruling 4). It is
+        #   still one bar and one row; what changes is the sentence beside it,
+        #   because "actual cost recorded" is only true of the paid part.
+        why = "actual cost recorded"
+        split = wf.get("labour_split") if _key == "labour" else None
+        if split:
+            if split["actual"]:
+                why = (f'estimated {_rs(split["estimate"])}, actual '
+                       f'{_rs(split["actual"])} from {split["slips"]} issued '
+                       f'payslip{"" if split["slips"] == 1 else "s"}')
+            else:
+                why = "estimated from the muster — no payslip issued for it yet"
         rows += (f'<tr><th>less {P.esc(label)}</th><td>{_rs(amount)}</td>'
-                 f'<td>actual cost recorded</td></tr>')
+                 f'<td>{why}</td></tr>')
     rows += (f'<tr class="pnl-sum"><th>{P.esc(res_label)}</th>'
              f'<td>{_rs(res_val)}</td><td>billed less spent &mdash; timing, '
              f'not the final result</td></tr>')

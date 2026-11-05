@@ -474,8 +474,29 @@ PAGES = {
     #   value*, and the Unattributed cost line is drawn under the tiles for a
     #   `project.pnl` reader. `head`/`shell`/`chrome` unmoved. The old row:
     #       ("4ff0bc6a35ae7c9c", 109439, {..., "main": "9aed9013889622db"})
-    ("dashboard",       "/"):                          ("855698a7b62a425d", 109810,
-        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "3e9d91230374421e"}),   # §0 59th B1: moved=['chrome', 'main'], -12 bytes
+    # ⚠ **RE-BASELINED 5 November 2026 — `main` ONLY, +50 bytes**
+    #   (CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 4). ONE clause,
+    #   on the project tile's running-position note:
+    #   `· labour ₹ 1,500, all estimated`. No figure on the page moved and
+    #   nothing was added to or taken out of Billed, Spent or Margin — the
+    #   clause says that part of *Spent* will move when payroll is run, which
+    #   a reader had no way to know.
+    #
+    #   It is gated exactly as the tile is (`project.pnl` **and**
+    #   `attendance.view`, which is why it reads nothing for four of the seven
+    #   roles), and the unattributed-cost line's own clause does not appear in
+    #   this fixture because nothing in it is untagged.
+    #
+    #   Measured before the baseline was touched, by rendering `/` in one
+    #   process and stripping the clause back out: **+50 bytes**, and the
+    #   stripped render reproduced `855698a7b62a425d` / 109810 / `main`
+    #   `3e9d91230374421e` exactly. `head`, `shell` and `chrome` did not move.
+    #   The old values:
+    #       ("855698a7b62a425d", 109810,
+    #        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "98789be45a2abed2", "main": "3e9d91230374421e"})
+    ("dashboard",       "/"):                          ("a1c007c761cd194f", 109860,
+        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "af5042bbe07aad09"}),   # §0 66th ruling 4: moved=['main'], +50 bytes
     ("quotations",      "/quotation/"):                ("f7af9a508c3c8d73", 70825,
         {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "428580664f0626bf", "main": "7ec3c661ae9cc372"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     ("proformas",       "/proforma/"):                 ("be95d64b9f9caa5d", 79225,
@@ -642,8 +663,38 @@ PAGES = {
     #   axis reads "BOQ priced" on the chart (was "BOQ") and in the table (was
     #   "BOQ written"); the definition is unchanged. The old row:
     #       ("3ea2483e86bf9a24", 102670, {..., "main": "78a814da4ebe21aa"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("3c30f74a42d43a00", 102675,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "efe2a586396e7110"}),   # §0 59th B1: moved=['chrome', 'main'], -13 bytes
+    # ⚠ **RE-BASELINED 5 November 2026 — `main` ONLY, +868 bytes**
+    #   (CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 4: *"Project
+    #   P&L, waterfall and dashboard show labour as one line with an
+    #   'Estimated' / 'Actual' split"*). Three things move, all inside `main`
+    #   and all on the labour figure that was already there:
+    #
+    #     1. the P&L panel's Site labour row gains a `pnl-split` span under
+    #        its label — ONE row still, carrying the same total, because the
+    #        *Spent to date* sum adds that cell and two rows would be two cost
+    #        heads;
+    #     2. one `pnl-note` paragraph saying what an estimate and an actual
+    #        are, once, rather than on every row;
+    #     3. the waterfall's table cell beside the labour bar, which said
+    #        "actual cost recorded" and now says which part has been paid —
+    #        "actual cost recorded" is only true of the paid part.
+    #
+    #   `head` did NOT move: the `.pnl-split` rule rides in the panel's own
+    #   `<style>`, which this file's `main` block already covers.
+    #
+    #   Measured before the baseline was touched, by rendering this page in
+    #   one process and stripping all three back out: **+868 bytes, 4 lines
+    #   added, 0 removed**, and the stripped render reproduced
+    #   `3c30f74a42d43a00` / 102675 / `main` `efe2a586396e7110` exactly.
+    #   `shell` and `chrome` did not move. ⚠ `tests/test_pnl_access.py` pins
+    #   this page for all four roles WITHOUT `project.pnl` and none of those
+    #   digests moved — the panel is where every byte of this change is.
+    #   The old values:
+    #       ("3c30f74a42d43a00", 102675,
+    #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "7ea32f8551745f31", "main": "efe2a586396e7110"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("570dc5cb4004f505", 103543,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "e1a130fd2aa325aa"}),   # §0 66th ruling 4: moved=['main'], +868 bytes
     # ⚠ `employees` keeps the TABLE-FIT baseline of 30 October 2026 (a121953):
     #   the sixty-third block did not move this row, the table fit did
     #   (+3103 bytes, moved=['head', 'main']). Verified three-way against

@@ -678,6 +678,10 @@ PNL_CSS = """
         table.pnl-rows td { text-align:right; font-variant-numeric:tabular-nums;
                             white-space:nowrap; }
         table.pnl-rows th span { color:var(--muted); font-size:.8rem; }
+        /* The labour row's Estimated / Actual split (5 November 2026, the
+           sixty-sixth block, ruling 4). Its own line under the row's label, so
+           the money column stays a single figure per row. */
+        table.pnl-rows th span.pnl-split { display:block; margin-top:.15rem; }
         table.pnl-rows tr.pnl-group th { font-size:.75rem; text-transform:uppercase;
                        color:var(--muted); font-weight:700; background:var(--surface); }
         table.pnl-rows tr.pnl-sum th, table.pnl-rows tr.pnl-sum td,
@@ -863,9 +867,24 @@ def _pnl_panel(proj) -> str:
                       'permission, which your roles do not include)</span></th>'
                       '<td>—</td></tr>')
     else:
+        # ⚠ **ONE ROW with an Estimated / Actual split** (5 November 2026,
+        #   CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 4). The total
+        #   is estimate + actual and the row still carries it, because the
+        #   *"Spent to date"* sum below adds this cell and nothing else — two
+        #   rows would be two cost heads and the sum would have to choose. What
+        #   the reader gains is which part has been paid: an estimate is the
+        #   muster's day rate times the day share, and an actual is the issued
+        #   payslip's own wages, overtime and travel.
+        if lab["actual"]:
+            split = (f' &mdash; estimated {_amt(lab["estimate"])}, '
+                     f'actual {_amt(lab["actual"])} from '
+                     f'{_pnl_n(lab["slips"], "issued payslip")}')
+        else:
+            split = ' &mdash; all estimated, no payslip issued for it yet'
         labour_row = (f'<tr><th>Site labour &mdash; booked to this project, day '
                       f'rate and overtime <span>({_pnl_n(lab["markings"], "marking")})'
-                      f'</span></th><td>{_amt(lab["total"])}</td></tr>')
+                      f'</span><span class="pnl-split">{split}</span></th>'
+                      f'<td>{_amt(lab["total"])}</td></tr>')
     # Coverage BESIDE the actual cost (31 Oct 2026, C5) — the same count the
     # sentence under the variance prints, so a low cost reads as unbought.
     _cov = r["coverage"]
@@ -918,6 +937,19 @@ def _pnl_panel(proj) -> str:
               'project this reflects timing &mdash; material bought before it '
               'is billed, labour paid before it is claimed &mdash; and is not '
               'the result the project will finish on.')]
+    # ⚠ **The two kinds of labour figure, said once** (5 November 2026, the
+    #   sixty-sixth block, ruling 4). Without this the reader has no way to
+    #   know that one of the rows above moves when payroll is run.
+    if not lab["withheld"] and lab["markings"]:
+        notes.append('<b>Site labour is an estimate until the month is '
+                     'paid.</b> Until a worker&rsquo;s payslip for a month is '
+                     '<b>issued</b>, that month is priced from the muster '
+                     '&mdash; the day rate on each marking and its overtime. '
+                     'Once the slip is issued the month is priced from the '
+                     'slip itself: wages, overtime and travel, split across '
+                     'the projects that month&rsquo;s days were worked for. '
+                     'Advances, loans and deductions are never a project '
+                     'cost.')
     if lab.get("refused"):
         n = lab["refused"]
         notes.append(f'{_pnl_n(n, "marking")} {"predates" if n == 1 else "predate"} '

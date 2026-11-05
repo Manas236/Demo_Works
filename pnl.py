@@ -692,6 +692,17 @@ def waterfall_of(pnl: dict) -> dict:
         "planned_revenue": pnl["planned"]["revenue"],
         "planned_margin": pnl["planned"]["margin"],
         "labour_withheld": td["labour"]["withheld"],
+        # ⚠ **ONE BAR, and the split rides beside it** (5 November 2026,
+        #   CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 4: *"show
+        #   labour as one line with an 'Estimated' / 'Actual' split"*). Two
+        #   bars would be two cost heads on a chart where every other bar is
+        #   one head, and the reader would be invited to add them — which is
+        #   right, and which is why they are one bar already. The split is
+        #   what the table beside the chart says about that bar.
+        "labour_split": (None if td["labour"]["withheld"] else
+                         {"estimate": td["labour"]["estimate"],
+                          "actual": td["labour"]["actual"],
+                          "slips": td["labour"]["slips"]}),
     }
 
 
@@ -1079,7 +1090,19 @@ def register_line_html(u: dict) -> str:
         parts.append("site labour not shown &mdash; it needs the <b>View "
                      "attendance</b> permission")
     else:
-        parts.append(f"site labour {_r(u['labour']['total'])}")
+        # ⚠ **The split in the same breath** (5 November 2026, the sixty-sixth
+        #   block, ruling 4). One figure with no split reads as a bill; this
+        #   line is partly a guess and says which part.
+        lab = u["labour"]
+        split = ""
+        if lab.get("actual"):
+            split = (f" (estimated {_r(lab['estimate'])}, actual "
+                     f"{_r(lab['actual'])} from "
+                     f'{lab["slips"]} issued payslip'
+                     f'{"" if lab["slips"] == 1 else "s"})')
+        elif lab.get("total"):
+            split = " (estimated &mdash; no payslip issued for it yet)"
+        parts.append(f"site labour {_r(lab['total'])}{split}")
     refused = u["labour"].get("refused") or 0
     short = (f' {refused} marking{"" if refused == 1 else "s"} predate'
              f'{"s" if refused == 1 else ""} the day-rate correction and '

@@ -1083,6 +1083,30 @@ def _boq_ra() -> dict:
     }
 
 
+
+def _untagged_labour_split(unt: dict) -> str:
+    """
+    The Estimated / Actual clause on the dashboard's unattributed-cost line
+    (5 November 2026, CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 4).
+
+    ⚠ **A sentence about a figure already on the line, never a second
+      figure.** `pnl.register_line_html()` says the same thing on the
+      `/projects` register and the P&L panel says it on the project page; this
+      is the dashboard's wording of it, and all three read the one dict
+      `attendance.labour_split_of()` returns.
+
+    ⚠ **No user text reaches it** — money formats and counts only — so nothing
+      here needs escaping, and a money format is never escaped (ABOUT.md §9).
+    """
+    lab = unt.get("labour") or {}
+    if lab.get("withheld") or not lab.get("markings"):
+        return ""
+    if lab.get("actual"):
+        return (f' Of the labour, {rupees(lab["estimate"])} is estimated and '
+                f'{rupees(lab["actual"])} is actual.')
+    return " The labour in it is all estimated: no payslip is issued for it yet."
+
+
 def _project_progress(boqs: dict, bills: dict, open_ids: list) -> list:
     """
     `[{name, approved, claimed, pct, ...}]` — claimed against approved, per
@@ -1909,6 +1933,22 @@ def _progress_html(m) -> str:
             note_nb = (" &mdash; no bill raised yet: cost so far"
                        if not (pr["to_date"]["ra"]["count"] or pr["to_date"]["ti"]["count"])
                        and spent else "")
+            # ⚠ **Labour as ONE figure with its split said** (5 November 2026,
+            #   CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 4). The
+            #   tile has no room for a row of its own and does not need one:
+            #   the whole point is that part of *Spent* moves when payroll is
+            #   run, which is what this clause says. Nothing is added to or
+            #   taken out of any figure above.
+            _lab = pr["to_date"]["labour"]
+            lab_note = ""
+            if not _lab["withheld"] and _lab["markings"]:
+                if _lab["actual"]:
+                    lab_note = (f' &middot; labour {rupees(_lab["total"])}: '
+                                f'{rupees(_lab["estimate"])} estimated, '
+                                f'{rupees(_lab["actual"])} actual')
+                else:
+                    lab_note = (f' &middot; labour {rupees(_lab["total"])}, '
+                                f'all estimated')
             mini = f"""
             <div class="pp-mini">
               <div class="pp-mini-bars">
@@ -1922,7 +1962,7 @@ def _progress_html(m) -> str:
               <div class="pp-margin {tone}">Margin to date{wages}
                 <b>{rupees(margin)}</b></div>
               <div class="pp-note">Running position: billed less spent{note_nb}
-                &middot; billed <b>{billed_pct}</b> of the contract value</div>
+                &middot; billed <b>{billed_pct}</b> of the contract value{lab_note}</div>
             </div>"""
 
         out += f"""
@@ -1950,7 +1990,8 @@ def _progress_html(m) -> str:
                     f'tax-exclusive cost tagged to no project (purchase '
                     f'orders, work orders, charges'
                     f'{", site labour" if not unt["labour"]["withheld"] else ""}'
-                    f'). It is on no project above.</div>')
+                    f'). It is on no project above.'
+                    f'{_untagged_labour_split(unt)}</div>')
 
     extra = len(rows) - PROGRESS_LIMIT
     if extra > 0 and auth.can_reach("project.list_projects"):
