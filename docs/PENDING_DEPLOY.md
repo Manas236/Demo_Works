@@ -371,6 +371,70 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
       forms for the same item offer it preselected. ⚠ **No new upload path and
       no new limit** — one file per request, as since 21 October 2026
 
+### 5.8 Labour into the project P&L — §0 **sixty-sixth** (5 November 2026) — **CHARGED**
+
+`9df7283` · `9b3ef4c` · `8dad301` · `89e02d8` · `73fd623` + the docs commit.
+[docs/LABOUR_PL.md](LABOUR_PL.md) is the diagnosis; CLIENT_CHANGES.md §0's
+**sixty-sixth** block is the authorisation and the twenty-three declared calls.
+
+**Two steps on the box, in this order.** ⚠ **Neither was run here** — this
+cloud checkout has no MySQL and no access to production.
+
+1. ⚠ **MANDATORY AND SILENT IF MISSED — the permission reconcile.** One
+   permission was minted, **`labour.assign`**, and `BUILTIN_ROLES` is the
+   DEFAULT for a role being created, not a backfill of roles that already
+   exist. Until this runs **no live role holds it** — not even the Owner's —
+   and `/attendance/unassigned` is refused for everybody:
+
+   ```bash
+   python tools/reconcile_role_permissions.py
+   ```
+
+   ```bash
+   python tools/reconcile_role_permissions.py --write
+   ```
+
+   This is §2's step, for the same reason and with the same failure mode. It is
+   the only thing in this feature that breaks quietly.
+
+2. **The backfill — dry run, READ IT, then write.** Every marking older than
+   30 August 2026, and everything the old per-SITE import wrote, carries no
+   `project_id`, so its labour is on no project's P&L. The tool links only
+   where a site carries **exactly one** live project and reports everything
+   else:
+
+   ```bash
+   python tools/backfill_labour_projects.py
+   ```
+
+   ```bash
+   python tools/backfill_labour_projects.py --write
+   ```
+
+   * it is a **dry run by default** and prints the whole plan first;
+   * `--write` **takes its own backup** (`tools/backup_db.py --label
+     pre-labour-projects`) before the first write, so §2's backup is not a
+     substitute and this one is not optional;
+   * it **never guesses**: two or more projects at a site, or none, is left and
+     reported — as a **worker-month**, with every candidate named;
+   * it **never** changes a day, a rate, a site or a payslip, and refuses to
+     persist if one moved;
+   * it is **idempotent**: a second run links nothing.
+
+   ⚠ **The dry run's worker-month list is the handover.** Whoever runs it
+   should send Manas that list: each row is one decision somebody has to take
+   at `/attendance/unassigned`, and rows marked *"the payslip for this month is
+   ISSUED"* are months already paid whose wages are on no project's P&L until
+   they are assigned.
+
+**No new collection and no new table.** `labour_overhead` is one more key on
+records in the existing `attendance` collection, written only when it is True;
+`db.py` persists by snapshot-and-diff and needs nothing. `payslips` is read,
+never written, by the new code.
+
+**Nothing is retrospectively re-costed.** An issued payslip's own frozen
+figures are read, never recomputed, so no slip and no printed slip changes.
+
 ## 6. What a human must look at after the deploy
 
 - [ ] **`python -m pytest -q` on the server, green.** The suite no longer reads
@@ -417,6 +481,19 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
       the **root** on the printed sheet, with `Revision 1` on its own row
 - [ ] **`/settings` opened** — *Units of Measure* is there, under *Joint
       Measurement Sheet — columns*
+- [ ] **`/attendance/` opened as the Owner** — an **Unassigned labour** button
+      sits between *Search* and *Payslips*, with the waiting count on it. Open
+      it: every row is one worker-month, and assigning one logs the change on
+      each marking
+- [ ] **`/projects/view/<id>` opened** on a project with markings — the P&L's
+      *Site labour* row says **estimated** / **actual** under its label, and
+      the note under the table explains the two. Issue that worker's payslip
+      and reload: the figure moves from estimated to actual
+- [ ] **`/payroll/import/` run on a month** whose sheet has a site carrying two
+      projects — each worker's row carries its own project picker, defaulted
+      from last month, and committing without a pick is refused by name
+- [ ] **A day marked by hand as *No project (overhead)*** — it is on no
+      project and does **not** appear on `/attendance/unassigned`
 
 ---
 
@@ -444,8 +521,9 @@ nginx serves for `/_landing/` as well; **it did not change in these commits.**
 
 ---
 
-*Written 29 October 2026 and extended 30 October 2026 for the §0 **fifty-ninth**
-block, on a cloud checkout with no MySQL and no access to production. Every
+*Written 29 October 2026, extended 30 October 2026 for the §0 **fifty-ninth**
+block and 5 November 2026 for the §0 **sixty-sixth** (§5.8), on a cloud
+checkout with no MySQL and no access to production. Every
 step above is for a human on the server. ⚠ **No database backup was taken
 before any of this work because none was possible**; the backup in §2 is the
 first one in this sequence and must be real.*

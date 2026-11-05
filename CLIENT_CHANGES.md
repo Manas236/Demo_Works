@@ -6437,6 +6437,183 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 5 November 2026, by Manas Gawde — LABOUR INTO THE PROJECT P&L · POST-GO-LIVE
+>
+> **A new block, not an amendment.** This is the **sixty-sixth** occasion,
+> written directly on `antigravity-dev` (base `75720f4`).
+>
+> **Why it exists.** Site labour was not reaching the project P&L. The diagnosis
+> was written and committed BEFORE any code changed —
+> [docs/LABOUR_PL.md](docs/LABOUR_PL.md), commit `9df7283` — and found three
+> independent defects, each with `file:line`:
+>
+> * **A.** The import decided the project **per SITE, not per worker**
+>   (`payimport.commit()`). Two live projects at one address could not be
+>   split, no pick was a hard stop rather than a bucket, and there was no way
+>   to say *"this is overhead, not project labour"*.
+> * **B.** Nothing assigned the backlog and nothing let a human clear one
+>   worker-month. The old route was `/attendance/edit/<id>` — twenty-six pages
+>   for one decision. No screen, no permission.
+> * **C.** **An issued payslip was not a cost anywhere.** `payroll.snapshot()`
+>   freezes what was actually paid; nothing outside `payroll.py` read
+>   `payslips`, so the labour row was always the muster's estimate and had no
+>   vocabulary for the difference.
+>
+> The join itself (`pnl.py` → `attendance.markings_for_project()`) was correct
+> and read **nothing**, because the demo seeder and every marking older than
+> 30 August 2026 carry no `project_id` at all.
+>
+> **Nothing was unfrozen.** `product.py` and `quotation.py` are untouched.
+>
+> #### The rulings, as given
+>
+> 1. **Labour cost = ESTIMATE, then ACTUAL.** Estimate: days counted by the
+>    payroll module's **own** day-count rule (reused, never a second rule) ×
+>    the day rate stored on each marking, plus OT where the marking carries
+>    it. Actual: once a worker's payslip for that month is **ISSUED**, that
+>    worker-month's estimate is replaced by the slip's earnings (wages + OT +
+>    travel), split by days per project where the month spans several.
+>    Advances, loans, loan recovery and other deductions are **never** project
+>    cost. Slip cancelled → back to estimate.
+> 2. **Site → project is decided PER WORKER at import.** The sheet's site maps
+>    to an address-book site as today, plus a **"No project (overhead)"**
+>    choice; overhead never lands on a project and never nags. One live project
+>    at the site → auto-assigned. More than one → a picker per worker,
+>    defaulting to that worker's project last month; no default → must be
+>    picked before commit. No project at the site → an **UNASSIGNED** bucket,
+>    never silently dropped. Hand-entered attendance gets the same field and
+>    the same default rule. Each marking stores its project id.
+> 3. **Unassigned labour screen** — lists worker-months with unassigned or
+>    ambiguous labour, (re)assigns to a project, logged (who / when / before →
+>    after). New permission **`labour.assign`**, Owner + Director by default, a
+>    tick on the role page.
+> 4. **The P&L, waterfall and dashboard show labour as ONE line with an
+>    "Estimated" / "Actual" split.** P&L totals use estimate + actual. Nothing
+>    else in the P&L changes.
+> 5. **Backfill** — `tools/backfill_labour_projects.py`, `--dry-run` (default)
+>    and `--write`. Assigns only where unambiguous. Lists every ambiguous
+>    worker-month for the screen. Never changes days, rates or slips. Backup
+>    via `tools/backup_db.py` first if MySQL is reachable.
+>
+> #### The agent's own calls, declared
+>
+> 1. **All of ruling 1's arithmetic is in `attendance.py`, and it reads
+>    `STORE["payslips"]` directly.** `payroll.py` imports `attendance.py` (it
+>    is one of the four permitted importers), so an import back is a cycle at
+>    boot — the same position this module is in with `project.py`, resolved the
+>    same way, and `test_import_directions.py` already refuses that arrow with
+>    that reason. The slip's earnings are a FROZEN figure the slip holds, so
+>    reading them computes no wage: the one place a wage is computed is
+>    unchanged.
+> 2. **`labour_cost_of()` is untouched and `labour_split_of()` is new.** The
+>    old sum still prices the muster's own presentation
+>    (`projectview._labour_group()`) and the import's preview, where an
+>    estimate is the right figure; the P&L takes the new one. The new dict
+>    carries the old four keys with their old meanings so every reader keeps
+>    working. `pnl.py` is asserted NOT to reach the old sum any more — two
+>    labour figures on one page is the defect that would hide.
+> 3. **The denominator of the split is the worker's WHOLE month**, every
+>    project and the overhead days included. Over the rows handed in, each
+>    project would take 100 % of one slip and the month would be billed twice.
+> 4. **A slip with earnings and no paid day anywhere contributes NOTHING.** The
+>    denominator is zero, so there is no share to take; the money is on the
+>    slip and on no project. Dividing it equally, or falling back on the
+>    estimate, would put a figure nobody can trace on a margin.
+> 5. **`other_allowance` and the round-off are NOT project cost.** Ruling 1
+>    names three heads. `other_allowance` is typed on the draft and the slip
+>    does not say what it was for; read in silently it would put a bonus on one
+>    project's margin. The round-off is a rounding of the payment.
+> 6. **A pre-day-rate (closed historical) worker-month that was PAID reaches
+>    the P&L by the slip, and is not refused.** `share_of()` reads the status,
+>    not the rate, so the split needs no day rate — and the slip is the one
+>    figure about that month which is not twenty-six times wrong. The estimate
+>    still refuses it, as it always has.
+> 7. **`labour_overhead` is stored only when TRUE and popped otherwise.** An
+>    absent key still means LEGACY, which is the distinction the field exists
+>    to draw; writing `False` onto every marking somebody edited would claim a
+>    decision for every record that was merely re-saved.
+> 8. **`resolve_project()`'s ordinary answer is still `charge.py`'s exactly two
+>    keys.** Overhead is a fifth outcome returning three; the other four are
+>    byte-identical, which is what keeps `test_attendance.py`'s shape test
+>    standing unamended.
+> 9. **The import's `addr|project` value is still ACCEPTED and no longer
+>    OFFERED.** It is a site-level answer a saved form or a scripted post may
+>    carry, and refusing it would turn an old URL into a lost import.
+> 10. **Overhead picked with no book site KEEPS the sheet's own site string**,
+>     marked `unmapped` — `employee.resolve_site()`'s middle row, for its
+>     reason: the string is evidence of where somebody worked. It is reported
+>     nowhere as an unanswered question because overhead is excluded from
+>     `off_project_labour()`.
+> 11. **`project_last_month()` answers only where last month was UNANIMOUS.** A
+>     worker who split last month has no single answer, and the project with
+>     more days would be the invented default ruling 2 exists to avoid.
+> 12. **The unassigned screen is gated on `labour.assign`, the READ included,
+>     and `labour.assign` is NOT granted to HR by default.** The ruling says
+>     Owner + Director; the reason holds — assigning a worker-month moves money
+>     between two projects' margins, which is a commercial act rather than an
+>     HR one. Both default holders also hold `attendance.view`, so no role sees
+>     a wage there it could not see on `/attendance/`. An Owner grants it to HR
+>     with a tick.
+> 13. **The screen is OFF the nav rail and linked from `/attendance/`**, its
+>     parent — the `/roles`-from-`/users` precedent. It is a worklist, not a
+>     register: it is empty most of the time, and a rail entry would move the
+>     `head` digest of every pinned page. `UNLINKED_ON_PURPOSE` carries the
+>     reason and names the test that proves the link exists.
+> 14. **`attendance._month_label()` is `payroll.month_label()`'s twin**, for
+>     the cycle reason in call 1. `tests/test_labour_assign.py` asserts the two
+>     agree on every month of two years, so it cannot drift.
+> 15. **ONE row, in all four display places** (ruling 4). *Spent to date* adds
+>     the labour cell and nothing else; two rows would be two cost heads under
+>     one heading and a reader would be invited to add them.
+> 16. **`pnl.untagged_cost()` still COUNTS overhead** while
+>     `off_project_labour()` stopped nagging about it. An office day is cost,
+>     and it is on no project — which is exactly what that line says (§7 gap
+>     B5: untagged cost cannot vanish). What changed is the question, not the
+>     money.
+> 17. **The backfill never marks anything overhead.** Ruling 5 says *"or
+>     overhead"* among the unambiguous cases, and the only unambiguous overhead
+>     is a marking that ALREADY carries the mark — which it counts and leaves.
+>     A site with no project may be a site whose project has not been filed
+>     yet, and "probably the office" is the guess the rest of that script
+>     refuses.
+> 18. **A paid worker-month IS linked by the backfill.** Until the days are on
+>     a project, the slip's money is on no project's P&L at all — which is the
+>     defect ruling 1 closes, and this is the other half of it. The slip is not
+>     touched.
+> 19. **`tools/backfill_marking_projects.py` is KEPT, working and tested**, with
+>     a note naming the new script as its successor and the four differences.
+>     Neither writes anything the other would undo.
+> 20. **Three tests amended, each with its old assertion quoted verbatim and
+>     every old figure kept; none deleted, none skipped:**
+>     `test_attendance.py`'s pnl-accessor allowlist (the one sum's name moved;
+>     a new assertion was ADDED that `pnl.py` no longer reaches the old one),
+>     `test_pnl.py`'s labour dict (the four old keys asserted key-by-key, the
+>     five new ones beside them), and `test_nav_reachability.py`'s
+>     `UNLINKED_ON_PURPOSE` (one entry added with its reason).
+> 21. **Goldens moved: THREE, all SCREEN ONLY, all `main` (plus `head` on one),
+>     each measured by stripping the change back out in one process and
+>     reproducing the old digest exactly.** `/attendance/` +482 bytes (`head`
+>     and `main`); `/projects/view/<id>` +868 bytes (`main`); `/` +50 bytes
+>     (`main`). `shell` and `chrome` did not move on any of them — **no rail
+>     entry was added, so NO printed document moved at all**, and
+>     `tests/test_pnl_access.py`'s four roles-without-`project.pnl` digests did
+>     not move either.
+> 22. **No MySQL is reachable in the session this was built in: no backup was
+>     taken because none was possible, and nothing was migrated.** **Deploy
+>     needs `tools/reconcile_role_permissions.py --write`** for
+>     `labour.assign`, or no live role holds it, and then
+>     `tools/backfill_labour_projects.py` — dry run read, then `--write`.
+>     See [DEPLOY.md](DEPLOY.md).
+> 23. **No bar moved and no CC-2 item changed state.** This extends **C6** (the
+>     project P&L, BUILT since 8 October 2026) and **C5**; it builds neither
+>     afresh. `docs/ACCESS_MATRIX.md` was regenerated: **92 → 93 permissions,
+>     216 → 218 endpoints**.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
