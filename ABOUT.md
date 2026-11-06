@@ -12895,6 +12895,12 @@ on several tabs, and their day cells on each tab are their days at that site.
 * **The last-month default fills only days with NO site**
   (`_no_site_project()` over `attendance.project_last_month()`); such a day
   stores no site. A site the sheet gives is never overridden by it.
+* **`tools/dryrun_tab_site_projects.py --dry-run`** — READ-ONLY, no write
+  mode: what a month's unassigned markings at one site would get under this
+  rule, from the stored import. It reads MySQL with SELECT in a READ ONLY
+  transaction and never boots `app`; `tests/test_dryrun_tab_site_projects.py`
+  fails on any write statement or call in it. ⚠ An import staged before this
+  block stored its first tab only.
 
 Held by [tests/test_payroll.py](tests/test_payroll.py),
 [tests/test_payimport.py](tests/test_payimport.py),

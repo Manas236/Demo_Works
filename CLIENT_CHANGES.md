@@ -6730,6 +6730,16 @@ one automatic.
 > column or tab name) — the workbook is not in the repository. The preview
 > prints it per tab under *Tabs read* the first time it is uploaded.
 >
+> **For the October backlog — a READ-ONLY dry run, written and NOT run:**
+> `tools/dryrun_tab_site_projects.py --dry-run` (the only mode; SELECT only, a
+> READ ONLY transaction, no `app`, no `db.init`/`db.sync`) lists, for every
+> unassigned marking of a month at a site matching a word (default October,
+> "jamnagar", expecting 88), what this rule would give it from the stored
+> import: the saved mapping, the one project at the site, a question to ask
+> once per site name, or — with no site name — last month's project. ⚠ The
+> October import was read by the single-tab parser, so only its first tab is
+> stored; the script says so.
+>
 > **The gate is not lifted.** It is still the default and it still stands.
 > Overrides are not a precedent and do not make a subsequent one automatic; an
 > override remains a decision that is taken and recorded, never one an agent may
