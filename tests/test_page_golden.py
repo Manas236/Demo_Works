@@ -693,8 +693,24 @@ PAGES = {
     #       ("3c30f74a42d43a00", 102675,
     #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "7ea32f8551745f31", "main": "efe2a586396e7110"})
-    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("570dc5cb4004f505", 103543,
-        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "e1a130fd2aa325aa"}),   # §0 66th ruling 4: moved=['main'], +868 bytes
+    # ⚠ **RE-BASELINED 6 November 2026 — `main` ONLY, +3,340 bytes**
+    #   (CLIENT_CHANGES.md §0's **sixty-ninth** block, items 1 and 2): the
+    #   progress spider is replaced by the cost PIE and six PROGRESS BARS
+    #   (each picture still with its own table), and the waterfall's names
+    #   wrap inside their own bars and its two plan labels are placed clear
+    #   of each other. Drawing only — no figure moved.
+    #
+    #   Measured before the baseline was touched, by rendering this page from
+    #   this world on `5730b15` and on the change and diffing the two: the
+    #   bytes BEFORE the chart stylesheet's `<style>` and AFTER the closing
+    #   `</figure></div>` of `.pnl-figs` are **identical**; every one of the
+    #   40 added / 14 removed lines is inside the chart block. `head`,
+    #   `shell` and `chrome` did not move. The old values:
+    #       ("570dc5cb4004f505", 103543,
+    #        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2",
+    #         "chrome": "7ea32f8551745f31", "main": "e1a130fd2aa325aa"})
+    ("project page",    f"/projects/view/{GOLD_PROJECT}"): ("a93a0aaaf3f289c6", 106883,
+        {"head": "0565b7d2103f190b", "shell": "a1e6c63a6d4c6ac2", "chrome": "7ea32f8551745f31", "main": "69bc0f764b72f780"}),   # §0 69th items 1-2: moved=['main'], +3340 bytes
     # ⚠ `employees` keeps the TABLE-FIT baseline of 30 October 2026 (a121953):
     #   the sixty-third block did not move this row, the table fit did
     #   (+3103 bytes, moved=['head', 'main']). Verified three-way against

@@ -1464,13 +1464,15 @@ become cycles. That is why `ra.RAISED_AS_BOTH` (the set mark) lives in
 
 ### 2m. `pnl_chart.py` — the P&L's two pictures (28 October 2026)
 
-A **leaf** added on 28 October 2026 (§0 **fifty-eighth** block, item 5). It
+A **leaf** added on 28 October 2026 (§0 **fifty-eighth** block, item 5);
+from 6 November 2026 (§0 **sixty-ninth** block) it draws a waterfall, a cost
+pie and progress bars — the spider is gone (§5 `/projects`). It
 imports `math`, `branding` (the validated palette), `pipeline` (`esc`) and
 `quotation` (`_inr`) — and **no module that knows a project, `pnl.py`
 included**: every figure arrives computed as the dicts `pnl.py` returns, and
 this module turns numbers into coordinates. That is what keeps exactly one
-place in this application where money is worked out. `projectview.py` and
-`dashboard.py` are its only importers. See §5 `/projects`.
+place in this application where money is worked out. `projectview.py` is its
+only importer (`dashboard.py` never was, whatever older notes say). See §5 `/projects`.
 
 ### 2k. `chrome.py` — the app shell, and why it is the fourth leaf (14 September 2026)
 
@@ -4263,7 +4265,7 @@ Still **no stored figure and no copied link** — every item below is read time:
   an **Unattributed cost** line and each tile's **billed % of the contract
   value**. Billed counts an RA bill and a tax invoice carrying its number
   once, and a merged set at its legs (`tests/test_project_phase4.py`).
-- **C7.** The spider's axes are BOQ (lines with a quantity and a rate, of all
+- **C7.** (The spider is now six progress bars — 6 Nov 2026.) The spider's axes are BOQ (lines with a quantity and a rate, of all
   lines), procurement (committed PO value of planned cost), dispatch,
   measurement, billed, collected. The waterfall is unchanged — §7 gap 103.
 
@@ -13217,6 +13219,41 @@ new leaf: a **money waterfall** and a **progress spider**, side by side under a
   added overflows at either width. The page does overflow at 390 px for
   reasons that predate it — §7 **gap 91**.
 - Tests: `tests/test_pnl_charts_oct28.py` (30).
+
+#### Three pictures — the spider replaced by a PIE and PROGRESS BARS (6 November 2026, §0 **sixty-ninth** block)
+
+⚠ **The spider above is GONE** — the paragraph is kept as history. The P&L
+panel now draws three figures in `.pnl-figs`, **each with its own table**:
+
+- **The waterfall**, now a full row (the pie and bars share the next). Its
+  bar names **wrap onto at most two lines inside their own bar** — never
+  rotated — and the one head too long for that is drawn as *"PO charges
+  (non-taxable)"* (`pnl_chart.SHORT_HEADS`; the table keeps the full name).
+  The two plan labels read *"BOQ plan"* / *"Planned margin"* on the chart and
+  are **placed**, not pinned: the first of a fixed list of spots clear of
+  every bar value, bar name and the other label; none clear → not drawn (the
+  rule keeps a `<title>`, the table the figure).
+- **The cost pie** — `pnl.cost_split_of()` → `pnl_chart.cost_pie_html()`.
+  Only heads above zero; colour from `_colour_of(step, steps_n)`, the same
+  call the waterfall's bars use, so a head is one colour on both. A slice
+  ≥ 5% with room is labelled beside the pie (head, lakh amount, %), on a
+  leader line, laid out as a non-overlapping column per side; every slice is
+  in the HTML key under it. A zero total prints *"No costs yet"* and no circle.
+  ⚠ The shares are worked out in `pnl.py` — the leaf still compares and
+  divides no rupee.
+- **The progress bars** — `pnl.progress_of()` unchanged →
+  `pnl_chart.progress_html()`: HTML rows (short name, bar, %), a step with no
+  denominator a dash and an empty bar, the bar clamped at 100% and the figure
+  not. The spider's table travels with them unchanged.
+- ⚠ **Overlap is proven in a browser, not by eye:**
+  `tests/test_pnl_chart_layout.py` lays the page out in headless Chromium at
+  360 / 390 / 768 / 1280 px for five worlds and fails on any intersecting
+  text boxes, SVG text outside its `<svg>`, or the chart region overflowing
+  the window (the page's *other* panels overflow a phone on their own — gap
+  91). Labels are placed from a deliberately generous width estimate
+  (`pnl_chart._text_w()`); change a font size or viewBox and run that test.
+  Skipped where Playwright/Chromium is absent (the production box).
+- Tests: `tests/test_pnl_pie_progress.py` (9), `tests/test_pnl_chart_layout.py` (5).
 
 #### The register's line — cost tagged to no project
 

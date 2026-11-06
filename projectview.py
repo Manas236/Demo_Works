@@ -1112,7 +1112,7 @@ def _pnl_panel(proj) -> str:
     #
     # §0's fifty-eighth block, item 5: *"I want to see where the money went."*
     # Server-rendered inline SVG, no JS and no CDN — the money waterfall and
-    # the progress spider, **each with a plain-text table of the same numbers
+    # (until 6 Nov 2026) the progress spider, **each with a plain-text table of the same numbers
     # underneath it**, which is not a fallback but the thing a screen reader,
     # a forced-colours mode and a failed render are all left with.
     #
@@ -1126,9 +1126,17 @@ def _pnl_panel(proj) -> str:
     #   than as its first bar — see `pnl.waterfall_of()`'s docstring: a bar
     #   chart from planned revenue down through actual cost ends at a figure
     #   that is neither margin, which is the blend this app refuses.
+    #
+    # ⚠ **THREE PICTURES FROM 6 NOVEMBER 2026** (CLIENT_CHANGES.md §0's
+    #   sixty-ninth block): the spider is gone; the cost PIE
+    #   (`pnl.cost_split_of()`, the same heads and colours as the waterfall)
+    #   and the six PROGRESS BARS (`pnl.progress_of()`, unchanged) take its
+    #   place. Drawing only — every figure is the one this panel already
+    #   printed, and each picture still carries its own table.
     charts_html = (f'{PC.CHART_CSS}<div class="pnl-figs">'
                    f'{PC.waterfall_html(PNL.waterfall_of(r))}'
-                   f'{PC.spider_html(PNL.progress_of(proj.get("id"), r))}'
+                   f'{PC.cost_pie_html(PNL.cost_split_of(r))}'
+                   f'{PC.progress_html(PNL.progress_of(proj.get("id"), r))}'
                    f'</div>')
 
     # ── 3. CASH — GST included ──────────────────────────────────────────────

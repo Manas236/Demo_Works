@@ -706,6 +706,51 @@ def waterfall_of(pnl: dict) -> dict:
     }
 
 
+def cost_split_of(pnl: dict) -> dict:
+    """
+    The cost split to date, for the pie — CLIENT_CHANGES.md §0's
+    **sixty-ninth** block, item 1a (6 November 2026).
+
+    `{"total", "slices", "nil", "negative", "steps_n", "labour_withheld"}`:
+
+    * `slices` — `[{key, label, amount, pct, share, step}]`, **only the heads
+      above zero**, in `waterfall_of()`'s order. `step` is the head's index in
+      `waterfall_of()["steps"]` and `steps_n` that list's length: the pie is
+      coloured from them exactly as the waterfall colours its bars, so a head
+      wears one colour on both pictures.
+    * `pct` is printed (rounded to the paisa's precision, half up) and `share`
+      is the unrounded fraction the angles are drawn from, so the slices close
+      the circle exactly however the printed percentages round.
+    * `nil` / `negative` — the heads that get no slice, said in the table
+      rather than dropped. A negative head (a credit) cannot be a slice; the
+      shares are then of the positive heads, and the table says so.
+
+    ⚠ **NO NEW FIGURE.** Every amount is `waterfall_of()`'s, which is
+      `project_pnl()`'s; `total` is `to_date["actual"]`, the *Spent to date*
+      the panel already prints. The only arithmetic here is each head's share
+      of the heads drawn — which is why it lives in this module and not in
+      `pnl_chart.py`, which may not compare or divide a rupee.
+    """
+    wf = waterfall_of(pnl)
+    steps = wf["steps"]
+    drawn = [(i, k, lbl, float(v)) for i, (k, lbl, v) in enumerate(steps)
+             if v is not None and float(v) > 0]
+    whole = sum(v for _i, _k, _l, v in drawn)
+    slices = [{"key": k, "label": lbl, "amount": v, "step": i,
+               "share": v / whole, "pct": _paise(v / whole * 100.0)}
+              for i, k, lbl, v in drawn] if whole > 0 else []
+    return {
+        "total": pnl["to_date"]["actual"],
+        "slices": slices,
+        "nil": [(k, lbl) for k, lbl, v in steps
+                if v is not None and float(v) == 0],
+        "negative": [(k, lbl, v) for k, lbl, v in steps
+                     if v is not None and float(v) < 0],
+        "steps_n": len(steps),
+        "labour_withheld": wf["labour_withheld"],
+    }
+
+
 def project_pnl(project_id, include_labour: bool = True) -> dict:
     """
     Everything the Profit & Loss panel shows for one project, in three sections

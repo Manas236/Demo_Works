@@ -6745,6 +6745,86 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 November 2026, by the owner's written instruction for this pass — PROJECT PAGE CHARTS REDRAWN (SPIDER → PIE + PROGRESS BARS) AND ONE-WORKER-ONE-DAY LOCKED IN BY TESTS · POST-GO-LIVE
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> named here. This is the **sixty-ninth** occasion. **Drawing only, screen
+> only:** no payroll figure, no P&L number and no printed document moves.
+>
+> **What was asked:**
+>
+> 1. **Remove the progress spider.** In its place (a) a **pie of the cost
+>    split to date** — purchase orders, PO charges outside the tax base, work
+>    orders, charges, site labour — only heads above zero, each slice labelled
+>    with head, lakh-format amount and %, a key beside or below, labels never
+>    overlapping, small slices to the key, *"No costs yet"* for a zero total,
+>    and the same colours as the waterfall's bars; (b) **progress bars** for
+>    the spider's six steps, one row each, a step with no data shown as a
+>    dash with an empty bar, never 0%.
+> 2. **The waterfall's names wrap onto up to two lines within their own bar**
+>    (*"PO charges (non-taxable)"* where needed), never rotated, never
+>    overlapping; the two dashed plan labels stop overlapping each other.
+> 3. **Prove no overlap programmatically** at 360 / 390 / 768 / 1280 px.
+> 4. **Prove a worker can never hold two markings on one day** across hand
+>    entry, the multi-tab import and reassignment at `/attendance/unassigned`
+>    — fix any path that can, and say so.
+>
+> **What was built:**
+>
+> - `pnl.cost_split_of()` — the pie's figures. Every amount is
+>   `waterfall_of()`'s, the total is *Spent to date*; the only arithmetic is
+>   each head's share, which is why it is in `pnl.py` and not the leaf.
+> - `pnl_chart.cost_pie_html()` and `pnl_chart.progress_html()`;
+>   `spider_html()` is deleted. The waterfall's names wrap inside their bars
+>   (`SHORT_HEADS` gives the one long head its short name on the pictures;
+>   every table keeps the full name), and its plan labels — now *"BOQ plan"*
+>   and *"Planned margin"* on the chart, unchanged in the table — are PLACED
+>   from a list of positions clear of every other label.
+> - `tests/test_pnl_chart_layout.py` — five worlds (an RIL Jamnagar-like job,
+>   all five heads non-zero, two plan rules close together, a sliver slice,
+>   no cost) laid out in headless Chromium at the four widths; fails on any
+>   two intersecting text boxes, SVG text outside its `<svg>`, or the chart
+>   region reaching past the window. **On `5730b15` it fails exactly as
+>   reported** (*Purchase orders* / *PO charges outside the tax base* /
+>   *Work orders*, and *planned margin* on the closing bar's value) at 768 and
+>   1280 px; on this block it passes. Skipped where there is no browser.
+> - `tests/test_pnl_pie_progress.py`, `tests/test_one_worker_one_day.py`.
+>
+> **One worker, one day — nothing was fixed, because nothing could create a
+> second marking.** Hand entry and edit refuse through
+> `attendance.conflicting_record()`; the import imports a day on two tabs on
+> neither and otherwise writes through `import_marking()`, which refuses an
+> existing marking; reassignment only rewrites the project fields of markings
+> that exist. All 19 new tests passed against `5730b15` unchanged.
+>
+> **The agent's own calls, declared:**
+>
+> 1. **The waterfall takes a full row**; the pie and the bars share the next.
+>    At half a row its names were ~6 px of ink at 1280 px.
+> 2. **Below 560 px the waterfall still hides its names and plan labels**
+>    (the 29 October rule — the table carries them). The pie keeps its slice
+>    labels at every width; at 360 px they render at about 8 px, and the key
+>    under the pie carries every head at full size.
+> 3. **A pie label is placed only where it fits** (≥ 5% of the cost and room
+>    in the label column); otherwise the slice is named in the key only. A
+>    plan label that finds no clear spot is not drawn; its rule keeps a
+>    `<title>` and the table carries the figure.
+> 4. **"No figure" is an em dash (—)**, the page's existing mark for an absent
+>    figure, rather than a hyphen.
+> 5. **A negative head** (a credit) cannot be a slice: it is named in the
+>    pie's table and the shares are of the other heads.
+> 6. **The pie gets its own table** (the rule every picture here holds), so
+>    the panel now has three.
+>
+> **Golden moved:** `tests/test_page_golden.py` *project page*, `main` only,
+> +3,340 bytes; old vs new render diffed and every changed line is inside the
+> chart block (the reason is recorded beside the row).
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

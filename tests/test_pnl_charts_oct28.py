@@ -121,22 +121,37 @@ def _panel(client) -> str:
 # =============================================================================
 
 def test_EVERY_CHART_CARRIES_A_TABLE_OF_THE_SAME_NUMBERS(world):
-    """THE ASSERTION THAT MATTERS MOST (1 of 4)."""
+    """THE ASSERTION THAT MATTERS MOST (1 of 4).
+
+    ⚠ AMENDED 6 November 2026 (CLIENT_CHANGES.md §0 sixty-ninth block): the
+    spider is replaced by the cost pie and six progress bars — THREE pictures,
+    each with its own table. No weaker: one table per picture, still. The
+    old assertions, verbatim:
+        assert seg.count('class="pnl-rows pnl-fig-tbl"') == 2
+        assert seg.count("The same figures, as text") == 2
+    """
     _boq(); _ra(); _po(); _dc(); _ms()
     seg = _panel(world)
-    assert seg.count('class="pnl-rows pnl-fig-tbl"') == 2, (
-        "each of the two charts must carry its own table of the same figures")
-    assert seg.count("The same figures, as text") == 2
+    assert seg.count('<figure class="pnl-fig') == 3
+    assert seg.count('class="pnl-rows pnl-fig-tbl"') == 3, (
+        "each of the three charts must carry its own table of the same figures")
+    assert seg.count("The same figures, as text") == 3
     # …and the figures really are in it.
     assert "10,000.00" in seg and "6,000.00" in seg
 
 
 def test_the_tables_are_not_conditional(world):
     """An empty-ish project still gets both tables — the table is the record,
-    not a fallback that appears when something goes wrong."""
+    not a fallback that appears when something goes wrong.
+
+    ⚠ AMENDED 6 November 2026 (CLIENT_CHANGES.md §0 sixty-ninth block): the
+    spider is replaced by the cost pie and six progress bars — THREE pictures,
+    each with its own table. Old: `== 2`. With no cost the pie says
+    "No costs yet" instead of drawing a circle, and keeps its table."""
     _boq()
     seg = _panel(world)
-    assert seg.count("The same figures, as text") == 2
+    assert seg.count("The same figures, as text") == 3
+    assert "No costs yet" in seg
 
 
 def test_both_charts_are_inline_svg_with_no_script_and_no_cdn(world):
@@ -149,9 +164,18 @@ def test_both_charts_are_inline_svg_with_no_script_and_no_cdn(world):
 
 
 def test_each_chart_has_a_text_alternative_for_a_screen_reader(world):
-    _boq(); _ra()
+    """⚠ AMENDED 6 November 2026 (CLIENT_CHANGES.md §0 sixty-ninth block): the
+    spider is replaced by the cost pie and six progress bars — THREE pictures,
+    each with its own table. The two SVG pictures (waterfall, pie) are
+    `role="img"`; the progress bars are HTML, each a `role="progressbar"`
+    with its own label. Old: `seg.count('role="img"') == 2` with no cost
+    recorded — the pie is now drawn only when there is a cost, so a PO is
+    added to the world."""
+    _boq(); _ra(); _po()
     seg = _panel(world)
     assert seg.count('role="img"') == 2
+    assert seg.count('role="progressbar"') == 6
+    assert seg.count('aria-label="') >= 8
     assert seg.count("aria-label=") >= 2
     assert "<title>" in seg, "each mark carries a native SVG tooltip, no JS"
 
@@ -299,13 +323,21 @@ def test_an_axis_with_no_denominator_draws_no_point(world):
     THE ASSERTION THAT MATTERS MOST (3 of 4). "Nothing has been dispatched"
     and "there is no supply on this schedule" are different statements.
     """
+    # ⚠ AMENDED 6 November 2026 (§0 sixty-ninth block): a progress BAR,
+    #   not a spoke. Old: `PC.spider_html(...)` and `"draws no point" in html`.
+    #   Now the row shows a dash and an EMPTY bar — never 0% — and says so.
     _boq(lines=[_line(L1, sup="", sup_base="")])     # installation only
     axes = {a["key"]: a for a in PNL.progress_of(PID)}
     assert axes["dispatched"]["pct"] is None
     assert axes["dispatched"]["note"], "the reason must be stated"
-    html = PC.spider_html(PNL.progress_of(PID))
+    html = PC.progress_html(PNL.progress_of(PID))
     assert "no priced supply quantity" in html
-    assert "draws no point" in html
+    assert "shows a dash" in html and "never 0%" in html
+    row = html.split('<span class="prog-name">Dispatched</span>', 1)[1]
+    row = row.split("</div>", 1)[0]
+    assert "prog-fill" not in row, "an empty bar, not a 0% one"
+    assert '<span class="prog-pct">&mdash;</span>' in row
+    assert "0%" not in row
 
 
 def test_dispatched_counts_challan_quantity_against_the_tip(world):
@@ -349,23 +381,32 @@ def test_the_drawn_radius_is_clamped_and_the_printed_figure_is_not(world):
                                 "written_off": 0.0}
     axes = {a["key"]: a for a in PNL.progress_of(PID)}
     assert axes["collected"]["pct"] > 100.0, "the figure is not clamped"
-    html = PC.spider_html(PNL.progress_of(PID))
+    # ⚠ AMENDED 6 November 2026 (§0 sixty-ninth block): `progress_html`, was
+    #   `spider_html`. The drawn BAR stops at 100%; the printed figure does not.
+    html = PC.progress_html(PNL.progress_of(PID))
     assert "over 100%" in html, "and the table says so"
+    row = html.split('<span class="prog-name">Collected</span>', 1)[1]
+    assert "width:100.0%" in row.split("</div>", 1)[0]
+    assert f'{axes["collected"]["pct"]:.0f}%' in row.split("</div>", 1)[0]
 
 
-def test_the_spider_uses_short_names_and_the_table_the_full_ones(world):
-    """Measured at 390 px: the full names pushed the page 156 px into a
-    horizontal scrollbar, because a radar's labels run outward from the rim."""
+def test_the_progress_bars_use_short_names_and_the_table_the_full_ones(world):
+    """
+    ⚠ AMENDED 6 November 2026 (§0 sixty-ninth block), and renamed from
+    `test_the_spider_uses_short_names_and_the_table_the_full_ones`: the rows
+    carry the SHORT names (the six the spider drew — BOQ priced, Procured,
+    Dispatched, Measured, Billed, Collected), the hover keeps the full one,
+    and the table prints the full one. The old body read `sp-name` labels
+    and an SVG `<title>`; the rows are HTML, so the hover is a `title=`.
+    """
     _boq()
     import re
-    html = PC.spider_html(PNL.progress_of(PID))
-    svg, table = html.split("</svg>", 1)
-    drawn = " ".join(re.findall(r'class="sp-name">(.*?)</text>', svg))
-    assert "Dispatched" in drawn and "Supply dispatched" not in drawn, (
-        f"the drawn axis labels are {drawn!r}")
-    # ⚠ The native `<title>` tooltip keeps the FULL name on purpose — it is
-    #   not drawn, costs no width, and is what a hover reads out.
-    assert "<title>Supply dispatched:" in svg
+    html = PC.progress_html(PNL.progress_of(PID))
+    bars, table = html.split("<table", 1)
+    drawn = re.findall(r'class="prog-name">(.*?)</span>', bars)
+    assert drawn == ["BOQ priced", "Procured", "Dispatched", "Measured",
+                     "Billed", "Collected"], drawn
+    assert 'title="Supply dispatched:' in bars
     assert "Supply dispatched" in table, "the full name is kept in the table"
 
 
@@ -518,6 +559,7 @@ def test_the_boq_axis_reads_boq_priced_on_the_chart_and_the_table(world):
     axes = PNL.progress_of(PID)
     boq = [a for a in axes if a["key"] == "boq"][0]
     assert boq["label"] == "BOQ priced" and boq["short"] == "BOQ priced"
-    html = PC.spider_html(axes)
-    assert html.count("BOQ priced") >= 2      # the spoke label and the table row
+    # ⚠ AMENDED 6 November 2026: `progress_html`, was `spider_html`.
+    html = PC.progress_html(axes)
+    assert html.count("BOQ priced") >= 2      # the bar's row and the table row
     assert "BOQ written" not in html
