@@ -6825,6 +6825,102 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 November 2026, by the owner's written instruction for this pass — NO DUPLICATE ADDRESSES, ONLY ID LINKS COUNT, AND MERGE-THEN-DELETE FOR OWNER + DIRECTORS · NO CHARGE · POST-GO-LIVE · CLIENT-BLOCKING
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> named here. This is the **seventieth** occasion, written directly on
+> `antigravity-dev`.
+>
+> **What prompted it:** on the live database the client created **NEWAGE
+> FIRE FIGHTING CO. LIMITED** (GSTIN `24AABCN5691G1ZF`) twice, once as an
+> office and once as a vendor. Nothing stopped it, and both cards then read
+> "2 refs" because `address.references_of()` counted snapshot NAME matches as
+> well as ID links. The live record is being removed by a separate server
+> data fix; this pass stops it happening again. **Commercial status: NO
+> CHARGE.**
+>
+> **What was asked, and built** (ABOUT.md §3 *Duplicates and the merge*):
+>
+> 1. **A duplicate guard in ONE function** every create and edit goes through,
+>    not in a form: `address.duplicate_guard()`, called by `create_record()`
+>    and the new `update_record()`. The Add form, the edit form, a save
+>    carrying a GSTIN auto-fill, and Import from Excel all meet it. EXACT
+>    duplicate (same GSTIN + PIN + line 1; without a GSTIN, same company + PIN
+>    + line 1), across all types, active or archived: refused, no override,
+>    naming and linking the existing record and offering un-archive. Same
+>    GSTIN at a different address: the required tick "This is a different
+>    branch of the same company".
+> 2. **Only ID links count.** `linked_of()` drives the chip, the plain-delete
+>    refusal and the merge; name-only matches (`mentions_of()`) are listed as
+>    "mentions this name, not linked, not affected" and block nothing.
+>    `references_of()` itself is unchanged.
+> 3. **Merge-then-delete**, `/address/merge/<id>`, on the existing
+>    `address.delete` permission (Owner + Directors), no new permission. The
+>    replacement must be active, not itself, and a type every link's own
+>    picker offers, read from one table (`address.LINK_TYPES`) the pickers
+>    themselves now read. The POST changes the id field and nothing else, logs
+>    on the surviving address (user id, time, from, to, each repoint, a full
+>    copy of the deleted record), and is re-runnable after a partial persist.
+> 4. **An amber band on the register**, `address.delete` holders only, listing
+>    existing duplicate groups with Merge links.
+>
+> **⚠ The tier decision this block takes.** `address.merge_address` destroys
+> an address record, so `tests/test_owner_only_delete.py` makes it choose a
+> tier. It is in **`auth.PERMISSION_ONLY_DESTROYS`**, on the client's
+> instruction (Owner + Directors). **The plain `address.delete_address` is NOT
+> moved and stays in `OWNER_ONLY`.** To keep the merge from being a second
+> door to the plain delete, `merge_into()` refuses an address with nothing
+> linked, unless it is an exact duplicate of the replacement (call 6 below).
+> A consequence, declared: a staff login a Director ALLOWS `address.delete` to
+> on `/access/` can merge, though not plain-delete; a BLOCK refuses both.
+>
+> **The agent's own calls, declared:**
+>
+> 1. **"No GSTIN on either side" is read as "either side lacks one"**: if
+>    both records carry a GSTIN the GSTIN decides; otherwise the company does.
+>    Read literally, the live pair re-entered without its GSTIN would slip
+>    through. Two different GSTINs at one address are not duplicates.
+> 2. **A blank key matches nothing**: no line 1 or no PIN is nobody's
+>    duplicate, and on the company rule neither is no company
+>    (`_snapshot_strings()`'s rule; `tools/backfill_project_sites.py` wrote
+>    blank-line site addresses).
+> 3. **An edit that moves none of GSTIN, PIN, line 1 or company is not
+>    checked**, so a pre-existing duplicate pair can still have a phone number
+>    fixed; the band shows the pair instead. The GSTIN check-character's rule.
+> 4. **An import has no branch tick**: a same-GSTIN row is refused with a
+>    sentence saying to add it on the form; two rows of one file that duplicate
+>    each other are refused too.
+> 5. **Two writers are left direct**: the demo seeder (fixed ids other demo
+>    records point at, off by default) and `tools/backfill_project_sites.py`
+>    (a one-off migration already run).
+> 6. **An unlinked address is merged only when it is an exact duplicate of the
+>    replacement.** Without this the band's Merge link could never work on a
+>    link-free pair, and a merge whose documents persisted but whose
+>    `addresses` sync did not could not be run again.
+> 7. **The merge log lives on the surviving address** (`merged_from`), not in a
+>    new collection, so the deletion and the log are written by the same
+>    `addresses` sync. Limit: if that whole sync failed and the process
+>    restarted, the re-run writes a fresh entry listing only what IT repointed.
+> 8. **The type lock now counts ID links only**; the edit log still fires on
+>    name mentions as well.
+> 9. **The delivery challan's consignee link accepts any type**, because its
+>    picker offers the whole book (`CONSIGNEE_TYPES = None`).
+> 10. **Print byte-identity is proved for the documents that print**: purchase
+>     order, draft PO, delivery challan (all three copy labels) and work order.
+>     Projects, employees and attendance markings print nothing; their screens
+>     resolve the id and will show the replacement, as intended.
+>
+> **Golden moved:** `tests/test_page_golden.py` *address book*, `head` and
+> `main`, +1,218 bytes: the new styles, "5 refs" → "5 linked", and the demo
+> vendor's name-only "2 refs" gone. Diffed, reason recorded beside the row. **No
+> print golden moved.** `docs/ACCESS_MATRIX.md`: one new endpoint (218 → 219);
+> roles and permissions unchanged (7 / 93).
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
