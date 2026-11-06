@@ -6921,6 +6921,73 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 November 2026, by the owner's written instruction for this pass — UNASSIGNED LABOUR SPLIT BY SITE, AND TWO ROWS LINKED TO ONE EMPLOYEE ARE A CLASH · POST-GO-LIVE
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> named here. This is the **seventy-first** occasion. **No payroll figure and
+> no P&L number moves**; only which days a single assignment writes, and
+> which days an import declines.
+>
+> **What was asked:**
+>
+> 1. **`/attendance/unassigned` splits by SITE** — one row per worker x month
+>    x site, from the site stored on each marking, never one row spanning
+>    several. Assigning a row writes only that site's unassigned days of that
+>    worker-month, logged as today. The dropdown lists only that site's
+>    projects plus *No project (overhead)*. A site with no project says *No
+>    project at this site yet* and links to creating one; overhead stays and
+>    **asks for confirmation**, since it removes the row for good. Markings
+>    with no site get their own *No site recorded* row, offering every project
+>    plus overhead.
+> 2. **Two spellings linked to one employee are a clash** — the case the
+>    sixty-ninth block's report raised. Two tab rows linked to the same
+>    employee that both mark a day: flagged on the preview, imported on
+>    neither.
+>
+> **This SUPERSEDES** the sixty-sixth block's ruling 3 grain (worker-month,
+> offered the union of its sites' projects) on the screen, and the
+> sixty-ninth block's measured *"written once, from the first row"* for
+> linked rows at import.
+>
+> **What was built:** `attendance.site_key_of()`, `unassigned_worker_months()`
+> regrouped (each row gains `site_key`, `site_id`, `site_label`, `site_kind`,
+> `no_project`; `sites` is kept with one entry), `assign_month(…, site=)`, the
+> screen and route; `payimport.linked_clashes()` / `linked_signature()`, the
+> preview flag and the commit gate. No new route, permission, collection or
+> stored field.
+>
+> **The agent's own calls, declared:**
+>
+> 1. **Overhead asks first on EVERY row**, not only a no-project site's — the
+>    reason given (it removes the row for good) is true of all of them. The
+>    confirmation is server-side (a refused post, then a panel posting
+>    `confirm=1`), so it holds with no script.
+> 2. **A legacy marking carrying only a site STRING** (not in the address
+>    book) is its own row under that string, marked *not in the address
+>    book*, and — like *No site recorded* — offered every project. It is
+>    never matched to an address.
+> 3. **A no-site row may take any live project**: there is no site to hold
+>    the project to. Every other row still refuses a project from another
+>    site at the write, not only in the dropdown.
+> 4. **"Linked" is the operator's pick, made on the preview.** The preview
+>    flags what its own picks link; a commit whose picks link a clash the
+>    page did not show writes nothing and returns to the preview with those
+>    picks, flagged; the next commit imports, those days on neither row. **A
+>    name twice on ONE tab linked to one employee is the same clash** —
+>    the sixty-ninth block's test of that case is amended with it.
+> 5. The *create a project* link goes to `/projects/create` without a site
+>    prefilled — `project.py`'s form takes none, and adding one is a route
+>    change this block did not ask for.
+>
+> **Goldens:** none moved — neither page is pinned in
+> `tests/test_page_golden.py`. Amended tests carry the old assertion:
+> `tests/test_labour_assign.py` (2), `tests/test_one_worker_one_day.py` (2).
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

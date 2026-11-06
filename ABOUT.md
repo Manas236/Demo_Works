@@ -12581,6 +12581,23 @@ Held by [tests/test_employee.py](tests/test_employee.py).
 
 #### Unassigned labour — the worklist · `/attendance/unassigned` · 5 November 2026
 
+> ⚠ **SPLIT BY SITE from 6 November 2026** (CLIENT_CHANGES.md §0
+> **seventy-first** block). The grain is now **worker x month x SITE**, the
+> site read off each marking by `attendance.site_key_of()` — `book:<address
+> id>`, `text:<legacy label>` (unmapped, never matched), or `none:` (*No site
+> recorded*). A row offers only the projects filed at ITS site (a row with no
+> address-book site offers every live project), plus *No project (overhead)*;
+> a site with none says *No project at this site yet* and links to
+> `/projects/create` for a holder of `project.create`. The form posts `site`,
+> and `assign_month(…, site=key)` writes only that site's unassigned days —
+> the other site's row is untouched. **Overhead asks first**: without
+> `confirm=1` the route writes nothing and sends the operator back to a
+> confirmation panel (`#confirm-overhead`), server-side, no script. The
+> paragraphs below describe the worker-month grain they replaced, and the
+> "listed once with both sites' candidates" bullet is superseded.
+> `assign_month()` without `site` keeps the old whole-month write for
+> callers off the screen. Tests: `tests/test_unassigned_by_site.py`.
+
 CLIENT_CHANGES.md §0's **sixty-sixth** block, ruling 3;
 [docs/LABOUR_PL.md](docs/LABOUR_PL.md) §3 is the defect. **One row per
 `(worker, month)`** carrying labour that is on no project and was not put
@@ -13002,6 +13019,17 @@ on several tabs, and their day cells on each tab are their days at that site.
 * ⚠ **A day marked on two tabs is imported on NEITHER** (`worker_days()`):
   flagged on the preview, skipped by the commit, listed in the summary; it is
   marked by hand once resolved.
+* ⚠ **…and so is a day two ROWS LINKED TO ONE EMPLOYEE both mark** (6 Nov
+  2026, §0 **seventy-first** block — two spellings on two tabs, or one name
+  twice on one tab, picked as the same person): `linked_clashes()`. Until
+  then the first row by sheet order won. The picks are made on the preview,
+  so the preview computes the clash from the picks it shows (a pick carried
+  back in the query string wins over the name match) and prints the
+  signature in the hidden `linked_seen`; a commit whose picks make a clash
+  the page did NOT show (`linked_seen` differs) writes nothing and goes back
+  to the preview with its picks, flagged. Committed with the matching
+  signature, those days are imported on neither row and listed in the
+  summary.
 * **The site AND — at an address carrying two or more projects — the project
   are answered once per SITE NAME**: `site_<i>` and `sproj_<i>`. That replaces
   the sixty-sixth block's per-worker picker, which is no longer drawn (a POST

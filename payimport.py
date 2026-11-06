@@ -487,6 +487,56 @@ def worker_days(rec: dict, worker: dict) -> tuple:
     return days, clashes
 
 
+def linked_clashes(rec: dict, links: dict) -> dict:
+    """
+    `{first row index: [{"day", "tabs", "with"}]}` — the days that two or more
+    sheet ROWS LINKED TO ONE EMPLOYEE both mark.
+
+    `links` is `{first row index: employee id}` — the operator's picks (or,
+    on the preview, the picks the page is showing). `""` and `"new"` link
+    nothing: a new employee is a new person per row.
+
+    ⚠ **The same rule as `worker_days()`, one step further out** (6 November
+      2026, CLIENT_CHANGES.md §0 seventy-first block). `group_workers()`
+      merges rows whose names normalise EQUAL; two spellings of one person
+      (*PUSHKAR MISHRA* / *PUSHKAR MISRA*) stay two workers, and once both are
+      picked as the same employee a day marked under each used to be written
+      ONCE, from whichever row came first — a site chosen by row order. Now
+      it is what a day on two tabs under one spelling is: flagged on the
+      preview and imported on NEITHER.
+    """
+    by_emp = {}
+    for w in workers_of(rec):
+        first = w["rows"][0]
+        eid = str(links.get(first) or "").strip()
+        if eid and eid != "new":
+            by_emp.setdefault(eid, []).append(w)
+    out = {}
+    for eid, ws in by_emp.items():
+        if len(ws) < 2:
+            continue
+        seen = {}
+        for w in ws:
+            for i, d in worker_days(rec, w)[0]:
+                seen.setdefault(d["day"], []).append((w, i))
+        for day, hits in sorted(seen.items()):
+            if len({id(w) for w, _i in hits}) < 2:
+                continue
+            tabs = [rec["rows"][i].get("tab", "") or "the sheet" for _w, i in hits]
+            for w, i in hits:
+                others = sorted({x["name"] for x, _ in hits if x is not w})
+                out.setdefault(w["rows"][0], []).append(
+                    {"day": day, "tabs": tabs, "with": others})
+    return out
+
+
+def linked_signature(clashes: dict) -> str:
+    """A stable string naming every linked clash — what the preview showed,
+    carried back by the commit form so the commit knows it was seen."""
+    return ";".join(f"{k}:{c['day']}" for k in sorted(clashes)
+                    for c in clashes[k])
+
+
 def worker_money(rec: dict, worker: dict) -> tuple:
     """
     `(money, problems)` — the worker's money columns across tabs.
@@ -770,6 +820,12 @@ def _no_site_project(person: dict, month: str) -> dict:
 # THE WRITE
 # =============================================================================
 
+LINKED_CLASH_ERROR = ("Two rows are linked to the same employee and both "
+                      "mark the same day — flagged below. Those days will "
+                      "be imported on NEITHER row; commit again to go "
+                      "ahead, or link the rows differently.")
+
+
 def commit(rec: dict, form) -> tuple:
     """`(summary, error)`. Writes markings, ledger entries and new employees."""
     month = PAY.valid_month(form.get("month"))
@@ -834,6 +890,18 @@ def commit(rec: dict, form) -> tuple:
                 return {}, f"{w['name']}: {perr}."
             worker_pick[(first, site)] = pf
 
+    # ⚠ **Two rows linked to one employee, one day marked on both** (§0
+    #   seventy-first block): imported on NEITHER, and only once the preview
+    #   has SHOWN it — the picks are the operator's, made on the preview, so a
+    #   commit whose picks create a clash the page did not show goes back to
+    #   the preview with those picks, where it is flagged, and nothing is
+    #   written.
+    links = {w["rows"][0]: (form.get(f"emp_{w['rows'][0]}") or "").strip()
+             for w in workers_of(rec)}
+    cross = linked_clashes(rec, links)
+    if cross and str(form.get("linked_seen") or "") != linked_signature(cross):
+        return {}, LINKED_CLASH_ERROR
+
     batch = rec["id"]
     lo, hi = PAY.month_bounds(month)
     summary = {"markings": 0, "skipped_days": 0, "entries": 0, "created": 0,
@@ -878,8 +946,15 @@ def commit(rec: dict, form) -> tuple:
         for c in clashes:
             summary["clashes"].append(
                 f"{lead['name']} day {c['day']} ({' / '.join(c['tabs'])})")
+        linked = {c["day"] for c in cross.get(first, [])}
+        for c in cross.get(first, []):
+            summary["clashes"].append(
+                f"{lead['name']} day {c['day']} (also marked as "
+                f"{' / '.join(c['with'])}, linked to the same employee)")
         no_site_pf = None
         for i, d in days:
+            if d["day"] in linked:
+                continue
             site = rec["rows"][i]["site"]
             if site:
                 sf, pf = mapping.get(site, ({}, {}))
@@ -1127,6 +1202,20 @@ def preview(id):
 
     people = sorted(EMP.employees().values(),
                     key=lambda e: str(e.get("name") or "").lower())
+
+    def _pick(i, name):
+        """The employee this row's select shows: a pick carried back from a
+        refused commit, else the name match."""
+        if f"emp_{i}" in request.args:
+            got = str(request.args.get(f"emp_{i}") or "").strip()
+            return EMP.employees().get(got) or ({"id": got} if got == "new"
+                                                else {})
+        return match_employee(name)
+
+    picks = {w["rows"][0]: _pick(w["rows"][0], rec["rows"][w["rows"][0]]["name"])
+             for w in workers_of(rec)}
+    cross = linked_clashes(rec, {k: (v or {}).get("id", "")
+                                 for k, v in picks.items()})
     emp_rows = ""
     for w in workers_of(rec):
         i = w["rows"][0]
@@ -1134,9 +1223,11 @@ def preview(id):
         wrow = worker_row(rec, w)
         days, clashes = worker_days(rec, w)
         money_notes = worker_money(rec, w)[1]
-        hit = match_employee(row["name"])
+        hit = picks[i] if (picks[i] or {}).get("name") else {}
+        chosen = (picks[i] or {}).get("id", "")
         opts = [f'<option value="">— skip this row —</option>',
-                '<option value="new">Create a new employee</option>']
+                f'<option value="new"{" selected" if chosen == "new" else ""}>'
+                'Create a new employee</option>']
         opts += [f'<option value="{_esc(e["id"])}"{" selected" if hit and e["id"] == hit["id"] else ""}>'
                  f'{_esc(e.get("name"))}{" (" + _esc(e.get("code")) + ")" if e.get("code") else ""}</option>'
                  for e in people]
@@ -1163,6 +1254,13 @@ def preview(id):
             notes.append("⚠ marked on two tabs, NOT imported until resolved: "
                          + "; ".join(f"day {c['day']} ({' / '.join(c['tabs'])})"
                                      for c in clashes))
+        if cross.get(i):
+            notes.append("⚠ linked to the same employee as "
+                         + ", ".join(sorted({n for c in cross[i] for n in c["with"]}))
+                         + " and both mark the same day, NOT imported on "
+                           "either until resolved: "
+                         + "; ".join(f"day {c['day']} ({' / '.join(c['tabs'])})"
+                                     for c in cross[i]))
         if conflicts:
             notes.append(f"{conflicts} day(s) already marked in the app — skipped")
         if m.get("loan") and not m.get("balance_loan"):
@@ -1235,6 +1333,7 @@ def preview(id):
     <div class="form-section">
       <div class="section-title">Month</div>
       <input type="month" name="month" required value="{_esc(month)}"/>
+      <input type="hidden" name="linked_seen" value="{_esc(linked_signature(cross))}"/>
     </div>
     <div class="form-section">
       <div class="section-title">Where each SITE in the sheet is</div>
@@ -1328,9 +1427,16 @@ def commit_import(id):
                                 type="error"))
     summary, error = commit(rec, request.form)
     if error:
+        keep = {}
+        if error == LINKED_CLASH_ERROR:
+            # The operator's picks travel back, so the preview shows the
+            # clash THEY made, not the one its own name match would make.
+            keep = {k: v for k, v in request.form.items()
+                    if k.startswith(("emp_", "rate_", "site_", "sproj_",
+                                     "proj_"))}
         return redirect(url_for("payimport.preview", id=id,
                                 month=request.form.get("month"),
-                                msg=error, type="error"))
+                                msg=error, type="error", **keep))
     msg = (f"Imported: {summary['markings']} day(s) marked, "
            f"{summary['skipped_days']} skipped as already marked, "
            f"{summary['entries']} ledger entr(ies), {summary['created']} new "

@@ -11,7 +11,7 @@ on a worker-day, whichever way round the paths are taken:
 |---|---|
 | hand entry, `/attendance/mark` | `_validate()` → `conflicting_record()` refuses |
 | hand correction, `/attendance/edit/<id>` | the same, with the record's own id excepted |
-| the multi-tab import, `/payroll/import/commit/<id>` | a day on two tabs is imported on NEITHER (`payimport.worker_days()`); every other day goes through `attendance.import_marking()`, which refuses an existing marking and never overwrites it |
+| the multi-tab import, `/payroll/import/commit/<id>` | a day on two tabs is imported on NEITHER (`payimport.worker_days()`), and from 6 Nov 2026 so is a day two rows LINKED TO ONE EMPLOYEE both mark (`payimport.linked_clashes()`); every other day goes through `attendance.import_marking()`, which refuses an existing marking and never overwrites it |
 | reassignment, `/attendance/assign` (the `/attendance/unassigned` screen) | `assign_month()` only rewrites `project_id` / `project_name` / the overhead mark on markings that already exist: it creates none and moves no date or person |
 
 **Measured on `5730b15`: no path could create a second marking; nothing was
@@ -177,10 +177,30 @@ def test_hand_entry_after_an_import_is_refused_on_an_imported_day(world):
     _invariant()
 
 
-def test_one_name_twice_on_one_tab_mapped_to_one_worker_marks_each_day_once(world):
-    """`group_workers()` keeps two same-tab rows apart; if the operator then
-    picks the SAME employee for both, the second row's overlapping days are
-    refused by `import_marking()` — skipped, never a second marking."""
+def _commit_seen(client, sid, form):
+    """Commit as an operator does: the first post comes back to the preview
+    with the clash flagged; the second carries what the preview showed."""
+    r = client.post(f"/payroll/import/commit/{sid}", data=form)
+    assert "/payroll/import/preview/" in r.headers["Location"], \
+        "a linked clash the preview did not show must go back to it"
+    assert STORE["pay_imports"][sid]["status"] != "committed"
+    page = client.get(r.headers["Location"]).get_data(as_text=True)
+    assert "linked to the same employee as" in page
+    seen = page.split('name="linked_seen" value="', 1)[1].split('"', 1)[0]
+    assert seen
+    client.post(f"/payroll/import/commit/{sid}",
+                data=dict(form, linked_seen=seen.replace("&quot;", '"')))
+    return page
+
+
+def test_one_name_twice_on_one_tab_mapped_to_one_worker_imports_neither_day(world):
+    """
+    ⚠ AMENDED 6 November 2026 (CLIENT_CHANGES.md §0 seventy-first block), and
+    renamed from `…_marks_each_day_once`: two rows LINKED TO ONE EMPLOYEE that
+    both mark a day are a clash — flagged, imported on NEITHER. The old
+    assertions were `len(month_markings) == 10` and `skipped_days == 3` (the
+    first row's days 5-7 written, the second's skipped).
+    """
     sid = _upload(world, book([
         ("ROADPALI", [
             {"name": "PUSHKAR MISHRA", "marks": {d: (1, None) for d in range(1, 8)}},
@@ -188,16 +208,22 @@ def test_one_name_twice_on_one_tab_mapped_to_one_worker_marks_each_day_once(worl
         ])]))
     rec = STORE["pay_imports"][sid]
     assert len(PI.workers_of(rec)) == 2
-    world.post(f"/payroll/import/commit/{sid}", data=_form(sid))
-    assert len(AT.month_markings("pk", "2026-09")) == 10
-    assert rec["summary"]["skipped_days"] == 3          # days 5, 6, 7
+    _commit_seen(world, sid, _form(sid))
+    days = {m["date"][-2:] for m in AT.month_markings("pk", "2026-09")}
+    assert days == {"01", "02", "03", "04", "08", "09", "10"}
+    assert rec["summary"]["skipped_days"] == 0
     _invariant()
 
 
-def test_two_spellings_on_two_tabs_picked_as_one_worker_mark_each_day_once(world):
-    """Two names the sheet keeps apart (`norm()` differs) are two workers to
-    the import; if both are picked as the same person, an overlapping day is
-    written ONCE, from the first, and the second is skipped."""
+def test_two_spellings_on_two_tabs_linked_to_one_worker_are_a_clash(world):
+    """
+    ⚠ AMENDED 6 November 2026 (§0 seventy-first block), and renamed from
+    `…_mark_each_day_once`: the case the last report raised. Two spellings
+    on two tabs, both picked as the same employee, both marking day 5 — the
+    same rule as one spelling on two tabs: flagged on the preview, imported
+    on NEITHER. The old assertions were `len(_on("pk")) == 1` (day 5 written
+    from ROADPALI by row order) and `skipped_days == 1`.
+    """
     sid = _upload(world, book([
         ("ROADPALI", [{"name": "PUSHKAR MISHRA",
                        "marks": {d: (1, None) for d in range(1, 6)}}]),
@@ -208,10 +234,49 @@ def test_two_spellings_on_two_tabs_picked_as_one_worker_mark_each_day_once(world
     form = _form(sid)
     for w in PI.workers_of(rec):
         form[f"emp_{w['rows'][0]}"] = "pk"
-    world.post(f"/payroll/import/commit/{sid}", data=form)
-    assert len(_on("pk")) == 1
+    page = _commit_seen(world, sid, form)
+    assert "day 5 (ROADPALI / BANGALORE)" in page
+    assert _on("pk") == [], "neither tab's day 5 is imported"
+    assert len(AT.month_markings("pk", "2026-09")) == 9
+    assert any("linked to the same employee" in c
+               for c in rec["summary"]["clashes"])
+    _invariant()
+
+
+def test_two_spellings_linked_by_the_name_match_are_flagged_on_first_view(world):
+    """When the preview's own picks already link both rows (a second
+    employee record does not exist, but the operator's pick does), the flag
+    is on the page before any commit is tried."""
+    sid = _upload(world, book([
+        ("ROADPALI", [{"name": "PUSHKAR MISHRA",
+                       "marks": {d: (1, None) for d in range(1, 6)}}]),
+        ("BANGALORE", [{"name": "PUSHKAR MISRA",
+                        "marks": {d: (1, None) for d in range(5, 11)}}]),
+    ]))
+    rec = STORE["pay_imports"][sid]
+    q = "&".join(f"emp_{w['rows'][0]}=pk" for w in PI.workers_of(rec))
+    page = world.get(f"/payroll/import/preview/{sid}?month=2026-09&{q}") \
+        .get_data(as_text=True)
+    assert "linked to the same employee as PUSHKAR MISRA" in page
+    assert "linked to the same employee as PUSHKAR MISHRA" in page
+    assert page.count('value="pk" selected') == 2 or \
+        page.count('value="pk" selected>') == 2
+
+
+def test_two_spellings_with_no_shared_day_import_normally(world):
+    sid = _upload(world, book([
+        ("ROADPALI", [{"name": "PUSHKAR MISHRA",
+                       "marks": {d: (1, None) for d in range(1, 5)}}]),
+        ("BANGALORE", [{"name": "PUSHKAR MISRA",
+                        "marks": {d: (1, None) for d in range(5, 11)}}]),
+    ]))
+    rec = STORE["pay_imports"][sid]
+    form = _form(sid)
+    for w in PI.workers_of(rec):
+        form[f"emp_{w['rows'][0]}"] = "pk"
+    r = world.post(f"/payroll/import/commit/{sid}", data=form)
+    assert "/payroll/import/preview/" not in r.headers["Location"]
     assert len(AT.month_markings("pk", "2026-09")) == 10
-    assert rec["summary"]["skipped_days"] == 1
     _invariant()
 
 
@@ -273,7 +338,7 @@ def test_reassignment_to_overhead_creates_no_marking(world):
     ids = {r["id"] for r in rows}
     world.post("/attendance/assign", data={
         "employee_id": "pk", "month": "2026-09",
-        "project_id": AT.OVERHEAD_CHOICE})
+        "project_id": AT.OVERHEAD_CHOICE, "confirm": "1"})
     assert {r["id"] for r in AT.month_markings("pk", "2026-09")} == ids
     _invariant()
 
@@ -296,7 +361,7 @@ def test_a_day_freed_by_a_clash_can_be_marked_by_hand_exactly_once(world):
     _invariant()
     world.post("/attendance/assign", data={
         "employee_id": "pk", "month": "2026-09",
-        "project_id": AT.OVERHEAD_CHOICE})
+        "project_id": AT.OVERHEAD_CHOICE, "confirm": "1"})
     assert len(_on("pk")) == 1
     assert len(AT.month_markings("pk", "2026-09")) == 5
     _invariant()
