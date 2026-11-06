@@ -1233,6 +1233,18 @@ class AddressKind(RegisterKind):
             if not err and lab in seen:
                 err = f"row {seen[lab]} already has this label"
             if not err:
+                # ⚠ The address book's OWN duplicate guard (6 November 2026),
+                #   the one `create_record()` runs, with this file's earlier
+                #   good rows as `pending` so two rows of one sheet cannot
+                #   duplicate each other either. There is no "different
+                #   branch" tick on an import: a row sharing a GSTIN is
+                #   refused here and added on the Add Address form instead.
+                pend = [dict(it["data"], label=f"row {it['row']}")
+                        for it in items if not it["error"]]
+                kind, matches = AD.duplicate_guard(data, pending=pend)
+                if kind:
+                    err = AD.duplicate_message(kind, matches)
+            if not err:
                 seen[lab] = n
             items.append({"row": n, "data": data, "error": err})
         good = sum(1 for it in items if not it["error"])

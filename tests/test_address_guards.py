@@ -611,5 +611,8 @@ def test_the_list_page_marks_archived_and_counts_references(client):
     client.post(f"/address/archive/{aid}", follow_redirects=False)
     html = client.get("/address/").get_data(as_text=True)
     assert "Archived" in html
-    assert "1 ref" in html
+    # Until 6 November 2026 the chip counted id links AND name matches:
+    #   assert "1 ref" in html
+    # It now counts ID links only (CLIENT_CHANGES.md §0 seventieth block).
+    assert "1 linked" in html
     assert f"/address/view/{aid}" in html

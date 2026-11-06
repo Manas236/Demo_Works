@@ -145,7 +145,7 @@ from quotation import (
 # re-listed: "By Road Transport" must mean the same thing whichever direction
 # the goods are moving.
 from quotation import _DEL_TERMS, _DISPATCH, _INCOTERMS, _PAY_TERMS, _sel_opts
-from address import picker_options
+from address import picker_options, VENDOR_TYPES  # the merge reads the same tuple
 
 purchase_bp = Blueprint("purchase", __name__, url_prefix="/purchase")
 
@@ -1463,7 +1463,7 @@ def _vendor_field(selected: str) -> str:
     return f"""<div class="form-group">
               <label for="vendor_id">Vendor *</label>
               <select id="vendor_id" name="vendor_id" required>
-                {picker_options("— choose vendor —", only_types=("vendor",), selected=selected)}
+                {picker_options("— choose vendor —", only_types=VENDOR_TYPES, selected=selected)}
               </select>
               <small class="field-hint">From the address book, vendors only.
                 Add one at <a href="{url_for("address.add_address")}">Address Book</a>
@@ -2623,7 +2623,7 @@ def create_purchase(imported: dict = None):
             <div class="form-group">
               <label for="vendor_id">Vendor *</label>
               <select id="vendor_id" name="vendor_id" required>
-                {picker_options("— choose vendor —", only_types=("vendor",), selected=v_vendor)}
+                {picker_options("— choose vendor —", only_types=VENDOR_TYPES, selected=v_vendor)}
               </select>
               <small class="field-hint">From the address book, vendors only.
                 Add one at <a href="{url_for("address.add_address")}">Address Book</a>

@@ -3990,6 +3990,14 @@ bills exist and one is on the installation leg.
      "changes": [{"field": "city", "from": "Bengaluru", "to": "Bangalore"}]},
   ],
 
+  # ── Merge-then-delete, 6 November 2026 (§0 seventieth block) ─────────
+  "merged_from": [           # ⚠ ABSENT until another address is merged INTO this one
+    {"at": "2026-11-06 12:00", "by_user_id": "<user id>",
+     "from_id": "<the deleted address>", "to_id": "<this address>",
+     "repointed": [{"collection": "purchases", "id": "<po id>", "field": "vendor_id"}],
+     "record": {...}},       # a full copy of the deleted address, as it was
+  ],
+
   # ── GSTIN auto-fill, 29 September 2026 ─────────────────────────────────
   "gst_status":      "Active",            # ⚠ ABSENT unless the GSTIN was looked up
   "gst_verified_at": "2026-09-29 16:48",  #   when the portal said so
@@ -4081,9 +4089,16 @@ writers actually copy (`employee.py` takes the label; `purchase.py` writes
 `company or contact_name`). **Blank values are excluded and that is
 load-bearing:** an address with no company would otherwise claim every record
 whose company field is empty, and every deletion in the book would be refused.
-It can therefore **over**-report and never under-reports, which is the direction
+~~It can therefore **over**-report and never under-reports, which is the direction
 a guard should err in; the refusal names the records, so an over-report is
-visible.
+visible.~~ ⚠ **CLOSED 6 November 2026 (§0 seventieth block, §7 gap 116).** The
+over-report was not harmless: on the live database both NEWAGE cards read
+"2 refs" while neither had a single link, and every company-name collision was
+undeletable. `references_of()` itself is unchanged (the repoint tools under
+`tools/` still need the name matches), but only **ID links** now count:
+`linked_of()` drives the chip, the plain-delete refusal, the type lock and the
+merge; `mentions_of()` is listed as *"mentions this name, not linked, not
+affected"* and blocks nothing. See *Duplicates and the merge* below.
 
 ⚠ **Quotations and BOQs are deliberately NOT on that list.** `picker_payload()`
 is a *fill* helper: JavaScript copies the fields into the form and the document
@@ -4136,6 +4151,111 @@ they both already import. `employee.SITE_TYPES` is an alias onto it, so
 `attendance.py` and `tools/backfill_site_links.py` are unchanged.
 
 Held by [tests/test_address_guards.py](tests/test_address_guards.py).
+
+#### Duplicates and the merge (6 November 2026, CLIENT_CHANGES.md §0 seventieth block)
+
+On the live database the client created **NEWAGE FIRE FIGHTING CO. LIMITED**
+(GSTIN `24AABCN5691G1ZF`) twice, once as an office and once as a vendor, and
+nothing stopped it. This pass stops it happening again and gives Owner and
+Directors a safe way to remove a linked address. (The live record itself is
+removed by a separate server data fix, not by this code.)
+
+**Every writer of an address, inventoried.** All application writes go through
+two functions, and the guard is in both:
+
+| path | writes through |
+|---|---|
+| `/address/add` (the Add form) | `create_record()` |
+| GSTIN auto-fill (`/address/gst/lookup`, `/address/edit/<id>/gst/lookup`) | **never saves**; it fills the form, whose Save is the add or edit below |
+| `/address/edit/<id>` | `update_record()` (was `existing.update()` inline) |
+| Import from Excel (`docimport.AddressKind`) | `build()` runs `duplicate_guard()` with the file's earlier rows as `pending`; `create()` calls `create_record()` |
+| `ensure_demo_addresses()` (`_seed`) | ⚠ **direct**, deliberately: fixed demo ids that other demo records point at, behind `SAMRUDDHI_DEMO_DATA` (off by default) |
+| `tools/backfill_project_sites.py` | ⚠ **direct**: a one-off migration already run on the live box, writing blank-line site addresses |
+
+No PDF import and no free-text fallback writes an address: a typed vendor,
+consignee or contractor is a snapshot on the document with `""` for its id.
+
+**Every field that stores an address id**, and the types its picker offers
+(`address.LINK_TYPES`, which the pickers themselves now read):
+
+| collection.field | picker | types |
+|---|---|---|
+| `projects.site_address_id` | `project.py` | `SITE_TYPES` (site, office) |
+| `employees.site_address_id` | `employee.site_options()` | `SITE_TYPES` |
+| `attendance.site_address_id` | `employee.site_field_html()` | `SITE_TYPES` |
+| `purchase_orders.vendor_id` (draft PO) | `po_draft.py` | `VENDOR_TYPES` (vendor) |
+| `purchases.vendor_id` | `purchase.py` (both forms) | `VENDOR_TYPES` |
+| `delivery_challans.consignee_id` | `challan.py` | `CONSIGNEE_TYPES` = None, the whole book |
+| `work_orders.contractor_id` | `workorder.py` | `CONTRACTOR_TYPES` (contractor) |
+
+Nothing else holds one: `bill_pick` / `ship_pick` on the BOQ and quotation are
+browser-only fill selects (no `name=`), the measurement sheet snapshots its
+site label, and a payslip carries no site id.
+
+**The duplicate guard — `duplicate_guard()`, one function.** Normalised first:
+GSTIN upper-case without spaces, PIN digits only, line 1 and company casefolded
+with punctuation and repeated whitespace collapsed (`duplicate_key()`).
+
+- **EXACT duplicate, refused, no override:** same line 1 + same PIN, and the
+  same GSTIN where both carry one, or the same company where either lacks one.
+  Across **all** types, active or archived. The refusal names the existing
+  record, its type and whether it is archived, links to it, and offers
+  Un-archive (to `address.delete` holders; others are told who can).
+- **Same GSTIN, different address:** saved only with **"This is a different
+  branch of the same company"** ticked; the matches are listed and every box
+  keeps what was typed. An import has no tick, so such a row is refused there
+  and added on the form.
+- **Edit:** the same rules, excluding the record itself.
+- ⚠ **A blank key matches nothing.** No line 1 or no PIN is nobody's
+  duplicate; on the company rule, no company is nobody's either.
+- ⚠ **Two different GSTINs at one address are NOT duplicates** (two companies
+  in one building). The GSTIN wins where both sides have one.
+- ⚠ **An edit that moves none of the four key fields is not checked.** A pair
+  that was already duplicate before the guard existed would otherwise be
+  un-editable, even to fix a phone number, until merged. The GSTIN
+  check-character's rule (new or changed values only). The pair shows on the
+  register's amber band instead.
+- ⚠ **One company at one address holds ONE type.** An office that is also a
+  vendor is one record; the second type cannot be added beside it, and the
+  merge cannot fold a site-linked record and a vendor-linked one together. If
+  that ever bites, the fix is a multi-type address, not loosening the rule
+  (§7 gap 117).
+
+**Merge-then-delete — `/address/merge/<id>`, `merge_into()`.** Gated by
+`address.delete` **alone** (Owner + Directors, and a per-person ALLOW or BLOCK
+from `/access/` applies), so it is in `auth.PERMISSION_ONLY_DESTROYS`. The
+plain `/address/delete/<id>` is unchanged and **still Owner-only**.
+
+- An unlinked address: the plain delete, as before. A linked one: the delete
+  page (and the merge page) lists every linked record by collection, number and
+  field, and **requires a replacement**; archive is still offered.
+- The replacement must be **active, not itself, and a type every link's own
+  picker offers** (`LINK_TYPES`). Incompatible addresses are not offered; when
+  none fit, the page says why and offers archive.
+- The POST repoints each id field old → replacement and **changes nothing else
+  on any document**: no snapshot text, party block, total, status or timestamp.
+  The print of every document that carries an address id (purchase order, draft
+  PO, delivery challan with its three copy labels, work order) is byte-for-byte
+  the same after a merge.
+- ⚠ **The log lives ON THE SURVIVING ADDRESS**, `merged_from: [{at,
+  by_user_id, from_id, to_id, repointed: [{collection, id, field}], record:
+  <full copy>}]`: a user **id**, never a name. It is written by the same
+  `addresses` sync as the deletion, so a restart after a partial persist leaves
+  either the old record or the log. The register's band shows **"A merge did
+  not finish"** with a Finish link; a re-run repoints only what is left and
+  adds no second entry and no repeated repoint.
+- ⚠ **An address with NOTHING linked is merged only when it is an exact
+  duplicate of the replacement.** Otherwise a merge that repoints nothing would
+  be the Owner-only plain delete by another door. The exception is what lets a
+  link-free duplicate pair be cleared from the band, and lets a merge whose
+  documents persisted but whose `addresses` sync did not be run again.
+- **A GET of the merge, delete or register page mutates nothing.**
+
+**The register's amber band** (`duplicate_groups()`): drawn only for a user who
+can reach the merge, listing each group that breaks the exact rule with a
+**Merge into …** link per member. Read-only until a link is followed.
+
+Held by [tests/test_address_merge.py](tests/test_address_merge.py).
 
 ### Project  (CLIENT_CHANGES.md items 9 and 10)
 
@@ -13380,11 +13500,12 @@ are ones no printed sheet uses, and `docsheet.py` (which builds every printed
 
 | Route | View |
 |---|---|
-| `GET /address/` | `list_addresses` |
-| `GET /address/view/<id>` | `view_address` — the record, what points at it, its edit history |
-| `GET,POST /address/add` | `add_address` |
-| `GET,POST /address/edit/<id>` | `edit_address` — `type` read-only while referenced |
-| `GET,POST /address/delete/<id>` | `delete_address` — GET confirms, POST deletes; **refused while referenced, on both** |
+| `GET /address/` | `list_addresses` — with the amber duplicates band for `address.delete` holders (6 Nov 2026) |
+| `GET /address/view/<id>` | `view_address` — the record, what is linked to it, what only mentions its name, its edit and merge history |
+| `GET,POST /address/add` | `add_address` — through `create_record()`'s duplicate guard |
+| `GET,POST /address/edit/<id>` | `edit_address` — through `update_record()`'s duplicate guard; `type` read-only while **linked** |
+| `GET,POST /address/delete/<id>` | `delete_address` — Owner-only; GET confirms, POST deletes; **refused while LINKED by id, on both** (a name-only mention no longer blocks); a linked address's GET is the merge page |
+| `GET,POST /address/merge/<id>` | `merge_address` (6 Nov 2026) — `address.delete` alone, Owner + Directors; GET lists the links and the compatible replacements and mutates nothing; POST repoints every id link, logs on the survivor, deletes. §3 *Duplicates and the merge* |
 | `POST /address/archive/<id>` | `archive_address` — out of every picker, reversibly |
 | `POST /address/unarchive/<id>` | `unarchive_address` |
 | `GET /address/gst/captcha` | `gst_captcha_add` — the add form's CAPTCHA image (`address.create`) |
@@ -17046,6 +17167,22 @@ text is unchanged, and every reference to them was moved with them.*
     the pin needs that coupling found first. **Not changed in this pass** —
     the pass that found it was about labour, and a dependency pin is Manas's
     call.
+116. ✅ **The address chip and delete guard over-reported references — CLOSED
+    6 November 2026** (CLIENT_CHANGES.md §0 seventieth block). §3 *Address*
+    said `references_of()` "can over-report and never under-reports" and called
+    that the right direction. On the live database it made both NEWAGE cards
+    read "2 refs" with no link between them, and any two addresses sharing a
+    company name were each undeletable. Only ID links count now
+    (`address.linked_of()`); name-only matches are listed as mentions and block
+    nothing. On the demo book Vishwakarma Pumps & Motors' "2 refs" disappears
+    for the same reason (`tests/test_page_golden.py`, re-baselined).
+117. 🟡 **One company at one address holds ONE address type — a declared limit,
+    OPEN by design** (6 November 2026). The duplicate guard refuses the same
+    company at the same address under a second type, so a customer office that
+    is also a vendor is one record, filed under one type, and a merge cannot
+    fold a site-linked record into a vendor-linked one. If the client ever needs
+    one party in two pickers, the fix is a multi-type address (a `types` list
+    the pickers test membership of), **not** loosening the duplicate rule.
 
 ## 8. Stale docs — do not trust these two files
 

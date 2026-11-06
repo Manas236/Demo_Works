@@ -66,6 +66,7 @@ import settings as SET
 import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
 import sheetimport as SI
 from address import has_options, picker_options, format_address_lines
+import address as _AD  # CONTRACTOR_TYPES lives there, read by the merge too
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _fmt_qty, _inr
 from store import STORE
@@ -483,7 +484,10 @@ def _number_html(typed, ref: str = "") -> str:
 # THE CONTRACTOR — a picker over the address book, with a typed fallback
 # =============================================================================
 
-CONTRACTOR_TYPES = ("contractor",)
+# ⚠ An ALIAS onto `address.CONTRACTOR_TYPES`, not a copy (6 November 2026):
+#   the address merge only moves a work order onto a type this picker offers,
+#   and it reads the same tuple. `employee.SITE_TYPES`'s arrangement.
+CONTRACTOR_TYPES = _AD.CONTRACTOR_TYPES
 
 
 def contractor_from(form) -> tuple:

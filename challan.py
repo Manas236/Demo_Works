@@ -114,7 +114,7 @@ import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31
 import docsheet as DS
 import pipeline as P
 import settings as SET
-from address import picker_options, format_address_lines
+from address import picker_options, format_address_lines, CONSIGNEE_TYPES
 from chrome import BASE_STYLES, _nav
 from dashboard import REGISTER_STYLES
 from store import STORE
@@ -554,6 +554,7 @@ DC_DOC_STYLES = "\n<style>\n" + DS.BAND_CSS + """
 def _consignee_block_form(data: dict) -> str:
     """The free-text fields, with the address-book picker as a prefill."""
     opts = picker_options("Prefill from the address book",
+                          only_types=CONSIGNEE_TYPES,  # None: the whole book
                           selected=data.get("consignee_id", ""))
     return f"""
       <div class="fg2">

@@ -108,7 +108,17 @@ def test_the_carve_out_is_exactly_the_five_the_forty_seventh_block_named():
         # a draft work order's access as exactly the PO's, per action.
         # `tests/test_work_orders.py` asserts the pairing from its own side.
         "workorder.delete_wo",
+        # The SIXTH name, and it needed a decision: CLIENT_CHANGES.md §0
+        # seventieth block (6 November 2026). Merge-then-delete of a LINKED
+        # address, Owner + Directors on `address.delete`. The plain
+        # `address.delete_address` is still Owner-only (asserted below).
+        "address.merge_address",
     }
+    # Until 6 November 2026 this was exactly the five above:
+    #   assert auth.PERMISSION_ONLY_DESTROYS == {"boq.delete_boq",
+    #       "quotation.delete_quotation", "proforma.delete_proforma",
+    #       "purchase.delete_purchase", "workorder.delete_wo"}
+    assert "address.delete_address" in auth.OWNER_ONLY
 
 
 def test_the_two_sets_are_disjoint():

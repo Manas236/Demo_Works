@@ -1234,6 +1234,10 @@ ROUTE_PERMISSIONS = {
     #   Operation Head hold `address.edit` and deliberately do not get this.
     "address.archive_address":    "address.delete",
     "address.unarchive_address":  "address.delete",
+    # 6 November 2026 (CLIENT_CHANGES.md §0 seventieth block): merge-then-
+    # delete. `address.delete` like the archive, so Owner and Directors; it is
+    # in PERMISSION_ONLY_DESTROYS below, NOT OWNER_ONLY, which is the point.
+    "address.merge_address":      "address.delete",
     # GSTIN auto-fill (29 September 2026). ⚠ **FOUR endpoints, a pair PER
     #   FORM, and no permission minted.** The CAPTCHA and the lookup serve both
     #   the add form and the edit form, and the brief gates them on "the same
@@ -1404,6 +1408,13 @@ PERMISSION_ONLY_DESTROYS: set = {
     "proforma.delete_proforma",
     "purchase.delete_purchase",
     "workorder.delete_wo",
+    # 6 November 2026 (§0 seventieth block): merge-then-delete of a LINKED
+    # address. It destroys the old address record, so it is a destroy route,
+    # and the client's instruction is Owner + Directors on `address.delete`.
+    # ⚠ The PLAIN `address.delete_address` stays in OWNER_ONLY, untouched, and
+    #   `address.merge_into()` refuses an address with nothing linked, so this
+    #   is not a second door to the plain delete.
+    "address.merge_address",
 }
 
 

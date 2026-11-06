@@ -92,7 +92,7 @@ import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31
 import settings as SET
 import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
-from address import picker_options, format_address_lines
+from address import picker_options, format_address_lines, VENDOR_TYPES
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr
 from store import STORE
@@ -669,7 +669,7 @@ PO_DOC_STYLES = """
 def _vendor_block_form(data: dict) -> str:
     """The picker and the free-text fallback, as one field group."""
     opts = picker_options("Select a vendor from the address book",
-                          only_types=("vendor",),
+                          only_types=VENDOR_TYPES,
                           selected=data.get("vendor_id", ""))
     return f"""
       <div class="form-group">

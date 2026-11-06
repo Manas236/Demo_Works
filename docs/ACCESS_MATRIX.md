@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 93 permissions · 218 classified endpoints.**
+**7 roles · 93 permissions · 219 classified endpoints.**
 
 ---
 
@@ -443,7 +443,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `address.view` | `address.list_addresses`, `address.view_address` |
 | `address.create` | `address.add_address`, `address.gst_captcha_add`, `address.gst_lookup_add`, `docimport.apply_address`, `docimport.preview_address`, `docimport.upload_address` |
 | `address.edit` | `address.edit_address`, `address.gst_captcha_edit`, `address.gst_lookup_edit` |
-| `address.delete` | `address.archive_address`, `address.delete_address`, `address.unarchive_address` |
+| `address.delete` | `address.archive_address`, `address.delete_address`, `address.merge_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |
 | `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `proforma.edit_proforma`, `ra.create_ra`, `receipt.new_receipt`, `measurement.create_ms`, `workorder.create_wo`, `po_draft.create_po`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
 | `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_staff_access`, `auth.edit_user`, `auth.list_users`, `auth.staff_access` |

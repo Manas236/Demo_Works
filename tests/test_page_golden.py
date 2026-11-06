@@ -773,8 +773,19 @@ PAGES = {
         {"head": "4b8bed71612763c6", "shell": "a1e6c63a6d4c6ac2", "chrome": "5840edff333df8f9", "main": "155bbaca72977d98"}),   # §0 66th ruling 3: moved=['head', 'main'], +482 bytes
     ("charges",         "/charge/"):                   ("20faf5129217e51b", 69218,
         {"head": "8d18d2cb4f314105", "shell": "a1e6c63a6d4c6ac2", "chrome": "ecd8e5237db40965", "main": "0117146916a6da27"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3225 bytes
-    ("address book",    "/address/"):                  ("334040ac7348c58e", 75642,
-        {"head": "0a1c0d68158bc7e5", "shell": "a1e6c63a6d4c6ac2", "chrome": "595eb9470c1c25e1", "main": "7e67e775827dc7af"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    # ⚠ RE-BASELINED 6 November 2026 (CLIENT_CHANGES.md §0 seventieth block),
+    #   `head` and `main` ONLY, +1,218 bytes. `head`: the duplicate-guard and
+    #   merge styles added to `address.ADDRESS_STYLES`. `main`: the card chip
+    #   counts ID links only, and the before/after was rendered and diffed, not
+    #   assumed. Exactly two lines moved: Whitefield site "5 refs" -> "5
+    #   linked", and Vishwakarma Pumps & Motors' "2 refs" is GONE, because both
+    #   of those were purchase orders naming the vendor's company in their own
+    #   snapshot with no vendor_id. That is the live NEWAGE over-report,
+    #   reproduced on the demo book. No band is drawn: the demo book holds no
+    #   duplicate. Was ("334040ac7348c58e", 75642, {"head": "0a1c0d68158bc7e5",
+    #   "main": "7e67e775827dc7af", ...}).
+    ("address book",    "/address/"):                  ("6df34255a4971aea", 76860,
+        {"head": "054f827309e366ef", "shell": "a1e6c63a6d4c6ac2", "chrome": "595eb9470c1c25e1", "main": "59165e6439b083e2"}),   # §0 70th: moved=['head', 'main'], +1218 bytes
     # ⚠ **RE-BASELINED 25 September 2026 — `main` ONLY, and it is the ONE
     #   golden this application's go-live hardening was always going to move.**
     #   ABOUT.md §7 gap 36 is closed by adding a **Starting Numbers** section to

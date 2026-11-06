@@ -21,7 +21,13 @@ because the fields were free text before the pickers arrived. So:
 
   * `references_of()` is the one function that answers "what points at this?",
     matching on **both** the id and the snapshot string, exactly, never fuzzily;
-  * **deletion is refused** while anything does, and the refusal names them;
+    from 6 November 2026 only its ID half (`linked_of()`) counts or blocks, and
+    the name half (`mentions_of()`) is listed as not linked, not affected;
+  * **deletion is refused** while anything is linked, and the refusal names them;
+    `/address/merge/<id>` repoints the links onto another address and then
+    deletes (Owner + Directors), changing nothing else on any document;
+  * **`duplicate_guard()`** refuses the same company at the same address twice,
+    in every type, through `create_record()` / `update_record()`;
   * **archiving** is the escape — a delete-refusal with no archive is a trap
     rather than a guard;
   * **editing is allowed and logged**, because the live data misspells a city
@@ -37,6 +43,7 @@ Address model (all fields are plain strings unless noted):
     phone, email, gstin,
     active     — bool, ABSENT MEANS TRUE (the archive flag)
     edit_log   — list, absent until a referenced address is edited
+    merged_from — list, absent until another address is merged into this one
 
 Indian postal convention is followed top-to-bottom:
     Contact / Company
@@ -49,6 +56,7 @@ Indian postal convention is followed top-to-bottom:
 ⚠  In-memory only — everything is lost on server restart (by design here).
 """
 
+import copy
 import re
 import uuid
 from datetime import datetime
@@ -471,13 +479,501 @@ def _ref_chips(refs: list) -> str:
     for r in refs:
         text = (f'{_e(r["kind"])} &middot; {_e(r["label"])}'
                 f'{" &middot; by name" if r["how"] == "label" else ""}')
-        try:
-            href = url_for(r["endpoint"], id=r["id"])
-        except Exception:
+        href = _ref_href(r)
+        if not href:
             out += f'<span class="addr-ref">{text}</span>'
             continue
         out += f'<a class="addr-ref" href="{href}">{text}</a>'
     return out
+
+
+def _ref_href(r: dict) -> str:
+    """The record's own page, or `""` when the endpoint cannot be built. The
+    ONE computed `url_for` for a reference (the chips and the merge table both
+    read it), so `tests/test_page_reachability.py`'s bound did not move."""
+    try:
+        return url_for(r["endpoint"], id=r["id"])
+    except Exception:
+        return ""
+
+
+# =============================================================================
+# LINKED vs MENTIONED — only an ID is a link (6 November 2026, §0 seventieth)
+# =============================================================================
+#
+# `references_of()` above is UNCHANGED and still answers both halves: the
+# repoint tools under `tools/` need the name matches to find a
+# legacy record, and that is still the right question for them.
+#
+# ⚠ **What changed is who counts what.** A name match is a record whose own
+#   snapshot TEXT happens to equal this address's label, company or contact.
+#   It holds no id; deleting the address cannot dangle it, because it never
+#   pointed at the address in the first place. Counting it as a reference made
+#   both NEWAGE cards on the live database read "2 refs" when neither had a
+#   single link, and made every company-name collision undeletable. So:
+#
+#     * `linked_of()`   ID links. The chip counts these, a plain delete is
+#                       refused on these, a merge repoints these, the type lock
+#                       guards these.
+#     * `mentions_of()` name-only matches. Listed on the view and delete pages
+#                       as "mentions this name, not linked, not affected", and
+#                       nothing else. The edit log still fires on them (an
+#                       edit history on a record somebody may later link to is
+#                       harmless; a missing one is not).
+
+def linked_of(address_id: str) -> list:
+    """The records that hold this address's ID. `references_of()` rows."""
+    return [r for r in references_of(address_id) if r["how"] == "id"]
+
+
+def mentions_of(address_id: str) -> list:
+    """The records whose snapshot text only MATCHES this address's name."""
+    return [r for r in references_of(address_id) if r["how"] == "label"]
+
+
+def _mention_chips(refs: list) -> str:
+    """Name-only mentions, said plainly as not linked."""
+    if not refs:
+        return ""
+    n = len(refs)
+    return (f'<div class="addr-mention"><b>{n} record{"" if n == 1 else "s"} '
+            f'mention{"s" if n == 1 else ""} this name, not linked, not '
+            f'affected.</b> Each one holds its own copy of the text and no link '
+            f'to this address, so deleting or merging it changes nothing on '
+            f'them.<div class="addr-refs">{_ref_chips(refs)}</div></div>')
+
+
+# =============================================================================
+# WHICH TYPES EACH LINK MAY HOLD — read by the pickers AND by the merge
+# =============================================================================
+#
+# ⚠ **One tuple per picker, and the picker reads it from here.** The merge must
+#   never move a link onto an address that link's own picker would not have
+#   offered (a project onto a vendor, a purchase order onto a site). The way to
+#   make "the merge's filter" and "the picker's filter" unable to disagree is
+#   for there to be only one: `purchase.py` and `po_draft.py` pass
+#   `VENDOR_TYPES`, `workorder.CONTRACTOR_TYPES` is an alias onto
+#   `CONTRACTOR_TYPES`, `challan.py` passes `CONSIGNEE_TYPES` (None: its
+#   prefill offers the whole book), and the three site pickers already read
+#   `SITE_TYPES`. `tests/test_address_merge.py` renders each picker and holds it
+#   to this table.
+VENDOR_TYPES = ("vendor",)
+CONTRACTOR_TYPES = ("contractor",)
+CONSIGNEE_TYPES = None          # the challan's consignee prefill: the whole book
+
+LINK_TYPES = {
+    "projects":          SITE_TYPES,
+    "employees":         SITE_TYPES,
+    "attendance":        SITE_TYPES,
+    "purchase_orders":   VENDOR_TYPES,
+    "purchases":         VENDOR_TYPES,
+    "delivery_challans": CONSIGNEE_TYPES,
+    "work_orders":       CONTRACTOR_TYPES,
+}
+
+
+def _types_label(types) -> str:
+    return " or ".join(ADDRESS_TYPES.get(t, t) for t in types)
+
+
+# =============================================================================
+# THE DUPLICATE GUARD — one function, every create and every edit
+# =============================================================================
+#
+# ⚠ **Why it is not in the form.** The live duplicate (NEWAGE FIRE FIGHTING CO.
+#   LIMITED, GSTIN 24AABCN5691G1ZF, once as an office and once as a vendor) went
+#   in through the ordinary Add form, but the GSTIN auto-fill and Import from
+#   Excel write through `create_record()` too. A rule in a form leaves both
+#   open. `duplicate_guard()` is called by `create_record()` and
+#   `update_record()`, and every writer of an address in the application goes
+#   through one of those two (ABOUT.md §3 *Address*, the inventory).
+#
+# **The rule.** Normalised first: GSTIN upper-case with no spaces, PIN digits
+# only, line 1 and company casefolded with punctuation and repeated whitespace
+# collapsed.
+#
+#   EXACT DUPLICATE, refused, no override:
+#     same line 1 + same PIN, and
+#       both carry a GSTIN  -> the same GSTIN;
+#       either lacks one    -> the same company.
+#     Across ALL types, active or archived.
+#   SAME GSTIN, different address: allowed only with "This is a different
+#     branch of the same company" ticked.
+#
+# ⚠ **A blank key matches nothing**, `_snapshot_strings()`'s rule: a record
+#   with no line 1, no PIN or (on the company rule) no company is never anyone's
+#   duplicate. `tools/backfill_project_sites.py` wrote site addresses with every
+#   field blank but the label; without this they would all be one another's
+#   duplicate.
+#
+# ⚠ **One company at one address holds ONE type.** An office that is also a
+#   vendor is one record, and the second type cannot be added beside it. If that
+#   ever bites, the fix is a multi-type address, not loosening this rule.
+
+_NONWORD_RE = re.compile(r"[\W_]+", re.UNICODE)
+
+# The fields the rule reads. An edit that moves none of them cannot make a
+# duplicate it was not already part of; see `duplicate_guard()`.
+DUPLICATE_KEY_FIELDS = ("gstin", "pincode", "line1", "company")
+
+
+def _norm_text(value) -> str:
+    return " ".join(_NONWORD_RE.sub(" ", str(value or "").casefold()).split())
+
+
+def duplicate_key(addr: dict) -> dict:
+    """The four normalised values the duplicate rule compares."""
+    a = addr or {}
+    return {"gstin":   re.sub(r"\s+", "", str(a.get("gstin") or "")).upper(),
+            "pincode": re.sub(r"\D", "", str(a.get("pincode") or "")),
+            "line1":   _norm_text(a.get("line1")),
+            "company": _norm_text(a.get("company"))}
+
+
+def _is_exact(ka: dict, kb: dict) -> bool:
+    if not (ka["line1"] and ka["pincode"]):
+        return False
+    if (ka["line1"], ka["pincode"]) != (kb["line1"], kb["pincode"]):
+        return False
+    if ka["gstin"] and kb["gstin"]:
+        return ka["gstin"] == kb["gstin"]
+    return bool(ka["company"]) and ka["company"] == kb["company"]
+
+
+def duplicates_of(data: dict, except_id: str = "", pending=()) -> tuple:
+    """
+    `(exact, same_gstin)`: the records `data` would duplicate, and the ones
+    that share only its GSTIN. Archived records are included on purpose.
+    `pending` is records not yet in the book (an import's earlier rows).
+    """
+    k = duplicate_key(data)
+    exact, same = [], []
+    pool = [a for aid, a in (STORE.get("addresses") or {}).items()
+            if aid != except_id and isinstance(a, dict)]
+    pool += [p for p in pending if isinstance(p, dict)]
+    for a in pool:
+        ka = duplicate_key(a)
+        if _is_exact(k, ka):
+            exact.append(a)
+        elif k["gstin"] and k["gstin"] == ka["gstin"]:
+            same.append(a)
+    key = lambda a: str(a.get("label") or "").casefold()
+    return sorted(exact, key=key), sorted(same, key=key)
+
+
+class DuplicateAddress(ValueError):
+    """Raised by `create_record()` / `update_record()` when the guard says no.
+    `kind` is `"exact"` (refused outright) or `"branch"` (needs the tick)."""
+
+    def __init__(self, kind: str, matches: list):
+        self.kind, self.matches = kind, list(matches)
+        super().__init__(duplicate_message(kind, self.matches))
+
+
+def duplicate_guard(data: dict, *, except_id: str = "", branch_ok: bool = False,
+                    previous: dict | None = None, pending=()) -> tuple:
+    """
+    THE duplicate check. `("", [])` means the write may go ahead; `("exact",
+    matches)` is refused with no override; `("branch", matches)` needs the
+    "different branch" tick (`branch_ok`).
+
+    ⚠ **On an edit (`previous` given), an edit that moves none of the four key
+      fields is not checked.** Two records that were ALREADY duplicates before
+      this guard existed would otherwise be un-editable, even to fix a phone
+      number, until somebody merged them. That is the GSTIN check-character's
+      rule (`_validate()`): enforced on a new or changed value only. The
+      existing pair is shown on the register's amber band instead, with a Merge
+      link. An edit that does move a key field is checked in full.
+    """
+    if previous is not None and duplicate_key(previous) == duplicate_key(data):
+        return "", []
+    exact, same = duplicates_of(data, except_id=except_id, pending=pending)
+    if exact:
+        return "exact", exact
+    if same and not branch_ok:
+        return "branch", same
+    return "", []
+
+
+def _match_words(a: dict) -> str:
+    bits = [ADDRESS_TYPES.get(a.get("type"), a.get("type") or "no type")]
+    if not is_active(a):
+        bits.append("archived")
+    return f"'{a.get('label') or a.get('company') or 'unnamed'}' ({', '.join(bits)})"
+
+
+def duplicate_message(kind: str, matches: list) -> str:
+    """The refusal as one plain sentence (an import row, a redirect)."""
+    names = "; ".join(_match_words(a) for a in matches[:3])
+    more = f" and {len(matches) - 3} more" if len(matches) > 3 else ""
+    if kind == "exact":
+        return (f"This company at this address is already in the address book "
+                f"as {names}{more}. One company at one address is kept once, "
+                f"whatever its type: use that record, or un-archive it.")
+    return (f"This GSTIN is already in the address book at a different address: "
+            f"{names}{more}. Save it only if it is a different branch of the "
+            f"same company, by ticking that box on the Add Address form.")
+
+
+def _dup_refusal_html(exc: "DuplicateAddress") -> str:
+    """The exact-duplicate refusal: names, links, and an un-archive offer."""
+    import auth
+    can_unarchive = auth.can_reach("address.unarchive_address")
+    rows = ""
+    for a in exc.matches:
+        aid = str(a.get("id") or "")
+        arch = not is_active(a)
+        link = (f'<a href="{url_for("address.view_address", id=aid)}">'
+                f'{_e(a.get("label") or a.get("company"))}</a>') if aid else _e(a.get("label"))
+        extra = ""
+        if arch and aid:
+            if can_unarchive:
+                extra = (f' <form method="POST" style="display:inline;" action="'
+                         f'{url_for("address.unarchive_address", id=aid)}">'
+                         f'<button type="submit" class="btn btn-ghost">Un-archive it'
+                         f'</button></form>')
+            else:
+                extra = (" It is archived; an Owner or a Director can "
+                         "un-archive it.")
+        rows += (f'<li>{link} &middot; {_e(ADDRESS_TYPES.get(a.get("type"), a.get("type")))}'
+                 f'{" &middot; <b>archived</b>" if arch else ""}{extra}</li>')
+    return f"""
+        <div class="addr-dup" role="alert">
+          <b>Not saved: this company at this address is already in the book.</b>
+          Same GSTIN, PIN code and address line 1 (or, where either side has no
+          GSTIN, the same company, PIN code and line 1). One company at one
+          address is kept once, whatever its type, so it cannot be added again.
+          Open the existing record instead:
+          <ul>{rows}</ul>
+        </div>"""
+
+
+def _branch_tick_html(exc: "DuplicateAddress | None", ticked: bool = False) -> str:
+    """The required "different branch" tick, drawn INSIDE the form."""
+    if exc is None or exc.kind != "branch":
+        return ""
+    rows = "".join(
+        f'<li><a href="{url_for("address.view_address", id=str(a.get("id") or ""))}">'
+        f'{_e(a.get("label"))}</a> &middot; {_e(a.get("line1"))}, '
+        f'{_e(a.get("city"))} {_e(a.get("pincode"))} &middot; '
+        f'{_e(ADDRESS_TYPES.get(a.get("type"), a.get("type")))}'
+        f'{" &middot; archived" if not is_active(a) else ""}</li>'
+        for a in exc.matches)
+    return f"""
+              <div class="addr-branch form-group full" role="alert">
+                <b>This GSTIN is already in the book at a different address.</b>
+                <ul>{rows}</ul>
+                <label><input type="checkbox" name="branch_ok" value="1" required{" checked" if ticked else ""}/>
+                  This is a different branch of the same company</label>
+              </div>"""
+
+
+# =============================================================================
+# EXISTING DUPLICATES — the register's amber band
+# =============================================================================
+
+def duplicate_groups() -> list:
+    """
+    Groups of records in the book that break the exact rule, as lists of
+    address dicts (two or more each). Read-only.
+    """
+    book = [a for a in (STORE.get("addresses") or {}).values() if isinstance(a, dict)]
+    keys = {id(a): duplicate_key(a) for a in book}
+    parent = {id(a): id(a) for a in book}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    buckets: dict = {}
+    for a in book:
+        k = keys[id(a)]
+        if k["line1"] and k["pincode"]:
+            buckets.setdefault((k["line1"], k["pincode"]), []).append(a)
+    for rows in buckets.values():
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                if _is_exact(keys[id(a)], keys[id(b)]):
+                    parent[find(id(a))] = find(id(b))
+    groups: dict = {}
+    for a in book:
+        groups.setdefault(find(id(a)), []).append(a)
+    out = [sorted(g, key=lambda a: (str(a.get("label") or "").casefold(),
+                                    str(a.get("id"))))
+           for g in groups.values() if len(g) > 1]
+    return sorted(out, key=lambda g: str(g[0].get("label") or "").casefold())
+
+
+# =============================================================================
+# MERGE-THEN-DELETE — repoint every ID link, then delete (§0 seventieth block)
+# =============================================================================
+#
+# ⚠ **It changes the ID field and NOTHING else on any document.** The snapshot
+#   text, the party block, the totals, the status and every timestamp stay
+#   exactly as they were: a document printed before the merge prints byte for
+#   byte the same after it (`tests/test_address_merge.py` holds every document
+#   type that carries an address id). A merge is a correction to the BOOK, not
+#   a re-issue of anything.
+#
+# ⚠ **The log lives ON THE SURVIVING ADDRESS** (`merged_from`), not in a
+#   collection of its own. The deletion and the log are then written by the
+#   same `addresses` sync in `db.py`, so a restart after a partial persist
+#   leaves either the old record (nothing of it was lost) or the log (which
+#   names it, with a full copy). Either one is enough for `merge_into()` to be
+#   run again and finish: an already-repointed id no longer matches, so a
+#   second run repoints only what the first did not land, and adds nothing to
+#   the log it already holds.
+#
+# The log records a USER ID, never a display name (`_log_edit()`'s rule).
+MERGE_LOG_FIELD = "merged_from"
+
+
+class MergeRefused(ValueError):
+    """Why `merge_into()` will not run. The message is user-facing."""
+
+
+def _link_needs(links: list) -> dict:
+    """{type tuple: [kinds]} for every link that constrains the type."""
+    needs: dict = {}
+    for r in links:
+        types = LINK_TYPES.get(r["collection"])
+        if types is not None:
+            needs.setdefault(tuple(types), [])
+            if r["kind"] not in needs[tuple(types)]:
+                needs[tuple(types)].append(r["kind"])
+    return needs
+
+
+def accepts_links(addr: dict, links: list) -> bool:
+    """Whether `addr` is a type EVERY one of these links' pickers offers."""
+    t = (addr or {}).get("type")
+    return all(t in types for types in _link_needs(links))
+
+
+def merge_candidates(from_id: str) -> list:
+    """
+    Every address that may receive this one's links: active, not itself, and
+    a type each link's own picker accepts. Duplicates of it come first.
+    """
+    links = linked_of(from_id)
+    book = STORE.get("addresses") or {}
+    old = book.get(from_id) or {}
+    ko = duplicate_key(old) if old else None
+    out = [a for aid, a in book.items()
+           if aid != from_id and isinstance(a, dict) and is_active(a)
+           and accepts_links(a, links)]
+    return sorted(out, key=lambda a: (
+        0 if (ko and _is_exact(ko, duplicate_key(a))) else 1,
+        str(a.get("label") or "").casefold()))
+
+
+def why_no_candidates(from_id: str) -> str:
+    """The reason `merge_candidates()` is empty, said plainly."""
+    needs = _link_needs(linked_of(from_id))
+    if len(needs) > 1:
+        parts = "; ".join(f"{', '.join(kinds)} need{'s' if len(kinds) == 1 else ''} "
+                          f"{_types_label(t)}" for t, kinds in needs.items())
+        return (f"No single address can take all of these links: {parts}. One "
+                f"address holds one type, so they cannot be moved together.")
+    if needs:
+        (t, kinds), = needs.items()
+        return (f"The links here ({', '.join(kinds)}) can only move to an active "
+                f"address filed as {_types_label(t)}, and there is no other one in "
+                f"the book.")
+    return "There is no other active address in the book to move them to."
+
+
+def merge_log_for(from_id: str):
+    """`(surviving address, log entry)` for a merge of `from_id`, or `(None, None)`."""
+    for a in (STORE.get("addresses") or {}).values():
+        for entry in (a or {}).get(MERGE_LOG_FIELD) or []:
+            if entry.get("from_id") == from_id:
+                return a, entry
+    return None, None
+
+
+def unfinished_merges() -> list:
+    """Log entries whose old address is still there, or still has links."""
+    out = []
+    book = STORE.get("addresses") or {}
+    for a in book.values():
+        for entry in (a or {}).get(MERGE_LOG_FIELD) or []:
+            fid = entry.get("from_id")
+            if fid in book or linked_of(fid):
+                out.append((a, entry))
+    return out
+
+
+def merge_into(from_id: str, to_id: str, user_id: str) -> dict:
+    """
+    Repoint every ID link `from_id` -> `to_id`, log it, delete `from_id`.
+
+    Returns the log entry. Raises `MergeRefused` (nothing written) when the
+    replacement is missing, archived, itself, or a type some link's picker does
+    not offer; or when there is nothing to merge. Re-runnable; see above.
+    """
+    book = STORE.setdefault("addresses", {})
+    from_id, to_id = str(from_id or "").strip(), str(to_id or "").strip()
+    old = book.get(from_id)
+    to = book.get(to_id)
+    if not to_id:
+        raise MergeRefused("Choose the address the links move to.")
+    if to_id == from_id:
+        raise MergeRefused("An address cannot be merged into itself.")
+    if not to:
+        raise MergeRefused("The replacement address is no longer in the book.")
+    if not is_active(to):
+        raise MergeRefused("The replacement address is archived. Un-archive it "
+                           "first, or choose an active one.")
+    host, entry = merge_log_for(from_id)
+    if entry is not None and host is not to:
+        raise MergeRefused(
+            f"A merge of this address into '{host.get('label')}' was started "
+            f"already. Finish that one; the links cannot be split between two.")
+    links = linked_of(from_id)
+    if old is None and entry is None:
+        raise MergeRefused("That address no longer exists.")
+    # ⚠ An address with NOTHING linked is merged only when it is an exact
+    #   duplicate of the replacement. Any other unlinked address is the
+    #   plain delete's, which stays Owner-only; a merge that repoints nothing
+    #   would otherwise be that delete by another door. The exception is what
+    #   lets a duplicate pair with no links be cleared from the register's
+    #   band, and what lets a merge whose documents persisted but whose
+    #   `addresses` sync did not (old record back, no log) be run again.
+    if (not links and entry is None
+            and not _is_exact(duplicate_key(old), duplicate_key(to))):
+        raise MergeRefused("Nothing is linked to this address and it is not a "
+                           "duplicate of the one chosen, so there is nothing to "
+                           "merge. Delete it or archive it instead.")
+    if not accepts_links(to, links):
+        needs = _link_needs(links)
+        raise MergeRefused(
+            f"'{to.get('label')}' is filed as "
+            f"{ADDRESS_TYPES.get(to.get('type'), to.get('type'))}, and "
+            + "; ".join(f"{', '.join(k)} can only point at {_types_label(t)}"
+                        for t, k in needs.items() if to.get("type") not in t)
+            + ". Choose an address of that type.")
+
+    if entry is None:
+        entry = {"at": _now(), "by_user_id": str(user_id or ""),
+                 "from_id": from_id, "to_id": to_id, "repointed": [],
+                 "record": copy.deepcopy(old)}
+        to.setdefault(MERGE_LOG_FIELD, []).append(entry)
+    done = {(p["collection"], p["id"], p["field"]) for p in entry["repointed"]}
+
+    for coll, id_field, *_rest in REFERENCE_SOURCES:
+        for rid, rec in (STORE.get(coll) or {}).items():
+            if isinstance(rec, dict) and str(rec.get(id_field) or "").strip() == from_id:
+                rec[id_field] = to_id          # ⚠ the ONLY write to a document
+                if (coll, str(rid), id_field) not in done:
+                    entry["repointed"].append(
+                        {"collection": coll, "id": str(rid), "field": id_field})
+                    done.add((coll, str(rid), id_field))
+
+    book.pop(from_id, None)
+    return entry
 
 
 # =============================================================================
@@ -983,6 +1479,29 @@ ADDRESS_STYLES = """
     font-size: .82rem; line-height: 1.6;
   }
   .addr-refs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+  /* The duplicate guard and the merge (6 November 2026). Red for a refusal,
+     amber (.addr-lock) for "look at this", muted for a name-only mention. */
+  .addr-dup {
+    border: 1px solid #fecaca; background: #fef2f2; border-radius: 10px;
+    padding: .9rem 1.1rem; margin-bottom: 1.2rem;
+    font-size: .82rem; line-height: 1.6;
+  }
+  .addr-dup ul, .addr-branch ul, .addr-dupgroup ul { margin: .4rem 0 0 1.1rem; padding: 0; }
+  .addr-branch {
+    border: 1px solid #fde68a; background: #fffbeb; border-radius: 10px;
+    padding: .8rem 1rem; font-size: .82rem; line-height: 1.6;
+  }
+  .addr-branch label { display: flex; gap: .5rem; align-items: center; margin-top: .6rem;
+                       font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .addr-mention {
+    border: 1px dashed var(--border); border-radius: 10px; padding: .7rem 1.1rem;
+    margin-bottom: 1.2rem; font-size: .8rem; line-height: 1.6; color: var(--muted);
+  }
+  .addr-dupgroup { margin-top: .7rem; }
+  .addr-links { width: 100%; border-collapse: collapse; font-size: .8rem; margin-bottom: 1rem; }
+  .addr-links th, .addr-links td { text-align: left; padding: .35rem .5rem;
+                                   border-bottom: 1px solid var(--border); }
+  .addr-note { font-size: .8rem; color: var(--muted); }
   .addr-ref {
     display: inline-block; background: var(--surface);
     border: 1px solid var(--border); border-radius: 20px;
@@ -1676,7 +2195,7 @@ def _back_and_import(list_url: str, form_kind: str) -> str:
             f'&#128229; Import many from Excel</a>{back}</div>')
 
 
-def create_record(data: dict) -> str:
+def create_record(data: dict, *, branch_ok: bool = False) -> str:
     """
     Write ONE new address from `_validate()`'s data, and return its id.
 
@@ -1684,7 +2203,15 @@ def create_record(data: dict) -> str:
     2026 so Import from Excel writes an address exactly as the form does — the
     same record shape and the same `_apply_gst_fields()` stamp — rather than
     through a second copy of it.
+
+    ⚠ **Raises `DuplicateAddress`** when `duplicate_guard()` says no (6 November
+    2026). The guard is HERE, not in the form, so the Add form, the GSTIN
+    auto-fill (which fills that form) and Import from Excel all meet it.
+    `branch_ok` is the "different branch of the same company" tick.
     """
+    kind, matches = duplicate_guard(data, branch_ok=branch_ok)
+    if kind:
+        raise DuplicateAddress(kind, matches)
     new_id = str(uuid.uuid4())
     record = {"id": new_id, **data}
     _apply_gst_fields(record)
@@ -1692,17 +2219,49 @@ def create_record(data: dict) -> str:
     return new_id
 
 
+def update_record(address_id: str, data: dict, *, branch_ok: bool = False,
+                  previous_gstin: str = "") -> dict:
+    """
+    Update ONE existing address in place from `_validate()`'s data, through
+    the same `duplicate_guard()` as `create_record()`, excluding itself.
+    Raises `DuplicateAddress`; returns the record. Updated, never replaced, so
+    `active`, `edit_log` and `merged_from` survive (see `edit_address()`).
+    """
+    existing = STORE["addresses"][address_id]
+    kind, matches = duplicate_guard(data, except_id=address_id,
+                                    branch_ok=branch_ok, previous=existing)
+    if kind:
+        raise DuplicateAddress(kind, matches)
+    existing.update(data)
+    _apply_gst_fields(existing, previous_gstin)
+    return existing
+
+
 def _render_form(data: dict, *, heading: str, action_url: str,
                  submit_label: str, error: str | None,
                  refs: list | None = None, type_locked: bool = False,
                  form_kind: str = "add", address_id: str = "",
                  previous_gstin: str = "", ack_checked: bool = False,
-                 draft: str = "") -> str:
-    """Render the add/edit page. `data` holds the current field values."""
+                 draft: str = "", dup: "DuplicateAddress | None" = None) -> str:
+    """Render the add/edit page. `data` holds the current field values.
+
+    `dup` is the duplicate guard's refusal, when the last POST met one: an
+    exact duplicate draws the refusal above the form; a shared GSTIN draws the
+    required "different branch" tick inside it. Either way every box keeps
+    what was typed."""
     list_url   = url_for("address.list_addresses")
     gst_html   = _gst_widget(data, _gst_urls(form_kind, address_id),
                              previous_gstin, ack_checked)
     error_html = f'<div class="alert alert-error">&#10007; {_e(error)}</div>' if error else ""
+    dup_html = _dup_refusal_html(dup) if (dup is not None and dup.kind == "exact") else ""
+    branch_html = _branch_tick_html(dup, ticked=False)
+    if branch_html and not error_html:
+        # The tick sits above Save, at the foot of a long form; the page
+        # reloads at the top, so say here that it is waiting there.
+        error_html = ('<div class="alert alert-error">&#10007; Not saved yet: this '
+                      'GSTIN is already in the book at a different address. If this '
+                      'is a different branch of the same company, tick the box above '
+                      'the Save button and save again.</div>')
 
     refs = refs or []
     lock_html = ""
@@ -1713,8 +2272,9 @@ def _render_form(data: dict, *, heading: str, action_url: str,
           <b>{n} record{"" if n == 1 else "s"} in this application
           point{"s" if n == 1 else ""} at this address.</b>
           Every field below can still be corrected &mdash; a misspelled city
-          stays wrong forever otherwise, and nothing here repoints a record onto
-          a different address. <b>The address TYPE is the one exception</b> and
+          stays wrong forever otherwise. To move these records onto a different
+          address, use <b>Merge</b> from the address page (Owner and Directors).
+          <b>The address TYPE is the one exception</b> and
           is shown read-only: changing it would drop this address out of the
           pickers those records were chosen from. Each change is recorded
           against your account and shown on the address page.
@@ -1768,6 +2328,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
           {_back_and_import(list_url, form_kind)}
         </div>
         {lock_html}
+        {dup_html}
 
         <div class="form-card addr-form">
           <form method="POST" action="{action_url}" id="addr-form">
@@ -1851,7 +2412,7 @@ def _render_form(data: dict, *, heading: str, action_url: str,
 
               <div class="form-section-title">Envelope Preview</div>
               <div class="addr-preview" id="addr-preview"></div>
-
+{branch_html}
             </div>
 
             <div class="form-actions">
@@ -1877,6 +2438,71 @@ def _render_form(data: dict, *, heading: str, action_url: str,
 # ROUTES
 # =============================================================================
 
+def _duplicates_band() -> str:
+    """
+    The register's amber band: groups that break the exact-duplicate rule, and
+    any merge that did not finish. Drawn ONLY for a user who can reach the
+    merge (`address.delete`); read-only until a Merge link is followed.
+    """
+    import auth
+    if not auth.can_reach("address.merge_address"):
+        return ""
+    groups = duplicate_groups()
+    unfinished = unfinished_merges()
+    if not groups and not unfinished:
+        return ""
+    rows = ""
+    for g in groups:
+        items = ""
+        for a in g:
+            aid = str(a.get("id"))
+            links = linked_of(aid)
+            n = len(links)
+            # A Merge link only where the target can actually take this
+            # record's links (active, and a type each link's picker offers);
+            # otherwise say why, so no link leads to a page that cannot act.
+            fits = [b for b in g if b is not a and is_active(b)
+                    and accepts_links(b, links)]
+            if fits:
+                act = " ".join(
+                    f'<a href="{url_for("address.merge_address", id=aid, into=str(b.get("id")))}">'
+                    f'Merge into {_e(b.get("label"))}</a>' for b in fits)
+            else:
+                act = ("no other record in this group can take its links"
+                       f"{_e(_needs_note(links))}; merge the other one into it, "
+                       "or archive it")
+            items += (
+                f'<li><a href="{url_for("address.view_address", id=aid)}">'
+                f'{_e(a.get("label"))}</a> &middot; '
+                f'{_e(ADDRESS_TYPES.get(a.get("type"), a.get("type")))}'
+                f'{" &middot; archived" if not is_active(a) else ""}'
+                f' &middot; {n} linked &middot; {act}</li>')
+        first = g[0]
+        rows += (f'<div class="addr-dupgroup"><b>{_e(first.get("company") or first.get("label"))}'
+                 f'</b>, {_e(first.get("line1"))}, {_e(first.get("pincode"))}'
+                 f'<ul>{items}</ul></div>')
+    for host, entry in unfinished:
+        fid = str(entry.get("from_id"))
+        lab = (entry.get("record") or {}).get("label") or fid[:8]
+        rows += (f'<div class="addr-dupgroup"><b>A merge did not finish:</b> '
+                 f'{_e(lab)} into {_e(host.get("label"))}. '
+                 f'<a href="{url_for("address.merge_address", id=fid, into=str(host.get("id")))}">'
+                 f'Finish the merge</a></div>')
+    n = len(groups)
+    head = (f"<b>{n} group{'' if n == 1 else 's'} of duplicate addresses in the "
+            f"book.</b> Each group is one company at one address entered more "
+            f"than once. Open Merge on the one to remove: its linked records "
+            f"move to the other, and nothing printed on them changes. Nothing "
+            f"here changes until you do." if n else
+            "<b>A merge in the address book did not finish.</b> Finishing it "
+            "repoints only what is left and adds nothing twice.")
+    return f"""
+        <div class="addr-lock addr-dupband">
+          {head}
+          {rows}
+        </div>"""
+
+
 @address_bp.route("/")
 def list_addresses():
     """GET /address — the book, as envelope-style cards."""
@@ -1894,7 +2520,11 @@ def list_addresses():
             view_url   = url_for("address.view_address",   id=aid)
             edit_url   = url_for("address.edit_address",   id=aid)
             delete_url = url_for("address.delete_address", id=aid)
-            n_refs     = len(references_of(aid))
+            # ⚠ ID links only (6 November 2026). This chip read "2 refs" on
+            #   both live NEWAGE cards while neither had a single link: the
+            #   old count added name matches (`mentions_of()`), which hold no
+            #   id and are not affected by anything done to this address.
+            n_refs     = len(linked_of(aid))
             archived   = not is_active(a)
 
             # Postal block
@@ -1930,9 +2560,8 @@ def list_addresses():
             if archived:
                 state += '<span class="badge badge-addr-archived">Archived</span>'
             if n_refs:
-                state += (f'<span class="addr-refcount" title="records pointing '
-                          f'at this address">{n_refs} ref'
-                          f'{"" if n_refs == 1 else "s"}</span>')
+                state += (f'<span class="addr-refcount" title="records linked '
+                          f'to this address by id">{n_refs} linked</span>')
 
             cards += f"""
             <div class="addr-card{' addr-card-archived' if archived else ''}">
@@ -1967,6 +2596,7 @@ def list_addresses():
     if msg:
         icon = "&#10003;" if msg_type == "success" else "&#10007;"
         alert_html = f'<div class="alert alert-{_e(msg_type)}">{icon} {_e(msg)}</div>'
+    alert_html += _duplicates_band()
 
     type_counts: dict[str, int] = {}
     for a in addresses.values():
@@ -2025,6 +2655,7 @@ def add_address():
 
     data  = {"type": "office", "country": "India"}
     error = None
+    dup   = None
     # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
     resuming = request.method == "POST" and FD.is_resume(request.form)
     if resuming:
@@ -2035,12 +2666,16 @@ def add_address():
         if not error:
             error = _gst_status_error(data, request.form)
         if not error:
-            create_record(data)
-            return redirect(url_for(
-                "address.list_addresses",
-                msg=f"'{data['label']}' added to the address book.",
-                type="success",
-            ))
+            try:
+                create_record(data, branch_ok=bool(request.form.get("branch_ok")))
+            except DuplicateAddress as exc:
+                dup = exc
+            else:
+                return redirect(url_for(
+                    "address.list_addresses",
+                    msg=f"'{data['label']}' added to the address book.",
+                    type="success",
+                ))
 
     return _render_form(
         data,
@@ -2051,6 +2686,7 @@ def add_address():
         form_kind="add",
         ack_checked=bool(request.form.get("gst_ack")),
         draft=FD.script('form[action$="/address/add"]', "address", resumed=resuming),
+        dup=dup,
     )
 
 
@@ -2081,28 +2717,37 @@ def edit_address(id: str):
             type="error",
         ))
 
+    # ⚠ Only ID links lock the type (6 November 2026): a name-only mention
+    #   was never chosen from a picker, so a type change cannot strand it. The
+    #   edit log still fires on either, as it always has.
     refs  = references_of(id)
+    links = [r for r in refs if r["how"] == "id"]
     data  = dict(existing)
     error = None
+    dup   = None
     previous_gstin = str(existing.get("gstin") or "")
 
     if request.method == "POST":
         data, error = _validate(request.form, previous_gstin=previous_gstin)
         if not error:
-            error = _type_lock_error(existing, data.get("type"), refs) or None
+            error = _type_lock_error(existing, data.get("type"), links) or None
         if not error:
             error = _gst_status_error(data, request.form)
         if not error:
             before = dict(existing)
-            existing.update(data)
-            _apply_gst_fields(existing, previous_gstin)
-            if refs:
-                _log_edit(existing, before, data, _editor_id())
-            return redirect(url_for(
-                "address.view_address", id=id,
-                msg=f"'{data['label']}' updated.",
-                type="success",
-            ))
+            try:
+                update_record(id, data, previous_gstin=previous_gstin,
+                              branch_ok=bool(request.form.get("branch_ok")))
+            except DuplicateAddress as exc:
+                dup = exc
+            else:
+                if refs:
+                    _log_edit(existing, before, data, _editor_id())
+                return redirect(url_for(
+                    "address.view_address", id=id,
+                    msg=f"'{data['label']}' updated.",
+                    type="success",
+                ))
 
     return _render_form(
         data,
@@ -2110,12 +2755,13 @@ def edit_address(id: str):
         action_url=url_for("address.edit_address", id=id),
         submit_label="Update Address",
         error=error,
-        refs=refs,
-        type_locked=bool(refs),
+        refs=links,
+        type_locked=bool(links),
         form_kind="edit",
         address_id=id,
         previous_gstin=previous_gstin,
         ack_checked=bool(request.form.get("gst_ack")),
+        dup=dup,
     )
 
 
@@ -2233,8 +2879,9 @@ def view_address(id: str):
                                 msg="That address no longer exists.",
                                 type="error"))
 
-    refs   = references_of(id)
-    active = is_active(addr)
+    refs     = linked_of(id)
+    mentions = mentions_of(id)
+    active   = is_active(addr)
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
 
@@ -2259,31 +2906,51 @@ def view_address(id: str):
                       f'{_e(addr.get(GST_VERIFIED_FIELD))}</b></span>')
         gst_html = f'<div class="addr-meta" style="margin-top:.9rem;">{chips}</div>'
 
+    # ⚠ Linked (by id) and mentioned (by name only) are told apart from 6
+    #   November 2026: only a link blocks a plain delete, and a merge repoints
+    #   links and nothing else. The old wording, "N of them point at it by
+    #   name ... it counts here", is the behaviour this replaced.
+    import auth
+    merge_link = ""
+    if refs and auth.can_reach("address.merge_address"):
+        merge_link = (f' <a href="{url_for("address.merge_address", id=id)}" '
+                      f'class="btn">Merge into another address</a>')
     if refs:
         n = len(refs)
-        by_name = sum(1 for r in refs if r["how"] == "label")
-        name_note = ""
-        if by_name:
-            name_note = (f" {by_name} of them point{'s' if by_name == 1 else ''} "
-                         f"at it <b>by name rather than by id</b> &mdash; a "
-                         f"record written before that form became a picker. It "
-                         f"counts here for exactly that reason: deleting the "
-                         f"address would leave the name behind with nothing "
-                         f"under it.")
         refs_html = f"""
       <div class="addr-lock">
-        <b>{n} record{"" if n == 1 else "s"}
-        point{"s" if n == 1 else ""} at this address.</b>
-        It cannot be deleted while that is true.{name_note}
-        Archive it instead if it should stop appearing in pickers &mdash; the
-        records below go on resolving it.
+        <b>{n} record{"" if n == 1 else "s"} linked to this address.</b>
+        It cannot be deleted on its own while that is true. Merge moves those
+        links to another address and then deletes this one; archive it instead
+        if it should only stop appearing in pickers. The records below go on
+        resolving it either way.{merge_link}
         <div class="addr-refs">{_ref_chips(refs)}</div>
+      </div>"""
+    elif mentions:
+        refs_html = """
+      <div class="addr-free">
+        <b>Nothing is linked to this address.</b> It can be deleted outright.
       </div>"""
     else:
         refs_html = """
       <div class="addr-free">
         <b>Nothing points at this address.</b> It can be deleted outright.
       </div>"""
+    refs_html += _mention_chips(mentions)
+    merged = list(reversed(addr.get(MERGE_LOG_FIELD) or []))
+    if merged:
+        items = "".join(
+            f'<div class="al-entry"><div class="al-when">{_e(m.get("at"))} &middot; '
+            f'{_e(editor_label(m.get("by_user_id")))}</div>'
+            f'<div class="al-line"><span class="al-field">merged in</span>'
+            f'<span class="al-move">{_e((m.get("record") or {}).get("label"))} '
+            f'({_e(ADDRESS_TYPES.get((m.get("record") or {}).get("type"), "no type"))}), '
+            f'{len(m.get("repointed") or [])} link'
+            f'{"" if len(m.get("repointed") or []) == 1 else "s"} moved here</span></div></div>'
+            for m in merged)
+        refs_html += f"""
+      <div class="form-section-title">Merged into this address</div>
+      <div class="addr-log">{items}</div>"""
 
     log = list(reversed(addr.get(EDIT_LOG_FIELD) or []))
     if log:
@@ -2448,7 +3115,11 @@ def delete_address(id: str):
             type="error",
         ))
 
-    refs = references_of(id)
+    # ⚠ ID links only (6 November 2026); `mentions_of()` never blocks. A
+    #   linked address is removed through `merge_address()` instead, which
+    #   repoints the links first.
+    refs = linked_of(id)
+    mentions = mentions_of(id)
 
     if request.method == "POST":
         if refs:
@@ -2458,9 +3129,10 @@ def delete_address(id: str):
             return redirect(url_for(
                 "address.view_address", id=id,
                 msg=(f"'{addr.get('label') or 'This address'}' cannot be "
-                     f"deleted — {n} record{'' if n == 1 else 's'} still "
-                     f"point{'s' if n == 1 else ''} at it: {names}{more}. "
-                     f"Archive it instead if it should leave the pickers."),
+                     f"deleted on its own: {n} record{'' if n == 1 else 's'} "
+                     f"{'is' if n == 1 else 'are'} still linked to it: "
+                     f"{names}{more}. Merge it into another address, or "
+                     f"archive it if it should only leave the pickers."),
                 type="error",
             ))
         STORE["addresses"].pop(id, None)
@@ -2476,28 +3148,10 @@ def delete_address(id: str):
         _e(addr.get("city"))] if x)
 
     if refs:
-        n = len(refs)
-        body = f"""
-    <div class="addr-lock">
-      <b>This address cannot be deleted.</b>
-      {n} record{"" if n == 1 else "s"} in this application
-      point{"s" if n == 1 else ""} at it, and deleting it would leave
-      {"that record" if n == 1 else "each of them"} naming something that no
-      longer exists. Nothing here repoints a record onto a different address:
-      that is done on the record itself.
-      <div class="addr-refs">{_ref_chips(refs)}</div>
-    </div>
-    <p style="font-size:.85rem;line-height:1.6;">
-      If this address should stop being offered in pickers, <b>archive</b> it.
-      The records above go on resolving it, nothing already printed changes, and
-      it can be un-archived at any time.
-    </p>
-    <div style="display:flex;gap:.7rem;">
-      <form method="POST" action="{url_for('address.archive_address', id=id)}">
-        <button type="submit" class="btn">Archive {_e(label)} instead</button>
-      </form>
-      <a href="{url_for('address.view_address', id=id)}" class="btn btn-ghost">Back to the address</a>
-    </div>"""
+        # The linked case IS the merge: one renderer, the same page a
+        # Director reaches at /address/merge/<id>. The plain delete above is
+        # never offered here.
+        body = _merge_body(id, request.args.get("into", ""))
     else:
         body = f"""
     <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;
@@ -2507,8 +3161,8 @@ def delete_address(id: str):
       </h2>
       <div style="font-size:.82rem;line-height:1.6;">
         You are about to delete <b>{_e(label)}</b>{f" &mdash; {who}" if who else ""}.<br/><br/>
-        Nothing in this application points at it &mdash; that was checked just
-        now, by id and by name.<br/><br/>
+        Nothing in this application is linked to it; that was checked just
+        now, by id and by name.{_mentions_sentence(mentions)}<br/><br/>
         Quotations and purchase orders already issued keep the address they
         froze at the time, so nothing already sent changes. It only disappears
         from the picker.
@@ -2518,7 +3172,7 @@ def delete_address(id: str):
           style="display:flex;gap:.7rem;">
       <button type="submit" class="btn">Delete {_e(label)}</button>
       <a href="{url_for('address.list_addresses')}" class="btn btn-ghost">Keep it</a>
-    </form>"""
+    </form>{_mention_chips(mentions)}"""
 
     return _page(f"""<!DOCTYPE html>
 <html lang="en">
@@ -2534,6 +3188,197 @@ def delete_address(id: str):
   <main>
     <div class="page-top"><h1>Delete <span>Address</span></h1></div>
     {body}
+  </main>
+</body>
+</html>""")
+
+
+def _mentions_sentence(mentions: list) -> str:
+    if not mentions:
+        return ""
+    n = len(mentions)
+    return (f" {n} record{'' if n == 1 else 's'} only mention"
+            f"{'s' if n == 1 else ''} its name, listed below; "
+            f"{'it is' if n == 1 else 'they are'} not linked and not affected.")
+
+
+def _link_rows(refs: list) -> str:
+    """Every linked record as a table row: kind, doc number, field."""
+    id_fields = {c: f for c, f, *_r in REFERENCE_SOURCES}
+    rows = ""
+    for r in refs:
+        href = _ref_href(r)
+        label = (f'<a href="{href}">{_e(r["label"])}</a>' if href
+                 else _e(r["label"]))
+        rows += (f'<tr><td>{_e(r["kind"])}</td><td>{label}</td>'
+                 f'<td><code>{_e(r["collection"])}.{_e(id_fields.get(r["collection"]))}'
+                 f'</code></td></tr>')
+    return rows
+
+
+def _merge_body(id: str, into: str = "") -> str:
+    """
+    The merge page's body, shared by `/address/merge/<id>` and the linked half
+    of `/address/delete/<id>`. ⚠ **Renders only**: a GET mutates nothing
+    (9d060ee's confirm-page pattern), and only the POST below writes.
+    """
+    book = STORE.get("addresses") or {}
+    addr = book.get(id)
+    host, entry = merge_log_for(id)
+    links = linked_of(id)
+    mentions = mentions_of(id)
+    label = (addr or (entry or {}).get("record") or {}).get("label") or "this address"
+    arch_form = ""
+    if addr is not None and is_active(addr):
+        arch_form = (f'<form method="POST" action="'
+                     f'{url_for("address.archive_address", id=id)}">'
+                     f'<button type="submit" class="btn btn-ghost">Archive '
+                     f'{_e(label)} instead</button></form>')
+    back = (f'<a href="{url_for("address.view_address", id=id)}" class="btn btn-ghost">'
+            f'Back to the address</a>' if addr is not None else
+            f'<a href="{url_for("address.list_addresses")}" class="btn btn-ghost">'
+            f'Back to the address book</a>')
+    table = (f'<table class="addr-links"><thead><tr><th>Record</th><th>Number</th>'
+             f'<th>Field</th></tr></thead><tbody>{_link_rows(links)}</tbody></table>'
+             if links else "")
+
+    if entry is not None:
+        # A merge that was started and did not finish: the replacement is
+        # fixed, because links cannot be split between two addresses.
+        n = len(links)
+        return f"""
+    <div class="addr-lock">
+      <b>This merge did not finish.</b> {_e(label)} was being merged into
+      <a href="{url_for("address.view_address", id=str(host.get("id")))}">{_e(host.get("label"))}</a>
+      on {_e(entry.get("at"))}. {n} linked record{"" if n == 1 else "s"} still
+      point{"s" if n == 1 else ""} at the old address{"" if addr is None else ", and the old address is still in the book"}.
+      Finishing repoints only what is left and adds nothing twice.
+    </div>
+    {table}
+    <form method="POST" action="{url_for("address.merge_address", id=id)}"
+          style="display:flex;gap:.7rem;margin-top:1rem;">
+      <input type="hidden" name="into" value="{_e(host.get("id"))}"/>
+      <button type="submit" class="btn">Finish the merge</button>
+      {back}
+    </form>"""
+
+    cands = merge_candidates(id)
+    if not links:
+        ko = duplicate_key(addr)
+        cands = [a for a in cands if _is_exact(ko, duplicate_key(a))]
+        if not cands:
+            return f"""
+    <div class="addr-free">
+      <b>Nothing is linked to {_e(label)}, so there is nothing to merge.</b>
+      It can be deleted outright (by the Owner) or archived.
+    </div>{_mention_chips(mentions)}
+    <div style="display:flex;gap:.7rem;">{arch_form}{back}</div>"""
+    n = len(links)
+    intro = f"""
+    <div class="addr-lock">
+      <b>{n} record{"" if n == 1 else "s"} {"is" if n == 1 else "are"} linked to {_e(label)}.</b>
+      It cannot be deleted on its own: every one of those links must move to
+      another address first.{" Nothing is linked to it, and it is an exact duplicate of the addresses listed below, so merging only deletes it and logs a full copy." if not n else ""} Choose the replacement: each record below then points at
+      it instead, and <b>nothing else on any record changes</b>. The name,
+      address and GSTIN printed on each document stay exactly as they were.
+    </div>
+    {table}{_mention_chips(mentions)}"""
+    if not cands:
+        return intro + f"""
+    <div class="addr-dup">
+      <b>No address can take these links.</b> {_e(why_no_candidates(id))}
+      Archive {_e(label)} instead: it leaves every picker, and every record
+      above goes on resolving it.
+    </div>
+    <div style="display:flex;gap:.7rem;">{arch_form}{back}</div>"""
+    opts = '<option value="">Choose the replacement address</option>' + "".join(
+        f'<option value="{_e(a.get("id"))}"{" selected" if a.get("id") == into else ""}>'
+        f'{_e(a.get("label"))} ({_e(ADDRESS_TYPES.get(a.get("type"), a.get("type")))}'
+        f'{", " + _e(a.get("city")) if a.get("city") else ""})</option>'
+        for a in cands)
+    return intro + f"""
+    <p class="addr-note">Only active addresses that every one of these records'
+      own pickers would offer are listed{_needs_note(links)}.</p>
+    <form method="POST" action="{url_for("address.merge_address", id=id)}"
+          style="display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;">
+      <select name="into" required>{opts}</select>
+      <button type="submit" class="btn">Move {n} link{"" if n == 1 else "s"} and delete {_e(label)}</button>
+      {back}
+    </form>
+    <div style="margin-top:.8rem;">{arch_form}</div>"""
+
+
+def _needs_note(links: list) -> str:
+    needs = _link_needs(links)
+    if not needs:
+        return ""
+    return " (" + "; ".join(f"{', '.join(k)}: {_types_label(t)}"
+                            for t, k in needs.items()) + ")"
+
+
+@address_bp.route("/merge/<id>", methods=["GET", "POST"])
+def merge_address(id: str):
+    """
+    Merge-then-delete (6 November 2026, CLIENT_CHANGES.md §0 seventieth block).
+
+    GET  /address/merge/<id>[?into=<id>] — the linked records and the
+         replacement picker. **Mutates nothing.**
+    POST /address/merge/<id>  into=<id> — `merge_into()`: repoint every ID
+         link, log it on the survivor, delete this one.
+
+    ⚠ **Gated by `address.delete` ALONE** — Owner and Directors, and a
+      per-person block on a Director's `address.delete` refuses it. It sits in
+      `auth.PERMISSION_ONLY_DESTROYS`, not `OWNER_ONLY`; the plain
+      `/address/delete/<id>` is unchanged and still Owner-only. That is why
+      `merge_into()` refuses an address with nothing linked: a merge that
+      repoints nothing would be a plain delete by another door.
+    """
+    ensure_demo_addresses()
+    book = STORE["addresses"]
+    _host, entry = merge_log_for(id)
+    if id not in book and entry is None:
+        return redirect(url_for("address.list_addresses",
+                                msg="That address no longer exists.",
+                                type="error"))
+
+    if request.method == "POST":
+        into = (request.form.get("into") or "").strip()
+        label = (book.get(id) or (entry or {}).get("record") or {}).get("label") or "Address"
+        try:
+            done = merge_into(id, into, _editor_id())
+        except MergeRefused as exc:
+            return redirect(url_for("address.merge_address", id=id, into=into,
+                                    msg=str(exc), type="error"))
+        to = book[done["to_id"]]
+        n = len(done["repointed"])
+        return redirect(url_for(
+            "address.view_address", id=done["to_id"],
+            msg=(f"'{label}' merged into '{to.get('label')}': {n} link"
+                 f"{'' if n == 1 else 's'} now point here, and '{label}' is "
+                 f"deleted. Nothing else on any record changed."),
+            type="success"))
+
+    msg = request.args.get("msg")
+    msg_type = request.args.get("type", "success")
+    alert_html = ""
+    if msg:
+        icon = "&#10003;" if msg_type == "success" else "&#10007;"
+        alert_html = f'<div class="alert alert-{_e(msg_type)}">{icon} {_e(msg)}</div>'
+    return _page(f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{B.page_title("Merge Address")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{PRODUCT_STYLES}{ADDRESS_STYLES}
+</head>
+<body>
+  {_nav()}
+  <main>
+    {alert_html}
+    <div class="page-top"><h1>Merge <span>Address</span></h1></div>
+    {_merge_body(id, request.args.get("into", ""))}
   </main>
 </body>
 </html>""")
