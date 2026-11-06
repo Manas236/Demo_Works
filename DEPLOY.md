@@ -902,6 +902,32 @@ This must succeed **over TCP** before you go further. If it fails with
 
 ### 9.3 Application
 
+> ⚠ **THE LIVE BOX DOES NOT MATCH THIS SECTION (measured 3 November 2026).**
+> samruddhi-prod was never built the way §9.3 describes. This was found at the
+> read-only gate of the §0 sixty-fifth block's deploy. What IS on the box:
+>
+> | | §9.3 says | samruddhi-prod has |
+> |---|---|---|
+> | Checkout | `/opt/samruddhi/app` | `/opt/samruddhi` (there is NO `app` subdirectory) |
+> | Service user | `samruddhi` | `ubuntu` (the `samruddhi` user does not exist) |
+> | Running commands | `sudo -u samruddhi …` | as `ubuntu`, with no `sudo -u` |
+> | venv | `.venv` | `.venv`, exactly as written |
+> | Unit | `samruddhi` | `samruddhi`, exactly as written |
+> | Bind | `127.0.0.1:8000` | `127.0.0.1:8000`, exactly as written |
+> | Attachment store | `/var/lib/samruddhi/attachments` | `/var/lib/samruddhi/attachments`, outside the checkout, exactly as written |
+> | `.env` | mode `600`, owned by `samruddhi` | mode `600`, owned by `ubuntu` |
+>
+> **Every `sudo -u samruddhi` command in §9.3, §9.4, §9.4a, §10 and
+> [docs/PENDING_DEPLOY.md](docs/PENDING_DEPLOY.md) §2 fails on this box with
+> "unknown user".** Drop the `sudo -u samruddhi` and run the command as `ubuntu`
+> from `/opt/samruddhi`.
+>
+> This is a record of what IS, not a recommendation. Nothing was renamed or
+> moved: the checkout, `backups/` and the attachment store are all owned by
+> `ubuntu` and are consistent with each other. Migrating to a dedicated system
+> user is a separate chargeable change (a `chown` sweep plus a unit edit); do not
+> start it from this note.
+
 ```bash
 sudo adduser --system --group --home /opt/samruddhi samruddhi
 sudo mkdir -p /var/lib/samruddhi/attachments
@@ -1068,6 +1094,21 @@ Then `certbot --nginx`, and open only 22/80/443 in the Lightsail firewall.
 > it from the request.
 
 ### 9.6 systemd
+
+> ⚠ **The unit ON THE BOX differs from the one below (measured 3 November 2026).**
+> `/etc/systemd/system/samruddhi.service` on samruddhi-prod reads
+> `User=ubuntu`, `Group=ubuntu`, `WorkingDirectory=/opt/samruddhi` and
+> `ExecStart=/opt/samruddhi/.venv/bin/gunicorn …`, not the `samruddhi` /
+> `/opt/samruddhi/app` values below; see §9.3.
+>
+> Everything §2.1 cares about IS correct on the live unit: `--workers 1`,
+> `--threads 1`, no `--preload`, `--timeout 120`, bound to `127.0.0.1:8000`,
+> `Restart=always`, both streams to journald, and `PrivateTmp` unset, so the
+> `wsgi.py` lock file is in the real `/tmp` and the §9.3 guard test is valid.
+>
+> Re-verified 6 November 2026: the restart banner shows single worker OK,
+> `DB_STRICT` True, and the session cookie `Secure=True`, `HttpOnly=True`,
+> `SameSite=Lax`.
 
 `/etc/systemd/system/samruddhi.service`:
 
