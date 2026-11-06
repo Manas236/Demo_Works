@@ -1135,68 +1135,102 @@ def markings_unassigned() -> list:
     return [r for r in markings_on_no_project() if not is_overhead(r)]
 
 
+# ── The SITE a marking was worked at, as the unassigned screen groups it ────
+#
+# ⚠ **One row per worker x month x SITE** (6 November 2026, CLIENT_CHANGES.md
+#   §0's **seventy-first** block). Read off the MARKING, never the employee's
+#   home site: `SITE_BOOK:<address id>` for a marking linked to the address
+#   book; `SITE_TEXT:<label>` for a legacy marking carrying only a site string
+#   (unmapped, never fuzzy-matched — ABOUT.md §3); `SITE_NONE` for a marking
+#   with no site at all. The key travels in the assign form as `site`.
+SITE_BOOK, SITE_TEXT, SITE_NONE = "book:", "text:", "none:"
+NO_SITE_LABEL = "No site recorded"
+
+
+def site_key_of(record) -> str:
+    """The unassigned screen's site key for one marking."""
+    aid = str(record.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
+    if aid:
+        return SITE_BOOK + aid
+    label = str(record.get("site") or "").strip()
+    return SITE_TEXT + label if label else SITE_NONE
+
+
 def unassigned_worker_months() -> list:
     """
-    One row per `(worker, month)` with unassigned labour, newest month first —
-    ruling 3's *"lists worker-months with unassigned or ambiguous labour"*.
+    One row per `(worker, month, SITE)` with unassigned labour, newest month
+    first — ruling 3's *"lists worker-months with unassigned or ambiguous
+    labour"*, split by site on 6 November 2026 (§0 seventy-first block).
 
     Each row:
 
-        employee_id, employee_name, month        the grain
+        employee_id, employee_name, month        the grain …
+        site_key, site_id, site_label, site_kind …and the site (`site_key_of()`);
+                                                 kind is "book", "text", "none"
         markings                                 the unassigned markings
         days                                     `paid_share()` of them
         cost                                     `labour_split_of()` of them
-        sites                                    [(address id, label)] seen
-        candidates                               the projects offered, by site
-        ambiguous                                True when a site on this row
-                                                 carries two or more projects
+        sites                                    [(address id, label)] — ONE
+                                                 entry, kept for older readers
+        candidates                               [(id, name, address id)]: the
+                                                 projects filed at THIS site;
+                                                 every live project for a row
+                                                 with no address-book site
+        ambiguous                                two or more projects at it
+        no_project                               an address-book site with none
         paid                                     an ISSUED slip exists
 
-    ⚠ **The grain is the worker-month, not the marking, and that is ruling 3.**
-      A month of one person is twenty-six markings and one decision. The old
-      route to this was `/attendance/edit/<id>` — twenty-six pages for that one
-      decision (`docs/LABOUR_PL.md` §3).
+    ⚠ **NEVER ONE ROW SPANNING SEVERAL SITES.** Until 6 November 2026 a
+      worker-month across two sites was one row offered the UNION of both
+      sites' projects, and assigning it wrote whichever project was chosen
+      onto the days at the matching site and silently left the rest. Now each
+      site is its own row, offered its own projects, and `assign_month()`
+      writes only that site's days.
 
-    ⚠ **`candidates` is the union over the row's sites and is never collapsed
-      to one.** A worker-month whose days span two sites is listed once with
-      both sites' projects offered, because the operator is assigning the
-      MONTH; the per-marking rule (a project must be at that marking's own
-      site) is enforced at the write by `assign_month()`, not relaxed here.
+    ⚠ **A row with NO address-book site offers every live project.** There is
+      no site to hold a project to, so the per-marking rule (a project must be
+      at the marking's own site) has nothing to compare; the choice is the
+      operator's, and it is logged.
 
-    ⚠ **A worker-month with NO candidate anywhere is still listed.** Those are
-      the rows `off_project_labour()` calls `no_project_site` — nothing to
-      assign to until somebody files a project at that address — and a screen
-      that hid them would be a screen that says the bucket is empty when it is
-      not.
+    ⚠ **A site with NO project is still listed** — `no_project` — because a
+      screen that hid it would say the bucket is empty when it is not.
     """
     groups = {}
     for r in markings_unassigned():
         eid, month = str(r.get("employee_id") or ""), month_of(r)
-        groups.setdefault((eid, month), []).append(r)
+        groups.setdefault((eid, month, site_key_of(r)), []).append(r)
 
+    live = sorted((STORE.get("projects") or {}).values(),
+                  key=lambda p: str(p.get("name") or "").lower())
     out = []
-    for (eid, month), rows in groups.items():
-        sites, candidates, seen, ambiguous = [], [], set(), False
-        for r in rows:
-            aid = str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
-            if aid and aid not in seen:
-                seen.add(aid)
-                sites.append((aid, str(r.get("site") or "")))
-                at_site = projects_on_site(aid)
-                if len(at_site) > 1:
-                    ambiguous = True
-                for p in at_site:
-                    candidates.append((str(p.get("id")),
-                                       str(p.get("name") or "(unnamed)"), aid))
+    for (eid, month, key), rows in groups.items():
+        if key.startswith(SITE_BOOK):
+            aid, kind = key[len(SITE_BOOK):], "book"
+            label = next((str(r.get("site") or "") for r in rows
+                          if str(r.get("site") or "").strip()), "") or aid
+            at_site = projects_on_site(aid)
+        elif key.startswith(SITE_TEXT):
+            aid, kind, label = "", "text", key[len(SITE_TEXT):]
+            at_site = live
+        else:
+            aid, kind, label = "", "none", NO_SITE_LABEL
+            at_site = live
+        candidates = [(str(p.get("id")), str(p.get("name") or "(unnamed)"),
+                       str(p.get("site_address_id") or "")) for p in at_site]
         out.append({
             "employee_id": eid, "month": month,
             "employee_name": str(rows[0].get("employee_name") or ""),
+            "site_key": key, "site_id": aid, "site_label": label,
+            "site_kind": kind, "sites": [(aid, label)],
             "markings": rows, "days": paid_share(rows),
             "cost": labour_split_of(rows),
-            "sites": sites, "candidates": candidates, "ambiguous": ambiguous,
+            "candidates": candidates,
+            "ambiguous": kind == "book" and len(at_site) > 1,
+            "no_project": kind == "book" and not at_site,
             "paid": bool(issued_slip(eid, month)) if (eid and month) else False,
         })
-    return sorted(out, key=lambda g: (g["month"], g["employee_name"].lower()),
+    return sorted(out, key=lambda g: (g["month"], g["employee_name"].lower(),
+                                      g["site_label"].lower()),
                   reverse=True)
 
 
@@ -1251,12 +1285,21 @@ def project_last_month(employee_id, month) -> dict:
             "project_last_month": prev}
 
 
-def assign_month(employee_id, month, choice: str, actor_id: str = "") -> tuple:
+def assign_month(employee_id, month, choice: str, actor_id: str = "",
+                 site=None) -> tuple:
     """
     `(count, error)` — place every unassigned marking of one worker-month on
     one project, or on overhead. Ruling 3's write.
 
     `choice` is a live project id, or `OVERHEAD_CHOICE`.
+
+    `site` is a `site_key_of()` key, and **the screen always sends one** (6
+    November 2026, §0 seventy-first block): only that site's unassigned days
+    of the worker-month are written, and every other site's are left exactly
+    as they were. A marking with no address-book site (`SITE_TEXT` /
+    `SITE_NONE`) may take any live project — there is no site to hold it to.
+    `site=None` is the old whole-month write, kept for callers outside the
+    screen; it still refuses a project at another site per marking.
 
     ⚠ **A marking is only ever assigned to a project AT ITS OWN SITE.** The
       screen offers the union of the row's sites (`unassigned_worker_months()`),
@@ -1295,6 +1338,8 @@ def assign_month(employee_id, month, choice: str, actor_id: str = "") -> tuple:
     rows = [r for r in month_markings(eid, key)
             if not str(r.get("project_id") or "").strip()
             and not is_overhead(r)]
+    if site is not None:
+        rows = [r for r in rows if site_key_of(r) == str(site)]
     if not rows:
         return 0, "Nothing on that worker-month is unassigned."
 
@@ -1303,7 +1348,9 @@ def assign_month(employee_id, month, choice: str, actor_id: str = "") -> tuple:
     for r in rows:
         if not overhead:
             aid = str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
-            if str(proj.get("site_address_id") or "").strip() != aid:
+            if site is not None and not aid:
+                pass        # no address-book site: any live project (above)
+            elif str(proj.get("site_address_id") or "").strip() != aid:
                 wrong_site += 1
                 continue
         before = ("overhead" if is_overhead(r)
@@ -2840,27 +2887,39 @@ def unassigned_labour():
     groups = unassigned_worker_months()
     overhead = markings_overhead()
     oh_cost = labour_split_of(overhead)
+    import auth                    # function body: `_actor_id()`'s arrangement
+    may_create = auth.has_perm("project.create")
 
     rows = ""
     for g in groups:
         opts = ['<option value="">— choose —</option>']
         seen = set()
-        for pid, name, aid in g["candidates"]:
+        for pid, name, _aid in g["candidates"]:
             if pid in seen:
                 continue
             seen.add(pid)
             opts.append(f'<option value="{_esc(pid)}">{_esc(name)}</option>')
         opts.append(f'<option value="{_esc(OVERHEAD_CHOICE)}">'
-                    f'No project — overhead</option>')
-        sites = ", ".join(lbl or "(no site)" for _, lbl in g["sites"]) \
-            or "no site on the marking"
+                    f'No project (overhead)</option>')
+        if g["site_kind"] == "none":
+            site_cell = f'<i>{_esc(NO_SITE_LABEL)}</i>'
+        elif g["site_kind"] == "text":
+            site_cell = (f'{_esc(g["site_label"])} <span style="color:var(--muted)">'
+                         f'(not in the address book)</span>')
+        else:
+            site_cell = _esc(g["site_label"])
         why = []
         if g["ambiguous"]:
             why.append("two or more projects at that site")
-        if not seen:
-            why.append("no project is filed at that site")
+        if g["no_project"]:
+            create = (f' &mdash; <a href="{url_for("project.create_project")}">'
+                      f'create a project</a>' if may_create else "")
+            why.append(f"<b>No project at this site yet</b>{create}")
+        if g["site_kind"] != "book":
+            why.append("no site on the marking &mdash; every project is offered")
         if g["paid"]:
-            why.append("the month is PAID — the slip is waiting for a project")
+            why.append("the month is PAID &mdash; the slip is waiting for a "
+                       "project")
         cost = g["cost"]
         amount = (rupees(cost["total"]) if cost["costed"]
                   else "&mdash;")
@@ -2868,28 +2927,67 @@ def unassigned_labour():
       <tr>
         <td>{_esc(g['employee_name'] or '(unnamed)')}</td>
         <td>{_esc(_month_label(g['month']))}</td>
-        <td>{_esc(sites)}</td>
+        <td>{site_cell}</td>
         <td class="num">{len(g['markings'])} / {g['days']:g}</td>
         <td class="num">{amount}</td>
-        <td>{_esc('; '.join(why))}</td>
+        <td>{'; '.join(why)}</td>
         <td>
           <form method="POST" action="{url_for('attendance.assign_labour')}"
                 class="att-assign">
             <input type="hidden" name="employee_id" value="{_esc(g['employee_id'])}"/>
             <input type="hidden" name="month" value="{_esc(g['month'])}"/>
+            <input type="hidden" name="site" value="{_esc(g['site_key'])}"/>
             <select name="project_id" required>{''.join(opts)}</select>
             <button class="btn btn-sm">Assign</button>
           </form>
         </td>
       </tr>"""
 
+    # ⚠ **OVERHEAD ASKS FIRST** (6 November 2026, §0 seventy-first block): it
+    #   takes the row off this list for good, so `assign_labour()` refuses it
+    #   without `confirm=1` and sends the operator back here, where this panel
+    #   says what it does and posts the same choice again with the
+    #   confirmation. Server-side, so it holds with no script at all.
+    confirm_html = ""
+    c_emp = (request.args.get("confirm_emp") or "").strip()
+    c_month = (request.args.get("confirm_month") or "").strip()[:7]
+    c_site = request.args.get("confirm_site")
+    target = next((g for g in groups if g["employee_id"] == c_emp
+                   and g["month"] == c_month and g["site_key"] == c_site),
+                  None) if c_emp else None
+    if target:
+        where = (NO_SITE_LABEL if target["site_kind"] == "none"
+                 else target["site_label"])
+        n = len(target["markings"])
+        confirm_html = f"""
+  <div class="att-note" id="confirm-overhead"
+       style="border-left-color:#d97706">
+    <b>Mark {_esc(target['employee_name'] or '(unnamed)')} &middot;
+    {_esc(_month_label(target['month']))} &middot; {_esc(where)} as overhead?</b>
+    {n} day{'' if n == 1 else 's'} will be placed on <b>no project</b>, on
+    purpose, and this row leaves the list <b>for good</b> &mdash; it is not
+    asked about again. Changing it later is one marking at a time.
+    <form method="POST" action="{url_for('attendance.assign_labour')}"
+          class="att-assign">
+      <input type="hidden" name="employee_id" value="{_esc(target['employee_id'])}"/>
+      <input type="hidden" name="month" value="{_esc(target['month'])}"/>
+      <input type="hidden" name="site" value="{_esc(target['site_key'])}"/>
+      <input type="hidden" name="project_id" value="{_esc(OVERHEAD_CHOICE)}"/>
+      <input type="hidden" name="confirm" value="1"/>
+      <button class="btn btn-sm">Yes, mark it overhead</button>
+      <a class="btn btn-ghost btn-sm"
+         href="{url_for('attendance.unassigned_labour')}">Cancel</a>
+    </form>
+  </div>"""
+
     if rows:
         table = f"""
   <div class="reg-card">
     <div class="reg-head">
       <span class="reg-title">Unassigned labour</span>
-      <span class="reg-note">One row per worker and month. Assigning writes the
-        project onto every unassigned day of that month, and logs it.</span>
+      <span class="reg-note">One row per worker, month and site. Assigning
+        writes the project onto that site&rsquo;s unassigned days of that
+        month only, and logs it.</span>
     </div>
     <div class="reg-scroll">
     <table class="reg-table">
@@ -2931,8 +3029,9 @@ def unassigned_labour():
     A row is listed because the site carries <b>several</b> projects and nobody
     chose, because the site carries <b>none</b>, or because the marking
     predates the project field. Choosing <b>No project (overhead)</b> takes a
-    row off this list for good.
+    row off this list for good, so it asks first.
     <br/><b>{NOT_PAYROLL}</b></div>
+  {confirm_html}
   {oh_line}
   {table}"""
     return _shell("Unassigned labour", body)
@@ -2941,16 +3040,24 @@ def unassigned_labour():
 @attendance_bp.route("/assign", methods=["POST"])
 def assign_labour():
     """
-    Place one worker-month's unassigned days on one project, or on overhead.
+    Place one worker-month's unassigned days AT ONE SITE on one project, or
+    on overhead — overhead only with `confirm=1` (it asks first).
 
     ⚠ **POST only, and it writes through `assign_month()`** — which refuses a
     project that is not at the marking's own site, never touches a marking that
     already names one, and logs every write on the marking itself.
     """
+    choice = str(request.form.get("project_id") or "").strip()
+    site = request.form.get("site")
+    if choice == OVERHEAD_CHOICE and request.form.get("confirm") != "1":
+        return redirect(url_for("attendance.unassigned_labour",
+                                confirm_emp=request.form.get("employee_id"),
+                                confirm_month=request.form.get("month"),
+                                confirm_site=site or "")
+                        + "#confirm-overhead")
     done, error = assign_month(request.form.get("employee_id"),
-                               request.form.get("month"),
-                               request.form.get("project_id"),
-                               _actor_id())
+                               request.form.get("month"), choice,
+                               _actor_id(), site=site)
     if error:
         return redirect(url_for("attendance.unassigned_labour",
                                 msg=error, type="error"))

@@ -422,7 +422,11 @@ def test_the_screen_says_so_when_no_project_is_filed_at_the_site(client):
     _person()
     _mark("m1", "pk", "2026-09-01", "")
     page = client.get("/attendance/unassigned").get_data(as_text=True)
-    assert "no project is filed at that site" in page
+    # ⚠ AMENDED 6 November 2026 (CLIENT_CHANGES.md §0 seventy-first block):
+    #   the row now says "No project at this site yet" and links to creating
+    #   one. Old: `assert "no project is filed at that site" in page`.
+    assert "No project at this site yet" in page
+    assert 'href="/projects/create"' in page
 
 
 def test_the_screen_flags_a_worker_month_whose_slip_is_already_issued(client):
@@ -455,9 +459,18 @@ def test_assigning_to_overhead_takes_the_month_off_the_list_for_good(client):
     _site()
     _person()
     _mark("m1", "pk", "2026-09-01", "")
+    # ⚠ AMENDED 6 November 2026 (§0 seventy-first block): overhead takes the
+    #   row off the list for good, so it ASKS FIRST — the unconfirmed post
+    #   (the old body's only post) now writes nothing and comes back to the
+    #   confirmation; the post carrying `confirm=1` is the write.
     client.post("/attendance/assign", data={
         "employee_id": "pk", "month": "2026-09",
         "project_id": AT.OVERHEAD_CHOICE})
+    assert not AT.is_overhead(STORE["attendance"]["m1"])
+    client.post("/attendance/assign", data={
+        "employee_id": "pk", "month": "2026-09", "site": AT.site_key_of(
+            STORE["attendance"]["m1"]),
+        "project_id": AT.OVERHEAD_CHOICE, "confirm": "1"})
     assert AT.is_overhead(STORE["attendance"]["m1"])
     assert AT.unassigned_worker_months() == []
 
