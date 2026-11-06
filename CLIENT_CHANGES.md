@@ -6614,6 +6614,50 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 November 2026, by Manas Gawde — OTHER ALLOWANCE ON AN ISSUED PAYSLIP IS PROJECT LABOUR · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The sixty-sixth block stands exactly as
+> recorded except for the one call named here. This is the **sixty-seventh**
+> occasion.
+>
+> **What was decided (Manas):** when an ISSUED payslip replaces the estimate
+> in a project's P&L labour, its earnings include **other allowance** — so
+> the heads read off the slip are basic + OT + travel + other allowance (the
+> slip's gross). This **reverses the sixty-sixth block's declared call 5 for
+> `other_allowance` only**; the round-off stays out, and so do advances,
+> loans, loan recovery and the statutory heads. Everything else in the
+> sixty-sixth block is unchanged: the split by paid days over the whole
+> month, a Draft or Cancelled slip leaving the month on the estimate, one
+> labour row with its Estimated / Actual split.
+>
+> **What was built:** `attendance.SLIP_COST_HEADS` gains `"other_allowance"`.
+> No other code changed; no field, no migration, no permission, no route.
+>
+> **Payroll is untouched, and pinned.** Every slip figure — basic, OT,
+> travel, other allowance, gross, total deduction, net, round-off, payable,
+> the carried advance — was measured on `5cc8214` BEFORE the change and is
+> pinned by `repr` in `tests/test_labour_other_allowance.py`; it passes on
+> both sides of the change. Only the P&L labour figure moves.
+>
+> **Measured on that file's scenario** (Jamnagar and Jamnagar Shed on one
+> site; one issued slip with 1,250.50 of other allowance split 19.5 : 6 paid
+> days, one issued slip with none, one draft with 3,000):
+>
+> | project | before (`5cc8214`) | after |
+> |---|---|---|
+> | Jamnagar | 8,000.00 est + 17,206.07 actual = **25,206.07** | 8,000.00 + 18,162.34 = **26,162.34** |
+> | Jamnagar Shed | 0.00 + 26,094.18 = **26,094.18** | 0.00 + 26,388.41 = **26,388.41** |
+>
+> The two moves (956.27 + 294.23) are the 1,250.50 exactly; the slip without
+> an allowance and the draft move nothing. These are test figures: no live
+> database is reachable from where this was built, so the client's real
+> Jamnagar figures are not measured here.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

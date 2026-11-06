@@ -896,8 +896,11 @@ def month_figures(employee_id, month) -> dict:
 #   functions below and fails on a numeric constant in a multiplication, the
 #   way `tests/test_attendance.py` does for `cost_of()`.
 
-# The three heads of a slip that are PROJECT COST. Ruling 1: *"the slip's
-# earnings (wages + OT + travel)"*.
+# The heads of a slip that are PROJECT COST. Ruling 1: *"the slip's
+# earnings (wages + OT + travel)"* — and, from the §0 **sixty-seventh** block
+# (6 November 2026, Manas), **other allowance** too: it is earnings on the
+# slip, so it is labour on the P&L. That reverses the sixty-sixth block's
+# declared call 5 for `other_allowance` only; the round-off stays out.
 #
 # ⚠ **Advances, loans, loan recovery and the statutory heads are NEVER project
 #   cost, and that is ruling 1 in terms.** An advance is the same money paid
@@ -907,7 +910,7 @@ def month_figures(employee_id, month) -> dict:
 #   recovered and rise again next month, on a project whose labour did not
 #   move. `round_off` is excluded for the same reason it exists: it is a
 #   rounding of the payment, not a cost of the work.
-SLIP_COST_HEADS = ("basic", "ot", "travel")
+SLIP_COST_HEADS = ("basic", "ot", "travel", "other_allowance")
 
 # A marking the operator placed on NO project ON PURPOSE — office, workshop,
 # a day in the yard. Ruling 2: *"Overhead labour never lands on a project and
@@ -987,9 +990,10 @@ def issued_slip(employee_id, month) -> dict:
 def slip_earnings(slip) -> float:
     """
     What one issued slip cost the business in WAGES — `SLIP_COST_HEADS` summed
-    off the slip's own frozen snapshot, and nothing else on it.
+    off the slip's own frozen snapshot (basic, OT, travel and other allowance —
+    the slip's gross), and nothing else on it.
 
-    ⚠ **Read, never recomputed.** `payroll.snapshot()` froze these three at
+    ⚠ **Read, never recomputed.** `payroll.snapshot()` froze these four at
     issue and an issued slip never moves (CLIENT_CHANGES.md §1.2). Re-deriving
     them here would be a second place the OT multiplier lives, and it would
     also undo the freeze: a rate corrected next March would restate what

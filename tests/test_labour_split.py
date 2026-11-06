@@ -11,7 +11,7 @@ earnings afterwards:
 | the worker-month | the project's labour for it |
 |---|---|
 | no issued slip | `cost_of()` per marking, summed — the day rate SNAPSHOTTED on each marking times `DAY_SHARE` for its status, plus OT |
-| an ISSUED slip | its share of the slip's **wages + OT + travel**, split across projects by the days each got |
+| an ISSUED slip | its share of the slip's **wages + OT + travel + other allowance** (other allowance from the §0 sixty-seventh block), split across projects by the days each got |
 | a CANCELLED slip | back to the estimate, by the same one condition |
 
 ⚠ **Advances, loans, loan recovery and the statutory heads are NEVER project
@@ -195,7 +195,9 @@ def test_the_slips_wages_overtime_and_travel_are_all_three_project_cost(world):
     _mark("m1", "2026-10-01")
     _slip("s1", "2026-10", basic=800.0, ot=200.0, travel=120.0)
     assert AT.labour_split_of(AT.markings_for_project(PID))["actual"] == 1120.0
-    assert AT.SLIP_COST_HEADS == ("basic", "ot", "travel")
+    # ⚠ Widened 6 November 2026 (§0 sixty-seventh block): other allowance is
+    #   a fourth head. Was `== ("basic", "ot", "travel")`.
+    assert AT.SLIP_COST_HEADS == ("basic", "ot", "travel", "other_allowance")
 
 
 def test_a_draft_slip_leaves_the_month_on_the_estimate(world):
@@ -270,17 +272,23 @@ def test_the_statutory_heads_and_the_round_off_never_reach_a_project(world):
     assert AT.labour_split_of(AT.markings_for_project(PID))["actual"] == 800.0
 
 
-def test_other_allowance_typed_on_the_draft_is_not_project_cost(world):
+def test_other_allowance_on_an_issued_slip_IS_project_cost(world):
     """
-    ⚠ **A judgement call, declared.** `other_allowance` is typed on the draft
-    and the slip does not say what it was for. Ruling 1 names three heads —
-    *"wages + OT + travel"* — and a fourth read in silently would put a bonus
-    or an ex-gratia on one project's margin. It is on the slip, it is paid, and
-    it is not attributed here.
+    ⚠ **REVERSED 6 November 2026 — CLIENT_CHANGES.md §0 sixty-seventh block.**
+    Manas: an issued slip's earnings on the P&L include other allowance. The
+    sixty-sixth block's declared call 5 had left it out; the round-off stays
+    out. The old test, verbatim:
+
+        def test_other_allowance_typed_on_the_draft_is_not_project_cost(world):
+            _mark("m1", "2026-10-01")
+            _slip("s1", "2026-10", basic=800.0, other_allowance=5000.0)
+            assert AT.labour_split_of(AT.markings_for_project(PID))["actual"] == 800.0
+
+    `tests/test_labour_other_allowance.py` holds the rest, payroll pinned.
     """
     _mark("m1", "2026-10-01")
     _slip("s1", "2026-10", basic=800.0, other_allowance=5000.0)
-    assert AT.labour_split_of(AT.markings_for_project(PID))["actual"] == 800.0
+    assert AT.labour_split_of(AT.markings_for_project(PID))["actual"] == 5800.0
 
 
 # =============================================================================

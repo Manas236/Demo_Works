@@ -4944,15 +4944,17 @@ Five properties this shape exists to guarantee:
    | the worker-month | what the project carries for it |
    |---|---|
    | no ISSUED payslip | the ESTIMATE — `cost_of()` per marking: the SNAPSHOTTED day rate × `DAY_SHARE`, plus OT |
-   | an **ISSUED** payslip | its share of the slip's **wages + OT + travel** (`SLIP_COST_HEADS`), split across projects by paid days |
+   | an **ISSUED** payslip | its share of the slip's **wages + OT + travel + other allowance** (`SLIP_COST_HEADS`; other allowance from 6 November 2026, §0 sixty-seventh block), split across projects by paid days |
    | a Draft or **CANCELLED** slip | back to the estimate, by the one condition rather than a reversal |
 
    ⚠ **The denominator of the split is the worker's WHOLE month**, every
    project and the overhead days included. Over the rows handed in, each
    project would take 100 % of one slip and the month would be billed twice.
 
-   ⚠ **Advances, loans, loan recovery, the statutory heads, the round-off and
-   `other_allowance` are NEVER project cost.** An advance is the same money
+   ⚠ **Advances, loans, loan recovery, the statutory heads and the round-off
+   are NEVER project cost.** (`other_allowance` was on this list until the §0
+   **sixty-seventh** block, 6 November 2026, made it a fourth head: it is
+   earnings on the slip. Payroll's own figures did not move.) An advance is the same money
    paid earlier and a deduction reduces what is handed over without reducing
    what the day cost; a row built from the slip's `payable` would fall by the
    whole advance in the month it was recovered and rise again next month, on a
@@ -13060,7 +13062,7 @@ beside a tax-inclusive one, and each heading here says which it is:
 | | purchase orders — charges outside the tax base | a row of its own, only when one exists (A3's non-taxable charge sits after tax and is still a cost). |
 | | work orders, issued — before GST | `workorder.totals_of()["grand"]`; draft and cancelled counted and not costed. Its own row (§7 gap 55). |
 | | charges — taxable amount | every charge tagged to the project, at `taxable_amount`. |
-| | site labour — booked to this project | markings carrying this `project_id`, priced by `attendance.labour_split_of()` — **ESTIMATE then ACTUAL from 5 November 2026** (§0's **sixty-sixth** block, ruling 1; §3 property 5b is the rule). A worker-month with no issued payslip is the muster's estimate (snapshotted day rate × `DAY_SHARE`, plus OT at the setting); a worker-month whose slip is **ISSUED** is that slip's own wages + OT + travel, split across projects by paid days. **ONE row**, carrying `estimate + actual`, with the split named under its label (ruling 4) — two rows would be two cost heads and *Spent to date* adds this cell and nothing else. A marking that predates the day rate is counted and not costed **in the estimate**, and the panel says so; a PAID month of such a worker still reaches the row, by the slip. ⚠ Shown only with `attendance.view`; otherwise *withheld*, and the two totals below say they exclude it. |
+| | site labour — booked to this project | markings carrying this `project_id`, priced by `attendance.labour_split_of()` — **ESTIMATE then ACTUAL from 5 November 2026** (§0's **sixty-sixth** block, ruling 1; §3 property 5b is the rule). A worker-month with no issued payslip is the muster's estimate (snapshotted day rate × `DAY_SHARE`, plus OT at the setting); a worker-month whose slip is **ISSUED** is that slip's own wages + OT + travel + other allowance (the last from §0's sixty-seventh block), split across projects by paid days. **ONE row**, carrying `estimate + actual`, with the split named under its label (ruling 4) — two rows would be two cost heads and *Spent to date* adds this cell and nothing else. A marking that predates the day rate is counted and not costed **in the estimate**, and the panel says so; a PAID month of such a worker still reaches the row, by the slip. ⚠ Shown only with `attendance.view`; otherwise *withheld*, and the two totals below say they exclude it. |
 | | spent to date · margin to date | the sum of the rows above; billed less spent, labelled as **timing, not the final result**. |
 | | estimate against actual | estimated cost and spent to date, and the difference — *"not yet spent of the estimate"* or *"spent beyond the estimate"* — with the coverage note beside it. A difference, never a blend. |
 | **Cash** · GST included | billed incl. GST, received, written off, outstanding | the same issued RA bills: `grand_total`, `ra.received_against()`, `ra.written_off_against()` (A5) and `ra.outstanding_of()` summed. Receipts exist against RA bills only, so the tax invoices' GST-inclusive value is stated beside the section and kept out of the outstanding. |

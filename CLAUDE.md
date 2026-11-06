@@ -193,10 +193,11 @@ Fast facts so you don't get it wrong before reading:
   `STORE["payslips"]` **directly**, because `payroll.py` imports
   `attendance.py` and an import back is a cycle. Until a worker's payslip for a
   month is **ISSUED** that month is the muster's estimate; once issued it is
-  the slip's own **wages + OT + travel**, split across projects by **paid
+  the slip's own **wages + OT + travel + other allowance** (other allowance
+  from 6 Nov 2026, §0 sixty-seventh block), split across projects by **paid
   days** with the worker's **whole month** as the denominator. ⚠ **Advances,
-  loans, loan recovery, the statutory heads, the round-off and
-  `other_allowance` are NEVER project cost.** A Draft or CANCELLED slip leaves
+  loans, loan recovery, the statutory heads and the round-off are NEVER
+  project cost.** A Draft or CANCELLED slip leaves
   the month on the estimate, by one condition and not a reversal.
   `labour_cost_of()` is untouched and still prices the muster's own
   presentation. ⚠ **A marking's project is now decided PER WORKER at import**,
