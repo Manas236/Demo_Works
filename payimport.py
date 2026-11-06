@@ -174,37 +174,126 @@ def _find_header(sheet: _Sheet) -> int:
     return 0
 
 
+# ⚠ **EVERY TAB, ONE TAB PER SITE** (6 November 2026, CLIENT_CHANGES.md §0
+#   **sixty-eighth** block). The client keeps one tab per site; a worker who
+#   moved during the month is on several tabs, and their day cells on each tab
+#   are their days AT THAT SITE. A tab's site is its SITE column where filled,
+#   otherwise the TAB NAME — and a tab name that names no site ("Sheet2",
+#   "OCTOBER 2026", "ATTENDANCE") is not used. Where a tab of a workbook with
+#   more than one tab then has rows with no site at all, the parse STOPS and
+#   says so: which tab is which site is not guessed.
+
+GENERIC_TAB = re.compile(r"^(sheet|tab)\s*\d*$", re.I)
+NOT_A_SITE_WORDS = {"attendance", "salary", "muster", "summary", "total",
+                    "payroll", "master"}
+
+
+def _is_month_word(w: str) -> bool:
+    for name in MONTHS_FULL:
+        if w in (name, name[:3], "sept") or (len(w) >= 5 and name.startswith(w[:5])):
+            return True
+    return False
+
+
+MONTHS_FULL = ["january", "february", "march", "april", "may", "june", "july",
+               "august", "september", "october", "november", "december"]
+
+
+def tab_site(tab_name) -> str:
+    """
+    The site a TAB NAME names, or `""` when it names none: blank, a default
+    name (`Sheet1`, `Tab 2`), or a name made of a month, a year or words like
+    ATTENDANCE / SALARY. Trimmed and spaces collapsed, nothing else.
+    """
+    name = re.sub(r"\s+", " ", str(tab_name or "")).strip()
+    if not name or GENERIC_TAB.match(name):
+        return ""
+    words = re.findall(r"[a-z]+|\d+", name.lower())
+    if all(w.isdigit() or _is_month_word(w) or w in NOT_A_SITE_WORDS
+           or w in ("for", "the", "of", "month") for w in words):
+        return ""
+    return name
+
+
 def parse(workbook_bytes: bytes, filename: str = "") -> dict:
     """
-    `{"month_guess", "days", "rows", "problems", "sites"}` from one workbook.
+    `{"month_guess", "days", "rows", "problems", "sites", "tabs", "workers"}`
+    from one workbook — EVERY visible tab carrying a NAME header.
 
     ⚠ **Read through `sheetimport.py`**, the one module allowed to read a
     workbook: its size limits, its macro and zip-bomb refusals and its
-    defusedxml rule all apply. The sheet used is the first one carrying a NAME
-    header. Never raises on a bad sheet — every problem is a sentence in
-    `problems`, and a sheet with a fatal one comes back with no rows.
+    defusedxml rule all apply. Never raises on a bad sheet — every problem is a
+    sentence in `problems`, and a sheet with a fatal one comes back with no
+    rows.
+
+    `tabs` says, per tab, where its site came from — `"column"` (the SITE
+    column), `"tab"` (the tab name), `"mixed"`, or `"none"` — so the preview
+    reports which layout the workbook uses. A HIDDEN tab is listed and not
+    read: an old copy kept out of sight would otherwise be counted twice.
     """
     out = {"filename": filename, "month_guess": "", "days": 0, "rows": [],
-           "problems": [], "sites": []}
+           "problems": [], "sites": [], "tabs": [], "workers": []}
     try:
         staged = SI.read(workbook_bytes, filename, max_cols=SHEET_MAX_COLS)
     except SI.Refused as exc:
         out["problems"].append(str(exc))
         return out
-    sheet, hr = None, 0
+    metas = staged.get("sheets") or []
+    found = []
     for i, grid in enumerate(staged["grid"]):
         if grid is None:
             continue
-        cand = _Sheet(grid, {})
-        hr = _find_header(cand)
-        if hr:
-            sheet = _Sheet(grid, SI.comments(workbook_bytes, i))
-            break
-    if sheet is None:
+        meta = metas[i] if i < len(metas) else {}
+        hr = _find_header(_Sheet(grid, {}))
+        if not hr:
+            continue
+        name = str(meta.get("name") or f"Sheet{i + 1}")
+        if str(meta.get("visibility") or "visible") != "visible":
+            out["tabs"].append({"name": name, "rows": 0, "site_from": "hidden",
+                                "site": "", "_at": i})
+            continue
+        found.append((name, _Sheet(grid, SI.comments(workbook_bytes, i)), hr, i))
+    if not found:
         out["problems"].append("No NAME header in the first rows of any sheet "
                                "— this is not the attendance sheet.")
         return out
 
+    days_seen = set()
+    for name, sheet, hr, at in found:
+        tab = _parse_tab(sheet, hr, name, len(found) > 1)
+        if tab["fatal"]:
+            out["problems"].extend(tab["problems"])
+            out["rows"] = []
+            return out
+        out["problems"].extend(tab["problems"])
+        if not out["month_guess"]:
+            out["month_guess"] = tab["month_guess"]
+        days_seen.add(tab["days"])
+        out["tabs"].append({"name": name, "rows": len(tab["rows"]),
+                            "site_from": tab["site_from"],
+                            "site": tab_site(name), "_at": at})
+        out["rows"].extend(tab["rows"])
+    if len(days_seen) > 1:
+        out["problems"].append(
+            "The tabs do not agree on how many days the month has ("
+            + ", ".join(str(d) for d in sorted(days_seen)) + ") — check them.")
+        out["rows"] = []
+        return out
+    out["days"] = days_seen.pop()
+    out["tabs"].sort(key=lambda t: t.pop("_at"))
+    for row in out["rows"]:
+        if row["site"] and row["site"] not in out["sites"]:
+            out["sites"].append(row["site"])
+    out["workers"] = group_workers(out["rows"], out["problems"])
+    return out
+
+
+def _parse_tab(sheet: "_Sheet", hr: int, tab_name: str, many: bool) -> dict:
+    """One tab's rows, read exactly as the single-sheet parser always read
+    them, each carrying its `tab` and its site (SITE column, else tab name)."""
+    out = {"fatal": False, "problems": [], "rows": [], "days": 0,
+           "month_guess": "", "site_from": "none"}
+    where = f"Tab “{tab_name}”: " if many else ""
     for r in sheet.order:
         if r >= hr:
             break
@@ -228,30 +317,40 @@ def parse(workbook_bytes: bytes, filename: str = "") -> dict:
         elif isinstance(v, str) and v.strip().isdigit() and 1 <= int(v) <= 31:
             day_cols[int(v.strip())] = c
 
-    missing = [h for h in (H_NAME, H_SITE) if h not in named]
+    # ⚠ The SITE column is required only where the tab NAME cannot stand in.
+    tab_named = tab_site(tab_name)
+    missing = [h for h in (H_NAME, H_SITE) if h not in named
+               and not (h == H_SITE and tab_named)]
     if missing:
-        out["problems"].append(f"Missing header(s): {', '.join(missing).upper()}.")
+        out["problems"].append(f"{where}Missing header(s): "
+                               f"{', '.join(missing).upper()}.")
+        out["fatal"] = True
         return out
     n = len(day_cols)
     if n < 28 or n > 31 or sorted(day_cols) != list(range(1, n + 1)):
-        out["problems"].append(f"The day columns run 1–{n} with gaps or out of "
-                               f"range; a month has 28 to 31 days.")
+        out["problems"].append(f"{where}The day columns run 1–{n} with gaps or "
+                               f"out of range; a month has 28 to 31 days.")
+        out["fatal"] = True
         return out
     out["days"] = n
 
     def col(h):
         return named.get(h)
 
-    sites = []
+    sources = set()
     for r in [x for x in sheet.order if x > hr]:
         raw_name = sheet.get(r, col(H_NAME))
         if _blank(raw_name):
             break
-        row = {"line": r, "name": re.sub(r"\s+", " ", str(raw_name)).strip(),
+        cell = (re.sub(r"\s+", " ", str(sheet.get(r, col(H_SITE)) or "")).strip()
+                if col(H_SITE) is not None else "")
+        site, src = (cell, "column") if cell else (tab_named, "tab" if tab_named else "none")
+        sources.add(src)
+        row = {"line": r, "tab": tab_name,
+               "name": re.sub(r"\s+", " ", str(raw_name)).strip(),
                "designation": str(sheet.get(r, col(H_DESIG)) or "").strip()
                if col(H_DESIG) is not None else "",
-               "site": re.sub(r"\s+", " ", str(sheet.get(r, col(H_SITE))
-                                                or "")).strip(),
+               "site": site, "site_from": src,
                "days": [], "problems": [], "money": {}}
         for d in range(1, n + 1):
             c = day_cols[d]
@@ -302,11 +401,124 @@ def parse(workbook_bytes: bytes, filename: str = "") -> dict:
                 row["problems"].append(f"{h.upper()}: negative")
                 v = None
             row["money"][key] = v
-        if row["site"] and row["site"] not in sites:
-            sites.append(row["site"])
         out["rows"].append(row)
-    out["sites"] = sites
+
+    out["site_from"] = (sources.pop() if len(sources) == 1
+                        else "mixed" if sources else "none")
+    # ⚠ STOP, never guess: a tab of a several-tab workbook whose rows carry no
+    #   site at all cannot be told apart from the others.
+    if many and any(row["site_from"] == "none" for row in out["rows"]):
+        out["problems"].append(
+            f"{where}rows with no SITE, and the tab name does not name a site — "
+            f"the import cannot tell which site these days were at. Fill the "
+            f"SITE column or rename the tab to the site, and upload again.")
+        out["fatal"] = True
     return out
+
+
+# =============================================================================
+# ONE WORKER ACROSS TABS — one worker-month (§0 sixty-eighth block)
+# =============================================================================
+
+def group_workers(rows: list, problems: list) -> list:
+    """
+    `[{"name", "rows": [row index …]}]` — the rows that are ONE person.
+
+    Rows on different tabs whose names normalise equal (`norm()`, the exact
+    rule `match_employee()` uses) are one worker: one employee pick, one
+    month of markings, one set of ledger lines, one payslip. ⚠ A name that
+    appears TWICE ON ONE TAB is two rows the sheet itself keeps apart, so it
+    is never merged — every row of that name stays its own, and it is said.
+    """
+    by_name, order = {}, []
+    for i, row in enumerate(rows):
+        key = norm(row["name"])
+        if key not in by_name:
+            by_name[key] = []
+            order.append(key)
+        by_name[key].append(i)
+    out = []
+    for key in order:
+        idx = by_name[key]
+        tabs = [rows[i].get("tab", "") for i in idx]
+        if len(set(tabs)) < len(tabs):
+            problems.append(f"“{rows[idx[0]]['name']}” appears more than once "
+                            f"on one tab — those rows are not merged.")
+            out.extend({"name": rows[i]["name"], "rows": [i]} for i in idx)
+        else:
+            out.append({"name": rows[idx[0]]["name"], "rows": idx})
+    return out
+
+
+def workers_of(rec: dict) -> list:
+    """The stored grouping, or one worker per row for an import staged before
+    the grouping existed."""
+    return rec.get("workers") or [{"name": r["name"], "rows": [i]}
+                                  for i, r in enumerate(rec["rows"])]
+
+
+def worker_days(rec: dict, worker: dict) -> tuple:
+    """
+    `(days, clashes)` — the worker's days across their tabs.
+
+    `days` is `[(row index, day dict)]`, one per calendar day; `clashes` is
+    `[{"day", "tabs"}]` for every day marked on TWO OR MORE tabs.
+
+    ⚠ **A day on two tabs is imported on NEITHER.** One person is on one site
+    on one day (CC-2 C5); two marks for one day are a mistake in the sheet,
+    and picking one would put the wage on a site nobody chose — and adding
+    both would pay the day twice. The preview flags it; the commit skips it
+    and says so; it can be marked by hand once resolved, and the import never
+    overwrites a marked day.
+    """
+    seen = {}
+    for i in worker["rows"]:
+        for d in rec["rows"][i]["days"]:
+            seen.setdefault(d["day"], []).append((i, d))
+    days, clashes = [], []
+    for day in sorted(seen):
+        hits = seen[day]
+        if len(hits) == 1:
+            days.append(hits[0])
+        else:
+            clashes.append({"day": day,
+                            "tabs": [rec["rows"][i].get("tab", "") or "the sheet"
+                                     for i, _ in hits]})
+    return days, clashes
+
+
+def worker_money(rec: dict, worker: dict) -> tuple:
+    """
+    `(money, problems)` — the worker's money columns across tabs.
+
+    ADV, EXTRA EXP, LOAN and the cached ACTUAL SALARY are SUMMED: each tab's
+    figure is that site's share of one month. PER DAY SALARY and BALANCE LOAN
+    are one figure about the person, not about a site: taken where every tab
+    that fills it agrees, and LEFT OUT (with a note) where two disagree.
+    """
+    rows = [rec["rows"][i] for i in worker["rows"]]
+    money, problems = {}, []
+    for key in ("advance", "travel", "loan", "actual"):
+        vals = [r["money"].get(key) for r in rows if r["money"].get(key) is not None]
+        money[key] = round(sum(vals), 2) if vals else None
+    for key, label in (("rate", "PER DAY SALARY"), ("balance_loan", "BALANCE LOAN")):
+        vals = {round(r["money"][key], 2) for r in rows
+                if r["money"].get(key) is not None}
+        if len(vals) > 1:
+            problems.append(f"{label} differs between tabs ("
+                            + ", ".join(f"{v:,.2f}" for v in sorted(vals))
+                            + ") — not imported")
+            money[key] = None
+        else:
+            money[key] = vals.pop() if vals else None
+    return money, problems
+
+
+def worker_row(rec: dict, worker: dict) -> dict:
+    """The worker as ONE row — what `app_net()` and the preview price."""
+    days, _clashes = worker_days(rec, worker)
+    money, _p = worker_money(rec, worker)
+    return {"days": [d for _i, d in days], "money": money}
 
 
 # =============================================================================
@@ -495,6 +707,69 @@ def resolve_row_project(value: str, site_fields: dict) -> tuple:
 # THE WRITE
 # =============================================================================
 
+# =============================================================================
+# THE SAVED SITE MAPPING — a sheet's site name, answered once (§0 68th block)
+# =============================================================================
+#
+# ⚠ **Keyed by the sheet's SITE NAME, normalised** (`norm()`), and holding the
+#   address-book site it means and — where that address carries two or more
+#   projects (RIL Jamnagar / RIL Jamnagar Shed) — WHICH project that name
+#   means. It is written by a successful commit and read by the next preview
+#   (prefilled, still changeable) and the next commit (an unanswered shared
+#   site falls back to it). A saved answer whose address or project no longer
+#   exists is ignored, never repaired. One settings record, created on first
+#   use; nothing existing changes shape.
+
+SITE_MAP_RECORD = "pay_import_sites"
+
+
+def saved_sites() -> dict:
+    rec = (STORE.get("settings") or {}).get(SITE_MAP_RECORD) or {}
+    return rec.get("sites") or {}
+
+
+def saved_for(site_name) -> dict:
+    """`{"label", "site", "project", "saved_at"}` for one sheet site name, or {}."""
+    return saved_sites().get(norm(site_name)) or {}
+
+
+def save_sites(answers: dict) -> None:
+    """`answers`: `{sheet site name: (site value, project value)}`."""
+    rec = STORE.setdefault("settings", {}).setdefault(
+        SITE_MAP_RECORD, {"id": SITE_MAP_RECORD, "sites": {}})
+    sites = rec.setdefault("sites", {})
+    for name, (site_value, project_value) in answers.items():
+        sites[norm(name)] = {"label": name, "site": site_value,
+                             "project": project_value,
+                             "saved_at": PAY._now()}
+
+
+def _site_value_of(sf: dict, pf) -> str:
+    if pf and pf.get(AT.OVERHEAD_FIELD) and not sf.get(EMP.SITE_ADDRESS_FIELD):
+        return OVERHEAD
+    return str(sf.get(EMP.SITE_ADDRESS_FIELD) or "")
+
+
+def _no_site_project(person: dict, month: str) -> dict:
+    """
+    The project for a day the sheet gives NO site for: that worker's project
+    last month (`attendance.project_last_month()` — unanimous only, overhead
+    included), else unassigned. ⚠ **Only ever for a day with no site**; a site
+    the sheet gives is never overridden by it.
+    """
+    last = AT.project_last_month(person.get("id"), month) if person else {}
+    if last.get(AT.OVERHEAD_FIELD):
+        return AT.overhead_fields(True)
+    if last.get("project_id"):
+        return {"project_id": last["project_id"],
+                "project_name": last.get("project_name", "")}
+    return {"project_id": "", "project_name": ""}
+
+
+# =============================================================================
+# THE WRITE
+# =============================================================================
+
 def commit(rec: dict, form) -> tuple:
     """`(summary, error)`. Writes markings, ledger entries and new employees."""
     month = PAY.valid_month(form.get("month"))
@@ -508,62 +783,112 @@ def commit(rec: dict, form) -> tuple:
         return {}, (f"{PAY.month_label(month)} was already imported. Take that "
                     f"import out first.")
 
-    # ⚠ **Two decisions now, not one** (5 November 2026, the sixty-sixth block,
-    #   ruling 2). The SITE is still answered once per distinct sheet site; the
-    #   PROJECT is answered per worker wherever that site carries two or more
-    #   of them. `pf is None` out of `resolve_choice()` is the deferral.
-    mapping = {}
+    # ⚠ **The site AND, where it is shared, the project — once per SITE NAME**
+    #   (§0 sixty-eighth block). A tab is a site, so the name already says which
+    #   of two projects at one address the days were for; the answer comes from
+    #   `sproj_<i>`, else from the saved mapping for that name. Only where
+    #   neither answers does a project fall to the per-worker `proj_<i>` of the
+    #   sixty-sixth block, still accepted, no longer drawn.
+    mapping, answers = {}, {}
     for i, site in enumerate(rec["sites"]):
-        sf, pf, err = resolve_choice(form.get(f"site_{i}"), site)
+        raw = str(form.get(f"site_{i}") or "").strip()
+        sf, pf, err = resolve_choice(raw, site)
         if err:
             return {}, f"Site “{site}”: {err}."
+        if pf is None:
+            sp = str(form.get(f"sproj_{i}") or "").strip()
+            if not sp:
+                saved = saved_for(site)
+                if saved.get("site") == sf.get(EMP.SITE_ADDRESS_FIELD):
+                    sp = str(saved.get("project") or "")
+            if sp:
+                pf, perr = resolve_row_project(sp, sf)
+                if perr:
+                    return {}, f"Site “{site}”: {perr}."
+                answers[site] = (sf[EMP.SITE_ADDRESS_FIELD], sp)
+        else:
+            _a, _, given = raw.partition("|")
+            answers[site] = (_site_value_of(sf, pf), given)
         mapping[site] = (sf, pf)
+
+    workers = workers_of(rec)
+
+    # Every per-worker fallback pick is checked BEFORE anything is written.
+    worker_pick = {}
+    for w in workers:
+        first = w["rows"][0]
+        if not (form.get(f"emp_{first}") or "").strip():
+            continue
+        shared = {rec["rows"][i]["site"] for i in w["rows"]
+                  if rec["rows"][i]["site"]
+                  and mapping.get(rec["rows"][i]["site"], ({}, {}))[1] is None}
+        for site in sorted(shared):
+            sf = mapping[site][0]
+            if not str(form.get(f"proj_{first}") or "").strip():
+                n = len(AT.projects_on_site(sf.get(EMP.SITE_ADDRESS_FIELD)))
+                return {}, (f"Site “{site}”: {n} projects are at that site — "
+                            f"choose which one this site name means, or "
+                            f"“No project (overhead)”.")
+            pf, perr = resolve_row_project(form.get(f"proj_{first}"), sf)
+            if perr:
+                return {}, f"{w['name']}: {perr}."
+            worker_pick[(first, site)] = pf
 
     batch = rec["id"]
     lo, hi = PAY.month_bounds(month)
     summary = {"markings": 0, "skipped_days": 0, "entries": 0, "created": 0,
                "rates_filled": 0, "rates_updated": 0, "rows_skipped": 0,
-               "loan_mismatch": []}
-    for i, row in enumerate(rec["rows"]):
-        choice = (form.get(f"emp_{i}") or "").strip()
+               "loan_mismatch": [], "clashes": []}
+    for w in workers:
+        first = w["rows"][0]
+        choice = (form.get(f"emp_{first}") or "").strip()
         if not choice:
-            summary["rows_skipped"] += 1
+            summary["rows_skipped"] += len(w["rows"])
             continue
-        sf, pf = mapping.get(row["site"], ({}, {}))
-        # ⚠ **The per-worker project, and it is refused rather than guessed.**
-        #   Only where the site deferred (`pf is None`); a site with one project
-        #   is auto-assigned and a site with none goes to the UNASSIGNED bucket,
-        #   which is ruling 2's table in order.
-        if pf is None:
-            pf, perr = resolve_row_project(form.get(f"proj_{i}"), sf)
-            if perr:
-                return {}, f"Row {row['line']} ({row['name']}): {perr}."
-        sheet_rate = row["money"].get("rate")
+        lead = rec["rows"][first]
+        money, _mp = worker_money(rec, w)
+        sheet_rate = money.get("rate")
         if choice == "new":
+            home = next((mapping[rec["rows"][i]["site"]][0] for i in w["rows"]
+                         if rec["rows"][i]["site"] in mapping), {})
             data, err = EMP._validate({
-                "name": row["name"], "designation": row["designation"],
+                "name": lead["name"], "designation": lead["designation"],
                 "day_rate": "" if sheet_rate is None else str(sheet_rate),
-                "site_id": sf.get(EMP.SITE_ADDRESS_FIELD, ""), "active": "1"})
+                "site_id": home.get(EMP.SITE_ADDRESS_FIELD, ""), "active": "1"})
             if err:
-                return {}, f"Row {row['line']} ({row['name']}): {err}"
+                return {}, f"Row {lead['line']} ({lead['name']}): {err}"
             person = EMP.employees()[EMP.create_record(data)]
             summary["created"] += 1
         else:
             person = EMP.employees().get(choice)
             if not person:
-                return {}, f"Row {row['line']}: that employee no longer exists."
+                return {}, f"Row {lead['line']}: that employee no longer exists."
             if sheet_rate is not None and not person.get("day_rate") \
                     and not EMP.is_pre_day_rate(person):
                 person["day_rate"] = round(sheet_rate, 2)
                 summary["rates_filled"] += 1
-            elif sheet_rate is not None and form.get(f"rate_{i}") \
+            elif sheet_rate is not None and form.get(f"rate_{first}") \
                     and round(sheet_rate, 2) != round(float(person.get("day_rate") or 0), 2):
                 person["day_rate"] = round(sheet_rate, 2)
                 person.pop(EMP.RATE_MODEL_FIELD, None)
                 person.pop("monthly_salary", None)
                 summary["rates_updated"] += 1
 
-        for d in row["days"]:
+        days, clashes = worker_days(rec, w)
+        for c in clashes:
+            summary["clashes"].append(
+                f"{lead['name']} day {c['day']} ({' / '.join(c['tabs'])})")
+        no_site_pf = None
+        for i, d in days:
+            site = rec["rows"][i]["site"]
+            if site:
+                sf, pf = mapping.get(site, ({}, {}))
+                if pf is None:
+                    pf = worker_pick[(first, site)]
+            else:
+                if no_site_pf is None:
+                    no_site_pf = _no_site_project(person, month)
+                sf, pf = {}, no_site_pf
             day = f"{month}-{d['day']:02d}"
             rid, err = AT.import_marking(person, day, d["status"], d["ot"],
                                          sf, pf, batch, d.get("note", ""))
@@ -572,7 +897,6 @@ def commit(rec: dict, form) -> tuple:
             else:
                 summary["skipped_days"] += 1
 
-        money = row["money"]
         for key, kind, date in (("advance", PAY.ADVANCE, hi),
                                 ("travel", PAY.TRAVEL, hi),
                                 ("loan", PAY.LOAN_DEDUCTION, hi)):
@@ -596,6 +920,7 @@ def commit(rec: dict, form) -> tuple:
                              rec["filename"])
                 summary["entries"] += 1
 
+    save_sites(answers)
     rec.update({"status": COMMITTED, "month": month, "committed_at": PAY._now(),
                 "committed_by": PAY._user_name(), "summary": summary})
     return summary, ""
@@ -715,42 +1040,26 @@ def upload():
     return PAY._shell("Import attendance", body)
 
 
-def _row_project_cell(i: int, row: dict, hit: dict, month: str,
-                      site_value: str) -> str:
+def _site_project_cell(i: int, site: str, site_value: str, saved: dict) -> str:
     """
-    The per-worker project control for one sheet row — ruling 2's picker.
+    The project control for ONE SHEET SITE NAME (§0 sixty-eighth block):
+    drawn only where the picked address carries two or more live projects,
+    prefilled from the saved mapping when it answers for that same address.
+    It replaces the sixty-sixth block's per-worker picker — a tab is a site,
+    so the site's NAME says which project, once for everybody on it.
 
-    ⚠ **Drawn only where the row's site carries TWO OR MORE live projects.**
-      One project is auto-assigned, none goes to the UNASSIGNED bucket, and
-      overhead was answered at the site. A control on those rows would ask a
-      question with one answer, which is how a form teaches an operator to
-      click past it.
-
-    ⚠ **The default is that worker's project LAST MONTH** — ruling 2 — through
-      `attendance.project_last_month()`, which answers only when last month was
-      unanimous. No default leaves the control blank and `commit()` refuses,
-      which is ruling 2's last line.
-
-    ⚠ **The site this is drawn against is the PRESELECTED one.** If the
-      operator changes the site select, the `<script>` at the foot of the page
-      re-populates this control from `BY_SITE`; and whatever either of them
-      ends up showing, `resolve_row_project()` re-reads `STORE["projects"]` and
-      refuses a project that is not at the row's site. The browser decides
-      nothing.
+    ⚠ It carries `data-row-project` and `data-sheet-site` (the sheet's site
+      name), so the page's script re-populates it when the site select
+      changes, exactly as it did the per-worker control. The server decides:
+      `resolve_row_project()` refuses a project not at that site.
     """
-    if site_value == OVERHEAD:
-        return ('<span class="pay-sub">overhead</span>'
-                f'<input type="hidden" name="proj_{i}" value="{_esc(OVERHEAD)}"/>')
-    at = AT.projects_on_site(site_value) if site_value else []
-    if len(at) == 1:
-        return f'<span class="pay-sub">{_esc(at[0].get("name") or "")}</span>'
-    if not at:
-        return ('<span class="pay-sub">'
-                + ("Unassigned" if site_value else "&mdash;") + "</span>")
-
-    last = AT.project_last_month(hit["id"], month) if (hit and month) else {}
-    want = (OVERHEAD if last.get(AT.OVERHEAD_FIELD)
-            else str(last.get("project_id") or ""))
+    at = (AT.projects_on_site(site_value)
+          if site_value and site_value != OVERHEAD else [])
+    if len(at) < 2:
+        return (f'<select name="sproj_{i}" data-row-project="{i}" '
+                f'data-sheet-site="{_esc(site)}" disabled>'
+                f'<option value="">&mdash;</option></select>')
+    want = str(saved.get("project") or "") if saved.get("site") == site_value else ""
     ids = [str(p.get("id")) for p in at]
     if want not in ids + [OVERHEAD]:
         want = ""
@@ -764,13 +1073,8 @@ def _row_project_cell(i: int, row: dict, hit: dict, month: str,
     opts.append(f'<option value="{_esc(OVERHEAD)}"'
                 f'{" selected" if want == OVERHEAD else ""}>'
                 f'No project (overhead)</option>')
-    hint = ""
-    if want and last.get("project_last_month"):
-        hint = (f'<span class="pay-sub">from '
-                f'{_esc(PAY.month_label(last["project_last_month"]))}</span>')
-    return (f'<select name="proj_{i}" data-row-project="{i}" '
-            f'data-sheet-site="{_esc(row["site"])}">{"".join(opts)}</select>'
-            f'{hint}')
+    return (f'<select name="sproj_{i}" data-row-project="{i}" '
+            f'data-sheet-site="{_esc(site)}">{"".join(opts)}</select>')
 
 
 @payimport_bp.route("/preview/<id>")
@@ -789,7 +1093,10 @@ def preview(id):
     site_rows = ""
     site_pick = {}            # sheet site -> the value the select is showing
     for i, site in enumerate(rec["sites"]):
-        pick = preselect(site, choices)
+        saved = saved_for(site)
+        valid = {v for v, _l, _a in choices}
+        pick = (saved.get("site") if saved.get("site") in valid
+                else preselect(site, choices))
         site_pick[site] = pick
         opts = ['<option value="">— choose —</option>'] + [
             f'<option value="{_esc(v)}"{" selected" if v == pick else ""}>'
@@ -803,56 +1110,84 @@ def preview(id):
         elif len(at) > 1:
             note = (f'{len(at)} projects here: '
                     + ", ".join(str(p.get("name") or "") for p in at)
-                    + " — each person is asked below")
+                    + " — say which one this site name means")
         elif len(at) == 1:
             note = f'one project here: {at[0].get("name") or ""} — assigned'
         elif pick:
             note = "no project at this site — these days go to Unassigned"
         else:
             note = ""
+        if saved and saved.get("site") == pick:
+            note += " · saved from an earlier import"
         site_rows += (f'<tr><td><b>{_esc(site)}</b></td>'
                       f'<td><select name="site_{i}" data-sheet-site="{i}" '
                       f'required>{"".join(opts)}</select></td>'
+                      f'<td>{_site_project_cell(i, site, pick, saved)}</td>'
                       f'<td class="pay-sub">{_esc(note)}</td></tr>')
 
     people = sorted(EMP.employees().values(),
                     key=lambda e: str(e.get("name") or "").lower())
     emp_rows = ""
-    for i, row in enumerate(rec["rows"]):
+    for w in workers_of(rec):
+        i = w["rows"][0]
+        row = rec["rows"][i]
+        wrow = worker_row(rec, w)
+        days, clashes = worker_days(rec, w)
+        money_notes = worker_money(rec, w)[1]
         hit = match_employee(row["name"])
         opts = [f'<option value="">— skip this row —</option>',
                 '<option value="new">Create a new employee</option>']
         opts += [f'<option value="{_esc(e["id"])}"{" selected" if hit and e["id"] == hit["id"] else ""}>'
                  f'{_esc(e.get("name"))}{" (" + _esc(e.get("code")) + ")" if e.get("code") else ""}</option>'
                  for e in people]
-        m = row["money"]
+        m = wrow["money"]
         rate = m.get("rate")
         rate_cell = "&mdash;" if rate is None else PAY._money(rate)
         if hit and rate is not None and hit.get("day_rate") and \
                 round(rate, 2) != round(float(hit.get("day_rate") or 0), 2):
             rate_cell += (f'<br><label><input type="checkbox" name="rate_{i}"/> '
                           f'replace {PAY._money(hit.get("day_rate"))}</label>')
-        paid = sum(AT.share_of(d["status"]) for d in row["days"])
-        ot = sum(d["ot"] for d in row["days"] if d["status"] in AT.OT_STATUSES)
-        net = app_net(row, month)
+        paid = sum(AT.share_of(d["status"]) for d in wrow["days"])
+        ot = sum(d["ot"] for d in wrow["days"] if d["status"] in AT.OT_STATUSES)
+        net = app_net(wrow, month)
         actual = m.get("actual")
         diff = (actual is not None and round(actual, 2) != round(net, 2))
         conflicts = 0
         if hit and month:
             marked = {r.get("date") for r in AT.month_markings(hit["id"], month)}
-            conflicts = sum(1 for d in row["days"]
+            conflicts = sum(1 for d in wrow["days"]
                             if f"{month}-{d['day']:02d}" in marked)
-        notes = list(row["problems"])
+        notes = [p for k in w["rows"] for p in rec["rows"][k]["problems"]]
+        notes += money_notes
+        if clashes:
+            notes.append("⚠ marked on two tabs, NOT imported until resolved: "
+                         + "; ".join(f"day {c['day']} ({' / '.join(c['tabs'])})"
+                                     for c in clashes))
         if conflicts:
             notes.append(f"{conflicts} day(s) already marked in the app — skipped")
         if m.get("loan") and not m.get("balance_loan"):
             notes.append("a loan deduction with no BALANCE LOAN")
+        per_site = {}
+        for k, _d in days:
+            key = rec["rows"][k]["site"]
+            per_site[key] = per_site.get(key, 0) + 1
+        where = "; ".join(
+            f"{_esc(k) if k else 'no site'}: {n} d" for k, n in per_site.items())
+        if per_site.get(""):
+            last = _no_site_project(hit, month) if hit and month else {}
+            where += (" &mdash; no-site days take "
+                      + (_esc(last.get("project_name")) if last.get("project_id")
+                         else "overhead" if last.get(AT.OVERHEAD_FIELD)
+                         else "no project (Unassigned)")
+                      + " (last month)")
+        tabs = (", ".join(_esc(rec["rows"][k].get("tab", "")) for k in w["rows"]
+                          if rec["rows"][k].get("tab")) or _esc(row["site"]))
         emp_rows += f"""
       <tr{' style="background:#fff3e0"' if diff or notes else ''}>
-        <td>{_esc(row['name'])}<span class="pay-sub">{_esc(row['site'])}</span></td>
+        <td>{_esc(row['name'])}<span class="pay-sub">{tabs}</span></td>
         <td><select name="emp_{i}">{''.join(opts)}</select></td>
-        <td>{_row_project_cell(i, row, hit, month, site_pick.get(row['site'], ''))}</td>
-        <td class="num">{len(row['days'])} / {PAY._days(paid)}</td>
+        <td class="pay-sub">{where or '&mdash;'}</td>
+        <td class="num">{len(wrow['days'])} / {PAY._days(paid)}</td>
         <td class="num">{PAY._days(ot)}</td>
         <td class="num">{rate_cell}</td>
         <td class="num">{PAY._money(m.get('advance'))} / {PAY._money(m.get('travel'))}
@@ -872,6 +1207,13 @@ def preview(id):
     #   named with the seven characters `</script>` would otherwise close the
     #   block and every byte after it would be parsed as HTML (ABOUT.md §7.9e).
     #   A project name and a sheet's SITE string are both free text.
+    tabs_html = " &middot; ".join(
+        f'{_esc(t["name"])} ({t["rows"]} rows, site from '
+        + {"column": "the SITE column", "tab": "the tab name",
+           "mixed": "the SITE column and the tab name",
+           "none": "nowhere — no site", "hidden": "— hidden, not read"}.get(
+               t["site_from"], _esc(t["site_from"])) + ")"
+        for t in rec.get("tabs") or []) or "one sheet"
     projects_by_site = AT.projects_by_site_json()
     sheet_sites = P.json_for_script(
         {str(i): s for i, s in enumerate(rec["sites"])})
@@ -882,8 +1224,9 @@ def preview(id):
     <a class="btn btn-ghost" href="{url_for('payimport.upload')}">&#8592; Back</a></div>
   {warn}
   {f'<div class="pay-warn"><ul>{problems}</ul></div>' if problems else ''}
+  <div class="pay-note"><b>Tabs read:</b> {tabs_html}</div>
   <div class="pay-note"><b>Nothing has been written.</b> {rec['days']} day columns,
-    {len(rec['rows'])} rows. A blank day writes nothing; 0 writes an absence; 0.5 a
+    {len(rec['rows'])} rows, {len(workers_of(rec))} people. A blank day writes nothing; 0 writes an absence; 0.5 a
     half day; a 1 carrying a "paid leave" comment, paid leave. Names are matched
     exactly &mdash; an unmatched row is skipped unless you choose. The app's net
     is priced by the muster's own arithmetic; where the sheet's ACTUAL SALARY
@@ -898,7 +1241,7 @@ def preview(id):
       <table class="pay-tbl">{site_rows}</table>
     </div>
     <div class="pay-card"><table class="pay-tbl">
-      <tr><th>Sheet row</th><th>Employee</th><th>Project</th>
+      <tr><th>Sheet row</th><th>Employee</th><th>Sites</th>
           <th class="num">Marked / paid days</th>
           <th class="num">OT hrs</th><th class="num">Day rate</th>
           <th class="num">Adv / travel / loan ded. / loan owed</th>
@@ -995,6 +1338,9 @@ def commit_import(id):
     if summary["loan_mismatch"]:
         msg += " Loan differs from the ledger for: " + "; ".join(
             summary["loan_mismatch"])
+    if summary.get("clashes"):
+        msg += (" NOT imported — marked on two tabs, mark by hand once "
+                "resolved: " + "; ".join(summary["clashes"]))
     return redirect(url_for("payroll.payroll_register", month=rec["month"],
                             msg=msg, type="success"))
 

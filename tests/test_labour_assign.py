@@ -146,8 +146,11 @@ def test_two_projects_at_the_site_refuse_the_commit_without_a_per_worker_pick(cl
         "month": "2026-09", "site_0": SITE, "emp_0": "pk"})
     assert r.status_code == 302
     assert STORE["attendance"] == {}, "refused before anything was written"
-    assert "choose which one for this person" in r.headers["Location"] \
-        or "choose+which+one+for+this+person" in r.headers["Location"]
+    # ⚠ §0 sixty-eighth block (6 Nov 2026): the question is asked once per
+    #   SITE NAME now, so the refusal names the site. Was:
+    #       assert "choose which one for this person" in r.headers["Location"] …
+    assert "choose which one this site name means" in r.headers["Location"] \
+        or "choose+which+one+this+site+name+means" in r.headers["Location"]
     assert STORE["pay_imports"][sid]["status"] == PI.STAGED
 
 
@@ -201,10 +204,18 @@ def test_a_per_worker_pick_of_a_project_somewhere_else_is_refused(client):
         or "not at that site" in r.headers["Location"]
 
 
-def test_the_per_worker_picker_defaults_to_last_months_project(client):
+def test_last_month_no_longer_answers_a_day_the_sheet_gives_a_site_for(client):
     """
-    Ruling 2's default. August was unanimously Roadpali B, so September's
-    picker opens on it — and the commit takes it.
+    ⚠ **SUPERSEDED 6 November 2026 — CLIENT_CHANGES.md §0 sixty-eighth
+    block.** The last-month default now fills ONLY days with no site; a site
+    the sheet gives is answered once per SITE NAME (`sproj_<i>`), and the
+    per-worker picker is no longer drawn. The old test, verbatim in its
+    assertions:
+
+        page = client.get(f"/payroll/import/preview/{sid}?month=2026-09")…
+        assert 'name="proj_0"' in page
+        assert '<option value="p2" selected>Roadpali B</option>' in page
+        assert '<option value="p1" selected' not in page
     """
     _site()
     _project("p1", "Roadpali A")
@@ -216,9 +227,10 @@ def test_the_per_worker_picker_defaults_to_last_months_project(client):
     sid = _upload(client, workbook([PUSHKAR]))
     page = client.get(f"/payroll/import/preview/{sid}?month=2026-09") \
         .get_data(as_text=True)
-    assert 'name="proj_0"' in page
-    assert '<option value="p2" selected>Roadpali B</option>' in page
-    assert '<option value="p1" selected' not in page
+    assert 'name="proj_0"' not in page
+    assert 'name="sproj_0"' in page
+    assert '<option value="p2" selected>' not in page, \
+        "August's project does not answer a site the sheet names"
 
 
 def test_a_split_last_month_gives_no_default_at_all(client):

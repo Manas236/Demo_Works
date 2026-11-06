@@ -200,7 +200,13 @@ Fast facts so you don't get it wrong before reading:
   project cost.** A Draft or CANCELLED slip leaves
   the month on the estimate, by one condition and not a reversal.
   `labour_cost_of()` is untouched and still prices the muster's own
-  presentation. ⚠ **A marking's project is now decided PER WORKER at import**,
+  presentation. ⚠ **The import reads EVERY TAB — one tab per site** (§0
+  sixty-eighth block, 6 Nov 2026): a tab's site is its SITE column, else its
+  name; one person across tabs is one worker-month; a day on two tabs is
+  imported on neither; a shared site's project is asked once per SITE NAME
+  and saved (`settings["pay_import_sites"]`) for the next import; the
+  last-month default fills only days with no site. Before that block the
+  project was decided per worker at import,
   with a **No project (overhead)** choice; `labour_overhead` is stored **only
   when True** so an absent key still means LEGACY. Unassigned labour has a
   worklist, `/attendance/unassigned`, under the new **`labour.assign`** (Owner

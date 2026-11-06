@@ -12854,8 +12854,51 @@ is otherwise compared and reported. The preview sets the app's net beside the
 sheet's cached ACTUAL SALARY: on the client's September sheet the two agree on
 **all 37 rows that carry one**, to the paisa.
 
+#### One tab per site (6 November 2026, CLIENT_CHANGES.md §0 **sixty-eighth** block)
+
+The client keeps **one tab per site**; a worker who moved during the month is
+on several tabs, and their day cells on each tab are their days at that site.
+
+* **Every visible tab with a NAME header is read** (`payimport.parse()` →
+  `_parse_tab()`, the old per-sheet reading unchanged). A **hidden** tab is
+  listed and not read. Each row's site is its **SITE cell, else the tab
+  name** (`tab_site()`: a blank, `SheetN`, or a name made only of a month, a
+  year or words like ATTENDANCE/SALARY names no site). `rec["tabs"]` records
+  per tab where the site came from — `column` / `tab` / `mixed` / `none` /
+  `hidden` — and the preview prints it under **Tabs read**. ⚠ In a workbook
+  of several tabs, a tab with rows that end up with **no site** stops the
+  parse: which tab is which site is never guessed. All tabs must agree on the
+  day count.
+* **One person across tabs is ONE worker-month** (`group_workers()`, by
+  `norm()`'s exact name rule; `rec["workers"]`). One employee pick
+  (`emp_<first row>`), one set of markings, one set of ledger lines: ADV,
+  EXTRA EXP, LOAN and ACTUAL SALARY are **summed**; PER DAY SALARY and BALANCE
+  LOAN are taken where the tabs agree and **left out, with a note**, where they
+  differ (`worker_money()`). So the slip is exactly what one tab of the same
+  totals gives — `tests/test_payimport_tabs.py` pins it against figures
+  measured before the block. A name twice on ONE tab is never merged.
+* ⚠ **A day marked on two tabs is imported on NEITHER** (`worker_days()`):
+  flagged on the preview, skipped by the commit, listed in the summary; it is
+  marked by hand once resolved.
+* **The site AND — at an address carrying two or more projects — the project
+  are answered once per SITE NAME**: `site_<i>` and `sproj_<i>`. That replaces
+  the sixty-sixth block's per-worker picker, which is no longer drawn (a POST
+  carrying `proj_<i>` is still accepted where no site-level answer exists). An
+  unanswered shared site still refuses the commit before anything is written.
+* **The answers are SAVED and reused** —
+  `STORE["settings"]["pay_import_sites"]`, `{"sites": {norm(name): {"label",
+  "site", "project", "saved_at"}}}`, written by a successful commit. The next
+  preview preselects both and says *saved from an earlier import*; the next
+  commit falls back to the saved project for a shared site the form left
+  unanswered. A saved answer whose address or project is gone is ignored.
+  Created on first use; no other record changes shape; no migration.
+* **The last-month default fills only days with NO site**
+  (`_no_site_project()` over `attendance.project_last_month()`); such a day
+  stores no site. A site the sheet gives is never overridden by it.
+
 Held by [tests/test_payroll.py](tests/test_payroll.py),
-[tests/test_payimport.py](tests/test_payimport.py) and
+[tests/test_payimport.py](tests/test_payimport.py),
+[tests/test_payimport_tabs.py](tests/test_payimport_tabs.py) and
 [tests/test_attendance_statuses.py](tests/test_attendance_statuses.py).
 
 ---

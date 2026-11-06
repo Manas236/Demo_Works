@@ -6658,6 +6658,83 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 6 November 2026, by Manas Gawde — THE ATTENDANCE IMPORT READS ONE TAB PER SITE, AND A SITE NAME'S PROJECT IS ASKED ONCE AND SAVED · POST-GO-LIVE
+>
+> **A new block, not an amendment.** The sixty-sixth and sixty-seventh blocks
+> stand except where named here. This is the **sixty-eighth** occasion.
+>
+> **Why.** Workers move between four or five sites in one month. The client's
+> workbook keeps **one tab per site**; a worker who moved is on several tabs,
+> and their day cells on each tab are their days at that site. The import read
+> only the FIRST tab carrying a NAME header, took one SITE per row, and asked a
+> shared site's project per worker.
+>
+> **What was decided (Manas):**
+>
+> 1. **Read every tab.** A tab's site is its SITE column if filled, otherwise
+>    the tab name. Where neither tells which site a tab is, **stop and report**
+>    — never guess.
+> 2. **The same worker across tabs is ONE worker-month**: days, OT and money
+>    summed into one payslip, whose figures are exactly what a single-tab
+>    import of the same totals gives.
+> 3. **The same worker marked on the same day on two tabs** is flagged on the
+>    preview and **neither day is imported** until resolved. Never
+>    double-counted.
+> 4. **Site name → project, saved and reused.** A site name whose address
+>    carries more than one project (RIL Jamnagar / RIL Jamnagar Shed) is asked
+>    **once per site name per import**, unless a saved mapping answers it.
+> 5. **The last-month default fills only days with no site at all.** It never
+>    overrides a site the sheet gives.
+> 6. The payslip split across projects stays by paid days (the sixty-sixth
+>    block's rule) — unchanged.
+>
+> **This SUPERSEDES the sixty-sixth block's ruling 2 for the import** in two
+> places: the project is asked per SITE NAME, not per worker, and the
+> last-month default no longer prefills a sited day. The per-worker
+> `proj_<i>` is still ACCEPTED where no site-level answer exists, and no
+> longer drawn. Overhead, the unassigned screen and the backfill tool are
+> untouched.
+>
+> **The agent's own calls, declared:**
+>
+> 1. **A tab name names no site** when it is blank, `SheetN` / `Tab N`, or made
+>    only of a month, a year and words like ATTENDANCE, SALARY, MUSTER,
+>    SUMMARY, TOTAL, PAYROLL, MASTER (`payimport.tab_site()`). In a
+>    single-tab workbook a row with no site is a "no site" day (rule 5); in a
+>    workbook of several tabs it stops the parse (rule 1).
+> 2. **A hidden tab is listed and not read** — an old copy kept out of sight
+>    would otherwise be paid twice.
+> 3. **PER DAY SALARY and BALANCE LOAN are one figure about the person**, not
+>    a share of the month: taken where every tab that fills them agrees,
+>    left out with a note where two differ. ADV, EXTRA EXP, LOAN and the
+>    cached ACTUAL SALARY are summed.
+> 4. **"Marked on two tabs" means any value in the day cell on two tabs**, a 0
+>    included — the conservative reading; a clashing day is marked by hand.
+> 5. **A name twice on ONE tab is not merged** with anything, as before.
+> 6. **A no-site day stores no site**, only the last-month project (or
+>    overhead, or nothing) — the day's site is not invented from the project.
+>
+> **What was built:** `payimport.parse()` over every tab (`_parse_tab()` is
+> the old per-sheet reading, unchanged), `group_workers()`, `worker_days()`,
+> `worker_money()`; `commit()` per worker; `sproj_<i>` on the preview; the
+> saved mapping `STORE["settings"]["pay_import_sites"]`, created on first use
+> (a new settings record — nothing existing changes shape, so no migration).
+> No route, no permission, no collection.
+>
+> **Payroll is untouched, and pinned.** `tests/test_payimport_tabs.py` pins a
+> single-tab slip measured on `54a63cc`, before this block, by `repr`, and
+> proves a three-tab sheet of the same totals gives exactly it. Every earlier
+> payroll pin passes unchanged.
+>
+> **Not measured:** which layout the client's October workbook uses (SITE
+> column or tab name) — the workbook is not in the repository. The preview
+> prints it per tab under *Tabs read* the first time it is uploaded.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
