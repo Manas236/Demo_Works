@@ -6988,6 +6988,57 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 8 November 2026, by Yogesh on a call that day — THE SF MARK SITS TOO LOW BESIDE THE NAME ON PRINTED DOCUMENTS · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> named here. This is the **seventy-second** occasion. **No figure, no field
+> and no route moves** — this is artwork position on the printed letterhead and
+> nothing else. **No charge**: it is a correction to the banner delivered under
+> the fiftieth block and resized under the fifty-sixth, not new scope.
+>
+> **What was asked:** the logo sits too low next to the company name on printed
+> documents. Move it **up** and **left**. The client said it is fine if the
+> logo ends up further from the name. **Printed documents only** — the landing
+> page and the on-screen views are not touched.
+>
+> **What was found, and what was therefore done.** The logo is not laid out in
+> CSS: it is baked into `assets/letterhead-banner.png`, the one picture
+> `branding.letterhead_top()` draws, and all three letterhead drawers call that
+> one function, so there is no second copy to chase. Measured in the artwork:
+>
+> * **Too low — real, and fixed.** The mark was *centred on the banner's
+>   height* while **SAMRUDDHI FIRE** is set with its caps at the top of the
+>   ink, so it printed **17 px low** — 1.15 mm on paper. The centring was the
+>   whole cause; it is now top-aligned to the cap line, with no corrective
+>   offset anywhere.
+> * **Left — already there.** The mark's ink begins at x = 12 of 1928, which is
+>   the artwork's own left inner edge (`PAD`). There is nothing to its left to
+>   move into.
+> * **A wider gap — not done, and why.** The name's ink ends at x = 1915 of
+>   1928, flush right. Widening the 36 px gap would have meant moving the name,
+>   or taking the mark out of the picture and placing it at the *page's* left
+>   inner edge — which on the landscape BOQ would have stranded it 75.5 mm from
+>   the name. Both were put up; **top-alignment alone was the decision taken**,
+>   and the other two were declined. If the client raises the gap again, that
+>   is a fresh decision and needs its own block.
+>
+> **What did not move, and it was measured rather than assumed.** All nineteen
+> print routes were rendered before and after. With the inlined pictures
+> masked, every page is **text-identical** to its own before-state, so the
+> Original / Duplicate / Triplicate labels, the signature and stamp block, the
+> Make column, the round-off line, the HSN behaviour, the bank block and the
+> amount in words are untouched. In headless Chromium at A4 — landscape for the
+> BOQ and the joint sheet — every element rect and every page's scroll height
+> is identical, so nothing reflowed and **no document gained a page**. The
+> banner is still 130 mm wide and the artwork still 1928 × 274.
+>
+> **Sixteen print goldens were re-baselined**, deliberately and once:
+> `letterhead` on every document, plus the `signature` tail block on the four
+> copy-set documents, which carries copies 2 and 3. Every delta is a multiple
+> of **+604 bytes**, the PNG's growth in base64. No other block moved.
+> ABOUT.md §6 has the measurements, §7 gap 118 records a diagnostic weakness in
+> the golden harness that this pass surfaced on the way through.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

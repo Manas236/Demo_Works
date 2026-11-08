@@ -14074,6 +14074,39 @@ that never saved one reads the new default with no write at all.
 
 ### The letterhead banner — `letterhead_top()` (21 October 2026)
 
+⚠ **8 November 2026 — the SF mark is TOP-ALIGNED to the lettering** (Yogesh's
+call of that date, CLIENT_CHANGES.md §0, no charge). The client said the mark
+sat too low beside the name. **The cause was alignment, not a stray offset:**
+the mark was *centred on the banner's height* — ink rows 29–243 on a 274-row
+canvas — while **SAMRUDDHI FIRE** is set with its caps at the very top of the
+ink, row 12. So it printed **17 px low**, which is 1.15 mm on paper and 4.5 CSS
+px at the drawn 130 mm. It was translated **up 17 px** inside the same artwork,
+so its ink top is now row 12, the name's own. `assets/build_banner.py`'s
+`ROUNDEL_AT` goes `(140, 36)` → `(140, 19)`; `ROUNDEL_PX`, `TEXT_AXIS` and
+every `NAME_*` / `TAG_*` figure are untouched.
+
+- **Nothing else moved.** The canvas is still 1928 × 274, the palette is the
+  same 64 colours, and the name-and-tagline band is **byte-identical** — the
+  committed PNG was produced by translating the mark's palette indices, not by
+  re-quantising. The mark's own ink is 259 × 215 before and after, so the
+  **size is unchanged**, and it was already flush at the artwork's left inner
+  edge (x = 12 = `PAD`), which is why it did not move left and the 36 px gap to
+  the name did not widen: the name is flush right at x = 1915 of 1928, so a
+  wider gap would have had to move the name. That was put to the client's side
+  and **top-alignment alone was the decision**.
+- **Measured on all nineteen print routes**, before and after: with every
+  inlined PNG masked, each page is text-identical to its own before-state, and
+  in headless Chromium at A4 every element rect and every page's scroll height
+  is identical — so no line reflowed and no document gained a page. The PNG
+  grew 29,039 → 29,491 bytes, so every golden moved by +604 bytes per banner
+  copy and in the `letterhead` block alone (plus the `signature` tail block on
+  the four copy-set documents, which carries copies 2 and 3).
+- ⚠ **The mark and the name now set the crop's top TOGETHER.** `build()` crops
+  to `getbbox()`, so if a Windows rebuild lands the mark's ink one pixel above
+  the name's, the canvas grows a pixel and **every printed banner rescales**.
+  Check the output is 1928 × 274 and that the two ink tops agree before
+  committing a rebuild.
+
 ⚠ **29 October 2026 — the SF mark is 1.5× (CLIENT_CHANGES.md §0 fifty-sixth
 block).** The client found it too small. It was redrawn from `assets/logo.png`
 at 300 px into the white the old 200 px mark left, centred on the banner's
@@ -17211,6 +17244,31 @@ text is unchanged, and every reference to them was moved with them.*
     fold a site-linked record into a vendor-linked one. If the client ever needs
     one party in two pickers, the fix is a multi-type address (a `types` list
     the pickers test membership of), **not** loosening the duplicate rule.
+
+118. 🟡 **A print golden's per-block digests are only read once the WHOLE-page
+    digest has moved, so a stale block literal sits unnoticed until the next
+    re-baseline surfaces it — OPEN** (8 November 2026). `_check()` in
+    `tests/test_print_golden.py` compares `expect_blocks` **only** inside
+    `if expect_blocks is not None and got_whole != expect_whole:`. While a
+    document hashes as expected the block dict is never evaluated, so a value
+    in it can be wrong for any length of time and the suite stays green. The
+    logo pass found exactly that: `TI_BLOCKS["items"]` read `ace24562781a2e31`
+    and the tax invoice's `items` block has been hashing `df6d3d2a345cc813` —
+    before *and* after that change, so the items table did not move in it. The
+    literal was corrected in the same commit and is marked at its site.
+    ⚠ **The cost is diagnostic, not correctness**: the whole-page digest still
+    catches every change: what the staleness costs is the failure message,
+    which names a block as moved when it did not, and that is precisely the
+    message a re-baseline is supposed to be judged from. The pass that found
+    it judged the move from before/after renders instead of from the recorded
+    dict, which is the workaround until this is closed. The fix is to compare
+    the blocks on every run (hash them unconditionally and assert), which
+    makes the whole-page assertion a redundancy rather than the only guard;
+    the reason it is not done here is that it would surface every other stale
+    literal at once, in a pass with no authority to re-baseline them.
+    **Nothing else in the file was audited for the same staleness** — only the
+    sixteen documents this pass re-baselined were measured, and of those, this
+    was the only one.
 
 ## 8. Stale docs — do not trust these two files
 

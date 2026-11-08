@@ -69,9 +69,30 @@ W, H = 2400, 330
 #   `branding.letterhead_top()` is untouched. The committed PNG was produced by
 #   compositing logo.png at these exact figures onto the previous banner,
 #   because the Algerian font is not on a Linux box; the crop is unchanged
-#   (the name still sets the top and left), so a run of this builder on
-#   Windows should reproduce it to the pixel — check before committing one.
-ROUNDEL_AT, ROUNDEL_PX = (140, 36), 300
+#   (the NAME sets the top, the ROUNDEL sets the left), so a run of this
+#   builder on Windows should reproduce it to the pixel — check before
+#   committing one.
+#
+# ⚠ 8 November 2026 (Yogesh's call, CLIENT_CHANGES.md §0): the mark was
+#   TOP-ALIGNED to the lettering. It was (140, 36), which centred it on the
+#   banner's height — the name's caps begin at the very top of the ink while
+#   the mark's centre sat on the centre of the name-plus-tagline block, so the
+#   mark printed 17 px (1.15 mm on paper) BELOW the cap line. That centring is
+#   the whole cause; there is no corrective offset anywhere. y goes 36 -> 19,
+#   which is -17 px, and the mark's ink top now equals the name's at 12 px in
+#   the cropped artwork. Nothing else moved: same ROUNDEL_PX, same TEXT_AXIS,
+#   same NAME_*/TAG_* , so the name, the tagline and the 1928 x 274 crop are
+#   untouched and the 130 mm page-count decision still holds.
+#   The committed PNG was again produced on Linux, by translating the existing
+#   mark up 17 px inside the palette (the name/tagline band is byte-identical
+#   and the 64-colour palette is unchanged) rather than by running this file,
+#   which needs the Windows fonts.
+#   ⚠ The mark and the name now set the crop's top TOGETHER. If a Windows
+#     rebuild lands the mark's ink one pixel above the name's, `getbbox()`
+#     takes the mark's row and the canvas grows a pixel taller — which would
+#     rescale every printed banner. Check the output is 1928 x 274 and that
+#     the two ink tops agree before committing a rebuild.
+ROUNDEL_AT, ROUNDEL_PX = (140, 19), 300
 TEXT_AXIS = 1262         # x of the shared centre line of name and tagline
 NAME_PT, NAME_TOP = 206, 62
 TAG_PT, TAG_TOP = 58, 268

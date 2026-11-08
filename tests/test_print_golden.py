@@ -621,28 +621,67 @@ GOLD_TI = "gold-ti"
 #   passed unchanged. No other block moved, and the banner's 130 mm width and
 #   height are untouched, so no document gained a page.
 #
+# ⚠ **RE-BASELINED 8 November 2026 — THE SF MARK TOP-ALIGNED, the banner
+#   PICTURE alone** (Yogesh's call of 8 November 2026, CLIENT_CHANGES.md §0).
+#   The client said the mark sat too low beside the name. It was CENTRED on the
+#   banner's height while the name's caps begin at the top of the ink, so it
+#   printed 17 px — 1.15 mm on paper, 4.5 CSS px — below the cap line. It was
+#   translated up 17 px inside the same artwork; `assets/build_banner.py`'s
+#   `ROUNDEL_AT` y goes 36 -> 19 and nothing else moved.
+#
+#   Exactly the shape of the 29 October pass above: every printed document's
+#   `letterhead` block moved, and the `signature` block of the four copy-set
+#   documents (TI, RA, merged, DC), which carries the second and third copies'
+#   letterheads. Every delta is an exact multiple of **+604 bytes** — the PNG
+#   grew 29,039 -> 29,491 bytes, which is +604 in base64 — so a one-copy
+#   document is +604 and a three-copy document is +1,812.
+#
+#   MEASURED, not assumed. All nineteen print routes were rendered to HTML
+#   before and after: with every inlined PNG masked, each page is TEXT-IDENTICAL
+#   to its own before-state, so the copy labels, the signature and stamp block,
+#   the Make column, the round-off line, the HSN behaviour, the bank block and
+#   the amount in words cannot have moved. Rendered in headless Chromium at A4
+#   (landscape for the BOQ and the joint sheet), every element rect — banner,
+#   legal, rule, address, contact, doc-box, party, items, signature, foot strip
+#   — and every page's scroll height is identical before and after, so no
+#   document gained a page. The banner's 130 mm width and 1928 x 274 artwork
+#   are untouched.
+#
+#   The SAME-letterhead assertions still hold, at the new values: TI, RA,
+#   merged, DC and the joint sheet share **688623f90590b397**; the two purchase
+#   orders and the work order (no web) share **f61c8a23ec9126f2**; the proforma
+#   (branches) is **67f72932afda2f2c** and the three BOQs **26c0a97c6cee7e1b**.
+#
 # was a571453b8b187735 / 195699 before the 21 Oct 2026 LETTERHEAD BANNER pass
 # was 4a7c232bd358c5ef / 198879 before the 26 Oct 2026 PAGE EDGE — see above
-TI_WHOLE = "0d37060deb1c65ed"   # was d7d2dad0a825bea8 (a blank HSN prints a dash +
+TI_WHOLE = "e7c36cef5f5f03b7"   # was 0d37060deb1c65ed (logo top-aligned, 8 Nov 2026), was d7d2dad0a825bea8 (a blank HSN prints a dash +
                                 #   the screen note and the HSN button, §0 59th A1,
                                 #   29 Oct 2026), was 1fbb4b006cfd12de (SF mark 1.5x)
-TI_LEN = 208852   # was 206516 (§0 59th A1, 29 Oct 2026), was 199832 (SF mark 1.5x)
+TI_LEN = 210664   # was 208852 (logo top-aligned, 8 Nov 2026), was 206516 (§0 59th A1, 29 Oct 2026), was 199832 (SF mark 1.5x)
 TI_BLOCKS = {"head":       "7175047fae9ddfae",   # was 6715688604fc56b4 (§0 59th A1),   # was cc95826af94b9984 (page edge),
                                                   # was b5312294e91a796f,
                                                   # was 59522cc02d192043,
                                                   # was 13840b8797d6e721,
                                                   # was f76089afb5505200,
                                                   # was 49524db46e29dcc5
-             "letterhead": "04efecf6b5fbb2ff",   # was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
+             "letterhead": "688623f90590b397",   # was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "1628f0996b607772",   # was 5e4d6a24b0a5b726
              "party":      "a7c0e4ecf0b1491f",
-             "items":      "ace24562781a2e31",
+             # ⚠ CORRECTED 8 November 2026, and NOT by this pass's change:
+             #   this literal read ace24562781a2e31 and had been stale for
+             #   some time. `_check()` only compares the block dict once the
+             #   WHOLE-page digest has moved, so a stale block value sits
+             #   unread until the next re-baseline surfaces it. MEASURED: the
+             #   `items` block hashes df6d3d2a345cc813 both BEFORE and AFTER
+             #   the logo move, so the tax invoice's items table did not move
+             #   here either. ABOUT.md §7 gap 118.
+             "items":      "df6d3d2a345cc813",
              # ⚠ The LAST block runs to the end of the response, so on this
              #   document it holds the Duplicate and Triplicate copies too —
              #   and therefore their items tables. It moves with `items` for
              #   that reason and for no other (§0 59th A1, 29 Oct 2026).
-             "signature": "517cf54f5f4b2adb"}   # was 0745d80e3fbad056 (§0 59th A1,
+             "signature": "0219ffe06e37ceb1"}   # was 517cf54f5f4b2adb (logo top-aligned, 8 Nov 2026), was 0745d80e3fbad056 (§0 59th A1,
                                                 #   29 Oct 2026), was dff4da7d88d26587 (SF mark 1.5x), was 26d63afbc5714259,
                                                   # was f5511fad8e1212cc
 
@@ -771,7 +810,7 @@ TI_BLOCKS = {"head":       "7175047fae9ddfae",   # was 6715688604fc56b4 (§0 59t
 #     adds nothing here. `items` below was re-measured at the same time: the
 #     base itself renders efbfbd2531459c06 (the stored d6563a7e3202057d was
 #     already stale, unseen because blocks are read only when the whole moves).
-PO_WHOLE, PO_LEN = "ef8ad4babd4ecbde", 104771   # was 249b2e228c4df02c / 104761, was 576cc3e7a9ddba40 / 102421
+PO_WHOLE, PO_LEN = "a192f10746beb57c", 105375   # was ef8ad4babd4ecbde / 104771 (logo top-aligned, 8 Nov 2026), was 249b2e228c4df02c / 104761, was 576cc3e7a9ddba40 / 102421
                                 #   (§0 59th A1, 29 Oct 2026), was ae90e14f6bb98530 /
                                 #   100193 (SF mark 1.5x)
 PO_BLOCKS = {"head":       "f2506d2ff61a54c6",   # was 6a1a651b90ded6e8 (Edit button, 2 Nov 2026), was d5dcf006e5a8f876 (§0 59th A1),   # was bf2fc2b883a29ca6 (page edge),
@@ -783,7 +822,7 @@ PO_BLOCKS = {"head":       "f2506d2ff61a54c6",   # was 6a1a651b90ded6e8 (Edit bu
                                                  # was c4b27c10e58c1b4f,
                                                  # was 5354379fd4182ed2,
                                                  # was d0df61b20bb3a42e
-             "letterhead": "c4a45f66ecc72034",   # was cb317962a23773f0 (SF mark 1.5x, 29 Oct 2026), was 2800166c693cc2f1
+             "letterhead": "f61c8a23ec9126f2",   # was c4a45f66ecc72034 (logo top-aligned, 8 Nov 2026), was cb317962a23773f0 (SF mark 1.5x, 29 Oct 2026), was 2800166c693cc2f1
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "ffe286e7afd8c90b",
              "party":      "307d35714073c084",
@@ -809,17 +848,17 @@ GOLD_PI = "gold-pi"
 # was dded298848fde613 / 95165 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was a7cbb6c59b153765 / 96225 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-PI_WHOLE = "37de47a535e3f354"   # was bd2c396381b313b2 (§0 64th, 31 Oct 2026: the
+PI_WHOLE = "dad14b5981dcee25"   # was 37de47a535e3f354 (logo top-aligned, 8 Nov 2026), was bd2c396381b313b2 (§0 64th, 31 Oct 2026: the
                                 #   SCREEN action bar gained "Edit" — +81 bytes,
                                 #   one <a>; nothing on paper moved), was f6642309ef59b171 (§0 59th A1, 29 Oct 2026),
                                 #   was bf009adade1b81ca (SF mark 1.5x)
-PI_LEN = 101930   # was 101849 (§0 64th, the Edit button), was 99406 (§0 59th A1, 29 Oct 2026), was 97178 (SF mark 1.5x)
+PI_LEN = 102534   # was 101930 (logo top-aligned, 8 Nov 2026), was 101849 (§0 64th, the Edit button), was 99406 (§0 59th A1, 29 Oct 2026), was 97178 (SF mark 1.5x)
 PI_BLOCKS = {"head":       "3a9bb162da8740a8",   # was 0721e2b8c58c88bb (§0 64th, Edit button), was aa1c5df88915a319 (§0 59th A1),   # was f947cd7d3d6700f5 (page edge),
                                                   # was 8d0355644f96b13c,
                                                   # was fb2abee257b52d86,
                                                   # was 0250890a6d6e2f6b,
                                                   # was a3b342e73adf07fc
-             "letterhead": "43c445575e04fad1",   # was bfb41f646e64b978 (SF mark 1.5x, 29 Oct 2026), was 1c368b0c8259abe0
+             "letterhead": "67f72932afda2f2c",   # was 43c445575e04fad1 (logo top-aligned, 8 Nov 2026), was bfb41f646e64b978 (SF mark 1.5x, 29 Oct 2026), was 1c368b0c8259abe0
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "77fa68a83f706064",
              "party":      "9427bbb3e9495dd8",
@@ -845,19 +884,19 @@ GOLD_RA = "gold-ra"
 # was 6620a2d2d80ac71f / 176926 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was a89e24d6c07f36c8 / 180106 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-RA_WHOLE = "cc3ab2d29c626296"   # was 6bc631a0e697752e (SF mark 1.5x, 29 Oct 2026)
-RA_LEN = 187743   # was 181059 (SF mark 1.5x, 29 Oct 2026)
+RA_WHOLE = "6db010aca0b6d9ce"   # was cc3ab2d29c626296 (logo top-aligned, 8 Nov 2026), was 6bc631a0e697752e (SF mark 1.5x, 29 Oct 2026)
+RA_LEN = 189555   # was 187743 (logo top-aligned, 8 Nov 2026), was 181059 (SF mark 1.5x, 29 Oct 2026)
 RA_BLOCKS = {"head":       "c42fcf29d70a3d97",   # was 04352cf9a114cef6 (page edge),
                                                   # was 184a84d3609eaf57,
                                                   # was 837ea9b648848976,
                                                   # was 924f39af975d8d7b,
                                                   # was ea1ccbaa59c99616
-             "letterhead": "04efecf6b5fbb2ff",   # was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
+             "letterhead": "688623f90590b397",   # was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "6825f4877677a096",   # was 44c7368b5a1b2380
              "party":      "0a1ad2e74686542a",
              "items":      "92f5cc2dd233b05b",
-             "signature": "36ce5f426be93164"}   # was e597061d224c485a (SF mark 1.5x, 29 Oct 2026), was 2b6837686196c8a3,
+             "signature": "b7baf21330efe359"}   # was 36ce5f426be93164 (logo top-aligned, 8 Nov 2026), was e597061d224c485a (SF mark 1.5x, 29 Oct 2026), was 2b6837686196c8a3,
                                                   # was 4ebebebbdf2383c8
 
 
@@ -1347,15 +1386,15 @@ def golden_dc(client, pinned_identity):
 # was 58555aff975adc5e / 165092 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was a01edfe5b74a1c94 / 168272 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-DC_WHOLE, DC_LEN = "95b91fa72436dece", 175909   # was 220de3e9f51f5773 / 169225 (SF mark 1.5x, 29 Oct 2026)
+DC_WHOLE, DC_LEN = "c78d668eba9bd13f", 177721   # was 95b91fa72436dece / 175909 (logo top-aligned, 8 Nov 2026), was 220de3e9f51f5773 / 169225 (SF mark 1.5x, 29 Oct 2026)
 DC_BLOCKS = {"head":       "094e1c25e5ac35b1",   # was 70716c3255fe6d74 (page edge),
                                                  # was f3f5e6b5c49c9e9f
-             "letterhead": "04efecf6b5fbb2ff",   # was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
+             "letterhead": "688623f90590b397",   # was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "57c1a660915be1d9",
              "party":      "429e9f10652d220b",
              "items":      "6ad4a95ae07c0108",
-             "signature": "d6d711050f48f1e3"}   # was 4c67e2914eee5b40 (SF mark 1.5x, 29 Oct 2026), was 1c33e871a464441d,
+             "signature": "4cfa9323133f0e98"}   # was d6d711050f48f1e3 (logo top-aligned, 8 Nov 2026), was 4c67e2914eee5b40 (SF mark 1.5x, 29 Oct 2026), was 1c33e871a464441d,
                                                   # was 53c1b52f4aa0c8ba
 
 
@@ -1556,10 +1595,10 @@ MS_SHEET_BLOCKS = [
 #     see the note above TI_WHOLE
 # was 5a316b5a51d1a0a1 / 96055 before the 26 Oct 2026 PAGE EDGE — see above
 #     GOLD_TI; +1,057 here, the extra 104 being LANDSCAPE_CSS's margin 0
-MS_WHOLE, MS_LEN = "dc3d7d73d859ec72", 99340   # was 2e0d4e5be75d70fe / 97112 (SF mark 1.5x, 29 Oct 2026)
+MS_WHOLE, MS_LEN = "53999c11347321f7", 99944   # was dc3d7d73d859ec72 / 99340 (logo top-aligned, 8 Nov 2026), was 2e0d4e5be75d70fe / 97112 (SF mark 1.5x, 29 Oct 2026)
 MS_BLOCKS = {"head":       "6eca6ee86d24faf3",   # was db302526da349396 (page edge),
                                                  # was 66e13ccf7dbdaaa3
-             "letterhead": "04efecf6b5fbb2ff",   # was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
+             "letterhead": "688623f90590b397",   # was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
              "doc-box":    "57c1a660915be1d9",
              "party":      "1550ac634c9f7ca0",
@@ -1885,9 +1924,9 @@ BOQ_SHEET_BLOCKS = [
 #     cell is now an empty `<div></div>`, kept so the signature stays right.
 #     No other block and no other document moved.
 # was c6c0a018c2549970 / 104850 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-BOQ_WHOLE, BOQ_LEN = "3e0a982a430c5f42", 108031   # was a90eaad2a053214d / 105803 (SF mark 1.5x, 29 Oct 2026)
+BOQ_WHOLE, BOQ_LEN = "8f70178284b11c9f", 108635   # was 3e0a982a430c5f42 / 108031 (logo top-aligned, 8 Nov 2026), was a90eaad2a053214d / 105803 (SF mark 1.5x, 29 Oct 2026)
 BOQ_BLOCKS = {"head":       "9769db14ee792650",   # was c945d7ee01ba87eb (page edge)
-              "letterhead": "083715b1a45ee586",   # was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872
+              "letterhead": "26c0a97c6cee7e1b",   # was 083715b1a45ee586 (logo top-aligned, 8 Nov 2026), was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872
               "foot-strip": "0f66996df1483847",
               "doc-box":    "64fcaef781b20ed2",
               "party":      "9b34f96c4ac7cd01",
@@ -1918,11 +1957,11 @@ BOQ_BLOCKS = {"head":       "9769db14ee792650",   # was c945d7ee01ba87eb (page e
 #   byte-identical, so the sheet's layout did not move at all.
 #   **Proved by rendering this document at the commit before this one and
 #   diffing it line by line: all three differing lines are the renamed words.**
-DPO_WHOLE, DPO_LEN = "7db94ce29815380c", 88303   # was 53356b3b9344c477 / 88310
+DPO_WHOLE, DPO_LEN = "d752e806dee00f6c", 88907   # was 7db94ce29815380c / 88303 (logo top-aligned, 8 Nov 2026), was 53356b3b9344c477 / 88310
                                  #   (§0 59th B1), was 2de6d544c3fa7fa1 /
                                  #   86082 (SF mark 1.5x, 29 Oct 2026)
 DPO_BLOCKS = {"head":       "551ebbc23caf028e",   # was 9c5d3f7bb956b98a (page edge)
-              "letterhead": "c4a45f66ecc72034",   # was cb317962a23773f0 (SF mark 1.5x, 29 Oct 2026), was 2800166c693cc2f1
+              "letterhead": "f61c8a23ec9126f2",   # was c4a45f66ecc72034 (logo top-aligned, 8 Nov 2026), was cb317962a23773f0 (SF mark 1.5x, 29 Oct 2026), was 2800166c693cc2f1
               "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
               # ⚠ The three blocks §0 59th B1 moved, each one a word:
               "doc-box":    "eeefd89c87b05cda",   # was 9370df26fb1e5084
@@ -1975,15 +2014,15 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # was a84dce3a8c55d8c2 / 173631 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was 1646b229cb85a727 / 176811 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-MERGED_WHOLE, MERGED_LEN = "ad08a1f9d8af016d", 184448   # was 5b06ac443cb31921 / 177764 (SF mark 1.5x, 29 Oct 2026)
+MERGED_WHOLE, MERGED_LEN = "c6f7d82f29d09a18", 186260   # was ad08a1f9d8af016d / 184448 (logo top-aligned, 8 Nov 2026), was 5b06ac443cb31921 / 177764 (SF mark 1.5x, 29 Oct 2026)
 MERGED_BLOCKS = {"head":       "ba3818da0d5fffd1",   # was 482cb74cab6f5f0e (page edge),
                                                      # was 1e9bbe98af7f4e8d,
                                                      # was e38255e4e2ed0d90
-                 "letterhead": "04efecf6b5fbb2ff",   # was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
+                 "letterhead": "688623f90590b397",   # was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
                  "foot-strip": "a3f2d37e04a583e1",   # was 11c5bd67c2fabaa9
                  "party":      "aa58dd01cfddecc3",
                  "items":      "e0f2b72ef4632192",   # was 30ecad09926182e7
-                 "signature": "18f50170a6673407"}   # was 90a0f2169769a8aa (SF mark 1.5x, 29 Oct 2026), was a6452d6103bae384,
+                 "signature": "459206ffec7ac130"}   # was 18f50170a6673407 (logo top-aligned, 8 Nov 2026), was 90a0f2169769a8aa (SF mark 1.5x, 29 Oct 2026), was a6452d6103bae384,
                                                      # was 0598f5bb4f174a53,
                                                      # was d5b89b346e0b46ff
 
@@ -2352,9 +2391,9 @@ def golden_disc_boq(client, pinned_identity):
 #   other block hashes as before. Whole page was:
 #       DISC_BOQ_WHOLE, DISC_BOQ_LEN = "cd291621b7bdfa2b", 104758
 # was 9f059fe6700c2969 / 105723 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-DISC_BOQ_WHOLE, DISC_BOQ_LEN = "994dcb5c26ef2c89", 108904   # was 20a051eb01a77aa0 / 106676 (SF mark 1.5x, 29 Oct 2026)
+DISC_BOQ_WHOLE, DISC_BOQ_LEN = "9e366d5a77533404", 109508   # was 994dcb5c26ef2c89 / 108904 (logo top-aligned, 8 Nov 2026), was 20a051eb01a77aa0 / 106676 (SF mark 1.5x, 29 Oct 2026)
 DISC_BOQ_BLOCKS = {"head":       "b9c71d2d51b5f084",   # was ad173a89e8583085 (page edge)
-                   "letterhead": "083715b1a45ee586",   # was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872 (banner, merge 23 Oct)
+                   "letterhead": "26c0a97c6cee7e1b",   # was 083715b1a45ee586 (logo top-aligned, 8 Nov 2026), was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872 (banner, merge 23 Oct)
                    "foot-strip": "31227c23efe62134",
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "4e2d2f79e29f69fb",
@@ -2490,9 +2529,9 @@ def golden_asis_boq(client, pinned_identity):
 #   other block hashes as before. Whole page was:
 #       ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5e0d8c5000e0fd5c", 107790
 # was 405e364eec391eaa / 108755 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "f3d88938f2b6bb49", 111936   # was 5dd540b043b2458b / 109708 (SF mark 1.5x, 29 Oct 2026)
+ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "09d67f86f0710dc8", 112540   # was f3d88938f2b6bb49 / 111936 (logo top-aligned, 8 Nov 2026), was 5dd540b043b2458b / 109708 (SF mark 1.5x, 29 Oct 2026)
 ASIS_BOQ_BLOCKS = {"head":       "5e92e0100f640d1f",   # was 777d7e8e392148fb (page edge)
-                   "letterhead": "083715b1a45ee586",   # was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872 (banner, merge 23 Oct)
+                   "letterhead": "26c0a97c6cee7e1b",   # was 083715b1a45ee586 (logo top-aligned, 8 Nov 2026), was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872 (banner, merge 23 Oct)
                    "foot-strip": "2a8f2f65687ae299",
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "9b5c06dd87a13664",
