@@ -10,7 +10,26 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**Latest, 5 November 2026 — CLIENT_CHANGES.md §0 sixty-sixth block ("Manas,
+**Latest, 13 November 2026 — CLIENT_CHANGES.md §0 seventy-third block (Manas,
+after a client call with HR; NO CHARGE), on `antigravity-dev`, NOT DEPLOYED**
+(base `36a7e95`, which is production). HR could not choose WHICH payslips to
+print or issue. `/payroll/` now has a tick per row, select-all over the rows
+shown, Clear and a live count, and three server-side filters — `q` (name or
+code), `site` (at least one marking at that site label in the month, through
+the new reader `attendance.sites_marked_in()`) and `status` (the agent's
+declared addition). One selection form drives **Print selected** (Issued and
+Draft, the draft stamped, never Cancelled, each sheet byte-identical to its own
+print), **Issue selected** (a confirmation that writes nothing, then `issue()`
+per draft) and **Create drafts for selected**. No permission minted; three
+endpoints added (219 → 222). `/payroll/print-month` is byte-identical to
+`36a7e95` for issued slips; its empty message now counts drafts. Commits
+`2c88c55` (the block), `0c397c5` (feature + ABOUT.md §5 `/payroll`), then this
+docs commit. **5,898 passed, 31 skipped** (was 5,863 / 31). ⚠ The select-all
+script was executed in headless Chromium (Node Playwright) by hand, not by the
+suite — Python Playwright is not installed here. ABOUT.md §5 `/payroll`
+*Choosing which slips*.
+
+**Previously, 5 November 2026 — CLIENT_CHANGES.md §0 sixty-sixth block ("Manas,
 5 Nov 2026: labour into project P&L"), on `antigravity-dev`, NOT DEPLOYED**
 (base `75720f4`). **Site labour was not reaching the project P&L.** The
 diagnosis was written and committed BEFORE any code —
