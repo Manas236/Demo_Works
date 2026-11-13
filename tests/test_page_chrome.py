@@ -51,6 +51,10 @@ NO_CHROME = {
     # outside this sweep; `tests/test_payroll.py` holds that neither renders
     # the rail.
     "/payroll/print-month": "print-only: every issued slip, the documents alone",
+    # The ticked people's slips (13 November 2026, §0 seventy-third block):
+    # print-month's shape, with a `.no-print` summary above the sheets.
+    "/payroll/print-selected": "print-only: the ticked people's slips, the "
+                               "documents alone",
     # The two pages reached while logged OUT. `_nav()` links to Projects and
     # Settings and carries the settings dot and the persistence strip — every
     # one of which is either a refusal or a leak to somebody with no session, so

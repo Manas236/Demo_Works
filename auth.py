@@ -1157,6 +1157,11 @@ ROUTE_PERMISSIONS = {
     "payroll.cancel_slip":         "payroll.issue",
     "payroll.print_slip":          "payroll.view",
     "payroll.print_month":         "payroll.view",
+    # Choosing which slips (13 November 2026, §0 seventy-third block). No new
+    # permission: printing is reading, issuing is issuing, a draft is an edit.
+    "payroll.print_selected":      "payroll.view",
+    "payroll.issue_selected":      "payroll.issue",
+    "payroll.create_selected":     "payroll.edit",
     "payroll.list_entries":        "payroll.view",
     "payroll.add_entry":           "payroll.edit",
     "payroll.edit_entry":          "payroll.edit",

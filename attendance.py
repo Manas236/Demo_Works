@@ -1383,6 +1383,33 @@ def employees_marked_in(month) -> set:
             if str(r.get("date") or "").startswith(prefix + "-")} - {""}
 
 
+def sites_marked_in(month) -> dict:
+    """
+    `{employee_id: {site label, …}}` — every site each person was marked at in
+    one calendar month. A READER for the payslip register's site filter
+    (CLIENT_CHANGES.md §0 **seventy-third** block, 13 November 2026).
+
+    ⚠ **The site is the marking's snapshotted LABEL** — `search_markings()`'s
+      rule and the muster search's picker: an address renamed later must not
+      restate where somebody worked, and an **unmapped** legacy string is a
+      site like any other here rather than vanishing. A marking with no site
+      label contributes nothing, so a person marked only without a site is
+      absent from the result, never filed under a made-up one.
+    """
+    prefix = str(month or "").strip()[:7]
+    if len(prefix) != 7:
+        return {}
+    out = {}
+    for r in records().values():
+        if not str(r.get("date") or "").startswith(prefix + "-"):
+            continue
+        eid = str(r.get("employee_id") or "")
+        label = str(r.get("site") or "").strip()
+        if eid and label:
+            out.setdefault(eid, set()).add(label)
+    return out
+
+
 # =============================================================================
 # FOR THE IMPORT — a marking written from the client's monthly workbook
 # =============================================================================

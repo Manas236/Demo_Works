@@ -368,6 +368,10 @@ UNLINKED_ON_PURPOSE = {
                                 "entry point",
     "payroll.list_entries":     "the pay ledger, linked from /payroll/",
     "payroll.print_month":      "a print run of the month, linked from /payroll/",
+    # 13 Nov 2026 (§0 seventy-third block): reached by the register's
+    # selection form (`formaction`), which this sweep does not read as a link.
+    "payroll.print_selected":   "the ticked rows' print run, the Print selected "
+                                "button on /payroll/'s selection form",
     "payimport.upload":         "the attendance import, linked from /payroll/",
     # ── Import BOQ from Excel, 29 September 2026 ────────────────────────────
     #

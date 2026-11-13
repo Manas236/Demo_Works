@@ -964,7 +964,15 @@ def test_payroll_and_payimport_take_readers_and_never_the_wage_arithmetic():
     at the setting; the import's preview figure comes out of
     `labour_cost_of()`. Neither module may reach the arithmetic itself.
     """
-    wanted = {"payroll.py": ("month_figures", "employees_marked_in"),
+    # ⚠ AMENDED 13 November 2026 (CLIENT_CHANGES.md §0 seventy-third block):
+    # the payslip register's site filter reads `sites_marked_in()`, a READER
+    # added for it, so it joins payroll.py's required list. Nothing is
+    # loosened — the banned list below is unchanged. The previous line,
+    # verbatim:
+    #
+    #     wanted = {"payroll.py": ("month_figures", "employees_marked_in"),
+    wanted = {"payroll.py": ("month_figures", "employees_marked_in",
+                             "sites_marked_in"),
               "payimport.py": ("labour_cost_of", "import_marking")}
     for name, accessors in wanted.items():
         src = (REPO / name).read_text(encoding="utf8")

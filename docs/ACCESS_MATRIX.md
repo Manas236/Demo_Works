@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 93 permissions · 219 classified endpoints.**
+**7 roles · 93 permissions · 222 classified endpoints.**
 
 ---
 
@@ -422,9 +422,9 @@ Read off the live route registry, so it cannot drift from what the application a
 | `attendance.create` | `attendance.mark_attendance` |
 | `attendance.edit` | `attendance.edit_attendance` |
 | `attendance.delete` | `attendance.delete_attendance` |
-| `payroll.view` | `payroll.list_entries`, `payroll.payroll_register`, `payroll.print_month`, `payroll.print_slip`, `payroll.view_slip` |
-| `payroll.edit` | `payroll.add_entry`, `payroll.edit_entry`, `payroll.generate`, `payroll.refresh_slip`, `payroll.save_extras` |
-| `payroll.issue` | `payroll.cancel_slip`, `payroll.issue_slip` |
+| `payroll.view` | `payroll.list_entries`, `payroll.payroll_register`, `payroll.print_month`, `payroll.print_selected`, `payroll.print_slip`, `payroll.view_slip` |
+| `payroll.edit` | `payroll.add_entry`, `payroll.create_selected`, `payroll.edit_entry`, `payroll.generate`, `payroll.refresh_slip`, `payroll.save_extras` |
+| `payroll.issue` | `payroll.cancel_slip`, `payroll.issue_selected`, `payroll.issue_slip` |
 | `payroll.import` | `payimport.commit_import`, `payimport.preview`, `payimport.upload` |
 | `payroll.delete` | `payimport.delete_import`, `payroll.delete_entry` |
 | `labour.assign` | `attendance.assign_labour`, `attendance.unassigned_labour` |

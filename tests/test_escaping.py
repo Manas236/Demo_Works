@@ -1226,3 +1226,73 @@ def test_the_pnl_panel_and_the_register_line_escape_every_new_sink(client):
         for k, v in saved.items():
             STORE[k].clear()
             STORE[k].update(v)
+
+
+# ══ Choosing which payslips (13 November 2026, §0 seventy-third block) ═════
+#
+# ⚠ **The generic sweep cannot reach these pages with the payload on them**,
+#   and that is why this test exists. `/payroll/print-selected` IS swept (it is
+#   a parameterless GET), but with no `emp=` it prints the "nobody is ticked"
+#   summary and no name; and the fixture's slip has its `employee_id` and
+#   `month` POISONED, so no register, print-selected or issue page ever finds
+#   it. So this builds its own month — a poisoned name, code, designation and
+#   SITE — and renders all three new sinks: the register (with the poisoned
+#   site in the filter dropdown and `q` reflected back), Print selected (the
+#   sheet AND the no-print summary naming a person with no slip), and the
+#   Issue selected confirmation page (the draft list and the skipped list).
+
+def test_the_payslip_selection_pages_escape_every_sink(client):
+    import copy
+    import payroll as PAY
+    keep = ("employees", "attendance", "payslips", "pay_entries")
+    saved = {k: copy.deepcopy(STORE.get(k) or {}) for k in keep}
+    try:
+        for k in keep:
+            STORE.setdefault(k, {}).clear()
+        for eid in ("esc-d", "esc-n", "esc-i"):
+            STORE["employees"][eid] = {
+                "id": eid, "name": f"N-{eid} " + PAYLOAD,
+                "code": f"C-{eid} " + PAYLOAD,
+                "designation": "D " + PAYLOAD, "active": True,
+                "day_rate": 900.0}
+            STORE["attendance"][f"m-{eid}"] = {
+                "id": f"m-{eid}", "date": "2026-09-02", "employee_id": eid,
+                "employee_name": "x", "employee_code": "", "day_rate": 900.0,
+                "site": "S " + PAYLOAD, "status": "present", "ot_hours": 0.0}
+        PAY.create_draft("esc-d", "2026-09")
+        issued, _ = PAY.create_draft("esc-i", "2026-09")
+        PAY.issue(issued)
+
+        register = client.get("/payroll/", query_string={
+            "month": "2026-09", "q": MARK + "<script>",
+            "site": "S " + PAYLOAD}).get_data(as_text=True)
+        _assert_escaped(register, "the payslip register")
+        assert "N-esc-d " + ESCAPED in register, "a name, escaped"
+        assert '<option value="S ' + ESCAPED + '" selected>' in register, \
+            "the site dropdown, escaped"
+        assert 'value="' + MARK + '&lt;script&gt;"' in register, \
+            "q reflected, escaped"
+        assert "Showing" not in register, "the q matched all three rows"
+
+        printed = client.get("/payroll/print-selected", query_string=[
+            ("month", "2026-09"), ("emp", "esc-d"), ("emp", "esc-n"),
+            ("emp", "esc-i")]).get_data(as_text=True)
+        _assert_escaped(printed, "Print selected")
+        assert printed.count('<div class="slip-page">') == 2
+        assert "create the draft first: N-esc-n " + ESCAPED in printed, \
+            "the no-slip summary, escaped"
+        for part in ("N-esc-d ", "C-esc-d ", "D "):
+            assert part + ESCAPED in printed, part
+
+        confirm = client.post("/payroll/issue-selected", data={
+            "month": "2026-09", "emp": ["esc-d", "esc-n", "esc-i"],
+            "site": "S " + PAYLOAD}).get_data(as_text=True)
+        _assert_escaped(confirm, "the Issue selected confirmation")
+        assert "N-esc-d " + ESCAPED in confirm, "the draft list"
+        assert "N-esc-n " + ESCAPED + " &mdash; no slip" in confirm
+        assert "N-esc-i " + ESCAPED + " &mdash; already issued" in confirm
+        assert 'name="site" value="S ' + ESCAPED + '"' in confirm
+    finally:
+        for k, v in saved.items():
+            STORE[k].clear()
+            STORE[k].update(v)

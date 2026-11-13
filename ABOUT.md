@@ -12937,12 +12937,15 @@ Held by [tests/test_attendance.py](tests/test_attendance.py),
 
 | Route | View |
 |---|---|
-| `GET /payroll/?month=` | `payroll_register` — one month: everybody with a marking, a ledger line or a slip; a slip's figures, or live ones where there is no slip yet. Defaults to LAST month |
+| `GET /payroll/?month=&q=&site=&status=` | `payroll_register` — one month: everybody with a marking, a ledger line or a slip; a slip's figures, or live ones where there is no slip yet. Defaults to LAST month. A tick on every row; the three filters are applied on the server (13 Nov 2026, below) |
 | `POST /payroll/generate?month=` | `generate` — a draft for everyone on the month who has no live slip |
 | `GET /payroll/slip/<id>` | `view_slip` — the sheet, the typed figures on a draft, Refresh / Issue / Cancel, the divergence band |
 | `POST /payroll/slip/<id>/extras` · `/refresh` · `/issue` | `save_extras`, `refresh_slip`, `issue_slip` |
 | `GET,POST /payroll/slip/<id>/cancel` | `cancel_slip` — GET asks for the reason |
 | `GET /payroll/slip/print/<id>` · `GET /payroll/print-month?month=` | `print_slip`, `print_month` — print-only, no rail, `PRINT_EDGE_STYLES` last |
+| `GET /payroll/print-selected?month=&emp=…` | `print_selected` — the ticked people's LIVE slips, Issued and Draft; print-only, `payroll.view` |
+| `POST /payroll/issue-selected` | `issue_selected` — first POST confirms and writes nothing; second (`confirm=1`) issues; `payroll.issue` |
+| `POST /payroll/create-selected` | `create_selected` — `create_draft()` for the ticked people; `payroll.edit` |
 | `GET /payroll/entries` · `POST /payroll/entries/add` | `list_entries`, `add_entry` — the ledger, filtered by person and month; the loan owed today, derived |
 | `GET,POST /payroll/entries/edit/<id>` · `/delete/<id>` | `edit_entry`, `delete_entry` — delete is **Owner-only** |
 | `GET,POST /payroll/import/` | `payimport.upload` |
@@ -13052,7 +13055,54 @@ on several tabs, and their day cells on each tab are their days at that site.
   fails on any write statement or call in it. ⚠ An import staged before this
   block stored its first tab only.
 
+#### Choosing which slips (13 November 2026, CLIENT_CHANGES.md §0 **seventy-third** block — NO CHARGE)
+
+HR could not choose WHICH slips to act on: *Print every issued slip* printed
+every ISSUED slip of the month, and issuing was one slip at a time. A
+usability fix to the paid module (MG/SF/2026-08); no new permission, field or
+collection.
+
+* **The register is one selection form.** A checkbox on every row
+  (`name="emp"`), a header select-all, a *Clear* (`type="reset"`, so it works
+  with no script) and a live *N selected* count. The script is inline in the
+  page's f-string and decides nothing: select-all ticks the rows SHOWN, which
+  are already filtered on the server. The month and the filters ride along as
+  hidden fields so every action returns to the same view.
+* **Three GET filters beside the month**, applied by `filtered_roster()`:
+  `q` — case-blind substring of name or code (the master's, else the slip's
+  snapshot); `site` — at least one marking **at that site LABEL** in the month,
+  read through the new reader **`attendance.sites_marked_in(month)`**
+  (`search_markings()`'s rule: the snapshotted label, an unmapped legacy
+  string included, a blank label contributing nothing); `status` — the LIVE
+  slip: All / Draft / Issued / No slip (a person whose only slip is cancelled
+  has *No slip*). `status` was the agent's addition, declared in the block.
+* **`picked_ids()`** is the one reading of the ticks: de-duplicated, only ids
+  on `month_roster()`, and **capped at the larger of the employee count and
+  the roster size before any lookup**. Anything else is dropped silently.
+* **Print selected** prints each ticked person's live slip — **Issued and
+  Draft**; a draft keeps `slip_sheet()`'s red DRAFT stamp; a cancelled slip is
+  never live and never prints. Name order, one `<div class="slip-page">` each,
+  **byte-identical to that slip's `/payroll/slip/print/<id>` sheet**. Above
+  them an `.alert .no-print` summary — *X issued, Y drafts (stamped DRAFT)* —
+  names every ticked person with no slip, *create the draft first*; with
+  nothing printable the summary is the page.
+* **Issue selected** — two POSTs. The first renders a confirmation and
+  **writes nothing**: drafts to be issued (name, net payable, carry), the
+  total net, and the skipped rows with a reason (*already issued* / *cancelled*
+  / *no slip*). The second (`confirm=1`) re-derives everything from the store
+  and calls the single **`issue()`** per draft — refresh and carry-forward are
+  that function's, not a copy — then redirects with *N issued, M skipped*. The
+  gate (`payroll.issue`) runs on both POSTs; the button is drawn only for a
+  holder.
+* **Create drafts for selected** — `create_draft()` for each ticked person;
+  the existing *Create the month's missing drafts* is unchanged.
+* **`/payroll/print-month` is unchanged** for issued slips (measured
+  byte-identical against `36a7e95`); its empty message, when the month has
+  drafts and nothing issued, counts the drafts and points at *Print selected*.
+  With no draft either, the old message is byte-identical.
+
 Held by [tests/test_payroll.py](tests/test_payroll.py),
+[tests/test_payroll_select.py](tests/test_payroll_select.py),
 [tests/test_payimport.py](tests/test_payimport.py),
 [tests/test_payimport_tabs.py](tests/test_payimport_tabs.py) and
 [tests/test_attendance_statuses.py](tests/test_attendance_statuses.py).

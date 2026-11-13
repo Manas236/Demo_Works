@@ -15,6 +15,9 @@ Routes
   GET,POST  /payroll/slip/<id>/cancel         — GET asks for a reason, POST cancels
   GET       /payroll/slip/print/<id>          — the printed payslip
   GET       /payroll/print-month              — every issued slip of a month
+  GET       /payroll/print-selected           — the ticked people's live slips
+  POST      /payroll/issue-selected           — 1st POST confirms, 2nd issues
+  POST      /payroll/create-selected          — drafts for the ticked people
   GET       /payroll/entries                  — the pay ledger, and the add form
   POST      /payroll/entries/add              — one advance / travel / loan line
   GET,POST  /payroll/entries/edit/<id>        — correct one
@@ -71,12 +74,25 @@ edited or deleted from the ledger — only by cancelling its slip.
 Imports
 -------
 ```
-payroll.py ──► attendance.py   month_figures(), employees_marked_in() — readers
+payroll.py ──► attendance.py   month_figures(), employees_marked_in(),
+                               sites_marked_in() — readers
 payroll.py ──► employee.py     the master, for name / code / designation
 payroll.py ──► docsheet.py     the shared printed sheet
 payroll.py ──► auth.py         has_perm() — which buttons to draw
 ```
 Nothing imports this module but `app.py` and `payimport.py`.
+
+Choosing which slips — CLIENT_CHANGES.md §0, the SEVENTY-THIRD block (13 Nov 2026)
+-------------------------------------------------------------------------------
+NO CHARGE: a usability fix to the module above. The register gets a tick
+column and three server-side GET filters (`q` name/code, `site` — at least one
+marking at that site in the month, through `attendance.sites_marked_in()` —
+and `status` All / Draft / Issued / No slip). One selection form drives
+*Print selected* (Issued AND Draft print, a draft keeps its DRAFT stamp, a
+cancelled slip never prints, each sheet byte-identical to its own print),
+*Issue selected* (a first POST that writes nothing, a second that calls
+`issue()` per draft — never a second copy of the carry-forward) and *Create
+drafts for selected* (`create_draft()` per ticked person). No new permission.
 """
 
 import calendar
@@ -635,12 +651,145 @@ def _post_btn(action: str, label: str, cls: str = "btn") -> str:
             f'<button class="{cls}">{label}</button></form>')
 
 
+# ── Choosing which slips (13 November 2026, §0 seventy-third block) ─────────
+
+# The status filter's vocabulary. "none" is NO LIVE slip — a person whose only
+# slip for the month is cancelled has none, exactly as `live_slip()` says.
+STATUS_FILTERS = (("", "All"), ("draft", "Draft"), ("issued", "Issued"),
+                  ("none", "No slip"))
+_STATUS_OF = {DRAFT: "draft", ISSUED: "issued"}
+
+REGISTER_CSS = """
+<style>
+  table.pay-tbl th.pick, table.pay-tbl td.pick { width:28px; text-align:center; }
+  .pay-filter { display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+                margin:0 0 14px; }
+  .pay-filter input[type=search] { min-width:180px; }
+  .pay-selbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+                margin:0 0 10px; }
+  .pay-count { font-size:.86rem; font-weight:600; }
+</style>"""
+
+
+def register_filters(args) -> dict:
+    """`{"q", "site", "status"}` off the query string, bounded and closed."""
+    status = str(args.get("status") or "").strip()
+    return {"q": str(args.get("q") or "").strip()[:100],
+            "site": str(args.get("site") or "").strip()[:200],
+            "status": status if status in dict(STATUS_FILTERS) else ""}
+
+
+def filtered_roster(month, filters: dict) -> list:
+    """
+    `month_roster()`, narrowed by the register's three filters — the rows the
+    page SHOWS, and so the rows select-all can reach.
+
+    * `q` — a case-blind substring of the name or the employee code (the
+      master's, else the slip's snapshot for a person no longer on it).
+    * `site` — at least one marking at that site LABEL in the month
+      (`attendance.sites_marked_in()`).
+    * `status` — the person's LIVE slip: draft, issued, or none.
+    """
+    q = str(filters.get("q") or "").lower()
+    site = str(filters.get("site") or "")
+    status = str(filters.get("status") or "")
+    sites = AT.sites_marked_in(month) if site else {}
+    people = EMP.employees()
+    out = []
+    for eid in month_roster(month):
+        slip = live_slip(eid, month)
+        if status and _STATUS_OF.get(slip.get("status"), "none") != status:
+            continue
+        if site and site not in sites.get(eid, set()):
+            continue
+        if q:
+            person = people.get(eid) or {}
+            snap = slip.get("snapshot") or {}
+            hay = " ".join(str(v or "") for v in (
+                person.get("name"), person.get("code"),
+                snap.get("employee_name"), snap.get("employee_code"))).lower()
+            if q not in hay:
+                continue
+        out.append(eid)
+    return out
+
+
+def _site_options(month, selected: str) -> str:
+    labels = set()
+    for found in AT.sites_marked_in(month).values():
+        labels |= found
+    if selected:
+        labels.add(selected)
+    opts = ['<option value="">All sites</option>']
+    for label in sorted(labels, key=str.lower):
+        sel = " selected" if label == selected else ""
+        opts.append(f'<option value="{_esc(label)}"{sel}>{_esc(label)}</option>')
+    return "".join(opts)
+
+
+def _status_options(selected: str) -> str:
+    return "".join(
+        f'<option value="{k}"{" selected" if k == selected else ""}>{label}</option>'
+        for k, label in STATUS_FILTERS)
+
+
+def _filter_hidden(month: str, filters: dict) -> str:
+    """The month and the filters, carried through a selection POST and back."""
+    return (f'<input type="hidden" name="month" value="{_esc(month)}"/>' + "".join(
+        f'<input type="hidden" name="{k}" value="{_esc(filters[k])}"/>'
+        for k in ("q", "site", "status") if filters.get(k)))
+
+
+def _back_to_register(month: str, form, **flash):
+    keep = {k: v for k, v in register_filters(form).items() if v}
+    return redirect(url_for("payroll.payroll_register", month=month,
+                            **keep, **flash))
+
+
+def picked_ids(values, month) -> list:
+    """
+    The ticked ids that are on this month's roster, de-duplicated, in the
+    order given. ⚠ **Capped at the employee count** before anything is looked
+    up, so a crafted request carrying a million `emp=` values costs a slice,
+    not a million lookups. An unknown id, or one not on the month, is dropped
+    silently — it is not a person this page drew.
+    """
+    roster = set(month_roster(month))
+    cap = max(len(EMP.employees()), len(roster), 1)
+    out, seen = [], set()
+    for raw in list(values or [])[:cap]:
+        eid = str(raw or "").strip()
+        if eid and eid in roster and eid not in seen:
+            seen.add(eid)
+            out.append(eid)
+    return out
+
+
+def _person_name(eid) -> str:
+    person = EMP.employees().get(eid) or {}
+    return str(person.get("name") or "(not on the register)")
+
+
+def _skip_reason(eid, month) -> str:
+    """Why a ticked row is not issued: already issued, cancelled, or no slip."""
+    slip = live_slip(eid, month)
+    if slip.get("status") == ISSUED:
+        return "already issued"
+    if any(s.get("employee_id") == eid and s.get("month") == month
+           and s.get("status") == CANCELLED for s in slips().values()):
+        return "cancelled"
+    return "no slip"
+
+
 @payroll_bp.route("/")
 def payroll_register():
     """One month: every person with a marking, a ledger row or a slip."""
     month = valid_month(request.args.get("month")) or default_month()
+    filters = register_filters(request.args)
+    roster = month_roster(month)
+    shown = filtered_roster(month, filters)
     rows = []
-    for eid in month_roster(month):
+    for eid in shown:
         person = EMP.employees().get(eid) or {}
         slip = live_slip(eid, month)
         snap = slip.get("snapshot") if slip else snapshot(eid, month)
@@ -649,6 +798,8 @@ def payroll_register():
                 else '<span class="pay-sub">no slip</span>')
         rows.append(f"""
       <tr>
+        <td class="pick"><input type="checkbox" name="emp" value="{_esc(eid)}"
+            class="pay-pick" aria-label="Select {_esc(person.get('name') or eid)}"/></td>
         <td>{_esc(person.get('name') or '(not on the register)')}{
           f'<span class="pay-sub">{_esc(person.get("code"))}</span>'
           if person.get('code') else ''}</td>
@@ -661,17 +812,72 @@ def payroll_register():
           if _num(snap.get('carry')) else ''}</td>
         <td>{link}</td>
       </tr>""")
-    table = (f"""
-  <div class="pay-card tbl-fit">
-    <table class="pay-tbl">
-      <tr><th>Employee</th><th class="num">Paid days</th><th class="num">OT hrs</th>
-          <th class="num">Gross</th><th class="num">Deductions</th>
-          <th class="num">Net payable</th><th>Slip</th></tr>
-      {''.join(rows)}
-    </table>
-  </div>""" if rows else
-        '<div class="pay-card"><p>Nobody was marked, and no advance or loan '
-        'was recorded, in this month.</p></div>')
+
+    sel_btns = [f'<button class="btn btn-ghost" formmethod="get" formaction="'
+                f'{url_for("payroll.print_selected")}">Print selected</button>']
+    if auth.has_perm("payroll.issue"):
+        sel_btns.append(f'<button class="btn" formmethod="post" formaction="'
+                        f'{url_for("payroll.issue_selected")}">Issue selected'
+                        f'</button>')
+    if auth.has_perm("payroll.edit"):
+        sel_btns.append(f'<button class="btn btn-ghost" formmethod="post" '
+                        f'formaction="{url_for("payroll.create_selected")}">'
+                        f'Create drafts for selected</button>')
+
+    if rows:
+        table = f"""
+  <form id="pay-sel" method="GET" action="{url_for('payroll.print_selected')}">
+    {_filter_hidden(month, filters)}
+    <div class="pay-selbar">
+      <span class="pay-count" id="pay-count" aria-live="polite">0 selected</span>
+      <button type="reset" class="btn btn-ghost" id="pay-clear">Clear</button>
+      {''.join(sel_btns)}
+    </div>
+    <div class="pay-card tbl-fit">
+      <table class="pay-tbl">
+        <tr><th class="pick"><input type="checkbox" id="pay-all"
+                aria-label="Select every row shown"/></th>
+            <th>Employee</th><th class="num">Paid days</th><th class="num">OT hrs</th>
+            <th class="num">Gross</th><th class="num">Deductions</th>
+            <th class="num">Net payable</th><th>Slip</th></tr>
+        {''.join(rows)}
+      </table>
+    </div>
+  </form>
+<script>
+/* Select-all, Clear and the live count (13 Nov 2026, §0 seventy-third block).
+   It decides nothing: the rows are already filtered on the server, so "all"
+   is every row SHOWN, and every action re-reads the ticked ids itself. */
+(function () {{
+  var f = document.getElementById("pay-sel");
+  if (!f) {{ return; }}
+  var all = document.getElementById("pay-all");
+  var n = document.getElementById("pay-count");
+  function boxes() {{ return f.querySelectorAll("input.pay-pick"); }}
+  function count() {{
+    var b = boxes(), c = 0;
+    for (var i = 0; i < b.length; i++) {{ if (b[i].checked) {{ c++; }} }}
+    n.textContent = c + " selected";
+    all.checked = b.length > 0 && c === b.length;
+  }}
+  all.addEventListener("change", function () {{
+    var b = boxes();
+    for (var i = 0; i < b.length; i++) {{ b[i].checked = all.checked; }}
+    count();
+  }});
+  f.addEventListener("change", function (e) {{
+    if (e.target.classList.contains("pay-pick")) {{ count(); }}
+  }});
+  f.addEventListener("reset", function () {{ setTimeout(count, 0); }});
+  count();
+}})();
+</script>"""
+    elif roster:
+        table = ('<div class="pay-card"><p>Nobody on this month matches the '
+                 'filters.</p></div>')
+    else:
+        table = ('<div class="pay-card"><p>Nobody was marked, and no advance or '
+                 'loan was recorded, in this month.</p></div>')
 
     acts = []
     if auth.has_perm("payroll.edit"):
@@ -689,21 +895,30 @@ def payroll_register():
     acts.append(f'<a class="btn btn-ghost" href="'
                 f'{url_for("attendance.list_attendance")}">&#8592; Muster</a>')
 
+    shown_note = (f'<span class="pay-sub">Showing {len(shown)} of '
+                  f'{len(roster)}.</span>' if len(shown) != len(roster) else "")
     body = f"""
   {_flash()}
   <div class="page-top">
     <h1>Payslips &mdash; {_esc(month_label(month))}</h1>
   </div>
-  <form method="GET" class="pay-acts">
+  <form method="GET" class="pay-filter">
     <input type="month" name="month" value="{_esc(month)}"/>
+    <input type="search" name="q" value="{_esc(filters['q'])}"
+           placeholder="Name or code" aria-label="Search name or code"/>
+    <select name="site" aria-label="Site">{_site_options(month, filters['site'])}</select>
+    <select name="status" aria-label="Slip status">{_status_options(filters['status'])}</select>
     <button class="btn btn-ghost">Show</button>
+    <a class="btn btn-ghost" href="{url_for('payroll.payroll_register', month=month)}">Reset</a>
+    {shown_note}
   </form>
   <div class="pay-acts">{''.join(acts)}</div>
   <div class="pay-note">Figures without a slip are drawn live from the muster
     and the pay ledger. A slip <b>snapshots</b> them; an issued slip never
-    moves. Net pay is rounded to the rupee, half up.</div>
+    moves. Net pay is rounded to the rupee, half up. Tick rows to print, issue
+    or draft only those; <i>Select all</i> takes the rows shown.</div>
   {table}"""
-    return _shell(f"Payslips {month_label(month)}", body)
+    return _shell(f"Payslips {month_label(month)}", body, REGISTER_CSS)
 
 
 @payroll_bp.route("/generate", methods=["POST"])
@@ -996,10 +1211,188 @@ def print_month():
                     key=lambda s: str((s.get("snapshot") or {})
                                       .get("employee_name") or "").lower())
     sheets = "".join(f'<div class="slip-page">{slip_sheet(s)}</div>'
-                     for s in issued) or (
-        f'<p>No slip is issued for {_esc(month_label(month))} yet.</p>')
+                     for s in issued) or _nothing_issued(month)
     return _print_page(f"Payslips {month_label(month)}", sheets,
                        url_for("payroll.payroll_register", month=month))
+
+
+def _nothing_issued(month) -> str:
+    """
+    print-month's empty message. Unchanged when the month has no draft
+    either; when it has drafts it says how many and what to do (§0
+    seventy-third block, ruling 4) — this route still prints ISSUED only.
+    """
+    drafts = sum(1 for s in slips().values()
+                 if s.get("month") == month and s.get("status") == DRAFT)
+    if not drafts:
+        return f'<p>No slip is issued for {_esc(month_label(month))} yet.</p>'
+    return (f'<p>No slip is issued for {_esc(month_label(month))} yet. '
+            f'{drafts} draft slip{"" if drafts == 1 else "s"} '
+            f'{"is" if drafts == 1 else "are"} waiting &mdash; issue '
+            f'{"it" if drafts == 1 else "them"}, or tick '
+            f'{"it" if drafts == 1 else "them"} on the register and use '
+            f'<b>Print selected</b> to print '
+            f'{"it" if drafts == 1 else "them"} stamped DRAFT.</p>')
+
+
+# ── Acting on the ticked rows (13 Nov 2026, §0 seventy-third block) ─────────
+
+def selected_slips(month, ids) -> tuple:
+    """
+    `(printable, no_slip)` for Print selected. *printable* — every ticked
+    person's LIVE slip (Issued or Draft; a cancelled slip is never live),
+    sorted by name as print-month sorts. *no_slip* — the ticked people with no
+    live slip, by name.
+    """
+    printable, no_slip = [], []
+    for eid in ids:
+        slip = live_slip(eid, month)
+        if slip:
+            printable.append(slip)
+        else:
+            no_slip.append(_person_name(eid))
+    printable.sort(key=lambda s: str((s.get("snapshot") or {})
+                                     .get("employee_name") or "").lower())
+    no_slip.sort(key=str.lower)
+    return printable, no_slip
+
+
+@payroll_bp.route("/print-selected")
+def print_selected():
+    """
+    The ticked people's slips, one per page. Issued AND Draft print — a draft
+    carries `slip_sheet()`'s own DRAFT stamp — and each page is exactly the
+    `<div class="slip-page">` that `print_slip()` draws for that slip, so the
+    sheet is byte-identical to the single print. The summary above them is
+    `.alert` / `.no-print` and never reaches paper.
+    """
+    month = valid_month(request.args.get("month")) or default_month()
+    ids = picked_ids(request.args.getlist("emp"), month)
+    printable, no_slip = selected_slips(month, ids)
+    issued = sum(1 for s in printable if s.get("status") == ISSUED)
+    drafts = len(printable) - issued
+    lines = [f"{issued} issued, {drafts} draft{'' if drafts == 1 else 's'} "
+             f"(stamped DRAFT)."]
+    if not ids:
+        lines = ["Nobody is ticked. Go back, tick the people whose slips you "
+                 "want, and choose <b>Print selected</b>."]
+    if no_slip:
+        lines.append("No slip yet &mdash; create the draft first: "
+                     + ", ".join(_esc(n) for n in no_slip) + ".")
+    if ids and not printable:
+        lines.append("Nothing to print.")
+    summary = (f'<div class="alert pay-note no-print">'
+               f'{"<br/>".join(lines)}</div>')
+    sheets = summary + "".join(f'<div class="slip-page">{slip_sheet(s)}</div>'
+                               for s in printable)
+    return _print_page(f"Payslips selected {month_label(month)}", sheets,
+                       url_for("payroll.payroll_register", month=month))
+
+
+@payroll_bp.route("/issue-selected", methods=["POST"])
+def issue_selected():
+    """
+    Two POSTs. The FIRST writes nothing: it lists the drafts that would be
+    issued, their total net, and every ticked row skipped with its reason.
+    The SECOND (`confirm=1`) re-derives everything from the store — the first
+    page is never trusted — and calls the single `issue()` per draft, so the
+    refresh and the carry-forward are the one-slip route's own. The gate
+    (`auth.ROUTE_PERMISSIONS`, `payroll.issue`) runs on both.
+    """
+    month = valid_month(request.form.get("month"))
+    if not month:
+        return redirect(url_for("payroll.payroll_register",
+                                msg="Choose a month.", type="error"))
+    ids = picked_ids(request.form.getlist("emp"), month)
+    if not ids:
+        return _back_to_register(month, request.form, type="error",
+                                 msg="Tick at least one employee.")
+    drafts, skipped = [], []
+    for eid in ids:
+        slip = live_slip(eid, month)
+        if slip.get("status") == DRAFT:
+            drafts.append(slip)
+        else:
+            skipped.append((eid, _skip_reason(eid, month)))
+
+    if request.form.get("confirm") == "1":
+        done, failed = 0, 0
+        for slip in drafts:
+            if issue(slip):
+                failed += 1
+            else:
+                done += 1
+        n_skip = len(skipped) + failed
+        return _back_to_register(month, request.form, type="success",
+                                 msg=f"{done} issued, {n_skip} skipped.")
+
+    drafts.sort(key=lambda s: str((s.get("snapshot") or {})
+                                  .get("employee_name") or "").lower())
+    total = round(sum(_num((s.get("snapshot") or {}).get("payable"))
+                      for s in drafts), 2)
+    trs = "".join(
+        f'<tr><td>{_esc((s.get("snapshot") or {}).get("employee_name"))}</td>'
+        f'<td class="num">{_money((s.get("snapshot") or {}).get("payable"))}</td>'
+        f'<td class="num">{_money((s.get("snapshot") or {}).get("carry")) if _num((s.get("snapshot") or {}).get("carry")) else "&mdash;"}</td></tr>'
+        for s in drafts)
+    skip_rows = "".join(
+        f'<li>{_esc(_person_name(eid))} &mdash; {_esc(reason)}</li>'
+        for eid, reason in sorted(skipped, key=lambda x: _person_name(x[0]).lower()))
+    keep = "".join(f'<input type="hidden" name="emp" value="{_esc(eid)}"/>'
+                   for eid in ids)
+    hidden = (_filter_hidden(month, register_filters(request.form)) + keep
+              + '<input type="hidden" name="confirm" value="1"/>')
+    back = url_for("payroll.payroll_register", month=month,
+                   **{k: v for k, v in register_filters(request.form).items() if v})
+    if drafts:
+        table = f"""
+  <div class="pay-card tbl-fit"><table class="pay-tbl">
+    <tr><th>Employee</th><th class="num">Net payable</th>
+        <th class="num">Carried to next month</th></tr>
+    {trs}
+    <tr><td><b>Total net</b></td><td class="num"><b>{_money(total)}</b></td><td></td></tr>
+  </table></div>
+  <form method="POST" action="{url_for('payroll.issue_selected')}" class="pay-acts">
+    {hidden}
+    <button class="btn">Issue these {len(drafts)}</button>
+    <a class="btn btn-ghost" href="{back}">Back</a>
+  </form>"""
+    else:
+        table = (f'<div class="pay-card"><p>None of the ticked rows is a draft, '
+                 f'so there is nothing to issue.</p></div>'
+                 f'<div class="pay-acts"><a class="btn btn-ghost" href="{back}">'
+                 f'Back</a></div>')
+    skipped_html = (f'<div class="pay-warn"><b>Skipped ({len(skipped)})</b>'
+                    f'<ul>{skip_rows}</ul></div>' if skipped else "")
+    body = f"""
+  <div class="page-top"><h1>Issue {len(drafts)} payslip{"" if len(drafts) == 1 else "s"}
+    &mdash; {_esc(month_label(month))}</h1></div>
+  <div class="pay-note">Nothing has been issued yet. Issuing freezes each slip
+    and carries any advance bigger than the wages into next month, exactly as
+    issuing one slip does.</div>
+  {table}
+  {skipped_html}"""
+    return _shell("Issue selected payslips", body)
+
+
+@payroll_bp.route("/create-selected", methods=["POST"])
+def create_selected():
+    """`create_draft()` for each ticked person; the rest are counted skipped."""
+    month = valid_month(request.form.get("month"))
+    if not month:
+        return redirect(url_for("payroll.payroll_register",
+                                msg="Choose a month.", type="error"))
+    ids = picked_ids(request.form.getlist("emp"), month)
+    if not ids:
+        return _back_to_register(month, request.form, type="error",
+                                 msg="Tick at least one employee.")
+    made = 0
+    for eid in ids:
+        _, err = create_draft(eid, month)
+        made += 0 if err else 1
+    return _back_to_register(
+        month, request.form, type="success",
+        msg=f"{made} draft slip(s) created, {len(ids) - made} skipped.")
 
 
 # =============================================================================
