@@ -7039,6 +7039,71 @@ one automatic.
 > ABOUT.md §6 has the measurements, §7 gap 118 records a diagnostic weakness in
 > the golden harness that this pass surfaced on the way through.
 
+> ### ⚠ AUTHORISATION — 13 November 2026, by Manas Gawde after a client call with HR — CHOOSE WHICH PAYSLIPS TO PRINT, ISSUE OR DRAFT · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> named here. This is the **seventy-third** occasion, written directly on
+> `antigravity-dev`.
+>
+> **What prompted it:** on 13 November 2026 HR (Sonali) got stuck on the
+> payslip register, `/payroll/`. It has no way to choose WHICH employees'
+> slips to act on: *Print every issued slip* prints every ISSUED slip of the
+> month and nothing else, and issuing is one slip at a time.
+>
+> **Commercial status: NO CHARGE.** A usability fix to the payroll module
+> already sold and paid under **MG/SF/2026-08** (the fifty-fifth block's
+> payslip). It adds no new figure, no new field on any record, no new
+> permission and no new collection; it lets the operator pick rows and run
+> the existing actions on them.
+>
+> **Manas's rulings — not the agent's, and not to be changed by one:**
+>
+> 1. **The register gets a tick column**: a checkbox on every row, a header
+>    select-all, a *Clear* control and a live *N selected* count. Select-all
+>    acts on the rows **currently shown** (after filters) only.
+> 2. **Filters are GET parameters beside the month picker, applied on the
+>    server** so they work with no script: `q` searches name or employee
+>    code; `site` keeps workers with **at least one marking at that site in
+>    the month** — built only if markings carry a site, through a new READER
+>    in `attendance.py`, never an invented site source.
+> 3. **One selection form, three buttons:**
+>    a. **Print selected** (`GET /payroll/print-selected`, `payroll.view`):
+>       each ticked person's LIVE slip for the month. **Issued AND Draft both
+>       print**; a draft keeps the existing red **DRAFT** stamp. **A cancelled
+>       slip never prints.** Sorted by name, one per page, each sheet
+>       byte-identical to that slip's own print. A no-print summary above:
+>       *X issued, Y drafts (stamped DRAFT)*, and every ticked person with no
+>       slip named with *create the draft first*. Unknown or out-of-month ids
+>       are ignored; the number of ids is capped at the employee count.
+>    b. **Issue selected** (`POST /payroll/issue-selected`, `payroll.issue`,
+>       drawn only for a holder). The **first POST writes nothing**: it lists
+>       the drafts to be issued (name, net payable, carry if any), their total
+>       net, and every ticked row skipped with its reason (already issued / no
+>       slip / cancelled). The **second POST** calls the existing `issue()` per
+>       draft — so the refresh and the advance carry-forward are the single
+>       issue's, not a reimplementation — and returns to the register with
+>       *N issued, M skipped*. Permission and draft status are re-checked on
+>       the second POST; the first page is never trusted.
+>    c. **Create drafts for selected** (`POST`, `payroll.edit`):
+>       `create_draft()`'s rules, for the ticked people only. The existing
+>       *Create the month's missing drafts* button stays as it is.
+> 4. **`/payroll/print-month` is unchanged** (Issued only) with one exception:
+>    when nothing is issued but drafts exist, its empty message says how many
+>    are drafts and to issue them or use *Print selected*.
+> 5. **No new permission.** Every new endpoint is registered in
+>    `auth.ROUTE_PERMISSIONS` under an existing `payroll.*` permission; the
+>    access matrix gains the endpoints and no role cell moves.
+>
+> **The agent may add, and must declare:** a third filter, `status` = All /
+> Draft / Issued / No slip, so that *show drafts, select all, issue* is one
+> pass. Manas named it as his addition to the brief; it is recorded here as a
+> judgement call, not a client ask.
+>
+> **The gate is not lifted.** It is still the default and it still stands.
+> Overrides are not a precedent and do not make a subsequent one automatic; an
+> override remains a decision that is taken and recorded, never one an agent may
+> take, infer, or extend.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
