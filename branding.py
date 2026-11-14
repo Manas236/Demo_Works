@@ -444,8 +444,46 @@ def letterhead_top() -> str:
                 f'    </div>')
     # The URI is generated markup built at import from the artwork on disk,
     # and is deliberately left raw, as `logo_img()` leaves its own.
+    #
+    # ⚠ 14 November 2026 (Yogesh, option A, CLIENT_CHANGES.md §0 seventy-fourth
+    #   block): the artwork is 2150 x 318 px, NOT 1928 x 274. The SF mark sits
+    #   222 px further left and 44 px higher than it did, on a canvas grown by
+    #   exactly that much to the left and the top; the name and tagline pixels
+    #   did not move inside it. So every figure below is in the OLD artwork's
+    #   terms, 1928 px = 130 mm, and the three of them together put the name
+    #   and tagline exactly where they printed before:
+    #     width       130 mm x 2150 / 1928 — the scale is unchanged;
+    #     margin-left the old centring, (100% - 130 mm) / 2, less the added
+    #                 222 px (14.97 mm) — the mark prints that much further
+    #                 left, the name does not move;
+    #     margin-top  minus the added 44 px (2.97 mm) — the mark prints that
+    #                 much higher and nothing below the banner moves. It is
+    #                 written -11.21875px and not calc(-130mm * 44 / 1928)
+    #                 (= -11.2132px) ON PURPOSE: Chromium lays out in 1/64 px
+    #                 and floors the picture's height, so the calc() left
+    #                 everything below the banner 1/64 px (0.004 mm) lower —
+    #                 measured. -11.21875px is exactly -718/64, the difference
+    #                 between the floored heights of the new and the old
+    #                 picture at 130 mm / 1928 px, so every rect below is
+    #                 identical to its before state.
+    #   ⚠ ONE RESIDUAL, ACCEPTED (Manas, 14 Nov 2026): the name is NOT moved
+    #     by 0.000 mm. Chromium paints a picture into its rect SNAPPED to whole
+    #     CSS px — 492 px for 1928 before (portrait; 491 landscape), 548 px for
+    #     2150 now — and holding the scale exactly would need 548.656 px. So on
+    #     paper the name's LEFT ink edge moved +0.127 mm portrait / -0.085 mm
+    #     landscape and its top +0.042 mm; right and bottom 0. No one-picture
+    #     layout can avoid that; two pictures were offered and declined. No
+    #     element below the banner moves at all.
+    #   `max-width:100%` still lets a phone screen shrink it; on a container
+    #   narrower than the artwork the `max()`s keep it inside the box (left 0,
+    #   and a top margin of the added rows at the SHRUNK scale, which is what
+    #   `-100% x 44 / 2150` is when the picture is exactly 100% wide).
+    #   Change the PNG's size and these numbers change with it — never one
+    #   without the other.
     return (f'<div class="lh-banner"><img src="{LETTERHEAD_URI}" '
             f'alt="{_esc(LETTERHEAD_ALT)}" '
-            f'style="display:block;width:130mm;max-width:100%;height:auto;'
-            f'margin:0 auto;"/>'
+            f'style="display:block;width:calc(130mm * 2150 / 1928);'
+            f'max-width:100%;height:auto;'
+            f'margin:max(-11.21875px, calc(-100% * 44 / 2150)) '
+            f'auto 0 max(0px, calc((100% - 130mm) / 2 - 130mm * 222 / 1928));"/>'
             f'</div>{legal}')

@@ -61,7 +61,7 @@ TAGLINE = "FIRE PROTECTION AND SAFETY ENGINEERS"
 NAME_INK = "#FF0000"     # the workbooks' own cell colour, FFFF0000
 TAG_INK = "#215967"      # see the docstring
 
-W, H = 2400, 330
+W, H = 2400, 330         # superseded below, 14 November 2026
 # ⚠ 29 October 2026 (CLIENT_CHANGES.md §0 fifty-sixth block): the client
 #   found the SF mark too small. It was (148, 38) at 200 px; it is now 1.5×,
 #   centred on the banner's height in the white the old mark left, so the
@@ -92,10 +92,38 @@ W, H = 2400, 330
 #     takes the mark's row and the canvas grows a pixel taller — which would
 #     rescale every printed banner. Check the output is 1928 x 274 and that
 #     the two ink tops agree before committing a rebuild.
+#
+# ⚠ 14 November 2026 (Yogesh, option A, CLIENT_CHANGES.md §0 seventy-fourth
+#   block, no charge): the mark moves 15 mm LEFT and 3 mm HIGHER on paper than
+#   8 November left it — 222 px and 44 px at 1928 px = 130 mm. Its size does
+#   not change and the name and tagline do not move ON PAPER.
+#   A canvas "extended to the left and the top" is not something this builder
+#   draws directly — it crops to ink, so the crop's origin follows the
+#   leftmost/topmost ink. It is expressed the equivalent way instead: the
+#   ROUNDEL stays at (140, 19), the TEXT moves 222 px right and 44 px down
+#   (TEXT_AXIS 1262 -> 1484, NAME_TOP 62 -> 106, TAG_TOP 268 -> 312), and the
+#   canvas grows by the same amounts (2400 x 330 -> 2622 x 374) so nothing is
+#   clipped. The mark now sets the crop's left AND top alone; the text sets
+#   its right and bottom. Output: 2150 x 318, mark ink at (12, 13), name ink
+#   at (529, 56) — 222 / 44 px from the mark, where they were 307 / 12.
+#   The committed PNG was again produced on LINUX, without the Algerian font,
+#   by moving pixels: the old 1928 x 274 artwork pasted at (222, 44) byte for
+#   byte, then its columns 0..288 (the mark and its white) moved back to
+#   (0, 0) byte for byte. Same 64-colour palette, no resample.
+#   `branding.letterhead_top()` draws it at 130 mm x 2150 / 1928 with a left
+#   offset of -222 px and a top margin of -44 px in the same scale, so the
+#   NAME prints where it did. Its size and those figures go together.
+#   ⚠ CHECK THE OUTPUT SIZE AND INK TOPS BEFORE COMMITTING A REBUILD: it must
+#     be 2150 x 318, the mark's ink top must be row 13 (12 with the builder's
+#     own RGB threshold) and the name's ink top exactly 44 rows below it, the
+#     name's ink left exactly 222 + 307 columns from the mark's ink left 12.
+#     A pixel's difference rescales or shifts every printed banner — and
+#     changes the numbers in letterhead_top() with it.
+W, H = 2622, 374
 ROUNDEL_AT, ROUNDEL_PX = (140, 19), 300
-TEXT_AXIS = 1262         # x of the shared centre line of name and tagline
-NAME_PT, NAME_TOP = 206, 62
-TAG_PT, TAG_TOP = 58, 268
+TEXT_AXIS = 1484         # x of the shared centre line of name and tagline
+NAME_PT, NAME_TOP = 206, 106
+TAG_PT, TAG_TOP = 58, 312
 PAD = 12                 # white kept round the ink after the crop, in px
 INK = 20                 # how far from white a pixel must be to count as ink
 

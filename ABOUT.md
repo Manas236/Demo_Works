@@ -14124,6 +14124,39 @@ that never saved one reads the new default with no write at all.
 
 ### The letterhead banner — `letterhead_top()` (21 October 2026)
 
+⚠ **14 November 2026 — the SF mark is 15 mm LEFT and 3 mm HIGHER (option A)**
+(Yogesh, CLIENT_CHANGES.md §0 seventy-fourth block, no charge). The 8 November
+move below was 1.15 mm and nobody could see it.
+
+- **The artwork is 2150 × 318 now, not 1928 × 274.** The mark sits 222 px left
+  and 44 px up relative to the name (14.97 / 2.97 mm at 1928 px = 130 mm) on a
+  canvas grown by exactly that much to the left and the top. Both parts are
+  byte-identical copies of the old pixels, same 64-colour palette, no resample
+  (built on Linux; `assets/build_banner.py` carries the equivalent figures and
+  the check: output 2150 × 318, mark ink top row 13, name ink 44 rows lower
+  and 222 + 307 columns right of the mark's ink left).
+- **The img style is in the OLD artwork's terms.** `width:calc(130mm * 2150 /
+  1928)` keeps the scale; `margin-left` is the old centring less `130mm * 222 /
+  1928`; `margin-top` is **`-11.21875px`** — exactly −718/64 CSS px, the added
+  rows as Chromium floors the picture's height (`calc(-130mm * 44 / 1928)` left
+  everything below 1/64 px low, measured). The `max()`s keep a shrunk picture
+  inside a narrow box. **The PNG's size and these figures change together**;
+  `test_the_banner_style_keeps_the_name_where_it_printed` fails otherwise.
+- ⚠ **The name moves by a sliver, accepted.** Chromium paints a picture into a
+  rect snapped to whole CSS px (492 px for 1928 before, 548 for 2150 now; exact
+  would be 548.656). On paper the name's left ink edge moved +0.127 mm portrait
+  / −0.085 mm landscape and its top +0.042 mm; right and bottom 0. Two pictures
+  would have made it 0 and were declined (Manas, 14 Nov 2026).
+- **Measured** (headless Chromium A4, 600 dpi, 24 renders / 41 pages): mark
+  left 40.68 → 25.87 mm portrait, 84.33 → 69.26 mm landscape; mark top 10.88 →
+  7.96 mm (17.23 → 14.31 under a label band); ink size unchanged; gap to the
+  name 2.37 → 17.36 mm. Every element rect outside the banner, every scroll
+  height and every page count identical; with PNGs masked every page's HTML
+  identical except the img style. Goldens: `letterhead` + the copy-set
+  `signature` block, +1,350 bytes per banner. The 130 mm width decision below
+  still holds for the NAME; the picture's box is 144.98 mm because it now
+  carries the mark's extra room.
+
 ⚠ **8 November 2026 — the SF mark is TOP-ALIGNED to the lettering** (Yogesh's
 call of that date, CLIENT_CHANGES.md §0, no charge). The client said the mark
 sat too low beside the name. **The cause was alignment, not a stray offset:**
