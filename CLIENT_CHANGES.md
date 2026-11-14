@@ -7104,6 +7104,68 @@ one automatic.
 > override remains a decision that is taken and recorded, never one an agent may
 > take, infer, or extend.
 
+> ### ⚠ AUTHORISATION — 14 November 2026, by Yogesh choosing option A from a mock — THE SF MARK 15 mm LEFT AND 3 mm HIGHER ON PRINTED DOCUMENTS · NO CHARGE · POST-GO-LIVE
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> named here. This is the **seventy-fourth** occasion, written directly on
+> `antigravity-dev`. **No figure, no field and no route moves** — this is the
+> position of the artwork on the printed letterhead and nothing else. **No
+> charge**: round 2 of the correction under the seventy-second block.
+>
+> **Why the seventy-second block fell short.** `36a7e95` (8 Nov) moved the mark
+> up 17 px inside the banner — **1.15 mm on paper, which nobody can see** — and
+> deliberately did not move it left, because the mark already sat at the
+> artwork's own left edge. The client saw no change.
+>
+> **What was asked (option A, chosen from a mock):** on every printed document
+> the SF mark moves **15 mm further LEFT and 3 mm HIGHER** than where it printed.
+> Its **size does not change**. **SAMRUDDHI FIRE** and the tagline **do not
+> move** and do not change size. **Nothing below the banner moves.** Printed
+> documents only; the landing page and on-screen chrome are out of scope.
+>
+> **What was done — one picture, as preferred.** `assets/letterhead-banner.png`
+> is now **2150 × 318** (was 1928 × 274), built on Linux by moving pixels, no
+> resample, same 64-colour palette: the old artwork pasted at (222, 44) byte for
+> byte, then the mark's columns moved back to (0, 0) byte for byte. At 1928 px =
+> 130 mm that is 222 px = 14.97 mm left and 44 px = 2.97 mm up. In
+> `branding.letterhead_top()` only the img's inline style changed: width
+> `130mm × 2150 / 1928` (same scale), left = the old centring less the added
+> 222 px, top margin **−11.21875px** (= −718/64 CSS px, the added 44 rows as
+> Chromium floors them — `calc(−130mm × 44 / 1928)` left everything below
+> 1/64 px low, measured). `max-width:100%` kept; the text fallback unchanged.
+> `assets/build_banner.py` carries the new figures (text shifted +222/+44 on a
+> canvas grown by the same; the crop does the rest) and the size/ink check.
+>
+> **Measured on paper** (headless Chromium, A4, PDF rasterised at 600 dpi; ink
+> = luminance < 235), 24 renders over 13 endpoints, every page (41):
+>
+> | | Portrait (PO, TI, PI, RA, merged, DC, DPO, WO, quotation, legacy sheet) | Landscape (BOQ, joint sheet) |
+> |---|---|---|
+> | Mark left | 40.68 → **25.87 mm** (−14.82) | 84.33 → **69.26 mm** (−15.07) |
+> | Mark top | 10.88 → **7.96 mm** (−2.92); 17.23 → 14.31 on label-band pages | same |
+> | Mark ink w × h | 17.57 × 14.52 → 17.53 × 14.48 (one 600-dpi pixel) | 17.53 × 14.52 → 17.53 × 14.48 |
+> | Name left / top / right / bottom | **+0.127 / +0.042 / 0 / +0.042 mm** | **−0.085 / +0.042 / 0 / +0.042 mm** |
+> | Gap mark → name | 2.37 → 17.36 mm | 2.37 → 17.36 mm |
+>
+> ⚠ **The name's residual is accepted, not zero.** Chromium paints a picture
+> into its rect snapped to whole CSS px (492 px for the 1928-px banner before;
+> 548 px for 2150 now); holding the scale exactly would need 548.656 px. No
+> one-picture layout can avoid it. It was reported as a stop under the brief,
+> with two pictures (name banner byte-identical + a separately placed mark) as
+> the alternative, and **Manas accepted the one-picture result on 14 Nov 2026**.
+> It is under half a CSS pixel and invisible on paper.
+>
+> **What did not move:** every element rect outside the banner, every scroll
+> height and every page count is identical (the 3-copy TI still 6 pages); with
+> the inlined PNGs masked every page's HTML is identical except the img style,
+> so copy labels, sign + stamp block, Make column, round-off, HSN, bank block
+> and amount in words are untouched. Mark top ≥ 5 mm everywhere (minimum 7.96).
+> Not clipped on the landscape BOQ or joint sheet; same offset from the name.
+> **Fourteen print goldens re-baselined once**: `letterhead` everywhere plus
+> `signature` on TI, RA, merged and DC; every delta exactly +1,350 bytes per
+> banner. Previews: `docs/previews/2026-11-14-logo/`. **Not deployed** — prod
+> waits for the client's OK.
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
