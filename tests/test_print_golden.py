@@ -1401,8 +1401,8 @@ def golden_dc(client, pinned_identity):
 # was 58555aff975adc5e / 165092 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was a01edfe5b74a1c94 / 168272 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-DC_WHOLE, DC_LEN = "f8f4c2bf04f2df82", 181771   # was c78d668eba9bd13f / 177721 (logo option A, 14 Nov 2026), was 95b91fa72436dece / 175909 (logo top-aligned, 8 Nov 2026), was 220de3e9f51f5773 / 169225 (SF mark 1.5x, 29 Oct 2026)
-DC_BLOCKS = {"head":       "094e1c25e5ac35b1",   # was 70716c3255fe6d74 (page edge),
+DC_WHOLE, DC_LEN = "224faaf4353a2f58", 182465   # was f8f4c2bf04f2df82 / 181771 (DC title-band hotfix, 16 Nov 2026), was c78d668eba9bd13f / 177721 (logo option A, 14 Nov 2026), was 95b91fa72436dece / 175909 (logo top-aligned, 8 Nov 2026), was 220de3e9f51f5773 / 169225 (SF mark 1.5x, 29 Oct 2026)
+DC_BLOCKS = {"head":       "30701f66db4e3e82",   # was 094e1c25e5ac35b1 (DC title-band hotfix, 16 Nov 2026), was 70716c3255fe6d74 (page edge),
                                                  # was f3f5e6b5c49c9e9f
              "letterhead": "d053b75f9692357e",   # was 688623f90590b397 (logo option A, 14 Nov 2026), was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
