@@ -39,7 +39,7 @@ import pipeline as P
 from store import STORE
 
 HISTORY_KEY = "ti_number_history"
-FIELD = "tax_invoice_ref"      # the posted box's name on every form
+FIELD = "tax_invoice_ref"      # the posted box's name on every TI form
 MAX_LEN = 64                   # a cap on what is stored, not a GST rule
 
 # Every place a tax invoice number is stored: (collection, field, what it is).
@@ -49,6 +49,26 @@ SOURCES = (
     ("merged_ras", "tax_invoice_ref", "Merged RA"),
 )
 
+# ── The KINDS (17 Nov 2026, §0 eightieth block) ─────────────────────────────
+# The same free-format rule for the purchase order and the delivery challan.
+# A duplicate is refused within the SAME kind only (PO vs PO, DC vs DC). The
+# `ti` entry is hotfix 4's behaviour exactly, and every default below is it.
+DOC_FIELD = "doc_number"
+NUMBER_HISTORY_KEY = "number_history"
+KINDS = {
+    "ti": {"sources": SOURCES, "noun": "tax invoice number", "field": FIELD,
+           "history": HISTORY_KEY, "title": "Tax invoice number changes",
+           "blank": "type the number Tally gave."},
+    "po": {"sources": (("purchases", "ref", "Purchase order"),),
+           "noun": "purchase order number", "field": DOC_FIELD,
+           "history": NUMBER_HISTORY_KEY, "title": "Purchase order number changes",
+           "blank": "type the number you want."},
+    "dc": {"sources": (("delivery_challans", "ref", "Delivery challan"),),
+           "noun": "challan number", "field": DOC_FIELD,
+           "history": NUMBER_HISTORY_KEY, "title": "Challan number changes",
+           "blank": "type the number you want."},
+}
+
 
 def norm(value) -> str:
     """Trimmed, case-insensitive — the comparison the duplicate rule uses."""
@@ -56,7 +76,7 @@ def norm(value) -> str:
 
 
 def is_cancelled(rec) -> bool:
-    """The three modules' own test, read raw (this leaf may import none of them)."""
+    """The modules' own test, read raw (this leaf may import none of them)."""
     return str((rec or {}).get("status") or "").strip().lower() == "cancelled"
 
 
@@ -66,16 +86,16 @@ def _label(coll: str, rec: dict, what: str) -> str:
     return f"{what} {rec.get('tax_invoice_ref') or rec.get('ref') or ''}".strip()
 
 
-def holder_of(value, *, coll: str = "", rec_id: str = ""):
+def holder_of(value, *, coll: str = "", rec_id: str = "", kind: str = "ti"):
     """
-    The label of the OTHER live document already carrying this number, or "".
-    `coll` / `rec_id` name the document being saved, which never collides
-    with itself.
+    The label of the OTHER live document of this kind already carrying this
+    number, or "". `coll` / `rec_id` name the document being saved, which
+    never collides with itself.
     """
     want = norm(value)
     if not want:
         return ""
-    for c, field, what in SOURCES:
+    for c, field, what in KINDS[kind]["sources"]:
         for rid, rec in (STORE.get(c) or {}).items():
             if c == coll and rid == rec_id:
                 continue
@@ -86,9 +106,9 @@ def holder_of(value, *, coll: str = "", rec_id: str = ""):
 
 
 def validate(raw, *, current: str = "", coll: str, rec_id: str = "",
-             may: bool = True, required: bool = True) -> tuple:
+             may: bool = True, required: bool = True, kind: str = "ti") -> tuple:
     """
-    `(value, error)` for a typed tax invoice number.
+    `(value, error)` for a typed document number of this `kind`.
 
     * blank — refused when `required` (an edit), else `("", "")`: the caller
       mints its automatic number as it always did (a create);
@@ -98,35 +118,36 @@ def validate(raw, *, current: str = "", coll: str, rec_id: str = "",
     * changed without `may` — refused (a login whose BLOCK list names
       `docnum.override`);
     * longer than `MAX_LEN` — refused;
-    * on another live document — refused, naming it.
+    * on another live document of the same kind — refused, naming it.
     """
+    k = KINDS[kind]
+    noun = k["noun"]
     value = str(raw if raw is not None else "").strip()
     if not value:
-        return "", ("The tax invoice number cannot be blank — type the "
-                    "number Tally gave." if required else "")
+        return "", (f"The {noun} cannot be blank — {k['blank']}" if required else "")
     if any(ord(ch) < 32 for ch in value):
-        return str(current or ""), "The tax invoice number has a character it may not carry."
+        return str(current or ""), f"The {noun} has a character it may not carry."
     if norm(value) == norm(current):
         return str(current or "").strip() or value, ""
     if not may:
-        return str(current or ""), ("You may not set a tax invoice number by "
-                                    "hand, so it stays as it is.")
+        return str(current or ""), (f"You may not set a {noun} by hand, so it "
+                                    f"stays as it is.")
     if len(value) > MAX_LEN:
-        return value, (f"A tax invoice number of {len(value)} characters is too "
-                       f"long; the limit here is {MAX_LEN}.")
-    held = holder_of(value, coll=coll, rec_id=rec_id)
+        return value, (f"A {noun} of {len(value)} characters is too long; the "
+                       f"limit here is {MAX_LEN}.")
+    held = holder_of(value, coll=coll, rec_id=rec_id, kind=kind)
     if held:
-        return value, (f"Tax invoice number {value} is already on {held}. A "
-                       f"number may be used once; correct one of the two.")
+        return value, (f"{noun[0].upper() + noun[1:]} {value} is already on {held}. "
+                       f"A number may be used once; correct one of the two.")
     return value, ""
 
 
-def record_change(rec: dict, old, new, actor_id: str) -> bool:
+def record_change(rec: dict, old, new, actor_id: str, kind: str = "ti") -> bool:
     """Append `{old, new, by, at}` — only when the number actually moved."""
     old_s, new_s = str(old or ""), str(new or "")
     if old_s == new_s:
         return False
-    rec.setdefault(HISTORY_KEY, []).append({
+    rec.setdefault(KINDS[kind]["history"], []).append({
         "old": old_s, "new": new_s, "by": str(actor_id or ""),
         "at": datetime.datetime.now().replace(microsecond=0).isoformat(" "),
     })
@@ -134,23 +155,25 @@ def record_change(rec: dict, old, new, actor_id: str) -> bool:
 
 
 def field_html(value: str = "", *, may: bool = True, label: str = "Tax Invoice No.",
-               hint: str = "") -> str:
+               hint: str = "", kind: str = "ti") -> str:
     """The free-text box. Styled on the element: the sheets around it are pinned."""
+    name = KINDS[kind]["field"]
     ro = "" if may else " readonly"
     note = hint or ("The number Tally Prime gave, exactly as Tally prints it. "
                     "It may be corrected later; a number already on another "
                     "live tax invoice is refused.")
     return (f'<div class="form-group" style="max-width:22rem;margin:.6rem 0;">'
-            f'<label for="{FIELD}">{label}</label>'
-            f'<input type="text" id="{FIELD}" name="{FIELD}" value="{P.esc(value)}" '
+            f'<label for="{name}">{label}</label>'
+            f'<input type="text" id="{name}" name="{name}" value="{P.esc(value)}" '
             f'maxlength="{MAX_LEN}" autocomplete="off"{ro}/>'
             f'<div style="font-size:.78rem;color:var(--muted);margin-top:.25rem;">'
             f'{note}</div></div>')
 
 
-def history_html(rec: dict) -> str:
+def history_html(rec: dict, kind: str = "ti") -> str:
     """The changes, for the VIEW page only. "" when there are none."""
-    rows = (rec or {}).get(HISTORY_KEY) or []
+    k = KINDS[kind]
+    rows = (rec or {}).get(k["history"]) or []
     if not rows:
         return ""
     users = STORE.get("users") or {}
@@ -161,5 +184,23 @@ def history_html(rec: dict) -> str:
         for r in rows)
     return (f'<div class="no-print" style="border:1px solid #e5e7eb;border-radius:8px;'
             f'padding:.6rem .9rem;margin:0 0 1rem;font-size:.82rem;">'
-            f'<b>Tax invoice number changes</b> (screen only, never printed)'
+            f'<b>{k["title"]}</b> (screen only, never printed)'
             f'<ul style="margin:.3rem 0 0 1.1rem;">{items}</ul></div>')
+
+
+def keep_counter(series_key: str, fy: str, change) -> None:
+    """
+    Apply `change()` — a rename — without letting the automatic series move
+    BACK (17 Nov 2026, §0 eightieth block).
+
+    The scanned series (`series.py`) count a stored number; renaming the
+    highest one to a free-format value would drop the scan and let the minter
+    issue that number again. So the next number is read before and after, and
+    when it fell, the series FLOOR for that year is set to what it was — the
+    existing mechanism, shown at /settings. Never lowers anything.
+    """
+    import series as SER   # a leaf, like this one
+    before = SER.next_seq(series_key, fy)
+    change()
+    if SER.next_seq(series_key, fy) < before:
+        SER.save_floor(series_key, SER.BY_KEY[series_key].scope_for(fy), before)

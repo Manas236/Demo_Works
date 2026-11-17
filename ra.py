@@ -4842,7 +4842,8 @@ def edit_text(id: str):
                               str((_AUTH.current_user() or {}).get("id") or ""))
             if TN.record_change(bill, ti_was, ti_val,
                                 str((_AUTH.current_user() or {}).get("id") or "")):
-                bill["tax_invoice_ref"] = ti_val
+                TN.keep_counter("RI", str(bill.get("fy") or ""),
+                                lambda: bill.__setitem__("tax_invoice_ref", ti_val))
                 n += 1
             return redirect(url_for("ra.view_ra", id=id, type="success",
                                     msg=(f"Invoice details updated — {n} change"
@@ -5013,7 +5014,8 @@ def edit_ra(id: str):
             bill["tax_slabs"] = tax_info["tax_slabs"]
             bill["rounding_off"] = tax_info["rounding_off"]
             bill["grand_total"] = tax_info["grand_total"]
-            bill["tax_invoice_ref"] = tax_invoice_ref
+            TN.keep_counter("RI", str(bill.get("fy") or ""),
+                            lambda: bill.__setitem__("tax_invoice_ref", tax_invoice_ref))
             bill["po_ref"] = po_ref
             bill["po_date"] = po_date
             bill["date"] = date_val

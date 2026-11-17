@@ -907,7 +907,8 @@ def edit_text(id: str):
                               str((_AUTH.current_user() or {}).get("id") or ""))
             if TN.record_change(doc, ti_was, ti_val,
                                 str((_AUTH.current_user() or {}).get("id") or "")):
-                doc["tax_invoice_ref"] = ti_val
+                TN.keep_counter("MI", str(doc.get("fy") or ""),
+                                lambda: doc.__setitem__("tax_invoice_ref", ti_val))
                 n += 1
             return redirect(url_for("merged_ra.view_merged", id=id, type="success",
                                     msg=(f"Tax invoice details updated — {n} change"

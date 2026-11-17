@@ -90,6 +90,7 @@ import pipeline as P
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
+import tinum as TN     # the number set by hand, free format — the leaf (17 Nov 2026)
 import docsheet as DS
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from store import STORE
@@ -260,6 +261,33 @@ def _ref_for(datestr: str, seq: int) -> str:
     # No 16-char cap: that is Rule 46's limit on a tax invoice, not ours.
     return P.fy_ref(B.COMPANY_SHORT, _REF_SERIES, P.fy_of(datestr), seq,
                     cap=64)
+
+
+# ── The purchase order number, FREE FORMAT (17 Nov 2026, §0 eightieth block)
+#
+# Any non-blank value, trimmed, not forward-only (`tinum.py`, kind "po"); a
+# number on another live purchase order is refused, naming it. Settable on
+# create and, through a NUMBER-ONLY save on the order's view (`update_purchase`
+# with `number_only`), in every status but Cancelled — a non-draft order gets
+# no fuller editing. ⚠ The series is a scan (`series.py`, FY_FIELD): a free
+# value counts only when its last `/` segment is digits, and then it can only
+# move the next automatic number FORWARD, which is what stops the minter ever
+# issuing a number somebody typed.
+
+def _free_may() -> bool:
+    import auth as _AUTH
+    return _AUTH.may_type_ti_number()
+
+
+def _free_box(value: str = "", creating: bool = True) -> str:
+    return TN.field_html(
+        value, may=_free_may(), kind="po",
+        label="or type any order number" if creating else "Purchase Order No. (any format)",
+        hint=("Optional. When typed it is this order's number, in any format, "
+              "and the box above is not used. A number already on another "
+              "order is refused." if creating else
+              "Any format. A number already on another live order is refused; "
+              "every change is logged on screen and never printed."))
 
 
 def _may_set_number() -> bool:
@@ -2351,9 +2379,13 @@ def create_purchase(imported: dict = None):
             # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth
             #   block, item A point 9.
             default_seq = SER.next_seq("PO", P.fy_of(po_date))
-            seq_used, num_err = DN.validate(DN.PO, P.fy_of(po_date),
-                                            f.get("doc_no_seq"), default_seq,
-                                            may_number)
+            # The free-format box (17 Nov 2026): when typed it IS the number.
+            free, num_err = TN.validate(f.get(TN.DOC_FIELD), coll="purchases",
+                                        kind="po", required=False, may=_free_may())
+            if not free and not num_err:
+                seq_used, num_err = DN.validate(DN.PO, P.fy_of(po_date),
+                                                f.get("doc_no_seq"), default_seq,
+                                                may_number)
             error = error or num_err
 
         if not error:
@@ -2361,7 +2393,7 @@ def create_purchase(imported: dict = None):
             pid = str(uuid.uuid4())
             po = {
                 "id":   pid,
-                "ref":  _ref_for(po_date, seq_used),
+                "ref":  free or _ref_for(po_date, seq_used),
                 "fy":   P.fy_of(po_date),
                 "date": po_date,
 
@@ -2431,7 +2463,8 @@ def create_purchase(imported: dict = None):
                 P.log_event(q, f"Purchase order {po['ref']} raised on "
                                f"{P.esc(po['vendor_name'])} for &#8377;{grand:,.0f}.")
 
-            DN.note_used(DN.PO, po["fy"], seq_used)
+            if not free:
+                DN.note_used(DN.PO, po["fy"], seq_used)
             DN.record_override(po, _ref_for(po_date, default_seq), po["ref"],
                                _actor_id())
 
@@ -2616,6 +2649,7 @@ def create_purchase(imported: dict = None):
             <div class="form-group">
               <label for="doc_no_seq">Purchase Order No.</label>
               {po_number_html}
+              {_free_box(request.form.get(TN.DOC_FIELD) or "")}
             </div>
             <div class="form-group">
               <label for="date">PO Date *</label>
@@ -2990,6 +3024,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
             <div class="form-group">
               <label for="doc_no_seq">Purchase Order No.</label>
               {po_number_html}
+              {_free_box(request.form.get(TN.DOC_FIELD) or "")}
             </div>
             <div class="form-group">
               <label for="date">PO Date *</label>
@@ -3279,9 +3314,14 @@ def from_boq(boq_id: str):
         #   item A point 9. Both upstream routes go through here.
         if not error:
             default_seq = SER.next_seq("PO", P.fy_of(data["date"]))
-            seq_used, num_err = DN.validate(DN.PO, P.fy_of(data["date"]),
-                                            f.get("doc_no_seq"), default_seq,
-                                            _may_set_number())
+            # The free-format box (17 Nov 2026): when typed it IS the number.
+            free, num_err = TN.validate(f.get(TN.DOC_FIELD), coll="purchases",
+                                        kind="po", required=False, may=_free_may())
+            seq_used = default_seq
+            if not free and not num_err:
+                seq_used, num_err = DN.validate(DN.PO, P.fy_of(data["date"]),
+                                                f.get("doc_no_seq"), default_seq,
+                                                _may_set_number())
             error = error or num_err
 
         if not error:
@@ -3291,7 +3331,10 @@ def from_boq(boq_id: str):
                 project_id=project_id, project_name=project_name,
                 origin=f", against {boq.get('ref') or 'a schedule'}",
                 extra_lines=extra_lines, charges=charges)
-            DN.note_used(DN.PO, po["fy"], seq_used)
+            if free:
+                po["ref"] = free       # the typed number; no series number spent
+            else:
+                DN.note_used(DN.PO, po["fy"], seq_used)
             DN.record_override(po, _ref_for(data["date"], default_seq),
                                po["ref"], _actor_id())
             return redirect(url_for("purchase.view_purchase", id=po["id"],
@@ -3574,9 +3617,14 @@ def from_draft(draft_id: str):
         #   item A point 9. Both upstream routes go through here.
         if not error:
             default_seq = SER.next_seq("PO", P.fy_of(data["date"]))
-            seq_used, num_err = DN.validate(DN.PO, P.fy_of(data["date"]),
-                                            f.get("doc_no_seq"), default_seq,
-                                            _may_set_number())
+            # The free-format box (17 Nov 2026): when typed it IS the number.
+            free, num_err = TN.validate(f.get(TN.DOC_FIELD), coll="purchases",
+                                        kind="po", required=False, may=_free_may())
+            seq_used = default_seq
+            if not free and not num_err:
+                seq_used, num_err = DN.validate(DN.PO, P.fy_of(data["date"]),
+                                                f.get("doc_no_seq"), default_seq,
+                                                _may_set_number())
             error = error or num_err
 
         if not error:
@@ -3586,7 +3634,10 @@ def from_draft(draft_id: str):
                 project_id=project_id, project_name=project_name, draft=draft,
                 origin=f", converted from draft {draft.get('ref') or ''}".rstrip(),
                 extra_lines=extra_lines, charges=charges)
-            DN.note_used(DN.PO, po["fy"], seq_used)
+            if free:
+                po["ref"] = free       # the typed number; no series number spent
+            else:
+                DN.note_used(DN.PO, po["fy"], seq_used)
             DN.record_override(po, _ref_for(data["date"], default_seq),
                                po["ref"], _actor_id())
             # The link back, on the draft. A LIST, not a scalar: converting twice
@@ -3798,6 +3849,27 @@ def update_purchase(id: str):
     if not po:
         return redirect(url_for("purchase.list_purchases",
                                 msg="Purchase order not found.", type="error"))
+
+    # ── The NUMBER-ONLY save (17 Nov 2026, §0 eightieth block) ──────────
+    # Every status but Cancelled; nothing but the number moves.
+    if request.form.get("number_only"):
+        if str(po.get("status") or "").strip().lower() == "cancelled":
+            return redirect(url_for("purchase.view_purchase", id=id, type="error",
+                                    msg="A cancelled purchase order's number is locked."))
+        was = str(po.get("ref") or "")
+        now, err = TN.validate(request.form.get(TN.DOC_FIELD), current=was,
+                               coll="purchases", rec_id=id, kind="po",
+                               may=_free_may())
+        if err:
+            return redirect(url_for("purchase.view_purchase", id=id, msg=err,
+                                    type="error"))
+        if not TN.record_change(po, was, now, _actor_id(), kind="po"):
+            return redirect(url_for("purchase.view_purchase", id=id,
+                                    msg="Nothing changed.", type="success"))
+        TN.keep_counter("PO", str(po.get("fy") or P.fy_of(po.get("date") or "")),
+                        lambda: po.__setitem__("ref", now))
+        return redirect(url_for("purchase.view_purchase", id=id, type="success",
+                                msg=f"Purchase order number changed from {was} to {now}."))
 
     new_status = (request.form.get("status") or "").strip()
     note       = (request.form.get("note") or "").strip()
@@ -5778,6 +5850,19 @@ def view_purchase(id: str):
                   f'class="btn btn-ghost">&#128666;&nbsp;Create DC</a>')
     dispatched_html = _dispatched_html(po)
 
+    # ── The number, any format (17 Nov 2026, §0 eightieth block) ─────────
+    # A number-only save in the screen-only status panel, in every status but
+    # Cancelled, for whoever may post the panel. Its history sits beside it.
+    number_form = ""
+    if (str(po.get("status") or "").strip().lower() != "cancelled"
+            and _AUTH.can_reach("purchase.update_purchase")):
+        number_form = (
+            f'<form method="POST" action="{url_for("purchase.update_purchase", id=id)}" '
+            f'style="margin-top:.8rem;"><input type="hidden" name="number_only" value="1"/>'
+            f'<div class="po-panel-row">{_free_box(str(po.get("ref") or ""), creating=False)}'
+            f'<button type="submit" class="btn btn-ghost">Save number</button></div></form>')
+    number_form += TN.history_html(po, "po")
+
     # ── HSN (29 October 2026, §0 fifty-ninth block, A1) ──────────────────
     # The note only; the box that answers it has been on the reprice form
     # since 1fdc09e, so this points there rather than adding a second page.
@@ -5822,7 +5907,7 @@ def view_purchase(id: str):
       <button type="submit" class="btn">Update</button>
     </div>
   </form>
-  {f'<div class="po-strip">{job_link}</div>' if job_link else ''}{upstream_html}
+  {number_form}{f'<div class="po-strip">{job_link}</div>' if job_link else ''}{upstream_html}
   <div class="po-hist">{_history_html(po)}</div>{reprice_hist}
 </div>"""
 

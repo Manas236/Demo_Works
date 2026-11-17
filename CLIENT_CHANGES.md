@@ -7413,6 +7413,44 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — PO AND DC NUMBERS SET BY HAND, FREE FORMAT · NO CHARGE · POST-GO-LIVE PROD HOTFIX 5
+>
+> **A new block, not an amendment.** The **eightieth** occasion, written
+> directly on `samruddhi-prod` from `42d49db` (then 6 ahead / 5 behind origin,
+> nothing pulled). Recorded **"authorised, no charge"** on Manas's written
+> brief: the client changes the PO and DC number to whatever they need, like
+> the tax invoice. ⚠ It changes the fifty-fourth block's forward-only rule
+> for these two numbers when the free box is used.
+>
+> **What was built:** the free-format box on every PO and DC create form; a
+> NUMBER-ONLY save for a PO in every status but Cancelled (no fuller editing
+> of a non-draft order); the box on the DC edit form; duplicates refused
+> within the same type, naming the holder; history `{old, new, by, at}` on
+> the view only; print unchanged but for the number; permission = whoever can
+> post the page, a per-login BLOCK of `docnum.override` still winning.
+>
+> **Judgement calls, declared:**
+> 1. **One leaf, generalised**: `tinum.py` gained per-type KINDS; the TI
+>    entry is hotfix 4's behaviour exactly (its tests pass unchanged).
+> 2. **The PO number-only save rides on `/purchase/<id>/update`** (its
+>    `purchase.edit` permission) with a `number_only` flag — no new endpoint,
+>    access matrix unchanged.
+> 3. **On the DC edit form the forward-only box stays**; the free box under
+>    it wins when changed. On every create form the free box wins when filled.
+> 4. **Counters.** A free PO value whose last `/` segment is digits is
+>    counted by the scan (forward only), deliberately: skipping it would let
+>    the minter issue a typed number later. A typed DC number in the stored
+>    counter's own shape moves the counter past it. ⚠ **A rename could move a
+>    scanned series BACK** (the highest number renamed away), so
+>    `tinum.keep_counter()` holds the series with its existing FLOOR — and
+>    this is applied to hotfix 4's TI / RA / merged renames too, which had
+>    the same gap. Recorded as a correction to the seventy-ninth block.
+> 5. **A DC from a PO keeps its `source_po_ref` snapshot**; the DC view's
+>    button names the order's current number and "(raised as …)".
+> 6. A challan has no cancelled state, so nothing locks a DC's number.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

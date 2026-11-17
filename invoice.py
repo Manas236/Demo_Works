@@ -1773,7 +1773,8 @@ def edit_invoice(id: str):
             _PF.EL.record(ti, changes, _actor_id())
             n = len(changes)
             if TN.record_change(ti, ti_was, ti_now, _actor_id()):
-                ti["ref"] = ti_now
+                TN.keep_counter("TI", str(ti.get("fy") or ""),
+                                lambda: ti.__setitem__("ref", ti_now))
                 n += 1
             return redirect(url_for("invoice.view_invoice", id=id,
                                     msg=(f"Tax invoice {ti['ref']} updated — {n} change"

@@ -109,6 +109,7 @@ import boqpick as BP
 # the library out of STORE and never writes it.
 import extraitems as EX  # extra items + project link — the leaf (17 Nov 2026)
 import dcpo as DCPO      # a challan FROM a purchase order — the leaf (17 Nov 2026)
+import tinum as TN       # the number set by hand, free format — the leaf (17 Nov 2026)
 import units as UN     # the shared unit list — the leaf (29 Oct 2026)
 import branding as B
 # "Is this challan billed, and by which RA bill?" (CLIENT_CHANGES.md §0,
@@ -238,6 +239,60 @@ def _spend_ref(seq: int = 0) -> str:
     SET.save_dc_series(series["prefix"], n + 1)
     DN.note_used(DN.DC, "", n)
     return ref
+
+
+# ── The challan number, FREE FORMAT (17 Nov 2026, §0 eightieth block) ──────
+#
+# The client sets the number to whatever they need, as on the tax invoice
+# (`tinum.py`, kind "dc"): any non-blank value, trimmed, not forward-only; a
+# number on another live challan is refused, naming it. ⚠ **The counter is
+# STORED, not scanned**, so a typed number in the counter's own shape at or
+# above it would later be minted again — `_take_free()` moves the counter past
+# it. Forward only: it never moves back, and a free value of any other shape
+# (`DC-77/A`) does not touch it.
+
+def _free_may() -> bool:
+    import auth as _AUTH
+    return _AUTH.may_type_ti_number()
+
+
+def _free_number(form, current: str = "", rec_id: str = "", required: bool = False):
+    """`(value, error)` for the free-format box; ("", "") when it is blank on create."""
+    return TN.validate(form.get(TN.DOC_FIELD), current=current,
+                       coll="delivery_challans", rec_id=rec_id, kind="dc",
+                       required=required, may=_free_may())
+
+
+def _counter_shape_of(value: str) -> int:
+    """The counter ordinal a value is in the series' own shape, else 0."""
+    series = SET.dc_series()
+    v = str(value or "").strip()
+    prefix = str(series.get("prefix") or "")
+    if not prefix:
+        return int(v) if v.isdigit() else 0
+    head, sep, tail = v.rpartition("/")
+    return int(tail) if sep and head == prefix and tail.isdigit() else 0
+
+
+def _take_free(value: str) -> str:
+    """Keep the counter ahead of a typed number in its own shape. Returns it."""
+    n = _counter_shape_of(value)
+    series = SET.dc_series()
+    if n and n >= int(series["next_no"] or 1):
+        SET.save_dc_series(series["prefix"], n + 1)
+        DN.note_used(DN.DC, "", n)
+    return value
+
+
+def _free_box(value: str = "", creating: bool = True) -> str:
+    return TN.field_html(
+        value, may=_free_may(), kind="dc",
+        label="or type any challan number" if creating else "Challan No. (any format)",
+        hint=("Optional. When typed it is this challan's number, in any format, "
+              "and the box above is not used. A number already on another "
+              "challan is refused." if creating else
+              "Any format. A number already on another challan is refused; "
+              "every change is logged on screen and never printed."))
 
 
 def _may_set_number() -> bool:
@@ -951,7 +1006,10 @@ def _entry_form(boq: dict, data: dict, error: str = "",
                               may_override=_may_set_number(),
                               typed=data.get("doc_no_seq", ""))
             + '<div class="dnum-note">Forward only &mdash; a number already '
-              'used is never issued again.</div>')
+              'used is never issued again.</div>'
+            # Free format (17 Nov 2026, §0 eightieth block): wins when changed.
+            + _free_box((request.form.get(TN.DOC_FIELD) if request.method == "POST"
+                         else None) or str(dc.get("ref") or ""), creating=False))
     else:
         _default_seq, control = _number_control(data.get("doc_no_seq", ""),
                                                 _may_set_number())
@@ -960,7 +1018,8 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             f'text-transform:uppercase;letter-spacing:.04em;color:var(--muted);'
             f'margin-bottom:.3rem;">Challan No.</label>{control}'
             f'<div class="dnum-note">One running series, from '
-            f'<a href="{url_for("settings.edit_settings")}">Settings</a>.</div>')
+            f'<a href="{url_for("settings.edit_settings")}">Settings</a>.</div>'
+            + _free_box(request.form.get(TN.DOC_FIELD) or "" if request.method == "POST" else ""))
 
     picker = ""
     if lines_locked:
@@ -1528,8 +1587,13 @@ def create_dc(imported: dict = None):
     #   is reached only past every refusal.
     may_number = _may_set_number()
     default_seq = int(SET.dc_series()["next_no"] or 1)
-    seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
-                                    default_seq, may_number)
+    # The free-format box (17 Nov 2026): when typed it IS the number and the
+    # series box is not consulted.
+    free, num_err = _free_number(request.form)
+    seq_used = default_seq
+    if not free and not num_err:
+        seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
+                                        default_seq, may_number)
     error = error or num_err
     # A Resume of an unsaved draft (formdraft.py, §0 sixty-fourth block, Part
     # 4) REDRAWS from what was typed: nothing above is enforced, nothing below
@@ -1553,7 +1617,7 @@ def create_dc(imported: dict = None):
     default_ref = SET.dc_ref_of(SET.dc_series())
     STORE.setdefault("delivery_challans", {})[cid] = {
         "id": cid,
-        "ref": _spend_ref(seq_used),
+        "ref": _take_free(free) if free else _spend_ref(seq_used),
         "date": data["date"],
         # The BOQ this came from — a specific revision, exactly as an RA bill
         # and a draft PO name one. Both refs are STORED, not looked up, so the
@@ -1610,8 +1674,13 @@ def _create_standalone():
                  "least one item that is going out.")
     may_number = _may_set_number()
     default_seq = int(SET.dc_series()["next_no"] or 1)
-    seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
-                                    default_seq, may_number)
+    # The free-format box (17 Nov 2026): when typed it IS the number and the
+    # series box is not consulted.
+    free, num_err = _free_number(request.form)
+    seq_used = default_seq
+    if not free and not num_err:
+        seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
+                                        default_seq, may_number)
     error = error or num_err
     resuming = FD.is_resume(request.form)
     if error or resuming:
@@ -1623,7 +1692,7 @@ def _create_standalone():
     default_ref = SET.dc_ref_of(SET.dc_series())
     STORE.setdefault("delivery_challans", {})[cid] = {
         "id": cid,
-        "ref": _spend_ref(seq_used),
+        "ref": _take_free(free) if free else _spend_ref(seq_used),
         "date": data["date"],
         "boq_id": None,
         "boq_ref": "",
@@ -1748,8 +1817,13 @@ def _create_from_po(po_id: str):
         items = list(boq_items) + list(others) + list(extras)
     may_number = _may_set_number()
     default_seq = int(SET.dc_series()["next_no"] or 1)
-    seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
-                                    default_seq, may_number)
+    # The free-format box (17 Nov 2026): when typed it IS the number and the
+    # series box is not consulted.
+    free, num_err = _free_number(request.form)
+    seq_used = default_seq
+    if not free and not num_err:
+        seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
+                                        default_seq, may_number)
     error = error or num_err
     resuming = FD.is_resume(request.form)
     if error or resuming:
@@ -1763,7 +1837,7 @@ def _create_from_po(po_id: str):
     default_ref = SET.dc_ref_of(SET.dc_series())
     rec = {
         "id": cid,
-        "ref": _spend_ref(seq_used),
+        "ref": _take_free(free) if free else _spend_ref(seq_used),
         "date": data["date"],
         "boq_id": boq.get("id") if boq else None,
         "boq_ref": boq.get("ref", "") if boq else "",
@@ -1815,8 +1889,15 @@ def view_dc(id: str):
     # The order it was raised from (17 Nov 2026) — screen only, and only when
     # that order is still there.
     if dc.get("source_po_id") in (STORE.get("purchases") or {}):
+        # ⚠ The stored `source_po_ref` is a SNAPSHOT and is never rewritten.
+        #   When the order has since been renumbered (17 Nov 2026), the button
+        #   names its CURRENT number and the one this challan was raised against.
+        now_ref = str(STORE["purchases"][dc["source_po_id"]].get("ref") or "")
+        snap = str(dc.get("source_po_ref") or "")
+        po_label = (f"PO {P.esc(now_ref)}" if now_ref == snap else
+                    f"PO {P.esc(now_ref)} (raised as {P.esc(snap)})")
         boq_btn += (f'\n    <a href="{url_for("purchase.view_purchase", id=dc.get("source_po_id"))}" '
-                    f'class="btn btn-ghost">PO {P.esc(dc.get("source_po_ref"))}</a>')
+                    f'class="btn btn-ghost">{po_label}</a>')
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1843,7 +1924,7 @@ def view_dc(id: str):
 </div>
 
 {_flash()}{_billed_html(held)}
-{_over_dispatch_band(dc)}{_over_po_band(dc)}{EL.band(dc, "delivery challan")}
+{_over_dispatch_band(dc)}{_over_po_band(dc)}{EL.band(dc, "delivery challan")}{TN.history_html(dc, "dc")}
 
 <div class="doc-outer">
 {_document_html(dc, screen=True)}
@@ -1997,7 +2078,14 @@ def edit_dc(id: str, imported: dict = None):
                      "BOQ line or add an extra item.")
     own_seq = DN.ordinal_of(dc.get("ref"))
     seq_now = own_seq
-    if not error:
+    # The free-format box (17 Nov 2026): when it differs from the challan's
+    # own number it wins, and the forward-only box is not consulted.
+    ref_was = str(dc.get("ref") or "")
+    free_now = ref_was
+    if not error and TN.DOC_FIELD in request.form:
+        free_now, error = _free_number(request.form, current=ref_was, rec_id=id,
+                                       required=True)
+    if not error and free_now == ref_was:
         seq_now, error = DN.validate(DN.DC, "", data["doc_no_seq"], own_seq,
                                      _may_set_number())
     if error:
@@ -2039,10 +2127,14 @@ def edit_dc(id: str, imported: dict = None):
                                  for r in before_items],
                                 [dict(r, name=r.get("description"), price="")
                                  for r in items])
-    if seq_now != own_seq:
-        ref_was = str(dc.get("ref") or "")
+    if free_now != ref_was:
+        dc["ref"] = _take_free(free_now)
+        TN.record_change(dc, ref_was, free_now, _actor_id(), kind="dc")
+        changes.append(("Challan No.", ref_was, dc["ref"]))
+    elif seq_now != own_seq:
         dc["ref"] = _spend_ref(seq_now)
         DN.record_override(dc, ref_was, dc["ref"], _actor_id())
+        TN.record_change(dc, ref_was, dc["ref"], _actor_id(), kind="dc")
         changes.append(("Challan No.", ref_was, dc["ref"]))
     EL.record(dc, changes, str((_AUTH.current_user() or {}).get("id") or ""))
     msg = "Delivery challan updated."

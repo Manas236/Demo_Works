@@ -5990,6 +5990,32 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
     trailing digits as an ordinal, which only matters to the series box.
     Not done: `raboth.py` (both legs in one POST) offers no Tally box.
 
+11. ⚠ **THE PURCHASE ORDER AND DELIVERY CHALLAN NUMBERS, FREE FORMAT**
+    (17 November 2026, CLIENT_CHANGES.md §0 **eightieth** block). The same
+    rule through the same leaf — `tinum.KINDS["po"]` / `["dc"]`, posted box
+    `doc_number`, history `number_history` — with a duplicate refused within
+    the SAME type only (PO vs PO, DC vs DC).
+
+    | document | create | after creation | cancelled |
+    |---|---|---|---|
+    | purchase order | the three create forms — optional box beside the series box, wins when filled, spends no series number | a **number-only save** in the view's screen-only status panel → `/purchase/<id>/update` with `number_only`; every status; nothing else moves, so a non-draft order gets no fuller editing | locked (form not drawn, POST refused) |
+    | delivery challan | the three create forms (BOQ, no BOQ, from a PO) | the edit form, under the forward-only box; when the free box differs from the challan's own number it wins | — (a challan has no cancelled state) |
+
+    ⚠ **The counters.** The PO series is a scan: a free value counts only
+    when its last `/` segment is digits, so it can only move the next
+    automatic number forward — which is what stops the minter issuing a
+    number somebody typed. The DC counter is STORED, so a typed number in the
+    counter's own shape at or above it moves the counter past it
+    (`challan._take_free()`). And `tinum.keep_counter()` wraps every RENAME —
+    PO, and hotfix 4's TI, RA (RI) and merged (MI) — so renaming the highest
+    number out of the series' shape cannot let the minter go back: if the next
+    number would fall, that year's series FLOOR is set to what it was
+    (`series.save_floor()`, shown at /settings).
+
+    ⚠ **A DC raised from a PO keeps its `source_po_ref` snapshot.** When the
+    order is renumbered, `/dc/view`'s button reads `PO <current> (raised as
+    <snapshot>)`; the DC print never names the order.
+
 ---
 
 ### Resume after Back on every create form  (31 October 2026 — §0 sixty-fourth block, Part 4)
