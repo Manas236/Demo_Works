@@ -805,3 +805,12 @@ def test_the_merged_print_has_no_unheaded_column(client, golden_merged):  # noqa
             width = sum(int(m or 1) for m in re.findall(
                 r'<td\b(?:[^>]*?colspan="(\d+)")?[^>]*>', row))
             assert width == heads, f"a row {width} cells wide under {heads} heads: {row[:120]}"
+
+
+def test_a_leg_heading_never_ends_a_printed_page_alone(client, golden_merged):  # noqa: F811
+    """Print sweep, 17 Nov 2026: on a long bill "RA3 — INSTALLATION — …" printed
+    at the foot of a page with its lines on the next. Chromium honours this
+    (measured); the rule is the merged print's own, the only `tr.sec-row`."""
+    html = client.get(f"/merged/print/{GOLD_MERGED}").get_data(as_text=True)
+    assert ".quotation-doc .q-table tr.sec-row { break-after:avoid; page-break-after:avoid; }" in html
+    assert '<tr class="sec-row">' in html

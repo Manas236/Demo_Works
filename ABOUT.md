@@ -803,7 +803,10 @@ other count must pass `blanks=` and `span=` so every summary row is exactly as
 wide as the header. The merged RA's seven-column print called them bare until
 17 November 2026, and the extra unheaded cell squeezed its whole item table
 into the left ~80% of every copy; `tests/test_merged_ra.py::
-test_the_merged_print_has_no_unheaded_column` now counts the cells. The RA
+test_the_merged_print_has_no_unheaded_column` now counts the cells. The same
+pass gave the merged print's leg heading row (`tr.sec-row`, "RA3 — INSTALLATION
+— …") `break-after:avoid`, so on a long bill it no longer ends a page alone with
+its lines on the next — Chromium honours it, measured. The RA
 chain's tax block is **per line, carrying HSN/SAC per claim row**; the sell
 chain's is **document-level** off one `tax_info` dict. That difference is the
 whole reason `ra.py` may not import `invoice.py`, and folding both into a

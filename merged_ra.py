@@ -1128,7 +1128,12 @@ def print_merged(id: str):
 <title>{B.page_title(str(doc.get('tax_invoice_ref') or 'Merged'))}</title>{B.HEAD_ICON}
 {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA.RA_DOC_STYLES}
 <style>
-{DS.BAND_CSS}</style>{DS.COPY_STYLES}
+{DS.BAND_CSS}
+  /* A leg's heading row (RA3 — INSTALLATION — …) never ends a page alone: it
+     travels with its first line (print sweep, 17 Nov 2026 — on a long bill it
+     printed at the foot of one page, its lines starting on the next). */
+  .quotation-doc .q-table tr.sec-row {{ break-after:avoid; page-break-after:avoid; }}
+</style>{DS.COPY_STYLES}
 {approval.print_block("merged_ra", doc)}</head>
 <body>
 <main>
