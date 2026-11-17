@@ -232,6 +232,16 @@ BAND_CSS = """\
     font-size:var(--fs-lg); font-weight:700; letter-spacing:1.2px;
     padding:0 0 3px; text-decoration:underline;
   }
+""" + f"""\
+  /* The banner under the band is pulled UP by `branding.LETTERHEAD_RISE`
+     (option A, 14 Nov 2026) and its canvas is opaque white, so the band keeps
+     its 3px AND that rise clear below it, or the picture paints over the lower
+     half of the title and the copy label. 17 Nov 2026, for every band: the
+     challan's own hotfix of 16 Nov (a3ff1d2) moved here. One class more
+     specific than the rule above; the print-edge rule sets padding-TOP only. */
+  .quotation-doc .page-frame > caption.sheet-band {{
+    padding-bottom:calc(3px + {B.LETTERHEAD_RISE});
+  }}
 """
 
 DOCSHEET_STYLES = f"""

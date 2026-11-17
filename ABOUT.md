@@ -879,6 +879,18 @@ hashing identically to the tax invoice's. The caption sits before that marker,
 so the letterhead is untouched. `DS.BAND_CSS` carries the rule, spliced into
 the one sheet that asks for a band.
 
+⚠ **The band keeps the banner's rise clear below it** (17 November 2026).
+Since option A (§6) the banner is pulled UP by `branding.LETTERHEAD_RISE`
+(`11.21875px`) and its canvas is opaque white, so a band directly above it lost
+the lower half of its title and its copy label — DELIVERY CHALLAN first
+(hot-fixed on the challan alone, 16 Nov, `a3ff1d2`), and the same on MERGED TAX
+INVOICE, JOINT MEASUREMENT SHEET and MEASUREMENT SHEET, measured in headless
+Chromium. `BAND_CSS` now ends with `caption.sheet-band { padding-bottom:
+calc(3px + LETTERHEAD_RISE) }`, from the constant the banner itself reads, and
+the challan's own copy of the rule is gone — one rule, so nothing is spaced
+twice. `tests/test_print_edge.py::test_a_title_band_keeps_the_banners_rise_clear_below_it`
+holds it at exactly one copy on all four.
+
 ⚠ It does **not** repeat on page two, and the letterhead does. A caption is
 painted once; only `display:table-header-group` repeats. That is a real
 difference, and it is left as one: a challan is a one-page note, and making the
@@ -14123,6 +14135,22 @@ changed; a tagline somebody saved at `/settings` is untouched, because
 that never saved one reads the new default with no write at all.
 
 ### The letterhead banner — `letterhead_top()` (21 October 2026)
+
+⚠ **16–17 November 2026 — a TITLE BAND above the banner was being painted
+over.** Option A's `margin-top:-11.21875px` (below) lifts the picture into
+whatever sits above it, and on a document whose title is a band ABOVE the
+letterhead the picture's white canvas covered the title's lower half. On
+**16 Nov** the printed DELIVERY CHALLAN was clipped and hot-fixed on prod with a
+challan-only rule in `challan.DC_DOC_STYLES` (`a3ff1d2`, pushed to GitHub on
+17 Nov). The **17 Nov** print sweep found the merged RA (title and every copy
+label), the joint measurement sheet and the older measurement sheet clipped the
+same way. The banner was **not** changed — its rise is what keeps the name where
+the client signed it off on every other document. Instead the figure is named
+once, `branding.LETTERHEAD_RISE`, used by `letterhead_top()` (output byte for
+byte as before — every `letterhead` digest held) and by `docsheet.BAND_CSS`,
+which gives every band that much clear space below it (§2d). The challan's
+hotfix rule moved there; goldens re-baselined, `head` block only: challan, joint
+measurement sheet, merged RA.
 
 ⚠ **14 November 2026 — the SF mark is 15 mm LEFT and 3 mm HIGHER (option A)**
 (Yogesh, CLIENT_CHANGES.md §0 seventy-fourth block, no charge). The 8 November

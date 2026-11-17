@@ -396,6 +396,17 @@ def logo_img(px: int = 30, doc: bool = False, alt: str = "") -> str:
             f'style="width:{px}px;height:{px}px;object-fit:contain;display:block;"/>')
 
 
+# How far the banner picture is pulled UP into whatever sits above it — the
+# 44 rows option A added on top of the artwork (14 Nov 2026), as the exact CSS
+# length `letterhead_top()` below writes into its `margin-top`. Named here
+# (17 Nov 2026) because a second place needs the same figure:
+# `docsheet.BAND_CSS` gives a title band printed ABOVE the letterhead (the
+# challan, the merged RA, both measurement sheets) exactly this much clear space
+# underneath, or the banner's opaque white canvas paints over the title's lower
+# half. ⚠ Change it only with the PNG's size, and the band follows by itself.
+LETTERHEAD_RISE = "11.21875px"
+
+
 def letterhead_top() -> str:
     """
     The top of every printed letterhead: the client's own banner, then the
@@ -484,6 +495,6 @@ def letterhead_top() -> str:
             f'alt="{_esc(LETTERHEAD_ALT)}" '
             f'style="display:block;width:calc(130mm * 2150 / 1928);'
             f'max-width:100%;height:auto;'
-            f'margin:max(-11.21875px, calc(-100% * 44 / 2150)) '
+            f'margin:max(-{LETTERHEAD_RISE}, calc(-100% * 44 / 2150)) '
             f'auto 0 max(0px, calc((100% - 130mm) / 2 - 130mm * 222 / 1928));"/>'
             f'</div>{legal}')
