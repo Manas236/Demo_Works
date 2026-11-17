@@ -171,3 +171,18 @@ def test_a_title_band_keeps_the_banners_rise_clear_below_it(client, every_doc, n
     assert f"margin:max(-{B.LETTERHEAD_RISE}," in html, (
         f"{name}: the banner no longer rises by LETTERHEAD_RISE — the band's "
         f"clear space and the picture have drifted apart")
+
+
+def test_the_older_measurement_sheet_widens_its_measured_column_and_only_it(
+        client, every_doc):
+    """
+    "Measured" ran 1.5 mm out of the house sheet's 12 mm `.c-qty` (print
+    sweep, 17 Nov 2026). The width travels inside that one item table, so the
+    joint sheet, which shares MS_DOC_STYLES, carries none of it.
+    """
+    import measurement as MS
+    legacy = client.get(f"/measurement/print/{GOLD_MS_LEGACY}").get_data(as_text=True)
+    joint = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+    assert '<th class="c-qty">Measured</th>' in legacy
+    assert MS.MS_QTY_CSS in legacy
+    assert MS.MS_QTY_CSS not in joint

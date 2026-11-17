@@ -12381,6 +12381,12 @@ installation claim: what was found on site, against BOQ lines, going through an
 approval ladder, and — once approved — the ceiling `ra.overclaims()` checks every
 installation claim against. See §2j for the two guards and where each lives.
 
+**The older one-table sheet's "Measured" column is 16 mm, not the house 12 mm**
+(17 November 2026). The bold head ran 1.5 mm out of `.c-qty`, the border through
+its last letter. `MS_QTY_CSS` travels inside that one item table through
+`DS.items_table(css=)` — `MAKE_CSS`'s way — because `MS_DOC_STYLES` is shared
+with the joint sheet, whose golden must not move for a table it never draws.
+
 **Import grid from Excel (18 October 2026)** — `/measurement/create` carries a
 button to `/import/measurement?boq=<id>`, and `create_ms(imported=…)` renders
 the form with the site's own sheet in the joint grid (`data["_grid"]`); the
