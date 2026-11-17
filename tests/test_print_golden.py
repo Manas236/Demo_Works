@@ -2029,15 +2029,15 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # was a84dce3a8c55d8c2 / 173631 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was 1646b229cb85a727 / 176811 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-MERGED_WHOLE, MERGED_LEN = "0abcabb67b666b39", 190872   # was a7e08fa2196f6872 / 190310 (title band clear of the banner, 17 Nov 2026), was c6f7d82f29d09a18 / 186260 (logo option A, 14 Nov 2026), was ad08a1f9d8af016d / 184448 (logo top-aligned, 8 Nov 2026), was 5b06ac443cb31921 / 177764 (SF mark 1.5x, 29 Oct 2026)
+MERGED_WHOLE, MERGED_LEN = "9514463b564545f8", 190857   # was 0abcabb67b666b39 / 190872 (seven-cell summary rows, 17 Nov 2026), was a7e08fa2196f6872 / 190310 (title band clear of the banner, 17 Nov 2026), was c6f7d82f29d09a18 / 186260 (logo option A, 14 Nov 2026), was ad08a1f9d8af016d / 184448 (logo top-aligned, 8 Nov 2026), was 5b06ac443cb31921 / 177764 (SF mark 1.5x, 29 Oct 2026)
 MERGED_BLOCKS = {"head":       "ead2def0bea230f4",   # was ba3818da0d5fffd1 (title band clear of the banner, 17 Nov 2026), was 482cb74cab6f5f0e (page edge),
                                                      # was 1e9bbe98af7f4e8d,
                                                      # was e38255e4e2ed0d90
                  "letterhead": "d053b75f9692357e",   # was 688623f90590b397 (logo option A, 14 Nov 2026), was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
                  "foot-strip": "a3f2d37e04a583e1",   # was 11c5bd67c2fabaa9
                  "party":      "aa58dd01cfddecc3",
-                 "items":      "e0f2b72ef4632192",   # was 30ecad09926182e7
-                 "signature": "930dd5dfc837f66a"}   # was 459206ffec7ac130 (logo option A, 14 Nov 2026), was 18f50170a6673407 (logo top-aligned, 8 Nov 2026), was 90a0f2169769a8aa (SF mark 1.5x, 29 Oct 2026), was a6452d6103bae384,
+                 "items":      "117110748ece40eb",   # was e0f2b72ef4632192 (seven-cell summary rows, 17 Nov 2026), was 30ecad09926182e7
+                 "signature": "50bfd525eae58d1b"}   # was 930dd5dfc837f66a (seven-cell summary rows, 17 Nov 2026), was 459206ffec7ac130 (logo option A, 14 Nov 2026), was 18f50170a6673407 (logo top-aligned, 8 Nov 2026), was 90a0f2169769a8aa (SF mark 1.5x, 29 Oct 2026), was a6452d6103bae384,
                                                      # was 0598f5bb4f174a53,
                                                      # was d5b89b346e0b46ff
 

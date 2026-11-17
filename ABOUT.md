@@ -797,7 +797,13 @@ address and contact lines below it — §6 *The letterhead banner*.
 
 **What is NOT in it, and this is the load-bearing part:** any tax arithmetic,
 any per-chain business logic, any route. The totals *rows* are furniture and
-live here (`sum_row`, `total_row`); deciding what goes in them does not. The RA
+live here (`sum_row`, `total_row`); deciding what goes in them does not.
+⚠ **Their defaults are the sell side's EIGHT columns** — a table with any
+other count must pass `blanks=` and `span=` so every summary row is exactly as
+wide as the header. The merged RA's seven-column print called them bare until
+17 November 2026, and the extra unheaded cell squeezed its whole item table
+into the left ~80% of every copy; `tests/test_merged_ra.py::
+test_the_merged_print_has_no_unheaded_column` now counts the cells. The RA
 chain's tax block is **per line, carrying HSN/SAC per claim row**; the sell
 chain's is **document-level** off one `tax_info` dict. That difference is the
 whole reason `ra.py` may not import `invoice.py`, and folding both into a
